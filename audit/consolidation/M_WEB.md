@@ -114,7 +114,7 @@ every B1 action (AC_NOTES 34-second).
 - **Unit**: U23. Stage U8: A.U8.04 adds the `// @tunable web.outer_cap_s = 15000` line above `:8` (needed by U8's
   register check, A.U8.02); U23 writes the rest.
 - **Depends**: A.U8.01/A.U8.02 (tag grammar).
-- **Blast carried by**: callers `js/definitions.js` (M.WEB.010), `js/app.js` (M.WEB.031), `js/render.js` (M.WEB.020),
+- **Blast carried by**: callers `js/definitions.js` (M.WEB.007), `js/app.js` (M.WEB.031), `js/render.js` (M.WEB.020),
   `js/shell.js` (M.WEB.025); `tests_js/poll-manager.test.js` (M.WEB.051), `tests_js/definitions.test.js` (M.WEB.053);
   `tests/test_website_build_integration.py:123` bundle marker `function fetchWithTimeout` → `function
   fetchTextWithTimeout` or derived from the banner (A.U23.02/A.U23.38, TEST_UNIT/SCR);
@@ -220,7 +220,7 @@ every B1 action (AC_NOTES 34-second).
 - **Unit**: U23. Stage U6: `MAX_DECIMALS` hoisted (A.U6.16), `neverUnchanged()` (A.U6.17).
 - **Depends**: A.U6.17's flags in the generated definitions (M.GEN.015/.017).
 - **Blast carried by**: `neverUnchanged()` importers `js/mock-server.js` (M.WEB.040), `tests_js/_put_field_cases.js`
-  (M.WEB.060), `tests_js/live-backend-put-matrix.test.js` (M.WEB.062); `resolveFieldValue()` callers `js/render.js`
+  (M.WEB.060), `tests_js/live-backend-put-matrix.test.js` (M.WEB.063); `resolveFieldValue()` callers `js/render.js`
   (M.WEB.020), `js/templates.js` (M.WEB.014), `tests_js/definitions-mockdata-coverage.test.js` (M.WEB.057),
   `tests_js/definitions.test.js:242-253` (M.WEB.053); `tests_scripts/test_definitions_js_mirrors.py` regexes
   (A.U6.16/A.U23.37, TSC); the no-`defaultValue` grammar (M.GEN.046, M.SRC_SENS.072, SCD30 tag A.U23.16 — SRC_SENS).
@@ -386,7 +386,7 @@ every B1 action (AC_NOTES 34-second).
 - **Depends**: M.WEB.012; M.GEN.062 (CSS for `.code-description`, `[data-code-tone]`, `.field-warning`; the
   `.field-value.code-value` button reset and the muted `.code-number` are Gaps item 5).
 - **Blast carried by**: callers `buildFieldGroupCard()` (M.WEB.015); `tests_js/templates.test.js` (M.WEB.058) and
-  `tests_js/accessibility.test.js` (M.WEB.063); SPEC H.3 hook list (A.U23.42 Docs, SPEC).
+  `tests_js/accessibility.test.js` (M.WEB.080); SPEC H.3 hook list (A.U23.42 Docs, SPEC).
 - **Kind**: code
 
 ### M.WEB.015 Cards build once, update in place, and reset after Apply
@@ -476,7 +476,8 @@ every B1 action (AC_NOTES 34-second).
   (read: JSON numbers sent as `JSON.stringify` writes them — holds), A.U10.40 (read: composite member keys come from the
   definitions).
 - **Site**: `js/render.js:16-40` `readInputValue()`, `:61-125` `collectGroupBody()`.
-- **Change**: new private `parseNumberInput(text)` — `text.trim()` matching `/^[+-]?(\d+(\.\d*)?|\.\d+)$/` → `Number(trimmed)`,
+- **Change**: new private `parseNumberInput(text)` — `text.trim()` matching `/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/u` (non-capturing groups: ESLint's
+  `prefer-named-capture-group` is on) → `Number(trimmed)`,
   anything else → the raw `text` (the device answers "Invalid"); JSDoc one line "A number only for plain decimal text;
   anything else is sent raw for the device to reject." `readInputValue()` uses it for `number` (empty → `undefined`;
   the `:27-29` comment → "// Text that is not a plain decimal is sent as typed: the device rejects it, so garbage never
@@ -493,7 +494,7 @@ every B1 action (AC_NOTES 34-second).
 - **Unit**: U23.
 - **Depends**: M.WEB.014 (unset state), M.WEB.005.
 - **Blast carried by**: `tests_js/render.test.js:307-342, :540-600, :678-722` hold, new parse/dispatch cases (M.WEB.054);
-  `tests_js/live-backend-put-matrix.test.js` `willRoundTrip` (M.WEB.062); SPEC H.4 sparse-PUT row (A.U36.505, SPEC).
+  `tests_js/live-backend-put-matrix.test.js` `willRoundTrip` (M.WEB.063); SPEC H.4 sparse-PUT row (A.U36.505, SPEC).
 - **Kind**: code
 
 ### M.WEB.019 Read every PUT's per-field result; one severity order
@@ -623,7 +624,7 @@ every B1 action (AC_NOTES 34-second).
   the existing dropdown and Apply with no dialog — `window.confirm` is reached only by the DNS fallback Clear (A.U23.17,
   owner OR56.a (2)); A.S0930.20 (5) pins both facts.
 - **Unit**: U24 (A.U24.48's reason). Stages: U0 (A.U0.53's relabel — superseded at U23), U23 (everything else).
-- **Depends**: M.WEB.015, M.WEB.018, M.WEB.019, M.WEB.020; A.U24.48's plugin (M.WEB.070/.080).
+- **Depends**: M.WEB.015, M.WEB.018, M.WEB.019, M.WEB.020; A.U24.48's plugin (M.WEB.070/.071).
 - **Blast carried by**: `tests_js/render.test.js` (M.WEB.054); live matrix commands read state after the refresh
   (M.WEB.061); SPEC H.4 "After Apply", "Known accepted gap", legacy-divergence row (A.U23.15/.17/.45 Docs, SPEC).
 - **Kind**: code
@@ -913,7 +914,7 @@ every B1 action (AC_NOTES 34-second).
 - **Depends**: M.WEB.045 (`samples.json`), M.WEB.004 (`MockSamples`).
 - **Blast carried by**: callers `js/app.js` (M.WEB.031), `tests_js/mock-data-compose.test.js`,
   `definitions-mockdata-coverage.test.js`, `generated-definitions-render.test.js`, `mock-server-put-matrix.test.js`,
-  `accessibility.test.js`, `site-functions.test.js` (M.WEB.056/.057/.060/.063/.066); SPEC H.2 `mockdata/` line, K.8
+  `accessibility.test.js`, `site-functions.test.js` (M.WEB.056/.057/.060/.080/.066); SPEC H.2 `mockdata/` line, K.8
   (A.U36.516/.517, SPEC).
 - **Kind**: code
 
@@ -1194,4 +1195,736 @@ every B1 action (AC_NOTES 34-second).
 - **Depends**: M.WEB.043, M.WEB.050.
 - **Blast carried by**: —
 - **Kind**: test
+
+## tests_js/templates.test.js
+
+### M.WEB.058 Template tests go through the exported card and cover every new cue
+- **From**: A.U23.37 (`buildField` tests through `buildFieldGroupCard()`), A.U23.43 (1) (label expectations), A.U23.11
+  (`:382-389`, `:343-347`), A.U23.12 (`:375`, `:388` → `data-worst`), A.U23.20 (pill click, code field, `CalLight`
+  tone, hostile description), A.U23.21 (age boundaries, specials), A.U23.24 (struct missing a member), A.U23.49
+  (resolution hint), A.U23.40 (read: `:502-570` XSS tests hold), A.U6.28/A.U6.29 (hint text), A.U6.13 (`:41`, `:142`,
+  `:478`, `:489`), A.U0.28 and A.U24.56 (`:399-401` tag), A.U10.40 (time-struct and LED keys), A.U32.06
+  (`lasttaskend` case), A.U27.28 (header), A.U20.27 (read: self-contained BMP fixtures hold).
+- **Site**: `tests_js/templates.test.js:1-570`.
+- **Change**: header (≤ 3 lines) "Tests js/templates.js and js/field-format.js: field markup and hints, cards and their
+  in-place update, the errcount card, the shell and nav builders, and text-only rendering." Imports drop `buildField`, add
+  `updateFieldGroupValues`, `updateErrcountGroup`, `resetControl`. Formatter (`:19-87`): `:40-48` uses `Year…Second` keys,
+  its comment → "// Real shape: the generated module's _gmtimestruct_to_dict() (buildgen/codegen.py)."; new cases — ages
+  at 0, 119, 120, 7199, 7200, 172799, 172800 s give "0 s ago", "119 s ago", "2 min ago", "119 min ago", "2 h ago", "47 h
+  ago", "2 d ago" (hand-written); `deviceNowS` null → "age unknown"; age −6 → "clock mismatch"; `BackupTS` null → "None
+  since boot", 0 → "No timestamp"; a struct missing `Hour` → "invalid time value"; `lasttaskend` `{Task: "SCD30.start_asy_read",
+  Uptime: 3600}` → "SCD30.start_asy_read at uptime 3600 s", `null` → "—". Field markup (`:89-279`): each case builds a
+  one-field group card (`submit` = the old `editable`) and reads `[data-field-wrapper-key]`; `htmlFor` expectations follow
+  the index ids and `span.field-label` rule; `:141-143` hold with `"fixture-host"`, plus a `byteLength` field shows ", at
+  most 32 bytes (UTF-8)" and a `hostLabel` field "letters, digits and '-' only"; a number field with `resolution` 0.01
+  and unit °C shows "Resolution: 0.01 °C", one without shows none; an always-executed toggle with no value renders "—"
+  and `aria-pressed="mixed"`; a masked input has `autocomplete="new-password"`. Errcount: `:343-347` count the no-data rows;
+  `:370-380` and `:382-389` move to the wrapper's `data-worst` ("renders an absent module as no data, never a zero");
+  a module with counter 3 and only `W` history colours as warning and counts under warnings; `:398-428` hold (the type
+  only colours), `:399-401` comment tag "(owner, 2026-08-21, `9fd2a28`)"; a pill click shows the catalog text, Enter
+  works, a code with no entry shows "No description for code <n>"; a `CalLight` 2 renders "<text> (2)" with
+  `data-code-tone="warn"`; `updateErrcountGroup()` keeps the "Show all" button node and focus; `updateFieldGroupValues()`
+  keeps the same `.field-value` node; `resetControl()` clears an input, a composite and selects the placeholder.
+  `buildSectionShell` (`:438-462`) expects `data-shown="false"`. `:478`, `:489` → `"fixture-device"`/"Fixture Device".
+  XSS (`:502-570`) hold, plus a hostile code description rendered as text.
+- **Resolved**: A.U0.28 (U0) writes `:399-400` "(owner, 2026-08-21, `9fd2a28`)"; A.U24.56 (U24) lists the same A28 site
+  as "residue other units leave" with the text "(owner, 2026-08-21)" — A.U0.28 already carries it, so A.U24.56's A28
+  bullet is void (its own scope is what other units leave) and A.U0.28's text stands.
+- **Unit**: U32 (`lasttaskend`). Stages: U0 (tag), U6 (A.U6.13 ids, A.U6.28/.29 hints), U10 (keys), U23 (the rest), U27
+  (header).
+- **Depends**: M.WEB.012-.017.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_js/main.test.js, tests_js/app.test.js, tests_js/nav.test.js
+
+### M.WEB.059 Entry and nav tests: stop handles, neutral ids, data attributes, inert drawer
+- **From**: A.U23.07 (stop handle in `afterEach`, `initNav` returns `{setCurrent, dispose}`, `keyTarget`), A.U23.06 (stubs
+  answer `/status` and `/system`), A.U23.42 (`data-shown`, `data-nav-open`), A.U23.43 (2) (inert and focus asserts),
+  A.U6.07 (`app.test.js` manifest stubs, neutral ids), A.U6.13 (`main.test.js:7, :90, :138, :166`, `nav.test.js:7`),
+  A.U35.46 (read: hold), A.U27.28 (headers).
+- **Site**: `tests_js/main.test.js:1-168`, `tests_js/app.test.js:1-152`, `tests_js/nav.test.js:1-109`.
+- **Change**: each file gains a ≤ 3-line header naming what it tests. `main.test.js`: fixture id `"fixture-device"`,
+  displayName "Fixture Device" (the three `toBe("Wozi Test")` follow); every `startApp()` result is kept and called in
+  `afterEach`, so a live landing section can be tested; the fetch stub answers `/status` (`{system: {UnixTime: …}}`) and
+  `/system` (`{build: {…}}`); banner asserts (`:38, :91, :111, :121, :139, :154`) read `dataset.shown`. `app.test.js`:
+  the stub serves `../build/generated_src/definitions/index.json` `{"devices": ["fixture-a", "fixture-b"]}`, the two
+  definitions files and `../mockdata/samples.json`; cases: the first manifest id is the default, an unknown `?device=`
+  falls back to it, a known one is used, a manifest 404 shows "Could not load the device list", a definitions failure and
+  a torn `samples.json` show their banners and render no section; stop handles called; the `:11-12` "no stop handle"
+  comment goes (sections may be live now). `nav.test.js`: `initNav` gets `keyTarget` (a counting `EventTarget`) and
+  returns `{setCurrent, dispose}`; `:38-92` assert `appShellEl.dataset.navOpen`; new: closed drawer `inert`, open not,
+  opening focuses the first link and sets `aria-label` "Close navigation", closing with focus inside returns it to the
+  hamburger, `dispose()` leaves no listener on `keyTarget`; fixture id `"fixture-device"`.
+- **Resolved**: —
+- **Unit**: U23. Stages: U6 (A.U6.07/.13), U27 (headers).
+- **Depends**: M.WEB.025, M.WEB.026, M.WEB.030, M.WEB.031.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_js/mock-server-put-matrix.test.js, tests_js/_put_field_cases.js
+
+### M.WEB.060 The mock PUT matrix runs every device, deduplicated, with derived classes
+- **From**: A.U6.09 (all devices, `dedupePutFieldCases()`, `DEV_UNIQUE_GROUPS` goes, shard tests), A.U6.17 (6)
+  (`DISPATCH_ONLY_KEYS` goes; never-"Unchanged" category), A.U0.20 (header owner tag), A.U0.40 (L07 — carried by A.U6.09's
+  deletion), A.U23.33 (`:11-13` comment), A.U18.38 (read: `HotspotPW` picked up from definitions), A.U6.24 (read: readonly
+  skipped), A.U27.28 (header present).
+- **Site**: `tests_js/mock-server-put-matrix.test.js:1-21, :40-43, :118-121, :183-185, :290-310`;
+  `tests_js/_put_field_cases.js:1-83`.
+- **Change**: matrix header `:1-5` → "PUT-behaviour matrix over every real writable field of every device's generated
+  definitions (deduplicated by derivation), against js/mock-server.js's fetch interception - six categories per field
+  (owner's request, 2026-08-24) (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching
+  SPECIFICATION.md Part A.8." (≤ 3 lines when wrapped); the four JSON imports and `DEV_UNIQUE_GROUPS` with its comment go;
+  `CASES = dedupePutFieldCases(DEVICE_IDS.flatMap((d) => collectMockPutFieldCases(d, GENERATED_DEFINITIONS.get(d),
+  composeMockData(...))))`; the resubmit-unchanged expectations `:118-121`, `:183-185` apply to non-`neverUnchanged()`
+  fields only; a new category asserts two identical valid sends of every `neverUnchanged()` field both answer "Valid";
+  shard tests take `DEVICE_IDS[0]`; a dedupe case keeps a field differing in any attribute and drops an identical one
+  from a later device. `_put_field_cases.js`: `DISPATCH_ONLY_KEYS` goes; `collectPutFieldCases()` skips readonly,
+  composite and every `neverUnchanged(field)` field (`:63`); `:11-13` comment → "// Action fields (dispatch) and
+  always-executed fields have their own categories: the matrices' never-"Unchanged" category and / // the live tier's
+  action-field block." (2 lines); new `export function dedupePutFieldCases(cases)` — first case per `sectionKey + "|" +
+  driverBase(groupKey) + "|" + JSON.stringify(field)`, `driverBase` = the key up to its first `_`.
+- **Resolved**: A.U0.20 (U0) tags the header's `:2` and A.U6.09 (U6) rewrites what `:2` describes — one header carrying
+  both (A.U0.20's own Blast: "A-C merges both edits into one header"). A.U0.40's L07 is void: A.U6.09 deletes
+  `DEV_UNIQUE_GROUPS` and its comment (A.U0.40 names this itself). A.U23.33's comment text ("action fields are covered by
+  their own live block") is folded into A.U6.17's rewrite of the same comment.
+- **Unit**: U23 (A.U23.33's comment). Stages: U0 (tag), U6 (the rest).
+- **Depends**: M.WEB.043, M.WEB.050, M.WEB.005.
+- **Blast carried by**: `collectPutFieldCases()` also feeds the live matrix (M.WEB.063); SPEC H.7/H.8 matrix text
+  (A.U36.517, SPEC).
+- **Kind**: test
+
+## tests_js/_live_twin_command.js
+
+### M.WEB.061 The live-twin commands: any device, own config dir, port lock, scanned output, fail on a missing build
+- **From**: A.U6.10 (1)-(3) (`spawnTwin(device)`, `configuredMaxConnections(device, devicesDir)` with no default, both
+  commands take the device), A.U7.21 (stdout drained, bounded buffer, memory markers), A.U8.21 (budget tags), A.U23.32 (4)
+  (DebugLevel smoke: exact `valid` then `unchanged`), A.U23.34 (full ceiling, recovery by reload), A.U23.35 (restart
+  recovery), A.U24.52 (missing interpreter throws), A.U24.53 / A.U25.32 (per-run `--config-dir`), A.U24.69 (port-53
+  lock), A.U25.09 (`--mem-backup-state-path ""`), A.U27.12 (shared Unix-port probe), A.U27.15 (`MICROPYPATH` from
+  `_micropypath.js`), A.SDEP.16 (W15) and A.SDEP.19 (W36) (conditional), A.U36.513/A.U6.10 (`:14` comment), A.U23.15
+  (read: an Apply settles only when the button is enabled again), A.U25.44 (read: the guard reads this file's
+  `MICROPYPATH` import).
+- **Site**: `tests_js/_live_twin_command.js:1-263`.
+- **Change**: header (3 lines) unchanged except "drives a real Playwright page against it directly" holds; imports gain
+  `mkdtempSync`, `os.tmpdir`, `MEMORY_ERROR_MARKERS`/`memoryMarkerLines` (`./_memory_markers.js`), `MICROPYPATH`
+  (`./_micropypath.js`, the `twin` layout of `scripts/micropypath.toml`), `acquirePortLock` (`./_port_lock.js`); the
+  `TOOLCHAIN_DIR`/`MICROPYTHON_BIN` constants and every `existsSync(MICROPYTHON_BIN)` check go: the binary path comes
+  from `execFileSync("bash", ["scripts/_unix_port.sh", "check", "standard"])` once at first use, and a failing check
+  throws `Error("MicroPython Unix port not built … - run 'uv run toolchain/setup_toolchain.py setup' first")` (A.U24.52's
+  text, the probe's own message appended); the `:14-16` comment goes with the local `MICROPYPATH` literal. Budgets:
+  `// @tunable l0.live_twin_ready_timeout_ms = 20000` above `READY_TIMEOUT_MS`, `// @tunable
+  l0.live_twin_shutdown_timeout_ms = 15000` above `SHUTDOWN_TIMEOUT_MS`, named constants with tags for the `:173`
+  10000 (`l0.live_twin_section_wait_ms`), the `:252` 20000 (`l0.live_twin_tab_wait_ms`) and the 250/200 ms poll steps
+  (`l0.live_twin_poll_ms`). `spawnTwin(device, configDir)`: `--module sensortask_${device}`, `--wiring-plan
+  build/generated_src/sensortask_${device}_wiring_plan.json`, `--device ${device}`, `--host`, `--port`,
+  `--fram-state-path ""`, `--scd30-state-path ""`, `--mem-backup-state-path ""`, `--config-dir ${configDir}`; env
+  `{...process.env, MICROPYPATH, TZ: "UTC"}` (`TZ` goes only if A.SDEP.16 (W15) finds `mktime()` fixed); `stdio:
+  ["ignore", "pipe", "pipe"]`, both streams drained into one buffer keeping the last 256 KiB, line-complete (the `:75-77`
+  comment → "// Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory
+  markers."). Each command: takes the port-53 lock before its first boot and releases it on every exit path; makes `configDir
+  = mkdtempSync(path.join(os.tmpdir(), "sensors-live-"))` and removes only it when the twin stops (the `:151-154`
+  comment and the three `rmSync(<repo>/digital_twin/config)` go); after the twin stops throws, quoting the lines, when
+  `memoryMarkerLines(output)` is non-empty. `runLiveBackendSmoke({context}, device)` → `{titleHasSensorStation,
+  deviceName, firstStatus, resubmitStatus}`: reads `GET /system`'s `DebugLevel`, fills a different in-range value, Apply →
+  waits until the Apply button is enabled again, reads `data-apply-status`; fills the same value again → the same wait,
+  second status. `runLiveBackendConcurrentTabs({context}, device)` → `{tabs, loadedFirstPass, loadedAfterRetry, failures}`:
+  `tabs = configuredMaxConnections(device)`; all navigate at once; each load either completes or fails at the connection
+  level, none pending after `outer_cap_s` + 5 s; each tab that did not load is reloaded one at a time and must load; the
+  `:233-234` comment goes. New `runLiveBackendRestartRecovery({context}, device)` → `{bannerShown, recovered, reloaded}`:
+  boots, opens the page on Measurements, waits for one successful poll, sets a `window` marker, stops the twin, waits for
+  the section banner, restarts the twin on the same port and config dir, and within `READY_TIMEOUT_MS` + 60 s (the back-off
+  cap) sees the banner hide and a value refresh; `reloaded` is true when `page.url()` or the marker changed; both twin
+  runs' output scanned. `configuredMaxConnections(device, devicesDir = path.join(REPO_ROOT, "devices"))` — `device` is
+  required. If A.SDEP.19 (W36) finds Vitest's `page` can navigate to an external origin, the Commands-API detour is a
+  delta for U23/U28 recorded there; otherwise unchanged.
+- **Resolved**: A.U24.53 and A.U25.32 plan the same per-run config dir (A.U25.32's Blast: "co-lands with A.U24.53 — A-C
+  merges") — one change. A.U24.52's thrown message and A.U27.12's probe both replace the `existsSync` check: the probe's
+  `check` form decides, the message is A.U24.52's (the probe names the found flavour after it). A.U6.10, A.U7.21, A.U8.21,
+  A.U23.32-.35, A.U24.52/.53/.69, A.U25.09, A.U27.12/.15 all edit `spawnTwin()` and the two commands — merged into the one
+  text above. Reading `data-apply-status` only after the button is re-enabled is what A.U23.15 (button disabled until the
+  post-write GET settles) and A.U23.14 (stale colours cleared) require of any reader (agent decision D9).
+- **Unit**: U27 (A.U27.12/.15, the latest). Stages: U6 (A.U6.10), U7 (A.U7.21), U8 (tags), U23 (A.U23.32/.34/.35), U24
+  (A.U24.52/.53/.69), U25 (A.U25.09), U27; U0 conditional (A.SDEP.16/.19 outcomes).
+- **Depends**: M.WEB.075 (`_memory_markers.js`), M.WEB.078 (`_port_lock.js`), M.WEB.079 (`_micropypath.js`); A.U25.32
+  `--config-dir`, A.U25.09 flag (TWIN); `scripts/_unix_port.sh` (A.U27.12, SCR); `scripts/micropypath.toml` (A.U27.15, SCR).
+- **Blast carried by**: `tests_js/live-backend.test.js` (M.WEB.063); `tests_js/vitest-commands.d.ts` (M.WEB.076);
+  `vitest.config.js` registrations (M.WEB.074); `tests_scripts/test_live_twin_ceiling_parser.py:23` (device passed —
+  holds, TSC); `tests_scripts/test_live_command_device_args.py` (A.U6.10, TSC); the no-`rmSync`-outside-tmp text check
+  (A.U24.53, TSC); `tests_scripts/test_twin_never_needs_tests_on_its_path.py` (A.U25.44/A.U27.15, TSC); A.U7.23's
+  gate-agreement import check (TSC); Part N `l0.live_twin_*` rows (A.U8.21, SPEC); SPEC H.7 live tier (A.U36.517 (6),
+  SPEC); `digital_twin/README.md` runner flags (A.U25.32, TWIN).
+- **Kind**: test
+
+## tests_js/_live_matrix_command.js
+
+### M.WEB.062 The live-matrix commands: per device, checked baselines, independent expectations, action fields
+- **From**: A.U6.10 (4) (`startLiveMatrix(device)` boots only, `getLiveMatrixConfig()`), A.U7.21, A.U8.21 (tags),
+  A.U23.16 (`applyField()` clicks until the wanted value; `unset` read back), A.U23.32 (1)(2) (`getRealCurrentValues()`
+  checks; `_expected_display.js`), A.U23.33 (`archiveErrcount`; composite kind), A.U23.14 (`:331` comment), A.U24.52,
+  A.U24.53/A.U25.32, A.U24.69, A.U25.09, A.U27.12, A.U27.15, A.SDEP.16/.19 (conditional), A.U36.544 (4) (`:151`
+  pointer), A.U23.15 (read: wait for the re-enabled button).
+- **Site**: `tests_js/_live_matrix_command.js:1-388`.
+- **Change**: header unchanged; the frame as M.WEB.061 (probe, `MICROPYPATH`, port-53 lock, per-run config dir, drained
+  scanned output, `--mem-backup-state-path ""`, the missing-interpreter throw, tags `l0.live_twin_ready_timeout_ms`,
+  `l0.live_twin_shutdown_timeout_ms`, `// @tunable l0.put_matrix_apply_status_timeout_ms = 5000`, `// @tunable
+  l0.put_matrix_caption_poll_timeout_ms = 3000`, `l0.live_matrix_poll_ms` for the 250/50 ms steps); the `:9-12`
+  `formatFieldValue` import and its comment go — `expectedDisplay` from `./_expected_display.js` replaces it at `:317`.
+  `getLiveMatrixConfig()` → `{reason: string | null, shard: string}` without booting (`$PUT_MATRIX_SHARD`; the
+  `:149-151` comment → "// The shard travels back through the Commands API: the test runs in the browser, where
+  process.env does not exist; CI shards the file per B.10.1."). `startLiveMatrix({context}, device)` only boots and opens
+  the page; `stopLiveMatrix()` tears down, scans, releases. `getRealCurrentValues(_context, paths)` throws `GET <path>
+  -> HTTP <n>` on a non-ok status and `GET <path> did not answer a data object` when the body is not a plain object or
+  carries `res`. `applyField()`: kinds `number`/`string` fill, `toggle` clicks until `data-value` equals the wanted value
+  (at most two clicks, else throws), `enum` selects, `composite` fills each sub-input from `value`'s members; then Apply,
+  waits until the Apply button is enabled again (the PUT and its post-write GET settled), reads `data-apply-status`, and
+  for number/string polls the caption for `\`Current value: ${expectedDisplay(field, expectRenderedValue)}\``; the 50 ms
+  sleep goes. `applyUnchangedFieldExpectNothingToSubmit()`'s JSDoc `:331` → "Leaves a non-dispatch toggle/enum at its
+  current value and clicks Apply, expecting collectGroupBody() to sparse-omit it: no PUT fires, so no status is waited
+  on." `remountAndReadField()` unchanged (an always-executed toggle reads back `"unset"`). New `archiveErrcount(_context,
+  label)` — `GET /status`'s `errcount` written verbatim through `uv run scripts/_archive_evidence.py --runner live_twin`
+  (A.U7.20's helper) and returns the archive path.
+- **Resolved**: as M.WEB.061 for the shared frame. A.U23.16 "remountAndReadField() returns "unset" for ContMeas" needs no
+  code: the remounted toggle's `data-value` is `"unset"` (M.WEB.014).
+- **Unit**: U27. Stages: U6, U7, U8, U23 (A.U23.16/.32/.33), U24, U25, U36 (`:151` pointer — folded into this
+  rewrite of the same comment); U0 conditional.
+- **Depends**: M.WEB.061's helpers, M.WEB.069 (`_expected_display.js`); A.U7.20 (`scripts/_archive_evidence.py`, SCR).
+- **Blast carried by**: `tests_js/live-backend-put-matrix.test.js` (M.WEB.063); `vitest-commands.d.ts` (M.WEB.076);
+  `vitest.config.js` (M.WEB.074); Part N `l0.put_matrix_*` rows (A.U8.21, SPEC).
+- **Kind**: test
+
+## tests_js/live-backend.test.js, tests_js/live-backend-put-matrix.test.js
+
+### M.WEB.063 The live tests run per device, expect exact words and cover the action fields
+- **From**: A.U6.10 (3)(4) (`describe.each(DEVICE_IDS)`, device display name; the matrix per device with
+  `beforeAll`/`afterAll`), A.U23.31 (`REAL_PATHS` goes), A.U23.32 (exact result words per class; independent display),
+  A.U23.33 (action-field block), A.U23.34/.35 (assertions, timeouts), A.U23.46 (`test` → `it`), A.U23.14 (`willRoundTrip`),
+  A.U23.16 + A.U25.12 + A.U6.17 (6) (`ALWAYS_REMOUNTS_AS` goes), A.U23.36 (the mask exclusion cites the page test),
+  A.U24.52 (no skip branch, header), A.U8.21 (`CASE_TIMEOUT_MS` tag), A.U4.04/A.U4.05/A.U15.06 (`:80-93`, `:185-187`
+  wording), A.S0930.27/.38 (the four restarting commands listed, not driven), A.U36.544 (1)(4) (`:2`, `:82` keep H.7;
+  `:87` → H.4), A.U18.39 (read: `:134-137` holds).
+- **Site**: `tests_js/live-backend.test.js:1-56`; `tests_js/live-backend-put-matrix.test.js:1-301`.
+- **Change**: `live-backend.test.js`: header `:1-3` → "Exercises the real website's own JS in a real browser against a
+  live digital-twin backend for every device (SPECIFICATION.md Part H.7). A missing interpreter or build fails the
+  suite; it never skips."; `import { describe, expect, it } from "vitest";` and every `test(` → `it(`;
+  `describe.each(DEVICE_IDS)`: the smoke asserts `titleHasSensorStation`, `deviceName` contains the device's generated
+  `displayName`, `firstStatus` exactly `"valid"`, `resubmitStatus` exactly `"unchanged"` (the `:20-23` comment goes);
+  "a full ceiling of browser tabs against one live twin all load, directly or on one reload" asserts `loadedFirstPass >=
+  1` and `loadedAfterRetry === tabs`, its timeout a named constant under `// @tunable l0.live_concurrent_tabs_timeout_ms`
+  (boot + `outer_cap_s` + 5 s + `tabs` × 20 s); new "the page recovers from a device restart without reloading" asserts
+  `bannerShown`, `recovered` and `!reloaded`, timeout under `// @tunable l0.live_restart_recovery_timeout_ms` (boot +
+  `READY_TIMEOUT_MS` + 60 s + margin); the `:332-334` quirk note stays; the skip branches go. `live-backend-put-matrix
+  .test.js`: header → "Field-by-field PUT matrix through a real browser against a real twin, for every writable field of
+  every device's generated definitions (SPECIFICATION.md Part H.7)."; `wozi.json` import, `REAL_PATHS`,
+  `ALWAYS_REMOUNTS_AS` (its fields all leave the generic cases) and `groupHasDispatchField()` go; `const config = await
+  commands.getLiveMatrixConfig()`; cases = `shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap(...)),
+  config.shard)` from the definitions alone, `devicesWithCases` derived; `describe.each(devicesWithCases)` with
+  `beforeAll(() => commands.startLiveMatrix(device))`/`afterAll(stopLiveMatrix)`; each case reads its `currentValue`
+  through `getRealCurrentValues()` inside the test (the toggle split moves into the body); `willRoundTrip = field.kind ===
+  "number" || field.kind === "string" || field.dispatch === true`; the resubmit expects exactly `"unchanged"` (the
+  `"ValidOrUnchanged"` mode and its comment go; the special-value probe expects `"unchanged"` when the special equals the
+  current value); every expected display through `expectedDisplay()`; `:185-187` "truncation" → "rounding to the nearest
+  0.01"; `CASE_TIMEOUT_MS` under `// @tunable l0.put_matrix_case_timeout_ms = 15000`; `:87` → "(SPECIFICATION.md Part
+  H.4)"; the mask exclusion `:134-137` stays and adds "(the page never sends a mask: render.test.js)". The derived
+  never-"Unchanged" category (two identical valid sends both `"valid"`) runs for every `neverUnchanged()` non-composite
+  field of the `sensors` section. New action-field block per device with the field: `PauseTime` 5 twice → `"valid"`
+  both, the Status page's "Remaining Pause Time" shows 1-5 on its next poll, 3601 → `"invalid"`; `LightCmdLED` (devices
+  with a `neopixel` instance) `{R: 10, G: 20, B: 30, T: 1}` → `"valid"`, the same at once → `"failed"`, `{R: 256, …}` →
+  `"invalid"`; `SystemCmd` `mempause` → `"valid"`; `ResetErrors`: `archiveErrcount()` first, then Yes → `"valid"` and every
+  row reads 0 on the next poll; one comment line: "reboot, bootloader, resetconfig and erasefram end the twin process:
+  covered at L1 and L2 (Run 13) and on silicon, not driven here."; the skip branch goes.
+- **Resolved**: A.U6.17 (6)'s derived category "two identical valid sends both Valid" would fail for `LightCmdLED`
+  (busy refusal, A.U9.03, owner 2026-09-29) — the composite command keeps its own block (A.U23.33) and the mock's busy
+  cases (M.WEB.052); `PauseTime`'s two-send check moves into A.U23.33's block (settled by A.U9.03/OR102.a (5); agent
+  decision D10 for the placement). A.U23.16's `ContMeas: "unset"` remount entry and A.U25.12's `ForceCalRef` removal
+  both edit `ALWAYS_REMOUNTS_AS`, which A.U6.17 (6) empties of every field (the generic cases skip `neverUnchanged()`
+  fields) — the constant goes. A.S0930.27 adds the two new words to A.U23.33's not-driven list.
+- **Unit**: U27 (shares the command files' latest stage; the test files' own latest constituent is A.U25.12, U25).
+  Stages: U4 (wording), U6 (per device), U8 (tags), U23 (A.U23.14/.31-.36/.46), U24 (A.U24.52), U25 (A.U25.12).
+- **Depends**: M.WEB.050, M.WEB.060, M.WEB.061, M.WEB.062, M.WEB.069.
+- **Blast carried by**: CI `web-unit-tests`/`web-put-matrix` timeouts re-sized from per-device wall clock (A.U6.10/U28,
+  TOOL); SPEC H.7 live tier sentences (A.U36.517 (6), SPEC); Part N `l0.*` rows (A.U8.21, A.U23.34/.35 Docs, SPEC).
+- **Kind**: test
+
+## tests_js/shell.test.js (new)
+
+### M.WEB.064 The shell's lifecycle, clock, reload and watch are tested from outside
+- **From**: A.U23.07 (no timer, listener or request after `stop()`; two starts leave one set of listeners), A.U23.06
+  (build compare, clock, hidden pause, failing watch, reload after a pending Apply).
+- **Site**: new `tests_js/shell.test.js`.
+- **Change**: header (≤ 3 lines) "Tests js/shell.js: section switching, the stop handle, the device clock and the
+  build watch's reload rule." Cases with a fake `visibility`, a counting `EventTarget` as `keyTarget`, an injected
+  `reload` spy and `window.fetch` stubs answering `/status` and `/system`: after `stop()` no timer runs, no listener stays
+  on `keyTarget`, no request follows; start-stop-start leaves one set of listeners; a changed `build` on the second watch
+  calls `reload` once, an unchanged one never; `nowS()` is `null` until `UnixTime` is a number, then tracks fake time;
+  hidden pauses the watch; a watch whose `/system` GET rejects neither reloads nor rejects unhandled (`unhandledrejection`
+  spy); a changed build seen while an Apply is pending reloads only after that Apply settles.
+- **Resolved**: —
+- **Unit**: U23.
+- **Depends**: M.WEB.025.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_js/api-reference-agreement.test.js (new)
+
+### M.WEB.065 The definitions, the mock and the REST reference agree
+- **From**: A.U23.31.
+- **Site**: new `tests_js/api-reference-agreement.test.js`.
+- **Change**: header (≤ 3 lines); per device of `DEVICE_IDS`: the reference's (method, path) pairs equal the pairs the
+  definitions sections declare (`rest.get` → GET, `rest.put` → PUT); the reference's result words equal
+  `js/api-contract.js`'s four constants; the reference's code catalog equals the mock's `STANDARD_CODES`, read from
+  `js/mock-server.js?raw` by `readObjectConst()` (M.WEB.068), so the mock gains no test-only export. No per-field comparison (A.U23.31: the reference's fields come from the
+  definitions).
+- **Resolved**: the mock keeps `STANDARD_CODES` module-private (OR36.a (1)); the test reads it as text (agent decision
+  D11).
+- **Unit**: U23.
+- **Depends**: M.WEB.050 (`API_REFERENCES`), M.WEB.068; A.U19.20 (reference generated, GEN M.GEN.033).
+- **Blast carried by**: SPEC H.8 test list (A.U36.517, SPEC).
+- **Kind**: test
+
+## tests_js/site-functions.test.js (new)
+
+### M.WEB.066 Every legacy page function has its counterpart, per device
+- **From**: A.U23.48, A.U23.39 (read: inlined favicon), A.U6.15 (read: no variant literal).
+- **Site**: new `tests_js/site-functions.test.js`.
+- **Change**: header (≤ 3 lines); per device from the generated definitions: a Measurements section with one group per
+  sensor instance; a Sensors section with one writable group per sensor; Networking with identity, Wi-Fi LED and NTP
+  groups; System settings and a command group whose options include `reboot`, `bootloader` and `mempause`; the
+  notification section's LED flash, pause and auto-configuration groups where the device has them; every writable group
+  shows per-field result colours after an Apply against the mock. The staged page's inlined favicon is pinned by
+  `tests_scripts/test_stage_website.py` (A.U23.39), not here: the browser tier never sees a staged page.
+- **Resolved**: A.U23.48 also asks "the staged page carries the inlined favicon" in this file; no staged page reaches
+  `tests_js/` (staging is `scripts/_stage_website.py`'s, A.U23.38), and A.U23.39's L0 test pins exactly that fact —
+  the clause is carried there (no second check).
+- **Unit**: U23.
+- **Depends**: M.WEB.050, M.WEB.043.
+- **Blast carried by**: the audit's one-time legacy page ledger (A.U23.48 Change, execution step, PROC).
+- **Kind**: test
+
+## tests_js/_test_setup.js (new)
+
+### M.WEB.067 Real timers and spies restored after every test
+- **From**: A.U24.14.
+- **Site**: new `tests_js/_test_setup.js`.
+- **Change**: one-line header "Vitest setup: real timers after every test (spies are restored by restoreMocks in
+  vitest.config.js)."; `afterEach(() => { vi.useRealTimers(); });`.
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: M.WEB.074 (`setupFiles`).
+- **Blast carried by**: every test file's trailing restores (M.WEB.051-.054); SPEC H.8 test note (A.U24.14 Docs, SPEC).
+- **Kind**: test
+
+## tests_js/_source_constants.js (new), tests_js/source-constants.test.js (new)
+
+### M.WEB.068 Tests read a module's constants from its source, not through test-only exports
+- **From**: A.U23.37 (the reader; `definitions.test.js` and the timeout read through it), M.WEB.065 (object constant),
+  M.WEB.051 (`POLL_BACKOFF_MAX_MS`).
+- **Site**: new `tests_js/_source_constants.js`, new `tests_js/source-constants.test.js`.
+- **Change**: `export function readIntConst(source, name)` — matches `^const <NAME> = (?<value>-?\d+);$` (multiline, a named group) in a module's
+  raw text (imported with Vite's `?raw`) and returns the integer, throwing `Error(\`no const ${name} in source\`)` when
+  absent; `export function readObjectConst(source, name)` — the `const <NAME> = {…};` literal of string values keyed by
+  integers, parsed without `eval` (`/(?<code>\d+):\s*"(?<text>[^"]*)"/gu`; named groups, ESLint's
+  `prefer-named-capture-group`). Header (≤ 3 lines) names the rule: "tests adapt to the
+  code, not the code to the tests" (owner, 2026-09-26). The test: each reader finds `DEFAULT_TIMEOUT_MS`,
+  `SUPPORTED_SCHEMA_MAJOR`, `POLL_BACKOFF_MAX_MS` and `STANDARD_CODES` in their real modules and throws on a missing
+  name.
+- **Resolved**: A.U23.37 names one numeric reader; the code-table read of M.WEB.065 needs the object form (agent
+  decision D11).
+- **Unit**: U23.
+- **Depends**: `tsconfig.json` `vite/client` types for `?raw` (M.WEB.073).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_js/_expected_display.js (new), tests_js/expected-display.test.js (new)
+
+### M.WEB.069 An independent expected-display oracle for the live tier
+- **From**: A.U23.32 (2).
+- **Site**: new `tests_js/_expected_display.js`, new `tests_js/expected-display.test.js`.
+- **Change**: `export function expectedDisplay(field, value)`, written without `js/field-format.js`: "—" for
+  null/undefined; eight "•" for a masked field; the option label for an enum; a number with `decimals` d built by integer
+  arithmetic (`Math.round(Math.abs(v) * 10 ** d)` split into integer and zero-padded fraction digits, sign re-attached);
+  otherwise `String(value)`. Pure, no Node or DOM API (it is imported by the Node command module and the browser test).
+  The test's hand-written cases: 1.5 with decimals 3 → "1.500", −0.0005 with decimals 3 → "-0.001", a masked field, an
+  enum label. Header (≤ 3 lines) names its independence (OR19.a (2)).
+- **Resolved**: —
+- **Unit**: U23.
+- **Depends**: —
+- **Blast carried by**: SPEC H.8.1 names this module as the Node- and browser-safe one (Gaps item 4).
+- **Kind**: test
+
+## eslint.config.js
+
+### M.WEB.070 One lint config: header first, shipped-code floor and sinks, reasons on disables, pinned ceilings
+- **From**: A.U28.42 (header block first), A.U36.544 (1) (`:7` pointer), A.U36.501 (2) (`ecmaVersion: 2022` for `js/`
+  and `html/`), A.U23.40 (`PRODUCTION_ONLY_RULES`), A.U24.48 (`eslint-comments` plugin rules in every block), A.U23.05 +
+  A.U24.52 (the `no-console` comment), A.U5.18 (ceilings at the measured maximum, pinned by a test), A.U23.10/.26/.28
+  (ceilings follow the new measured maximum), A.U36.038 (1) (local D.15 order rule), A.U7.10 (`_summary_reporter.js`
+  in the Node block), A.U24.69/A.U27.15 (read: two more Node-context helpers), A.SDEP.04 (new core rules decided at the
+  refresh), A.SDEP.02 (read: suppressions go in the per-rule entries), A.U23.41 (read: the layering guard asserts the
+  sink rule's globs).
+- **Site**: `eslint.config.js:1-202`.
+- **Change**: first block (before the imports) — `/** ESLint flat config for js/ and tests_js/ - the website's
+  ruff-equivalent lint pass (SPECIFICATION.md H.8). Shipped JS stays plain, hand-written ES modules; this is dev-tooling
+  only, mirroring pyproject.toml's [tool.ruff.lint] role. */` (3 prose lines); imports gain `comments from
+  "@eslint-community/eslint-plugin-eslint-comments"`. `BUG_CATCHING_RULES`: the `:108-110` comment → "// --- console.log
+  is debug residue; console.error/warn are real diagnostics --- / // a section's once-per-episode failure line
+  (js/render.js) is real signal; scripts/*.mjs is exempt below (H.8)."; the four ceilings (`complexity`, `max-depth`,
+  `max-nested-callbacks`, `max-classes-per-file`) each at the maximum measured over their globs at landing (only ever
+  lowered; the comment `:113-114` → "// --- complexity ceilings at the measured maximum, so they gate regression:
+  ratchet DOWN only, pinned by / // tests_js/lint-ceilings.test.js (H.8) ---"); any core rule the refresh adds is listed
+  with a reason or left out (A.SDEP.04). New `const COMMENT_RULES = {"@eslint-community/eslint-comments/require-description":
+  ["error", {ignore: []}], "@eslint-community/eslint-comments/no-unlimited-disable": "error"}` and `const
+  PRODUCTION_ONLY_RULES = {"no-restricted-properties": ["error", {property: "innerHTML"}, {property: "outerHTML"},
+  {property: "insertAdjacentHTML"}, {object: "document", property: "write"}, {object: "document", property:
+  "writeln"}]}`, each preceded by one comment line naming its reason (every disable names its rule and reason; a server- or
+  user-supplied string reaches the page as text only, SPECIFICATION.md H.4). New inline plugin `order` (no dependency,
+  A.U36.038) with one rule checking top-level function declarations and `const` arrow-function bindings against D.15's
+  key (private = not exported; roles `get*`/`is*`/`set*`; a binding an import-time statement needs is the named
+  exception), comment ≤ 3 lines. Every block registers `plugins: {"@eslint-community/eslint-comments": comments, order}`
+  and spreads `COMMENT_RULES` and the order rule into its rules. `js/**/*.js` and `html/**/*.html` blocks: `ecmaVersion:
+  2022` (one comment line above the first: "// The shipped site's floor (SPECIFICATION.md H.1): ES2022, the same level
+  tsconfig.json's target and lib pin.") and `PRODUCTION_ONLY_RULES`; the test, command, config and script blocks keep
+  `"latest"`. The `tests_js/**/*.js` block's `ignores` and the Node block's `files` both list the Node-context files:
+  `tests_js/_live_twin_command.js`, `tests_js/_live_matrix_command.js`, `tests_js/_summary_reporter.js`,
+  `tests_js/_port_lock.js`, `tests_js/_micropypath.js`, `tests_js/_lint_command.js`, `tests_js/_twin_process.js` (one
+  shared `const NODE_CONTEXT_TEST_FILES`); its comment →
+  "// Node-context tests_js files (Vitest Commands API modules and their Node-only helpers, the summary reporter) run in
+  the / // real Node process, not the browser every other tests_js/*.js file runs in (SPECIFICATION.md H.7)." `:189-190`
+  comment holds.
+- **Resolved**: A.U24.52 removes the live-backend skip warning A.U23.05's comment would name — the comment names only
+  the remaining `console.error` user (settled by the later unit, U24). A.U24.69's `tests_js/_port_lock.js` and A.U27.15's
+  `tests_js/_micropypath.js` use `node:fs`/`process`, so they join the Node-context lists here and in the tsconfigs
+  (M.WEB.073), as A.U7.10 does for its reporter (gap closed here). A.U28.42 keeps the header text; A.U36.544's pointer
+  edit lands in it.
+- **Unit**: U36 (A.U36.038's order rule, A.U36.501, A.U36.544). Stages: U0 (A.SDEP.04 new core rules), U5 (ceilings,
+  A.U5.18), U7 (reporter in the Node lists), U23 (`PRODUCTION_ONLY_RULES`, ceilings re-measured, comment), U24 (comment
+  rules and the comment's final text; `_port_lock.js`), U27 (`_micropypath.js`), U28 (header).
+- **Depends**: M.WEB.072 (the plugin installed by the refresh), M.WEB.081 (ceiling test).
+- **Blast carried by**: `npm run lint` and CI's web lint job (TOOL); A.U23.41 guard (TSC); A.U36.038's planted-disorder
+  fixture (TSC/WEB, M.WEB.081 sibling); SPEC H.8 lint paragraph, H.1 floor, H.4 "Rendering safety" (A.U24.48 Docs,
+  A.U36.501, A.U36.510 (3), SPEC); BACKLOG chroot list gains the devDependency (A.U24.48 Docs, DOCS).
+- **Kind**: code, rule
+
+## package.json
+
+### M.WEB.071 Scripts build every device, preview safely, lint the built pages; pins follow the refresh
+- **From**: A.U6.03 (3) (`build:definitions`, `build:site`, `prepreview`), A.U7.20 (`pretest:coverage` archives the
+  previous report), A.U23.38 (`lint:html:built`), A.U28.24 (`preview`), A.U28.23 (`engines`, `@types/node`), A.U24.48
+  (new devDependency), A.SDEP.04 (ranges to the newest), A.U36.547 (read: the README npm table equals these scripts),
+  A.U27.11 (read: `build:site` calls the generator), A.U6.15 (read: the lock is not scanned), A.U28.26 (read: `playwright`
+  is a direct devDependency), A.U1.01 (read: no legacy path).
+- **Site**: `package.json:1-38`.
+- **Change**: `"engines": {"node": ">=<M> <<M+1>"}` after `"type"` (M = `.nvmrc`'s major); scripts: `"build:definitions":
+  "uv run scripts/_generate_sensortask_modules.py"`, `"build:site": "npm run build:definitions &&
+  scripts/build_device_websites.sh"`, `"pretest:coverage": "npm run build:site && uv run scripts/_archive_evidence.py
+  --runner npm_coverage htmlcov_js"`, `"lint:html:built"`: the stager's `--stage-only` mode over every
+  `devices/*.toml` (`zz_test_` skipped) into `build/staged_html/<device>/`, then `html-validate
+  "build/staged_html/*/index.html"` (the stager command as SCR's A.U23.38 merge defines it), `"preview": "uv run
+  scripts/preview_server.py"`, `"prepreview": "npm run build:definitions"`; `lint`, `typecheck`, `test*`, `pretest*`
+  (still `npm run build:site`), `lint:html`, `lint:css` unchanged. `devDependencies`: every range `^<newest at the
+  refresh>`, `"@types/node": "^<M>.<newest patch>"`, plus `"@eslint-community/eslint-plugin-eslint-comments":
+  "^<newest>"`.
+- **Resolved**: AC_NOTES 38: A.U28.24's bare `python3` preview runner meets G8/R05 ("an explicit check wherever a script
+  runs a bare python3") by running through `uv run` (the venv's Python satisfies `requires-python` ≥ 3.11), so no
+  version check is added and no bare `python3` site remains (settled by G8/R05). A.SDEP.04 "co-lands A.U28.23 (A-C moves
+  it into this commit or leaves it in U28)" — moved: the refresh writes `engines` and `@types/node`'s major so the lock is
+  regenerated once; A.U28.23's L0 pin check lands in U28 with A.U28.03's file. The lead's rule "package-lock.json/.nvmrc
+  change only through the dependency refresh" puts A.U24.48's new devDependency into the same refresh commit; U24 only
+  enables it (M.WEB.070).
+- **Unit**: U28 (A.U28.24, the latest script). Stages: U0 (A.SDEP.04 ranges, `engines`, `@types/node`, the
+  `eslint-comments` plugin), U6 (A.U6.03), U7 (A.U7.20), U23 (A.U23.38).
+- **Depends**: M.WEB.072; SCR: `scripts/build_device_websites.sh` (A.U6.03), `scripts/preview_server.py` (A.U28.24),
+  `scripts/_archive_evidence.py` (A.U7.20), the stager's `--stage-only` mode (A.U23.38).
+- **Blast carried by**: CI web jobs' `npm run build:site` and `lint:html:built` steps (A.U6.12/A.U28.43, TOOL);
+  `tests_scripts/test_tool_pins.py` `.nvmrc`/`engines`/`@types/node` check (A.U28.23/A.U28.03, TSC); README npm table and
+  preview text (A.U36.547, A.U28.24 Docs, DOCS); SPEC H.2/H.8 preview text (A.U36.517 (2), SPEC); BACKLOG chroot list
+  (A.U28.38, A.SDEP.21, A.U33.04, DOCS).
+- **Kind**: code
+
+## package-lock.json, .nvmrc
+
+### M.WEB.072 The lock and the Node pin change only in the dependency refresh
+- **From**: A.SDEP.04 (newest Active LTS major in `.nvmrc`; `npm install` regenerates the lock; `npm audit` read;
+  Playwright Chromium installed), A.U28.23 (lock's root `engines`/`@types/node`), A.U24.48 (lock gains the plugin),
+  A.U6.15 (read: the lock is excluded from the variant scan), A.U37.04 (read: the closing check lists every commit touching
+  them in BACKLOG's chroot list), A.SDEP.21 (read: BACKLOG entry).
+- **Site**: `.nvmrc:1`; `package-lock.json` (generated).
+- **Change**: `.nvmrc` → the major of the newest Active LTS line in `https://nodejs.org/dist/index.json` at the refresh
+  (unchanged `22` when that is still it); `package-lock.json` regenerated by one `npm install` in the refresh commit after
+  M.WEB.071's U0 stage, never edited by hand; its diff reviewed (root `engines`, `@types/node`, the new plugin, the
+  refreshed versions); every `npm audit` advisory in a shipped-path or CI-path package resolved or recorded in the refresh
+  record. No other commit of the audit changes either file except the U37 second check of the same refresh procedure
+  (OR129.a).
+- **Resolved**: the brief's lead rule (lock and `.nvmrc` only through the refresh) is met by folding A.U28.23's and
+  A.U24.48's dependency edits into the refresh (M.WEB.071).
+- **Unit**: U0 (dependency refresh, before every B1 action; AC_NOTES 34-second).
+- **Depends**: A.SDEP.01/.02 (hold-back rule, per-family gate, PROC).
+- **Blast carried by**: CI `setup-node` (`node-version-file: .nvmrc`) and `setup_toolchain.py` `ensure_node()` (read the
+  major — unchanged, TOOL); README `:208-209` Node major (A.SDEP.04 Docs, DOCS); BACKLOG chroot entry (A.SDEP.21, DOCS).
+- **Kind**: code
+
+## tsconfig.json, tsconfig.node.json (taken here), tsconfig.base.json (new)
+
+### M.WEB.073 One shared tsc base, two passes that differ only in lib, types and files
+- **From**: A.U28.25 (base file, headers, `skipLibCheck` trial, further checks, `.d.ts` → `.ts` fallback), A.U6.05 (3)
+  (`types: ["vite/client"]`), A.U23.37 (read: `?raw` needs those types), A.U7.10 (reporter in the node pass), A.U6.11
+  (`scripts/_cross_browser_probe.mjs` in the node pass), A.U24.69/A.U27.15 (Node-only helpers, gap), A.U36.501 (read:
+  `target`/`lib` ES2022 is the floor ESLint now matches), A.U28.39 (read: every path resolves), A.U28.18 (read: the smoke
+  stays in the node pass), A.U7.21 (read: `_memory_markers.js` stays in the browser pass).
+- **Site**: `tsconfig.json:1-37`, `tsconfig.node.json:1-35`, new `tsconfig.base.json`.
+- **Change**: `tsconfig.base.json` holds `target`, `module`, `moduleResolution`, `allowJs`, `checkJs`, `noEmit`,
+  `strict`, the ten further checks, `skipLibCheck`, with A.U28.25's header (≤ 3 lines); `skipLibCheck` is first tried
+  `false` — clean → stays `false` ("every declaration file is checked, the project's own included"); findings inside
+  `node_modules` → stays `true` and the command declarations become `tests_js/vitest-commands.ts` (M.WEB.076); every
+  further strictness option the installed `tsc` offers is switched on after a clean trial or named in the header with its
+  reason. `tsconfig.json`: `"extends": "./tsconfig.base.json"`, `lib: ["ES2022", "DOM"]`, `"types": ["vite/client"]`,
+  `include` `["js/**/*.js", "tests_js/**/*.js", <the command declarations file>]`, `exclude` = the Node-context files
+  (`_live_twin_command.js`, `_live_matrix_command.js`, `_summary_reporter.js`, `_port_lock.js`, `_micropypath.js`,
+  `_lint_command.js`, `_twin_process.js`);
+  header and exclude comment are A.U28.25's texts. `tsconfig.node.json`: `extends` the base, `lib: ["ES2022"]`,
+  `types: ["node"]`, `include` = the seven Node-context files plus `scripts/cross_browser_smoke.mjs` and
+  `scripts/_cross_browser_probe.mjs`; header "Node-context pass: <those files>." (A.U28.25's text with the list
+  completed).
+- **Resolved**: A.U28.25's node-pass header names three files plus "every file A.U6.11 and A.U7.10 add"; the two
+  Node-only helpers of A.U24.69/A.U27.15 complete the list (as M.WEB.070). A.U6.05's alternative (a triple-slash
+  reference in the helper) is not taken: the `?raw` imports of A.U23.37 need the same types in other files.
+- **Unit**: U28. Stages: U6 (`types`, A.U6.05; the probe, A.U6.11), U7 (reporter), U24 (`_port_lock.js`), U27
+  (`_micropypath.js`).
+- **Depends**: M.WEB.072 (installed `tsc`).
+- **Blast carried by**: `package.json` `typecheck` (both `-p` passes unchanged); CI web filter `'tsconfig*.json'`
+  (A.U28.07, TOOL); `tests_scripts/test_config_paths_resolve.py` (A.U28.39, TSC); SPEC H.8 TypeScript paragraph (A.U28.37,
+  SPEC); CLAUDE.md config-file header list gains `tsconfig*.json` (A.U28.25 Docs, DOCS); BACKLOG chroot list (A.U28.38,
+  DOCS).
+- **Kind**: code
+
+## vitest.config.js (taken here)
+
+### M.WEB.074 Vitest config: header first, pinned Chromium by default, setup, reporter, every command
+- **From**: A.U28.42 (header first), A.U28.26 (Chromium preference), A.U24.14 (`restoreMocks`, `setupFiles`), A.U7.10
+  (`reporters`), A.U6.10 (`getLiveMatrixConfig`), A.U23.33 (`archiveErrcount`), A.U23.35 (`runLiveBackendRestartRecovery`),
+  A.U6.04 (`:37-39` comment), A.SDEP.19 (W34/W36, conditional), A.U8.02 (read: the file is scanned for tags), A.U24.52
+  (read: command names unchanged).
+- **Site**: `vitest.config.js:1-61`.
+- **Change**: the `:21-25` JSDoc moves above the imports as the first block (text unchanged). Imports add `chromium` from
+  `"playwright"`. `launchOptions = !existsSync(chromium.executablePath()) && existsSync(sandboxChromium) ? {executablePath:
+  sandboxChromium} : {}`, comment → "// The lock-pinned Playwright Chromium runs whenever it is installed; a session
+  sandbox that cannot download it / // pre-installs one here (agent, 2026-08-21). Remove this fallback once the sandbox
+  can run `npx playwright install chromium`." `test`: `restoreMocks: true`, `setupFiles: ["tests_js/_test_setup.js"]`,
+  `reporters: ["default", "./tests_js/_summary_reporter.js"]`; coverage comment `:37-39` "(html/definitions/,
+  mockdata/)" → "(the generated definitions and mockdata/)" (the `exclude` and its comment go only if A.SDEP.19 W34 finds
+  the re-parse fixed); `commands` registers `runLiveBackendSmoke`, `runLiveBackendConcurrentTabs`,
+  `runLiveBackendRestartRecovery`, `getLiveMatrixConfig`, `startLiveMatrix`, `stopLiveMatrix`, `getRealCurrentValues`,
+  `applyField`, `applyUnchangedFieldExpectNothingToSubmit`, `remountAndReadField`, `archiveErrcount`, `probeLintRule`,
+  `lintFixture` (M.WEB.081).
+- **Resolved**: —
+- **Unit**: U28 (A.U28.26/.42). Stages: U6 (A.U6.04 comment, A.U6.10 command), U7 (reporter), U23 (two commands), U24
+  (setup); U0 conditional (A.SDEP.19).
+- **Depends**: M.WEB.067, M.WEB.077, M.WEB.061/.062.
+- **Blast carried by**: `tests_scripts/test_js_coverage_excludes_json.py`, `test_js_coverage_report_dir.py` (pin the
+  coverage halves, TSC); A.U27.28's pending header set drops this file (TSC); SPEC H.8 Vitest paragraph (A.U28.37, SPEC).
+- **Kind**: code
+
+## tests_js/_memory_markers.js (new), tests_js/memory-markers.test.js (new)
+
+### M.WEB.075 One marker pair for every JS gate
+- **From**: A.U7.21, A.U7.23 (read: the agreement test parses this file).
+- **Site**: new `tests_js/_memory_markers.js`, new `tests_js/memory-markers.test.js`.
+- **Change**: `export const MEMORY_ERROR_MARKERS = ["MemoryError", "memory allocation failed"];` and `export function
+  memoryMarkerLines(text)` (the lines containing either marker); no Node built-ins (checked by the browser `tsc` pass);
+  header (≤ 3 lines) names the four gates' shared pair (CLAUDE.md memory rule). The test: both spellings found, "simulated
+  allocation failure" ignored.
+- **Resolved**: —
+- **Unit**: U7.
+- **Depends**: —
+- **Blast carried by**: importers M.WEB.061/.062 and `scripts/cross_browser_smoke.mjs` (A.U7.21, SCR);
+  `tests_scripts/test_memory_error_gate_agreement.py` (A.U7.23, TSC); CLAUDE.md gate list and SPEC I.4(e), H.8 (A.U7.21
+  Docs, DOCS/SPEC).
+- **Kind**: test
+
+## tests_js/vitest-commands.d.ts
+
+### M.WEB.076 The command declarations match the commands, within the comment cap
+- **From**: A.U28.25 (6) (three comment blocks; `.ts` fallback), A.U6.10 (5) (`device` parameters,
+  `getLiveMatrixConfig`), A.U23.32/.34/.35 (return shapes, new command), A.U23.33 (`archiveErrcount`), A.U24.52 (no
+  `skipped` arm), A.U28.18 (read).
+- **Site**: `tests_js/vitest-commands.d.ts:1-67`.
+- **Change**: the comment blocks become A.U28.25's three texts (header ≤ 3 lines; "Written out, not `typeof` imports …";
+  "`export {}` makes this a module …"). `BrowserCommands`: `runLiveBackendSmoke: (device: string) => Promise<{
+  titleHasSensorStation: boolean; deviceName: string; firstStatus: string | null; resubmitStatus: string | null }>`;
+  `runLiveBackendConcurrentTabs: (device: string) => Promise<{ tabs: number; loadedFirstPass: number; loadedAfterRetry:
+  number; failures: string[] }>`; `runLiveBackendRestartRecovery: (device: string) => Promise<{ bannerShown: boolean;
+  recovered: boolean; reloaded: boolean }>`; `getLiveMatrixConfig: () => Promise<{ reason: string | null; shard: string
+  }>`; `startLiveMatrix: (device: string) => Promise<void>`; `stopLiveMatrix`, `getRealCurrentValues`,
+  `applyUnchangedFieldExpectNothingToSubmit`, `remountAndReadField` as today; `applyField` args `field: FieldDef` and
+  `value: unknown` (composite values included); `archiveErrcount: (label: string) => Promise<string>`; `probeLintRule: (args: { rule: string; value: number }) =>
+  Promise<number>`; `lintFixture: (args: { source: string }) => Promise<string[]>` (M.WEB.081). If M.WEB.073's
+  `skipLibCheck` trial keeps it `true`, the file is `tests_js/vitest-commands.ts` with the same content.
+- **Resolved**: —
+- **Unit**: U28. Stages: U6, U23, U24.
+- **Depends**: M.WEB.061, M.WEB.062, M.WEB.073.
+- **Blast carried by**: `npm run typecheck` (both passes).
+- **Kind**: test
+
+## tests_js/_summary_reporter.js, tests_js/_summary_layout.js, tests_js/summary-reporter.test.js (new)
+
+### M.WEB.077 `npm test` ends with the shared summary block
+- **From**: A.U7.10, A.U7.02 (read: the layout), A.U28.25 (node pass includes the reporter).
+- **Site**: new `tests_js/_summary_reporter.js`, `tests_js/_summary_layout.js`, `tests_js/summary-reporter.test.js`.
+- **Change**: as A.U7.10: the reporter counts cases (todo as skipped), lists failed and skipped names with reasons and
+  prints A.U7.02's block (`== Summary: npm test ==`, `Levels: L0`, `Exit code:` the code vitest exits with) through the
+  pure `_summary_layout.js` (no Node built-ins); the reporter hooks are confirmed against the installed vitest at
+  execution. The test imports the layout only.
+- **Resolved**: —
+- **Unit**: U7.
+- **Depends**: M.WEB.074 (`reporters`), M.WEB.070/.073 (Node lists).
+- **Blast carried by**: CI `web-coverage` job-summary step reads the coverage table by its header (A.U7.10, TOOL);
+  `tests_scripts/test_summary_block.py` byte equality via `node tests_js/_summary_layout.js` (A.U7.10, TSC); SPEC H.8,
+  E.10 (A.U7.10 Docs, SPEC).
+- **Kind**: code, test
+
+## tests_js/_port_lock.js (new)
+
+### M.WEB.078 The JS side of the per-port lock
+- **From**: A.U24.69, A.U27.39 (read: the smoke imports it).
+- **Site**: new `tests_js/_port_lock.js`.
+- **Change**: `export function acquirePortLock(port, runner)` — atomic `mkdirSync(\`${process.env.XDG_RUNTIME_DIR ??
+  "/tmp"}/sensors-port-${port}.lock\`)` holding `{pid, runner}`; on `EEXIST` with a live recorded PID (`process.kill(pid,
+  0)`) throws `Error(\`port ${port} is held by ${runner} (pid ${pid}) - run the suites one after the other (CLAUDE.md)\`)`;
+  a dead PID's lock is taken over; returns a release function, also registered on `process.on("exit")`. Header (≤ 3
+  lines). Node-context (M.WEB.070/.073).
+- **Resolved**: —
+- **Unit**: U24.
+- **Depends**: `scripts/_port_lock.sh` (A.U24.69, SCR) — same directory and message.
+- **Blast carried by**: importers M.WEB.061/.062 and `scripts/cross_browser_smoke.mjs` (A.U27.39, SCR);
+  `tests_scripts/test_port_lock.py` (A.U24.69, TSC); CLAUDE.md "Two suites that both bind real ports" (A.U24.69 Docs,
+  DOCS).
+- **Kind**: test
+
+## tests_js/_micropypath.js (new)
+
+### M.WEB.079 The JS reader of the one MICROPYPATH definition
+- **From**: A.U27.15.
+- **Site**: new `tests_js/_micropypath.js`.
+- **Change**: `export const MICROPYPATH` = the `twin` value of `scripts/micropypath.toml`, read with `node:fs` and the
+  regex `/^twin = "(?<path>[^"]+)"$/mu` (a named group) (throws naming the file when absent). Header (≤ 3 lines). Node-context (M.WEB.070/.073).
+- **Resolved**: —
+- **Unit**: U27.
+- **Depends**: `scripts/micropypath.toml` (A.U27.15, SCR).
+- **Blast carried by**: importers M.WEB.061/.062 and `scripts/cross_browser_smoke.mjs` (A.U27.15, SCR);
+  `tests_scripts/test_twin_never_needs_tests_on_its_path.py` (A.U25.44/A.U27.15, TSC).
+- **Kind**: test
+
+## tests_js/_a11y_checks.js (new), tests_js/accessibility.test.js (new)
+
+### M.WEB.080 An automated accessibility check over every device and section
+- **From**: A.U23.43 (7), A.U36.510 (read: H.1 names the test).
+- **Site**: new `tests_js/_a11y_checks.js`, new `tests_js/accessibility.test.js`.
+- **Change**: pure DOM functions and, for every device (`GENERATED_DEFINITIONS`) and every section rendered against
+  the composed mock: ids unique; every `label[for]` names an existing labelable element; every input/select/button has an
+  accessible name (label, `aria-label`, `aria-labelledby` or text); every masked input has
+  `autocomplete="new-password"`; the drawer is `inert` when closed and not when open, and focus moves as M.WEB.026
+  states. No npm dependency. Headers (≤ 3 lines).
+- **Resolved**: —
+- **Unit**: U23.
+- **Depends**: M.WEB.014, M.WEB.026, M.WEB.043, M.WEB.050.
+- **Blast carried by**: SPEC H.1 accessibility sentence (A.U36.510 (1), SPEC).
+- **Kind**: test
+
+## tests_js/lint-ceilings.test.js (new)
+
+### M.WEB.081 The four ESLint ceilings sit at the measured maximum
+- **From**: A.U5.18 (JS half), A.U36.038 (read: the order rule's planted-disorder check lives with it).
+- **Site**: new `tests_js/lint-ceilings.test.js`, new `tests_js/_lint_command.js`.
+- **Change**: `tests_js/_lint_command.js` (Node-context, header ≤ 3 lines) exports the Commands API command
+  `probeLintRule(_context, {rule, value})`, which runs ESLint's Node API (`new ESLint({overrideConfig})`) over every glob
+  the ceilings apply to with the rule at `value` and returns the finding count; `lintFixture(_context, {source})` lints
+  a source string under the `js/` block and returns the rule ids reported. `tests_js/lint-ceilings.test.js` (header ≤ 3
+  lines): each of `complexity`, `max-depth`, `max-nested-callbacks`, `max-classes-per-file` has at least one finding at
+  `<value - 1>` and none at `<value>` (the values read from `eslint.config.js?raw`); the order rule (M.WEB.070) reports
+  on a planted out-of-order fixture.
+- **Resolved**: A.U5.18 runs ESLint's Node API from `tests_js/`; vitest's browser mode has no Node API in the page, so
+  the probe is a Commands API command like the live-twin ones (agent decision D12).
+- **Unit**: U36 (the order-rule case). Stage U5 (the ceilings).
+- **Depends**: M.WEB.070; M.WEB.073/.074/.076 (`_lint_command.js` in the Node lists, registered, declared).
+- **Blast carried by**: SPEC D.10, Part E, H.8 name the check (A.U5.18 Docs, SPEC).
+- **Kind**: test
+
+## tests_js/_twin_process.js (new), tests_js/_dom_helpers.js (new)
+
+### M.WEB.082 One copy of each shared JS test helper
+- **From**: A.U24.49 (G2/R26 "one copy of each shared test double", OR24 "one material"; its Blast leaves the `tests_js`
+  clone groups to U23, where no action takes them — gap closed here), A.U6.10/A.U7.21/A.U24.53/A.U24.69/A.U25.09/A.U27.12/
+  A.U27.15 (read: the frame both command modules now share, M.WEB.061/.062).
+- **Site**: `tests_js/_live_twin_command.js:26-117` and `tests_js/_live_matrix_command.js:31-116` (`sleep`,
+  `waitUntilServing`, `spawnTwin`, `stopTwin`); `tests_js/render.test.js:25-39` and `tests_js/templates.test.js`
+  (`mustQuery`); `tests_js/app.test.js:45-58` and `tests_js/main.test.js` (`buildElements`); new `tests_js/_twin_process.js`,
+  new `tests_js/_dom_helpers.js`.
+- **Change**: `tests_js/_twin_process.js` (Node-context, header ≤ 3 lines) exports `sleep(ms)`, `waitUntilServing(port,
+  timeoutMs)`, `spawnTwin({device, port, configDir})` (M.WEB.061's argument list, the drained bounded output buffer and
+  the `error` listener with its comment) returning `{proc, output()}`, and `stopTwin(proc)` (today's SIGINT/SIGKILL logic
+  with its two comments), plus the frame M.WEB.061 states once: the binary probe, the per-run config dir, the port-53 lock
+  and the post-stop marker scan. Both command modules import them and keep only their own commands and port
+  constants. `tests_js/_dom_helpers.js` (header ≤ 3 lines) exports `mustQuery(root, selector)` (today's JSDoc and body)
+  and `buildElements()` (the entry element set), imported by `render.test.js`, `templates.test.js`, `app.test.js`,
+  `main.test.js`; `buildFetchStub()` stays per file (the two differ in what they serve).
+- **Resolved**: the gap is a G2/R26 requirement with no carrying action (A.U24.49 names U23, U23 has none); the split
+  follows A.U24.49's own rule ("a clone whose copies differ in behaviour keeps one shared shape with a parameter for the
+  difference") — `buildFetchStub()`'s copies serve different routes, so they are not one clone (agent decision D13).
+- **Unit**: U24 (A.U24.49's unit; lands after M.WEB.061/.062's U24 stages, before their U27 stage, which then edits the
+  shared module).
+- **Depends**: M.WEB.061, M.WEB.062; M.WEB.070/.073 (Node lists).
+- **Blast carried by**: A.U25.44's guard finds the twin launch in `_twin_process.js` through its `MICROPYPATH` import
+  (TSC); A.U7.23's import check names `_twin_process.js` as the importer of `_memory_markers.js` (Gaps item 7); SPEC G.1/E.2.1
+  helper list (A.U24.49 Docs, SPEC).
+- **Kind**: test
+
+## Gaps for other clusters
+
+1. **CLUSTERS.md / orchestrator**: `mockdata/` (`dev.json`, `wozi.json`, new `samples.json`), `vitest.config.js`,
+   `tsconfig.node.json` and the new `tsconfig.base.json` are named by no cluster; WEB took them (M.WEB.045, .073, .074),
+   as GEN took `buildgen/limits.py`. CLUSTERS.md should list them under WEB.
+2. **GEN (M.GEN.046/.017)**: the `@web` `shape` value set is written as `hostLabel|countryCode`; the tags M.SRC_NET.043 and
+   .073 settle use four values — `hostName` (`NTPHost`, A.U10.41) and `ipv4List` (`DNSFallback`, A.U18.10) as well. The
+   grammar check, `_string_field()`'s emission and `tests_scripts/test_buildgen_web_tag.py`'s accept cases must take all
+   four (the website validator and the mock already do, M.WEB.006/.041).
+3. **GEN + SRC_NET**: `PW`'s schema special `""` (open network, `src/asy_wifi_service.py:46`) never reaches the
+   definitions — `_string_field()` emits no `specialValues` — so the mock rejects a `""` the server accepts (OR43.a (2)
+   "field for field"; A.U6.28 assumed it was carried). The generator emits a string field's schema special as
+   `specialValues` with the tag's label (the `PW` tag gains `special:""="Open network"`, SRC_NET); the mock's string branch
+   already accepts a special first (M.WEB.041).
+4. **SPEC**: (a) H.6.1 row 1 (A.U36.044) lists the lowercase time-struct members; after A.U10.40 they are `Year`, `Month`,
+   `MDay`, `Hour`, `Minute`, `Second`, `Weekday`, `Yearday` (M.WEB.001); (b) H.6.1 row 8 states the client flattens sensor
+   fields to `<sensor>_<field>` in `groupValuesFrom()` — false after A.U23.19 (maintenance fields read by `path`, no
+   flattening, M.WEB.020); row 7 "js/render.js status merge" → the `statusPath` read; row 9's client cell → the
+   definitions' options (the mock derives them, M.WEB.041); (c) A.U36.510 (5)'s mock paragraph "SCD30's `ForceCalRef`
+   reports `400` on GET" → "reads back the last value applied, 400 on a fresh mock (A.U25.12)", and "`ContMeas`/
+   `SGPResetVOC` are never reported by GET" → "dispatch fields and `ContMeas` are never reported by GET" (`SGPResetVOC` is
+   `ResetVOC` after A.U10.40); (d) H.2 `:4312` ("`field-format.js` … split so Node-context tests can reuse it") and H.8.1
+   name `tests_js/_expected_display.js` as the Node- and browser-safe module; `field-format.js` is pure formatting with no
+   DOM dependency (M.WEB.012/.069); (e) H.4/H.6 mention the `lasttaskend` display "<Task> at uptime <n> s" with A.U32.06's
+   `/status` row (M.WEB.012, D2).
+5. **GEN (M.GEN.062, CSS)**: A.U23.20 (2)(3) also need a button-chrome reset for `.field-value.code-value` (a readonly
+   code field shown as its plain value) and a muted `.code-number` for `CalLight`'s "(n)"; M.GEN.062 lists only the history
+   pill reset, `.code-description` and `[data-code-tone]`. The Clear button needs no CSS (it carries `action-button`,
+   M.WEB.014). No WEB change depends on GEN Q2: the JS only sets `data-code-tone`; the colours and the token test are CSS
+   and TSC.
+6. **SCR**: (a) `npm run build:site`'s generator writes the JS freshness stamp to
+   `build/generated_src/definitions/inputs_stamp.json` (`{"tomls": {<name>: <sha256>}}`), not
+   `html/definitions/.inputs_stamp.json` (A.U24.46 (3); M.WEB.050 — `html/definitions/` is deleted and the stager's drift
+   rule forbids other `html/` files); (b) `lint:html:built` (M.WEB.071) calls the stager's `--stage-only` mode — its exact
+   CLI is SCR's A.U23.38 merge; (c) `scripts/cross_browser_smoke.mjs` boots the twin with its own copy of
+   spawn/stop/wait and now could import `tests_js/_twin_process.js` (M.WEB.082) — one material (OR24), SCR's decision
+   whether to reuse it.
+7. **TSC**: after M.WEB.082 the twin launch, its `MICROPYPATH` import, the `_memory_markers.js` import and the per-run
+   config-dir removal live in `tests_js/_twin_process.js`: A.U7.23's import check, A.U25.44/A.U27.15's launch-site guard,
+   A.U6.10's `test_live_command_device_args.py` and A.U24.53's no-`rmSync` text check read that file (the command modules
+   import it); A.U8.02's tunables scan covers the new `tests_js` tags (`l0.poll_manager_poll_ms`, `l0.render_*`,
+   `l0.live_twin_*`, `l0.live_matrix_poll_ms`, `l0.put_matrix_*`, `l0.live_concurrent_tabs_timeout_ms`,
+   `l0.live_restart_recovery_timeout_ms`, `web.poll_backoff_max_ms`, `web.device_watch_interval_ms`) with Part N rows
+   (SPEC).
+8. **DOCS**: CLAUDE.md "Two suites that both bind real ports" says "`npm test`'s mock server" binds ports — the mock
+   intercepts `fetch` and binds none; the port-binding part of `npm test` is the live twin (port 53, 19481/19482), now
+   under the per-port lock (A.U24.69, M.WEB.078); A.U24.69's CLAUDE.md edit should name it. BACKLOG's chroot entry for the
+   dependency refresh (A.SDEP.21) names `@eslint-community/eslint-plugin-eslint-comments` (moved into the refresh,
+   M.WEB.071) instead of A.U24.48's own line.
 

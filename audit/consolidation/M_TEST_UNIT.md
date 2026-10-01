@@ -57,6 +57,8 @@ test change (the product clusters carry those items as "→ A-ID (TEST_UNIT)").
   `asy_base_classes._utc_valid = False` in `finally`; a test that calls a reader's `_error_check(results)` directly (not
   through `_read_loop()`) on a successful cycle does the same, since only the reader's own `condition` keeps a pre-sync
   `TS` from counting (M.SRC_SENS.083, .089-.091).
+  The NTP client's sync success sets the one-way flag; the after-each hook resets it (TEST_HELP gap, "Gaps"), so no
+  test inherits another's sync.
 - **`@tunable` tags** (A.U8C/A.U8C2, test-tier grammar A.U8.02): a literal a later constituent deletes (driven time
   A.U35.13/.14, the removed 5 s caps A.U35.15, the removed in-body `gc.threshold` A.U30.12/.13) takes no tag — its
   row is withdrawn (A.U35.13/.14/.15 and A.U30.12/.13 say so); every other tagged literal becomes its module constant
@@ -92,7 +94,7 @@ test change (the product clusters carry those items as "→ A-ID (TEST_UNIT)").
   carries `# type: ignore[import-not-found]` with its reason only if the installed board stub ships no `lwip` module
   (checked after the stub move). Test (7) measures `gc.mem_alloc()` before and after each round and sets no
   `gc.threshold` itself: the file runs at both GC stages like every L1 file (a collection inside a round can only lower
-  the delta), which keeps G4/R49's "no in-body stage override" (M.TEST_UNIT.113's rule). Header ≤ 3 lines; canonical
+  the delta), which keeps G4/R49's "no in-body stage override" (the rule the webserver file's merged change below applies). Header ≤ 3 lines; canonical
   `microtest.run(globals())` trailer. The one-time sensitivity run against `build-lwip-control` (throwaway worktree,
   deleted afterwards) is recorded in the audit working file, never committed.
 - **Resolved**: A.U21.13's "measured at `gc.threshold(-1)`" read as "meaningful at the (e) stage; no in-body threshold
@@ -2125,4 +2127,678 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U10.
 - **Depends**: M.SRC_SENS.036.
 - **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_asy_ntp_client.py
+
+### M.TEST_UNIT.095 Header, schema read from source, the timing builder, shared doubles, plain addresses
+- **From**: A.U10.37/A.U10.38 (`AsyNtpClient` → `NTPClient`, `AsyFramManager` → `FRAMManager`, `print_log` →
+  `asy_print_log`), A.U24.08 (`run`), A.U24.01 (`:50-57` `_VAL_*` mirrors → `src_const`), A.U10.41 + A.U18.10 (`:53`
+  mirror: moot after the source read), A.U5.10 + A.U5.15 (`make_client()` takes an `NtpTiming`), A.U5.02 (`debug=`/
+  `fram=` → `log=`), A.U10.18 (`network_available` → `network_available_locked`), A.U28.28 (2) (`:85`, `:87` lambdas →
+  local `def`s), A.U8C.13 (`:73-77` tags), A.U18.10 (G2/R22: no L1 builder reaches a public resolver), A.U10.10 (the
+  builder calls `setup()`), A.U24.49 (`_RaiseOnArm`), A.U24.70 (`:142-160` → `PortAllocator`), A.U18.12 (`make_addr()`
+  `:146-150` → a plain tuple, the address shim at import), A.U18.11 (`:154-156` comment), A.U24.76, A.U24.73.
+- **Site**: `tests/test_asy_ntp_client.py:1-160`.
+- **Change**: imports `from asy_ntp_client import NTPClient, NtpTiming`, `from asy_fram_manager import FRAMManager`,
+  `from asy_print_log import LogConfig, PrintLogHistoryStore`, `from asy_base_classes import set_utc_valid`, `from
+  _async_harness import run, cancel`, `from _fake_timer_arm import RaiseOnArm`, `from _port_bands import PortAllocator`,
+  `from _udp_port_redirect import redirect_udp_port`, `from _ntp_frames import FakeNtpServer, make_ntp_reply`, `from
+  _src_const import NTP_EPOCH_DELTA, src_const`, `from _error_codes import code`, `from _fake_time import tick`, the
+  address shim applied once at import; TYPE_CHECKING drops `Any`/`TypeVar`/`T`/`NoReturn` (A.U24.73's coroutine alias).
+  `:50-57` → `_SCHEMA = src_const("src/asy_ntp_client.py", "_VAL_NTP_HOST") + … + "_VAL_DNS_FALLBACK"` (six reads, in
+  the constructor's order), comment "# The client's schema, read from source (tests/_src_const.py)." Module constants
+  `_DNS_TIMEOUT_MS = src_const("src/asy_dns_client.py", "_DNS_TIMEOUT_MS")`, `_DNS_TRIES = src_const(…, "_DNS_TRIES")`,
+  `# @tunable ntp.fetch_timeout_ms = 5000` / `_FETCH_TIMEOUT_MS = 5000`, `_RETRY_S`/`_RETRY_MAX_S = src_const(
+  "src/asy_ntp_client.py", "_DEFAULT_RETRY_S"/"_DEFAULT_RETRY_MAX_S")`. `make_client(...)` → `_make_client(*,
+  wifi_mode_lock=None, network_available_locked=None, get_dns_server=None, timing: NtpTiming | None = None, log:
+  LogConfig = DEFAULT_LOG, cfg_path=None, dns_fallback: str | None = "")`: defaults through local `def`s (no lambdas),
+  `timing` defaulting to `NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, _RETRY_S, _RETRY_MAX_S)`,
+  `NTPClient(lock, net, dns, timing, cfg_path=…, log=log)`, `run(client.setup())`, then, unless `dns_fallback is None`,
+  `run(client.cfgmgr.write_config({"DNSFallback": dns_fallback}))` (comment "# No L1 client asks a public resolver: the
+  fallback list is empty unless a test sets it."). `make_client_with_json()`/`make_invalid_cfg_client()` →
+  `_make_client_with_json()`/`_make_invalid_cfg_client()` (keys per A.U10.40). Every former `make_client(retry_s=a,
+  retry_max_s=b, …)` call passes `timing=NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, a, b)` through one
+  `_timing(**overrides)` helper. `_RaiseOnArm` goes (shared `RaiseOnArm`). `_next_port`/`make_port()`/`make_addr()` →
+  `_PORTS = PortAllocator("test_asy_ntp_client")` and `_make_addr() -> ("127.0.0.1", _PORTS.next())` (a plain tuple:
+  the shim rewrites it for this Unix build); the `:148-149` and `:154-156` comments go.
+- **Resolved**: A.U8C.13's mirror tags on `:73-77` vs A.U24.01's source-read rule: values the product still defines
+  (`_DNS_TIMEOUT_MS`/`_DNS_TRIES` in the resolver, `_DEFAULT_RETRY_S`/`_DEFAULT_RETRY_MAX_S`, M.SRC_NET.020/.042) are read
+  from source and take no tag; `ntp.fetch_timeout_ms` has no `src/` constant left (M.SRC_NET.042: codegen owns it), so
+  its test copy keeps the mirror tag. A.U18.10's G2/R22 rule vs its recorder tests' schema-default assertions: the
+  builder empties the fallback by default and the recorder tests pass `dns_fallback=None` (they do no I/O).
+- **Unit**: U18 (stages U5 timing/log, U10 names/setup, U24 harness, ports, doubles).
+- **Depends**: M.SRC_NET.041-.044; TEST_HELP `_ntp_frames.py` (`FakeNtpServer`, `make_ntp_reply`), `_port_bands.py`,
+  `_udp_port_redirect.py`, `_fake_time.tick`, the moved address shim (A.U18.12).
+- **Blast carried by**: Part N `ntp.fetch_timeout_ms` further site → A.U8.01 (SPEC); `pyproject.toml` E731 noqa removal →
+  A.U28.28 (TOOL).
+- **Kind**: test
+
+### M.TEST_UNIT.096 Construction, starters and the FRAM-backed logger
+- **From**: A.U10.40 (keys), A.U11.15 (`:224` `get_level()` → `level`), A.U5.02 (`debug=3`, `fram=manager`), A.U10.44
+  (`:227-272` starter names), A.U24.39 (`:275-282` asserts the entry lands in the chunk), A.U10.38, A.U18.10
+  (`DNSFallback` in the stored set), A.U24.08.
+- **Site**: `tests/test_asy_ntp_client.py:162-283`.
+- **Change**: the section comment → "# Construction: the client owns its config_NTP.cfg and schema (SensorReaderConfig)."
+  (the "no externally-injected ConfigManager … see SPECIFICATION.md/BACKLOG.md" history goes). The defaults test reads
+  `["NTPHost", "NTPOffset", "NTPInterval", "GMTOffset", "DSTOffset", "DNSFallback"]` and expects
+  `"DNSFallback": ""` (the builder's) beside the HEAD values. The two `_get_ntp_config()` tests unpack `host, _fallback,
+  _offset` and compare `host == "time.example.org"`. `test_debug_level_propagates…`: `_make_client(log=LogConfig(None,
+  10, 3))`, `client.pr.level == 3`. `test_get_task_starters_returns_all_three_ntp_tasks`: `[client.start_asy_sync,
+  client.start_asy_refresh, client.start_asy_sync_age]`; timer starters `[client.start_check_timer,
+  client.start_sync_age_timer]`; the two "returns a real task" tests call `start_asy_refresh()`/`start_asy_sync_age()` and
+  end with `await cancel(task)`. `test_fram_given_uses_fram_backed_logging` → `…_logs_into_the_fram_chunk`: `manager =
+  FRAMManager(bus, 1, max_size=0x2000)`, `_make_client(log=LogConfig(manager, 10, None))`, the logger is a
+  `PrintLogHistoryStore`, and an `err_s("probe", errno=code("E", "CALLBACK"))` through `client.pr` is read back by a
+  second `PrintLogHistoryStore` over the same manager.
+- **Resolved**: —
+- **Unit**: U10 (stages U5 log, U11 level, U18 fallback, U24 assertion).
+- **Depends**: M.SRC_NET.043, .044, .054; M.SRC_CORE (`PrintLogHistoryStore`, `FRAMManager`).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.097 The getter quartet: renamed keys, the fallback field, no history pointer
+- **From**: A.U18.21 + A.U0.40 (`:286-287` comment), A.U10.40, A.U18.10, A.U10.06 (`TS` before sync), A.U10.10 (`:360`,
+  `:373`, `:381` `pr.setup()` lines).
+- **Site**: `tests/test_asy_ntp_client.py:285-386`.
+- **Change**: `:286-287` → "# get_dict_cfg / get_data / get_dict_data / get_error_counter - the base-class getter quartet
+  (SPECIFICATION.md Part C.4.2)." The three `get_dict_cfg()` expectations use `NTPHost`/`NTPOffset`/`NTPInterval` and
+  gain `"DNSFallback"` (`""` for the builder's client, `None` for the invalid store; the on-disk JSON test's file omits
+  it, so the schema default `"8.8.8.8,1.1.1.1"` shows). The never-synced test asserts `data.TS is None`. The in-test
+  `pr.setup()` lines go.
+- **Resolved**: A.U0.40 rewrites the `:287` sentence ("The setters come from … by inheritance (since `3f1fcc0`) …");
+  A.U18.21 (U18, later) removes it. Removed: after M.SRC_NET.045 the client has its own `_set_mgr_cfg()` override, so
+  "by inheritance" no longer holds, and a commit pointer is history in a comment (CLAUDE.md "current state").
+- **Unit**: U18 (stages U10 keys).
+- **Depends**: M.SRC_NET.043.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.098 State helpers: `_now()` and the age increment go
+- **From**: A.U10.06 (`:398-435` go), A.U14.26 (`:405-425` `_RaisingTimeForNow` → a `MemoryError`: dropped), A.U10.03
+  (`:477-506` go; "preserves the Synced flag" moves to the publish path), A.U8C2.03 (`:402` tag: no site left).
+- **Site**: `tests/test_asy_ntp_client.py:388-506`.
+- **Change**: the section comment → "# The state helpers _set_synced()/_set_last_sync_age(): each does an unlocked
+  get-then-set with no await between (see asy_ntp_client.py's comment on _set_synced())." (three lines at most).
+  `test_now_returns_a_real_unix_timestamp`, `_RaisingTimeForNow` and the two `test_now_returns_none_*` tests are removed
+  (`_now()` is gone; `utc_now()`'s L1 is `tests/test_base_classes.py`'s). The four `_increment_last_sync_age()` tests are
+  removed; `test_the_sync_age_publish_keeps_the_synced_flag` replaces the last of them (synced, one `_sync_age_loop()`
+  tick: `Synced` stays `True`). The four `_set_synced()`/`_set_last_sync_age()` tests hold.
+- **Resolved**: A.U10.06 vs A.U14.26 at `_now()` — ruled for A.U10.06 (V.U18.R10; M.SRC_NET.052).
+- **Unit**: U10.
+- **Depends**: M.SRC_NET.052, .058.
+- **Blast carried by**: `utc_now()` L1 → A.U10.06 (TEST_UNIT, `test_base_classes.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.099 Timer starters record their outcome; a second failed arm ends the sync task
+- **From**: A.U10.44 (`start_ntp_timer`/`stop_ntp_timer`/`start_counter_timer`/`stop_counter_timer` →
+  `start_check_timer`/`stop_check_timer`/`start_sync_age_timer`/`stop_sync_age_timer`), A.U10.35 (`ntp_timer`,
+  `counter_timer`, `ntp_timer_trigger_event` → private), A.U18.23 (`:540-589` gain the flags; new L1), A.U10.03 (`:562-589`
+  hold), A.U8C.13 (`:517` `ntp.check_interval_s` mirror, `:527` `l1.asy_ntp_client_event_wait_s`), A.U24.49, A.U11.15/
+  A.U5.02 (`debug=1`).
+- **Site**: `tests/test_asy_ntp_client.py:508-589`.
+- **Change**: `# @tunable ntp.check_interval_s = 10` / `_CHECK_INTERVAL_S = 10` (module level) and `assert
+  client._ntp_timer.period == _CHECK_INTERVAL_S * 1000`; `# @tunable l1.asy_ntp_client_event_wait_s = 0.2` /
+  `_EVENT_WAIT_S = 0.2` for every `wait_for(…, 0.2)` in the file. Each degrade test uses `RaiseOnArm(exc)` and adds
+  `client._check_armed is False` (check timer) or `client._tick_armed is False` (sync-age timer); the `debug=1`
+  builders become the default log (the expected-output `print` lines stay). New
+  `test_an_arm_failing_twice_ends_the_sync_task_with_one_timer_entry` (`start_check_timer()` under `RaiseOnArm`, then
+  `_sync_loop()` as a task with the raise still on: the task ends at its first `_rearm_failed_timers()` with one
+  `code("E", "TIMER")`) and `test_a_restarted_sync_task_rearms_the_check_timer` (arm failed once, raise cleared,
+  `_sync_loop()` started: `_ntp_timer.period == _CHECK_INTERVAL_S * 1000`, `PERIODIC`, `_check_armed is True`).
+- **Resolved**: —
+- **Unit**: U18 (stages U10 names, U8 tags).
+- **Depends**: M.SRC_NET.054, .056; M.SRC_CORE `arm_tick_timer()`.
+- **Blast carried by**: twin 16-alarm pool L2 → A.U18.23 (TWIN); Part N rows → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.100 A forced resync clears `Synced`
+- **From**: A.U18.21 (`:597-613` gains the `Synced` assertion; new L1), A.U10.35 (`ntp_retries`, `ntp_retry_timer`,
+  `ntp_sync_trigger_event`), A.U8C.13 (`:607`).
+- **Site**: `tests/test_asy_ntp_client.py:592-620`.
+- **Change**: the first test starts synced (`_set_synced(value=True)`) and asserts `not await client.ntp_issynced()`
+  after `ntp_force_sync()`, beside the HEAD asserts on the private names; the wait uses `_EVENT_WAIT_S`. New
+  `test_a_forced_resync_reports_unsynced_and_no_local_time_until_the_next_success` (synced, `ntp_force_sync()`:
+  `ntp_issynced()` False and `cettime()` `None`; `_handle_ntp_sync_success(tm)`: both return again).
+- **Resolved**: —
+- **Unit**: U18.
+- **Depends**: M.SRC_NET.055.
+- **Blast carried by**: per-device PUT scenario → A.U18.21 (TEST_HELP, `tests/_sensortask_scenarios.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.101 Config reads: the three-value tuple and the stored-host use path
+- **From**: A.U10.40 (keys in `_VALID_JSON` and the inline JSON), A.U18.10 (`_get_ntp_config()` returns `(host,
+  fallback, offset)`), A.U10.41 (use-path check of a stored `NTPHost`, M.SRC_NET.046).
+- **Site**: `tests/test_asy_ntp_client.py:622-706`.
+- **Change**: `_VALID_JSON` and the four inline JSON strings use `NTPHost`/`NTPOffset`/`NTPInterval`; every
+  `ntp_host, ntp_offs = ntp_cfg` → `host, fallback, offset = ntp_cfg` with scalar expectations (`"time.example.org"`,
+  `5`; defaults `"pool.ntp.org"`, `0`), and `fallback == "8.8.8.8,1.1.1.1"` where the file omits the key (the
+  `_make_client_with_json()` builder passes `dns_fallback=None` so the file's content stands). New
+  `test_a_stored_host_that_is_not_a_host_name_uses_its_default` (a file with `"NTPHost": "-bad-.example"`: the read
+  returns `"pool.ntp.org"` and the log holds one `code("W", "STORED_DEFAULT")`).
+- **Resolved**: —
+- **Unit**: U18 (stage U10 keys).
+- **Depends**: M.SRC_NET.045, .046.
+- **Blast carried by**: the `hostName` corpus → A.U10.41 (TEST_HELP `_radio_shape_cases.json`).
+- **Kind**: test
+
+### M.TEST_UNIT.102 DNS-server callback and server resolution: one code class, the fallback list in order
+- **From**: A.U2.15 (`:742-743` w3 → `CALLBACK` E; `:838-839` e12 → `NTP_DNS`), A.U18.10 (`:758-833` third argument,
+  recorder tuples gain the fallback; new L1), A.U18.15 (`_RecordingResolver` accepts `pr`), A.U10.10 (`pr.setup()`
+  lines), A.U10.38 (`AsyConnTime.get_dns_server_ip` → `WifiService.get_dns_server_ip` in `:710`), A.U10.44 (`:711`
+  `asy_ntp_time()` → `_sync_loop()`), A.U18.33 (read: the callback name is unchanged).
+- **Site**: `tests/test_asy_ntp_client.py:709-848`.
+- **Change**: section comments name `WifiService.get_dns_server_ip` and `_sync_loop()`.
+  `test_safe_get_dns_server_callback_raising_persists_a_warning` → `…persists_a_callback_error`: newest `code("E",
+  "CALLBACK")`, type `"E"`. `_RecordingResolver.__call__(host, dns_servers=(), timeout_ms=0, tries=0, pr=None)`; its
+  clients are built with `dns_fallback=None`; the recorded tuples become `("pool.ntp.org", ("192.0.2.53", "8.8.8.8",
+  "1.1.1.1"), 500, 1)`, `("pool.ntp.org", ("8.8.8.8", "1.1.1.1"), 500, 1)` and `…, 1234, 3)` (the timing test passes
+  `timing=_timing(dns_timeout_ms=1234, dns_tries=3)`); every direct `_resolve_ntp_server(host, dns)` call passes the
+  third argument (`""` or the stored list). `…dns_failure_persists_an_error`: newest `code("E", "NTP_DNS")`. New
+  `test_resolve_ntp_server_asks_dhcp_first_then_the_fallback_list_in_order` and
+  `test_an_empty_fallback_asks_only_the_dhcp_server` (recorder). `:842-848` keep their two three-line blocks.
+- **Resolved**: —
+- **Unit**: U18 (stages U2 codes, U10 names).
+- **Depends**: M.SRC_NET.046, .047.
+- **Blast carried by**: L1 "no `UDPSocket` constructed with an empty fallback" → M.TEST_UNIT in
+  `tests/test_ntp_wifi_dns_integration.py` (A.U18.10).
+- **Kind**: test
+
+### M.TEST_UNIT.103 The fetch: own write and receive, 48 bytes, a gated responder, teardown
+- **From**: A.U18.14 (`:865-900` the fake exposes `write()`/`recvfrom()`/`disconnect()`; new never-connected L1), A.U18.13
+  (`:871` `conn_tries` leaves the double), M.SRC_NET.048 (the construction `try` is removed: `:856-859` and `:897-903`
+  go), A.U2.15 (`:912` 21 → `NTP_NO_REPLY`), A.U35.12 (`:945-948` → a ready event), A.U14.28 (`:928-930` row-13
+  pointer), A.U18.15 (new cancel and teardown L1), A.U18.16 (new 90 B L1), A.U8C.13 (`:871`, `:876` tags: no site;
+  `:936`, `:940` `l1.asy_ntp_client_fake_server_poll_ms`), A.U8C2.03 (`:927` `l1.asy_ntp_client_responder_poll_tries`),
+  A.U10.38 (`AsyUDPSocket` → `UDPSocket`).
+- **Site**: `tests/test_asy_ntp_client.py:851-953`.
+- **Change**: `test_fetch_ntp_reply_invalid_addr_returns_none` and `…ipv6_shaped_four_tuple_addr_returns_none` are
+  removed with the construction guard (the only caller passes `(ip, 123)` from the resolver; G5/R54). `_RecordingUDPSocket`
+  → `_FakeUDPSocket(addr, mode="client")` recording `write(msg, timeout_ms)` and `recvfrom(n, timeout_ms)` calls (each
+  returning the None-shaped sentinel the real socket returns for silence) and `disconnect() -> bool` (settable result);
+  `test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout` swaps `asy_ntp_client.UDPSocket` and asserts the
+  9999 ms timeout reached both calls and `recvfrom` asked for 48 bytes. `…no_server_listening…`: newest `code("E",
+  "NTP_NO_REPLY")`. The responder test: `responder(ready: asyncio.Event)` sets `ready` right after `bind()` and
+  `register()`; the scenario awaits `ready.wait()` in place of the `:945` yield and its three-line comment; `:928-930`
+  → "# ipoll(0) returns an always-truthy iterator: test the event flags (SPECIFICATION.md F.7 row 13)."; module
+  constants `# @tunable l1.asy_ntp_client_responder_poll_tries = 500` / `_RESPONDER_POLL_TRIES = 500` and `# @tunable
+  l1.asy_ntp_client_fake_server_poll_ms = 10` / `_FAKE_SERVER_POLL_MS = 10`. New (A.U18.14):
+  `test_a_never_connected_socket_logs_not_sent_and_returns_before_the_fetch_timeout` (the fake's `write()` returns `None`:
+  one `code("E", "NTP_NOT_SENT")`, no `NTP_NO_REPLY`, returns at once). New (A.U18.15):
+  `test_a_cancelled_fetch_still_disconnects` (a fake whose `recvfrom()` parks on an event; the task cancelled: the cancel
+  re-raised and `disconnect()` called) and `test_a_failed_teardown_leaves_one_socket_teardown_warning` (`disconnect()`
+  → `False`: one `code("W", "SOCKET_TEARDOWN")`). New (A.U18.16): `test_a_long_reply_is_read_as_its_48_byte_header` (a
+  real loopback responder sends 90 bytes whose first 48 are a valid header: the client syncs from it).
+- **Resolved**: —
+- **Unit**: U18 (stages U2 codes, U14 pointer, U35 gate).
+- **Depends**: M.SRC_NET.048; M.SRC_NET.026/.029 (`UDPSocket` surface).
+- **Blast carried by**: SPEC F.7 rows → A.U14.28 (SPEC); `udp.round_trip_tries_default` dropped → A.U18.14 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.104 Reply parsing: shared frames, the 2057 hand check, reachable failures only
+- **From**: A.U24.49 (`make_ntp_reply()` `:968-977` → `tests/_ntp_frames.py`), A.U24.01 (`:965` `_NTP_EPOCH_DELTA` →
+  `_src_const.NTP_EPOCH_DELTA`; `:1095, 1104, 1113` → `src_const`), A.U24.42 (`:1024-1027` asserts the hand-computed
+  time), A.U14.26 (`:1030-1047` goes; new structural and `MemoryError` L1; `:1073-1074` comment), A.U8.09 (the window
+  mirrors, now source reads).
+- **Site**: `tests/test_asy_ntp_client.py:956-1155`.
+- **Change**: the local `_NTP_EPOCH_DELTA`/`make_ntp_reply()` go (imported). `test_parse_ntp_reply_arbitrary_binary_content_never_raises`
+  → `…decodes_arbitrary_bytes_as_their_transmit_timestamp`: `bytes(range(48))` gives `(2057, 6, 14, 17, 21, 47, …)`
+  (hand-computed from bytes 40-43 = `0x28292A2B` seconds since 1900, the era rule and the window; the computation in one
+  comment line). `_OverflowingTime` and `test_parse_ntp_reply_gmtime_overflow_returns_none_not_raise` go (no reachable
+  input: the window keeps every accepted value below 2**32). New `test_the_plausibility_ceiling_fits_the_device_clock`:
+  `src_const("src/asy_ntp_client.py", "_NTP_MAX_PLAUSIBLE_UNIX_TIME") < 2**32`. New
+  `test_an_allocation_failure_while_parsing_returns_none` (`asy_ntp_client.time` replaced by a stand-in whose `gmtime()`
+  raises `MemoryError("injected for the parse path")` — worded clear of the gate's markers — restored in `finally`:
+  `None` and one `code("E", "NTP_MALFORMED")`). `:1073-1074` → "# NTP's 32-bit seconds-since-1900 field wraps in 2036,
+  unrelated to the device clock, which runs to 2106 (Part F.1); a post-2036 server sends a small wrapped value." The
+  floor/ceiling tests read `_FLOOR`/`_CEILING = src_const("src/asy_ntp_client.py", "_NTP_MIN_PLAUSIBLE_UNIX_TIME"/
+  "_NTP_MAX_PLAUSIBLE_UNIX_TIME")` (their "compiled away, hardcoded" comments go).
+- **Resolved**: A.U8.09's mirror sites `:1095, 1104, 1113` become source reads (A.U24.01), so the rows lose those test
+  sites rather than gaining tags.
+- **Unit**: U14 (stages U24 shared frames and source reads).
+- **Depends**: M.SRC_NET.042, .049; TEST_HELP `_ntp_frames.py`, `_src_const.NTP_EPOCH_DELTA`.
+- **Blast carried by**: catalog 69 text → M_SRC_NET gap (GEN).
+- **Kind**: test
+
+### M.TEST_UNIT.105 Sync failure and success: codes, mirrors, one slot per repeat
+- **From**: A.U10.35 (`ntp_retries`, `ntp_retry_timer`, `ntp_sync_trigger_event`), A.U2.15 (`:1222` 16 → `TIMER`),
+  A.U8C.13 (`:1175` `ntp.retry_interval_s` mirror, `:1186` event wait), A.U8C2.03 (`:1198` `ntp.sync_retries`), A.U3.12
+  (new: `TIMER` and `NTP_RETRIES` repeated spend one slot), A.U10.06 (success sets the UTC flag), A.U10.44 (`:1166`
+  comment names `_refresh_loop()`).
+- **Site**: `tests/test_asy_ntp_client.py:1158-1238`.
+- **Change**: private names throughout; `# @tunable ntp.retry_interval_s = 15` / `_RETRY_INTERVAL_S = 15` and `period ==
+  _RETRY_INTERVAL_S * 1000`; `# @tunable ntp.sync_retries = 3` / `_SYNC_RETRIES = 3` for `:1198`; `:1213-1215` comment →
+  "the same TIMER error is persisted"; `:1222` → `code("E", "TIMER")`. The success tests also assert `data.TS is not
+  None` (the flag set by the success; the after-each hook resets it). New
+  `test_repeated_retry_arm_failures_count_each_and_keep_one_slot` (two failing arms: `ErrCount == 2`, one `TIMER` slot)
+  and `test_repeated_retry_exhaustion_counts_each_and_keeps_one_slot` (`NTP_RETRIES` twice).
+- **Resolved**: —
+- **Unit**: U18 (stages U2 codes, U3 slot rule, U8 tags, U10 names).
+- **Depends**: M.SRC_NET.051, .052.
+- **Blast carried by**: Part N mirror sites → A.U8.01 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.106 The refresh loop: staleness on the measured age, the legacy pin inverted
+- **From**: A.U10.44 (`ntp_time_hours_counter()` → `_refresh_loop()`), A.U10.35 (`ntp_timer_trigger_event`,
+  `ntp_sync_trigger_event`, `ntp_sec_count`), A.U24.49 (`_tick` `:1246-1250` → `tests/_fake_time.tick`), A.U35.12
+  (`:1250`, `:1374`), A.U18.20 (`:1364-1386` driven ticks; `:1388-1410` inverted; two new L1), A.U8C.13 (`:1275, 1296,
+  1326, 1350`, `:2446` waits), A.U8C2.03 (`:1375` `ntp.async_intervals`), A.U10.40 (keys).
+- **Site**: `tests/test_asy_ntp_client.py:1241-1410`, `:2438-2468`.
+- **Change**: the loop is started as `asyncio.create_task(client._refresh_loop())` and ended with `await cancel(task)`;
+  `_tick(flag, n)` → the shared `tick(flag, n)` (its two `sleep(0)` rounds commented "two yields let one loop iteration
+  finish (a limit, not an interleaving claim)" in the helper); `# @tunable l1.asy_ntp_client_fired_probe_s = 0.05` /
+  `_FIRED_PROBE_S = 0.05` for `:1296`, `:2446`. `test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multiple`
+  → `test_refresh_marks_the_sync_stale_three_intervals_after_the_last_success`: `Ticks30Time` installed on
+  `asy_base_classes` (the `TickSeconds` clock), `NTPInterval` 1, synced through `_handle_ntp_sync_success()`, ticks
+  driven with the fake clock advanced 10 s per tick: `Synced` stays `True` up to `_ASYNC_INTERVALS × 3600 s` and turns
+  `False` at the first tick past it (`# @tunable ntp.async_intervals = 3` / `_ASYNC_INTERVALS = 3`); no
+  `_ntp_sec_count` poke. `…never_naturally_reaches_the_async_interval_multiple…` (the legacy pin) is inverted to
+  `test_ntp_goes_stale_when_every_due_resync_fails` (every resync attempt failing through a fake resolver returning
+  `None`; 3 h of driven ticks: `Synced` False at the first tick past 10,800 s and not before). New
+  `test_a_successful_resync_restarts_the_age` (success at 2.5 h: still synced at 4 h) and
+  `test_the_due_counter_never_exceeds_one_interval` (5 simulated days: `_ntp_sec_count < 3600` at every tick). The
+  unsynced backoff tests (`:1289-1314`, `:2438-2468`) hold with the private names.
+- **Resolved**: A.U18.20 retires the legacy-inherited pin "never naturally reaches 3×" by owner-backed intent (agent,
+  2026-09-27; the comment in M.SRC_NET.057 cites legacy's own intent); guard: the inverted test.
+- **Unit**: U18 (stages U10 names, U24 shared tick, U8 tags).
+- **Depends**: M.SRC_NET.057; TEST_HELP `tests/_ticks30.py`, `_fake_time.tick`.
+- **Blast carried by**: SPEC C.7.2/DEVICE_REFERENCE `NtpSynced` → A.U18.20 (SPEC, DOCS).
+- **Kind**: test
+
+### M.TEST_UNIT.107 `cettime()`: switch dates for the whole window, clock steps, no failure catch
+- **From**: A.U14.28 (`:1418-1424` comment gains its F.7 row-4 pointer), A.SDEP.16 W41 (the normalisation and
+  `test_this_interpreters_gmtime_returns_nine_elements_not_eight` go if the pin re-check finds an 8-element `gmtime()`),
+  M.SRC_NET.053 + A.U14.26 as corrected by U18 register fix 10 (`:1535-1541` retired), A.U18.25 (new switch-date L1),
+  A.U18.26 (new clock-step L1), A.U10.40 (`_client_with_offsets()` keys).
+- **Site**: `tests/test_asy_ntp_client.py:1413-1570`.
+- **Change**: `:1418-1424` → three lines: "# This Unix port's gmtime() returns 9 elements (trailing isdst) where rp2 returns
+  8, so a shim truncates it for cettime()'s length check (SPECIFICATION.md F.7 row 4)."; the "Real finding, flagged…"
+  paragraph goes (the finding is the F.7 row). `test_cettime_mktime_or_gmtime_failure_returns_none_not_raise` is
+  removed (no catch remains; an allocation failure propagates by the register fix's rule). `_client_with_offsets()` uses
+  the new keys. New `test_cettime_switches_on_the_last_sundays_of_march_and_october` (A.U18.25: 2025-2099, switch dates
+  from the interpreter's own calendar, `_FixedNowTime` at 01:00 UTC minus 1 s and at it; one comment line on rp2's exact
+  single-precision `5 * year / 4` to 2106). New (A.U18.26): `test_cettime_follows_a_backward_rtc_step_across_the_march_switch`,
+  `test_sync_state_follows_measured_ticks_not_rtc_steps` (a year forward, two back: `Synced`/`LastSyncAge` unchanged),
+  `test_the_first_sync_from_the_boot_default_restarts_the_age` (RTC at 2021-01-01, success at a 2026 time: age 0), and
+  `test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced`.
+- **Resolved**: A.U14.28 (keep the shim, add the row) and A.SDEP.16 (remove it if the re-check finds the port fixed):
+  staged — the U0 re-check decides; the row pointer stands while the row does.
+- **Unit**: U18 (stages U0 re-check, U14 pointer).
+- **Depends**: M.SRC_NET.053; TEST_HELP the settable-wall-clock fake of A.U10.28.
+- **Blast carried by**: L2 RTC-step half → A.U10.28/A.U18.26 (TWIN, pending U25).
+- **Kind**: test
+
+### M.TEST_UNIT.108 The sync-age loop publishes the measured age
+- **From**: A.U10.03 (`:1578-1610` rewritten on measured ticks; new 2.5 s L1), A.U10.44 (`time_counter()` →
+  `_sync_age_loop()`), A.U10.35 (`time_counter_trigger_event`).
+- **Site**: `tests/test_asy_ntp_client.py:1573-1610`.
+- **Change**: section comment names `_sync_age_loop()`. `test_time_counter_increments_while_synced` →
+  `test_sync_age_follows_measured_time_while_synced`: `Ticks30Time` installed on `asy_base_classes`, synced through
+  `_handle_ntp_sync_success()`, three ticks each after `advance(1000)`: `get_last_ntp_sync() == 3`. New
+  `test_a_late_wake_advances_the_age_by_the_measured_seconds` (one tick after `advance(2500)`: age 2). The never-synced
+  test holds (`None`).
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: M.SRC_NET.058; M.SRC_CORE `TickSeconds`.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.109 The sync attempt: three-value config, the renamed callback, console config line
+- **From**: A.U10.18 (`network_available` → `network_available_locked`), A.U2.15 (`:1656-1657` w1 → `CALLBACK` E),
+  A.U18.10 (fakes return `(host, fallback, offset)`; `_resolve_ntp_server(host, dns, fallback)`), A.U36.544 (`:1695`),
+  A.U10.44 (`:1694` `asy_ntp_time()` → `_sync_loop()`), A.U24.73 (`list[Any]`).
+- **Site**: `tests/test_asy_ntp_client.py:1613-1790`.
+- **Change**: builders pass `network_available_locked=`; every `fake_get_cfg()` returns `("pool.ntp.org", "", 0)` (type
+  `tuple[str, str, int] | None`); every `fake_resolve(_host, dns_server, _fallback)` takes three arguments (the
+  `method-assign` ignores stay inline). `…network_available_raising_persists_a_warning` →
+  `…persists_a_callback_error`: newest `code("E", "CALLBACK")`, type `"E"`. `:1693-1695` → "# Proves the attempt
+  forwards its own dns_server unchanged: the value comes from _sync_loop()'s _safe_get_dns_server() call, read before
+  wifi_mode_lock is taken (see that method's own comment)." `received: list[str | None]`, `handled_with: list[tuple[int,
+  ...]]`.
+- **Resolved**: —
+- **Unit**: U18 (stages U2 code, U10 names).
+- **Depends**: M.SRC_NET.050.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.110 The sync task: `async with`, no lazy logger, one slot per repeat, cancel safety
+- **From**: A.U10.44 (`asy_ntp_time()` → `_sync_loop()`), A.U10.18 (`async with` replaces the try/finally release),
+  A.U10.10 (`:1881-1897` lazy-setup test), A.U3.02 (`:1970-1976` episode masks; `:1994-2007` inverted; `:2010-2025`),
+  A.U2.15 (`:1928`), A.U5.10 (`retry_s`/`retry_max_s` through `timing`), A.U8C.13 (`:1844`), A.U35.48 (new cancel sweep),
+  A.U10.35.
+- **Site**: `tests/test_asy_ntp_client.py:1793-2040`.
+- **Change**: the section comment names `_sync_loop()` ("…the lock is released by `async with` even if the attempt
+  raises"). Every `client.asy_ntp_time()` → `client._sync_loop()`, `ntp_sync_trigger_event` → `_ntp_sync_trigger_event`,
+  task ends through `cancel()`. `test_asy_ntp_time_swallows_an_already_released_wifi_lock` is removed with the guard it
+  pinned (an attempt releasing the shared lock itself is out of contract; `async with` owns the release); the guard
+  that remains is `…releases_the_wifi_lock_even_if_the_attempt_raises`, which holds. `test_asy_ntp_time_calls_pr_setup_before_entering_its_loop`
+  → `test_setup_initialises_the_logger_before_any_task`: `NTPClient(...)` built without the builder has
+  `pr.initialized is False`; after `setup()` it is `True`; `_sync_loop()` does not call it. The never-gives-up test
+  asserts `ErrCount == 0` in place of "`20` not in" (the retired give-up code). The backoff tests pass
+  `timing=_timing(retry_s=10, retry_max_s=70)` etc. `test_a_successful_sync_resets_the_backoff_and_ends_the_failure_episode`
+  → `test_a_successful_sync_resets_the_backoff` (the `_episode_*` lines go). `…persists_each_distinct_failure_code_once_per_episode…`
+  is inverted (OR35.a (3)): the attempt logs `err_s(…, errno=code("E", "NTP_DNS"))` and `…"NTP_NO_REPLY"` alternately
+  through `client.pr`; `ErrCount == 5` and the ring holds five slots (alternation spends a slot each).
+  `test_episode_log_persists_a_code_again_after_a_successful_sync` → `test_a_recurring_code_after_a_success_keeps_one_slot`
+  (through `client.pr`: `NTP_NO_REPLY` twice, a success, `NTP_NO_REPLY` again, `NTP_UNSYNC_REPLY` twice: `ErrCount ==
+  5`, the last ring slots `[NTP_NO_REPLY, NTP_UNSYNC_REPLY]` by code). New
+  `test_the_sync_task_survives_a_cancel_at_every_await` (`cancel_at_each_await()` from `tests/_cancel_sweep.py` over
+  `_sync_loop()` with a fake attempt gated per await: afterwards `wifi_mode_lock` unlocked and no fake socket left open).
+- **Resolved**: A.U3.02's central newest-entry rule supersedes the per-episode masks: "persisted afresh after a success"
+  is retired by OR35.b (the newest entry decides), guarded by the `ErrCount` assertions.
+- **Unit**: U18 (stages U3 rule, U5 timing, U10 names/setup, U35 sweep).
+- **Depends**: M.SRC_NET.056; TEST_HELP `tests/_cancel_sweep.py` (A.U35.48).
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.111 Real-network integration: the port redirect, a bool `serve_once()`, no wall-clock caps
+- **From**: A.U27.30 (`:2043`, `:2047` `# ===` rules → `# ---`), A.U18.11 (`_RedirectNtpNetworking` `:2050-2084` →
+  `redirect_udp_port()`; `:2518` uses the literal 123), A.U18.12/A.U18.13 (`_Resolving` goes), A.U24.49 + A.U24.76
+  (`FakeNtpServer` `:2087-2121` → the shared class), A.U35.15 (`wait_for(…, 5)` wrappers go; `serve_once()` asserted
+  `True`), A.U8C.13/A.U8C2.03 (`:2140, 2190, 2228, 2242, 2487, 2519` serve waits withdrawn; `:2144, 2219, 2237` state poll
+  ms; `:2167`; `:2191`; `:2141`, `:2216`, `:2234` poll tries; `:2475`, `:2488` fetch timeouts), A.U3.02 (`:2495-2505`),
+  A.U2.15 (`:2505` 21), A.U18.21 (`:2225-2240` re-read), A.U10.44/A.U10.35.
+- **Site**: `tests/test_asy_ntp_client.py:2043-2255`, `:2471-2524`.
+- **Change**: banner → "# ----" rules, text "# Integration: the real network path through the whole _sync_loop() task -
+  cfgmgr, the resolver, UDPSocket, a real loopback NTP server - up to the public getters." `_RedirectNtpNetworking`
+  goes: each test runs inside `with redirect_udp_port(asy_ntp_client, 123, server.port):` with `server =
+  FakeNtpServer(_PORTS.next())` (the shared class). Every `await asyncio.wait_for(server_task, 5)`/`…(served, 5)` →
+  `assert await server.serve_once(reply) is True` (concurrently with the client where the test needs it, as a task
+  awaited and asserted); the serve-wait tag rows are withdrawn. Module constants with tags: `_STATE_POLL_MS = 20`
+  (`l1.asy_ntp_client_state_poll_ms`), `_SYNCED_POLL_TRIES = 50`, `_STATE_POLL_TRIES = 200`, `_RETRY_ARMED_POLL_TRIES =
+  300`, `_NO_ANSWER_WAIT_S = 1`, `_REPLY_PROCESS_S = 0.2`, `_NO_REPLY_FETCH_TIMEOUT_MS = 100`, `_PAST_FETCH_TIMEOUT_MS =
+  200`, each `# @tunable l1.asy_ntp_client_<…> = <v>` as A.U8C.13/A.U8C2.03 name them. `:2167` comment → "# longer than
+  one failed attempt against a closed loopback port" (`_NTP_CONN_TIMEOUT` is gone). The recovery test re-reads its
+  `Synced` waits after A.U18.21: `ntp_force_sync()` clears `Synced`, so `_wait_synced(target=True)` after the retry is
+  the meaningful check (holds). The self-heal test: `client.ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS`; the
+  `_episode_errs` element of its return goes; `ErrCount == 3` and one `code("E", "NTP_NO_REPLY")` slot. The last test
+  fetches `("127.0.0.1", 123)` under the redirect ("# 123 is a const() in the product, not a module attribute; the
+  redirect maps it").
+- **Resolved**: A.U8C.13's `l1.asy_ntp_client_serve_wait_s` tags vs A.U35.15: the literals go, so do the tags (A.U35.15
+  says so).
+- **Unit**: U18 (stages U24 shared server, U27 rules, U35 caps).
+- **Depends**: M.SRC_NET.048, .056; TEST_HELP `_ntp_frames.FakeNtpServer` with `serve_once() -> bool` (A.U35.15, see
+  "Gaps"), `_udp_port_redirect.py`.
+- **Blast carried by**: Part N rows withdrawn → A.U35.15 (SPEC); `tests_scripts/test_comment_block_cap.py` `_DIVIDER` →
+  A.U27.30 (TSC).
+- **Kind**: test
+
+### M.TEST_UNIT.112 Schema accessor and PUTs: source oracle, the shape override, `write_config(data)`
+- **From**: A.U24.61 (`:2261`, `:2296` → the source-read schema), A.U10.39 (`:2258-2259` comment), A.U24.01 (the oracle),
+  A.U11.24 (`:2305` `write_config(data)`), A.U10.40 (keys), A.U18.10 + A.U10.41 (new PUT-reject L1 through the override),
+  M.SRC_NET.045 (the persist-only claim is no longer whole).
+- **Site**: `tests/test_asy_ntp_client.py:2257-2311`.
+- **Change**: `test_get_cfg_schema_matches_the_public_attribute` and `test_cfg_schema_matches_what_cfgmgr_was_built_with`
+  merge into `test_get_cfg_schema_is_the_schema_in_source` (`client.get_cfg_schema() == _SCHEMA`; the `cfg_schema`
+  comparisons and the "stays a public attribute" comments go). `test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes`
+  → `test_set_dict_cfg_persists_plain_fields_through_the_base_path` with comment "# Fields other than NTPHost and
+  DNSFallback persist through SensorReaderConfig's generic path; nothing is pushed live." and keys `NTPHost`/
+  `NTPInterval`. The invalid-field test uses `NTPInterval`. `test_write_config_via_public_cfg_schema…` →
+  `test_write_config_round_trips_a_real_value` (`write_config({"NTPHost": "time.example.org"})`; its comment names the
+  REST path, not `api_helpers.py`). `test_no_push_callbacks…` holds. New (A.U18.10/A.U10.41):
+  `test_a_put_of_a_malformed_dns_fallback_is_invalid_and_stores_nothing` (`"8.8.8.8,"`, `"8.8.8.8 ,1.1.1.1"`, four
+  addresses, `"x"`: each `"Invalid"`, the stored value unchanged, one `code("E", "BAD_ARG")` each),
+  `test_a_put_of_an_ntp_host_that_is_not_a_host_name_is_invalid` (`"-a.b"`, a 64-character label: `"Invalid"`), and
+  `test_a_put_of_a_valid_host_or_ipv4_list_is_valid` (`"pool.ntp.org"`, `"192.168.1.1"`; `""`, three addresses).
+- **Resolved**: —
+- **Unit**: U18 (stages U10 keys, U11 signature, U24 oracle).
+- **Depends**: M.SRC_NET.043, .045; M.SRC_CORE.044.
+- **Blast carried by**: the shared `hostName`/`ipv4List` corpus → A.U18.10/A.U10.41 (TEST_HELP, WEB).
+- **Kind**: test
+
+### M.TEST_UNIT.113 Failure sites under the central slot rule
+- **From**: A.U3.02 (`:2314-2420` rewritten to the central rule), A.U2.15 (codes 11 → console, 12 → `NTP_DNS`, 13 → gone,
+  14 → `NTP_IMPLAUSIBLE`, 15 → `NTP_MALFORMED`, 21 → `NTP_NO_REPLY`, w2 → `NTP_UNSYNC_REPLY`), A.U3.05 (`:2340-2347`
+  breaks the real store), M.SRC_NET.048 (`:2360-2362` goes), A.U28.28 (1) (`:2336` B905 noqa), A.U5.10 (`:2321`
+  constructor), A.U8C.13 (`:2366`), A.U10.10 (`_twice_one_slot`'s `pr.setup()`).
+- **Site**: `tests/test_asy_ntp_client.py:2314-2436`.
+- **Change**: section comment → "# Part C.7.2: never give up, back off while unsynced, one ring slot per repeated code
+  (the central newest-entry rule)". `test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes` builds
+  `NTPClient(asyncio.Lock(), _net_ok, _no_dns, NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, _RETRY_S,
+  _RETRY_MAX_S), cfg_path=…)` and expects `(_RETRY_S, _RETRY_MAX_S, _RETRY_S, 0)` (the source values 10/600).
+  `_twice_one_slot()` drops its `pr.setup()` and its `noqa` (the per-file B905 entry carries the reason).
+  `test_missing_config_failure_is_counted_twice_but_persisted_once` → `…logs_in_the_config_store_only`: the real store
+  broken (`_make_invalid_cfg_client()`); the NTP log is empty, `CFGMGR_NTP` holds one `code("E", "CFG_NOT_VALID")` slot
+  with `ErrCount == 4` (the attempt reads the store twice, M.SRC_NET.046). The DNS, no-reply, implausible, malformed and unsync tests expect `(2, [code("E", "NTP_DNS")],
+  ["E"])`, `(2, [NTP_NO_REPLY], ["E"])`, `(2, [NTP_IMPLAUSIBLE], …)`, `(2, [NTP_MALFORMED], …)`, `(2,
+  [code("W", "NTP_UNSYNC_REPLY")], ["W"])`; `# @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100` on the
+  no-reply timing. `test_invalid_server_address_is_counted_twice_but_persisted_once` is removed with the construction
+  guard. `test_the_same_number_as_error_and_as_warning_are_separate_episode_codes` →
+  `test_an_error_and_a_warning_with_the_same_number_are_different_codes` (through `client.pr.err_s(…, errno=n)` and
+  `wrn_s(…, wrnno=n)`: two slots, types `["E", "W"]`). `test_every_distinct_failure_code_keeps_its_own_slot_within_one_episode`
+  → `test_distinct_codes_each_keep_a_slot` over the six live NTP codes through `client.pr`. The backoff-restart test
+  holds.
+- **Resolved**: A.U3.05 moves the missing-config line to the console (M.SRC_NET.050); the test's goal — a repeated
+  failure is counted, not re-persisted — moves to the config store that persists it.
+- **Unit**: U3 (stages U2 codes, U5 constructor, U18 removal and keys).
+- **Depends**: M.SRC_NET.046-.050; M.SRC_CORE (`_get_values()` codes, newest-entry rule).
+- **Blast carried by**: `pyproject.toml` B905 entry → A.U28.28 (TOOL).
+- **Kind**: test
+
+## tests/test_asy_scd30_driver.py
+
+### M.TEST_UNIT.114 Header, builders and shared doubles: a config reader built with `setup()`
+- **From**: A.U10.37 (`config_manager`, `crc_checks`, `print_log` modules), A.U24.08 (`run`), A.U24.20 (`make_i2c()`
+  `:40`), A.U15.12 + A.U5.02 + A.U10.43 (`make_reader()` `:54-55`: `trigger_s`, `cfg_path` in a scratch dir, the boot
+  `setup()`), A.U10.35 (`reader.scd.i2c_scd30` `:59`), A.U24.49 + A.U31.09 + A.U8.07 (`_FastAsyncSleep` `:91-105`,
+  `_RaiseOnArm` `:108-122` → shared; the comment names the constant), A.U15.28 (`:37` comment), A.U24.73 (`Any`),
+  A.U24.76 (role names).
+- **Site**: `tests/test_asy_scd30_driver.py:1-123`.
+- **Change**: imports `import asy_config_manager as cm`, `from asy_crc_checks import CRC8`, `from _async_harness import
+  run`, `from _fast_sleep import FastAsyncSleep`, `from _fake_timer_arm import RaiseOnArm`, `from _tmp_scratch import
+  TmpScratch`, `from _error_codes import code`, `from asy_base_classes import set_utc_valid`; TYPE_CHECKING imports
+  `asy_print_log.ErrorLog` and drops `Any`/`TypeVar`/`T`. `_ADDR = 0x61  # Interface Description 1.1.1: the address is
+  fixed` (a datasheet copy). `make_i2c()` → `_make_i2c()` with `machine.I2C.reset_id(0)` first; `make_scd()` →
+  `_make_scd()`; `make_reader(trigger_sec=3, …)` → `_make_reader(trigger_s: int = 3, max_module_error: int = 5)`:
+  `SCD30_Reader(_make_i2c(), irq_pin=5, trigger_s=trigger_s, max_module_error=max_module_error,
+  cfg_path=_scratch.dir())` then `run(reader.setup())` (`_scratch = TmpScratch("scd30")`); `reader_fake_i2c()` →
+  `_reader_fake_i2c()` reading `reader._scd._i2c_scd30.i2c_device.i2c._i2c`. `crc8_byte()`, `register_frame()`,
+  `data_frame()`, `_settle()` stay (the `run()` inside `crc8_byte()` is called only from synchronous scope, as the
+  `:908-910` comment states). The local `_FastAsyncSleep` (its comment naming "real 0.05s") and `_RaiseOnArm` go; uses
+  read `FastAsyncSleep()` (both sleeps) and `RaiseOnArm(exc)`.
+- **Resolved**: —
+- **Unit**: U15 (stages U5/U10 constructor, U24 harness, U31 `sleep_ms`).
+- **Depends**: M.SRC_SENS.052; TEST_HELP `_fast_sleep.py`, `_fake_timer_arm.py`, `machine.I2C.reset_id`.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.115 Wire format and setter ranges: rounded offsets, the whole two-decimal range
+- **From**: A.U4.05 (offset words; new 0.29 L1), A.U15.07 (new exhaustive L1 after `:331-340`), A.U28.35 (read: `:127`
+  names a datasheet path, opens nothing), A.U15.01 (read: setter ranges unchanged).
+- **Site**: `tests/test_asy_scd30_driver.py:125-375`.
+- **Change**: the wire-format and range tests hold (5.0 °C sends 500 under rounding as under truncation). New
+  `test_temperature_offset_rounds_to_the_nearest_tick` (`set_temperature_offset(0.29)` sends word 29: the double
+  `28.999999999999996` truncated to 28). New `test_every_two_decimal_temperature_offset_is_sent_as_typed` (A.U15.07: `n`
+  over `range(0, 65536)`, `value = n / 100`, a `FakeI2C` keeping only the last frame, the argument word equals `n`; the
+  three-line comment of A.U15.07; if the run exceeds the per-file budget at execution, the loop covers 0.00-20.00 plus
+  every 1.00 step to 655.00 and the comment says so).
+- **Resolved**: A.U4.05 (the 0.29 case, U4) and A.U15.07 (the exhaustive proof, U15) both stand: the named case lands
+  first and stays as the readable instance of the rule.
+- **Unit**: U4 (0.29), U15 (exhaustive).
+- **Depends**: M.SRC_SENS.050 (`_temp_offset_ticks()`), .057.
+- **Blast carried by**: hardware TempOffs 0.53 read-back → A.U15.07 (HW_DEV, gated by `persistence_write`).
+- **Kind**: test
+
+### M.TEST_UNIT.116 Measurement reads: the range gate, an independent decode, the not-ready rule, bus down
+- **From**: A.U2.11 (`:451` 11 → `READ`), A.U15.01 (new range-gate L1), A.U30.05 (new decode L1; `:172-186`, `:397-` hold),
+  A.U13.09 (new bus-down L1), A.U0.28 + A.U15.22 (`:454-457` comment), M.SRC_SENS.055/.057 (`read_measurement() -> bool`;
+  `_read_scd()` returns the results with `new_data` beside them), A.U10.06 (the results' `TS`).
+- **Site**: `tests/test_asy_scd30_driver.py:377-521`.
+- **Change**: the not-ready tests also assert `run(scd.read_measurement()) is False`; the ready ones `is True`.
+  `test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read…`: `results, _new_data = await
+  reader._read_scd()`, `results[:3] == (None, None, None)`, newest entry `code("E", "READ")`. `:454-457` → "# Matches
+  the legacy driver's proven behaviour: a not-ready read neither raises nor clears the cache (owner, 2026-07-22,
+  `110f3db`; SPECIFICATION.md A.4)." New (A.U15.01): `test_read_measurement_accepts_each_range_boundary_and_rejects_just_outside`
+  (0/40000 ppm, −40/70 °C, 0/100 %RH accepted; one value just outside each raises `ValueError` "outside measurement
+  range", cache untouched); `test_the_reader_logs_an_out_of_range_frame_as_a_failed_read_and_stores_nothing`;
+  `test_the_temperature_gate_applies_the_cached_offset` (`scd._temp_offset_ticks = 1000`: −45 °C accepted, −51 °C
+  rejected). New (A.U30.05): `test_read_measurement_decodes_every_word_like_struct_unpack` (0.0, 400.0, −12.5, 1e-3, a
+  subnormal and the datasheet example, each word compared with `struct.unpack(">f", …)` in the test). New (A.U13.09):
+  `test_a_deinitialised_bus_fails_the_read_without_checking_a_stale_buffer` (a valid frame left in `scd._buffer`, the
+  asy bus deinitialised: `read_measurement()` raises `OSError` and the cache is unchanged).
+- **Resolved**: A.U0.28 (tag the "per project-owner direction" phrase) and A.U15.22 (rewrite the comment, dropping its
+  dangling BACKLOG pointer) on one comment: A.U15.22's text carries A.U0.28's tag.
+- **Unit**: U15 (stages U2 code, U13 bus-down, U30 decode).
+- **Depends**: M.SRC_SENS.055, .057.
+- **Blast carried by**: twin chip stays in range → A.U15.01 (TWIN); release note D4.62 → A.U15.01 (DOCS, U37).
+- **Kind**: test
+
+### M.TEST_UNIT.117 Bus faults and `setup()`: the offset read joins the sequence
+- **From**: A.U15.01 (`setup()` gains one register read: `:613-621`), A.U24.78 (`:596`).
+- **Site**: `tests/test_asy_scd30_driver.py:523-634`.
+- **Change**: `test_setup_probes_reads_firmware_version_then_soft_resets` →
+  `…then_soft_resets_and_reads_the_temperature_offset`: queues a second `register_frame(450)`; ops `["writeto",
+  "writeto", "readfrom_into", "writeto", "writeto", "readfrom_into"]`, the fifth write `bytes([0x54, 0x03])`, and
+  `scd._temp_offset_ticks == 450`. `:596` → `inject_fault("readfrom_into", OSError, 5, "read half failed")`.
+- **Resolved**: —
+- **Unit**: U15 (stage U24 inject form).
+- **Depends**: M.SRC_SENS.057.
+- **Blast carried by**: scripted `setup()` queues elsewhere gain the frame → A.U15.01 (TEST_HELP `_bus_hazard_catalog.py`).
+- **Kind**: test
+
+### M.TEST_UNIT.118 Reader timers, starters and the stuck-pin task
+- **From**: A.U27.30 (`:636`, `:639` `# ===` → `# ---`), A.U10.35 (`irq_pin`, `start_trigger_timer`, `base_trigger_event`,
+  `read_event` → private), A.U10.43 (`trigger_sec`/`trigger_half_sec` → `trigger_s`/`_trigger_half_ticks`), A.U10.44
+  (`scd_init_irq()` → `_irq_loop()`, `start_asy_init` → `start_asy_irq`), A.U24.07 (`all_timers.clear()` lines), A.U8C.14
+  (`:652` `scd30.start_trigger_period_ms`, `:660, 661, 689, 745` `l1.asy_scd30_driver_event_wait_s`), A.U10.12 (`:670`
+  comment), A.U15.41 (`:668-702` hold; `:677-679` comment; new arm L1), A.U15.03 (`:726-786` hold; two new L1), A.U24.49.
+- **Site**: `tests/test_asy_scd30_driver.py:636-783`.
+- **Change**: banner rules `# ---`, text "# Integration: SCD30_Reader on the real asy_i2c_driver, asy_base_classes and
+  asy_print_log - only the raw I2C bus is a fake." Private names throughout; the `FakeTimer.all_timers.clear()` lines
+  go. Module constants `# @tunable scd30.start_trigger_period_ms = 500` / `_START_TRIGGER_PERIOD_MS = 500` (`period ==
+  _START_TRIGGER_PERIOD_MS`) and `# @tunable l1.asy_scd30_driver_event_wait_s = 1` / `_EVENT_WAIT_S = 1`. `:668-670` →
+  "# Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (ports/rp2/machine_timer.c);
+  start_timer() runs inside SystemService's timer start and must not raise into it." `:677-679` → "# start_timer() is
+  synchronous and persists nothing itself; the waiting _irq_loop() records the TIMER error and ends (see the test
+  below)." — the `ErrCount == 0` assertion holds; the two degrade tests add `reader._base_trigger_event.state` set (the
+  waiter woken). `test_reader_get_task_starters_and_timer_starters_shape`: `[reader.start_asy_read,
+  reader.start_asy_irq]`, `[reader.start_timer]`, `reader.get_trigger_starters() == []`. The two stuck-pin tests start
+  `reader._irq_loop()` with `trigger_s=` and end through `cancel(task)`. New (A.U15.41)
+  `test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms` (`OSError(ENOMEM)` and
+  `MemoryError`). New (A.U15.03) `test_the_stuck_pin_count_saturates_at_the_threshold` (pin high for `3 ×
+  _trigger_half_ticks` ticks, nothing consuming: `_scd_timer_triggers == _trigger_half_ticks`, `_read_event` set) and
+  `test_stuck_pin_ticks_accumulate_across_a_low_gap` (high 2, low 10, high 4 with threshold 6: fires).
+- **Resolved**: —
+- **Unit**: U15 (stages U8 tags, U10 names, U24 hook, U27 rules).
+- **Depends**: M.SRC_SENS.055; M.SRC_CORE.037 (`_timer_failed`/`_timer_fault`).
+- **Blast carried by**: SPEC C.9.1 "counts ticks with the pin high since the last read" → A.U15.03 (SPEC).
+- **Kind**: test
+
+### M.TEST_UNIT.119 Reader getters and setters: catalog classes
+- **From**: A.U2.11 (`:845` 14/16/18/20/22/24, `:863` 15/17/19/21/23/25, `:947` 13), A.U3.01 (one slot per repeated
+  code), A.U24.73 (`tuple[Any, ...]`).
+- **Site**: `tests/test_asy_scd30_driver.py:785-948`.
+- **Change**: `test_reader_getters_log_the_correct_errno_on_bus_nak` → `…log_chip_get_on_bus_nak`: `ErrCount == 6`, one
+  `code("E", "CHIP_GET")` slot; its `:827-829` comment → "# Every forward logs its failure (SPECIFICATION.md C.7): one
+  CHIP_GET class for all six; the console line names the field." The setter twin → `ErrCount == 6`, one `CHIP_SET`
+  slot. `:947` → `code("E", "CHIP_SET")`. `tuple[Any, ...]` → `tuple[object, ...]`. The rest holds.
+- **Resolved**: the per-forward distinct numbers are retired by the class catalog (A.U2.01); the per-forward claim "every
+  forward logs" holds through `ErrCount` (OR111.a (2)).
+- **Unit**: U2 (stage U3 slot rule).
+- **Depends**: M.SRC_SENS.056.
+- **Blast carried by**: `tests/test_setter_microdot_integration.py:734, 858-864` → M.TEST_UNIT in that file (A.U2.11).
+- **Kind**: test
+
+### M.TEST_UNIT.120 The config PUT path: snapshot first, fixed order, compare-before-write
+- **From**: A.U4.04 (`:950-1085` queue the snapshot; `:1078-1090` fixed order; new (a)-(f)), A.U10.40 (`TempOffs` →
+  `TempOffset`, `MeasInt` → `MeasInterval`), A.U15.09 (new ContMeas L1), A.U15.12 (FRC keys go to the file store),
+  A.U4.06 (`WriteCountingOpen`, `scd30_nvm_writes`).
+- **Site**: `tests/test_asy_scd30_driver.py:950-1085`.
+- **Change**: a helper `_queue_snapshot(i2c, temp_offset=0, interval=2, pressure=0, altitude=0, frc=400, asc=0)` queues
+  the six register frames; every `_set_dict_cfg` test with a chip-side key (ContMeas included) calls it first. Keys
+  `TempOffset`/`MeasInterval`. `test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault`: the snapshot itself
+  fails → `"Failed"`, zero writes, one `code("E", "CHIP_GET")`. The spy tests keep their inline `method-assign` ignores
+  (the write path calls the reader's `set_*` forwarders). `test_set_dict_cfg_multiple_fields_in_one_call…` asserts the
+  writes in `_APPLY_ORDER` (TempOffset, then AmbPres, then SelfCal) from the fake log. The `:985-988` section comment →
+  "# _set_dict_cfg through SCD30's chip store: snapshot, compare, validate, write in a fixed order (SPECIFICATION.md
+  C.4.3)." New (A.U15.09): `test_contmeas_rejects_an_int_and_a_string` (`1`, `"false"`: `"Invalid"`, zero writes). New
+  (A.U4.04): `test_a_repeated_put_of_a_stored_chip_value_is_unchanged_and_writes_nothing` (TempOffset, MeasInterval,
+  Altitude, SelfCal; `scd30_nvm_writes == 0` on the second); `test_ambpres_and_forcecalref_always_write` ("Valid" and one
+  write each time); `test_a_reversed_body_writes_in_the_fixed_order` and `test_ambpres_with_contmeas_false_ends_stopped_in_either_key_order`;
+  `test_a_failing_snapshot_fails_every_key_and_writes_nothing` (one CHIP_GET entry); `test_tempoffset_compares_at_tick_resolution`
+  (12.345 against a chip value of 1235: "Unchanged"); `test_get_dict_cfg_after_a_failing_snapshot_shows_none_and_one_entry`.
+  New (A.U15.12 (g)): `test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip` (`WriteCountingOpen` +
+  `scd30_nvm_writes`).
+- **Resolved**: —
+- **Unit**: U4 (stages U10 keys, U15 FRC routing and ContMeas).
+- **Depends**: M.SRC_SENS.053; TEST_HELP `tests/_write_counters.py` (A.U4.06).
+- **Blast carried by**: L2 identical-PUT NVM counter → A.U4.04 (TWIN); `tests/test_setter_microdot_integration.py:686-760`
+  → M.TEST_UNIT in that file (A.U4.04).
+- **Kind**: test
+
+### M.TEST_UNIT.121 Config GET and the measurement body: nine keys, eight fields
+- **From**: A.U15.12 (nine-key schema and `get_dict_cfg()`; eight-field `SCD30`), A.U10.40 (keys), A.U10.37 (`cm`),
+  A.U4.04 (`:1124-1136` bus fault: one CHIP_GET entry), A.U10.35 (`reader.scd`), A.U24.49 (`_FastAsyncSleep`), A.U24.73.
+- **Site**: `tests/test_asy_scd30_driver.py:1087-1194`.
+- **Change**: `test_get_dict_cfg_reports_every_schema_field_by_name` uses the new keys and also expects `FRCNoise` 20.0,
+  `FRCRate` 10.0, `FRCWindow` 60 (file defaults). `test_get_cfg_schema_returns_every_settable_field_by_name`: the nine
+  names; its `:1113-1118` comment → "# _put_sensors() calls get_cfg_schema() on every sensor; SCD30's covers six chip keys
+  and three file keys." The bus-fault test expects the six chip keys `None`, the three FRC defaults, and one
+  `code("E", "CHIP_GET")`. The atomic-snapshot test writes through `reader._scd.set_temperature_offset(9.99)` under
+  `FastAsyncSleep()`; its `:1140-1146` comment block → three lines ("# get_config_snapshot() holds the device session for
+  all six reads: a concurrent offset write lands only after them (two log entries per register)."). The data test
+  builds `SCD30(400.0, 20.0, 50.0, 15.2, 9.3, 1, 0, 123456)` and also reads `FRCState`/`FRCWait`.
+- **Resolved**: —
+- **Unit**: U15 (stages U4 snapshot, U10 keys).
+- **Depends**: M.SRC_SENS.051-.053.
+- **Blast carried by**: `tests/test_digital_twin_scd30.py` key set → A.U15.12 (TWIN).
+- **Kind**: test
+
+### M.TEST_UNIT.122 Init, the read loop and the ladder; FRC readiness; the staleness rules
+- **From**: A.U10.44 (`read_loop()` → `_read_loop()`), A.U15.43 (returns `None`), A.U15.R01 + A.U10.R01 (`:1286-1331`
+  re-derived; new rung L1), A.U2.06 + A.U3.03 (no streak entry), A.U10.06 (`:1251` needs a sync), GAP-15 lead ruling
+  (pre-sync L1), A.U15.22 (new last-sample and not-ready L1), A.U15.12 (new FRC L1 (a)-(f), (h), (i)), A.U10.35
+  (`reader.scd`, `read_event`), M.SRC_SENS.057 (`read_measurement()` returns `bool`).
+- **Site**: `tests/test_asy_scd30_driver.py:1196-1370`; new tests after `:1370`.
+- **Change**: the section comment names `_read_loop()`; the fakes patch `reader._scd.setup`/`read_measurement`/getters
+  (inline ignores kept) and the read fake returns `True` (new data). `test_init_scd_returns_false_immediately_when_probe_fails…`
+  adds: one `code("E", "INIT")` and one `code("W", "BUS_RECOVERY")` (`_init_failed()`'s controller rung). The full-iteration
+  test calls `set_utc_valid()` first (flag reset by the hook) for `data.TS is not None`. The give-up test
+  (`max_module_error=1`) drives `_read_loop()`, asserts the task returned `None`, `ErrCount == 3` with the ring holding
+  `code("E", "READ")` then `code("E", "GIVE_UP")` (the rung never runs below its threshold). The recovery test
+  (`max_module_error=5`, two failures then a good read) stubs `reader._scd.reset` (else a real 2.5 s wait) and asserts
+  one call and one `code("W", "DEVICE_RECOVERY")`, and the third read stored. `test_read_loop_returns_false_when_init_fails`
+  → `…ends_when_init_fails` (`None`). The two starter tests call `start_asy_read()`/`start_asy_irq()` and end through
+  `cancel()`. New (A.U15.R01): `test_a_raising_reset_logs_one_chip_set_and_no_recovery_warning`,
+  `test_the_third_failure_clears_the_bus_and_the_fourth_reinitialises_the_controller` (one `recoveries` step and one
+  `BUS_RECOVERY` each), `test_a_held_boot_bus_is_reported_once_at_setup`, `test_a_put_during_the_recovery_completes_after_it`.
+  New (GAP-15): `test_a_read_before_the_first_sync_steps_no_streak_and_publishes_ts_none`. New (A.U15.22):
+  `test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp` (synced) and
+  `test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no_error`. New (A.U15.12): FRC readiness
+  cases (a) a stream at interval 2 s reaches 4 after max(180, 5) samples plus one closed window with `FRCWait` falling to
+  0; (b) slope, noise and a 10 °C step give 2/3/2; (c) a 1.6-interval gap, a MeasInterval write and an AmbPres write
+  reset to 1, `ContMeas=false` publishes 0 with the old `TS`; (d) 4 × interval idle ticks publish 0; (e) counters
+  saturate at their targets when driven past them; (f) a `ForceCalRef` PUT in state 1 is `"Valid"` and written; (h) a
+  `_store_scd()` interleaved into a republish (a `_get_meas_data` patched to yield) keeps the fresh sample; (i) after
+  1,800 samples every stored sum is a `float` below 2**30.
+- **Resolved**: A.U15.R01's "stubs `reader.scd.reset`" is written with A.U10.35's private name.
+- **Unit**: U15 (stages U3 console streak, U10 ladder/`TS`/names).
+- **Depends**: M.SRC_SENS.054, .055, .090; M.SRC_CORE.037; SRC_CORE `SensorReader._republish()` (A.U15.12).
+- **Blast carried by**: the mid-operation reset across siblings → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
+  (A.U15.R01) and A.U15.R01 (TWIN, HW_DEV); notification `ErrCount`s → M.TEST_UNIT in the two SCD30 notification files.
+- **Kind**: test
+
+### M.TEST_UNIT.123 Success paths and the CRC-generation guard hold
+- **From**: A.U10.45 (read: the message "CRC generation failed" without "!"; `in str(e)` holds), A.U24.62 (none here).
+- **Site**: `tests/test_asy_scd30_driver.py:1372-1418`.
+- **Change**: none beyond the builder; `_WrongLengthCRC.add_into(…)` keeps the `asy_crc_checks` signature (`start`
+  named).
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: M.SRC_SENS.057.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.124 Same-device hazards: wire copies renamed, a gated writer
+- **From**: A.U24.01 (`:1433-1435` → `_WIRE_GET_DATA_READY` etc.), A.U35.12 (`:1482` → a gate), A.U24.73 (`_gather`
+  typing), A.U15.01 (the sweep tolerates `setup()`'s extra read: holds), A.U24.49.
+- **Site**: `tests/test_asy_scd30_driver.py:1420-1529`.
+- **Change**: `_WIRE_GET_DATA_READY = b"\x02\x02"  # Interface Description 1.4.4`, `_WIRE_READ_MEASUREMENT = b"\x03\x00"
+  # 1.4.5`, `_WIRE_SET_TEMPERATURE_OFFSET = b"\x54\x03"  # 1.4.7` and their uses in `_parse_scd30_log()`. The writer
+  awaits an `asyncio.Event` the reader sets after its first `read_measurement()` returns, in place of the `:1482` yield.
+  `FastAsyncSleep()`; `_gather(a, b)` typed `Coroutine[object, object, object]`.
+- **Resolved**: —
+- **Unit**: U24 (stage U35 gate).
+- **Depends**: M.SRC_SENS.057.
+- **Blast carried by**: `tests_scripts/test_const_mirrors.py` → A.U24.02 (TSC).
 - **Kind**: test

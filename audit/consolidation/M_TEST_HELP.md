@@ -26,12 +26,12 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
   (A.U10.40 map: `NTP_Host` → `NTPHost`, `MeasInt` → `MeasInterval`, `lightCmdLED` → `LightCmdLED`, …); unit suffixes
   (A.U10.43); starter names (A.U10.44); the supervisor split (M.SRC_CORE.016: `start_and_check_tasks()` →
   `start_tasks(starters, task_names)` + `supervise_tasks()`, `task_names` required — GAP-G5).
-- **H2 Harness migration** (U24): `run()`/`run_timed()`/`_cancel*` → `tests/_async_harness.py` (M.TEST_HELP.040, a
-  bounded copy keeps its bound); `const()` mirrors → `tests/_src_const.py` (M.TEST_HELP.042); response bodies →
-  `strict_loads()` (M.TEST_HELP.012); the device set and wiring plans → `tests/_twin_devices.py` (M.TEST_HELP.055);
+- **H2 Harness migration** (U24): `run()`/`run_timed()`/`_cancel*` → `tests/_async_harness.py` (M.TEST_HELP.043, a
+  bounded copy keeps its bound); `const()` mirrors → `tests/_src_const.py` (M.TEST_HELP.044); response bodies →
+  `strict_loads()` (M.TEST_HELP.008); the device set and wiring plans → `tests/_twin_devices.py` (M.TEST_HELP.055);
   generated modules through `load_generated()`/`boot_generated()` after `require_fresh()` (M.TEST_HELP.046/.047);
-  catalog codes `code("E"|"W", NAME)` (`tests/_error_codes.py`, M.TEST_HELP.050); `inject_fault(op, exc_type, *args,
-  times=…)` (M.TEST_HELP.021).
+  catalog codes `code("E"|"W", NAME)` (`tests/_error_codes.py`, M.TEST_HELP.045); `inject_fault(op, exc_type, *args,
+  times=…)` (M.TEST_HELP.015).
 - **H3 `@tunable` tags** (A.U8C, grammar A.U8.02): every tagged literal becomes the module constant its row writes,
   except a literal a later constituent deletes — its row is withdrawn and named.
 - **H4 Permanent text.** Comments and docstrings cite no audit ID (G9/R12, AC_NOTES 4), carry actor tags
@@ -86,10 +86,10 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
   (c) `sys.path[:] = saved_path` and `gc.threshold(saved_threshold)`. A test already counted FAIL is not counted twice.
 - **Resolved**: A.U24.08 names its check the hook list's first entry and A.U24.15 adds `real_poll_queries` to "the hook
   list" — merged as microtest's built-in step (a) first, then the fakes' registered `reset_test_state()` hooks, which own
-  the `real_poll_queries` check (M.TEST_HELP.016) so microtest names no fake; A.U30.14's allowance (`tests/microtest.py`
+  the `real_poll_queries` check (M.TEST_HELP.010) so microtest names no fake; A.U30.14's allowance (`tests/microtest.py`
   restores the threshold it read at start) matches (c) exactly.
 - **Unit**: U24 (A.U27.28's header lands early in the same edit; its U27 gate finds it).
-- **Depends**: M.TEST_HELP.001; M.TEST_HELP.040 (`_async_harness` tasks are the ones the check backstops).
+- **Depends**: M.TEST_HELP.001; M.TEST_HELP.043 (`_async_harness` tasks are the ones the check backstops).
 - **Blast carried by**: per-test manual resets removed from test files → A.U24.07 (4) (TEST_UNIT, TWIN); in-body
   `gc.threshold` pairs → A.U30.12/A.U30.13 (TEST_UNIT, TWIN); checker allowance → A.U30.14 (TSC); CLAUDE.md "Known hang
   cause #2" bullet's new shape → A.U36.546 (DOCS); SPEC E.3 mechanism paragraph → A.U36.546 (SPEC).
@@ -220,7 +220,7 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 - **Blast carried by**: every response-body `json.loads(` → `strict_loads(` in `tests/test_asy_webserver_service.py`,
   `tests/test_setter_microdot_integration.py` → A.U24.60 (TEST_UNIT); `_sensortask_scenarios.py` → M.TEST_HELP.035;
   `_shared_rest_roundtrip.py` → M.TEST_HELP.009; the L0 `json.loads(` allow-list → A.U24.60 (3) (TSC); non-finite
-  scenario → M.TEST_HELP.035 (A.U10.27); SPEC F.1 sentence → A.U14.11 (SPEC).
+  scenario → M.TEST_HELP.041 (A.U10.27); SPEC F.1 sentence → A.U14.11 (SPEC).
 - **Kind**: test
 
 ## tests/_shared_rest_roundtrip.py
@@ -299,15 +299,15 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   `Simulated*Error` listed in a module-level `TEST_API`.
 - **Resolved**: A.U11.07's "`reset()`/`bootloader()` set `WDT_RESET`" and A.U24.17's "count then raise" combine as
   count → cause → raise; A.U11.07's `mem_backup()` gains rp2's `-1` tuple and object identity (verified in the pinned
-  source above; the twin half, A.U25.08, asserts both — one contract, M.TEST_HELP.048).
+  source above; the twin half, A.U25.08, asserts both — one contract, M.TEST_HELP.049).
 - **Unit**: stage 1 U11 (cause, regions, `power_on()`, `mem_backup()` — A.U11.05's product lands in the same commit,
   and the main mypy pass resolves `machine` to this fake); stage 2 U24 (the raising `reset()`/`bootloader()`, WDT bound,
   `TEST_API`); `feed_times` lands with A.S0930.24 (U11, system-command work) inside stage 1.
 - **Depends**: M.TEST_HELP.010; M.TEST_HELP.001 (microtest reports an uncaught `SimulatedRebootError` as a FAIL).
 - **Blast carried by**: every test that triggers the product reset timer or calls a reboot path catches
   `machine.SimulatedRebootError` — `tests/test_system_service.py` reboot sections → A.U24.17/A.S0930.21/A.S0930.36
-  (TEST_UNIT), `tests/_sensortask_scenarios.py:953-973` → M.TEST_HELP.039; reset-code L1 cases → A.U11.07 (TEST_UNIT);
-  planted-fault scenarios → M.TEST_HELP.041; twin fake → A.U25.07/A.U25.08 (TWIN).
+  (TEST_UNIT), `tests/_sensortask_scenarios.py:953-973` → M.TEST_HELP.040; reset-code L1 cases → A.U11.07 (TEST_UNIT);
+  planted-fault scenarios → M.TEST_HELP.042; twin fake → A.U25.07/A.U25.08 (TWIN).
 - **Kind**: test
 
 ### M.TEST_HELP.012 Pin fake follows rp2's id, mode, pull, alt, value
@@ -386,7 +386,7 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
 - **Depends**: M.TEST_HELP.013, M.TEST_HELP.016.
 - **Blast carried by**: 25 unit call sites `inject_fault(op, OSError(errno.X, "m"), times=n)` → `inject_fault(op,
   OSError, errno.X, "m", times=n)` → A.U24.78 (TEST_UNIT); `tests/_bus_hazard_catalog.py` → M.TEST_HELP.026;
-  `tests/_digital_twin_construction_scenarios.py` → M.TEST_HELP.034; twin `pending()` → A.U24.82 (TWIN).
+  `tests/_digital_twin_construction_scenarios.py` → M.TEST_HELP.031; twin `pending()` → A.U24.82 (TWIN).
 - **Kind**: test
 
 ### M.TEST_HELP.016 SPI fake uses rp2's bit-order numbers
@@ -518,7 +518,7 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   A.U10.08's scan-budget scenario (U10) — stage 1; `cut_after_bytes` with A.S0930.25 (its unit).
 - **Depends**: M.TEST_HELP.015, M.TEST_HELP.016.
 - **Blast carried by**: `_FakeMB85RS2MTA`/`_FRAM_FAKE_BY_MAX_SIZE` → M.TEST_HELP.035; power-cut L1 → A.S0930.25
-  (TEST_UNIT); WREN-retry L1 → A.U16.R01 (TEST_UNIT); scan-budget and fault-storm scenarios → M.TEST_HELP.041; twin FRAM
+  (TEST_UNIT); WREN-retry L1 → A.U16.R01 (TEST_UNIT); scan-budget and fault-storm scenarios → M.TEST_HELP.037/M.TEST_HELP.042; twin FRAM
   → M.TWIN.011 (TWIN).
 - **Kind**: test
 
@@ -542,7 +542,7 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   bench board drives them across its jumper." No `Any` (`Coroutine` alias from `_async_harness`).
 - **Resolved**: —
 - **Unit**: U24 (the `poll_idle_ms` argument lands with A.U13.17 in U13: the default changes there — stage 1).
-- **Depends**: M.TEST_HELP.040, M.TEST_HELP.017.
+- **Depends**: M.TEST_HELP.043, M.TEST_HELP.017.
 - **Blast carried by**: `tests/test_uart_comm_hazard.py` `hazard_pair()` and every `run()` caller → A.U24.08 (TEST_UNIT;
   a fixture is built in sync scope, A.U14.18's rule); `tests/test_asy_uart_link_driver.py` local `run()`/`build_pair()`
   → A.U24.08/A.U24.31 (TEST_UNIT); the exerciser's CRC-mode registration copies the shape → A.S0930.03 (TEST_UNIT);
@@ -609,8 +609,9 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   now reads one extra register frame, seeded). (7) `_construct_scd30/_sgp40/_isl29125` build without `address=`
   (the adapter signature keeps `address` for seeding and BMP3XX). (8) `:281-282` → "# Volatile config register (the
   OSR register is volatile, BMP388 datasheet §5.3) - no real-hardware write budget." after the executor confirms the
-  page in `datasheets/bmp3xx/`. (9) `inject_fault` calls take the class-plus-args form. Typed through
-  `_protocols.I2CLike`, no `Any`.
+  page in `datasheets/bmp3xx/`. (9) `inject_fault` calls take the class-plus-args form. (10) `_RESERVED_I2C_RANGES`/`_is_reserved` become public
+  `RESERVED_I2C_RANGES`/`is_reserved` (A.U35.19 imports them into `tests/test_bus_hazard_multi_device.py`; a name
+  imported across modules is public). Typed through `_protocols.I2CLike`, no `Any`.
 - **Resolved**: A.U24.28 removes the sweep's blanket `except`; the same rule is applied to the per-call `except
   Exception: pass` inside each `_exercise_*` (otherwise the sweep's "an exercise that raised before its first
   transfer fails" never bites) — agent decision D6.
@@ -694,3 +695,1104 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   `_ProbeGc.collect` hold → A.U30.16 (TSC).
 - **Kind**: test
 
+## tests/_digital_twin_construction_scenarios.py
+
+After U25 this library keeps only in-process L2 work (construction, wiring, boot sequence, pin identity — no HTTP);
+its two HTTP scenarios move to the host-side harness (A.U25.46, OR125.a).
+
+### M.TEST_HELP.029 Twin construction library: derived devices, shared boot, honest checks
+- **From**: A.U24.79, A.U20.02, A.U20.06, A.U24.65 (1)/(4), A.U24.70, A.U24.08, A.U24.06, A.U24.50 (twin `Skip`),
+  A.U24.43 (1) (derived names), A.U10.30, A.U24.46, A.U25.03/A.U25.24 (`reset_peripherals()` first), A.U25.33
+  (offline NTP), A.U25.48 (`:1`), A.U8C.02 (`_RUN_TIMEOUT_S`), A.U20.42 (holds), A.U25.43 (holds), A.U27.23 (holds),
+  A.U0.07, A.U10.40 (H1 key), A.U24.73
+- **Site**: `tests/_digital_twin_construction_scenarios.py:1-3` (docstring), `:41-42` `run_timed()`, `:47`
+  `_DEVICES`, `:50-53` `_wiring_plan()`, `:56-61` `_cancel()`, `:64-67` port comment and `_PORT_BASE_BY_DEVICE`, `:95-100`
+  `_boot_device()`, `:103-118` `_present_optional_instances()`, `:121-132` boots scenario (mandatory tuple `:128`),
+  `:216-232` `register_for_device()`.
+- **Change**: (1) Docstring `:1` "across all 6 real devices" → "across every generated device"; `:2-3` E.2.1 pointer
+  holds (now `### E.2.1`). (2) `run_timed`/`_cancel` copies go (`_async_harness`). (3) `_DEVICES`/`_wiring_plan()` →
+  `_twin_devices.generated_devices()`/`wiring_plan()`; the "one of this module's own real devices" assert reads the
+  derived set. (4) Port base: this library's band from `_port_bands` (A.U24.70), the device's offset its index in
+  `generated_devices()`, band-end asserted; the port comment `:64-66` → one line naming the band table. (5)
+  `_boot_device(port, device)`: `machine.reset_peripherals()`, `network.reset_interfaces()`,
+  `machine.configure_wiring(wiring_plan(device))`, then `module, wdt = await boot_generated(device, cfg_path=cfg_dir,
+  web_host="127.0.0.1", web_port=port)`, whose `offline_ntp=True` default writes the offline NTP config through the one
+  `write_offline_ntp_config()` (M.TEST_HELP.047; key `NTPHost`, A.U10.40 lands first); `require_fresh()` once at
+  import. (6) Boots scenario: `"watchdog"` leaves the mandatory tuple (the global is gone) and the mandatory and optional
+  names come from the plan (buses from `plan["buses"]`/`plan["spi"]`, instances from `plan["instances"]`), not a
+  literal list (agent decision D11, A.U24.43 (1)'s rule applied to this library); the `run_timed(…, 10.0)` literal → `_RUN_TIMEOUT_S = 10.0` (`# @tunable
+  l2.construction_scenarios_run_timeout_s = 10.0`). (7) `register_for_device()` asserts the count of module-level
+  `_scenario_*` functions equals `len(_PARAM_SCENARIOS)`; a scenario whose device lacks the driver raises
+  `microtest.Skip("<device> declares no <x>")`. No `Any`.
+- **Resolved**: A.U25.43 exempts a scenario library from the prewarm rule; this one keeps its two module-level calls (it
+  boots devices itself) — unchanged.
+- **Unit**: U25 (latest: reset/offline NTP); stage U24 carries the harness, device set, port band, `boot_generated`,
+  register assert (A.U24.08's deletion of `run_timed` would otherwise break the file in U24); stage U20 the `main()`/
+  `watchdog=` change; U8C the tag.
+- **Depends**: M.TEST_HELP.043, M.TEST_HELP.046, M.TEST_HELP.047, M.TEST_HELP.055, M.TEST_HELP.056 (port bands).
+- **Blast carried by**: six wrappers → `tests/test_digital_twin_construction.py` (`PER_DEVICE = True`) → A.U24.65
+  (TWIN); `test.sh` per-device expansion → A.U24.65 (3) (SCR); the twin runner's own offline write imports the same helper → GAP-H3 (TWIN, A.U25.33).
+- **Kind**: test
+
+### M.TEST_HELP.030 Twin construction library gains boot-sequence and IRQ-pin scenarios
+- **From**: A.U25.47, A.U25.52, A.U20.07 (recorder)
+- **Site**: `tests/_digital_twin_construction_scenarios.py` (two new `@_register_param` scenarios).
+- **Change**: (1) `boot_sequence_matches_the_generated_expectation`: boot through the real `main(watchdog=…)` with
+  `tests/_boot_recorder.py`'s recorders wrapped around the real `SystemService` methods and every instance's `setup`,
+  stopped at `supervise_tasks()` entry; the recorded list equals `sensortask_<device>_expected.json`'s
+  `boot_sequence`; the twin WDT's `would_have_triggered_count == 0` over the boot; the first NTP force sync follows the
+  timer starts. (2) `irq_pins_are_shared_by_chip_fake_and_driver`: after the boot, for every plan attachment with
+  `irq_pin`, the reader's IRQ `Pin` `is machine.Pin(attachment["irq_pin"])` and `is` the chip fake's `_rdy_pin`/
+  `_int_pin`; an ISL29125 INT line reads high at idle.
+- **Resolved**: A.U25.47 imports "the same recorder A.U20.07 writes for L1 … from its helper, not copied"; A.U20.07
+  sites it inside `tests/_sensortask_scenarios.py`, which a twin process must not import (it binds unit-tier FRAM
+  fakes) — the recorder is its own module `tests/_boot_recorder.py` (M.TEST_HELP.061), used by both (agent decision D9).
+- **Unit**: U25
+- **Depends**: M.TEST_HELP.029, M.TEST_HELP.061.
+- **Blast carried by**: expected JSON writer → A.U20.07 (GEN/SCR); twin `Pin` identity and chip pins → A.U25.03/A.U25.52
+  (TWIN).
+- **Kind**: test
+
+### M.TEST_HELP.031 Twin HTTP scenarios move to the host-side harness
+- **From**: A.U25.46 (2), A.U24.47, A.U0.29 (E08), A.U20.28 (`:174`), A.U25.31, A.U25.45 (`:147`, `:193`), A.U25.70
+  (`:182`), A.U24.82, A.U8C.02 (deferred sleeps), A.U36.004 (none here), A.U24.67/A.U25.48 (hold)
+- **Site**: `tests/_digital_twin_construction_scenarios.py:135-210` (`_scenario_measurements_and_sensors_shape`,
+  `_scenario_bus_fault_degrades`), and the `_http_client` / `assert_sensor_payload_not_self_wrapped` imports.
+- **Change**: both scenarios leave this file in U25 (deleted here; their goals and assertions are rewritten in
+  `scripts/_digital_twin_scenarios.py` by A.U25.46). The content their constituents owed travels with them (GAP-H2):
+  the measurements/sensors GET compares strict-parsed bodies; the bus-fault scenario injects a sustained fault
+  (`times=1000`, class-plus-args form) on the SGP40 chip's `writeto` through the runner's fault spec, starts the SGP40
+  reader's own starters, waits until the injector's `pending()` count fell (consumed by a real read), then `GET
+  /measurements` → 200 with strict JSON whose SGP40 measured fields are all `null`, and `GET /status` shows SGP40's error
+  count ≥ 1; its comment carries "(owner, 2026-08-13)" for the "might point us to oversights" value and drops the false
+  "no tests/machine.py-backed fake has a comparable fault surface" clause; the SGP40 bus comes from the plan through
+  `fixed_address()`, not the removed `FIXED_ADDRESSES`; readiness by poll (A.U25.45's `wait_until_serving`), never a
+  1.0 s sleep (A.U8C.02's deferred sleeps closed "polled"); a refusal is `CeilingRefusedError` (A.U25.31). The two
+  imports leave with them.
+- **Resolved**: A.U24.47 (U24) rewrites `_scenario_bus_fault_degrades` in place, A.U25.46 (U25) moves it host-side —
+  the scenario is not edited in U24; A.U24.47's content is written once, in the host harness (agent decision D10:
+  avoids rewriting an in-DUT scenario that is deleted one unit later; nothing in U24 depends on it).
+- **Unit**: U25
+- **Depends**: M.TEST_HELP.029.
+- **Blast carried by**: host-side rewrite → A.U25.46 with A.U24.47/A.U0.29/A.U20.28/A.U25.45 content → GAP-H2 (TWIN/SCR,
+  `scripts/_digital_twin_scenarios.py`).
+- **Kind**: test
+
+## tests/_webserver_concurrency_scenarios.py
+
+### M.TEST_HELP.032 Concurrency library: U24 keeps it running on the shared helpers
+- **From**: A.U24.08, A.U24.79, A.U24.65 (1)/(4), A.U24.70, A.U24.06, A.U24.46, A.U10.30, A.U20.02, A.U20.06,
+  A.U24.21 (seeding through the shared boot), A.U0.07, A.U10.37/A.U10.40 (H1), A.U5.04 (constructor objects, blast)
+- **Site**: `tests/_webserver_concurrency_scenarios.py:55` `run_timed`, `:61` `_DEVICES`, `:70-81`
+  `_PORT_BASE_BY_DEVICE`, `:97-102` `_boot()`, `:144` `_cancel`, `:266-273`/`:844-866` registration.
+- **Change**: the mechanical stage only, so the file keeps working between U24 and its retirement in U25: harness
+  imports (`run_timed`, `cancel`), the derived device set and port band (as M.TEST_HELP.029 (3)-(4)), `_boot()` →
+  `boot_generated(device, …)` with `require_fresh()` at import, the scenario-count assert in `register_for_device()`,
+  H1 renames as each lands. No scenario body changes.
+- **Resolved**: every content action on this file (M.TEST_HELP.033's list) is written once, into the host harness —
+  agent decision D10 (as M.TEST_HELP.031).
+- **Unit**: U24 (H1 parts with their U10 actions; `watchdog=`/`run_setups` with U20).
+- **Depends**: M.TEST_HELP.043, M.TEST_HELP.047, M.TEST_HELP.055, M.TEST_HELP.056.
+- **Blast carried by**: — (the file and its six wrappers go in U25, M.TEST_HELP.033).
+- **Kind**: test
+
+### M.TEST_HELP.033 Retire the in-DUT concurrency library into the host harness
+- **From**: A.U25.46, A.U25.74, A.U27.38 (runner), A.U27.23 (file leaves the twin pass list); content constituents
+  travelling host-side: A.U24.34, A.U24.36, A.U24.37, A.U8C.04, A.U8C2.01, A.U8.18 (`:694`), A.U0.28 (`:482`), A.U0.35
+  (`:753`), A.U19.21 (`:215-218`, `:569-571`), A.U5.05 (`:105`, `:518`), A.U25.31, A.U25.45 (`:128-140`, `:495`, `:532`,
+  `:741`), A.U30.15 (`:861`), A.U36.004 (`:129-131`), A.U36.544 (`:251`, `:591`), A.U14.28 (F.7 row 1), A.U19.20
+  (`:659` route set), A.U20.28 (plan reader), A.U8.23 (`:37` ignore), A.U25.24/A.U25.33/A.U25.43 (boot discipline),
+  A.U24.65 (wrappers); hold: A.U11.24, A.U19.07, A.U19.08, A.U26.64, A.U35.29, A.S0930.18, A.SDEP.06, A.SDEP.16,
+  A.SDEP.18, A.U5.04
+- **Site**: the whole of `tests/_webserver_concurrency_scenarios.py` (866 lines) and the six
+  `tests/test_digital_twin_webserver_concurrency_<device>.py` wrappers.
+- **Change**: in U25 the file and its six wrappers are deleted; every scenario and helper (all 22) is rewritten in
+  `scripts/_digital_twin_scenarios.py` against a booted twin process (`scripts/_twin_process.py`), DUT-side control
+  through A.U25.74's `--test-…` flags. Each content constituent above lands in that rewrite (GAP-H2 lists them per
+  scenario); none is applied to this file. No third `PER_DEVICE` wrapper is created (A.U24.65 vs A.U25.46: A.U25.46's
+  outcome kept, as both actions state).
+- **Resolved**: A.U24.34 vs A.U25.31 on a refused connection — A.U25.31's verified client text settles it (a refusal is
+  `CeilingRefusedError`, an `OSError`; an `open_connection` failure propagates as `OSError`); A.U24.65 vs A.U25.46 on the
+  wrappers — A.U25.46 kept (both name it); A.S0930.18's port block reference (`:71-77`) moves to its new home in
+  `tests/_port_bands.py` (A.U24.70) — settled by A.U24.70.
+- **Unit**: U25
+- **Depends**: M.TEST_HELP.032; A.U25.46/A.U25.74 (host harness, flags).
+- **Blast carried by**: host harness rewrite with every content item → GAP-H2 (TWIN/SCR); `scripts/test.sh` and
+  `run_digital_twin_ci.sh` jobs → A.U27.38 (SCR); `digital_twin/typecheck.ini` `files` drops the file → A.U27.23
+  (TOOL); SPEC citers of `tests/_webserver_concurrency_scenarios.py:193` (H.7.1) repoint to the harness → A.U36.532
+  (SPEC); A.S0930.18's test cites the port table → A.U24.70 (TEST_UNIT).
+- **Kind**: test
+
+## tests/_sensortask_scenarios.py
+
+The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per derived device through one
+`PER_DEVICE` file after U24 (A.U24.65). Grouped by site area; each group is one merged change.
+
+### M.TEST_HELP.034 Scenario library text: constants from source, current facts, renames
+- **From**: A.U24.01 (`:27-31`), A.U24.67 (`:854`), A.U36.004 (`:860-862`), A.U0.35 (`:967`), A.U0.37 (`:501`),
+  A.U0.39 (`:691`), A.U36.544 (`:216`, `:652`), A.U19.05 (`:1245`, `:1257`), A.U8.23 (`:22`), A.U9.03 (`:1068-1082`
+  comment), A.U19.02 (`:1071-1073` → A.U9.03's), A.U2.13 (holds), A.U10.37/A.U10.38/A.U10.35/A.U10.40/A.U10.43/
+  A.U10.44 (H1), A.U0.07 (H5: `:344-345`, `:384`, `:555-560`, `:575`, `:622`, `:636`, `:807-808`), A.U24.73,
+  A.U36.038 (H6)
+- **Site**: `tests/_sensortask_scenarios.py:1-3` (docstring), `:22` (`# type: ignore[import-not-found]`), `:27-31`
+  (`_PHASE_*` mirrors), comments `:216`, `:501-503`, `:651-652`, `:691`, `:854`, `:860-862`, `:967`, `:1068-1082`,
+  `:1245`, `:1257`; every function-level import; every `Any`.
+- **Change**: (1) `_PHASE_STA_SEEKING`/`_PHASE_HOTSPOT` read through `_src_const.src_const("src/asy_wifi_service.py",
+  "_PHASE_…")`, the three-line mirror comment gone. (2) `:22`'s ignore goes once Microdot's stub is vendored (A.U8.23).
+  (3) Comments: `:216` "(Part L.3)" → "(Part L.2)", L.2 gaining "Instances of equal rank keep their TOML declaration
+  order (`buildgen/graph.py:54-57`)"; `:652` "WP6 (SPECIFICATION.md Part D.9/G.2)" → "the boot batch's watchdog feed
+  (SPECIFICATION.md A.7, G.2)"; `:501` "Owner requirement:" → "Owner requirement (owner, 2026-08-11):"; `:691` →
+  "(owner, 2026-08-11: system-wide, no shared mutable value)"; `:860-862` → "# The implicit FRAM-wiring rule
+  (SPECIFICATION.md A.7): every device's TOML declares [device.wiring].fram_target, / # so webserver's self.pr is
+  FRAM-backed on every device, like conn/ntp/sysfunct. No device-level / # fram_target is covered at the codegen level
+  instead."; `:967` → "unlike the accepted power-loss residual risk (owner, 2026-09-26; Part F.2)"; `:854` states the
+  mechanism with no device name or count; `:1068-1082` → "a second command would find the first still queued and be
+  refused"; `:1245`, `:1257` name `_StaticRoutes.serve()`. (4) Every function-level import moves to module level
+  (H5); module names and keys follow H1 as each renaming action lands. (5) No `Any` (JSON alias, `_protocols`,
+  `object`). (6) U36: D.15 order, `_register` the named import-time exception.
+- **Resolved**: —
+- **Unit**: U24 (stages: H1 with each U10 action; `:22` U8; `:501`/`:691`/`:967` U0; `:216`/`:652` U36; `:860` U36;
+  `:1068-1082` U9; `:1245`/`:1257` U19).
+- **Depends**: M.TEST_HELP.044.
+- **Blast carried by**: SPEC L.2 sentence → A.U36.544 (SPEC).
+- **Kind**: test
+
+### M.TEST_HELP.035 Scenario infrastructure: shared boot, derived sets, strict bodies
+- **From**: A.U24.79, A.U24.08, A.U24.43 (1)/(2), A.U24.65 (1)/(2), A.U24.22 (2), A.U24.21 (seeding), A.U24.46,
+  A.U10.30, A.U24.60, A.U24.50 (1), A.U24.06, A.U20.02, A.U20.06, A.U11.10, A.U20.11 (`_all_loggers` via
+  `get_loggers()`), A.U15.12/GAP-10 (SCD30 cfgmgr), A.U19.06 (`sock=`), A.S0930.37 (1) (`_dispatch_async`), A.U19.11
+  (holds), A.U20.42 (holds), A.U24.09 (holds), A.U5.02/A.U5.04 (constructor blast), A.U18.10 (offline NTP config)
+- **Site**: `tests/_sensortask_scenarios.py:41-42` `run()`, `:52-57` `status_body()`, `:62` `_DEVICES`, `:65-90`
+  FRAM fakes and `fram_fake_class()`, `:84-87` `_wiring_plan()`, `:120-133` (`_OPTIONAL_INSTANCE_NAMES`, `_boot()`,
+  `build()`), `:136-173` (`_device_of`, `_present_optional_instances`, `_has`, `_has_uart_link`), `:176-206`
+  `_all_loggers()`, `:237-243` `_sensor_reader_owners()`, `:246-252` `_dispatch()`, `:1279-1294`
+  `register_for_device()`.
+- **Change**: (1) `run()` → `_async_harness.run`; every bounded wait is the caller's own bound. (2) `_DEVICES`,
+  `_wiring_plan()` → `_twin_devices.generated_devices()`/`wiring_plan()`; `require_fresh()` at import. (3) FRAM:
+  `_FakeMB85RS2MTA` goes; `fram_fake_for(device)` returns a constructor bound to `FakeMB85RS64V(size=…, rdid=…)` from
+  `_FRAM_FAKE_BY_MAX_SIZE = {0x2000: (0x2000, <MB85RS64V RDID>), 0x40000: (0x40000, bytes([0x04, 0x7F, 0x48,
+  0x03]))}` read off the plan's `max_size` (public: the boot probe imports it). (4) New public `seed_occupants(device)`:
+  for every plan I2C bus, constructs the fake `machine.I2C(id, …)` (the per-id entry the product then reuses) and runs
+  each occupant's catalog adapter `seed()` (which adds the address to `attached`); an occupant with no adapter fails
+  with the catalog's actionable message. (5) `_boot(device, cfg_path=None, **kw)` → `seed_occupants(device)`, install
+  the FRAM factory, `return await boot_generated(device, cfg_path=…, **kw)` — whose default `offline_ntp=True` writes
+  `config_NTP.cfg` = `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` into the cfg dir when absent (A.U18.10: L1 boots
+  set it through the stored config, so no L1 run queries a public DNS server) (module and WDT; construction plus
+  `run_setups()`); `build()` = `run(_boot(…))` and only ever called from synchronous scenario scope. (6) Owners and
+  optional names derive from the plan (`plan["instances"]` drivers other than `uart_link`, plus `plan["uart"]`'s two
+  variables, plus the mandatory services) — `_OPTIONAL_INSTANCE_NAMES` and the hand owner list go. (7) `_all_loggers()`
+  = for each plan-derived owner in construction order, `owner.get_loggers()` (the fan-in `_collect_level_setters()`
+  uses), so SCD30's RAM-only `cfgmgr.pr` and any new driver join with no edit; the "scd30 before sgp40 …" comment and
+  `_has_uart_link()`'s "Only \"dev\" has it today" go (no device-set claim, G8/R01).
+  (8) `_dispatch()` builds the request with `sock=(_NoopHolder(), _NoopHolder())` (a one-method `_Holder` fake) and is
+  `run(_dispatch_async(…))`; `_dispatch_async(module, method, path, json_body=None)` returns `await
+  app.dispatch_request(req)` for scenarios already inside one coroutine. (9) Every response body is parsed with
+  `strict_loads()` (32 sites) and `status_body()` drains then strict-checks. (10) `if not _has(…): return` →
+  `raise microtest.Skip("<device> declares no <x>")` everywhere (the "every real device has … today" comments go).
+  (11) `register_for_device(device)` asserts the device is in the derived set, uses its `TmpScratch` key, and asserts
+  the count of module-level `_scenario_*` functions equals `len(_SCENARIOS)`.
+- **Resolved**: A.U24.79's `boot_generated()` replaces the three libraries' `_boot()` bodies, while A.U24.43 (2)
+  requires seeding before `setup()`; the per-id fake bus (M.TEST_HELP.013) lets seeding precede construction, so the
+  shared helper stays generic and the unit seeding stays here (agent decision D12). A.U20.11 asks the FRAM check to read
+  `get_loggers()`; `_all_loggers()` is rebuilt on the same fan-in so the two cannot disagree (agent decision D13).
+- **Unit**: U24 (stages: `sock=` with A.U19.06 in U19; `watchdog=`/`run_setups()` with A.U20.02/A.U20.06/A.U11.10 in
+  U20; `_dispatch_async` with A.S0930.37).
+- **Depends**: M.TEST_HELP.008, M.TEST_HELP.022, M.TEST_HELP.026, M.TEST_HELP.043, M.TEST_HELP.046, M.TEST_HELP.047,
+  M.TEST_HELP.055.
+- **Blast carried by**: the six `tests/test_sensortask_<device>.py` → `tests/test_sensortask.py` (`PER_DEVICE = True`,
+  `TEST_DEVICE`) → A.U24.65 (TEST_UNIT); `scripts/test.sh` expansion → A.U24.65 (3) (SCR); boot probe imports
+  `fram_fake_for`/`seed_occupants` → M.TEST_HELP.028.
+- **Kind**: test
+
+### M.TEST_HELP.036 FRAM layout scenarios read the real chunks, derive every expectation
+- **From**: A.U16.02 (1), A.U20.11, A.U15.12/GAP-10 (AC_NOTES 13, GAP-G7), A.U5.07 (chunk order), A.U16.03, A.U16.13
+  (holds), A.U16.17, A.U16.R02, A.U16.R03, A.U0.37 (`:501`, M.TEST_HELP.034), A.U24.22, A.S0930.21 (holds)
+- **Site**: `tests/_sensortask_scenarios.py:210-234` `_expected_fram_chunk_calls()`, `:377-417` (layout scenario,
+  `method-assign` wraps `:388-415`), `:419-475` (`fram_chunks_are_all_successfully_allocated_not_out_of_memory`),
+  `:480-489` (only-FRAM-in-memory scenario), `:490-545` (`_DeadFramChip`, never-insists scenario).
+- **Change**: (1) `_expected_fram_chunk_owners(module)` replaces the call list: owner names in construction order
+  (from `sensortask_<device>_expected.json`'s construction part), each constructed module contributing its logger,
+  then `CFGMGR_<NAME>` only when its config log is FRAM-backed (`type(owner)._CFG_LOG_FRAM`), SGP40's backup as
+  `"SGP40_BACKUP"`, `"WEBSERVER"` last — so the NeoPixel-before-WiFi order of A.U5.07 and SCD30's RAM-only config log
+  need no edit (agent decision D7: A.U16.02's hand-ordered list is already wrong after A.U5.07). (2) Layout scenario renamed `fram_chunk_layout_is_contiguous_deterministic_and_in_owner_order`: the
+  chunks are every `PrintLogHistoryStore.fram` of `_all_loggers(module)` plus each SGP40 `ts_storage`; sorted by base
+  address the first starts at 0, each next at the previous plus `2 * (size + crc.length() + 2)`, the last ends at
+  `module.fram.allocated_size`, owner names in address order equal (1), and a second `build()` yields the identical
+  `(name, base, size)` list; the two `method-assign` wraps go. (3) Allocation scenario: reads
+  `expected_facts()["fram_wired"]` (from the expected JSON) and, for every named module, asserts each logger of
+  `get_loggers()` has `pr.fram is not None` except a config logger whose class sets `_CFG_LOG_FRAM = False` (must be
+  `None`), and every unnamed module only `fram is None`; SGP40 `ts_storage is not None` stays explicit; the hand list
+  and `_has()` gates go. (4) The in-memory-only scenario allows exactly the FRAM manager's own log and the RAM-only
+  config logs derived in (3). (5) New `first_boot_after_a_reflash_reinitialises_every_chunk_without_flood` (A.U16.03's
+  body). (6) Dead-chip scenario renamed `a_declared_dead_fram_chip_escalates_to_a_reboot`: keeps its construction and
+  RAM-logging assertions, sees three RDID cycles in the fake's log (A.U16.R02), `module.fram.get_task_starters()` has
+  one starter, and driving `start_tasks(…, task_names=…)` then `supervise_tasks()` with `asyncio.sleep` shortened from
+  outside arms the reboot with the task-budget reset reason, catching `machine.SimulatedRebootError` from the fake
+  timer; its comment keeps the owner requirement with its tag.
+- **Resolved**: GAP-10 / GAP-G7 / AC_NOTES 13 — A.U15.12's "two chunks" and A.U20.11's "every logger FRAM-backed" are
+  superseded for SCD30's config log by the RAM-only ruling; (1) and (3) derive the exemption from the class attribute,
+  never from a name (AC_NOTES 13: "derive, not name").
+- **Unit**: U24 (stages: (6) with A.U16.17/A.U16.R02 in U16; the owner list with A.U16.02 in U16; `fram_wired` with
+  A.U20.11 in U20; SCD30 exemption with A.U15.12/GAP-G7 in U15).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.022.
+- **Blast carried by**: `expected_facts()["fram_wired"]` and the expected JSON → A.U20.07/A.U20.11 (GEN, SCR); L0
+  `tests_scripts/test_fram_chunk_owner_sites.py` → A.U16.02 (2) (TSC); SPEC A.7 chunk list naming `CFGMGR_SCD30` RAM-only
+  → GAP-G7 (SPEC).
+- **Kind**: test
+
+### M.TEST_HELP.037 Boot scenarios: setup batch, boot sequence, feeds, stretches
+- **From**: A.U24.79 (`:651-677`), A.U10.10 (`:550-…`), A.U11.10, A.U20.07 (L1), A.U10.07 (3), A.U31.03, A.U10.08
+  (L1 scan budget), A.U11.07 (setup-phase code), A.U20.38 (3), A.U11.34, A.U9.10 (c), A.U10.19 (L1 inventory),
+  A.U11.35 (holds), A.U31.01 (holds), A.U31.17 (holds)
+- **Site**: `tests/_sensortask_scenarios.py:552-650` (setup batch order scenario), `:651-677`
+  (`_scenario_boot_feeds_the_watchdog`); new scenarios.
+- **Change**: (1) `setup_batch_runs_every_unit_in_the_collected_order` (renamed from the
+  `…sysfunct_then_fram_then_conn…` name): records `run_setups()`'s units through the recorder of
+  `tests/_boot_recorder.py` and asserts they equal `_collect_setups()`'s order, which now includes scd30, neopixel and
+  webserver; the per-class function-level imports go. (2) Boot feeds: asserts `module.sysfunct.watchdog is wdt` and
+  `wdt.feed_count` rises by one per setup unit (the WP label goes, M.TEST_HELP.034). (3) New
+  `boot_sequence_matches_the_generated_expectation` (A.U20.07's L1): `main()` run until `supervise_tasks()` is entered
+  (the recorder raises its stop exception there), the list equals the expected JSON's `boot_sequence`. (4) New unfed-
+  stretch scenario (A.U10.07 (3)) and setup-unit no-wait scenario (A.U31.03), both on `run_setups()` and the start
+  lists, fake clock on `asy_system_service.time`. (5) New supervisor scan-budget scenario (A.U10.08): k task deaths
+  before one round; persisted writes counted by the FRAM fake's `write_transactions` (M.TEST_HELP.022) ≤ k and one
+  `_TASK_CHECK_TIME` sleep. (6) New setup-failure scenario (A.U11.07): one module's `setup()` replaced to raise stops the
+  boot and the next `begin_boot()` reads 12. (7) New dropped-logger scenario (A.U20.38 (3)), every-measurement-starts-
+  `None` scenario (A.U11.34), timer-starter seam check (A.U9.10 (c)), and the per-device task inventory fan-in (A.U10.19).
+- **Resolved**: —
+- **Unit**: U24 (each new scenario lands with its constituent: A.U10.07/A.U10.08/A.U10.19 U10, A.U11.07/A.U11.10/A.U11.34
+  U11, A.U20.07/A.U20.38 U20, A.U31.03 U31; (2) U24).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.061.
+- **Blast carried by**: Part N rows `boot.unfed_stretch_*`/`boot.setup_unit_stretch_ms` → A.U10.07/A.U31.03 (SPEC);
+  L0 feed-site check → A.U10.08 (TSC); expected JSON → A.U20.07 (GEN).
+- **Kind**: test
+
+### M.TEST_HELP.038 Starter scenarios: trigger lists, real sequencer, real supervisor
+- **From**: A.U10.12 (`:774-796`), A.U10.13, A.U11.39, A.U24.43 (3), A.U24.50 (2), A.U32.06/GAP-G5, A.U20.06, A.U16.R03
+  (task count), A.U5.08 (`_collect_level_setters` holds)
+- **Site**: `tests/_sensortask_scenarios.py:750-796` (section comment `:750-753`, the two collect scenarios), `:804-841`
+  (fake `sysfunct` methods in the main-call-order scenario).
+- **Change**: (1) Collect scenarios cover task, timer and trigger starters (`_collect_trigger_starters()`); before
+  collecting, every owner's `get_timer_starters`/`get_trigger_starters` is wrapped by a counting wrapper (restored in
+  `finally`) and each wrapper ran exactly once; FRAM's starter is present on every FRAM device. (2) Task names:
+  `_collect_task_names()` equals the starters in length, names unique; every direct `start_tasks()` call passes
+  `task_names=module._collect_task_names()`. (3) The section comment `:750-753` → "# Task/timer starter collection and
+  the real supervisor, driven under the tracked harness with a fake clock." (4) The main-call-order scenario's fake
+  `sysfunct` methods follow the split API (`run_setups`, `start_tasks`, `start_timers(triggers, timers)`,
+  `supervise_tasks`) and assert `main()`'s order (setups → tasks → timers → force sync → supervise). (5) New
+  `read_triggers_follow_the_stagger_on_the_real_sequencer` (A.U10.13 and A.U11.39 merged): the real
+  `start_timers(_collect_trigger_starters(), _collect_timer_starters())` driven by `Timer.clock_ms` and
+  `_sequencer_timer.trigger()`; offsets equal `k·slot`, same-bus pairs furthest apart. (6) New
+  `every_task_starter_runs_under_the_real_supervisor` (A.U24.43 (3)): `start_tasks()` then one `supervise_tasks()` check
+  under `run_timed` with the fake clock over one `_TASK_CHECK_TIME`; each owner's started task is alive.
+- **Resolved**: A.U10.13 (U10) and A.U11.39 (U11) each add a per-device real-sequencer scenario under a fake clock;
+  A.U11.39's records `Timer.clock_ms` per arm, A.U10.13's patches `system_service.time` — one scenario, A.U11.39's
+  mechanism (it needs no module patch), A.U10.13's assertions; `tests_scripts/test_timer_stagger_no_coincidence.py`
+  goes once (agent decision D14).
+- **Unit**: U32 (task names); stages U10 (trigger collector, (1), (5) assertions), U11 ((5) mechanism), U20 ((4)), U24
+  ((6)).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.020.
+- **Blast carried by**: retired `tests_scripts/test_timer_stagger_no_coincidence.py` → A.U10.13 (TSC); generated
+  collectors → A.U10.12/A.U32.06 (GEN).
+- **Kind**: test
+
+### M.TEST_HELP.039 Debug-level scenarios go through the REST setting
+- **From**: GAP-G3 (M.SRC_CORE.008/.017/.018), A.U11.12, A.U11.15, A.U11.19 (holds), A.U5.08, A.U0.39 (`:691`)
+- **Site**: `tests/_sensortask_scenarios.py:689-747` (section comment, four scenarios), `:933-940` (DebugLevel PUT).
+- **Change**: levels are the documented `DebugLevel` numbers 0-5 and a logger's level is read from its public
+  `pr.level` (the `PrintLog.get_level()`/`level_*()` accessors are gone). (1) Collect-level-setters: each setter called
+  with 4 sets that logger's `pr.level` to 4. (2) Seed scenario: `build(device, debug=2)` with no file → `GET /system`
+  `DebugLevel` 0 and every `pr.level == 0`. (3) Set scenario: `PUT /system {"DebugLevel": 1}` → "Valid"; every logger
+  reads 1 (no `set_debug_level()` call). (4) Survives-reboot: the PUT, then a second `build()` over the same cfg dir →
+  `GET /system` 1 and every logger 1. (5) `:933-940` asserts `GET /system`'s `DebugLevel` and `conn.pr.level`, not
+  `get_debug_level()`.
+- **Resolved**: GAP-G3 (the getters/setter removed by M.SRC_CORE) — carried here.
+- **Unit**: U11 (with M.SRC_CORE.017/.018 and A.U11.15).
+- **Depends**: M.TEST_HELP.035.
+- **Blast carried by**: — 
+- **Kind**: test
+
+### M.TEST_HELP.040 System-command scenarios run as one tracked coroutine each
+- **From**: A.U11.03, A.U11.04, A.U10.15, A.S0930.11 (holds), A.S0930.26, A.S0930.37, A.U11.31, A.U17.19 (holds),
+  A.U19.01, A.U24.17 (reset raises), A.U0.35 (`:967`)
+- **Site**: `tests/_sensortask_scenarios.py:953-984` (reboot arms the timer, reboot flushes a pending write, invalid
+  command), `:1146-1179` (ResetErrors); new scenarios.
+- **Change**: a command scenario is one coroutine driven by one `run()` from synchronous scope: `module, wdt = await
+  boot_generated(device, …)`, `await sysfunct.start_tasks(…, task_names=…)`, `sup = create_task(sysfunct.supervise_tasks())`,
+  `await _dispatch_async(…)`, `await sysfunct._shutdown_task`, the fake reset timer's `trigger()` inside `try … except
+  machine.SimulatedResetError` (or `SimulatedBootloaderEntryError`), `sleep(0)` until the reset task is done, then
+  `sup` cancelled and awaited — never `build()`/`_dispatch()` inside it. (1) Reboot: "Valid"; after the trigger
+  `machine.reset_count == before + 1` and the reset cause reads WDT. (2) Reboot flushes: a `PUT /networking
+  {"LedWifiOn": …}` before the trigger is on disk after it; a write after the trigger is refused. (3) Invalid
+  command "Invalid". (4) New `resetconfig`, `erasefram`, bootloader and reboot scenarios at both GC stages (A.S0930.26/
+  A.S0930.37's bodies). (5) ResetErrors scenarios assert `result["ResetErrors"] == "Valid"`. (6) New: `PUT /networking
+  {"NoSuchKey": 1}` → `"Invalid"` (A.U19.01).
+- **Resolved**: —
+- **Unit**: U24 (stages with A.U11.03/A.U11.04 U11, A.S0930.* their unit, A.U19.01 U19).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.011.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_HELP.041 REST scenarios assert what their names claim
+- **From**: A.U24.32 (1)/(2), A.U4.04, A.U19.02, A.U9.03, A.U10.40 (keys), A.U18.21, A.U18.33, A.U18.38, A.U18.39,
+  A.U5.07, A.U11.05, A.U11.08, A.U19.10, A.U23.22, A.U32.06, A.U6.21, A.U24.63, A.U10.27, A.U19.13, A.U15.12 (holds),
+  A.U20.16 (holds), A.U23.33 (holds), A.U19.11 (holds)
+- **Site**: `tests/_sensortask_scenarios.py:869-950` (measurements/sensors/networking/NTP/GMT scenarios), `:986-1093`
+  (LED command, PauseTime, WarnCO2), `:1102-1142` (status keys, build info), `:1185-1262` (hotspot); new scenarios.
+- **Change**: (1) SCD30 PUT: after `PUT /sensors {"SCD30": {"MeasInterval": 4}}` (A.U10.40 key), `GET /sensors` shows 4
+  and the fake bus log holds the SCD30 set-interval command (the fake answers the chip-store snapshot, A.U4.04). (2) LED
+  command: the scenario named for a log asserts it through `tests/_recording_print.py`; the seven malformed payloads
+  answer `"Invalid"` (A.U19.02); new back-to-back case: first `"Valid"`, second `"Failed"` within 100 ms
+  (A.U9.03). (3) Networking: new mask-string PUT (`PW`, `HotspotPW` "********" stored verbatim, GET masked; A.U18.39);
+  new `HotspotPW` PUT configures the next hotspot start (A.U18.38); NTP settings change clears `Synced` (A.U18.21);
+  status snapshot with `wifi_mode_lock` held answers `Connected: true` and `IPv4 == IP`, AP mode `RSSI` null with no
+  rssi query (A.U18.33); WiFi LED construction passes `led_pin` (A.U5.07). (4) Status keys: `ResetReason`, `MemFree`
+  (int), `HTTPDropped`, `WifiTS`, `UnixTime`, `LastTaskEnd`, and `UtcTime is None` before sync; new scenarios for
+  `UtcTime`/`UnixTime` after `set_utc_valid(True)`, `HTTPDropped` rising after a forced refusal. (5) Build info equals
+  the generated module's embedded values via `src_const` (A.U24.63). (6) New non-finite scenario: every float field and
+  float config value set to NaN/±inf in turn, every GET route strict-parses with `null` there (A.U10.27). (7) New
+  serving-demand scenario (A.U19.13's L1). Keys follow A.U10.40's map as it lands.
+- **Resolved**: A.U24.32's "SCD30 PUT path" and A.U4.04's chip-store PUT co-land on `:898-905` — merged as (1) (A.U4.04's
+  path, A.U24.32's assertion).
+- **Unit**: U24 (stages with each constituent's unit: U4, U5, U6, U9, U10, U11, U18, U19, U23, U32).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.050.
+- **Blast carried by**: A.U6.22 status-field parity (definitions both ways) → GEN/WEB.
+- **Kind**: test
+
+### M.TEST_HELP.042 Robustness scenarios under a driven clock
+- **From**: A.U35.28 (L1), A.U35.30, A.U35.33, A.U35.34, A.U35.03 (review), A.U35.10 (`DrivenTime`)
+- **Site**: `tests/_sensortask_scenarios.py` (new scenarios, per derived device).
+- **Change**: (1) Fault-storm log rate (A.U35.28): persisted writes counted by the FRAM fake's counters stay within the
+  `rate.persisted_log` row. (2) Four planted-failure scenarios (A.U35.30): an exception escaping the supervisor, a
+  cancelled `main()`, and the two escalation cases — each after two supervisor feeds, then every live fake Timer
+  triggered and every Pin IRQ fired, `watchdog.feed_count` frozen at its value at the planted event (`feed_times`
+  read for order); a reset reached inside is caught as `machine.SimulatedRebootError`. (3)
+  `forty_days_of_uptime_keep_every_invariant` (A.U35.33) with `DrivenTime.jump()`. (4)
+  `dropped_one_second_wake_ups_never_skew_elapsed_values` (A.U35.34) using `Timer.drop()`.
+- **Resolved**: —
+- **Unit**: U35
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.065 (`DrivenTime`).
+- **Blast carried by**: `audit/b3/review.md` rows → A.U35.03 (audit artefact).
+- **Kind**: test
+
+## New helper files
+
+Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a ≤ 3-line docstring stating its job, no
+`Any`, public names only for what other modules import, and D.15 order (H4-H6).
+
+### M.TEST_HELP.043 Create the one async harness with its two guarantees
+- **From**: A.U24.08, A.U24.73 (`Coroutine` alias), A.U35.48 (caller), A.U14.18 (rule it enforces)
+- **Site**: new `tests/_async_harness.py`.
+- **Change**: `run(coro, limit_s: float | None = None)`, `run_timed(coro, timeout_s)`, `cancel(task)`,
+  `cancel_all(tasks)`, and the alias `CoroutineOf = Coroutine[object, object, T]` (under `TYPE_CHECKING`). `run`/
+  `run_timed`: (a) refuse to start inside a running loop — `if asyncio.core.cur_task is not None: raise
+  RuntimeError("run() called from inside a coroutine - build the fixture in the test's synchronous scope")` (`cur_task`
+  is set during `run_until_complete()`, `extmod/asyncio/core.py:167, 181, 200`), so the nested `asyncio.run()` that
+  segfaults the Unix port raises instead; (b) wrap `asyncio.create_task` and `asyncio.core.create_task` for the call
+  (`core.py:266-267`), record every task, and in a `finally` cancel and await every unfinished one in one extra
+  `run_until_complete` round, then restore both names. `run(coro, limit_s)` wraps `asyncio.wait_for(coro, limit_s)`
+  when a bound is given. Docstring: "One way to drive a coroutine from a synchronous test: refuses to nest inside a
+  running loop and cancels every task the call created. A task parked on an Event or on another task is on neither
+  scheduler queue and is not seen here; microtest's after-each check is the backstop."
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: M.TEST_HELP.002 (after-each scheduler check).
+- **Blast carried by**: the ~50 file-local `run()`/`run_timed()`/`_cancel*` copies → A.U24.08 (TEST_UNIT, TWIN), the
+  helper-library copies → M.TEST_HELP.023/.029/.032/.035; CLAUDE.md hang/segfault bullets → A.U36.546 (DOCS).
+- **Kind**: test
+
+### M.TEST_HELP.044 Create the src-constant reader
+- **From**: A.U24.01 (1)/(3), A.U24.02 (consumer), A.U24.63 (consumer)
+- **Site**: new `tests/_src_const.py`.
+- **Change**: `src_consts(path) -> dict[str, object]` (cached per path) evaluates every single-line `<_NAME> =
+  const(<expr>)` in order with the names bound so far; `src_const(path, name)` raises `KeyError(f"{name} is not a
+  const() in {path}")`; `NTP_EPOCH_DELTA = 2208988800  # RFC 5905 section 6, 1900 -> 1970`. Docstring as A.U24.01
+  (1) (cites `py/parse.c:857`, v1.29.0). `re`-free.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: —
+- **Blast carried by**: the mirrors in 17 test files → A.U24.01 (2) (TEST_UNIT, TWIN); L0 mirror check → A.U24.02
+  (TSC); scenario uses → M.TEST_HELP.034/.041.
+- **Kind**: test
+
+### M.TEST_HELP.045 Create the shared error-catalog lookup
+- **From**: A.U2.03, A.U24.02 (rule (c))
+- **Site**: new `tests/_error_codes.py` (runs under MicroPython and host CPython).
+- **Change**: `code(kind: str, name: str) -> int` (`kind` "E"/"W") reads `buildgen/error_catalog.json` once (path
+  relative to its own file, `json` only) and raises `KeyError` for an unknown or retired name.
+- **Resolved**: —
+- **Unit**: U2
+- **Depends**: A.U2.01 (catalog).
+- **Blast carried by**: product-code expectations in `tests/` → A.U2.05-A.U2.20 (TEST_UNIT); `tests_hardware/
+  error_log_helpers.py` imports it → A.U2.03 (HW_BENCH); `scripts/_digital_twin_ci_suite.py` → A.U2.03 (SCR).
+- **Kind**: test
+
+### M.TEST_HELP.046 Create the generated-tree freshness guard
+- **From**: A.U24.46 (2)
+- **Site**: new `tests/_generated_tree.py`.
+- **Change**: `require_fresh()` (MicroPython `os.stat()[8]`, `os.listdir`): `build/generated_src/.inputs_stamp.json`
+  exists, its path set equals the current input set and no input is newer than recorded; else `RuntimeError(
+  "build/generated_src/ is missing or stale - run: uv run scripts/_generate_sensortask_modules.py")`.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: the stamp writer → A.U24.46 (1) (SCR).
+- **Blast carried by**: callers (three scenario libraries, the probe, `tests/test_bus_hazard_generated.py`,
+  `tests/test_digital_twin_run_generic_integration.py`) → M.TEST_HELP.028/.029/.032/.035, A.U24.46 (TEST_UNIT, TWIN).
+- **Kind**: test
+
+### M.TEST_HELP.047 Create the generated-module loader and boot helper
+- **From**: A.U10.30, A.U24.79, A.U18.10/A.U25.33 (offline NTP), A.U20.02, A.U20.06, A.U11.10
+- **Site**: new `tests/_generated_module.py`.
+- **Change**: `load_generated(device) -> module` (the one F.1-named `tests/` load by a data-derived name);
+  `write_offline_ntp_config(cfg_dir)` writes `config_NTP.cfg` = `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` only when
+  absent (RFC 5737 TEST-NET-1; the product's flat JSON format); `async boot_generated(device, *, offline_ntp=True,
+  **kwargs) -> tuple[module, WDT]`: constructs one `machine.WDT` with the timeout parsed from
+  `build/generated_src/<device>_boot.py`'s `watchdog = WDT(timeout=<n>)` line (never a copied 8000), writes the offline
+  config into `kwargs["cfg_path"]` when asked, `await module.build_system(watchdog=wdt, **kwargs)`, `await
+  module.sysfunct.run_setups(module._collect_setups())`, returns both.
+- **Resolved**: A.U25.33 places `write_offline_ntp_config()` in the twin runner (U25), but unit-tier boots need it from
+  U20 on (A.U20.07's L1 runs `main()` through the first force sync, A.U18.10: "L1 boots set it through the stored
+  config") — the one implementation is born here in U20 (agent decision D16); the twin runner imports it (GAP-H3).
+- **Unit**: U24 (stage U10: `load_generated()`; stage U20: `boot_generated()` and the offline write, with the boot entry
+  and `run_setups()`).
+- **Depends**: M.TEST_HELP.046.
+- **Blast carried by**: the seven `__import__(f"sensortask_{device}")` sites → M.TEST_HELP.028/.029/.032/.035, A.U10.30
+  (TEST_UNIT); SPEC F.1 named list → A.U10.30 (SPEC); twin runner → GAP-H3 (TWIN).
+- **Kind**: test
+
+### M.TEST_HELP.048 Create the shared machine-fake contract suite
+- **From**: A.U24.17, A.U25.02 (twin half), A.S0930.24 (`feed_times`), A.U24.78/A.U24.82 (`pending()`), A.U24.20
+- **Site**: new `tests/_machine_contract.py`.
+- **Change**: checks taking a module object (or, for faults, a backend factory `make_injector() -> (inject, trigger)`):
+  `check_pin_constants`, `check_pin_pull_semantics`, `check_pin_defaults`, `check_wdt_timeout_bounds` (8388 cap, 8000
+  accepted), `check_wdt_feed_times`, `check_reset_never_returns`, `check_irq_edge_values`, `check_scan_never_raises`,
+  `check_inject_fault_fifo` (fresh objects, FIFO, `times=`, `match`, `pending`), `check_readfrom_mem_into_delegates`,
+  `check_i2c_state_survives_reconstruction`; `ALL_CHECKS` plus a completeness test (A.U24.06's pattern).
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: M.TEST_HELP.011-016.
+- **Blast carried by**: runners `tests/test_fakes.py` (renamed by A.U24.16) → A.U24.17 (TEST_UNIT) and
+  `tests/test_digital_twin_machine.py` → A.U24.17 (TWIN).
+- **Kind**: test
+
+### M.TEST_HELP.049 Create the shared mem-backup contract
+- **From**: A.U25.08, A.U25.01 (cites it), A.U11.07
+- **Site**: new `tests/_mem_backup_contract.py`.
+- **Change**: checks both tiers run: region sizes 4 and 3 words, the same object on every call, `-1` returns the tuple
+  of both, `2`/`-2` raise `ValueError("invalid region")`, `power_on()` clears both regions and sets `PWRON_RESET`, a
+  `reset()` leaves the regions and reports `WDT_RESET`; `ALL_CHECKS` with its completeness test.
+- **Resolved**: kept as its own module beside `_machine_contract.py` (both actions create one; the twin fidelity row
+  cites this path, A.U25.01) — agent decision D15 (no fold, no extra blast).
+- **Unit**: U25 (stage U11 for the unit half's L1 cases, A.U11.07, which the contract later absorbs).
+- **Depends**: M.TEST_HELP.011.
+- **Blast carried by**: runners → A.U25.08 (TWIN, TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.050 Create the recording-print wrapper
+- **From**: A.U24.32
+- **Site**: new `tests/_recording_print.py`.
+- **Change**: `record_prints(pr)` wraps a `PrintLog` instance's `err/wrn/one/evt/all` from outside, recording `(level,
+  args)` while still printing; returns the record list; a context manager restores the methods.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: —
+- **Blast carried by**: `tests/test_asy_wifi_service.py`, `tests/test_system_service.py`, `tests/test_asy_bmp3xx_driver.py`
+  renamed tests → A.U24.32 (TEST_UNIT); LED scenario → M.TEST_HELP.041.
+- **Kind**: test
+
+### M.TEST_HELP.051 Create the boundary protocols for typed fakes
+- **From**: A.U24.73
+- **Site**: new `tests/_protocols.py` (type-checking only; empty at run time).
+- **Change**: under `TYPE_CHECKING`: `I2CLike`, `UARTLike`, `WLANLike`, `WriterLike` `Protocol`s, one per boundary the
+  fakes stand in for, each listing exactly the methods the product calls.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: —
+- **Blast carried by**: per-file `Any` removal and ANN401 exemptions → A.U24.73 (TEST_UNIT, TOOL).
+- **Kind**: test
+
+### M.TEST_HELP.052 Create the one fast async sleep double
+- **From**: A.U24.49, A.U35.10 (sits beside it), A.U31.09/A.U31.14/A.U31.17 (`sleep_ms`, via M_SRC_SENS)
+- **Site**: new `tests/_fast_sleep.py`.
+- **Change**: `FastAsyncSleep` — the union of the ten file-local variants' behaviour (records every requested delay,
+  returns after `sleep(0)`), patching both `asyncio.sleep` and `asyncio.sleep_ms`; a parameter for the one behaviour
+  difference among the copies (whether a recorded delay is also counted per caller).
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: —
+- **Blast carried by**: the ten copies → A.U24.49 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.053 Create the timer-arm failure context
+- **From**: A.U24.49
+- **Site**: new `tests/_fake_timer_arm.py`.
+- **Change**: `RaiseOnArm(exc=OSError)` sets `machine.Timer.raise_on_arm`/`raise_on_arm_exc` and restores them in
+  `__exit__`.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: M.TEST_HELP.020.
+- **Blast carried by**: seven `_RaiseOnArm` copies → A.U24.49 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.054 Create the shared fake time sources
+- **From**: A.U24.49
+- **Site**: new `tests/_fake_time.py`.
+- **Change**: `FakeTime`, `OverflowingTime`, `tick()` — one shape each, a parameter where the copies differed.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: —
+- **Blast carried by**: the five notification-test copies and `_OverflowingTime`/`_tick` copies → A.U24.49 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.055 Create the derived device-set helper
+- **From**: A.U24.65 (1), A.U25.25 (2), A.U25.48 (`device_with_shared_bus`), A.U36.015/A.U36.016 (cite it)
+- **Site**: new `tests/_twin_devices.py`.
+- **Change**: `generated_devices() -> list[str]` (sorted stems of `build/generated_src/sensortask_*_wiring_plan.json`,
+  asserted non-empty), `wiring_plan(device) -> dict`, `device_with(driver) -> str`, `device_with_shared_bus(a, b) ->
+  str`; each raises with the device set it searched when nothing matches.
+- **Resolved**: A.U24.65 and A.U25.25 each create a derived-device helper and both say "one helper" — merged here at U24
+  (A.U24.65 lands first), U25 adding the two property lookups.
+- **Unit**: U24 (stage U25: `device_with*`).
+- **Depends**: —
+- **Blast carried by**: twin tests' device choice → A.U25.48 (TWIN); SPEC C.8/E.2.1 cite the module → A.U36.015/A.U36.016
+  (SPEC).
+- **Kind**: test
+
+### M.TEST_HELP.056 Create the one port-band table
+- **From**: A.U24.70, A.S0930.18 (port block)
+- **Site**: new `tests/_port_bands.py`.
+- **Change**: `BANDS = {"<owner>": (first, last, "tcp"|"udp")}` — disjoint rows below 32768, fixed rows for the JS
+  twins, the cross-browser smoke, the CI suite's 18080, `unix_port_poll_prewarm.py`'s scan band and the inline 19099;
+  `PortAllocator(owner)` (raises `AssertionError(f"{owner} ran past its port band {first}-{last}")`);
+  `band_for_device(owner, device)` splits a band evenly over `generated_devices()`; an `EADDRINUSE` in a user re-raises
+  "port <n> (band <owner>) is taken".
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: M.TEST_HELP.055.
+- **Blast carried by**: twelve allocators → A.U24.70 (TEST_UNIT, TWIN); L0 `tests_scripts/test_port_bands.py` and SPEC
+  E.1 → A.U24.70 (TSC, SPEC).
+- **Kind**: test
+
+### M.TEST_HELP.057 Create the shared FRAM manager builder
+- **From**: A.U24.49; M_TEST_UNIT's gap (rebuild over an existing chip)
+- **Site**: new `tests/_fram_builders.py`.
+- **Change**: `make_fram_manager(chip=None, *, size=0x2000, …)` builds a `FRAMManager` over a fresh `FakeMB85RS64V` or,
+  when `chip` is given, over that existing chip (a simulated reboot keeps the memory).
+- **Resolved**: the TEST_UNIT merge needs the rebuild form (its bmp3xx and FRAM-manager merges) — added as the `chip=`
+  parameter.
+- **Unit**: U24
+- **Depends**: M.TEST_HELP.022.
+- **Blast carried by**: eight `make_fram_manager`/`make_manager` copies → A.U24.49 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.058 Create the NTP frame builder and fake server
+- **From**: A.U24.49, A.U24.76
+- **Site**: new `tests/_ntp_frames.py`.
+- **Change**: `make_ntp_reply(…)` (with `_src_const.NTP_EPOCH_DELTA`) and one public `FakeNtpServer`.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: M.TEST_HELP.044.
+- **Blast carried by**: three `make_ntp_reply`/`FakeNtpServer` copies → A.U24.49/A.U24.76 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.059 Create the recording fixed random source
+- **From**: A.U24.30
+- **Site**: new `tests/_twin_random.py`.
+- **Change**: `FixedRandom` returning its fixed value and recording every `uniform(a, b)` as `(a, b)` in `calls`.
+- **Resolved**: —
+- **Unit**: U24
+- **Depends**: —
+- **Blast carried by**: five twin-test copies and the two override tests → A.U24.30 (TWIN).
+- **Kind**: test
+
+### M.TEST_HELP.060 Create the twin readiness polls
+- **From**: A.U25.45
+- **Site**: new `tests/_twin_readiness.py`.
+- **Change**: `async wait_until_serving(module, host, port)` (probe `fetch(read_body=False)` until 200, retrying every
+  50 ms on `CeilingRefusedError`/connection errors, deadline a tunable) then `await drained(module)`; `drained()` moved
+  from the concurrency library; `wait_for_value(read, expected, limit_ms)` for the admission and init polls.
+- **Resolved**: —
+- **Unit**: U25
+- **Depends**: —
+- **Blast carried by**: the 13 sleep sites → A.U25.45 (TWIN; the concurrency library's sites travel host-side with it,
+  GAP-H2).
+- **Kind**: test
+
+### M.TEST_HELP.061 Create the boot-sequence recorder
+- **From**: A.U20.07 (L1 recorder), A.U25.47 (imports it), A.U10.10 (setup order)
+- **Site**: new `tests/_boot_recorder.py`.
+- **Change**: `BootRecorder(module)`: wraps from outside the real `SystemService` methods (`run_setups`, `start_tasks`,
+  `start_timers`, `supervise_tasks`, `boot_phase`) and every instance's `setup`, appending `(kind, name)` entries; entering
+  `supervise_tasks()` raises its private `_Stop`; `restore()` undoes every wrap. Tier-neutral (imports no fake).
+- **Resolved**: see M.TEST_HELP.030 (agent decision D9).
+- **Unit**: U20
+- **Depends**: —
+- **Blast carried by**: L1 and L2 boot-sequence scenarios → M.TEST_HELP.037/.030.
+- **Kind**: test
+
+### M.TEST_HELP.062 Create the write counters for files and SCD30 NVM
+- **From**: A.U4.06
+- **Site**: new `tests/_write_counters.py`.
+- **Change**: `WriteCountingOpen(module, *, fail_writes=False, error=None)` and `scd30_nvm_writes(fake_i2c,
+  address=0x61) -> dict[int, int]` (asserts `fake_i2c.log.dropped == 0`), each frame word cited (SCD30 Interface
+  Description §1.4.1-1.4.3, §1.4.6-1.4.8).
+- **Resolved**: —
+- **Unit**: U4
+- **Depends**: —
+- **Blast carried by**: `tests/test_config_manager.py`, `tests/test_asy_bmp3xx_driver.py` → A.U4.06 (TEST_UNIT); twin
+  `Scd30Chip.nvm_writes` → A.U4.06 (TWIN).
+- **Kind**: test
+
+### M.TEST_HELP.063 Create the shared radio-shape corpus
+- **From**: A.U6.29 (4), A.U6.30, A.U10.41, A.U18.10
+- **Site**: new `tests/_radio_shape_cases.json`.
+- **Change**: one JSON object keyed by shape, each `{"accept": [...], "reject": [...]}`: `hostLabel` (A.U6.29's lists,
+  no variant name), `countryCode` (A.U6.30), `hostName` (`pool.ntp.org`, `192.168.1.1` accept; `-a.b`, a 64-character
+  label, `a..b`, `a b` reject), `ipv4List` (A.U18.10's lists). Read by the L1 test, the L0 pytest and the L0 vitest.
+- **Resolved**: —
+- **Unit**: U6 (stages U10, U18 add their keys).
+- **Depends**: —
+- **Blast carried by**: the three readers → A.U6.29 (TEST_UNIT, TSC, WEB).
+- **Kind**: test
+
+### M.TEST_HELP.064 Create the 2**30-wrap time source
+- **From**: A.U14.34, A.U17.06 (user), A.U35.10 (builds on it)
+- **Site**: new `tests/_ticks30.py`.
+- **Change**: `Ticks30Time` with settable `now`, `ticks_ms()`, `ticks_diff()`, `ticks_add()` per
+  `extmod/modtime.c:166-196` at period 2**30 (`OverflowError` outside (−2**29, 2**29)), `advance(ms)`, every other
+  attribute delegating to the real `time`.
+- **Resolved**: —
+- **Unit**: U14
+- **Depends**: —
+- **Blast carried by**: rollover tests → A.U14.34/A.U17.06 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.065 Create the driven clock for L1
+- **From**: A.U35.10
+- **Site**: new `tests/_driven_time.py`.
+- **Change**: `DrivenTime` as A.U35.10 specifies (`install(*modules)`, `advance(ms)`, `run_until(pred, limit_ms)`,
+  `jump(ms)`, shimmed `sleep`/`sleep_ms`/`wait_for`/`wait_for_ms`, a round cap that fails with the virtual time reached,
+  restore in `__exit__`), its "no task runnable" test reading the same queue as microtest's after-each check.
+- **Resolved**: —
+- **Unit**: U35
+- **Depends**: M.TEST_HELP.064, M.TEST_HELP.052.
+- **Blast carried by**: self-test `tests/test_driven_time.py` and users → A.U35.10 (TEST_UNIT); scenarios →
+  M.TEST_HELP.042.
+- **Kind**: test
+
+### M.TEST_HELP.066 Create the UDP port redirect
+- **From**: A.U18.11, A.U18.45
+- **Site**: new `tests/_udp_port_redirect.py`.
+- **Change**: `redirect_udp_port(module, real_port, fake_port)` context manager: replaces `module.UDPSocket` (renamed
+  by A.U10.38) with a subclass mapping `(host, real_port)` to `(host, fake_port)` before the real constructor, restored
+  in `__exit__`.
+- **Resolved**: —
+- **Unit**: U18
+- **Depends**: —
+- **Blast carried by**: the three NTP test files and the DNS client test → A.U18.11/A.U18.45 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.067 Create the cancel-at-each-await sweep
+- **From**: A.U35.48
+- **Site**: new `tests/_cancel_sweep.py`.
+- **Change**: `cancel_at_each_await(build, start, invariants, *, max_steps=200)` (synchronous) as A.U35.48 specifies:
+  per k, one `_async_harness.run()` from its own sync scope over a coroutine that awaits `build()`, starts the path,
+  steps k turns, cancels, asserts `CancelledError` (or completion ends the sweep), then `invariants(fixture)`; no
+  `asyncio.run()`-based builder inside; pollers are bounded fakes.
+- **Resolved**: —
+- **Unit**: U35
+- **Depends**: M.TEST_HELP.043.
+- **Blast carried by**: one sweep per path in its test file → A.U35.48 (TEST_UNIT).
+- **Kind**: test
+
+## tests/README.md
+
+Absent at HEAD; no action creates it. A.U0.42 and A.U36.546 delete README.md's "the way `src/README.md`/
+`tests/README.md` were" sentence (DOCS) — no change owed here (ledger rows only).
+
+## Gaps for other clusters
+
+- **GAP-T1 (TEST_UNIT)**: `tests/test_asy_uart_link_driver.py` (A.U8C.19) and `tests/test_asy_uart_comm.py` (A.U8C.17)
+  import the harness bounds as public `RUN_LIMIT_S`/`LISTENER_DRAIN_S` (not `_RUN_LIMIT_S`/`_LISTENER_DRAIN_S`), and
+  drive pairs with `_async_harness.run(coro, RUN_LIMIT_S)`; `build_pair()` now asserts setup (M.TEST_HELP.023/.024).
+- **GAP-T2 (TEST_UNIT)**: `machine.reset()`/`bootloader()` raise `SimulatedResetError`/`SimulatedBootloaderEntryError`
+  after counting (M.TEST_HELP.011): every test that triggers the reset timer or calls a reboot path catches
+  `machine.SimulatedRebootError` (`tests/test_system_service.py` reboot, bootloader, escalation and starve tests;
+  A.S0930.21/.24/.36, A.U11.03/.04/.07); `WDT(timeout > 8388)` raises `ValueError`.
+- **GAP-T3 (TEST_UNIT)**: the RTC fake refuses a non-8-tuple and returns a normalised date with weekday recomputed
+  (M.TEST_HELP.021); `Pin` state is per id and `I2C` state per bus id across constructions (M.TEST_HELP.012/.013) — a
+  test needing an independent fresh bus calls `machine.I2C.reset_id(id)`.
+- **GAP-T4 (TEST_UNIT)**: `UART.ioctl()` answers `-EINVAL` to every request but POLL; a direct `ioctl(3, …)` read in a
+  test becomes `poll_mask()`; the new L1 that registers a real `select.poll()` zeroes `UART.real_poll_queries` itself,
+  else the after-each hook fails it (M.TEST_HELP.010/.017).
+- **GAP-T5 (TEST_UNIT)**: the `network` fake seeds `"XX"`/`"PicoW"`, returns one static object per interface, raises
+  on `status("rssi")` off STA / `status("stations")` off AP, and an active AP reports `STAT_GOT_IP` (M.TEST_HELP.007):
+  `tests/test_asy_wifi_service.py:2729-2730`'s comment and the hotspot tests follow (A.U18.28's blast).
+- **GAP-T6 (TEST_UNIT)**: the NeoPixel fake stores a GRB bytearray: an out-of-range int wraps, a float raises
+  `TypeError` (M.TEST_HELP.006, A.U24.25's three test comments).
+- **GAP-H1 (HW_DEV, TSC)**: the board mirror `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py`
+  follows the probe's order (setups → `start_tasks(…, task_names=…)` → `start_timers(triggers, timers)`) and drops
+  `_STARTER_LOOP_GRACE_MS`; `tests_scripts/test_digital_twin_boot_contiguity.py:262` `_MIRRORED_BOUNDS` drops it too
+  (M.TEST_HELP.028, agent decision D8).
+- **GAP-H2 (TWIN/SCR — `scripts/_digital_twin_scenarios.py`, carrier A.U25.46)**: the content owed to the moved in-DUT
+  scenarios lands in the host harness, never in the deleted files (M.TEST_HELP.031/.033, agent decision D10):
+  bus-fault scenario per A.U24.47 (sustained fault consumed before the GET, SGP40 fields `null`, SGP40 error count ≥
+  1) with A.U0.29's "(owner, 2026-08-13)" tag and A.U20.28's `fixed_address()`; refusals classified per A.U25.31
+  (`CeilingRefusedError`) with A.U24.34's per-site rule; served bodies compared with an uncontended answer and the
+  route set read from the one route table (A.U24.36, A.U19.20); the concurrent config write PUTs `/networking
+  {"GMTOffset": 3600 + 60*(i+1)}` (A.U24.37); tags A.U8C.04/A.U8C2.01 and `web.connections_per_page_load` (A.U8.18);
+  owner tags `:482` (A.U0.28), `:753` (A.U0.35), OpenHAB `:215-218`, `:569-571` (A.U19.21); `_DEFAULT_OUTER_CAP_S`/
+  `_DEFAULT_MAX_CONTENT_LENGTH` names (A.U5.05); readiness polls not sleeps (A.U25.45); no `gc.collect()` prop
+  (A.U30.15); the A.7 citation (A.U36.004) and A.U36.544's `:251`/`:591` repoints (C.8 gaining the `config_lock`
+  sentence); A.U14.28's F.7 row 1 text; the zero-think readers scenario (A.U35.29).
+- **GAP-H3 (TWIN)**: `write_offline_ntp_config(cfg_dir)` has one implementation, in `tests/_generated_module.py`
+  (born U20, M.TEST_HELP.047); A.U25.33's twin runner `digital_twin/run_generic_integration.py` imports it (or TWIN moves
+  that one function to an import-safe module both tiers reach) — not a second copy.
+- **GAP-H4 (TWIN)**: A.U25.47's twin boot-sequence scenario imports `tests/_boot_recorder.py` (M.TEST_HELP.061), not
+  `tests/_sensortask_scenarios.py`; A.U25.33/A.U25.03's boot discipline in the construction library is applied by
+  M.TEST_HELP.029.
+- **GAP-H5 (SPEC)**: SPEC L.2 gains the equal-rank-order sentence (A.U36.544), E.8 the platform-print sentence
+  (A.U36.544), and every H.7.1 citer list (A.U36.532) drops `tests/_webserver_concurrency_scenarios.py:193` (the file is
+  deleted; its sentence moves with the harness).
+- **GAP-H6 (TSC)**: `tests_scripts/test_import_placement.py` — the `_PENDING` entries for this cluster's files leave in
+  U24 (H5); `_NAMED_EXCEPTIONS` holds `tests/_generated_module.py` (`load_generated`) and the two runners' `exec` (A.U10.30
+  F.1 list).
+- **GAP-H7 (GEN)**: the scenarios read `expected_facts()` through `build/generated_src/sensortask_<device>_expected.json`
+  (`boot_sequence`, `fram_wired`); `fram_wired` lists module labels only — the RAM-only config log is derived by the
+  scenario from `_CFG_LOG_FRAM` (M.TEST_HELP.036, AC_NOTES 13), so GEN must not emit a per-logger exemption list.
+
+## Adherence findings
+
+- `tests/microtest.py`: header docstring missing → fixed M.TEST_HELP.002; forced `sys.exit()` kept on every path
+  (CLAUDE.md hang #2) → M.TEST_HELP.001; per-test `gc.threshold` and `sys.path` restore → M.TEST_HELP.002; comment cap →
+  M.TEST_HELP.001.
+- `tests/_threshold_runner.py`, `tests/_coverage_runner.py`: `#` headers instead of docstrings (A.U27.28) and inline
+  `# noqa: S102` → fixed M.TEST_HELP.003/.004.
+- `tests/_tmp_scratch.py`: eight bare `except OSError: pass` (OR19.a (1) swallowing) → fixed M.TEST_HELP.005.
+- `tests/neopixel.py`, `tests/network.py`: over-long docstring lines (3-line cap counts `ceil(len/110)`) → fixed
+  M.TEST_HELP.006/.007; network's "fidelity not required" comment contradicts the rp2-modelling rule → fixed
+  M.TEST_HELP.007.
+- `tests/machine.py`: docstring cites a BACKLOG finding that no longer exists (G9/R12) → fixed M.TEST_HELP.010; RTC
+  comment's BACKLOG history pointer (OR27.a history) → fixed M.TEST_HELP.021; `UARTLink` comment's "(A1/A3)" changelog
+  labels (G9/R12) → fixed M.TEST_HELP.019; comments restating the wrong poll mechanism (AC_NOTES 29) → fixed
+  M.TEST_HELP.017; bounded poller rule (CLAUDE.md "Known hang cause") → holds (`LinkPoller`, no real poll); `**kwargs:
+  Any` → fixed M.TEST_HELP.020.
+- `tests/_shared_rest_roundtrip.py`: docstring history ("was {...}") → fixed M.TEST_HELP.009.
+- `tests/_uart_comm_harness.py`: nested `asyncio.run()` risk — `run()` deleted for the guarded harness, `build_pair()`
+  stays a coroutine → M.TEST_HELP.023; cross-module private names → fixed M.TEST_HELP.024.
+- `tests/_bus_hazard_catalog.py`: blanket `except Exception: pass` in the sweep and the exercise loops → fixed
+  M.TEST_HELP.026/.027; a pointer to another file's comment instead of the fact (G9/R12) → fixed M.TEST_HELP.026; private
+  names imported across modules → fixed M.TEST_HELP.026 (10).
+- `tests/_boot_contiguity_probe.py`: undefined labels "MEASUREMENTS M2.2/M3.9" (G9/R12) → fixed M.TEST_HELP.028;
+  `# type: ignore[method-assign]` (allowed in tests) removed with the loop.
+- `tests/_digital_twin_construction_scenarios.py`: "owner decision 10" label → fixed (travels, M.TEST_HELP.031); "all 6
+  real devices" and the hand mandatory list (G8/R01 device-set claim) → fixed M.TEST_HELP.029.
+- `tests/_sensortask_scenarios.py`: "WP3"/"WP6" labels, "Part L.3", "every real device has … today", "Only dev has it
+  today" (G9/R12, G8/R01) → fixed M.TEST_HELP.034/.035/.036; hand-kept registries and orders → derived
+  (M.TEST_HELP.035/.036); function-level imports (A.U0.07) → fixed M.TEST_HELP.034.
+- `tests/_webserver_concurrency_scenarios.py`: OR125.a (request driving inside the DUT heap) → the file retires
+  (M.TEST_HELP.033).
+- Every merged change: no audit ID in permanent text, actor tags "(owner|agent, YYYY-MM-DD)" (H4); no product hook added
+  for a test (OR36 — every wrap is applied from outside); every new log or list bounded (OR110.a: `feed_times` through
+  `_CallLog`); no hardware or wear-gated operation touched.
+
+## Owner questions
+
+None. Every conflict in this cluster was settled by an owner row, a verified action text or the lead rulings (AC_NOTES
+13, 29, 33, 38-39); the remaining choices are agent decisions below.
+
+## Agent decisions for the OR2.c review
+
+1. D1 — microtest finds `SimulatedRebootError` on whichever `machine` module is loaded (M.TEST_HELP.001).
+2. D2 — the NeoPixel fake keeps `raise_on_write`, marked a test knob (M.TEST_HELP.006).
+3. D3 — the `real_poll_queries` check lives in the machine fake's own reset hook: record, reset, then assert
+   (M.TEST_HELP.010).
+4. D4 — the FRAM chip fake carries the write counters A.U10.08 and A.U35.28 both use (M.TEST_HELP.022).
+5. D5 — the UART harness bounds are public names (M.TEST_HELP.024).
+6. D6 — the catalog's exercise loops catch only declared exception classes (M.TEST_HELP.026).
+7. D7 — FRAM chunk owners derived from construction order and `_CFG_LOG_FRAM` (M.TEST_HELP.036).
+8. D8 — the boot probe follows `main()`'s order and drops the grace/poll bounds (M.TEST_HELP.028).
+9. D9 — the boot recorder is its own tier-neutral module (M.TEST_HELP.030/.061).
+10. D10 — content owed to in-DUT scenarios that move host-side is written once, in the host harness (M.TEST_HELP.031/
+    .032/.033).
+11. D11 — the construction library derives its mandatory and optional names from the plan (M.TEST_HELP.029).
+12. D12 — unit seeding precedes construction through the per-id bus, keeping `boot_generated()` generic
+    (M.TEST_HELP.035).
+13. D13 — `_all_loggers()` is rebuilt on `get_loggers()` (M.TEST_HELP.035).
+14. D14 — one real-sequencer scenario: A.U11.39's mechanism, A.U10.13's assertions (M.TEST_HELP.038).
+15. D15 — `_mem_backup_contract.py` stays its own module (M.TEST_HELP.049).
+16. D16 — `write_offline_ntp_config()` is born in `tests/_generated_module.py` at U20 (M.TEST_HELP.047).
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.U0.07 | M.TEST_HELP.003, M.TEST_HELP.004, M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.034 |
+| A.U0.28 | M.TEST_HELP.033 |
+| A.U0.29 | M.TEST_HELP.031 |
+| A.U0.35 | M.TEST_HELP.033, M.TEST_HELP.034, M.TEST_HELP.040 |
+| A.U0.37 | M.TEST_HELP.034, M.TEST_HELP.036 |
+| A.U0.39 | M.TEST_HELP.034, M.TEST_HELP.039 |
+| A.U2.03 | M.TEST_HELP.045 |
+| A.U2.13 | M.TEST_HELP.034 (blast-only: end state checked, holds) |
+| A.U4.04 | M.TEST_HELP.041 |
+| A.U4.05 | M.TEST_HELP.026 (blast-only: end state checked, holds) |
+| A.U4.06 | M.TEST_HELP.062 |
+| A.U5.02 | M.TEST_HELP.035 (blast-only: end state checked, holds) |
+| A.U5.04 | M.TEST_HELP.032, M.TEST_HELP.033, M.TEST_HELP.035 (holds at M.TEST_HELP.032, M.TEST_HELP.035) |
+| A.U5.05 | M.TEST_HELP.033 |
+| A.U5.07 | M.TEST_HELP.036, M.TEST_HELP.041 |
+| A.U5.08 | M.TEST_HELP.038, M.TEST_HELP.039 (holds at M.TEST_HELP.038) |
+| A.U5.12 | M.TEST_HELP.023 |
+| A.U5.17 | M.TEST_HELP.010 (blast-only: end state checked, holds) |
+| A.U5.18 | M.TEST_HELP.010 (blast-only: end state checked, holds) |
+| A.U6.21 | M.TEST_HELP.041 |
+| A.U6.29 | M.TEST_HELP.063 |
+| A.U6.30 | M.TEST_HELP.063 |
+| A.U7.01 | M.TEST_HELP.010 (blast-only: end state checked, holds) |
+| A.U7.07 | M.TEST_HELP.001, M.TEST_HELP.027 |
+| A.U8.18 | M.TEST_HELP.033 |
+| A.U8.23 | M.TEST_HELP.033, M.TEST_HELP.034 |
+| A.U8C.01 | M.TEST_HELP.028 |
+| A.U8C.02 | M.TEST_HELP.029, M.TEST_HELP.031 |
+| A.U8C.03 | M.TEST_HELP.024 |
+| A.U8C.04 | M.TEST_HELP.033 |
+| A.U8C.17 | M.TEST_HELP.024 |
+| A.U8C.19 | M.TEST_HELP.024 |
+| A.U8C.72 | M.TEST_HELP.028 |
+| A.U8C2.01 | M.TEST_HELP.033 |
+| A.U9.03 | M.TEST_HELP.034, M.TEST_HELP.041 |
+| A.U9.10 | M.TEST_HELP.037 |
+| A.U10.07 | M.TEST_HELP.028, M.TEST_HELP.037 |
+| A.U10.08 | M.TEST_HELP.022, M.TEST_HELP.037 |
+| A.U10.10 | M.TEST_HELP.037, M.TEST_HELP.061 |
+| A.U10.12 | M.TEST_HELP.020, M.TEST_HELP.028, M.TEST_HELP.038 |
+| A.U10.13 | M.TEST_HELP.038 |
+| A.U10.15 | M.TEST_HELP.040 |
+| A.U10.19 | M.TEST_HELP.037 |
+| A.U10.27 | M.TEST_HELP.008, M.TEST_HELP.041 |
+| A.U10.30 | M.TEST_HELP.003, M.TEST_HELP.004, M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035, M.TEST_HELP.047 |
+| A.U10.35 | M.TEST_HELP.028, M.TEST_HELP.034 |
+| A.U10.37 | M.TEST_HELP.023, M.TEST_HELP.028, M.TEST_HELP.032, M.TEST_HELP.034 |
+| A.U10.38 | M.TEST_HELP.023, M.TEST_HELP.026, M.TEST_HELP.034 |
+| A.U10.40 | M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.034, M.TEST_HELP.041 |
+| A.U10.41 | M.TEST_HELP.063 |
+| A.U10.43 | M.TEST_HELP.034 |
+| A.U10.44 | M.TEST_HELP.034 |
+| A.U11.03 | M.TEST_HELP.040 |
+| A.U11.04 | M.TEST_HELP.040 |
+| A.U11.05 | M.TEST_HELP.011, M.TEST_HELP.041 (holds at M.TEST_HELP.011) |
+| A.U11.07 | M.TEST_HELP.011, M.TEST_HELP.037, M.TEST_HELP.049 |
+| A.U11.08 | M.TEST_HELP.041 |
+| A.U11.10 | M.TEST_HELP.028, M.TEST_HELP.035, M.TEST_HELP.037, M.TEST_HELP.047 |
+| A.U11.12 | M.TEST_HELP.039 |
+| A.U11.15 | M.TEST_HELP.039 |
+| A.U11.19 | M.TEST_HELP.039 (blast-only: end state checked, holds) |
+| A.U11.24 | M.TEST_HELP.033 |
+| A.U11.31 | M.TEST_HELP.040 |
+| A.U11.34 | M.TEST_HELP.037 |
+| A.U11.35 | M.TEST_HELP.037 (blast-only: end state checked, holds) |
+| A.U11.39 | M.TEST_HELP.020, M.TEST_HELP.038 |
+| A.U12.18 | M.TEST_HELP.026 (blast-only: end state checked, holds) |
+| A.U13.03 | M.TEST_HELP.012 |
+| A.U13.08 | M.TEST_HELP.016 (blast-only: end state checked, holds) |
+| A.U13.12 | M.TEST_HELP.018, M.TEST_HELP.025 |
+| A.U13.13 | M.TEST_HELP.018 |
+| A.U13.17 | M.TEST_HELP.023 |
+| A.U13.R01 | M.TEST_HELP.012, M.TEST_HELP.013 |
+| A.U13.R02 | M.TEST_HELP.027 |
+| A.U14.11 | M.TEST_HELP.008 |
+| A.U14.12 | M.TEST_HELP.010, M.TEST_HELP.020 (blast-only: end state checked, holds) |
+| A.U14.14 | M.TEST_HELP.014 |
+| A.U14.17 | M.TEST_HELP.012 |
+| A.U14.18 | M.TEST_HELP.043 |
+| A.U14.21 | M.TEST_HELP.016 (blast-only: end state checked, holds) |
+| A.U14.28 | M.TEST_HELP.017, M.TEST_HELP.033 |
+| A.U14.34 | M.TEST_HELP.064 |
+| A.U14.37 | M.TEST_HELP.007 (blast-only: end state checked, holds) |
+| A.U15.01 | M.TEST_HELP.026 (blast-only: end state checked, holds) |
+| A.U15.12 | M.TEST_HELP.026, M.TEST_HELP.035, M.TEST_HELP.036, M.TEST_HELP.041 (holds at M.TEST_HELP.026, M.TEST_HELP.041) |
+| A.U15.15 | M.TEST_HELP.027 |
+| A.U15.25 | M.TEST_HELP.026 |
+| A.U15.27 | M.TEST_HELP.026 |
+| A.U15.28 | M.TEST_HELP.026 |
+| A.U15.R01 | M.TEST_HELP.026 (blast-only: end state checked, holds) |
+| A.U15.R02 | M.TEST_HELP.026 |
+| A.U15.R03 | M.TEST_HELP.026 (blast-only: end state checked, holds) |
+| A.U16.02 | M.TEST_HELP.036 |
+| A.U16.03 | M.TEST_HELP.036 |
+| A.U16.13 | M.TEST_HELP.036 (blast-only: end state checked, holds) |
+| A.U16.14 | M.TEST_HELP.016, M.TEST_HELP.022 (blast-only: end state checked, holds) |
+| A.U16.16 | M.TEST_HELP.012 (blast-only: end state checked, holds) |
+| A.U16.17 | M.TEST_HELP.036 |
+| A.U16.R01 | M.TEST_HELP.022 |
+| A.U16.R02 | M.TEST_HELP.036 |
+| A.U16.R03 | M.TEST_HELP.036, M.TEST_HELP.038 |
+| A.U17.06 | M.TEST_HELP.064 |
+| A.U17.19 | M.TEST_HELP.040 (blast-only: end state checked, holds) |
+| A.U17.20 | M.TEST_HELP.023 (blast-only: end state checked, holds) |
+| A.U18.10 | M.TEST_HELP.035, M.TEST_HELP.047, M.TEST_HELP.063 |
+| A.U18.11 | M.TEST_HELP.066 |
+| A.U18.21 | M.TEST_HELP.041 |
+| A.U18.27 | M.TEST_HELP.007 (blast-only: end state checked, holds) |
+| A.U18.28 | M.TEST_HELP.007 (blast-only: end state checked, holds) |
+| A.U18.33 | M.TEST_HELP.041 |
+| A.U18.38 | M.TEST_HELP.041 |
+| A.U18.39 | M.TEST_HELP.041 |
+| A.U18.45 | M.TEST_HELP.066 |
+| A.U19.01 | M.TEST_HELP.040 |
+| A.U19.02 | M.TEST_HELP.034, M.TEST_HELP.041 |
+| A.U19.05 | M.TEST_HELP.034 |
+| A.U19.06 | M.TEST_HELP.035 |
+| A.U19.07 | M.TEST_HELP.033 |
+| A.U19.08 | M.TEST_HELP.033 |
+| A.U19.10 | M.TEST_HELP.041 |
+| A.U19.11 | M.TEST_HELP.035, M.TEST_HELP.041 (blast-only: end state checked, holds) |
+| A.U19.13 | M.TEST_HELP.041 |
+| A.U19.20 | M.TEST_HELP.033 |
+| A.U19.21 | M.TEST_HELP.033 |
+| A.U20.02 | M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035, M.TEST_HELP.047 |
+| A.U20.06 | M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035, M.TEST_HELP.038, M.TEST_HELP.047 |
+| A.U20.07 | M.TEST_HELP.030, M.TEST_HELP.037, M.TEST_HELP.061 |
+| A.U20.11 | M.TEST_HELP.035, M.TEST_HELP.036 |
+| A.U20.16 | M.TEST_HELP.041 (blast-only: end state checked, holds) |
+| A.U20.28 | M.TEST_HELP.031, M.TEST_HELP.033 |
+| A.U20.38 | M.TEST_HELP.037 |
+| A.U20.42 | M.TEST_HELP.029, M.TEST_HELP.035 (blast-only: end state checked, holds) |
+| A.U22.01 | M.TEST_HELP.006 (blast-only: end state checked, holds) |
+| A.U23.22 | M.TEST_HELP.041 |
+| A.U23.33 | M.TEST_HELP.041 (blast-only: end state checked, holds) |
+| A.U24.01 | M.TEST_HELP.026, M.TEST_HELP.034, M.TEST_HELP.044 |
+| A.U24.02 | M.TEST_HELP.044, M.TEST_HELP.045 |
+| A.U24.03 | M.TEST_HELP.001 |
+| A.U24.05 | M.TEST_HELP.003, M.TEST_HELP.004 |
+| A.U24.06 | M.TEST_HELP.025, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035 |
+| A.U24.07 | M.TEST_HELP.002, M.TEST_HELP.006, M.TEST_HELP.007, M.TEST_HELP.010, M.TEST_HELP.011, M.TEST_HELP.020, M.TEST_HELP.021, M.TEST_HELP.028 (holds at M.TEST_HELP.028) |
+| A.U24.08 | M.TEST_HELP.002, M.TEST_HELP.023, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035, M.TEST_HELP.043 |
+| A.U24.09 | M.TEST_HELP.007, M.TEST_HELP.035 (holds at M.TEST_HELP.035) |
+| A.U24.10 | M.TEST_HELP.005 |
+| A.U24.11 | M.TEST_HELP.005 |
+| A.U24.15 | M.TEST_HELP.002, M.TEST_HELP.010, M.TEST_HELP.017, M.TEST_HELP.023, M.TEST_HELP.025 |
+| A.U24.16 | M.TEST_HELP.012 |
+| A.U24.17 | M.TEST_HELP.001, M.TEST_HELP.011, M.TEST_HELP.012, M.TEST_HELP.014, M.TEST_HELP.015, M.TEST_HELP.040, M.TEST_HELP.048 |
+| A.U24.18 | M.TEST_HELP.006, M.TEST_HELP.007, M.TEST_HELP.010 |
+| A.U24.19 | M.TEST_HELP.007 |
+| A.U24.20 | M.TEST_HELP.013, M.TEST_HELP.026, M.TEST_HELP.048 |
+| A.U24.21 | M.TEST_HELP.014, M.TEST_HELP.026, M.TEST_HELP.032, M.TEST_HELP.035 |
+| A.U24.22 | M.TEST_HELP.022, M.TEST_HELP.028, M.TEST_HELP.035, M.TEST_HELP.036 |
+| A.U24.23 | M.TEST_HELP.016 |
+| A.U24.24 | M.TEST_HELP.021 |
+| A.U24.25 | M.TEST_HELP.006 |
+| A.U24.26 | M.TEST_HELP.010, M.TEST_HELP.011, M.TEST_HELP.016, M.TEST_HELP.018, M.TEST_HELP.020 |
+| A.U24.27 | M.TEST_HELP.027 |
+| A.U24.28 | M.TEST_HELP.026, M.TEST_HELP.027 |
+| A.U24.30 | M.TEST_HELP.059 |
+| A.U24.31 | M.TEST_HELP.023 |
+| A.U24.32 | M.TEST_HELP.041, M.TEST_HELP.050 |
+| A.U24.34 | M.TEST_HELP.033 |
+| A.U24.36 | M.TEST_HELP.033 |
+| A.U24.37 | M.TEST_HELP.033 |
+| A.U24.43 | M.TEST_HELP.026, M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.035, M.TEST_HELP.038 |
+| A.U24.45 | M.TEST_HELP.012 (blast-only: end state checked, holds) |
+| A.U24.46 | M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035, M.TEST_HELP.046 |
+| A.U24.47 | M.TEST_HELP.015, M.TEST_HELP.031 |
+| A.U24.49 | M.TEST_HELP.052, M.TEST_HELP.053, M.TEST_HELP.054, M.TEST_HELP.057, M.TEST_HELP.058 |
+| A.U24.50 | M.TEST_HELP.029, M.TEST_HELP.035, M.TEST_HELP.038 |
+| A.U24.60 | M.TEST_HELP.008, M.TEST_HELP.009, M.TEST_HELP.035 |
+| A.U24.63 | M.TEST_HELP.041, M.TEST_HELP.044 |
+| A.U24.65 | M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.033, M.TEST_HELP.035, M.TEST_HELP.055 |
+| A.U24.67 | M.TEST_HELP.023, M.TEST_HELP.031, M.TEST_HELP.034 (holds at M.TEST_HELP.031) |
+| A.U24.70 | M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.056 |
+| A.U24.72 | M.TEST_HELP.004 |
+| A.U24.73 | M.TEST_HELP.007, M.TEST_HELP.008, M.TEST_HELP.009, M.TEST_HELP.010, M.TEST_HELP.019, M.TEST_HELP.020, M.TEST_HELP.023, M.TEST_HELP.025, M.TEST_HELP.026, M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.034, M.TEST_HELP.043, M.TEST_HELP.051 |
+| A.U24.76 | M.TEST_HELP.058 |
+| A.U24.77 | M.TEST_HELP.019 |
+| A.U24.78 | M.TEST_HELP.015, M.TEST_HELP.022, M.TEST_HELP.026, M.TEST_HELP.048 |
+| A.U24.79 | M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.035, M.TEST_HELP.037, M.TEST_HELP.047 |
+| A.U24.80 | M.TEST_HELP.025 |
+| A.U24.81 | M.TEST_HELP.007 |
+| A.U24.82 | M.TEST_HELP.031, M.TEST_HELP.048 |
+| A.U25.01 | M.TEST_HELP.049 |
+| A.U25.02 | M.TEST_HELP.012, M.TEST_HELP.048 |
+| A.U25.03 | M.TEST_HELP.013, M.TEST_HELP.029 |
+| A.U25.04 | M.TEST_HELP.019, M.TEST_HELP.025 (blast-only: end state checked, holds) |
+| A.U25.05 | M.TEST_HELP.012 |
+| A.U25.08 | M.TEST_HELP.049 |
+| A.U25.10 | M.TEST_HELP.027 (blast-only: end state checked, holds) |
+| A.U25.16 | M.TEST_HELP.016 |
+| A.U25.21 | M.TEST_HELP.006 |
+| A.U25.22 | M.TEST_HELP.018 (blast-only: end state checked, holds) |
+| A.U25.24 | M.TEST_HELP.029, M.TEST_HELP.033 |
+| A.U25.25 | M.TEST_HELP.055 |
+| A.U25.30 | M.TEST_HELP.019, M.TEST_HELP.025 (blast-only: end state checked, holds) |
+| A.U25.31 | M.TEST_HELP.031, M.TEST_HELP.033 |
+| A.U25.33 | M.TEST_HELP.029, M.TEST_HELP.033, M.TEST_HELP.047 |
+| A.U25.43 | M.TEST_HELP.029, M.TEST_HELP.033 (holds at M.TEST_HELP.029) |
+| A.U25.45 | M.TEST_HELP.031, M.TEST_HELP.033, M.TEST_HELP.060 |
+| A.U25.46 | M.TEST_HELP.031, M.TEST_HELP.033 |
+| A.U25.47 | M.TEST_HELP.030, M.TEST_HELP.061 |
+| A.U25.48 | M.TEST_HELP.029, M.TEST_HELP.031, M.TEST_HELP.055 (holds at M.TEST_HELP.031) |
+| A.U25.52 | M.TEST_HELP.030 |
+| A.U25.70 | M.TEST_HELP.015, M.TEST_HELP.031 |
+| A.U25.74 | M.TEST_HELP.033 |
+| A.U26.64 | M.TEST_HELP.033 |
+| A.U27.03 | M.TEST_HELP.010 |
+| A.U27.23 | M.TEST_HELP.029, M.TEST_HELP.033 (holds at M.TEST_HELP.029) |
+| A.U27.28 | M.TEST_HELP.002, M.TEST_HELP.003, M.TEST_HELP.004, M.TEST_HELP.010, M.TEST_HELP.028 |
+| A.U27.38 | M.TEST_HELP.033 |
+| A.U28.28 | M.TEST_HELP.003, M.TEST_HELP.004 |
+| A.U28.29 | M.TEST_HELP.010 (blast-only: end state checked, holds) |
+| A.U30.06 | M.TEST_HELP.026 (blast-only: end state checked, holds) |
+| A.U30.14 | M.TEST_HELP.002, M.TEST_HELP.003 |
+| A.U30.15 | M.TEST_HELP.033 |
+| A.U30.16 | M.TEST_HELP.028 |
+| A.U30.21 | M.TEST_HELP.014 (blast-only: end state checked, holds) |
+| A.U31.01 | M.TEST_HELP.037 (blast-only: end state checked, holds) |
+| A.U31.03 | M.TEST_HELP.028, M.TEST_HELP.037 |
+| A.U31.09 | M.TEST_HELP.052 |
+| A.U31.14 | M.TEST_HELP.052 |
+| A.U31.17 | M.TEST_HELP.028, M.TEST_HELP.037, M.TEST_HELP.052 (holds at M.TEST_HELP.037) |
+| A.U32.06 | M.TEST_HELP.028, M.TEST_HELP.038, M.TEST_HELP.041 |
+| A.U35.03 | M.TEST_HELP.042 |
+| A.U35.06 | M.TEST_HELP.023 (blast-only: end state checked, holds) |
+| A.U35.10 | M.TEST_HELP.042, M.TEST_HELP.052, M.TEST_HELP.064, M.TEST_HELP.065 |
+| A.U35.16 | M.TEST_HELP.026, M.TEST_HELP.027 |
+| A.U35.19 | M.TEST_HELP.026 |
+| A.U35.20 | M.TEST_HELP.022 (blast-only: end state checked, holds) |
+| A.U35.28 | M.TEST_HELP.022, M.TEST_HELP.042 |
+| A.U35.29 | M.TEST_HELP.033 |
+| A.U35.30 | M.TEST_HELP.011, M.TEST_HELP.042 (holds at M.TEST_HELP.011) |
+| A.U35.33 | M.TEST_HELP.020, M.TEST_HELP.042 (holds at M.TEST_HELP.020) |
+| A.U35.34 | M.TEST_HELP.020, M.TEST_HELP.042 (holds at M.TEST_HELP.020) |
+| A.U35.48 | M.TEST_HELP.043, M.TEST_HELP.067 |
+| A.U36.004 | M.TEST_HELP.031, M.TEST_HELP.033, M.TEST_HELP.034 |
+| A.U36.015 | M.TEST_HELP.055 |
+| A.U36.016 | M.TEST_HELP.055 |
+| A.U36.038 | M.TEST_HELP.034 |
+| A.U36.526 | M.TEST_HELP.004 (blast-only: end state checked, holds) |
+| A.U36.532 | M.TEST_HELP.010, M.TEST_HELP.017, M.TEST_HELP.018, M.TEST_HELP.025 (holds at M.TEST_HELP.017) |
+| A.U36.544 | M.TEST_HELP.026, M.TEST_HELP.028, M.TEST_HELP.033, M.TEST_HELP.034 |
+| A.U36.546 | M.TEST_HELP.010 (blast-only: end state checked, holds) |
+| A.U37.03 | M.TEST_HELP.005 |
+| A.S0930.03 | M.TEST_HELP.023 (blast-only: end state checked, holds) |
+| A.S0930.11 | M.TEST_HELP.040 (blast-only: end state checked, holds) |
+| A.S0930.13 | M.TEST_HELP.028 (blast-only: end state checked, holds) |
+| A.S0930.18 | M.TEST_HELP.033, M.TEST_HELP.056 |
+| A.S0930.21 | M.TEST_HELP.011, M.TEST_HELP.022, M.TEST_HELP.036 (blast-only: end state checked, holds) |
+| A.S0930.24 | M.TEST_HELP.011, M.TEST_HELP.048 |
+| A.S0930.25 | M.TEST_HELP.022 |
+| A.S0930.26 | M.TEST_HELP.040 |
+| A.S0930.36 | M.TEST_HELP.011 |
+| A.S0930.37 | M.TEST_HELP.035, M.TEST_HELP.040 |
+| A.SDEP.06 | M.TEST_HELP.033 |
+| A.SDEP.08 | M.TEST_HELP.010, M.TEST_HELP.022 |
+| A.SDEP.16 | M.TEST_HELP.033 |
+| A.SDEP.17 | M.TEST_HELP.008, M.TEST_HELP.023 (holds at M.TEST_HELP.023) |
+| A.SDEP.18 | M.TEST_HELP.033 |
+| A.U0.06 | dropped (audit baseline artefact only; names `tests/network.py`/the twin library as excluded files — A.U27.23 runs `tests/network.py` alone, M.TEST_HELP.007) |
+| A.U0.42 | dropped (README.md sentence only; `tests/README.md` absent, nothing owed here) |
+| A.U10.11 | blast-only, holds (`tests/_sensortask_scenarios.py:1160-1175` boot-window ResetErrors scenario re-read against the merged `setup()`: its assertions hold; kept in M.TEST_HELP.040) |
+| A.U21.13 | blast-only, holds (uses `tests/microtest.py` from `tests/lwip_host/`; M.TEST_HELP.001 keeps microtest free of any fake import) |
+| A.U25.26 | blast-only (twin `WLAN.status()`; the unit half is A.U24.19 in M.TEST_HELP.007) |
+| A.U30.12 | blast-only, holds (in-body threshold pairs removed by TEST_UNIT; the per-test restore it relies on is M.TEST_HELP.002) |
+| A.U36.014 | dropped (CLAUDE.md hazard-rule text only; no helper change) |
