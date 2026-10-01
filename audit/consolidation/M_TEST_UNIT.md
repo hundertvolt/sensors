@@ -5619,3 +5619,94 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Depends**: M.SRC_SENS.021, .022, .036 (sink); M.SRC_NET NTP client (`cettime`).
 - **Blast carried by**: SPEC C.14 seam line → A.U9.10 (SPEC).
 - **Kind**: test
+
+## tests/test_notification_scd30_integration.py
+
+### M.TEST_UNIT.278 SCD30 → notification → pixel: construction, sync, driven ramps
+- **From**: A.U10.37/A.U10.38 (`NotificationService`, `SCD30Reader`/the module's end-state class name, `asy_crc_checks`),
+  A.U5.06 (4 sites), A.U5.11 (signals over `ValueRef(scd_reader, "CO2")`/`"Hum"`), A.U15.12 + A.U10.43 (`SCD30_Reader(i2c,
+  irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=…)` then `setup()`: it owns `config_SCD30.cfg`), A.U10.35
+  (`reader.scd.i2c_scd30…` → `reader._scd._i2c_scd30.i2c_device.i2c._i2c`), A.U10.10 (`notify.setup()`), A.U10.40
+  (`FlashInterval`), A.U17.27 (`:99`, `:113`), A.U35.13 (`:148, :176, :201, :253`), A.U8C.37 (tags on those),
+  A.U8C.12/.36/.38/.39 (read: shared IDs), A.U24.49 (`_FakeTime`), A.U24.08 (`run`, `:123` `_cancel_all`), A.U24.78
+  (`inject_fault` form), A.U15.01 (read: `:135, :166, :238` readings in range — hold), A.U10.06 + GAP-15 (the direct
+  `_error_check()` calls on good reads), A.U36.513 + A.U36.544 (`:3`, `:5-6`, `:96-98` comments).
+- **Site**: `tests/test_notification_scd30_integration.py:1-186`, `:223-264`.
+- **Change**: docstring and comments: `:3`'s quotation of C.7 is either quoted exactly from SPEC C.7 or written without
+  quotation marks ("matching SPECIFICATION.md Part C.7: each driver owns its own error log"); `:5-6`, `:96-98` cite
+  "SPECIFICATION.md Part C.14.3" and "the registration shape the generated build_system() emits". Builders: `_make_scd_
+  reader()` calls `machine.I2C.reset_id(0)` first and `run(reader.setup())`; `_make_stack(signals)` builds
+  `NeopixelDriver(0)` (freq 100, `_frame_ms` 10 set after) and `NotificationService(pixel.request_signal, _local_time,
+  (NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), …),), cfg_path=…)`, both set up (the separate
+  `make_hum_stack` keeps its own instance, signal over `"Hum"`). The direct read cycles run with
+  `asy_base_classes.set_utc_valid()` set (reset in `finally`) so a good read's `TS` is real and `_error_check()` returns
+  `True`. Waits run under `DrivenTime` installed on `asy_neopixel_driver` and `asy_notification_service` (product
+  durations, no tags); `inject_fault("writeto", OSError, errno.EIO, "simulated bus fault")`.
+- **Resolved**: A.U8C.37's tags vs A.U35.13 — not written (as M.TEST_UNIT.276).
+- **Unit**: U35 (stages U5, U10, U15, U24, U36).
+- **Depends**: M.SRC_SENS.052-.058 (SCD30 config reader), .030, .033; M.TEST_HELP.043, .054, .065.
+- **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.279 A faulted SCD30 cycle: one entry, attributed to SCD30 alone
+- **From**: A.U3.03 (`:211-216`, `:262-264` ErrCount 2 → 1, last entry the read error), A.U2.06 + A.U2.11 (`:211-216`:
+  no streak entry), A.U10.R01 + A.U15.R01 (read: one failure fires no recovery rung; re-derived counts hold at 1).
+- **Site**: `tests/test_notification_scd30_integration.py:189-264`.
+- **Change**: `:209-216`: `still_running is True`; `ErrCount == 1`; the newest entry `code("E", "READ")` (the
+  `_last_two_err_nums()` helper → `_newest_code(log, "SCD30")`); the comment → "# One faulted cycle persists exactly the
+  driver's read error; the streak step prints only (A.U3.03)." `:220` comment names `_signal_loop()`'s startup off
+  frame. `:259-264`: `ErrCount == 1`, newest `code("E", "READ")`, comment "# history keeps the fault; the later success
+  only resets the streak (a print, no entry)." NOTIFY counts stay 0.
+- **Resolved**: —
+- **Unit**: U3 (stage U2 codes).
+- **Depends**: M.SRC_CORE.037 (one entry per failing cycle); M.SRC_SENS (SCD30 read error).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_notification_scd30_sgp40_integration.py
+
+### M.TEST_UNIT.280 Two sensors, one service: construction, shared doubles, driven waits
+- **From**: A.U10.37/A.U10.38, A.U5.06 (3), A.U5.11 (`:203-204`), A.U15.12 + A.U10.43 (`:89`), A.U10.35 (`:90`, `:168`),
+  A.U10.10 (`:167`, `:208`), A.U10.40, A.U17.27 (`:200`), A.U35.13 (`:231`, `:270`), A.U8C.38 (tags), A.U8C.12/.36/.37/.39
+  (read), A.U35.14 (read: no wall-clock wait remains to state), A.U31.09 + A.U24.49 (`:39-52` `_FastAsyncSleep` → shared,
+  both sleeps; `_FakeTime`), A.U24.08 (`run`, `:75`), A.U24.78, A.U15.01 + A.U15.19 (read: field access by name holds),
+  A.U24.56 (`:1`), A.U24.67 (the 2 variant-name sites `:1`, `:199`), A.U36.513 + A.U36.544 (`:198-199`), A.U10.06 +
+  GAP-15, A.U5.11 (`ValueRef` compensation pair for SGP40).
+- **Site**: `tests/test_notification_scd30_sgp40_integration.py:1-238`, `:248-277`.
+- **Change**: docstring `:1` "… matching the generated build_system()'s single notification/pixel wiring)" (≤ 3 lines in
+  all); `:198-199` "(SPECIFICATION.md Part C.14.3), the registration shape the generated build_system() emits."; the
+  local `_FastAsyncSleep` goes for `FastAsyncSleep()` (patching `sleep` and `sleep_ms`, so the 50 ms command delays no
+  longer run in real time), `_FakeTime` for the shared one. SCD30 builder as M.TEST_UNIT.278; SGP40 builder
+  `SGP40_Reader(i2c, ValueRef(comp, "Temp"), ValueRef(comp, "Hum"), max_module_error=2, cfg_path=…)` with
+  `machine.I2C.reset_id(1)` first and `run(reader.setup())`, its bus read through `reader._sgp._i2c_sgp40.i2c_device.i2c.
+  _i2c`. `drive_scd_cycle()`/`_drive_sgp_cycle()` → `_drive_*` and run with the UTC flag set (reset in `finally`), the
+  SGP40 helper passing the condition `_read_loop()` computes (M.SRC_SENS.091). `make_dual_stack()` → the service built
+  with both signals over `ValueRef`s. Waits under `DrivenTime` (two ramps: the product's `2 × 2 × FlashDur`; one ramp:
+  `2 × FlashDur`), no tags. `:282` `ErrCount == 1` (A.U3.03), newest `code("E", "READ")`.
+- **Resolved**: A.U8C.38's tags vs A.U35.13 — not written.
+- **Unit**: U35 (stages U3, U5, U10, U15, U24, U31, U36).
+- **Depends**: M.TEST_UNIT.278 (SCD30 builder), M.TEST_UNIT.281 (SGP40 builder); M.SRC_SENS.067, .068, .091.
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests/test_notification_sgp40_integration.py
+
+### M.TEST_UNIT.281 SGP40 → notification → pixel: value references, shared fast sleep, driven ramps
+- **From**: A.U10.37/A.U10.38, A.U5.06 (2), A.U5.11 (compensation `ValueRef` pair; the signal over `ValueRef(sgp_reader,
+  "VOC")`), A.U10.35 (`:109`), A.U10.10 (`:108`, `:121`), A.U10.40, A.U17.27 (`:115`), A.U35.13 (`:181`, `:211`, `:255`),
+  A.U8C.39 (tags), A.U8C.12/.36/.37/.38 (read), A.U24.49 + A.U31.09 (`:42-56` `_FastAsyncSleep`, `_FakeTime`), A.U24.08
+  (`run`, `:135`), A.U15.19 (read: `VOC` read by name; the calibration counts hold), A.U36.513 + A.U36.544 (`:113-114`),
+  A.U10.06 + GAP-15, A.U10.R01 (read: two faulted cycles at `max_module_error=2` reach the device rung; the assertions
+  `err_count >= 1` and the later spike hold).
+- **Site**: `tests/test_notification_sgp40_integration.py:1-266`.
+- **Change**: `:113-114` "(SPECIFICATION.md Part C.14.3), the registration shape the generated build_system() emits.";
+  `:3-9` calibration note names `asy_voc_algorithm.py` (A.U10.37) and stays 3 lines per paragraph. Builders as
+  M.TEST_UNIT.280's SGP40 half; `_drive_one_cycle()` runs with the UTC flag set and the `_read_loop()` condition;
+  `FastAsyncSleep()` shared; waits under `DrivenTime`, no tags; `:196` `nak_addresses` unchanged. The `:202-204` comment
+  → "# Awaited directly: this coroutine already runs under run(), which now refuses a nested call
+  (tests/_async_harness.py)."
+- **Resolved**: A.U8C.39's tags vs A.U35.13 — not written.
+- **Unit**: U35 (stages U5, U10, U15, U24, U31, U36).
+- **Depends**: M.SRC_SENS.067, .068, .091; M.TEST_HELP.043, .052, .054, .065.
+- **Blast carried by**: —
+- **Kind**: test
