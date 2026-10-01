@@ -2311,8 +2311,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
   a production boot of a malformed file makes", A.U26.10); a persisting script with no runner fails); runners are also
   searched in `tests_hardware/manual/*.py`: a manual step that runs a persisting script must hold a `confirm(` call
   before the run call in the same step function (`ast`) and the script be listed in `_MANUAL_PERSISTING_STEPS =
-  {<script>: <reason>}` (today `config_write_loop_scratch.py`: "up to 20 scratch flash writes and one removal, stated
-  and confirmed by the operator before the run", A.C.17), with a bite (a tmp manual step without the `confirm(` fails);
+  {<script>: <reason>}` (`config_write_loop_scratch.py`: "up to 20 scratch flash writes and one removal, stated and
+  confirmed by the operator before the run", A.C.17; `config_files_restore.py`: "rewrites the config files saved before
+  the `resetconfig` power cut, once", M.HW_BENCH.102 (4) — its step takes the same `confirm()`, hand-off HW_BENCH in
+  GAPS_G3), with a bite (a tmp manual step without the `confirm(` fails);
   new `test_no_raw_socket_request_persists` (`_JUSTIFIED_RAW_REQUESTS`,
   today the malformed raw-request test); every new check has a synthetic bite; `:230`, `:243` comments state the reason
   without the F-labels.
