@@ -216,7 +216,7 @@ def appendix(out, findings, dest):
             cls = "merged → " + (RID.search(r["lead"]).group(0) if RID.search(r["lead"]) else "?")
         elif r["state"].lower().startswith("holds") and not r["state_units"]:
             cls = "holds"
-        elif "process" in r["state"][:30]:
+        elif r["state"].startswith("work: process") and not r["trace"]:
             cls = "process"
         else:
             cls = "work"

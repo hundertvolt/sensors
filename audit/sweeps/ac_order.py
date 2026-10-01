@@ -393,6 +393,8 @@ def landings(ch, D, ov=None):
             u = norm_unit(action_unit(a))
             if not T:
                 L[(k, a)], why[(k, a)] = u, "own unit (no Unit slot)"
+            elif k in OWNUNIT:
+                L[(k, a)], why[(k, a)] = u, "own unit (the Unit slot lands each row with its action)"
             elif u in T:
                 L[(k, a)], why[(k, a)] = u, "own unit, named in the Unit slot"
             elif all(ukey(t) < ukey(u) for t in T):
@@ -405,6 +407,8 @@ def landings(ch, D, ov=None):
                 L[(k, a)], why[(k, a)] = u, "own unit (implicit step: code/test site, blast closed in its unit)"
             if a in PULLS:
                 L[(k, a)], why[(k, a)] = PULLS[a][0], "pulled: " + PULLS[a][1]
+            if (k, a) in RELOC:
+                L[(k, a)], why[(k, a)] = RELOC[(k, a)][0], RELOC[(k, a)][1]
     # in-change dependencies: a part never lands before the in-change constituent it needs
     changed = True
     while changed:
@@ -491,9 +495,10 @@ def edges(ch, D, L, act_files, canon, overrides=None):
         for b, s, e in expand_a(dep, canon):
             if b not in H or b in c["live"]:
                 continue
-            for kb, ub in own_holders(b, H, ch, act_files):
-                if kb == k or (ch[kb]["doc"] and not c["doc"]):
-                    continue
+            cand = [(kb, ub) for kb, ub in own_holders(b, H, ch, act_files)
+                    if kb != k and not (ch[kb]["doc"] and not c["doc"])]
+            if cand:
+                kb, ub = min(cand, key=lambda t: ukey(t[1]))
                 tgt = next((u for u in mine if ukey(u) >= ukey(ub)), mine[-1])
                 E.append(((kb, ub), (k, tgt), "dep-A", f"{k} Depends {b}"))
         for n, s, e in expand_m(dep):
@@ -583,6 +588,8 @@ DEP_RULINGS = {
     ("A.S0930.19", "A.U26.06"): ("order", "the guard sees device scripts from A.U26.06"),
     ("A.S0930.19", "A.U26.74"): ("order", "flag names from A.U26.74"),
     ("A.S0930.17", "A.U24.42"): ("inchange", "only its allocation-budget test part needs A.U24.42's file"),
+    ("A.U28.37", "A.U28.12"): ("ign", "A.U28.12 is a SPEC pointer to the same B.10 text, not a prerequisite"),
+    ("A.U28.38", "A.U28.12"): ("ign", "A.U28.12 is a SPEC pointer; the BACKLOG list records the unit's tooling changes"),
     ("A.U18.03", "A.U14.30"): ("ign", "a settled-by reference (OR112.a), not an ordering"),
     ("A.U18.18", "A.U14.30"): ("ign", "a settled-by reference (OR112.a); A.U14.30's text cites these bounds"),
     ("A.U14.30", "A.U19.24"): ("doconly", "only the SPEC text points at the webserver's EAGAIN side"),
@@ -594,6 +601,27 @@ for _m in ("A.U10.R01", "A.U13.R01", "A.U15.R01", "A.U15.R02", "A.U15.R03", "A.U
 PULLS = {
     "A.U28.13": ("U0", "A.SDEP.05: \"A.U28.13 (pulled forward)\" into the GitHub Actions pin refresh"),
     "A.U37.15": ("D", "its own title: \"Phase D: delete the plan and audit/\"; needs A.C.11"),
+}
+# Changes whose Unit slot lands every row with its own action ("per row as listed", "each adding action's own unit").
+OWNUNIT = {"M.DOCS.024", "M.DOCS.064", "M.DOCS.066", "M.SPEC.156"}
+# Per-change relocations a Unit slot states in words (the parser cannot read them from the unit tokens).
+RELOC = {
+    ("M.SRC_SENS.008", "A.U14.17"): ("U13", "Unit slot: A.U14.17 (a)'s code half co-lands with A.U13.R01 in U13"),
+    ("M.GEN.005", "A.U11.10"): ("U20", "Unit slot: batch removal co-lands with A.U11.10 in U20's commit"),
+    ("M.SPEC.020", "A.U11.10"): ("U20", "Unit slot: A.U11.10/.11 co-land in one commit with U20's codegen action"),
+    ("M.SPEC.020", "A.U11.11"): ("U20", "Unit slot: A.U11.10/.11 co-land in one commit with U20's codegen action"),
+    ("M.SRC_CORE.012", "A.U10.15"): ("U11", "Unit slot: A.U10.15 co-lands with A.U11.03/A.U11.04"),
+    ("M.SRC_CORE.044", "A.U35.43"): ("U11", "Unit slot: A.U35.43 pulled into U11 (needs A.U11.28's deferral)"),
+    ("M.SRC_CORE.065", "A.U10.11"): ("U16", "Unit slot: the _read() half is pulled into U16's rewrite"),
+    ("M.SRC_CORE.065", "A.U11.16"): ("U16", "Unit slot: the _read() half is pulled into U16's rewrite"),
+    ("M.SRC_SENS.017", "A.U11.09"): ("U12", "Unit slot: lands with A.U12.14 in U12"),
+    ("M.SRC_SENS.017", "A.U0.41"): ("U12", "Unit slot: the comment lands with A.U12.14 in U12"),
+    ("M.SRC_SENS.032", "A.U36.544"): ("U10", "Unit slot: the pointer lands with U10 (its target exists at HEAD)"),
+    ("M.TOOL.037", "A.U36.544"): ("U21", "Unit slot: the pointer edits land with U21's rewrite of the same lines"),
+    ("M.TSC.087", "A.U24.55"): ("U25", "Unit slot: lands with A.U24.55's file edits in U25"),
+    ("M.TWIN.031", "A.S0930.24"): ("U25", "Unit slot: feed_times co-lands in U25 (AC_NOTES 36)"),
+    ("M.TWIN.152", "A.S0930.36"): ("U25", "Unit slot: the L2 half co-lands in U25"),
+    ("M.TEST_HELP.011", "A.S0930.24"): ("U11", "Unit slot: feed_times lands inside stage 1 (U11)"),
 }
 
 
