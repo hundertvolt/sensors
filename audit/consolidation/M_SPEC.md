@@ -1450,7 +1450,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   tree fails), A.U27.03 (workaround list), A.U21.04 (`typings/.stub-spec`), A.U8.23 (Microdot stubs, OR131), A.U28.27
   Blast (two ignore groups), A.U28.39 (path check), A.U33.06 Blast (E722 text may move here), A.U36.527 (B.15 lists the
   passes; `disallow_any_explicit` is C.10's), A.U36.546 (CLAUDE.md's stub-gap and stub-repair narrative moves here),
-  A.SDEP.03/A.SDEP.15 (re-read at the refreshed tool and stub versions).
+  A.SDEP.03/A.SDEP.15 (re-read at the refreshed tool and stub versions), M_DOCS gap 1 (c) (BACKLOG `:730-739`'s
+  standalone-mypy `Timer()` note, M.DOCS.065).
 - **Site**: `SPECIFICATION.md:1422-1482` (B.15).
 - **Change**: (1) Main pass heading paths → "(`src`, `tests`, `digital_twin`, `tests_hardware/device_scripts`,
   `build/generated_src`)"; the `build/generated_src` bullet (`:1440-1442`) → "`build/generated_src` is both a `files`
@@ -1475,7 +1476,11 @@ Conventions every merged change below applies (stated once, not repeated per cha
   after installing it, each guarded on the defect still being present and failing when the file it targets moved
   (F.5.5)." followed by A.U27.03's "Stub workarounds and their removal triggers" list (the two F.5.5 repairs first,
   then `Timer()`, `const()` of a tuple, `_mpy_shed.time_mp._TicksMs`, `DeflateIO`), each line's stub version re-read at
-  the refreshed pin (A.SDEP.15). (8) If U36's CLAUDE.md pass moves the E722 bullet here (A.U33.06), it lands as is.
+  the refreshed pin (A.SDEP.15); the `Timer()` line adds (M_DOCS gap 1 (c), BACKLOG's standalone-mypy entry, which leaves
+  at U37): "a `mypy` run over `src/` or `tests_hardware/device_scripts/` alone resolves `machine` to the board stub and
+  reports every bare `Timer()` (`timer_alarm_pool_exhaustion.py`, `scheduler_saturation_drop.py` among them); every run
+  this project makes includes `tests/`, whose `tests/machine.py` models `Timer()` and wins resolution, so such a finding
+  is the stub gap, not a regression". (8) If U36's CLAUDE.md pass moves the E722 bullet here (A.U33.06), it lands as is.
 - **Resolved**: (a) A.U0.60 is conditional on A.U27.23: (6) takes whichever outcome A.U27.23 records. (b) A.U36.043
   (U36) and A.U25.40 (U25) remove the same token — lands with A.U25.40's retirement (U25) so the list never names a
   deleted file; A.U36.043's SPEC half is then done. (c) A.U36.546 sends CLAUDE.md's stub narrative here "per
@@ -1500,11 +1505,16 @@ Conventions every merged change below applies (stated once, not repeated per cha
 
 ### M.SPEC.045 New B.17: build-environment verification (clean chroot)
 - **From**: A.U36.524 (1) (section), A.U28.02 (the pinned `pip install "uv==<v>"` line), A.U36.546 (CLAUDE.md sheds the
-  recipe), A.U36.548 (G9/R11 history out).
+  recipe), A.U36.548 (G9/R11 history out), A.U0.39 L37 (owner tag on "Two targets"), A.U21.16 (trixie wording), M_DOCS
+  gap 1 (f).
 - **Site**: new `## B.17 Build-environment verification (clean chroot: Ubuntu 24.04 and Debian trixie)` after B.16.
 - **Change**: A.U36.524 (1) (a)-(f) verbatim: CLAUDE.md `:870-1033` moved with the opening rewritten, each comment
   block ≤ 3 lines, the trixie reason kept, the "last satisfied" paragraph and dated confirmations out, the installer
-  leg's B.6/B.7 pointers kept; the pip line in A.U28.02's pinned form.
+  leg's B.6/B.7 pointers kept; the pip line in A.U28.02's pinned form. Two merged amendments (M_DOCS gap 1 (f),
+  M.DOCS.106): "Two targets, both required" carries A.U0.39 L37's "(owner, 2026-09-11)"; the trixie paragraph's mbedtls
+  sentence takes A.U21.16's wording — "the mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (B.7.1) is the kind of
+  GCC ≥ 14-only diagnostic noble cannot see, and the build treats any `warning:` as fatal" — in the tense B.7.1's branch
+  leaves (M.SPEC.031).
 - **Unit**: U36.
 - **Depends**: A.U28.02, A.U33.04, M.SPEC.044.
 - **Blast carried by**: CLAUDE.md section, PR-workflow bullet, `:496` → A.U36.524 (2)-(4) (DOCS); BACKLOG chroot head →
@@ -1630,7 +1640,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 ### M.SPEC.050 C.3.2: the UART driver contract
 - **From**: A.U0.40 L52 (`:1613`), A.U12.03 (zero-length payload), A.U13.18 (concurrent `deinit()` seen at the next
   `ready()` exit), A.U17.13 (`discarded_bytes`), A.U17.28 (masked sequences), A.U36.544 (3) (changelog label B15 goes,
-  `:1622`), A.U14.14 Blast (points to F.1), A.SDEP.08 (C3).
+  `:1622`), A.U14.14 Blast (points to F.1), A.SDEP.08 (C3), M_DOCS gap 1 (c) (two of BACKLOG's four UART findings).
 - **Site**: `SPECIFICATION.md:1607-1631` (C.3.2).
 - **Change**: (1) `:1613` "Settled precedent: **one merged class**" → "Precedent (agent, 2026-08-08, `59d6b7b`): **one
   merged class**". (2) The cancel clause: "published through monotonic request/ack counters and bounded so the call is
@@ -1640,11 +1650,18 @@ Conventions every merged change below applies (stated once, not repeated per cha
   zero-length payload is transferred as nothing, in every CRC and codec mode; a concurrent `deinit()` is seen at the
   next `ready()` exit; `discarded_bytes` counts the bytes a failed `*_until_complete()` read consumed and dropped (masked
   to 2**30 − 1)." (4) "re-verified against `ports/rp2/machine_uart.c` at v1.29.0" and "(re-traced 2026-09-13 …)" stand as
-  the dated facts at the pin in force (C3); the clause list points to F.1 for the raise surface.
+  the dated facts at the pin in force (C3); the clause list points to F.1 for the raise surface. (5) M_DOCS gap 1 (c)
+  (BACKLOG `:698-720`'s "four UART findings", which leave at U37): a closing paragraph "**Two out-of-contract calls**
+  (agent, 2026-09-11): `UART.deinit()`/`init()` do not take the session lock — calling either while a read is in flight
+  is out of contract, and no caller does (`init()` calls `deinit()` itself, so a lock check would change construction);
+  `UARTComm.setup()` runs once per boot before any task starts — a second call while its listen loop runs would deadlock
+  on the bus lock the loop holds, and the supervisor re-runs starters, never `setup()`." (the peer-sized allocation
+  finding goes to J.9 and the shared-codec finding to G.2, M.SPEC[J], M.SPEC[G.2]).
 - **Resolved**: A.U36.544 (3) drops changelog labels from permanent text; A.U17.28's rewrite of the same sentence makes
   the history parenthesis go with it (C2).
-- **Unit**: Stage 1 U0 ((1)); Stage 2 U12/U13/U17 ((3), (2)); U36 (label, if still present).
-- **Depends**: A.U12.03, A.U13.18, A.U17.13, A.U17.28.
+- **Unit**: Stage 1 U0 ((1)); Stage 2 U12/U13/U17 ((3), (2)); U36 (label, if still present; (5), before BACKLOG's entry
+  leaves at U37).
+- **Depends**: A.U12.03, A.U13.18, A.U17.13, A.U17.28, M.DOCS.065.
 - **Blast carried by**: UART changelog entries → A.U17.* (SCR/DOCS per UCL rule).
 - **Kind**: doc
 
@@ -1846,7 +1863,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   then clear; "SPEC C.7 is U36's"), A.U10.10 (every logger store set up in the boot batch), A.U10.11 (pre-setup entries
   survive setup), A.U16.17 (a declared FRAM chip that fails setup escalates), A.U16.06 (unreadable vs invalid chunk),
   A.U11.16 (allocation failure degrades to RAM-only), A.U11.31 + A.U19.14 (`ResetErrors` measurements dated; BACKLOG item
-  32), A.U2.14 (`W5, W4, W4` numbers, M.SPEC.008), A.U11.13 (an invalid level is refused), A.U11.15 (no level accessors;
+  32; its U33 repoint, M_DOCS gap 1 (b)), A.U2.14 (`W5, W4, W4` numbers, M.SPEC.008), A.U11.13 (an invalid level is refused), A.U11.15 (no level accessors;
   the `pr.level` attribute), A.U2.22 (numbering rules), A.U3.10 (one event, one entry; detecting layer), A.U2.04 + A.U11.37
   (idiom), A.U2.06 + A.U2.08 (`_error_check()` bullet; no dynamic numbering), A.U3.03 (a failed read persists only the
   driver's entry), A.U10.R01 (the recovery ladder), M_SRC_SENS GAP-15 (pre-sync `TS` excluded), A.U0.19 H1.02
@@ -1875,8 +1892,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   answering `OK` …**" paragraph unchanged (owner, 2026-09-17), except "answering `OK`" → "answering `Valid`" where
   A.U11.31 makes the reply per field. (4) "**Confirmed on real hardware (dev bench board, 2026-09-17).**" keeps its three
   measured bullets, dated as taken before the concurrent reset (A.U11.31); "`W5, W4, W4`" → the catalog codes
-  (M.SPEC.008); "Timings and the remaining load-case concern: BACKLOG.md item 24." → "…: BACKLOG.md item 32"; "All 21 of
-  `dev`'s chunks" stays a dated measurement. (5) Log-level paragraph gains "an invalid level is refused, never clamped;
+  (M.SPEC.008); "Timings and the remaining load-case concern: BACKLOG.md item 24." → "…: BACKLOG.md item 32" at U19
+  (A.U19.14), and at U33, when A.U33.09 dissolves item 32 into an owed row, → "…: BACKLOG.md's owed row 'bench
+  `ResetErrors` budget'" (M_DOCS gap 1 (b), M.DOCS.063); "All 21 of `dev`'s chunks" stays a dated measurement. (5) Log-level paragraph gains "an invalid level is refused, never clamped;
   the print methods read the logger's `level` attribute". (6) Numbering paragraph (`:1875-1883`) → A.U2.22's rules
   ("codes are integers 1-127 (warnings stored with a `0x80` offset, 0 = nothing to record); one global catalog
   (`buildgen/error_catalog.json`); … the catalog test (`tests_scripts/test_error_catalog.py`) enforces all of it") and,
@@ -2336,4 +2354,459 @@ Conventions every merged change below applies (stated once, not repeated per cha
   U16 ((5) layout clause, A.U16.01); Stage 5 U36 ((1), (2), (6), (7) count and labels).
 - **Depends**: A.U5.03, A.U5.06, A.U5.07, A.U5.11, A.U16.01, A.U36.511, A.U36.514, M.SPEC[L.6.4], M.SPEC.020.
 - **Blast carried by**: test comments citing C.14.3 → A.U36.513 (TEST_UNIT); L.2/L.3/L.6.4 → M.SPEC[L.*].
+- **Kind**: doc
+
+## SPECIFICATION.md — Part D (`:2589-2743`)
+
+### M.SPEC.073 Part D: heading, intro; D.0, D.13, D.14, D.16 move to Part K
+- **From**: A.U36.543 (7) (heading, intro, removals; D.8 sentence), A.U36.540 (3) (D.0's new sentence, landing in K.1),
+  A.U36.532 (numbering: Part D numbers ascend with gaps).
+- **Site**: `SPECIFICATION.md:2589-2600`, `:2720-2728`, `:2739-2741`.
+- **Change**: A.U36.543 (7) verbatim: heading "# Part D — `src/` quality bar"; intro "The bar every file in `src/` and
+  every generated module meets: … Part K's step K.2 applies it; Part C gives a driver's shape."; D.0 (with A.U36.540
+  (3)'s rewrite), D.13, D.14 and D.16 removed (their content lands in K.1, K.10, K.11, M.SPEC[K]); D.1-D.12 and D.15 keep
+  their numbers.
+- **Resolved**: A.U36.540 (3) rewrites D.0's sentence in place, and A.U36.543 (2) moves D.0 to K.1 "followed by A.U36.540
+  (3)'s D.0 sentence" — the rewritten sentence lands in K.1 only (A.U36.540 itself says so).
+- **Unit**: U36.
+- **Depends**: A.U36.540, A.U36.543, M.SPEC[K], M.SPEC.003.
+- **Blast carried by**: the `.claude/skills/integrate-module/SKILL.md` → A.U36.543 (9) (DOCS); TOC → M.SPEC.001.
+- **Kind**: doc
+
+### M.SPEC.074 D.1-D.5: correctness, raises, stability, resources, blocking
+- **From**: A.U36.540 (4) (D.1 discrepancy rule), A.U12.08 (`altitude_baro` → `pressure_at_height()`), A.U12.06 (no change),
+  A.U36.032 (D.2 typed-call-site qualifier; untyped entry points), A.U14.06 (D.2 controlled-raise schema; per-bus
+  surface), A.U13.07 Blast (uninitialised bus), A.U11.12/A.U11.17/A.U35.36 (cite D.2, no edit), A.U36.541 (2) (D.3
+  "indefinitely"), A.U31.19 (2) (D.4 sleep rule), A.U28.27 (TRY003/EM10x keep the SRAM reason, D.4 — no SPEC edit).
+- **Site**: `SPECIFICATION.md:2602-2645`.
+- **Change**: (1) D.1: `:2606-2607` → A.U36.540 (4)'s sentence ("**A discrepancy proven by the datasheet or the
+  specification is fixed with a regression test for the correct behaviour** (E.2.2); one short of that proof is entered
+  in BACKLOG.md's owner-question list and not changed (owner, 2026-09-25)."); `:2611` "`altitude_baro`'s range" →
+  "`pressure_at_height()`'s range". (2) D.2: `:2617-2622` → A.U36.032's text verbatim; `:2623-2628` → A.U14.06's two
+  rewrites verbatim (controlled-raise schema; per-bus surface, its C.12 pointer). (3) D.3: "Units run years without a
+  reboot:" → "Units run indefinitely without a reboot (0.1):". (4) D.4 gains A.U31.19 (2)'s sentence ("A sleep takes
+  whole milliseconds (`asyncio.sleep_ms(<int>)`, `asyncio.wait_for_ms()`) or a whole number of seconds: … checked by
+  `tests_scripts/test_src_sleep_forms.py`."), extended by M_SRC_SENS GAP-1: "A blocking `time.sleep*` appears in `src/`
+  only at the two named sites — the SPI chip-select settle and the boot bus clear — and the same check fails any other."
+  (D.5's "No blocking I/O, `time.sleep`" gains "(except those two, D.4)".)
+- **Resolved**: A.U36.032 Depends A.U14.06 (same section, later sentences) — U14 lands A.U14.06, U36 A.U36.032 on the text
+  above it. GAP-1's exceptions contradict D.5's flat "no `time.sleep`" — D.5 names them (gap fill).
+- **Unit**: Stage 1 U12 ((1) rename); Stage 2 U14 ((2) A.U14.06); Stage 3 U31 ((4)); Stage 4 U36 ((1) rule, (2)
+  A.U36.032, (3)).
+- **Depends**: A.U12.08, A.U13.07, A.U13.08, A.U14.06, A.U14.14, A.U31.19, A.U36.032, A.U36.540, A.U36.541,
+  M.SRC_SENS.002/.008.
+- **Blast carried by**: `tests_scripts/test_src_sleep_forms.py` → A.U31.19 + GAP-1 (TSC).
+- **Kind**: doc
+
+### M.SPEC.075 D.6-D.15: typing, improvement, platform check, API shape, readability, tests, order
+- **From**: A.U36.534 (2) (D.6), A.U10.31 (quoting rule), A.U28.30 (D.6 suppression form rule), A.U28.27 (D.6/B.15 name the
+  two ruff groups), A.U18.43 (no edit), A.U36.543 (7) (D.8 sentence), A.U36.540 (5) (D.9), A.U10.45 (D.10 raise form),
+  A.U5.17 + A.U5.04 (D.10 config objects; `max-args`), A.U5.18 (ceilings), A.U11.09 (pattern is U14's G/F; none here),
+  A.U17.19 (none), A.U36.533 (2) (D.11), A.U10.34 (every Python scope), A.U35.03 (D.12's red-flag list is Part E's),
+  A.U10.32 (D.15 rewrite), A.SDEP.08 (D.9 pin token).
+- **Site**: `SPECIFICATION.md:2647-2737`.
+- **Change**: (1) D.6 → A.U36.534 (2)'s text ("Type-hint every parameter and return, not over- or under-typed; the idiom
+  and its reasons are C.10. **`mpy-cross` does not dead-code-eliminate …** (B.11).") followed by the quoting paragraph:
+  "**Quoting annotations** (owner decision, 2026-09-24): quote an annotation only when it names something imported under
+  `TYPE_CHECKING`, or a class defined later in the module that ruff (F821) or mypy would otherwise reject; leave every
+  other annotation bare. MicroPython never evaluates annotations, so both forms are runtime-safe; every file follows it
+  (owner, 2026-09-25)." and "Every `# type: ignore` and `# noqa` names its codes in ascending order; in `src/` a `type:
+  ignore` carries a one-line reason and no `# noqa` exists; a typing workaround names its external defect and removal
+  trigger (0.2, P4; B.15) — checked by a test. Ruff's per-file ignores name two scope groups, MicroPython-run code and
+  host code (B.15)." (2) D.8 gains A.U36.543 (7)'s ": an improvement significant enough to want its own regression test
+  gets one, never a manual spot-check (agent, 2026-07-14, `1682601`)". (3) D.9: "(currently v1.29.0 — the last pass's
+  findings are catalogued in Part F.5)" → the pin in force (C3); "is a D.1-style behavior change — flag and ask." → "is a
+  behaviour change and follows D.1." (4) D.10: "`crc_checks.py`'s `CRC_Pass`/`CRC8`/`CRC16`/`CRC32`" → "`CRCPass`/`CRC8`/
+  `CRC16`/`CRC32`"; gains "Parameters that travel together are one config object (a namedtuple built by generated code,
+  G.2) rather than a long list; ruff's ceilings (`max-args` 8 and the others) sit at the measured maximum and only go
+  down, a signature mirroring an external API exempted per file, never by raising a limit (owner, 2026-09-26); checked
+  by `tests_scripts/test_lint_ceilings.py`. A raise carries one message form and an `except` tuple lists its classes
+  alphabetically (C.3)." (5) D.11 → A.U36.533 (2)'s text verbatim. (6) D.12 unchanged; the test standard's red-flag list
+  is Part E's (M.SPEC[E]). (7) D.15 → A.U10.32's rewrite (roles, alphabetical within a role, dunders, the restored
+  "**'Starter' is a role, not a name** (owner, 2026-09-14)" paragraph with `Calibrate`, scope, the import-time exception).
+- **Resolved**: A.U10.31's own D.6 sentence ("existing files are not mass-edited" → "every file follows it") lands in U10
+  on HEAD's D.6, and A.U36.534 (2) (U36) rewrites the paragraph above it — the quoting paragraph keeps A.U10.31's
+  wording (A.U36.534 says "the quoting paragraph `:2658-2661` is A.U10.31's"). A.U28.30 and A.U28.27 both say "U36" for
+  their D.6 sentences — placed in U28 with the check (the rule is current then; agent decision).
+- **Unit**: Stage 1 U5 ((4) config objects, ceilings); Stage 2 U10 ((1) quoting, (4) raise form, (7)); Stage 3 U28 ((1)
+  suppression form, scope groups); Stage 4 U36 ((1) A.U36.534, (2), (3), (5)); pin token U0 (C3).
+- **Depends**: A.U5.17, A.U5.18, A.U10.31, A.U10.32, A.U10.34, A.U10.45, A.U28.27, A.U28.30, A.U36.533, A.U36.534,
+  A.U36.540, A.U36.543.
+- **Blast carried by**: CLAUDE.md comment rule → A.U36.533 (1) (DOCS); `pyproject.toml` comments → A.U5.17/A.U28.27
+  (TOOL); the order and convention checks → A.U10.47 (TSC).
+- **Kind**: doc
+
+## SPECIFICATION.md — Part E (`:2745-3433`)
+
+### M.SPEC.076 Part E intro and E.1: the host tier, ports, scratch, lwIP host files, evidence, parallelism
+- **From**: A.U24.70 (port bands; `:2780-2793` points to the table), A.U24.69 + M.SCR.012 (one lock per product-fixed port,
+  inherited by children), A.U24.10 + A.U24.11 (scratch failures raised; keys unique, checked), A.U21.12 + A.U21.13 (the
+  second L1 file set `tests/lwip_host/` on `build-lwip`), A.U21.22 (`test.sh` and the toolchain lock), A.U27.05 (the L0
+  list: the stripped, compiled image set boots under the twin; the pytest tier runs `mpy-cross` from the toolchain),
+  A.U7.20 + A.U27.16 (evidence archive), A.U35.24 (heavy-file dispatch list checked), A.U7.08 (pytest tier reports through
+  a run record), A.U7.26 (a missing build fails the host tier), A.U8.16 (speed probe), A.U28.27 (no edit: PT rules cite
+  E.1), A.U6.10 (no edit), A.SDEP.16 (the prewarm scan band, only if A.SDEP.16 retires it), A.U2.02 (catalog test in the
+  inventory), M.SCR.017 (port 53 and the scenario harness).
+- **Site**: `SPECIFICATION.md:2745-2801`.
+- **Change**: (1) Intro unchanged. (2) First E.1 paragraph's host list gains "the boot of the stripped, compiled image
+  set under the twin (the shipped form, B.11; `mpy-cross` from the toolchain directory)" and "the error catalog against
+  every logging call"; new sentence: "A host test whose build or toolchain input is missing fails, never skips." (3) The
+  pytest-tier paragraph gains "and reports its counts through a run record that `scripts/test.sh` reads into its summary
+  block (E.10)"; "`TEST_PARALLELISM` budget" gains "(a monotonic speed probe picks it, falling back to the slow-host
+  value when the probe cannot run; the heavy-file dispatch list is checked against the file set)". New sentence: "One
+  toolchain build at a time per toolchain directory: a `test.sh` that must build waits on no one — it fails at once
+  naming the run holding the lock (B.5)." (4) The ports paragraph (`:2780-2793`) → "**Ports**: every test socket binds
+  inside its owner's band of `tests/_port_bands.py` — disjoint, below the OS ephemeral range (32768-60999), the
+  per-device libraries splitting their band over the derived devices; an allocator past its band end fails naming it,
+  and `tests_scripts/test_port_bands.py` checks the table and every binding site. For UDP an overlap is silent rather
+  than `EADDRINUSE`, which is why the bands exist. **Fixed ports** the product itself binds (53 for the captive DNS,
+  18080 for the CI suite's twin) are held by one runner at a time: a lock directory per port under
+  `${XDG_RUNTIME_DIR:-/tmp}`, taken by `scripts/test.sh`, `scripts/run_digital_twin_ci.sh`,
+  `scripts/run_unix_port_integration.sh` and the scenario harness; a runner started by one holding the lock inherits it,
+  an unrelated second suite fails at once naming the holder (CLAUDE.md's two-suites rule)." (5) Scratch paragraph gains
+  "keys are unique across files and processes (checked); a cleanup failure other than absence is raised". (6) New
+  paragraph: "**The lwIP host files** (`tests/lwip_host/test_*.py`) run after the `tests/test_*.py` loop on the
+  `build-lwip` binary (B.2, B.14.3), through the same per-file function; they bind no host port (loopback lwIP is
+  in-process) and `--coverage` excludes them." (7) New paragraph: "**Evidence archive**: every runner — `scripts/test.sh`,
+  `scripts/run_digital_twin_ci.sh` (per device), the hardware runners — moves its logs and reports under
+  `build/archive/<runner>/<UTC>/` and keeps the last three; a failed run's logs are copied, never only moved." (8) If
+  A.SDEP.16 retires `unix_port_poll_prewarm.py`, the band list drops its scan band.
+- **Unit**: Stage 1 U7 ((2) missing build, (3) run record, (7)); Stage 2 U8 ((3) probe); Stage 3 U21 ((3) lock, (6));
+  Stage 4 U24 ((4), (5)); Stage 5 U27 ((2) shipped form, (7) twin runner, M.SCR.017's port-53 sentence); U35 ((3)
+  dispatch check); U0 ((8) if A.SDEP.16 (c)); U2 ((2) catalog).
+- **Depends**: A.U7.08, A.U7.20, A.U7.26, A.U8.16, A.U21.12, A.U21.13, A.U21.22, A.U24.10, A.U24.11, A.U24.69, A.U24.70,
+  A.U27.05, A.U27.16, A.U35.24, M.SCR.012, M.SCR.017.
+- **Blast carried by**: CLAUDE.md two-suites bullet → A.U24.69 (DOCS); README env-var list → A.U8.16 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.077 E.2, E.2.1, new E.2.2 and new E.2.3: microtest, per-device runs, test changes, the test standard
+- **From**: A.U7.07 (skips; empty file fails), A.U24.03 (async tests and aborted files fail), A.U24.04 (canonical trailer,
+  checked), A.U24.65 + A.U25.46 + M.TEST_HELP.033 (per-device files: `PER_DEVICE = True`, one job per derived
+  device; the concurrency library moves host-side), A.U36.016 (heavy twin tests follow the per-device bar), A.U24.75
+  (named homes of each `buildgen/` module's tests), A.U24.76 (doubles and builders named by role), A.U35.07 (E.2.1's "stay
+  wozi-only" is U36's), A.U36.544 (2) ("Part L's Session 6.2"), A.U36.532 (numbering), A.U36.017 (E.2.2), A.U36.542 (0.4
+  cites E.2/E.3 for test conventions), A.U24.07 + A.U24.08 + A.U26.15 + A.U35.10 + A.U35.03 (the "Part E hygiene section"
+  / "test standard" each names — no action creates it: gap fill), M_TEST_HELP GAP-H5 (the deleted library's citers).
+- **Site**: `SPECIFICATION.md:2803-2839`; new E.2.2 and E.2.3 after E.2.1.
+- **Change**: (1) E.2 → "`microtest.py` is a minimal collector/runner — not CPython's `unittest`, unavailable on the Unix
+  port's standard build. It calls every synchronous `def test_*` and reports PASS, FAIL or SKIP (`microtest.Skip(reason)`,
+  counted and listed); a file that collects nothing fails, an `async def test_*` or a test returning a value fails, and a
+  `BaseException` aborting the file reports the rest as not run, never as passed. Every test file ends with the canonical
+  `microtest.run(globals())` trailer (checked by `tests_scripts/test_microtest.py`); `run()` always ends with
+  `sys.exit()` (E.3). Plain `assert`." (2) E.2.1 (heading "### E.2.1 Per-device scenario libraries: one process per
+  device" — numbered as a subsection under A.U36.532): "parametrized across all 6 real devices" → "run for every device
+  of `devices/*.toml`"; the wrapper description → "a file marked `PER_DEVICE = True` is run by `scripts/test.sh` once per
+  derived device (`TEST_DEVICE`), each its own Unix-port process — no per-device wrapper files"; the table keeps
+  `tests/_sensortask_scenarios.py` (`tests/test_sensortask.py`) and `tests/_digital_twin_construction_scenarios.py`
+  (`tests/test_digital_twin_construction.py`); the concurrency row → "real concurrent TCP against `WebserverService`:
+  the host-side scenario harness `scripts/_digital_twin_scenarios.py`, one twin process per scenario (E.9)". The memory
+  paragraph keeps its dated measurement; "It is **not** a reversion to the old per-device test-body duplication that Part
+  L's Session 6.2 collapsed: …" → "Every scenario body lives once and stays device-generic; the per-device run adds no
+  logic."; `:2836-2839` → A.U36.016's paragraph verbatim. New closing paragraph (A.U24.75): "Every `buildgen/` module has
+  `tests_scripts/test_buildgen_<module>.py` or a named home (`buildspec` → `test_buildgen_driver_registry.py`/
+  `test_buildgen_validate.py`, `codegen` → `test_buildgen_generate.py`, `errors` → every reject test, `model` →
+  `test_buildgen_validate.py`); pytest suites use module-level `def test_*`, never `Test*` classes (checked). Test
+  doubles and builders are named by role." (3) New "### E.2.2 A test changes only mechanically" — A.U36.017 (1) verbatim.
+  (4) New "### E.2.3 The test standard and hygiene" (gap fill, each sentence from its action): "**A test bites**: it
+  asserts (an `assert`, `AssertionError` or `pytest.raises` in the test or a helper it calls — never a `raise` in the code
+  under test), and none of these red flags holds: no assertion; only "no exception", `is not None`, `isinstance` or
+  `callable`; a check that cannot fail or re-asserts a stand-in's canned return; `except: pass`; a log assertion on
+  existence only (a log check names the number and `ErrType` of exactly one persisted entry per event); a loop that checks
+  nothing or runs zero times; a tolerance or scripted value that cannot fail its bound; a name claiming more than it
+  asserts; a helper whose failed setup does not fail the test; an expected value copied from the code under test (owner,
+  2026-09-25). **Hygiene**: a test restores every process-wide state it changes on every path — the fakes reset their
+  class and module state after every test through `microtest.after_each`, which also restores `sys.path` and
+  `gc.threshold()`; a test that starts a task keeps it and cancels and awaits it, and the shared `tests/_async_harness.run()`
+  refuses a nested call (F.1) and fails a test that leaves a task parked (owner, 2026-09-26: 'Each test cleans up after
+  itself on every path'); a bench test that writes config restores the prior value in `finally`, checks the restore's
+  result word, and first repairs a leftover of an aborted run. **Time at L1 is driven**: unit tests move time through the
+  fakes and `DrivenTime` (virtual sleeps and 2**30-period ticks); a real wall-clock wait is used only where a `const()` or
+  the platform leaves no alternative, stated and a Part N row; `tests/_fast_sleep.py` keeps its one use, collapsing every
+  sleep to one yield."
+- **Resolved**: (a) A.U24.65 (generic `PER_DEVICE` file for the concurrency library) vs A.U25.46 (library retired
+  host-side) — A.U25.46 kept (M.TEST_HELP.033, M.SCR.017). (b) Several actions name "SPEC E hygiene section"/"test
+  standard" written by "U36", yet no U36 action writes it — created here from their texts (agent decision, OR2.c).
+- **Unit**: Stage 1 U7 ((1) skip/empty); Stage 2 U24 ((1) rest, (2) per-device runs, buildgen homes, (4) hygiene
+  sentences); Stage 3 U25 ((2) concurrency row); Stage 4 U35 ((4) bite list, driven time); Stage 5 U36 ((2) A.U36.016,
+  labels; (3)).
+- **Depends**: A.U7.07, A.U24.03, A.U24.04, A.U24.07, A.U24.08, A.U24.65, A.U24.75, A.U24.76, A.U25.46, A.U26.15,
+  A.U35.03, A.U35.10, A.U36.016, A.U36.017, M.TEST_HELP.033.
+- **Blast carried by**: CLAUDE.md working-agreement bullet → A.U36.017 (2) (DOCS); README test recipes → A.U24.65 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.078 E.3: running, the generated tree, the forced exit, the summary
+- **From**: A.U27.15 (`MICROPYPATH` from `scripts/micropypath.toml`; `:2851` example), A.U36.036 (3) (`.frozen` pointer),
+  A.U24.46 (a direct run refuses a stale tree), A.U27.11 (generator all-or-nothing, atomic, pruned), A.U6.02 (every
+  device's definitions generated into the build tree), A.U6.05 (tests_js load generated definitions; H.8 holds it),
+  A.U24.05 (the GC-stage and coverage runners fail an incomplete file), A.U24.59 (harness facts: `asyncio` attributes
+  assignable, C builtins not), A.U36.546 (1) (E.3 gains the structural-invariant paragraph and the forced-exit mechanism),
+  A.U14.28 (Part E rig-limit text points to F.7), A.U7.03 (summary block per level), A.U27.18 (no change), A.U36.544 (2)
+  (Session labels), M_SCR gap 5 / OR133 (exit 2 on a usage or setting error).
+- **Site**: `SPECIFICATION.md:2841-2879`.
+- **Change**: (1) The direct-run example → "`MICROPYPATH="$(scripts/_unix_port.sh micropypath unit)"
+  ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py` — the unit and twin
+  layouts are defined once, in `scripts/micropypath.toml`"; the `.frozen` paragraph → "`.frozen` is MicroPython's import
+  sentinel, not a directory (F.1); `frozen_modules` is an ordinary, gitignored directory (A.9's output)". (2) The
+  generated-module paragraph: "(SPECIFICATION.md Part L's Session 6)" goes; gains "`scripts/_generate_sensortask_modules.py`
+  writes every device's modules and definitions into `build/generated_src/` all or nothing, atomically, pruning stale
+  device outputs; a direct run refuses a stale or missing generated tree". (3) New paragraph (A.U36.546): "**The forced
+  exit.** MicroPython's asyncio has no parent/child task tracking: a test that drives the generated task graph leaves
+  every task `create_task()` spawned parked after its own coroutine returns, and `Task.cancel()` on the awaited task does
+  not cascade. One process runs every test of a file, so `microtest.run()` always ends with `sys.exit()` (0 all-pass, 1
+  any failure) rather than waiting for the interpreter's idle detection; `digital_twin/launch.py`'s tracked-task list is
+  the alternative for a graph small enough to enumerate." (4) New paragraph (A.U36.546): "A host test proves its
+  invariant structurally and generates no mass filesystem churn: `tests/test_tmp_scratch.py` records the `os` calls of a
+  full `TmpScratch` lifecycle and asserts none reads the shared root, instead of building 400,000 directories (396 MB of
+  disk writes per run before, 392 KB after, `/proc/diskstats`, 2026-09-17)." (5) New sentence (A.U24.59, A.U14.28):
+  "Where the Unix-port rig differs from rp2 is F.7; on it, `asyncio` attributes are assignable and the C builtin modules
+  (`time`, `socket`) are not." (6) The annotations paragraph keeps "never write the verdict to `$GITHUB_STEP_SUMMARY`" and
+  gains "the run ends with the summary block of E.10, per level". (7) (OR133, M_SCR gap 5): "A usage or setting error —
+  an unknown option, an invalid `GC_THRESHOLD`, `PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S` or
+  `TEST_PARALLELISM` — exits 2 before the run
+  touches the live tree (E.10)."
+- **Unit**: Stage 1 U6 ((2) definitions); Stage 2 U7 ((6), (7)); Stage 3 U24 ((2) refusal, (5) harness fact); Stage 4
+  U27 ((1), (2) atomic); Stage 5 U36 ((1) `.frozen`, (2) label, (3), (4)); U14 ((5) F.7 pointer).
+- **Depends**: A.U6.02, A.U7.03, A.U14.28, A.U24.05, A.U24.46, A.U24.59, A.U27.11, A.U27.15, A.U36.036, A.U36.546,
+  M.SCR.035 (exit 2), M.SPEC.086.
+- **Blast carried by**: CLAUDE.md hang/segfault bullets → A.U36.546 (DOCS); `digital_twin/README.md` path literals →
+  A.U27.15 (TWIN).
+- **Kind**: doc
+
+### M.SPEC.079 E.3.1: the test heap and the per-file timeout
+- **From**: A.U8.15 (Part N rows `l1.unix_heapsize`, `runner.per_file_timeout_s`; values point to Part N), A.U8C2.08
+  (`l2.bus_hazard_concurrency_run_seconds`), A.U27.14 (`:2931` "85 times"), A.U7.04 (`RETRIED-PASS`), A.U7.06 (both
+  timeout variables validated), A.U24.65 (heap split per device job), A.U35.23 (heap-flag history row), A.U0.40 L10
+  (`:2884-2886` tag), A.U0.37 (none in E.3.1 beyond `:2905` "standing backstop" tag), A.U36.512 (3) (`:2898` "dev-variant"
+  → "dev device"), A.U30.12 (`gc.threshold_bytes` sites).
+- **Site**: `SPECIFICATION.md:2881-2934`.
+- **Change**: (1) `-X heapsize=16M` sentence names `l1.unix_heapsize` (Part N) and "never *raised*" keeps A.U0.40's L10
+  tag "(agent, 2026-09-17; no per-file override: owner, 2026-09-17)"; the history list keeps its measured facts with "WP1+
+  WP2 made the then-monolithic …" → "Building all six devices' graphs in one process pushed 8M → 32M …" (G9/R12 label
+  out) and gains A.U35.23's row when B3 records it ("the heaviest file's measured peak at both stages plus the margin");
+  "`test_digital_twin_bus_hazard_concurrency.py`'s dev-variant scenario … own 9-second real-clock budget" → "dev
+  scenario … budget (`l2.bus_hazard_concurrency_run_seconds`)". (2) `PER_FILE_TIMEOUT_S` paragraph: "(default 240)" →
+  "(`runner.per_file_timeout_s`, Part N)"; "is a standing backstop" gains "(owner, 2026-09-26)"; "Two retries absorb
+  transient contention" gains "; a pass after a retry is reported as `RETRIED-PASS`, a root-cause item, never as a plain
+  pass"; new: "`PER_FILE_TIMEOUT_S` and `TESTS_SCRIPTS_TIMEOUT_S` are validated as positive integers before any sweep (exit 2
+  otherwise, E.10)." (3) Overrides paragraph: "the per-device splits" → "the per-device jobs (one process per device)".
+  (4) GC stage paragraph: "validated once in `scripts/test.sh` rather than 85 times inside the runner" → "validated once
+  in `scripts/test.sh` rather than once per test file"; "is rejected before the run touches the live tree" gains "(exit
+  2)"; the `--coverage` sentence → "`--coverage` runs at the reactive default and ignores `GC_THRESHOLD`, and says so
+  (E.5)".
+- **Resolved**: A.U7.06 exits 1 on an invalid timeout; the owner's answer OR133 (AC_NOTES 43) makes every runner,
+  `test.sh` included, exit 2 on a usage or setting error, with no exception — exit 2 (M.SCR.035).
+- **Unit**: Stage 1 U0 ((1) tag, (2) tag); Stage 2 U7 ((2) retry, validation); Stage 3 U8 (Part N pointers); Stage 4 U24
+  ((3)); Stage 5 U27 ((4) count); U35 (history row); U36 ((1) label, A.U36.512).
+- **Depends**: A.U7.04, A.U7.06, A.U8.15, A.U8C2.08, A.U24.65, A.U27.14, A.U35.23, M.SPEC[N].
+- **Blast carried by**: CLAUDE.md heapsize bullet → A.U36.546/A.U8.15 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.080 E.4: the fakes' boundary, their contract and counters
+- **From**: A.U4.06 (filesystem and SCD30 NVM write counters), A.U24.17 (one contract suite for both tiers' fakes),
+  A.U24.18 (stand-ins offer only their real class's surface, checked), A.U24.26 (fakes cite their port facts and state
+  gaps), A.U24.78 (fault queue follows the twin's convention), A.U0.44 L60 (`:2952`, `:2954`), A.U10.38/A.U16.05 (names:
+  `FRAMManager`, `RegionBuffer`).
+- **Site**: `SPECIFICATION.md:2936-2962`.
+- **Change**: (1) "real `AsyFramManager`" → "real `FRAMManager`"; the `print_log.py` history sentence ("This caught a real
+  gap during `print_log.py`'s review: `_write()`/`_read()` called buffer methods *before* their `try:` block started —
+  fixed by widening both to cover the whole body.") goes (G9/R11). New paragraph: "Both tiers' fakes (`tests/machine.py`,
+  `digital_twin/machine.py`) pass one shared contract suite; each cites the rp2 port fact it models and states its gaps;
+  a stand-in offers only its real class's surface (checked), and fault injection takes the twin's queue convention. The
+  fakes count every filesystem write and every SCD30 NVM write, so a test asserts the writes it spends." (2) `:2952`
+  "**The allocator is the one other sanctioned mocking surface**" → "**The allocator is the one other mocking surface
+  (agent, 2026-09-13, `a1bf976`)**"; `:2954` "a deliberately generous multiple" → "a generous multiple".
+- **Unit**: Stage 1 U0 ((2)); Stage 2 U4 (counters); Stage 3 U24 (contract, surface, port facts, fault queue); U36 ((1)
+  history).
+- **Depends**: A.U4.06, A.U24.17, A.U24.18, A.U24.26, A.U24.78.
+- **Blast carried by**: `digital_twin/README.md` fidelity notes → A.U24.17/A.U25.01 (TWIN).
+- **Kind**: doc
+
+### M.SPEC.081 E.5, E.5.1, E.5.2, E.5.3: coverage
+- **From**: A.U36.526 (1) (E.5 body), A.U24.72 (traced sets; host-chain report; the tracer's false-negative classes),
+  A.U28.15 (Codecov and the Cobertura XML go), A.U7.20 (coverage outputs archived), A.U24.05 (an incomplete file fails),
+  A.U35.41 (E.5.1 rewritten to what stays; the unreachable-branch convention), A.U16.05 (`LockableBuffer` → `RegionBuffer`
+  in E.5.1), A.U18.17 (the UDP `POLLERR` arm needs no E.5.1 entry), A.U15.21/A.U15.38/A.U16.23/A.U18.41/A.U35.42 (verdicts
+  carried in A.U35.41's table), A.U1.06/A.U17.04 (cite E.5.1; no edit), A.U27.12 (E.5.2 probe and callers), A.U36.512 (3)
+  (`:3059`, `:3066` "variant"), A.U21.12 (a third binary), A.U24.42 (cites E.5.2), A.U7.03 (`:3100` Result text), A.SDEP.02
+  (cites E.5.3), A.U36.548 (G9/R11).
+- **Site**: `SPECIFICATION.md:2964-3101`.
+- **Change**: (1) E.5 body (`:2970-2983`) → A.U36.526 (1)'s text verbatim, plus "the coverage outputs move into the
+  evidence archive (E.1)" and A.U24.05's "a file that does not reach microtest's exit fails the run". (2) E.5.1: first
+  paragraph (tracer artifacts) stays and gains A.U24.72 (3)'s classes as facts ("lines the `sys.settrace` line event
+  never reports — a multi-line statement's continuation lines, `else:`/`finally:` headers, a `const()`-folded line,
+  `pass` in some shapes — each listed with its example as confirmed on `build-settrace`"); then A.U35.41's convention
+  paragraph verbatim ("A branch no input can reach is removed. It stays only as a guard of an overridable extension
+  point or of a documented runtime failure; such a guard is exercised through a double …, or, when no test can provoke
+  it, listed in E.5.1 with its reason. (owner, 2026-09-26) A re-check that only narrows an `Optional` for the type checker
+  stays, with a comment saying so (agent, 2026-09-30)."); the dead-code register (`:2994-3029`) → one line per entry A.U35.41's
+  table keeps (keep / keep registered untestable / keep as type narrowing), each with its reason and the current names
+  (`RegionBuffer.buf`, `FRAMManager`); entries the table removes leave the text, and "That pass left **31 genuinely
+  uncovered lines across 8 files**, all of which now have tests — the register above is what remains, not a backlog."
+  goes (dated count, G9/R11); the `finally:` paragraph stays, its "Two more were found exactly that way in the 2026-09-22
+  pass" → "`WifiService`'s `_locked_wlan_status()` and `_get_hotspot_stations()` release `wifi_mode_lock` in a `finally`;
+  both have cancellation tests". (3) E.5.2: "measured false on 2026-09-18, after an earlier note in this repo claimed it
+  was" → "(measured 2026-09-18)"; "builds **two** Unix-port variants rather than one (owner decision, 2026-09-21)" →
+  "builds `build-standard` without the flag and `build-settrace` with it (owner, 2026-09-21), plus `build-lwip` (B.2)";
+  "**The build directory's path no longer identifies its variant.**" bullet → "**A build directory's name does not
+  identify its build flavour**: an older toolchain directory may hold a `build-standard` that carries the flag, so every
+  runner asks the binary itself through `scripts/_unix_port.sh` (`hasattr(sys, "settrace")`, `import lwip`, `import
+  asyncio`) and rebuilds or fails on a mismatch; CI's cache key covers the same inputs (B.10)"; the second bullet holds.
+  (4) E.5.3: the quoted `Result: TESTS PASSED, COVERAGE RENDERING FAILED` → "the summary block's `Result: PASS (coverage
+  report not rendered)` (E.10)"; the incident sentence "It happened — `scripts/test.sh --coverage` exited 1 on 2026-09-22
+  … and CI would never have said so." keeps its dated fact as the evidence behind the split.
+- **Resolved**: A.U24.72 writes E.5's classes "itself" and A.U36.526 rewrites E.5 in U36 — the classes are placed in
+  E.5.1 with the other tracer artifacts (U24), and A.U36.526's body (U36) does not repeat them.
+- **Unit**: Stage 1 U7 ((1) archive, (4)); Stage 2 U24 ((1) incomplete file, (2) classes); Stage 3 U27 ((3) probe); Stage
+  4 U35 ((2) register and convention); Stage 5 U36 ((1) body, (3) wording).
+- **Depends**: A.U7.03, A.U7.20, A.U24.05, A.U24.72, A.U27.12, A.U28.15, A.U35.41, A.U36.526.
+- **Blast carried by**: README "Test coverage" and CLAUDE.md coverage bullet → A.U36.526 (2)-(4) (DOCS).
+- **Kind**: doc
+
+### M.SPEC.082 E.6 to E.6.5: the level ladder, adapters, the harness, role reversal, overlap
+- **From**: A.U7.01 (E.6.1 → "The level ladder (L0-L4)"; vocabulary), A.U36.007 (the not-levels sentence), A.U36.009
+  (E.6.3: no GC-instrumented image), A.U7.24 (E.6.2's "not an automated check" goes; the containment test), A.U7.25 (E.6.2's
+  persistence/IRQ/random-walk exclusion removed), A.U7.18 (runners run every lower level first), A.U7.14 + A.U27.19 (E.6.3:
+  the verdict reads the run record; a caller's `-m` narrows), A.U26.31 (hardware levels collectible with nothing
+  attached), A.U25.01 (E.6.5 points to the fidelity table), A.U26.44 (device-script convention: board facts from `BENCH`),
+  A.U0.44 L61 (`:3108-3109`, `:3190-3191`), A.U36.548 (G9/R11).
+- **Site**: `SPECIFICATION.md:3103-3193`.
+- **Change**: (1) E.6 intro: `:3108-3109` "— don't force further sharing onto genuinely backend-specific coverage." →
+  "— further sharing is not forced onto genuinely backend-specific coverage (agent, 2026-09-04, `8080538`)."; the
+  `tests_hardware/` paragraph uses the level names (L3 flash, L4 bench); "Both tiers run clean end to end on real
+  hardware; the earlier WiFi-reconnection flakiness this section used to flag is root-caused and mitigated" → "L3 and L4
+  run end to end on the bench (`tests_hardware/README.md`'s 'Known assumptions and open findings')"; new sentence: "Every
+  L3/L4 module is collectible with nothing attached under every option, checked at L0." (2) E.6.1 → A.U7.01's level
+  table and its containment paragraph verbatim, followed by A.U36.007's slot text; the "**Credential rotation is
+  deliberately not a bench capability** (owner decision, 2026-09-22)" paragraph keeps its decision and reason without
+  "The harness carried … zero call sites, so the table above claimed a fault nothing ever injected" (G9/R11). (3) E.6.2:
+  "flash/bench" → "L3/L4"; "What stays out: mock's raw byte/frame assertions, twin's persistence/IRQ/random-walk
+  behavior, real-hardware-only electrical/timing checks." → "What stays out: L1's raw byte/frame assertions and
+  real-hardware-only electrical/timing checks; a twin scenario without an L3/L4 counterpart is a row of E.6.6.";
+  "Documentation discipline (…), not an automated check." → "Each L3/L4 module names the twin scenarios it covers
+  (`COVERS_TWIN_SCENARIOS`), checked by `tests_scripts/test_level_containment.py`." (4) E.6.3: appended A.U36.009's
+  sentence; new: "A hardware run's verdict reads its run record, never a grep of its output; a `-m` the caller passes
+  narrows the runner's own selection, never replaces it." (5) E.6.4: "bench" → "L4" where it names the level. (6) E.6.5:
+  "Six subsystem pairs scanned in full: … (166 mock vs. 18 twin tests) …" keeps its finding with level names; `:3190-3191`
+  gains "(agent, 2026-09-04)"; new: "How faithful each twin fake is: `digital_twin/README.md`'s fidelity table. A device
+  script takes every board fact from `BENCH`, one rendered dict (`tests_hardware/`)."
+- **Unit**: Stage 1 U0 ((1), (6) tags); Stage 2 U7 ((2) table, (3), (4) run record); Stage 3 U25/U26 ((6) pointers, (1)
+  collectible); Stage 4 U27 ((4) `-m`); Stage 5 U36 ((2) slot, (4) A.U36.009, history).
+- **Depends**: A.U7.01, A.U7.14, A.U7.18, A.U7.24, A.U7.25, A.U25.01, A.U26.31, A.U26.44, A.U27.19, A.U36.007, A.U36.009.
+- **Blast carried by**: README hardware table → A.U7.01/A.U36.008 (DOCS); `tests_hardware/README.md` → A.U7.18/A.U26.* (HW).
+- **Kind**: doc
+
+### M.SPEC.083 E.6.6: the one level-containment exception list
+- **From**: A.U7.25 (E.6.6 → the table, rows 1-10), A.U4.07 (the SCD30 text correction runs first; no row), A.U0.38 V03/V31
+  /V33 (carried by A.U7.25's rows 1 and 3), A.U36.028 (`uart-fault-catalog` wording), A.U36.045 (`bmp3xx-general-call`),
+  A.U26.28 (boot-failure code row), A.C.12 (replaces it with the silicon attempt's result), A.U26.39 (`hotspot-multi-client`),
+  A.U26.34 (recovery rungs without L3/L4), A.U26.56 (off-subnet spoof attempt result), A.U26.51 + M_PROC gap 2 (rows for
+  twin scenarios without a counterpart; `COVERS_TWIN_SCENARIOS`), A.U35.21 (lone BMP3XX row is L4 only — A.U36.045),
+  A.U26.86 (THR wording; no SPEC edit beyond A.U36.028), A.U36.512 (3) (`:3213` "variant"), M_HW_DEV (`sgp40-general-call`
+  no L4, A.U7.25 row 2).
+- **Site**: `SPECIFICATION.md:3195-3237` (E.6.6).
+- **Change**: heading "### E.6.6 Level-containment exceptions"; the opening rule paragraph keeps the owner's standing rule
+  with "(owner, 2026-09-26)" and A.U7.01's containment wording, "C.8 is an instance of this rule"; the four numbered
+  exceptions become one table `| ID | Scenario/behaviour | Missing level(s) | Reason | Decided | Reviewed at close |`
+  read by `tests_scripts/test_level_containment.py`, with rows: `dev-only-bench` (owner, 2026-09-03); `sgp40-general-call`
+  (owner, 2026-09-26); `uart-fault-catalog` in A.U36.028's wording ("no injection hardware will be bought, and a second raw
+  `machine.UART` is never used as a stand-in; on silicon the flash level covers silence and a baud mismatch", owner,
+  2026-09-22); `ws2812-no-readback`; `human-only`; `twin-instrument` (one row per twin-only file, A.U7.24's first run;
+  `unix_port_gc_unwedge` leaves with the helper's retirement, A.U25.39); `off-subnet-spoof` (owner, 2026-09-28; its
+  Reason states phase C's attempt result, A.U26.56); `scd30-rdy-irq-vs-fallback` and `scd30-non-finite-words` (owner,
+  2026-09-25); `fram-write-protect-no-rest` (agent, 2026-09-15); `bmp3xx-general-call` (A.U36.045, agent, 2026-09-30);
+  `hotspot-multi-client` ("multi-client load in hotspot mode: one bench radio", owner, 2026-09-22 — no purchase);
+  `boot-failure-code` (A.U26.28's row until A.C.12's attempt: a reset code the attempt reached leaves the table, one it
+  could not returns with the recorded result); one row per recovery rung without an L3/L4 entry (A.U26.34); one row per
+  twin scenario A.U26.51's search left without a counterpart, each with its reason. "**Out of scope entirely**" paragraph
+  stays.
+- **Resolved**: (a) A.U7.25 row 3's "until injection hardware exists" is overtaken by A.U36.028's "no injection hardware
+  will be bought" (owner, 2026-09-22, A40). (b) "SCD30 has zero REST-pushable fields" (HEAD exception 2) is false
+  (A.U4.07) — no row. (c) A.U26.28's boot-failure row and A.C.12's silicon attempt: A.C.12 replaces the row with its
+  result (A.C.12 says so).
+- **Unit**: Stage 1 U7 (table, rows 1-10); Stage 2 U26 (rows A.U26.28/.34/.39/.51); Stage 3 phase C (A.C.12, A.U26.56
+  results); Stage 4 U35/U36 (A.U36.045, A.U36.028 wording, close review).
+- **Depends**: A.U4.07, A.U7.24, A.U7.25, A.U26.28, A.U26.34, A.U26.39, A.U26.51, A.U26.56, A.U36.028, A.U36.045, A.C.12.
+- **Blast carried by**: references to E.6.6's numbered items (BACKLOG, `tests_hardware/README.md`, two test files) →
+  A.U7.25 repoint (DOCS/HW); C.8's exception text → M.SPEC.065.
+- **Kind**: doc
+
+### M.SPEC.084 E.7 and E.8: soak timing; measurement traps
+- **From**: A.U36.512 (3) (`:3253` "dev variant"), A.U24.64 (E.7/E.8 already state the rate rule), A.U36.012 (E.8 heap-figure
+  scope bullet), A.U3.08 + A.U2.20 (E.8 `:3348-3350`), A.U0.40 L16 (`:3372-3375`), M_TEST_UNIT GAP-U10 (E.8 "48 checks, 96
+  tests … Two are single-mode"), M_TEST_HELP GAP-H5 + A.U36.544 (E.8 gains the platform-print sentence), A.U0.37 V38 (E.8? no:
+  `:3379` is E.9's rule sentence), A.U36.548 (G9/R11).
+- **Site**: `SPECIFICATION.md:3242-3375`.
+- **Change**: (1) E.7: "Measured on the dev variant (2026-09-11)" → "Measured on the `dev` device (2026-09-11)"; the
+  soak history (`run_dev_integration.py` "since retired") keeps only the dated measurement and its two consequences. (2)
+  E.8: after the first bullet, A.U36.012's bullet verbatim ("**A heap figure counts only with its scope written beside
+  it** …"). (3) The `ErrNum` bullet → "**A fault persists its errno; a resync prints**, and only a drain-bound resync
+  persists `wrnno` 54 — so the newest UART entry is the fault's own code (C.7.1)." (4) New bullet (A.U36.544): "`micropython.
+  mem_info(1)` prints through the platform print, not `sys.stdout`, so a heap map cannot be captured in-process." (5)
+  `:3372-3375` → "**Every hazard check runs in both CRC modes (agent, 2026-09-12, `dc970fb`).**
+  `tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`) — <N> checks, <2N> tests, with
+  <k> single-mode by construction (`_MODE_SPECIFIC`), because their subject is one configuration. The dev wiring selects
+  `CRCPass`; no UART device is in the field." — N and k as `tests/test_uart_comm_hazard.py` registers them at landing
+  (GAP-U10: four single-mode checks after M.TEST_UNIT.319/.325, plus the new checks of M.TEST_UNIT.319-.322).
+- **Resolved**: GAP-U10 — a count in text drifts; the executor writes the landed counts (or the sentence names the
+  mechanism without counts, agent's preference per OR43.a (3)). A.U0.40 L16 and GAP-U10 edit the same sentences — one
+  text.
+- **Unit**: Stage 1 U0 ((5) tag and CRC sentence); Stage 2 U3 ((3)); Stage 3 U17/U24 ((5) counts at the landing that
+  changes them); Stage 4 U36 ((1), (2), (4)).
+- **Depends**: A.U3.08, A.U36.012, A.U36.544, M.TEST_UNIT.319-.325.
+- **Blast carried by**: `HEAP_FRAGMENTATION_MEASUREMENTS.md` header → unchanged (DOCS).
+- **Kind**: doc
+
+### M.SPEC.085 E.9: driver/DUT separation; the host-side scenario harness
+- **From**: A.U25.46 (E.9 names the harness), A.U27.38 (both runners drive it), A.U25.74 (the twin runner's named,
+  off-by-default `--test-…` flags), A.U31.06 (`--test-loop-lag-ms` among them), A.U26.68 (device scripts emit facts; the
+  host test gives the verdict), A.U27.17 + A.U35.27 (Run 11's verdict on one attempt; window and tolerance calibrated
+  against a planted leak), A.U30.17 (4) (`:3400`), A.U0.37 V38 (`:3379` rule tag), A.U17.18 (no change), A.U36.548 (G9/R11),
+  M.SCR.017 (port-53 scenarios), M_SCR gap 5.
+- **Site**: `SPECIFICATION.md:3377-3433`.
+- **Change**: (1) `:3379` rule sentence gains "(owner, 2026-09-25)". (2) The first-findings list: "**The Run 11
+  memory-trend soak itself** used to drive … Moved entirely host-side (2026-09-14)" → "**The Run 11 memory-trend soak**
+  drives every request over real HTTP from the CPython suite (`scripts/_digital_twin_ci_suite.py`'s `_run_11_soak()`)";
+  "(I.4(e)'s own narrow, separately-litigated exception)" → "(I.4(e)'s one twin exception)". New paragraph: "**The
+  host-side L2 scenario harness** (`scripts/_digital_twin_scenarios.py`) is this rule's general form: each scenario boots
+  the device's generated graph in a fresh twin and drives it over HTTP, reading only the runner's stdout and its named
+  `--test-…` flags — off by default, the runner's one instrumentation exception (owner, 2026-09-30), e.g.
+  `--test-loop-lag-ms`. `scripts/test.sh` runs it per derived device with the scenarios that need an exclusive port 53
+  deselected and listed; `scripts/run_digital_twin_ci.sh` runs every scenario, one twin at a time, holding port 53. A
+  device script emits facts; its host test gives the verdict." (3) The trend-tolerance paragraph (`:3412-3433`): its
+  mechanism (autocorrelated samples; tolerance from each attempt's own quarter spread) stays; "`_run_11_soak()` also
+  retries once — a second fully independent clean boot — before failing on the trend check specifically, …" → "The verdict
+  is decided on one attempt, with the window and tolerance calibrated against a planted leak (Part N rows); if that
+  calibration cannot bound one attempt's noise, the verdict fails and the retry question goes to the owner." The
+  "Real GitHub-runner CI kept tripping … (2026-09-14) … 3298/2854 and 4361/2847 bytes" history keeps only its dated
+  measurement as the reason.
+- **Unit**: Stage 1 U0 ((1)); Stage 2 U25 ((2) harness); Stage 3 U26 (device-script sentence); Stage 4 U27 ((2) both
+  runners, (3)); U30 ((2) exception wording); U31 (flag); U35 ((3) calibration).
+- **Depends**: A.U25.46, A.U25.74, A.U26.68, A.U27.17, A.U27.38, A.U30.17, A.U31.06, A.U35.27, M.SCR.017.
+- **Blast carried by**: `digital_twin/README.md` flag table and CI-suite text → A.U25.74/A.U27.17 (TWIN).
+- **Kind**: doc
+
+### M.SPEC.086 New E.10: the runner summary block and exit codes
+- **From**: A.U7.02 (the block and its rules), OR133 / AC_NOTES 43 (owner: every runner, `test.sh` included, exits 2 on a
+  usage or setting error, no exception), M.SCR.035 (`test.sh`'s exit 2), A.U7.03 (per level; codes 0/1/3), A.U7.08
+  (pytest tier through a run record), A.U7.10 (`npm test` ends with the block), A.U7.13 (hardware runs write a run
+  record), A.U36.525 (CLAUDE.md's verdict rule points here), M_SCR gap 5.
+- **Site**: new `## E.10 The runner summary block` after E.9 (`:3433`), before Part F.
+- **Change**: A.U7.02's E.10 text — the block (`== Summary: <runner> ==` … `Exit code: <n>`) and its rules (counted unit
+  named; retried and recovered passes apart from `passed`; a missing or empty per-item verdict counts as failed;
+  `vacuous` > 0 forces FAIL; `Exit code:` equals the real exit status) — with the exit codes stated firm: "**Exit codes**:
+  0 — every item passed; 1 — an item failed or an allocation-failure marker was seen; 2 — a usage or setting error (an
+  unknown option, a missing or invalid argument, environment value or heavy-file list), in every runner, `scripts/test.sh` included, with
+  no exception (owner, 2026-10-01); 3 — `scripts/test.sh --coverage` only: every test passed and only the coverage
+  rendering failed (`Result: PASS (coverage report not rendered)`, E.5.3); 4 — NOT CLEAN, a run that cannot be read as
+  clean. A usage error prints the usage line on stderr." and the emitters: "`scripts/_summary_block.sh` and
+  `scripts/_summary_block.py` print byte-identical layouts (checked); `tests_js/_summary_reporter.js` prints the same for
+  `npm test`; the backgrounded pytest tier and every hardware run write a run record the summary reads. A gate's verdict
+  is its exit status or this block, never a truncated view of its output (`| tail`, `| head`)." A.U7.02's sentence
+  listing "today's divergent sites: `test.sh:34, :47, :53` exit 1" is not written — OR133 settled them (M.SCR.035).
+- **Resolved**: A.U7.02 flagged `test.sh`'s exit 1 sites to the lead; the owner answered SCR Q1 with (a) (OR133): firm,
+  no "pending" marker (owner, 2026-10-01; M.SCR.035/.045 apply it to `test.sh`, a bad heavy-file list included).
+- **Unit**: U7 (the block and codes; `test.sh` adopts exit 2 in the same unit, M.SCR.035).
+- **Depends**: A.U7.02, A.U7.03, A.U7.08, A.U7.10, A.U7.13, M.SCR.035.
+- **Blast carried by**: CLAUDE.md verdict bullet → A.U36.525 (DOCS); README sample block → A.U7.03 (DOCS); H.8 JS tier →
+  M.SPEC[H.8].
 - **Kind**: doc
