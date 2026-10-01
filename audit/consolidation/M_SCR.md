@@ -231,7 +231,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U27.15's twin value lacks `digital_twin/unixport`; M.TWIN.060 (later, the twin's end state) adds it —
   M.TWIN's value kept.
 - **Unit**: U27 (the `unixport` element exists from U25, M.TWIN.017; the file is born in U27 with the U25 value).
-- **Depends**: M.TWIN.017/.060.
+- **Depends**: M.TWIN.017; M.TWIN.060 [follows] (its README names this file in U36).
 - **Blast carried by**: readers M.SCR.008, .016 (suite and harness), .036, .062, .064, .022, `tests_js/_micropypath.js` and
   `tests_js/_twin_process.js` (A.U27.15/M.WEB.082, WEB), `tests_scripts/test_coverage_runner.py`,
   `test_digital_twin_boot_contiguity.py`, `test_digital_twin_generated_boot.py` (A.U27.15, TSC),
@@ -514,6 +514,7 @@ Conventions used below (each defined once, then cited):
 - **Unit**: U35 (stages: U25 (a)-(e) and (l) with A.U25.46/.74 — (l)'s product side lands in U19, before the harness
   exists; U31 (j); U35 (f)-(i); S0930's (k) lands with A.S0930.27/.38 after U25 — each scenario lands in the unit of its
   constituent).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.27 in U25, A.S0930.38 in U25.
 - **Depends**: M.SCR.017; M.TWIN.051/.104/.136/.144; M.TWIN.050 (`fram_writes=` and `fram_writes_by=` on the shutdown
   line, G3's gap-pass amendment); A.U19.20 (route reference), A.U24.70 (band).
 - **Blast carried by**: the deleted in-DUT files → M.TEST_HELP.033, M.TWIN.136, M.TWIN.144 (TEST_HELP, TWIN); Part N rows
@@ -1020,6 +1021,7 @@ Conventions used below (each defined once, then cited):
   into `_run_with_retries`; A.U0.40 and A.U0.60 both name `:311-313` — A.U0.60's actor label is A.U0.40's text (the
   measured floor is the owner's E.3.1 rule; no separate label).
 - **Unit**: U27 (stages: U7 A.U7.04/.05; U8 tags; U21 binary argument; U24 device argument; U27 harness job, MICROPYPATH).
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25).
 - **Depends**: M.SCR.036, M.SCR.017.
 - **Blast carried by**: `tests_scripts/test_test_sh.py:564-628` (`_flag` extraction, `RETRIED-PASS`, noverdict, count == 2)
   → A.U7.04/A.U7.05 (TSC); SPEC E.3.1 retry text → A.U7.04 (SPEC); Part N rows `runner.*`, `l1.unix_heapsize`,
@@ -1038,6 +1040,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U25.46 says `test.sh`'s harness run is "for the local run"; A.U27.38 runs it in CI's unit lanes too (both
   GC stages) — A.U27.38 is the later, wiring action and A.U25.46 names U27 as its wirer; kept.
 - **Unit**: U27 (stages: U21 lwIP loop; U24 expansion; U27 harness jobs).
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25).
 - **Depends**: M.SCR.040, M.SCR.007, M.SCR.042.
 - **Blast carried by**: CI `unit-tests`/`unit-tests-gc-threshold` carry the harness at both stages with no `ci.yml` change
   (A.U27.38, TOOL: job time re-measured, A.U8.15's `timeout-minutes` rows); `tests_scripts/test_test_sh.py` expansion
@@ -1055,6 +1058,7 @@ Conventions used below (each defined once, then cited):
   `[ -f ]` skip goes. Comment `:392-398` keeps the reason and drops the count word ("the heaviest files").
 - **Resolved**: —
 - **Unit**: U35.
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25).
 - **Depends**: M.SCR.041.
 - **Blast carried by**: `tests_scripts/test_test_sh.py` two new tests → A.U35.24 (TSC); `timing.md` → A.U35.23 (procedure);
   BACKLOG text → A.U35.57 (DOCS).
@@ -1120,6 +1124,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U21.12's separate "tests/lwip_host (lwIP host build): N/M files passed" line folds into the block's L1
   level and its file list (E.10 forbids lines after the block) — A.U7.03/E.10 settle it.
 - **Unit**: U27 (stages: U7 block; U21 lwIP counts; U27 harness).
+  A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25).
 - **Depends**: M.SCR.001, M.SCR.002, M.SCR.040, M.SCR.041.
 - **Blast carried by**: `tests_scripts/test_test_sh.py:764-813` `_verdict_block()` rewritten, fixture results dir case →
   A.U7.03 (TSC); README `:156-176`, SPEC E.3/E.5.3/B.10 quoted texts → A.U7.03 docs (DOCS, SPEC); `_run_lower_levels.sh`
@@ -1234,6 +1239,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U7.09's `retried` filing for Run 11's second attempt is dropped: A.U27.17 removes the attempt (one
   verdict) — settled by OR37.a (2).
 - **Unit**: U27 (stages: U25 device, state, `--only/--repeat`; S0930 `--device-toml`; U7 block).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25.
 - **Depends**: M.SCR.002, M.SCR.013, M.SCR.016, M.SCR.068 (single-device generation mode), A.U19.20 (API reference, GEN).
 - **Blast carried by**: `tests_scripts/test_digital_twin_ci_suite_state.py` (state archived not deleted, labels) →
   A.U25.35 (TSC); `test_level_containment.py` reads `run_suite()`'s calls → A.U7.24 (TSC); `tests_scripts/test_tool_help.py`
@@ -1287,6 +1293,7 @@ Conventions used below (each defined once, then cited):
   generated module constructs every link bus with `crc=CRC16()` (source text of the generated module).
 - **Resolved**: —
 - **Unit**: U35 (stages: U25 the cell; S0930 the CRC16 rerun; U35 the rate assertion).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25.
 - **Depends**: M.SCR.047; M.TWIN (fault vocabulary, `fram:silent`, `uart_link:silent`, exit codes); A.U25.37's L0 matrix
   completeness test (TSC).
 - **Blast carried by**: `tests_scripts/test_digital_twin_ci_suite_matrix.py` (every chip-fake op in the matrix or
@@ -1322,6 +1329,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U15.R02's twin-CI blast (heater-off consumes one `writeto` fault) is wrong (AC_NOTES 31); the keyed
   read fault replaces it (M.TWIN.014, M_TWIN gap "SCR").
 - **Unit**: U25 (latest of U15/U25 constituents).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SCR.047; M.TWIN.014.
 - **Blast carried by**: SPEC/README text of Run 5 → M.TWIN README entry (TWIN).
 - **Kind**: test
@@ -1340,7 +1348,7 @@ Conventions used below (each defined once, then cited):
   `mempause` PUT, `_wait_for_mem_paused()`, the `:869` sleep and the `:901-904` settle go. `:891` → "every uart_link
   instance".
 - **Resolved**: —
-- **Unit**: S0930 lands after U25 (A.S0930.38 is the latest constituent).
+- **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)').
 - **Depends**: M.SCR.053, M.SCR.047.
 - **Blast carried by**: A.U25.64 (3)'s 50 × 2 repro run → procedure (U25 execution); BACKLOG note if not reproduced →
   A.U25.64 (DOCS).
@@ -1359,6 +1367,7 @@ Conventions used below (each defined once, then cited):
   no-reply code looked up by catalog name. Counter reads at `:999`, `:1019`, `:1028` default to -1.
 - **Resolved**: —
 - **Unit**: U25 (stage U10: key and class names).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SCR.047.
 - **Blast carried by**: `digital_twin/README.md:761-767` → A.U25.65 (TWIN).
 - **Kind**: test
@@ -1421,7 +1430,7 @@ Conventions used below (each defined once, then cited):
   wiring no bus driver skips the cell by name) exits `_EXIT_SIMULATED_RESET` (3) through the supervisor's escalation, and
   the relaunch reads `ResetReason` 20 (`_RR_STACK_EXHAUSTED`, read by `ast` like the others).
 - **Resolved**: —
-- **Unit**: S0930 (after U25); cell (d) with U30 (A.U30.19), after M.TWIN.044's `stack` branch.
+- **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'); cell (d) with U30 (A.U30.19), after M.TWIN.044's `stack` branch.
 - **Depends**: M.SCR.054; M.TWIN.044/.045 (the `stack` fault).
 - **Blast carried by**: twin fidelity row (bootloader carry-over) → M.TWIN README (TWIN).
 - **Kind**: test
@@ -1437,7 +1446,7 @@ Conventions used below (each defined once, then cited):
   for `bootloader` (`kind=bootloader`, code 4); `would_have_triggered_count == 0` on every launch. The states and hangs are
   the harness's (M.SCR.018 (k)).
 - **Resolved**: —
-- **Unit**: S0930.
+- **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)').
 - **Depends**: M.SCR.059.
 - **Blast carried by**: product commands → A.S0930 SRC actions (SRC_CORE); `_LOG_EVENT` level read by `ast` from
   `src/asy_print_log.py`.
@@ -1475,8 +1484,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U27.16 names the archive runner `digital_twin_ci`; `_run_lower_levels.sh` runs every device in turn and a
   shared keep-3 would drop earlier devices' evidence — the runner name carries the device (agent decision AD-9). The
   derived CRC16 TOML is built by `sed` (A.S0930.04 leaves the method open; agent decision AD-10).
-- **Unit**: S0930 (A.S0930.04 lands after U27). Stages: U24 (locks), U25 (device required, comment), U27 (archive, probe,
-  harness, convention).
+- **Unit**: U27 (A.S0930.04's CRC16 rerun on U27's runner; stages U24, U25 as listed). Stages: U24 (locks), U25 (device required, comment), U27 (archive, probe, harness, convention).
 - **Depends**: M.SCR.003, M.SCR.007, M.SCR.008, M.SCR.012, M.SCR.017, M.SCR.048, M.SCR.071, M.SCR.068.
 - **Blast carried by**: CI `digital-twin-e2e` (one leg per device from the `devices` job; artifact path
   `digital_twin_ci_logs/` unchanged; no `continue-on-error`) → A.U28.06/A.U28.08 (TOOL); L0
@@ -1600,6 +1608,8 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U27.35's work dir per device collides between the normal and no-autostart builds of one device — the
   `-noautostart` suffix keeps them apart (agent decision AD-13). `RuntimeError` conversions (`:64-67`) go (A.U27.29).
 - **Unit**: U27 (stages: U21 lock/record/resolve; S0930 `--device-toml` lands after U27 on top).
+  A-C2 step order: A.U8C.121's part lands in U8C2, not U8C (it needs A.U8C2.22, which lands in U8C2).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: A.U21.22 (`toolchain_lock`), A.U21.03 (record), A.U27.29/A.U20.17 (`SetupError`/`OverrideError` derive
   from `Exception`, `BuildInternalError`) (TOOL, GEN); M.SCR.070 (`StripError`).
 - **Blast carried by**: `tests_scripts/test_build_firmware.py` (work dir kept and wiped next time; `--no-autostart`
@@ -1663,6 +1673,7 @@ Conventions used below (each defined once, then cited):
   (M_TOOL gap 3; M_SCR gap 2 (d) withdrawn, gap pass, agent decision AD-20). Only the modlwip override is optional: the
   lwIP-options override is in every rp2 build and its effect is the `lwip` key, so a control image reads `[]`.
 - **Unit**: U27 (stages: U26 record and `overrides`; S0930 `deviceToml`/`uartCrc` after U27).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: M.SCR.065; M.TOOL.041 (`read_lwip_macros_from_build()`, `verify_modlwip_eagain_in_build()` public),
   M.TOOL.055 (D3: the uf2 path returned, the build dir beside it), M.TOOL.039 (`MODLWIP_OVERRIDE_DIR_NAME`) (TOOL).
 - **Blast carried by**: `bench/conftest.py` image check → M.HW_BENCH.060; lwIP control image (built in a throwaway worktree,
@@ -1699,6 +1710,7 @@ Conventions used below (each defined once, then cited):
   `sensortask_<device>_main.py` (M_GEN gap 1). A.U27.11 leaves `api/` outside the writer; A.U19.20 places it beside the
   generated definitions — written and pruned here as part of the one set (agent decision AD-12).
 - **Unit**: U27 (stages: U6 definitions; U19 api; U20 expected facts and boot entries; U24 stamps; S0930 single-device mode).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25.
 - **Depends**: M.GEN.019 (both boot-entry texts), M.GEN.018/.033 (`generate_api_reference`), A.U20.07
   (`expected_facts`), A.U20.28 (`instances` in `compute_twin_wiring`), A.U20.17 (atomic writer) (GEN).
 - **Blast carried by**: `tests/test_reset_call_site_invariant.py` glob → M_GEN gap 1 (TEST_UNIT); `tests/_generated_tree.py`
@@ -2337,3 +2349,29 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U19.10 | M.SCR.018 (l) (gap pass) |
 | A.U19.12 | M.SCR.018 (l) (gap pass) |
 | A.U30.19 | M.SCR.059 (d) (gap pass) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.SCR.009 | Depends | `M.TWIN.017/.060` → `M.TWIN.017; M.TWIN.060 [follows] (its README names this file in U36)` | M.TWIN.060 is the README pointer to this file, written after it |
+| M.SCR.018 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.27 in U25, A.S0930.38 in U25. | AC3_R R-08 (h) |
+| M.SCR.040 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SCR.041 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SCR.042 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SCR.045 | Unit | appended: A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SCR.048 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |
+| M.SCR.051 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |
+| M.SCR.053 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SCR.054 | Unit | was: S0930 lands after U25 (A.S0930.38 is the latest constituent). → now: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'). | AC3_R R-08 (h): "S0930" is not a unit of the sequence |
+| M.SCR.055 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SCR.059 | Unit | was: S0930 (after U25); cell (d) with U30 (A.U30.19), after M.TWIN.044's `stack` branch. → now: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'); cell (d) with U30 (A.U30.19), after M.TWIN.044's `stack` branch. | AC3_R R-08 (h): "S0930" is not a unit of the sequence |
+| M.SCR.060 | Unit | was: S0930. → now: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'). | AC3_R R-08 (h): "S0930" is not a unit of the sequence |
+| M.SCR.061 | Unit | appended: A-C2 step order: A.U24.53's part lands in U25, not U24 (it follows A.U24.53's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SCR.061 | Unit | was: S0930 (A.S0930.04 lands after U27). Stages: U24 (locks), U25 (device required, comment), U27 (archive, probe, harness, convention). A-C2 step order: A.U24.53's part lands in U25, not U24 (it follows A.U24.53's own change, which lands in U25). → now: U27 (A.S0930.04's CRC16 rerun on U27's runner; stages U24, U25 as listed). Stages: U24 (locks), U25 (device required, comment), U27 (archive, probe, harness, convention). | AC3_R R-08 (h): "S0930" is not a unit of the sequence |
+| M.SCR.065 | Unit | appended: A-C2 step order: A.U8C.121's part lands in U8C2, not U8C (it needs A.U8C2.22, which lands in U8C2). | dependency deferral (an edge ran from a later step) |
+| M.SCR.065 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26. | AC3_R R-08 (h) |
+| M.SCR.067 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26. | AC3_R R-08 (h) |
+| M.SCR.068 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |

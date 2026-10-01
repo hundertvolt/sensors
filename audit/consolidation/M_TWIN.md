@@ -594,7 +594,7 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   `int` epoch second (the rp2 port's `time.time()` is integral).
 - **Resolved**: —
 - **Unit**: U25
-- **Depends**: M.TWIN.033 (RTC reads `installed()`)
+- **Depends**: M.TWIN.033 [follows] (its RTC reads `installed()`); the two land in one U25 commit (A-C2)
 - **Blast carried by**: `machine.RTC` → M.TWIN.033; the runner installs it for every loaded `src/` module after the
   device import (walk `sys.modules`) → M.TWIN.050; the L2 clock-jump halves A.U10.28 and A.U18.26 leave "pending U25"
   (A.U25.71 names their use of `step()` but no action writes them — a gap closed here) → new
@@ -697,6 +697,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   `mode=None` per A.U24.16 / `check_pin_defaults` (rp2's `mode=None`, `machine_pin.c:243-248`) — settled by A.U24.17
   (the contract), which both cite.
 - **Unit**: U25
+  A-C2 step order: A.U14.17's part lands in U13 (A.U14.17 (a)'s code half lands with A.U13.R01 in U13 (M.SRC_SENS.008/.009: the boot clear is called from I2C.__init__ there, so every fake and the generated call move with it)).
 - **Depends**: M.TWIN.001; A.U24.16, A.U24.17 (contract, U24)
 - **Blast carried by**: `_build_i2c_chip()`'s `Pin(id, mode=Pin.IN)` → M.TWIN.023 (same final state after the driver's
   own `Pin(id, Pin.IN, Pin.PULL_UP)`); `launch.py`'s `Pin(13)` holds; I2C initialising construction sets the bus pins
@@ -903,6 +904,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   does not scope it (it checks classes standing in for rp2 types).
 - **Resolved**: —
 - **Unit**: U25 (stage U1: A.U1.25's comment)
+  A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25).
 - **Depends**: M.TWIN.001
 - **Blast carried by**: tests (4097 bytes in flight → `dropped_overrun == 1`; `settle()` inside a coroutine raises; a
   64-byte settle at 1200 baud returns after its wire time with a bounded number of `_advance()` calls; each counter at
@@ -1102,6 +1104,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   is the later action and names the fidelity row's new state ("fixed (installed by the runner)") — the uninstalled RTC
   keeps the fixed tuple, so both hold.
 - **Unit**: U25
+  A-C2 step order: A.U10.28's part lands in U16, not U10 (it follows A.U10.28's own change, which lands in U16).
 - **Depends**: M.TWIN.019
 - **Blast carried by**: `src/asy_ntp_client.py:263` set call ignores the return (no change); any twin test using the
   setter's return switches to a separate get (grep `datetime((` in `tests/test_digital_twin_*.py`) → M.TWIN.128 and per
@@ -1575,6 +1578,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Unit**: U25 (after A.U21.06 for the unwedge removal; A.U20.02's keyword in U20 is already present; stage U35: the
   `fram_writes=`/`fram_writes_by=` fields with A.U35.28; the per-logger field by lead direction — a total can hide one
   module over its own rate, M.SCR.018 (h) and M.SCR.051 read it — gap pass G3)
+  A-C2 step order: A.U24.47's part lands in U25, not U24 (it follows A.U24.47's own change, which lands in U25).
 - **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.032, M.TWIN.034, M.TWIN.046, M.TWIN.047, M.TWIN.049, M.TWIN.053
 - **Blast carried by**: CI suite exit codes 3/4 (and 5 unused there), the `machine reset:` and shutdown-line fields
   (`mem_backup: r0=`, `public_destinations_refused=`, `fram_writes=`, `fram_writes_by=`) → A.U25.36, A.U25.33/A.U25.35, A.U35.28 (SCR,
@@ -1632,6 +1636,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   runner's ordinary path, which keeps none.
 - **Unit**: U25 (A.S0930.27's step list co-lands per AC_NOTES 36; A.U31.06 and A.U35.31 add their flag in U31/U35 to
   this section)
+  A-C2 step order: A.U24.47's part lands in U25, not U24 (it follows A.U24.47's own change, which lands in U25).
 - **Depends**: M.TWIN.047, M.TWIN.050; M.SRC_CORE names (`_log_dead_task`, `_reset_timer`, `_config_lock`, `_op_lock`,
   `flush_pending`, `report_set_values`)
 - **Blast carried by**: L0 `tests_scripts/test_twin_runner_test_flags.py` (each flag's default off, every rebind under its
@@ -1794,6 +1799,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   process (its accepted sockets register here), bounded by the product's own ceiling and backlog, so `3 ×
   max_connections` remains the bound — the comment states that rule, not a number.
 - **Unit**: U25
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: A.U25.46 (the in-process load leaves), A.U24.70 (port band row)
 - **Blast carried by**: L0 entry-order and margin checks → A.U25.43 (TSC, `tests_scripts/test_twin_entry_point_order.py`);
   `tests/test_digital_twin_poll_prewarm.py` (canonical trailer, prewarm return type) → M.TWIN.134; README prewarm bullet
@@ -2511,6 +2517,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   strengthened tests (the fake reader records each `readinto` request length and its remaining buffer). Trailer.
 - **Resolved**: —
 - **Unit**: U25 (stages U8C tags, U24 harness)
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TWIN.016; M.TEST_HELP.056 (port bands)
 - **Blast carried by**: —
 - **Kind**: test
@@ -2561,6 +2568,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   host-side, and A.U25.60 (same file, same codes) reads "the reader's published data (in-process)" — the end state reads
   in-process; the GET form is the host harness's measurements scenario (A.U25.46).
 - **Unit**: U25 (stage U15: A.U15.32/.36/.R05 cases written on the HEAD harness; U25 rebases them on C4)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.TWIN.012, M.TWIN.024; `tests/_twin_devices.py`
 - **Blast carried by**: `pyproject.toml` B905 per-file entry → A.U28.28 (TOOL)
 - **Kind**: test
@@ -2733,6 +2741,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   by that text (V24). A.U25.51 and A.U24.36 edit `:107`, which A.U25.46 moves host-side — their content travels with the
   burst (GAP-H2, SCR). The `_API_RUN_BOUND_S` row (A.U8C.24) closes with the burst's move (C3).
 - **Unit**: U25 (stages: U8C tags, U13/U15 L2 cases on the HEAD harness, U16 pause edits, U20 `watchdog=`, U24 harness)
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TWIN.014, M.TWIN.021, M.TWIN.024, M.TWIN.035; `tests/_twin_devices.py` `devices_with_shared_bus()`
   (TEST_HELP gap)
 - **Blast carried by**: `tests/_twin_devices.py` gains `devices_with_shared_bus()` → TEST_HELP gap; the API-burst
@@ -2782,6 +2791,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Unit**: U24 (A.U24.65; the prewarm/shim lines move to the new file in U24 already, as the wrappers carry them — the
   wrappers at HEAD carry none because the library prewarms; A.U25.43 (U25) moves the call out of the library into this
   entry file)
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25).
 - **Depends**: M.TEST_HELP.029 (the library's `register_for_device`), M.TEST_HELP.055
 - **Blast carried by**: `scripts/test.sh` per-device expansion → A.U24.65 (3) (SCR); the twin pass `files` glob picks it
   up (M.TWIN.075)
@@ -2858,6 +2868,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   device's generated object graph against the twin's buses and drives real HTTP" — after U25 the proof is the harness
   scenario (a runner subprocess serving the built site): SPEC gap.
 - **Unit**: U25
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: A.U25.46 (harness, SCR)
 - **Blast carried by**: harness scenarios → A.U25.46 (SCR gap with the listed items); SPEC E/H build-chain proof text →
   A.U36.517 (SPEC gap); `pyproject.toml`/`typecheck.ini` scope by glob (no entry)
@@ -2911,6 +2922,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Resolved**: A.U24.56 (U24) and A.U36.513 (U36) both name `:1-2`, `:136-138`, `:218-220`; A.U36.513 itself says these are
   A.U24.56's — one edit in U24.
 - **Unit**: U25 (stages U8C, U24)
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TWIN.047-053
 - **Blast carried by**: —
 - **Kind**: test
@@ -3074,6 +3086,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   never a new product hook").
 - **Unit**: U35 (stages: U24 harness/allocator/`Any` (C2); U25 the move, per-device form, C4, tests 1 and 3-9; U30 the
   `gc.collect()` props go (A.U30.15's own unit; until then they stay in tests 3, 6, 7); U35 test 2 per A.U35.31)
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.031, M.TWIN.035, M.TWIN.040, M.TWIN.042, M.TWIN.053, M.TWIN.108 (marker
   form); M.TEST_HELP.047, .055, .056, .060; SRC_CORE supervisor split (A.U20.06) and `_supervisor_task`; A.U25.46's harness
   (SCR) for the moved half
@@ -3257,6 +3270,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   resolves `machine` by path, so the twin files reuse it instead of a third copy (SPECIFICATION.md Part G discovery, REF/R05) — agent
   decision (OR2.c list).
 - **Unit**: U25 (A.U17.25's L2 files need A.U25.04's `reset_peripherals()`; S0930's both-mode plan co-lands)
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25.
 - **Depends**: M.TWIN.027, M.TWIN.028, M.TWIN.029, M.TWIN.035; M.TEST_HELP's `_uart_comm_harness` (guarded `run()`
   removed there — this file uses `_async_harness`), M.TEST_HELP.045
 - **Blast carried by**: SPEC J.7 tier map row → A.U36.539 (SPEC); CLAUDE.md four-tier UART clause → A.U17.25/U36 (DOCS);
@@ -3855,3 +3869,25 @@ None — every conflict was settled by a later action, an owner row, AC_NOTES or
 | A.U26.58 | M.TWIN.059 (gap pass G3) |
 | A.U15.R04 | M.TWIN.102 (gap pass G3) |
 | A.U22.01 | M.TWIN.132 (gap pass G3) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.TWIN.019 | Depends | `M.TWIN.033 (RTC reads `installed()`)` → `M.TWIN.033 [follows] (its RTC reads `installed()`); the two land in one U25 commit (A-C2)` | change-level cycle M.TWIN.019<->.033: the RTC needs this module, this module only names the RTC; settled as one co-landing commit |
+| M.TWIN.021 | Unit | appended: A-C2 step order: A.U14.17's part lands in U13 (A.U14.17 (a)'s code half lands with A.U13.R01 in U13 (M.SRC_SENS.008/.009: the boot clear is called from I2C.__init__ there, so every fake and the generated call move with it)). | a part lands outside the Unit slot's units by an action's own text |
+| M.TWIN.027 | Unit | appended: A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.033 | Unit | appended: A-C2 step order: A.U10.28's part lands in U16, not U10 (it follows A.U10.28's own change, which lands in U16). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.050 | Unit | appended: A-C2 step order: A.U24.47's part lands in U25, not U24 (it follows A.U24.47's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.051 | Unit | appended: A-C2 step order: A.U24.47's part lands in U25, not U24 (it follows A.U24.47's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.057 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.102 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.108 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.118 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.122 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.136 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.140 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.144 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TWIN.154 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |

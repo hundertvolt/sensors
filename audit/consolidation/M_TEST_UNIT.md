@@ -333,6 +333,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
   M.SRC_SENS.048). The timeout test counts polls, not wall time (no brute-force wait).
 - **Unit**: U31 (stages: U13 bool results and `_BadBurstRead` on `get_register_bytes`/`None`; U15 wait and OSR read;
   U30 `get_register_into`; U31 `sleep_ms`).
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it follows A.U2.10's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.048, M.SRC_SENS.043; M.TEST_UNIT.007.
 - **Blast carried by**: four-tier hazard cases for the OSR read → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.25 (7)).
@@ -399,6 +400,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
   holds (a provoked fault, A.U35.37 class (b)).
 - **Resolved**: A.U15.26's "`set_trigger_secs(True)`" is written with A.U10.43's name (U10 lands first).
 - **Unit**: U15 (stages U5 constructor, U10 names/setup, U11 `write_config`, U24 builders' names).
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it follows A.U2.10's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.042, M.SRC_SENS.045, M.SRC_CORE.040.
 - **Blast carried by**: SPEC M.4 sentence → A.U15.26 (SPEC).
 - **Kind**: test
@@ -424,6 +426,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
 - **Resolved**: deriving the bound tables from the schema (agent decision D-T2) makes A.U15.23's two table edits one
   source edit; A.U24.01's rule "a test … reads or derives it from its source" covers the derived tables.
 - **Unit**: U24 (stages U10 names/keys, U11 `write_config`, U15 MeanAtmTemp and the rung assertion).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.041, M.SRC_SENS.044, M.SRC_CORE.040; M.TEST_UNIT.007.
 - **Blast carried by**: generated definitions `MeanAtmTemp` min → A.U15.23 (GEN).
 - **Kind**: test
@@ -497,6 +500,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
   correction). A.U15.R03's "logs its own errno 12/13 as today" is M.SRC_SENS.044's code-returning helper (config
   unreadable prints only).
 - **Unit**: U15 (stages U2 numbers, U3 console/CFGMGR, U5 constructor, U10 setup/ladder/TS, U24 builder).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.047, M.SRC_CORE.037, M.SRC_CORE.040; A.U2.03.
 - **Blast carried by**: four tiers of the mid-operation reset → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.R03, L1), A.U13.R02/A.U15.R03 (TWIN, HW_DEV); catalog W11/W14/W15 rows → A.U2.01 (GEN).
@@ -563,6 +567,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
   in-scenario `pr.setup()`.
 - **Resolved**: —
 - **Unit**: U2 (numbers; `code()` form in U24 with A.U2.03's helper — the helper lands in U2, so U2).
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it follows A.U2.10's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.047.
 - **Blast carried by**: —
 - **Kind**: test
@@ -577,6 +582,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
   task is done and returned `None`, and that the log ends with `code("E", "GIVE_UP")`.
 - **Resolved**: —
 - **Unit**: U15 (stage U10 name).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.046.
 - **Blast carried by**: —
 - **Kind**: test
@@ -632,6 +638,7 @@ redirected by the shared `tests/_udp_port_redirect.py`, the teardown warning, an
 - **Resolved**: A.U18.12 ("the shim covers the address") and A.U18.45 ("the port-redirect wrapper … also replaces
   `_ResolvingAsyUDPSocket`") describe one replacement: the shim rewrites the address, the redirect maps the port.
 - **Unit**: U18 (stage U24: harness, port band).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25).
 - **Depends**: M.SRC_NET.023, M.SRC_NET.026; TEST_HELP `tests/_udp_port_redirect.py` (A.U18.11/A.U18.45),
   `tests/_port_bands.py` (A.U24.70), `tests/_async_harness.py`; the shim's move (A.U18.12, TWIN/TOOL).
 - **Blast carried by**: `pyproject.toml` `mypy_path` for the shim → A.U18.12 (TOOL); port table row → A.U24.70 (TEST_HELP).
@@ -1278,8 +1285,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `bus_lock` delays `clear()`/`recover()` until it exits (gated), and a session started during either waits for it.
 - **Resolved**: A.U13.R01's "each call increments once" with M.SRC_SENS.010's single step per public call.
 - **Unit**: U13.
-- **Depends**: M.SRC_SENS.008, .010; TEST_HELP `tests/machine.py` `Pin` `OPEN_DRAIN`/`ALT`/`ALT_I2C`/scripted levels/value
-  log (A.U24.16), per-id I2C state and `raise_on_construct` (A.U24.20), fake clock for `ticks_us` (A.U14.34/A.U35.10).
+- **Depends**: M.SRC_SENS.008, .010; TEST_HELP `tests/machine.py` `Pin` `OPEN_DRAIN`/`ALT`/`ALT_I2C`/scripted levels/value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows]), per-id I2C state and `raise_on_construct` (M.TEST_HELP.013's A.U13.R01 part, U13; A.U24.20 [follows]), fake clock for `ticks_us` (A.U14.34; A.U35.10 [follows] replaces it in U35).
 - **Blast carried by**: four-tier coverage of the bus rung → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U13.R02 L1), A.U13.R02 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test
@@ -1374,6 +1380,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   True`, `_init_isl()`, then a periodic-led switching cycle counts one periodic-only decision).
 - **Resolved**: —
 - **Unit**: U15 (stages U2 numbers, U3 console, U10 ladder).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.074, M.SRC_CORE.037.
 - **Blast carried by**: SPEC M.1.2 restart table → A.U15.34 (SPEC).
 - **Kind**: test
@@ -1417,6 +1424,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   above; GAP-15's per-reader condition (M.SRC_SENS.083: `results[0] is None and not self._unsettled_cycle`) is what
   the two new cycles pin.
 - **Unit**: U15 (stages U3 console streak, U10 ladder/`_read_loop`/`TS`).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037.
 - **Blast carried by**: the mid-operation re-apply case → M.TEST_UNIT.238 (L1) and M.TWIN.102 (L2); twin Run 5c holds →
   A.U15.R04 (SCR).
@@ -1452,6 +1460,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
     sample, `TS` included.
 - **Resolved**: —
 - **Unit**: U15 (stages U2 number, U10 `TS`, U24 nested-body test).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.072, .075, .077, .078, .081, .084.
 - **Blast carried by**: `tests_scripts/test_measurement_field_tuple_agreement.py` → A.U24.57 (TSC); L2 dark/mid/bright
   `CalLight` → A.U15.36 (TWIN); `mockdata/dev.json` → A.U15.36 (WEB).
@@ -1527,6 +1536,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
     days, then a dark scene: `_evaluate_range()` returns `_RANGE_LOW_LUX` at the first dark evaluation.
 - **Resolved**: —
 - **Unit**: U15 (stages U2 numbers, U14 helper, U24 inject form).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.075, .077, .079, .080; TEST_HELP `tests/_ticks30.py`.
 - **Blast carried by**: four tiers of the CONFIG2-3 burst: L1 → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.32, run unchanged), L2 → A.U15.32 (TWIN: `test_digital_twin_bus_hazard_concurrency.py` unchanged, red-dominant
@@ -1549,6 +1559,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   one warning per detected brownout, folded into one slot by the newest-entry rule (OR35.b); the HEAD claim "not once
   per cycle" is retired by that owner rule, guarded by the `ErrCount` assertions.
 - **Unit**: U3 (stages U2 numbers, U15 shared body).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.076; M.SRC_CORE (newest-entry rule, A.U3.01).
 - **Blast carried by**: SPEC `:6675-6678` → A.U3.14/A.U3.10 (SPEC).
 - **Kind**: test
@@ -1568,6 +1579,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `reader.isl.decode_config = …` → `reader._isl.decode_config` (inline ignore kept).
 - **Resolved**: —
 - **Unit**: U2 (numbers, `_snapshot_field` signature), stage U10 keys.
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.082, .084.
 - **Blast carried by**: —
 - **Kind**: test
@@ -1599,6 +1611,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
     `reader.get_cfg_schema()`.
 - **Resolved**: —
 - **Unit**: U15 (stages U2/U3 numbers, U10 names, U24 accessor and comment).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.072, .080, .084, .086.
 - **Blast carried by**: four tiers of the threshold write (one 4-byte write per setter call): L1 → M.TEST_UNIT in
   `test_bus_hazard_multi_device.py` (A.U15.33, unchanged), L2/L3/L4 → A.U15.33 (TWIN, HW_DEV, HW_BENCH, unchanged).
@@ -1621,6 +1634,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `(_REG_CONFIG1, 3)`) and leaves the two counts equal.
 - **Resolved**: A.U15.31's "`_SEQ_MASK`" is M.SRC_SENS.085's `COUNTER_CAP` wrap (AC_NOTES 17).
 - **Unit**: U15 (stages U2 numbers, U24 inject form).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.077, .082, .085.
 - **Blast carried by**: U35's L0 counter check lists the site as a sequence → A.U15.31 (TSC).
 - **Kind**: test
@@ -1660,6 +1674,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   number keep their per-setter `False` assertions instead (OR111.a (2): the distinct-number pin is retired by the
   catalog rows A.U2.01).
 - **Unit**: U2 (numbers), stages U3 slot rule, U10 names, U15 removal, U24 accessor/typing.
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.080, .082, .084; A.U2.03 (`code()`).
 - **Blast carried by**: SPEC E.5.1 rows → A.U35.41 (SPEC).
 - **Kind**: test
@@ -1680,6 +1695,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: the distinct-number claim (35 vs the periodic 11) is retired by the catalog's class numbering (A.U2.01:
   both are READ); the console line "Paired gain-ratio reading failed" tells the two apart (OR111.a (2)).
 - **Unit**: U15 (stages U2 numbers, U14 helper, U24 names/inject).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.081; TEST_HELP `tests/_ticks30.py`.
 - **Blast carried by**: —
 - **Kind**: test
@@ -1721,6 +1737,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   results[:5] == (None,) * 5`, `code("E", "ISL_STATUS_READ") in errors(counters)`. `reader.isl` → `reader._isl`.
 - **Resolved**: —
 - **Unit**: U2.
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.075, .082.
 - **Blast carried by**: —
 - **Kind**: test
@@ -1971,6 +1988,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U2.17 retires the after-finalize and finalize-again codes (46/47) with the methods; the HEAD claim
   "four reasons, four numbers" is retired by A.U5.06 (two reasons remain) — guard: the two distinct codes above.
 - **Unit**: U5 (stages U2 codes, U10 key).
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.031, .033.
 - **Blast carried by**: generated `signals=` argument → A.U5.06 (GEN); SPEC C.4.3 → A.U5.06 (SPEC).
 - **Kind**: test
@@ -2039,6 +2057,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   cycle with a numeric value flashes).
 - **Resolved**: —
 - **Unit**: U9 (stages U2 codes, U3 slot rule, U22 removal).
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.035.
 - **Blast carried by**: catalog row 15 wording → A.U9.08 (GEN).
 - **Kind**: test
@@ -2075,6 +2094,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   stepped from 09:59 to 10:01 and back between and within cycles: never two flashes in one cycle.
 - **Resolved**: —
 - **Unit**: U9 (stages U2 code, U10 key, U35 driven time).
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3); A.U10.28's part lands in U16, not U10 (it needs A.U16.18, which lands in U16).
 - **Depends**: M.SRC_SENS.037.
 - **Blast carried by**: L2 window scene → A.U9.01 (TWIN); the twin RTC step hook (L2 half of A.U10.28) → A.U10.28
   (TWIN, pending U25).
@@ -2099,6 +2119,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U9.09's 3.2 s wall-clock bound becomes a virtual-time bound (A.U35.13); the override tick tags of
   A.U8C.12/A.U8C.120 are withdrawn with their literals, `_OVERRIDE_SECS` (a stimulus, not a wait) keeps its tag.
 - **Unit**: U35 (stages U9 measured pause, U10 names, U8 tag).
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10).
 - **Depends**: M.SRC_SENS.036; M.SRC_CORE `TickSeconds` (A.U10.02).
 - **Blast carried by**: twin `:349-390` and bench `:115-141` → A.U9.09 (TWIN, HW_BENCH).
 - **Kind**: test
@@ -2140,6 +2161,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   answers for this class wait on the lead question below.
 - **Resolved**: —
 - **Unit**: U5 (stages U2/U3 codes, U35 driven time).
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.033, .034.
 - **Blast carried by**: the readiness L1 → A.U10.22 (TEST_UNIT).
 - **Kind**: test
@@ -2207,6 +2229,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   its test copy keeps the mirror tag. A.U18.10's G2/R22 rule vs its recorder tests' schema-default assertions: the
   builder empties the fallback by default and the recorder tests pass `dns_fallback=None` (they do no I/O).
 - **Unit**: U18 (stages U5 timing/log, U10 names/setup, U24 harness, ports, doubles).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.SRC_NET.041-.044; TEST_HELP `_ntp_frames.py` (`FakeNtpServer`, `make_ntp_reply`), `_port_bands.py`,
   `_udp_port_redirect.py`, `_fake_time.tick`, the moved address shim (A.U18.12).
 - **Blast carried by**: Part N `ntp.fetch_timeout_ms` further site → A.U8.01 (SPEC); `pyproject.toml` E731 noqa removal →
@@ -2338,6 +2361,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_an_empty_fallback_asks_only_the_dhcp_server` (recorder). `:842-848` keep their two three-line blocks.
 - **Resolved**: —
 - **Unit**: U18 (stages U2 codes, U10 names).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SRC_NET.046, .047.
 - **Blast carried by**: L1 "no `UDPSocket` constructed with an empty fallback" → M.TEST_UNIT in
   `tests/test_ntp_wifi_dns_integration.py` (A.U18.10).
@@ -2370,6 +2394,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   real loopback responder sends 90 bytes whose first 48 are a valid header: the client syncs from it).
 - **Resolved**: —
 - **Unit**: U18 (stages U2 codes, U14 pointer, U35 gate).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SRC_NET.048; M.SRC_NET.026/.029 (`UDPSocket` surface).
 - **Blast carried by**: SPEC F.7 rows → A.U14.28 (SPEC); `udp.round_trip_tries_default` dropped → A.U18.14 (SPEC).
 - **Kind**: test
@@ -2417,6 +2442,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   and `test_repeated_retry_exhaustion_counts_each_and_keeps_one_slot` (`NTP_RETRIES` twice).
 - **Resolved**: —
 - **Unit**: U18 (stages U2 codes, U3 slot rule, U8 tags, U10 names).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SRC_NET.051, .052.
 - **Blast carried by**: Part N mirror sites → A.U8.01 (SPEC).
 - **Kind**: test
@@ -2500,6 +2526,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   ...]]`.
 - **Resolved**: —
 - **Unit**: U18 (stages U2 code, U10 names).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SRC_NET.050.
 - **Blast carried by**: —
 - **Kind**: test
@@ -2817,6 +2844,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   1,800 samples every stored sum is a `float` below 2**30.
 - **Resolved**: A.U15.R01's "stubs `reader.scd.reset`" is written with A.U10.35's private name.
 - **Unit**: U15 (stages U3 console streak, U10 ladder/`TS`/names).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.054, .055, .090; M.SRC_CORE.037; SRC_CORE `SensorReader._republish()` (A.U15.12).
 - **Blast carried by**: the mid-operation reset across siblings → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.R01) and A.U15.R01 (TWIN, HW_DEV); notification `ErrCount`s → M.TEST_UNIT in the two SCD30 notification files.
@@ -2960,6 +2988,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `compensated and data[0] is None` is false, `_err_cnt_internal` stays 0, the stored data carries `TS` None).
 - **Resolved**: —
 - **Unit**: U15 (stages U2, U5, U10).
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.064, .091; M.SRC_CORE.032.
 - **Blast carried by**: —
 - **Kind**: test
@@ -2990,6 +3019,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   one `code("E", "CHIP_SET")`, no `DEVICE_RECOVERY`, no raise).
 - **Resolved**: —
 - **Unit**: U15 (stages U2, U3, U10).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_CORE.037; M.SRC_SENS.065, .069.
 - **Blast carried by**: twin/L3 heater-off tiers → A.U15.R02 (TWIN, HW_DEV); hazard sweep → M.TEST_UNIT for
   `tests/_bus_hazard_catalog.py` is TEST_HELP's (A.U15.R02).
@@ -3055,6 +3085,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_an_untimestamped_backup_restores_to_memory_status_zero_zero` (`get_mem_status() == (0, 0)`).
 - **Resolved**: —
 - **Unit**: U16 (stages U2, U3, U15).
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.063; FRAM manager return shape (M.SRC_CORE, A.U16.18).
 - **Blast carried by**: —
 - **Kind**: test
@@ -3067,6 +3098,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   values worked from the formula by hand with the `max(1, …)` floor).
 - **Resolved**: —
 - **Unit**: U15.
+  A-C2: stage U24 — until M.TEST_HELP.044's `src_const()` exists the wrap test keeps a local mirror of the cap (the HEAD form); U24 swaps in `src_const()`.
 - **Depends**: M.SRC_SENS.059, .063; M.TEST_HELP.044.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3093,6 +3125,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   wording ("0 = no age limit") agrees; settled by the register — the tests pin A.U16.18's condition and the product
   fix is GAP-U1 (SRC_SENS) below.
 - **Unit**: U16 (stages U2, U3, U10, U11, U15, U30).
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.063 (with the gap's condition); M.SRC_CORE.032; M.TEST_HELP.057.
 - **Blast carried by**: L2 twin backup cases → A.U15.17 (TWIN).
 - **Kind**: test
@@ -3147,6 +3180,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   cases), `run(reader.setup())`, catalog names in the assertions and the four-field tuples.
 - **Resolved**: —
 - **Unit**: U24.
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
 - **Depends**: M.TEST_HELP.057.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3162,6 +3196,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   trigger timer before the setup exchange).
 - **Resolved**: —
 - **Unit**: U15 (stages U3, U10).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.063, .065; M.SRC_CORE.037.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3173,6 +3208,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   "32q" → "<32q".
 - **Resolved**: —
 - **Unit**: U15 (stages U2, U12).
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.064.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3415,6 +3451,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   with its `_ERRNO_MIN/_MAX` source. The test's own target is gone, so A.U24.50 (3)'s non-vacuity requirement moves to the
   L0 check that replaces it (agent decision D-T14; carried as GAP-U2 (TSC)).
 - **Unit**: U2.
+  A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3).
 - **Depends**: M.SRC_NET.153.
 - **Blast carried by**: the keyword-matched-at-least-once floor → GAP-U2 (TSC, `tests_scripts/test_error_catalog.py`).
 - **Kind**: test
@@ -3486,6 +3523,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U17.14 says the threshold literal is "tagged with its Part N row"; read from source instead, the
   test carries no copy (A.U24.01's rule) — the row's Dependants name the test (agent decision, same as D-T4).
 - **Unit**: U17 (stages U3, U10).
+  A-C2: stage U24 — until M.TEST_HELP.044's `src_const()` exists the streak threshold is a local mirror (the HEAD form); U24 swaps in `src_const()`.
 - **Depends**: M.SRC_NET.162, .164; M.TEST_HELP.044.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3674,7 +3712,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_cancel_or_deinit_during_the_drain_wait_returns_false`.
 - **Resolved**: —
 - **Unit**: U13.
-- **Depends**: M.SRC_NET.195; M.TEST_HELP.017 (fake `txdone()`/`tx_pending_rounds`).
+- **Depends**: M.SRC_NET.195; M.TEST_HELP.018 (fake `txdone()`/`tx_pending_rounds`).
 - **Blast carried by**: L2 GET-answer case → A.U13.13 (TWIN).
 - **Kind**: test
 
@@ -3701,7 +3739,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   log, `would_have_blocked_bytes` stays 0).
 - **Resolved**: —
 - **Unit**: U13.
-- **Depends**: M.SRC_NET.202; M.TEST_HELP.017 (fake `readline(size)`).
+- **Depends**: M.SRC_NET.202; M.TEST_HELP.018 (fake `readline(size)`).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3899,6 +3937,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   comments.
 - **Resolved**: —
 - **Unit**: U18 (stages U10 names, U24 ports/names).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.SRC_NET.026; M.TEST_HELP.043, .056; TWIN shim move (A.U18.12).
 - **Blast carried by**: the shim's location and `mypy_path` → A.U18.12 (TWIN, TOOL).
 - **Kind**: test
@@ -4129,6 +4168,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   no call).
 - **Resolved**: —
 - **Unit**: U19 (stage S0930 words).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.09 in U19, A.S0930.21 in U24.
 - **Depends**: M.SRC_NET.121.
 - **Blast carried by**: L0 mirror of the word list → A.S0930.20 (TSC).
 - **Kind**: test
@@ -4236,6 +4276,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   file-owned port; after the cancel a fresh bind to the same port succeeds).
 - **Resolved**: —
 - **Unit**: U19 (stages U10, S0930).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.18 in U19.
+  A-C2: stage U24 — until M.TEST_HELP.052/.056 exist the tests use the file's own sleep double and port allocator (the HEAD form); U24 swaps in `FastAsyncSleep` and the port-band table.
 - **Depends**: M.SRC_NET.128, .129; M.TEST_HELP.052, .056.
 - **Blast carried by**: —
 - **Kind**: test
@@ -4308,6 +4350,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   concurrent requests are served intact.
 - **Resolved**: —
 - **Unit**: U19.
+  A-C2: stage U35 — until M.TEST_HELP.065 exists the driven window runs on the file's own time double (the HEAD form); U35 swaps in `DrivenTime`.
 - **Depends**: M.SRC_NET.118, .127; M.TEST_HELP.065.
 - **Blast carried by**: phase-C hardware row → A.U19.23 (HW_BENCH).
 - **Kind**: test
@@ -4533,6 +4576,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   restart_and_a_good_iteration`.
 - **Resolved**: —
 - **Unit**: U18 (stages U3, U10).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_NET.084, .100, .102; M.SRC_CORE.037.
 - **Blast carried by**: —
 - **Kind**: test
@@ -4568,6 +4612,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `# ====` dividers → `# ----`.
 - **Resolved**: —
 - **Unit**: U24 (stages U18, U27, U35).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.SRC_NET (`UDPSocket`, `CaptiveDNS`); M.TEST_HELP.056.
 - **Blast carried by**: Part N rows → A.U8.01 (SPEC).
 - **Kind**: test
@@ -4648,6 +4693,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `ValueRef(src, "Temp")` exposes `source`/`field`.
 - **Resolved**: —
 - **Unit**: U10.
+  A-C2 step order: A.U10.28's part lands in U16, not U10 (it needs A.U16.18, which lands in U16).
+  A-C2: stage U24 — until M.TEST_HELP.050/.053 exist the print capture and the arm-failure double are file-local (the HEAD form); U24 swaps in `record_prints()` and `RaiseOnArm`.
 - **Depends**: M.SRC_CORE.032, .035; M.TEST_HELP.050, .053.
 - **Blast carried by**: —
 - **Kind**: test
@@ -4685,6 +4732,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_an_externally_zeroed_streak_re_arms_every_rung` (a task restart, one good cycle, a new streak climbs again).
 - **Resolved**: —
 - **Unit**: U10 (stages U2, U3, U11).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_CORE.037.
 - **Blast carried by**: —
 - **Kind**: test
@@ -4902,6 +4950,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   writes touch exactly each allocated block's two status bytes.
 - **Resolved**: —
 - **Unit**: U15 (A.U15.R01/R02/R04; stage U13 recovery, S0930 erase).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.23 in U24.
 - **Depends**: M.SRC_SENS (A.U13.R01, A.U15.R01, A.U15.R02, A.U15.R04); M.SRC_CORE (`erase_chip()`, A.S0930.17).
 - **Blast carried by**: L2 → M.TWIN.102 (A.U15.R01/R02/R04, A.U13.R02); L3-L4 → A.U13.R02, A.U15.R01, A.U15.R02,
   A.S0930.27-.29 (HW_DEV, HW_BENCH).
@@ -4933,6 +4982,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   ...]` (A.U24.73's "genuinely open values `object`"); `_cancel`'s `Task[Any]` goes with it.
 - **Resolved**: —
 - **Unit**: U18 (stages U10 names, U24 harness/ports/typing).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.SRC_NET.001, .006, .026; M.TEST_HELP.043 (`run`/`cancel`), .056 (`PortAllocator`), .045 (`code`), .044
   (`src_const`); the shim's move (A.U18.12, TWIN/TOOL).
 - **Blast carried by**: port table row → A.U24.70 (TEST_HELP); `pyproject.toml` ANN401 exemption → A.U24.73 (TOOL).
@@ -5078,7 +5128,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   points to M.TEST_UNIT.245's test.
 - **Resolved**: —
 - **Unit**: U18.
-- **Depends**: M.SRC_NET.007, .011.
+- **Depends**: M.SRC_NET.007; M.SRC_NET.011 [follows] (its U30 `report_if_fatal` lines).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -5721,6 +5771,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   only resets the streak (a print, no entry)." NOTIFY counts stay 0.
 - **Resolved**: —
 - **Unit**: U3 (stage U2 codes).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_CORE.037 (one entry per failing cycle); M.SRC_SENS (SCD30 read error).
 - **Blast carried by**: —
 - **Kind**: test
@@ -5817,6 +5868,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `…_fake_server_poll_tries` (`:190-200`) sites leave with the local classes (the shared `FakeNtpServer` carries them,
   TEST_HELP); not written here.
 - **Unit**: U24 (stages U5, U10, U18, U8).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.SRC_NET.041-.044, .078, the WiFi snapshot (M.SRC_NET A.U18.33); M.TEST_HELP.043, .054, .056-.058, .066.
 - **Blast carried by**: L0 provider-parity check → A.U24.44 (TSC).
 - **Kind**: test
@@ -5892,6 +5944,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   F.2)". `:429-431`: `import asy_dns_client` moves to module level; the comment names `ipv4_to_int()`.
 - **Resolved**: A.U8C.41's `udp.conn_tries_default` (`:274`) and the fake-server poll rows leave with the local classes.
 - **Unit**: U24 (stages U5, U10, U18, U8).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TEST_UNIT.282's builders (same shape); M.SRC_NET.041-.044, .078; M.TEST_HELP.043, .054, .056, .058, .066.
 - **Blast carried by**: L0 provider-parity check → A.U24.44 (TSC).
 - **Kind**: test
@@ -5916,7 +5969,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   redirect's wrapper).
 - **Resolved**: —
 - **Unit**: U18.
-- **Depends**: M.SRC_NET.044 (`_safe_get_dns_server`), the WiFi snapshot (M.SRC_NET.0xx, A.U18.33/.34), M.TEST_HELP.066.
+- **Depends**: M.SRC_NET.044 (`_safe_get_dns_server`), the WiFi snapshot (M.SRC_NET.074/.091, A.U18.33/.34), M.TEST_HELP.066.
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -5934,6 +5987,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   holds via the builder (no module swap), newest `code("E", "NTP_DNS")`, `ErrType` "E".
 - **Resolved**: —
 - **Unit**: U18 (stages U2, U3).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.SRC_NET.042, .045-.049.
 - **Blast carried by**: —
 - **Kind**: test
@@ -6313,6 +6367,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   trips` (A.U10.01: a signature of `1_790_000_000` reads back unchanged); `test_a_synced_signature_reads_utc_now`.
 - **Resolved**: —
 - **Unit**: U11 (stages U2, U3, U10).
+  A-C2: stage U35 — until M.TEST_HELP.065 exists the pumps run on the file's own clock double (the HEAD form); U35 swaps in the driven clock.
 - **Depends**: M.SRC_CORE.013, .032; M.TEST_HELP.065.
 - **Blast carried by**: —
 - **Kind**: test
@@ -6365,6 +6420,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   task) and on `_reboot()` itself (the armed-reset guard), since A.S0930.31 moved the public words onto the gate
   (M.SRC_CORE.011 Resolved).
 - **Unit**: U11 (the gate stage; U16 adds the erase word's cases, M.TEST_UNIT.306).
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20).
 - **Depends**: M.SRC_CORE.006, .010, .011; M.TEST_HELP.011, .044.
 - **Blast carried by**: device script `reboot_fallback_starves_the_watchdog.py:38` → A.U11.03 (HW_DEV).
 - **Kind**: test
@@ -6394,6 +6450,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.S0930.22 lists `tests/test_config_manager.py` beside this file; the store-level mechanics land in
   M.TEST_UNIT.259, the command-level cases here.
 - **Unit**: U11 (config reset), U16 (erase).
+  A-C2 step order: A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.011, .041, .042, .083; TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25, A.U24.22).
 - **Blast carried by**: L2-L4 → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test
@@ -6410,6 +6467,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `_reboot()` armed, and after a command was accepted — storage stays paused, no line).
 - **Resolved**: —
 - **Unit**: U11.
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20).
 - **Depends**: M.SRC_CORE.012.
 - **Blast carried by**: —
 - **Kind**: test
@@ -7101,6 +7159,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: the file is in no CLUSTERS.md list, so no merge carried M.SRC_SENS.031's A.U2.17 pointer or the U5/U10
   constructor changes its sibling files take (M.TEST_UNIT.265, .276) — written here to the same end states (gap pass G3).
 - **Unit**: U24 (stages U2 codes, U5 constructors, U10 names and `setup()`).
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.023, .024, .033; M.SRC_CORE (`LogConfig`, `FRAMManager`); M.TEST_HELP.043, .045, .057.
 - **Blast carried by**: CLUSTERS.md entry → orchestrator (GAPS_G3 hand-off).
 - **Kind**: test
@@ -7121,6 +7180,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U24.65 creates three `PER_DEVICE` files; M.TWIN.108 carries the construction one, A.U25.46 retires the
   concurrency one (M.TWIN.164), and this file — sited in no cluster — had no carrier (gap pass G3).
 - **Unit**: U24.
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25).
 - **Depends**: M.TEST_HELP.035 (`register_for_device`), M.TEST_HELP.055 (derived devices).
 - **Blast carried by**: `scripts/test.sh` per-device expansion and heavy list → A.U24.65 (3) (SCR, M.SCR.040-.042); L0
   dispatch case → M.TSC.135; SPEC E.2.1/E.3.1 → A.U24.65 (SPEC); README `:157` status-tag example `[test_sensortask_dev]`
@@ -7839,3 +7899,76 @@ text names the file only to state that it is unchanged; the M-ID is where that w
 | A.U24.10 | M.TEST_UNIT.338 (gap pass G3) |
 | A.U24.11 | M.TEST_UNIT.338 (gap pass G3) |
 | A.U35.10 | M.TEST_UNIT.339 (gap pass G3) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.TEST_UNIT.010 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it follows A.U2.10's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.014 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it follows A.U2.10's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.015 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.017 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.021 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it follows A.U2.10's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.022 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.025 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.056 | Depends | `value log (A.U24.16), per-id I2C state and `raise_on_construct` (A.U24.20), fake clock for `ticks_us` (A.U14.34/A.U35.10)` → `value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows]), per-id I2C state and `raise_on_construct` (M.TEST_HELP.013's A.U13.R01 part, U13; A.U24.20 [follows]), fake clock for `ticks_us` (A.U14.34; A.U35.10 [follows] replaces it in U35)` | the fakes land with A.U13.R01 in U13; A.U24.16/.20 and A.U35.10 complete or replace them later |
+| M.TEST_UNIT.060 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.061 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.062 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.065 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.066 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.067 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.068 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.069 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.070 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.071 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.073 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.083 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.087 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.089 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3); A.U10.28's part lands in U16, not U10 (it needs A.U16.18, which lands in U16). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.090 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.092 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.095 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.102 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.103 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.105 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.109 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.122 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.130 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.132 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.136 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.137 | Unit | appended: A-C2: stage U24 — until M.TEST_HELP.044's `src_const()` exists the wrap test keeps a local mirror of the cap (the HEAD form); U24 swaps in `src_const()`. | Depends edge ran from a later step: M.TEST_HELP.044 lands in U24 |
+| M.TEST_UNIT.138 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.142 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.143 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.144 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.157 | Unit | appended: A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.161 | Unit | appended: A-C2: stage U24 — until M.TEST_HELP.044's `src_const()` exists the streak threshold is a local mirror (the HEAD form); U24 swaps in `src_const()`. | Depends edge ran from a later step: M.TEST_HELP.044 lands in U24 |
+| M.TEST_UNIT.173 | Depends | `M.TEST_HELP.017` → `M.TEST_HELP.018` | the fake `txdone()`/`tx_pending_rounds` is M.TEST_HELP.018 (lands in U13), not .017 (U24) |
+| M.TEST_UNIT.175 | Depends | `M.TEST_HELP.017` → `M.TEST_HELP.018` | the fake `readline(size)` is M.TEST_HELP.018 (lands in U13), not .017 (U24) |
+| M.TEST_UNIT.186 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.198 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.09 in U19, A.S0930.21 in U24. | AC3_R R-08 (h) |
+| M.TEST_UNIT.204 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.18 in U19. | AC3_R R-08 (h) |
+| M.TEST_UNIT.204 | Unit | appended: A-C2: stage U24 — until M.TEST_HELP.052/.056 exist the tests use the file's own sleep double and port allocator (the HEAD form); U24 swaps in `FastAsyncSleep` and the port-band table. | Depends edge ran from a later step: M.TEST_HELP.052/.056 land in U24 |
+| M.TEST_UNIT.208 | Unit | appended: A-C2: stage U35 — until M.TEST_HELP.065 exists the driven window runs on the file's own time double (the HEAD form); U35 swaps in `DrivenTime`. | Depends edge ran from a later step: M.TEST_HELP.065 lands in U35 |
+| M.TEST_UNIT.218 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.220 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.225 | Unit | appended: A-C2 step order: A.U10.28's part lands in U16, not U10 (it needs A.U16.18, which lands in U16). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.225 | Unit | appended: A-C2: stage U24 — until M.TEST_HELP.050/.053 exist the print capture and the arm-failure double are file-local (the HEAD form); U24 swaps in `record_prints()` and `RaiseOnArm`. | Depends edge ran from a later step: M.TEST_HELP.050/.053 land in U24 |
+| M.TEST_UNIT.227 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.238 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.23 in U24. | AC3_R R-08 (h) |
+| M.TEST_UNIT.239 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.247 | Depends | `M.SRC_NET.007, .011` → `M.SRC_NET.007; M.SRC_NET.011 [follows] (its U30 `report_if_fatal` lines)` | the U18 tests do not exercise the U30 handler lines |
+| M.TEST_UNIT.279 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.282 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.285 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.286 | Depends | `M.SRC_NET.0xx` → `M.SRC_NET.074/.091` | unknown reference M.SRC_NET.000 ("0xx"): the snapshot changes are M.SRC_NET.074 and .091 |
+| M.TEST_UNIT.287 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.303 | Unit | appended: A-C2: stage U35 — until M.TEST_HELP.065 exists the pumps run on the file's own clock double (the HEAD form); U35 swaps in the driven clock. | Depends edge ran from a later step: M.TEST_HELP.065 lands in U35 |
+| M.TEST_UNIT.305 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.306 | Unit | appended: A-C2 step order: A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.307 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.336 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TEST_UNIT.337 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |

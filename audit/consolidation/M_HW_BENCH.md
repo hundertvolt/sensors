@@ -1492,6 +1492,7 @@ never flashed (A.C.01 (5)).
 - **Unit**: U26 (the U0 tags, U2 codes and U7 notes land in their units on HEAD lines and are rewritten in U26's
   edit; the U36 pointers are written here already, their targets existing by then — stage 2 U36 only if A.U36.544's
   F.1/C.7.1 text lands later than this file's U26 edit, which it does: stage 2 U36 swaps the two pointers in).
+  A-C2 step order: A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3).
 - **Depends**: M.HW_BENCH.015, M.HW_BENCH.050/.051, M.HW_BENCH.004, A.U2.01.
 - **Blast carried by**: SPEC F.1 "UDP on rp2/lwIP" paragraph → A.U36.544 (SPEC); SPEC A.11 row 10 → A.U29.01 (SPEC);
   Part N rows → A.U8C.50/A.U8C2.21 (SPEC).
@@ -1538,6 +1539,7 @@ never flashed (A.C.01 (5)).
 - **Resolved**: the `:275` sleep A.U8C.50 deferred to U26 under G7/R23: A.U26.71's "a block sized to contain it" decides
   it — a derived wait plus a tagged margin, not a fixed sleep.
 - **Unit**: stage 1 U26; stage 2 U36 (the F.1 pointer text, as M.HW_BENCH.076).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.HW_BENCH.036, M.HW_BENCH.020, M.HW_BENCH.015, M.HW_BENCH.050, A.U4.02, A.U6.17, A.U18.16.
 - **Blast carried by**: `_JUSTIFIED_UNMARKED` and the derived classes → A.U26.71 (TSC); README injection section →
   M.HW_BENCH.129.
@@ -1583,6 +1585,7 @@ never flashed (A.C.01 (5)).
   join retries go through `recover_by_reset(…, skipped="the first join attempt", …)`. Constants per A.U8C.50/A.U8C2.21.
 - **Resolved**: —
 - **Unit**: U26 (A.U0.18's U0 tag written into the same comment).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.HW_BENCH.010, M.HW_BENCH.015, M.HW_BENCH.050, A.U26.06 (helper pin).
 - **Blast carried by**: `_KNOWN_PERSISTING_HELPERS` gains `_repair_leftover` → A.U26.15 (TSC); `pyproject.toml`
   S105/S106 for this file → A.U26.49/A.U28.29 (TSC); L0 default reads → A.U26.15 (TSC).
@@ -1763,6 +1766,7 @@ never flashed (A.C.01 (5)).
 - **Resolved**: A.U4.07 (U4) rewrites the comment that A.U26.72 (U26) makes moot: staged. A.U22.03's rewording is
   dropped (withdrawn, OR126.a (4)).
 - **Unit**: stage 1 U4 (`:22-23`); stage 2 U26.
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10).
 - **Depends**: A.U4.04 (chip store), M.HW_BENCH.080 (`_repair_leftover`), M.HW_BENCH.050, M.HW_BENCH.055, A.U9.09.
 - **Blast carried by**: `_KNOWN_PERSISTING_HELPERS` (`_repair_leftover`) → A.U26.15 (TSC); budget table rows →
   M.HW_BENCH.130; SPEC M (SCD30) and the Altitude help text after the measurement → A.U26.72 via A.C.10 (delta).
@@ -1922,6 +1926,7 @@ never flashed (A.C.01 (5)).
   request.node.name)`. Constants per A.U8C.55/A.U8C2.23 (B4).
 - **Resolved**: —
 - **Unit**: stage 1 U26; stage 2 U36 (`:80` pointer, if F.2's text lands after this edit).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
 - **Depends**: M.HW_BENCH.016, M.HW_BENCH.015, M.HW_BENCH.050, A.U10.40 (keys), A.U2.15.
 - **Blast carried by**: pinned-strings L0 gains `RTC set to:` → A.U26.27 (TSC).
 - **Kind**: test, hardware (Round: R1 [H73])
@@ -2234,6 +2239,7 @@ check.
   Prerequisite 4 shrinks to one sentence pointing here.
 - **Resolved**: —
 - **Unit**: U2 (codes), U26 (writes, pin, rig row).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.HW_BENCH.103 (M1 records the geometry), A.U2.12.
 - **Blast carried by**: the measured row → A.C.04 (1) (C, R2).
 - **Kind**: doc (Round: R2 fills the rig row [H28, H65])
@@ -2631,6 +2637,7 @@ check.
   the mention goes. A.U4.07 (U4) and A.U26.32 (U26) on `:1138-1145, :1181-1183`: A.U26.32's blast says A.U4.07 already
   rewrites them — U4's text holds.
 - **Unit**: U2, U4, U7, U9, U18, U26 (stages), U36 (the restructure, last).
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10).
 - **Depends**: M.HW_BENCH.115, M.HW_BENCH.116, M.HW_BENCH.117.
 - **Blast carried by**: —
 - **Kind**: doc
@@ -3097,3 +3104,17 @@ cluster's file follows or holds, carried by the change named); holds (no edit ne
 | A.C.08 | no | .126 | merged (gap pass: README names the rollover runner, M.SCR.074) |
 | A.U8C.109 | no | .014 | merged (gap pass: the reflash loop's load-timeout and backoff tags move into `harness.reflash()`, GAP-D5) |
 | A.U8C2.46 | no | .014 | merged (gap pass: the attempts tag moves into `harness.reflash()`, GAP-D5) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.HW_BENCH.076 | Unit | appended: A-C2 step order: A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_BENCH.078 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_BENCH.080 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_BENCH.086 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10). | dependency deferral (an edge ran from a later step) |
+| M.HW_BENCH.095 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_BENCH.114 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_BENCH.133 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10). | dependency deferral (an edge ran from a later step) |

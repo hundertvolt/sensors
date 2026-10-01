@@ -297,6 +297,7 @@ changes cite.
 - **Resolved**: the seeded `errno=5` that was once read back as SYSTEM's real entry (CLAUDE.md FRAM caveat) is what the
   test band prevents; the per-file sections name each value.
 - **Unit**: U2 (catalog) for the bindings; the seed values move with U26's rewrite of those scripts.
+  A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3); A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: A.U2.01.
 - **Blast carried by**: check (9) "every binding in `device_scripts/` equals the catalog" → A.U2.02 (TSC).
 - **Kind**: test
@@ -459,6 +460,7 @@ changes cite.
   host reads the stream, AD-3).
 - **Resolved**: —
 - **Unit**: U11 (the `_reboot()` call, with A.U11.03), U26 (facts, constants).
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20); A.S0930.13's part lands in U20, not U11 (it follows A.S0930.13's own change, which lands in U20); A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
 - **Depends**: M.SRC_CORE (`_reboot()` async, `_RR_REBOOT`), M.HW_DEV.002.
 - **Blast carried by**: `bench/test_reset_reasons.py` code-6 case → A.U26.28 (HW_BENCH); twin record `exception` (the
   twin cannot exhaust a real alarm pool) → M.HW_DEV.010.
@@ -607,6 +609,7 @@ changes cite.
   a separate script.
 - **Unit**: U26 (A.S0930's CRC arm lands with S0930's U-slot after U26's script rewrite; the parametrisation is
   written once in the end form).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.05 in U26.
 - **Depends**: M.HW_DEV.046-.052; A.S0930.01 (`crc` key, `CRC16`).
 - **Blast carried by**: SPEC J.7 tier map (L3 cells) → A.U36.539/A.U17.25 (SPEC); CLAUDE.md UART hazard clause →
   A.U36.539 (DOCS); twin record → M.HW_DEV.010.
@@ -654,6 +657,7 @@ changes cite.
   `resync_bound_ms`, `mismatch_failed`, `mismatch_logged`; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
+  A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25).
 - **Depends**: M.HW_DEV.001-.004; A.S0930.01.
 - **Blast carried by**: the host bound check → M.HW_DEV.045; SPEC J.7 "baud desync: L3" → A.U26.33 (SPEC).
 - **Kind**: test, hardware (Round: R1 [H37])
@@ -1001,6 +1005,7 @@ changes cite.
 - **Resolved**: A.U16.19 removes the only means the HEAD script uses to look at the chip while paused; reading after
   unpausing proves the same thing (the bytes the paused write would have changed), as A.U16.19's blast states.
 - **Unit**: U26 (U16/U10 call-shape edits land in their units on the HEAD text).
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20).
 - **Depends**: M.SRC_CORE (A.U10.15 waiter, A.U16.18/.19, A.U5.02), M.HW_DEV.004/.006.
 - **Blast carried by**: twin record (the auto-unpause is a real alarm-pool fact: `exception` for step 9 only, or a
   twin pool model → U25) → M.HW_DEV.010; host assertions → M.HW_DEV.060.
@@ -2119,6 +2124,7 @@ changes cite.
   bit-depth margins, `warnings` with codes), `done()`; verdicts host-side.
 - **Resolved**: A.U9.07 is superseded by A.U17.27 (A.U17.27's Depends says so; the later unit's constant governs).
 - **Unit**: U26.
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.SRC_SENS (GAP-5 names, `get_cfg_schema()`), M.HW_DEV.001-.004, .008, .012.
 - **Blast carried by**: flush-test exemption reason → A.U26.11 (3) (TSC); the `config_HWTEST_*` removal check → A.U26.18
   (TSC); host → M.HW_DEV.130.
@@ -2140,6 +2146,7 @@ changes cite.
   constants per A.U8C.75/A.U8C2.31 (minus `step_ms`); facts per scenario, `done()`.
 - **Resolved**: A.U8C.75 tags `:33` (100), which A.U26.83 deletes as dead: the row is withdrawn (B4).
 - **Unit**: U26.
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3).
 - **Depends**: M.HW_DEV.001-.004, .008, .012.
 - **Blast carried by**: host → M.HW_DEV.130.
 - **Kind**: test, hardware (Round: R3 [H28])
@@ -2725,3 +2732,17 @@ None. Every conflict met was settled by an owner row, the register, a verified f
 | A.U8C2.45 | merged into M.HW_DEV.115 |
 | A.U8C2.46 | merged into M.HW_DEV.055 |
 | A.U9.07 | merged into M.HW_DEV.142 |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.HW_DEV.012 | Unit | appended: A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3); A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_DEV.032 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20); A.S0930.13's part lands in U20, not U11 (it follows A.S0930.13's own change, which lands in U20); A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.HW_DEV.045 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.05 in U26. | AC3_R R-08 (h) |
+| M.HW_DEV.047 | Unit | appended: A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.HW_DEV.068 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.HW_DEV.142 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.HW_DEV.143 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |

@@ -159,6 +159,7 @@ Standing conventions for every merged change below:
 - **Resolved**: —
 - **Unit**: U34
 - **Depends**: A.U12.12 (the data file named; M_TEST_UNIT), M.DOCS.011 (the image notice it refers to)
+  A-C2: M.DOCS.008 and M.DOCS.011 refer to each other and land in one U34 commit.
 - **Blast carried by**: SPEC F.4 successor/name map → A.U12.15 (SPEC); `src/voc_algorithm.py:1-3` unchanged
 - **Kind**: doc
 
@@ -211,6 +212,7 @@ Standing conventions for every merged change below:
 - **Resolved**: —
 - **Unit**: U34
 - **Depends**: A.U0.03 (corpus, submodules initialised), A.SDEP.08 (pin), M.DOCS.003, M.DOCS.008
+  A-C2: M.DOCS.008 and M.DOCS.011 refer to each other and land in one U34 commit.
 - **Blast carried by**: README licence bullet → M.DOCS.060; no check (prose; a published image is outside CI)
 - **Kind**: rule, doc
 
@@ -1313,6 +1315,7 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   same owner tag (agent decision for OR2.c, below).
 - **Unit**: U37. Stages: U0 (A.U0.13, A.U0.21, A.U0.22, A.U0.34, A.U0.37), U1 (A.U1.19), U2 (a), U7 (A.U7.25), U10 (d),
   (e), A.U10.09, U16 (c), U36 (b), A.U36.028, U37 (f), (g) remainder, heading.
+  A-C2 step order: A.U10.09's part lands in U11, not U10 (it needs A.U11.03, which lands in U11).
 - **Depends**: A.U16.04's SPEC C.3.1 bullet, A.U10.26's SPEC F.2 text (SPEC), A.U7.25's E.6.6 table (SPEC)
 - **Blast carried by**: SPEC F.2 states the built mechanism (Gaps: SPEC); `tests_hardware/README.md` tier-parity
   heading (HW_BENCH, A.U0.21); citation check for `BACKLOG.md:92`/`:196` "fourth item" citers (A.U7.25, SPEC/HW)
@@ -1348,6 +1351,7 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   the item (Gaps: TSC, SCR, TWIN).
 - **Unit**: U37. Stages: U0, U1, U2, U6, U7, U14, U19 (item 24), U33 (items 32, 44), U36 (items 1, 4, 5, 6, 9, 12, 29),
   U37 (ISL items, items 2, 3, 8, heading).
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3); A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U14.R01's part lands in U18, not U14 (it follows A.U14.R01's own change, which lands in U18).
 - **Depends**: SPEC C.7 (A.U19.14), F.1, F.2, C.7.1, L.7 texts (SPEC); `tests_hardware/README.md` "Known assumptions"
   (A.U36.544, HW_BENCH)
 - **Blast carried by**: citation check (A.U0.08) on every `BACKLOG.md #N`/"open question N" citer; the U19 repoints
@@ -1460,6 +1464,7 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
 - **Unit**: U37. Stages: U0 (A.U0.12, A.U0.14, A.U0.22, A.U0.26, A.U0.34, A.U0.37, A.U0.38, A.U0.39, A.U0.58, A.SDEP.16,
   A.SDEP.19), U1, U2/U3, U10, U13, U15, U21 (modlwip entry), U23, U30, U33, U35, U36 (A.U36.027/.042/.516/.521,
   the max-args fold), U37.
+  A-C2 step order: A.U14.R01's part lands in U18, not U15 (it follows A.U14.R01's own change, which lands in U18).
 - **Depends**: SPEC homes named above (SPEC); A.U10.18 (GEN M.GEN.005)
 - **Blast carried by**: SPEC F.2 / F.5.2 / G.2 / L.6.6 / B.16 / H.8 / J.1 / A.10 / E.7 texts (SPEC); CLAUDE.md wedged-I2C
   rule (M.DOCS.081) names "BACKLOG deferred goal"; citation check (A.U0.08)
@@ -1808,6 +1813,7 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Resolved**: A.U0.22's U0 rewrite ("the watchdog is the backstop … the current state, backstopped, until …") is the
   stage A.U14.R01 builds on; A.U36.549's "settled, don't re-propose" case is already gone after U0 — no further edit.
 - **Unit**: U14. Stage U0.
+  A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18).
 - **Depends**: SPEC F.2 (A.U14.R01 (1)-(3), SPEC); BACKLOG non-blocking goal (M.DOCS.065)
 - **Blast carried by**: —
 - **Kind**: rule
@@ -2771,3 +2777,16 @@ disposition. The merged-in column lists the blocks whose From line names the act
 | A.C.01 | CL (extra) | — | cites CLAUDE.md rules (round frame); no edit |
 | A.U26.01 | CL (extra) | — | "may cite" the bench-device key in the WoZi rule: not applied (optional), M.DOCS.078 unchanged |
 | A.U27.14 | CL (extra) | — | "names no number (holds)"; no edit |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.DOCS.008 | Depends | appended: A-C2: M.DOCS.008 and M.DOCS.011 refer to each other and land in one U34 commit. | change-level cycle M.DOCS.008<->.011 settled as one co-landing commit |
+| M.DOCS.011 | Depends | appended: A-C2: M.DOCS.008 and M.DOCS.011 refer to each other and land in one U34 commit. | change-level cycle M.DOCS.008<->.011 settled as one co-landing commit |
+| M.DOCS.062 | Unit | appended: A-C2 step order: A.U10.09's part lands in U11, not U10 (it needs A.U11.03, which lands in U11). | dependency deferral (an edge ran from a later step) |
+| M.DOCS.063 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3); A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U14.R01's part lands in U18, not U14 (it follows A.U14.R01's own change, which lands in U18). | dependency deferral (an edge ran from a later step) |
+| M.DOCS.065 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U15 (it follows A.U14.R01's own change, which lands in U18). | dependency deferral (an edge ran from a later step) |
+| M.DOCS.081 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18). | dependency deferral (an edge ran from a later step) |

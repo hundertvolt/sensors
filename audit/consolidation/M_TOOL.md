@@ -469,6 +469,7 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   sentence reads "One audit is configured, unpinned-uses's policy; every other audit runs at its default, …".
 - **Resolved**: —
 - **Unit**: U28.
+  A-C2 step order: A.U28.13's part lands in U0 (A.SDEP.05: "A.U28.13 (pulled forward)" into the GitHub Actions pin refresh).
 - **Depends**: M.TOOL.015 (Codecov gone first, A.U28.14 Depends), M.TOOL.022 (which audits remain).
 - **Blast carried by**: CLAUDE.md zizmor bullet → A.U28.40 (DOCS); BACKLOG chroot entry → A.U28.38 (DOCS).
 - **Kind**: doc
@@ -1728,6 +1729,7 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   `tests_scripts/test_tool_pins.py` asserts the second half).
 - **Resolved**: —
 - **Unit**: U28 (last rewrite). Stages: U0 (A.SDEP.03), U24 (A.U24.72). Re-checked at U37 (A.SDEP.25).
+  A-C2 step order: A.U37.16's part lands in D, not U37 (it needs A.U37.15, which lands in D).
 - **Depends**: M.TOOL.024, M.TOOL.025.
 - **Blast carried by**: CI `uv sync --locked` → M.TOOL.002; `test_tool_pins.py` → A.U28.03 (TSC); CLAUDE.md `uv.lock`
   bullet → A.U36.528 (DOCS); the release-merge check → A.U37.16 (PROC).
@@ -2161,3 +2163,12 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U27.27 | M.TOOL.079 (`mypy_path` gains `scripts`; gap pass, M_SCR gap 2 (a)) |
 | A.U26.76 | M.TOOL.079 (`tests_hardware` host modules leave the baseline; gap pass) |
 | A.U26.05 | M.TOOL.032 (the `run_device_script` exclude; gap pass, GAPS_G3 hand-off 1) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.TOOL.021 | Unit | appended: A-C2 step order: A.U28.13's part lands in U0 (A.SDEP.05: "A.U28.13 (pulled forward)" into the GitHub Actions pin refresh). | a part lands outside the Unit slot's units by an action's own text |
+| M.TOOL.078 | Unit | appended: A-C2 step order: A.U37.16's part lands in D, not U37 (it needs A.U37.15, which lands in D). | dependency deferral (an edge ran from a later step) |

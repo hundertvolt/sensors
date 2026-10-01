@@ -233,6 +233,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `:122`'s "Deployed" framing of the legacy firmware is rewritten by the same rule A.U1.15 applies (`:102`; no action
   names `:122` — adherence fix).
 - **Unit**: U36 (the summary describes the U10/U11/U20/U31 end state; nothing cites a new A.2 sentence earlier).
+  A-C2 step order: A.U10.09's part lands in U11, not U10 (it needs A.U11.03, which lands in U11).
 - **Depends**: A.U11.03, A.U20.06, A.U31.07, A.U10.44 (names), M.SPEC.008.
 - **Blast carried by**: `tests_hardware/README.md:1280-1286` and `BACKLOG.md:89-90` → A.U10.09 (HW_BENCH/DOCS);
   `src/asy_system_service.py:1` header → A.U36.535 (5) (SRC_CORE carries the file).
@@ -251,6 +252,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (A.U28.12's Depends names A.U1.15). "latest *stable*" vs the owner's pin rule (A.U0.33 C05 at F.1 `:3441-3442`, owner,
   2026-09-26): A.3 states the pin rule by pointer, so the two Parts agree.
 - **Unit**: U36.
+  A-C2: stage U28 — A.U28.12's A.3 pointer to B.10's job list lands with that list (M.SPEC.033, U28).
 - **Depends**: M.SPEC.088 (the pin sentence it points to), M.SPEC.008.
 - **Blast carried by**: —
 - **Kind**: doc
@@ -385,6 +387,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   globs boot entries) — "permanently vacuous" goes.
 - **Unit**: U36 (latest constituents A.U36.546 and the U36 doc pass; every earlier unit's behaviour is described as its
   end state). No earlier unit cites a new A.4 sentence by section text.
+  A-C2 step order: A.S0930.14's part lands in U20, not U16 (it follows A.S0930.14's own change, which lands in U20).
 - **Depends**: M.SPEC.152 (M.6 exists in the same unit), A.U16.*, A.S0930.17, A.U11.03, A.U20.02, A.U24.54.
 - **Blast carried by**: `tests/test_asy_fram_wire_trace.py:2, :499` → A.U16.12 (TEST_UNIT); `src/asy_fram_manager.py:3`
   → A.U16.01 (SRC_CORE); `tests_hardware/README.md:430-432` stays true (A.U16.01).
@@ -474,6 +477,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   AC_NOTES 37): its sentence is not written; the one-second check stays as HEAD's code has it.
 - **Unit**: U22 (A.U22.01 is the latest; U9's and U5's halves describe behaviour that lands by U9/U5 and U22 restates
   the paragraph whole).
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10).
 - **Depends**: A.U5.06, A.U9.01-A.U9.09, A.U9.11, A.U22.01, M.SPEC.008.
 - **Blast carried by**: DEVICE_REFERENCE "Neopixel LED" bullets → A.U9.01/A.U9.03 (DOCS); `src/asy_notification_
   service.py:68-70` → A.U9.11 (SRC_SENS); `src/asy_webserver_service.py:550, :100` comments → A.U9.09 (SRC_NET).
@@ -916,6 +920,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U30.19 placed it "(11-15 are A.U11.05's)" — consistent.
 - **Unit**: Stage 1 U11: item 4's table with codes 0-6 and 10 + p (A.U11.05 lands the field; A.U14.01's F.5.4
   paragraph cites "A.8"); Stage 2 U36: the whole section as above.
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20); A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.33's part lands in U20, not U11 (it follows A.S0930.33's own change, which lands in U20).
 - **Depends**: A.U19.20, A.U10.40, A.U11.01-.08, A.U19.10, A.U32.06, A.U23.22, A.S0930.* , A.U30.19, A.U6.27,
   M.SPEC.056, M.SPEC.103.
 - **Blast carried by**: `buildgen/error_catalog.json` `status` section → A.U6.27/A.U2.01 (GEN); the marker test →
@@ -1222,6 +1227,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   Stage 1 U8 tags the minutes in place, Stage 2 U27 writes the 240 s budget, Stage 3 U28 the rest.
 - **Unit**: Stage 1 U1 ((c)'s legacy clause); Stage 2 U8 (Part N pointer, A.U8.15); Stage 3 U27 ((c) mypy, (d));
   Stage 4 U28 (rest).
+  A-C2 step order: A.U28.13's part lands in U0 (A.SDEP.05: "A.U28.13 (pulled forward)" into the GitHub Actions pin refresh).
 - **Depends**: A.U28.01-A.U28.43, A.U27.14, A.U27.25, A.U8.15, M.SPEC.156.
 - **Blast carried by**: `ci.yml` comments → A.U28.42 (TOOL); CLAUDE.md carriers → A.U28.11 (DOCS).
 - **Kind**: doc
@@ -1418,6 +1424,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   else in the section moves.
 - **Unit**: Stage 1 U0 ((3) tag; (4) if the pin moved); Stage 2 U14 ((1)); Stage 3 U21 ((2) less its last sentence's
   result); Stage 4 phase C delta (A.C.10, (2)'s result); U36 repoints "B.14.4" → "B.14.3" (M.SPEC.042).
+  A-C2 step order: A.U14.30's part lands in U19, not U14 (it needs A.U19.24, which lands in U19).
 - **Depends**: A.U14.30, A.U21.09, A.U21.14, A.SDEP.08, A.SDEP.13, A.SDEP.14, M.SPEC.042, M.SPEC.121.
 - **Blast carried by**: `micropython_overrides.py:263-265` comment → A.U14.30 (TOOL).
 - **Kind**: doc
@@ -1646,6 +1653,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U36.546 moves the chip facts to M.6 in U36; until then the text stays in C.3.1.
 - **Unit**: Stage 1 U13 ((1)); Stage 2 U16 ((2) attempts/legal set, (3)); Stage 3 U20 ((2) "names its part"); Stage 4
   S0930 per its unit ((3) erase API); Stage 5 U36 ((2) M.6 pointer).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.17 in U16, A.S0930.30 in U36.
 - **Depends**: A.U13.05, A.U16.04, A.U16.15, A.U16.20, A.U16.R01, A.U16.R02, A.U20.10, A.S0930.17, M.SPEC.152.
 - **Blast carried by**: BACKLOG `:52-57` deletion → A.U16.04 (DOCS); Part N rows for the attempts → A.U16.R02 (M.SPEC.156).
 - **Kind**: doc
@@ -1705,6 +1713,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   since nothing in U36 moves C.4 (agent decision).
 - **Unit**: Stage 1 U2 (codes); Stage 2 U3 ((4) entry); Stage 3 U10 ((2) names, (3) ladder hooks — A.U10.R01); Stage 4
   U11 ((1) form); Stage 5 U15 ((2) `None`, heading); U18 ((1) PUT rule).
+  A-C2 step order: A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: A.U2.04, A.U3.03, A.U3.06, A.U10.44, A.U10.R01, A.U11.37, A.U15.40, A.U15.43, A.U18.39, M.SPEC.156.
 - **Blast carried by**: driver code → U15/U10 (SRC_SENS); G.2 ladder hooks → M.SPEC.111.
 - **Kind**: doc
@@ -1826,6 +1835,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Unit**: Stage 1 U4 ((1) extension point, compare-before-write); Stage 2 U11 ((1) failure narrowing, serialised PUTs,
   order, (2) no file); Stage 3 S0930 ((1) closed store); U10/U2 renames (M.SPEC.008); U36 ("Since WP5" if not already
   gone).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.16 in U11.
 - **Depends**: A.U4.01-.04, A.U10.25, A.U11.19, A.U11.24-.28, A.S0930.16, M.SPEC.008, M.SPEC.111.
 - **Blast carried by**: `tests/test_base_classes.py` section comment → A.U4.03 (TEST_UNIT).
 - **Kind**: doc
@@ -1953,6 +1963,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   ((1) `LogConfig`); Stage 5 U10 ((1) boot batch/pre-setup, (8) ladder, (10)); Stage 6 U11 ((1) degrade, (3), (4), (5));
   Stage 7 U16 ((1) pitfall, FRAM escalation, unreadable chunk); Stage 8 U18 ((10) UDP, (11) WIFI/resolver); Stage 9 U30
   ((11) `report_if_fatal()`); Stage 10 U35/U36 ((7) normal situations, (1) save primitive).
+  A-C2 step order: A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: A.U2.22, A.U3.03, A.U3.10, A.U3.11, A.U5.01, A.U10.10, A.U10.11, A.U10.R01, A.U11.13, A.U11.16,
   A.U11.31, A.U13.16, A.U16.01, A.U16.06, A.U16.17, A.U18.09, A.U18.15, A.U18.36, A.U19.14, A.U26.22, A.U30.19,
   A.U35.37, M.SRC_CORE.034, M.SRC_SENS.083.
@@ -1986,6 +1997,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   statements (C8). A.U3.08's W10/W11 restatement replaces A.U2.22's quoted "W11 outranks W10 … persisted when the drain
   bound is hit". Catalog numbers in the statements are the catalog's (M.SPEC.008).
 - **Unit**: Stage 1 U0 (tags on HEAD rows); Stage 2 U2 ((2)); Stage 3 U3 ((1), UART statement).
+  A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3); A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3); A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3).
 - **Depends**: A.U2.01, A.U2.02, A.U2.22, A.U3.08, A.U3.10.
 - **Blast carried by**: per-row codes → the catalog file (GEN/A.U2.01); C.11 item 8, K.1, K.9 → M.SPEC.069, M.SPEC.140/.142.
 - **Kind**: doc
@@ -2025,6 +2037,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   beside the stalled chip — one sentence with A.U0.38 V51. A.U18.47's double tag is the constituent's own.
 - **Unit**: Stage 1 U0 ((4) V51); Stage 2 U2 (codes); Stage 3 U5/U8 ((2) names, Part N); Stage 4 U17 ((4) UART, (5)
   poll/timeout/baud); Stage 5 U18 ((2) resolver/`Synced`/codes/origin, (3)); S0930 ((5) CRC mode); U36 ((1)).
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.01 in U20.
 - **Depends**: A.U17.07, A.U17.21, A.U17.32, A.S0930.01, A.U18.10, A.U18.14, A.U18.19-.21, A.U18.47, A.U5.10, M.SPEC.024.
 - **Blast carried by**: DEVICE_REFERENCE `NtpSynced` → A.U18.20/.21 (DOCS); L.3/L.4 lists → M.SPEC.146/[L.4].
 - **Kind**: doc
@@ -2138,6 +2152,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Unit**: Stage 1 U10 ((1) names, (2)); Stage 2 U11 (`_set_lock` row); Stage 3 U12 ((1) per-call input); Stage 4 U15
   ((1) derived value, `_threshold_lock` row); Stage 5 U16 ((3)); Stage 6 U18 ((4), (5) first two instances); S0930 ((3)
   erase); U35 ((5) sweep sentence); U36 (`_config_lock` read/write wording, A.U36.544).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.17 in U16, A.S0930.30 in U36.
 - **Depends**: A.U10.16-.18, A.U11.27, A.U12.18, A.U15.S01, A.U16.10, A.U16.13, A.U18.07, A.U18.31-.34, A.U35.48,
   A.S0930.17, M.SRC_SENS.080.
 - **Blast carried by**: `tests_scripts/test_lock_order.py` → A.U10.16 (TSC); `src/` lock-reason comments → A.U10.17
@@ -2230,6 +2245,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Resolved**: A.U18.22's comment-only action also names C.9 (A.U10.14's text) — its backstop joins the `ONE_SHOT` list.
   A.U10.12 moves read triggers out of `get_timer_starters()`; C.9's starter wording follows it (M.SPEC.067).
 - **Unit**: Stage 1 U10 ((1)-(3), (4)); Stage 2 U15 (read-trigger arm sentence); Stage 3 U18 (re-arm points, NTP retry).
+  A-C2 step order: A.U10.28's part lands in U16, not U10 (it follows A.U10.28's own change, which lands in U16).
 - **Depends**: A.U10.02, A.U10.03, A.U10.12, A.U10.14, A.U10.19, A.U10.28, A.U10.44, A.U15.41, A.U18.22-.24,
   M.SPEC.090, M.SPEC.111.
 - **Blast carried by**: comments at the sites → A.U18.22-.24 (SRC_NET).
@@ -2295,6 +2311,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Resolved**: A.U36.039 and A.U36.516 (2) rewrite the same sentences ("not both") — A.U36.039's item 9 carries the V28
   clause; A.U36.516 (2) itself says "carried by part A's A.U36.039 … not re-planned here".
 - **Unit**: Stage 1 U2 (item 8); Stage 2 U36 (item 9, the move).
+  A-C2 step order: A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3).
 - **Depends**: A.U2.22, A.U36.039, A.U36.543, M.SPEC.142.
 - **Blast carried by**: K.5 SPI sentence → A.U36.039 (M.SPEC.142); `tests_hardware/README.md:404-415` → A.U26.66 (HW).
 - **Kind**: doc
@@ -2510,6 +2527,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Unit**: Stage 1 U7 ((2) missing build, (3) run record, (7)); Stage 2 U8 ((3) probe); Stage 3 U21 ((3) lock, (6));
   Stage 4 U24 ((4), (5)); Stage 5 U27 ((2) shipped form, (7) twin runner, M.SCR.017's port-53 sentence); U35 ((3)
   dispatch check); U0 ((8) if A.SDEP.16 (c)); U2 ((2) catalog).
+  A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3); A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25).
 - **Depends**: A.U7.08, A.U7.20, A.U7.26, A.U8.16, A.U21.12, A.U21.13, A.U21.22, A.U24.10, A.U24.11, A.U24.69, A.U24.70,
   A.U27.05, A.U27.16, A.U35.24, M.SCR.012, M.SCR.017.
 - **Blast carried by**: CLAUDE.md two-suites bullet → A.U24.69 (DOCS); README env-var list → A.U8.16 (DOCS).
@@ -2637,6 +2655,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `test.sh` included, exit 2 on a usage or setting error, with no exception — exit 2 (M.SCR.035).
 - **Unit**: Stage 1 U0 ((1) tag, (2) tag); Stage 2 U7 ((2) retry, validation); Stage 3 U8 (Part N pointers); Stage 4 U24
   ((3)); Stage 5 U27 ((4) count); U35 (history row); U36 ((1) label, A.U36.512).
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25).
 - **Depends**: A.U7.04, A.U7.06, A.U8.15, A.U8C2.08, A.U24.65, A.U27.14, A.U35.23, M.SPEC.156.
 - **Blast carried by**: CLAUDE.md heapsize bullet → A.U36.546/A.U8.15 (DOCS).
 - **Kind**: doc
@@ -3130,6 +3149,7 @@ it; an unflipped fact keeps the text given here.
 - **Unit**: Stage 1 U0 (V08 tag, V09 wording); Stage 2 U10 ((3)'s mechanism sentence in place of "should standardize on
   one mechanism"); Stage 3 U14 ((1), (2), (3) A.U14.16 text around the U10 sentence); Stage 4 U30 ((4)); Stage 5 U31 (the
   webserver clause, once A.U31.18 lands).
+  A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18).
 - **Depends**: A.U0.22, A.U0.37, A.U10.26, A.U14.16, A.U14.R01, A.U30.01, A.U31.18.
 - **Blast carried by**: CLAUDE.md wedged-bus rule → M.DOCS (A.U14.R01 (4), A.U0.22); BACKLOG non-blocking goal and the
   removed "share one mechanism" item → M.DOCS.062/.065; `tests_hardware/README.md:633` issue list → A.U14.16 (HW_BENCH);
@@ -3191,6 +3211,7 @@ it; an unflipped fact keeps the text given here.
   (c) A.C.17 replaces no text: it adds the dated silicon result to the sentence it tests.
 - **Unit**: Stage 1 U0 (B02, C01 edits); Stage 2 U11 (A.U11.04's sentence); Stage 3 U14 ((1) head, R01 blast (d));
   Stage 4 U18 (A.U18.28); Stage 5 U36 ((2) A.U36.033 with A.S0930.41's sentence); Stage 6 phase C (A.C.17 result).
+  A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18); A.S0930.14's part lands in U20, not U11 (it follows A.S0930.14's own change, which lands in U20); A.S0930.33's part lands in U20, not U11 (it follows A.S0930.33's own change, which lands in U20).
 - **Depends**: A.U0.33, A.U11.04, A.U11.19, A.U11.28, A.U14.R01, A.U18.28, A.U36.033, A.S0930.09-.17, A.S0930.30,
   A.S0930.41, A.C.17.
 - **Blast carried by**: CLAUDE.md CYW43 and flash-write bullets → A.U36.034, A.U26.30 (M.DOCS); BACKLOG item 4 → A.U0.34/
@@ -3483,6 +3504,7 @@ it; an unflipped fact keeps the text given here.
 - **Unit**: Stage 1 U0 (A20, L15 tags, T4); Stage 2 U13 ((2)(a), (3)(c), (3)(d) degrade half); Stage 3 U14 ((2)(e), the
   backstop sentence); Stage 4 U16 (hold-timing script); Stage 5 U18 ((3)(e)); Stage 6 U20 ((3)(d) build half); Stage 7 U26
   ((2)(b)); Stage 8 U36 (the move with every citer, M.SPEC.003; (2)(d), (3)(a)-(b)).
+  A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18).
 - **Depends**: M.SPEC.003, A.U0.25, A.U0.33, A.U0.44, A.U8.06, A.U8.11, A.U13.12, A.U13.13, A.U13.17, A.U13.19, A.U14.31,
   A.U14.R01, A.U16.07, A.U18.05, A.U20.18, A.U26.59, A.U36.512, A.U36.544.
 - **Blast carried by**: every F.5.7-F.5.9 citer outside SPEC → A.U36.532 (4) (M.SPEC.003); `devices/dev.toml:39-40`
@@ -3616,6 +3638,7 @@ it; an unflipped fact keeps the text given here.
   (`max_frame`); Stage 9 U18 (UDP, dotted quad); Stage 10 U19 (result words, streaming bytes); Stage 11 U23/U20/U6
   (mirror pairs); Stage 12 U30 (fatal report, `get_register_into()`); Stage 13 U35/U36 (watchdog proof, shutdown
   ownership, the shared-codec sentence, legacy path at U1).
+  A-C2 step order: A.S0930.13's part lands in U20, not U11 (it follows A.S0930.13's own change, which lands in U20).
 - **Depends**: A.U4.01, A.U5.01, A.U5.04, A.U10.01, A.U10.02, A.U10.05, A.U10.06, A.U10.08, A.U10.R01, A.U12.10,
   A.U12.17, A.U12.18, A.U13.01, A.U13.06, A.U13.11, A.U13.R01, A.U15.40, A.U17.22, A.U18.05, A.U18.08, A.U18.13, A.U19.11,
   A.U19.16, A.U23.25, A.U30.07, A.U30.19, A.U35.30, A.S0930.30, M.SRC_CORE.034, M.SRC_CORE.047, M.SRC_SENS.045.
@@ -3861,6 +3884,7 @@ U36 change that owns its paragraph below.
   M.TWIN.136): the landed text names the harness scenarios (M_TWIN gap; agent decision, OR2.c review).
 - **Unit**: Stage 1 U0 ((3), (7) tags and reader sentence, (9), (10)); Stage 2 U14 ((4), (6)); Stage 3 U19 ((5) derivation,
   (8)); Stage 4 U24 ((7) refusal rule); Stage 5 U30 ((5) placeability); Stage 6 U36 ((1), (2), (11), numbering).
+  A-C2 step order: A.U14.30's part lands in U19, not U14 (it needs A.U19.24, which lands in U19).
 - **Depends**: A.U0.25, A.U0.33, A.U0.44, A.U5.04, A.U5.05, A.U6.03, A.U6.10, A.U8.18, A.U14.12, A.U14.30, A.U19.08,
   A.U19.13, A.U23.32-A.U23.35, A.U24.34, A.U24.52, A.U30.20, A.U36.517, A.U36.532, M.SCR (gap 5), M.TWIN.136.
 - **Blast carried by**: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive references → unchanged (DOCS); I.1's free-heap sentence →
@@ -4203,6 +4227,7 @@ protocol: each is spec text (the Class A/B entries are their code actions').
 - **Resolved**: A.U3.02 and A.U3.08 both rewrite `:5491-5497`'s persistence clause — A.U3.08's wording (the later, more
   specific one; A.U3.02 removes the episode mechanism it describes).
 - **Unit**: Stage 1 U2/U3 ((3)); Stage 2 U8 ((5)); Stage 3 U17 ((1), (2), (4)).
+  A-C2 step order: A.U14.R01's part lands in U18, not U17 (it needs A.U18.R01, which lands in U18).
 - **Depends**: A.U2.23, A.U3.02, A.U3.08, A.U8.06, A.U17.06, A.U17.07, A.U17.17, A.U17.23, A.U17.33.
 - **Blast carried by**: C.7.1/C.7.2 UART texts → M.SPEC.059/M.SPEC.060; changelog entries → the code actions (UART).
 - **Kind**: doc
@@ -4267,6 +4292,7 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   nothing from it. (c) M_DOCS gap 1 (h): the map names the L2 files M_TWIN lands (three, the two DOCS names among them).
 - **Unit**: Stage 1 U1 ((1) path); Stage 2 U8C (Part N); Stage 3 U24 ((6), with A.U24.15); Stage 4 U35 ((5)); Stage 5 U36
   ((1) twin clause, (2), (3)).
+  A-C2 step order: A.U17.25's part lands in U25, not U24 (it follows A.U17.25's own change, which lands in U25).
 - **Depends**: A.U1.18, A.U8C.43, A.U8C2.15, A.U17.25, A.U24.15, A.U26.33, A.U26.82, A.U26.87, A.U35.06, A.U36.040, A.U36.539,
   A.S0930.03, A.S0930.04, A.S0930.08, A.SDEP.16, M.SPEC.107, M.TWIN.156.
 - **Blast carried by**: CLAUDE.md hazard rule's UART clause → M.DOCS.085; CLAUDE.md hang bullet → M.DOCS.099; BACKLOG's
@@ -4302,6 +4328,7 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   namedtuple is never serialized." → "this namedtuple is never serialized.".
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: Stage 1 U0 ((1)); Stage 2 U2 ((2)); Stage 3 U5 ((4)); Stage 4 U11 ((5)); Stage 5 U17 ((3)).
+  A-C2 step order: A.U10.R01's part lands in U13, not U11 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: A.U0.44, A.U2.23, A.U5.12, A.U11.35, A.U17.01.
 - **Blast carried by**: the exerciser's plain-class comment → A.U0.48 (SRC_NET); C.6 → M.SPEC.057.
 - **Kind**: doc
@@ -4474,6 +4501,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
 - **Unit**: Stage 1 U2 (catalog); Stage 2 U5 ((3) LogConfig, provider); Stage 3 U17 ((7) UART); Stage 4 U19 (api reference);
   Stage 5 U20 ((2), (5) addresses, (7) deterministic, signals); Stage 6 U27 ((7) python check); Stage 7 U36 ((4), (5), (6),
   CRC and command clauses with the 2026-09-30 set).
+  A-C2 step order: A.U2.24's part lands in U6, not U2 (it needs A.U2.21, which lands in U6); A.U0.59's part lands in U25, not U2 (it follows A.U0.59's own change, which lands in U25).
 - **Depends**: A.U0.59, A.U2.01, A.U2.24, A.U5.03, A.U5.08, A.U6.01, A.U17.21, A.U17.32, A.U19.20, A.U20.02, A.U20.05,
   A.U20.28, A.U20.30, A.U20.36, A.U27.10, A.U36.041, A.U36.515, A.U36.518, A.S0930.02, A.S0930.11, M.GEN.019.
 - **Blast carried by**: `digital_twin/README.md` plan-shape and address text → A.U20.28 (TWIN); C.7.2 refusal list →
@@ -6087,3 +6115,38 @@ section that stays.
 | A.U37.06 | IB | M.SPEC.023 |
 | A.U37.07 | B | M.SPEC.112 |
 | A.U37.11 | IB | M.SPEC.150 |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.SPEC.006 | Unit | appended: A-C2 step order: A.U10.09's part lands in U11, not U10 (it needs A.U11.03, which lands in U11). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.007 | Unit | appended: A-C2: stage U28 — A.U28.12's A.3 pointer to B.10's job list lands with that list (M.SPEC.033, U28). | Depends edge ran from a later step: M.SPEC.033/.034 depend on A.U28.12 in U28 |
+| M.SPEC.010 | Unit | appended: A-C2 step order: A.S0930.14's part lands in U20, not U16 (it follows A.S0930.14's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.014 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.021 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20); A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.33's part lands in U20, not U11 (it follows A.S0930.33's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.034 | Unit | appended: A-C2 step order: A.U28.13's part lands in U0 (A.SDEP.05: "A.U28.13 (pulled forward)" into the GitHub Actions pin refresh). | a part lands outside the Unit slot's units by an action's own text |
+| M.SPEC.041 | Unit | appended: A-C2 step order: A.U14.30's part lands in U19, not U14 (it needs A.U19.24, which lands in U19). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.049 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.17 in U16, A.S0930.30 in U36. | AC3_R R-08 (h) |
+| M.SPEC.051 | Unit | appended: A-C2 step order: A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.055 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.16 in U11. | AC3_R R-08 (h) |
+| M.SPEC.058 | Unit | appended: A-C2 step order: A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.059 | Unit | appended: A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3); A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3); A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.060 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.060 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.01 in U20. | AC3_R R-08 (h) |
+| M.SPEC.064 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.17 in U16, A.S0930.30 in U36. | AC3_R R-08 (h) |
+| M.SPEC.066 | Unit | appended: A-C2 step order: A.U10.28's part lands in U16, not U10 (it follows A.U10.28's own change, which lands in U16). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.069 | Unit | appended: A-C2 step order: A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.076 | Unit | appended: A-C2 step order: A.U2.02's part lands in U3, not U2 (it follows A.U2.02's own change, which lands in U3); A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.079 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.094 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.096 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18); A.S0930.14's part lands in U20, not U11 (it follows A.S0930.14's own change, which lands in U20); A.S0930.33's part lands in U20, not U11 (it follows A.S0930.33's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.108 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.111 | Unit | appended: A-C2 step order: A.S0930.13's part lands in U20, not U11 (it follows A.S0930.13's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.121 | Unit | appended: A-C2 step order: A.U14.30's part lands in U19, not U14 (it needs A.U19.24, which lands in U19). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.135 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U17 (it needs A.U18.R01, which lands in U18). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.137 | Unit | appended: A-C2 step order: A.U17.25's part lands in U25, not U24 (it follows A.U17.25's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.139 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U11 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.SPEC.147 | Unit | appended: A-C2 step order: A.U2.24's part lands in U6, not U2 (it needs A.U2.21, which lands in U6); A.U0.59's part lands in U25, not U2 (it follows A.U0.59's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |

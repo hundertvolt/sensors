@@ -167,6 +167,7 @@ change lists its stages; the end state is the last stage's.
   changes), U10 (A.U10.12, A.U10.18, A.U10.40, renames), U11 (`SystemService` kwargs A.U11.03 (2), A.U5.08
   provider), U15 (A.U15.12), U18 (A.U18.40 `WifiConfig`), U20 (signature, `begin_boot`, batch removal co-landing
   A.U11.10 in one commit, CRC, bus default, device wiring, instance names, docstring), U28 (hotspot constant).
+  A-C2 step order: A.U14.17's part lands in U13 (A.U14.17 (a)'s code half lands with A.U13.R01 in U13 (M.SRC_SENS.008/.009: the boot clear is called from I2C.__init__ there, so every fake and the generated call move with it)).
 - **Depends**: M.GEN.003, M.GEN.006, M.GEN.009, M.GEN.010, M.GEN.012; A.U11.03/.05/.10 (SRC_CORE), A.U5.02-.11,
   A.U18.40 (SRC_NET), A.U15.12 (SRC_SENS).
 - **Blast carried by**: SPEC A.7 construction/boot steps → A.U11.10/A.U20.06 Docs (SPEC); `scripts/lint.sh` and
@@ -256,6 +257,7 @@ change lists its stages; the end state is the last stage's.
   (`ResetReason`, `MemFree` — in U20's commit with A.U11.05's template lines), U18 (snapshot with A.U18.33's
   `get_wlan_*` removal), U19 (LED callback with A.U19.02; `HTTPDropped`/`WifiTS` with A.U19.08), U20 (command
   callback, SGP40 adapters, UTC gate, annotations), U23 (`UnixTime`), U32 (`LastTaskEnd`).
+  A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
 - **Depends**: A.S0930.12 (bool returns), A.U11.03/.05, A.U19.02, A.U19.08, A.U18.33, A.U32.06, A.U10.06 (`utc_now`).
 - **Blast carried by**: definitions catalog rows (`MemFree`, `ResetReason`, `LastTaskEnd`, `UnixTime`, `HTTPDropped`,
   `WifiTS`) → M.GEN.014; mock data rows and `js/field-format.js` handlers → A.U6.06/A.U32.06/A.U23.22 (WEB);
@@ -453,6 +455,7 @@ change lists its stages; the end state is the last stage's.
   FRAM-backed or not (HEAD `:363-390` lists RAM-only `DNSSRV`), so the row is the same either way; the RAM-only ruling
   is SRC_SENS's.
 - **Unit**: U20 (latest: A.U20.27). Stages: U2 (catalog load, `codes`), U6 (dns move), U15 (scd30 row with A.U15.12).
+  A-C2 step order: A.U2.21's part lands in U6, not U2 (it needs A.U6.04, which lands in U6).
 - **Depends**: M.GEN.034, M.GEN.040 (`parse_name_constant`), A.U15.12 (SRC_SENS).
 - **Blast carried by**: completeness test `tests_scripts/test_buildgen_source_agreement.py` → A.U20.27/A.U33.01
   (TST); SPEC K.3/K.11/L.1/L.6.6 → A.U33.01-.03 (SPEC).
@@ -808,6 +811,7 @@ change lists its stages; the end state is the last stage's.
   by `ast`) and the envelope, as A.U19.20 (2) specifies; `BuildError`s carry `rule`/`fix`.
 - **Resolved**: —
 - **Unit**: U19 (the route table `ROUTES` lands in the same unit, SRC_NET).
+  A-C2: stage U20 — the `BuildError` rule/fix and `JsonDict` forms land with M.GEN.022 and M.GEN.032 (U20); in U19 the module is written with the plain `BuildError` and `dict` annotations of its day.
 - **Depends**: A.U19.20 (1) (SRC_NET `ROUTES`), M.GEN.018, M.GEN.022, M.GEN.032.
 - **Blast carried by**: `tests_scripts/test_api_reference.py` and fixtures → A.U19.20/A.U37.10 (TST); SPEC Part H REST
   reference pointer → A.U19.20 Docs (SPEC).
@@ -852,6 +856,7 @@ change lists its stages; the end state is the last stage's.
 - **Unit**: U35 (latest constituent: A.U35.55's retirement). Stages: U2 (file), U10 (16 retired with A.U10.06), U11
   (register fixes, ResetReason), U13 (52), U15 (34, W11, status tables), U17 (UART codes 91/92), U18 (W12, DNSSRV 42/43,
   69, NTP owners), U19 (W48, W60-62), U23 (tones), U30 (C-stack 25, ResetReason 20).
+  A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
 - **Depends**: A.U2.01-.03 (catalog, test, helper), each code's source constant (SRC_* clusters).
 - **Blast carried by**: `tests_scripts/test_error_catalog.py` → A.U2.02/A.U36.537 (TST); `tests/_error_codes.py` →
   A.U2.03 (TST); SPEC C.7/C.7.1 → A.U2.22 (SPEC); `.inputs_stamp.json` input set → A.U24.46 (TST); the generated
@@ -1826,3 +1831,15 @@ change (the catalog rows and tag values their merges number):
 | A.U18.14 | M.GEN.034 (errno 72 `NTP_NOT_SENT`) |
 | A.U18.15 | M.GEN.034 (W12 `SOCKET_TEARDOWN`) |
 | A.U9.08 | M.GEN.034 (errno 15 `SOURCE` text) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.GEN.005 | Unit | appended: A-C2 step order: A.U14.17's part lands in U13 (A.U14.17 (a)'s code half lands with A.U13.R01 in U13 (M.SRC_SENS.008/.009: the boot clear is called from I2C.__init__ there, so every fake and the generated call move with it)). | a part lands outside the Unit slot's units by an action's own text |
+| M.GEN.008 | Unit | appended: A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.GEN.016 | Unit | appended: A-C2 step order: A.U2.21's part lands in U6, not U2 (it needs A.U6.04, which lands in U6). | dependency deferral (an edge ran from a later step) |
+| M.GEN.033 | Unit | appended: A-C2: stage U20 — the `BuildError` rule/fix and `JsonDict` forms land with M.GEN.022 and M.GEN.032 (U20); in U19 the module is written with the plain `BuildError` and `dict` annotations of its day. | Depends edge ran from a later step: M.GEN.022/.032 land in U20, after this change |
+| M.GEN.034 | Unit | appended: A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |

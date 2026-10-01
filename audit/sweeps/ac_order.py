@@ -285,7 +285,7 @@ def unit_tokens(text, cons):
     out = []
     for m in UTOK.finditer(t):
         pre = t[max(0, m.start() - 9):m.start()].lower()
-        if re.search(r"(after|before|from|until|since)\s+$", pre):
+        if re.search(r"(after|before|from|until|since|not)\s+$", pre):
             continue
         tok = {"phase C": "C", "phase D": "D", "B0": "U0"}.get(m.group(1), m.group(1))
         if tok == "S0930":
@@ -381,6 +381,16 @@ def build():
         c["files"] = sorted(files)
         c["doc"] = bool(files) and all(p.endswith(".md") for p in files)
         c["new"] = bool(re.search(r"\(new\b|\bnew\)", c["section"] or "")) or c["slots"]["Site"].strip().lower().startswith("new")
+        for a in EXTRA_FROM.get(k, ()):
+            if a not in c["live"]:
+                c["live"].append(a)
+                c["cons"].append((a, True, "AC3_R placement"))
+    for k, v in SYNTH.items():
+        slots = collections.defaultdict(str)
+        slots["Depends"] = ", ".join(v["depends"])
+        ch[k] = {"title": v["title"], "file": v["file"], "line": 0, "section": None, "slots": slots, "slot_line": {},
+                 "cons": [(a, True, "") for a in v["live"]], "live": list(v["live"]), "T": v["T"], "main": v["T"][0],
+                 "files": v["files"], "doc": False, "new": True, "synthetic": True}
     return acts, canon, S, D, ch, act_files, unknown
 
 
@@ -405,7 +415,7 @@ def landings(ch, D, ov=None):
                                              "deferred to the next Unit-slot unit (site born there)")
             else:
                 L[(k, a)], why[(k, a)] = u, "own unit (implicit step: code/test site, blast closed in its unit)"
-            if a in PULLS:
+            if a in PULLS and not (PULLS[a][2:] == ("code",) and c["doc"]):
                 L[(k, a)], why[(k, a)] = PULLS[a][0], "pulled: " + PULLS[a][1]
             if (k, a) in RELOC:
                 L[(k, a)], why[(k, a)] = RELOC[(k, a)][0], RELOC[(k, a)][1]
@@ -493,7 +503,7 @@ def edges(ch, D, L, act_files, canon, overrides=None):
             continue
         dep = c["slots"]["Depends"]
         for b, s, e in expand_a(dep, canon):
-            if b not in H or b in c["live"]:
+            if b not in H or b in c["live"] or dep[e:e + 10].startswith(" [follows]"):
                 continue
             cand = [(kb, ub) for kb, ub in own_holders(b, H, ch, act_files)
                     if kb != k and not (ch[kb]["doc"] and not c["doc"])]
@@ -502,7 +512,7 @@ def edges(ch, D, L, act_files, canon, overrides=None):
                 tgt = next((u for u in mine if ukey(u) >= ukey(ub)), mine[-1])
                 E.append(((kb, ub), (k, tgt), "dep-A", f"{k} Depends {b}"))
         for n, s, e in expand_m(dep):
-            if n == k or n not in ch or not ST.get(n):
+            if n == k or n not in ch or not ST.get(n) or dep[e:e + 10].startswith(" [follows]"):
                 continue
             theirs = ST[n]
             for u in mine:
@@ -599,8 +609,24 @@ for _m in ("A.U10.R01", "A.U13.R01", "A.U15.R01", "A.U15.R02", "A.U15.R03", "A.U
     DEP_RULINGS[("A.U14.R01", _m)] = ("doconly", "F.2 and CLAUDE.md describe the mechanism once it exists")
 # Parts that land outside their ID's unit by an action's own text.
 PULLS = {
-    "A.U28.13": ("U0", "A.SDEP.05: \"A.U28.13 (pulled forward)\" into the GitHub Actions pin refresh"),
-    "A.U37.15": ("D", "its own title: \"Phase D: delete the plan and audit/\"; needs A.C.11"),
+    "A.U28.13": ("U0", "A.SDEP.05: \"A.U28.13 (pulled forward)\" into the GitHub Actions pin refresh", "all"),
+    "A.U37.15": ("D", "its own title: \"Phase D: delete the plan and audit/\"; needs A.C.11", "all"),
+    "A.U14.17": ("U13", "A.U14.17 (a)'s code half lands with A.U13.R01 in U13 (M.SRC_SENS.008/.009: the boot clear "
+                 "is called from I2C.__init__ there, so every fake and the generated call move with it)", "code"),
+}
+# A-C3 Part R folded in before the lead applies the body text (AC3_R.md R-01, R-02, R-04, R-08 (h)).
+EXTRA_FROM = {
+    "M.PROC.022": ["A.U35.03", "A.U35.04", "A.U35.05", "A.U35.08", "A.U35.09", "A.U35.15", "A.U35.22", "A.U35.23",
+                   "A.U35.28", "A.U35.35", "A.U35.37", "A.U35.41", "A.U35.50", "A.U35.51"],
+    "M.PROC.021": ["A.U32.05"],
+}
+SYNTH = {  # merged changes AC3_R R-04 proposes; the lead assigns their IDs
+    "M.DOCS.R04a": {"title": "The integrate-module skill points into Part K (AC3_R R-04, ID pending)",
+                    "file": "audit/consolidation/M_DOCS.md", "live": ["A.U36.543"], "T": ["U36"],
+                    "files": [".claude/skills/integrate-module/SKILL.md"], "depends": ["M.SPEC.142", "M.SPEC.046"]},
+    "M.PROC.R04b": {"title": "U36: two baseline runs of the Part K skill (AC3_R R-04, ID pending)",
+                    "file": "audit/consolidation/M_PROC.md", "live": ["A.U36.543"], "T": ["U36"],
+                    "files": [], "depends": ["M.DOCS.R04a"]},
 }
 # Changes whose Unit slot lands every row with its own action ("per row as listed", "each adding action's own unit").
 OWNUNIT = {"M.DOCS.024", "M.DOCS.064", "M.DOCS.066", "M.SPEC.156"}
@@ -622,6 +648,7 @@ RELOC = {
     ("M.TWIN.031", "A.S0930.24"): ("U25", "Unit slot: feed_times co-lands in U25 (AC_NOTES 36)"),
     ("M.TWIN.152", "A.S0930.36"): ("U25", "Unit slot: the L2 half co-lands in U25"),
     ("M.TEST_HELP.011", "A.S0930.24"): ("U11", "Unit slot: feed_times lands inside stage 1 (U11)"),
+    ("M.SCR.061", "A.S0930.04"): ("U27", "AC3_R R-08 (h): A.S0930.04's CRC16 rerun runs on U27's runner"),
 }
 
 
@@ -634,3 +661,92 @@ def rulings(D):
     for k, (cls, _) in DEP_RULINGS.items():
         ov[k] = cls
     return ov
+
+
+# ---- in-unit order -------------------------------------------------------------------------------------
+def scc_order(nodes, edges):
+    """Tarjan SCCs, returned in a topological order (each SCC a list), dependencies first."""
+    adj = collections.defaultdict(set)
+    for a, b in edges:
+        adj[a].add(b)
+    idx, low, on, st, out = {}, {}, set(), [], []
+    counter = [0]
+    sys.setrecursionlimit(100000)
+
+    def strong(v):
+        idx[v] = low[v] = counter[0]
+        counter[0] += 1
+        st.append(v)
+        on.add(v)
+        for w in sorted(adj[v]):
+            if w not in idx:
+                strong(w)
+                low[v] = min(low[v], low[w])
+            elif w in on:
+                low[v] = min(low[v], idx[w])
+        if low[v] == idx[v]:
+            comp = []
+            while True:
+                w = st.pop()
+                on.discard(w)
+                comp.append(w)
+                if w == v:
+                    break
+            out.append(sorted(comp))
+    for v in sorted(nodes):
+        if v not in idx:
+            strong(v)
+    out.reverse()  # Tarjan emits sinks first
+    return out
+
+
+# ---- test references ------------------------------------------------------------------------------------
+TEST_GLOBS = ["tests/test_*.py", "tests_scripts/test_*.py", "tests_js/*.test.js"]
+IMPORT_RE = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.M)
+PATHREF_RE = re.compile(r"((?:src|buildgen|scripts|toolchain|digital_twin|js|html|devices|tests_hardware|tests|\.github)/[\w./-]+|"
+                        r"[\w.-]+\.(?:md|toml|ini|json|sh|yml))")
+
+
+def test_index():
+    idx = {}
+    for g in TEST_GLOBS:
+        for f in sorted(glob.glob(g)):
+            t = open(f, encoding="utf-8", errors="replace").read()
+            names = set()
+            for m in IMPORT_RE.finditer(t):
+                n = (m.group(1) or m.group(2)).split(".")[0]
+                names.add(re.sub(r"^asy_", "", n))
+            for m in re.finditer(r"""from\\s+['"]([^'"]+)['"]|import\\(['"]([^'"]+)['"]\\)""", t):
+                p = (m.group(1) or m.group(2))
+                names.add(re.sub(r"^asy_", "", p.rsplit("/", 1)[-1].rsplit(".", 1)[0]))
+            for m in PATHREF_RE.finditer(t):
+                p = m.group(1)
+                names.add(re.sub(r"^asy_", "", p.rsplit("/", 1)[-1].rsplit(".", 1)[0]))
+                names.add(p)
+            idx[f] = names
+    return idx
+
+
+def scoped_tests(files, tidx):
+    out = set()
+    for p in files:
+        p = p.rstrip("/")
+        if re.match(r"(tests/test_|tests_scripts/test_|tests_js/.*\\.test\\.js)", p) and not p.endswith("/"):
+            out.add(p)
+            continue
+        stem = re.sub(r"^asy_", "", p.rsplit("/", 1)[-1].rsplit(".", 1)[0])
+        if not stem or len(stem) < 3:
+            continue
+        host_only = p.endswith((".md", ".sh", ".yml", ".ini", ".lock")) or p.startswith(
+            ("scripts/", "toolchain/", ".github/", "audit/", "pyproject", "package", "tsconfig", "eslint", "vitest"))
+        for f, names in tidx.items():
+            if host_only and not f.startswith("tests_scripts/"):
+                continue
+            if stem in names or p in names:
+                out.add(f)
+        if p.startswith("buildgen/"):
+            out |= {f for f in tidx if re.match(r"tests/test_sensortask_\w+\.py$", f)}
+        m = re.match(r"devices/(\w+)\.toml$", p)
+        if m:
+            out |= {f for f in tidx if f in (f"tests/test_sensortask_{m.group(1)}.py",)}
+    return out

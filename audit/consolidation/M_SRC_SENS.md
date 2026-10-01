@@ -194,8 +194,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (row 1). The timeout parameter is added here (A.U13.R01 bounds each wait by "the stored bus timeout", which does not
   exist yet when `__init__` calls this before `init()`).
 - **Unit**: U13 (A.U14.17 (a)'s code half co-lands with A.U13.R01 in U13; its F.2 doc half is U14's)
-- **Depends**: M.SRC_SENS.007; fakes: `tests/machine.py` `Pin` `OPEN_DRAIN`, scripted input levels, value log (A.U24.16),
-  twin `Pin` `OPEN_DRAIN` (A.U25.05)
+- **Depends**: M.SRC_SENS.007; fakes: `tests/machine.py` `Pin` `OPEN_DRAIN`, scripted input levels, value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows] completes it), twin `Pin` `OPEN_DRAIN` (M.TWIN.021's A.U14.17 part, U14, with the generated call; A.U25.05 [follows] completes it)
 - **Blast carried by**: construction sites (generated `build_system()`, device scripts constructing
   `asy_i2c_driver.I2C`) → A.U14.17 (a) blast (signature unchanged); L1 pulse cases → A.U13.R01's L1 list (TEST_UNIT);
   SPEC F.2 text → A.U14.R01 (SPEC); DEVICE_REFERENCE operator line → A.U14.17/U36 (DOCS); BACKLOG hardware row →
@@ -651,6 +650,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Resolved**: —
 - **Unit**: U27 (latest; stages: U5 `LogConfig`/`ValueRef`, U9 `TickSeconds`, U10 module names and `utc_now`, U22
   typing, U27 the trigger comment)
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10).
 - **Depends**: A.U10.02 (`TickSeconds`), A.U10.06 (`utc_now`), A.U5.11 (`ValueRef` in `asy_base_classes.py`),
   A.U10.46 (aliases)
 - **Blast carried by**: SPEC B.15 workaround list → A.U27.03 (SPEC); `pyproject.toml` ANN401 entry → A.U22.04 (TOOL)
@@ -672,6 +672,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   conflict table row 1).
 - **Unit**: stages U2 (catalog block), U5 (tag target), U8 (tags as float seconds), U10 (class name in tag), U31 (final
   int forms)
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U2.01 (catalog), A.U8.01
 - **Blast carried by**: Part N rows renamed → A.U8.12/A.U31.14 (SPEC); mock NOTIFY errcount row → A.U2.21 (WEB/GEN);
   `tests/test_asy_notification_service.py` (12), `tests/test_notification_fram_integration.py` (6) numbers → A.U2.17
@@ -745,6 +746,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   removal (A.U22.02's Depends).
 - **Unit**: U10 (class name; stages U5 construction/`ValueRef`/`log`, U9 `_pause`, U10 name/`_cfg_schema`, U11 reset
   override gone with the guard, U22 attributes and typing)
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3); A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10).
 - **Depends**: M.SRC_SENS.030, M.SRC_SENS.031; A.U5.02 (`SensorReaderConfig` signature), A.U10.21
 - **Blast carried by**: generated `_notification_lines()` (signals as an argument, `ValueRef`) → A.U5.06/A.U5.11 (GEN);
   tests (116 `register`/`finalize` lines, `make_signal()`, `:682, :815-816, :833-834, :856-870`) → A.U5.06/A.U5.11/
@@ -766,6 +768,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   sites) conflict; ruled for A.U10.06 by V.U18.R10 (U18 register fix 10, A.U18.25's Depends; U30 cross-unit note 1).
   A.U10.43's `_next_sleep_s()` is overtaken by A.U31.14's `_next_sleep_ms()` (U31 conflict table row 7).
 - **Unit**: stages U2 (numbers), U10 (`utc_now`), U30 (`report_if_fatal`), U31 (`_next_sleep_ms`)
+  A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U10.06, A.U30.19
 - **Blast carried by**: `tests/test_asy_notification_service.py:1256-1279` → A.U31.14; `:1440-1498` (`_now()` overflow
   tests) go → A.U10.06 (TEST_UNIT); `_FastAsyncSleep` gains `sleep_ms` → A.U31.14/A.U24.49 (TEST_HELP)
@@ -806,6 +809,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_auto_active` transitions as today; `await asyncio.sleep(_LOOP_TICK_S)`.
 - **Resolved**: A.U22.03 withdrawn by the owner (OR126.a (4)) — not merged.
 - **Unit**: stages U8 (tag), U9 (`_pause`), U10 (names), U22 (types)
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10).
 - **Depends**: M.SRC_SENS.033; A.U10.02
 - **Blast carried by**: generated `_notification_pause_callback()`/`_notification_status()` (unchanged signatures) →
   A.U9.09; tests `:1133-1230`, twin `:349-390`, bench `:115-141`, `tests_hardware/README.md:1236-1237`,
@@ -892,6 +896,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   list).
 - **Unit**: stages U2 (bit rename, catalog block), U8 (tags on float names), U10 (`_S` suffix), U15 (comments, W11,
   sea level), U31 (ms constants)
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U2.01, A.U8.01
 - **Blast carried by**: Part N rows → A.U8.07/A.U31.11 (SPEC); test copies of the constants → A.U24.01/A.U24.02
   (TEST_UNIT); `tests/test_asy_bmp3xx_driver.py` number asserts (30 lines) → A.U2.10; the `get_altitude` guard test (if
@@ -1017,6 +1022,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (`SensorReader._trigger_loop()`), and `start_asy_trigger()` creates it (agent, 2026-10-01; routed to SRC_CORE as
   GAP-8).
 - **Unit**: U15 (stage U10: `_base_trigger` → `_trigger_loop` rename in place, removed in U15)
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_CORE.047 (`checked_int()`)
 - **Blast carried by**: `tests/test_asy_bmp3xx_driver.py:868-930` (`45.7` → `False`, NaN/inf, `True`) → A.U15.26
   (TEST_UNIT); `_base_trigger` test callers → A.U15.40; SPEC M.4 sentence → A.U15.26 (SPEC)
@@ -1052,6 +1058,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `get_dict_data()`/`get_dict_cfg()`/`get_error_counter()` unchanged but for the renamed `_VAL_` names and `self._bmp`.
 - **Resolved**: —
 - **Unit**: U30 (stage U2 numbers)
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.040
 - **Blast carried by**: number asserts → A.U2.10 (TEST_UNIT)
 - **Kind**: code
@@ -1093,6 +1100,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   session rename is moot (A.U15.40 removes the class).
 - **Unit**: U31 (latest; stages U2, U10 (names, messages), U13 (bool bus results, `get_register_bytes`), U15 (session,
   wait, rename, sea level), U27 (comment), U30 (burst buffer))
+  A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.040; A.U15.40's `DeviceSession`
 - **Blast carried by**: `tests/test_asy_bmp3xx_driver.py` read-path, `:185-209` `_BadBurstRead`, `:298-307`, `:351-364`,
   `:584-619`, `:798-812`, `:1541`, `:1857-1858` → A.U15.25/A.U30.07/A.U13.09/A.U13.10/A.U15.27/A.U10.21 (TEST_UNIT);
@@ -1120,6 +1128,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   as they are. Agent decision (2026-10-01), OR2.c list; the alternative — `_error_check()` testing `results[0] is
   None` for every caller — is SRC_CORE's to prefer instead (GAP-15).
 - **Unit**: U10 (with A.U10.06: from that unit on a `TS` can be `None`)
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: A.U10.06
 - **Blast carried by**: L1 per reader "a pre-sync read steps no streak and publishes its values with `TS` `None`" and
   the twin boot suites (no NTP) → GAP-15 (TEST_UNIT, TWIN); SPEC C.7 `_error_check()` bullet → GAP-15 (SPEC)
@@ -1448,6 +1457,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Resolved**: A.U8.07's wait names are integer ms already except the general-call wait, an int of seconds, which the
   float-sleep rule allows (A.U31.10 keeps it). The heater-off bound is untagged (a datasheet fact, A.U15.R02).
 - **Unit**: U15 (stages U2 catalog, U8 tags, U31 heater-off ms form lands with A.U15.R02 in U15 as written by A.U31.10)
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U2.01 (row 34 rename), A.U8.01
 - **Blast carried by**: Part N rows → A.U8.07/A.U8.13 (SPEC); `tests/test_asy_sgp40_driver.py:2330-2333` mirror site →
   A.U8.07 (TEST_UNIT); catalog row 34 → A.U15.17 into A.U2.01 (GEN)
@@ -1599,6 +1609,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `checked_float()` (`object` in, `float | None` out), never from a narrowing test — M_SRC_CORE GAP-G13 and the lead's
   L1/GAP-14 ruling applied to this typed consumer (M.SRC_CORE.047).
 - **Unit**: U15 (stages U2, U3, U5, U10, U30)
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.062, M.SRC_SENS.068, M.SRC_CORE.047 (`checked_float()`)
 - **Blast carried by**: L1 NaN/inf/`True` and lost-reset regression, VOCState cases → A.U15.14/A.U15.19 (TEST_UNIT); L2
   `tests/test_digital_twin_sgp40.py` → A.U15.19 (TWIN); every `SGP40(` tuple in tests gains the field → A.U15.19
@@ -1619,6 +1630,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Resolved**: A.U15.R02 as corrected per AC_NOTES 31 (V.U25 on twin Run 5): the correction concerns the twin CI's
   expected counts (SCR), not this code — the code is as written.
 - **Unit**: U15 (stages U2, U10, U30)
+  A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.062, M.SRC_SENS.068; A.U10.R01, A.U13.R01
 - **Blast carried by**: SGP40 streak tests `:369-443, 505-510, 585-589` and new rung cases → A.U15.R02/A.U10.R01
   (TEST_UNIT); four tiers of the heater-off (L1 hazard, L2 twin with the 0x3615 branch, L3 sweep and
@@ -1799,6 +1811,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   1000100" (`dstxt/isl29125…:1139`; p7 `:477` says the same), Table 7 (`:786-789`).
 - **Unit**: U15 (stages U0 tags in comments, U2 catalog block, U8 tunable tags, U10 `_S` names, U36 citation — each lands
   in its own unit on the same lines)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U2.01, A.U8.01
 - **Blast carried by**: Part N rows and M.1.4/M.1.5 citations → A.U8.13 (SPEC); test copies `tests/test_asy_isl29125_driver.py:
   38-42` → A.U24.01 (TEST_UNIT); twin test copies → A.U25.49 (TEST_UNIT/TSC); `_ISL29125_ADDR` read by
@@ -1948,6 +1961,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   value crosses below or is equal to the lower threshold, an interrupt is asserted" (`dstxt/isl29125…:877`); "outside
   the user's programmed window" (`:398-410`), both p12.
 - **Unit**: U15 (stages U2, U10 timestamp; U30 handlers)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.073, M.SRC_SENS.076, M.SRC_SENS.078, M.SRC_SENS.081, M.SRC_SENS.089; A.U10.06
 - **Blast carried by**: L1 park/re-arm/darkness/interleave cases and L2 red-dominant scene → A.U15.32 (TEST_UNIT, TWIN);
   unsettled-discard case → A.U15.22; CalLight edge cases and L2 dark/mid/bright → A.U15.36; four tiers of the CONFIG2-3
@@ -1973,6 +1987,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   race statement; agent reading, OR2.c list). A forced re-apply keeps a parked INT parked (the shadow holds INTSEL 00),
   so `_int_held` and the chip agree.
 - **Unit**: U15 (stage U3 latch removal; U30 handler)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.080 (`_switch_range()`), A.U10.R01
 - **Blast carried by**: `tests/test_asy_isl29125_driver.py:1566-1595` (one slot, `ErrCount == 5`) and the RF175 case →
   A.U3.14/A.U3.03 (TEST_UNIT); rung cases (no-brownout re-apply, raising burst, no `recover()` on config-read failure)
@@ -1997,6 +2012,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Resolved**: A.U15.R05 adds no second persisted entry for the event (OR56.a (1)): the wrnno 32 is it; a failed
   re-arm logs its own CHIP_SET.
 - **Unit**: U15 (stage U2 numbers; U30 handlers)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.080 (`_write_thresholds()`)
 - **Blast carried by**: L1 console-only ID/reconciliation cases → A.U15.29 (TEST_UNIT); re-arm L1/L2 → A.U15.R05
   (TEST_UNIT, TWIN); wrnno-13 → 32 asserts → A.U2.12
@@ -2066,6 +2082,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   gains the new lock (GAP-13). OR109.a (0) holds: every derived per-call input (counts from `_ar_thresh`, the scale
   from `_resolution`) is derived inside the hold that writes it.
 - **Unit**: U15 (stage U2 numbers; U30 handlers)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.086 (`set_thresholds()` scales inside the session); M.SRC_SENS.082 (`_checked_cfg()`)
 - **Blast carried by**: fixed-mode resolution tests and `set_autorange_thresh` cache-only tests gain the burst, new L1
   race cases → A.U15.33 (TEST_UNIT); four tiers (one 4-byte write per setter call) → A.U15.33/A.U15.S01 blast (TEST_UNIT,
@@ -2089,6 +2106,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `return self._cal_meas`.
 - **Resolved**: —
 - **Unit**: U15 (stage U2; U30 handler)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.080 (`_down_thresh()`)
 - **Blast carried by**: band-edge L1 cases → A.U15.36; Ticks30 crossing case (b) and `:3083` → A.U15.35 (TEST_UNIT);
   I.2 allocation rows → A.U30.02 (SPEC); allow-list entries → A.U30.03 (TSC)
@@ -2119,6 +2137,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   lead's ruling (AC_NOTES 38) gave that type-level form — `checked_numeric()` returns `int | float | None`
   (M.SRC_CORE.047, M_SRC_CORE GAP-G13), which `_checked_cfg()` returns as is.
 - **Unit**: U15 (stages U2, U10; U30 handlers)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U11.S01 (slot type, SRC_CORE), M.SRC_CORE.047 (`checked_numeric()`)
 - **Blast carried by**: `tests/test_asy_isl29125_driver.py:2878-2890` goes → A.U15.38 (TEST_UNIT); E.5.1 rows → A.U35.41
   (SPEC); SPEC M.1.4 settle bullet → A.U15.30 (SPEC); number asserts → A.U2.12
@@ -2168,6 +2187,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `set_range_auto()`, `set_autorange_thresh()`: M.SRC_SENS.080.)
 - **Resolved**: —
 - **Unit**: U15 (stages U2, U10; U30 handlers)
+  A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.082
 - **Blast carried by**: `tests/test_asy_isl29125_driver.py:1127-1146` holds → A.U15.22; nested-body/tuple test →
   A.U24.57 (TEST_UNIT); number asserts → A.U2.12; `JsonDict` alias → A.U10.46 (SRC_CORE)
@@ -2631,3 +2651,32 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | AC_NOTES 42 (`NotificationService.initialized`) | carried as found: M.SRC_SENS.033 |
 | M_TEST_UNIT GAP-U4 (`_apply_stored_config()` code 2 on a stale value) | dropped: unreachable — the stored value passed `ConfigManager.setup()`'s schema check, whose special set is the chip's domain (`_OSR_SETTINGS`/`_IIR_SETTINGS`), so code 2 means a chip I/O failure only (M.SRC_SENS.044) |
 | M_SRC_SENS GAP-15 (reader conditions) | carried as found: M.SRC_SENS.046 (BMP3XX), .089 (SCD30), .090 (SGP40), .083 (ISL29125) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.SRC_SENS.008 | Depends | `value log (A.U24.16), twin `Pin` `OPEN_DRAIN` (A.U25.05)` → `value log (M.TEST_HELP.012's A.U13.R01 part, U13; A.U24.16 [follows] completes it), twin `Pin` `OPEN_DRAIN` (M.TWIN.021's A.U14.17 part, U14, with the generated call; A.U25.05 [follows] completes it)` | the fakes it needs land with A.U13.R01/A.U14.17 in U13/U14 (step rule); A.U24.16/A.U25.05 complete them later |
+| M.SRC_SENS.030 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.031 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.033 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3); A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.034 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.036 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it needs A.U10.02, which lands in U10). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.040 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.045 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.047 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.048 | Unit | appended: A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.059 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.064 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.065 | Unit | appended: A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.071 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.075 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.076 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.077 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.080 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.081 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.082 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.084 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_SENS.089 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |

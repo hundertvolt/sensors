@@ -310,6 +310,7 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
 - **Unit**: stage 1 U11 (cause, regions, `power_on()`, `mem_backup()` — A.U11.05's product lands in the same commit,
   and the main mypy pass resolves `machine` to this fake); stage 2 U24 (the raising `reset()`/`bootloader()`, WDT bound,
   `TEST_API`); `feed_times` lands with A.S0930.24 (U11, system-command work) inside stage 1.
+  A-C2 step order: A.S0930.24's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.TEST_HELP.010; M.TEST_HELP.001 (microtest reports an uncaught `SimulatedRebootError` as a FAIL).
 - **Blast carried by**: every test that triggers the product reset timer or calls a reboot path catches
   `machine.SimulatedRebootError` — `tests/test_system_service.py` reboot sections → A.U24.17/A.S0930.21/A.S0930.36
@@ -337,6 +338,7 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
 - **Resolved**: —
 - **Unit**: U24, except `init(value=)`, which lands with A.U13.03 in U13 (its product calls `init(OUT, value=…)`);
   the U24 edit keeps that keyword.
+  A-C2 step order: the open-drain mode, external level and value log (A.U13.R01, A.U14.17 (a)) also land in U13, with the boot clear that I2C.__init__ calls there (M.SRC_SENS.008/.009).
 - **Depends**: M.TEST_HELP.010.
 - **Blast carried by**: bus-clear L1 cases (`_clear_bus()` status mask, SCL release) → A.U13.R01/A.U14.17 (TEST_UNIT);
   `wp_pin` cases `tests/test_asy_fram_driver.py:533-606` hold (A.U16.16); stale fake-Pin reason
@@ -740,6 +742,7 @@ its two HTTP scenarios move to the host-side harness (A.U25.46, OR125.a).
 - **Unit**: U25 (latest: reset/offline NTP); stage U24 carries the harness, device set, port band, `boot_generated`,
   register assert (A.U24.08's deletion of `run_timed` would otherwise break the file in U24); stage U20 the `main()`/
   `watchdog=` change; U8C the tag.
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25); A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25).
 - **Depends**: M.TEST_HELP.043, M.TEST_HELP.046, M.TEST_HELP.047, M.TEST_HELP.055, M.TEST_HELP.056 (port bands).
 - **Blast carried by**: six wrappers → `tests/test_digital_twin_construction.py` (`PER_DEVICE = True`) → A.U24.65
   (TWIN); `test.sh` per-device expansion → A.U24.65 (3) (SCR); the twin runner's own offline write imports the same helper → GAP-H3 (TWIN, A.U25.33).
@@ -803,6 +806,7 @@ its two HTTP scenarios move to the host-side harness (A.U25.46, OR125.a).
 - **Resolved**: every content action on this file (M.TEST_HELP.033's list) is written once, into the host harness —
   agent decision D10 (as M.TEST_HELP.031).
 - **Unit**: U24 (H1 parts with their U10 actions; `watchdog=`/`run_setups` with U20).
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25); A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25).
 - **Depends**: M.TEST_HELP.043, M.TEST_HELP.047, M.TEST_HELP.055, M.TEST_HELP.056.
 - **Blast carried by**: — (the file and its six wrappers go in U25, M.TEST_HELP.033).
 - **Kind**: test
@@ -908,6 +912,7 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   `get_loggers()`; `_all_loggers()` is rebuilt on the same fan-in so the two cannot disagree (agent decision D13).
 - **Unit**: U24 (stages: `sock=` with A.U19.06 in U19; `watchdog=`/`run_setups()` with A.U20.02/A.U20.06/A.U11.10 in
   U20; `_dispatch_async` with A.S0930.37).
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25).
 - **Depends**: M.TEST_HELP.008, M.TEST_HELP.022, M.TEST_HELP.026, M.TEST_HELP.043, M.TEST_HELP.046, M.TEST_HELP.047,
   M.TEST_HELP.055.
 - **Blast carried by**: the six `tests/test_sensortask_<device>.py` → `tests/test_sensortask.py` (`PER_DEVICE = True`,
@@ -1296,6 +1301,7 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   "port <n> (band <owner>) is taken".
 - **Resolved**: —
 - **Unit**: U24
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25).
 - **Depends**: M.TEST_HELP.055.
 - **Blast carried by**: twelve allocators → A.U24.70 (TEST_UNIT, TWIN); L0 `tests_scripts/test_port_bands.py` and SPEC
   E.1 → A.U24.70 (TSC, SPEC).
@@ -1326,6 +1332,7 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   wall-clock cap (A.U35.15); `close()`.
 - **Resolved**: —
 - **Unit**: U24 (stage U35: the `bool` return with A.U35.15).
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TEST_HELP.044, M.TEST_HELP.056.
 - **Blast carried by**: three `make_ntp_reply`/`FakeNtpServer` copies → A.U24.49/A.U24.76 (TEST_UNIT); `serve_once() is
   True` assertions → M.TEST_UNIT.111.
@@ -1836,3 +1843,17 @@ None. Every conflict in this cluster was settled by an owner row, a verified act
 | A.U35.15 | M.TEST_HELP.058 (gap pass G3) |
 | A.U10.06 | M.TEST_HELP.002 (gap pass G3) |
 | A.U30.19 | M.TEST_HELP.002 (gap pass G3) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.TEST_HELP.011 | Unit | appended: A-C2 step order: A.S0930.24's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.TEST_HELP.012 | Unit | appended: A-C2 step order: the open-drain mode, external level and value log (A.U13.R01, A.U14.17 (a)) also land in U13, with the boot clear that I2C.__init__ calls there (M.SRC_SENS.008/.009). | the boot clear lands in U13; its fake must exist in the same unit |
+| M.TEST_HELP.029 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25); A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_HELP.032 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25); A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_HELP.035 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_HELP.056 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TEST_HELP.058 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |

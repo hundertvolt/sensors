@@ -72,6 +72,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Unit**: U11 (stage 0 in U0: A.U0.20's tag is added to the HEAD text, since B0's actor-vocabulary check reads it; U11
   writes the final text keeping the tag). A.U36.535 (5) is pulled from U36 into U11 because the docstring must name the
   generated module the moment the file's design changes; nothing in U36 depends on the timing.
+  A-C2 step order: A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.001; M.SRC_CORE.008 (provider), M.SRC_CORE.011 (commands), M.SRC_CORE.006 (record).
 - **Blast carried by**: `tests_scripts/test_comment_block_cap.py` (src scope) stays green → A.U0.20/A.U36.535 (TSC holds);
   SPEC A.8 command text → A.S0930.41 (SPEC).
@@ -120,6 +121,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Resolved**: —
 - **Unit**: U8 (tags; A.U8.02's register check needs them); U11 (the `:40` comment text, with the reset path it
   describes).
+  A-C2 step order: A.S0930.33's part lands in U20, not U11 (it needs A.S0930.31, which lands in U20).
 - **Depends**: A.U8.01, A.U8.02.
 - **Blast carried by**: Part N rows and their Dependants (the unfed-tail dependant of A.S0930.33) → A.U8.08/A.U8.12
   (SPEC); mirror `tests/test_system_service.py:623` → A.S0930.35 (a) (TEST_UNIT); `tests_scripts/test_timer_stagger_no_coincidence.py:7`
@@ -287,6 +289,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   supervisor's two calls (pass end, escalation), `run_setups()`'s per-unit call, `_own_feed()`'s body, and `_own_feed()`'s
   callers (the sequence and `_reboot(..., fed=True)`).
 - **Unit**: U11.
+  A-C2 step order: A.S0930.13's part lands in U20, not U11 (it needs A.U20.06, which lands in U20).
 - **Depends**: M.SRC_CORE.008.
 - **Blast carried by**: `tests_scripts/test_watchdog_feed_sites.py` (one check, the pinned set above) → A.U10.08 +
   A.U31.07 + A.S0930.20 (6) + A.S0930.34 (2) (TSC; the three are one file's content, merged there); L1 latch/ownership
@@ -326,6 +329,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   for a commanded reset the pass is a proven no-op.
 - **Unit**: U11 (`report_if_fatal(e)` joins the `except Exception` in U30, M.SRC_CORE.016's U30 stage — the one U30 edit
   to this function).
+  A-C2 step order: A.S0930.14's part lands in U20, not U11 (it needs A.U20.06, which lands in U20); A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.33's part lands in U20, not U11 (it needs A.S0930.31, which lands in U20).
 - **Depends**: M.SRC_CORE.006, M.SRC_CORE.008, M.SRC_CORE.009, M.SRC_CORE.041 (`close_writes()`, race-free close),
   M.SRC_CORE.034.
 - **Blast carried by**: `tests/test_system_service.py:618-727` reboot tests → A.U11.03 blast + A.S0930.35 (a) (TEST_UNIT);
@@ -381,6 +385,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   inside `start_and_check_tasks()`; U20 only splits the start loop out), which is how this lands before A.U20.06 although
   A.S0930.13 names `supervise_tasks()` (SUPP's LEAD/R32 State puts this code in U11; its Depends on A.U20.06 is met by
   the U11 stage of M.SRC_CORE.016).
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.14's part lands in U20, not U11 (it needs A.U20.06, which lands in U20); A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.006, .008, .009, .010, .016 (U11 stage); M.SRC_CORE.041/.042 (`close_writes()`,
   `delete_file()`); M.SRC_CORE.083 (`quiesce()`, `erase_ready()`, `erase_chip()`).
 - **Blast carried by**: generated `_system_cmd_callback` returning the service's answer for five words → A.S0930.11
@@ -410,6 +415,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   mid-sequence)") and the owner-flagged "every deliberate reset pauses FRAM" (2026-08-05). The check on the one-way
   `_reset_armed`/`_feed_owned` realises the design's stated intent (agent, 2026-10-01; "Agent decisions" 5).
 - **Unit**: U11 (A.U10.15 co-lands with A.U11.03/A.U11.04 by its own Depends; A.S0930.12's half is U11's).
+  A-C2 step order: A.S0930.12's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.008, .010, .011.
 - **Blast carried by**: generated `_system_cmd_callback` `mempause` (reads the bool) → A.S0930.11 (GEN); every device's
   task list gains one SYSTEM task → A.U10.15/A.U10.19 (GEN, TSC task inventory); `tests/test_system_service.py:640-790`
@@ -441,6 +447,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   rename then has no site: those tests go with A.U10.06.
 - **Unit**: U11 (A.U10.03's starter, A.U10.06's site and A.U10.01's `LockedValue` are U10 stages — each is a prerequisite
   of U10's own checks: `arm_tick_timer()`'s L1, the `utc_now()` catalog retirement, the cap; U11 writes the rest).
+  A-C2 step order: A.S0930.13's part lands in U20, not U11 (it needs A.U20.06, which lands in U20).
 - **Depends**: M.SRC_CORE.032 (`TickSeconds`, `arm_tick_timer`, `utc_now`), M.SRC_CORE.008.
 - **Blast carried by**: generated `_system_status()` (`await sysfunct.get_uptime()` unchanged) → none; tests
   `tests/test_system_service.py:238-240, 290-330, 332-477, 815-820` → A.U11.01/A.U10.06/A.U10.03 (TEST_UNIT);
@@ -847,7 +854,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   (SPECIFICATION.md C.14)".
 - **Resolved**: —
 - **Unit**: U5.
-- **Depends**: M.SRC_CORE.001 (renamed file only if U5 < U10: it is not — the type lands in `base_classes.py` in U5 and
+- **Depends**: M.SRC_CORE.001 [follows] (renamed file only if U5 < U10: it is not — the type lands in `base_classes.py` in U5 and
   moves with the file in U10).
 - **Blast carried by**: SGP40/notification users and codegen `ValueRef(<src>, "<field>")` → A.U5.11 (SRC_SENS, GEN);
   tests → A.U5.11 (TEST_UNIT, TSC); SPEC C.14.2/C.14.3/L.6.3 → A.U5.11 (SPEC).
@@ -875,6 +882,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Unit**: U11 (stages: U5 signature and `make_logger(log, …)`; U4 the two dicts moved; U10 `_data_lock`, ladder state
   (A.U10.R01 is SUPP_recovery's U10 half); U15 `_timer_error`; U35's removal is pulled to U11, the unit owning the file —
   A.U35.45 is a B3 cleanup with no prerequisite, and removing it with the constructor rewrite avoids a third edit).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it needs A.U13.R01, which lands in U13).
 - **Depends**: M.SRC_CORE.030, .061.
 - **Blast carried by**: subclass constructors (`super().__init__(…, max_module_error=…)` by keyword; NTP/NOTIFY pass 0)
   → A.U5.02 (SRC_SENS, SRC_NET); `tests/test_base_classes.py` 49 positional calls, `:450-470` `logger=` tests →
@@ -905,6 +913,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   None` instead (lead ruling, 2026-10-01, M_SRC_SENS GAP-15; M.SRC_SENS.083, .089-.091); the SPEC C.7 bullet stating it
   is SPEC's.
 - **Unit**: U10 (A.U10.R01's U10 half; stages U2 names, U3 console streak line; U11 `-> bool`; U30 `report_if_fatal`).
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it needs A.U13.R01, which lands in U13).
 - **Depends**: M.SRC_CORE.036; A.U13.R01 (`I2C.clear()`, `recover()`, `recoveries`, `take_boot_clear_status()`,
   SRC_SENS) lands before or with it.
 - **Blast carried by**: drivers' `_recover_device()` overrides and `_init_failed()`/`_init_done()` calls →
@@ -1596,7 +1605,7 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 - **Resolved**: e16 CLOCK (`:550`, `:614`) retires with A.U10.06; e82 (`:563`) retires with A.U35.55; neither gets a
   constant.
 - **Unit**: U16 (stages: U2 constants at HEAD sites; U3 `_WRN_EPISODE_BASE` removal; U10 renames/imports).
-- **Depends**: M.SRC_CORE.001, .027, .032, .034, M.SRC_CORE.115 (`CRCBase`, `CRCPass`).
+- **Depends**: M.SRC_CORE.001, .027, .032, M.SRC_CORE.115; M.SRC_CORE.034 [follows] (its U30 handler lines in this file come after) (`CRCBase`, `CRCPass`).
 - **Blast carried by**: `buildgen/validate.py` `_check_limits()` reads the tag; the new L0 agreement test and the
   bad-size case → A.U16.20 (GEN, TSC); fixtures `novel_combo.toml:121`, `multi_instance.toml:98` → 0x40000 → A.U16.20/
   A.U16.17 (TSC); catalog rows (46-51, 25, retirements 16/82, errno 20's "A.U3.09's new FRAM buffer checks") → A.U2.01
@@ -2375,7 +2384,7 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
   M.SRC_CORE.115/.116's attribute renames and the polynomial-as-parameter shape.
 - **Resolved**: lead ruling (AC_NOTES item 39) — the documented contract settles it; the agent's "constructor
   contract change" concern does not arise.
-- **Unit**: the unit of M.SRC_CORE.116
+- **Unit**: U35 (the unit of M.SRC_CORE.116, the change it amends; A-C2).
 - **Depends**: M.SRC_CORE.115, M.SRC_CORE.116
 - **Blast carried by**: L1 `tests/test_crc_checks.py` gains one case per width (`poly` above the width's mask → `length() == 0`, `add()` returns the buffer unchanged, `add_into()` writes nothing) → TEST_UNIT gap; SPEC J/G CRC text unchanged (it states the contract already).
 - **Kind**: code, test
@@ -2714,3 +2723,22 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | M_HW_DEV GAP-D9 | carried as found: no SRC_CORE change lists the two WiFi repro scripts |
 | AC_NOTES 39 | carried as found: M.SRC_CORE.131 |
 | A.U10.22 | M.SRC_CORE.008, .017, .036, .039, .092 (readiness flag; this pass) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.SRC_CORE.002 | Unit | appended: A-C2 step order: A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.004 | Unit | appended: A-C2 step order: A.S0930.33's part lands in U20, not U11 (it needs A.S0930.31, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.009 | Unit | appended: A-C2 step order: A.S0930.13's part lands in U20, not U11 (it needs A.U20.06, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.010 | Unit | appended: A-C2 step order: A.S0930.14's part lands in U20, not U11 (it needs A.U20.06, which lands in U20); A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.33's part lands in U20, not U11 (it needs A.S0930.31, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.011 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.14's part lands in U20, not U11 (it needs A.U20.06, which lands in U20); A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.012 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.013 | Unit | appended: A-C2 step order: A.S0930.13's part lands in U20, not U11 (it needs A.U20.06, which lands in U20). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.035 | Depends | `M.SRC_CORE.001 (renamed` → `M.SRC_CORE.001 [follows] (renamed` | its own text: the type lands in U5 and moves with the file in U10 |
+| M.SRC_CORE.036 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it needs A.U13.R01, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.037 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it needs A.U13.R01, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.SRC_CORE.080 | Depends | `M.SRC_CORE.001, .027, .032, .034, M.SRC_CORE.115` → `M.SRC_CORE.001, .027, .032, M.SRC_CORE.115; M.SRC_CORE.034 [follows] (its U30 handler lines in this file come after)` | nothing in this change uses M.SRC_CORE.034 (U30) |
+| M.SRC_CORE.131 | Unit | was: the unit of M.SRC_CORE.116 → now: U35 (the unit of M.SRC_CORE.116, the change it amends; A-C2). | no Unit slot: "the unit of M.SRC_CORE.116" |

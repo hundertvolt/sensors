@@ -711,7 +711,7 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   escalation showing `feed_count` stop after it. A missing cell gets its test in the file the supplement names.
 - **Resolved**: —
 - **Unit**: U35.
-- **Depends**: A.U21.11-A.U21.14, A.U19.24, A.S0930.01-A.S0930.08, A.S0930.20-A.S0930.29, A.S0930.34-A.S0930.40,
+- **Depends**: A.U21.11-A.U21.14, A.U19.24, A.S0930.01-A.S0930.06, A.S0930.07 [follows], A.S0930.08 [follows] (docs, U36), A.S0930.20-A.S0930.29, A.S0930.34-A.S0930.40,
   A.U31.07, A.U10.08, A.U25.36, A.U35.02, A.U35.04, A.U35.30.
 - **Blast carried by**: the website dropdown tests → A.S0930.20 (WEB); the CRC16 Class B entry → A.S0930.07 (DOCS);
   missing cells (deltas).
@@ -1108,6 +1108,7 @@ record). Wear spends only what the round's plan names, behind its marker.
   branch itself is deleted only if the owner's agreement names it — otherwise it stays.
 - **Resolved**: —
 - **Unit**: phase D.
+  A-C2 step order: A.U37.16's part lands in D, not U37 (it needs A.U37.15, which lands in D).
 - **Depends**: A.U37.15; M.PROC.043 (4).
 - **Blast carried by**: none in the tree; the release-merge check → M.TOOL.078 (read).
 - **Kind**: rule (phase D)
@@ -1357,3 +1358,12 @@ Read for order or context, not constituents (their own clusters merge them): A.U
 into M.PROC.007; ENV.T02 text DOCS), A.C.01-A.C.06, A.C.10, A.C.12-A.C.17, A.C.19, A.SDEP.03-A.SDEP.09, A.SDEP.11-A.SDEP.16,
 A.SDEP.18, A.SDEP.19, A.SDEP.21, A.SDEP.22, A.SDEP.24, A.U28.35, A.U36.545, A.U37.02-A.U37.06, A.U37.08, A.U37.10-A.U37.12,
 A.U37.15.
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.PROC.027 | Depends | `A.S0930.01-A.S0930.08` → `A.S0930.01-A.S0930.06, A.S0930.07 [follows], A.S0930.08 [follows] (docs, U36)` | the two doc actions land in U36; the U35 check reads tests, not docs |
+| M.PROC.044 | Unit | appended: A-C2 step order: A.U37.16's part lands in D, not U37 (it needs A.U37.15, which lands in D). | dependency deferral (an edge ran from a later step) |

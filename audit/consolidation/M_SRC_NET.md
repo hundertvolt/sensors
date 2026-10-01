@@ -650,7 +650,7 @@ actions only where they name a product line.
 - **Unit**: U18 (tags U8 and constants U5 are staged in their units: U5 writes `NtpTiming` and the two retry
   defaults, U8 tags them; U10.29's `const()` of the port is written by U18 together with its seam removal, as A.U10.29
   itself defers it)
-- **Depends**: A.U8.02 (grammar); A.U20.27 (AST read of `_NTP_CHECK_INTERV`, name unchanged)
+- **Depends**: A.U8.02 (grammar); A.U20.27 [follows] (AST read of `_NTP_CHECK_INTERV`, name unchanged)
 - **Blast carried by**: codegen `NtpTiming(...)` emission and `validate.py` default reads → A.U5.10 (GEN cluster);
   Part N rows → A.U8.09 (docs; the three rows' site lists per Resolved); tests reassigning `_NTP_UDP_PORT` →
   `tests/_udp_port_redirect.py` → A.U18.11 (tests cluster); mirror sites in `tests/test_asy_ntp_client.py` → A.U8.09
@@ -877,6 +877,7 @@ actions only where they name a product line.
 - **Resolved**: A.U18.22's text names `NTP_Interv_H`, which A.U10.40 renames to `NTPInterval` in U10 (before U18): the
   comment uses the new key.
 - **Unit**: U18
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it needs A.U3.02, which lands in U3).
 - **Depends**: M.SRC_NET.044, M.SRC_NET.047
 - **Blast carried by**: SPEC C.9 ONE_SHOT list with this backstop → A.U18.22/A.U10.14 (docs)
 - **Kind**: code
@@ -915,6 +916,7 @@ actions only where they name a product line.
 - **Resolved**: A.U14.26 (2) vs register fix 10 — the register fix (lead, later, ruling V.U18.R10, U18 ledger "G4/R15 …
   `cettime()`'s handler takes A.U10.06's rule, no catch") settles it; A.U2.15's 16 mapping for this site is superseded.
 - **Unit**: U18
+  A-C2 step order: A.U2.15's part lands in U3, not U2 (it needs A.U3.02, which lands in U3).
 - **Depends**: M.SRC_NET.047
 - **Blast carried by**: tests `tests/test_asy_ntp_client.py:1535-1541` (`…failure_returns_none_not_raise`) retired, not
   converted → A.U14.26 as corrected by register fix 10 (tests cluster); the switch-date and RTC-step tests → A.U18.25,
@@ -1226,6 +1228,7 @@ actions only where they name a product line.
   A.U31.15 renames them `_ms` (the later action).
 - **Unit**: U31 (A.U31.15 latest; staged: U2 codes, U8 names/tags in seconds, U18 new LED pair/refresh constant/CYW43
   names/timer and unexpected codes, U31 milliseconds)
+  A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3).
 - **Depends**: A.U8.02 (grammar), A.U2.01 (+ U18 register fix 9: WIFI uses shared 17)
 - **Blast carried by**: Part N rows (renames and new rows) → A.U8.10/A.U18.30/A.U31.15 (docs); tests' comments quoting
   values and the `_FastAsyncSleep` `sleep_ms` patch → A.U8.10/A.U31.15 (tests); mirrored phase/status constants in
@@ -1354,6 +1357,7 @@ actions only where they name a product line.
   errno=_ERR_WLAN_MODE_SWITCH)`, `return False`; after the `try`, `return True`.
 - **Resolved**: —
 - **Unit**: U18
+  A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3).
 - **Depends**: M.SRC_NET.077, M.SRC_NET.078
 - **Blast carried by**: callers `_start_hotspot()`, `_leave_hotspot_mode()` ignore the bool (M.SRC_NET.086/085);
   `_recover_device()` returns it (M.SRC_NET.102); tests (mode-switch tests hold; `_ap_selected` cases) → A.U18.28,
@@ -1399,6 +1403,7 @@ actions only where they name a product line.
   self.wifi_mode_lock: await self._disconnect_sta_and_wait()`, then the LED off and the event line.
 - **Resolved**: —
 - **Unit**: U31 (staged: U2, U10, U18 names; U31 `sleep_ms`)
+  A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3).
 - **Depends**: M.SRC_NET.077, M.SRC_NET.082
 - **Blast carried by**: tests (codes 22/64; `:1564` comment naming the constants) → A.U2.14, A.U8.10 (tests)
 - **Kind**: code
@@ -1649,6 +1654,7 @@ actions only where they name a product line.
   asyncio.sleep(_WIFI_REFRESH_S)`.
 - **Resolved**: —
 - **Unit**: U18 (staged: U3 console give-up, U10 name/setup removal)
+  A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_NET.077, M.SRC_NET.079, M.SRC_NET.092, M.SRC_NET.102, A.U10.R01
 - **Blast carried by**: tests (tick re-arm cases, `max_module_error` failed re-arms end the loop, deactivated pattern,
   give-up expects errno 2 once, streak tests re-derived for the recovery rung) → A.U18.24, A.U18.30, A.U3.07, A.U18.R01
@@ -2080,6 +2086,7 @@ added, unmodified upstream stubs, A.U8.23).
   `float` (`NotificationLedFct`, `NotificationPauseFct`, M.SRC_NET.111), so the values come from the per-kind
   validators, never from a `type()` test that cannot fire (A.U11.S01 (5)'s webserver check is not written).
 - **Unit**: U30 (A.U30.19; staged: U2 codes, U10 key names, U19 validation)
+  A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10).
 - **Depends**: M.SRC_NET.112, M.SRC_CORE.047 (the validators, U11), A.U9.03 (its generated callback body is superseded
   by A.U19.02's)
 - **Blast carried by**: generated `_notification_led_callback(r, g, b, t)` and the removal of `_FIELD_LED_*` → A.U19.02
@@ -3596,3 +3603,18 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | M_GEN gap 6 (webserver/WiFi/NTP APIs the template calls) | carried as found: M.SRC_NET.044, .074, .078, .098, .112, .119, .129 (the snapshot field is `RSSI`, hand-off H-G1 to GEN) |
 | M_HW_DEV GAP-D9 (WiFi repro scripts) | M.SRC_NET.078 (amended: the repro edit is skipped, the file goes in U26) |
 | A.U10.21 | also M.SRC_NET.079, .119 (this pass) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.SRC_NET.042 | Depends | `A.U20.27 (AST` → `A.U20.27 [follows] (AST` | A.U20.27 reads this constant in U20; not a prerequisite |
+| M.SRC_NET.051 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it needs A.U3.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_NET.053 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it needs A.U3.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_NET.077 | Unit | appended: A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_NET.082 | Unit | appended: A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_NET.085 | Unit | appended: A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.SRC_NET.100 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+| M.SRC_NET.122 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10). | dependency deferral (an edge ran from a later step) |

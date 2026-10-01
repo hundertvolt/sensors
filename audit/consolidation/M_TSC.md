@@ -554,6 +554,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   dir was created; a `--no-autostart` build stages into its own `-noautostart` work dir (M.SCR.065).
 - **Resolved**: —
 - **Unit**: U27 (U26 record; S0930 rows land with their U26/U27 owners).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: M.SCR.065, M.SCR.066, M.SCR.067 (A.S0930.06, A.U27.36, A.U21.22, A.U21.08, A.U26.02, A.U27.35).
 - **Blast carried by**: HW reflash helper → M.HW_BENCH.014; README build recipe → A.U27.36 (DOC).
 - **Kind**: test
@@ -668,6 +669,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `:173-174` keeps every device's output passing.
 - **Resolved**: —
 - **Unit**: U23 (stage U6: the corpus and the HEAD rejections; U2: codes object).
+  A-C2 step order: A.U2.21's part lands in U6, not U2 (it follows A.U2.21's own change, which lands in U6).
 - **Depends**: M.TSC.017, A.U23.09 (WEB).
 - **Blast carried by**: JS side → A.U6.16/A.U23.09 (WEB); the constant pin → M.TSC.072.
 - **Kind**: test
@@ -698,6 +700,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Resolved**: A.U2.21's edit of the golden files falls away with A.U6.04 (its test compares with the catalog only).
 - **Unit**: U23 (each property in its owner's unit: U2 (a), U6 (c)-(f), (i), (j at U18), U15 (l), U23 (b), (g), (h),
   S0930 (k) with U10).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24.
 - **Depends**: A.U2.01 catalog (GEN), A.U6.17-A.U6.28 tags (SRC/GEN), A.U10.40 (keys).
 - **Blast carried by**: JS/mock halves → A.U6.27/A.U23.20/A.S0930.20 (4)-(5) (WEB).
 - **Kind**: test
@@ -873,6 +876,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `Traceback`, exit 1.
 - **Resolved**: —
 - **Unit**: U20 (S0930 row with U10's command words).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24.
 - **Depends**: M.GEN.003, M.GEN.008, M.GEN.019, M.GEN.022.
 - **Blast carried by**: ruff on the generated tree → A.U28.41/A.U27.09 (TOOL/SCR); liveness of the generated-scope
   exemption → M.TSC.123.
@@ -1076,6 +1080,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   A.U17.21's single-digit poll check before its floor; the
   source-copy form A.U17.21 writes is taken (its own AC note amends A.U13.17's test).
 - **Unit**: U17 (stages U13 comment/defaults; S0930 CRC rows with A.S0930.01's unit).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.01 in U20.
 - **Depends**: M.GEN.024, M.GEN.027, M.GEN.029; M.SRC_CORE.115 (module and class names); A.U13.17/A.U17.20 driver
   constants (SRC_UART).
 - **Blast carried by**: twin CRC boot → M.TSC.085; UART changelog entries → A.U13.17/A.S0930.01 (SRC_UART).
@@ -1689,6 +1694,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   supervisor-escalation `ResetReason` over HTTP. Key names follow A.U10.40.
 - **Resolved**: —
 - **Unit**: U25 (S0930 row lands with A.U24.55's file edits, U25).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25.
 - **Depends**: M.GEN.024/.005 (CRC wiring), A.U25.07-.09 (TWIN), A.U11.05.
 - **Blast carried by**: Run 3's CRC cell → M.SCR.051/M.SCR.061.
 - **Kind**: test
@@ -1718,6 +1724,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Resolved**: A.U2.25's check reads the retired `mockdata/{dev,wozi}.json` at U2; A.U6.06 moves the rule to
   `samples.json` — staged.
 - **Unit**: U36 (stages U2 checks (1)-(9) and the mockdata pass, U3 adjacency, U6 samples file).
+  A-C2 step order: A.U2.02's part lands in U3, not U2 (it needs A.U2.10, which lands in U3).
 - **Depends**: M.GEN.034 (catalog), M.TEST_HELP.045, A.U6.06 (WEB).
 - **Blast carried by**: the range-sweep tests retired → M.TEST_UNIT.157.
 - **Kind**: test
@@ -1763,6 +1770,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `CRC32()` (by `ast`; the module is `asy_crc_checks`); bite: a synthetic call without `crc=` fails.
 - **Resolved**: —
 - **Unit**: U16 (with the S0930 erase-gate rows; names per U10).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24.
 - **Depends**: M.TSC.001.
 - **Blast carried by**: —
 - **Kind**: test
@@ -1792,6 +1800,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `SHADOWED` (a check of the premise, harmonization 5 — not a CI control arm). Binary via the shared probe; missing fails.
 - **Resolved**: —
 - **Unit**: U25
+  A-C2: stage U27 — until A.U27.12's shared probe exists the check finds the binary the way `scripts/test.sh` does at HEAD; U27 swaps in the probe.
 - **Depends**: M.GEN.001, A.U27.12.
 - **Blast carried by**: —
 - **Kind**: test
@@ -1934,6 +1943,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   dropped.
 - **Resolved**: —
 - **Unit**: U23 (S0930 row with the command words).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24.
 - **Depends**: A.U23.24-.27 (WEB), M.GEN.015.
 - **Blast carried by**: JS side → WEB.
 - **Kind**: test
@@ -2336,6 +2346,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   A.U6.17's classes, one end state; A.S0930.19's word list is expressed as a value-level exception inside that
   derivation (its own Depends).
 - **Unit**: U26 (stages U6 derivation, U10 names/reason).
+  A-C2: stage U31 — M.HW_DEV.123's scratch-write script joins the guard's lists when it lands (U31).
 - **Depends**: M.GEN.017 (`alwaysExecuted`), M.HW_DEV.040/.101/.123/.155/.156, M.HW_BENCH.080/.088.
 - **Blast carried by**: README dispatch-only sentence → A.S0930.19 (HW_BENCH, M.HW_BENCH.130).
 - **Kind**: test
@@ -2649,6 +2660,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   copies failed logs to the archive before removing scratch.
 - **Resolved**: —
 - **Unit**: U27 (stages U7, U8, U21, U24, U36 names).
+  A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25).
 - **Depends**: M.SCR.036, M.SCR.040, M.SCR.041, M.SCR.043, M.SCR.044.
 - **Blast carried by**: —
 - **Kind**: test
@@ -2986,6 +2998,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Resolved**: OR31.a (3) "one runtime feed site" vs OR120/OR130 — the latest owner decisions win (M.SRC_CORE.009); the
   three constituents are one file's content.
 - **Unit**: U31 (stages U10, U11, S0930 rows).
+  A-C2 step order: A.S0930.34's part lands in U26, not U24 (it needs A.U26.71, which lands in U26).
+  A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24, A.S0930.34 in U26.
 - **Depends**: M.SRC_CORE.009, .010, .011.
 - **Blast carried by**: L1 scan budget → A.U10.08 (TEST_UNIT).
 - **Kind**: test
@@ -3192,7 +3206,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: `tests_scripts/test_js_coverage_report_dir.py`.
 - **Change**: none.
 - **Resolved**: —
-- **Unit**: —
+- **Unit**: U28 (A-C2: check only, no edit — the pin is confirmed by U28's gate, the latest read constituent's unit).
 - **Depends**: —
 - **Blast carried by**: —
 - **Kind**: test
@@ -3208,6 +3222,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Resolved**: A.U24.53 names the command modules; the per-run removal moved into `_twin_process.js` (M.WEB.082) — the
   check reads that file.
 - **Unit**: U24 (U5 reader; U8 tag).
+  A-C2 step order: A.U24.53's part lands in U25, not U24 (it follows A.U24.53's own change, which lands in U25).
 - **Depends**: M.WEB.082.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3273,7 +3288,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: `tests_scripts/test_ceiling_probe.py`.
 - **Change**: none (the probe's typed signature follows M.HW_BENCH.017 by keyword names only, unchanged).
 - **Resolved**: —
-- **Unit**: —
+- **Unit**: U36 (A-C2: check only, no edit — the test is confirmed by U36's gate, the latest read constituent's unit).
 - **Depends**: —
 - **Blast carried by**: —
 - **Kind**: test
@@ -3400,7 +3415,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: — (never created).
 - **Change**: none; the check is M.TSC.062 rule (2).
 - **Resolved**: A.U28.07 states the fold.
-- **Unit**: —
+- **Unit**: none (A-C2: no step — the file is not created; A.U28.08's file carries the check).
 - **Depends**: M.TSC.062.
 - **Blast carried by**: —
 - **Kind**: test
@@ -3665,6 +3680,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   builds `MICROPYPATH` from the twin layout with `build/generated_html/<device>` in place of `frozen_modules`.
 - **Resolved**: —
 - **Unit**: U23 (stage U6).
+  A-C2: stage U24 — the check re-points at M.WEB.082's shared helper module when it lands (U24).
 - **Depends**: M.WEB.082, SCR gap 1(a).
 - **Blast carried by**: —
 - **Kind**: test
@@ -3702,6 +3718,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `PortAllocator` or a fixed row naming it; the per-device blocks cover `DEVICE_NAMES` without overlap.
 - **Resolved**: —
 - **Unit**: U24
+  A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: A.U24.70 (TEST_HELP).
 - **Blast carried by**: —
 - **Kind**: test
@@ -3972,7 +3989,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: —
 - **Change**: none; the citation check (M.TSC.063) covers document references.
 - **Resolved**: —
-- **Unit**: —
+- **Unit**: none (A-C2: no step — no action defines the file).
 - **Depends**: —
 - **Blast carried by**: —
 - **Kind**: test
@@ -4698,3 +4715,31 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.U24.68 | merged into M.TSC.213 (gap pass G3) |
 | A.U26.80 | merged into M.TSC.226 (gap pass G3) |
 | A.U19.16 | merged into M.TSC.227 (gap pass G3) |
+
+## A-C2 order notes (2026-10-01)
+
+Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`); one row per edit.
+
+| M-ID | slot | edit | reason |
+|---|---|---|---|
+| M.TSC.032 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26. | AC3_R R-08 (h) |
+| M.TSC.039 | Unit | appended: A-C2 step order: A.U2.21's part lands in U6, not U2 (it follows A.U2.21's own change, which lands in U6). | dependency deferral (an edge ran from a later step) |
+| M.TSC.040 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24. | AC3_R R-08 (h) |
+| M.TSC.048 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24. | AC3_R R-08 (h) |
+| M.TSC.057 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.01 in U20. | AC3_R R-08 (h) |
+| M.TSC.087 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |
+| M.TSC.088 | Unit | appended: A-C2 step order: A.U2.02's part lands in U3, not U2 (it needs A.U2.10, which lands in U3). | dependency deferral (an edge ran from a later step) |
+| M.TSC.091 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24. | AC3_R R-08 (h) |
+| M.TSC.093 | Unit | appended: A-C2: stage U27 — until A.U27.12's shared probe exists the check finds the binary the way `scripts/test.sh` does at HEAD; U27 swaps in the probe. | Depends edge ran from a later step: A.U27.12 lands in U27 |
+| M.TSC.100 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24. | AC3_R R-08 (h) |
+| M.TSC.119 | Unit | appended: A-C2: stage U31 — M.HW_DEV.123's scratch-write script joins the guard's lists when it lands (U31). | Depends edge ran from a later step: M.HW_DEV.123 lands in U31 |
+| M.TSC.135 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TSC.155 | Unit | appended: A-C2 step order: A.S0930.34's part lands in U26, not U24 (it needs A.U26.71, which lands in U26). | dependency deferral (an edge ran from a later step) |
+| M.TSC.155 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24, A.S0930.34 in U26. | AC3_R R-08 (h) |
+| M.TSC.168 | Unit | was: — → now: U28 (A-C2: check only, no edit — the pin is confirmed by U28's gate, the latest read constituent's unit). | no Unit slot |
+| M.TSC.169 | Unit | appended: A-C2 step order: A.U24.53's part lands in U25, not U24 (it follows A.U24.53's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TSC.174 | Unit | was: — → now: U36 (A-C2: check only, no edit — the test is confirmed by U36's gate, the latest read constituent's unit). | no Unit slot |
+| M.TSC.183 | Unit | was: — → now: none (A-C2: no step — the file is not created; A.U28.08's file carries the check). | no Unit slot |
+| M.TSC.202 | Unit | appended: A-C2: stage U24 — the check re-points at M.WEB.082's shared helper module when it lands (U24). | Depends edge ran from a later step: M.WEB.082 lands in U24 |
+| M.TSC.205 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+| M.TSC.225 | Unit | was: — → now: none (A-C2: no step — no action defines the file). | no Unit slot |
