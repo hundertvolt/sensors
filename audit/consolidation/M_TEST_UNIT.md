@@ -615,8 +615,10 @@ redirected by the shared `tests/_udp_port_redirect.py`, the teardown warning, an
 - **Change**: the section banner `_is_ipv4_literal` → `ipv4_to_int`; the two tests become
   `test_ipv4_to_int_accepts_every_valid_dotted_quad` (`ipv4_to_int(host) is not None` over the same hosts) and
   `test_ipv4_to_int_rejects_hostnames_and_malformed_input` (`is None` over the same list); the six
-  `test_ipv4_to_int_*` value tests and the type-matrix test move here verbatim from `tests/test_captive_dns.py` (their
-  expected integers are RFC 791 arithmetic, unchanged), importing `ipv4_to_int` from `asy_dns_client`.
+  `test_ipv4_to_int_*` tests (`:77-122`, the wrong-type test among them) move here verbatim from
+  `tests/test_captive_dns.py` (their expected integers are RFC 791 arithmetic, unchanged), importing `ipv4_to_int` from
+  `asy_dns_client`; the `_bad_ipv4_values()` list (`:607-628`) stays in the captive-DNS file, whose four matrix tests
+  iterate it (D-T20).
 - **Resolved**: —
 - **Unit**: U18.
 - **Depends**: M.SRC_NET.021.

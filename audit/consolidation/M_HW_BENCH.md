@@ -1911,3 +1911,175 @@ never flashed (A.C.01 (5)).
   M.HW_BENCH.092; README rung table → M.HW_BENCH.122.
 - **Kind**: test, hardware (Round: R1 [H16])
 
+## tests_hardware/manual/runner.py and tests_hardware/manual/__main__.py
+
+### M.HW_BENCH.100 Manual tests can fail; the runner ends with the summary block
+- **From**: A.U26.42 (1)(5), A.U7.17, A.U7.19 (blast: `--help` through argparse, holds), A.U10.34 (B3; the module
+  docstring stays: it feeds argparse), A.U0.07 (`:72-76` function-level imports, B6), A.U28.28 (the five `noqa: F401` go
+  with the imports), A.C.17 (blast: `confirm()` stays the operator's consent before a budgeted write), agent decision D6.
+- **Site**: `tests_hardware/manual/runner.py:1-114`.
+- **Change**: module docstring (≤ 3 lines): "Manual execution mode of L3/L4: primitives and the entry point for every
+  `[MANUAL]` test, kept apart from the automated runners so an unattended pass never waits on a human; run through
+  `__main__.py` (tests_hardware/README.md)." `confirm_pass()` increments the current test's judgment counter;
+  `record_assertion()` (called by module helpers that end a test on a plain `assert`) does too; after `t.fn()` returns a
+  test with zero judgments is recorded FAIL "no pass/fail judgment recorded"; a pass prints "PASS (operator judged)".
+  `main()` loses the five registration imports (moved to `__main__.py`, D6) and its `:69-71` comment; the closing prints
+  become the A.U7.02 summary block through `scripts/_summary_block.py` (unit "manual steps", `Levels: L3/L4 (manual
+  mode)`, the per-test level from `tier`: `[USB]` → L3, `[USB+WiFi]` → L4), printed on every exit (unknown `--only` →
+  "failed: no manual test named <x>", exit 2; Ctrl-C → the current test "failed: aborted by operator", the rest "Skipped:
+  not run (run aborted)", exit 130; any other exception → "failed: <type>: <msg>", the run continues). Function
+  docstrings → `#` blocks (B3).
+- **Resolved**: B6 asks `:72-76` to move to module level; in `runner.py` that is a circular import (each manual module
+  does `from runner import register`), and placed after `register` it breaks the import-at-top rule. D6 moves the side-
+  effect imports into `__main__.py`, which imports `runner` first (M.HW_BENCH.106) — the `--list` path then imports the
+  test modules too (A.U27.37's `--list` L0 still exits 0). Shown in the OR2.c review.
+- **Unit**: stage 1 U7 (A.U7.17's summary block on the HEAD `main()`); stage 2 U26 (judgments, imports, docstrings).
+- **Depends**: A.U7.02 (summary block), M.HW_BENCH.106.
+- **Blast carried by**: `scripts/run_manual_hardware_tests.sh:8` → A.U26.75/A.U7.19 (SCR); L0
+  `tests_scripts/test_manual_runner_summary.py` (+ a test returning with no judgment is FAIL) → A.U7.17/A.U26.42 (TSC);
+  README.md `:420-422` quoted prints → A.U7.17 (DOCS); `_PENDING` entries and `PLC0415` → A.U0.07 (TSC); pyflakes
+  `allowed-unused-imports` keeps the manual names (now imported in `__main__.py`) → A.U28.28 (TSC).
+- **Kind**: code
+
+### M.HW_BENCH.106 `__main__.py` registers the tests and exits by the one idiom
+- **From**: A.U27.29 (the CLI idiom), agent decision D6 (the registration imports), A.U27.37 (blast: the manual path
+  imports `harness`, which then reaches `buildgen`).
+- **Site**: `tests_hardware/manual/__main__.py:1-13`.
+- **Change**: after the `sys.path` insert: `import runner`, then `import manual_bus_electrical, manual_persistence,
+  manual_sensor_accuracy, manual_toolchain, manual_wifi` (module level, one per line; their side effect registers the
+  tests — the pyflakes allow-list covers them), then `if __name__ == "__main__": raise SystemExit(runner.main())`. The
+  docstring keeps its fact (running `runner.py` directly makes a second module instance with an empty registry) in ≤ 3
+  lines.
+- **Resolved**: A.U27.29 (U27) rewrites the last line; D6 (U26) adds the imports — stage 1 U26, stage 2 U27.
+- **Unit**: stage 1 U26; stage 2 U27.
+- **Depends**: M.HW_BENCH.100.
+- **Blast carried by**: the `--list` L0 from a fresh interpreter → A.U27.37 (TSC).
+- **Kind**: code
+
+## tests_hardware/manual/manual_bus_electrical.py
+
+### M.HW_BENCH.101 Rung steps judged against `/status`; WS2812 timing cited from its datasheet
+- **From**: A.U26.34 (2), A.U26.26 (`:46` oracle), A.U26.57 (`:50-62`), A.U9.03 (`:59-61`), A.U10.40 (`lightCmdLED` →
+  `LightCmdLED`), A.U26.42 (judgments), A.U26.51 (blast: the manual WS2812 check is the NeoPixel half of
+  `network_neopixel`'s counterpart), A.U8C.115, A.U8C2.48, A.U8C.? (none else), B2.
+- **Site**: `tests_hardware/manual/manual_bus_electrical.py:1-62`.
+- **Change**: (1) `hot_unplug_replug_i2c_recovery` (SCD30): its description names the recovery ladder (participant
+  soft reset, bus clear, controller re-init, SPECIFICATION.md F.2); before the unplug it reads `GET /status` (SCD30 log,
+  `ResetReason`, `SysUptime`) and `/measurements` SCD30 `TS`; after the replug the step asserts the SCD30 log gained its
+  read-failure entries while unplugged, `TS` advances within three measurement intervals, and `ResetReason`/`SysUptime`
+  show no reboot — then `confirm_pass()` on what the operator saw. (2) New `fram_unplug_replug_recovery` (SPI, CS and
+  all four lines): the FRAM-backed loggers report their write failures in RAM while unplugged; after the replug the
+  FRAM manager's recovery task (A.U16.R03) re-initialises and the next `/status` shows FRAM-backed entries written
+  again; no reboot; `confirm_pass()`. (3) `wedged_i2c_bus_watchdog_backstop` → "held SDA escalates through the ladder":
+  expected "the SCD30 bus's clear and controller re-init entries (their catalog names read from the error catalog at
+  run time), then a supervisor reboot — `ResetReason` 5 after release; a watchdog reset (2) only if a transfer never
+  returns"; judged by `GET /status` after the release and `confirm_pass()`; the `:46` reboot oracle uses
+  `harness.boot_lines()`. (4) WS2812 step: description and expected outcome cite `datasheets/ws2812/WS2812.pdf` p.4 (T0H
+  0.35 µs, T1H 0.7 µs, ±150 ns; reset > 50 µs) — "automating it needs a logic analyzer the bench does not have (no test
+  hardware is bought, owner, 2026-09-22)"; the instruction sends each colour through `PUT /notification
+  {"LightCmdLED": …}` after the previous flash has finished (a command sent during a flash answers "Failed"). (5)
+  Constants: `_LEAD_WINDOW_S = 20`, `_RECOVERY_WATCH_S = 30.0`, `_REBOOT_WATCH_S = 30.0` (B4), the operator texts
+  interpolating them. The bench IP comes from `--dut-ip`/the README hint, not a literal.
+- **Resolved**: —
+- **Unit**: U26 (A.U9.03's U9 instruction text lands in U9 and is rewritten in U26's (4)).
+- **Depends**: A.U13.R01/A.U15.R01 (rungs), A.U16.R03 (FRAM recovery), A.U2.01 (catalog), M.HW_BENCH.016,
+  M.HW_BENCH.100.
+- **Blast carried by**: README rung table (manual rows) → M.HW_BENCH.122; Part N rows → A.U8C.115/A.U8C2.48 (SPEC).
+- **Kind**: test, hardware (Round: R2 [H17])
+
+## tests_hardware/manual/manual_persistence.py
+
+### M.HW_BENCH.102 Power-cycle steps: FRAM-backed evidence, restored writes, codes and the power-cut rows
+- **From**: A.U26.42 (2), A.U26.28 (code 1 after power returns), A.C.15 (2) (`AmbPres` across a power cycle), A.C.17 (the
+  config-write power cut), A.S0930.29 (7) (`erasefram`/`resetconfig` power cuts), A.U4.04 (`:36-48` instruction),
+  A.U8C2.49 (`:22, :42`, `:24, :43, :60`), B2.
+- **Site**: `tests_hardware/manual/manual_persistence.py:1-71`.
+- **Change**: docstring names the bench FRAM part read at run time from the bench TOML's FRAM comment line (A.U20.10),
+  never "MB85RS64V". (1) FRAM step uses a FRAM-backed value: the SGP40 VOC backup (`/measurements` `SGP40_BackupTS`
+  changes after a backup period) or an error-log entry provoked by a rejected PUT (the CFGMGR log is FRAM-backed on the
+  bench device), read back after the cut; plus a separate flash-config step keeping `WarnCO2`, described as "a flash
+  filesystem write (the module's `config_<NAME>.cfg`)". Each write step reads and prints the prior value first and its
+  last step PUTs it back, checking the result word ("Valid"/"Unchanged"). Every power-cycle step also checks
+  `ResetReason` 1 after power returns, and records SCD30 `AmbPres` before the cut and after the board serves, writing into
+  the step's text whether the product's boot sends 0x0010 (read from `src/asy_scd30_driver.py`'s `setup()` at execution).
+  (2) SCD30 NVM step: "set `MeasInterval` to a value different from the current one (GET first) and confirm 'Valid'";
+  restored the same way (two SCD30 NVM writes, stated in the step before it runs). (3) New
+  `genuine_power_loss_mid_config_write` (A.C.17): states "up to 20 scratch flash writes and one removal" and takes
+  `confirm()` before running `config_write_loop_scratch.py` through `Board().run_isolated()`; the operator cuts USB power
+  while `WROTE` lines arrive; after power returns and the board serves (`ResetReason` 1), `config_scratch_readback.py`
+  reports parse, values and whether a repair ran, then removes the file; `confirm_pass()` on "the file parses and holds
+  the last reported value or the one before, never a truncated or mixed file"; repeated three times. The HEAD
+  `genuine_power_loss_mid_write` step is replaced by it (it never knew what a write was in flight). (4) New
+  `power_loss_during_the_shutdown_commands` (A.S0930.29 (7)): FRAM evidence first (`save_errcount()`,
+  `save_fram_raw()`); `erasefram`, cut power 2.5-4.0 s after the reply; after power returns `ResetReason` 1 and each
+  FRAM-backed history old or empty; then `resetconfig` the same way with the config files saved first
+  (`config_files_dump.py`) and restored verbatim after (`config_files_restore.py`), the bench joining the DUT's hotspot
+  inside the round's armed network switch. Constants `_POWER_CUT_WINDOW_S = 20`, `_POWER_OFF_S = 10` (B4).
+- **Resolved**: A.U4.04's instruction (U4) and A.U26.42's rewrite (U26) touch the same step: one text, U26's, carrying
+  U4's "GET first … Valid" wording. A.C.17 replaces the HEAD mid-write step (same purpose, a measured instrument).
+- **Unit**: stage 1 U4 (`:36-48` instruction); stage 2 U26.
+- **Depends**: M.HW_BENCH.100, M.HW_BENCH.012, M.HW_BENCH.050, A.U20.10 (TOML FRAM comment), A.U11.28 (deferred flush),
+  A.C.17/A.S0930.29 device scripts (HW_DEV).
+- **Blast carried by**: A.U26.06 (2)'s manual branch (`_MANUAL_PERSISTING_STEPS = {<script>: <reason>}`, a `confirm(`
+  call preceding the run call, a tmp step without it fails) → A.C.17/A.U26.06 (TSC); fidelity row "flash-filesystem power
+  loss: silicon only" and the SCD30 0x0010 row → A.C.10 (TWIN); SPEC F.2/C.7.3 power-loss sentence → A.C.10 (SPEC); the
+  round's wear budget → GAP-B9 (C).
+- **Kind**: test, hardware (Round: R2 [H11, H13, H30, H49])
+
+## tests_hardware/manual/manual_sensor_accuracy.py
+
+### M.HW_BENCH.103 Accuracy steps cite the fitted part; M1 records the rig as evidence
+- **From**: A.U26.42 (3), A.U26.57 (`:11-15`), A.U26.45 (`:79` "GP18 on the dev bench"), A.U28.35 (blast: the datasheet
+  paths stay valid through the submodule), A.U8C.116, A.U10.40 (field names), B2.
+- **Site**: `tests_hardware/manual/manual_sensor_accuracy.py:1-83`.
+- **Change**: `:11-15` cite the BMP384 sheet (`datasheets/bmp3xx/bst-bmp384-ds003.pdf`, its pressure/temperature
+  accuracy table, page named at execution) for the fitted part, the BMP388 figures kept only if the two agree; the
+  instructions name the real fields (`Pres`/`Temp`, SGP40 `VOC`); the M1 step's two judgments use `confirm_pass()`; the
+  entered distance and ambient condition are written through `evidence.save_json("rig-geometry.json", …)` with the date,
+  and the step says "record the distance and ambient condition in tests_hardware/README.md's rig section with today's
+  date"; the NeoPixel pin in its text comes from the bench TOML (`bench_facts`). The BMP and SGP40 steps end on
+  `confirm_pass()` (A.U26.42 (1): a confirm-only step cannot pass on Enter). Tag on
+  `_ISL29125_REPEATABILITY_TOLERANCE_PCT` (B4).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.100, M.HW_BENCH.041, M.HW_BENCH.055.
+- **Blast carried by**: README rig section row → M.HW_BENCH.120.
+- **Kind**: test, hardware (Round: R2 M1 before R3's S3b [H28, H65])
+
+## tests_hardware/manual/manual_toolchain.py
+
+### M.HW_BENCH.104 The first flash builds the bench board's own image
+- **From**: A.U26.14 (3), A.U26.75, A.U26.02 (blast: the record lands beside the `.uf2`), A.U21.22 (blast: the build
+  sees the toolchain lock), A.U36.010 (blast: README flashing note), A.U8C.117 (`:28`, `:42`; shared IDs with the flash
+  test), B2.
+- **Site**: `tests_hardware/manual/manual_toolchain.py:19-46`.
+- **Change**: `device = harness.bench_device()`; `uf2_path = REPO_ROOT / "build" / f"firmware-{device}.uf2"`; the build
+  runs `["uv", "run", "--no-sync", "scripts/build_firmware.py", device, "--output", str(uf2_path)]`; the comment
+  `:102-103` → "the bench board's image, built from its own TOML (a dev-native proof; wozi is never flashed, CLAUDE.md)";
+  timeouts `_BUILD_TIMEOUT_S = 600` (`l3.toolchain_flash_boot_build_timeout_s`), `_LOAD_TIMEOUT_S = 120`
+  (`l3.toolchain_flash_boot_load_timeout_s`); the step ends on `confirm_pass()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.010, M.HW_BENCH.100.
+- **Blast carried by**: —
+- **Kind**: test, hardware (Round: only when a blank board is provisioned; not in R0-R7's plan)
+
+## tests_hardware/manual/manual_wifi.py
+
+### M.HW_BENCH.105 Hotspot steps match the firmware; the captive-portal item records its observation
+- **From**: A.U26.42 (4), A.U26.49 (2) (`:19, :30` password), B1 (`src/captive_dns.py` → `src/asy_captive_dns.py`),
+  B2, adherence (the "no HTTP redirect exists" claim is false at HEAD: the hotspot redirects a nonsense path to `/`,
+  `bench/test_hotspot_role_reversal.py:292-316`).
+- **Site**: `tests_hardware/manual/manual_wifi.py:1-48`.
+- **Change**: the hotspot password in every instruction is `harness.hotspot_password()`; the captive-portal item asks
+  the operator for the observation as text (`input()`), saves it through `evidence.save_text("captive-portal.txt", …)`,
+  and counts as judged; no PASS on Enter. Docstring and descriptions: the hotspot answers DNS with its own address and
+  redirects an unknown HTTP path to `/` (SPECIFICATION.md A.5) — "no HTTP redirect exists" goes; the module name is
+  `src/asy_captive_dns.py`.
+- **Resolved**: the stale "DNS-only spoof (no HTTP redirect exists)" text breaks A.U26.42's "instructions match today's
+  firmware" — corrected here (adherence fix, no new decision).
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.010, M.HW_BENCH.055, M.HW_BENCH.100.
+- **Blast carried by**: the observation's record in the round → A.C.04 (6) (C).
+- **Kind**: test, hardware (Round: R2 [H66])
+

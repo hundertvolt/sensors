@@ -824,3 +824,240 @@ changes cite.
 - **Blast carried by**: seam-count L0 (five `set_values_sync` per chunk write) → A.U26.43 (TSC); README FRAM reset-race
   section and the hold bullet → A.U26.43/A.U16.07 (HW_BENCH); twin record → M.HW_DEV.010.
 - **Kind**: test, hardware (Round: R1 [H22, H72])
+
+## tests_hardware/device_scripts/fram_manager_roundtrip.py
+
+### M.HW_DEV.061 Chunk round trip: `BENCH` wiring, the part's RDID as a fact, chunk cleared after
+- **From**: A.U26.46 (RDID read and reported), A.U26.22 (5), A.U26.44, A.U5.02 (`debug=None` → `log`), A.U10.37
+  (`asy_crc_checks`), A.U10.38 (`FRAMManager`), A.U16.R02 (blast: runs unchanged on a healthy chip), A.U26.79 (the
+  write-protect read: see Resolved), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_manager_roundtrip.py:1-43`.
+- **Change**: `spi = asy_spi_driver.SPI(*BENCH["bus"]["spi0"] pins)`, `fram = FRAMManager(spi, BENCH["instances"]["fram"]
+  ["cs_pin"], BENCH["fram_max_size"])` (the end-state signature `(spi_bus, spi_cs, max_size, log)`); `from
+  asy_crc_checks import CRC8`; after `setup()` the RDID bytes are a fact (`rdid`, hex); write/read/compare as today
+  reported as facts (`written`, `read_ok`, `matches`); the chunk is overwritten with zeros in a `finally` (production
+  chunk 0 left holding no pattern); docstring keeps "the real FRAM part" without a part number (the part is the TOML's).
+- **Resolved**: A.U26.79 (1) names "`fram_manager_roundtrip.py`'s WP read, a read-only fact" for the standard-state
+  check, but this script writes chunk 0; the read-only WP status read lives in `fram_raw_dump.py` (which only reads),
+  and the standard-state fixture reads it from the dump it already takes (agent decision AD-5; GAP-D6 for HW_BENCH).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.001/.002/.006.
+- **Blast carried by**: bench-facts table row "FRAM part (RDID)" → A.U26.46 (HW_BENCH); host assertions →
+  M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/fram_error_log_roundtrip.py
+
+### M.HW_DEV.062 Error-log round trip with a test-band seed, cleared after
+- **From**: A.U26.22 (5), A.U2.03 (seed code from the test band), A.U5.01 (`make_logger(LogConfig(…), name)`), A.U5.02,
+  A.U10.37 (`asy_print_log`), A.U10.38, A.U28.28 (`:63` inline `noqa: B905` goes to central config), A.U26.44,
+  A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_error_log_roundtrip.py:1-71` (HEAD lines `:25-63` as cited).
+- **Change**: `TEST_ERRNO = 42` → `E_TEST_SEED = 125` (the catalog's test band, checked by A.U2.02 (9)); loggers via
+  `make_logger(LogConfig(fram_a, history_length=_HISTORY_LENGTH), _LOG_NAME)`; managers from `BENCH`; facts
+  `err_count`, `err_num`, `err_type`; the `zip(...)` line loses its inline `# noqa` (B905 is a central MicroPython-scope
+  ignore, A.U28.28); `pr2.reset()` in a `finally` so the "TEST" entry never survives; the comment `:51-53` (three
+  lines on narrowing) shortens to one.
+- **Resolved**: —
+- **Unit**: U26 (U5's `LogConfig` call shape lands in U5 on the HEAD text).
+- **Depends**: M.HW_DEV.012, A.U2.01.
+- **Blast carried by**: check (9) → A.U2.02 (TSC); central B905 entry → A.U28.28 (TOOL).
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py
+
+### M.HW_DEV.063 The seed lands a reset on a named seam and seeds a nonce-chosen sequence
+- **From**: A.U26.43 (2), A.U2.03 (test-band codes), A.U5.01, A.U5.02, A.U10.37, A.U10.38, A.U28.28 (`:49`),
+  A.U8C.66 (`:17` → `_shared/watchdog.py`), A.U26.22 (5) (the seed ends in a reset by design; the verify clears),
+  A.U26.44, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py:1-71`.
+- **Change**: `SEAM` (1-5) and `NONCE` from `BENCH`; the seed codes are `_SEED = [125 + (NONCE // 3 ** i) % 3 for i in
+  range(3)]` and the raced entry `125 + NONCE % 3`; the script wraps its own driver instance's `set_values_sync` (an
+  instance attribute set in the script, no product seam) to count the chunk write's transfers and, right after transfer
+  `SEAM` returns, prints `LANDED seam=<SEAM>` and calls `machine.reset()`; the `reset_yanker` task and the stale comment
+  `:60-64` go; `SEEDED` stays a banner (the stream is read before the reset, AD-3); `wdt = arm()`; facts for the
+  pre-race failures (`seeded`, `baseline`) then `done()`.
+- **Resolved**: A.U26.43 seeds "errno = `NONCE`" with a nonce of 1000-9999, but a log entry's code is 1..127
+  (`src/print_log.py:61-64`, the range check `:168-172` drops anything larger) and A.U2.03 puts seed codes in the
+  catalog's test band 125-127; so the nonce chooses one of 27 code sequences inside that band (AD-6). With the verify
+  phase's `finally` clear (M.HW_DEV.064) and the `SEEDED`/`LANDED` banners, a stale seed still cannot pass.
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.012 (`run_isolated_expect_reset()` returns output), M.HW_DEV.004/.012.
+- **Blast carried by**: seam-count L0 → A.U26.43 (TSC); host nonce `secrets.randbelow(27)` → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H72])
+
+## tests_hardware/device_scripts/fram_error_log_reset_race_verify.py
+
+### M.HW_DEV.064 The verify accepts only the three outcomes of this run's sequence, then clears
+- **From**: A.U26.43 (3), A.U26.22 (5), A.U2.03, A.U5.01, A.U5.02, A.U10.37, A.U10.38, A.U28.28 (`:41`, `:57`),
+  A.U26.44, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_error_log_reset_race_verify.py:1-69`.
+- **Change**: the accepted outcomes are built from `NONCE` exactly as the seed builds them: `[]`, `_SEED`,
+  `_SEED + [raced]` (the C.3.1 comment `:17-19` kept, owner 2026-09-11); any other history (a stale seed's included)
+  is reported; the post-recovery entry uses `127`; facts `recovered`, `warnings`, `err_count`, `tail`, `outcome`; the
+  chunk is reset in a `finally`; the comment `:31-32` ("Deliberately NOT cleared first") stays, now stating it is
+  cleared last instead; the two inline `noqa` go (A.U28.28).
+- **Resolved**: A.U26.43 (3) reads "exactly `[]` or three entries of `NONCE`"; a reset after the third or fourth
+  transfer leaves the raced entry written too, which HEAD's `_ACCEPTED` (`:20`) already accepts as intact, so the
+  four-entry outcome stays accepted (fact of the dual-block write order, C.3.1).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.063.
+- **Blast carried by**: host per-seam outcome note → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H72])
+
+## tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py
+
+### M.HW_DEV.065 Boot-window reset on the real chip, test-band seed, cleared after
+- **From**: A.U26.22 (5), A.U2.03 (`:12` seed 5 → test band), A.U5.01, A.U5.02, A.U10.37, A.U10.38, A.U26.44, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py:1-65`.
+- **Change**: `SEEDED_ERRNO = 5` → `E_TEST_SEED = 125`; loggers through `LogConfig`; managers from `BENCH`; the
+  comment `:28-29` "Clear at the START, never at the end" → "Cleared at the start (a previous run's ring) and in
+  `finally` (nothing seeded survives)"; facts `seeded_count`, `reset_persisted`, `after`, `persisted`; a `finally`
+  resets the chunk.
+- **Resolved**: the HEAD comment cites a README rule (clear at start only) that A.U26.22 (5)/OR38.a (4) replace.
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.006/.012.
+- **Blast carried by**: host assertions → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/fram_busy_status_lockout.py
+
+### M.HW_DEV.066 Busy-status lockout: its own chunk, facts, rewritten clean at the end
+- **From**: A.U26.22 (5), A.U5.02, A.U10.37 (`asy_crc_checks`), A.U10.38, A.U26.44, A.U26.68, A.SDEP.08 (blast: the
+  script is one of the on-target confirmations a pin move re-runs — listed in BACKLOG, no change here), B3 (the
+  `_force_both_blocks_busy` docstring → `#` block).
+- **Site**: `tests_hardware/device_scripts/fram_busy_status_lockout.py:1-73`.
+- **Change**: wiring from `BENCH`; `check()` keeps its shape and its list feeds `fact("failures", …)` with the bounded
+  record (`_shared/facts.py` `errors()`); facts `baseline_ok`, `locked_read_none`, `error_logged`, `recovered`; a
+  `finally` rewrites the chunk with zeros (after the recovery write it holds `PATTERN_B`); the `_STATUS_BUSY`/`_STATUS_LEN`
+  comment (const compiled away) stays.
+- **Resolved**: the raw `set_values` calls address the script's own chunk (`chunk.block_addr`), not a scratch region;
+  A.U26.24's region check must read calls addressed through a `get_chunk()` result as chunk-scoped (GAP-D7, TSC).
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.006.
+- **Blast carried by**: GAP-D7 (TSC); host assertions → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/fram_write_protect_roundtrip.py
+
+### M.HW_DEV.067 Write-protect round trip without the `override_pause` check
+- **From**: A.U16.19 (`:42-43` override check goes), A.U16.10/A.U16.04 (blasts: the calls outside the lock hold),
+  A.U26.22 (5), A.U5.02, A.U10.37, A.U10.38 (`FRAMChunk` type name), A.U26.44, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_write_protect_roundtrip.py:1-115` (HEAD `:42-43`, `:63`).
+- **Change**: the `override_pause=True` read and its failure string go; `_while_protected` ends after the blocked read;
+  wiring from `BENCH`; `TYPE_CHECKING` import names `FRAMChunk`; the phases' failure reasons become the fact
+  `failure` (or none), plus `blocked_write`, `blocked_read`, `data_survived`; the `finally` still clears protection and
+  then zeroes the chunk.
+- **Resolved**: —
+- **Unit**: U26 (A.U16.19's line lands in U16 on the HEAD text).
+- **Depends**: M.SRC_CORE (A.U16.19 removes the keyword).
+- **Blast carried by**: host assertions → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/fram_pause_unpause_and_gating.py
+
+### M.HW_DEV.068 Pause gating proven by unpaused read-back; the waiter-task unpause; bool-first writes
+- **From**: A.U16.19 (steps 2-4, 10-11: the `override_pause` reads/writes/clear go; read back after `set_pause(False)`),
+  A.U16.18 (`*_, written =` → `written, *_ =`, comment `:151-153`), A.U10.15 (the unpause callback only sets a flag: the
+  script starts the waiter task), A.S0930.12 (blast: ignores `pause_permanent_storage()`'s result, holds; reads it
+  where checked), A.U5.02 (`SystemService(…, fram=fram, debug=None)` → `storage=fram`), A.U10.37/A.U10.38 (`FRAMChunk`,
+  `FRAMManager`, `asy_crc_checks`, `asy_system_service`), A.U26.22 (5), A.U26.44, A.U8C.67, A.U8C2.29, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py:1-194`.
+- **Change**: (1) Docstring `:1-3` → "…a pause genuinely prevents the bus write rather than only returning False, and a
+  real machine.Timer auto-unpause fires (hardware-only, per Part F.1's soft-Timer gotcha)." (2) Step 2 proves the
+  refused write by `set_pause(False)` then `read()` = `PATTERN_A`, then `set_pause(True)` again for step 3; step 4 goes
+  (the seam is removed); step 10: a refused `clear()` is proven by unpausing and reading `PATTERN_A`, then an unpaused
+  `clear()`; step 11: the paused timestamped write's refusal is proven by an unpaused read, and the "override" write
+  becomes an unpaused write. (3) `written, *_ = await ts_chunk.write(…)` with the comment "write() returns
+  (written, ntp_synced, utc); only the first is judged here (no NTP in an isolated script)". (4) `sysfunct =
+  SystemService(_ntp_never_synced, storage=fram)` and the storage waiter task started (`asyncio.create_task(sysfunct.
+  <waiter>())`, the method A.U10.15 names) before step 6, cancelled at the end. (5) `sleep_fed` and its docstring go:
+  `fed_sleep_ms(wdt, …)` from `_shared/watchdog.py` (A.U8C.67's `feed_step_s` row withdrawn into the shared step);
+  `_PAUSE_S = 2` (`l3.fram_pause_unpause_and_gating_pause_s`), `_REARM_S = 6` (`…_rearm_s`), `_PAUSE_MARGIN_S = 1.5`,
+  `_REARM_MARGIN_S = 0.5` (A.U8C2.29); the alarm-pool loop bound `64` names its source as in M.HW_DEV.032.
+  (6) `failures` → `fact("failures", …)` bounded; the chunk zeroed in a `finally`.
+- **Resolved**: A.U16.19 removes the only means the HEAD script uses to look at the chip while paused; reading after
+  unpausing proves the same thing (the bytes the paused write would have changed), as A.U16.19's blast states.
+- **Unit**: U26 (U16/U10 call-shape edits land in their units on the HEAD text).
+- **Depends**: M.SRC_CORE (A.U10.15 waiter, A.U16.18/.19, A.U5.02), M.HW_DEV.004/.006.
+- **Blast carried by**: twin record (the auto-unpause is a real alarm-pool fact: `exception` for step 9 only, or a
+  twin pool model → U25) → M.HW_DEV.010; host assertions → M.HW_DEV.060.
+- **Kind**: test, hardware (Round: R1 [H22])
+
+## tests_hardware/device_scripts/fram_same_device_rw_concurrency.py
+
+### M.HW_DEV.069 FRAM read-vs-write concurrency over declared regions
+- **From**: A.U26.24 (`READ_REGION` is production chunk 0 → evidence region; `WRITE_REGION` scratch), A.U13.08
+  (blast: unchanged, must pass), A.U26.44, A.U26.69/A.U26.78 (loops), A.U8C.70, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_same_device_rw_concurrency.py:1-75` (`:13-14`, `:18`, `:22`, `:49`,
+  `:61`).
+- **Change**: `_EVIDENCE_REGIONS = ((0x0000, 32),)` (read only, under the session's evidence save) and
+  `_SCRATCH_REGIONS = ((0x8000, 32),)`; `READ_REGION`/`WRITE_REGION` written from those tuples; the docstring's
+  "datasheets/fram/" pointer kept; wiring from `BENCH`; `_READ_ITERATIONS = 30`, `_RUN_BOUND_S = 60.0`,
+  `_WDT_FEED_EVERY = 5` (A.U8C.70's IDs); the reader/writer loops yield on every path and keep a bounded failure
+  record; facts `reads_ok`, `reads_torn`, `write_ok`, `errors`; `done()`.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.004/.005/.007.
+- **Blast carried by**: region check → A.U26.24 (TSC); host assertions → M.HW_DEV.031 (bus concurrency module).
+- **Kind**: test, hardware (Round: R1 [H25-adjacent bus hazards])
+
+## tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py
+
+### M.HW_DEV.070 CS hijack: two new rungs (dropped WREN, chip lost), regions declared, owner tags
+- **From**: A.U16.R01 (CS deasserted inside the first WREN: the write reads back intact), A.U16.R03 (CS held
+  inactive across two block writes → errno 54 and `initialized` False; released → `setup()` succeeds, a write reads
+  back), A.U0.18 (`:125`, `:161` "Hard requirement (owner, 2026-09-04):"), A.U13.09/A.U16.04 (blasts: unchanged),
+  A.U26.24 (0x9000-0x93FF declared), A.U26.62 (3) (a fault-making script for `_FLASH_FAULT_SCRIPTS`), A.U26.44,
+  A.U8C.65, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py:1-175`.
+- **Change**: (1) `_SCRATCH_REGIONS = ((0x9000, 0x400),)`, the four address constants written from it, plus the new
+  rungs' addresses inside it. (2) Scenario 3: `_CsHijack` gains an install point at the first WREN of a write
+  (deassert inside it); the write's read-back equals the new pattern (the driver's one WREN retry). (3) Scenario 4: CS
+  held inactive across two block writes; the driver logs errno 54 and `fram.initialized` is False; CS released,
+  `await fram.setup()` succeeds and a write reads back. (4) `_CsHijack`'s docstring → `#` block: "Deasserts CS from
+  inside the victim's own transfer, at the driver's synchronous seam: the CS window does not yield, so a racing task
+  cannot land in it." (the "measure A"/archive-section history goes, G9/R12). (5) `:125`, `:161` → "# Hard requirement
+  (owner, 2026-09-04): …". (6) `_VICTIM_BOUND_S = 30.0` (A.U8C.65); `arm()`; facts per scenario (`injected`,
+  `readback_ok`, `raised`, `errno`, `recovered`), `done()`; the errno 54 compared host-side against the catalog name.
+- **Resolved**: —
+- **Unit**: U26 (the R01/R03 cases need U16's driver behaviour; written in U26 against it).
+- **Depends**: M.SRC_CORE (A.U16.R01 WREN retry, A.U16.R03 chip-lost escalation), M.HW_DEV.004/.007/.012.
+- **Blast carried by**: `_FLASH_FAULT_SCRIPTS` entry → A.U26.62 (TSC); README rungs table "participant: FRAM WREN" →
+  A.U26.34 (HW_BENCH); twin `wren` fault op → A.U16.R01 (TWIN).
+- **Kind**: test, hardware (Round: R1 [H16, H22])
+
+## tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py
+
+### M.HW_DEV.071 The raw reset race claims only what the part guarantees
+- **From**: A.U26.52 (3), A.U26.24 (0xA000-0xA03F declared, shared with its verify phase), A.U13.09 (blast:
+  unchanged), A.U26.44, A.U8C.68, A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py:1-75` (`:1-3`, `:13-22`, `:56`,
+  `:68`).
+- **Change**: docstring and `:21` comment → "a reset landing before the payload transfer leaves the target unchanged;
+  a reset during it may leave a prefix of the new bytes (MB85RS2MTA datasheet p.9: each byte is written as it is
+  clocked in); the guards around the target are never touched" (the "must never land" claim goes); `_SCRATCH_REGIONS =
+  ((0xA000, 0x40),)` with the four addresses from it; the comment naming the CS-hijack range goes (the check proves
+  disjointness); the "measure A" wording at `:56` → the current fact (the write seam is synchronous); `arm()`;
+  `_VICTIM_BOUND_S = 30.0`; the seeding failures are facts, the race keeps its banner (AD-3).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.004/.007.
+- **Blast carried by**: host test (raw race in the bus-concurrency module) → M.HW_DEV.031.
+- **Kind**: test, hardware (Round: R1 [H72])
+
+## tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py
+
+### M.HW_DEV.072 The raw verify accepts the old pattern or a torn prefix, nothing else
+- **From**: A.U26.52 (3), A.U16.04 (blast: unchanged), A.U26.24, A.U26.44, A.U8C.69 (`:25` → `arm()`), A.U26.68.
+- **Site**: `tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py:1-70`.
+- **Change**: the target region passes when it holds the original pattern, or a prefix of `_NEW_TARGET_PATTERN`
+  followed by the original remainder (fact `target_state`: `"original"` | `"prefix:<n>"` | `"other"`); both guards
+  must hold their patterns; the post-recovery write at `0xA030` (inside the declared region) reads back; the docstring
+  says so; facts, `done()`; the region is restored to its seed state in a `finally` (scratch, but no stale torn bytes
+  for the next run's assertion).
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_DEV.071.
+- **Blast carried by**: host assertion → M.HW_DEV.031.
+- **Kind**: test, hardware (Round: R1 [H72])
