@@ -101,9 +101,8 @@ actions only where they name a product line.
   (G10/R23), so the `_ms` IDs stand and A.U8.11's `dns_server.recv_backoff_initial_s`/`…_max_s` rows are renamed, not
   added twice. DNSSRV w3 → 43 (A.U2.16) vs → shared 11 (A.U18.15) — U18 register fix 9 settles 11, 43 unassigned. w2
   name `DNS_BAD_REQUEST` (A.U2.01) vs `DNS_RECV_FAILED` (A.U18.06) — U18 register fix 9 settles `DNS_RECV_FAILED`.
-- **Unit**: U18 (the import/constant rewrite lands with its users; U10's renames of the same lines land in U10 via
-  M.SRC_NET.001 and the import renames of A.U10.37, U2's code names are written here because U2.16's numbers are
-  replaced in U18 anyway — see Staging below)
+- **Unit**: U31 (A.U31.16, the latest constituent: the backoff constants in milliseconds; see Staging for the earlier
+  stages)
 - **Depends**: M.SRC_NET.001, M.SRC_NET.020, M.SRC_NET.021, M.SRC_NET.022 (the constants imported); A.U2.01 catalog
   (with the U18 register-fix-9 edits), A.U5.01 (`LogConfig`), A.U10.46 (`ErrorSource`), A.U8.02 (tag grammar)
 - **Blast carried by**: catalog rows (w42 text, w43 unassigned, shared w11, DNSSRV uses e10) → A.U2.01 with U18 register
@@ -112,9 +111,12 @@ actions only where they name a product line.
   "`wrnno=2`" → A.U2.16/A.U18.06/A.U26 wording (docs cluster)
 - **Kind**: code
 - **Staging**: U2 (A.U2.16) writes `_ERR_BAD_ARG`/`_ERR_UNEXPECTED`/`_WRN_DNS_REPLY_DROPPED`/`_WRN_DNS_BAD_REQUEST` (41-43
-  as A.U2.16) at `:91, 119, 123, 135, 147, 153` because U2's L0 catalog check (A.U2.02) must pass from U2 on; U18 then
-  renames 42 and moves 43 → 11 as above. State after U2: every DNSSRV call site passes a named constant; after U18: the
-  end state above.
+  as A.U2.16) at `:91, 119, 123, 135, 147, 153`, because U2's L0 catalog check (A.U2.02) must pass from U2 on; U8
+  (A.U8.11) tags the HEAD seconds constants and adds `_ERROR_RETRY_WAIT_S`; U10 renames the imports (A.U10.37/38); U18
+  writes the imports, `_QTYPE_ANY`, the deletions and the code block above (42 renamed, 43 → shared 11); U31 (A.U31.16)
+  turns the two backoff constants into the `_MS` pair with their `_ms` tag IDs. State after each stage: every DNSSRV call
+  site passes a named constant (U2); tagged (U8); renamed names (U10); the end state except the backoff unit (U18); the
+  end state (U31).
 
 ### M.SRC_NET.005 LICENSE-captive_dns paths, holder and year
 - **From**: A.U1.20 (`:2` repath), A.U10.37 (`:1` file name), A.U34.05 (1), (3) (`:201` holder/year; NOTICE check)
@@ -154,7 +156,7 @@ actions only where they name a product line.
 - **Blast carried by**: construction `WifiService` → M.SRC_NET.078 (`CaptiveDNS(log=log)`);
   tests `tests/test_captive_dns.py` (10 constructor calls, `udps` reads, `reset_error_counter` return) → A.U5.02,
   A.U10.35, A.U11.31 (tests cluster); `_collect_error_sources()` generated → A.U10.46 (GEN cluster); `/status`
-  `ResetErrors` → M.SRC_NET (webserver `_put_status`, below)
+  `ResetErrors` → M.SRC_NET.123
 - **Kind**: code
 - **Staging**: U5: constructor signature `log` (A.U5.02; all constructors move together, generated code A.U5.03
   in the same unit); U10: `_udps`, unquote, names (A.U10.31/35/37/38); U11: `-> bool` (A.U11.31 co-lands across all
@@ -254,6 +256,22 @@ actions only where they name a product line.
 - **Unit**: U10 (last U10 edit to the file)
 - **Depends**: M.SRC_NET.001, every U10 edit of this file
 - **Blast carried by**: — (order only; D.15's own bar: tests unchanged, lint/typecheck counts equal)
+- **Kind**: code
+
+### M.SRC_NET.011 Every broad handler records a C-stack overflow (captive DNS)
+- **From**: A.U30.19 (2) (first statement `report_if_fatal(<name>)`, an `as e` binding added where absent)
+- **Site**: `src/asy_captive_dns.py` HEAD `:105` (address-parse `except Exception:`), `:133` (loop top), `:144`
+  (disconnect), `:187` (`DNSQuery` parse `except Exception:`)
+- **Change**: each handler's first statement is `report_if_fatal(e)`: `:105` → `except Exception as e:` /
+  `report_if_fatal(e)` / `addr_int = None`; `:133` and `:144` gain it above their `err_s(...)` (the texts M.SRC_NET.007
+  writes); `:187` → `except Exception as e:` / `report_if_fatal(e)` / the two sentinel assignments. Import `from
+  asy_base_classes import report_if_fatal` beside the other runtime imports (M.SRC_NET.004). A handler that M.SRC_NET.007
+  or .008 rewrites keeps the call as its first statement; no handler of the file ends in a bare `raise`.
+- **Resolved**: —
+- **Unit**: U30 (M.SRC_NET.007's U31 stage writes those two handlers with the call already in place)
+- **Depends**: A.U30.19 (`report_if_fatal()` in `asy_base_classes`, M.SRC_CORE), M.SRC_NET.007, M.SRC_NET.008
+- **Blast carried by**: `tests_scripts/test_fatal_report_sites.py` (L0 site check) → A.U30.19 (tests); UART-free, no
+  changelog entry
 - **Kind**: code
 
 ## src/asy_dns_client.py
@@ -372,6 +390,28 @@ actions only where they name a product line.
 - **Unit**: U10
 - **Depends**: M.SRC_NET.001
 - **Blast carried by**: —
+- **Kind**: code
+
+### M.SRC_NET.018 One host-label check, `host_label_ok()`, lives beside `ipv4_to_int()`
+- **From**: A.U6.29 (`_host_label_ok()`, written in `asy_wifi_service.py`), A.U10.41 (the NTP host shape applies "the
+  product's `_host_label_ok()` of A.U6.29 per label"), REF/R05 (a helper is written once and imported), G10/R07 (a name
+  another module imports is public)
+- **Site**: `src/asy_dns_client.py` (new public function next to `ipv4_to_int()`); removed from
+  `src/asy_wifi_service.py`
+- **Change**: `def host_label_ok(label: str) -> bool:` — `False` for an empty string; otherwise every character an
+  ASCII letter, digit or `-`, first and last not `-` (RFC 1123 §2.1), a plain loop over `ord()` (no `re`); comment
+  "# RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length." Placed by
+  D.15's key. `asy_wifi_service` (Hostname, M.SRC_NET.075) and `asy_ntp_client` (`NTPHost` per label, M.SRC_NET.045)
+  import it; no copy remains in either.
+- **Resolved**: A.U6.29 writes the helper privately in the WiFi module; A.U10.41 needs it from the NTP module. Importing
+  a `_`-private name across modules breaks G10/R07; REF/R05 forbids a second copy. The resolver module already holds the
+  one dotted-quad parser both DNS users share (A.U18.08), so the DNS-name helper joins it (agent choice of home, OR2.c).
+- **Unit**: staged — U6: A.U6.29 writes `_host_label_ok()` in `asy_wifi_service.py` (its only user then); U18: it moves
+  here as `host_label_ok()` with the NTP host check (M.SRC_NET.045), the WiFi import following in the same change.
+- **Depends**: M.SRC_NET.021
+- **Blast carried by**: the three-implementation corpus `tests/_radio_shape_cases.json` (`hostLabel`, `hostName`) and
+  its L1 reader import the product helper from `asy_dns_client` → A.U6.29/A.U10.41 (tests cluster); SPEC C.7.4 host-label
+  rule and G.2 "reuse before writing" entry → A.U6.29/A.U18.08 (docs)
 - **Kind**: code
 
 ## src/asy_udp_socket.py
@@ -539,28 +579,6 @@ actions only where they name a product line.
 - **Unit**: U10 (last U10 edit)
 - **Depends**: every U10 edit of the file
 - **Blast carried by**: —
-- **Kind**: code
-
-### M.SRC_NET.018 One host-label check, `host_label_ok()`, lives beside `ipv4_to_int()`
-- **From**: A.U6.29 (`_host_label_ok()`, written in `asy_wifi_service.py`), A.U10.41 (the NTP host shape applies "the
-  product's `_host_label_ok()` of A.U6.29 per label"), REF/R05 (a helper is written once and imported), G10/R07 (a name
-  another module imports is public)
-- **Site**: `src/asy_dns_client.py` (new public function next to `ipv4_to_int()`); removed from
-  `src/asy_wifi_service.py`
-- **Change**: `def host_label_ok(label: str) -> bool:` — `False` for an empty string; otherwise every character an
-  ASCII letter, digit or `-`, first and last not `-` (RFC 1123 §2.1), a plain loop over `ord()` (no `re`); comment
-  "# RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length." Placed by
-  D.15's key. `asy_wifi_service` (Hostname, M.SRC_NET.075) and `asy_ntp_client` (`NTPHost` per label, M.SRC_NET.045)
-  import it; no copy remains in either.
-- **Resolved**: A.U6.29 writes the helper privately in the WiFi module; A.U10.41 needs it from the NTP module. Importing
-  a `_`-private name across modules breaks G10/R07; REF/R05 forbids a second copy. The resolver module already holds the
-  one dotted-quad parser both DNS users share (A.U18.08), so the DNS-name helper joins it (agent choice of home, OR2.c).
-- **Unit**: staged — U6: A.U6.29 writes `_host_label_ok()` in `asy_wifi_service.py` (its only user then); U18: it moves
-  here as `host_label_ok()` with the NTP host check (M.SRC_NET.045), the WiFi import following in the same change.
-- **Depends**: M.SRC_NET.021
-- **Blast carried by**: the three-implementation corpus `tests/_radio_shape_cases.json` (`hostLabel`, `hostName`) and
-  its L1 reader import the product helper from `asy_dns_client` → A.U6.29/A.U10.41 (tests cluster); SPEC C.7.4 host-label
-  rule and G.2 "reuse before writing" entry → A.U6.29/A.U18.08 (docs)
 - **Kind**: code
 
 ## src/asy_ntp_client.py
@@ -1002,6 +1020,19 @@ actions only where they name a product line.
 - **Unit**: U10 (last U10 edit)
 - **Depends**: every U10 edit of the file
 - **Blast carried by**: —
+- **Kind**: code
+
+### M.SRC_NET.060 Every broad handler records a C-stack overflow (NTP)
+- **From**: A.U30.19 (2)
+- **Site**: `src/asy_ntp_client.py` HEAD `:156` (`get_dns_server` callback guard), `:216`
+  (`network_available_locked()` callback guard)
+- **Change**: each `except Exception as e:` gains `report_if_fatal(e)` as its first statement, above the logging line
+  M.SRC_NET.046/.050 write; `from asy_base_classes import report_if_fatal` joins the runtime imports (M.SRC_NET.041). Every
+  other handler of the end state names its exception types (M.SRC_NET.048/.049/.054), so none else needs it.
+- **Resolved**: —
+- **Unit**: U30
+- **Depends**: A.U30.19, M.SRC_NET.041, M.SRC_NET.046, M.SRC_NET.050
+- **Blast carried by**: `tests_scripts/test_fatal_report_sites.py` → A.U30.19 (tests)
 - **Kind**: code
 
 ## src/asy_wifi_service.py
@@ -1656,4 +1687,1048 @@ actions only where they name a product line.
 - **Unit**: U10 (last U10 edit)
 - **Depends**: every U10 edit of the file
 - **Blast carried by**: —
+- **Kind**: code
+
+### M.SRC_NET.104 Every broad handler records a C-stack overflow (WiFi)
+- **From**: A.U30.19 (2)
+- **Site**: `src/asy_wifi_service.py` HEAD `:208, 215, 239, 254, 261, 268, 291, 312, 349, 373, 454, 499, 510, 597, 645,
+  743, 761` (seventeen `except Exception as e:`), plus the LED-flash task's top handler M.SRC_NET.092 adds
+- **Change**: every broad handler present in the file's end state starts with `report_if_fatal(e)`, above its logging or
+  fallback line (the observation-tier `_wlan_status_or_none()`-style arms included: a swallowed stack overflow there is
+  still a design defect, A.U30.19 (1)); where M.SRC_NET.078-.102 merge or split a handler, the resulting handler carries
+  it once. `from asy_base_classes import report_if_fatal` joins the runtime imports (M.SRC_NET.071).
+- **Resolved**: —
+- **Unit**: U30
+- **Depends**: A.U30.19, M.SRC_NET.071, M.SRC_NET.078-.102 (the handlers as they end up)
+- **Blast carried by**: `tests_scripts/test_fatal_report_sites.py` → A.U30.19 (tests); A.U30.03's run-phase allow-list is
+  unaffected (the call allocates nothing)
+- **Kind**: code
+
+## src/asy_webserver_service.py
+
+Every `ext/microdot.py:<line>` and `extmod/…` cite below is v2.6.2's / v1.29.0's; B0's dependency refresh (A.SDEP.06,
+A.SDEP.08, OR129.a (5)) may move either, and each cite is re-checked against the refreshed pin before the change that
+carries it is executed (AC_NOTES item 34 (second)). `ext/` itself is never edited (only `ext/typings/microdot/` is
+added, unmodified upstream stubs, A.U8.23).
+
+### M.SRC_NET.110 Imports: renamed modules, typed Microdot, the new primitives
+- **From**: A.U10.37 (`asy_api_response`, `asy_base_classes`, `asy_config_manager`, `asy_print_log`), A.U8.23 (vendored
+  stub; the import's ignore and the `:7-9` comment), A.U20.14 (2) (same ignore), A.U10.27 (`import math`), A.U19.07
+  (`import errno`), A.U19.16 (`VALID`, `INVALID`, `FAILED`), A.U5.02 (`DEFAULT_LOG`, `LogConfig`), A.U19.17/A.U11.S02/
+  A.U10.46 (aliases; `Any` goes), A.U10.38 (FRAM-manager import goes with `fram`)
+- **Site**: `src/asy_webserver_service.py:4-31`
+- **Change**: `import asyncio`, `import errno`, `import json`, `import math`; the comment `:7-9` → "# Typed via the
+  vendored upstream stub (ext/typings/microdot/); firmware freezes ext/ and src/ flat together."; `from microdot import
+  Request, Response, abort, redirect, send_file` (no `type: ignore`); `const`; `import asy_api_response as ar`; `from
+  asy_base_classes import LockedCounter`; `from asy_config_manager import FAILED, INVALID, VALID, type_or_range_error`;
+  `from asy_print_log import DEFAULT_LOG, LogConfig, make_logger`. `TYPE_CHECKING`: `Awaitable, Callable, Iterable,
+  Sequence` (no `Coroutine` unless a remaining annotation needs it), `Protocol, TypeVar`; `import asy_config_manager as
+  cm`; `from asy_api_response import JsonMapping, ResponseEnvelope, _RequestLike` (the aliases' home per A.U11.S02);
+  `from asy_base_classes import AsyncCallback, ErrorSource, JsonDict, JsonValue, TaskStarter`; `from asy_print_log import
+  ErrorLog, PrintLogHistory`; no `Any`, no FRAM-manager import.
+- **Resolved**: A.U8.23 and A.U20.14 (2) both remove the `microdot` import's ignore — one removal (A.U20.14 defers to
+  A.U8.23).
+- **Unit**: U19 (A.U19.16/A.U19.17 latest; staged: U8 stub/ignore, U10 names/`math`, U5 log imports)
+- **Depends**: A.U8.23 (the stub on `mypy_path`), A.U10.46, A.U11.S02, A.U19.16
+- **Blast carried by**: `pyproject.toml` `mypy_path`, the override comment → A.U8.23 (tooling); CLAUDE.md vendoring rule
+  gains the stub sentence → A.U8.23 (docs); `tests_scripts/test_mypy_any_baseline.py` drops this module → A.U19.17/A.U8.24
+  (tests)
+- **Kind**: code
+
+### M.SRC_NET.111 The `TYPE_CHECKING` protocols and callback aliases
+- **From**: A.U19.17 (aliases, `_ModuleLike.pr` goes, `RouteHandler -> object`), A.U8.23 (`_MicrodotApp` comment),
+  A.U10.38 (`CaptiveDNS` in the `_ModuleLike` comment), A.U11.31 (`reset_error_counter() -> bool`), A.U19.02
+  (`NotificationLedFct`), A.U19.07 (the reader half's `read()`), A.U10.31 (quotes only on `TYPE_CHECKING` names)
+- **Site**: `src/asy_webserver_service.py:32-86`
+- **Change**: `_ModuleLike`: comment names "every SensorReaderConfig subclass, NeopixelDriver, CaptiveDNS and
+  ConfigManager"; `name: str`; the `pr` member goes; `get_dict_data()`/`get_dict_cfg() -> "JsonDict"`;
+  `_set_dict_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]"`;
+  `get_error_counter() -> "ErrorLog"`; `reset_error_counter() -> bool`. `_ClosableStream` unchanged. `_StreamLike` gains
+  `async def read(self, n: int) -> bytes: ...` (A.U19.07's reader proxy fills from it). `RouteHandler =
+  Callable[..., object]` with its comment. `_MicrodotApp` comment → "# The subset of the Microdot instance routes are
+  registered onto; the vendored stub (ext/typings/microdot/) leaves get/put/route unannotated (v2.6.2)." (≤ 3 lines);
+  members unchanged. Aliases: `StatusSourceFct = MaintenanceFct = Callable[[], Awaitable[JsonDict]]`, `SystemCmdFct =
+  Callable[[str], Awaitable[bool]]`, `NotificationLedFct = Callable[[int, int, int, float], Awaitable[bool]]`,
+  `NotificationPauseFct = Callable[[int], Awaitable[bool]]`, `HotspotActiveFct = Callable[[], bool]` (each on its own
+  line; `StatusSourceFct`/`MaintenanceFct` may be one alias, A.U10.46's "one named alias each" rule: one alias,
+  `StatusSourceFct`, used for both).
+- **Resolved**: U19 A-C note 2 — `_set_dict_cfg()`'s `data` is typed `dict[str, CfgValue]` in `asy_base_classes.py` while
+  every route passes the raw JSON body; A.U19.17 types the Protocol `JsonMapping`, which "needs the implementers … to
+  accept it — merge with A.U11.S02". The implementers are another cluster's (SRC_CORE); the merged end state here is the
+  Protocol as A.U19.17 writes it, and the implementer's parameter type is a gap for that cluster (below).
+- **Unit**: U19
+- **Depends**: A.U10.46, A.U11.S02, A.U19.02
+- **Blast carried by**: implementers' `_set_dict_cfg(data: JsonMapping)` → gap (SRC_CORE cluster, A.U11.S01/A.U11.S02);
+  test fakes typed against the Protocols hold → A.U19.17 (tests)
+- **Kind**: code
+
+### M.SRC_NET.112 Module constants: commands, dispatch schemas, defaults, limits, routes, codes
+- **From**: A.U5.03 + A.U10.38 (`@wiring fram_target FRAMManager log`), A.U10.29 + A.S0930.09 (`_SYSTEM_CMDS`), A.U19.02
+  (`_LIGHT_CMD_FIELDS`), A.U10.40 (`LightCmdLED` members `R/G/B/T`), A.U5.04 + A.U5.05 + A.U8.04 (`_DEFAULT_*` and tags),
+  A.U19.11 (the `:107` comment unit), A.U19.15 + A.U0.29 (`_ERROR_STATUSES`, comment), A.U10.29 (`const()`), A.U19.07
+  (`_MAX_HEADER_LINES`, `_MAX_HEAD_BYTES`), A.U19.09 (`_START_RETRIES`, `_START_RETRY_S`), A.U19.20 (`ROUTES`), A.U2.04 +
+  A.U2.19 + A.U19.08/A.U19.09 + U19 A-C note 3 (code block), A.U19.02/A.U19.03 (the shared dispatch comment)
+- **Site**: `src/asy_webserver_service.py:88-119`
+- **Change**: `_NAME = const("WEBSERVER")`; `:90-93` comment names "wifi/ntp" unchanged and the tag → `# @wiring
+  fram_target FRAMManager log optional kwarg`. `_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause",
+  "resetconfig", "erasefram"))` with the comment "# The only values ever forwarded to system_cmd(), matched as whole
+  strings: the exact action word is what" / "# runs a command, so no alias, prefix or case variant does (owner,
+  2026-09-30). mempause's fixed 300 s lives in" / "# the callback (Part A.8)." `_PAUSE_TIME_MAX` and its comment
+  unchanged (`LockedCounter(max_val=…)` wording follows A.U9.09's notification rewrite if that site changes);
+  `_PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX, None)` and new `_LIGHT_CMD_FIELDS:
+  "tuple[cm.FieldSchema, ...]" = (("R", "int", None, 0, 255, None), ("G", "int", None, 0, 255, None), ("B", "int", None,
+  0, 255, None), ("T", "float", None, 0.5, 60.0, None))`, both preceded by one shared comment "# Dispatch-only fields
+  validate through type_or_range_error() against synthetic schemas, as every schema-backed field does" / "#
+  (SPECIFICATION.md A.8); LightCmdLED's are legacy's own led_cmd() bounds, never schema-backed." (the `:103-105` block
+  goes into it). `_MAX_PENDING_FRAGMENTS = const(16)  # @tunable web.max_pending_fragments = 16` with "_PieceWriter's
+  list never outgrows 16 slots". Defaults (A.U5.04/A.U5.05) each tagged (A.U8.04): `_DEFAULT_MAX_CONTENT_LENGTH =
+  const(2048)` (`web.max_content_length = 2048`; the "1.56x … (I.6)" reason moves here), `_DEFAULT_CHUNK_BYTES =
+  const(256)` (`web.chunk_bytes = 256`; its `:108-110` comment kept), `_DEFAULT_MAX_CONNECTIONS = const(6)` (its
+  `:315-317` reason), `_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)` (`web.per_call_timeout_s = 5.0`),
+  `_DEFAULT_OUTER_CAP_S = const(15.0)` (`web.outer_cap_s = 15.0`), `_DEFAULT_STATIC_INDEX = const("index.html")`.
+  `_ERROR_STATUSES = const((400, 404, 405, 413, 500))  # the five shaped statuses SPECIFICATION.md A.5 names; each is its
+  own envelope code (C.5.3)`. `_MAX_HEADER_LINES = const(32)` (`web.max_header_lines = 32`), `_MAX_HEAD_BYTES =
+  const(2048)` (`web.max_head_bytes = 2048`), `_START_RETRIES = const(3)` (`web.start_retries = 3`), `_START_RETRY_S =
+  const(5)` (`web.start_retry_s = 5`, "derived from the 10 s close linger"). `ROUTES = (("GET", "/measurements",
+  "_get_measurements"), ("GET", "/sensors", "_get_sensors"), ("PUT", "/sensors", "_put_sensors"), ("GET", "/networking",
+  "_get_networking"), ("PUT", "/networking", "_put_networking"), ("GET", "/system", "_get_system"), ("PUT", "/system",
+  "_put_system"), ("GET", "/status", "_get_status"), ("PUT", "/status", "_put_status"), ("GET", "/notification",
+  "_get_notification"), ("PUT", "/notification", "_put_notification"))` with one comment line "# The one route table:
+  registered in this order; buildgen reads it for the REST reference (SPECIFICATION.md A.8)." Code block:
+  `_ERR_CALLBACK = const(14)`, `_ERR_UNEXPECTED = const(23)`, `_WRN_HTTP_PEER_RESET = const(48)`,
+  `_WRN_HTTP_CALL_TIMEOUT = const(49)`, `_WRN_HTTP_REQUEST_CAP = const(50)`, `_WRN_HTTP_SOCKET_ERROR = const(51)`,
+  `_WRN_HTTP_CLOSE_RAISED = const(52)`, `_WRN_HTTP_WAIT_CLOSED = const(53)`, `_WRN_HTTP_REFUSED = const(60)`,
+  `_WRN_HTTP_BAD_HEAD = const(61)`, `_WRN_HTTP_START_FAILED = const(62)`.
+- **Resolved**: (1) A.U10.29 wraps `_ERROR_SHAPES` in `const()`; A.U19.15 replaces it with `_ERROR_STATUSES` — the new
+  tuple is wrapped instead. (2) A.U8.04 tags the `__init__` defaults; A.U5.05 moves them into constants ("A.U8.04's tag
+  sites move … to the new constants (A-C merge)") — tags sit on the constants. (3) U19 A-C note 3: the webserver's three
+  new warnings take wrnno 60-62 (checked: no other action allocates 60-62; A.U2.01 leaves 60-127 free) and W48
+  `HTTP_PEER_CLOSED` is re-homed to the peer-reset trace (its old `EOFError` site goes): name `HTTP_PEER_RESET` here,
+  the catalog row's name and text follow (gap for the catalog cluster). (4) `_LIGHT_CMD_FIELDS` members: A.U19.02 writes
+  `r/g/b/t`, A.U10.40 (U10, earlier) renames the members `R/G/B/T` and its site list gains this constant (U19 A-C note
+  5) — the upper-case names stand.
+- **Unit**: U19 (staged: U5 constants and `log` tag, U8 tags, U10 `const()`/names, U19 the rest; A.S0930.09's two words
+  land with SUPP_owner_0930's unit order — the latest of U19 and that supplement's placement)
+- **Depends**: A.U5.04, A.U8.02, A.U2.01 (+ U19 A-C note 3)
+- **Blast carried by**: `tests_scripts/test_request_timeout_ceiling.py`/`test_request_body_cap_headroom.py` read the
+  `_DEFAULT_*` constants → A.U5.05 (tests); `js/poll-manager.js:8` tag → A.U8.04 (WEB); the `SystemCmd` dropdown and mock
+  `SYSTEM_CMDS` derived from `_SYSTEM_CMDS` → A.S0930.10/A.U23.27 (GEN/WEB); `_PERSISTING_COMMAND_WORDS` read by `ast` →
+  A.S0930.19 (tests); the REST reference and every route-set reader (15 sites) → A.U19.20/A.U26.80/A.U24.36 (GEN/tests/HW);
+  catalog rows 48 (renamed/re-homed), 60-62 → A.U2.01 via U19 A-C note 3 (catalog); Part N rows → A.U8.04/A.U19.07/
+  A.U19.09 (docs)
+- **Kind**: code
+
+### M.SRC_NET.113 Registration helpers state their owner-tagged reasons
+- **From**: A.U0.29 (`:123-124`), A.U19.17 (types)
+- **Site**: `src/asy_webserver_service.py:122-132` `_index_by_name()`, `_index_pairs()`
+- **Change**: `_index_by_name(items: "Iterable[_ModuleLike]") -> "dict[str, _ModuleLike]"` with the comment "#
+  Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the" / "# simplest per-item loop already
+  behaves this way; no dedup/guard code on top (agent, 2026-08-12)."; `_index_pairs(items:
+  "Iterable[tuple[str, StatusSourceFct]]") -> "dict[str, StatusSourceFct]"`.
+- **Resolved**: —
+- **Unit**: U19 (A.U0.29's text in U0)
+- **Depends**: M.SRC_NET.111
+- **Blast carried by**: A.U0.08 allow-list loses the "decision N" entries → A.U0.29 (tests)
+- **Kind**: code
+
+### M.SRC_NET.114 `_PieceWriter` groups bytes and writes a non-finite float as `null`
+- **From**: A.U19.11 (bytes), A.U10.27 (`null` for NaN/±inf), A.U19.17 (types)
+- **Site**: `src/asy_webserver_service.py:135-178`
+- **Change**: `__init__(self, pieces: "list[bytes]", max_bytes: int)`; `self._group: list[bytes]`; `add(self, fragment:
+  str) -> None`: `data = fragment.encode()`; `if self._group and self._size + len(data) > self._max_bytes: self.flush()`;
+  append `data`, `self._size += len(data)`; the 16-slot collapse joins with `b"".join(self._group)`; `flush()` appends
+  `b"".join(self._group)`; comment `:136-137` → "# Concatenates adjacent JSON text fragments into pieces of at most
+  max_bytes bytes, never splitting" / "# one - so the largest allocation is bounded by the largest fragment, not by the
+  response." `add_value(self, value: object) -> None`: dict/list/tuple branches unchanged; scalar branch: `if
+  isinstance(value, float) and not math.isfinite(value): self.add("null")` `else: self.add(json.dumps(value))` with one
+  comment line "# json.dumps() writes bare nan/inf, which JSON rejects: a non-finite float is written as null (Part G)."
+- **Resolved**: —
+- **Unit**: U19 (U10 stage: the `null` branch)
+- **Depends**: —
+- **Blast carried by**: every GET route (M.SRC_NET.115, .123); tests (`_written()` → bytes, byte-equality tests,
+  `[len(p)…]` lists, the `"é"` case, the NaN case, per-device non-finite scenario) → A.U19.11, A.U10.27 (tests); SPEC
+  I.3/G.2 "bytes" and the non-finite rule → A.U19.11, A.U10.27 (docs); js mock `JSON.stringify` already writes `null`
+  (A.U10.27)
+- **Kind**: code
+
+### M.SRC_NET.115 Streamed responses hand Microdot one encoded copy
+- **From**: A.U19.11, A.U19.17
+- **Site**: `src/asy_webserver_service.py:181-204` `_stream_dict_response()`, `_pieces_response()`
+- **Change**: `_stream_dict_response(result: "JsonMapping", chunk_bytes: int) -> Response`: `pieces: list[bytes] = []`,
+  body unchanged otherwise (its comment kept: the growable-GET rule, CLAUDE.md memory bullet); `_pieces_response(pieces:
+  "list[bytes]") -> Response`: `Response(iter(pieces), headers={"Content-Type": "application/json; charset=UTF-8",
+  "Content-Length": str(sum(len(p) for p in pieces))})`; its comment keeps its two reasons. Return annotations
+  unquoted (`Response` is a runtime import).
+- **Resolved**: —
+- **Unit**: U19
+- **Depends**: M.SRC_NET.114
+- **Blast carried by**: tests draining an iterator of bytes hold → A.U19.11 (tests)
+- **Kind**: code
+
+### M.SRC_NET.116 One nested config shape; the flatten helper narrows to it
+- **From**: A.U10.36, A.U19.17
+- **Site**: `src/asy_webserver_service.py:207-217` `_flatten_cfg_values()`; `:439`
+- **Change**: `_flatten_cfg_values()` → `def _cfg_values(values: "JsonMapping") -> "JsonDict":` returning the single
+  nested entry's inner dict (`make_dict()`'s `{name: {field: value}}` shape, which every module now returns, SYSTEM
+  included); the flat branch and the `digital_twin/README.md` production-bug pointer go; one comment line "# Every
+  module's get_dict_cfg() returns make_dict()'s {name: {field: value}}; this takes the one inner dict." `:439` calls it.
+- **Resolved**: —
+- **Unit**: U19 (U10 stage: the shape; U19: the types)
+- **Depends**: A.U10.36's `SystemService.get_dict_cfg()` change (SRC_CORE cluster)
+- **Blast carried by**: `_FakeModule.get_dict_cfg()` → nested → A.U10.36 (tests); `digital_twin/README.md:227-229`,
+  `tests/test_digital_twin_sensortask_integration.py:211` → A.U10.36 (TWIN/docs); SPEC C.6 → A.U10.36 (docs)
+- **Kind**: code
+
+### M.SRC_NET.117 `SettingsGroup` typed with the shared callback alias
+- **From**: A.U19.17, A.U11.S02 (`AsyncCallback`)
+- **Site**: `src/asy_webserver_service.py:220-231`
+- **Change**: `post_fct: "Callable[[], None] | None" = None`, `post_asy_fct: "AsyncCallback | None" = None`; body
+  unchanged.
+- **Resolved**: —
+- **Unit**: U19
+- **Depends**: A.U11.S02
+- **Blast carried by**: generated `SettingsGroup(…, post_asy_fct=ntp.ntp_force_sync)` → holds (GEN)
+- **Kind**: code
+
+### M.SRC_NET.118 `_TimeoutStreamProxy`: millisecond bound, shared flags, bounded request head, held stream
+- **From**: A.U31.18 (`wait_for_ms`, `timeout_ms`), A.U2.19 (`timed_out` flag; 49 on the read path), A.U19.07 (the
+  bounded head parser, `_HeadRefused`, `head_refused` flag, `chunk` size), A.U19.06 (`hold()`/`release()`), A.U14.03 +
+  A.U18.43 (4) (the reset comment), A.SDEP.18 (W29/W30, conditional), A.U19.17 (types), A.U10.22 (read-only: `close()`
+  is named a stream-interface mirror in its check)
+- **Site**: `src/asy_webserver_service.py:234-291`
+- **Change**: new private `class _HeadRefused(OSError):` (constructed as `_HeadRefused(errno.EPIPE)`), comment "# A
+  refused request head: errno 32 is in Microdot's muted list (ext/microdot.py:56-61), so it answers 400 with no
+  traceback." Class comment → "# Forwards every stream method ext/microdot.py calls, each bounded by timeout_ms (a plain
+  asyncio.TimeoutError," / "# not an OSError subclass - Part F.1), and bounds the request head before Microdot parses
+  it (SPECIFICATION.md A.5)." / "# Microdot's read-phase catch swallows a read timeout (Part A.5), so this proxy is the
+  only place it is observable." `__init__(self, stream: "_StreamLike", timeout_ms: int, pr: "PrintLogHistory",
+  peer_gone: "list[bool]", timed_out: "list[bool]", head_refused: "list[bool] | None" = None, chunk: int =
+  _DEFAULT_CHUNK_BYTES) -> None:` — stores them; `self._head: list[bytes] | None = []` (header coalescing, unchanged);
+  `self._rbuf = b""`, the head-line counters of A.U19.07 (2), `self._held: object | None = None`. `_bounded(coro)`:
+  `try: return await asyncio.wait_for_ms(coro, self._timeout_ms)` `except asyncio.TimeoutError: self._timed_out[0] =
+  True; raise`. `_bounded_read(coro)`: `TimeoutError` → `await self._pr.wrn_s("Connection reclaimed (per-call
+  timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)` then re-raise; `OSError` → comment "# A read that saw a reset leaves the
+  socket in STATE_PEER_RST_HANDLED with its pcb freed (extmod/modlwip.c:507, 843-844); a" / "# later write still goes
+  through that NULL pcb (:751-760, Part H.7.1), so writes stop here." / "# Re-check at every pin move; remove once
+  modlwip refuses them." then `self._peer_gone[0] = True` and re-raise. `readline()` and `readexactly(n)`: A.U19.07 (1)-(3)
+  as written — `readline()` fills `self._rbuf` through `self._stream.read(k)` with `k = min(limit + 1 - len(self._rbuf),
+  self._chunk)`, `limit = Request.max_readline` read at call time, each read through `_bounded_read()`; returns through the
+  first `\n` or the partial buffer at EOF; counts head lines and refuses (raises `_HeadRefused` outside
+  `_bounded_read()`, after `self._head_refused[0] = True`) on: a line over `limit`, more than `_MAX_HEADER_LINES`
+  headers, a head over `_MAX_HEAD_BYTES`, a line that does not decode as UTF-8, a request line not of three tokens, a
+  header without `:`, a `Content-Length` that is empty or not all ASCII digits or repeated, any `Transfer-Encoding`;
+  `readexactly(n)` takes from `self._rbuf` first, then the stream, and turns the stream's `EOFError` into the same
+  refusal; one comment line per rule at its site. `awrite()`, `aclose()`, `close()`, `wait_closed()`, `get_extra_info()`
+  unchanged apart from `_bounded()`. New `hold(self, closable: object) -> None` (stores one object) and `release(self) ->
+  None` (sets the slot to `None` first, then calls the object's `close()` once), each with one comment line. SDEP.18,
+  after B0's Microdot re-vendor: if the vendored tag writes the header block in one call, the `_head` coalescing and its
+  branch in `awrite()` go (W29); if read-phase exceptions stop being swallowed, the read-timeout log moves per A.SDEP.18
+  (W30) — otherwise both stay as above.
+- **Resolved**: A.U14.03 and A.U18.43 (4) both rewrite the `:256-258` comment (each: "A-C merges"): A.U18.43's text
+  (defect, scope, removal trigger, as G6/R55 requires) with A.U14.03's wording "goes through a NULL pcb" and its
+  "Part H.7.1" pointer, three lines. A.U2.19 adds a `timed_out` list and A.U19.07 a `head_refused` list, both "shared like
+  `peer_gone`": one keyword each, `head_refused` only on the reader proxy (the writer never parses a head).
+- **Unit**: U31 (A.U31.18 latest; staged: U2 flag and codes, U14 comment, U18 comment, U19 parser/hold, U31 ms)
+- **Depends**: M.SRC_NET.112 (constants), A.U19.08 (the trace `_serve()` makes from `head_refused`)
+- **Blast carried by**: `_serve()` builds the pair (M.SRC_NET.127); `_StaticRoutes.serve()` calls `hold()`
+  (M.SRC_NET.124); every reader fake gains `read(n)`, the adversarial-client matrix, the `_TimeoutStreamProxy(writer,
+  1.0, …)` → `1000` test, W49 tests → A.U19.07, A.U31.18, A.U2.19 (tests); L2 raw-socket `Content-Length: -1` case →
+  A.U19.07 (TWIN); L4 negative/non-numeric `Content-Length` row → A.U19.07/U26 (HW); SPEC A.5 head bullet, I.6 sentence,
+  F.1 `readexactly(-1)` fact → A.U19.07 (docs); `_RequestLike.sock` member (`asy_api_response.py`) → A.U19.06 (SRC_CORE)
+- **Kind**: code
+
+### M.SRC_NET.119 `WebserverService.__init__`: three config objects, one route loop, drop counter, readiness flag
+- **From**: A.U5.04 (`ServingLimits`, `StaticSite`, `RouteSources`; `__init__(app, routes, serving, static=None,
+  log=DEFAULT_LOG)`), A.U5.02 (`log`), A.U5.05 (defaults from constants; the `max(chunk_bytes, 1)` clamp stays),
+  A.U19.20 (route loop), A.U19.05 (static routes object), A.U19.08 (`_dropped`), A.U10.01 (`_open_conns` on the shared
+  cap), A.U31.18 (ms attributes), A.U19.15 (error statuses), A.U0.29 (`:387` comment), A.U10.10/A.U10.22 (`setup()` and
+  its readiness flag), A.U19.17 (types)
+- **Site**: `src/asy_webserver_service.py:294-400`
+- **Change**: module-level namedtuples (A.U5.04): `ServingLimits = namedtuple("ServingLimits", ("max_content_length",
+  "chunk_bytes", "max_connections", "backlog", "per_call_timeout_s", "outer_cap_s", "host", "port"))`, `StaticSite =
+  namedtuple("StaticSite", ("mount", "index", "is_hotspot_active"))`, `RouteSources = namedtuple("RouteSources",
+  ("sensors", "settings", "build_info", "system_cmd", "notification_led", "notification_pause", "status_sources",
+  "maintenance_sensors", "error_sources"))` (`from collections import namedtuple` joins the imports), each with a one-line
+  comment carrying the reasons HEAD's parameter comments give (`max_content_length` I.6, `chunk_bytes` I.3 and the
+  `>= 1` clamp, `max_connections`/`backlog` H.7 relationship, `build_info` L.7 verbatim sub-entry, `is_hotspot_active`
+  A.5 captive fallback). `def __init__(self, app: "_MicrodotApp", routes: RouteSources, serving: ServingLimits,
+  static: StaticSite | None = None, log: LogConfig = DEFAULT_LOG) -> None:` — `self.pr: PrintLogHistory =
+  make_logger(log, _NAME)`; `self.initialized = False`; the `routes` fields indexed as today (`_index_by_name`,
+  `_index_pairs`, `dict(… or {})`); `self._max_connections`, `self._chunk_bytes = max(serving.chunk_bytes, 1)`, the
+  backlog clamp and its comment; `self._per_call_timeout_ms = round(serving.per_call_timeout_s * 1000)`,
+  `self._outer_cap_ms = round(serving.outer_cap_s * 1000)`; `self._host`, `self._port`; `self._open_conns =
+  LockedCounter(init_value=0)`; `self._dropped = LockedCounter(init_value=0)`; `Request.max_content_length`/`max_body_length`
+  lines and their comments unchanged; routes: `for method, path, handler in ROUTES: (app.get if method == "GET" else
+  app.put)(path)(getattr(self, handler))`; `after_request`/`after_error_request` with the comment "(SPECIFICATION.md Part
+  A.8)" (no "decision 7"); `for status_code in _ERROR_STATUSES: app.errorhandler(status_code)(_shaped_error_handler(status_code))`;
+  the catch-all comment and `app.errorhandler(Exception)(self._handle_unhandled_exception)`; `if static is not None:`
+  the `:396-398` comment, `site_routes = _StaticRoutes(static, self._chunk_bytes, self.pr)`,
+  `app.get("/")(site_routes.get_index)`, `app.get("/<path:filename>")(site_routes.get)`. New `async def setup(self) ->
+  None: await self.pr.setup(); self.initialized = True`.
+- **Resolved**: A.U10.22's readiness check requires `self.initialized` in every class that defines `async def setup`
+  (G5/R14); A.U10.10 gives this class one and no action writes the flag — added here (the flag gates nothing else: routes
+  are registered at construction and the server starts only after the boot batch, A.U10.10's order). A.U19.08 writes
+  `LockedCounter(init_value=0)` "with A.U10.01's cap" — the default `max_val` is `COUNTER_CAP` after A.U10.01, so no
+  argument is passed.
+- **Unit**: U19 (staged: U5 objects/`log`, U10 cap/setup/flag, U31 ms attributes)
+- **Depends**: M.SRC_NET.112, M.SRC_NET.124, A.U10.01
+- **Blast carried by**: generated `_emit_webserver()` builds the three objects from TOML values and `src/` constants →
+  A.U5.04/A.U5.05 (GEN); `_make_service()` test helper builds the objects (153 call sites unchanged) → A.U5.04 (tests);
+  route-table equality test → A.U19.20 (tests); tests reading `_per_call_timeout_s`/`_outer_cap_s` → `_ms` → A.U31.18
+  (tests); SPEC A.5/A.8/H.7/I.3 constructor mentions, A.7 step 14, G.2 config-object entry → A.U5.04 (docs)
+- **Kind**: code
+
+### M.SRC_NET.120 Sensor and flat settings routes answer every key
+- **From**: A.U19.01 (1)-(3), (5) (unknown sensor or key → `INVALID`; `dispatch_keys`; ERR branch goes), A.U19.16
+  (constants), A.U19.17 (types), A.U10.36 (`_cfg_values()`), A.U10.40 (dispatch key names), A.U36.512 (`:477` "device
+  variant" → "device"), A.U19.12 (read-only: the lock is taken inside `_get_dict_cfg()`, SRC_CORE's site)
+- **Site**: `src/asy_webserver_service.py:402-486, 519-520`
+- **Change**: `_get_measurements()`/`_get_sensors()` unchanged in body (typed `result: dict[str, JsonValue]`, return
+  `Response`); `_put_sensors()`: unknown `name` or non-dict `fields` → `results[name] = INVALID`, comment "# An unknown
+  sensor, or a sensor entry that is not an object, answers "Invalid" in place of its field map." `_get_settings_flat()
+  -> "JsonDict"` using `_cfg_values()`. `_apply_settings_groups(self, endpoint: str, body: "JsonMapping", dispatch_keys:
+  tuple[str, ...] = ()) -> "dict[str, str]"`: the `:446-448` comment stays; per group as today but the `res == "ERR"`
+  branch `:463-469` and its comment go; `group_result = envelope.get("result")` / `if isinstance(group_result, dict):
+  results.update(group_result)` kept as the type narrowing of the envelope's union (comment "# the envelope's result is
+  typed as the JSON union; narrowed here, never False after handle_set_cmd()"); after the loop every body key no group
+  lists and not in `dispatch_keys` → `INVALID`. `_put_networking()` passes `()`, `_put_system()` `("SystemCmd",)`,
+  `_put_notification()` `("LightCmdLED", "PauseTime")`. `_get_networking()` comment → "# Streamed via
+  _stream_dict_response(): this scales with however many SettingsGroup entries this device's own build wires up" / "#
+  (CLAUDE.md's memory-safety hard rule)."; `_get_system()`/`_get_notification()` unchanged apart from types.
+- **Resolved**: U19 A-C note 1 (return `WriteValidity` from `handle_set_cmd()` instead of an envelope, to drop the
+  `isinstance` narrowing) — A.U11.26 as written keeps the envelope (`return make_response(0, …, result=results)`), and the
+  other cluster owns that site; with the envelope kept, the narrowing stays as a type narrowing (the A.U18.41/A.U11.S01
+  reading: a check mypy needs, unreachable `False` arm, registered in E.5.1 by U35). Agent decision for OR2.c; the
+  api_response cluster confirms (gap below).
+- **Unit**: U19 (U10 stage: `_cfg_values()`, key names; U36 stage: the `:477` wording lands with U19's rewrite of the
+  same comment)
+- **Depends**: M.SRC_NET.116, A.U11.26
+- **Blast carried by**: js mock `applySparsePut()` and unknown-sensor mirror → A.U19.01/U23 (WEB); tests (unknown
+  sensor → `{"BOGUS": "Invalid"}`, unknown top-level key → "Invalid" on every settings endpoint, dispatch key never
+  double-reported, per-device `PUT /networking {"NoSuchKey": 1}`) → A.U19.01 (tests); SPEC A.8 `:607-608` → A.U19.01
+  (docs); E.5.1 narrowing entry → A.U35.41 (docs)
+- **Kind**: code
+
+### M.SRC_NET.121 `SystemCmd`: five exact words, whole-string match, one guarded run
+- **From**: A.U19.04 (loop form, `_run_system_cmd()`), A.S0930.09 (two words, comment), A.U2.19 (e2 → 14), A.U19.16
+  (constants), A.U30.19 (`report_if_fatal`)
+- **Site**: `src/asy_webserver_service.py:494-517` `_put_system()`, `_dispatch_system_cmd()`
+- **Change**: `_put_system()`: `results = dict(await self._apply_settings_groups("system", body, ("SystemCmd",)))`; `if
+  "SystemCmd" in body: results["SystemCmd"] = await self._dispatch_system_cmd(body["SystemCmd"])`. `async def
+  _dispatch_system_cmd(self, cmd: object) -> str:` comment "# object: whatever JSON value the client sent; membership in
+  the enum is the whole check" / "# (whole-string equality: no alias, prefix, case folding or number runs a command)."; `if
+  self._system_cmd is None: return INVALID`; `for name in _SYSTEM_CMDS: if cmd == name: return await
+  self._run_system_cmd(name)`; `return INVALID`. New `async def _run_system_cmd(self, name: str) -> str:` with HEAD's
+  guarded `try` and its comment (≤ 3 lines): `ok = await self._system_cmd(name)` / `except Exception as e:
+  report_if_fatal(e); await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK); return FAILED` /
+  `return VALID if ok else FAILED`.
+- **Resolved**: OR122.a (2) requires "the dispatch compares the whole string against `_SYSTEM_CMDS` … no alias, prefix,
+  case folding or number"; A.U19.04's loop compares `cmd == name` for each of the five `str` words — equality on the whole
+  value, so a non-`str` JSON value, a prefix, a case variant or a number never equals a word (settled by OR122.a (2);
+  the property is pinned by A.S0930.21 (g)'s near-miss test and A.S0930.20's L0 mirror). OR126.a (3) (reboot and
+  bootloader on the controlled sequence) changes only what the callback does (`SystemService`, A.S0930.31); this
+  dispatcher answers the callback's bool as today.
+- **Unit**: U30 (A.U30.19 latest; staged: U2 code, U19 loop/constants, the supplement's two words)
+- **Depends**: M.SRC_NET.112, A.U30.19 (`report_if_fatal()` in `asy_base_classes`)
+- **Blast carried by**: generated `_system_cmd_callback` answers all five words → A.S0930.11 (GEN); the dropdown's two
+  options → A.S0930.10 (GEN/WEB); tests (non-string values → Invalid; near misses; exact words; raise → Failed + one 14)
+  → A.U19.04, A.S0930.21 (tests); SPEC A.8 `:612` and A.11 threat model rows → A.S0930.30, A.U29.01 (docs)
+- **Kind**: code
+
+### M.SRC_NET.122 Notification dispatch validates the LED command and the pause through synthetic schemas
+- **From**: A.U19.02 (LED validation; callback `(r, g, b, t)`; busy → `FAILED`), A.U19.03 (pause pre-check goes), A.U10.40
+  (`LightCmdLED`, members `R/G/B/T`), A.U2.19 (e3/e5 → 14), A.U19.16, A.U30.19, A.U9.09 (comment wording referenced by
+  A.U19.03)
+- **Site**: `src/asy_webserver_service.py:522-565`
+- **Change**: `_put_notification()`: `("LightCmdLED", "PauseTime")` dispatch keys; `if "LightCmdLED" in body:
+  results["LightCmdLED"] = await self._dispatch_notification_led(body["LightCmdLED"])`; `PauseTime` as today.
+  `_dispatch_notification_led(payload: object) -> str`: `INVALID` when the callback is `None`, `payload` is not a dict,
+  a key is outside `R`/`G`/`B`/`T` or one is missing; each value through `type_or_range_error(value, field)` against
+  `_LIGHT_CMD_FIELDS` (any error → `INVALID`; coerced values kept); then the guarded call `ok = await
+  self._notification_led(r, g, b, t)` with `except Exception as e: report_if_fatal(e); await self.pr.err_s("notification_led
+  callback failed:", e, errno=_ERR_CALLBACK); return FAILED`; `return VALID if ok else FAILED` (a busy LED answers
+  "Failed", owner, 2026-09-29). `_dispatch_notification_pause(payload: object) -> str`: comment "# Out of range is
+  Invalid, never clamped (legacy rejected it)." (with the shared constant comment of M.SRC_NET.112); `if
+  self._notification_pause is None: return INVALID`; `is_error, coerced = type_or_range_error(payload,
+  _PAUSE_TIME_FIELD)`; `if is_error: return INVALID`; the guarded call as above (`errno=_ERR_CALLBACK`,
+  `report_if_fatal(e)` first).
+- **Resolved**: —
+- **Unit**: U30 (A.U30.19; staged: U2 codes, U10 key names, U19 validation)
+- **Depends**: M.SRC_NET.112, A.U9.03 (its generated callback body is superseded by A.U19.02's)
+- **Blast carried by**: generated `_notification_led_callback(r, g, b, t)` and the removal of `_FIELD_LED_*` → A.U19.02
+  (GEN); js mock `dispatchLightCmdLed()` "Failed" → "Invalid", members → A.U19.02/A.U10.40/U23 (WEB); tests (seven
+  scenarios "Failed" → "Invalid", fake callback signatures, new malformed cases, pause list/dict cases) → A.U19.02,
+  A.U19.03 (tests); `src/config_manager.py:124-127` comment names this dispatcher → A.U11.30 as re-targeted by U19 A-C note
+  5 (SRC_CORE); SPEC H.6/A.8 → A.U19.02 (docs)
+- **Kind**: code
+
+### M.SRC_NET.123 `/status`: guarded sources, concurrent `ResetErrors`, unknown keys answered
+- **From**: A.U11.31 (`ResetErrors` per result, concurrent `gather`), A.U19.01 (4) (other keys → `INVALID`), A.U2.19
+  (e6 → 14), A.U19.16 (constants), A.U19.17 (types), A.U30.19, A.U23.11 (read-only: the `{"error":"unavailable"}` shape
+  the page renders)
+- **Site**: `src/asy_webserver_service.py:569-639`
+- **Change**: `_get_status()`/`_build_status_pieces()` unchanged in logic (pieces are `bytes` through M.SRC_NET.114; the
+  `_NAME` entry and its comment kept); `_write_guarded(self, writer: "_PieceWriter", fct: "StatusSourceFct", name: str)`
+  and `_write_errcount_entry(self, writer, get_log_fct: "Callable[[], Awaitable[ErrorLog]]", name: str)`: each `except
+  Exception as e: report_if_fatal(e); await self.pr.err_s("Status stream source failed:", name, e,
+  errno=_ERR_CALLBACK)` then `writer.add('{"error":"unavailable"}')`. `_put_status()`: `body is None` → `make_response(1)`;
+  `result: dict[str, str] = {}`; `if "ResetErrors" in body:` `if body["ResetErrors"] is True:` `ok = await
+  asyncio.gather(*(m.reset_error_counter() for m in self._error_sources.values()), self.reset_error_counter())`,
+  `result["ResetErrors"] = VALID if all(ok) else FAILED` / `else: result["ResetErrors"] = INVALID`; every other body key →
+  `result[key] = INVALID`; `return ar.make_response(0, result=result)`.
+- **Resolved**: A.U11.31 writes `body.get("ResetErrors") is True → … ; any other ResetErrors value → "Invalid"`;
+  A.U19.01 (4) adds "every body key other than `ResetErrors` → Invalid in the result A.U11.31 builds" — combined above.
+- **Unit**: U30 (A.U30.19; staged: U2, U11 reset, U19 keys/constants)
+- **Depends**: M.SRC_NET.114, M.SRC_NET.129 (`reset_error_counter() -> bool`), A.U11.31's `-> bool` at every error source
+- **Blast carried by**: error sources' `reset_error_counter() -> bool` in every module (this cluster: M.SRC_NET.006,
+  UART merges below; other clusters' modules → A.U11.31); js mock `ResetErrors` result and `render.js` → A.U11.31/U23
+  (WEB); tests (result words, concurrency proof, `{"ResetErrors": true, "X": 1}`) → A.U11.31, A.U19.01 (tests);
+  SPEC A.8 `/status` PUT line, the sequential-reset sentence → A.U11.31 (docs); BACKLOG item 24 → A.U19.14 per U19 A-C
+  note 4 (docs)
+- **Kind**: code
+
+### M.SRC_NET.124 Static routes on a typed object: closed stream, revalidation, one write bound
+- **From**: A.U19.05 (`_StaticRoutes`; the `assert` and `S101` go), A.U19.06 (`hold()`, `Cache-Control: no-cache`),
+  A.U18.43 (5) (send_file comment), A.SDEP.18 (W43: the comment names the vendored default), A.U19.17 (types)
+- **Site**: `src/asy_webserver_service.py:641-667`
+- **Change**: new private `class _StaticRoutes:` — `__init__(self, site: StaticSite, chunk_bytes: int, pr:
+  "PrintLogHistory")`; `async def get_index(self, request: "_RequestLike") -> Response: return self.serve(request,
+  self._site.index)`; `async def get(self, request: "_RequestLike", filename: str) -> Response: return self.serve(request,
+  filename)`; `def serve(self, request: "_RequestLike", filename: str) -> Response:` — HEAD's `_serve_static()` body with
+  `self._site.mount`/`.index`/`.is_hotspot_active`, the `..` guard and its comment, no `assert`; right after `open()`:
+  `request.sock[1].hold(stream)` with "# closed when the connection ends, a HEAD or aborted response included"; the
+  `:662-663` comment pair; `response.headers["Content-Length"] = str(size)`; `response.headers["Cache-Control"] =
+  "no-cache"  # revalidate before reuse: a reflashed page is never served stale (agent, 2026-09-30)`;
+  `response.send_file_buffer_size = self._chunk_bytes` with the comment "# Microdot v2.6.2 reads 1,024 B per send_file
+  chunk (ext/microdot.py:567, 746); ours is the one write bound." / "# Re-check at a Microdot bump." (version and lines of
+  the tag B0 vendors, A.SDEP.06/A.SDEP.18). The three HEAD methods on `WebserverService` go.
+- **Resolved**: —
+- **Unit**: U19
+- **Depends**: M.SRC_NET.118 (`hold()`), M.SRC_NET.119 (registration), A.U11.S02/A.U19.06 (`_RequestLike.sock`,
+  SRC_CORE's file)
+- **Blast carried by**: `pyproject.toml:309` loses `S101` (and `ANN401`, M.SRC_NET.110), comment `:306-308` → A.U19.05,
+  A.U19.17 (tooling; BACKLOG chroot list line); request builders gain `sock=(_NoopHolder(), _NoopHolder())`, static and
+  frozen-mount tests, HEAD-close and `Cache-Control` tests → A.U19.06 (tests); comments naming `_serve_static()` in tests
+  and SPEC A.5/A.9/I.3, `tests_hardware/README.md:549` → A.U19.05 (tests/docs)
+- **Kind**: code
+
+### M.SRC_NET.125 The catch-all error handler records a stack overflow and answers from the catalog
+- **From**: A.U19.15 (`make_response(500)`), A.U2.19 (e4 → 23), A.U30.19 (`report_if_fatal(exc)` first), A.U19.17
+  (return type)
+- **Site**: `src/asy_webserver_service.py:671-676`
+- **Change**: `async def _handle_unhandled_exception(self, _request: "_RequestLike", exc: Exception) ->
+  "tuple[ResponseEnvelope, int]":` — `report_if_fatal(exc)` first; comment kept (≤ 3 lines); `await self.pr.err_s("Unhandled
+  exception in route handler:", exc, errno=_ERR_UNEXPECTED)`; `return ar.make_response(500), 500`.
+- **Resolved**: —
+- **Unit**: U30
+- **Depends**: A.U30.19
+- **Blast carried by**: webserver handler raising the stack-exhausted error answers 500 and sets the flag → A.U30.19
+  (tests); the L0 fatal-report check names this handler → A.U30.19 (tests)
+- **Kind**: code
+
+### M.SRC_NET.126 `_close_writer()`: one entry per close, millisecond bound
+- **From**: A.U2.19 (w4 → 52, w5 → 53), A.U3.11 (W53 prints when W52 fired in the same call), A.U31.18
+  (`wait_for_ms`), A.U30.19
+- **Site**: `src/asy_webserver_service.py:680-690`
+- **Change**: `close_failed = False`; `try: writer.close()` / `except Exception as e:` `report_if_fatal(e)`, comment kept
+  (≤ 3 lines), `await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)`,
+  `close_failed = True`; `try: await asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)` / `except
+  Exception as e:` `report_if_fatal(e)`; comment "# bounds a hanging wait_closed() (F.6); after a failed close() it only
+  prints: one close, one entry"; `if close_failed: self.pr.wrn("Error waiting for writer to close:", e)` `else: await
+  self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)`.
+- **Resolved**: —
+- **Unit**: U31 (A.U31.18 latest; U3 one-entry rule, U2 codes, U30 fatal report — staged)
+- **Depends**: M.SRC_NET.112
+- **Blast carried by**: the one-entry-per-event L0 scan (no allow-list entry for this pair) and the L1 "close that raises
+  and whose wait then fails adds exactly one W52" test → A.U3.11 (tests); persisted-warning tests read the entry →
+  A.U24.41 (tests)
+- **Kind**: code
+
+### M.SRC_NET.127 `_serve()`: traced drops, split timeouts, released stream, no unreachable arm
+- **From**: A.U19.08 ((1)-(3), (4), (6), (7): `_note_drop()`, refusal/peer-reset/bad-head traces, `EOFError` arm goes,
+  comment), A.U2.19 (49 vs 50 by `timed_out`, w3 → 51, e1 → 23), A.U19.07 (`head_refused` flag read after
+  `handle_request()`), A.U19.06 (`release()` in `finally`), A.U31.18 (`wait_for_ms`, `_ms` bounds), A.U19.17
+  (`_StreamLike` annotations), A.U0.29 (`:698` comment), A.U30.19, A.U10.01 (the gauge's cap)
+- **Site**: `src/asy_webserver_service.py:692-731`
+- **Change**: new `async def _note_drop(self, wrnno: int, what: str) -> None: await self._dropped.increment(); await
+  self.pr.wrn_s(what, "- dropped so far:", await self._dropped.get_value(), wrnno=wrnno)` (one comment line: "# One entry
+  per event; a run of identical codes spends one history slot (print_log's newest-entry rule)."). `async def
+  _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:` (the `Any` comment `:693-695` goes: the one
+  mismatch moves to `start_server()`, M.SRC_NET.128); `current = await self._open_conns.increment()`; over the ceiling:
+  comment "# Reject-when-full (owner, 2026-08-12; SPEC A.8): accepted by asyncio, then closed with no response ever" / "#
+  written - cheapest, doesn't risk the rejection path itself becoming a resource consumer."; `await
+  self._open_conns.decrement()`; `await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")`; `await
+  self._close_writer(writer)`; `return`. Then `peer_gone = [False]`, `timed_out = [False]`, `head_refused = [False]`;
+  `proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_ms, self.pr, peer_gone, timed_out, head_refused,
+  self._chunk_bytes)`, `proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_ms, self.pr, peer_gone,
+  timed_out)`; `try:` `try: await asyncio.wait_for_ms(self._app.handle_request(proxy_reader, proxy_writer),
+  self._outer_cap_ms)` / `except asyncio.CancelledError: raise` (comment kept) / `except asyncio.TimeoutError as e:`
+  comment `:717-719` kept, `await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if
+  timed_out[0] else _WRN_HTTP_REQUEST_CAP)` / `except OSError as e:` comment kept, `wrnno=_WRN_HTTP_SOCKET_ERROR` /
+  `except Exception as e:  # never raises out of this task (SPECIFICATION.md A.5)` then `report_if_fatal(e)` and `await
+  self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)`; after the inner `try`: `if
+  peer_gone[0]: await self._note_drop(_WRN_HTTP_PEER_RESET, "Connection reset by the peer before its response")` and `if
+  head_refused[0]: await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")`; `finally:` `proxy_writer.release()`,
+  then HEAD's nested `try: await self._close_writer(writer)` / `finally: await self._open_conns.decrement()` with its two
+  comments. The `except EOFError` arm and its comment are gone.
+- **Resolved**: HEAD's `except asyncio.TimeoutError` logs one code for two conditions — A.U2.19 splits it by the
+  `timed_out` flag (49 write-phase per-call, 50 outer cap); A.U19.08 does not touch that arm; both hold. The EOFError arm's
+  W48 is re-homed to the peer-reset trace (U19 A-C note 3), so W48's meaning changes with its only site.
+- **Unit**: U31 (A.U31.18 latest; staged: U0 comment, U2 codes, U10 cap, U19 drops/flags/release, U30 fatal report,
+  U31 ms)
+- **Depends**: M.SRC_NET.112, M.SRC_NET.118, M.SRC_NET.119, M.SRC_NET.126
+- **Blast carried by**: `HTTPDropped` in the generated `/status` networking block (`get_dropped_count()`, M.SRC_NET.129)
+  → A.U19.10 (GEN); tests (ceiling refusals now logged — tests asserting no log invert; peer-reset entries; W49/W50;
+  seven-refusals counter case; preconnect EOF no entry) → A.U19.08, A.U2.19 (tests); `tests_hardware` benign-code lists gain
+  60/48 → A.U19.08 (HW); twin concurrency scenario `HTTPDropped` rises → A.U19.08/A.U19.10 (TWIN); SPEC H.7 drop/accept
+  sentences with register fix 2's heap clause, A.5 ladder sentence → A.U19.08 (docs); catalog rows → U19 A-C note 3
+  (catalog)
+- **Kind**: code
+
+### M.SRC_NET.128 `_serve_loop()`: setup in the batch, a bounded start retry, the typed start call
+- **From**: A.U10.44 (`_run()` → `_serve_loop()`), A.U10.10 (`pr.setup()` leaves the task), A.U19.09 (start retry),
+  A.U19.17 (`# type: ignore[arg-type]` with reason at `start_server()`), A.S0930.18 (read-only: `wait_closed()` forwards a
+  cancel and closes the listening socket — pinned by its test)
+- **Site**: `src/asy_webserver_service.py:733-739`
+- **Change**: `async def _serve_loop(self) -> None:` — the backlog comment `:736-737` kept; `attempt = 0`; `while
+  True:` `try: server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)  #
+  type: ignore[arg-type]` preceded by the comment "# The stub splits MicroPython's one Stream into StreamReader/StreamWriter
+  (extmod/asyncio/stream.py:92-93" / "# aliases both to Stream); remove the ignore once the stub models the one class."
+  then `break` / `except (MemoryError, OSError) as e:` `attempt += 1`; `if attempt >= _START_RETRIES: await
+  self.pr.wrn_s("Web server start failed:", e, wrnno=_WRN_HTTP_START_FAILED); raise`; `self.pr.wrn("Web server start
+  failed, retrying:", e)`; `await asyncio.sleep(_START_RETRY_S)`; comment (≤ 3 lines) "# Retries span one lwIP close
+  linger (10 s): a socket() failure holds nothing; a failed bind()/listen() holds its pcb until a" / "# collection, up to
+  two across the retries. The last failure ends the task for the supervisor (SPECIFICATION.md A.5)."; after the loop
+  `await server.wait_closed()`.
+- **Resolved**: A.S0930.18 ("DONE-AT-HEAD, pinned") and A.U19.09 both name this function; the retry wraps only
+  `start_server()`, `wait_closed()` stays — the cancel property A.S0930.18 pins is unchanged (A.S0930.18's Depends:
+  "A-C merges").
+- **Unit**: U19 (U10 stage: name, setup removal)
+- **Depends**: M.SRC_NET.112, M.SRC_NET.119 (`setup()`), A.U10.10
+- **Blast carried by**: tests (fake `start_server` failing twice then serving; failing three times → one persisted
+  entry and re-raise; the cancel-closes-the-port test on a file-owned port block) → A.U19.09, A.S0930.18 (tests); SPEC
+  A.5 ladder sentence, F.5 forwarded-cancel fact → A.U19.09, A.S0930.18 (docs); catalog 62 → U19 A-C note 3 (catalog)
+- **Kind**: code
+
+### M.SRC_NET.129 Starters, error sources, drop count and a comment without history
+- **From**: A.U10.44 (`_start_serving()` → `start_asy_serve()`), A.U19.17 (`TaskStarter`, `ErrorSource`), A.U19.10
+  (`get_dropped_count()`), A.U11.31 (`reset_error_counter() -> bool`); adherence finding (`:749-752` cites a temporary
+  plan step, G9/R12, and is history)
+- **Site**: `src/asy_webserver_service.py:741-767`
+- **Change**: `def start_asy_serve(self) -> "asyncio.Task[None]": return asyncio.get_event_loop().create_task(self._serve_loop())`;
+  `get_task_starters(self) -> "list[TaskStarter]": return [self.start_asy_serve]`; `get_timer_starters(self) ->
+  "list[Callable[[], None]]": return []` with the comment "# No machine.Timer in this module: kept empty, not omitted, so
+  callers treat every module alike (SPECIFICATION.md C.9)."; `get_error_sources(self) -> "list[ErrorSource]"` (comment
+  kept); `get_loggers()` unchanged; new `async def get_dropped_count(self) -> int: return await
+  self._dropped.get_value()`; `async def reset_error_counter(self) -> bool: return await self.pr.reset()`.
+- **Resolved**: HEAD's "found missing entirely during the Step 7 audit, unlike those two" names a temporary plan step
+  (G9/R12: permanent text cites no temporary plan by section or number) and is history (CLAUDE.md working agreement);
+  no action carries it — rewritten here.
+- **Unit**: U19 (U10 stage: starter name; U11 stage: `-> bool`)
+- **Depends**: M.SRC_NET.127
+- **Blast carried by**: generated collectors call `get_task_starters()`; generated `_networking_status()` reads
+  `webserver.get_dropped_count()` → A.U19.10 (GEN); tests calling `_start_serving()`/`_run()` by name → A.U10.44 (tests)
+- **Kind**: code
+
+### M.SRC_NET.130 Module helpers: typed, central B905, fatal report
+- **From**: A.U19.17 (types), A.U28.28 (the B905 inline `noqa` goes), A.U19.15 (`_shaped_error_handler(status_code)`),
+  A.U30.19 (`_body_as_dict()`'s broad handler)
+- **Site**: `src/asy_webserver_service.py:770-807`
+- **Change**: `_shape_errcount_entry(raw: "ErrorLog", name: str) -> "JsonDict"`: the history comprehension without the
+  inline `noqa` (B905 exempt centrally for MicroPython-run code, A.U28.27/A.U28.28), its two-line reason comment kept as
+  one line "# No strict= (ruff B905): MicroPython's zip() rejects it; ErrEntry keeps both lists in step."; `_body_as_dict(request)
+  -> "dict[str, JsonValue] | None"`: `except Exception as e: report_if_fatal(e); return None`; `_mark_connection_close()`
+  unchanged; `_shaped_error_handler(status_code: int) -> "Callable[[_RequestLike], tuple[ResponseEnvelope, int]]"`,
+  whose inner handler returns `ar.make_response(status_code), status_code`.
+- **Resolved**: —
+- **Unit**: U30 (U19/U28 stages first)
+- **Depends**: A.U28.27, M.SRC_NET.112
+- **Blast carried by**: `asy_api_response` catalog gains 400/404/405/413/500 → A.U19.15 (SRC_CORE); shaped-error tests hold
+  (texts unchanged) → A.U19.15 (tests); ruff clean over the scope → A.U28.28 (tooling)
+- **Kind**: code
+
+### M.SRC_NET.131 Member order per D.15 (webserver)
+- **From**: A.U10.33
+- **Site**: `src/asy_webserver_service.py` classes `_PieceWriter`, `SettingsGroup`, `_TimeoutStreamProxy`,
+  `WebserverService`, module functions
+- **Change**: pure reorder by D.15's key (A.U10.32), AST-verified; members added after U10 (`_StaticRoutes`, `_HeadRefused`,
+  `_note_drop()`, `_run_system_cmd()`, `get_dropped_count()`, `hold()`/`release()`, `setup()`) placed by the same key when
+  written.
+- **Resolved**: —
+- **Unit**: U10 (last U10 edit)
+- **Depends**: every U10 edit of the file
+- **Blast carried by**: —
+- **Kind**: code
+
+## src/asy_uart_comm.py
+
+The protocol module of the two-implementation contract: every merged change below names the `UART_C_PORT_CHANGELOG.md`
+entry its constituents carry (DOCS cluster writes the file; numbering in landing order, A.U17.30); a comment-only or
+annotation-only change carries none, per its constituent. No merged change here blocks the loop: every new wait is an
+`await asyncio.sleep_ms()` or goes through the driver's `ready()` (CLAUDE.md UART rule, F.5.8/F.5.9).
+
+### M.SRC_NET.150 Imports and the `TYPE_CHECKING` block
+- **From**: A.U10.37 (`asy_base_classes`, `asy_print_log`), A.U16.05 (`LockableBuffer` → `RegionBuffer`), A.U10.04 +
+  A.U10.01 (`COUNTER_CAP`), A.U17.13 (`COUNTER_CAP` for `_take_discarded()`), A.U5.02/A.U5.12 (`DEFAULT_LOG`,
+  `LogConfig`; the FRAM-manager import goes), A.U17.26 (`Any`/`_asyncio` go; `TaskStarter`/`TimerStarter`), A.U10.46
+  (alias home), A.U30.19 (`report_if_fatal`), A.U10.31 (unquote)
+- **Site**: `src/asy_uart_comm.py:8-58`
+- **Change**: runtime imports: `import asyncio` / `import time` / `from collections import namedtuple` / `from micropython
+  import const` / `from asy_base_classes import COUNTER_CAP, RegionBuffer, report_if_fatal` / `from asy_print_log import
+  DEFAULT_LOG, PrintLogHistory, make_logger`. `TYPE_CHECKING` block: `from collections.abc import Callable` (kept: `_call()`),
+  `from typing import Protocol`, `from asy_base_classes import TaskStarter, TimerStarter`, `from asy_print_log import
+  ErrorLog, LogConfig`, `from asy_uart_driver import UART`; `import asyncio as _asyncio`, `Any` and the
+  `asy_fram_manager` import go. The five callback `Protocol` classes and `Readable`/`Writable` unchanged (their comments
+  kept).
+- **Resolved**: —
+- **Unit**: U30 (A.U30.19's import is the last to land). Staged: U5 (`DEFAULT_LOG`/`LogConfig`, FRAM import out), U10
+  (module renames, `COUNTER_CAP`, unquoting), U16 (`RegionBuffer`), U17 (`TaskStarter`/`TimerStarter`, `Any` out), U30
+  (`report_if_fatal`). Each stage leaves the file importing exactly the names it uses (ruff F401).
+- **Depends**: A.U10.01/A.U10.46/A.U16.05/A.U30.19 in `asy_base_classes` (SRC_CORE), A.U5.01 (`LogConfig`)
+- **Blast carried by**: UART changelog Class B entries for the renames → A.U10.37, A.U16.05 (DOCS); ANN401 baseline list
+  loses the file → A.U17.26/A.U8.24 (TOOL)
+- **Kind**: code
+
+### M.SRC_NET.151 Command-byte names: only `CMD_SET` stays public
+- **From**: A.U10.29 (`CMD_ACK`/`CMD_GET` → `_CMD_ACK`/`_CMD_GET`, comment)
+- **Site**: `src/asy_uart_comm.py:66-71`; every use (`:285`, `:417`, `:445`, `:1003`, `:1012`, `:1026-1037`, `_get_unlocked()`
+  `:922`, `_write_frame_with_ack()` `:637`)
+- **Change**: `:66-68` → "# CMD_SET is public: asy_uart_link_driver.py imports it; ACK and GET are module-private.";
+  `_CMD_ACK = const(0x01)`, `_CMD_GET = const(0x02)`, `CMD_SET = const(0x04)`; every use follows. `ROLE_INITIATOR`/
+  `ROLE_RESPONDER` stay public (imported by `asy_uart_link_driver.py` and `buildgen/validate.py`, A.U20.27). Values
+  unchanged.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: —
+- **Blast carried by**: UART changelog Class B "`CMD_ACK`/`CMD_GET` become module-private names; values and wire unchanged"
+  → A.U10.29 (DOCS); tests keep their J.3 wire copies (`tests/test_asy_uart_comm.py:33-42`) → A.U24.01/A.U24.02 (TEST_UNIT);
+  the L0 constants table lists `_CMD_ACK`/`_CMD_GET` → A.U17.11 (SCR/DOCS)
+- **Kind**: code
+
+### M.SRC_NET.152 Recovery and timing constants: tags, Part J pointers, the two ceilings
+- **From**: A.U8.06 (tags `:93-95, :98`), A.U36.544 (3) (`:87` "changelog A4", `:90` "changelog A5" → Part J), A.U17.20
+  (`_TICKS_HORIZON_MS`, `_POLL_WAIT_MAX_MS`), A.U3.02 (`_REJECT_MAP_LEN` goes), A.U10.37 (the `captive_dns.py` mention),
+  A.U17.14 (read: `_DIAG_RESYNC_STREAK` is the cap)
+- **Site**: `src/asy_uart_comm.py:81-102`
+- **Change**: `:87` "Both are 1.5 x timeout and both are part of the wire contract (changelog A4)." → "… part of the wire
+  contract (Part J)."; `:90` "The drain's own hard bound (changelog A5)." → "The drain's own hard bound (Part J.5)."; tags
+  (A.U8.02 grammar, beside the existing trailing comments or on the line above where the line would pass the cap):
+  `_GATE_STEP_MS` `# @tunable uart.gate_step_ms = 20`, `_GC_PAUSE_WORST_MS` `# @tunable uart.gc_pause_worst_ms = 21`,
+  `_POLL_JITTER_MS` `# @tunable uart.poll_jitter_ms = 5`, `_DIAG_RESYNC_STREAK` `# @tunable uart.diag_resync_streak = 2`;
+  the contract constants (`_UID_MAX`, `_CHUNKS_MAX`, `_PAYLOAD_MIN/MAX`, `_RESYNC_NUM/DEN`, `_DRAIN_BOUND_MULT`,
+  `_BACKOFF_MULT`, `_BACKOFF_MAX_MULT`, `_MIN_CHUNKS`) stay untagged. `_BACKOFF_MAX_MULT`'s comment → "cap = 5 x timeout,
+  matching asy_captive_dns.py's own 500 ms -> 5 s shape". New, after `_CMD_ID_MAX`: `_TICKS_HORIZON_MS =
+  const(0x1FFFFFFF)  # 2**29 - 1: the longest delay ticks_add() and sleep_ms() take and the widest span ticks_diff()
+  compares (F.1)` and `_POLL_WAIT_MAX_MS = const(9)  # J.6: a transaction polls at single-digit milliseconds` (contract
+  bounds, untagged, A.U17.20). `_REJECT_MAP_LEN` and its comment go.
+- **Resolved**: A.U8.06 "Depends: U17's upper bounds … may change the literals — the tags move with them": no tagged
+  literal changes value here (the two new constants are bounds, not tunables, per A.U17.20).
+- **Unit**: U36 (A.U36.544's label removal). Staged: U3 (`_REJECT_MAP_LEN` out, with its users, M.SRC_NET.157/.163),
+  U8 (tags), U10 (the module name in the comment), U17 (two new constants).
+- **Depends**: A.U8.01/A.U8.02 (tag grammar, Part N rows)
+- **Blast carried by**: Part N rows `uart.*` (Basis, "Re-check trigger: any value change is logged in
+  UART_C_PORT_CHANGELOG.md") and actor-tag normalisation (AC_NOTES 6) → A.U8.06 (DOCS); `buildgen/validate.py:246-273`
+  reads `_GC_PAUSE_WORST_MS` from source (comments do not change the AST) → A.U8.06 (GEN); UART changelog Class B for the
+  two ceilings → A.U17.20, for the map's removal → A.U3.13 (DOCS); L0 constants table rows (`_TICKS_HORIZON_MS`,
+  `_POLL_WAIT_MAX_MS` Class B; no `_REJECT_MAP_LEN`) → A.U17.11 (SCR/DOCS); the changelog keeps its A4/A5 entries → A.U36.544
+- **Kind**: code
+
+### M.SRC_NET.153 Error codes: catalog names and numbers, two new UART codes
+- **From**: A.U2.20 (renames/values, band comment, `_ERRNO_MIN/_MAX`/`_WRNNO_MIN/_MAX` go), A.U2.04 (named-constant
+  idiom), A.U3.08 (`_WRN_RESYNC` goes), A.U3.02 (`_WRN_FAULT_CLEARED` goes), A.U17.20 (`_ERR_UART_POLL_RATE`), A.U17.22
+  (`_ERR_UART_CODEC_SIZE`), A.U2.01 (the band and rows)
+- **Site**: `src/asy_uart_comm.py:104-141` (block and comment) and every `_err`/`_fault`/`err_s`/`wrn_s` use in the file
+- **Change**: comment `:104-106` → "# Codes from the global catalog (buildgen/error_catalog.json): the UART band 75-99
+  for this module's own conditions, the shared codes for the rest. Mirrored in SPECIFICATION.md Part C.7.1." Block:
+  shared `_ERR_CALLBACK = const(14)`, `_ERR_NOT_INIT = const(18)`, `_ERR_ALLOC = const(20)`, `_ERR_BAD_ARG = const(21)`,
+  `_ERR_TIMEOUT = const(22)`, `_ERR_UNEXPECTED = const(23)`; band `_ERR_UART_PAYLOAD_SIZE` 75, `_ERR_UART_TIMEOUT_PARAM`
+  76, `_ERR_UART_NO_BUS` 77, `_ERR_UART_RXBUF` 78, `_ERR_UART_ROLE_REFUSED` 79, `_ERR_UART_FRAME_INVALID` 80,
+  `_ERR_UART_NO_ACK` 81, `_ERR_UART_WRITE_FAILED` 82, `_ERR_UART_PAYLOAD_TOO_LARGE` 83, `_ERR_UART_SIZE_MISMATCH` 84,
+  `_ERR_UART_REENTRANT` 85, `_ERR_UART_WRONG_KIND` 86, `_ERR_UART_GET_ID_MISMATCH` 87, `_ERR_UART_PEER_INITIATED` 88,
+  `_ERR_UART_LINK_UNINTELLIGIBLE` 89, `_ERR_UART_STREAM_SHORT` 90, `_ERR_UART_POLL_RATE` 91, `_ERR_UART_CODEC_SIZE` 92;
+  `_WRN_UART_DRAIN_BOUND` 54, `_WRN_UART_CANCEL_UNACKED` 55, `_WRN_UART_CMD_DECLINED` 56. HEAD → end: e14/e24 →
+  `_ERR_ALLOC`; e17 → `_ERR_NOT_INIT`; e22 → `_ERR_TIMEOUT`; e26 → `_ERR_CALLBACK`; e30 → `_ERR_UNEXPECTED`; e12/e16/e34 →
+  `_ERR_BAD_ARG`; w11/w13/w14 → 54/55/56; w10 and w12 have no constant. Every use site passes the new name.
+- **Resolved**: A.U3.08 writes "errno 32→91 (`LINK_UNINTELLIGIBLE`)"; A.U2.01's catalog row lists the sixteen band codes
+  75-90 in HEAD order, which puts e32 at 89 — the catalog is the numbering source (A.U2.20 "the catalog names and values
+  of A.U2.01"), so 89 stands and A.U3.08's "91" is read as a slip. The two new codes are numbered after the band's last
+  used code in landing order (A.U17.20 before A.U17.22 within U17): 91, 92 — agent decision, OR2.c list.
+- **Unit**: U17 (the two new codes). Staged: U2 (renames and values, the catalog check A.U2.02 passes from U2 on), U3 (w10,
+  w12 constants out with their users), U17 (91, 92).
+- **Depends**: A.U2.01 catalog file (GEN, M.GEN.034)
+- **Blast carried by**: catalog rows 91 `UART_POLL_RATE`, 92 `UART_CODEC_SIZE` → M.GEN.034 (A.U17.20/.22); UART changelog
+  Class B renumbering entry → A.U2.26 (DOCS); tests (54 lines in `test_asy_uart_comm.py`, `test_uart_comm_hazard.py`
+  RF135 copies, `persisted()` "W14" → 56) → A.U2.20/A.U2.03 (TEST_UNIT); device-script prints → A.U2.20 (HW_DEV); SPEC
+  C.7.1/C.7.2/J.1/J.5/J.6/J.9/E.8 numbers, `tests_hardware/README.md:464, :1418`, BACKLOG `:374-376, 385` → A.U2.20
+  (SPEC, DOCS); js mock `UART_init`/`UART_resp` rows → A.U2.20 (WEB)
+- **Kind**: code
+
+### M.SRC_NET.154 `ResponderCallbacks`: one object for the responder's three callbacks
+- **From**: A.U5.12
+- **Site**: `src/asy_uart_comm.py:143-147` (beside `ListenResult`)
+- **Change**: `ResponderCallbacks = namedtuple("ResponderCallbacks", ("get", "set", "message"))` directly above
+  `ListenResult`, with one comment line "# A responder's get/set callbacks (both required) and its optional message
+  callback, passed as one object." Public: `asy_uart_link_driver.py` builds it.
+- **Resolved**: —
+- **Unit**: U5
+- **Depends**: —
+- **Blast carried by**: see M.SRC_NET.155
+- **Kind**: code
+
+### M.SRC_NET.155 `UARTComm.__init__`: callbacks and log objects, private attributes, no episode state
+- **From**: A.U10.38 (`UART_Comm` → `UARTComm`), A.U5.12 (signature, unpacking), A.U5.02 (`log`, `make_logger(log,
+  name)`), A.U10.35 (`get_callback`/`message_callback`/`frame_size` private), A.U3.02 (`_last_errno`, `_fault_streak`,
+  `_episode_events`, `_rejected` go), A.U17.13 (`_discarded_seen`), A.U17.06 (read: `:202-203` init unchanged), A.U10.31;
+  adherence addition (G10/R07, D.10): `set_callback` private with its two siblings
+- **Site**: `src/asy_uart_comm.py:166-222`
+- **Change**: `class UARTComm:` / `def __init__(self, uart: "UART | None", role: str, payload_size: int = 48, timeout: int
+  = 1000, callbacks: ResponderCallbacks | None = None, name: str = _NAME, log: "LogConfig" = DEFAULT_LOG, logger:
+  PrintLogHistory | None = None) -> None:`; logger resolution: `self.pr = logger if logger is not None else
+  make_logger(log, name)` (comment `:182` kept); `self._get_callback`, `self._set_callback`, `self._message_callback` =
+  `callbacks.get`/`.set`/`.message`, or `None` each when `callbacks is None` (the optional-message comment `:194-195` kept
+  above the unpack); `self._frame_size = _HEADER_LEN + payload` and every reader (`_allocate()`, `_buffers_ready()`,
+  `_validate()`, `_read_frame()`, `_send_ack()`, `_write_frame_with_ack()`) follows; `self._last_errno`,
+  `self._fault_streak`, `self._episode_events` and their comments go; `self._discarded_seen = 0` after
+  `_cancel_unacked_seen` (comment: M.SRC_NET.162); `self._tx, self._rx, self._ack, self._zero, self._cmd_buf =
+  self._allocate()`; the rest (`initialized`, `uid`, `_busy`, `_in_resync`, `_holdoff_*`, `_valid_frames`,
+  `_blind_resyncs`, `_drain_bound_hit`, `_cancel_unacked_seen`, `_init_errno`, the re-check comment, backoff fields,
+  construction print) unchanged. 8 parameters (A.U5.17 `max-args = 8`), ending `…, log, logger` (A.U5.18's tail probe;
+  `logger` recorded by A.U5.12).
+- **Resolved**: A.U5.12 unpacks into "the existing attributes `get_callback`/`set_callback`/`message_callback`" (U5);
+  A.U10.35 (U10) privatises two of them from S09's list, which omits `set_callback` only because no test reads it (grep:
+  no reader outside the module) — G10/R07 "private by default" and D.10 (one shape within a class) make all three
+  private (agent, adherence finding; OR2.c list).
+- **Unit**: U17 (A.U17.13's `_discarded_seen`). Staged: U3 (episode state out), U5 (signature, unpack), U10 (class name,
+  private names, unquoting), U17 (`_discarded_seen`).
+- **Depends**: M.SRC_NET.154, A.U5.01 (`LogConfig`), A.U3.01 (the central newest-entry rule that replaces the episode
+  state)
+- **Blast carried by**: `UARTLinkDriver` construction → M.SRC_NET.213; tests (`tests/_uart_comm_harness.py:71-80`, 12
+  `UART_Comm(` calls, 88 callback keywords, `make_comm()`, `test_uart_comm_hazard.py:789, 808, 1115, 1171`, readers of
+  `get_callback`/`message_callback`/`frame_size`/`set_callback`) → A.U5.12, A.U10.35 (TEST_UNIT, TEST_HELP); UART device
+  scripts → A.U5.12 (HW_DEV); SPEC J.9 constructor contract → A.U5.12 (SPEC); UART changelog Class B (constructor
+  objects; names; private attributes incl. `set_callback` — see Gaps) → A.U5.12, A.U10.38, A.U10.35 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.156 Construction checks: codec size, timeout ceiling, poll range
+- **From**: A.U17.20 (`_max_timeout()`, timeout ceiling, poll range), A.U17.22 (delimited codec sized to a frame),
+  A.U2.20 (`_ERR_ROLE_PARAM`/`_ERR_NO_CALLBACK` → `_ERR_BAD_ARG`, band names), A.U5.12 (callback refusal unchanged),
+  A.U10.38 (codec class names in comments)
+- **Site**: `src/asy_uart_comm.py:230-271` (`_validate_config()`, `_min_timeout()`, `_min_rxbuf()`), new `_max_timeout()`
+- **Change**: `_validate_config()` order: `uart is None` → `_ERR_UART_NO_BUS`; framing not ready → `_ERR_ALLOC`;
+  `payload_size` type/range → `_ERR_UART_PAYLOAD_SIZE`; then `if self.uart.framing.is_delimited() and
+  self.uart.framing.max_frame < _HEADER_LEN + self.payload_size + self.uart.crc.length(): return _ERR_UART_CODEC_SIZE  # a
+  delimited codec must carry one whole frame`; role → `_ERR_BAD_ARG`; `timeout` not a positive int →
+  `_ERR_UART_TIMEOUT_PARAM`; `if self.timeout > self._max_timeout(): return _ERR_UART_TIMEOUT_PARAM`; `if not
+  isinstance(self.uart.poll_wait_ms, int) or not 1 <= self.uart.poll_wait_ms <= _POLL_WAIT_MAX_MS: return
+  _ERR_UART_POLL_RATE  # J.6`; the floor `timeout < _min_timeout()` → `_ERR_UART_TIMEOUT_PARAM` (comment kept); responder
+  without `_get_callback`/`_set_callback` → `_ERR_BAD_ARG` (comment kept); rxbuf floor → `_ERR_UART_RXBUF`. New
+  `def _max_timeout(self) -> int: return (_TICKS_HORIZON_MS * _RESYNC_DEN) // (_RESYNC_NUM * _DRAIN_BOUND_MULT)` with
+  "# The drain bound, 6 x timeout, is the largest deadline derived from timeout; it must stay a valid ticks delay."
+  (= 89,478,485 ms). `_min_timeout()`/`_min_rxbuf()` unchanged. Nothing is clamped.
+- **Resolved**: —
+- **Unit**: U17
+- **Depends**: M.SRC_NET.152, M.SRC_NET.153, A.U17.21 (the same arithmetic at build, GEN), A.U12.16 (codec `__init__`),
+  A.U10.37 (`asy_framing_codecs`)
+- **Blast carried by**: `FramingCOBS._checked_encoded()`/`decode_from()` → A.U17.22 (SRC_CORE); tests (`:105-111`
+  poll 9/9, `:165-170` rxbuf assertion names the code, new ceiling/poll/codec cases, backoff-under-ceiling case) →
+  A.U17.20, A.U17.22 (TEST_UNIT); SPEC J.6 ceilings sentence, J.3/G.2 codec sentence, C.7.2 → A.U17.20/.21/.22 (SPEC);
+  UART changelog Class B (two refusals; codec bound) → A.U17.20, A.U17.22 (DOCS); catalog 91/92 → M.GEN.034
+- **Kind**: code
+
+### M.SRC_NET.157 `_allocate()`/`_buffers_ready()`: five buffers, region buffers
+- **From**: A.U3.02 (the declined-id bitmap and its readiness term go), A.U16.05 (`RegionBuffer`), A.U10.29 (`_CMD_ACK`),
+  A.U10.35 (`_frame_size`), A.U10.31 (return annotation unquoted)
+- **Site**: `src/asy_uart_comm.py:273-310`
+- **Change**: `def _allocate(self) -> tuple[RegionBuffer, RegionBuffer, bytearray, bytearray, bytearray]:`; comment
+  `:274-276` "…the zero padding and the command-id scratch." (the bitmap words go, rest kept); `tx`/`rx` are
+  `RegionBuffer(room, data_start=_HEADER_LEN, data_length=…)`; the `try` builds `ack`, `zero`, `cmd_buf`; its `except
+  (MemoryError, OverflowError)` returns `tx, rx, bytearray(0), bytearray(0), bytearray(0)`; `ack[_MSG_CMD] = _CMD_ACK`;
+  `return tx, rx, ack, zero, cmd_buf`. `_buffers_ready()`: comment "…guards its three scratch buffers as one group…";
+  the `len(self._rejected)` term goes.
+- **Resolved**: —
+- **Unit**: U16 (A.U16.05). Staged: U3 (bitmap out), U10 (names).
+- **Depends**: M.SRC_NET.151, M.SRC_NET.155, A.U16.05's `RegionBuffer` (SRC_CORE)
+- **Blast carried by**: `tests/test_asy_uart_comm.py:347-365` five-tuple → A.U3.02; `:19, 337, 1256, 2182`
+  `LockableBuffer` mentions → A.U16.05 (TEST_UNIT); allocation budget pinned by `test_uart_comm_hazard.py` holds
+  (one buffer fewer); UART changelog Class B (`RegionBuffer`; bitmap removed) → A.U16.05, A.U3.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.158 Logging helper: one plain `_err()`, no episode mechanism
+- **From**: A.U3.02 (`_err()` dedupe, `_fault_cleared()`, `_episode_wrn()`, `_clear_fault_state()` go), A.U3.08 (resync
+  prints), A.U2.20 (names)
+- **Site**: `src/asy_uart_comm.py:314-347`
+- **Change**: section heading kept; `async def _err(self, errno: int, *args: object) -> None: await
+  self.pr.err_s("UART error:", *args, errno=errno)` with one comment line "# Every fault persists its errno; a repeat of
+  the newest code is collapsed by the central rule (C.7.1)." `_fault_cleared()`, `_episode_wrn()`,
+  `_clear_fault_state()` and their comments go (callers: M.SRC_NET.162, .163, .165, .171, .173).
+- **Resolved**: —
+- **Unit**: U3
+- **Depends**: A.U3.01 (`print_log`'s newest-entry rule, SRC_CORE), M.SRC_NET.153
+- **Blast carried by**: tests `test_asy_uart_comm.py:221-231` (`_last_errno` assert goes), `:234-273` (repeat tests
+  rewritten to the central rule), `:801-835`, `:1458-1493`, `:1729-1746`, `:1763-2033` (`[errno, "W10"]` → `[errno]`) →
+  A.U3.02, A.U3.08 (TEST_UNIT); SPEC J.5 `:5491-5497`, J.6 `:5514-5516`, E.8 → A.U3.08 (SPEC); UART changelog Class B,
+  B20/B28/B32 superseded → A.U3.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.159 Frame validation refuses a GET that is not one chunk
+- **From**: A.U17.16, A.U36.544 (3) (`:483` "changelog A12" → Part J), A.U10.29 (`_CMD_ACK`/`_CMD_GET` in
+  `_prepare_tx()`/`_validate()`), A.U2.20 (`_ERR_UART_FRAME_INVALID`, `_ERR_UART_WRONG_KIND`, `_ERR_UART_NO_ACK`)
+- **Site**: `src/asy_uart_comm.py:406-494` (`_prepare_tx()`, `_validate*()`)
+- **Change**: `_prepare_tx()`'s kind check `cmd not in (_CMD_ACK, _CMD_GET, CMD_SET)`; `_validate()` likewise;
+  `_validate_size_for_position()`: comment `:482-483` → "…each rule here closes a silent-corruption path (Part J.4).";
+  in the `cur == 1` branch after the SET test: `if cmd == _CMD_GET and chunks != 1: return _ERR_UART_FRAME_INVALID  # a
+  GET is a one-chunk train (J.4)`. Every other return passes the band name.
+- **Resolved**: —
+- **Unit**: U36 (A.U36.544's label). Staged: U2 (names), U10 (`_CMD_*`), U17 (the new refusal).
+- **Depends**: M.SRC_NET.151, M.SRC_NET.153
+- **Blast carried by**: tests (CHUNKS 0-255 sweep both CRC modes; no-ACK list gains "GET with CHUNKS 2") → A.U17.16
+  (TEST_UNIT); L2 sweep → A.U17.25 (TWIN); SPEC J.4 GET paragraph → A.U17.16 (SPEC); UART changelog **Class A** A13
+  "Reject a GET frame whose CHUNKS is not 1" (receiver-only tightening) → A.U17.16 (DOCS); traceability row → A.U17.12
+- **Kind**: code
+
+### M.SRC_NET.160 A stale write hold-off expires
+- **From**: A.U17.06
+- **Site**: `src/asy_uart_comm.py:516-525` `_await_write_gate()`
+- **Change**: `if remaining <= 0 or remaining > self._resync_window_ms():` with "# The deadline is set one window ahead,
+  so more than a window remaining means the stored tick aged past ticks_diff()'s 2**29 ms horizon (idle > 6.2 days):
+  expired. The one aliased band left costs at most one window, a normal hold-off." (3 lines). `_hold_off_writes()`,
+  `_resync_window_ms()` and `uart_listen()`'s early reset unchanged.
+- **Resolved**: —
+- **Unit**: U17
+- **Depends**: M.SRC_NET.156 (the timeout ceiling keeps the window below 2**29), A.U14.34 (`tests/_ticks30.py`)
+- **Blast carried by**: tests (aged, aliased-band and un-aged cases on `Ticks30Time`) → A.U17.06/A.U14.34 (TEST_UNIT);
+  SPEC J.5 hold-off sentence → A.U17.06 (SPEC); UART changelog Class B (tick-horizon expiry; note for the C side's
+  32-bit tick) → A.U17.06 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.161 `_drain()`'s comment says who persists the drain bound
+- **From**: A.U3.08/A.U3.02 (the episode wording loses its referent); adherence finding (CLAUDE.md "documentation
+  contains current state")
+- **Site**: `src/asy_uart_comm.py:548-550`
+- **Change**: "# Visible only, and flagged rather than persisted here: the caller owns the episode's one slot, and setup()'s
+  boot drain owns no episode at all (SPECIFICATION.md C.7.1)." → "# Visible only, and flagged rather than persisted here:
+  the resync that called it persists W54, and setup()'s boot drain persists nothing (C.7.1)." Code unchanged.
+- **Resolved**: —
+- **Unit**: U3
+- **Depends**: M.SRC_NET.162
+- **Blast carried by**: — (comment only, no changelog entry)
+- **Kind**: code
+
+### M.SRC_NET.162 `_resync()`: prints, persists W54 only on the bound, counts swallowed bytes, stops the streak at its cap
+- **From**: A.U3.08 (print; W54 persisted only when the bound was hit; W11 precedence), A.U3.02 (`_episode_wrn()` calls
+  go), A.U17.13 (`_take_discarded()`), A.U17.14 (streak saturates), A.U2.20 (names)
+- **Site**: `src/asy_uart_comm.py:562-590` `_resync()`; new `_take_discarded()` beside it
+- **Change**: `drained = await self._drain(device) + self._take_discarded()`; the logging block → `if
+  self._drain_bound_hit: await self.pr.wrn_s("Resynced the link - drain bound reached, the peer never stopped sending",
+  wrnno=_WRN_UART_DRAIN_BOUND)` / `else: self.pr.wrn("Resyncing the link")`, its comment → "# A resync is routine and
+  prints; only a drain that hit its bound (a babbling or misconfigured peer) persists W54. Logged after the drain, which
+  decides which one this is." Then `_hold_off_writes()` and `resync_framing()` as today; the blind-resync block: `if
+  self._blind_resyncs < _DIAG_RESYNC_STREAK: self._blind_resyncs += 1` then the unchanged `>=` test calling
+  `self._err(_ERR_UART_LINK_UNINTELLIGIBLE, …)` (message kept). New `def _take_discarded(self) -> int:` — `0` for a
+  `None` bus; else `n = (bus.discarded_bytes - self._discarded_seen) & COUNTER_CAP`, `self._discarded_seen =
+  bus.discarded_bytes`, `return n`; comment "# Bytes a failed frame read swallowed since the last resync: without them a
+  peer that only speaks when spoken to never shows the mismatch signature (J.6)." `_valid_frames == 0` gate and
+  `_DIAG_RESYNC_STREAK` unchanged.
+- **Resolved**: A.U3.08 "prints 'Resyncing the link' and persists W54 only when `_drain_bound_hit`" with "W11's precedence
+  kept" — written as one or the other (the persisted W54 text says it resynced), matching HEAD's one-slot precedence.
+- **Unit**: U17. Staged: U3 (logging), U17 (count, cap).
+- **Depends**: M.SRC_NET.153, M.SRC_NET.158, M.SRC_NET.196/.201/.202 (the driver's `discarded_bytes`), A.U10.01
+- **Blast carried by**: tests (fault with quiet line adds one entry; bound adds errno + 54; streak saturates at 2; the
+  inverted blind-spot check; CRC16 frame-corrupt diagnostic; L2 mismatched-payload pair) → A.U3.08, A.U17.13, A.U17.14
+  (TEST_UNIT, TWIN); SPEC J.6 and changelog B26 → A.U17.15 (SPEC, DOCS); A.U10.05's counter check lists `_blind_resyncs`
+  capped and `discarded_bytes` masked → A.U10.05 (SCR); UART changelog Class B (resync logging A.U3.13; B26; streak cap
+  A.U17.14) (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.163 `_fault()`/`_reject_wrn()`: a declined command persists W56 each time
+- **From**: A.U3.02 (bitmap and repeat branch go), A.U2.20 (`_WRN_UART_CMD_DECLINED`), A.U17.17 (read: the declined path
+  returns `ListenResult.cmd` set)
+- **Site**: `src/asy_uart_comm.py:592-610`
+- **Change**: `_fault()` unchanged (comment's "twenty-eight call sites" → "every call site"). `_reject_wrn(self, device,
+  cmd_id)`: comment → "# A declined command persists W56 every time (a run of identical codes spends one slot under the
+  central rule) and, like every refusal, resyncs."; body `await self.pr.wrn_s("callback rejected command", cmd_id,
+  wrnno=_WRN_UART_CMD_DECLINED)` then `await self._resync(device)`.
+- **Resolved**: —
+- **Unit**: U3
+- **Depends**: M.SRC_NET.158, M.SRC_NET.162
+- **Blast carried by**: tests `:1983-2000` (one W56 slot, count per refusal), `:234-273` → A.U3.02 (TEST_UNIT); UART
+  changelog Class B → A.U3.13 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.164 `_write_frame_with_ack()` and `_note_valid_frame()`: owner tag, narrowing stated, saturating count, no per-frame coroutine
+- **From**: A.U0.28 (`:649-650` owner tag), A.U35.47 (`:636-639`), A.U10.04 (`_valid_frames` saturates), A.U3.02
+  (`_fault_cleared()` call goes), A.U10.29/A.U2.20 (names), A.U10.35 (`_frame_size`); adherence addition (G4/R42 no
+  same-shaped churn on a hot path): `_note_valid_frame()` becomes synchronous
+- **Site**: `src/asy_uart_comm.py:629-661`; callers `:651`, `:777`, `:973`, `:1011`
+- **Change**: `_write_frame_with_ack()`: the `buf is None` branch after `_prepare_tx()` gains "# Unreachable:
+  _prepare_tx() returned False if the TX buffer were missing - kept to narrow the Optional for the type checker." and
+  logs `_ERR_ALLOC`; faults pass `_ERR_UART_WRITE_FAILED`/`_ERR_UART_NO_ACK`/`_ERR_UART_PEER_INITIATED`; `:649` "Out of
+  contract - there is no arbitration" → "Out of contract (owner, 2026-09-11) - there is no arbitration"; validation expects
+  `_CMD_ACK`; `self._note_valid_frame()` (no `await`). `def _note_valid_frame(self) -> None:` / `if self._valid_frames <
+  COUNTER_CAP: self._valid_frames += 1` / `self._blind_resyncs = 0`; the four call sites drop `await`.
+- **Resolved**: A.U3.02 removes the only `await` in `_note_valid_frame()`; left `async`, every validated frame would
+  allocate a coroutine object for nothing (a per-frame same-shaped allocation, G4/R42; J.9 "never per frame") — made
+  synchronous (agent, adherence finding; OR2.c list). No wire effect.
+- **Unit**: U35 (A.U35.47's comment). Staged: U0 (tag), U2 (names), U3 (call out, sync), U10 (saturation, `_CMD_ACK`).
+- **Depends**: M.SRC_NET.150 (`COUNTER_CAP`), M.SRC_NET.151, M.SRC_NET.153, M.SRC_NET.158
+- **Blast carried by**: tests (`_valid_frames` at `COUNTER_CAP` stays) → A.U10.04 (TEST_UNIT); SPEC E.5.1 names the kept
+  narrowings once → A.U35.41 (SPEC); UART changelog Class B `_valid_frames` saturation → A.U10.04; the synchronous
+  `_note_valid_frame()` has no constituent entry → Gaps (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.165 Callback dispatch: coded suppressions, fatal report, sorted excepts
+- **From**: A.U28.30 (3) (`:675` reason, `:687-690` reason line above `:686`), A.U30.19 (`report_if_fatal(e)`), A.U2.20
+  (`_ERR_CALLBACK`), A.U10.45 (`(IndexError, TypeError)`)
+- **Site**: `src/asy_uart_comm.py:665-693` (`_call()`, `_pair()`)
+- **Change**: `_call()`: `result = await result  # type: ignore[misc]  # awaitable: `send` checked above`; `except
+  Exception as e:  # caller-supplied code; its runtime behaviour is not statically known` → first statement
+  `report_if_fatal(e)`, then `await self._err(_ERR_CALLBACK, "callback raised:", e)`. `_pair()`: one comment line above
+  the `try:` "# An arbitrary callback's result: `len()`/indexing are tried, and TypeError/IndexError below is the real
+  check." ; the three ignores keep their codes; `except (IndexError, TypeError):`.
+- **Resolved**: —
+- **Unit**: U30. Staged: U2, U10 (except order), U28 (reasons).
+- **Depends**: M.SRC_NET.150, A.U30.19 (SRC_CORE)
+- **Blast carried by**: `tests_scripts/test_suppression_form.py` → A.U28.30 (SCR); `test_fatal_report_sites.py` → A.U30.19
+  (SCR); UART changelog Class B "every broad handler records a C-stack overflow" → A.U30.19, "except-tuple order" →
+  A.U10.45 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.166 Train send/receive: names and stated narrowings
+- **From**: A.U35.47 (`:757-761`, `:774-776`), A.U2.20 (`_ERR_UART_PAYLOAD_TOO_LARGE`, `_ERR_ALLOC`, `_ERR_CALLBACK`,
+  `_ERR_UART_STREAM_SHORT`, `_ERR_TIMEOUT`, `_ERR_UART_SIZE_MISMATCH`, `_ERR_UART_WRITE_FAILED`), A.U10.31 (unquote where
+  no `TYPE_CHECKING` name)
+- **Site**: `src/asy_uart_comm.py:699-804` (`_send_train()`, `_pull_chunk()`, `_recv_train()`, `_dest_size()`)
+- **Change**: codes renamed at every `_err`/`_fault`; `_recv_train()`'s `if err or rx is None:` gains "# Unreachable:
+  `_read_frame()` already failed on a missing RX buffer - kept to narrow the Optional for the type checker."; the
+  destination bound `:774-776` gains "# Unreachable: `_dest_size()` sized the destination to the train's bound before the
+  first ACK - kept to narrow the type for the type checker." (≤ 1 line each, replacing no existing comment); `_note_valid_frame()`
+  called without `await` (M.SRC_NET.164). `_dest_size()` unchanged (its `(chunks - 1) × payload_size` bound is what
+  J.8's corrected text states, A.U17.03).
+- **Resolved**: —
+- **Unit**: U35. Staged: U2 (names), U3 (sync call).
+- **Depends**: M.SRC_NET.153, M.SRC_NET.164
+- **Blast carried by**: SPEC E.5.1 → A.U35.41; SPEC J.8 → A.U17.03 (SPEC); BACKLOG owner question 1 names
+  `_get_unlocked()` and `_accept_set()` → A.U0.12/A.U17.03 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.167 Initiator entry points: gate first, then argument checks
+- **From**: A.U17.01, A.U0.49 (`:836-837`), A.U35.47 (`:865-866`), A.U16.05 (`:878` comment), A.U2.20 (`_ERR_DEST_ALLOC` →
+  `_ERR_ALLOC`, `_ERR_UART_SIZE_MISMATCH`), A.U10.29 (`_CMD_GET` in `_get_unlocked()`), A.U10.31
+- **Site**: `src/asy_uart_comm.py:808-975` (`uart_set()`, `uart_set_into()`, `uart_set_stream()`, `uart_get()`,
+  `uart_get_into()`, `uart_get_stream()`, `_run_get()`, `_get_unlocked()`, `_read_answer_header()`)
+- **Change**: order for every public initiator form: `_gate(ROLE_INITIATOR)` → `_check_cmd_id` → buffer/callback →
+  size → `bus is None` → `_busy`/lock. `uart_set_stream()`: comment → "# A declared total is required up front: every frame
+  carries the train's CHUNKS, chunk 1 included (Part J.3), so a genuinely unknown length cannot be sent."; the `pull is
+  None` refusal (`_ERR_BAD_ARG`, comment kept) moves above `_check_size(total_size, allow_none=False)`, the `bus is None`
+  check below both. `uart_get()`: `if not await self._gate(ROLE_INITIATOR): return None` / `if not await
+  self._check_cmd_id(get_id): return None` / `result = await self._run_get(get_id, exp_size)`; its `own is None` branch
+  gains "# Unreachable: …" per A.U35.47 wording for this site ("`_run_get()` returns a buffer whenever neither dest nor push
+  was given") - kept to narrow the Optional for the type checker; right-size failure → `_ERR_ALLOC`. `uart_get_into()`:
+  gate, id, then `buf is None` (`_ERR_ALLOC`, comment `:878` "A failed RegionBuffer hands its owner None, …"), then
+  `_check_buffer(buf, writable=True)`, then `_run_get(...)`. `uart_get_stream()`: gate, id, `push is None`
+  (`_ERR_BAD_ARG`, comment kept), `_run_get(...)`. `_run_get()`: one comment line above it "# Shared tail of the three GET
+  forms: each gates, then checks its own arguments, first."; its body keeps only `_check_size(exp_size, allow_none=True)`,
+  bus, busy, lock. `_get_unlocked()`: `_CMD_GET`, allocation failure → `_ERR_ALLOC`; `_read_answer_header()`: codes
+  renamed, `self._note_valid_frame()` without `await`. No awaited call that can suspend on a success path sits between
+  `_gate()`'s `_busy` test and `self._busy = True` (kept).
+- **Resolved**: A.U35.47's sixth site (`:865-866`) is the `own is None` narrowing in `uart_get()`; its wording follows
+  A.U35.47's form.
+- **Unit**: U35. Staged: U0 (comment), U2 (names), U10 (`_CMD_GET`), U16 (comment), U17 (order).
+- **Depends**: M.SRC_NET.153, M.SRC_NET.164
+- **Blast carried by**: `UARTLinkDriver._exercise_loop()` (valid arguments, unchanged); tests (gate-first before setup,
+  role refusal first on a responder, command-id first on an initiator) → A.U17.01 (TEST_UNIT); SPEC J.9 order sentence →
+  A.U17.01 (SPEC); UART changelog Class B (check order) → A.U17.01 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.168 Responder path: private callbacks, codes, stated narrowing
+- **From**: A.U35.47 (`:999-1001`), A.U10.35 (+ adherence `_set_callback`), A.U2.20 (`_ERR_NO_CALLBACK` → `_ERR_BAD_ARG`;
+  band names; `_ERR_DEST_ALLOC` → `_ERR_ALLOC`), A.U10.29 (`_CMD_GET`), A.U3.02 (declines via `_reject_wrn()`)
+- **Site**: `src/asy_uart_comm.py:979-1080` (`uart_listen()`, `_listen_unlocked()`, `_answer_get()`, `_accept_set()`)
+- **Change**: `uart_listen()`: `get_cb = self._get_callback if get_callback is None else get_callback`, `set_cb =
+  self._set_callback if …`; missing → `_ERR_BAD_ARG`. `_listen_unlocked()`: `_ERR_TIMEOUT` for the listen read; the `rx is
+  None` branch gains "# Unreachable: `_read_frame()` already failed on a missing RX buffer - kept to narrow the Optional
+  for the type checker."; `exp = _CMD_GET if cmd == _CMD_GET else CMD_SET`; `self._note_valid_frame()` without `await`;
+  `if cmd == _CMD_GET:`. `_answer_get()`/`_accept_set()`: `ListenResult(…, _CMD_GET, …)`, codes renamed, right-size and
+  destination allocation failures → `_ERR_ALLOC`; everything else unchanged (the peer-sized allocation stays as J.8 and
+  BACKLOG's owner question 1 state, A.U17.03/A.U0.12).
+- **Resolved**: —
+- **Unit**: U35. Staged: U2, U3, U10.
+- **Depends**: M.SRC_NET.151, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.163, M.SRC_NET.164
+- **Blast carried by**: SPEC E.5.1 → A.U35.41; BACKLOG owner question 1 (both allocation sites) → A.U0.12 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.169 `setup()`: the discard baseline, no episode reset
+- **From**: A.U17.13 (`_discarded_seen` after the boot drain), A.U3.02 (`_clear_fault_state()` goes), A.U2.20
+  (`_ERR_UART_NO_BUS`), A.U10.21 (read: already `-> bool`, `pr.setup()` first, refusal persisted), A.U10.22 (read:
+  `initialized` False → True present)
+- **Site**: `src/asy_uart_comm.py:1084-1106`
+- **Change**: after the boot drain block: `self._discarded_seen = bus.discarded_bytes  # a pre-setup discard is not this
+  link's evidence`; the `self._clear_fault_state()` line and its comment go; the rest unchanged.
+- **Resolved**: —
+- **Unit**: U17. Staged: U2, U3.
+- **Depends**: M.SRC_NET.162, M.SRC_NET.192 (`discarded_bytes`)
+- **Blast carried by**: A.U10.22's readiness check passes for `UARTComm` (TSC); tests → A.U17.13 (TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_NET.170 Listen loop: a validated command resets the backoff; named starter; fatal report; typed lists
+- **From**: A.U17.17 (`result.cmd`), A.U30.19, A.U2.20 (`_ERR_UNEXPECTED`), A.U10.44 (`start_asy_listen()` over
+  `_listen_loop`), A.U32.06 (3) (named starter method), A.U17.26 (`list[TaskStarter]`, `list[TimerStarter]`), A.U10.35
+  (`_message_callback`)
+- **Site**: `src/asy_uart_comm.py:1108-1136`
+- **Change**: `_listen_loop()`: `if result.cmd is not None:` / `if result.cmd_id is not None and self._message_callback is
+  not None:` the guarded `_call(...)` (comment kept) / `backoff = self._backoff_initial_ms` / `continue`; comment above the
+  test (≤ 3 lines): "# After any transaction whose command frame validated and was then answered, declined or aborted
+  mid-train (ListenResult.cmd set), re-listen at once, so the backoff never outlasts the initiator's retry (J.5); a listen
+  that returns no command kind backs off. No spin: the next listen parks on its read." `except Exception as e:` (trailing
+  comment kept) → `report_if_fatal(e)` then `await self._err(_ERR_UNEXPECTED, "listen loop caught:", e)`. New `def
+  start_asy_listen(self) -> "asyncio.Task[None]": return asyncio.get_event_loop().create_task(self._listen_loop())`;
+  `get_task_starters(self) -> "list[TaskStarter]"`: `return []` for an initiator (comment kept), else
+  `[self.start_asy_listen]`; `get_timer_starters(self) -> "list[TimerStarter]"`.
+- **Resolved**: A.U32.06 names the starter `start_listen`; A.U10.44's scheme (U10, the naming rule G10/R16) names it
+  `start_asy_listen` and lands first — A.U32.06's need (a named method, so no task name reads `<lambda>`) is met by it,
+  and `LastTaskEnd` shows `UART_resp.start_asy_listen` (agent decision, OR2.c list).
+- **Unit**: U30 (A.U30.19). Staged: U2, U10 (starter, names), U17 (backoff rule, types); A.U32.06 adds nothing further
+  here.
+- **Depends**: M.SRC_NET.150, M.SRC_NET.155, A.U10.46 (aliases)
+- **Blast carried by**: `UARTLinkDriver.get_task_starters()` → M.SRC_NET.217; generated `_collect_task_names()` reads
+  `__name__` → A.U32.06 (GEN); tests (declined-then-answered GET without backoff; dead link still doubles; starters called
+  by name) → A.U17.17, A.U10.44 (TEST_UNIT); SPEC J.5 sentence → A.U17.17 (SPEC); UART changelog **Class A** A14 (responder
+  re-listens at once after a validated command) → A.U17.17, Class B (named starter; one entry for A.U10.44 and A.U32.06;
+  fatal report) → A.U10.44, A.U30.19 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.171 Error counter reset returns the write's result and clears only what exists
+- **From**: A.U11.31 (`-> bool`), A.U3.02 (`_clear_fault_state()` and the bitmap loop go)
+- **Site**: `src/asy_uart_comm.py:1138-1149`
+- **Change**: `async def reset_error_counter(self) -> bool:` comment → "# Clears the history and the link diagnostic's
+  state behind it (valid-frame count, blind-resync streak)."; body `self._valid_frames = 0` / `self._blind_resyncs = 0` /
+  `return await self.pr.reset()`. `get_error_counter()` unchanged.
+- **Resolved**: —
+- **Unit**: U11. Staged: U3.
+- **Depends**: A.U11.31's `PrintLogHistory.reset() -> bool` (SRC_CORE)
+- **Blast carried by**: `UARTLinkDriver.reset_error_counter()` → M.SRC_NET.218; `/status` `ResetErrors` → M.SRC_NET.123;
+  UART changelog Class B (return type) → A.U11.31 (DOCS)
+- **Kind**: code
+
+### M.SRC_NET.172 Unquoted annotations (UART comm)
+- **From**: A.U10.31
+- **Site**: `src/asy_uart_comm.py` — the eight fully-quoted annotations naming no `TYPE_CHECKING` symbol (AST count, A.U10.31)
+- **Change**: each unquoted (e.g. `_allocate()`'s tuple, `_pair()` `-> tuple[bool, object] | None`, `_run_get()`/
+  `_get_unlocked()` returns, `_read_answer_header()`, `uart_get()` `-> bytearray | None`); annotations naming `UART`,
+  `ErrorLog`, `LogConfig`, `Readable`, `Writable`, the callback Protocols or the aliases stay quoted.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: M.SRC_NET.150
+- **Blast carried by**: A.U10.47's check (SCR)
+- **Kind**: code
+
+### M.SRC_NET.173 Member order per D.15 (UART comm)
+- **From**: A.U10.33
+- **Site**: `src/asy_uart_comm.py` class `UARTComm`, module functions, the `TYPE_CHECKING` Protocol classes
+- **Change**: pure reorder by D.15's key (A.U10.32), AST-verified; members added later (`_max_timeout()`,
+  `_take_discarded()`, `start_asy_listen()`) placed by the same key when written.
+- **Resolved**: —
+- **Unit**: U10 (last U10 edit)
+- **Depends**: every U10 edit of the file
+- **Blast carried by**: — (no changelog entry: the changelog does not record member order, A.U10.33)
 - **Kind**: code

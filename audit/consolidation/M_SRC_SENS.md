@@ -274,10 +274,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_read_register()`, ISL29125 `_read_byte()`, `get_config_snapshot()`, `reset()`); its per-call `bytes` copy is a
   temporary, accepted by OR110.a (3).
 - **Unit**: U30 (the latest; A.U13.07/A.U13.10's parts may land in U13 as stage 1 if U15's driver changes need them first
-  — they do: M.SRC_SENS.03x driver sites call `get_register_bytes()` and test the bool; stage U13 = A.U13.07 + A.U13.10 +
+  — they do: the driver sites (M.SRC_SENS.048, M.SRC_SENS.086) call `get_register_bytes()` and test the bool; stage U13 = A.U13.07 + A.U13.10 +
   A.U10.45 + A.U10.31, stage U30 = A.U30.07 + A.U30.21)
 - **Depends**: M.SRC_SENS.009 (the view)
-- **Blast carried by**: driver call sites → M.SRC_SENS.034 (BMP3XX), M.SRC_SENS.069/070 (ISL29125); tests
+- **Blast carried by**: driver call sites → M.SRC_SENS.048 (BMP3XX), M.SRC_SENS.057 (SCD30),
+  M.SRC_SENS.068/069 (SGP40), M.SRC_SENS.086 (ISL29125); tests
   `tests/test_asy_i2c_driver.py` bool/`None` asserts and new helper cases → A.U13.07/A.U13.10/A.U30.07/A.U30.21
   (TEST_UNIT); I.2 rows and A.U13.02's sentence (as amended by A.U30.21) → A.U30.02/A.U13.02 (SPEC); SPEC G.2 I2C entry →
   A.U13.01/A.U13.10/A.U30.07 (SPEC); four tiers wire-identical → A.U13.10/A.U30.07/A.U30.21 blasts
@@ -320,7 +321,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   stage U30 (`get_register_into()`); stage U31 (ms settle)
 - **Depends**: M.SRC_SENS.011, M.SRC_SENS.012; A.U10.18 (`Lockable` param)
 - **Blast carried by**: device scripts and tests calling `setup(probe=…)` (none at HEAD, A.U10.21 grep); message
-  asserts (`"No I2C device"`) → A.U10.45 (TEST_UNIT, HW_DEV grep); driver callers → M.SRC_SENS.03x-07x
+  asserts (`"No I2C device"`) → A.U10.45 (TEST_UNIT, HW_DEV grep); driver callers → M.SRC_SENS.048, M.SRC_SENS.057,
+  M.SRC_SENS.068, M.SRC_SENS.069, M.SRC_SENS.086
 - **Kind**: code
 
 ## src/voc_algorithm.py
@@ -1020,7 +1022,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   list[TaskStarter]: return [self.start_asy_read, self.start_asy_trigger]`; `get_trigger_starters(self) ->
   list[TimerStarter]: return [self.start_timer]`; `get_timer_starters(self) -> list[TimerStarter]: return []`;
   `stop_timer()` unchanged. `async def _read_loop(self) -> None:` `if not await self._init_bmp(): return`; the loop with
-  `self._read_event`, `results = await self._read_bmp()`, `if not await self._error_check(results): return`, `await
+  `self._read_event`, `results = await self._read_bmp()`, `if not await self._error_check(results, condition=results[0] is None):
+  return` (M.SRC_SENS.089), `await
   self._store_bmp(results)`.
 - **Resolved**: —
 - **Unit**: U15 (stage U10: A.U10.12 split and A.U10.44 names)
@@ -1084,6 +1087,30 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `tests/_bus_hazard_catalog.py` `seed_bmp_ready(chip_id=)`, `_exercise_bmp3xx` (`get_pressure_altitude`),
   `test_bus_hazard_multi_device.py:114` per-ID loop → A.U15.25/A.U15.27 (TEST_HELP, TEST_UNIT); four tiers → A.U15.25
   blast; SPEC M.4 rows → A.U15.05/A.U15.25/A.U31.11 (SPEC); `bmp3xx_plausibility_read.py:24` comment → A.U15.40 (HW_DEV)
+- **Kind**: code
+
+### M.SRC_SENS.089 A pre-sync `TS` of `None` is not a failed read
+- **From**: adherence finding (A.U10.06 × `SensorReader._error_check()`); A.U10.06 (a pre-sync sample is published with
+  `TS` `None`), A.U15.22 (4) (ISL29125's `condition` precedent), A.U3.03/A.U10.R01 (what a counted failure costs)
+- **Site**: `src/asy_bmp3xx_driver.py:392` (`_read_loop()`'s streak call); the same call in SCD30 (M.SRC_SENS.090),
+  SGP40 (M.SRC_SENS.091) and ISL29125 (M.SRC_SENS.083)
+- **Change**: `if not await self._error_check(results, condition=results[0] is None): return` with one comment line "#
+  A failed read clears every measured value; TS alone is None until the first NTP sync, which is no failure." The
+  rule for all four readers: the streak counts a cycle only when its first measured value is `None` (each reader's
+  failure path clears all of them together), never for the trailing `TS`.
+- **Resolved**: A.U10.06 makes `utc_now()` return `None` until the NTP client's first sync and publishes the sample
+  with `TS` `None`, but `_error_check()` counts a cycle failed when ANY result element is `None`
+  (`base_classes.py:221`) and all four readers carry `TS` last in that tuple — so every pre-sync cycle (every boot
+  before Wi-Fi and NTP, every twin run: the twin never syncs) would climb the recovery ladder (device reset, bus clear)
+  and end the task. No action carries it (grep `_error_check` with `utc_now`/`TS` over `audit/actions/`: none). The
+  merged state follows A.U10.06's own stated intent ("a sample taken before the first sync is published"): the reader
+  says what a failure is through the existing `condition` keyword; `_error_check()` and WIFI's `(None,)` call stay
+  as they are. Agent decision (2026-10-01), OR2.c list; the alternative — `_error_check()` testing `results[0] is
+  None` for every caller — is SRC_CORE's to prefer instead (GAP-15).
+- **Unit**: U10 (with A.U10.06: from that unit on a `TS` can be `None`)
+- **Depends**: A.U10.06
+- **Blast carried by**: L1 per reader "a pre-sync read steps no streak and publishes its values with `TS` `None`" and
+  the twin boot suites (no NTP) → GAP-15 (TEST_UNIT, TWIN); SPEC C.7 `_error_check()` bullet → GAP-15 (SPEC)
 - **Kind**: code
 
 ## src/asy_scd30_driver.py
@@ -1276,7 +1303,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `get_task_starters(self) -> list[TaskStarter]: return [self.start_asy_read, self.start_asy_irq]`;
   `get_timer_starters(self) -> list[TimerStarter]: return [self.start_timer]` (no trigger starter: SCD30 reads on its own
   data-ready edge, A.U10.12). `_read_loop(self) -> None`: init, then per trigger `self._scd_timer_triggers = 0`, read,
-  `_error_check`, store; `return` where HEAD returns `False`. `_irq_loop(self) -> None`: first `if self._timer_error is
+  `_error_check` with M.SRC_SENS.090's condition, store; `return` where HEAD returns `False`. `_irq_loop(self) -> None`: first `if self._timer_error is
   not None: self._timer_error = None; self.start_timer()` (A.U15.41 re-arm); `while True: await
   self._base_trigger_event.wait()`; `if await self._timer_fault(): return`; `if self._irq_pin.value() == 1 and
   self._scd_timer_triggers < self._trigger_half_ticks: self._scd_timer_triggers += 1` with A.U15.03's trailing comment
@@ -1342,6 +1369,17 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   queue gains one register frame → A.U15.01 (TEST_UNIT, TEST_HELP `_bus_hazard_catalog.py:174-196`); twin chip answers
   0x5403 → A.U15.01 (TWIN); `FastAsyncSleep` `sleep_ms` → A.U31.09/A.U24.49 (TEST_HELP); four tiers → A.U15.01 blast;
   SPEC M.2 → A.U15.05/A.U15.08/A.U31.09 (SPEC); release note D4.62 → A.U15.01 via U37
+- **Kind**: code
+
+### M.SRC_SENS.090 SCD30: a pre-sync `TS` of `None` is not a failed read
+- **From**: M.SRC_SENS.089's rule
+- **Site**: `src/asy_scd30_driver.py:407` (`_read_loop()`)
+- **Change**: `if not await self._error_check(results, condition=results[0] is None): return` with M.SRC_SENS.089's
+  comment line.
+- **Resolved**: see M.SRC_SENS.089.
+- **Unit**: U10
+- **Depends**: M.SRC_SENS.089
+- **Blast carried by**: → GAP-15 (TEST_UNIT, TWIN, SPEC)
 - **Kind**: code
 
 ## src/asy_sgp40_driver.py
@@ -1578,8 +1616,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   list[TimerStarter]: return []`. `get_mem_status()` returns `self._last_backup, self._restored_from`. `get_dict_cfg()`
   names the renamed tuples (its comment names `ResetVOC`). `reset_voc()`: "(project-wide decision)" → "(owner,
   2026-09-26)"; `self._reset_pending = True`. `_read_loop(self) -> None`: init; `while True: await
-  self._read_event.wait()`; `if await self._timer_fault(): return`; the cycle as today; `return` for HEAD's `return
-  False`.
+  self._read_event.wait()`; `if await self._timer_fault(): return`; the cycle as today with M.SRC_SENS.091's condition; `return` for
+  HEAD's `return False`.
 - **Resolved**: —
 - **Unit**: U15 (stages U0 tag, U10 names/split)
 - **Depends**: M.SRC_SENS.062-065; A.U15.41 helpers (SRC_CORE)
@@ -1670,3 +1708,879 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   A.U15.05/A.U15.13 (SPEC)
 - **Kind**: code
 
+
+### M.SRC_SENS.091 SGP40: a pre-sync `TS` of `None` is not a failed read
+- **From**: M.SRC_SENS.089's rule
+- **Site**: `src/asy_sgp40_driver.py:530` (`_read_loop()`)
+- **Change**: `if not await self._error_check(data, condition=compensated and data[0] is None): return` with
+  M.SRC_SENS.089's comment line.
+- **Resolved**: see M.SRC_SENS.089; the `compensated` gate (a cycle without compensation counts nothing) is kept.
+- **Unit**: U10
+- **Depends**: M.SRC_SENS.089
+- **Blast carried by**: → GAP-15 (TEST_UNIT, TWIN, SPEC)
+- **Kind**: code
+
+## src/asy_isl29125_driver.py
+
+### M.SRC_SENS.070 Header, docstring and imports
+- **From**: A.U34.07 (SPDX order), A.U10.37 (module names), A.U15.40 (`Lockable` out, `DeviceSession` in), A.U10.06
+  (`utc_now`), A.U5.01/A.U5.02 (`LogConfig`; the FRAM manager import goes with `fram=`), A.U10.38 (`FRAMManager`: moot
+  here, the import goes), A.U15.43 + A.U10.46 (`Any`/`Callable` out; `JsonDict`, starter aliases), A.U15.31 + AC_NOTES 17
+  (`COUNTER_CAP`), A.U30.19 (`report_if_fatal`), A.U10.31 (unquote annotations naming no `TYPE_CHECKING` symbol,
+  31 in this file), A.SDEP.15 (stage U0 re-check of the stub workarounds, W08-W11)
+- **Site**: `src/asy_isl29125_driver.py:1-34`, and every annotation in the file (A.U10.31)
+- **Change**: `:1-3` → "# SPDX-FileCopyrightText: Copyright (c) 2023 Jose D. Montoya" / "# SPDX-License-Identifier: MIT"
+  / "# From MicroPython_ISL29125, rewritten for asyncio + this driver shape - see THIRD_PARTY_LICENSES.md." (A.U34.07).
+  Docstring unchanged. Runtime imports: `asyncio`, `struct`, `time`, `namedtuple`, `from machine import Pin, Timer`,
+  `const`, `import math_helpers`, `from asy_i2c_driver import I2CDevice`, `from asy_base_classes import COUNTER_CAP,
+  DeviceSession, LockedValue, SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import name_cfg,
+  type_or_range_error`, `from asy_print_log import DEFAULT_LOG, LogConfig`. The `TYPE_CHECKING` shim stays;
+  under it: `from asy_base_classes import JsonDict, TaskStarter, TimerStarter`; `from asy_i2c_driver import I2C`; `from
+  asy_config_manager import ConfigSchema`; `from asy_print_log import ErrorLog`. A.U10.31: every quoted annotation that
+  names no `TYPE_CHECKING` symbol is unquoted (`"tuple[bool, bool]"`, `"list[float]"`, `"tuple[int, int, int]"`,
+  `"bytes | bytearray | memoryview | None"`, `"int | float | str | bool | None"`, `"asyncio.Task[None]"`, …);
+  `"ISLResults"`, `"I2C"`, `"ConfigSchema"`, `"ErrorLog"`, `"JsonDict"` and the starter aliases stay quoted.
+- **Resolved**: —
+- **Unit**: U15 (stages U0 re-check, U5 `LogConfig`, U10 names/unquoting/`utc_now`, U30 `report_if_fatal`, U34 header)
+- **Depends**: A.U10.37, A.U10.46, A.U15.40, A.U10.06, A.U10.01
+- **Blast carried by**: L0 `tests_scripts/test_third_party_attribution.py` → A.U34.07 (TSC); `pyproject.toml` baseline
+  list → A.U15.43 (TOOL); SPEC B.15 list → A.U27.03 (SPEC)
+- **Kind**: code
+
+### M.SRC_SENS.071 Constants: registers, tags, bounds, catalog names, fixed address
+- **From**: A.U15.37 (`_REGISTER_CONFIG3` goes), A.U36.544 (`:58` "Part C" → M.1.3), A.U0.35 (`:90` actor tag), A.U0.28
+  (`:98` owner tag), A.U8.13 (ten tunables tagged), A.U10.43 (`_MIN/_MAX_TRIGGER_S`), A.U15.35 (`_MAX_DWELL_MS`), A.U15.28
+  (`_ISL29125_ADDR`), A.U2.12 + A.U2.04 + A.U2.01 (catalog block), A.U15.30 (the `_SETTLE_CYCLES` comment points at the
+  Table 7 reading)
+- **Site**: `src/asy_isl29125_driver.py:37-117`
+- **Change**: `_REGISTER_CONFIG3` and its comment go. `:58` → `_CONFIG3_CONVEN = const(0x10)  # p11, Table 13 - kept 0,
+  see SPECIFICATION.md M.1.3`. `:90-91` → "# Device/maths constants, not config fields (agent classification,
+  2026-09-14) - requirement 1 (SPECIFICATION.md / # Part M.1.1) governs preferences, and none of these is one." (two
+  lines). `:98` → "# Calibration is a bounded, user-started run, never a background schedule (owner, 2026-09-13): the
+  driver only ever / # READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5)." (two
+  lines). Tag lines directly above each tuned constant (values unchanged, basis from each constant's own comment per
+  A.U8.13): `# @tunable isl29125.cct_floor_counts = 64`, `# @tunable isl29125.gain_ratio_min = 20.0`, `# @tunable
+  isl29125.gain_ratio_max = 34.0`, `# @tunable isl29125.cal_window_ms = 120000`, `# @tunable isl29125.cal_hold_ms =
+  600000`, `# @tunable isl29125.cal_converge_n = 3`, `# @tunable isl29125.cal_converge_tol = 0.01`, `# @tunable
+  isl29125.cal_stability_tol = 0.02`, `# @tunable isl29125.settle_cycles = 2`, `# @tunable
+  isl29125.settle_wait_max_rounds = 2`, `# @tunable isl29125.periodic_only_warn_at = 5`. `_SETTLE_CYCLES`'s trailing
+  comment → "conversions discarded after a CONFIG1 write, fixed - see configure()". `_MIN_TRIGGER_S = const(1)`,
+  `_MAX_TRIGGER_S = const(3600)`; after `_MAX_DWELL_S`: `_MAX_DWELL_MS = const(300000)  # _MAX_DWELL_S in ms, the
+  stored-tick bound of _evaluate_range()`. `_ISL29125_ADDR = const(0x44)  # hard-wired "1000100" (FN8424 p15): a second
+  part needs another bus`. The catalog block: `_ERR_INIT = const(10)`, `_ERR_READ = const(11)`, `_ERR_CHIP_GET =
+  const(12)`, `_ERR_CHIP_SET = const(13)`, `_ERR_BAD_ARG = const(21)`, `_ERR_ISL_STATUS_READ = const(55)`,
+  `_ERR_ISL_BUS_FAULT = const(56)`, `_WRN_ISL_BROWNOUT = const(30)`, `_WRN_ISL_DIVERGED = const(31)`,
+  `_WRN_ISL_PERIODIC_ONLY = const(32)`.
+- **Resolved**: A.U0.35's text "Device/maths constants, not config fields (agent classification, 2026-09-14)" and the
+  existing M.1.1 pointer fit two lines together (3-line cap). Datasheet facts rechecked: p15 "internally hard-wired as
+  1000100" (`dstxt/isl29125…:1139`; p7 `:477` says the same), Table 7 (`:786-789`).
+- **Unit**: U15 (stages U0 tags in comments, U2 catalog block, U8 tunable tags, U10 `_S` names, U36 citation — each lands
+  in its own unit on the same lines)
+- **Depends**: A.U2.01, A.U8.01
+- **Blast carried by**: Part N rows and M.1.4/M.1.5 citations → A.U8.13 (SPEC); test copies `tests/test_asy_isl29125_driver.py:
+  38-42` → A.U24.01 (TEST_UNIT); twin test copies → A.U25.49 (TEST_UNIT/TSC); `_ISL29125_ADDR` read by
+  `buildgen` → A.U20.28 (GEN); catalog rows 55/56/30-32 → A.U2.01 (GEN); 61 number asserts in
+  `tests/test_asy_isl29125_driver.py`, `tests/test_digital_twin_isl29125_autorange.py:96`, device scripts
+  `isl29125_mechanism_envelope.py:217, 221`, `isl29125_lighting_scenarios.py:204, 336`, `tests_hardware/README.md:215,
+  227, 247` → A.U2.12 (TEST_UNIT, HW_DEV, DOCS)
+- **Kind**: code
+
+### M.SRC_SENS.072 Schema, tags, fields and the `CalLight` output
+- **From**: A.U10.39 (`_VAL_` names), A.U10.40 (keys `SampleInterval`, `IRCompOffset`, `IRCompAdjust`, `Calibrate`),
+  A.U15.22 (3) (`_N_STORE_CFG` goes), A.U15.36 (`CalLight` field and tag), A.U6.19 (`TS` tag), A.U23.16 (the
+  `defaultValue` key leaves the grammar — its grep missed this tag), A.U5.03 + A.U10.38 (`@wiring`), A.U10.43
+  (`@limits trigger_s`), A.U15.40 (3) (module order holds)
+- **Site**: `src/asy_isl29125_driver.py:111-194`
+- **Change**: `_VAL_SAMPLE_INTERVAL = const((("SampleInterval", "int", 1, _MIN_TRIGGER_S, _MAX_TRIGGER_S, None),))`,
+  `_VAL_RESOLUTION`, `_VAL_RANGE_AUTO`, `_VAL_RANGE`, `_VAL_AUTO_RANGE_THRESH`, `_VAL_AUTO_RANGE_DWELL`,
+  `_VAL_IR_COMP_OFFSET` (`"IRCompOffset"`), `_VAL_IR_COMP_ADJUST` (`"IRCompAdjust"`), `_VAL_FILT_COEFF`, `_VAL_GAIN_RATIO`,
+  `_VAL_CALIBRATE = const((("Calibrate", "bool", None, None, None, True),))`; comments keep their text with the new key
+  names ("_VAL_POV" → "_VAL_PRES_OVERS"). `_N_INT_CFG`/`_N_FLOAT_CFG` comments name the new keys; `_N_BOOL_CFG`'s →
+  "RangeAuto ALONE - Calibrate is command-only (see _VAL_CALIBRATE above)"; `_N_STORE_CFG` goes. Tags: field names
+  `SampleInterval`, `IRCompOffset`, `IRCompAdjust`, `Calibrate`; the `Calibrate` tag loses ` defaultValue=false`
+  (otherwise unchanged, `dispatch=true` stays). Namedtuple and `_FIELDS`: `CalLight` between `GainMeas` and `TS`;
+  `ISL29125(None, …)` gains one `None`. After the `GainMeas` tag: `# @web CalLight section=measurements
+  submitGroup=self kind=readonly label="Calibration Light" description="0 not applicable now (fixed range, or the range
+  is changing), 1 suitable for Calibrate Gain Ratio, 2 too dark, 3 too bright."`. `TS` tag → `# @web TS
+  section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch decimals=0`. Wiring comment "passed
+  directly as this driver's own log= kwarg" and `# @wiring fram_target FRAMManager log optional kwarg`. Limits comment
+  "bounds kept in sync with _MIN/_MAX_TRIGGER_S by hand …" and `# @limits trigger_s 1..3600`. The `ISLResults`
+  comment (`:167-169`) → "# Elements 3 and 4 travel WITH the sample - the range the lux conversion divides by, the span
+  the normalised outputs do - never read back at store time; the last is the cycle's UTC timestamp." (its "ANY element"
+  clause goes with M.SRC_SENS.089's condition).
+- **Resolved**: A.U23.16 removes `defaultValue` from the tag grammar on a grep that found only SCD30's `ContMeas`; this
+  tag carries it too, so it goes here in U23 or the build fails — the website behaviour of a dispatch toggle with no GET
+  value is WEB's (GAP-12).
+- **Unit**: U23 (latest: the `defaultValue` removal); stages U6 (`TS`), U10 (names, keys, suffix), U15 (`CalLight`,
+  `_N_STORE_CFG`)
+- **Depends**: A.U10.40 (map), A.U6.19 (`format` key), A.U11.34 (A.U15.36's Depends)
+- **Blast carried by**: generated definitions (`html/definitions/dev.json` `CalLight`, renamed keys) → A.U15.36/A.U10.40/
+  A.U6.04 (GEN); `mockdata/dev.json` `"CalLight": 1` and renamed keys, js label/colour → A.U15.36/A.U10.40/A.U23.20
+  (WEB); `tests/test_asy_isl29125_driver.py:1068` key set, `tests_scripts/test_measurement_field_tuple_agreement.py`,
+  A.U24.57's nested-body test (`CalLight` flat) → A.U15.36/A.U24.57 (TEST_UNIT, TSC); SPEC M.1.5 code table →
+  A.U15.36 (SPEC); the dispatch toggle's rendering without `defaultValue` → GAP-12 (WEB); `@web-group` inventory →
+  A.U20.26 (TSC, unchanged pairs)
+- **Kind**: code
+
+### M.SRC_SENS.073 `ISL29125_Reader` construction and its state
+- **From**: A.U5.02 (`(i2c, irq_pin, *, trigger_s, irq_pull_up, max_module_error, name_ext, cfg_path, log)`), A.U15.28
+  (`address` goes), A.U10.43 (`trigger_s`), A.U10.35 (`_isl`, `_base_trigger_event`, `_read_event`, `_trigger_timer`,
+  `_trigger_period`, `_trigger_counter`), A.U27.03 + A.SDEP.15 (Timer comment), A.U15.R04 (3) (`_recovery_bus`), A.U3.14
+  (`_brownout_seen` goes), A.U15.22 (3)-(4) (`_filt_coeff`, `_cycle_filter`, `_unsettled_cycle`), A.U15.31 (comment
+  `:254-256`), A.U15.32 (`_int_held`), A.U15.R05 (its once-per-episode flag), A.U15.33 (`_threshold_lock`), A.U15.36
+  (`_last_cal_light`), A.U10.39/A.U10.43 (registrations), A.U10.25 (registrations stay in `__init__`: holds), A.U10.40
+  (comment `:282-284`)
+- **Site**: `src/asy_isl29125_driver.py:197-288`
+- **Change**: `__init__(self, i2c: "I2C", irq_pin: int, *, trigger_s: int = 1, irq_pull_up: bool = True,
+  max_module_error: int = 5, name_ext: str = "", cfg_path: str = "", log: LogConfig = DEFAULT_LOG)`;
+  `super().__init__(ISL29125(<13 × None>), _NAME, <the eleven _VAL_ tuples>, max_module_error=max_module_error,
+  name_ext=name_ext, cfg_path=cfg_path, log=log)`; `self._isl = ISL29125_I2C(i2c)`; `self._recovery_bus = i2c`; the
+  pull-up comment and `self.irq_pin` unchanged; `self._base_trigger_event`, `self._read_event` (ThreadSafeFlags, comment
+  unchanged); the Timer comment → "# Bare Timer() is valid on rp2 (id defaults to -1); the stub requires an id. Removal
+  trigger: SPECIFICATION.md B.15." then `self._trigger_timer = Timer()`; `self._trigger_period =
+  LockedValue(init_value=int(trigger_s))`; `self._trigger_counter = 0`. State, in HEAD order with: `_brownout_seen`
+  gone; `self._int_held = False` with "# INTSEL parked because the peak rule overrules the green window it watches
+  (see _read_isl())."; `self._int_rearmed = False` with "# One INT re-arm per dead-line episode; cleared by the next
+  interrupt-led decision."; `self._threshold_lock = asyncio.Lock()` with "# Serialises every threshold/range writer:
+  derive the counts, write, commit."; `self._last_cal_light = 0` next to `_last_overrange` (comment: "The CalLight
+  code for the most recent stored sample, set once per read cycle like Overrange."); the `_reconciled_write_failures`
+  comment → "# The protocol layer's failed-write sequence as of the last reconciliation - see / #
+  _verify_after_failed_write(). Starts level with it, so a clean boot reconciles nothing."; after `_gain_ratio`:
+  `self._filt_coeff = -1.0` and `self._cycle_filter = -1.0` ("# FiltCoeff, cached like the other software knobs, and
+  the value this cycle captured (schema default: off)."), `self._unsettled_cycle = False`. Registrations with the new
+  `_VAL_` names; `_push_trigger_s`; the `:282-284` comment says "Calibrate is command-only".
+- **Resolved**: A.U5.02 counts 9 parameters with `address`; A.U15.28 removes it first (A.U5.02's own note) — 8, inside
+  `max-args` (A.U5.17), so no exemption. The shared divider reads `_base_trigger_event`/`_read_event`/
+  `_trigger_period`/`_trigger_counter` (M.SRC_SENS.045's settlement: one set of private names for both dividing
+  drivers).
+- **Unit**: U15 (stages U5 signature, U10 names, U27 comment)
+- **Depends**: M.SRC_SENS.070-072; A.U10.R01 (`_recovery_bus` slot)
+- **Blast carried by**: generated construction (no `address=`, `trigger_s=`, `log=`) → A.U5.03/A.U10.43 (GEN); tests
+  constructing the reader or reading the renamed attributes (`make_protocol(address=_ADDR)`, `reader.isl`, …) →
+  A.U15.28/A.U5.02/A.U10.35 (TEST_UNIT); `tests/_bus_hazard_catalog.py:323`, `tests/test_bus_hazard_multi_device.py`
+  → A.U15.28 (TEST_HELP, TEST_UNIT); device scripts `isl29125_*` → A.U5.02/A.U10.35/A.U10.39 (HW_DEV); SPEC B.15 →
+  A.U27.03
+- **Kind**: code
+
+### M.SRC_SENS.074 `_init_isl()`: restart resets, cached filter, the init rungs
+- **From**: A.U10.10 (`pr.setup()` leaves), A.U15.34 (resets), A.U15.22 (3) (`_filt_coeff` from the init batch), A.U3.05
+  (config read → console), A.U2.12 (numbers), A.U15.R04 (3) (`_init_failed()`/`_init_done()`), A.U10.43
+  (`set_trigger_s`), A.U10.39 (names), A.U10.21 (`setup()` returns `True` or raises), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:292-348`
+- **Change**: first lines (A.U15.34): `self._err_cnt_internal = 0`; `self._filtered[0] = self._filtered[1] =
+  self._filtered[2] = None` (in place); `self._irq_fired = False`; `self._periodic_only_switches = 0`; `self._int_held =
+  False`; `self._int_rearmed = False`. `try: await self._isl.setup()` `except Exception as e: report_if_fatal(e); await
+  self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT); await self._init_failed(); return False`. Config batch
+  with the new `_VAL_` names; a failed or short read → `self.pr.err("Error reading config data!")` (console, the config
+  store persisted the cause) and `return False` (no rung). The `:319-320` comment → "# set_trigger_s() never raises (logs
+  BAD_ARG, keeps the previous value) - a bad stored / # SampleInterval is a pure software timing knob, not a reason to
+  fail this whole init attempt."; `await self.set_trigger_s(int_values[0])`; `self._ar_thresh, self._ar_dwell_s,
+  self._filt_coeff = float_values[0], float_values[1], float_values[2]`; the rest as HEAD; the configure `except
+  Exception as e: report_if_fatal(e); await self.pr.err_s("Error setting config data:", e, errno=_ERR_CHIP_SET); await
+  self._init_failed(); return False`; `if self._range_auto: await self._switch_range(self._active_range)` (comment kept);
+  `await self._init_done()`; `self.pr.one("initialized")`; `return True`.
+- **Resolved**: A.U15.34's resets "after `pr.setup()`" open the function once A.U10.10 moves `pr.setup()` to the boot
+  batch (A.U15.34's Depends). `_int_rearmed` (A.U15.R05's flag) joins the reset list: an episode never outlives the
+  task — agent addition, OR2.c list. Kept on purpose, as A.U15.34 states: `_reconciled_write_failures`, the calibration
+  run and candidate, `_last_switch_ms`, the cached knobs.
+- **Unit**: U15 (stages U2, U3, U10; U30 handlers)
+- **Depends**: M.SRC_SENS.073; A.U10.R01, A.U13.R01, A.U10.10
+- **Blast carried by**: L1 restart cases (filter, `_irq_fired`) → A.U15.34 (TEST_UNIT); SPEC M.1.2 "State across a task
+  restart" table (gains `_int_held` and the re-arm flag rows) → A.U15.34/A.U15.R04 (SPEC); config-read tests
+  `tests/test_asy_isl29125_driver.py:875` → A.U3.05 (TEST_UNIT); streak tests `:953, :2539` → A.U15.R04/A.U10.R01
+- **Kind**: code
+
+### M.SRC_SENS.075 `_read_isl()`: timestamp, unsettled discard, INT parking, CalLight code
+- **From**: A.U10.06 (`utc_now()` before the `try`; the `except` keeps it), A.U15.22 (3)-(4) (filter capture; unsettled
+  discard), A.U15.32 (park and re-arm), A.U15.36 (per-cycle code), A.U3.14 (every brownout warns: through
+  M.SRC_SENS.076), A.U2.12 (55, 56, 11), A.U0.16 (the decision comment is `_evaluate_range()`'s), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:368-431`
+- **Change**: `async def _read_isl(self) -> "ISLResults":` `self._unsettled_cycle = False`; `timestamp = utc_now()`; the
+  five value locals `None`; `try:` `await self._verify_after_failed_write()` (comment kept); `if
+  self._isl.time_to_settle_ms() > 0:` `await self._settle_wait()`; `if self._isl.time_to_settle_ms() > 0:` (one comment
+  line: "# Past the bound the data may come from the previous CONFIG1: discard the cycle, count nothing.")
+  `self._unsettled_cycle = True`; `return None, None, None, None, None, timestamp`. Capture block as HEAD plus
+  `self._cycle_filter = self._filt_coeff`. Status read: `except Exception as e: report_if_fatal(e); await
+  self.pr.err_s("Status read failed:", e, errno=_ERR_ISL_STATUS_READ); return None, None, None, None, None, timestamp`.
+  `irq_fired, self._irq_fired = self._irq_fired, False`; `brownout, threshold_fired = self._handle_status(status)`; `if
+  brownout:` (comment kept) `await self._recover_brownout()`; `return None, None, None, None, None, timestamp`. The
+  bus-fault branch logs `errno=_ERR_ISL_BUS_FAULT` and returns the same shape. `counts, saturated = …`; `target =
+  self._evaluate_range(counts, saturated=saturated)`; `if target is not None:` HEAD body; `elif self._range_auto:`
+  `if self._int_held:` `if self._green_in_window(counts[0]): await self._set_int_armed(armed=True)` `elif
+  threshold_fired and irq_fired: await self._set_int_armed(armed=False)` with A.U15.32's three-line comment on this
+  block. `_last_overrange` as HEAD; `self._last_cal_light = 0 if not sample_range_auto or target is not None else
+  self._band_code(counts[0])`; `await self._measure_gain_ratio(counts[0])`; `self.pr.all("read")`; `green, red, blue =
+  counts`. Outer `except Exception as e: report_if_fatal(e); green = red = blue = sample_range = sample_span = None;
+  await self.pr.err_s("Read failed:", e, errno=_ERR_READ)`; return the six. New helpers: `def
+  _green_in_window(self, green: int) -> bool:` — high range `fraction_to_counts(self._down_thresh()) < green`, low range
+  `0 < green < fraction_to_counts(self._ar_thresh)` (the window the active range arms; one comment line "Strictly
+  inside: on the low range a 0 threshold still fires on 'below or equal' (FN8424 p12)."); `async def
+  _set_int_armed(self, *, armed: bool) -> None:` `try: await self._isl.configure(threshold_interrupt=armed)` `except
+  Exception as e: report_if_fatal(e); await self.pr.err_s("Error setting the interrupt select:", e,
+  errno=_ERR_CHIP_SET); return` then `self._int_held = not armed` (no await between the write's return and the flag).
+- **Resolved**: A.U15.32 re-arms "each read cycle … as soon as green lies inside the window the active range arms" and
+  parks when a flagged crossing gets no decision; the merged block tests both only on a cycle with no switch decided
+  (`target is None`), so the window is the one the chip is armed with — agent precision, OR2.c list. The one
+  flag-and-INTSEL writer is `_set_int_armed()` plus `set_range_auto(True)` (M.SRC_SENS.080). Fact checked: "If the ALS
+  value crosses below or is equal to the lower threshold, an interrupt is asserted" (`dstxt/isl29125…:877`); "outside
+  the user's programmed window" (`:398-410`), both p12.
+- **Unit**: U15 (stages U2, U10 timestamp; U30 handlers)
+- **Depends**: M.SRC_SENS.073, M.SRC_SENS.076, M.SRC_SENS.078, M.SRC_SENS.081, M.SRC_SENS.089; A.U10.06
+- **Blast carried by**: L1 park/re-arm/darkness/interleave cases and L2 red-dominant scene → A.U15.32 (TEST_UNIT, TWIN);
+  unsettled-discard case → A.U15.22; CalLight edge cases and L2 dark/mid/bright → A.U15.36; four tiers of the CONFIG2-3
+  burst → A.U15.32 blast (TEST_UNIT, TWIN, HW_DEV, HW_BENCH); SPEC M.1.4 parking sentence, release note D4.66 →
+  A.U15.32 (SPEC, DOCS via U37); pre-sync L1 (values published, TS `None`) → A.U10.06 (TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_SENS.076 Brownout, re-applied configuration and the participant rung
+- **From**: A.U3.14 (latch goes; every brownout warns), A.U15.R04 (1)-(2) (`_reapply_configuration()`,
+  `_recover_device()`), A.U2.12 (w10 → 30, e33 → 13), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:465-479`; new `_reapply_configuration()`, `_recover_device()`
+- **Change**: `async def _recover_brownout(self) -> bool:` `await self.pr.wrn_s("Brownout detected - re-applying the whole
+  configuration.", wrnno=_WRN_ISL_BROWNOUT)`; `return await self._reapply_configuration()`. `async def
+  _reapply_configuration(self) -> bool:` `try: await self._isl.configure(force=True); await self._isl.clear_brownout()`
+  `except Exception as e: report_if_fatal(e); await self.pr.err_s("Error re-applying configuration:", e,
+  errno=_ERR_CHIP_SET); return False`; `if self._range_auto: await self._switch_range(self._active_range)  # never
+  raises; logs its own`; `return True`. `async def _recover_device(self) -> bool: return await
+  self._reapply_configuration()` with "# Participant rung: re-configuration from the shadow; the 0x46 reset stays
+  setup()'s (task restart)."
+- **Resolved**: BMP3XX's and SCD30's rungs hold `_set_lock` (A.U11.27) because they re-apply the stored file config a PUT
+  may be half-way through persisting; this rung re-applies the shadow, which every writer mutates and writes inside one
+  session hold (`configure()`), and `_switch_range()` runs under `_threshold_lock` — so no `_set_lock` here (A.U15.R04's
+  race statement; agent reading, OR2.c list). A forced re-apply keeps a parked INT parked (the shadow holds INTSEL 00),
+  so `_int_held` and the chip agree.
+- **Unit**: U15 (stage U3 latch removal; U30 handler)
+- **Depends**: M.SRC_SENS.080 (`_switch_range()`), A.U10.R01
+- **Blast carried by**: `tests/test_asy_isl29125_driver.py:1566-1595` (one slot, `ErrCount == 5`) and the RF175 case →
+  A.U3.14/A.U3.03 (TEST_UNIT); rung cases (no-brownout re-apply, raising burst, no `recover()` on config-read failure)
+  and the mid-operation hazard case → A.U15.R04 (TEST_UNIT, TWIN); twin Run 5c (`settled > 0`) holds → A.U15.R04 (SCR);
+  SPEC `:6675-6678` → A.U3.14/A.U3.10 (SPEC); SPEC M.1.2 restart row → A.U15.R04
+- **Kind**: code
+
+### M.SRC_SENS.077 Silent helper catches print; the dead-INT re-arm
+- **From**: A.U15.29 (`_device_id_answers()`, `_verify_after_failed_write()`), A.U15.32 (the detector pauses while
+  parked), A.U15.R05 (one re-arm per episode), A.U2.12 (w13 → 32), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:433-455, 481-493`
+- **Change**: `_device_id_answers()`: `except Exception as e: report_if_fatal(e); self.pr.err("Device-ID re-read
+  failed:", e); return False` (comment kept). `_verify_after_failed_write()`: `except Exception as e: report_if_fatal(e);
+  self.pr.err("Config read-back for reconciliation failed, retried next cycle:", e); return` (the trailing comment
+  goes into the message). `_note_decision_source()`: `if self._int_held: return` first, with "# Parked on purpose: a
+  periodic-led decision is by design now, not a dead line."; `if threshold_fired: self._periodic_only_switches = 0;
+  self._int_rearmed = False; return`; the count as HEAD; at the threshold, after `self._periodic_only_switches = 0`,
+  `await self.pr.wrn_s(…, wrnno=_WRN_ISL_PERIODIC_ONLY)`, then `if not self._int_rearmed: self._int_rearmed = True;
+  await self._rearm_interrupt()`. New `async def _rearm_interrupt(self) -> None:` `try: await
+  self._isl.configure(force=True)` `except Exception as e: report_if_fatal(e); await self.pr.err_s("Error re-arming the
+  interrupt:", e, errno=_ERR_CHIP_SET); return`; `await self._write_thresholds(self._active_range)` (logs its own).
+- **Resolved**: A.U15.R05 adds no second persisted entry for the event (OR56.a (1)): the wrnno 32 is it; a failed
+  re-arm logs its own CHIP_SET.
+- **Unit**: U15 (stage U2 numbers; U30 handlers)
+- **Depends**: M.SRC_SENS.080 (`_write_thresholds()`)
+- **Blast carried by**: L1 console-only ID/reconciliation cases → A.U15.29 (TEST_UNIT); re-arm L1/L2 → A.U15.R05
+  (TEST_UNIT, TWIN); wrnno-13 → 32 asserts → A.U2.12
+- **Kind**: code
+
+### M.SRC_SENS.078 `_store_isl()`: captured filter, values-only guard, CalLight
+- **From**: A.U15.22 (3) (per-sample config read goes), A.U10.06 (guard on values only), A.U15.36 (`CalLight`)
+- **Site**: `src/asy_isl29125_driver.py:495-543`
+- **Change**: guard `if green is None or red is None or blue is None or sample_range is None or sample_span is None:
+  return` (the timestamp may be `None` before the first sync). `:500-507` (the FiltCoeff read, its errno-14 fallback
+  and comment) go; `filter_coefficient = self._cycle_filter`. The stored tuple gains `CalLight=self._last_cal_light`
+  after `GainMeas`; `TS=timestamp`.
+- **Resolved**: —
+- **Unit**: U15 (stage U10 guard)
+- **Depends**: M.SRC_SENS.072, M.SRC_SENS.075
+- **Blast carried by**: `tests/test_asy_isl29125_driver.py:1149-1175` goes, tests calling `_store_isl()` directly rely on
+  `_cycle_filter`'s default → A.U15.22 (TEST_UNIT); store-guard tests with a `None` timestamp → A.U10.06
+- **Kind**: code
+
+### M.SRC_SENS.079 `_evaluate_range()` and `_settle_wait()`: owner tag, dwell horizon
+- **From**: A.U0.16 (comment), A.U15.35 (stored tick bounded), A.U15.22 (4) (`_settle_wait()` comment)
+- **Site**: `src/asy_isl29125_driver.py:569-589, 614-623`
+- **Change**: comment `:570-572` → "# Decides on the PEAK of all three channels in both directions (owner, 2026-09-12):
+  hardware / # is green-only (one INTSEL channel), but the output is a colour triple. Peak-up with green-down / #
+  oscillates - a red-dominant scene switches up, then back once the dwell ends." High-range branch: `now =
+  time.ticks_ms()`; `elapsed = time.ticks_diff(now, self._last_switch_ms)`; `if elapsed > _MAX_DWELL_MS:
+  self._last_switch_ms = time.ticks_add(now, -_MAX_DWELL_MS)` with "# Keeps the stored tick within the largest dwell,
+  far inside ticks_diff()'s 2**29 ms horizon."; then `if peak > …: return None`; the dwell test `if elapsed <
+  int(self._ar_dwell_s * 1000)`. `_settle_wait()` comment → "# Bounded rather than an open `while pending`: concurrent
+  config writes can keep pushing the / # deadline out; past the bound the cycle is discarded, never published, so the
+  loop cannot / # starve and nothing stale is reported."
+- **Resolved**: A.U15.35 places the bound "before the `peak >` test"; `elapsed` is computed once and reused by the dwell
+  test (clamping it too is harmless: every dwell ≤ `_MAX_DWELL_MS`).
+- **Unit**: U15 (stage U0 comment)
+- **Depends**: M.SRC_SENS.071
+- **Blast carried by**: SPEC `:4463`, `:6781` → A.U0.16 (SPEC); Ticks30 crossing case (c) → A.U15.35 with A.U14.34's
+  helper (TEST_UNIT); `:1291-1310` comment → A.U15.22 (TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_SENS.080 One locked threshold writer; setters rewrite chip thresholds
+- **From**: A.U15.33 (`_threshold_lock`, `_write_thresholds()`, setters), A.U15.S01 (paired with M.SRC_SENS.086), A.U15.32
+  (`set_range_auto(True)` clears the flag), A.U2.12 (29/30/38/16/27 → 13/21)
+- **Site**: `src/asy_isl29125_driver.py:591-612` (`_switch_range()`), `:932-946` (`set_resolution()`), `:961-979`
+  (`set_range_auto()`), `:981-988` (`set_autorange_thresh()`)
+- **Change**: `async def _write_thresholds_locked(self, range_fs: int, ar_thresh: float) -> bool:` (caller holds
+  `_threshold_lock`) — HEAD `:596-599` with `ar_thresh` in place of `self._ar_thresh` and `_down_thresh()` computed from
+  it; `except Exception as e: report_if_fatal(e); await self.pr.err_s("Error writing auto-range thresholds:", e,
+  errno=_ERR_CHIP_SET); return False`; `return True`. `async def _write_thresholds(self, range_fs: int, ar_thresh: float
+  | None = None) -> bool:` `async with self._threshold_lock:` `value = self._ar_thresh if ar_thresh is None else
+  ar_thresh`; `if not await self._write_thresholds_locked(range_fs, value): return False`; `if ar_thresh is not None:
+  self._ar_thresh = ar_thresh`; `return True`. `_down_thresh()` gains a parameter default (`ar_thresh: float | None =
+  None`, `None` → `self._ar_thresh`). `_switch_range()`: its comment kept; the whole body under `async with
+  self._threshold_lock:` — `if not await self._write_thresholds_locked(target_range, self._ar_thresh): return False`;
+  the range-bit write `except Exception as e: report_if_fatal(e); …errno=_ERR_CHIP_SET` (comment kept); the two
+  updates. `set_resolution()`: configure failure `errno=_ERR_CHIP_SET`; after `_reapply_persist(...)`, `await
+  self._write_thresholds(self._active_range)` whatever `_range_auto` is, with "# The registers compare the RAW ADC value,
+  so a resolution change rescales them, armed or not."; `return True` (the `if self._range_auto: _switch_range` goes).
+  `set_range_auto()`: after the arming write in the `flag` branch `self._int_held = False` (no await between);
+  `errno=_ERR_CHIP_SET`; rest as HEAD. `set_autorange_thresh()`: `thresh = await self._checked_cfg(value,
+  _VAL_AUTO_RANGE_THRESH)`; `None` → `False`; `return await self._write_thresholds(self._active_range,
+  ar_thresh=float(thresh))`; its comment → "# The down point follows automatically; the cache changes only once the
+  chip's registers took the value, so a failed push restores a consistent persisted value."
+- **Resolved**: A.U15.33 leaves a failed threshold write in `set_resolution()` unspecified; it stays as HEAD's (logged,
+  `True` returned: the resolution itself landed and a later switch or re-arm rewrites the registers) — agent reading,
+  OR2.c list. Lock order `_set_lock` → `_threshold_lock` → device session → bus lock (a PUT reaches
+  `_threshold_lock` from inside `_set_lock`; nothing takes `_set_lock` inside `_threshold_lock`) — the C.8 lock table
+  gains the new lock (GAP-13). OR109.a (0) holds: every derived per-call input (counts from `_ar_thresh`, the scale
+  from `_resolution`) is derived inside the hold that writes it.
+- **Unit**: U15 (stage U2 numbers; U30 handlers)
+- **Depends**: M.SRC_SENS.086 (`set_thresholds()` scales inside the session); M.SRC_SENS.082 (`_checked_cfg()`)
+- **Blast carried by**: fixed-mode resolution tests and `set_autorange_thresh` cache-only tests gain the burst, new L1
+  race cases → A.U15.33 (TEST_UNIT); four tiers (one 4-byte write per setter call) → A.U15.33/A.U15.S01 blast (TEST_UNIT,
+  TWIN, HW_DEV, HW_BENCH); SPEC M.1.4 derived-down-point sentence → A.U15.33; SPEC `:6737-6739`, DR `:66-69` →
+  A.U0.33/A.U0.36 (SPEC, DOCS); C.8 table → GAP-13
+- **Kind**: code
+
+### M.SRC_SENS.081 Calibration: one band test, bounded candidate tick
+- **From**: A.U15.36 (`_band_code()`), A.U15.35 (`_measured_ratio()` clears; `_cal_until_ms` stated), A.U2.12 (35 → 11),
+  A.U30.02/A.U30.03 (`_cal_recent` listed as bounded: no edit), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:627-714`
+- **Change**: new `def _band_code(self, green_counts: int) -> int:` `lo = self._isl.fraction_to_counts(self._down_thresh())`;
+  `hi = self._isl.fraction_to_counts(self._ar_thresh)`; `if green_counts <= lo: return 2`; `if green_counts >= hi:
+  return 3`; `return 1`, with "# The calibration band: 1 inside the overlap, 2 too dark, 3 too bright (the CalLight
+  codes, SPECIFICATION.md M.1.5)." `_measure_gain_ratio()`: after the window check a one-line comment "#
+  _cal_until_ms is compared only while _calibrating, which ends at this 2-minute window."; `:640` → `if
+  self._band_code(green_counts) != 1:`. `_read_on()`: `except Exception as e: report_if_fatal(e); await
+  self.pr.err_s("Paired gain-ratio reading failed:", e, errno=_ERR_READ)`. `_measured_ratio()`: `if self._cal_meas is
+  None: return None`; `if time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0: self._cal_meas = None; return
+  None` (comment → "# None once the hold expires, and the candidate goes, so the stored tick is never compared again.");
+  `return self._cal_meas`.
+- **Resolved**: —
+- **Unit**: U15 (stage U2; U30 handler)
+- **Depends**: M.SRC_SENS.080 (`_down_thresh()`)
+- **Blast carried by**: band-edge L1 cases → A.U15.36; Ticks30 crossing case (b) and `:3083` → A.U15.35 (TEST_UNIT);
+  I.2 allocation rows → A.U30.02 (SPEC); allow-list entries → A.U30.03 (TSC)
+- **Kind**: code
+
+### M.SRC_SENS.082 Config read-back, divergence and the two numeric helpers
+- **From**: A.U15.30 (`:717-719` comment), A.U2.12 (28 → 12; w11 → 31; 34 → 13; 24 → 13; `_snapshot_field(index,
+  what)`; `_checked_cfg(value, schema)`), A.U15.38 (1) (the isinstance arm goes), A.U11.S01 (the validator's slot
+  type), A.U10.43 (`_reapply_persist(trigger_s)`), A.U10.39 (names), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:716-788`
+- **Change**: `_read_sensor_dict()` comment → "# Reads the real registers rather than the shadow - the only thing that
+  can detect the two / # diverging. A read of 0x01 is not the write Table 7 names, so a read-only snapshot starts
+  nothing / # and creates no read-modify-write hazard."; its `except Exception as e: report_if_fatal(e); …
+  errno=_ERR_CHIP_GET`; the `dict.fromkeys` keys through the new `_VAL_` names; return type `dict[str, int | float |
+  str | bool | None]` unquoted. `_check_divergence()`: `wrnno=_WRN_ISL_DIVERGED`; `except Exception as e:
+  report_if_fatal(e); … errno=_ERR_CHIP_SET`. `async def _snapshot_field(self, index: int, what: str) -> int | None:`
+  logs `errno=_ERR_CHIP_GET` after `report_if_fatal(e)`. `async def _checked_cfg(self, value: int | float, schema:
+  "ConfigSchema") -> int | float | None:` comment `:768-770` kept; `is_error, coerced = type_or_range_error(value,
+  schema[0])`; `if is_error: await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value,
+  errno=_ERR_BAD_ARG); return None`; `checked: int | float = coerced`; `return checked` (`:772-774` go).
+  `_reapply_persist(self, trigger_s: int)`: `except Exception as e: report_if_fatal(e); … errno=_ERR_CHIP_SET`.
+- **Resolved**: A.U15.38 (1) removes the arm as unreachable; A.U11.S01 keeps it as narrowing (SUPP_coverage A-C note
+  1) — settled by the lead's L1 answer "no" (2026-09-30, SUPP_coverage open points): "A.U15.38 (1) stands"; a
+  never-firing check is dead code, narrowing belongs at the type level. The annotated local narrows while the
+  validator's slot is `Any`; if A.U11.S01 types it `CfgValue`, the type-level fix is the validator's to provide (an
+  honest per-kind return), never an `isinstance()` here — routed with the finding that M.SRC_CORE.047 still writes
+  A.U11.S01's never-true `type()` checks into `type_or_range_error()` against the same ruling (GAP-14).
+- **Unit**: U15 (stages U2, U10; U30 handlers)
+- **Depends**: A.U11.S01 (slot type, SRC_CORE)
+- **Blast carried by**: `tests/test_asy_isl29125_driver.py:2878-2890` goes → A.U15.38 (TEST_UNIT); E.5.1 rows → A.U35.41
+  (SPEC); SPEC M.1.4 settle bullet → A.U15.30 (SPEC); number asserts → A.U2.12
+- **Kind**: code
+
+### M.SRC_SENS.083 Push callbacks, starters, timer arm and the reader loop
+- **From**: A.U10.43 (`_push_trigger_s`), A.U15.40 (2) (`_base_trigger()` goes), A.U10.44 (`start_asy_trigger()` creates
+  the shared `_trigger_loop()`; `_read_loop`), A.U10.12 (`get_trigger_starters()`), A.U15.41 (arm failure), A.U15.43 +
+  A.U10.46 (types), A.U15.22 (4) (`condition`), M.SRC_SENS.089 (the pre-sync rule)
+- **Site**: `src/asy_isl29125_driver.py:350-357, 798-872, 1041-1050`
+- **Change**: `_base_trigger()` goes. `_push_trigger_s()` calls `set_trigger_s`; the other push callbacks unchanged
+  (unquoted annotation). `start_asy_read(self) -> asyncio.Task[None]` over `self._read_loop()`; `start_asy_trigger(self)
+  -> asyncio.Task[None]` over `self._trigger_loop()`. `start_timer()`: `self._trigger_timer.init(period=1000,
+  mode=Timer.PERIODIC, callback=lambda _b: self._base_trigger_event.set())` in `try`, `except (MemoryError, OSError) as
+  e: self._timer_failed(e, self._base_trigger_event)` with "# Alarm pool exhausted (ENOMEM) or no memory: wake the
+  waiting task, which logs it and ends; its restart re-arms."; the pin IRQ arm and its comment unchanged (not a Timer;
+  a re-arm on restart re-registers the same handler). `get_task_starters(self) -> "list[TaskStarter]"`;
+  `get_trigger_starters(self) -> "list[TimerStarter]": return [self.start_timer]`; `get_timer_starters(self) ->
+  "list[TimerStarter]": return []`; `stop_timer()` uses `self._trigger_timer`. `async def _read_loop(self) -> None:` `if
+  not await self._init_isl(): return`; the loop on `self._read_event`; `results = await self._read_isl()`; `if not
+  await self._error_check(results, condition=results[0] is None and not self._unsettled_cycle): return`; `await
+  self._store_isl(results)`.
+- **Resolved**: the divider's shared name is `_trigger_loop()` (M.SRC_SENS.045, GAP-8).
+- **Unit**: U15 (stage U10: A.U10.12 split, A.U10.44 names, M.SRC_SENS.089's condition)
+- **Depends**: M.SRC_SENS.073; A.U10.12, A.U15.41, A.U15.40 (helpers in `SensorReader`)
+- **Blast carried by**: generated trigger-starter collector → A.U10.12 (GEN); `tests/test_asy_isl29125_driver.py:2396,
+  2412` and `_base_trigger` callers → A.U15.41/A.U10.12/A.U15.40 (TEST_UNIT); `isl29125_mechanism_envelope.py:205-206`
+  → A.U10.44 (HW_DEV); `read_loop()) is False` asserts → A.U15.43
+- **Kind**: code
+
+### M.SRC_SENS.084 Reader getters and setters: numbers, cached filter, nested body
+- **From**: A.U2.12 (getter numbers via `_snapshot_field`; setter 16/18/20/22 → 13; 25/26/27 → 21 via `_checked_cfg`),
+  A.U15.22 (3) (`set_filter_coefficient()` caches), A.U19.16 (the `:1026` "Failed" comment: rewritten here), A.U15.36 +
+  A.U10.46 + A.U15.43 (`get_dict_data() -> "JsonDict"` with `CalLight`), A.U10.43 (`set_trigger_s`), A.U10.39/A.U10.40
+  (names, comment `:899-900`), A.U30.19
+- **Site**: `src/asy_isl29125_driver.py:876-1039`
+- **Change**: `get_dict_data(self) -> "JsonDict"`: body as HEAD plus `"CalLight": data.CalLight` after `"GainMeas"`.
+  `get_dict_cfg()`: comment says "Calibrate is deliberately absent"; the ten `_VAL_` names. `get_resolution()` …
+  `get_ir_comp_adjust()` → `self._snapshot_field(<index>, "<what>")`. `async def set_trigger_s(self, value: float) ->
+  bool:` `trigger_s = await self._checked_cfg(value, _VAL_SAMPLE_INTERVAL)`; `None` → `False`; `await
+  self._trigger_period.set_value(int(trigger_s))`; `return await self._reapply_persist(int(trigger_s))`.
+  `set_range()`, `set_ir_comp_offset()`, `set_ir_comp_adjust()`: `except Exception as e: report_if_fatal(e); …
+  errno=_ERR_CHIP_SET`. `set_autorange_dwell()`, `set_gain_ratio()`: `_checked_cfg(value, <schema>)`.
+  `set_filter_coefficient()`: `coeff = await self._checked_cfg(value, _VAL_FILT_COEFF)`; `None` → `False`;
+  `self._filt_coeff = float(coeff)`; `return True`; comment → "# Caches the coefficient like the other software knobs;
+  the read cycle captures it with the range and resolution." `start_calibration()` unchanged. (`set_resolution()`,
+  `set_range_auto()`, `set_autorange_thresh()`: M.SRC_SENS.080.)
+- **Resolved**: —
+- **Unit**: U15 (stages U2, U10; U30 handlers)
+- **Depends**: M.SRC_SENS.082
+- **Blast carried by**: `tests/test_asy_isl29125_driver.py:1127-1146` holds → A.U15.22; nested-body/tuple test →
+  A.U24.57 (TEST_UNIT); number asserts → A.U2.12; `JsonDict` alias → A.U10.46 (SRC_CORE)
+- **Kind**: code
+
+### M.SRC_SENS.085 `ISL29125_I2C` construction: fixed address, shared session, sequence
+- **From**: A.U15.28 (no `address`), A.U15.40 (1) (`ISL29125_DeviceSession` goes), A.U10.35 (`_i2c_isl29125`), A.U10.38
+  (session rename moot), A.U30.07 (2) (`_rgb_burst`), A.U15.31 + AC_NOTES 17 (conditional wrap), A.U15.34
+  (`_dark_offset()` comment)
+- **Site**: `src/asy_isl29125_driver.py:1053-1103, 1151-1154, 1377`
+- **Change**: `ISL29125_DeviceSession` goes. `__init__(self, i2c: "I2C") -> None:` `self._i2c_isl29125 =
+  DeviceSession(I2CDevice(i2c, _ISL29125_ADDR))` (the `:1065-1066` comment goes: the constant carries it);
+  `self._rgb_burst = bytearray(_DATA_BURST_LEN)`; the shadow fields as HEAD; the `_write_failures` comment → "# Bumped
+  whenever a shadow write raises: a wrap-by-design sequence (wraps at COUNTER_CAP) / # the reader compares for
+  equality - saturating it would freeze reconciliation." `configure()`'s `:1377` → `self._write_failures =
+  self._write_failures + 1 if self._write_failures < COUNTER_CAP else 0`. `write_failures()` comment → "# The
+  failed-shadow-write sequence (compared for equality only). The chip is the authority / # after one, because the burst
+  may have landed in part - see configure()'s own roll-back." `_dark_offset()` comment gains a third line "# DDark is
+  specified in 16-bit counts (FN8424 p3), so it is subtracted after the 12-bit shift." (the first two lines kept,
+  shortened to fit: "DDark is specified at range 0 only (p3), where it is material: the same dark current is / ~1/26.67
+  count on the high range, so subtracting one there would remove real signal.").
+- **Resolved**: A.U15.31's `& _SEQ_MASK` step allocates at the wrap (2**30 is a heap int on rp2) — AC_NOTES 17 replaces
+  it with the conditional wrap at the shared `COUNTER_CAP`; no `_SEQ_MASK` constant. Datasheet: "Electrical
+  Specifications … 16-bit ADC operation, unless otherwise specified", DDark 1/5 counts at range 0
+  (`dstxt/isl29125…:198-211`).
+- **Unit**: U15 (stage U10 attribute name; U30 buffer)
+- **Depends**: M.SRC_SENS.071, M.SRC_SENS.013; A.U15.40, A.U10.01
+- **Blast carried by**: wrap L1 case (`_write_failures = COUNTER_CAP` → 0, next cycle reconciles) → A.U15.31
+  (TEST_UNIT); U35's L0 counter check lists the sequence → A.U15.31 (TSC); SPEC M.1.3 sequence clause → A.U15.31 (SPEC);
+  `tests/test_asy_isl29125_driver.py:138-140` → A.U15.28 (TEST_UNIT); twin chip keys on 0x44 unchanged
+- **Kind**: code
+
+### M.SRC_SENS.086 Protocol reads and writes: bool bus, own burst, scale in session
+- **From**: A.U13.07 + A.U13.09 (`:1136, :1172, :1413, :1434`), A.U13.10 (`_read_byte`, `get_config_snapshot`, `reset`
+  via `get_register_bytes()`; its `read_counts` site superseded by A.U30.07), A.U30.07 (2) (burst into `_rgb_burst`;
+  `unpack_from`), A.U15.S01 (scale inside the hold), A.U10.45 (`:1407` message), A.U10.21 (`setup() -> bool`), A.U15.30
+  (`:1380-1382`), A.U15.35 (`time_to_settle_ms()`), A.U15.38 (2) (`encode_shadow()` try goes), A.U27.03 (`:1284`
+  comment), A.U10.43 (`persist_for_interval(trigger_s)`), A.U10.35 (session attribute)
+- **Site**: `src/asy_isl29125_driver.py:1105-1448`
+- **Change**: every `async with self.i2c_isl29125 as isl` → `self._i2c_isl29125`. `_decode_rgb_burst()`: `green, red,
+  blue = struct.unpack_from("<HHH", raw)` (no `bytes()` copy; the rest as HEAD). `_read_byte()`: comment → "# One
+  register byte; None from the bus layer means no bus, raised so every caller's error path logs it."; `raw = await
+  i2c.get_register_bytes(register, 1)`; `if raw is None: raise OSError("I2C bus not initialized")`; `return raw[0]`.
+  `_write_shadow_locked()`: `if not await i2c.set_register_struct(first_register, f"{len(payload)}s", payload): raise
+  OSError("I2C bus not initialized")`. `get_config_snapshot()`: `raw = await
+  i2c.get_register_bytes(_REGISTER_CONFIG1, _CONFIG_BURST_LEN)`; `None` → the same raise; `return raw`.
+  `set_thresholds()`: its comment gains "Scaled inside the session: the resolution shadow may change while this waits
+  for the lock." (the block rewritten to three lines: "# Both counts arrive on the 16-bit scale and are rescaled to the
+  active resolution (the registers / # compare RAW values); an omitted high_counts parks the up-crossing. Scaled inside
+  the session: / # the resolution shadow may change while this waits for the lock."); `async with self._i2c_isl29125 as
+  isl, isl.i2c_device as i2c:` then `:1165-1170` inside it, then `if not await
+  i2c.set_register_struct(_REGISTER_THRESHOLDS, "4s", packed): raise OSError("I2C bus not initialized")`.
+  `persist_for_interval(self, trigger_s: int)`; `:1284`'s trailing comment → "# const() tuple typed Any by the stub; the
+  annotation narrows it. Removal trigger: SPECIFICATION.md B.15." (own line above). `time_to_settle_ms()`: `remaining =
+  time.ticks_diff(self._settle_until_ms, time.ticks_ms())`; `if remaining <= 0: self._settle_until_ms =
+  time.ticks_ms(); return 0` with "# A passed deadline moves up to now, so the stored tick never ages past the ticks
+  horizon."; `return remaining`. `encode_shadow()`: `prst = _PRST_SETTINGS.index(self._persist)` without the `try`
+  (comment `:1296-1298` kept). `configure()`: `:1380-1382` → "# Table 7 starts the ADC at an I2C write to 0x01 and
+  leaves open whether a conversion in flight / # restarts, so every CONFIG1 writer arms the settle deadline where the
+  write happens; outside / # the lock: timing bookkeeping only." `read_counts()`: the `:1386-1388` comment goes; `async
+  with … as i2c:` `if not await i2c.get_register_into(_REGISTER_DATA, self._rgb_burst): raise OSError("I2C bus not
+  initialized")`; `counts = self._decode_rgb_burst(self._rgb_burst)` in the same block with "# Filled and decoded under
+  one hold: the buffer is this instance's own."; `if counts is None: raise OSError("unexpected RGB data burst read
+  result")` with "# Narrows the Optional; a fixed 6-byte buffer always decodes." `verify_device_id()`:
+  `RuntimeError(f"failed to find ISL29125, device ID {hex(device_id)}")`. `clear_brownout()`: bool-checked write,
+  same raise. `async def setup(self) -> bool:` HEAD body, `return True`. `reset()`: bool-checked CMD write; `config =
+  await i2c.get_register_bytes(_REGISTER_CONFIG1, _CONFIG_BURST_LEN)`; `config is None` → `OSError("I2C bus not
+  initialized")`; `any(config)` → the HEAD `RuntimeError`; shadow reset as HEAD.
+- **Resolved**: A.U13.10's `read_counts()` site → A.U30.07's own buffer (U30 note; same as BMP3XX, M.SRC_SENS.048). The
+  kept `counts is None` re-check is the Optional narrowing A.U35.41's convention keeps with a comment (agent,
+  2026-09-30), not a lead-L1 "unreachable check" — it narrows a return type, not a validated value.
+- **Unit**: U30 (latest: burst buffer); stages U10 (names, message, `setup()`), U13 (bool bus,
+  `get_register_bytes()`), U15 (session, scale, comments, settle tick, `encode_shadow()`), U27 (comment)
+- **Depends**: M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.085; A.U15.40
+- **Blast carried by**: `tests/test_asy_isl29125_driver.py:192-210` hold, `:2599-2611` `silent_none` retargets, `:2605`,
+  `:704-711` comment → A.U13.10/A.U30.07 (TEST_UNIT); bus-down L1 (ISL writes raise) → A.U13.09; `set_thresholds` race
+  L1 → A.U15.S01; `:2896-2906` goes → A.U15.38; Ticks30 case (a), `:652-662` rewrite → A.U15.35/A.U14.34; message
+  asserts ("Failed to find") → A.U10.45 (TEST_UNIT, HW_DEV); test comment `:634-636` → A.U15.30 (TEST_UNIT); four tiers
+  (wire-identical; the threshold write unchanged in shape) → A.U30.07/A.U15.S01 blasts; SPEC C.8 derived-value clause
+  → A.U12.18 + A.U15.S01 (SPEC, SUPP_coverage A-C note 6); SPEC G.2 `get_register_into()` → A.U30.07
+- **Kind**: code
+
+### M.SRC_SENS.087 Broad handlers report fatal errors first
+- **From**: A.U30.19
+- **Site**: every `except Exception as e:` in `src/asy_isl29125_driver.py` without a closing bare `raise`
+- **Change**: in U30, after every earlier edit, each such handler starts with `report_if_fatal(e)`: `_init_isl()` (×2),
+  `_read_isl()` (status read, outer), `_device_id_answers()`, `_set_int_armed()`, `_reapply_configuration()`,
+  `_verify_after_failed_write()`, `_rearm_interrupt()`, `_write_thresholds_locked()`, `_switch_range()` (range bit),
+  `_read_on()`, `_read_sensor_dict()`, `_check_divergence()`, `_snapshot_field()`, `_reapply_persist()`,
+  `set_resolution()`, `set_range()`, `set_range_auto()`, `set_ir_comp_offset()`, `set_ir_comp_adjust()` — 20, as at
+  HEAD after the brownout handler became `_reapply_configuration()`'s and two new ones joined. `configure()`'s rollback
+  handler ends in a bare `raise` and is left as is; `_decode_rgb_burst()`'s `(TypeError, ValueError)` is not broad.
+- **Resolved**: the per-entry texts above already show the call; this entry is the U30 landing list.
+- **Unit**: U30
+- **Depends**: A.U30.19 (`report_if_fatal()` in `asy_base_classes`)
+- **Blast carried by**: the L0 handler scan and C-stack L1 → A.U30.19 (TSC, TEST_UNIT)
+- **Kind**: code
+
+### M.SRC_SENS.088 D.15 member order
+- **From**: A.U10.33 (both classes reordered, AST-verified), A.U10.47 (the convention check keeps later inserts in place)
+- **Site**: `src/asy_isl29125_driver.py` `ISL29125_Reader`, `ISL29125_I2C`
+- **Change**: U10 reorders both classes to D.15 (last U10 change in the file); every method the later units add
+  (`_green_in_window`, `_set_int_armed`, `_reapply_configuration`, `_recover_device`, `_rearm_interrupt`,
+  `_write_thresholds_locked`, `_write_thresholds`, `_band_code`) is inserted at its D.15 position.
+- **Resolved**: —
+- **Unit**: U10
+- **Depends**: —
+- **Blast carried by**: A.U10.47's check (TSC)
+- **Kind**: code
+
+### M.SRC_SENS.092 Four comments state the reason, not the history
+- **From**: adherence finding (CLAUDE.md "Documentation contains current state … not the historic path"; G9/R12)
+- **Site**: `src/asy_isl29125_driver.py:250-252`, `:1128-1131`, `:1280-1282`, `:1337-1339`
+- **Change**: `:250-252` → "# The Overrange output field for the most recent stored sample, set once per read cycle in /
+  # _read_isl() and read back by _store_isl(): a transient, always-current status belongs in the / # measurement
+  output, not the error log (C.7.1)." `:1128-1131` → "# The caller already holds both the device-session and bus locks,
+  so this takes none of its / # own: re-acquiring the session lock here would let a concurrent reader see a mutated
+  shadow / # against an unwritten chip." `:1280-1282` → "# PRST is DERIVED: the largest transient rejection whose window
+  still closes inside one / # sample interval, so the chip always raises RGBTHF before the periodic re-check decides; a
+  / # hand-set PRST can leave the fast path structurally dead (Part M.1.4)." `:1337-1339` → "# Validate-mutate-write
+  (-rollback) runs under ONE hold of the device-session lock, not just / # the final write (Part C.8): a shadow mutated
+  outside it would let a concurrent matches_shadow() / # see a change the chip has not taken - a false divergence
+  report."
+- **Resolved**: "It used to be wrnno=12", "is exactly the gap that let …", "Configuring it by hand left …" and "Mutating
+  the shadow before acquiring it let …" narrate past states; each reason is kept in present tense, same length (agent,
+  2026-10-01, OR2.c list).
+- **Unit**: U15 (with the other ISL29125 comment edits)
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` (src scope) stays green — no carrier needed
+- **Kind**: doc
+
+## Gaps for other clusters
+
+- **GAP-1 (TSC, SPEC)**: `tests_scripts/test_src_sleep_forms.py` (A.U31.19) gains the case M.SRC_SENS.002 defines — an AST
+  scan failing on any `time.sleep`/`sleep_ms`/`sleep_us` in `src/` outside the two named exceptions (SPI CS settle, the
+  boot bus clear of M.SRC_SENS.008); Part N `loop.sync_wait_max_us` names that file as "Checked by" and gains the boot
+  clear as a Dependant with its bound.
+- **GAP-2 (TEST_UNIT)**: A.U13.R01's L1 list gains `I2C.recoveries` at `COUNTER_CAP` stepping to 0 (M.SRC_SENS.010,
+  AC_NOTES 17).
+- **GAP-3 (TSC)**: A.U10.47's convention check exempts `src/voc_algorithm.py` from the D.15 member order, as it already
+  exempts the file's casing (M.SRC_SENS.018: a literal port keeps the upstream operation order).
+- **GAP-4 (SPEC)**: Part N IDs `led.refresh_hz_default` → `led.refresh_hz`, `led.overlay_brightness_default` →
+  `led.overlay_brightness` (M.SRC_SENS.021), with every Dependant row that names them.
+- **GAP-5 (TEST_UNIT, HW_DEV)**: readers of the NeoPixel overlay state use the `_overlay_*` stem (M.SRC_SENS.023), not
+  A.U10.35's mechanical `_led_overl_*`: `tests/test_asy_neopixel_driver.py`, the five notification/NeoPixel integration
+  files, `tests_hardware/device_scripts/isl29125_mechanism_envelope.py:74-77`, `isl29125_lighting_scenarios.py:82`.
+- **GAP-6 (TEST_UNIT)**: a test pinning BMP3XX `get_altitude()`'s `sea_level_pressure <= 0` guard (if any: `grep
+  sea_level_pressure tests/`) goes; the method is `get_pressure_altitude()` on `_SEA_LEVEL_PRESSURE_HPA`
+  (M.SRC_SENS.040/048).
+- **GAP-7 (SRC_NET, GEN)**: A.U18.15's `SOCKET_TEARDOWN` takes wrnno 12; 11 is `DERIVED_DOMAIN` (M.SRC_SENS.043, SUPP_recovery
+  conflicts row 7); A.U2.01's catalog rows follow.
+- **GAP-8 (SRC_CORE)**: the shared divider on `SensorReader` is `_trigger_loop()` (A.U10.44's scheme), not A.U15.40's
+  `_divide_trigger()`; SPEC G.2 and the `tests/test_base_classes.py` case follow (M.SRC_SENS.045).
+- **GAP-9 (SRC_CORE)**: `SensorReaderConfig` gains a `cfg_log` parameter (A.U5.02's signature) so SCD30's `ConfigManager`
+  logs RAM-only while the module logger stays FRAM-backed (AC_NOTES 13, M.SRC_SENS.052).
+- **GAP-10 (SPEC, DOCS, TEST_HELP)**: no `CFGMGR_SCD30` FRAM chunk — SPEC A.7 chunk layout, CLAUDE.md's FRAM-logger list
+  (named exception), A.U15.12's blast "wozi 17 chunks" is stale; `tests/_sensortask_scenarios.py:222-223` expects one
+  chunk (M.SRC_SENS.052).
+- **GAP-11 (TSC)**: an L0 check pins SCD30's backend `always=` tuple against the fields tagged `alwaysExecuted=true`
+  (`ContMeas` aside) (M.SRC_SENS.053).
+- **GAP-12 (WEB)**: A.U23.16's grep found `defaultValue` only on SCD30's `ContMeas`; `asy_isl29125_driver.py:159` carries
+  `defaultValue=false` on the `ISLCalibrate` (→ `Calibrate`) dispatch toggle. It goes with the grammar key
+  (M.SRC_SENS.072); A.U23.16's owner decides how a dispatch toggle with no GET value renders (today "Off" through the
+  default; OR94 "don't change the current look" suggests keeping Off) and its `tests_js` cases.
+- **GAP-13 (SPEC, TSC)**: A.U10.16's C.8 lock table gains `ISL29125_Reader._threshold_lock` (taken inside `_set_lock`,
+  before the device session; M.SRC_SENS.080), and its resolver must match A.U10.35's private session attributes
+  `self._i2c_<chip>` — it is written for `self.i2c_<chip>`.
+- **GAP-14 (SRC_CORE, SRC_NET, GEN)**: M.SRC_CORE.047 writes A.U11.S01's never-true `type(check_val) is not int/float`
+  checks into `type_or_range_error()`, and A.U11.S01 still adds the webserver pause and generated LED-callback checks,
+  against the lead's L1 answer (SUPP_coverage, 2026-09-30: "a narrowing check that can never fire is runtime code and
+  dead code … the fix is at the type level"); A.U15.38 (1) stands here (M.SRC_SENS.082). The validator's typing needs
+  a type-level form (e.g. an honest per-kind return) that `_checked_cfg()`'s annotated local can take.
+- **GAP-15 (SRC_CORE, TEST_UNIT, TWIN, SPEC)**: after A.U10.06 a reader's `TS` is `None` until the first NTP sync, and
+  `_error_check()` counts any `None` as a failed cycle — every pre-sync cycle would climb the recovery ladder and end
+  the task (twin runs never sync). M.SRC_SENS.089-091 and 083 pass `condition=results[0] is None`. Carried nowhere
+  else: SPEC C.7's `_error_check()` bullet ("the reader's condition excludes the trailing `TS`"); L1 per reader (a
+  pre-sync read steps no streak and publishes `TS` `None`); the twin boot suites expect no sensor-task restart without
+  NTP. SRC_CORE may instead make `_error_check()` test `results[0] is None` for every caller (WIFI's `(None,)` holds) —
+  the reader conditions then go.
+- **GAP-16 (SPEC)**: SPEC M.1.2's "State across a task restart" table (A.U15.34) gains the INT re-arm flag of A.U15.R05
+  (reset at restart, M.SRC_SENS.074) beside `_int_held`.
+- **GAP-17 (TSC, SRC_CORE; lead decision)**: G5/R14 (agent rank) says every class with an async `setup()` gates on
+  `self.initialized`, and A.U10.22's L0 check enforces it, but no action adds the gate where it is missing. In these
+  files only `SPIDevice` has one; `I2CDevice`, `BMP3XX_I2C`, `SCD30_I2C`, `SGP40_I2C`, `ISL29125_I2C`, `NeopixelDriver`
+  (its `setup()` is new, A.U10.10) and `NotificationService` have none (grep `initialized` at HEAD), so the check fails
+  when it lands. Two readings: (a) the protocol classes build everything in `__init__` and their `setup()` only probes
+  and configures the chip, so no half-built object exists — A.U10.22 names them as exempt, as it names
+  `ConfigManager.valid`; (b) each gets a gate, which needs ungated private variants of the methods `setup()` itself
+  calls (`verify_device_id()`, `reset()`, `configure()`, …). Recommended (a) for the five protocol classes and
+  `I2CDevice`, a gate for `NeopixelDriver`/`NotificationService` if their `setup()` builds state; no merged change here
+  until the lead picks one.
+
+## Adherence findings
+
+- `src/asy_spi_driver.py`: comment cap → M.SRC_SENS.001 (≤ 3 lines); version stamps in code → removed, Part F owns them
+  (M.SRC_SENS.001); private by default → three unread config attributes and `cs_pin` join A.U10.35's three
+  (M.SRC_SENS.004); synchronous sleep rule keeps a guard → M.SRC_SENS.002/GAP-1. No other breach.
+- `src/asy_i2c_driver.py`: stale docstring list (three of four I2C drivers) → M.SRC_SENS.006; LEAD/R24 counter form for
+  `recoveries` → conditional wrap (M.SRC_SENS.010, AC_NOTES 17); boot clear is a bounded synchronous wait → registered
+  (M.SRC_SENS.002/008). Memory: per-call `bytes` from `get_register_bytes()` is an accepted temporary (OR110.a (3)).
+- `src/voc_algorithm.py`: broad handlers in a pure ALGO module → narrowed to the `struct` exceptions (M.SRC_SENS.017);
+  D.15 reorder would break the literal port → no reorder, GAP-3 (M.SRC_SENS.018). Per-sample fix16 churn is the accepted
+  temporary class (OR109.a (1)).
+- `src/asy_neopixel_driver.py`: history in the docstring ("Promoted from improved-quality/…") → M.SRC_SENS.019; one
+  name stem for overlay state (D.10) → M.SRC_SENS.023.
+- `src/asy_notification_service.py`: history in the docstring and in `:84-85` ("the hand-written definitions
+  established it") → M.SRC_SENS.029/032.
+- `src/asy_bmp3xx_driver.py`: `sea_level_pressure` never written after A.U10.21 and its `<= 0` guard unreachable →
+  named constant, guard removed (M.SRC_SENS.040, G5/R54); pre-sync `TS` counted as failure → M.SRC_SENS.089.
+- `src/asy_scd30_driver.py`: docstring lists five data fields, A.U15.12 adds two → M.SRC_SENS.049; pre-sync `TS` →
+  M.SRC_SENS.090. SCD30 NVM writes stay behind the wear gates: the merged changes add no NVM write (A.U15.01's range
+  gate and A.U15.12's FRC state read only; `set_*` NVM paths unchanged, `persistence_write`/`scd30_extra_write` markers
+  untouched).
+- `src/asy_sgp40_driver.py`: "for historical" comments `:79-85` → M.SRC_SENS.060; dangling "(see module docstring)"
+  `:231-232` → M.SRC_SENS.063; pre-sync `TS` → M.SRC_SENS.091.
+- `src/asy_isl29125_driver.py`: four past-tense history comments → M.SRC_SENS.092; `defaultValue` left on a tag after
+  the grammar drops it → M.SRC_SENS.072/GAP-12; shared-buffer staging before the hold (OR109.a (0)) → none left
+  (A.U15.S01 + A.U15.33, M.SRC_SENS.080/086); no-growth memory (OR110.a) → `_filtered` reset in place, `_cal_recent`
+  bounded by `_CAL_CONVERGE_N` (A.U30.02's listed case), new state is scalar; test-only parameter (OR36) → `address`
+  removed; pre-sync `TS` → M.SRC_SENS.083/089.
+- G5/R14 readiness gate (A.U10.22's L0 check): missing on seven classes in these files, no action adds it → GAP-17
+  (lead decision; no merged change until then).
+- All nine files: no `ext/` or legacy edit; no credential; no UART file (no changelog entry); no `method-assign`
+  suppression; no permanent text citing an audit ID; every bus-facing change names its four tiers in the constituent
+  blast; no hardware step (all L3/L4 items are the constituents' phase-C runs under the owner's go-ahead).
+
+## Owner questions
+
+None. Every conflict met in these files is settled by an owner row, the register, AC_NOTES, a lead note or a later
+verifier item (cited in each Resolved); the remaining choices are agent-rank and listed below for the OR2.c review.
+
+## Agent decisions for the OR2.c review
+
+1. M.SRC_SENS.002 — a standing guard for synchronous sleeps in `src/`, two named exceptions (AC_NOTES 5, OR111.a (2)).
+2. M.SRC_SENS.004 — all six `SPIDevice` configuration attributes and `cs_pin` private, not only the three tests read.
+3. M.SRC_SENS.017 — `voc_algorithm.py`'s two handlers narrowed to `struct`'s exceptions instead of importing
+   `report_if_fatal` into a pure ALGO module.
+4. M.SRC_SENS.018 — no D.15 reorder of the literal VOC port (GAP-3).
+5. M.SRC_SENS.021 — Part N IDs drop `_default` once the values are fixed (GAP-4).
+6. M.SRC_SENS.023 — one `_overlay_*` stem for the NeoPixel overlay state (GAP-5).
+7. M.SRC_SENS.033 — `NotificationService.setup()` returns the config store's validity; a refused signal is a warning.
+8. M.SRC_SENS.040 — BMP3XX sea-level pressure becomes a named constant, its unreachable guard goes.
+9. M.SRC_SENS.043 — W11 `DERIVED_DOMAIN`, W12 `SOCKET_TEARDOWN` (GAP-7).
+10. M.SRC_SENS.044 — `_apply_stored_config()` returns a code; only `_init_bmp()` calls `_init_failed()`.
+11. M.SRC_SENS.045/083 — the shared divider takes A.U10.44's name `_trigger_loop()` (GAP-8).
+12. M.SRC_SENS.053 — SCD30's `always=` stays in the firmware, pinned to the tags by an L0 check (GAP-11).
+13. M.SRC_SENS.058 — the placement of the SGP40 backup group type.
+14. M.SRC_SENS.062 — SGP40 `reset` private by default.
+15. M.SRC_SENS.074 — the INT re-arm flag is reset at task restart (GAP-16).
+16. M.SRC_SENS.075 — INT park and re-arm are tested only on cycles with no range switch; one `_set_int_armed()` writer.
+17. M.SRC_SENS.076 — the ISL29125 participant rung takes no `_set_lock` (it re-applies the shadow, not the file).
+18. M.SRC_SENS.080 — a failed threshold rewrite in `set_resolution()` is logged and the setter still reports success.
+19. M.SRC_SENS.086 — the `counts is None` Optional re-check stays under A.U35.41's convention.
+20. M.SRC_SENS.089-091 — a pre-sync `TS` of `None` is not a failed read, through each reader's `condition` (GAP-15).
+21. M.SRC_SENS.092 — four ISL29125 comments restated in present tense.
+
+## Ledger
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.SDEP.08 | M.SRC_SENS.001, M.SRC_SENS.009 |
+| A.SDEP.15 | M.SRC_SENS.030, M.SRC_SENS.042, M.SRC_SENS.070, M.SRC_SENS.073 |
+| A.U0.16 | M.SRC_SENS.075, M.SRC_SENS.079 |
+| A.U0.28 | M.SRC_SENS.069, M.SRC_SENS.071 (its `asy_sgp40_driver.py:670-671` part superseded by A.U15.13's text, M.SRC_SENS.069) |
+| A.U0.35 | M.SRC_SENS.066, M.SRC_SENS.071 |
+| A.U0.38 | M.SRC_SENS.032 |
+| A.U0.39 | M.SRC_SENS.019 |
+| A.U0.40 | M.SRC_SENS.062 |
+| A.U0.41 | M.SRC_SENS.017, M.SRC_SENS.062, M.SRC_SENS.068 |
+| A.U10.06 | M.SRC_SENS.030, M.SRC_SENS.034, M.SRC_SENS.039, M.SRC_SENS.043, M.SRC_SENS.049, M.SRC_SENS.055, M.SRC_SENS.058, M.SRC_SENS.064, M.SRC_SENS.065, M.SRC_SENS.070, M.SRC_SENS.075, M.SRC_SENS.078, M.SRC_SENS.089 |
+| A.U10.10 | M.SRC_SENS.024, M.SRC_SENS.028, M.SRC_SENS.037, M.SRC_SENS.044, M.SRC_SENS.054, M.SRC_SENS.065, M.SRC_SENS.074 |
+| A.U10.12 | M.SRC_SENS.046, M.SRC_SENS.055, M.SRC_SENS.066, M.SRC_SENS.083 |
+| A.U10.17 | M.SRC_SENS.003, M.SRC_SENS.009, M.SRC_SENS.023 |
+| A.U10.34 | M.SRC_SENS.032, M.SRC_SENS.061 |
+| A.U11.31 | M.SRC_SENS.025 |
+| A.U11.S01 | M.SRC_SENS.082 (its ISL29125 arm-keeping half not taken: lead L1 ruling; GAP-14) |
+| A.U12.11 | M.SRC_SENS.015, M.SRC_SENS.016 |
+| A.U12.13 | M.SRC_SENS.015 |
+| A.U12.14 | M.SRC_SENS.017 |
+| A.U12.15 | M.SRC_SENS.014 |
+| A.U12.18 | M.SRC_SENS.067, M.SRC_SENS.068 |
+| A.U13.02 | M.SRC_SENS.011 |
+| A.U13.03 | M.SRC_SENS.004 |
+| A.U13.07 | M.SRC_SENS.006, M.SRC_SENS.011, M.SRC_SENS.012, M.SRC_SENS.013, M.SRC_SENS.086 |
+| A.U13.08 | M.SRC_SENS.001, M.SRC_SENS.003, M.SRC_SENS.004 |
+| A.U13.09 | M.SRC_SENS.003, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.068, M.SRC_SENS.069, M.SRC_SENS.086 |
+| A.U13.10 | M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.048, M.SRC_SENS.086 (its BMP3XX/ISL29125 burst sites superseded by A.U30.07, M.SRC_SENS.048/086) |
+| A.U13.15 | M.SRC_SENS.003 |
+| A.U13.16 | M.SRC_SENS.003, M.SRC_SENS.009 |
+| A.U13.R01 | M.SRC_SENS.006, M.SRC_SENS.007, M.SRC_SENS.008, M.SRC_SENS.009, M.SRC_SENS.010 |
+| A.U14.17 | M.SRC_SENS.007, M.SRC_SENS.008, M.SRC_SENS.009 |
+| A.U14.26 | M.SRC_SENS.034 (its `except MemoryError` at the timestamp dropped per V.U18.R10) |
+| A.U15.01 | M.SRC_SENS.050, M.SRC_SENS.057 |
+| A.U15.02 | M.SRC_SENS.049, M.SRC_SENS.057 |
+| A.U15.03 | M.SRC_SENS.055 |
+| A.U15.04 | M.SRC_SENS.054 |
+| A.U15.08 | M.SRC_SENS.057 |
+| A.U15.09 | M.SRC_SENS.050, M.SRC_SENS.051, M.SRC_SENS.053 |
+| A.U15.10 | M.SRC_SENS.051 |
+| A.U15.11 | M.SRC_SENS.051 |
+| A.U15.12 | M.SRC_SENS.049, M.SRC_SENS.050, M.SRC_SENS.051, M.SRC_SENS.052, M.SRC_SENS.053, M.SRC_SENS.054, M.SRC_SENS.055, M.SRC_SENS.057 |
+| A.U15.13 | M.SRC_SENS.067, M.SRC_SENS.068, M.SRC_SENS.069 |
+| A.U15.14 | M.SRC_SENS.058, M.SRC_SENS.059, M.SRC_SENS.064, M.SRC_SENS.068 |
+| A.U15.17 | M.SRC_SENS.059, M.SRC_SENS.060, M.SRC_SENS.062, M.SRC_SENS.063 |
+| A.U15.18 | M.SRC_SENS.059, M.SRC_SENS.060, M.SRC_SENS.063 |
+| A.U15.19 | M.SRC_SENS.059, M.SRC_SENS.060, M.SRC_SENS.062, M.SRC_SENS.064 |
+| A.U15.21 | M.SRC_SENS.066 |
+| A.U15.22 | M.SRC_SENS.043, M.SRC_SENS.072, M.SRC_SENS.073, M.SRC_SENS.074, M.SRC_SENS.075, M.SRC_SENS.078, M.SRC_SENS.079, M.SRC_SENS.083, M.SRC_SENS.084, M.SRC_SENS.089 |
+| A.U15.23 | M.SRC_SENS.041 |
+| A.U15.24 | M.SRC_SENS.040, M.SRC_SENS.043 |
+| A.U15.25 | M.SRC_SENS.038, M.SRC_SENS.040, M.SRC_SENS.048 |
+| A.U15.26 | M.SRC_SENS.039, M.SRC_SENS.045 |
+| A.U15.27 | M.SRC_SENS.048, M.SRC_SENS.056 |
+| A.U15.28 | M.SRC_SENS.050, M.SRC_SENS.057, M.SRC_SENS.059, M.SRC_SENS.067, M.SRC_SENS.071, M.SRC_SENS.073, M.SRC_SENS.085 |
+| A.U15.29 | M.SRC_SENS.077 |
+| A.U15.30 | M.SRC_SENS.071, M.SRC_SENS.082, M.SRC_SENS.086 |
+| A.U15.31 | M.SRC_SENS.070, M.SRC_SENS.073, M.SRC_SENS.085 (form per AC_NOTES 17: conditional wrap at `COUNTER_CAP`, no `_SEQ_MASK`) |
+| A.U15.32 | M.SRC_SENS.073, M.SRC_SENS.075, M.SRC_SENS.077, M.SRC_SENS.080 |
+| A.U15.33 | M.SRC_SENS.073, M.SRC_SENS.080 |
+| A.U15.34 | M.SRC_SENS.074, M.SRC_SENS.085 |
+| A.U15.35 | M.SRC_SENS.071, M.SRC_SENS.079, M.SRC_SENS.081, M.SRC_SENS.086 |
+| A.U15.36 | M.SRC_SENS.072, M.SRC_SENS.073, M.SRC_SENS.075, M.SRC_SENS.078, M.SRC_SENS.081, M.SRC_SENS.084 |
+| A.U15.37 | M.SRC_SENS.071 |
+| A.U15.38 | M.SRC_SENS.082, M.SRC_SENS.086 |
+| A.U15.40 | M.SRC_SENS.039, M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_SENS.045, M.SRC_SENS.048, M.SRC_SENS.049, M.SRC_SENS.050, M.SRC_SENS.057, M.SRC_SENS.058, M.SRC_SENS.059, M.SRC_SENS.067, M.SRC_SENS.068, M.SRC_SENS.070, M.SRC_SENS.072, M.SRC_SENS.083, M.SRC_SENS.085 (A.U10.38's session-class renames moot) |
+| A.U15.41 | M.SRC_SENS.046, M.SRC_SENS.055, M.SRC_SENS.065, M.SRC_SENS.066, M.SRC_SENS.083 |
+| A.U15.44 | M.SRC_SENS.051 |
+| A.U15.R01 | M.SRC_SENS.052, M.SRC_SENS.054 |
+| A.U15.R02 | M.SRC_SENS.059, M.SRC_SENS.062, M.SRC_SENS.065, M.SRC_SENS.069 (as corrected per AC_NOTES 31) |
+| A.U15.R03 | M.SRC_SENS.042, M.SRC_SENS.044 |
+| A.U15.R04 | M.SRC_SENS.073, M.SRC_SENS.074, M.SRC_SENS.076 |
+| A.U15.R05 | M.SRC_SENS.073, M.SRC_SENS.077 |
+| A.U15.S01 | M.SRC_SENS.080, M.SRC_SENS.086 |
+| A.U16.18 | M.SRC_SENS.063 |
+| A.U17.27 | M.SRC_SENS.021, M.SRC_SENS.023 |
+| A.U2.10 | M.SRC_SENS.040, M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.045, M.SRC_SENS.047, M.SRC_SENS.048 |
+| A.U2.11 | M.SRC_SENS.050, M.SRC_SENS.053, M.SRC_SENS.054, M.SRC_SENS.055, M.SRC_SENS.056 |
+| A.U2.12 | M.SRC_SENS.071, M.SRC_SENS.074, M.SRC_SENS.075, M.SRC_SENS.076, M.SRC_SENS.077, M.SRC_SENS.080, M.SRC_SENS.081, M.SRC_SENS.082, M.SRC_SENS.084 |
+| A.U2.13 | M.SRC_SENS.059, M.SRC_SENS.063, M.SRC_SENS.064, M.SRC_SENS.065 |
+| A.U2.17 | M.SRC_SENS.031, M.SRC_SENS.033, M.SRC_SENS.034, M.SRC_SENS.035 |
+| A.U20.27 | M.SRC_SENS.041 |
+| A.U22.01 | M.SRC_SENS.025, M.SRC_SENS.028 (part (c) merged into A.U9.05, M.SRC_SENS.028) |
+| A.U22.02 | M.SRC_SENS.033, M.SRC_SENS.035 |
+| A.U22.03 | dropped (WITHDRAWN, OR126.a (4): the one-second round stays; recorded in M.SRC_SENS.036) |
+| A.U22.04 | M.SRC_SENS.020, M.SRC_SENS.025, M.SRC_SENS.030, M.SRC_SENS.033, M.SRC_SENS.034, M.SRC_SENS.036 |
+| A.U23.16 | M.SRC_SENS.051, M.SRC_SENS.072 |
+| A.U23.23 | M.SRC_SENS.051 |
+| A.U24.01 | dropped here (no `src/` edit: test-side `src_const()` reads of driver constants, TEST_UNIT; named in the blasts of M.SRC_SENS.040, M.SRC_SENS.071) |
+| A.U24.57 | dropped here (no `src/` edit: L0/L1 tests reading `get_dict_data()`, TSC/TEST_UNIT; `CalLight` is a flat leaf, M.SRC_SENS.072/084) |
+| A.U27.03 | M.SRC_SENS.030, M.SRC_SENS.042, M.SRC_SENS.048, M.SRC_SENS.062, M.SRC_SENS.073, M.SRC_SENS.086 |
+| A.U3.02 | M.SRC_SENS.037, M.SRC_SENS.062, M.SRC_SENS.063 |
+| A.U3.05 | M.SRC_SENS.035, M.SRC_SENS.037, M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.063, M.SRC_SENS.074 |
+| A.U3.09 | M.SRC_SENS.063, M.SRC_SENS.064 |
+| A.U3.14 | M.SRC_SENS.073, M.SRC_SENS.075, M.SRC_SENS.076 |
+| A.U30.04 | M.SRC_SENS.067 |
+| A.U30.05 | M.SRC_SENS.049, M.SRC_SENS.057 |
+| A.U30.06 | M.SRC_SENS.068 |
+| A.U30.07 | M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.048, M.SRC_SENS.085, M.SRC_SENS.086 |
+| A.U30.21 | M.SRC_SENS.009, M.SRC_SENS.011, M.SRC_SENS.012 |
+| A.U31.09 | M.SRC_SENS.050, M.SRC_SENS.055, M.SRC_SENS.057 |
+| A.U31.10 | M.SRC_SENS.059, M.SRC_SENS.068, M.SRC_SENS.069 |
+| A.U31.11 | M.SRC_SENS.040, M.SRC_SENS.048 |
+| A.U31.13 | M.SRC_SENS.023, M.SRC_SENS.027, M.SRC_SENS.028 |
+| A.U31.14 | M.SRC_SENS.031, M.SRC_SENS.034, M.SRC_SENS.037 |
+| A.U34.07 | M.SRC_SENS.014, M.SRC_SENS.038, M.SRC_SENS.070 |
+| A.U35.11 | dropped here (test-only, `tests/test_asy_bmp3xx_driver.py`, TEST_UNIT; the product site is already one session hold, M.SRC_SENS.048) |
+| A.U35.19 | dropped here (test-only, TEST_UNIT/TEST_HELP; it reads the address constants M.SRC_SENS.050/059/071 create) |
+| A.U36.514 | M.SRC_SENS.051 |
+| A.U4.04 | M.SRC_SENS.049, M.SRC_SENS.050, M.SRC_SENS.053 |
+| A.U4.05 | M.SRC_SENS.050, M.SRC_SENS.053, M.SRC_SENS.057 |
+| A.U5.06 | M.SRC_SENS.029, M.SRC_SENS.032, M.SRC_SENS.033, M.SRC_SENS.037 |
+| A.U5.11 | M.SRC_SENS.030, M.SRC_SENS.033, M.SRC_SENS.035, M.SRC_SENS.058, M.SRC_SENS.060, M.SRC_SENS.062, M.SRC_SENS.064 |
+| A.U5.14 | M.SRC_SENS.006, M.SRC_SENS.012, M.SRC_SENS.013 |
+| A.U6.19 | M.SRC_SENS.041, M.SRC_SENS.051, M.SRC_SENS.060, M.SRC_SENS.072 |
+| A.U6.20 | M.SRC_SENS.060 |
+| A.U8.07 | M.SRC_SENS.040, M.SRC_SENS.050, M.SRC_SENS.055, M.SRC_SENS.059, M.SRC_SENS.068, M.SRC_SENS.069 |
+| A.U8.12 | M.SRC_SENS.021, M.SRC_SENS.031, M.SRC_SENS.036, M.SRC_SENS.037 |
+| A.U8.13 | M.SRC_SENS.007, M.SRC_SENS.013, M.SRC_SENS.059, M.SRC_SENS.071 |
+| A.U8.19 | M.SRC_SENS.002 |
+| A.U9.01 | M.SRC_SENS.032, M.SRC_SENS.037 |
+| A.U9.02 | M.SRC_SENS.019, M.SRC_SENS.023, M.SRC_SENS.025, M.SRC_SENS.026 |
+| A.U9.04 | M.SRC_SENS.020, M.SRC_SENS.021, M.SRC_SENS.023, M.SRC_SENS.027 |
+| A.U9.05 | M.SRC_SENS.028 |
+| A.U9.06 | M.SRC_SENS.021, M.SRC_SENS.022, M.SRC_SENS.026, M.SRC_SENS.027, M.SRC_SENS.028 |
+| A.U9.07 | dropped (superseded by A.U17.27, its own Depends; recorded in M.SRC_SENS.021) |
+| A.U9.08 | M.SRC_SENS.031, M.SRC_SENS.035 |
+| A.U9.09 | M.SRC_SENS.030, M.SRC_SENS.033, M.SRC_SENS.036 |
+| A.U9.11 | M.SRC_SENS.032 |
+
+Actions outside `site_index.json` whose text edits a site here (found by the identifier grep), merged:
+
+| action ID | merged into M-ID / dropped (reason) |
+|---|---|
+| A.SDEP.17 | M.SRC_SENS.001, M.SRC_SENS.009 |
+| A.U10.18 | M.SRC_SENS.003, M.SRC_SENS.004, M.SRC_SENS.009, M.SRC_SENS.013, M.SRC_SENS.023 |
+| A.U10.21 | M.SRC_SENS.004, M.SRC_SENS.013, M.SRC_SENS.024, M.SRC_SENS.040, M.SRC_SENS.044, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.069, M.SRC_SENS.074, M.SRC_SENS.086 |
+| A.U10.25 | M.SRC_SENS.042, M.SRC_SENS.062, M.SRC_SENS.073 |
+| A.U10.31 | M.SRC_SENS.004, M.SRC_SENS.011, M.SRC_SENS.022, M.SRC_SENS.025, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.070 |
+| A.U10.33 | M.SRC_SENS.004, M.SRC_SENS.009, M.SRC_SENS.013, M.SRC_SENS.018, M.SRC_SENS.088 |
+| A.U10.35 | M.SRC_SENS.004, M.SRC_SENS.023, M.SRC_SENS.033, M.SRC_SENS.042, M.SRC_SENS.048, M.SRC_SENS.052, M.SRC_SENS.057, M.SRC_SENS.062, M.SRC_SENS.067, M.SRC_SENS.073, M.SRC_SENS.085, M.SRC_SENS.086 |
+| A.U10.37 | M.SRC_SENS.005, M.SRC_SENS.007, M.SRC_SENS.020, M.SRC_SENS.030, M.SRC_SENS.039, M.SRC_SENS.049, M.SRC_SENS.058, M.SRC_SENS.070 |
+| A.U10.38 | M.SRC_SENS.020, M.SRC_SENS.021, M.SRC_SENS.030, M.SRC_SENS.031, M.SRC_SENS.033, M.SRC_SENS.038, M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_SENS.048, M.SRC_SENS.051, M.SRC_SENS.052, M.SRC_SENS.058, M.SRC_SENS.060, M.SRC_SENS.070, M.SRC_SENS.072, M.SRC_SENS.085 |
+| A.U10.39 | M.SRC_SENS.032, M.SRC_SENS.033, M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_SENS.051, M.SRC_SENS.060, M.SRC_SENS.066, M.SRC_SENS.072, M.SRC_SENS.073, M.SRC_SENS.074, M.SRC_SENS.082, M.SRC_SENS.084 |
+| A.U10.40 | M.SRC_SENS.032, M.SRC_SENS.041, M.SRC_SENS.051, M.SRC_SENS.060, M.SRC_SENS.066, M.SRC_SENS.072, M.SRC_SENS.073, M.SRC_SENS.084 |
+| A.U10.43 | M.SRC_SENS.034, M.SRC_SENS.040, M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_SENS.045, M.SRC_SENS.051, M.SRC_SENS.052, M.SRC_SENS.055, M.SRC_SENS.071, M.SRC_SENS.072, M.SRC_SENS.073, M.SRC_SENS.074, M.SRC_SENS.082, M.SRC_SENS.083, M.SRC_SENS.084, M.SRC_SENS.086 |
+| A.U10.44 | M.SRC_SENS.025, M.SRC_SENS.028, M.SRC_SENS.036, M.SRC_SENS.037, M.SRC_SENS.045, M.SRC_SENS.046, M.SRC_SENS.055, M.SRC_SENS.066, M.SRC_SENS.083 |
+| A.U10.45 | M.SRC_SENS.003, M.SRC_SENS.011, M.SRC_SENS.013, M.SRC_SENS.048, M.SRC_SENS.057, M.SRC_SENS.068, M.SRC_SENS.069, M.SRC_SENS.086 |
+| A.U10.46 | M.SRC_SENS.070, M.SRC_SENS.083, M.SRC_SENS.084 |
+| A.U10.47 | M.SRC_SENS.088 |
+| A.U10.R01 | M.SRC_SENS.089 |
+| A.U11.09 | M.SRC_SENS.017 |
+| A.U11.27 | M.SRC_SENS.044 |
+| A.U11.S02 | M.SRC_SENS.053 |
+| A.U12.08 | M.SRC_SENS.039, M.SRC_SENS.043 |
+| A.U14.04 | M.SRC_SENS.009 |
+| A.U15.15 | M.SRC_SENS.069 |
+| A.U15.16 | M.SRC_SENS.060 |
+| A.U15.43 | M.SRC_SENS.039, M.SRC_SENS.046, M.SRC_SENS.047, M.SRC_SENS.049, M.SRC_SENS.055, M.SRC_SENS.056, M.SRC_SENS.058, M.SRC_SENS.066, M.SRC_SENS.070, M.SRC_SENS.083, M.SRC_SENS.084 |
+| A.U19.16 | M.SRC_SENS.053, M.SRC_SENS.084 |
+| A.U2.01 | M.SRC_SENS.071 |
+| A.U2.04 | M.SRC_SENS.031, M.SRC_SENS.040, M.SRC_SENS.050, M.SRC_SENS.059, M.SRC_SENS.071 |
+| A.U20.25 | M.SRC_SENS.032 |
+| A.U23.37 | M.SRC_SENS.033, M.SRC_SENS.035 |
+| A.U24.23 | M.SRC_SENS.003 |
+| A.U24.62 | M.SRC_SENS.022 |
+| A.U28.35 | M.SRC_SENS.038 |
+| A.U3.03 | M.SRC_SENS.089 |
+| A.U30.02 | M.SRC_SENS.081 |
+| A.U30.03 | M.SRC_SENS.081 |
+| A.U30.19 | M.SRC_SENS.017, M.SRC_SENS.034, M.SRC_SENS.035, M.SRC_SENS.039, M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.047, M.SRC_SENS.049, M.SRC_SENS.054, M.SRC_SENS.055, M.SRC_SENS.056, M.SRC_SENS.058, M.SRC_SENS.062, M.SRC_SENS.064, M.SRC_SENS.065, M.SRC_SENS.070, M.SRC_SENS.074, M.SRC_SENS.075, M.SRC_SENS.076, M.SRC_SENS.077, M.SRC_SENS.081, M.SRC_SENS.082, M.SRC_SENS.084, M.SRC_SENS.087 |
+| A.U31.12 | M.SRC_SENS.007, M.SRC_SENS.013 |
+| A.U34.04 | M.SRC_SENS.014 |
+| A.U36.542 | M.SRC_SENS.014 |
+| A.U36.544 | M.SRC_SENS.032, M.SRC_SENS.071 |
+| A.U4.03 | M.SRC_SENS.052 |
+| A.U5.01 | M.SRC_SENS.020, M.SRC_SENS.030, M.SRC_SENS.039, M.SRC_SENS.058, M.SRC_SENS.070 |
+| A.U5.02 | M.SRC_SENS.020, M.SRC_SENS.023, M.SRC_SENS.030, M.SRC_SENS.033, M.SRC_SENS.039, M.SRC_SENS.042, M.SRC_SENS.049, M.SRC_SENS.052, M.SRC_SENS.070, M.SRC_SENS.073 |
+| A.U5.03 | M.SRC_SENS.021, M.SRC_SENS.031, M.SRC_SENS.041, M.SRC_SENS.051, M.SRC_SENS.060, M.SRC_SENS.072 |
+| A.U6.17 | M.SRC_SENS.051 |
+
+The other 143 grep hits name these files only in Why/Blast text or as an unchanged caller and edit no site here (read, no row needed beyond this list): A.C.15, A.S0930.13, A.S0930.17, A.S0930.32, A.SDEP.10, A.SDEP.16, A.U0.07, A.U1.03, A.U1.20, A.U1.25, A.U10.01, A.U10.05, A.U10.16, A.U10.22, A.U10.27, A.U10.28, A.U10.30, A.U11.14, A.U11.24, A.U11.34, A.U11.S03, A.U12.01, A.U12.04, A.U12.06, A.U12.07, A.U12.12, A.U13.01, A.U13.11, A.U14.06, A.U14.10, A.U14.14, A.U14.28, A.U14.34, A.U14.35, A.U15.05, A.U15.07, A.U15.20, A.U16.02, A.U16.05, A.U16.06, A.U16.17, A.U16.19, A.U16.20, A.U16.22, A.U16.S01, A.U19.12, A.U2.06, A.U2.07, A.U2.09, A.U20.06, A.U20.08, A.U20.12, A.U20.20, A.U20.21, A.U20.26, A.U20.28, A.U24.02, A.U24.07, A.U24.08, A.U24.16, A.U24.20, A.U24.21, A.U24.25, A.U24.29, A.U24.32, A.U24.37, A.U24.38, A.U24.39, A.U24.42, A.U24.49, A.U24.59, A.U24.61, A.U24.67, A.U24.73, A.U24.76, A.U24.78, A.U25.05, A.U25.07, A.U25.10, A.U25.12, A.U25.13, A.U25.16, A.U25.17, A.U25.21, A.U25.36, A.U25.45, A.U25.49, A.U26.06, A.U26.07, A.U26.32, A.U26.41, A.U26.44, A.U27.30, A.U28.27, A.U28.28, A.U28.30, A.U3.01, A.U3.04, A.U3.12, A.U31.01, A.U31.05, A.U32.01, A.U32.04, A.U32.05, A.U34.03, A.U34.10, A.U35.12, A.U35.13, A.U35.16, A.U35.17, A.U35.18, A.U35.20, A.U35.41, A.U35.44, A.U35.55, A.U36.022, A.U36.506, A.U36.520, A.U36.537, A.U36.546, A.U4.02, A.U4.06, A.U4.07, A.U5.17, A.U5.18, A.U7.25, A.U8C.05, A.U8C.09, A.U8C.10, A.U8C.11, A.U8C.12, A.U8C.120, A.U8C.14, A.U8C.15, A.U8C.16, A.U8C.18, A.U8C.35, A.U8C.36, A.U8C.37, A.U8C.38, A.U8C.39, A.U8C2.02, A.U9.10.

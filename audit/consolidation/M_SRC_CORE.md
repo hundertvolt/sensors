@@ -369,10 +369,13 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   owner, 2026-09-30); A.S0930.12's `if self._shutdown: return False` guard for the two old words is replaced by rule (1)
   (SUPP conflict 10). S4's handler: A.U30.19 requires `report_if_fatal()` as every broad handler's first statement; S4's
   `except (…, Exception)` is broad, so it binds `e` (A.S0930.14's `pass` form becomes the call; U30 stage).
-- **Unit**: U11 (gate, sequence, all four words; the REST words reach it in U19/U20 through A.S0930.09/A.S0930.11). The
-  sequence's S1 needs the supervisor to run as its own task — it does from U11 on (M.SRC_CORE.016's U11 stage spawns
-  `_supervise()` inside `start_and_check_tasks()`; U20 only splits the start loop out), which is how this lands before
-  A.U20.06 although A.S0930.13 names `supervise_tasks()`.
+- **Unit**: stages — U11: gate and sequence for `reboot`, `bootloader` and `resetconfig` (S3 uses the manager's
+  `quiesce()`, landed in U11 by M.SRC_CORE.083's first stage); U16: `erase_fram()`, the erase preflight and S5's erase
+  branch, with the manager's erase trio (M.SRC_CORE.083). The REST words reach the gate in U19/U20 (A.S0930.09/.11).
+  S1 needs the supervisor to run as its own task — it does from U11 on (M.SRC_CORE.016's U11 stage spawns `_supervise()`
+  inside `start_and_check_tasks()`; U20 only splits the start loop out), which is how this lands before A.U20.06 although
+  A.S0930.13 names `supervise_tasks()` (SUPP's LEAD/R32 State puts this code in U11; its Depends on A.U20.06 is met by
+  the U11 stage of M.SRC_CORE.016).
 - **Depends**: M.SRC_CORE.006, .008, .009, .010, .016 (U11 stage); M.SRC_CORE.041/.042 (`close_writes()`,
   `delete_file()`); M.SRC_CORE.083 (`quiesce()`, `erase_ready()`, `erase_chip()`).
 - **Blast carried by**: generated `_system_cmd_callback` returning the service's answer for five words → A.S0930.11
@@ -776,7 +779,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Resolved**: —
 - **Unit**: U15 (U10 stage: the rename, which every `Lockable` user in U10-U14 then uses).
 - **Depends**: —
-- **Blast carried by**: `asy_fram_driver.py` users of `asy_lock` → M.SRC_CORE.103; `asy_i2c_driver.py`,
+- **Blast carried by**: `asy_fram_driver.py` users of `asy_lock` → M.SRC_CORE.102; `asy_i2c_driver.py`,
   `asy_spi_driver.py`, `asy_uart_driver.py` → A.U10.18 (SRC_SENS, SRC_NET); the four `<Chip>_DeviceSession` classes go →
   A.U15.40 (SRC_SENS); UART changelog Class B "`UART.asy_lock` renamed `session_lock`" → A.U10.18 (DOCS); tests renaming
   the attribute (`tests/test_base_classes.py` 7, `test_asy_spi_driver.py` 55, …) → A.U10.18 (TEST_UNIT); L0
@@ -1128,7 +1131,8 @@ for the config reset.
 
 ### M.SRC_CORE.044 `write_config()` and the deferred flush
 - **From**: A.U4.02, A.U11.24, A.U11.25, A.U11.21, A.U11.22, A.U11.28, A.U11.23 (flush half), A.U10.20, A.U35.43 (1)(2),
-  A.U2.07, A.U11.04 + A.S0930.16 (1) (closed checks), A.U11.20 (`writable` check), A.U19.16, A.U10.45.
+  A.U2.07, A.U11.04 + A.S0930.16 (1) (closed checks), A.U11.20 (`writable` check), A.U19.16, A.U10.45, A.U14.19 (the
+  superseded-write comment's pointer).
 - **Site**: `src/config_manager.py:299-388`.
 - **Change**: `async def write_config(self, data: "dict[str, CfgValue]", *, defer: bool = False) -> "tuple[bool,
   WriteValidity]"` (the `cfg_vals` parameter goes; the manager's own schema is used). Before the lock: `if self._closed:
@@ -1150,7 +1154,7 @@ for the config reset.
   self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)`; inside: `await
   self._commit_ready.wait()`; `async with self._config_lock:` superseded check (`self._staged is not staged` → return,
   comment "# A newer snapshot was staged while this one waited for its commit or the lock: writing this one / # would
-  regress a replaced value."); `try:` `if staged != self._cache: text = json.dumps(staged)`, `with open(self._config_file,
+  regress a replaced value (PrintLogHistoryStore._write() applies the same rule)."); `try:` `if staged != self._cache: text = json.dumps(staged)`, `with open(self._config_file,
   "w") as f: f.write(text)`, evt "written"`; `except (MemoryError, OSError, ValueError) as e:` `_ERR_CFG_FILE_WRITE`
   (comment kept); `finally:` the bookkeeping `:384-388` unchanged.
 - **Resolved**: A.U11.22 (create the task, then stage) and A.U11.28 (a deferred task waits on `_commit_ready`) keep
@@ -1158,7 +1162,8 @@ for the config reset.
   both (SUPP conflict 1). A.U2.07's `:356` split (`MemoryError` → 20, `AttributeError` → 21) is superseded: A.U4.02 moves
   the non-dict case into the primitive's `None` (21) and A.U35.43 removes the `AttributeError` class; the remaining
   allocation failure keeps 20. A.U11.23 applies to both write sites (flush here, repair in M.SRC_CORE.043).
-- **Unit**: U11 (U4 stage: the primitive inside; U2 names; U19 constants swap; U30 `report_if_fatal`; A.U35.43 pulled
+- **Unit**: U11 (U4 stage: the primitive inside; U2 names; U14 the comment's pointer, with the rule it names; U19
+  constants swap; U30 `report_if_fatal`; A.U35.43 pulled
   into U11 — its reachability fact needs A.U11.28's deferral, which lands here, and its removals are the same lines).
 - **Depends**: M.SRC_CORE.047, .049; M.SRC_CORE.038 (callers pass `defer=True` and commit).
 - **Blast carried by**: callers `SensorReaderConfig._set_mgr_cfg()` (M.SRC_CORE.040), `SystemService._set_dict_cfg()`
@@ -1392,3 +1397,882 @@ fatal flag (M.SRC_CORE.034).
   TWIN); L2 write-protected chip keeps its bytes → A.U16.06 (TWIN); SPEC C.7 setup sentences, A.4 FRAM bullet →
   A.U10.11, A.U16.06 (SPEC).
 - **Kind**: code
+
+## src/api_response.py (→ `src/asy_api_response.py`)
+
+End state: `make_response()` over one envelope code catalog (0, 1 and the shaped HTTP statuses); `handle_set_cmd()`
+always answers OK with per-field results, a failing post-write hook turning its group's fields "Failed"; the shared
+`_RequestLike` stand-in (with `sock` for the static routes); no `parse_cmd_request()`.
+
+### M.SRC_CORE.070 Header states the module's current role
+- **From**: A.U11.26 (header comment `:4-6`), A.U10.37 (name); adherence: the docstring's second line is history
+  ("replaces the old, now-deleted improved-quality/api_helpers.py's …") — the current-state rule (CLAUDE.md working
+  agreement "Documentation contains current state … not the historic path"; A.U36.548's scope "docs and comments state
+  current facts, not history") — no action lists this site (GAP closed here).
+- **Site**: `src/api_response.py:1-6`.
+- **Change**: docstring "REST response envelope and settings-group setter dispatch for the Microdot layer; every
+  function returns a well-defined value, never raises." (one line; the history clause goes). Comment `:4-6` → "# Wire
+  shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}; make_response() is pure and total. / #
+  handle_set_cmd() drives one module's _set_dict_cfg() plus an optional post-write hook, whose failure is / # a
+  per-field outcome inside the OK envelope (SPECIFICATION.md Parts A.5 and C.5.3)."
+- **Resolved**: —
+- **Unit**: U11.
+- **Depends**: M.SRC_CORE.072.
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` (holds).
+- **Kind**: doc
+
+### M.SRC_CORE.071 Typed envelope and the shared request stand-in
+- **From**: A.U11.S02 (`ResponseEnvelope`, `result`, `post_asy_fct`, `Any` gone), A.U19.06 (2) (`_RequestLike.sock`,
+  `_Holder`), A.U8.23 (`:25-26` reason), A.U27.07 (5) (the stand-in stays after `parse_cmd_request()` goes), A.U10.31.
+- **Site**: `src/api_response.py:8-29`.
+- **Change**: `TYPE_CHECKING`: `from collections.abc import Callable`; `from typing import Protocol`; `from
+  asy_base_classes import AsyncCallback, JsonMapping, SensorReaderConfig`; `from asy_config_manager import ConfigSchema,
+  WriteValidity`; `ResponseEnvelope = dict[str, "str | int | JsonMapping"]`; `class _Holder(Protocol): def hold(self,
+  closable: object) -> None: ...`; `class _RequestLike(Protocol)`: `json` property (`object`), `sock: "tuple[_Holder,
+  _Holder]"`, comment "# Structural stand-in for microdot.Request: typed via the vendored upstream stub
+  (ext/typings/microdot/), / # which leaves get/put/route unannotated (v2.6.2); shared with asy_webserver_service.py.";
+  `Any`/`Coroutine` go. Runtime imports: `const`, `from asy_print_log import report_if_fatal`, `from asy_config_manager
+  import FAILED, VALID`.
+- **Resolved**: A.U11.S02 names `_RequestLike`/`parse_cmd_request()`'s `-> tuple[dict[str, object] | None, …]` return;
+  that function goes (A.U27.07), so only the Protocol's typing survives.
+- **Unit**: U19 (A.U19.06's `sock` member; U11 stage: A.U11.S02's aliases; U8 stage: A.U8.23's comment).
+- **Depends**: M.SRC_CORE.030.
+- **Blast carried by**: `asy_webserver_service.py:28, 71` imports and comment, `_TimeoutStreamProxy.hold()`/`release()`
+  → A.U19.06, A.U8.23 (SRC_NET); request builders in tests pass `sock=(_NoopHolder(), _NoopHolder())` → A.U19.06
+  (TEST_UNIT, TEST_HELP); `pyproject.toml` baseline → A.U8.24 (TOOL); SPEC A.5 checklist names the stand-in → A.U19.19
+  (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.072 `handle_set_cmd()` answers OK; a failing hook fails its group
+- **From**: A.U11.26, A.U32.03, A.U2.18, A.U2.04, A.U19.16, A.U30.19.
+- **Site**: `src/api_response.py:30-34`, `:81-105`.
+- **Change**: `_ERR_CALLBACK = const(14)` replaces `_ERRNO_UNHANDLED_DISPATCH` and its comment `:30-33` ("# Global
+  catalog numbers, valid on any logger."). `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct: "AsyncCallback
+  | None" = None, ok_descr=None) -> "ResponseEnvelope"`: comment (3 lines, A.U32.03's text) "# Persist and push already
+  ran per field in reader._set_dict_cfg(); a per-field outcome is detail in "result". / # The post-write hook runs once
+  per call, only after a changed field: one hook per endpoint, not one / # per field, as legacy's post_fct/post_asy_fct
+  (agent, 2026-08-03)."; `results = await reader._set_dict_cfg(data, cfg_vals)` (unwrapped: never-raise); `if
+  any(status == VALID for status in results.values()):` `try:` sync hook then async hook / `except Exception as e:`
+  `report_if_fatal(e)`; `await reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)`; `results =
+  dict.fromkeys(results, FAILED)`; `return make_response(0, descr=ok_descr, result=results)`.
+- **Resolved**: A.U2.18 allocates `_ERR_UNEXPECTED` "for any catch-all A.U11 keeps" — none kept, so not allocated (U11
+  register fix "For A-C"; AC_NOTES 7). A.U32.03's comment is worded for A.U11.26's body (its own text says so).
+- **Unit**: U11 (U2 stage: the constant name; U19 constants swap; U30 `report_if_fatal`).
+- **Depends**: M.SRC_CORE.038 (`_set_dict_cfg()` never raises), M.SRC_CORE.045, M.SRC_CORE.034.
+- **Blast carried by**: webserver `_apply_settings_groups()` `res == "ERR"` branch and its `:464` comment → A.U11.26 /
+  U19 (SRC_NET); `tests/test_api_response.py:282-332` and new hook tests → A.U11.26 (TEST_UNIT); webserver hook-failure
+  tests → A.U11.26 (TEST_UNIT); js `render.js:134-160` comment → U23 (WEB); SPEC C.5.3 `:1788-1797` (one edit carrying
+  A.U11.26, A.U19.15, A.U32.03) → SPEC merges the three (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.073 One envelope code catalog; `parse_cmd_request()` goes
+- **From**: A.U19.15, A.U27.07 (5), A.U11.26 (codes 4, 5, 100 go).
+- **Site**: `src/api_response.py:36-79`.
+- **Change**: `_STANDARD_CODES` = `{0: "Command executed", 1: "Invalid JSON request", 400: "Bad request", 404: "Not
+  found", 405: "Method not allowed", 413: "Payload too large", 500: "Internal server error"}` with the comment "# The
+  one envelope code catalog (SPECIFICATION.md C.5.3): every code listed has a producer; a shaped HTTP / # error uses its
+  status as its code."; `make_response(code, descr=None, result: "JsonMapping | None" = None)` unchanged in behaviour
+  (the "Unknown error" fallback stays as the totality guarantee). `parse_cmd_request()` and codes 2/3 are deleted.
+- **Resolved**: A.U19.15 keeps 2/3 "only while `parse_cmd_request()` exists"; A.U27.07 deletes it (and AC_NOTES 37 drops
+  A.U11.26/A.U19.15's U35 dependency, met by A.U27.07) — 2/3 go in the same change.
+- **Unit**: U27 (latest: A.U27.07 removes the function and its tests together; U19 stage: the catalog without 4/5/100
+  and with the HTTP statuses, which the webserver's shaped errors need in U19).
+- **Depends**: M.SRC_CORE.071.
+- **Blast carried by**: webserver `_ERROR_STATUSES`, `_shaped_error_handler()`, `_handle_unhandled_exception()`, `:786`
+  comment → A.U19.15, A.U27.07 (SRC_NET); `js/mock-server.js` envelope mirror → A.U23.26, A.U19.15 (WEB);
+  `tests/test_api_response.py:42-44, 80-100, 125-178` → A.U19.15, A.U27.07 (TEST_UNIT); `tests/test_setter_microdot_integration.py`
+  rewrite, `tests/test_asy_webserver_service.py:877` → A.U27.07 (TEST_UNIT); `tests_js/render.test.js:851` → U23 (WEB);
+  `pyproject.toml:408-413` override → A.U27.07 (TOOL); SPEC C.5.3/A.8/A.5/`:110`, CLAUDE.md override sentence →
+  A.U19.15, A.U27.07 (SPEC, DOCS).
+- **Kind**: code
+
+## src/asy_fram_manager.py
+
+End state: `FRAMManager` (renamed) with a RAM-only log, a bump-pointer allocator that also records its chunks, the
+storage pause, the erase trio (`quiesce()`, `erase_ready()`, `erase_chip()`), a supervised chip-watch task that
+escalates a dead or lost chip; `_FRAMBaseChunk` with one entry per failure, a tri-state read (valid / blank-or-invalid /
+unreadable), blank blocks never marked busy, no `override_pause`, no episode flags; `FRAMChunk`/`FRAMTimestampedChunk`
+built from their manager, the timestamped one on `utc_now()`, bool first.
+
+### M.SRC_CORE.080 Header, imports, constants and the `max_size` limits tag
+- **From**: A.U16.01 (header pointer), A.U3.02 (`_WRN_EPISODE_BASE` goes), A.U2.04/A.U2.09/A.U3.04/A.U3.09 (constants),
+  A.U16.20 (tag), A.S0930.17 (`_ERASE_UNIT`), A.U10.37/A.U10.38 (imports, names), A.U16.S01 (types), A.U16.05
+  (`RegionBuffer`), A.U10.06 (`utc_now`), A.U16.R03 (tunables are the driver's), M.SRC_CORE.034 (`report_if_fatal`).
+- **Site**: `src/asy_fram_manager.py:1-38`.
+- **Change**: docstring line 3 → "FRAMManager is a bump-pointer allocator (construction order is the on-chip layout,
+  fixed within one build: SPECIFICATION.md A.4/A.7); every method returns a well-defined value - never raises."
+  Imports: `asyncio`, `struct`, `const`; `from asy_fram_driver import FRAM_SPI`; `from asy_spi_driver import SPI`; `from
+  asy_base_classes import RegionBuffer, utc_now`; `from asy_crc_checks import CRCBase, CRCPass`; `from asy_print_log
+  import DEFAULT_LOG, PrintLogHistory, report_if_fatal`; `TYPE_CHECKING`: `Callable`, `from asy_base_classes import
+  ErrorSource, NtpSyncFct, TaskStarter, TimerStarter`, `from asy_print_log import ErrorLog, LogConfig`; `time`,
+  `Coroutine`, `Any` go. Constants: status/address constants unchanged; `_TS_FMT`, `_TS_UNINIT` unchanged; `_NAME`;
+  `_ERASE_UNIT = const(256)` ("# one erase write: 2.1 ms at the 1 MHz bus, divides both chip sizes; the size class the
+  webserver's chunked writes use (Part I.3)"); `_ERR_INIT = const(10)`, `_ERR_CALLBACK = const(14)`, `_ERR_ALLOC =
+  const(20)`, `_ERR_BAD_ARG = const(21)`, `_ERR_UNEXPECTED = const(23)`, `_ERR_FRAM_STATUS_BYTE = const(46)`,
+  `_ERR_FRAM_STATUS_DISAGREE = const(47)`, `_ERR_FRAM_CRC_FAILED = const(48)`, `_ERR_FRAM_DATA_CRC = const(49)`,
+  `_ERR_FRAM_VERIFY = const(50)`, `_ERR_FRAM_COPIES_DIFFER = const(51)`, `_WRN_FRAM_PAUSED = const(25)`; one comment line
+  "# The legal chip sizes; tests_scripts/test_buildgen_limits.py keeps them equal to asy_fram_driver's
+  _KNOWN_PRODUCT_IDS." and the tag `# @limits max_size in {0x2000, 0x40000}`.
+- **Resolved**: e16 CLOCK (`:550`, `:614`) retires with A.U10.06; e82 (`:563`) retires with A.U35.55; neither gets a
+  constant.
+- **Unit**: U16 (stages: U2 constants at HEAD sites; U3 `_WRN_EPISODE_BASE` removal; U10 renames/imports).
+- **Depends**: M.SRC_CORE.001, .027, .032, .034, M.SRC_CORE.115 (`CRCBase`, `CRCPass`).
+- **Blast carried by**: `buildgen/validate.py` `_check_limits()` reads the tag; the new L0 agreement test and the
+  bad-size case → A.U16.20 (GEN, TSC); fixtures `novel_combo.toml:121`, `multi_instance.toml:98` → 0x40000 → A.U16.20/
+  A.U16.17 (TSC); catalog rows (46-51, 25, retirements 16/82, errno 20's "A.U3.09's new FRAM buffer checks") → A.U2.01
+  merge (GEN); SPEC A.4/A.7/C.7/K.7 layout-within-one-build text, C.3.1 size sentence → A.U16.01, A.U0.38, A.U16.20
+  (SPEC); `devices/dev.toml:96-98` comment → A.U16.01 (GEN); `tests/test_digital_twin_uart_link.py:173-175` → A.U16.01
+  (TWIN).
+- **Kind**: code, doc
+
+### M.SRC_CORE.081 Chunk construction from the manager; no episode state
+- **From**: A.U5.13, A.U10.38 (`_FRAMBaseChunk`), A.U10.17 (`_op_lock` reason), A.U3.02 (`_episode_wrns`,
+  `_episode_wrn()` go), A.U16.06 (`_read_fault`), A.U10.45.
+- **Site**: `src/asy_fram_manager.py:41-94`.
+- **Change**: `class _FRAMBaseChunk:` `__init__(self, manager: "FRAMManager", base_addr: int, size: int, crc: CRCBase,
+  verify: int = 0, check_length: int = 8)`: `self.pr = manager.pr`, `self._mempause = manager.get_pause`, `self.fram =
+  manager.fram` (bound once); the rest as HEAD; `self._op_lock = asyncio.Lock()` with the reason line "# serialises this
+  chunk's own write/read/clear end to end, across both blocks and the scratch buffers"; `self._read_fault = False` beside
+  the other read state (`:81-84`); `_episode_wrns` and `_episode_wrn()` gone; the `(MemoryError, OverflowError)` tuple
+  unchanged.
+- **Resolved**: —
+- **Unit**: U16 (U5 stage: the manager parameter; U3 stage: episode removal).
+- **Depends**: M.SRC_CORE.080.
+- **Blast carried by**: callers `get_chunk()`/`get_timestamped_chunk()` (M.SRC_CORE.091); `tests/test_asy_fram_manager.py:2350-2389`
+  (`chunk.fram`) holds; episode tests `:2587-2640` → A.U3.02 (TEST_UNIT).
+- **Kind**: code
+
+### M.SRC_CORE.082 Chunk write: silent while the chip is lost, one entry per failure
+- **From**: A.U16.19, A.U3.02, A.U3.04, A.U2.09, A.U16.R03 (5).
+- **Site**: `src/asy_fram_manager.py:96-126` `_write()`.
+- **Change**: `async def _write(self, buf: bytearray) -> bool`: `if self.fram.lost.is_set(): return False` (no log: the
+  loss is its one errno-54 event); under `self._op_lock`: `if self._mempause():` `wrn_s("FRAM communication paused, not
+  writing FRAM!", wrnno=_WRN_FRAM_PAUSED)`, `False`; size mismatch → `err_s(…, errno=_ERR_BAD_ARG)`; a failed block
+  write → `self.pr.err("Writing block N failed!")` (the inner layer persisted), `False`; verify pass: per block `valid,
+  uninit, match, fault = await self._compare_with(buf, addr)`; `uninit or (valid and not match)` → `err_s("Block", n,
+  "write verification error!", errno=_ERR_FRAM_VERIFY)`; `not valid and not uninit` → `self.pr.err(...)`; either →
+  `False`; the `_episode_wrns = 0` reset goes.
+- **Resolved**: A.U16.R03 (5) also asks the driver's reporters to pass `repeat=True` for NOT_INIT while lost; A.U3.01
+  removes `repeat=` from every logger, and with this entry guard no chunk operation reaches the driver while lost — that
+  clause is dropped (M.SRC_CORE.103 Resolved).
+- **Unit**: U16 (stages: U2 numbers; U3 persist/print split and episode removal).
+- **Depends**: M.SRC_CORE.081, M.SRC_CORE.088 (`_compare_with()` 4-tuple), M.SRC_CORE.102 (`lost`).
+- **Blast carried by**: tests asserting multi-entry sequences (`tests/test_asy_fram_manager.py`, `:952`,
+  `tests/test_fram_integration.py` 19 lines) and new one-entry-per-fault cases → A.U3.04 (TEST_UNIT); override tests
+  `:428-440`, `:1117-1130` deleted, `:1109, :1253-1254` → A.U16.19 (TEST_UNIT); twin hazard file `:414-432, :463-464` →
+  A.U16.19 (TWIN); device scripts `fram_pause_unpause_and_gating.py`, `fram_write_protect_roundtrip.py` → A.U16.19
+  (HW_DEV); SPEC A.4 `:175, 185, 207-208`, F.5.2 `:3752`, BACKLOG `:476` → A.U3.04, A.U16.19 (SPEC, DOCS);
+  `tests_hardware/README.md:401` → A.U3.04 (HW_BENCH).
+- **Kind**: code
+
+### M.SRC_CORE.088 Chunk read: tri-state result, faults told from invalid data
+- **From**: A.U16.06 (1)-(2), A.U3.04, A.U3.02, A.U16.08 (`:174-175` comment), A.U16.19, A.U16.R03 (5), A.U2.09.
+- **Site**: `src/asy_fram_manager.py:128-221` (`_read()`, `_read_progress()`, `_read_into()`, `_compare_with()`).
+- **Change**: `async def _read(self, buf: bytearray) -> bool | None`: `if self.fram.lost.is_set(): return None`; under
+  `_op_lock`: paused → `wrn_s(…, wrnno=_WRN_FRAM_PAUSED)`, `None`; size mismatch → `_ERR_BAD_ARG`, `None`; block 0
+  `valid, uninit, fault = await self._read_into(buf, addr0)`; not valid → console line ("Uninitialized data" evt / "Read
+  fault in block 0" / "Invalid data in block 0", "reading block 1"); block 1 likewise; neither valid → `None` if either
+  faulted, else `False`; block 1 valid → repair block 0, a failed repair write → `self.pr.err(…)`, `None`; block 0 valid →
+  `_compare_with()` block 1 (4-tuple), not valid → console line and repair block 1 (failed → `None`); not matching →
+  comment "# No generation counter says which block is newer, so a write torn between blocks leaves two valid / # but
+  differing copies: a hard failure, never a guess (owner, 2026-07-18). The next write heals it." and `err_s("Both
+  blocks valid but different data", errno=_ERR_FRAM_COPIES_DIFFER)`, `False`; else `True`. `_read_into()` resets
+  `_read_fault` with the other state and returns `(valid, uninit, self._read_fault)`; `_compare_with()` returns
+  `(valid, uninit, match, fault)` (missing scratch → persisted `_ERR_ALLOC` and `(False, False, False, True)`, A.U3.04 +
+  A.U16.06 (1)). No `_episode_wrn()` call and no `_episode_wrns` reset remain.
+- **Resolved**: A.U3.04 persists 20 when `_check_buf is None`; A.U16.06 lists the same site as a fault — both apply.
+- **Unit**: U16.
+- **Depends**: M.SRC_CORE.081, .084, .085.
+- **Blast carried by**: `PrintLogHistoryStore._read()` (M.SRC_CORE.065); SGP40 restore reads falsy → A.U16.06 (SRC_SENS,
+  unchanged); tests `tests/test_asy_fram_manager.py:235, 839, 885-910, 1003, 1085-1096, 2094, 2210-2248, 2332, 2433` and
+  new L1 cases → A.U16.06, A.U3.04 (TEST_UNIT); `:329-331` comment → A.U16.08 (TEST_UNIT); L2 WP chip keeps its bytes →
+  A.U16.06 (TWIN); SPEC A.4 `:205-206`, `:214`, C.7 → A.U16.06, A.U16.08 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.084 Status bytes: a blank block takes no busy marker; faults flagged; no errno arithmetic
+- **From**: A.U2.09 (`err=` goes), A.U16.09, A.U16.06 (1), A.U3.04.
+- **Site**: `src/asy_fram_manager.py:223-268`.
+- **Change**: `_set_check_sb(self, fram, st_addr, val, *, check_idle) -> bool | None`: `check_idle` read failure →
+  `await fram.report_get_values(read_status)`, `self.pr.err("Read status byte failed!")`, `self._read_fault = True`,
+  `None`; a byte neither idle nor uninit → `err_s("Read status byte is not", _STATUS_IDLE, "but", stat[0],
+  errno=_ERR_FRAM_STATUS_BYTE)`, `None`; a byte reading `_STATUS_UNINIT` → `return True` with "# a blank block is never
+  read, so it takes no busy marker and stays blank"; the write → failure `self.pr.err("Write status byte failed!")`,
+  `self._read_fault = True`, `None`; else `False`. The `:240-242` and `:256-257` errno-spread comments go.
+  `_handle_status_bytes(self, fram, addr, val, *, check_idle) -> bool | None`: two calls without `err`; inconsistent
+  pair → `err_s(…, errno=_ERR_FRAM_STATUS_DISAGREE)`, `None`.
+- **Resolved**: —
+- **Unit**: U16 (U2 stage: the `err=` removal with the renumbering).
+- **Depends**: M.SRC_CORE.081.
+- **Blast carried by**: wire-trace golden `_GOLDEN_BLANK_SETUP` (74 → 54 CS cycles), header, count test →
+  A.U16.09 (TEST_UNIT); `tests/test_asy_fram_allocation_budget.py:65-66` comment, `tests/test_asy_fram_manager.py:1538,
+  1686-1687, 2509-2511` → A.U16.09 (TEST_UNIT); L2 double read → A.U16.09 (TWIN); SPEC A.4 `:178`, `:201-202` →
+  A.U16.09 (SPEC); the A.4 protocol account → A.U16.12 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.085 Block operations: numbered by the catalog, faults flagged, overflow-free comments
+- **From**: A.U2.09, A.U3.04, A.U16.06 (1), A.U14.10 (`:368`), A.U16.19 (`clear()`), A.U16.R03 (5) (`clear()`), A.U30.19,
+  A.U10.45.
+- **Site**: `src/asy_fram_manager.py:270-399` (`_write_chunk()`, `_read_chunk()`, `_clear_chunk()`, `clear()`).
+- **Change**: every `_handle_status_bytes()` call loses `err=` and its "check_idle=… may only set err to err + N"
+  comment; `_write_chunk()`: CRC not computable → `err_s(…, errno=_ERR_FRAM_CRC_FAILED)`; payload write failure →
+  `self.pr.err("_write_chunk failed!")`; `except Exception as e: report_if_fatal(e)`, `err_s(…, errno=_ERR_UNEXPECTED)`.
+  `_read_chunk()`: zero-length buffer → `err_s(…, errno=_ERR_BAD_ARG)` and `_read_fault = True`; driver read failure →
+  `report_get_values()`, `self.pr.err("FRAM read error in _read_chunk!")`, fault; incremental CRC failure → `err_s(…,
+  errno=_ERR_FRAM_CRC_FAILED)`, fault; data CRC mismatch → `err_s(…, errno=_ERR_FRAM_DATA_CRC)` (content, not a fault);
+  `except Exception as e: report_if_fatal(e)`, `_ERR_UNEXPECTED`, fault. `_clear_chunk()`: comment `:367-368` → "#
+  bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without building that list first / #
+  `[x] * n` can segfault uncatchably for large n (Part F.1)."; write failure → `self.pr.err(…)`; `except Exception as
+  e: report_if_fatal(e)`, `_ERR_UNEXPECTED`. `clear(self) -> bool`: `if self.fram.lost.is_set(): return False`; paused →
+  `wrn_s(…, wrnno=_WRN_FRAM_PAUSED)`; a failed block → `self.pr.err("Clearing chunks failed!")`.
+- **Resolved**: —
+- **Unit**: U16 (stages U2, U3, U14 comment; U30 `report_if_fatal`).
+- **Depends**: M.SRC_CORE.084.
+- **Blast carried by**: as M.SRC_CORE.082/.088 (A.U3.04, A.U2.09 test lines); wire traces unchanged except the blank
+  case (M.SRC_CORE.084).
+- **Kind**: code
+
+### M.SRC_CORE.086 The chunks' caller-less `get_size()` and `get_pause()` go
+- **From**: A.U16.22.
+- **Site**: `src/asy_fram_manager.py:381-382, 427-428, 509-510`.
+- **Change**: the three methods are deleted; `get_verify()`/`set_verify()` stay (SGP40 uses both).
+- **Resolved**: A.S0930.17 uses the driver's `get_size()` (OR36.a (3)), not a chunk's.
+- **Unit**: U16.
+- **Depends**: M.SRC_CORE.081.
+- **Blast carried by**: `tests/test_asy_fram_manager.py:1995-2024` → A.U16.22 (TEST_UNIT).
+- **Kind**: code
+
+### M.SRC_CORE.089 Chunk buffers: `RegionBuffer` subclasses without the CRC accessor
+- **From**: A.U16.05, A.U16.23, A.U10.38 (`FRAMChunkBuffer`, `FRAMChunkTimestampedBuffer`), A.U10.35 (`buf` → `_buf`).
+- **Site**: `src/asy_fram_manager.py:402-410`, `:468-481`.
+- **Change**: `class FRAMChunkBuffer(RegionBuffer)` keeps only its constructor (data region fixed; `_crc_size` gone);
+  `class FRAMChunkTimestampedBuffer(RegionBuffer)` keeps its constructor and `get_ts_buf()` (reading `self._buf`),
+  `_crc_size` and `get_crc_buf()` gone.
+- **Resolved**: —
+- **Unit**: U16.
+- **Depends**: M.SRC_CORE.027.
+- **Blast carried by**: `tests/test_asy_fram_manager.py:2027-2081` → A.U16.23 (TEST_UNIT); renames in tests → A.U10.38
+  (TEST_UNIT); SPEC E.5.1 `:3025-3027` → A.U35.41 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.090 Plain chunk I/O: one entry for a missing buffer; the unreachable second check stated
+- **From**: A.U3.09, A.U35.47, A.U16.06 (3), A.U16.19, A.U11.S03 (2), A.U2.09 (e84 → 21), A.U10.38 (`FRAMChunk`).
+- **Site**: `src/asy_fram_manager.py:413-465`.
+- **Change**: `class FRAMChunk(_FRAMBaseChunk)` with the manager constructor (the explicit `__init__` that only
+  forwarded goes). `get_buffer() -> FRAMChunkBuffer`. `write(data)`: `databuf is None` → `err_s("No buffer for the chunk
+  write", errno=_ERR_ALLOC)`, `False`; too long → `err_s(…, errno=_ERR_BAD_ARG)` (the `:439` "84, not 80" comment goes);
+  `return await self.write_into(buf)`. `write_into(self, buf: RegionBuffer) -> bool`: `get_buf()` `None` → `_ERR_ALLOC`,
+  `False`; `return await self._write(dbuf)`. `read(self) -> bytearray | None`: `if not await self.read_into(buf): return
+  None`; the second accessor keeps `return None` with "# Unreachable: read_into() already failed on a missing buffer,
+  and a RegionBuffer's buffer is fixed at construction - kept to narrow the Optional for the type checker."
+  `read_into(self, buf: RegionBuffer) -> bool | None`: `get_buf()` `None` → `_ERR_ALLOC`, `None`; `return await
+  self._read(dbuf)`.
+- **Resolved**: A.U3.09 adds a persisted 20 to every `None`-buffer return (`:436, 448, 457, 463`); A.U35.47 keeps
+  `:457` as an unreachable narrowing. Per line: the first accessor of a buffer is reachable (its allocation can fail)
+  and persists 20; a second accessor on the same buffer is unreachable and keeps the bare return with A.U35.47's
+  comment (G5/R54, A.U35.41's verdict "keep as type narrowing").
+- **Unit**: U16 (stages U3: the 20s; U11: A.U11.S03's annotation; U35: A.U35.47's comment pulled into U16's rewrite of
+  the same lines).
+- **Depends**: M.SRC_CORE.082, .088, .089.
+- **Blast carried by**: `print_log.py`'s store (M.SRC_CORE.064/.065); new L1 "a `None` chunk buffer persists 20 once" →
+  A.U3.09 (TEST_UNIT); SPEC E.5.1 narrowing line → A.U35.41 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.087 Timestamped chunk: `utc_now()`, bool-first writes, no unreachable guards
+- **From**: A.U16.18, A.U10.06, A.U14.26 (1) dropped (V.U18.R10: no catch around the timestamp), A.U35.55, A.U3.09,
+  A.U35.47, A.U16.19, A.U16.S01, A.U10.35 (`_ntp_sync_callback`), A.U2.09 (85/87 → 14), A.U30.19, A.U5.13, A.U10.38.
+- **Site**: `src/asy_fram_manager.py:484-615`.
+- **Change**: `class FRAMTimestampedChunk(_FRAMBaseChunk)`: `__init__(self, manager, base_addr, size, ntp_sync_callback:
+  "NtpSyncFct", crc, verify=0, check_length=8)` → `super().__init__(manager, base_addr, struct.calcsize(_TS_FMT) + size,
+  crc, …)`, `self._ntp_sync_callback`. `write(data, *, require_ntp=False) -> tuple[bool, bool, int | None]`: missing buffer →
+  `_ERR_ALLOC`, `(False, False, None)`; too long → `_ERR_BAD_ARG`; `write_into(buf, *, require_ntp=False) ->
+  tuple[bool, bool, int | None]`: callback guarded (`except Exception as e: report_if_fatal(e)`, `err_s("NTP sync callback
+  failed:", e, errno=_ERR_CALLBACK)`, not synced); `utc = utc_now() if ntp_synced else None`; `None` → evt "not valid",
+  `ntp_synced = False`, `utc = _TS_UNINIT[0]`, and `if require_ntp: return False, False, None`; else evt "valid"; `tbuf =
+  buf.get_ts_buf()`, `None` → `_ERR_ALLOC`, `(False, False, None)`; `struct.pack_into(_TS_FMT, tbuf, 0, utc)` (no guard);
+  `bbuf = buf.get_buf()`, `None` → `(False, False, None)` with A.U35.47's narrowing comment; `return await
+  self._write(bbuf), ntp_synced, utc`. `read(self) -> tuple[int | None, int | None, bytearray | None]` unchanged in shape
+  (the second accessor keeps its narrowing comment). `read_into(self, buf) -> tuple[bool | None, int | None, int |
+  None]`: `bbuf` `None` → `_ERR_ALLOC`, `(None, None, None)`; `res = await self._read(bbuf)`; not `True` → `(res, None,
+  None)`; `tbuf` `None` → `(None, None, None)` (narrowing comment); `ts = int(struct.unpack_from(_TS_FMT, tbuf, 0)[0])` (no
+  guard); `_TS_UNINIT` → evt, `ts = None`; else evt, callback guarded as above, `now = utc_now() if ntp_synced else
+  None`, "# signed: negative after the RTC stepped back (NTP_Offset_S, a correction); the caller treats that as
+  expired", `age = None if now is None else now - ts`; `return True, ts, age`.
+- **Resolved**: A.U10.06 vs A.U14.26 at `:547/:611` → A.U10.06 (V.U18.R10, U18 register fix 10). A.U16.18's
+  message change "Packing the timestamp failed" is moot (A.U35.55 removes the guard; A.U35.55's Depends says so).
+- **Unit**: U16 (stages U10 `utc_now()`; U35's removal pulled into U16's rewrite — A.U35.55 is a B3 removal with no
+  prerequisite and the same lines; U30 `report_if_fatal`).
+- **Depends**: M.SRC_CORE.032, .082, .088, .089, .090.
+- **Blast carried by**: SGP40 `_run_backup()` unpack order and the negative-age expiry → A.U16.18 (SRC_SENS);
+  `tests/test_asy_fram_manager.py` reorders/annotations (A.U16.18's list), `:677-700`, `:1940-1974` (`utc_now()` path;
+  A.U14.26's renames dropped with its handler), `:2126-2195` (two raising-`struct` tests go) → A.U16.18, A.U10.06,
+  A.U35.55 (TEST_UNIT); `tests/test_ntp_fram_system_integration.py`, `tests/test_fram_integration.py:92`,
+  `tests/test_asy_fram_wire_trace.py:451`, `tests/test_asy_sgp40_driver.py:1055-1056` → A.U16.18 (TEST_UNIT); device
+  script `fram_pause_unpause_and_gating.py:151-154` → A.U16.18 (HW_DEV); tests setting `utc_valid` → A.U10.06
+  (TEST_UNIT); catalog 82 and 86/88 retired → A.U35.55, A.U10.06 (GEN); SPEC `:214-215`, DEVICE_REFERENCE `BackupMaxAge`
+  → A.U16.18 (SPEC, DOCS).
+- **Kind**: code
+
+### M.SRC_CORE.091 Manager construction, allocation, pause and fan-in
+- **From**: A.U5.02, A.U5.13, A.U10.35 (`_allocated_size`), A.U0.41 (`:648`, `:690`, `:726`), A.U16.S01, A.U11.31,
+  A.U10.38 (`FRAMManager`, `CRCPass`), A.S0930.17 (2) (`_chunks`), A.U16.R03 (`_was_up`).
+- **Site**: `src/asy_fram_manager.py:618-728`, `:739-740`.
+- **Change**: `class FRAMManager`: `__init__(self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, log: "LogConfig" =
+  DEFAULT_LOG)`: `self.pr = PrintLogHistory(log.history_length, log.debug, name=_NAME)` ("# RAM-only: the one module
+  that never logs into FRAM is the FRAM module itself (owner, SPECIFICATION.md C.7.1)"), `self.name`, `self.size`,
+  `self._allocated_size = 0`, `self._pause = False`, `self._chunks: list[_FRAMBaseChunk] = []` ("# one entry per
+  allocation, all made during construction"), `self._was_up = False`, `self.fram = FRAM_SPI(spi_bus, spi_cs,
+  max_size=self.size, logger=self.pr)`. `get_error_sources() -> "list[ErrorSource]"`. `get_chunk(size, crc: CRCBase | None
+  = None, verify=0, check_length=8) -> FRAMChunk | None` and `get_timestamped_chunk(size, ntp_sync_callback: "NtpSyncFct",
+  …)`: the size-0 comment gains "(owner-confirmed, 2026-07-18: reject generally at the top)"; `CRCPass()` default;
+  construct with `self` as manager; append the chunk to `self._chunks`; `_allocated_size` bookkeeping as HEAD.
+  `set_pause()` gains "# Finish all ongoing ops, reject new ones (owner-confirmed, 2026-07-18)". `reset_error_counter()
+  -> bool: return await self.pr.reset()`.
+- **Resolved**: —
+- **Unit**: U16 (stages U5 constructor, U10 names, U11 `-> bool` and the `_chunks` list with its append — the U11
+  quiesce of M.SRC_CORE.083 walks it, U0 tags).
+- **Depends**: M.SRC_CORE.080, .081, .061.
+- **Blast carried by**: generated construction (`FRAMManager(..., log=log_ram)`, class name) → A.U5.03, A.U10.38 (GEN);
+  every `get_chunk()`/`get_timestamped_chunk()` caller (print_log store, SGP40) unchanged; `tests/test_asy_fram_allocation_budget.py`
+  bound re-derived for the `_chunks` slot → A.S0930.17 (TEST_UNIT); long-lived-object catalog gains `FRAMManager._chunks`
+  ("grows once per allocation at construction") → GAP-G9 (TSC A.U30.03, SPEC A.U30.02); tests reading `allocated_size`,
+  `ntp_sync_callback` → A.U10.35 (TEST_UNIT); SPEC C.3.1 FRAM API list → A.S0930.17 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.083 Erase FRAM: close the chunk layer, then blank and zero the whole chip in fed units
+- **From**: A.S0930.17 (1), (3)-(5); A.U16.R03 (5) applied to the new `invalidate()`.
+- **Site**: `src/asy_fram_manager.py` new `_FRAMBaseChunk.wait_idle()`, `invalidate()` (beside `_clear_chunk()`/`clear()`);
+  new `FRAMManager.quiesce()`, `erase_ready()`, `erase_chip()`.
+- **Change**: exactly A.S0930.17: `wait_idle()` (`async with self._op_lock: pass`, its comment); `invalidate() -> bool`:
+  `if self.fram.lost.is_set(): return False`; under `_op_lock`, per block `async with self.fram as fram:
+  _handle_status_bytes(fram, addr, _STATUS_UNINIT, check_idle=False)`; `False` at the first failed block; no pause
+  check (only the erase calls it, after the manager closed the chunk layer); `quiesce(step_done)`: pause, then each
+  chunk's `wait_idle()` and `step_done()`; `erase_ready()`: `self.fram.initialized and not await
+  self.fram.get_write_protected()`; `erase_chip(step_done) -> bool`: refuse unless ready; pass 1 `invalidate()` per chunk
+  with `step_done()`; any failure → stop before pass 2 (`self.pr.err(…)`, `False`); `unit = bytearray(_ERASE_UNIT)`
+  (`MemoryError` → `False`); pass 2 over `range(0, await self.fram.get_size(), _ERASE_UNIT)`: `async with self.fram as
+  fram: status = fram.set_values_sync(unit, addr)`, then `if status and not await self.fram.report_set_values(status):`
+  stop, `False`; `step_done()`; `await asyncio.sleep(0)`; end `self.pr.evt("FRAM erased:", size, "bytes")`, `return ok`.
+  Comment at `erase_chip()` (≤ 3 lines) as A.S0930.17.
+- **Resolved**: SUPP conflict 4 (not a seam). A.U16.R03's silent-while-lost rule covers `_write()`/`_read()`/`clear()`;
+  `invalidate()` is new and gets the same guard so the rule holds for every chunk entry (the erase then stops at pass 1,
+  code 9; `erase_ready()` already refuses a lost chip, since a loss clears `initialized`).
+- **Unit**: stages — U11: `_chunks` recording (M.SRC_CORE.091), `wait_idle()` and `quiesce()`, which S3 of every
+  command needs from U11 on; U16: `invalidate()`, `erase_ready()`, `erase_chip()` (A.S0930.17's own State "U16 (FRAM
+  manager erase)"), with the erase word's gate branch (M.SRC_CORE.011's U16 stage).
+- **Depends**: M.SRC_CORE.082, .084, .091, M.SRC_CORE.103 (`report_set_values()`), M.SRC_CORE.102 (`lost`).
+- **Blast carried by**: caller S3/S5 (M.SRC_CORE.011); tests → A.S0930.20 (non-zero-init CRC pin), .21-.29 (TSC,
+  TEST_UNIT, TWIN, HW_DEV, HW_BENCH); twin chip's 1,024 writes → A.S0930.27 (TWIN); SPEC A.4/C.3.1/C.8 → A.S0930.30
+  (SPEC); the erase's error-log read-and-archive before it → A.S0930.28/.29 (HW), CLAUDE.md FRAM rule (DOCS).
+- **Kind**: code
+
+### M.SRC_CORE.092 Manager setup and the chip-watch task
+- **From**: A.U16.17, A.U16.R03 (4), A.U10.21, A.U2.09 (83 → 10), A.U30.19, G8/R61 via A.U10.46 (task coroutines return
+  `None`).
+- **Site**: `src/asy_fram_manager.py:730-737` `setup()`; new `get_task_starters()`, `get_timer_starters()`,
+  `start_watch_chip()`, `watch_chip()`.
+- **Change**: `setup(self) -> bool`: `await self.pr.setup()`; `try: await self.fram.setup()` / `except Exception as e:
+  report_if_fatal(e)`, `await self.pr.err_s("FRAM Setup failed:", e, errno=_ERR_INIT)`, `return False`;
+  `self._was_up = True`; `return True`. `get_task_starters(self) -> "list[TaskStarter]": return
+  [self.start_watch_chip]` (whenever the manager exists, i.e. the TOML declares a chip); `get_timer_starters()` → `[]`;
+  `start_watch_chip()` creates the task; `async def watch_chip(self) -> None`: `if not self.fram.initialized:` never up
+  (`not self._was_up`) → `self.pr.err("FRAM chip declared but not set up - escalating")`, `return`; was up and lost →
+  `if not await self.setup(): return`; `self.pr.one("FRAM chip answers again")`; then `await self.fram.lost.wait()`;
+  `return`.
+- **Resolved**: A.U16.17's `get_task_starters()` returns `[]` when initialised; A.U16.R03 (4) makes it always one
+  starter (SUPP_recovery Conflicts 5: R03 extends it) — R03. Both write the task as returning `False`; the typed task
+  lists are `Task[None]` (G8/R61, owner OR81; A.U10.46's `TaskStarter`; A.U15.43 makes the readers' tasks `None` for
+  the same reason), and the supervisor counts any end — so the coroutine returns `None`.
+- **Unit**: U16 (A.U16.R03 is SUPP_recovery's U16 half).
+- **Depends**: M.SRC_CORE.091, M.SRC_CORE.106 (driver `setup()`), M.SRC_CORE.102 (`lost`).
+- **Blast carried by**: generated collectors include `fram` (`codegen.py:660-664`), `_collect_task_names()` gains
+  `FRAM.start_watch_chip` → A.U16.17, A.U32.06 (GEN); task counts per device, inventory table → A.U16.R03, A.U10.19 (TSC,
+  TEST_HELP, SPEC); `tests/_sensortask_scenarios.py:490-545` dead-chip scenario → A.U16.17 (TEST_HELP); L1 watch-task
+  cases → A.U16.17, A.U16.R03 (TEST_UNIT); L2 silent chip → A.U16.R03/U25 (TWIN); L3 CS-hijack loss case → A.U16.R03
+  (HW_DEV); SPEC A.4/A.7/C.7 → A.U16.17, A.U16.R03 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.093 Member order and annotation form in `asy_fram_manager.py`
+- **From**: A.U10.33, A.U10.31.
+- **Site**: every class of the file.
+- **Change**: D.15 order after every stage; annotations quoted only for `TYPE_CHECKING` names.
+- **Resolved**: —
+- **Unit**: U10 (then kept by each stage).
+- **Depends**: —
+- **Blast carried by**: A.U10.33 (TOOL baselines).
+- **Kind**: code
+
+## src/asy_fram_driver.py
+
+End state: `FRAM_SPI` (name kept: a C.2 `<CHIP>_<Role>` compound) checks — never detects — the part `max_size` names,
+retries a failed WREN and a failed identification, reports a partly protected status register, an unavailable bus and a
+chip lost mid-run, takes both FRAM locks for every hold (`setup()` and `set_write_protected()` included), and bounds
+`verify_present()`'s one wait with `wait_for_ms`.
+
+### M.SRC_CORE.100 SPDX header, docstring and the file's fault summary
+- **From**: A.U34.07 (header order), A.U20.10 (checks, not detects) applied to the docstring (adherence, see Resolved).
+- **Site**: `src/asy_fram_driver.py:1-10`.
+- **Change**: lines 1-3 → "# SPDX-FileCopyrightText: 2018 Michael Schroeder for Adafruit Industries" / "#
+  SPDX-License-Identifier: MIT" / "# From adafruit_fram (CircuitPython), restructured for asyncio + MicroPython - see
+  THIRD_PARTY_LICENSES.md.". Docstring line 1 "Async SPI driver for one Fujitsu FRAM chip (MB85RS64V 8KB or MB85RS2MTA
+  256KB, the part max_size names, checked by RDID against _KNOWN_PRODUCT_IDS): raw byte-addressed
+  get_values()/set_values() plus write protection."; line 2 "… RDID checking and the two-part table are this project's own
+  addition, verified against …". Comment `:8-10` → "# CRC/dual-copy recovery lives one layer up in asy_fram_manager.py.
+  This file detects a device-ID mismatch, a write-enable / # latch that did not set (retried once) or clear, a partly
+  protected status register, an unavailable bus and / # a chip lost mid-run, never raising (except __init__()/setup()'s
+  one-time setup errors)."
+- **Resolved**: A.U20.10 corrects the `:36-38` comment to "checks … does not detect" (G5/R28 Req); the docstring's
+  "RDID-detected"/"dual-chip detection" state the same wrong fact two lines higher — fixed with it (agent, 2026-10-01).
+- **Unit**: U34 (header lines, with A.U34.07's L0 check); the docstring and summary comment land in U16 with the code they
+  describe (stage).
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_third_party_attribution.py` → A.U34.07 (TSC); K.9 → A.U34.07 (SPEC);
+  `pyproject.toml` CPY001 reason → A.U28.32 (TOOL).
+- **Kind**: code, doc
+
+### M.SRC_CORE.101 Constants: opcode bytes folded, status bits and catalog names, the recovery tunables
+- **From**: A.U16.21, A.U10.29, A.U20.10 (`:36-38`), A.U16.15 (`_SR_BP_MASK`), A.U10.26 + A.U8.13 (timeout),
+  A.U16.R01 (`_W_WEL_RETRIED`), A.U13.09 (`_SV_BUS_DOWN`), A.U16.R02 (`_ID_ATTEMPTS`), A.U16.R03 (`_PROBE_AT`,
+  `_SV_CHIP_LOST`), A.U2.04/A.U2.09 (names, bit comments), A.U16.20 (message), A.U35.42 (98 retired).
+- **Site**: `src/asy_fram_driver.py:31-94`.
+- **Change**: `:36-38` comment → "# … keyed by max_size: setup() checks that the wired chip is the part max_size implies;
+  it does not detect the part." `_SPI_OPCODE_WREN/_WRDI/_RDSR/_RDID` (`:45-47, :51`) deleted; the `_CMD_*` comment →
+  "# WREN 0x06, WRDI 0x04, RDSR 0x05, RDID 0x9F (datasheet p.6), as module-level bytes rather than a bytearray built on /
+  # every call - each of those lands in the 32-96 byte size class the heap-layout model cares about / #
+  (HEAP_FRAGMENTATION_MEASUREMENTS.md section M1)." (the citation kept: the section exists); each
+  `_CMD_* = const(b"…")`. `_SR_BP_MASK = const(0x0C)  # BP1 | BP0: any set bit protects part or all of the array`.
+  `_VERIFY_PRESENT_LOCK_TIMEOUT_MS = const(1000)` tagged `fram.verify_lock_timeout_ms = 1000`, comment "# Headroom over
+  a real transaction's low-single-digit-ms cost, bounding an accidental lock re-entry to a finite wait." (the
+  "Not test-monkeypatchable…" sentence goes: a test fact, and the test now drives fake time). `_ID_ATTEMPTS = const(3)`
+  tagged `fram.setup_id_attempts = 3`; `_PROBE_AT = const(2)` tagged `fram.chip_probe_at = 2`. Status bits:
+  `_W_PROTECTED  # wrnno 28`, `_W_WEL_NOT_SET  # wrnno 26`, `_W_WEL_STUCK  # wrnno 27 - advisory`, `_W_WP_MISMATCH  #
+  errno 45`, `_SV_NOT_INIT  # errno 18`, `_SV_NOT_LOCKED  # errno 24`, `_SV_BAD_RANGE  # errno 21`, `_SV_BUS_DOWN =
+  const(128)  # errno 52`, `_W_WEL_RETRIED = const(256)  # console only: a recovered transient`, `_SV_CHIP_LOST =
+  const(512)  # errno 54`; the `:88-90` comment → "# The guards get_values()/set_values() share, in the same bit set so
+  one status carries whatever the synchronous / # body decided; the two reporters below own every message." Error
+  constants: `_ERR_NOT_INIT = const(18)`, `_ERR_LOCK_TIMEOUT = const(19)`, `_ERR_BAD_ARG = const(21)`, `_ERR_CONTRACT =
+  const(24)`, `_ERR_FRAM_WP_MISMATCH = const(45)`, `_ERR_FRAM_BUS_DOWN = const(52)`, `_ERR_FRAM_WP_PARTIAL = const(53)`,
+  `_ERR_FRAM_CHIP_LOST = const(54)`, `_WRN_FRAM_WEL_NOT_SET = const(26)`, `_WRN_FRAM_WEL_STUCK = const(27)`,
+  `_WRN_FRAM_WRITE_PROTECTED = const(28)`, `_WRN_FRAM_ID_RETRIED = const(29)`.
+- **Resolved**: errno 98 (ID-check failure) retires with A.U35.42; A.U2.09 folds get/set's distinct numbers into one
+  per condition (the "grouped by the raising method" comment `:320-321` goes with it).
+- **Unit**: U16 (stages: U2 numbers; U8 the timeout's tag; U10 `const()` bytes and `wait_for_ms` constant; U13 bus-down
+  bit).
+- **Depends**: —
+- **Blast carried by**: `tests/test_asy_fram_wire_trace.py:35` comment → A.U16.21 (TEST_UNIT); `tests_scripts/test_device_tomls.py`
+  part-name check reads `_KNOWN_PRODUCT_IDS` → A.U20.10 (TSC); four device TOML comment lines → A.U20.10 (GEN); catalog
+  rows 18/19/21/24/26-29/45/52-54 → A.U2.01 merge (GEN); Part N rows → A.U8.13, A.U16.R02, A.U16.R03 (SPEC); SPEC C.3.1
+  → A.U20.10/A.U16.20 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.102 Construction, the two locks and the loss state
+- **From**: A.U10.18 (`asy_lock` → `session_lock`; explicit holds keep their reason), A.U16.10 (scratch comment),
+  A.U16.16 (`wp`/`wp_pin` comment), A.U0.39 (`:130` tag), A.U16.R03 (1) (`_anomalies`, `lost`), A.U5.02 (the `logger`
+  stays: the manager's reach-through, a product caller).
+- **Site**: `src/asy_fram_driver.py:97-150`, `:217-220`, `:268-275`.
+- **Change**: `__init__` as HEAD plus: a comment above `self._wp_pin =` "# Optional, and no generated code passes it:
+  without it WP is assumed tied high. With WPEN=1 a low WP / # locks only the status register (MB85RS64V p.11); the
+  array's protection is always BP1/BP0."; scratch comment → "# Pre-allocated scratch buffers, reused under the driver
+  lock and the bus lock, which every path takes (C.8)."; `self._bus_lock = self._spidev.session_lock` (the SPI bus's lock
+  after A.U10.18); `self._anomalies = 0`; `self.lost = asyncio.Event()`. `__aenter__`: comment's last clause → "(owner,
+  2026-09-18; SPECIFICATION.md C.8)"; `await super().__aenter__()`; `try: await self._bus_lock.acquire()` / `except
+  BaseException: self.session_lock.release(); raise` with "# explicit: this hold spans __aenter__/__aexit__, which async
+  with cannot express". `_is_write_protected()` comment gains "with a pin, its level is read as the whole state because
+  set_write_protected() always sets BP and the pin together"; `get_write_protected()` comment → "# Without a wp_pin this
+  is the value setup() read from the chip (A.4); with one, the pin's level (see _is_write_protected())." and its guard
+  `err_s(…, errno=_ERR_NOT_INIT)`; every `self.asy_lock.locked()` → `self.session_lock.locked()`.
+- **Resolved**: A.U10.18 converts `set_write_protected()`/`setup()`'s explicit bus holds to `async with self._bus_lock:`;
+  A.U16.10's `async with self:` (both locks) supersedes it at those lines (A.U16.10's Depends says so).
+- **Unit**: U16 (stages U0 tag, U10 rename).
+- **Depends**: M.SRC_CORE.033.
+- **Blast carried by**: SPI driver's lock rename → A.U10.18 (SRC_SENS); tests (`test_asy_fram_driver.py` 5,
+  `test_asy_spi_driver.py`, bus-hazard files) → A.U10.18 (TEST_UNIT); `tests/test_bus_hazard_multi_device.py:395-472`
+  drive the real FRAM path → A.U35.20 (TEST_UNIT; A.U35.20 is test-only, its product lines read-only).
+- **Kind**: code
+
+### M.SRC_CORE.103 Write path: one WREN retry, chip-loss probe, bus-down status, one reporter
+- **From**: A.U16.R01, A.U16.R03 (2), (5) partly (see Resolved), A.U13.09, A.U2.09, A.U10.05's check-before-step rule.
+- **Site**: `src/asy_fram_driver.py:200-231` (`_enable_write()`, `_write()`), `:233-252` (`_set_write_protected()`),
+  `:314-350` (`set_values_sync()`, `report_set_values()`).
+- **Change**: `_enable_write() -> int`: WREN, RDSR → `_W_OK` if WEL set; else one more WREN, RDSR → `_W_WEL_RETRIED` if
+  set, else `_W_WEL_NOT_SET`; comment gains "one retry, as _disable_write() retries WRDI" (block ≤ 3 lines). `_write()`:
+  protected → `_W_PROTECTED`; `en = self._enable_write()`; `if en & _W_WEL_NOT_SET: return en`; send; `return en |
+  (_W_OK if self._disable_write() else _W_WEL_STUCK)`; `_set_write_protected()` ORs `en` into its status the same way.
+  `set_values_sync()`: not init → `_SV_NOT_INIT`; not locked → `_SV_NOT_LOCKED`; `not self._spidev.spi.available` →
+  `_SV_BUS_DOWN`; bad range → `_SV_BAD_RANGE`; `status = self._write(…)`; if `status & (_W_WEL_NOT_SET | _W_WEL_STUCK)`:
+  `if self._anomalies < _PROBE_AT: self._anomalies += 1`, and at `_PROBE_AT` one synchronous `_check_device_id()` — a
+  match resets `_anomalies`, no match sets `self.initialized = False` and `status |= _SV_CHIP_LOST`; any other completed
+  write resets `_anomalies`. `report_set_values()`: `_SV_CHIP_LOST` first → `err_s("FRAM chip stopped answering its
+  identification - access stopped", errno=_ERR_FRAM_CHIP_LOST)`, `self.lost.set()`, `False`; then NOT_INIT (18),
+  NOT_LOCKED (24), BUS_DOWN (52, "SPI bus not initialized"), BAD_RANGE (21), PROTECTED (w28), WEL_NOT_SET (w26) —
+  each `False`; `_W_WEL_RETRIED` → `self.pr.evt("FRAM write enable latch set on the second WREN")`; WEL_STUCK (w27);
+  `True`.
+- **Resolved**: A.U16.R03 (2) writes `self._anomalies = min(self._anomalies + 1, _PROBE_AT)` — the step form OR105.a
+  (3) forbids and A.U10.05's check fails on (`min(<expr> + <n>, <cap>)`) — rewritten check-before-step (AC_NOTES 17
+  asks A-C to check every counter action for this). A.U16.R03 (5)'s "`report_*` pass `repeat=True` for NOT_INIT while
+  `lost` is set" is dropped: A.U3.01 removes `repeat=` from the loggers, and M.SRC_CORE.082/.083/.085/.088's entry guards
+  keep the chunk layer — the only caller that could reach the driver while lost — off it.
+- **Unit**: U16 (stages U2 numbers; U13 bus-down bit and check; A.U16.R01/R03 are SUPP_recovery's U16 half).
+- **Depends**: M.SRC_CORE.101, .102; A.U13.09's `SPI.available` property (SRC_SENS, `asy_spi_driver.py`).
+- **Blast carried by**: `tests/_fram_chip_fake.py` `drop_next_wren` count, silent-chip switch → A.U16.R01, A.U16.R03
+  (TEST_HELP); L1 driver tests (retry, loss probe, bus down) → A.U16.R01, A.U16.R03, A.U13.09 (TEST_UNIT); existing
+  `drop_wren` tests keep w26 → A.U16.R01 (TEST_UNIT); L2 twin `wren` fault op, `silent` switch → A.U16.R01, A.U16.R03
+  (TWIN); L3 CS-hijack cases → A.U16.R01, A.U16.R03 (HW_DEV); SPEC C.3.1/A.4 → A.U16.R01, A.U16.R03 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.104 Read path: bus-down status and one reporter
+- **From**: A.U13.09, A.U2.09.
+- **Site**: `src/asy_fram_driver.py:280-312` (`get_values_sync()`, `report_get_values()`, `get_values()`).
+- **Change**: `get_values_sync()`: not init, not locked, `_SV_BUS_DOWN` (after the lock check), bad range, read.
+  `report_get_values()`: NOT_INIT → `_ERR_NOT_INIT`; NOT_LOCKED → `_ERR_CONTRACT` (its WP8 comment kept, ≤ 3 lines);
+  BUS_DOWN → `err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)`; BAD_RANGE → `_ERR_BAD_ARG`; else `True`.
+- **Resolved**: —
+- **Unit**: U16 (stages U2, U13).
+- **Depends**: M.SRC_CORE.101.
+- **Blast carried by**: new L1 "bus down → `False`, errno 52" → A.U13.09 (TEST_UNIT); SPEC C.3/C.7.1 → A.U13.09 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.105 `set_write_protected()` takes both FRAM locks
+- **From**: A.U16.10, A.U13.09, A.U16.R01, A.U2.09.
+- **Site**: `src/asy_fram_driver.py:357-379`.
+- **Change**: not init → `_ERR_NOT_INIT`; `async with self:` → `status = _SV_BUS_DOWN if not
+  self._spidev.spi.available else self._set_write_protected(value=value)`; `await asyncio.sleep(0)`; BUS_DOWN →
+  `_ERR_FRAM_BUS_DOWN`, `False`; WEL_NOT_SET → `wrn_s(…, "write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)`,
+  `False`; RETRIED → evt; STUCK → `_WRN_FRAM_WEL_STUCK`; MISMATCH → `_ERR_FRAM_WP_MISMATCH`, `False`; evt; `True`.
+  Comment `:358-360` → "# Takes both FRAM locks itself like setup(): never call it inside `async with fram:` (asyncio.Lock
+  is not reentrant)."
+- **Resolved**: —
+- **Unit**: U16.
+- **Depends**: M.SRC_CORE.102, .103.
+- **Blast carried by**: device script `fram_write_protect_roundtrip.py:27, 63` (calls it outside the lock, holds);
+  L1 exclusion case → A.U16.10 (TEST_UNIT); four-tier bus-hazard runs unchanged → A.U16.10 (TEST_UNIT, TWIN, HW_DEV,
+  HW_BENCH); SPEC C.8 → A.U16.10 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.106 `setup()`: both locks, identification retried, partial protection reported, bool contract
+- **From**: A.U16.10, A.U13.09, A.U16.15, A.U16.R02, A.U16.R03 (3), A.U16.16 (WP pin init), A.U10.21, A.U10.45.
+- **Site**: `src/asy_fram_driver.py:381-398`.
+- **Change**: `async def setup(self) -> bool`: `await self._spidev.setup()`; `if not self._spidev.spi.available: raise
+  OSError("SPI bus not initialized")`; `async with self:` up to `_ID_ATTEMPTS` `_check_device_id()` cycles, stopping at
+  the first match (`attempt` kept); on a match `wp_bits = self._read_status() & _SR_WP_MASK`, `self._wp = bool(wp_bits &
+  _SR_BP_MASK)` (comment "# WPEN/BP0/BP1 are nonvolatile: re-sync from the chip, not the constructor's wp="); `await
+  asyncio.sleep(0)`; no match → `raise OSError("FRAM SPI device not found")`; `attempt > 1` → `wrn_s("FRAM answered its
+  identification only on attempt", attempt, wrnno=_WRN_FRAM_ID_RETRIED)`; `wp_bits not in (_SR_WP_SET, _SR_WP_CLEAR)` →
+  `err_s("FRAM status register partly write-protected:", hex(wp_bits), "- writes refused until set_write_protected()
+  rewrites it", errno=_ERR_FRAM_WP_PARTIAL)`; WP pin → `self._wp_pin.init(self._wp_pin.OUT, value=not self._wp)  # level
+  before direction: no glitch on WP`; `self.initialized = True`; `self._anomalies = 0`; `self.lost.clear()`; `self.pr.one(…)`;
+  `return True`.
+- **Resolved**: A.U10.21 keeps a protocol-layer setup's documented raise for a chip that fails identification and
+  returns `True` otherwise — applied.
+- **Unit**: U16 (stages U10 contract, U13 bus check).
+- **Depends**: M.SRC_CORE.101, .102.
+- **Blast carried by**: `FRAMManager.setup()` (M.SRC_CORE.092); `tests/machine.py`/twin `Pin.init(value=)` → A.U13.03
+  (TEST_HELP, TWIN); L1 partial-protection and retry cases, setup-failure traces (three RDIDs) → A.U16.15, A.U16.R02
+  (TEST_UNIT); twin `rdid_response` one-shot knob → A.U16.R02 (TWIN); dead-chip scenario sees three RDIDs → A.U16.R02
+  (TEST_HELP); SPEC C.3.1 → A.U16.15, A.U16.R02 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.107 `verify_present()`: `wait_for_ms` on the one wait; the unreachable ID-error branch goes
+- **From**: A.U10.26, A.U10.18, A.U13.09, A.U35.42 (2), A.U16.R03 (6), A.U2.09.
+- **Site**: `src/asy_fram_driver.py:400-432`.
+- **Change**: not init → `_ERR_NOT_INIT`; `try: await asyncio.wait_for_ms(self.session_lock.acquire(),
+  _VERIFY_PRESENT_LOCK_TIMEOUT_MS)` (reason on the line: "# explicit: a bounded wait on the acquire") / `except
+  asyncio.TimeoutError:` `err_s(…, errno=_ERR_LOCK_TIMEOUT)`, `False`; `try:` bus down → `err_s("SPI bus not initialized",
+  errno=_ERR_FRAM_BUS_DOWN)`, `False`; `async with self._bus_lock: present = self._check_device_id()`; `await
+  asyncio.sleep(0)`; `if not present: self.initialized = False; self.lost.set()`; `finally: self.session_lock.release()`;
+  `return present`. The `id_error` capture and its errno-98 entry go.
+- **Resolved**: A.U35.42 (2) "follows A.U16.R03 if it changes `verify_present()`'s shape" — R03 adds only `lost.set()`,
+  so the removal applies unchanged.
+- **Unit**: U16 (stages U10 `wait_for_ms`/renames, U13 bus check; U35's removal pulled into U16's rewrite).
+- **Depends**: M.SRC_CORE.101, .102.
+- **Blast carried by**: L1 lock-busy (fake time) → A.U10.26 (TEST_UNIT); SPEC F.2 mechanism, BACKLOG `:58-67` removed →
+  A.U10.26 (SPEC, DOCS); SPEC E.5.1 row → A.U35.41 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.108 FRAM CS from power-on is a hardware measurement, no code
+- **From**: A.U13.04 (AC_NOTES 11: documented fact, no board change).
+- **Site**: hardware — dev GP5 (MB85RS2MTA) and a MB85RS64V breakout wired as wozi; `src/asy_fram_driver.py:110` stays.
+- **Change**: none in the file; phase C scopes CS from power-on to `setup()` on both parts and reads the breakouts' CS
+  pull-ups; the result is recorded where A.U13.05 states the fact.
+- **Resolved**: AC_NOTES 11 (U13 Open point 1 withdrawn; the power-on hold time is met by boot timing).
+- **Unit**: phase C (hardware round; owner go-ahead).
+- **Depends**: —
+- **Blast carried by**: BACKLOG "Real-hardware work still owed" line → A.U13.04 (DOCS); A.U13.05 text → SPEC.
+- **Kind**: hardware
+
+### M.SRC_CORE.109 Comment labels in the driver: no undefined plan labels, current numbers
+- **From**: A.U36.544 (2) (the four "WP8:" prefixes); adherence: `:153` "(PLAN A.1.2)" is an undefined temporary-plan
+  label the same rule removes (G9/R12 "permanent text never cites a temporary plan … by section or number"; A.U36.544's
+  list names "PLAN B.1.x" and says "every … label", this one is missing from its grep); the WP8 comments cite HEAD's
+  numbers (`wrnno=60/70/80`) that A.U2.09 retires.
+- **Site**: `src/asy_fram_driver.py:151-153`, `:224-226`, `:299-301`, `:320-321`, `:340-342`.
+- **Change**: `:153` "… Scheduling points live in the public coroutines below (PLAN A.1.2)." → "… Scheduling points
+  live in the public coroutines below."; `:224-226` → "# Persisted by the caller, like the manager's "communication
+  paused" refusal (W25): a refused-but-expected / # write against a deliberately gated chip."; `:299-301` → "# An
+  internal-contract violation (a caller not holding the lock Lockable requires), not a hardware / # fault - a real code
+  defect if it ever fires, so an errno, unlike the expected refusals elsewhere."; `:320-321` → "# Same internal-contract
+  violation as get_values_sync() above."; `:340-342` → "# Persisted: a refused-but-expected write against a deliberately
+  gated chip, like the manager's paused / # refusal (W25), not a hardware fault."
+- **Resolved**: —
+- **Unit**: U16 (the file's unit; A.U36.544's four prefixes pulled from U36 into the rewrite of the same lines).
+- **Depends**: M.SRC_CORE.101.
+- **Blast carried by**: `tests/test_asy_fram_driver.py:1034`, `tests/test_system_service.py:1370` "WP8:" prefixes →
+  A.U36.544 (TEST_UNIT); `tests_scripts/test_comment_block_cap.py` holds.
+- **Kind**: doc
+
+## src/crc_checks.py (→ `src/asy_crc_checks.py`)
+
+End state: `CRCBase` keeps its whole state private (`_num_bytes`, `_all_set`, `_msb_set`, `_crc_shift`, `_poly`, `_fmt`,
+`_inc_crc`, `_inc_count`); every public method settles pass mode (`_poly is None`) itself and hands the checked polynomial
+to `_crc(buf, crc, poly)`, which runs widths up to 16 bits in one word and wider ones in `_crc_wide()` as two 16-bit
+words (no heap int per bit on rp2); `add_into()`/`check_from()` validate bounds before the pass-mode return, in both
+modes alike; the two unreachable guards are gone; `CRCPass`, `CRC8`, `CRC16`, `CRC32` unchanged in width and bytes.
+
+### M.SRC_CORE.115 Module and class names; the whole state private; D.15 order
+- **From**: A.U10.37 (module → `asy_crc_checks`), A.U10.38 (`CRC_Base` → `CRCBase`, `CRC_Pass` → `CRCPass`), A.U10.35
+  (`num_bytes`, `all_set`, `poly`, `inc_crc` → `_`-prefixed), adherence (G10/R07 "private by default": `msb_set`,
+  `crc_shift`, `fmt`, `inc_count` have no reader outside the class — grep of `src/ tests/ digital_twin/ tests_hardware/
+  buildgen/`: none — so they go private with the rest; the same treatment M_SRC_SENS gives no-reader attributes),
+  A.U10.33 (D.15 order).
+- **Site**: `src/crc_checks.py:1-2` (docstring names), `:16-27` (`__init__`), every `self.<attr>` use `:29-142`, `:145-162`
+  (the four subclasses).
+- **Change**: file `git mv` to `src/asy_crc_checks.py`; docstring line 2 "… plus CRCPass (a zero-length no-op)."; class
+  `CRCBase`; `CRCPass(CRCBase)`, `CRC8(CRCBase)`, `CRC16(CRCBase)`, `CRC32(CRCBase)`; attributes `_num_bytes`, `_all_set`,
+  `_msb_set`, `_crc_shift`, `_poly`, `_fmt`, `_inc_crc: int | None`, `_inc_count` at `:20-27` and at every use; the
+  `:52-53` comment "(CRCPass, or any width constructed with poly=None)". Member order after every other edit of the
+  class (D.15 as A.U10.32 rewrites it: dunders, private, public; alphabetical within a role; none of these methods is a
+  starter, getter or setter): `__init__`, `_crc`, `_crc_wide` (lands in U12, M.SRC_CORE.116), `_validate_init`, `add`,
+  `add_into`, `check`, `check_from`, `check_inc`, `length`, `run_inc`.
+- **Resolved**: A.U10.35's site list is S09's "read only by tests" scan; the four attributes no one outside reads were
+  outside that scan, not exempt from the rule it applies (agent, 2026-10-01; "Agent decisions" 12).
+- **Unit**: U10 (all four constituents are U10's; A.U10.33 last in U10).
+- **Depends**: —
+- **Blast carried by**: every importer (`asy_fram_manager.py`, `asy_sgp40_driver.py`, `asy_scd30_driver.py`,
+  `asy_uart_driver.py`, `buildgen/codegen.py`, tests) → A.U10.37 (SRC_NET, SRC_SENS, GEN, TEST_UNIT) and M.SRC_CORE.001
+  (the rename in this cluster); `tests/test_crc_checks.py` attribute reads `:36, :42, :126, :132, :258, :282, :346-395,
+  :576, :702, :725` → A.U10.35 (TEST_UNIT); the generated `from crc_checks import …` and `UART_CRC_MODES`'s class name
+  `"CRC_Pass"` → GAP-G10; UART changelog line for the module rename → A.U10.37 (DOCS).
+- **Kind**: code
+
+### M.SRC_CORE.116 `_crc()` takes the checked polynomial; CRC32 runs in two small-int words
+- **From**: A.U12.01 (`_crc_wide()`), A.U35.44 (`_crc()`'s `poly is None` return goes), A.U0.50 (the zero-padding comment
+  tag at `:8`, co-lands per A.U12.01's Depends).
+- **Site**: `src/crc_checks.py:8`, `:35-49` (`_crc()`), the four callers `:63`, `:80`, `:94`, `:119`/`:140`.
+- **Change**: `:8` "# Zero-padding limitation inherent to this CRC class (CRC linearity; agent, 2026-07-15):".
+  `async def _crc(self, buf: bytearray | memoryview, crc: int, poly: int) -> int:` — comment "# Core polynomial-division
+  loop (see the module docstring for the algorithm identity per / # width), over the polynomial the caller has already
+  checked; yields after every byte so a large buffer / # can't stall other tasks." (3 lines); body: `if self._num_bytes > 2:
+  return await self._crc_wide(buf, crc, poly)`, then HEAD's loop with `^ poly` for `^ self.poly`. New `async def
+  _crc_wide(self, buf: bytearray | memoryview, crc: int, poly: int) -> int:` exactly as A.U12.01 writes it, with `poly_hi =
+  poly >> 16`, `poly_lo = poly & 0xFFFF` and `self._num_bytes`; its comment above it: "# A register wider than 16 bits
+  runs as two words: rp2 small ints stop at 2**30 - 1, so a 32-bit / # register would allocate a heap int on every bit step
+  (agent, 2026-09-29)." Callers pass `self._poly` where they have just settled it is not `None`: `add()` `await
+  self._crc(bytearr, init, self._poly)`, `check()` likewise, `run_inc()` inside its `if self._poly is not None:`,
+  `add_into()`/`check_from()` after their pass-mode returns (M.SRC_CORE.117).
+- **Resolved**: A.U12.01 "keeps its first two lines" against A.U35.44 "`_crc()`'s first two lines go" → removed
+  (A.U35.44 is later and names A.U12.01's reorder as its premise). Neither text keeps the file type-clean: with the guard
+  gone `(crc << 1) ^ self._poly` is `int ^ int | None` under `--strict`, and A.U12.01's own `_crc_wide()` reads
+  `self.poly >> 16` with no narrowing in scope; an `assert` would need an S101 exemption in `src/`. Each caller already
+  narrows `_poly`, so the polynomial becomes `_crc()`'s parameter: no unreachable branch, no ignore, one extra argument
+  (agent, 2026-10-01; "Agent decisions" 11).
+- **Unit**: U35 (latest constituent, A.U35.44); stages: U0 `:8` tag (A.U0.50), U12 `_crc_wide()` and the dispatch line
+  with the `poly` parameter (A.U12.01 — the parameter lands here, since `_crc_wide()` needs it), U35 the guard goes.
+- **Depends**: M.SRC_CORE.115 (names), M.SRC_CORE.117 (caller order).
+- **Blast carried by**: `tests/test_crc_checks.py:36, :42` and A.U12.01's two new vector tests call `_crc()` directly and
+  gain the polynomial argument (`0x31`, `0x1021`, `0x04C11DB7`) → GAP-G11; the phase C allocation measurement → A.U12.01 /
+  A.C.03 (HW_DEV); SPEC I settled list and G.2 CRC entry → A.U12.01 / A.U12.10 (SPEC); SPEC E.5.1 loses the `_crc()` entry
+  → A.U35.41 (SPEC); UART changelog Class B (A.U35.44's line) → A.U35.44 (DOCS).
+- **Kind**: code, test
+
+### M.SRC_CORE.117 `add_into()`/`check_from()`: bounds first in both modes; no unreachable `pack_into` catch
+- **From**: A.U12.02 (pass mode validates bounds), A.U35.44 (both `try`/`except ValueError` wrappers go).
+- **Site**: `src/crc_checks.py:56-69` (`add()`), `:108-124` (`add_into()`), `:126-142` (`check_from()`).
+- **Change**: `add()`: `crc_b = bytearray(self._num_bytes)`; `pack_into(self._fmt, crc_b, 0, crc)`; `return bytearr +
+  crc_b` (no `try`). `add_into()`: `if size <= 0 or start < 0 or start + size + self._num_bytes > len(buffer): return
+  None`; `if self._poly is None: return size  # uninitialized or "pass" mode`; `init = self._validate_init(init)`; `if init
+  is None: return None`; `mv = memoryview(buffer)[start : (start + size + self._num_bytes)]`; `crc = await
+  self._crc(mv[0:size], init, self._poly)`; `pack_into(self._fmt, mv, size, crc)`; `return size + self._num_bytes`.
+  `check_from()`: `size = len(buffer) if size is None else size`; `if size <= self._num_bytes or start < 0 or start + size
+  > len(buffer): return None`; `if self._poly is None: return size`; init validation; `mv = memoryview(buffer)[start :
+  start + size]`; `if await self._crc(mv, init, self._poly) == 0: return size - self._num_bytes`; `return None`. The
+  header's "Every public method returns None/False on invalid input rather than raising, except add()/check(), which
+  allocate and let MemoryError propagate" stays true unchanged.
+- **Resolved**: A.U35.44's Depends names A.U12.02; the two compose line by line (reorder in U12, catch removal in U35).
+- **Unit**: U35 (latest); stage U12 (the reorder, A.U12.02, landing with or after A.U12.03 in SRC_NET's
+  `asy_uart_driver.py`).
+- **Depends**: A.U12.03 (SRC_NET: zero-length payloads never reach the CRC), M.SRC_CORE.116.
+- **Blast carried by**: `asy_uart_driver.py:181, :387, :449` (a zero-length or overrunning pass-mode size now `None`) →
+  A.U12.03 (SRC_NET); `asy_fram_manager.py:277` unchanged (valid sizes); new pass-mode bound tests →
+  A.U12.02 (TEST_UNIT); UART changelog Class B lines → A.U12.02 / A.U35.44 (DOCS); SPEC E.5.1 loses the `pack_into` entry →
+  A.U35.41 (SPEC).
+- **Kind**: code, test
+
+## src/framing_codecs.py (→ `src/asy_framing_codecs.py`)
+
+End state: `FramingBase` (identity codec) with `max_frame` public (read by `asy_uart_comm.py`'s codec-size check) and
+`_run_length`/`_trailer` private, no test-only counter; `FramingPass`; `FramingCOBS` with one long-lived scratch, encode
+input bounded by `max_frame` (`_checked()`), decode input by the encoded worst case of `max_frame` minus the delimiter
+(`_checked_encoded()`); comments cite the permanent Parts only.
+
+### M.SRC_CORE.120 Module and class names, private tunables, D.15 order
+- **From**: A.U10.37 (module → `asy_framing_codecs`), A.U10.38 (`Framing_Base`/`Framing_Pass`/`Framing_COBS` →
+  `FramingBase`/`FramingPass`/`FramingCOBS`), A.U10.29 (`COBS_DELIMITER` stays public: two test modules import it),
+  adherence (G10/R07 "private by default": `run_length` and `trailer` have no reader outside the class; `max_frame` gains
+  one in U17, M.SRC_CORE.122, so it stays public), A.U10.33 (D.15 order).
+- **Site**: `src/framing_codecs.py:1-3` (docstring), `:18-29` (`Framing_Base`, its two comments), `:40-47`, `:68-79`
+  (`Framing_Pass`, `Framing_COBS` and their comments).
+- **Change**: file `git mv` to `src/asy_framing_codecs.py`; docstring "Pluggable frame codecs for asy_uart_driver.py:
+  FramingPass (byte-identical no-op, the default) / and FramingCOBS (…)."; `:19-21` "… Mirrors asy_crc_checks.py's
+  CRCBase/CRCPass split, so a caller / # can hold either family behind one dispatch table."; `:23` "# Parameterized like
+  asy_crc_checks.py's CRCBase, so a subclass supplies constants rather than"; `:69-70` "… - the same reason
+  asy_crc_checks.py spells out CRCPass."; `self._run_length`, `self._trailer` at `:27-28` and in `overhead()` `:42-44`.
+  Member order after every other edit (D.15, A.U10.32): `FramingBase` — `__init__`, `_checked`, `is_delimited` (getter),
+  then Others `decode_from`, `delimiter`, `encode_into`, `max_encoded`, `overhead`, `ready`; `FramingCOBS` — `__init__`,
+  `_checked`, `_checked_encoded` (U17, M.SRC_CORE.122), `is_delimited`, `decode_from`, `delimiter`, `encode_into`,
+  `ready`.
+- **Resolved**: the comment renames follow the class and module renames they describe (A.U10.37/A.U10.38 rename
+  "every reader"; three comments here read the old names); private tunables as M.SRC_CORE.115 (agent, 2026-10-01;
+  "Agent decisions" 12).
+- **Unit**: U10.
+- **Depends**: M.SRC_CORE.115 (the class names these comments cite).
+- **Blast carried by**: importers `asy_uart_driver.py`, `asy_uart_comm.py` (via the driver), `tests/test_framing_codecs.py`,
+  `tests/test_asy_uart_driver.py`, `tests/test_asy_uart_comm.py` → A.U10.37 / A.U10.38 (SRC_NET, TEST_UNIT); UART changelog
+  line "`framing_codecs`/`crc_checks` modules renamed" → A.U10.37 (DOCS).
+- **Kind**: code
+
+### M.SRC_CORE.121 The test-only `allocations` counter goes
+- **From**: A.U12.16.
+- **Site**: `src/framing_codecs.py:29`, `:85`.
+- **Change**: both `self.allocations …` lines deleted; `FramingCOBS.__init__` reads "# One long-lived scratch, sized for
+  the worst case from max_frame - never per frame." / `self._scratch: bytearray | None = None` / `if max_frame > 0:` /
+  `try: self._scratch = bytearray(self.max_encoded(self.max_frame))` / `except (MemoryError, OverflowError): self._scratch
+  = None` (the tuple already alphabetical, A.U10.45 has no site here).
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: —
+- **Blast carried by**: `tests/test_framing_codecs.py:176, :187-195` → A.U12.16 / A.U12.17 (TEST_UNIT); UART changelog
+  Class B → A.U12.16 (DOCS).
+- **Kind**: code, test
+
+### M.SRC_CORE.122 COBS decode is bounded by the encoded worst case of the frame
+- **From**: A.U17.22 (the codec half; the `UART_Comm._validate_config()` half is SRC_NET's).
+- **Site**: `src/framing_codecs.py:98-99` (`_checked()`), `:126-130` (`decode_from()`).
+- **Change**: new `def _checked_encoded(self, buf: bytearray, size: int) -> bool:` directly after `_checked()`, with the
+  comment "# decode input is the encoded frame without its delimiter - up to the run-code bytes longer than max_frame."
+  and body `return self.ready() and 0 <= size <= len(buf) and size <= self.max_encoded(self.max_frame) - self._trailer`;
+  `decode_from()` calls `self._checked_encoded(buf, size)`; `encode_into()` keeps `_checked()`.
+- **Resolved**: A.U17.22 names HEAD's `self.trailer`; after M.SRC_CORE.120 it is `self._trailer` (same class). `max_frame`
+  stays public for A.U17.22's `self.uart.framing.max_frame` read in `asy_uart_comm.py`.
+- **Unit**: U17.
+- **Depends**: M.SRC_CORE.120, M.SRC_CORE.121; A.U17.22's `asy_uart_comm.py` half and its new UART errno (SRC_NET).
+- **Blast carried by**: `asy_uart_driver._read_delimited()` (unchanged call) and `UART_Comm._validate_config()`'s codec
+  check with `_ERR_UART_CODEC_SIZE` → A.U17.22 (SRC_NET); L1 tests in `test_framing_codecs.py`, `test_asy_uart_driver.py`,
+  `test_asy_uart_comm.py` → A.U17.22 (TEST_UNIT); SPEC J.3/G.2 sentence → A.U17.22 (SPEC); UART changelog Class B →
+  A.U17.22 (DOCS).
+- **Kind**: code, test
+
+### M.SRC_CORE.123 Header comment: permanent pointers only
+- **From**: A.U36.544 (4) (`:5` J.3 → G.2) and (3) (`:6` changelog label A11 → the fact with a Part J pointer).
+- **Site**: `src/framing_codecs.py:4-6`.
+- **Change**: "# Encode order on write is build -> CRC -> encode -> delimiter, the exact reverse on read, so the / # CRC
+  keeps its position underneath the codec (SPECIFICATION.md Part G.2). Selecting a delimited / # codec changes the bytes on
+  the wire and is a coordinated flag day with the C peer (Part J)." (3 lines).
+- **Resolved**: —
+- **Unit**: U36 (no earlier action rewrites these lines).
+- **Depends**: A.U12.05 (SPEC J.3 gains the COBS fact the pointer leans on).
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` holds (3 lines); A.U0.08's citation check → A.U36.544
+  (TSC).
+- **Kind**: doc
+
+## src/math_helpers.py (name kept: no `async def`, A.U10.47)
+
+End state: eight pure functions in alphabetical order (`cct_mccamy`, `chromaticity_xy`, `dew_point`, `ema_step`,
+`pressure_at_height`, `rgb_to_hsb`, `rgb_to_xyz`, `wet_bulb_temperature`); the humidity conversions gone; Stull's wet bulb
+refused in the cold-dry corner the paper excludes; the CCT span stated with its measured error; residual-error catches
+kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a stand-in `math`.
+
+### M.SRC_CORE.125 Docstring and the domain-constant block
+- **From**: A.U12.09 (docstring, the four `_MAGNUS_*` constants go), A.U12.06 (four corner constants), A.U12.07 (the CCT
+  span comment).
+- **Site**: `src/math_helpers.py:1-3`, `:13-16`, `:27-30`, `:41-42`.
+- **Change**: docstring line 1-2 "… meteorological (wet-bulb temperature, dew / point, barometric correction), colorimetric
+  (…)"; after `_WB_RH_MAX` the four constants `_WB_CORNER_T0 = const(-20.0)`, `_WB_CORNER_RH0 = const(75.0)`,
+  `_WB_CORNER_T1 = const(10.0)`, `_WB_CORNER_RH1 = const(5.0)`; `:27-30` deleted; `:41-42`'s trailing comments go and one
+  line above `_CCT_MIN` reads "# Output span 2000-12500 K. On the Planckian locus the cubic is within 1 % up to 9000 K,
+  -1.2 % at 10000 K, / # -3.5 % at 12500 K (Planck's law, CIE 1931 2-degree observer; agent, 2026-09-29)."
+- **Resolved**: A.U12.07's text writes "2° observer"; the same unit's A.U12.06 keeps this file ASCII (`degC`, RUF003), so
+  the comment spells "2-degree" (agent, 2026-10-01).
+- **Unit**: U12.
+- **Depends**: —
+- **Blast carried by**: SPEC M.1.3 sentence → A.U12.07 (SPEC); G.2 derived-quantities entry → A.U12.10 (SPEC).
+- **Kind**: code, doc
+
+### M.SRC_CORE.126 Wet bulb refused in Stull's cold-dry corner
+- **From**: A.U12.06.
+- **Site**: `src/math_helpers.py:45-51` (`wet_bulb_temperature()`).
+- **Change**: comment `:46-47` → "# Stull (2011) empirical wet bulb, valid at 101.325 kPa only: -20..50 degC / # and
+  5..99 %RH, minus the cold-dry corner below the line (-20 degC, 75 %) to (10 degC, 5 %) (Fig. 3)."; after the rectangle
+  gate `if humidity < _WB_CORNER_RH0 + (_WB_CORNER_RH1 - _WB_CORNER_RH0) * (temperature - _WB_CORNER_T0) / (_WB_CORNER_T1
+  - _WB_CORNER_T0): return None` (a point on the line is accepted).
+- **Resolved**: —
+- **Unit**: U12.
+- **Depends**: M.SRC_CORE.125.
+- **Blast carried by**: `asy_scd30_driver.py:197` (`WetBulb` `None` in the corner, behaviour only) → A.U12.06 (SRC_SENS
+  reads it; no edit); `tests/test_math_helpers.py:49-51` corrected expectation and new L1 cases → A.U12.06 (TEST_UNIT);
+  release-note line → A.U12.06 / U37 (DOCS).
+- **Kind**: code, test
+
+### M.SRC_CORE.127 `altitude_baro()` becomes `pressure_at_height()`
+- **From**: A.U12.08.
+- **Site**: `src/math_helpers.py:86-89`.
+- **Change**: `def pressure_at_height(p0: float | None, dh: float | None, tmean: float | None) -> float | None:`;
+  comment "# Barometric formula: pressure at height offset dh above the p0 reference; a negative dh / # reduces a station
+  reading to sea level. Range: BMP388/390 datasheet (its only caller)."; body unchanged but for the catch tuple
+  (M.SRC_CORE.130). No alias.
+- **Resolved**: —
+- **Unit**: U12; the function then sits at its alphabetical slot between `ema_step` and `rgb_to_hsb` (A.U10.33's U10
+  reorder ran under the old name, so the rename moves it; the D.15 check of A.U10.47 would fail otherwise).
+- **Depends**: M.SRC_CORE.130 (U10's order).
+- **Blast carried by**: `src/asy_bmp3xx_driver.py:243` call → A.U12.08 / A.U15.23 (SRC_SENS, already written as
+  `pressure_at_height`); `tests/test_math_helpers.py:139-201` → A.U12.08 (TEST_UNIT); `tests/test_asy_bmp3xx_driver.py:1388`
+  comment → A.U12.08 (TEST_UNIT); SPEC `:2611` → A.U12.08 (SPEC).
+- **Kind**: code, test, doc
+
+### M.SRC_CORE.128 The unused humidity conversions go
+- **From**: A.U12.09.
+- **Site**: `src/math_helpers.py:101-137`.
+- **Change**: `abs_humidity()` and `rel_humidity()` deleted (with the constants in M.SRC_CORE.125).
+- **Resolved**: AC_NOTES 8 (removal, not the clamp alignment; listed for the OR2.c review by the lead).
+- **Unit**: U12.
+- **Depends**: —
+- **Blast carried by**: `tests/test_math_helpers.py:204-299` → A.U12.09 (TEST_UNIT); A.U35.42's site list shrinks to the
+  surviving catches (M.SRC_CORE.130).
+- **Kind**: code, test
+
+### M.SRC_CORE.129 Colour chain: sRGB literal note as a fact, unquoted return annotations
+- **From**: A.U0.51 (`:163-164`), A.U10.31 (the three quoted return annotations; none names a `TYPE_CHECKING` symbol).
+- **Site**: `src/math_helpers.py:140`, `:162-164`, `:176`.
+- **Change**: `-> tuple[float, float, float] | None` at `rgb_to_hsb()` and `rgb_to_xyz()`, `-> tuple[float, float] | None`
+  at `chromaticity_xy()`; `:163-164` "… a second published rounding differs in the / # 6th decimal, and neither corrects
+  the other (agent, 2026-09-12; Part M.1.3). No gamma decode - this sensor is" (the block stays 3 lines).
+- **Resolved**: —
+- **Unit**: U10 (A.U10.31); stage U0 (A.U0.51).
+- **Depends**: —
+- **Blast carried by**: `tests/test_math_helpers.py` `test_rgb_to_xyz_coefficients_are_the_pinned_literals()` unchanged;
+  SPEC `:6717-6722` → A.U0.44 (SPEC).
+- **Kind**: code, doc
+
+### M.SRC_CORE.130 Residual catches: one tuple form, kept and exercised; function order
+- **From**: A.U10.45 (tuples alphabetical), A.U35.42 (1) (tests reach every catch; the catches stay), A.U35.41 (its
+  `math_helpers.py` row: keep), A.U35.36 (the never-raise map covers this module; no raising call outside a catch at
+  HEAD), A.U10.33 (module-level functions in D.15 order, OR96.a (2)).
+- **Site**: `src/math_helpers.py:60`, `:82`, `:97` (and `:115`, `:135` until U12 deletes them).
+- **Change**: `except (ArithmeticError, ValueError):` at every catch; U10 order of the module-level functions
+  `abs_humidity`, `altitude_baro`, `cct_mccamy`, `chromaticity_xy`, `dew_point`, `ema_step`, `rel_humidity`, `rgb_to_hsb`,
+  `rgb_to_xyz`, `wet_bulb_temperature`, which U12 (M.SRC_CORE.127/.128) turns into the end-state order above.
+- **Resolved**: A.U35.42 lists `:60, :82, :97, :115, :135` "after A.U12.09/A.U12.10 remove" the helpers — A.U12.09 alone
+  removes them (A.U12.10 is the G.2 text); three catches remain.
+- **Unit**: U10 (A.U10.45, A.U10.33); the stand-in tests land in U35 (A.U35.42).
+- **Depends**: —
+- **Blast carried by**: `tests/test_math_helpers.py` stand-in tests → A.U35.42 (TEST_UNIT); SPEC E.5.1 row → A.U35.41
+  (SPEC).
+- **Kind**: code, test
