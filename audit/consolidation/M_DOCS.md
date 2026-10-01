@@ -957,7 +957,9 @@ place unchanged.
   Before (1)-(3), Flash (4)-(6), First boot (7)-(12), Back to legacy (13)-(15); no `[src: …]` note written), with
   DEVICE_REFERENCE's pointer ("see DEVICE_REFERENCE.md's commissioning list for what follows the flash") after step 10,
   and step (14)'s "(SSID `SensorNode`, password `12345678`)" → "(SSID `SensorNode`, the legacy firmware's built-in
-  hotspot password, `legacy/firmware/python/CommonDrivers/async_connect.py`)".
+  hotspot password, `legacy/firmware/python/CommonDrivers/async_connect.py`)". Where the runbook names the test that pins the TOML hostname rule, it cites it by name,
+  `tests_scripts/test_device_tomls.py::test_hostname_is_sensorstation_plus_name` (M.TSC.079 rewrites the file; a line
+  number does not survive — M_TSC gap 2).
 - **Resolved**: A.U36.010 and A.U32.01 both rewrite `:299-301` — combined (A.U36.010's reasons, A.U32.01's closing
   clause). The literal legacy hotspot password is not copied into README: it is the one accepted credential (CLAUDE.md
   credentials rule), and a new copy in a doc is a new commit of it (agent, adherence — OR2.c list).

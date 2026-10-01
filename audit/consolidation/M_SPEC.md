@@ -661,7 +661,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   paragraph), A.U11.14 (`:563-564`), A.U14.01 Blast (`:532`), A.U36.544 (2)/(4) (WP labels; `:440`, `:458`, `:502`),
   A.U36.512 (2) (`:451`), A.U36.511/G8/R01 (no copied TOML fact), GAP-G7/GAP-10 (no `CFGMGR_SCD30` chunk, AC_NOTES 13),
   A.U15.12 Blast (superseded on the chunk by AC_NOTES 13), A.U24.65 (`:578` wrapper files gone), A.U12.14 Blast (holds),
-  A.U3.06 Blast (holds), A.U20.15 (names the generator).
+  A.U3.06 Blast (holds), A.U20.15 (names the generator), A.U10.08 Blast (A.7 names the scan row), A.U31.07 Blast
+  (the scan formula).
 - **Site**: `SPECIFICATION.md:363-579` (A.7).
 - **Change**: A.7 becomes, in order:
   1. Heading `## A.7 The generated construction order, boot sequence and dependency graph`.
@@ -687,8 +688,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
      (`start_timers()`), then the first NTP force sync — last, so the webserver already answers during it (owner,
      2026-09-28: 'Boot order is tasks before timers'; legacy started the timers first; NTP last: agent, 2026-09-28) —
      and finally `supervise_tasks()`, which runs the supervisor as its own task; the supervisor parks when a shutdown
-     command takes the watchdog over (A.8). Each transition is recorded in `machine.mem_backup()` region 1
-     (`boot_phase()`), so a boot that dies mid-phase reads back as that phase's boot-failure code (A.8)."
+     command takes the watchdog over (A.8); one supervisor pass, its escalation included, stays inside Part N's
+     `system.scan_budget`. Each transition is recorded in `machine.mem_backup()` region 1 (`boot_phase()`), so a boot
+     that dies mid-phase reads back as that phase's boot-failure code (A.8)."
   5. "**Why order matters**: `FRAMManager` is a bump-pointer allocator — construction order is the on-chip layout,
      fixed within one build (A.4)."
   6. "**Construction order** (wozi, generated): `fram` comes before `conn`/`ntp`/`sysfunct`, which — with `conn`'s
