@@ -176,3 +176,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     `audit/`, `legacy/`) and bare file names that continue a Site list. The merges mention each of these, but a mention
     is not a carry. A-C3 therefore traces every Site file of every action, with a corrected extractor, to a merged
     change whose Site names it; `host_typecheck.ini` is now TOOL's (M.TOOL.079, CLUSTERS.md).
+48. Lead, 2026-10-01, for A-C2: M.DOCS.024 folds G2's newly private UART attributes into the U10 privatisation changelog
+    row (B39), so B40-B64 keep their numbers. The order must therefore have `UART`'s `txbuf` (U13) and `UARTLinkDriver`
+    (U17) work use the private names from U10 onward.
