@@ -3147,10 +3147,11 @@ where a test pins an SCR product, the constituent action is cited and the depend
   timeout only catches a call that never finished; the budget covers the band between a normal reset and the server's
   own cap." (history clause "the suite was blind" goes). Shutdown-line parser cases (the suite's helper for the runner's
   `shutdown:` line, M.TWIN.050): `mem_backup: r0=<4 words>` yields four ints, `public_destinations_refused=<n>` an int
-  and a nonzero value fails the run naming the field, `fram_writes=<n>` an int; a line missing any field fails naming
-  it.
+  and a nonzero value fails the run naming the field, `fram_writes=<n>` an int, `fram_writes_by=SCD30:4,CFGMGR_SCD30:2`
+  a name → int dict (`-` → empty; a name out of order, a duplicate or a non-int count fails naming it),
+  `fram_writes_unattributed=<n>` when present an int; a line missing any required field fails naming it.
 - **Resolved**: —
-- **Unit**: U35 (stages U19 the `:257-259` pointer, U25, U27; the `fram_writes` case with A.U35.28).
+- **Unit**: U35 (stages U19 the `:257-259` pointer, U25, U27; the `fram_writes`/`fram_writes_by` cases with A.U35.28).
 - **Depends**: M.SCR.046-.049, M.SCR.016; M.TWIN.050 (the shutdown line's fields).
 - **Blast carried by**: —
 - **Kind**: test

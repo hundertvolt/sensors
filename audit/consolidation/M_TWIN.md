@@ -243,13 +243,17 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   `maybe_raise("readinto", key=self._pending_op)` only when `len(buf) >= _OVERRUN_MIN_READ` (a queued fault waits for
   the next long read); `silent` → `fill_buffer(buf, b"")`; READ fills byte by byte modulo `self.size`; RDSR and RDID
   through `fill_buffer()` (RDID from `rdid_once` when set, then cleared); every other case `fill_buffer(buf, b"")`.
-  `write_count: int = 0` ("twin-only test surface: completed WRITE data phases since construction"), stepped through
-  `saturating_add()` once per WRITE whose data phase reached the array (not when `silent`, not when WEL was clear), listed
-  in `TEST_API`.
+  Payload-write bookkeeping (twin-only test surface, both listed in `TEST_API`): a WRITE whose data phase reached the
+  array (not when `silent`, not when WEL was clear) and carried more than one data byte — a chunk copy, a clear or an
+  erase unit, never a one-byte status write — steps `write_count: int = 0` through `saturating_add()` and
+  `writes_at: dict[int, int]` at its start address (the copy's block address). `writes_at` holds at most
+  `_WRITES_AT_MAX_KEYS = 2048` keys (an erase's 256-byte units plus every chunk's two block addresses fit); a write at a
+  new address past the cap steps `writes_at_dropped` instead, so the bookkeeping never grows without bound
+  (A.U25.22's rule). Per-logger attribution is the runner's (M.TWIN.050): the chip knows addresses, not owners.
 - **Resolved**: A.U25.32's Site cites `_fram_chip.py:285-322`, past the file's end (157 lines); the code it means is
   `_load_state()` `:57-94` (read at HEAD) — line fix, no substance change. A.U25.06's local `_fill` is M.TWIN.001's
   shared `fill_buffer()`.
-- **Unit**: U25 (stage U35: `write_count` with A.U35.28)
+- **Unit**: U25 (stage U35: `write_count`/`writes_at` with A.U35.28; per-logger attribution by lead direction, gap pass G3)
 - **Depends**: M.TWIN.001, M.TWIN.002; A.U16.R01-R03 (driver users of the knobs)
 - **Blast carried by**: `machine._wire_spi_device()` passes size and RDID from the one table → M.TWIN.025; `_apply_fault`
   for `fram:wren` (queues `drop_next_wren += times`) and `fram:silent` (sets the switch) in both runners → M.TWIN.044,
@@ -1542,10 +1546,17 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   the readiness wait, crossover, chip collection, faults, hangs, wifi outcomes and the instrumentation tasks
   (M.TWIN.051) as today. `_print_wdt_status(config, watchdog)` prints one line `digital_twin/run_generic_integration.py
   [<device>] shutdown: would_have_triggered_count=<n> feed_count=<n> mem_backup: r0=<4 words>
-  public_destinations_refused=<n>
-  fram_writes=<n>` (the first two from the runner's own WDT, the third `list(machine.mem_backup(0))`, the fourth from the
-  shim, the fifth the wired FRAM chip's `write_count` — `machine._current_fram_chip`, 0 when the device wires none; the
-  count is per process, so a line after a simulated reset counts the writes up to it); comment
+  public_destinations_refused=<n> fram_writes=<n> fram_writes_by=<LOGGER>:<n>,…` (the first two from the runner's own
+  WDT, the third `list(machine.mem_backup(0))`, the fourth from the shim; the fifth the wired FRAM chip's `write_count`
+  — `machine._current_fram_chip`, 0 when the device wires none; the sixth one entry per FRAM-backed logger that wrote,
+  sorted by name, `-` when none did: for each logger of every module-level object of the booted module that has
+  `get_loggers()`, whose `fram` is a chunk, the name is the logger's `name` (SPEC A.7's names: `SCD30`, `CFGMGR_SCD30`,
+  `UART_init`, …) and `n` is `chip.writes_at` summed over the chunk's two block addresses `fram._block_addr` — so one
+  persisted entry counts 2 (both copies), in the same unit as the total, whose remainder is the non-logger writes
+  (SGP40 backup, clears, erase units). The runner keeps the booted module in a module global `_module` beside
+  `_watchdog`, so both handlers print the line; counts are per process, so a line after a simulated reset counts the
+  writes up to it; a `writes_at_dropped` above 0 is printed as `fram_writes_unattributed=<n>` and fails the harness's
+  bound as unknown); comment
   (A.U36.513's text): "# Called from main()'s finally and from the KeyboardInterrupt handler: an interrupt landing while
   main() is suspended never enters that finally (F.6)." `main()`'s `finally`: the unwedge call and its two comment blocks
   go; `_print_wdt_status`, cancel the runner tasks, `main_task.cancel()`, `await main_task` under `except
@@ -1562,10 +1573,11 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   no exit code; a distinct code (5) keeps it apart from a reset for the host (A.U25.09's 3/4 convention extended) —
   agent decision, OR2.c list; the in-process crash-point test (M.TWIN.112) never goes through the runner.
 - **Unit**: U25 (after A.U21.06 for the unwedge removal; A.U20.02's keyword in U20 is already present; stage U35: the
-  `fram_writes=` field with A.U35.28)
+  `fram_writes=`/`fram_writes_by=` fields with A.U35.28; the per-logger field by lead direction — a total can hide one
+  module over its own rate, M.SCR.018 (h) and M.SCR.051 read it — gap pass G3)
 - **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.032, M.TWIN.034, M.TWIN.046, M.TWIN.047, M.TWIN.049, M.TWIN.053
 - **Blast carried by**: CI suite exit codes 3/4 (and 5 unused there), the `machine reset:` and shutdown-line fields
-  (`mem_backup: r0=`, `public_destinations_refused=`, `fram_writes=`) → A.U25.36, A.U25.33/A.U25.35, A.U35.28 (SCR,
+  (`mem_backup: r0=`, `public_destinations_refused=`, `fram_writes=`, `fram_writes_by=`) → A.U25.36, A.U25.33/A.U25.35, A.U35.28 (SCR,
   M.SCR.051/.018) and their L0 parser cases (M.TSC.165);
   `tests_scripts/test_digital_twin_generated_boot.py` reset run (`--fault sgp40:writeto:500` exits 3) → A.U25.09 (TSC);
   the generated-`main()` keyword contract → A.U20.28 (3) (TSC; M_GEN gap 3: runner keywords ⊆ `main()`'s);
@@ -1928,7 +1940,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `ports/rp2/mpconfigport.h:131`) is not modelled — twin timers call back directly, so
   `scheduler_saturation_drop.py` is a listed silicon-only exception in the twin-run record (A.U26.58, A.U26.05); `--fault
   DEVICE:OP:stack` raises a stack-overflow `RuntimeError` from a bus read, which no rp2 bus call does (twin-only knob,
-  A.U30.19); the FRAM chip's `write_count` is a test surface, not chip behaviour (A.U35.28) — one sentence under the
+  A.U30.19); the FRAM chip's `write_count`/`writes_at` are a test surface, not chip behaviour, attributed to loggers by
+  the runner (A.U35.28) — one sentence under the
   table, with "every rp2 constant the twin models is
   pinned by `tests/test_digital_twin_rp2_constants.py`" as the "Pinned constants" subsection (A.U25.68). (3) Each row with
   Status `assumption` names its BACKLOG "Real-hardware work still owed" line (A.U25.01; the BACKLOG lines are DOCS's).
@@ -2389,8 +2402,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   fact ("the low address byte must survive: 0x010000 and 0x000000 are distinct cells") instead of "L.4"; new chip-level
   cases per A.U25.15/.06/.18/.32 above and `test_fram_rdid_table_matches_the_driver` (imports `asy_fram_driver` from
   `src/`, reads `_KNOWN_PRODUCT_IDS` — a `const()`-free dict, checked at execution — and compares with
-  `machine._FRAM_RDID_BY_MAX_SIZE`); `test_write_count_steps_once_per_landed_write` (a WREN+WRITE pair steps it by
-  one; a WRITE without WREN, a `silent` chip's WRITE and a dropped WREN's WRITE leave it). Booted-device cases
+  `machine._FRAM_RDID_BY_MAX_SIZE`); `test_payload_writes_are_counted_by_address` (a WREN + multi-byte WRITE steps
+  `write_count` and `writes_at[addr]` by one; a one-byte status WRITE, a WRITE without WREN, a `silent` chip's WRITE and
+  a dropped WREN's WRITE leave both; past `_WRITES_AT_MAX_KEYS` distinct addresses a new one steps `writes_at_dropped`). Booted-device cases
   (in-process, no HTTP; C4 discipline, a device from
   `device_with("fram")`): A.U16.R01's (`chip.drop_next_wren = 1`, one logger write → the chunk reads back intact), A.U16.06's
   (chip pre-loaded with a written chunk and SR 0x8C), A.U16.09's (double read of a blank chunk), A.U16.R03's (`silent =
@@ -2890,7 +2904,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   inline plan; the boot test boots the first generated device through `main()` with `""` state paths and a scratch
   `--config-dir`, asserts `would_have_triggered_count == 0` on the WDT the runner passed and that the offline NTP file
   exists; pure-helper tests for the exit-code mapping and the shutdown line format (`mem_backup: r0=`,
-  `public_destinations_refused=`, `fram_writes=` — U35 stage, A.U35.28, gap pass G3); the docstring and comments per
+  `public_destinations_refused=`, `fram_writes=`, `fram_writes_by=` — U35 stage, A.U35.28, gap pass G3; plus one booted
+  case: a generated device with FRAM boots, one logger writes one entry, and the line's `fram_writes_by` names that
+  logger with `2` and every other FRAM-backed logger that wrote, sorted by name); the docstring and comments per
   A.U24.56; tags; trailer.
 - **Resolved**: A.U24.56 (U24) and A.U36.513 (U36) both name `:1-2`, `:136-138`, `:218-220`; A.U36.513 itself says these are
   A.U24.56's — one edit in U24.
