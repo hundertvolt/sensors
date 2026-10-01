@@ -6008,13 +6008,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
   Exempt by name, as the L0 check names them (AC_NOTES 38): the chip protocol classes (`BMP3XX_I2C`, `SCD30_I2C`,
   `SGP40_I2C`, `ISL29125_I2C`) and `I2CDevice`; `ConfigManager` is gated on `valid`; `NeopixelDriver` on its
   `initialized` gate (its row: `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` before `setup()` — the
-  answers M_SRC_SENS defines for the gate, GAP in "Gaps"); `NotificationService` on its guard (row pending the lead's
-  answer, "Owner questions": AC_NOTES 38 names `_finalized`, which M.SRC_SENS.033 removes). Module docstring ≤ 3 lines
+  answers M_SRC_SENS defines for the gate, GAP in "Gaps"); `NotificationService` is gated (`initialized` False until
+  `setup()`, no method guarding on it): its row asserts `initialized is False` before `setup()` and `True` after, and that
+  every public method before `setup()` answers the construction defaults — `get_data()` `NOTIFY(Triggered=False,
+  TS=None)`, `get_dict_cfg()` the config store's not-valid answer, `get_error_counter()` an empty log — never an
+  `AttributeError`. Module docstring ≤ 3 lines
   naming G5/R14's rule in words.
-- **Resolved**: AC_NOTES 38 settles the exempt set and the NeopixelDriver gate.
+- **Resolved**: AC_NOTES 38 settles the exempt set and the NeopixelDriver gate; AC_NOTES 42 (2) voids its `_finalized`
+  reading and keeps `NotificationService` in the check with `self.initialized` (G5/R14).
 - **Unit**: U10 (lands after U13's `deinit()` bool, as A.U10.22 states).
-- **Depends**: M.TEST_UNIT.079 (NeopixelDriver gate cases); M_SRC_SENS NeopixelDriver gate (GAP); every class's
-  M.SRC_* `setup()` end state.
+- **Depends**: M.TEST_UNIT.079 (NeopixelDriver gate cases); M_SRC_SENS NeopixelDriver gate (GAP); M.SRC_SENS.033 as
+  amended at d280140 (`NotificationService.initialized`); every class's M.SRC_* `setup()` end state.
 - **Blast carried by**: L0 → A.U10.22 (TSC); SPEC C.13 → A.U10.22 (SPEC).
 - **Kind**: test
 
@@ -6904,6 +6908,69 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: the separator format → GAP (WEB/SCR, "Gaps").
 - **Kind**: test
 
+
+## Cross-file: the 23 L1 files without a header block
+
+### M.TEST_UNIT.334 Every L1 test file opens with one header docstring
+- **From**: AC_NOTES 42 (1) (lead, 2026-10-01: G9/R16 "every file opens with exactly one header block", every-file
+  scope owner PQ6, 2026-09-26; the gate checks presence).
+- **Site**: line 1 of each file below (HEAD has no module docstring in any of them; new and renamed paths as the
+  conventions give them).
+- **Change**: each file gains a module docstring of ≤ 3 lines (one line where it suffices), naming what its tests
+  prove, from the tests themselves:
+  - `tests/test_asy_api_response.py` — "The REST response envelope: field shapes, status mapping and the logged codes."
+  - `tests/test_asy_bmp3xx_driver.py` — "BMP3XX driver and reader against the fake I2C bus: calibration, conversion,
+    configuration, error ladder and FRAM-backed logs."
+  - `tests/test_asy_dns_client.py` — "The DNS client: query encoding, reply parsing, retries and timeouts over a real UDP
+    socket on loopback."
+  - `tests/test_asy_fram_driver.py` — "FRAM_SPI against the fake MB85RS64V: identification, protection, WREN latching,
+    chip loss and the session lock."
+  - `tests/test_asy_fram_manager.py` — "FRAMManager and its chunks: allocation, dual-copy reads and writes, CRC, pause,
+    timestamped chunks and logged faults."
+  - `tests/test_asy_i2c_driver.py` — "The I2C bus and device wrappers: the bus lock, recovery ladder, scratch buffers and
+    deadlock bounds."
+  - `tests/test_asy_isl29125_driver.py` — "ISL29125 driver and reader: ranges, conversions, interrupt handling, stored
+    state and the error ladder."
+  - `tests/test_asy_neopixel_driver.py` — "NeopixelDriver: signals, overlays, the readiness gate and its FRAM-backed log."
+  - `tests/test_asy_notification_service.py` — "NotificationService: signal validation, thresholds, the sleep window,
+    pause and override, all under driven time."
+  - `tests/test_asy_ntp_client.py` — "NTPClient: request and reply handling, plausibility, retries, DNS fallback and the
+    sync flag, against a fake server."
+  - `tests/test_asy_spi_driver.py` — "The SPI bus and device wrappers: chip select, the session lock and rp2's RX-overrun
+    fault."
+  - `tests/test_asy_uart_driver.py` — "The UART driver: non-blocking reads, framing codecs, the cancel handshake, discard
+    counts and write pacing."
+  - `tests/test_asy_uart_link_driver.py` — "UARTLinkDriver: the bench exerciser's transfers, failures and banner across a
+    real UARTComm pair, in both CRC modes."
+  - `tests/test_asy_udp_socket.py` — "UDPSocket: bind, send and receive with readiness waits, retries and logged
+    failures."
+  - `tests/test_asy_wifi_service.py` — "WifiService: connect, reconnect, hotspot fallback, LED handling and the network
+    snapshot, against the network fake."
+  - `tests/test_asy_base_classes.py` — "The SensorReader base classes: counters, readiness, timestamps, error checks and
+    the trigger loop."
+  - `tests/test_asy_captive_dns.py` — "The captive DNS server: query parsing, the derived domain, replies and socket
+    teardown on a real port."
+  - `tests/test_asy_config_manager.py` — "ConfigManager: schema validation, coercion, stored defaults, deferred writes and
+    the logged refusals."
+  - `tests/test_asy_crc_checks.py` — "CRC8/16/32 and CRCPass against cited check values: bounds, pass mode and
+    incremental use."
+  - `tests/test_math_helpers.py` — "The derived-quantity formulas (dew point, wet bulb, altitude, …) against reference
+    values computed from their cited sources."
+  - `tests/test_asy_print_log.py` — "PrintLogHistory: levels, the bounded history, the central repeat rule, FRAM storage
+    and the fatal report."
+  - `tests/test_asy_system_service.py` — "SystemService: the boot batch, task supervision, staggered triggers, reboots and
+    the watchdog."
+  - `tests/test_voc_algorithm.py` — "The VOC Index port: fixed-point helpers and the whole algorithm against Sensirion's
+    C, persisted state and restore."
+  Each obeys the 3-line cap as `tests_scripts/test_comment_block_cap.py` counts it; where a merged change above already
+  rewrites a file's opening comment, the two land as one block.
+- **Resolved**: AC_NOTES 42 (1) settles the former owner question 1 (presence is required).
+- **Unit**: U27 (with the header-presence check).
+- **Depends**: the merged changes of each file (renames U10).
+- **Blast carried by**: the presence check over `tests/` → G9/R16's gate (TSC, `tests_scripts/test_comment_block_cap.py`
+  or its sibling).
+- **Kind**: test
+
 ## Gaps for other clusters
 
 - **GAP-U1 (SRC_SENS)**: M.SRC_SENS.063's backup-age condition follows the register reading of A.U16.18 (G5/R31):
@@ -6935,7 +7002,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **GAP-U11 (WEB/SCR)**: `scripts/_stage_website.py` (A.U23.38) keeps writing one `// ---- js/<file> ----` separator per
   bundled module after its derived banner; M.TEST_UNIT.333 reads both (D-T34).
 - Carried in, settled in this file (no further action elsewhere): GAP-T1-T6 (TEST_HELP), GAP-G3/G4/G5/G8/G11/G13
-  (SRC_CORE), GAP-2/5/6/15 (SRC_SENS), M_SRC_NET gap 5, M_GEN gaps 1 and 2, AC_NOTES 38/39/41 — each cited at its
+  (SRC_CORE), GAP-2/5/6/15 (SRC_SENS), M_SRC_NET gap 5, M_GEN gaps 1 and 2, AC_NOTES 38/39/41/42 — each cited at its
   merged change.
 
 ## Adherence findings
@@ -6954,8 +7021,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   streak (→ .161, D-T15), ISL29125 register mirrors (→ .058, D-T4), the hazard file's seven errno copies (→ .318).
 - Allocation and heap-rate budgets in L1 files carry no Part N row where no U8C action tags them (G4/R54) — left to the B2
   per-file pass (AC_NOTES 14); the UART hazard budgets are tagged (.316).
-- 23 L1 files carry no header docstring at all; CLAUDE.md's "exactly one header comment block" is read as a cap, not a
-  requirement — owner question 1, no change made.
+- 23 L1 files carry no header docstring at all (G9/R16: every file opens with exactly one header block) → each gets one,
+  M.TEST_UNIT.334 (AC_NOTES 42 (1)).
 - Every merged change re-read against CLAUDE.md's test rules: real Unix port only; no `gc.collect()` outside measurement
   baselines on A.U30.16's allow-list and no in-body `gc.threshold` (A.U30.12/.13); bounded fake pollers only; every
   `asyncio.run()` driver at synchronous scope (the shared `run()` refuses nesting); no brute-force host I/O; inline
@@ -6965,15 +7032,11 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ## Owner questions
 
-1. **Header block on L1 test files without one.** 23 files in this cluster have no header docstring. CLAUDE.md says
-   "Every module gets exactly one header comment block … capped at 3 lines". (a) Read as a cap only — files without one
-   stay as they are (today's merged state). (b) Read as a requirement — each gets a ≤ 3-line docstring in U24, and
-   `tests_scripts/test_comment_block_cap.py` (or a sibling) checks presence. Consequence: (b) adds 23 small edits and a
-   gate; (a) leaves the rule's wording ambiguous.
-2. **Lead: `NotificationService`'s readiness gate.** AC_NOTES 38 says its `_finalized` guard counts as its gate, but
-   M.SRC_SENS.033 removes `_finalized` with `register()`/`finalize()` (A.U5.06: signals at construction). (a) Exempt it
-   by name like the protocol classes (it is fully built in `__init__`). (b) Give it an `initialized` gate set by
-   `setup()`. The readiness L1 row (M.TEST_UNIT.293) is written for whichever is chosen.
+None open. Both questions this merge raised are settled by AC_NOTES 42 (lead, 2026-10-01):
+1. Header block on the 23 L1 files without one — settled by G9/R16 (every file opens with exactly one header block,
+   every-file scope owner PQ6; the gate checks presence): M.TEST_UNIT.334.
+2. `NotificationService`'s readiness gate — AC_NOTES 38's `_finalized` reading is void; per G5/R14 the class carries
+   `self.initialized` and stays in A.U10.22's check: M.TEST_UNIT.293's row.
 
 ## Agent decisions for the OR2.c review
 
