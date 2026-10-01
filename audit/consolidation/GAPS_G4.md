@@ -56,6 +56,31 @@ files, `audit/actions/AC_NOTES.md` items 34-45, `PROJECT_AUDIT_PLAN.md` OR rows 
 | 43 | M_WEB gap 6 (b) | SCR | `lint:html:built`'s `--stage-only` CLI | M.SCR.019/.020/.071 (AD-4) | — |
 | 44 | M_WEB gap 6 (c) | SCR | the smoke reuses `tests_js/_twin_process.js` | M.SCR.064 (AD-11) | — |
 | 45 | GAPS_G2.md H-3 (HW_DEV part; coordinator relay) | HW_DEV, HW_BENCH | readers of the attributes G2 made private (GAPS_G2.md item 12) follow the new names, `chunk._block_addr` included | amended M_HW_DEV's B1 convention (the full renamed set), M.HW_DEV.066 (`fram_busy_status_lockout.py:54` → `chunk._block_addr`), .097 and .099 (the watchdog proxy rebinds `sysfunct._watchdog`); M_HW_DEV GAP-D7's text follows | HW_BENCH: nothing to carry — a grep of `tests_hardware/` at HEAD for every renamed name finds only the two device-script readers above (`allocation_need_per_source.py:38`'s `sensortask_dev.watchdog` is a module global, removed by M.HW_DEV.119's A.U20.02 form); no M_HW_BENCH change reads one. Constructor keywords (`max_module_error=`) keep their names (M.SRC_CORE.036) |
+| 46 | GAPS_G3 hand-off 1 | TOOL | main-pass `exclude` gains `digital_twin/run_device_script\\.py$` (twin-only `machine.configure_wiring()`) | amended M.TOOL.032 (U26 stage, M_TOOL gap 9's rule; the twin pass's `digital_twin` glob still checks it) | — |
+| 47 | GAPS_G3 hand-off 2 | HW_BENCH | the `resetconfig` power-cut step states its rewrite and takes `confirm()` before `config_files_restore.py` | amended M.HW_BENCH.102 (4) | — (A.C.17's manual-branch rule, M.TSC.119) |
+| 48 | GAPS_G3 hand-off 3 (a), Table B B11/B21 | SCR | L2 cases with no carrier: A.U19.07, A.U19.08/.10, A.U19.12, A.U30.19's code 20 | amended M.SCR.018 (new (l): negative `Content-Length` → 400, `HTTPDropped` +1 per forced refusal, ISL29125 `Resolution` PUT during GET loops) and M.SCR.059 (new cell (d): `--fault <instance>:<op>:stack` → exit 3, relaunch `ResetReason` 20) | — |
+| 49 | GAPS_G3 hand-off 3 (b) (and M_SCR gap 4) | SCR | M.SCR.018 (h) read per-module FRAM write counts; the shutdown line carries one total `fram_writes=` | amended M.SCR.018 (h): total ≤ FRAM-backed modules (`fram_wired`) × `rate.persisted_log` × window | — (the harness reads the total; no TWIN change, so no hand-off back; the per-module rate stays L1's) |
+
+## Blast-pointer check (G3's method, run for SCR, TOOL, HW_BENCH, HW_DEV)
+
+Every "Blast carried by" item in all 16 files that names a G4 cluster was checked against the target file: 72 items by
+cluster label and 212 by a G4 path (`scripts/`, `toolchain/`, `pyproject.toml`, `.github/`, `tests_hardware/`). An item
+counts as carried when the target file holds its A-ID or M-ID. All 212 path items were carried. Of the 72 label items,
+none needs a new carrier:
+- **Carried in a G4 file under another ID or by its range:** A.S0930.20-.29/.34-.40 (the L3/L4 ones, .28/.29/.39/.40, are
+  in both HW files); A.U15.R01-R03 and A.U13.R02 (M_HW_DEV/M_HW_BENCH); A.U12.18 (M_HW_DEV); M.SRC_SENS.054's "Runs
+  3/4/5c → A.U13.R01" (M.SCR.051 holds the rung behaviour); A.U12.01's CRC32 board measurement (M.HW_DEV.122, R1 in
+  M_PROC); A.U15.07's read-back (M_HW_BENCH); A.U20.11's expected JSON (M.SCR.068 writes whatever `expected_facts()`
+  returns); A.U23.02's bundle marker (M.SCR.019's derived banner; the assertion is TEST_UNIT's); A.U25.32's smoke
+  config dir (M.SCR.064).
+- **Labelled G4 but the site is another cluster's:** A.U28.33 `.gitignore` (PROC, M.PROC.019); A.U36.038 ESLint config
+  (WEB); A.U29.04 history scan (PROC); A.U28.30, A.U10.47 (`tests_scripts/`, TSC); A.U13.17's harness and buildgen test
+  (TEST_HELP, TSC, HW_DEV M.HW_DEV.050).
+- **"Unchanged" or "holds" notes, nothing to write:** A.U10.33 (class reorder; the baselines hold), A.U16.10, A.U15.32/.33,
+  A.U15.S01 (L4 runs unchanged), A.U10.45 (a grep of `tests_hardware/` finds no assertion on a raise message), M.SPEC.050
+  (the UART changelog is DOCS's), and the 25 items without an action ID. Each of those is a gap-section item already in
+  the table above (GAP-B6, GAP-D6, GAP-G13, GAP-H2, GAP-U11) or names an existing M-ID or job: M.HW_BENCH.018/.069/.112/.121/.125,
+  M.TOOL.006/.012/.030/.079, M.SCR.014, M.TSC.196.
 
 ## Hand-offs (other groups carry these; no file of theirs was edited)
 
@@ -97,9 +122,10 @@ above are agent decisions for the OR2.c review.
 
 ## Counts
 
-- Items read: 45 (rows above; the three late SPEC gaps name no G4 target; row 45 arrived from G2 via the coordinator).
+- Items read: 49 (rows above; the three late SPEC gaps name no G4 target; row 45 arrived from G2 and rows 46-49 from G3,
+  via the coordinator). Blast pointers checked: 284 (72 by label, 212 by path), none uncarried.
 - Carried as found: 23 (rows 3, 4, 6, 7, 9, 20, 21, 23, 25, 26, 28, 30, 32, 35-44).
-- Amended: 14 (rows 1, 2, 10, 11, 12, 13, 14, 16, 19, 29, 31, 33, 34, 45).
+- Amended: 18 (rows 1, 2, 10, 11, 12, 13, 14, 16, 19, 29, 31, 33, 34, 45, 46, 47, 48, 49).
 - New: 2 (M.SCR.074 for row 15, with M.SCR.032 and M.HW_BENCH.126 amended; M.TOOL.079 for row 18).
 - Disposed: 6 (rows 5, 8, 17, 22, 24, 27; row 14's `test_memory_stress_bench.py` part also disposed).
 - Handed off: 5 (DOCS, PROC, TSC, SPEC, orchestrator).

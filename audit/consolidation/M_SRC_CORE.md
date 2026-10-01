@@ -466,7 +466,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Unit**: U10 (A.U10.12 edits the generator's `main()`/collectors in U10 too); `report_if_fatal` in U30.
 - **Depends**: M.SRC_CORE.005 (`_ERR_TIMER`, `_ERR_TASK_STARTER_RAISED`), M.SRC_CORE.030 (`TimerStarter`).
 - **Blast carried by**: generated `_collect_trigger_starters()`, `main()`'s two-list call, `timers_running` global and
-  `ThreadSafeFlag` import gone → A.U10.12 (GEN); `SensorReader.get_trigger_starters()` → M.SRC_CORE.031; drivers' starter
+  `ThreadSafeFlag` import gone → A.U10.12 (GEN); `SensorReader.get_trigger_starters()` → M.SRC_CORE.039 (pointer fixed, gap pass G2); drivers' starter
   split → A.U10.12 (SRC_SENS); `tests/test_system_service.py:479-615` → A.U10.12 (TEST_UNIT); `tests/_sensortask_scenarios.py:347-368,
   774-841` fakes → A.U10.12 (TEST_HELP); `tests/_boot_contiguity_probe.py`, `heap_layout_after_full_boot_sequence.py`,
   twin callers (`test_digital_twin_bus_hazard_concurrency.py:118, 387`, `test_digital_twin_sensortask_integration.py:455`)
@@ -1011,7 +1011,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `config_filename()`/`write_config(data, defer=True)`/`_commit_mgr_cfg()`).
 - **Depends**: M.SRC_CORE.036, .038, .044, .046.
 - **Blast carried by**: every subclass (BMP3XX, ISL29125, SGP40, NOTIFY, NTP, WIFI, SCD30) → A.U5.02 (SRC_SENS, SRC_NET);
-  `AsyConnTime._set_mgr_cfg()` through `super()` → A.U11.28 (SRC_NET); tests reading `cfg_schema` → A.U10.39
+  `AsyConnTime._set_mgr_cfg()` through `super()` → no edit (it inherits the deferral; M.SRC_NET.096 types its `data`, gap pass G2); tests reading `cfg_schema` → A.U10.39
   (TEST_UNIT, HW_DEV `isl29125_mechanism_envelope.py:109`); chunk layout per device without `CFGMGR_SCD30` → A.U16.02,
   A.U15.12 (TEST_HELP, SRC_SENS); SPEC A.7 FRAM list and CLAUDE.md FRAM bullet name the exception → GAP-G7 (SPEC,
   DOCS); SPEC C.2/C.5.1 → A.U10.39 (SPEC).
@@ -1235,7 +1235,7 @@ for the config reset.
   into U11 — its reachability fact needs A.U11.28's deferral, which lands here, and its removals are the same lines).
 - **Depends**: M.SRC_CORE.047, .049; M.SRC_CORE.038 (callers pass `defer=True` and commit).
 - **Blast carried by**: callers `SensorReaderConfig._set_mgr_cfg()` (M.SRC_CORE.040), `SystemService._set_dict_cfg()`
-  (M.SRC_CORE.017), `AsyConnTime._set_mgr_cfg()` → A.U11.24/A.U11.28 (SRC_NET); every test passing a second
+  (M.SRC_CORE.017), `AsyConnTime._set_mgr_cfg()` → no edit (it reaches `write_config()` through `super()`, A.U11.24's Blast "unchanged"; gap pass G2); every test passing a second
   `write_config()` argument (counts in A.U11.24) and device scripts (`system_debug_level_*`, `reboot_persist_*`,
   `isl29125_mechanism_envelope.py`) → A.U11.24 (TEST_UNIT, HW_DEV); `tests_hardware/flash/test_reboot_persistence.py`,
   `bench/test_network_resilience.py`, `tests_hardware/README.md` call shape → A.U11.24 (HW_DEV, HW_BENCH); L1 cases
@@ -1411,7 +1411,7 @@ fatal flag (M.SRC_CORE.034).
 - **Unit**: U11 (stages U2 `get_log()`/negative code, U3 the rule and `repeat` removal, U10 `_pre_setup_slots`,
   `_err_count`, `setup() -> bool`).
 - **Depends**: M.SRC_CORE.060.
-- **Blast carried by**: the five `repeat=` users → A.U3.02 (SRC_NET, SRC_SENS, M.SRC_CORE.08x for FRAM); dedupe tests in
+- **Blast carried by**: the five `repeat=` users → A.U3.02 (SRC_NET, SRC_SENS; FRAM's `_episode_wrn()` goes in M.SRC_CORE.081 — pointer fixed, gap pass G2); dedupe tests in
   webserver/notification/ISL29125/FRAM/UART suites → A.U3.01 (TEST_UNIT); `get_log()` 0x80 readers, js render → A.U2.05
   (TEST_UNIT); tests reading `err_count` → A.U10.35 (TEST_UNIT); `test_print_log.py:201-205` K.28 → A.U24.39/A.U35.35
   (TEST_UNIT); `reset()` result users → M.SRC_CORE.019/.037/.049 and A.U11.31 (SRC_NET); SPEC C.7.1 repeat text, H.6

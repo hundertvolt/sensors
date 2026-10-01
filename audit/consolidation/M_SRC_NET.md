@@ -2401,7 +2401,7 @@ annotation-only change carries none, per its constituent. No merged change here 
   Class B renumbering entry → A.U2.26 (DOCS); tests (54 lines in `test_asy_uart_comm.py`, `test_uart_comm_hazard.py`
   RF135 copies, `persisted()` "W14" → 56) → A.U2.20/A.U2.03 (TEST_UNIT); device-script prints → A.U2.20 (HW_DEV); SPEC
   C.7.1/C.7.2/J.1/J.5/J.6/J.9/E.8 numbers, `tests_hardware/README.md:464, :1418`, BACKLOG `:374-376, 385` → A.U2.20
-  (SPEC, DOCS); js mock `UART_init`/`UART_resp` rows → A.U2.20 (WEB)
+  (SPEC, DOCS); js mock `UART` errcount sample (composed for `UART_init`/`UART_resp`) → M.WEB.045 (A.U2.20; pointer fixed, gap pass G2)
 - **Kind**: code
 
 ### M.SRC_NET.154 `ResponderCallbacks`: one object for the responder's three callbacks

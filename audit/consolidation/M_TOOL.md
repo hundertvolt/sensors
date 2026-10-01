@@ -2160,3 +2160,4 @@ GEN Q2 (OR132) touches no TOOL file.
 | A.U0.60 | M.TOOL.079 (the `host_typecheck.ini` half; gap pass) |
 | A.U27.27 | M.TOOL.079 (`mypy_path` gains `scripts`; gap pass, M_SCR gap 2 (a)) |
 | A.U26.76 | M.TOOL.079 (`tests_hardware` host modules leave the baseline; gap pass) |
+| A.U26.05 | M.TOOL.032 (the `run_device_script` exclude; gap pass, GAPS_G3 hand-off 1) |

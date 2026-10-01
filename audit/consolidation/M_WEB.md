@@ -467,7 +467,7 @@ every B1 action (AC_NOTES 34-second).
 - **Resolved**: —
 - **Unit**: U23.
 - **Depends**: M.GEN.062 (`.error-banner:not([data-shown="true"])`).
-- **Blast carried by**: `showBanner()`/`hideBanner()` (M.WEB.021); `tests_js/templates.test.js`, `render.test.js` banner
+- **Blast carried by**: `showBanner()`/`hideBanner()` (M.WEB.022; pointer fixed, gap pass G2); `tests_js/templates.test.js`, `render.test.js` banner
   assertions (M.WEB.058/.054).
 - **Kind**: code
 
@@ -931,7 +931,10 @@ every B1 action (AC_NOTES 34-second).
   (`DNSFallback`), A.U18.38 (`HotspotPW`), A.U19.10/A.U23.29 (`HTTPDropped`, `WifiTS`), A.U6.22 (`MemFree`), A.U6.23
   (`ResetReason` = 1, power-on), A.U32.06 (`LastTaskEnd` null), A.U6.24 + A.U10.40 (`build` keys `FirmwareVersion`,
   `WebsiteVersion`, `BuildDate`; every renamed key), A.U25.12 (7) (`ForceCalRef` 400), A.U6.15 (no variant literal), A.U6.29
-  (read: accept-shaped sample values), A.U17.19 (read: `UARTLINK` counts).
+  (read: accept-shaped sample values), A.U17.19 (read: `UARTLINK` counts); gap pass G2 (pointer sweep): A.U6.26 (the
+  `networkingConfig` `DNSFallback` sample, its mock half), A.U18.33 (read: the networking status keys `IP`, `IPv4`,
+  `Subnet`, `Gateway`, `DNS` are kept), A.U2.20 (the `UART` errcount sample takes UART catalog codes — HEAD's fixtures
+  have no UART row).
 - **Site**: `mockdata/dev.json`, `mockdata/wozi.json` (deleted); new `mockdata/samples.json`.
 - **Change**: `mockdata/samples.json` — `{measurements, sensorsConfig, networkingConfig, systemConfig,
   notificationConfig, status: {networking, system, sensors, notification}, errcount}` per M.WEB.004's `MockSamples`:

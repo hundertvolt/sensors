@@ -456,7 +456,9 @@ Conventions used below (each defined once, then cited):
   A.U10.15, A.S0930.27; M.TWIN.136's 9 website tests with A.U24.60, A.U8.18, A.U25.48; M.TWIN.102's API burst);
   A.U24.47 (`FAULT_PENDING`), A.U35.31 (three `--test-watchdog-fault` cases), A.U35.09 (two recombinations), A.U35.28
   (fault storm rides Run 3; non-rebooting bounded cell here), A.U35.29 (zero-think readers), A.U31.06 (loop lag),
-  A.S0930.27 (2)/(4) and A.S0930.38 (3)/(4) (command states, hang per step).
+  A.S0930.27 (2)/(4) and A.S0930.38 (3)/(4) (command states, hang per step); gap pass (GAPS_G3 hand-off 3, Table B
+  B21): A.U19.07, A.U19.08/.10, A.U19.12 (their L2 cases, whose in-DUT carrier was retired), A.U35.28 (h)'s read of the
+  total `fram_writes=` field (M.TWIN.050).
 - **Site**: `scripts/_digital_twin_scenarios.py` (the registry).
 - **Change**: the registry holds, each with its source goal and assertions kept (OR19.a (4)): (a) the 22
   webserver-concurrency helpers/scenarios of `tests/_webserver_concurrency_scenarios.py` rewritten host-side
@@ -479,8 +481,11 @@ Conventions used below (each defined once, then cited):
   `block` (A.U35.31: `WDT_AT_FAULT <feed_count>` read; `would_have_triggered_count >= 1`; `feed_count` equality for the
   first two only). (g) A.U35.09 (a) `survives_bus_and_api_load_while_ntp_is_unreachable` (PUT `/networking {"NTPHost":
   "192.0.2.1"}` — the key A.U10.40 renames — then reboot) and (b) `…_with_concurrent_config_writes`. (h) A.U35.28's
-  bounded-count storm below the escalation threshold (no reboot; per-module FRAM write count ≤ `rate.persisted_log` ×
-  window, read from the runner's exit line). (i) A.U35.29 `zero_think_time_readers_saturate_then_recover`. (j) A.U31.06
+  bounded-count storm below the escalation threshold (no reboot; the shutdown line's one total `fram_writes=<n>`
+  (M.TWIN.050) ≤ (the device's FRAM-backed modules, `expected_facts()`'s `fram_wired`) × `rate.persisted_log` × window,
+  the message naming all three factors; the per-module rate itself is the L1 rate limiter's, and Run 3 reads the same
+  total, M.SCR.051 — gap pass, GAPS_G3 hand-off 3 (b): the harness reads the total, so the twin line stays as M.TWIN.050
+  writes it). (i) A.U35.29 `zero_think_time_readers_saturate_then_recover`. (j) A.U31.06
   `loop_lag_under_combined_load` (`--test-loop-lag-ms 10`, `LOOP_LAG` lines; bound from the device TOML). (k) The
   command states and hangs: A.S0930.27 (2) (`erasefram`/`resetconfig` in the timer-start window, during a delayed FRAM
   write `--hang fram:…`, with `mempause`, concurrent with `reboot`, both at once; lost-chip refusal vs `silent` chip;
@@ -490,11 +495,21 @@ Conventions used below (each defined once, then cited):
   reboot in the boot window; `mempause` then `reboot`). FRAM evidence first before every `erasefram` (GET `/status`
   errcount into the scenario's dir plus a copy of its `--fram-state-path`, A.S0930.27 (0)). No `gc.collect()` anywhere
   (A.U30.15); polls, not sleeps, except a hang's 8.5 s watchdog window, which is the property under test (tagged).
+  (l) Webserver cases (gap pass, GAPS_G3 hand-off 3 (a)): `negative_content_length_is_refused` (A.U19.07: a raw socket
+  sends `PUT /networking` with `Content-Length: -1` and a 3,000 B body; the answer is a 400, the log holds no allocation
+  marker, and a following `GET /status` serves); `refusal_at_the_ceiling_is_counted` (A.U19.08/.10: `/status`
+  `HTTPDropped` read, the ceiling filled with held connections from the one route table's limit, one further connection
+  refused as A.U25.31 classifies it, the holders released, then `HTTPDropped` read again equals the first read plus the
+  refusals the harness counted — one per forced refusal); `isl29125_config_put_during_get_loops` (A.U19.12,
+  `drivers=("isl29125",)`: `GET /sensors` loops on three connections while one `PUT /sensors` changes the ISL29125
+  `Resolution`; every GET's ISL29125 block equals either the before or the after configuration, never a mix, and the
+  PUT answers `Valid`).
 - **Resolved**: A.U22.03's `:377` comment edit dropped — A.U22.03 withdrawn (AC_NOTES 37). The in-process halves of
   A.S0930.27 (3)/(4)/(5) and A.S0930.38 (5) (wire-time knob, late-feed backstop, power loss) are TWIN's (M.TWIN.104) — no
   runner flag sets `wire_time_us_per_byte`, settled by M.TWIN.051's flag list.
-- **Unit**: U35 (stages: U25 (a)-(e) with A.U25.46/.74; U31 (j); U35 (f)-(i); S0930's (k) lands with A.S0930.27/.38 after
-  U25 — each scenario lands in the unit of its constituent).
+- **Unit**: U35 (stages: U25 (a)-(e) and (l) with A.U25.46/.74 — (l)'s product side lands in U19, before the harness
+  exists; U31 (j); U35 (f)-(i); S0930's (k) lands with A.S0930.27/.38 after U25 — each scenario lands in the unit of its
+  constituent).
 - **Depends**: M.SCR.017; M.TWIN.051/.104/.136/.144; A.U19.20 (route reference), A.U24.70 (band).
 - **Blast carried by**: the deleted in-DUT files → M.TEST_HELP.033, M.TWIN.136, M.TWIN.144 (TEST_HELP, TWIN); Part N rows
   for the harness's tags → A.U8.02/A.U8C (SPEC); `audit/b3/load.md` entries → A.U35.28/.29 (procedure); SPEC H.7.1/C.8
@@ -1390,15 +1405,19 @@ Conventions used below (each defined once, then cited):
 - **Kind**: test
 
 ### M.SCR.059 Run 12: reset reasons reachable at L2
-- **From**: A.U25.55, A.S0930.27 (1) (codes 7 and 8 join), A.S0930.38 (1) (bootloader wait uses the deadline helper).
+- **From**: A.U25.55, A.S0930.27 (1) (codes 7 and 8 join), A.S0930.38 (1) (bootloader wait uses the deadline helper);
+  gap pass: A.U30.19 (code 20, GAPS_G3 hand-off 3 (a), Table B B11).
 - **Site**: new `_run_12_reset_reasons` after Run 11b in `run_suite()`.
 - **Change**: as A.U25.55 (a)-(c): power-on code; `bootloader` → `_EXIT_SIMULATED_BOOTLOADER` within
   `_commanded_reset_deadline_s()`, relaunch reads the bootloader code, region 0 zero, a SIGINT relaunch reads power-on;
   codes read by `ast` from `src/asy_system_service.py`, the list including 7 (config reset) and 8 (FRAM erase) asserted
-  in Run 13.
+  in Run 13; (d) code 20 (A.U30.19; gap pass, GAPS_G3 hand-off 3 (a)): a launch with `--fault <instance>:<op>:stack` on
+  the first bus-attached instance of the device's wiring plan and one of its read ops (M.TWIN.044's form; a device
+  wiring no bus driver skips the cell by name) exits `_EXIT_SIMULATED_RESET` (3) through the supervisor's escalation, and
+  the relaunch reads `ResetReason` 20 (`_RR_STACK_EXHAUSTED`, read by `ast` like the others).
 - **Resolved**: —
-- **Unit**: S0930 (after U25).
-- **Depends**: M.SCR.054.
+- **Unit**: S0930 (after U25); cell (d) with U30 (A.U30.19), after M.TWIN.044's `stack` branch.
+- **Depends**: M.SCR.054; M.TWIN.044/.045 (the `stack` fault).
 - **Blast carried by**: twin fidelity row (bootloader carry-over) → M.TWIN README (TWIN).
 - **Kind**: test
 
@@ -2308,3 +2327,8 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U19.14 | M.SCR.046 (the `:108-110` comment's BACKLOG item 24 pointer → SPEC C.7 at U19; gap pass, M_DOCS gap 2) |
 | A.C.08 | M.SCR.074 (R6 runs through the rollover runner; gap pass, AC_NOTES 45) |
 | A.U26.36 | M.SCR.074 (the runner's selection; gap pass) |
+| A.U19.07 | M.SCR.018 (l) (L2 case; gap pass, GAPS_G3 hand-off 3 (a)) |
+| A.U19.08 | M.SCR.018 (l) (gap pass) |
+| A.U19.10 | M.SCR.018 (l) (gap pass) |
+| A.U19.12 | M.SCR.018 (l) (gap pass) |
+| A.U30.19 | M.SCR.059 (d) (gap pass) |
