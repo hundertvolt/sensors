@@ -803,3 +803,174 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (SRC/TEST clusters); `buildgen/codegen.py` docstrings naming A.7 → A.U20.15 (GEN); `tests_hardware/README.md:1395`
   → A.U36.004 (8) (HW_BENCH).
 - **Kind**: doc
+
+### M.SPEC.021 A.8: the REST reference summary, the `/status` fields and codes, the controlled shutdown
+- **From**: A.U19.20 (normative generated reference), A.U10.40 (key scheme), A.U19.01 (unknown key → "Invalid"),
+  A.U19.02/A.U9.03 (`LightCmdLED`), A.U4.04 Blast (`:608-609` SCD30), A.U19.12 + A.U36.544 RF063 (`:627-631`), A.U0.29
+  E05/E06 (`:632-634`), A.U0.39 L21 (`:619-622`), A.U11.18 (coercion test named), A.U11.29 (exact type), A.U23.49
+  Change (float32), A.U11.31 (`ResetErrors`), A.U19.15/A.U27.07 (envelope line), A.U11.01, A.U11.02, A.U11.05 (code
+  table), A.U11.06 (10 + p), A.U11.08 (`MemFree`), A.U19.10 (`HTTPDropped`, `WifiTS`), A.U32.06 (`LastTaskEnd`),
+  A.U23.22 (`UnixTime`), A.U6.21 (`UTCTime` null), A.U6.20 + A.U15.18 (backup timestamps), A.U18.33 (one networking
+  snapshot), A.U30.19 (code 20), A.S0930.09 (exact-word rationale), A.S0930.15 (codes 7-9), A.S0930.30 + A.S0930.41
+  (controlled shutdown), A.S0930.31 (behaviour that changes), A.S0930.32/.33/.11/.12/.18 Blasts, A.U6.23/A.U6.27/
+  A.U36.537 (code tables' one source: the catalog), A.U20.38 (build refuses a collision), A.U5.04 (constructor),
+  A.U18.10/A.U18.38 (`DNSFallback`, `HotspotPW`), A.U0.36 Blast (coercion policy holds), A.U36.544 (2) (`section B`).
+- **Site**: `SPECIFICATION.md:580-634` (A.8).
+- **Change**: A.8 becomes, in order:
+  1. Opening: "The normative REST reference is generated per device: `buildgen/api_reference.py` writes
+     `build/generated_src/api/<device>.json` from the one route table (`ROUTES` in `asy_webserver_service.py`), the
+     device's generated definitions, the result words and the envelope code catalog; `tests_scripts/test_api_reference.py`
+     pins it. This section is its prose summary. `WebserverService` is registration-based: the generated module hands
+     it one `RouteSources` object (`sensors`, `settings`, `build_info`, `system_cmd`, `notification_led`,
+     `notification_pause`, `status_sources`, `maintenance_sensors`, `error_sources`), a `ServingLimits` and a
+     `StaticSite`, and it registers the REST surface from them. Six endpoints: `/measurements`, `/sensors`,
+     `/networking`, `/system`, `/status`, `/notification`; `/measurements` and `/status` are the live-data endpoints,
+     the rest settings. Keys follow one scheme: value and setting keys PascalCase, acronyms upper-case, no unit suffix;
+     envelope, section and container keys lowercase (agent, 2026-09-29; the new API is the only reference, owner,
+     2026-09-26). The build refuses a GET key or logger-name collision."
+  2. GET shapes: HEAD's bullet with the keys of the scheme (`/networking` → `SSID, PW` (masked), `Country`,
+     `Hostname`, `HotspotPW` (masked), `LEDWifiOn`, `NTPHost`, `NTPOffset`, `NTPInterval`, `DNSFallback`; `/system` →
+     `DebugLevel`, `GMTOffset`, `DSTOffset` and the nested `build` entry `{FirmwareVersion, WebsiteVersion,
+     BuildDate}` (L.7), verbatim from the build info the generator records once per generation; `/notification` →
+     `OnH, OnM, OffH, OffM, FlashBri, FlashInterval, FlashDur, AutoOn, WarnCO2, WarnVOC, WarnHum`; `/status` → live
+     only, sub-structured `networking`/`system`/`sensors`/`notification`/`errcount`). The "Real production bug, fixed"
+     bullet (`:604-606`) goes (history; the `.update()` rule stays as one clause: "results are merged with
+     `.update()`: every driver's own return is already `{name: {...}}`").
+  3. `/status` fields with meaning beyond their name (each owner/agent tag as its constituent states):
+     "`SysUptime`: measured seconds since boot from `ticks_ms()` deltas, never counted wake-ups or the clock (owner,
+     2026-09-29). `BootSignature`: resolved once per boot, unchanged by a restart of the uptime task. `ResetReason`:
+     the reason for the last reset (codes below). `LastTaskEnd`: the supervised task that ended last and the
+     `SysUptime` second it ended, `null` until one does — the legacy `Task_LastErr` successor (owner, 2026-09-30).
+     `MemFree`: `gc.mem_free()` when the poll was answered, in bytes (owner, 2026-09-26); no collection runs before it
+     (I.4(f.1)). `UTCTime` and `UnixTime`: `null` until the first NTP sync; `UnixTime` is the device's Unix seconds
+     every age on the website is computed against. `networking`: one snapshot of the Wi-Fi state, refreshed each second
+     — no field reads the radio on a poll; `WifiTS` is that snapshot's time, so a stale value shows the Wi-Fi task
+     stalled, judged against `UTCTime` (owner, 2026-09-29); `HTTPDropped` counts the connections dropped before a
+     response — a refusal at the ceiling, a refused head or an early peer reset — each also traced once per event (A.5).
+     `SGP40_BackupTS`/`SGP40_RestoreTS`: `null` = none since boot, `0` = no timestamp (owner, 2026-09-29). `errcount`:
+     one entry per module plus one per `ConfigManager` (`CFGMGR_<name>`)."
+  4. Code tables: "Every `/status` code table — `ResetReason` here, `FRCState` (M.2), `VOCState` (M.3), `CalLight`
+     (M.1.5) — has one source, the `status` section of `buildgen/error_catalog.json`, from which the website's labels
+     are generated; each SPEC table carries a `<!-- catalog: status.<name> -->` marker and
+     `tests_scripts/test_error_catalog.py` keeps it equal to the catalog." Then the marked `ResetReason` table:
+     0 unknown (the record's magic or check word is wrong) · 1 power-on (also the RUN pin, RP2040 datasheet §4.7.4) ·
+     2 watchdog without a record (a starvation, `machine.reset()` from outside the firmware, `mpremote reset`) ·
+     3 reboot command · 4 bootloader command · 5 supervisor escalation (task-error budget) · 6 watchdog starve after
+     the reset timer could not be armed · 7 reboot after "Reset to defaults" · 8 reboot after "Erase FRAM" · 9 reboot
+     after either command whose purpose did not complete · 10 + p boot failure in phase p (11 construction, 12 setup
+     batch, 13 task starts, 14 timer starts, 15 first NTP sync) · 20 C stack exhausted (F.1); then "The record lives in
+     `machine.mem_backup()` region 0 and the boot phase in region 1 — RAM that survives a reset, never flash or FRAM
+     (owner, 2026-09-26); `machine.reset_cause()` alone cannot tell these apart (F.5.4)."
+  5. PUT shapes (`:607-615`): "sparse JSON, no `cmd` envelope, on a product route: present fields apply, omitted stay
+     untouched, an unknown field (or unknown sensor) answers "Invalid"; the server answers every submitted key."
+     `/sensors` → "per-sensor field subsets; SCD30 compares against a fresh chip snapshot and writes only what changed
+     (compare-before-write, G.2)". `/networking` → Wi-Fi fields fire `reconnect_wifi()`, NTP fields fire
+     `ntp_force_sync()`, `LEDWifiOn` fires nothing — one `SettingsGroup` per subset. `/system` → settings plus
+     `"SystemCmd": "reboot"|"bootloader"|"mempause"|"resetconfig"|"erasefram"` — "a command runs only on its exact
+     word, matched as a whole string: no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
+     300 s lives in the command callback". `/status` → "`{"ResetErrors": true}` only: every registered error source
+     resets concurrently and `result.ResetErrors` answers "Valid", or "Failed" when a store's write failed; any other
+     value answers "Invalid"". `/notification` → settings plus `LightCmdLED` (`R`/`G`/`B`/`T`, validated in the
+     webserver through a synthetic schema like every schema-backed field; answered "Failed" while a signal is queued or
+     running, owner, 2026-09-29) and `PauseTime` (range-checked 0-3600, refused not clamped, validated the same way).
+     Envelope: "`res`/`code`/`descr`/`result` per C.5.3: `res` is `"OK"` when the request was processed; a per-field
+     outcome is detail in `result`."
+  6. "**The controlled shutdown**" — A.S0930.41's paragraph verbatim (owner, 2026-09-30; the debug-level stall
+     sentence with "(agent, 2026-09-30)"; "Reset codes 3, 4, 7, 8, 9."; the escalation sentence "The supervisor's
+     task-budget reboot resets directly, without the sequence."), followed by A.S0930.30's two-command purposes
+     ("`resetconfig` ("Reset to defaults") deletes every config file — the unit comes back on the schema defaults, as
+     the hotspot with its TOML hostname and hotspot password; FRAM logs and the SCD30's NVM are untouched (Wi-Fi and
+     identity included, owner, 2026-09-30). `erasefram` ("Erase FRAM") zeroes the whole chip — every FRAM log and the
+     SGP40 backup start fresh. No confirmation step (owner, 2026-09-30).") and A.S0930.31's behaviour clauses in
+     compact form: a commanded reset whose sequence hangs before its last step reads `ResetReason` 2 at the next boot,
+     or 10 + the boot phase when accepted before the boot was marked done; a power cut reads 1; a command that cannot
+     start (its task cannot be created) answers "Failed" with nothing changed; the design order's rationale and the
+     power-loss table in compact form (A.S0930.30).
+  7. "**Numeric coercion policy**" (`:617-624`): kept, with the per-kind validators named (`asy_config_manager.py`'s
+     `checked_int()`/`checked_float()`/`checked_numeric()`, M.SRC_CORE.047) in place of `coerce_numeric()`, "an int is
+     accepted for a float field; a float for an int field only with no fractional part (`5.0`→`5`, `5.7` refused as
+     "Invalid", never truncated); a `bool` never for int/float (exact `type()`); NaN/±inf refused", "int→float has a
+     known gap (every int representable only up to the float32 mantissa, F.1) — accepted (owner, 2026-08-24,
+     `3986be9`) since no registered float field's bounds go near it; every schema's float bounds are checked against
+     2**24 statically (`tests_scripts/test_config_schemas.py`)"; "a float is stored, cached and compared in the
+     single-precision form the file reloads as"; "`js/mock-server.js` mirrors the policy; the browser has doubles only
+     — the mock's one accepted gap (H.4)".
+  8. GET consistency (`:626-631`) → "**GET copy-safety**: `get_dict_data()`/`ConfigManager.get_dict()`/
+     `PrintLogHistory.get_log()` build a fresh dict or list per call with no `await` mid-construction; a config GET
+     and a PUT on one module are serialised by the module's write lock, and `SCD30_Reader`/`BMP3XX_Reader` read their
+     live hardware fields through one locked `get_config_snapshot()` call, so a GET never mixes pre- and post-write
+     values (owner, 2026-09-26)."
+  9. `:632-634` → A.U0.29's "Connection hardening" paragraph verbatim (owner tags 2026-08-12, `ed48887`, `ee5310c`).
+- **Resolved**: (a) A.U19.12 and A.U36.544 RF063 rewrite the same "One open exception" sentence; both mechanisms exist
+  in the merged product (M.SRC_CORE.038 lock; `get_config_snapshot()` at HEAD) — one sentence states both. (b)
+  A.S0930.41 supersedes A.S0930.30's A.8 paragraph ("becomes"); A.S0930.30's purposes and A.S0930.31's behaviour stay.
+  (c) A.U11.05 asks A-C to choose one owner for the code table (A.U11.05, A.U6.23, G5/R03): the catalog's `status`
+  section is the source (A.U6.27/A.U36.537), A.8 carries the marked table. (d) A.U19.15 keeps envelope codes 2/3
+  while `parse_cmd_request()` exists; A.U27.07 deletes it (M.SRC_CORE.073) — no 2/3. (e) The `UtcTime` spelling of
+  A.U6.21 follows A.U10.40 (`UTCTime`). (f) GAP-G13 (M_SRC_CORE): `coerce_numeric()` becomes private and typed callers
+  use the per-kind validators; the policy text names them. (g) `/status` code 20 (A.U30.19) joins the table though
+  A.U30.19 placed it "(11-15 are A.U11.05's)" — consistent.
+- **Unit**: Stage 1 U11: item 4's table with codes 0-6 and 10 + p (A.U11.05 lands the field; A.U14.01's F.5.4
+  paragraph cites "A.8"); Stage 2 U36: the whole section as above.
+- **Depends**: A.U19.20, A.U10.40, A.U11.01-.08, A.U19.10, A.U32.06, A.U23.22, A.S0930.* , A.U30.19, A.U6.27,
+  M.SPEC[C.5.3], M.SPEC[F.5.4].
+- **Blast carried by**: `buildgen/error_catalog.json` `status` section → A.U6.27/A.U2.01 (GEN); the marker test →
+  A.U36.537 (TSC); `js/render.js:132-135` comment → A.U23.13 (WEB); DEVICE_REFERENCE key names → A.U10.40 (DOCS).
+- **Kind**: doc
+
+### M.SPEC.022 A.9: the frozen-website pipeline as it stands
+- **From**: A.U36.036 (2) (`:643-646`), A.U36.516 (1) (`:648`), A.U6.04 Blast (`:648`), A.U19.05 (`:642`), A.U19.06
+  (no-cache, streams closed), A.U27.06 (`gzip -n`, reproducible), A.U0.39 L51 (`:657-658`), A.U6.03/A.U23.38 (every
+  device's site, derived bundle), A.U24.69 (ports held by one runner at a time; `:661-662`), A.U36.548/G9/R11
+  (history out), M.SCR.012/.017 (which site each runner builds).
+- **Site**: `SPECIFICATION.md:636-662` (A.9).
+- **Change**: (1) First paragraph: "`scripts/build_frozen_html.sh` gzips (`gzip -n`, so the output is reproducible) a
+  temp copy of the source dirs `HTML_SRC_DIRS` names (required; `scripts/build_website.sh` stages a device's website
+  and sets it), then runs `python -m freezefs <tmp> frozen_modules/frozen_html.py --on-import mount --target /html
+  --overwrite always` (never `--compress`: this project pre-gzips by hand, served via Microdot's `send_file(…,
+  compressed=True)` over a stream `_StaticRoutes.serve()` opens itself, in 256 B reads and with `Content-Length` — I.3,
+  "Static files"; every response carries `Cache-Control: no-cache` (agent, 2026-09-30) and every opened file is closed
+  when the connection ends). Output goes to `frozen_modules/` (gitignored), not `.frozen/`: `.frozen/` is
+  MicroPython's import sentinel (F.1)." The recursive-merge paragraph keeps its facts with the example
+  "`<staged>/index.html`, `<staged>/definitions.json`, `<staged>/js/render.js`". (2) Second paragraph → "There is no
+  placeholder site (owner, 2026-09-23: '`dev`'s real website is the most biting test' — today every device's real
+  site): `scripts/test.sh` builds every device's site and freezes the first derived device's into
+  `frozen_modules/frozen_html.py`; `npm test`'s `pretest` hook builds the generated definitions; each twin runner serves
+  its booted device's own site (`build/generated_html/<device>`). The binary `application/octet-stream` fallback, which
+  no real site has a file for, is pinned on a synthetic fixture in `tests/test_asy_webserver_service.py` beside the
+  generic route wiring; `tests/test_website_build_integration.py` is the real-pipeline proof. Product-fixed ports are
+  held by one runner at a time (E.1, 'Fixed ports')." The "removed 2026-09-24" history and "not for this file any
+  more" go.
+- **Resolved**: A.U0.39's L51 tag survives inside the reworded sentence (C8). "wozi's for the unit and web tiers"
+  is false after A.U6.03/A.U23.38/M.SCR (every device's site; first derived device frozen) — rewritten (adherence).
+  The "two suites must not run concurrently" clause becomes the port-lock pointer (A.U24.69, M.SCR.012).
+- **Unit**: U36.
+- **Depends**: A.U19.05, A.U19.06, A.U27.06, A.U6.03, A.U23.38, A.U24.69, M.SPEC[E.1].
+- **Blast carried by**: `.gitignore:33-41` → A.U28.33/A.U36.036 (4) (TOOL/LEAD); `scripts/build_frozen_html.sh` →
+  A.U27.06 (SCR).
+- **Kind**: doc
+
+### M.SPEC.023 A.10: the twin's rule, its suite and where its quirks live
+- **From**: A.U37.06 (4) (generated-module rule), A.U0.38 V28 (`:672` tag), A.U36.511 (3) (`:679`), A.U36.544 (1)
+  (`:691`), A.U25.43 Blast (A.10 → F), A.U25.01 Blast (A.10 points to the fidelity table), A.U10.38 (`WifiService`
+  is not named; nothing), A.U36.016/M.TWIN (the suite's runs as the twin README states them).
+- **Site**: `SPECIFICATION.md:664-693` (A.10).
+- **Change**: (1) First paragraph: "`digital_twin/` fakes `machine`/`network`/`neopixel` at the same raw
+  bus-transaction boundary `tests/machine.py` uses, with real-time-firing `Timer`s and plausible sensor values, so a
+  generated device module runs under the Unix-port interpreter and behaves like real hardware. Every generated device
+  module has this Unix-port equivalent, mocked only at the raw bus-transaction boundary (owner, 2026-08-08,
+  paraphrase). Independent of `tests/`; the swap is `MICROPYPATH` ordering. How faithful each fake is, and where it is
+  not: `digital_twin/README.md`'s fidelity table." (2) "**Chain-completeness requirement** (owner, 2026-08-20,
+  `00eb44d`): any new module joins the digital twin provided it can form a complete chain …" — "A new sensor driver
+  needs the C.11 point 9 checklist" → "A new driver needs Part K's twin step (K.5)". (3) The CI-suite paragraph:
+  "a `strategy.matrix` over every device of `devices/*.toml`"; the run list stays a pointer to `digital_twin/README.md`
+  (which has the runs and the per-device subprocess counts) with the two GC stages in order (I.4(e)); the last sentence
+  → "The Unix-port `socket` quirks the twin works around from twin-side code are Part F's Unix-port facts (F.7)".
+- **Resolved**: A.U36.544 (1) offers "`digital_twin/README.md` … or F.7 where A.U14.28 moved it"; A.U25.43 makes
+  Part F's Unix-port facts the one home ("U36 moves it, G7/R12 doc") — F.7 it is. A.U37.06 (4) adds its rule sentence
+  "after '…and behaves like real hardware.'" — placed there.
+- **Unit**: U37 (A.U37.06 is the latest; its sentence lands when BACKLOG's bullet is deleted); the U0/U36 edits fold
+  in (C8).
+- **Depends**: M.SPEC[F.7], M.SPEC[K], A.U25.01 (the fidelity table exists).
+- **Blast carried by**: BACKLOG `:848-859` deletion → A.U37.06 (DOCS).
+- **Kind**: doc
