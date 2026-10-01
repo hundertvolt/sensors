@@ -99,7 +99,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `list[AsyncCallback]` (`Awaitable[None]`), but A.U10.21 makes every `setup()` return `bool`, and a `bool`-returning
   coroutine is not an `Awaitable[None]` to mypy; G8/R61's "one named alias per repeated callback shape" (owner,
   2026-09-28, OR81) settles the alias (two users: `run_setups()` and the generated `_collect_setups()`). The alias is
-  declared in `asy_base_classes.py`'s block (M.SRC_CORE.030).
+  declared in `asy_base_classes.py`'s block (M.SRC_CORE.030) (agent, 2026-10-01; "Agent decisions" 1).
 - **Unit**: U11 for the file's final form; each earlier stage adds exactly the names its own change needs (U10:
   `LockedValue`, `TickSeconds`, `arm_tick_timer`, `utc_now`, aliases; U30: the two fatal names; U32: none).
 - **Depends**: M.SRC_CORE.001, M.SRC_CORE.030 (aliases), M.SRC_CORE.032 (`TickSeconds`, `arm_tick_timer`, `utc_now`),
@@ -559,7 +559,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   the task form, since OR120.a (1) needs the loop cancelled and awaited to done and `main()` must not end.
   (g) `task_names`: A.U32.06 (2) makes it a keyword defaulting to `None` ("task <n>" names) so existing callers hold;
   only tests and device scripts use the default, which OR36.a (1) forbids in product code ("a parameter … that exists
-  only so a test … can reach inside") — it is a required parameter; direct callers pass names (GAP-G5).
+  only so a test … can reach inside") — it is a required parameter; direct callers pass names (GAP-G5; agent,
+  2026-10-01; "Agent decisions" 2).
 - **Unit**: stages, each a prerequisite of work in its own or an earlier-numbered consumer —
   **U2/U3**: named codes at HEAD sites and one entry per task end (A.U2.02's catalog check, A.U3.11's pair scan need
   them). **U11** (the body above except `start_tasks()`/`supervise_tasks()`, C-stack and names): `start_and_check_tasks(
