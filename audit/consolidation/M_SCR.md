@@ -348,9 +348,12 @@ Conventions used below (each defined once, then cited):
   function (`module`, `qualname`). Allowance table (module constant, one row per site, each with its one-line reason):
   `gc.collect` — `src/asy_system_service.py` `SystemService.start_tasks` and `SystemService.run_setups` (the
   boot-confined placement reset, SPEC I.4(f.1)); nothing in `buildgen/` or `build/generated_src/`; the tests/twin/
-  hardware rows A.U30.16 lists, re-derived from the end-state tree at landing (the `digital_twin/unix_port_gc_unwedge.py`
+  hardware rows A.U30.16 lists by category (baseline, boot mirror, before a timed window, twin exception, measured
+  collection pause), each function re-checked against its category at landing (the `digital_twin/unix_port_gc_unwedge.py`
   row absent — the file is retired, M.TWIN; the twin's `_mem_sampler` row present only while A.U35.25 keeps its
-  collection). `gc.threshold` — exactly one module-level `gc.threshold(<int literal>)` in each generated boot entry
+  collection); plus, from U31, the **measured collection pause** row `tests_hardware/device_scripts/loop_stretch_timing.py`
+  (its timing function), reason "times gc.collect() itself: the pause SPECIFICATION.md F.3 bounds" (OR39.a (2), OR91.a
+  (9); M.HW_DEV.122). `gc.threshold` — exactly one module-level `gc.threshold(<int literal>)` in each generated boot entry
   (`sensortask_<device>_main.py` and `_main_noautostart.py`), plus A.U30.14's callers `tests/_threshold_runner.py`,
   `tests/microtest.py`, `digital_twin/run_generic_integration.py`, `digital_twin/run_device_script.py` (M.TWIN, new),
   and `tests_hardware/device_scripts/*`; `gc.disable`/`gc.enable` nowhere. A finding prints `path:line: <call> in
@@ -361,7 +364,8 @@ Conventions used below (each defined once, then cited):
   as separate edits). The generated module carries no `gc.collect()` (M.SRC_CORE.015 moves it into `run_setups`), so
   A.U27.21's "codegen's emitted boot batch" row is not written.
 - **Unit**: U30 (A.U30.14/.16 extend the U27 checker). Stage U27: A.U27.21's checker with the sites then in force.
-  Stage U30: threshold rows and the test/twin/hardware rows.
+  Stage U30: threshold rows and the test/twin/hardware rows. Stage U31: the measured-collection-pause row, with
+  `loop_stretch_timing.py` (M.HW_DEV.122; AC3_O O-27).
 - **Depends**: M.SCR.010; M.SRC_CORE.015/.016.
 - **Blast carried by**: caller `lint.sh` (M.SCR.025); `tests_scripts/test_gc_collect_sites.py` rewritten to call the
   checker on fixture trees (alias forms, threshold forms) → A.U27.21/A.U30.14/A.U30.16 (TSC); CLAUDE.md memory rule and
@@ -984,7 +988,7 @@ Conventions used below (each defined once, then cited):
   `scripts/build_website.sh "$site_device"`; then, unless `--coverage`, `scripts/build_device_websites.sh` (every
   derived device into `build/generated_html/<device>/`, the sites the harness jobs boot). Comment `:290-292` → "Every
   generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one site on its path; any
-  derived device serves (OR78: no device named here)."
+  derived device serves; no device is named here."
 - **Resolved**: —
 - **Unit**: U27 (stage U24: the lock).
 - **Depends**: M.SCR.007, M.SCR.012, M.SCR.020.
@@ -1628,9 +1632,15 @@ Conventions used below (each defined once, then cited):
   only: `ext/typings/microdot/` never staged, OR131 — holds), A.U21.10 (every rp2 build carries the override — blast),
   A.U20.36 (buildgen's reproducibility half — blast).
 - **Site**: `scripts/build_firmware.py:39-108`.
-- **Change**: `_MANIFEST_TEMPLATE = 'include("$(PORT_DIR)/boards/{board}/manifest.py")\nfreeze({stage_dir!r},
-  {files!r})\n'`, `files = tuple(sorted(p.name for p in stage_dir.glob("*.py")))`, comment "listed sorted, so the image is
-  independent of the host filesystem's order". `_stage_stripped(src_file, dest)`: comment → "Strips this build's staged
+- **Change**: `_MANIFEST_TEMPLATE` = the expanded board manifest (below) followed by `freeze({stage_dir!r},
+  {files!r})\n`, `files = tuple(sorted(p.name for p in stage_dir.glob("*.py")))`, comment "listed sorted, so the image is
+  independent of the host filesystem's order". The board manifest is not included as a file: `_MANIFEST_TEMPLATE` writes,
+  at build time, the pinned checkout's `ports/rp2/boards/{board}/manifest.py` and every port manifest it includes, with
+  each directory `freeze(path)` among their lines replaced by `freeze(path, <sorted file names of that directory in the
+  checkout>)`, so the stock modules (`_boot.py`, `_boot_fat.py`, `rp2.py` at v1.29.0) are frozen in sorted order too; a
+  line that does not freeze a directory is kept as written. The executor reads the board manifests and
+  `tools/manifestfile.py` at the refreshed pin (OR129) before writing the replacement, and extends the expansion to any
+  other directory walk it finds there. `_stage_stripped(src_file, dest)`: comment → "Strips this build's staged
   copy only, never src/ or ext/; the stripper is line-preserving, so a field traceback's line numbers equal the
   source's."; passes `str(src_file)` as `path`. `stage_python_modules(stage_dir, generated, *, autostart=True)`: resolve
   the frozen set (a computed module with no file → `BuildInternalError`), collision check (→ `BuildInternalError`),
@@ -1639,11 +1649,13 @@ Conventions used below (each defined once, then cited):
   `generated.boot_entry_noautostart_source`; the "nothing to strip" comment goes. `build_stage_dir(stage_dir, device_toml,
   *, autostart=True, build_date=None)` = `generate_device(device_toml, src, ext, build_date=build_date)` →
   `stage_python_modules()` → the website step (`scripts/build_website.sh <device> <stage>/frozen_html.py`).
-- **Resolved**: —
+- **Resolved**: LEAD/R13's residual (A.U27.34, "parked for A-C"): closed by expanding the board manifest's directory
+  freeze into a sorted explicit list, as the Req's one-order rule demands (AC3_R R-05).
 - **Unit**: U27.
 - **Depends**: M.SCR.070, M.SCR.071; A.U20.05/A.U20.14 (generated sources, GEN); A.U26.02 (`build_date` keyword).
 - **Blast carried by**: `tests_scripts/test_stripped_image_boots.py` (compiled stage boots in the twin) → A.U27.05 (TSC);
-  `tests_scripts/test_frozen_inputs_reproducible.py` → A.U27.34 (TSC); SPEC B.11 → A.U27.34/A.U36.534 docs (SPEC).
+  `tests_scripts/test_frozen_inputs_reproducible.py` → A.U27.34 (TSC), and it asserts the rendered manifest has no bare
+  directory `freeze()` (TSC, A.U27.34; AC3_R R-05); SPEC B.11 → A.U27.34/A.U36.534 docs (SPEC).
 - **Kind**: code
 
 ### M.SCR.067 Image record and size report beside every `.uf2`
@@ -1873,6 +1885,20 @@ Conventions used below (each defined once, then cited):
   paragraph, "new hardware runner, shellcheck-linted, no environment change" → hand-off DOCS (M.DOCS.066, GAPS_G4).
 - **Kind**: code
 
+## scripts/_strip_type_checking.py (function docstrings, A-C3 Part S)
+
+### M.SCR.075 Function docstrings become comment blocks
+- **From**: A.U10.34 (A-C3 Part S: no carrier in this cluster).
+- **Site**: `scripts/_strip_type_checking.py` (:10, :21, :67).
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward (here M.SCR.070, U27).
+- **Resolved**: —
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
 ## Gaps for other clusters
 
 1. **WEB** — (a) `tests_js/_twin_process.js` (M.WEB.082) / M.WEB.061's `spawnTwin`: `MICROPYPATH` must be the twin layout
@@ -2041,7 +2067,7 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U1.23 | M.SCR.066 |
 | A.U1.27 | M.SCR.072 |
 | A.U10.31 | M.SCR.028 |
-| A.U10.34 | M.SCR.046, M.SCR.065, M.SCR.069 |
+| A.U10.34 | M.SCR.046, M.SCR.065, M.SCR.069, M.SCR.075 (`_strip_type_checking.py`; AC3_S S-05) |
 | A.U10.35 | M.SCR.026 |
 | A.U10.37 | M.SCR.015, M.SCR.025, M.SCR.046; its `lint.sh` grep path/message edit dropped (greps removed by A.U27.21) |
 | A.U10.46 | M.SCR.028 |
@@ -2350,6 +2376,10 @@ of `audit/actions/*.md`. A second table lists actions read into a merged change 
 | A.U19.10 | M.SCR.018 (l) (gap pass) |
 | A.U19.12 | M.SCR.018 (l) (gap pass) |
 | A.U30.19 | M.SCR.059 (d) (gap pass) |
+| AC3_O O-14 | M.SCR.039: "(OR78: no device named here)" → "; no device is named here" |
+| AC3_O O-27 | M.SCR.015: rows by category, each re-checked at landing; the U31 measured-collection-pause row for `loop_stretch_timing.py` and a U31 stage (adapted: "OR91.a (9)" kept outside the quoted reason, which is permanent text) |
+| AC3_R R-05 | M.SCR.066: the board manifest's directory freezes expanded to sorted lists; Resolved, Blast (the no-bare-`freeze()` assertion) |
+| AC3_S S-05 | M.SCR.075 (new, U10): `scripts/_strip_type_checking.py`'s three function docstrings → comment blocks |
 
 ## A-C2 order notes (2026-10-01)
 

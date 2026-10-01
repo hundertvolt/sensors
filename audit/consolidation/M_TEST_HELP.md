@@ -47,7 +47,8 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 ## tests/microtest.py
 
 ### M.TEST_HELP.001 Runner reports skips, empty files and aborts honestly
-- **From**: A.U7.07, A.U24.03, A.U24.17 (microtest half)
+- **From**: A.U7.07, A.U24.03, A.U24.17 (microtest half), A.U21.13 (microtest runs where no fake exists,
+  `tests/lwip_host/`: agent decision D1; A-C3 Part S §4)
 - **Site**: `tests/microtest.py:6-42` `run()`.
 - **Change**: `class Skip(Exception)` (message = reason). Per test, in order: `result = fn()`; a non-`None` result →
   FAIL "returned a value - an async def test_* or a stray return; microtest runs synchronous functions only" (a
@@ -1448,6 +1449,24 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
 - **Blast carried by**: one sweep per path in its test file → A.U35.48 (TEST_UNIT).
 - **Kind**: test
 
+## Cross-file: A-C3 sweep changes (new)
+
+### M.TEST_HELP.068 Docstrings become comments in this cluster's scope
+- **From**: A.U10.34 (A-C3 Part S S-05: no carrier in this cluster).
+- **Site**: function/class docstrings at HEAD (AST): `tests/_boot_contiguity_probe.py:53`;
+  `tests/_bus_hazard_catalog.py` (`:350`, `:368`, `:410`, `:455`, `:502`, `:523`); `tests/_shared_rest_roundtrip.py`
+  (`:18`, `:26`, `:35`); `tests/_strict_json.py:119`; `tests/_tmp_scratch.py` (`:36`, `:57`, `:69`).
+- **Change**: each function, method and class docstring becomes a `#` comment block directly under the `def`/`class`
+  line, same text, ≤ 3 prose lines (overflow to the owning doc per CLAUDE.md's comment rule); module docstrings stay
+  (the five argparse readers included). A file a later change rewrites carries the form forward.
+- **Resolved**: `tests/_webserver_concurrency_scenarios.py`'s seven (AST at HEAD: `:108`, `:160`, `:190`, `:204`,
+  `:215`, `:227`, `:249`; A-C3 counts six) go with the file at U25 (M.TEST_HELP.033); A.U10.34 adds no check that would
+  read them in between.
+- **Unit**: U10.
+- **Depends**: —
+- **Blast carried by**: `tests_scripts/test_comment_block_cap.py` stays green → M.TSC.065.
+- **Kind**: code
+
 ## tests/README.md
 
 Absent at HEAD; no action creates it. A.U0.42 and A.U36.546 delete README.md's "the way `src/README.md`/
@@ -1835,7 +1854,7 @@ None. Every conflict in this cluster was settled by an owner row, a verified act
 | A.U0.06 | dropped (audit baseline artefact only; names `tests/network.py`/the twin library as excluded files — A.U27.23 runs `tests/network.py` alone, M.TEST_HELP.007) |
 | A.U0.42 | dropped (README.md sentence only; `tests/README.md` absent, nothing owed here) |
 | A.U10.11 | blast-only, holds (`tests/_sensortask_scenarios.py:1160-1175` boot-window ResetErrors scenario re-read against the merged `setup()`: its assertions hold; kept in M.TEST_HELP.040) |
-| A.U21.13 | blast-only, holds (uses `tests/microtest.py` from `tests/lwip_host/`; M.TEST_HELP.001 keeps microtest free of any fake import) |
+| A.U21.13 | M.TEST_HELP.001 (From completion, AC3 S §4: microtest imports no fake, so it runs from `tests/lwip_host/`) |
 | A.U25.26 | blast-only (twin `WLAN.status()`; the unit half is A.U24.19 in M.TEST_HELP.007) |
 | A.U30.12 | blast-only, holds (in-body threshold pairs removed by TEST_UNIT; the per-test restore it relies on is M.TEST_HELP.002) |
 | A.U36.014 | dropped (CLAUDE.md hazard-rule text only; no helper change) |
@@ -1843,6 +1862,7 @@ None. Every conflict in this cluster was settled by an owner row, a verified act
 | A.U35.15 | M.TEST_HELP.058 (gap pass G3) |
 | A.U10.06 | M.TEST_HELP.002 (gap pass G3) |
 | A.U30.19 | M.TEST_HELP.002 (gap pass G3) |
+| A.U10.34 | M.TEST_HELP.068 (AC3 S-05: new change) |
 
 ## A-C2 order notes (2026-10-01)
 

@@ -6128,6 +6128,17 @@ section that stays.
 | A.U37.06 | IB | M.SPEC.023 |
 | A.U37.07 | B | M.SPEC.112 |
 | A.U37.11 | IB | M.SPEC.150 |
+| AC3_R R-03 | A-C3 | M.SPEC.049 (1): A.U13.05's first sentence plus the lead's withdrawal text (no pull-up claim, no phase-C measurement); Resolved records the supersession; tag written "(agent, 2026-09-29)" (adapted from "(lead, 2026-09-30)": the note is dated 2026-09-29, permanent tags name owner or agent) |
+| AC3_R R-09 | A-C3 | M.SPEC.021 item 8 gains the GET's chip I/O sentence; From gains G3/R31 |
+| AC3_R R-04 | A-C3 | M.SPEC.073 and M.SPEC.140 Blast pointers name M.DOCS.109 and M.PROC.048 (R-04 cited them as .046/.142; adapted to the two changes that hold the pointers) |
+| AC3_S S-13 | A-C3 | as AC3_R R-04 (one change, M.DOCS.109) |
+| AC3_S §5 | A-C3 | M.SPEC.153 Blast: twin test comments → A.U36.020 (TWIN, M.TWIN.122/.126) |
+| AC3_O O-19 | A-C3 | M.SPEC.070: "(A.U10.22)" → `tests_scripts/test_readiness_gates.py` |
+| AC3_O O-20 | A-C3 | M.SPEC.116: "(A.U32.06)" out of the row text; A.U32.06 added to From |
+| AC3_O O-21 | A-C3 | M.SPEC.129: "(A.C.09)" out of the release-proof line (A.C.09 stays in From) |
+| AC3_O O-22 | A-C3 | M.SPEC.136: "not touched in this audit" → "stays as it is until the C side is reconciled" (the M.DOCS.076 half is DOCS's) |
+| AC3_O O-23 | A-C3 | M.SPEC.054, M.SPEC.064, M.SPEC.075, M.SPEC.082: tags in "(owner, YYYY-MM-DD)" form |
+| AC3_O B (placeholders) | A-C3 | M.SPEC.111 `<A.U10.08's check>` → `tests_scripts/test_watchdog_feed_sites.py` (M.TSC.155); M.SPEC.144 `<A.U6.15's check>` → `test_no_variant_literals.py` (M.TSC.110) |
 
 ## A-C2 order notes (2026-10-01)
 

@@ -1441,18 +1441,19 @@ never flashed (A.C.01 (5)).
   flash cycles owned by this test. The test passes only when the unpatched image shows the stall (a bound fails, or the
   board stops answering ≥ 5 s or resets); every bound holding fails it with "the hammer did not reach the ERR_MEM loop
   on the unpatched image, or the pin carries an upstream fix: re-check the modlwip_eagain override (SPECIFICATION.md
-  B.14)" (OR19.a (1), OR114.a (4)). The verdicts are recorded either way. (2) `test_no_send_stall_with_the_override(board, dut_ip, result_note)` (default-on,
-  no wear): `configured_max_connections() - 1` raw sockets each sending `GET /js/app.js` and never reading
-  (`SO_RCVBUF` minimal), `_STALL_SETTLE_S = 2.0` (`l4.lwip_stall_settle_s`), then a timed `GET /` on a fresh
-  connection; plus, per JSON route (`get_routes()`) and page asset (from the served `index.html`), a dead client and a
-  slow client (`_SLOW_CLIENT_BPS = 256`, `l4.lwip_slow_client_bytes_per_s`); while they hold, a `GET /status` loop
-  asserts each response ≤ `l4.lwip_spin_concurrent_request_max_s`; asserts no reboot (`BootSignature`, `SysUptime`),
-  `assert_no_task_ended()`, zero allocation markers over `observe_during()`, and the patched branch reached — the page
-  load completes within the bound while ≥ 2 connections sit at zero window (their host receive queues); after the
-  clients close, `harness._wait_for_slots_to_drain()` frees every slot and a full page load succeeds. Each `ERR_MEM`
-  source is driven to its edge and recorded (arena: few connections, large route; segment pool: many connections each
-  queuing small writes; per-pcb queue: one connection, many small writes to a non-reading peer). A failed bound is
-  reported for the owner as an override change (a short POLLOUT back-off), never a larger bound.
+  B.14)" (OR19.a (1), OR114.a (4)). The verdicts are recorded either way. (2)
+  `test_no_send_stall_with_the_override(board, dut_ip, result_note)` (default-on, no wear):
+  `configured_max_connections() - 1` raw sockets each sending `GET /js/app.js` and never reading (`SO_RCVBUF` minimal),
+  `_STALL_SETTLE_S = 2.0` (`l4.lwip_stall_settle_s`), then a timed `GET /` on a fresh connection; plus, per JSON route
+  (`get_routes()`) and page asset (from the served `index.html`), a dead client and a slow client (`_SLOW_CLIENT_BPS =
+  256`, `l4.lwip_slow_client_bytes_per_s`); while they hold, a `GET /status` loop asserts each response ≤
+  `l4.lwip_spin_concurrent_request_max_s`; asserts no reboot (`BootSignature`, `SysUptime`), `assert_no_task_ended()`,
+  zero allocation markers over `observe_during()`, and the patched branch reached — the page load completes within the
+  bound while ≥ 2 connections sit at zero window (their host receive queues); after the clients close,
+  `harness._wait_for_slots_to_drain()` frees every slot and a full page load succeeds. Each `ERR_MEM` source is driven
+  to its edge and recorded (arena: few connections, large route; segment pool: many connections each queuing small
+  writes; per-pcb queue: one connection, many small writes to a non-reading peer). A failed bound is reported for the
+  owner as an override change (a short POLLOUT back-off), never a larger bound.
 - **Resolved**: A.U26.85 (1) "the test itself builds the control image" → "takes the control image the round built"
   (A.C.06 (1), settled in C). The image record's `overrides` key is A.U26.85's Site on `scripts/build_firmware.py`
   (SCR). (1)'s pass condition: a control test that passes whatever it measured is a check that cannot fail (OR19.a (1);
@@ -1576,17 +1577,18 @@ never flashed (A.C.01 (5)).
   needs no change), A.U10.40, A.U8C.50 (`:431, :441, :453, :454, :459, :465, :476, :483, :487, :510, :520, :530, :554,
   :555, :563, :568, :569, :571, :581, :584, :591, :597, :606`), A.U8C2.21 (`:561`, derived `:566`).
 - **Site**: `tests_hardware/bench/test_network_resilience.py:418-608`.
-- **Change**: section comment `:418-419` gains "(owner, 2026-09-02)" (tag form AC_NOTES 6, A-C3 O-23). Garbage `NTPHost`: a board already
-  on `_GARBAGE_NTP_HOST` is repaired (restore target: `_VAL_NH`'s default read from `src/asy_ntp_client.py` by `ast`)
-  with a `result_note` "repaired a leftover garbage NTPHost from an aborted run", through the shared
-  `_repair_leftover(host, route, body)` (pinned in `_KNOWN_PERSISTING_HELPERS`); the post-restore fallback goes through
-  `recover_by_reset(…, skipped="NTP resync after the restore PUT without a reset", …)`; the NTP codes by catalog name.
-  Garbage SSID: `_GARBAGE_SSID = "bench-test-net-does-not-exist"` (its length checked in the test against `_VAL_SSID`'s
-  bound read by `ast`); `_HOTSPOT_PASSWORD` and its stale comment go (`harness.hotspot_password()`); the PUT and every
-  step after it sit inside the `try`/`finally` whose restore branch runs on every path; a leftover garbage SSID is
-  repaired to `bench.ap_ssid()` with a note; the unreachable bridge-restore branch (`:535-543`, `http_client_is_ok()`
-  and its use) goes — only the hotspot restore path stays, its comment stating why the bridge path cannot occur; the
-  join retries go through `recover_by_reset(…, skipped="the first join attempt", …)`. Constants per A.U8C.50/A.U8C2.21.
+- **Change**: section comment `:418-419` gains "(owner, 2026-09-02)" (tag form AC_NOTES 6, A-C3 O-23). Garbage
+  `NTPHost`: a board already on `_GARBAGE_NTP_HOST` is repaired (restore target: `_VAL_NH`'s default read from
+  `src/asy_ntp_client.py` by `ast`) with a `result_note` "repaired a leftover garbage NTPHost from an aborted run",
+  through the shared `_repair_leftover(host, route, body)` (pinned in `_KNOWN_PERSISTING_HELPERS`); the post-restore
+  fallback goes through `recover_by_reset(…, skipped="NTP resync after the restore PUT without a reset", …)`; the NTP
+  codes by catalog name. Garbage SSID: `_GARBAGE_SSID = "bench-test-net-does-not-exist"` (its length checked in the test
+  against `_VAL_SSID`'s bound read by `ast`); `_HOTSPOT_PASSWORD` and its stale comment go
+  (`harness.hotspot_password()`); the PUT and every step after it sit inside the `try`/`finally` whose restore branch
+  runs on every path; a leftover garbage SSID is repaired to `bench.ap_ssid()` with a note; the unreachable
+  bridge-restore branch (`:535-543`, `http_client_is_ok()` and its use) goes — only the hotspot restore path stays, its
+  comment stating why the bridge path cannot occur; the join retries go through `recover_by_reset(…, skipped="the first
+  join attempt", …)`. Constants per A.U8C.50/A.U8C2.21.
 - **Resolved**: —
 - **Unit**: U26 (A.U0.18's U0 tag written into the same comment).
   A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3).

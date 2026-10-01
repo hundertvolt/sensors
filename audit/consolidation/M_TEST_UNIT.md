@@ -2936,10 +2936,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U15.15 (`:215`), A.U35.17 (`:219` unchanged), A.U24.38 (`:228`), A.U13.09 (`_reset()` raises on an
   uninitialised bus).
 - **Site**: `tests/test_asy_sgp40_driver.py:215-232`.
-- **Change**: `:215` → "# _reset() - one I2C general call, datasheet Table 17 (owner, 2026-09-26; SPECIFICATION.md C.8)" (dated per OR64.a (3), tag form AC_NOTES 6; A-C3 O-23).
-  `:228` (general call NAKed) → the fake bus log holds exactly one write, `0x06` to `0x00`, and nothing else. New
-  `test_reset_raises_when_the_bus_is_not_initialised` (the fake's `writeto` returning `None` → `OSError("I2C bus not
-  initialized")`). The test at `:219` stays as written.
+- **Change**: `:215` → "# _reset() - one I2C general call, datasheet Table 17 (owner, 2026-09-26; SPECIFICATION.md C.8)"
+  (dated per OR64.a (3), tag form AC_NOTES 6; A-C3 O-23). `:228` (general call NAKed) → the fake bus log holds exactly
+  one write, `0x06` to `0x00`, and nothing else. New `test_reset_raises_when_the_bus_is_not_initialised` (the fake's
+  `writeto` returning `None` → `OSError("I2C bus not initialized")`). The test at `:219` stays as written.
 - **Resolved**: —
 - **Unit**: U15 (stages U13, U24).
 - **Depends**: M.SRC_SENS.069.
@@ -5770,9 +5770,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Site**: `tests/test_notification_scd30_integration.py:189-264`.
 - **Change**: `:209-216`: `still_running is True`; `ErrCount == 1`; the newest entry `code("E", "READ")` (the
   `_last_two_err_nums()` helper → `_newest_code(log, "SCD30")`); the comment → "# One faulted cycle persists exactly the
-  driver's read error; the streak step prints only (SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment names `_signal_loop()`'s startup off
-  frame. `:259-264`: `ErrCount == 1`, newest `code("E", "READ")`, comment "# history keeps the fault; the later success
-  only resets the streak (a print, no entry)." NOTIFY counts stay 0.
+  driver's read error; the streak step prints only (SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment
+  names `_signal_loop()`'s startup off frame. `:259-264`: `ErrCount == 1`, newest `code("E", "READ")`, comment "#
+  history keeps the fault; the later success only resets the streak (a print, no entry)." NOTIFY counts stay 0.
 - **Resolved**: —
 - **Unit**: U3 (stage U2 codes).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
@@ -7198,8 +7198,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U24.10 (blast: the recording `os` wrapper records `ilistdir` and `stat`; the root assertion; new L1 errno
   cases), A.U24.11 (1) (blast: the duplicate-key refusal); M.TEST_HELP.005's Blast line (gap pass G3); AC_NOTES 42 (1);
   A.U24.38 (`:116-123`; A-C3 S-08).
-- **Site**: `tests/test_tmp_scratch.py:1-3` (docstring), `:116-123`, `:138-157` (`_RecordingOs`), `:191-197` (assertions);
-  new tests.
+- **Site**: `tests/test_tmp_scratch.py:1-3` (docstring), `:116-123`, `:138-157` (`_RecordingOs`), `:191-197`
+  (assertions); new tests.
 - **Change**: docstring → "Regression coverage for _tmp_scratch.py's TmpScratch, the per-test-file scratch directory:
   every operation stays inside its own key's subtree, and a cleanup failure other than absence is raised." (2 lines; the
   "now uses instead of its own copy-pasted … trio" history goes). `_RecordingOs` gains `ilistdir(path)` and

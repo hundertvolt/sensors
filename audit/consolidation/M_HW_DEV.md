@@ -595,16 +595,17 @@ changes cite.
   ["none", "crc16"])` on the exchange, recovery, hazards and load tests; each passes `CRC_MODE=crc_mode` and asserts
   `facts["crc_mode"] == crc_mode`. (4) `test_a_clamped_read_never_holds_the_cpu_for_a_frame_still_arriving` (`:58-63`)
   goes; the driver test asserts `facts["first_pollin_bytes"] < facts["frame"]` (the folded precondition),
-  `facts["driver_span_us"] <= facts["span_max_us"]`, `facts["control_span_us"] >= facts["span_max_us"]` and the
-  readline leg's span (A.U13.12). (5) Recovery asserts silence and desync each failed then recovered within
+  `facts["driver_span_us"] <= facts["span_max_us"]`, `facts["control_span_us"] >= facts["span_max_us"]` and the readline
+  leg's span (A.U13.12). (5) Recovery asserts silence and desync each failed then recovered within
   `facts["resync_bound_ms"]` (the bound rendered from `src/asy_uart_comm.py`'s consts by `ast`, named in the message)
   and the mismatch failed with a logged error. (6) New `test_comm_hazards_are_serialised_refused_or_recovered(board,
   crc_mode)` runs `uart_comm_hazards.py`: H1a one completion and one re-entrant refusal with whole frames, H1b each
-  point completes or fails cleanly and the next succeeds, H2 peer-initiated code then recovery within two attempts,
-  H3 each boundary value accepted iff legal. (7) The load test asserts transfers ≥ floor, zero link failures, worst
-  RTT ≤ bound, zero error counts, every load counter but `alloc_failures` > 0, heap growth ≤ bound, and echo `intact ==
-  total` for the multi-chunk SETs; the load test asserts `alloc_failures == 0` (A.U26.47 (3)). (8) Timeouts `_SCRIPT_TIMEOUT_S = 120.0`, `_LONG_SCRIPT_TIMEOUT_S = 180.0` (A.U8C.110's IDs); the
-  hazard test's timeout is a new row `l3.uart_crossover_hazards_timeout_s` sized at execution from the twin run.
+  point completes or fails cleanly and the next succeeds, H2 peer-initiated code then recovery within two attempts, H3
+  each boundary value accepted iff legal. (7) The load test asserts transfers ≥ floor, zero link failures, worst RTT ≤
+  bound, zero error counts, every load counter but `alloc_failures` > 0, heap growth ≤ bound, and echo `intact == total`
+  for the multi-chunk SETs; the load test asserts `alloc_failures == 0` (A.U26.47 (3)). (8) Timeouts `_SCRIPT_TIMEOUT_S
+  = 120.0`, `_LONG_SCRIPT_TIMEOUT_S = 180.0` (A.U8C.110's IDs); the hazard test's timeout is a new row
+  `l3.uart_crossover_hazards_timeout_s` sized at execution from the twin run.
 - **Resolved**: A.S0930.05 runs each script once per mode with no reflash (scripts run from RAM); A.U26.82's hazard
   script takes the same parameter. OR123's "L3 CRC16 device script over the same jumper" is this parametrisation, not
   a separate script.
@@ -731,20 +732,21 @@ changes cite.
   A.U5.12, A.U10.38 (`FRAMManager`, `UARTComm`), A.U10.44 (`_listen_loop` already the end name), A.U8C.95, A.U8C2.41,
   A.U26.68, A.U26.47 (3) (a churn `MemoryError` is a failure and the run ends FAIL; A-C3 S-10).
 - **Site**: `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:1-232`.
-- **Change**: (1) The responder keeps the last `_CMD_ECHO` SET payload (a script-local message callback in its
-  callbacks object) and answers an `_CMD_ECHO` GET with it; the initiator loop alternates the banner GET with a
-  multi-chunk `uart_set(_CMD_ECHO, <PAYLOAD_SIZE * 2 + 7 bytes, per-round pattern>)` and the echo GET, compared byte for
-  byte; mismatches counted with the first five kept. (2) `_memory_churn_loop`'s `except MemoryError` keeps `held = []`,
+- **Change**: (1) The responder keeps the last `_CMD_ECHO` SET payload (a script-local message callback in its callbacks
+  object) and answers an `_CMD_ECHO` GET with it; the initiator loop alternates the banner GET with a multi-chunk
+  `uart_set(_CMD_ECHO, <PAYLOAD_SIZE * 2 + 7 bytes, per-round pattern>)` and the echo GET, compared byte for byte;
+  mismatches counted with the first five kept. (2) `_memory_churn_loop`'s `except MemoryError` keeps `held = []`,
   records one bounded failure ('churn allocation of 512 B failed while <= 25 blocks were held') and loses
   `gc.collect()`; the facts carry `alloc_failures`, and the host load test (M.HW_DEV.045) asserts it is 0, so the run
-  fails on any churn allocation failure (CLAUDE.md's memory rule: a caught-and-degraded allocation failure is a defect). (3) Pins, buses and FRAM from `BENCH` (i2c1 with its TOML
-  frequency/timeout, SPI0, the FRAM CS and `fram_max_size`); the `:141` comment goes with the literals; `CRC_MODE` as
-  in M.HW_DEV.046. (4) `print(f"GC_THRESHOLD=…")` → `fact("gc_threshold", …)`. (5) Constants per A.U8C.95/A.U8C2.41
-  (`_RUN_MS`, `_MIN_TRANSFERS`, `_CHURN_BLOCK`, the step constants, `_MAX_RTT_FRACTION`, `_HEAP_FLOOR_SAMPLES`,
-  `_HEAP_GROWTH_MAX_BYTES`), the `dev.uart_*` mirrors replaced by `BENCH`; `:121` → `arm()`. (6) Facts: `crc_mode`,
-  `transfers`, `link_failures`, `worst_rtt_ms`, `timeout_ms`, `set_total`, `echo_intact`, `echo_mismatch` (bounded
-  record), `error_counts`, the five load counters, `heap_at_third`, `heap_at_end`; the floors move host-side; `done()`.
-  (7) The `_heap_floor` comment `:108-110` loses "(queue F7)" (a work label, G9/R12), keeping its reason in ≤ 3 lines.
+  fails on any churn allocation failure (CLAUDE.md's memory rule: a caught-and-degraded allocation failure is a defect).
+  (3) Pins, buses and FRAM from `BENCH` (i2c1 with its TOML frequency/timeout, SPI0, the FRAM CS and `fram_max_size`);
+  the `:141` comment goes with the literals; `CRC_MODE` as in M.HW_DEV.046. (4) `print(f"GC_THRESHOLD=…")` →
+  `fact("gc_threshold", …)`. (5) Constants per A.U8C.95/A.U8C2.41 (`_RUN_MS`, `_MIN_TRANSFERS`, `_CHURN_BLOCK`, the step
+  constants, `_MAX_RTT_FRACTION`, `_HEAP_FLOOR_SAMPLES`, `_HEAP_GROWTH_MAX_BYTES`), the `dev.uart_*` mirrors replaced by
+  `BENCH`; `:121` → `arm()`. (6) Facts: `crc_mode`, `transfers`, `link_failures`, `worst_rtt_ms`, `timeout_ms`,
+  `set_total`, `echo_intact`, `echo_mismatch` (bounded record), `error_counts`, the five load counters, `heap_at_third`,
+  `heap_at_end`; the floors move host-side; `done()`. (7) The `_heap_floor` comment `:108-110` loses "(queue F7)" (a
+  work label, G9/R12), keeping its reason in ≤ 3 lines.
 - **Resolved**: A.U26.87 and A.S0930.05 edit the same script: the echo SET runs in both modes.
 - **Unit**: U26 (A.U17.05's line lands in U17 on the HEAD text).
 - **Depends**: M.HW_DEV.001-.005; U17's lock check (N.27) recorded either way.

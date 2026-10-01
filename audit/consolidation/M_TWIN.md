@@ -580,18 +580,19 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
 - **From**: A.U25.71 (`WallClock`, `install()`, `step()`), A.U10.28 / A.U18.26 (their L2 clock-jump halves use it),
   A.U25.20 (the uninstalled RTC behaviour it falls back to)
 - **Site**: new `digital_twin/_wall_clock.py`
-- **Change**: header (≤ 3 lines) "The twin's wall clock: the built-in time module plus an offset that RTC().datetime(set)
-  and the twin-only step() move, as an RTC set moves time.time()/gmtime() on rp2 (ports/rp2/modtime.c:31-43,
-  machine_rtc.c:65-95, v1.29.0). Ticks never step." Contents: `import time as _time`; `class WallClock` with `offset_s =
-  0`; `time()` → `_time.time() + self.offset_s`; `gmtime(t=None)` / `localtime(t=None)` → the built-in on `t` when given,
-  else on `self.time()`; every other attribute (`mktime`, `ticks_ms/us/diff/add`, `sleep`, `sleep_ms`, `sleep_us`,
-  `time_ns` when present) delegates through `__getattr__` to the built-in (MicroPython supports module-style
-  `__getattr__` on a class instance); `set_wall(epoch_s)` sets `offset_s = epoch_s - _time.time()`; `step(seconds)` —
-  "twin-only test knob" — adds to `offset_s`; `TEST_API = ("step",)`. Module state: `_clock: WallClock | None = None`;
-  `install(modules) -> WallClock` creates the one clock on first call and rebinds the `time` global of each given module
-  object whose `time` is the built-in module (a module already rebound is skipped; idempotent), comment "# Bound
-  from outside, as every test adapts a product seam: src/ stays unchanged." (OR36, A-C3 O-15); `installed() -> WallClock | None`. Every value is an
-  `int` epoch second (the rp2 port's `time.time()` is integral).
+- **Change**: header (≤ 3 lines) "The twin's wall clock: the built-in time module plus an offset that
+  RTC().datetime(set) and the twin-only step() move, as an RTC set moves time.time()/gmtime() on rp2
+  (ports/rp2/modtime.c:31-43, machine_rtc.c:65-95, v1.29.0). Ticks never step." Contents: `import time as _time`; `class
+  WallClock` with `offset_s = 0`; `time()` → `_time.time() + self.offset_s`; `gmtime(t=None)` / `localtime(t=None)` →
+  the built-in on `t` when given, else on `self.time()`; every other attribute (`mktime`, `ticks_ms/us/diff/add`,
+  `sleep`, `sleep_ms`, `sleep_us`, `time_ns` when present) delegates through `__getattr__` to the built-in (MicroPython
+  supports module-style `__getattr__` on a class instance); `set_wall(epoch_s)` sets `offset_s = epoch_s -
+  _time.time()`; `step(seconds)` — "twin-only test knob" — adds to `offset_s`; `TEST_API = ("step",)`. Module state:
+  `_clock: WallClock | None = None`; `install(modules) -> WallClock` creates the one clock on first call and rebinds the
+  `time` global of each given module object whose `time` is the built-in module (a module already rebound is skipped;
+  idempotent), comment "# Bound from outside, as every test adapts a product seam: src/ stays unchanged." (OR36, A-C3
+  O-15); `installed() -> WallClock | None`. Every value is an `int` epoch second (the rp2 port's `time.time()` is
+  integral).
 - **Resolved**: —
 - **Unit**: U25
 - **Depends**: M.TWIN.033 [follows] (its RTC reads `installed()`); the two land in one U25 commit (A-C2)
@@ -1317,28 +1318,28 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Change**: header → "Standalone CLI launcher for the twin (micropython digital_twin/launch.py --wiring-plan PATH
   [options]), src/-free: it builds the buses of the device whose plan it is given and periodically reads each wired
   sensor, attempts one WLAN connect and feeds a WDT. --fault/--hang expose each chip fake's FaultInjector (owner,
-  2026-08-12: chosen over a probabilistic flaky mode)." (3 lines; tag form per AC_NOTES 6, A-C3 O-23); the argparse sentence moves to `parse_args()`'s comment:
-  "# Hand-rolled: micropython-lib's argparse supports only store/store_const
+  2026-08-12: chosen over a probabilistic flaky mode)." (3 lines; tag form per AC_NOTES 6, A-C3 O-23); the argparse
+  sentence moves to `parse_args()`'s comment: "# Hand-rolled: micropython-lib's argparse supports only store/store_const
   (python-stdlib/argparse/argparse.py:91-124)." Imports: `asyncio`, `errno`, `random`, `struct`, `sys`; `machine`,
   `network`, `from machine import I2C, SPI, WDT, Pin`; `from _bmp3xx_chip import _decode_calibration`; `from
   _twin_common import Injections, StatePaths, saturating_add`; the unwedge import goes. `_FAULT_DEVICE_OPS` → A.U25.37's
   table; new `_PERSISTENT_FAULT_OPS = {("isl29125", "int_stuck_high"), ("fram", "silent"), ("uart_link", "silent")}`
   (modes, not counted faults: `TIMES`/`MATCH` refused). `_HANG_DEVICE_OPS` → `sgp40`/`scd30` `writeto|readfrom_into`,
   `bmp3xx` `writeto|readfrom_mem|writeto_mem`, `isl29125` `writeto|readfrom_mem|writeto_mem`, `fram` `write|readinto`;
-  its comment keeps the wlan reason (≤ 3 lines). New `_driver_of(key) -> str | None`: the longest vocabulary driver
-  `d` with `key == d` or `key.startswith(d + "_")` (so `uart_link_init` → `uart_link`). `parse_fault_spec(spec) ->
+  its comment keeps the wlan reason (≤ 3 lines). New `_driver_of(key) -> str | None`: the longest vocabulary driver `d`
+  with `key == d` or `key.startswith(d + "_")` (so `uart_link_init` → `uart_link`). `parse_fault_spec(spec) ->
   "tuple[str, str, int, int | None]"`: `DEVICE:OP[:TIMES[:MATCH]]`; the device resolved by `_driver_of()` (error names
   the vocabulary); a persistent op refuses `TIMES`/`MATCH`; `MATCH` parsed with `int(x, 16)`; the `wlan` `:TIMES`
   refusal goes (`MATCH` refused for `wlan`); the literal `stack` in the `TIMES` place (`DEVICE:OP:stack`, A.U30.19)
-  queues one stack-exhaustion fault on a raisable op — returned as `times = 1` with the tuple's new fifth element
-  `kind: str` (`"oserror"` for every other spec, `"stack"` here); `MATCH` is refused with it, and so is `stack` for
-  `wlan` and the persistent ops. `parse_hang_spec()` resolves the device the same way. `_WDT_FEED_INTERVAL_S
-  = 1.0` tagged `# @tunable l2.twin_wdt_feed_interval_s = 1.0` (comment "# well under the 8000 ms WDT timeout");
-  `_SENSOR_POLL_INTERVAL_S = 2.0` tagged `l2.launch_sensor_poll_interval_s`, `_WIFI_POLL_INTERVAL_S = 0.1` tagged
+  queues one stack-exhaustion fault on a raisable op — returned as `times = 1` with the tuple's new fifth element `kind:
+  str` (`"oserror"` for every other spec, `"stack"` here); `MATCH` is refused with it, and so is `stack` for `wlan` and
+  the persistent ops. `parse_hang_spec()` resolves the device the same way. `_WDT_FEED_INTERVAL_S = 1.0` tagged `#
+  @tunable l2.twin_wdt_feed_interval_s = 1.0` (comment "# well under the 8000 ms WDT timeout"); `_SENSOR_POLL_INTERVAL_S
+  = 2.0` tagged `l2.launch_sensor_poll_interval_s`, `_WIFI_POLL_INTERVAL_S = 0.1` tagged
   `l2.launch_wifi_poll_interval_s` (A.U8.20's `l2.<name>` form; U8C rows). `_SSID`/`_PASSWORD` keep their values
-  (twin-only test doubles; the S105 reason line is A.U28.29's in `pyproject.toml`). `LaunchConfig(state:
-  StatePaths, injections: Injections, *, no_wdt_feed=False, duration=None, wiring_plan_path: str)` — `wiring_plan_path`
-  required keyword; `StatePaths(fram, scd30, mem_backup)` and `Injections(seed, faults, hangs, wifi_outcomes)` live in
+  (twin-only test doubles; the S105 reason line is A.U28.29's in `pyproject.toml`). `LaunchConfig(state: StatePaths,
+  injections: Injections, *, no_wdt_feed=False, duration=None, wiring_plan_path: str)` — `wiring_plan_path` required
+  keyword; `StatePaths(fram, scd30, mem_backup)` and `Injections(seed, faults, hangs, wifi_outcomes)` live in
   `_twin_common` (M.TWIN.001's module, shared with `RunConfig`). `parse_args(argv)`: `-h`/`--help` first → prints the
   usage block (synopsis, every flag with its default) and `sys.exit(0)`; flags `--wiring-plan` (required: a missing one
   raises `ValueError("--wiring-plan PATH is required")`), `--seed`, `--fram-state-path` (default
@@ -2049,13 +2050,14 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `tests/test_digital_twin_fram.py` does by constructing `FRAMChip(size, rdid_response)` directly"; the chunked-stream
   paragraph keeps its fact and drops "Found via … during baseline verification" (it states the rule: "streamed in
   512-byte chunks so no contiguous allocation of the whole image is needed (MicroPython's GC never relocates live
-  blocks)"). SCD30 `:332-338` → "Real SCD30 hardware keeps the measurement interval, ambient pressure, altitude, temperature
-  offset, ASC enable and the continuous-measurement status in NVM (Interface Description 1.4.1-1.4.8); the twin persists
-  those six on explicit flush. Whether the ambient-pressure value itself persists is an assumption (the datasheet names
-  only the status) — fidelity table, BACKLOG row."; `:348-352` per A.U25.32. New short paragraph "mem_backup: the runner
-  writes `digital_twin/mem_backup_state.json` only on a simulated reset and the next launch consumes and deletes it"
-  (the behaviour M.TWIN.032 writes; the text cites no change ID, A-C3 O-18). `:354-358` → "Only the last-wired SCD30 and FRAM instance persist — the fidelity table's Persistence row
-  states the limit and the change that lifts it."
+  blocks)"). SCD30 `:332-338` → "Real SCD30 hardware keeps the measurement interval, ambient pressure, altitude,
+  temperature offset, ASC enable and the continuous-measurement status in NVM (Interface Description 1.4.1-1.4.8); the
+  twin persists those six on explicit flush. Whether the ambient-pressure value itself persists is an assumption (the
+  datasheet names only the status) — fidelity table, BACKLOG row."; `:348-352` per A.U25.32. New short paragraph
+  "mem_backup: the runner writes `digital_twin/mem_backup_state.json` only on a simulated reset and the next launch
+  consumes and deletes it" (the behaviour M.TWIN.032 writes; the text cites no change ID, A-C3 O-18). `:354-358` → "Only
+  the last-wired SCD30 and FRAM instance persist — the fidelity table's Persistence row states the limit and the change
+  that lifts it."
 - **Resolved**: A.U15.08 says the five-settings text is "U25's with the fidelity row"; A.U25.12 makes it six — the U25
   text wins (later, and it names the measuring status). A.U0.59's tag on `:354` is void (M.TWIN.059 Resolved).
 - **Unit**: U25 (stage U0: A.U0.29/A.U0.31 tags; U4: A.U4.04's SCD30 sentence)
