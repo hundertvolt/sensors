@@ -81,7 +81,7 @@ section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 2
 .how strong { font-family: var(--font-display); font-weight: 500; font-size: var(--step-1); }
 
 /* Numbers */
-.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
 .num { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
 .num b { font-family: var(--font-display); font-size: var(--step-2); font-variant-numeric: tabular-nums; }
 .num small { color: var(--muted); font-size: var(--step--1); }
@@ -257,7 +257,9 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
     refs.forEach(function (r) {
       var li = el("li");
       var m = /^(audit\/[^\s:#]+\.(md|json)|[A-Za-z_./-]+\.(md|py|js|toml|sh|yml|html|css))/.exec(r);
+      var mc = /^M[._]([A-Z_]+?)(?:\.\d{3}|\s|$)/.exec(r);
       if (m) { li.appendChild(el("a", { href: REPO + m[1], target: "_blank", rel: "noopener", text: r })); }
+      else if (mc) { li.appendChild(el("a", { href: REPO + "audit/consolidation/M_" + mc[1] + ".md", target: "_blank", rel: "noopener", text: r })); }
       else li.textContent = r;
       ul.appendChild(li);
     });
@@ -409,9 +411,16 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
       var head = el("div", { cls: "group-head" }, [el("div", {}, [el("h3", { text: w.title + " (" + list.length + ")" }), el("p", { cls: "muted", text: w.text })])]);
       wrap.appendChild(head);
       var holder = el("div", { cls: w.key === "routine" ? "routine-list" : "items" });
-      list.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
       if (w.key === "routine") {
-        var all = el("button", { cls: "btn secondary", type: "button", text: "Mark all unanswered routine items fine" });
+        (DATA.topics || []).forEach(function (t) {
+          var sub = list.filter(function (d) { return d.topic === t.id; });
+          if (!sub.length) return;
+          holder.appendChild(el("h4", { cls: "eyebrow", text: t.title + " · " + sub.length }));
+          sub.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
+        });
+      } else list.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
+      if (w.key !== "significant") {
+        var all = el("button", { cls: "btn secondary", type: "button", text: "Mark all unanswered " + w.key + " items fine" });
         all.addEventListener("click", async function () {
           all.disabled = true;
           for (var i = 0; i < list.length; i++) {
@@ -422,7 +431,9 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
           all.disabled = false;
         });
         head.appendChild(all);
-        var det = el("details", {}, [el("summary", { cls: "expand-hint", text: "Show the routine items one by one" }), holder]);
+      }
+      if (w.key === "routine") {
+        var det = el("details", {}, [el("summary", { cls: "expand-hint", text: "Show the routine items, grouped by area" }), holder]);
         wrap.appendChild(det);
       } else wrap.appendChild(holder);
       groups.appendChild(wrap);

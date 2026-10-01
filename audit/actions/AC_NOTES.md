@@ -184,3 +184,4 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
     pointer sweep on their clusters, and A-C3 repeats it repo-wide with the Site trace.
 50. Owner, 2026-10-01 (OR135 → LEAD/R35): the owner reviews alone. The review package is self-contained and layered: an
     overview, then one plain-language section per topic, with decisions grouped and sorted by weight and details one link away.
+51. **Owner review package (OR135, LEAD/R35).** Built from `audit/review/topics.json` (12 areas, 91 highlights) and `decisions.json` (364 decisions: 15 significant, 53 moderate, 296 routine; 9 owner steps; 3 hardware sessions; 14 parked) by `audit/review/build_page.py`; published as a private page whose answers land in its own store (`answers/<decision id>`, `answers/go-ahead`; only the owner writes). The lead reads the store, records each answer as an OR row and folds requested changes into the M files before B0.
