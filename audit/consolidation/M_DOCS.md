@@ -975,7 +975,8 @@ place unchanged.
 - **From**: A.U36.547 (4); A.U36.008 (hardware levels, soak durations); A.U7.18 (runners run lower levels); A.U26.74
   (flags), A.U26.35/A.U27.19 (`--duration`, `-m` narrows); A.U36.024/A.U25.48 (`run_digital_twin_ci.sh <device>`); A.U7.26
   (standalone pytest needs the toolchain); A.U24.52 (live JS tier needs the toolchain); A.U24.65 (a PER_DEVICE file by
-  hand); A.U27.08 (test.sh builds the first derived device's site); M.HW_BENCH.089 (rollover test)
+  hand); A.U27.08 (test.sh builds the first derived device's site); M.HW_BENCH.089 (rollover test); M.SCR.074 (the
+  rollover runner; GAPS_G4 hand-off 1 (a), gap pass G1)
 - **Site**: `README.md:124-135`, `:376-412`, `:517-520`
 - **Change**: one block per level, each with one comment line: L0/L1 `scripts/test.sh` and `GC_THRESHOLD=32768
   scripts/test.sh` ("the suite passes at both GC stages; each builds what it lacks, the first derived device's website
@@ -985,15 +986,17 @@ place unchanged.
   (required)`; website `npm test` ("its live tier needs the toolchain built"); L3 `scripts/run_flash_hardware_suite.sh`,
   L4 `scripts/run_bench_hardware_suite.sh` ("each runs L0-L2 first"; a `-m` you pass narrows the selection;
   `--allow-flash-cycle`, `--allow-persistence-write` and the other `--allow-<marker>` gates as `tests_hardware/README.md`
-  lists them); the ~12.4-day rollover observation `uv run pytest tests_hardware/bench --allow-multi-day-rollover -k
-  test_ticks_ms_rollover_is_survived` (M.HW_BENCH.089's name); soak durations "`scripts/run_bench_soak_tests.sh --duration
+  lists them); the ~12.4-day rollover observation `scripts/run_bench_rollover_test.sh` ("~12.4 days, start it detached;
+  on top of a clean bench run" — M.SCR.074); soak durations "`scripts/run_bench_soak_tests.sh --duration
   short|mid|long` — liveness only, after a clean L4 run, never bundled into a runner"; manual mode
   `scripts/run_manual_hardware_tests.sh [--list|--only <name>]`; board-free `uv run pytest tests_hardware --collect-only`.
 - **Resolved**: A.U36.008's recipe-block wording and A.U36.547's "each once" placement combined: the commands live here,
-  the hardware section keeps its table and explanation (M.DOCS.057).
+  the hardware section keeps its table and explanation (M.DOCS.057). The rollover line was a bare `uv run pytest …
+  --allow-multi-day-rollover -k …`, which bypasses the run record, the verdict and the evidence archive; M.SCR.074 (AC_NOTES
+  45, agent decision AD-19) gives the marker its own runner, so the recipe names it (gap pass G1).
 - **Unit**: U36. Stages: U7 (`:376-392` runners' lower levels), U26 (flag names `:390-396`, U26.74's rename lands with its
-  users), U27 (`--duration`, `-m`), U36 (the block).
-- **Depends**: M.SCR (runner end states: `--skip-lower-levels`, `--duration`, `-m`), M.HW_BENCH.089, A.U25.48 (TWIN/SCR)
+  users), U27 (`--duration`, `-m`; the rollover runner line with M.SCR.074), U36 (the block).
+- **Depends**: M.SCR (runner end states: `--skip-lower-levels`, `--duration`, `-m`; M.SCR.074), M.HW_BENCH.089, A.U25.48 (TWIN/SCR)
 - **Blast carried by**: `tests_hardware/README.md` Running → M.HW_BENCH.126; `digital_twin/README.md:388-389` →
   A.U36.024 (TWIN); CLI blocks → M.DOCS.052
 - **Kind**: doc
@@ -1058,11 +1061,15 @@ place unchanged.
   32-bit range; the firmware's value is 32768), per M.SCR.035); its environment variables; one sentence for every tool:
   "A usage or setting error exits 2 before the tool touches anything (owner, 2026-10-01)." The `setup_toolchain.py`
   block lists each subcommand (`setup`, `test`, `env`, `board`) with its options as `--help` prints them (no
-  `--password`); `--clean` "wipes every build-artifact directory, every Unix-port build flavour included". The test
+  `--password`); `--clean` "wipes every build-artifact directory, every Unix-port build flavour included". The
+  `scripts/run_bench_rollover_test.sh` block (M.SCR.074) is its `--help` as written: synopsis
+  `scripts/run_bench_rollover_test.sh [pytest args]`, no option of its own ("other arguments go to pytest; a -m you pass
+  narrows the selection"), "the run takes ~12.4 days: start it detached (tests_hardware/README.md)". The test
   `tests_scripts/test_readme_reference.py` (A.U36.547 (7)) compares option and variable names with each tool's `--help`.
-- **Resolved**: the exit-2 sentence is firm (OR133, AC_NOTES 43; no "pending" marker).
+- **Resolved**: the exit-2 sentence is firm (OR133, AC_NOTES 43; no "pending" marker). The rollover runner joins the tool
+  set with M.SCR.074 (GAPS_G4 hand-off 1 (b), gap pass G1).
 - **Unit**: U36
-- **Depends**: M.SCR (every runner's usage), M.TOOL (`setup_toolchain.py` subcommands and options), M.TWIN
+- **Depends**: M.SCR (every runner's usage, M.SCR.074 included), M.TOOL (`setup_toolchain.py` subcommands and options), M.TWIN
   (`launch.py`), M.WEB (`package.json` scripts), A.U7.19 (TSC)
 - **Blast carried by**: `test_readme_reference.py` and `test_tool_help.py` → TSC
 - **Kind**: doc, test
@@ -1481,12 +1488,14 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   A.U27.08/.10/.33: `scripts/_require_venv.sh`, `scripts/_unix_port.sh`, `scripts/micropypath.toml`,
   `scripts/_port_lock.sh`, `scripts/_summary_block.sh`/`.py`, `scripts/_archive_evidence.py`,
   `scripts/_check_gc_collect_sites.py`, `scripts/build_device_websites.sh`, `scripts/_stage_website.py` — `test.sh` now
-  builds every device's site); U28 (A.U28.38's paragraph); U30 (A.U30.14, A.U30.16: `scripts/` checker changes); U34
+  builds every device's site; and "`scripts/run_bench_rollover_test.sh` (new hardware runner, shellcheck-linted, no
+  environment change)", M.SCR.074); U28 (A.U28.38's paragraph); U30 (A.U30.14, A.U30.16: `scripts/` checker changes); U34
   (A.U34.08's "`build_frozen_html.sh`: comment only; new L0 freezefs hash test — no leg affected"; A.U34.11); U35
   (A.U35.57's paragraph); U36 (A.U36.512, A.U36.544: comments only). "variant" in the Unix-port sense at `:528`, `:531`,
   `:604` → "build flavour" (A.U36.512). At U37 (A.U37.04 (3)) the history query of A.U33.04 (2) is re-run from `c82149f`
   and any file it lists that no paragraph names is added under its leg.
-- **Resolved**: A.U0.58 is not void: A.U5.17 keeps `:626-630` until the owner's run covers them, so the item survives
+- **Resolved**: M.SCR.074's new runner is a `scripts/` change the lint leg covers, so the U27 paragraph names it (GAPS_G4
+  hand-off 1 (c), gap pass G1). A.U0.58 is not void: A.U5.17 keeps `:626-630` until the owner's run covers them, so the item survives
   and is relabelled (U36). A.U24.48's own line no longer names the eslint-comments plugin (moved into the U0 refresh,
   M.WEB.071, M_WEB gap 8). M_TOOL gap 7's per-unit list and M_SCR gap 6's helper list are carried as written.
 - **Unit**: U37 (close check). Stages: each listed unit appends its own paragraph at its landing commit; U33 (A.U33.04

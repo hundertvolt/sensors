@@ -1017,24 +1017,23 @@ record). Wear spends only what the round's plan names, behind its marker.
 - **Kind**: hardware
 
 ### M.PROC.041 R6: the 12.4-day rollover run, the board touched by nothing else
-- **From**: A.C.08.
-- **Site**: `tests_hardware/bench/test_ticks_ms_rollover.py` (M.HW_BENCH.089) with `--allow-multi-day-rollover`;
-  `audit/c/R6.md`.
+- **From**: A.C.08; M.SCR.074 (the rollover runner; GAPS_G4 hand-off 2, gap pass G1).
+- **Site**: `scripts/run_bench_rollover_test.sh` (M.SCR.074) running `tests_hardware/bench/test_ticks_ms_rollover.py`
+  (M.HW_BENCH.089); `audit/c/R6.md`.
 - **Change**: on the release-candidate image, after R5, with no other round running on the board for the window: started
-  through the clean-run wrapper with the rollover floor — `scripts/_require_clean_hardware_run.sh --runner rollover
-  --levels "rollover (not a level)" --marker-floor "multi_day_rollover" tests_hardware/bench/test_ticks_ms_rollover.py
-  --allow-multi-day-rollover` (no runner selects the marker: the flash and bench floors exclude it, the soak floor is
-  `soak_duration`) — detached on the bench Pi under `timeout` of the window plus margin; the network switch armed across
+  with the rollover runner `scripts/run_bench_rollover_test.sh` (M.SCR.074: the clean-run wrapper with the
+  `multi_day_rollover` floor and `--allow-multi-day-rollover`, no lower levels, run record and verdict) — detached on the bench Pi under `timeout` of the window plus margin; the network switch armed across
   the session-start fixtures (the stale-credential scan may take the AP slave down) and disarmed once the hourly REST
   polls begin (they change no network state); runs until `SysUptime` passes `2**30 / 1000 + 3600` s. If the conversation
   that started it ends, nothing further is sent to the board or the bench network until a new conversation's go-ahead
   names R6, which then reads the runner's log and verdict. If a later delta changes tick-handling code (grep `ticks_` in
   the delta), the owner decides whether R6 repeats; the record names the image it proved. Wear: none.
-- **Resolved**: no runner selects `multi_day_rollover` (M.SCR.030/.031 floors exclude it, M.SCR.032's floor is
-  `soak_duration`); R6 calls the clean-run wrapper directly, as the soak runner does, so the verdict is a recorded clean
-  run — agent decision D8; SCR is asked to name the path in a runner or the README recipe (Gaps).
+- **Resolved**: the flash, bench and soak runners never select `multi_day_rollover` (M.SCR.030/.031 floors exclude it,
+  M.SCR.032's floor is `soak_duration`); R6 starts through the rollover runner, so the verdict is a recorded clean run —
+  agent decision D8, through the rollover runner. The hand-written wrapper call it used before is replaced by M.SCR.074
+  (AC_NOTES 45 settled by GAPS_G4's AD-19; gap pass G1).
 - **Unit**: phase C, R6.
-- **Depends**: M.PROC.040; A.U26.29, A.U26.36, A.U26.74.
+- **Depends**: M.PROC.040; M.SCR.074; A.U26.29, A.U26.36, A.U26.74.
 - **Blast carried by**: the driven-time proofs are L1/L2 (LEAD/R04); BACKLOG's G6 row removed → A.C.10 (DOCS).
 - **Kind**: hardware
 
