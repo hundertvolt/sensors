@@ -17,7 +17,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (A.U2.04). New shared warning numbers settled here (Resolved in M.SRC_SENS.043): W11 `DERIVED_DOMAIN` (A.U15.24),
   W14 `DEVICE_RECOVERY`, W15 `BUS_RECOVERY` (A.U10.R01); A.U18.15's `SOCKET_TEARDOWN` takes W12.
 - Broad handlers: every `except Exception`/`except BaseException` without a closing bare `raise` in these files gains
-  `report_if_fatal(e)` as its first statement in U30 (A.U30.19), after every other unit's edit of the same handler —
+  `report_if_fatal(e)` (imported from `asy_print_log`, M.SRC_CORE.034; M_SRC_CORE GAP-G8) as its first statement in U30
+  (A.U30.19), after every other unit's edit of the same handler —
   one merged change per file, listed last in the file's section.
 - Comment cap: every comment block a merged change writes is ≤ 3 prose lines (CLAUDE.md); where constituents' texts
   would exceed it together, the merged text below is the capped one.
@@ -387,7 +388,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   line "# Restored values must be int32 like the C state; uptimes above the small-int limit (an older build's backup)
   are clamped."
 - **Resolved**: A.U30.19 requires `report_if_fatal(e)` as the first statement of every broad handler, which would make
-  this pure algorithm module import `asy_base_classes` — no other ALGO module does (`math_helpers.py`, `crc_checks.py`
+  this pure algorithm module import `asy_print_log` (the function's home, M.SRC_CORE.034) — no other ALGO module does (`math_helpers.py`, `crc_checks.py`
   catch named exception tuples only, D.10 one material). The two handlers are narrowed to the exceptions `struct`
   raises for these calls (a wrong or short buffer; `MemoryError` for the unpack's result tuple, which has a real
   alternative flow — a failed restore starts fresh, SPEC I.4(a) criterion as A.U30.01 states it); a stack-exhaustion
@@ -639,8 +640,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   A.U22.04 (`Coroutine`/`Any` out, `Awaitable` in, `TaskStarter`), A.U27.03 + A.SDEP.15 (`_TicksMs` comment trigger)
 - **Site**: `src/asy_notification_service.py:7-46`
 - **Change**: runtime imports: `asyncio`, `time`, `namedtuple`, `const`, `from asy_base_classes import
-  SensorReaderConfig, TickSeconds, report_if_fatal, utc_now` (`report_if_fatal` joins in U30), `from asy_config_manager import make_dict, name_cfg, schema_names`,
-  `from asy_print_log import DEFAULT_LOG, LogConfig`. `TYPE_CHECKING` block: `from collections.abc import Awaitable,
+  SensorReaderConfig, TickSeconds, utc_now`, `from asy_config_manager import make_dict, name_cfg, schema_names`,
+  `from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal` (`report_if_fatal` joins in U30) (`report_if_fatal` from its home `asy_print_log`, M.SRC_CORE.034 — M_SRC_CORE GAP-G8, gap pass G2). `TYPE_CHECKING` block: `from collections.abc import Awaitable,
   Callable`; `from typing import Protocol`; the `_TicksMs` import with its comment → "# The stubs' only name for a
   ticks_ms() value is private (_mpy_shed); _next_sleep_ms()'s t0 is one. Removal trigger: SPECIFICATION.md B.15.";
   `from asy_base_classes import TaskStarter, TimerStarter, ValueRef`; `from asy_config_manager import ConfigSchema`;
@@ -858,8 +859,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Site**: `src/asy_bmp3xx_driver.py:10-33`
 - **Change**: runtime: `asyncio`, `time`, `namedtuple`, `from struct import unpack`, `from machine import Timer`,
   `const`, `import math_helpers`, `from asy_i2c_driver import I2C, I2CDevice`, `from asy_base_classes import
-  DeviceSession, LockedValue, SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import make_dict,
-  name_cfg, type_or_range_error`, `from asy_print_log import DEFAULT_LOG, LogConfig`. `TYPE_CHECKING`: `from
+  DeviceSession, LockedValue, SensorReaderConfig, utc_now`, `from asy_config_manager import checked_int, make_dict,
+  name_cfg`, `from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal` (`report_if_fatal` from its home `asy_print_log`, M.SRC_CORE.034 — M_SRC_CORE GAP-G8, gap pass G2); `checked_int` replaces
+  `type_or_range_error` (M.SRC_SENS.045, M_SRC_CORE GAP-G13). `TYPE_CHECKING`: `from
   asy_base_classes import TaskStarter, TimerStarter`; `from asy_print_log import ErrorLog`.
 - **Resolved**: —
 - **Unit**: U15 (stages U5 `LogConfig`, U10 module names/`utc_now`, U30 `report_if_fatal`)
@@ -1005,15 +1007,17 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_trigger_loop`), A.U2.10 (21 → `_ERR_BAD_ARG`)
 - **Site**: `src/asy_bmp3xx_driver.py:251-278, 347-359`
 - **Change**: `_push_trigger_s()` (body as HEAD, calls `set_trigger_s`); the three other push callbacks unchanged.
-  `_base_trigger()` goes. `async def set_trigger_s(self, value: float) -> bool:` `is_error, secs =
-  type_or_range_error(value, _VAL_SAMPLE_INTERVAL[0])`; on `is_error`: `await self.pr.err_s("Error setting trigger
-  interval:", value, errno=_ERR_BAD_ARG)`, `return False`; `await self._trigger_period.set_value(secs)`; `return True`.
+  `_base_trigger()` goes. `async def set_trigger_s(self, value: float) -> bool:` `secs =
+  checked_int(value, _VAL_SAMPLE_INTERVAL[0])`; on `secs is None`: `await self.pr.err_s("Error setting trigger
+  interval:", value, errno=_ERR_BAD_ARG)`, `return False`; `await self._trigger_period.set_value(secs)`; `return True`
+  (gap pass G2: the per-kind validator returns the `int` the period holds — M_SRC_CORE GAP-G13 and the lead's L1/GAP-14
+  ruling applied to this typed consumer, M.SRC_CORE.047).
 - **Resolved**: A.U15.40 names the shared coroutine `_divide_trigger()`; A.U10.44 (U10, earlier) names every task
   coroutine `_<what>_loop` and maps `_base_trigger` → `_trigger_loop` — the shared primitive takes A.U10.44's name
   (`SensorReader._trigger_loop()`), and `start_asy_trigger()` creates it (agent, 2026-10-01; routed to SRC_CORE as
   GAP-8).
 - **Unit**: U15 (stage U10: `_base_trigger` → `_trigger_loop` rename in place, removed in U15)
-- **Depends**: M.SRC_SENS.041, M.SRC_SENS.042
+- **Depends**: M.SRC_SENS.041, M.SRC_SENS.042, M.SRC_CORE.047 (`checked_int()`)
 - **Blast carried by**: `tests/test_asy_bmp3xx_driver.py:868-930` (`45.7` → `False`, NaN/inf, `True`) → A.U15.26
   (TEST_UNIT); `_base_trigger` test callers → A.U15.40; SPEC M.4 sentence → A.U15.26 (SPEC)
 - **Kind**: code
@@ -1134,10 +1138,12 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   the readings with wet bulb, dew point and the forced-recalibration readiness code (see SPECIFICATION.md Part C)." Imports:
   `asyncio`, `math`, `namedtuple`, `from struct import unpack_from`, `from machine import Pin, Timer`, `const`,
   `math_helpers`, `from asy_i2c_driver import I2C, I2CDevice`, `from asy_base_classes import DeviceSession,
-  SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import compare_before_write, make_dict,
-  name_cfg, type_or_range_error`, `from asy_crc_checks import CRC8`, `from asy_print_log import DEFAULT_LOG, LogConfig`
+  SensorReaderConfig, utc_now`, `from asy_config_manager import compare_before_write, make_dict,
+  name_cfg, type_or_range_error`, `from asy_crc_checks import CRC8`, `from asy_print_log import DEFAULT_LOG, LogConfig,
+  report_if_fatal` (`report_if_fatal` from its home `asy_print_log`, M.SRC_CORE.034 — M_SRC_CORE GAP-G8, gap pass G2)
   (plus the result-word constants of A.U19.16). Guard: `try: from typing import TYPE_CHECKING` / `except ImportError:
-  TYPE_CHECKING = False`. `TYPE_CHECKING` block: `from asy_base_classes import TaskStarter, TimerStarter`; `from
+  TYPE_CHECKING = False`. `TYPE_CHECKING` block: `from asy_base_classes import JsonMapping, TaskStarter, TimerStarter`
+  (`JsonMapping`: gap pass G2, M.SRC_SENS.053); `from
   asy_config_manager import CfgValue, ConfigSchema, FieldSchema`; `from asy_print_log import ErrorLog`.
 - **Resolved**: A.U15.02 co-lands with A.U15.43 (`:26-41`), A.U15.01 and A.U13.09 — one import block.
 - **Unit**: U15 (stages U10 module names, U19 result words, U30 `report_if_fatal`)
@@ -1211,25 +1217,27 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 ### M.SRC_SENS.052 `SCD30_Reader`: a config reader with a RAM-only config log
 - **From**: A.U15.12 (1), (3), (6) (`SensorReaderConfig`, `cfg_path`, FRC state), AC_NOTES 13 + the U15 lead note
   (`CFGMGR_SCD30` RAM-only), A.U4.03 (its "SCD30 cannot become a `SensorReaderConfig`" note: superseded for the three FRC
-  keys, U15 register fix 13), A.U5.02 (constructor tail), A.U10.43 (`trigger_s`, `trigger_half_ticks`), A.U10.35 (private
+  keys, U15 register fix 13), A.U5.02 (constructor tail), M_SRC_CORE GAP-G7 (`_CFG_LOG_FRAM = False`; gap pass G2), A.U10.43 (`trigger_s`, `trigger_half_ticks`), A.U10.35 (private
   attributes), A.U15.R01 (1) (`_recovery_bus`), A.U10.38 (class name kept)
 - **Site**: `src/asy_scd30_driver.py:118-145`
 - **Change**: `class SCD30_Reader(SensorReaderConfig)`; `__init__(self, i2c: I2C, irq_pin: int, trigger_s: int = 3,
   max_module_error: int = 5, name_ext: str = "", cfg_path: str = "", log: LogConfig = DEFAULT_LOG)`;
-  `super().__init__(SCD30(None, None, None, None, None, None, None, None), _NAME, _VAL_FRC_NOISE + _VAL_FRC_RATE +
-  _VAL_FRC_WINDOW, max_module_error=max_module_error, name_ext=name_ext, cfg_path=cfg_path, log=log,
-  cfg_log=LogConfig(None, log.history_length, log.debug))` with the comment "# CFGMGR_SCD30 stays RAM-only: no extra FRAM
-  chunk for the FRC settings (owner, 2026-09-29)."; `self._scd = SCD30_I2C(i2c)`; `self._recovery_bus = i2c`;
+  class attribute `_CFG_LOG_FRAM = False` with the comment "# CFGMGR_SCD30 stays RAM-only: no extra FRAM chunk for the
+  FRC settings (owner, 2026-09-29)." (M.SRC_CORE.040's mechanism); `super().__init__(SCD30(None, None, None, None, None,
+  None, None, None), _NAME, _VAL_FRC_NOISE + _VAL_FRC_RATE + _VAL_FRC_WINDOW, max_module_error=max_module_error,
+  name_ext=name_ext, cfg_path=cfg_path, log=log)`; `self._scd = SCD30_I2C(i2c)`; `self._recovery_bus = i2c`;
   `self._irq_pin = Pin(irq_pin, mode=Pin.IN)`; `self._base_trigger_event`, `self._read_event`; `self._start_trigger_timer
   = Timer()` under the bare-Timer comment of M.SRC_SENS.042; `self._trigger_half_ticks = 2 * int(trigger_s)`;
   `self._scd_timer_triggers = 0`; the FRC state of A.U15.12 (3) (`_frc_interval_s`, `_frc_count`, `_frc_idle_ticks`,
   `_frc_measuring`, the window sums as floats, `_frc_verdict`), all RAM-only.
 - **Resolved**: The lead note (AC_NOTES 13): the three settings are file-stored config, their logger RAM-only; A.U15.12's
   "brings its own `CFGMGR_SCD30` FRAM chunk" is superseded. `SensorReaderConfig` has no way today to give its
-  `ConfigManager` a different logging config than the module's own: the `cfg_log` parameter is new — routed to SRC_CORE
-  (GAP-9, A.U5.02's `SensorReaderConfig` signature).
+  `ConfigManager` a different logging config than the module's own. Gap pass G2: GAP-9's `cfg_log` parameter is
+  disposed — M.SRC_CORE.040 settles the mechanism as the class attribute `_CFG_LOG_FRAM` (G10/R15's `…, cfg_path, log`
+  tail admits no further parameter, OR46.b; M_SRC_CORE GAP-G7 asks this class to set it False), and M.TEST_HELP.036 and
+  M.DOCS read that attribute.
 - **Unit**: U15 (stages U5 tail, U10 names)
-- **Depends**: M.SRC_SENS.049-051; A.U5.02, GAP-9
+- **Depends**: M.SRC_SENS.049-051; A.U5.02, M.SRC_CORE.040 (`_CFG_LOG_FRAM`)
 - **Blast carried by**: generated construction (`cfg_path=`), `buildgen/definitions.py:97` → `True` with the RAM-only
   companion, setup batch → A.U15.12 (6) (GEN); SPEC A.7 chunk order: no `CFGMGR_SCD30` chunk (wozi's count unchanged),
   CLAUDE.md FRAM list's named exception → GAP-10 (SPEC, DOCS: A.U15.12's blast still says "wozi 17 chunks");
@@ -1247,7 +1255,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Change**: module function `_snapshot_dict(snap: tuple[float, int, int, int, int, bool]) -> dict[str, CfgValue]` (the
   six chip keys). `_get_mgr_cfg(self, cfg)`: chip keys from one `get_config_snapshot()` (a failure logs
   `_ERR_CHIP_GET` and yields `None` for them), FRC keys from `await super()._get_mgr_cfg(<FRC part>)`. `_set_mgr_cfg(self,
-  data, cfg_vals)`: exactly A.U4.04 (1)-(6) for the chip keys (snapshot first; failure → `(False, {})`, nothing written,
+  data: "JsonMapping", cfg_vals: "ConfigSchema")` (the base's raw-body parameter, M.SRC_CORE.038; gap pass G2, U19 A-C
+  note 2): exactly A.U4.04 (1)-(6) for the chip keys (snapshot first; failure → `(False, {})`, nothing written,
   one `_ERR_CHIP_GET`; `ContMeas` out of `data`; `compare_before_write(rest, cfg_vals, current, always=("AmbPres",
   "ForceCalRef"), resolution={"TempOffset": _temp_offset_ticks})`, each Invalid key logged `_ERR_BAD_ARG`; writes in
   `_APPLY_ORDER` through the `set_*` forwarders, a failed one → `FAILED`; `ContMeas` last: `is_error, flag =
@@ -1400,8 +1409,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Site**: `src/asy_sgp40_driver.py:10-42`
 - **Change**: runtime imports `asyncio`, `math`, `namedtuple`, `from struct import unpack_from`, `from machine import
   Timer`, `const`, `from asy_i2c_driver import I2CDevice`, `from asy_base_classes import DeviceSession,
-  SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import make_dict, name_cfg,
-  type_or_range_error`, `from asy_crc_checks import CRC8, CRC32`, `from asy_print_log import DEFAULT_LOG, LogConfig`,
+  SensorReaderConfig, utc_now`, `from asy_config_manager import checked_float, make_dict, name_cfg`, `from asy_crc_checks
+  import CRC8, CRC32`, `from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal` (`report_if_fatal` from its home `asy_print_log`, M.SRC_CORE.034 — M_SRC_CORE GAP-G8, gap pass G2); `checked_float`
+  replaces `type_or_range_error` (M.SRC_SENS.064, M_SRC_CORE GAP-G13),
   `from voc_algorithm import VOCAlgorithm`. Module-level `SgpBackup = namedtuple("SgpBackup", ("store", "ntp_synced"))`
   (the generated `build_system()` imports it from this module; `ValueRef` is `asy_base_classes`'s). `TYPE_CHECKING`:
   `from typing import Protocol`; `from asy_base_classes import TaskStarter, TimerStarter, ValueRef`; `from
@@ -1544,14 +1554,16 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   self._ts_storage.read_into(buf)`; no backup → `self.pr.wrn("No backup found!")` (console), `self._voc_init = 0`, return
   `False`; `ts is None` → `wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)`, `ts =
   _NO_TIMESTAMP`; `age is None` with `_voc_init > 0` → `self._restore_waiting = True`, the NTP-wait event, return
-  `False`; otherwise `self._voc_init = 0`, `self._restore_waiting = False`, and `if age < 0 or (cfg_values[1] > 0 and age >
+  `False`; otherwise `self._voc_init = 0`, `self._restore_waiting = False`, and `if cfg_values[1] > 0 and (age < 0 or age >
   60 * cfg_values[1]): await self.pr.wrn_s("Backup age out of range (too old, or dated in the future)",
   wrnno=_WRN_SGP_BACKUP_AGE); return False`; `self._restored_from = ts`; `return True`. `_run_backup()`: verify period
   through `_verify_every()`; `res, ntp_synced, ts = await self._ts_storage.write_into(buf, require_ntp=require_ntp)`; a
   failed write → `self.pr.err("Write error during backup!")` (console; the FRAM layer persisted the cause); the two
   `_no_ts_episode` lines go; the untimestamped branch `await self.pr.wrn_s("Backup written without timestamp.",
   wrnno=_WRN_SGP_WRITTEN_NO_TS)` every time.
-- **Resolved**: A.U15.17 (3) and A.U16.18 write the same negative-age condition at `:390` — one `if`. A.U3.09 and
+- **Resolved**: A.U15.17 (3) and A.U16.18 write the same negative-age condition at `:390` — one `if`, in A.U16.18's
+  form (gap pass G2, M_TEST_UNIT GAP-U1): G5/R31 "a staleness limit of 0 accepts any age; a negative age … counts as
+  expired under a nonzero limit", so a negative age expires only when `BackupMaxAge` > 0 (M.TEST_UNIT.138 pins it). A.U3.09 and
   A.U2.13 agree: w10/e14/e15 print, the FRAM manager persists.
 - **Unit**: U16 (latest: A.U16.18's unpack order co-lands with the FRAM manager's return-shape change; stages U2, U3,
   U15)
@@ -1572,8 +1584,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   e: report_if_fatal(e); await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE); temp_val, hum_val =
   None, None` `else:` the two `getattr(…, <ref>.field, None)` reads (`temp_val: object`, `hum_val: object`). The `None`
   branch as today, returning `SGP40(None, None, None, None), False, False`. `timestamp = utc_now()` (before the `try`);
-  `try:` first `is_error_t, t = type_or_range_error(temp_val, _COMP_T_FIELD)`, `is_error_h, h = type_or_range_error(hum_val,
-  _COMP_RH_FIELD)`, either → `raise ValueError(f"compensation value not a finite number (t={temp_val!r},
+  `try:` first `t = checked_float(temp_val, _COMP_T_FIELD)`, `h = checked_float(hum_val, _COMP_RH_FIELD)`, either `None` →
+  `raise ValueError(f"compensation value not a finite number (t={temp_val!r},
   rh={hum_val!r})")`; then the reset bookkeeping, `measure_index_and_raw(temperature=t, relative_humidity=h, …)` (the
   `float()` comment goes, its reason is the check above), the VOC-state step of A.U15.19 (resets at
   `reset_for_measure` → 0/False and `deserialized` → 0/True, then `if self._voc_samples < _VOC_SETTLED_SAMPLES:
@@ -1583,9 +1595,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   ("Temp", "float", None, -1.0e30, 1.0e30, None)` and `_COMP_RH_FIELD` (A.U15.14) sit in the constants block.
 - **Resolved**: A.U15.14 puts the finite check "as the first statement inside the existing `try` (before the reset
   bookkeeping)"; A.U10.06 moves the timestamp before the `try` — both hold. OR109.a (1): the per-sample floats and
-  tuples here are temporaries (accepted).
+  tuples here are temporaries (accepted). Gap pass G2: `measure_index_and_raw()` takes `float`s, so the values come from
+  `checked_float()` (`object` in, `float | None` out), never from a narrowing test — M_SRC_CORE GAP-G13 and the lead's
+  L1/GAP-14 ruling applied to this typed consumer (M.SRC_CORE.047).
 - **Unit**: U15 (stages U2, U3, U5, U10, U30)
-- **Depends**: M.SRC_SENS.062, M.SRC_SENS.068
+- **Depends**: M.SRC_SENS.062, M.SRC_SENS.068, M.SRC_CORE.047 (`checked_float()`)
 - **Blast carried by**: L1 NaN/inf/`True` and lost-reset regression, VOCState cases → A.U15.14/A.U15.19 (TEST_UNIT); L2
   `tests/test_digital_twin_sgp40.py` → A.U15.19 (TWIN); every `SGP40(` tuple in tests gains the field → A.U15.19
 - **Kind**: code
@@ -1741,8 +1755,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   / "# From MicroPython_ISL29125, rewritten for asyncio + this driver shape - see THIRD_PARTY_LICENSES.md." (A.U34.07).
   Docstring unchanged. Runtime imports: `asyncio`, `struct`, `time`, `namedtuple`, `from machine import Pin, Timer`,
   `const`, `import math_helpers`, `from asy_i2c_driver import I2CDevice`, `from asy_base_classes import COUNTER_CAP,
-  DeviceSession, LockedValue, SensorReaderConfig, report_if_fatal, utc_now`, `from asy_config_manager import name_cfg,
-  type_or_range_error`, `from asy_print_log import DEFAULT_LOG, LogConfig`. The `TYPE_CHECKING` shim stays;
+  DeviceSession, LockedValue, SensorReaderConfig, utc_now`, `from asy_config_manager import checked_numeric, name_cfg`,
+  `from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal` (`report_if_fatal` from its home `asy_print_log`, M.SRC_CORE.034 — M_SRC_CORE GAP-G8, gap pass G2); `checked_numeric` replaces
+  `type_or_range_error` (M.SRC_SENS.082, M_SRC_CORE GAP-G13). The `TYPE_CHECKING` shim stays;
   under it: `from asy_base_classes import JsonDict, TaskStarter, TimerStarter`; `from asy_i2c_driver import I2C`; `from
   asy_config_manager import ConfigSchema`; `from asy_print_log import ErrorLog`. A.U10.31: every quoted annotation that
   names no `TYPE_CHECKING` symbol is unquoted (`"tuple[bool, bool]"`, `"list[float]"`, `"tuple[int, int, int]"`,
@@ -2091,18 +2106,20 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   str | bool | None]` unquoted. `_check_divergence()`: `wrnno=_WRN_ISL_DIVERGED`; `except Exception as e:
   report_if_fatal(e); … errno=_ERR_CHIP_SET`. `async def _snapshot_field(self, index: int, what: str) -> int | None:`
   logs `errno=_ERR_CHIP_GET` after `report_if_fatal(e)`. `async def _checked_cfg(self, value: int | float, schema:
-  "ConfigSchema") -> int | float | None:` comment `:768-770` kept; `is_error, coerced = type_or_range_error(value,
-  schema[0])`; `if is_error: await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value,
-  errno=_ERR_BAD_ARG); return None`; `checked: int | float = coerced`; `return checked` (`:772-774` go).
+  "ConfigSchema") -> int | float | None:` comment `:768-770` kept; `checked = checked_numeric(value, schema[0])`; `if
+  checked is None: await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value, errno=_ERR_BAD_ARG);
+  return None`; `return checked` (`:772-774` go; no annotated local).
   `_reapply_persist(self, trigger_s: int)`: `except Exception as e: report_if_fatal(e); … errno=_ERR_CHIP_SET`.
 - **Resolved**: A.U15.38 (1) removes the arm as unreachable; A.U11.S01 keeps it as narrowing (SUPP_coverage A-C note
   1) — settled by the lead's L1 answer "no" (2026-09-30, SUPP_coverage open points): "A.U15.38 (1) stands"; a
   never-firing check is dead code, narrowing belongs at the type level. The annotated local narrows while the
   validator's slot is `Any`; if A.U11.S01 types it `CfgValue`, the type-level fix is the validator's to provide (an
   honest per-kind return), never an `isinstance()` here — routed with the finding that M.SRC_CORE.047 still writes
-  A.U11.S01's never-true `type()` checks into `type_or_range_error()` against the same ruling (GAP-14).
+  A.U11.S01's never-true `type()` checks into `type_or_range_error()` against the same ruling (GAP-14). Gap pass G2: the
+  lead's ruling (AC_NOTES 38) gave that type-level form — `checked_numeric()` returns `int | float | None`
+  (M.SRC_CORE.047, M_SRC_CORE GAP-G13), which `_checked_cfg()` returns as is.
 - **Unit**: U15 (stages U2, U10; U30 handlers)
-- **Depends**: A.U11.S01 (slot type, SRC_CORE)
+- **Depends**: A.U11.S01 (slot type, SRC_CORE), M.SRC_CORE.047 (`checked_numeric()`)
 - **Blast carried by**: `tests/test_asy_isl29125_driver.py:2878-2890` goes → A.U15.38 (TEST_UNIT); E.5.1 rows → A.U35.41
   (SPEC); SPEC M.1.4 settle bullet → A.U15.30 (SPEC); number asserts → A.U2.12
 - **Kind**: code
@@ -2245,7 +2262,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   handler ends in a bare `raise` and is left as is; `_decode_rgb_burst()`'s `(TypeError, ValueError)` is not broad.
 - **Resolved**: the per-entry texts above already show the call; this entry is the U30 landing list.
 - **Unit**: U30
-- **Depends**: A.U30.19 (`report_if_fatal()` in `asy_base_classes`)
+- **Depends**: A.U30.19 (`report_if_fatal()` in `asy_print_log`, M.SRC_CORE.034; GAP-G8)
 - **Blast carried by**: the L0 handler scan and C-stack L1 → A.U30.19 (TSC, TEST_UNIT)
 - **Kind**: code
 
@@ -2406,6 +2423,13 @@ verifier item (cited in each Resolved); the remaining choices are agent-rank and
 19. M.SRC_SENS.086 — the `counts is None` Optional re-check stays under A.U35.41's convention.
 20. M.SRC_SENS.089-091 — a pre-sync `TS` of `None` is not a failed read, through each reader's `condition` (GAP-15).
 21. M.SRC_SENS.092 — four ISL29125 comments restated in present tense.
+
+Added by gap pass G2 (2026-10-01):
+
+22. M_TEST_UNIT GAP-U4 disposed: `_apply_stored_config()`'s code 2 cannot come from a stale stored value, which
+    `ConfigManager.setup()` already holds to the chip's domain (M.SRC_SENS.044 unchanged).
+23. M.SRC_SENS.045/.064 — BMP3XX `set_trigger_s()` and SGP40's compensation read take `checked_int()`/`checked_float()`
+    (the lead's L1/GAP-14 ruling applied beyond the three consumers GAP-G13 named).
 
 ## Ledger
 
@@ -2592,3 +2616,18 @@ Actions outside `site_index.json` whose text edits a site here (found by the ide
 | A.U6.17 | M.SRC_SENS.051 |
 
 The other 143 grep hits name these files only in Why/Blast text or as an unchanged caller and edit no site here (read, no row needed beyond this list): A.C.15, A.S0930.13, A.S0930.17, A.S0930.32, A.SDEP.10, A.SDEP.16, A.U0.07, A.U1.03, A.U1.20, A.U1.25, A.U10.01, A.U10.05, A.U10.16, A.U10.22, A.U10.27, A.U10.28, A.U10.30, A.U11.14, A.U11.24, A.U11.34, A.U11.S03, A.U12.01, A.U12.04, A.U12.06, A.U12.07, A.U12.12, A.U13.01, A.U13.11, A.U14.06, A.U14.10, A.U14.14, A.U14.28, A.U14.34, A.U14.35, A.U15.05, A.U15.07, A.U15.20, A.U16.02, A.U16.05, A.U16.06, A.U16.17, A.U16.19, A.U16.20, A.U16.22, A.U16.S01, A.U19.12, A.U2.06, A.U2.07, A.U2.09, A.U20.06, A.U20.08, A.U20.12, A.U20.20, A.U20.21, A.U20.26, A.U20.28, A.U24.02, A.U24.07, A.U24.08, A.U24.16, A.U24.20, A.U24.21, A.U24.25, A.U24.29, A.U24.32, A.U24.37, A.U24.38, A.U24.39, A.U24.42, A.U24.49, A.U24.59, A.U24.61, A.U24.67, A.U24.73, A.U24.76, A.U24.78, A.U25.05, A.U25.07, A.U25.10, A.U25.12, A.U25.13, A.U25.16, A.U25.17, A.U25.21, A.U25.36, A.U25.45, A.U25.49, A.U26.06, A.U26.07, A.U26.32, A.U26.41, A.U26.44, A.U27.30, A.U28.27, A.U28.28, A.U28.30, A.U3.01, A.U3.04, A.U3.12, A.U31.01, A.U31.05, A.U32.01, A.U32.04, A.U32.05, A.U34.03, A.U34.10, A.U35.12, A.U35.13, A.U35.16, A.U35.17, A.U35.18, A.U35.20, A.U35.41, A.U35.44, A.U35.55, A.U36.022, A.U36.506, A.U36.520, A.U36.537, A.U36.546, A.U4.02, A.U4.06, A.U4.07, A.U5.17, A.U5.18, A.U7.25, A.U8C.05, A.U8C.09, A.U8C.10, A.U8C.11, A.U8C.12, A.U8C.120, A.U8C.14, A.U8C.15, A.U8C.16, A.U8C.18, A.U8C.35, A.U8C.36, A.U8C.37, A.U8C.38, A.U8C.39, A.U8C2.02, A.U9.10.
+
+
+Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
+
+| action ID / gap item | merged into M-ID / dropped (reason) |
+|---|---|
+| M_SRC_CORE GAP-G7 (`_CFG_LOG_FRAM = False`) | M.SRC_SENS.052 (amended; GAP-9's `cfg_log` dropped) |
+| M_SRC_CORE GAP-G8 (`report_if_fatal` from `asy_print_log`) | conventions bullet, M.SRC_SENS.017 (VOC reason), .030, .039, .049, .058, .070, .087 (amended) |
+| M_SRC_CORE GAP-G13 (ISL29125 `_checked_cfg()` → `checked_numeric()`) | M.SRC_SENS.070, .082 (amended) |
+| M_SRC_CORE GAP-G13 applied to the other typed consumers (lead L1/GAP-14 ruling) | M.SRC_SENS.039, .045 (BMP3XX `checked_int()`), .058, .064 (SGP40 `checked_float()`) (amended) |
+| M_TEST_UNIT GAP-U1 (backup-age condition, G5/R31) | M.SRC_SENS.063 (amended) |
+| M_TEST_UNIT GAP-U3 / M_TSC gap 1 / AC_NOTES 44, 45 (`NeopixelDriver.initialized`) | carried as found: M.SRC_SENS.023, .024 |
+| AC_NOTES 42 (`NotificationService.initialized`) | carried as found: M.SRC_SENS.033 |
+| M_TEST_UNIT GAP-U4 (`_apply_stored_config()` code 2 on a stale value) | dropped: unreachable — the stored value passed `ConfigManager.setup()`'s schema check, whose special set is the chip's domain (`_OSR_SETTINGS`/`_IIR_SETTINGS`), so code 2 means a chip I/O failure only (M.SRC_SENS.044) |
+| M_SRC_SENS GAP-15 (reader conditions) | carried as found: M.SRC_SENS.046 (BMP3XX), .089 (SCD30), .090 (SGP40), .083 (ISL29125) |

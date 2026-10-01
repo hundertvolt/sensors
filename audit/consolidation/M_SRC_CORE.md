@@ -90,8 +90,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg`;
   `from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal` (`schema_names` stays imported while
   M.SRC_CORE.017's `get_dict_cfg()` uses it). `TYPE_CHECKING` block: `from collections.abc import Awaitable, Callable`;
-  `from typing import Protocol`; `from asy_base_classes import AsyncCallback, ErrorSource, NtpSyncFct, SetupFct,
-  TaskStarter, TimerStarter`; `from asy_fram_manager import FRAMManager`; `from asy_config_manager import CfgValue,
+  `from typing import Protocol`; `from asy_base_classes import AsyncCallback, ErrorSource, JsonMapping, NtpSyncFct,
+  SetupFct, TaskStarter, TimerStarter` (`JsonMapping`: gap pass G2, M.SRC_CORE.017); `from asy_fram_manager import FRAMManager`; `from asy_config_manager import CfgValue,
   ConfigSchema, WriteValidity`; `from asy_print_log import ErrorLog, PrintLogHistory`; `_StoragePause` Protocol and its
   comment stay (the `_storage_pause` attribute keeps its keyword-only call). `Any`, `Coroutine` and the `LockedCounter`
   import go. Annotations are quoted only where they name a `TYPE_CHECKING` symbol (A.U10.31).
@@ -1048,7 +1048,8 @@ for the config reset.
   "# directly - SPECIFICATION.md A.4 has the cache-vs-external-corruption trade-off this implies." `:46-48`'s cite →
   "(SPECIFICATION.md Part L.6.4)". Imports: `asyncio`, `errno`, `json`, `os`, `from micropython import const`, `from
   asy_print_log import DEFAULT_LOG, make_logger, report_if_fatal`; `TYPE_CHECKING`: `Callable`, `Final`, `Literal`,
-  `NamedTuple`, `TypeVar`; `from asy_print_log import ErrorLog, LogConfig, PrintLogHistory`; `T = TypeVar("T", int, float,
+  `NamedTuple`, `TypeVar`; `from asy_base_classes import JsonMapping` (gap pass G2: `write_config()`'s raw-body parameter,
+  M.SRC_CORE.044 — a `TYPE_CHECKING` import, no runtime edge); `from asy_print_log import ErrorLog, LogConfig, PrintLogHistory`; `T = TypeVar("T", int, float,
   str, bool)`; no `Any`, no `AsyFramManager`. Constants: `_ERR_ALLOC = const(20)`, `_ERR_BAD_ARG = const(21)`,
   `_ERR_UNEXPECTED = const(23)`, `_ERR_CONTRACT = const(24)`, `_ERR_CFG_PATH_IS_DIR = const(30)`, `_ERR_CFG_NO_DEFAULTS =
   const(31)`, `_ERR_CFG_BAD_DEFAULT = const(32)`, `_ERR_CFG_FILE_WRITE = const(33)`, `_ERR_CFG_NOT_VALID = const(34)`,
@@ -1610,7 +1611,9 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 - **Site**: `src/asy_fram_manager.py:41-94`.
 - **Change**: `class _FRAMBaseChunk:` `__init__(self, manager: "FRAMManager", base_addr: int, size: int, crc: CRCBase,
   verify: int = 0, check_length: int = 8)`: `self.pr = manager.pr`, `self._mempause = manager.get_pause`, `self.fram =
-  manager.fram` (bound once); the rest as HEAD; `self._op_lock = asyncio.Lock()` with the reason line "# serialises this
+  manager.fram` (bound once); `self._verify_counter = 0` and `self._block_addr = (…)` (HEAD's expressions; private:
+  no reader outside the chunk classes in `src/` or the generated code, G10/R07 — gap pass G2, M_SRC_CORE GAP-G12
+  applied across `src/`; every use in the file follows); the rest as HEAD; `self._op_lock = asyncio.Lock()` with the reason line "# serialises this
   chunk's own write/read/clear end to end, across both blocks and the scratch buffers"; `self._read_fault = False` beside
   the other read state (`:81-84`); `_episode_wrns` and `_episode_wrn()` gone; the `(MemoryError, OverflowError)` tuple
   unchanged.
@@ -1618,7 +1621,9 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 - **Unit**: U16 (U5 stage: the manager parameter; U3 stage: episode removal).
 - **Depends**: M.SRC_CORE.080.
 - **Blast carried by**: callers `get_chunk()`/`get_timestamped_chunk()` (M.SRC_CORE.091); `tests/test_asy_fram_manager.py:2350-2389`
-  (`chunk.fram`) holds; episode tests `:2587-2640` → A.U3.02 (TEST_UNIT).
+  (`chunk.fram`) holds; episode tests `:2587-2640` → A.U3.02 (TEST_UNIT); readers of `block_addr`/`verify_counter` in
+  `tests/`, `digital_twin/` and `tests_hardware/device_scripts/` (64 sites at HEAD) and the region check of M_HW_DEV
+  GAP-D7 (`chunk.block_addr`) → hand-offs TEST_UNIT, TEST_HELP, HW_DEV, TSC (`GAPS_G2.md`).
 - **Kind**: code
 
 ### M.SRC_CORE.082 Chunk write: silent while the chip is lost, one entry per failure
@@ -1793,13 +1798,13 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 
 ### M.SRC_CORE.091 Manager construction, allocation, pause and fan-in
 - **From**: A.U5.02, A.U5.13, A.U10.35 (`_allocated_size`), A.U0.41 (`:648`, `:690`, `:726`), A.U16.S01, A.U11.31,
-  A.U10.38 (`FRAMManager`, `CRCPass`), A.S0930.17 (2) (`_chunks`), A.U16.R03 (`_was_up`).
+  A.U10.38 (`FRAMManager`, `CRCPass`), A.S0930.17 (2) (`_chunks`), A.U16.R03 (`_was_up`, held as `initialized`, see M.SRC_CORE.092).
 - **Site**: `src/asy_fram_manager.py:618-728`, `:739-740`.
 - **Change**: `class FRAMManager`: `__init__(self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, log: "LogConfig" =
   DEFAULT_LOG)`: `self.pr = PrintLogHistory(log.history_length, log.debug, name=_NAME)` ("# RAM-only: the one module
   that never logs into FRAM is the FRAM module itself (owner, SPECIFICATION.md C.7.1)"), `self.name`, `self.size`,
   `self._allocated_size = 0`, `self._pause = False`, `self._chunks: list[_FRAMBaseChunk] = []` ("# one entry per
-  allocation, all made during construction"), `self._was_up = False`, `self.fram = FRAM_SPI(spi_bus, spi_cs,
+  allocation, all made during construction"), `self.initialized = False`, `self.fram = FRAM_SPI(spi_bus, spi_cs,
   max_size=self.size, logger=self.pr)`. `get_error_sources() -> "list[ErrorSource]"`. `get_chunk(size, crc: CRCBase | None
   = None, verify=0, check_length=8) -> FRAMChunk | None` and `get_timestamped_chunk(size, ntp_sync_callback: "NtpSyncFct",
   …)`: the size-0 comment gains "(owner-confirmed, 2026-07-18: reject generally at the top)"; `CRCPass()` default;
@@ -1851,16 +1856,19 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
   `start_watch_chip()`, `watch_chip()`.
 - **Change**: `setup(self) -> bool`: `await self.pr.setup()`; `try: await self.fram.setup()` / `except Exception as e:
   report_if_fatal(e)`, `await self.pr.err_s("FRAM Setup failed:", e, errno=_ERR_INIT)`, `return False`;
-  `self._was_up = True`; `return True`. `get_task_starters(self) -> "list[TaskStarter]": return
+  `self.initialized = True`; `return True`. `get_task_starters(self) -> "list[TaskStarter]": return
   [self.start_watch_chip]` (whenever the manager exists, i.e. the TOML declares a chip); `get_timer_starters()` → `[]`;
   `start_watch_chip()` creates the task; `async def watch_chip(self) -> None`: `if not self.fram.initialized:` never up
-  (`not self._was_up`) → `self.pr.err("FRAM chip declared but not set up - escalating")`, `return`; was up and lost →
+  (`not self.initialized`) → `self.pr.err("FRAM chip declared but not set up - escalating")`, `return`; was up and lost →
   `if not await self.setup(): return`; `self.pr.one("FRAM chip answers again")`; then `await self.fram.lost.wait()`;
   `return`.
 - **Resolved**: A.U16.17's `get_task_starters()` returns `[]` when initialised; A.U16.R03 (4) makes it always one
   starter (SUPP_recovery Conflicts 5: R03 extends it) — R03. Both write the task as returning `False`; the typed task
   lists are `Task[None]` (G8/R61, owner OR81; A.U10.46's `TaskStarter`; A.U15.43 makes the readers' tasks `None` for
-  the same reason), and the supervisor counts any end — so the coroutine returns `None`.
+  the same reason), and the supervisor counts any end — so the coroutine returns `None`. Gap pass G2: A.U16.R03's
+  `_was_up` (set on the first successful `setup()`, never cleared) is exactly G5/R14's readiness flag, which every class
+  with an async `setup()` carries (A.U10.22's L0 check, M.TSC.112; M_SRC_NET gap 3) — one attribute, named
+  `initialized`, rather than two with one meaning (D.10); no method guards on it (AC_NOTES 42/44's form).
 - **Unit**: U16 (A.U16.R03 is SUPP_recovery's U16 half).
 - **Depends**: M.SRC_CORE.091, M.SRC_CORE.106 (driver `setup()`), M.SRC_CORE.102 (`lost`).
 - **Blast carried by**: generated collectors include `fram` (`codegen.py:660-664`), `_collect_task_names()` gains
@@ -2491,6 +2499,17 @@ Smaller agent choices recorded in place (actor-tagged in the entries): the `dele
 history (M.SRC_CORE.070), A.U36.535 (5)'s header rewrite pulled into U11 (M.SRC_CORE.002), "2-degree" in the CCT comment
 (M.SRC_CORE.125).
 
+Added by gap pass G2 (2026-10-01):
+
+14. A REST value reaches the validators as `object` and `type_or_range_error()`'s refusal answers `(True, None)` — the
+    type-level form U19 A-C note 2 needs once the implementers take `JsonMapping` (M.SRC_CORE.047).
+15. G10/R07 applied to the leftovers of this cluster's classes: `_watchdog`, `_ntp_is_synced`, `_boot_signature`
+    (M.SRC_CORE.008), `_max_module_error` (M.SRC_CORE.036), `_cfg_vals` (M.SRC_CORE.049), `_block_addr`,
+    `_verify_counter` (M.SRC_CORE.081) — attributes with no reader outside the class (M_SRC_CORE GAP-G12's sweep, run on
+    HEAD with an AST scan of `self.<public> =` and a text search of `src/` and `buildgen/`).
+16. `FRAMManager`'s `_was_up` is held as `initialized` (G5/R14's flag; one attribute for one meaning, M.SRC_CORE.092).
+17. `SensorReader` carries `initialized`, set in its `setup()`; its subclasses inherit it (M.SRC_CORE.036/.039).
+
 ## Ledger
 
 Every action with a site in this cluster's files (`site_index.json` `by_file`, 146) plus the actions a grep found
@@ -2674,3 +2693,24 @@ Read for blast or context, no site in this cluster (carried by the named cluster
 A.U15.23 (SRC_SENS); A.S0930.01, A.S0930.02, A.U20.13 (GEN, see GAP-G10); A.U12.04, A.U12.17, A.U4.06, A.U16.13,
 A.S0930.21 (TEST_UNIT); A.U11.07, A.U24.32 (TEST_HELP); A.U10.47 (TSC); A.U12.05, A.U12.10, A.U14.06, A.U14.35, A.U15.42,
 A.U2.01, A.U5.18, A.U10.30, A.U15.43 (SPEC/GEN rule sources); A.S0930.07, A.U0.30 (DOCS); A.C.03 (HW_DEV).
+
+
+Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
+
+| action ID / gap item | merged into M-ID / dropped (reason) |
+|---|---|
+| M_GEN gap 4 (A.U11.30's `:126-127` comment; U19 A-C note 5) | M.SRC_CORE.047 (amended: the comment goes with the public `coerce_numeric()`; the validators' comment names the webserver) |
+| M_GEN gap 5 (`SystemService` API the template calls) | carried as found: M.SRC_CORE.006, .008, .011, .012, .015, .016 (run_setups discards results; FRAM's state reaches the supervisor through its watch starter, M.SRC_CORE.092) |
+| M_SRC_NET gap 3, SRC_CORE half (`SensorReaderConfig`'s missing `initialized`) + A.U10.22 | M.SRC_CORE.008, .017 (SystemService), .036, .039, .040 (SensorReader, inherited), .091, .092 (FRAMManager: `_was_up` held as `initialized`) (amended) |
+| M_SRC_NET gap 4 (U19 A-C note 2: `_set_dict_cfg(data: JsonMapping)` implementers) | M.SRC_CORE.017, .038, .040, .044, .047, .072 (amended) |
+| M_SRC_NET gap 4 (`handle_set_cmd()`'s envelope; U19 A-C note 1) | M.SRC_CORE.070, .072 (amended: returns `WriteValidity`; lead L1 ruling) |
+| M_SRC_NET gap 4 (names existing before their importers' stages) | carried as found: M.SRC_CORE.027 (U16), .030 (U10/U11), .031 (U10), .033 (U10 stage), .034 (U30), .061 (U5) |
+| M_SRC_SENS GAP-8 (`_trigger_loop()`) | M.SRC_CORE.039 (amended) |
+| M_SRC_SENS GAP-9 (`cfg_log` parameter) | dropped: M.SRC_CORE.040's `_CFG_LOG_FRAM` settles it (G10/R15 tail rule); M.SRC_SENS.052 amended to the attribute |
+| M_SRC_SENS GAP-14 | carried as found: M.SRC_CORE.047 (AC_NOTES 38), extended to SGP40/BMP3XX consumers in this pass |
+| M_SRC_SENS GAP-15 | carried as found: M.SRC_CORE.037 (`_error_check()` unchanged; AC_NOTES 38) |
+| M_SRC_SENS GAP-17 | carried as found for SRC_CORE's part: no SRC_CORE class is exempt; readiness added above |
+| M_SRC_CORE GAP-G12 applied across `src/` (attributes with no reader outside the class) | M.SRC_CORE.008 (`_watchdog`, `_ntp_is_synced`, `_boot_signature`), .009, .013, .036/.037 (`_max_module_error`), .044/.049 (`_cfg_vals`), .081 (`_block_addr`, `_verify_counter`) (amended) |
+| M_HW_DEV GAP-D9 | carried as found: no SRC_CORE change lists the two WiFi repro scripts |
+| AC_NOTES 39 | carried as found: M.SRC_CORE.131 |
+| A.U10.22 | M.SRC_CORE.008, .017, .036, .039, .092 (readiness flag; this pass) |

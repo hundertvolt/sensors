@@ -531,8 +531,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ### M.TSC.032 CLI cases: device TOML, no-autostart, toolchain lock, record, work dir
 - **From**: A.S0930.06 (`--device-toml`), A.U27.36 (`--no-autostart`), A.U21.22 (dir without a record), A.U21.08
-  (relative `--toolchain-dir` resolved), A.U27.29 (missing device through `main()`), A.U26.02 (record keys), A.U27.35
-  (work dir), A.SDEP.03 (read: pytest deprecations; refresh in U0/U37).
+  (relative `--toolchain-dir` resolved), A.U27.29 (missing device through `main()`), A.U26.02 (record keys), A.U26.85
+  (`overrides`), A.U27.35 (work dir), A.SDEP.03 (read: pytest deprecations; refresh in U0/U37); M.SCR.067's end state
+  (`BuildDate`, `deviceToml`, `uartCrc`, `autostart`; `lwip`/`overrides` re-read from the build dir — GAPS_G4 hand-off
+  3 (d), gap pass G3).
 - **Site**: `tests_scripts/test_build_firmware.py:170-199`, new cases.
 - **Change**: new cases — (a) `--device-toml <tmp>.toml` (a copy of a derived device's TOML with a different hostname)
   stages a generated module carrying that hostname; a missing `--device-toml` path fails before staging; (b)
@@ -541,9 +543,13 @@ where a test pins an SCR product, the constituent action is cited and the depend
   toolchain dir with no setup record fails with A.U21.22's message (`:186-193`'s missing-dir message holds); (d) a
   relative `--toolchain-dir` reaches `st.build_firmware()` resolved (monkeypatched to record); (e) a missing device
   through `main()` prints one line, no `Traceback`, exit 1; (f) with `st.build_firmware` stubbed to return a fake uf2,
-  `main()` writes the image record beside it with keys `buildDate`, `commit`, `device`, `dirty`, `firmwareVersion`,
-  `lwip`, `maxConnections`, `websiteVersion` (+ A.U27.31's three size keys) and `buildDate` equals the date in the
-  staged module; the record's work dir is `tmp_path` (the test points `REPO_ROOT`-relative `build/` away by
+  `main()` writes the image record beside it with keys `BuildDate`, `commit`, `device`, `deviceToml`, `dirty`,
+  `firmwareVersion`, `lwip`, `maxConnections`, `overrides`, `uartCrc`, `websiteVersion`, `autostart` (+ A.U27.31's three
+  size keys) and `BuildDate` equals the date in the staged module; with the two `micropython_overrides` readers faked,
+  `lwip` is the dict the fake `read_lwip_macros_from_build()` returns, `overrides` is `["modlwip_eagain"]` when the fake
+  `verify_modlwip_eagain_in_build()` passes and `[]` when it raises `OverrideError`, and both readers receive the port
+  build dir (the returned uf2's parent), never the copied output; the record's work dir is `tmp_path` (the test points
+  `REPO_ROOT`-relative `build/` away by
   monkeypatching the module's work root), so no case writes into the live tree; the error-path cases assert no work
   dir was created; a `--no-autostart` build stages into its own `-noautostart` work dir (M.SCR.065).
 - **Resolved**: —
@@ -1066,10 +1072,12 @@ where a test pins an SCR product, the constituent action is cited and the depend
   copy).
 - **Resolved**: A.S0930.01 writes the agreement test against HEAD's `src/crc_checks.py` and `CRC_Pass`; it lands after
   U10's rename (A.U10.37/A.U10.38, M.SRC_CORE.115), so it reads the end-state module and class (SRC_CORE GAP-G10; the
-  table's own `"CRC_Pass"` is GEN's to follow, M.GEN.024 — hand-off in GAPS_G3). A.U13.17's replacement (poll 464/465) fails A.U17.21's single-digit poll check before its floor; the
+  table itself says `CRCPass`, M.GEN.024 as amended in gap pass G1). A.U13.17's replacement (poll 464/465) fails
+  A.U17.21's single-digit poll check before its floor; the
   source-copy form A.U17.21 writes is taken (its own AC note amends A.U13.17's test).
 - **Unit**: U17 (stages U13 comment/defaults; S0930 CRC rows with A.S0930.01's unit).
-- **Depends**: M.GEN.027, M.GEN.029; A.U13.17/A.U17.20 driver constants (SRC_UART).
+- **Depends**: M.GEN.024, M.GEN.027, M.GEN.029; M.SRC_CORE.115 (module and class names); A.U13.17/A.U17.20 driver
+  constants (SRC_UART).
 - **Blast carried by**: twin CRC boot → M.TSC.085; UART changelog entries → A.U13.17/A.S0930.01 (SRC_UART).
 - **Kind**: test
 
@@ -2376,18 +2384,21 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ### M.TSC.122 The hardware wrapper: pytest's exit kept, the verdict delegated, `-m` narrowed
 - **From**: A.U7.14 (whole file rewritten against canned run records; the whitelist tests become marker-map tests),
   A.U27.19 (`--marker-floor`), A.U26.74 (`:18-19` flag strings), A.U26.35 (`long_soak` → `soak_duration`), A.U26.08 and
-  A.U26.36 (names in canned text, read), A.U26.56 (the permanent-skip nodeid follows its outcome).
+  A.U26.36 (names in canned text, read), A.U26.56 (the permanent-skip nodeid follows its outcome); M.SCR.074 (the
+  rollover runner's floor; GAPS_G4 hand-off 3 (b), gap pass G3).
 - **Site**: `tests_scripts/test_require_clean_hardware_run_sh.py:1-190`.
 - **Change**: with a stub `uv`/pytest writing a canned run record: the wrapper runs pytest once, keeps its exit code, calls
   `scripts/_hardware_verdict.py --run-record … --pytest-exit … --runner … --levels …` and exits with its code; a nonzero
   pytest exit propagates unchanged (`:183`'s pin); `--marker-floor EXPR` is consumed: no caller `-m` → pytest gets `-m
   "<floor>"`; one or more caller `-m`/`-mEXPR` → exactly one `-m "(<floor>) and (<last caller expr>)"`, printed and in
   the record; flash and bench runners pass `not soak_duration and not multi_day_rollover`, the soak runner
-  `soak_duration` with `--soak-duration`; the wrapper exports `EVIDENCE_DIR` pointing at the run's archive directory
+  `soak_duration` with `--soak-duration`, the rollover runner `multi_day_rollover` (no caller `-m` → `-m
+  "multi_day_rollover"`; `-m foo` → `-m "(multi_day_rollover) and (foo)"`) with `--allow-multi-day-rollover` reaching
+  pytest; the wrapper exports `EVIDENCE_DIR` pointing at the run's archive directory
   (M.SCR.034, HW_BENCH GAP-B6); the verdict cases themselves live in `test_hardware_verdict.py` (M.TSC.197).
 - **Resolved**: A.U26.35/A.U26.74's edits of `:18-19` fall inside A.U7.14's rewrite — one rewrite with the new names.
 - **Unit**: U27 (stage U7 rewrite; names U26).
-- **Depends**: M.SCR.034, M.SCR.005, M.HW_BENCH.001/.002.
+- **Depends**: M.SCR.034, M.SCR.005, M.SCR.074, M.HW_BENCH.001/.002.
 - **Blast carried by**: verdict rules → M.TSC.197.
 - **Kind**: test
 
@@ -2451,7 +2462,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   A.U21.24 (`:154-198` → table-driven command checks; `ensure_node()` asks for `curl` first), A.U21.21 (`:519-571`
   `ensure_node`: `_node_release` pair; SHASUMS errors named), A.U21.28 (`:60-112` resolver by `2e8a` plus the MicroPython
   by-id link), A.U28.20 (Playwright install failure named), A.U1.05/A.U1.08 (read), A.U1.22 (`:5-7` comment), A.U24.66
-  (3 literals).
+  (3 literals); A.U21.26 (passwordless-sudo check L0) and A.U21.27 (picotool skip, USB and shadowing L0) — named for TSC
+  by M.TOOL.052/.065/.071's blasts, carried nowhere (gap pass G3).
 - **Site**: `tests_scripts/test_setup_toolchain_env.py:1-10`, `:60-112`, `:154-198`, `:239-249`, `:370-571`, new tests.
 - **Change**: header comment `:5` → "README.md's tier table defines 'flash' and 'bench'; tests_hardware/README.md holds
   the manual nmcli recipe"; the parsed MAC fixture is `00:00:5e:00:53:01` (a documentation-reserved address);
@@ -2466,7 +2478,13 @@ where a test pins an SCR product, the constituent action is cited and the depend
   before downloading, a SHASUMS text without this arch's line → `SetupError`; resolver: a `2e8a` node without a
   MicroPython by-id link is not selected, `MPREMOTE_DEVICE` wins, `board` prints the path (`main()` with
   `resolve_board_serial` monkeypatched); Playwright install failure → `SetupError` naming `--skip-npm`, `install-deps`
-  failure with `skip_apt=False` named; device literals → fixture names.
+  failure with `skip_apt=False` named; device literals → fixture names. Passwordless sudo (A.U21.26), fake `run`/`which`:
+  every command allowed → no error; `iw` refused → the `SetupError` names `iw` only; each probe is `sudo -n <absolute
+  path> <version argument>`; the check runs after the command check and before `ensure_bench_bridge()`. picotool
+  (A.U21.27): a previous record naming the same `picotool_tag` and a fake `version` output carrying it → no `cmake` and
+  no `sudo` recorded, the "already installed" line logged; a different tag → the build and `sudo make install` recorded;
+  a fake `--help` with "compiled without USB support" → `SetupError` in the flash tier, a warning in `setup`/`generic`;
+  a second `picotool` earlier on the fake `PATH` → a warning naming both paths.
 - **Resolved**: —
 - **Unit**: U21 (U1 comment; U24 literals; U28 Playwright).
 - **Depends**: A.U21.19-.28, A.U28.20 (TOOLCHAIN).
@@ -3549,15 +3567,16 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_hardware_runners.py
 ### M.TSC.196 Hardware runners run every lower level first
-- **From**: A.U7.18; M.SCR.006, M.SCR.030-.032.
+- **From**: A.U7.18; M.SCR.006, M.SCR.030-.032; M.SCR.074 (the rollover runner; GAPS_G4 hand-off 3 (a), gap pass G3).
 - **Site**: new `tests_scripts/test_hardware_runners.py`.
 - **Change**: with stubbed `scripts/test.sh`, `npm`, `run_digital_twin_ci.sh`, `uv`: a failing L1 stops before any
   pytest-on-hardware call; the device loop is derived from `devices/*.toml` minus `zz_test_*`; `--skip-lower-levels`
   yields NOT CLEAN; the bench runner runs flash then bench as two steps; the soak runner's block says `Levels: soak
-  duration <d> (not a level)`.
+  duration <d> (not a level)`; `scripts/run_bench_rollover_test.sh` makes no lower-level call (no stubbed `test.sh`,
+  `npm` or twin-suite invocation recorded) and its block reads `Levels: rollover (not a level)`.
 - **Resolved**: —
 - **Unit**: U27 (stage U7).
-- **Depends**: M.SCR.006, M.SCR.030, M.SCR.031, M.SCR.032.
+- **Depends**: M.SCR.006, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.074.
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3773,11 +3792,13 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_shell_conventions.py
 ### M.TSC.213 Every shell script follows the one convention
-- **From**: A.U27.33 (4).
+- **From**: A.U27.33 (4); A.U24.68 (L0: no argument at all exits 2 naming the valid devices; M.SCR.062's blast, gap pass
+  G3).
 - **Site**: new `tests_scripts/test_shell_conventions.py`.
 - **Change**: every `scripts/*.sh` starts `#!/usr/bin/env bash` + `set -euo pipefail`, quotes expansions per the
-  convention, handles `-h|--help` (exit 0) and rejects unknown arguments (exit 2); `run_unix_port_integration.sh --device`
-  with no value exits 2 naming the flag; an unknown device exits 2 listing the valid ones.
+  convention, handles `-h|--help` (exit 0) and rejects unknown arguments (exit 2); `run_unix_port_integration.sh` with no
+  argument exits 2 listing the valid devices (A.U24.68), `--device` with no value exits 2 naming the flag, and an unknown
+  device exits 2 listing the valid ones.
 - **Resolved**: —
 - **Unit**: U27
 - **Depends**: M.SCR (each script's convention change).
@@ -3827,9 +3848,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_tool_help.py
 ### M.TSC.217 Every user-facing tool answers `--help` and touches nothing
-- **From**: A.U7.19.
+- **From**: A.U7.19; M.SCR.074 (`TOOLS` gains the rollover runner; GAPS_G4 hand-off 3 (c), gap pass G3).
 - **Site**: new `tests_scripts/test_tool_help.py`.
-- **Change**: a module-level `TOOLS` list (every runner and user-facing tool) shared with `test_readme_reference.py`;
+- **Change**: a module-level `TOOLS` list (every runner and user-facing tool, `scripts/run_bench_rollover_test.sh`
+  among them) shared with `test_readme_reference.py`;
   each `--help` exits 0, prints "Usage:", and leaves the tree listing unchanged.
 - **Resolved**: —
 - **Unit**: U7
@@ -3943,6 +3965,44 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Unit**: —
 - **Depends**: —
 - **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_bench_harness_helpers.py (gap pass G3)
+
+### M.TSC.226 The bench's route set is the REST reference's, `/notification` included
+- **From**: A.U26.80 (new L0: `get_routes()` returns every GET route of the table, `/notification` included);
+  M.HW_BENCH.010's blast "→ A.U26.80 (TSC)", carried by no TSC change (gap pass G3).
+- **Site**: `tests_scripts/test_bench_harness_helpers.py`, new cases.
+- **Change**: for every `DEVICE_NAMES` device, `harness.get_routes()` equals the GET paths with a JSON body listed in
+  that device's generated REST reference (`build/generated_src/api/<device>.json`, A.U19.20), read by the test's own
+  JSON load, and contains `/notification`; `json_only=False` adds the non-JSON GET routes; `streams=True` returns
+  exactly the reference's streaming routes; a stub reference with one extra GET route (a `tmp_path` copy, the helper
+  pointed at it) shows that route — no literal route list in the test.
+- **Resolved**: —
+- **Unit**: U26.
+- **Depends**: M.HW_BENCH.010 (`get_routes()`), A.U19.20 (the reference; GEN/SRC_NET).
+- **Blast carried by**: —
+- **Kind**: test
+
+## tests_scripts/test_result_words.py (new; gap pass G3)
+
+### M.TSC.227 The four result words are spelled once, in the config manager
+- **From**: A.U19.16 (new L0: an AST scan of `src/` and the generated modules fails on a string literal equal to one of
+  the four result words outside the config manager's definitions); M.SRC_CORE.045's blast "→ A.U19.16 (TSC)", carried by
+  no TSC change (gap pass G3).
+- **Site**: new `tests_scripts/test_result_words.py`.
+- **Change**: docstring (≤ 3 lines) "Every per-field result word comes from asy_config_manager's VALID/UNCHANGED/INVALID/
+  FAILED (SPECIFICATION.md G.2): a second spelling of one drifts from the wire contract unseen." The scan walks
+  `src/*.py` and every `build/generated_src/sensortask_<device>.py` (generated into `tmp_path` per `DEVICE_NAMES`, as
+  the other generated-module checks do); an `ast.Constant` whose value is `"Valid"`, `"Unchanged"`, `"Invalid"` or
+  `"Failed"` fails naming `file:line`, except the four assignments in `src/asy_config_manager.py` and the members of
+  its `WriteValidity` `Literal[…]`; docstrings are skipped (comments never reach the AST). Bite: a `tmp_path` copy of
+  `src/` with one `"Valid"` planted in a setter fails naming it. `tests/` keeps its literals (they state the wire
+  contract, A.U19.16).
+- **Resolved**: —
+- **Unit**: U19.
+- **Depends**: M.SRC_CORE.045 (the constants); A.U19.16's SRC_NET/SRC_SENS literal sites.
+- **Blast carried by**: the JS mirror's L0 check → M.TSC.100 (A.U23.25).
 - **Kind**: test
 
 ## Gaps for other clusters
@@ -4170,7 +4230,7 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.U19.02 | merged into M.TSC.044 |
 | A.U19.10 | merged into M.TSC.044 |
 | A.U19.13 | merged into M.TSC.170 |
-| A.U19.14 | merged into M.TSC.121 |
+| A.U19.14 | merged into M.TSC.121, M.TSC.165 |
 | A.U19.17 | merged into M.TSC.109 |
 | A.U19.18 | merged into M.TSC.031, M.TSC.154 |
 | A.U19.19 | merged into M.TSC.154 |
@@ -4378,7 +4438,7 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.U26.78 | merged into M.TSC.187 (carried from another file's action or a gap) |
 | A.U26.79 | merged into M.TSC.119 |
 | A.U26.83 | merged into M.TSC.021 |
-| A.U26.85 | merged into M.TSC.028 |
+| A.U26.85 | merged into M.TSC.028, M.TSC.032 |
 | A.U26.87 | merged into M.TSC.028 |
 | A.U27.01 | merged into M.TSC.165 |
 | A.U27.02 | merged into M.TSC.221 (carried from another file's action or a gap) |
@@ -4618,3 +4678,13 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | A.U8C2.51 | merged into M.TSC.147 |
 | A.U9.01 | merged into M.TSC.159; its golden-file edit in `test_buildgen_definitions.py` dropped (A.U6.04 retires the golden files first, M.TSC.038) |
 | A.U9.03 | merged into M.TSC.044 |
+| A.U25.33 | merged into M.TSC.165 (gap pass G3) |
+| A.U35.28 | merged into M.TSC.165 (gap pass G3) |
+| A.U37.15 | merged into M.TSC.071, M.TSC.110, M.TSC.113 (gap pass G3) |
+| A.U26.10 | merged into M.TSC.119 (gap pass G3) |
+| A.C.17 | merged into M.TSC.119 (gap pass G3) |
+| A.U21.26 | merged into M.TSC.126 (gap pass G3) |
+| A.U21.27 | merged into M.TSC.126 (gap pass G3) |
+| A.U24.68 | merged into M.TSC.213 (gap pass G3) |
+| A.U26.80 | merged into M.TSC.226 (gap pass G3) |
+| A.U19.16 | merged into M.TSC.227 (gap pass G3) |

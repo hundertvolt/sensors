@@ -1351,10 +1351,13 @@ every B1 action (AC_NOTES 34-second).
   (`l0.live_twin_poll_ms`). `spawnTwin(device, configDir)`: `--module sensortask_${device}`, `--wiring-plan
   build/generated_src/sensortask_${device}_wiring_plan.json`, `--device ${device}`, `--host`, `--port`,
   `--fram-state-path ""`, `--scd30-state-path ""`, `--mem-backup-state-path ""`, `--config-dir ${configDir}`; env
-  `{...process.env, MICROPYPATH, TZ: "UTC"}` (`TZ` goes only if A.SDEP.16 (W15) finds `mktime()` fixed); `stdio:
+  `{...process.env, MICROPYPATH: <the twin layout with its `frozen_modules` entry replaced by
+  `build/generated_html/${device}`>, TZ: "UTC"}` (the device's own built site, A.U6.10 (1); one comment line says why;
+  gap pass G2 — M_SCR gap 1(a); `TZ` goes only if A.SDEP.16 (W15) finds `mktime()` fixed); `stdio:
   ["ignore", "pipe", "pipe"]`, both streams drained into one buffer keeping the last 256 KiB, line-complete (the `:75-77`
   comment → "// Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory
-  markers."). Each command: takes the port-53 lock before its first boot and releases it on every exit path; makes `configDir
+  markers."). Each command: takes the port-53 lock before its first boot and releases it on every exit path (re-entrant within one
+  process and honouring an inherited lock, M.WEB.078); makes `configDir
   = mkdtempSync(path.join(os.tmpdir(), "sensors-live-"))` and removes only it when the twin stops (the `:151-154`
   comment and the three `rmSync(<repo>/digital_twin/config)` go); after the twin stops throws, quoting the lines, when
   `memoryMarkerLines(output)` is non-empty. `runLiveBackendSmoke({context}, device)` → `{titleHasSensorStation,
@@ -1371,7 +1374,9 @@ every B1 action (AC_NOTES 34-second).
   required. If A.SDEP.19 (W36) finds Vitest's `page` can navigate to an external origin, the Commands-API detour is a
   delta for U23/U28 recorded there; otherwise unchanged.
 - **Resolved**: A.U24.53 and A.U25.32 plan the same per-run config dir (A.U25.32's Blast: "co-lands with A.U24.53 — A-C
-  merges") — one change. A.U24.52's thrown message and A.U27.12's probe both replace the `existsSync` check: the probe's
+  merges") — one change. Gap pass G2 (M_SCR gap 1(a)): the merged text had dropped A.U6.10 (1)'s site swap — restored;
+  `_micropypath.js` stays the plain reader of the `twin` value and the swap lives in the launch frame
+  (`tests_js/_twin_process.js`, M.WEB.082), where M.TSC.202's text check looks for it. A.U24.52's thrown message and A.U27.12's probe both replace the `existsSync` check: the probe's
   `check` form decides, the message is A.U24.52's (the probe names the found flavour after it). A.U6.10, A.U7.21, A.U8.21,
   A.U23.32-.35, A.U24.52/.53/.69, A.U25.09, A.U27.12/.15 all edit `spawnTwin()` and the two commands — merged into the one
   text above. Reading `data-apply-status` only after the button is re-enabled is what A.U23.15 (button disabled until the
@@ -1650,9 +1655,9 @@ every B1 action (AC_NOTES 34-second).
 - **Change**: `"engines": {"node": ">=<M> <<M+1>"}` after `"type"` (M = `.nvmrc`'s major); scripts: `"build:definitions":
   "uv run scripts/_generate_sensortask_modules.py"`, `"build:site": "npm run build:definitions &&
   scripts/build_device_websites.sh"`, `"pretest:coverage": "npm run build:site && uv run scripts/_archive_evidence.py
-  --runner npm_coverage htmlcov_js"`, `"lint:html:built"`: the stager's `--stage-only` mode over every
-  `devices/*.toml` (`zz_test_` skipped) into `build/staged_html/<device>/`, then `html-validate
-  "build/staged_html/*/index.html"` (the stager command as SCR's A.U23.38 merge defines it), `"preview": "uv run
+  --runner npm_coverage htmlcov_js"`, `"lint:html:built": "scripts/build_device_websites.sh --stage-only build/staged_html && html-validate
+  \"build/staged_html/*/index.html\""` (the loop over every `devices/*.toml`, `zz_test_` skipped, is the script's,
+  M.SCR.020/.071; gap pass G2, M_SCR gap 1(b)), `"preview": "uv run
   scripts/preview_server.py"`, `"prepreview": "npm run build:definitions"`; `lint`, `typecheck`, `test*`, `pretest*`
   (still `npm run build:site`), `lint:html`, `lint:css` unchanged. `devDependencies`: every range `^<newest at the
   refresh>`, `"@types/node": "^<M>.<newest patch>"`, plus `"@eslint-community/eslint-plugin-eslint-comments":
@@ -1821,15 +1826,24 @@ every B1 action (AC_NOTES 34-second).
 - **From**: A.U24.69, A.U27.39 (read: the smoke imports it).
 - **Site**: new `tests_js/_port_lock.js`.
 - **Change**: `export function acquirePortLock(port, runner)` — atomic `mkdirSync(\`${process.env.XDG_RUNTIME_DIR ??
-  "/tmp"}/sensors-port-${port}.lock\`)` holding `{pid, runner}`; on `EEXIST` with a live recorded PID (`process.kill(pid,
+  "/tmp"}/sensors-port-${port}.lock\`)` holding `{pid, runner}`; on success it records the port in
+  `process.env.SENSORS_PORT_LOCKS_HELD` (space list) and sets `process.env.SENSORS_PORT_LOCK_OWNER = String(process.pid)`, so
+  children inherit both (`scripts/_port_lock.sh`'s contract, M.SCR.012). On `EEXIST`: a recorded PID equal to
+  `process.pid` is accepted without retaking (re-entrant: the smoke holds the lock across its device loop while each
+  launch acquires again); a recorded PID equal to the inherited `SENSORS_PORT_LOCK_OWNER` with the port listed in the
+  inherited `SENSORS_PORT_LOCKS_HELD` is accepted (a child of the holder); any other live recorded PID (`process.kill(pid,
   0)`) throws `Error(\`port ${port} is held by ${runner} (pid ${pid}) - run the suites one after the other (CLAUDE.md)\`)`;
-  a dead PID's lock is taken over; returns a release function, also registered on `process.on("exit")`. Header (≤ 3
+  a dead PID's lock is taken over. Returns a release function — a no-op for an accepted (not taken) lock — removing only
+  a directory whose recorded PID is `process.pid`, also registered on `process.on("exit")`. Header (≤ 3
   lines). Node-context (M.WEB.070/.073).
-- **Resolved**: —
+- **Resolved**: gap pass G2 (M_SCR gap 1(a)): the shell side gained inheritance by children (M.SCR.012, agent decision
+  AD-1) and the smoke takes the lock once before its device loop (M.SCR.064), so the JS side keeps the same contract —
+  one lock directory, one message, the same two environment variables — and is re-entrant within its own process.
 - **Unit**: U24.
-- **Depends**: `scripts/_port_lock.sh` (A.U24.69, SCR) — same directory and message.
-- **Blast carried by**: importers M.WEB.061/.062 and `scripts/cross_browser_smoke.mjs` (A.U27.39, SCR);
-  `tests_scripts/test_port_lock.py` (A.U24.69, TSC); CLAUDE.md "Two suites that both bind real ports" (A.U24.69 Docs,
+- **Depends**: `scripts/_port_lock.sh` (A.U24.69, SCR; M.SCR.012) — same directory, message and environment contract.
+- **Blast carried by**: importers M.WEB.061/.062/.082 and `scripts/cross_browser_smoke.mjs` (A.U27.39, SCR);
+  `tests_scripts/test_port_lock.py` (A.U24.69, TSC; its inherited-owner and same-process cases also driven against this
+  module — hand-off TSC, `GAPS_G2.md`); CLAUDE.md "Two suites that both bind real ports" (A.U24.69 Docs,
   DOCS).
 - **Kind**: test
 
@@ -1895,8 +1909,10 @@ every B1 action (AC_NOTES 34-second).
 - **Change**: `tests_js/_twin_process.js` (Node-context, header ≤ 3 lines) exports `sleep(ms)`, `waitUntilServing(port,
   timeoutMs)`, `spawnTwin({device, port, configDir})` (M.WEB.061's argument list, the drained bounded output buffer and
   the `error` listener with its comment) returning `{proc, output()}`, and `stopTwin(proc)` (today's SIGINT/SIGKILL logic
-  with its two comments), plus the frame M.WEB.061 states once: the binary probe, the per-run config dir, the port-53 lock
-  and the post-stop marker scan. Both command modules import them and keep only their own commands and port
+  with its two comments), plus the frame M.WEB.061 states once: the binary probe, the twin `MICROPYPATH` with `frozen_modules` replaced by
+  `build/generated_html/<device>` (A.U6.10 (1)), the per-run config dir, the port-53 lock (re-entrant for the same
+  process, M.WEB.078) and the post-stop marker scan. `scripts/cross_browser_smoke.mjs` imports the same frame
+  (M.SCR.064; gap pass G2, M_SCR gap 1(a)). Both command modules import them and keep only their own commands and port
   constants. `tests_js/_dom_helpers.js` (header ≤ 3 lines) exports `mustQuery(root, selector)` (today's JSDoc and body)
   and `buildElements()` (the entry element set), imported by `render.test.js`, `templates.test.js`, `app.test.js`,
   `main.test.js`; `buildFetchStub()` stays per file (the two differ in what they serve).
@@ -2018,7 +2034,8 @@ every B1 action (AC_NOTES 34-second).
 
 None. Every conflict at a WEB site is settled by an owner row, the register, AC_NOTES, the brief's lead rules or a later
 constituent (each named in its change's **Resolved** slot); M_SRC_SENS GAP-12's suggested question is settled by
-A.U23.14/A.U23.15 and OR94 (M.WEB.014). No WEB change is pending GEN Q2 (Gaps item 5).
+A.U23.14/A.U23.15 and OR94 (M.WEB.014). GEN Q2 is answered (a) (OR132, AC_NOTES 41) and no WEB change depends on it
+  (Gaps item 5).
 
 ## Agent decisions for the OR2.c review
 
@@ -2257,3 +2274,18 @@ points" lists them):
 | A.U9.01 | read |
 | A.U9.03 | M.WEB.041, .052 |
 
+
+
+Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
+
+| action ID / gap item | merged into M-ID / dropped (reason) |
+|---|---|
+| M_SCR gap 1(a) (twin `MICROPYPATH` site swap; re-entrant, inherited port lock) | M.WEB.061, .078, .082 (amended) |
+| M_SCR gap 1(b) (`lint:html:built` command) | M.WEB.071 (amended) |
+| M_SCR gap 1(c) (JS freshness stamp path) | carried as found: M.WEB.050 |
+| M_SRC_SENS GAP-12 (`Calibrate` dispatch toggle without `defaultValue`) | carried as found: M.WEB.004, .014, .054 |
+| M_GEN gap 10 (`js/`, `tests_js/` blast of M_GEN's changes) | carried as found: every A-ID named has its M_WEB row (A.U6.05-.07, .17, .19, .27-.29; A.U23.12, .16, .17, .20, .22, .23, .42, .43, .49; A.U32.06; A.S0930.20) |
+| M_TEST_UNIT GAP-U11 (stager separators) | not WEB's: carried by M.SCR.019 |
+| M_WEB gap 1 (CLUSTERS.md naming `mockdata/` etc.) | carried as found: M.WEB.045, .073, .074; the CLUSTERS.md line is the lead's |
+| AC_NOTES 40 (six `tests_js` files read in full against M.WEB.052-.059) | see `GAPS_G2.md` (end-state check result) |
+| AC_NOTES 41 (GEN Q1/Q2 firm) | Owner-questions text amended (OR132) |

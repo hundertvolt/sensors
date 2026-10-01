@@ -73,7 +73,8 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 - **Kind**: test
 
 ### M.TEST_HELP.002 After-each hooks restore process state and catch leaks
-- **From**: A.U24.07 (1), A.U24.08 (microtest check), A.U24.15 (3), A.U30.14 (allowance), A.U27.28 (header)
+- **From**: A.U24.07 (1), A.U24.08 (microtest check), A.U24.15 (3), A.U30.14 (allowance), A.U27.28 (header); M_TEST_UNIT
+  GAP-U7 (the sync and fatal-report flags reset after each test; A.U10.06, A.U30.19/M.SRC_CORE.034; gap pass G3)
 - **Site**: `tests/microtest.py:1-42` (header, `run()` per-test loop).
 - **Change**: module docstring (≤ 3 lines): "Minimal test runner for the MicroPython Unix port: runs each `test_*`
   function of a namespace, resets process state after each, prints one summary line and always exits explicitly." New
@@ -83,13 +84,19 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
   task parked on the scheduler", every task on `_task_queue` is cancelled and drained with one `run_until_complete`
   round, and every `_io_queue.map` entry is unregistered from the prewarmed poller and deleted (`_io_queue` itself is
   never replaced); (b) each registered hook runs, a hook's exception counting as that test's FAIL "teardown: <exc>";
-  (c) `sys.path[:] = saved_path` and `gc.threshold(saved_threshold)`. A test already counted FAIL is not counted twice.
+  (c) `sys.path[:] = saved_path` and `gc.threshold(saved_threshold)`; (d) product one-way flags back to their boot
+  value, each only when its module is already in `sys.modules` (microtest imports no product module):
+  `asy_base_classes._utc_valid = False` (the pre-sync timestamp flag, M.SRC_CORE.032) and `asy_print_log._fatal = False`
+  (the fatal-report flag, M.SRC_CORE.034), so no test inherits another's sync or fatal state. A test already counted
+  FAIL is not counted twice.
 - **Resolved**: A.U24.08 names its check the hook list's first entry and A.U24.15 adds `real_poll_queries` to "the hook
   list" — merged as microtest's built-in step (a) first, then the fakes' registered `reset_test_state()` hooks, which own
   the `real_poll_queries` check (M.TEST_HELP.010) so microtest names no fake; A.U30.14's allowance (`tests/microtest.py`
   restores the threshold it read at start) matches (c) exactly.
-- **Unit**: U24 (A.U27.28's header lands early in the same edit; its U27 gate finds it).
-- **Depends**: M.TEST_HELP.001; M.TEST_HELP.043 (`_async_harness` tasks are the ones the check backstops).
+- **Unit**: U24 (A.U27.28's header lands early in the same edit; its U27 gate finds it; (d)'s `_fatal` line with
+  M.SRC_CORE.034 in U30 — the flag does not exist before).
+- **Depends**: M.TEST_HELP.001; M.TEST_HELP.043 (`_async_harness` tasks are the ones the check backstops); M.SRC_CORE.032,
+  .034 (the two flags).
 - **Blast carried by**: per-test manual resets removed from test files → A.U24.07 (4) (TEST_UNIT, TWIN); in-body
   `gc.threshold` pairs → A.U30.12/A.U30.13 (TEST_UNIT, TWIN); checker allowance → A.U30.14 (TSC); CLAUDE.md "Known hang
   cause #2" bullet's new shape → A.U36.546 (DOCS); SPEC E.3 mechanism paragraph → A.U36.546 (SPEC).
@@ -539,7 +546,11 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   takes beyond those `Pair` sets (read from its signature at landing); types `CRCPass`, `UARTComm` (H1). (4) The
   poller comment `:67-68` → "# Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not
   polled in real time (CLAUDE.md "Known hang cause")." (5) Docstring line 2 → "driven as concurrent tasks the way a
-  bench board drives them across its jumper." No `Any` (`Coroutine` alias from `_async_harness`).
+  bench board drives them across its jumper." No `Any` (`Coroutine` alias from `_async_harness`). (6) Kept as HEAD has
+  them, because the twin hazard files build their pair through this harness with the twin's `machine` first on the path
+  (M.TWIN.154/.156): the path-resolved `from machine import UART, LinkPoller, UARTLink` (no `tests/machine.py`-specific
+  import) and `Pair`'s per-bus `crc_a=`/`crc_b=` keywords, each passed to its own `UART(…, crc=…)` (M_TWIN's TEST_HELP
+  gap; gap pass G3).
 - **Resolved**: —
 - **Unit**: U24 (the `poll_idle_ms` argument lands with A.U13.17 in U13: the default changes there — stage 1).
 - **Depends**: M.TEST_HELP.043, M.TEST_HELP.017.
@@ -943,7 +954,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 ### M.TEST_HELP.037 Boot scenarios: setup batch, boot sequence, feeds, stretches
 - **From**: A.U24.79 (`:651-677`), A.U10.10 (`:550-…`), A.U11.10, A.U20.07 (L1), A.U10.07 (3), A.U31.03, A.U10.08
   (L1 scan budget), A.U11.07 (setup-phase code), A.U20.38 (3), A.U11.34, A.U9.10 (c), A.U10.19 (L1 inventory),
-  A.U11.35 (holds), A.U31.01 (holds), A.U31.17 (holds)
+  A.U11.35 (holds), A.U31.01 (holds), A.U31.17 (holds), A.U31.07 (the scan escalates at the first end past the budget,
+  OR130: the per-pass bound; M.SRC_CORE.016's and M.TEST_UNIT.309's blasts, gap pass G3)
 - **Site**: `tests/_sensortask_scenarios.py:552-650` (setup batch order scenario), `:651-677`
   (`_scenario_boot_feeds_the_watchdog`); new scenarios.
 - **Change**: (1) `setup_batch_runs_every_unit_in_the_collected_order` (renamed from the
@@ -954,14 +966,18 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   `boot_sequence_matches_the_generated_expectation` (A.U20.07's L1): `main()` run until `supervise_tasks()` is entered
   (the recorder raises its stop exception there), the list equals the expected JSON's `boot_sequence`. (4) New unfed-
   stretch scenario (A.U10.07 (3)) and setup-unit no-wait scenario (A.U31.03), both on `run_setups()` and the start
-  lists, fake clock on `asy_system_service.time`. (5) New supervisor scan-budget scenario (A.U10.08): k task deaths
-  before one round; persisted writes counted by the FRAM fake's `write_transactions` (M.TEST_HELP.022) ≤ k and one
-  `_TASK_CHECK_TIME` sleep. (6) New setup-failure scenario (A.U11.07): one module's `setup()` replaced to raise stops the
+  lists, fake clock on `asy_system_service.time`. (5) New supervisor scan-budget scenario (A.U10.08, per generated
+  device): every supervised task dead before one pass; the pass persists at most `⌈(_TASK_FAIL_MAX + 1) /
+  _TASK_FAIL_INCREMENT⌉` task-end entries (4, read from source) plus the escalation entry, whatever the device's task
+  count (A.U31.07), counted by the FRAM fake's `write_transactions` (M.TEST_HELP.022); the watchdog's `feed_count` rises
+  once inside the pass (the escalation feed), the reset is armed, and the pass makes one `_TASK_CHECK_TIME` sleep. (6)
+  New setup-failure scenario (A.U11.07): one module's `setup()` replaced to raise stops the
   boot and the next `begin_boot()` reads 12. (7) New dropped-logger scenario (A.U20.38 (3)), every-measurement-starts-
   `None` scenario (A.U11.34), timer-starter seam check (A.U9.10 (c)), and the per-device task inventory fan-in (A.U10.19).
 - **Resolved**: —
 - **Unit**: U24 (each new scenario lands with its constituent: A.U10.07/A.U10.08/A.U10.19 U10, A.U11.07/A.U11.10/A.U11.34
-  U11, A.U20.07/A.U20.38 U20, A.U31.03 U31; (2) U24).
+  U11, A.U20.07/A.U20.38 U20, A.U31.03 U31; (2) U24; (5) lands in U10 with "≤ k" and takes A.U31.07's per-pass bound in
+  U31).
 - **Depends**: M.TEST_HELP.035, M.TEST_HELP.061.
 - **Blast carried by**: Part N rows `boot.unfed_stretch_*`/`boot.setup_unit_stretch_ms` → A.U10.07/A.U31.03 (SPEC);
   L0 feed-site check → A.U10.08 (TSC); expected JSON → A.U20.07 (GEN).
@@ -1152,12 +1168,16 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   module.sysfunct.run_setups(module._collect_setups())`, returns both.
 - **Resolved**: A.U25.33 places `write_offline_ntp_config()` in the twin runner (U25), but unit-tier boots need it from
   U20 on (A.U20.07's L1 runs `main()` through the first force sync, A.U18.10: "L1 boots set it through the stored
-  config") — the one implementation is born here in U20 (agent decision D16); the twin runner imports it (GAP-H3).
+  config") — the one implementation is born here in U20 (agent decision D16). At U25 the body moves to
+  `digital_twin/unixport/_offline_ntp_config.py` (M.TWIN.053: the runner may not import `tests/`, G7/R02) and this
+  module imports it from there (`from _offline_ntp_config import write_offline_ntp_config`, the directory already on
+  the L1 path for the UDP shim), its callers unchanged — one implementation throughout (GAP-H3 as M_TWIN resolves it; gap
+  pass G3).
 - **Unit**: U24 (stage U10: `load_generated()`; stage U20: `boot_generated()` and the offline write, with the boot entry
-  and `run_setups()`).
+  and `run_setups()`; stage U25: the offline writer imported from `digital_twin/unixport/`, with M.TWIN.053).
 - **Depends**: M.TEST_HELP.046.
 - **Blast carried by**: the seven `__import__(f"sensortask_{device}")` sites → M.TEST_HELP.028/.029/.032/.035, A.U10.30
-  (TEST_UNIT); SPEC F.1 named list → A.U10.30 (SPEC); twin runner → GAP-H3 (TWIN).
+  (TEST_UNIT); SPEC F.1 named list → A.U10.30 (SPEC); twin runner and the moved writer → M.TWIN.053 (GAP-H3).
 - **Kind**: test
 
 ### M.TEST_HELP.048 Create the shared machine-fake contract suite
@@ -1245,13 +1265,20 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
 - **Kind**: test
 
 ### M.TEST_HELP.055 Create the derived device-set helper
-- **From**: A.U24.65 (1), A.U25.25 (2), A.U25.48 (`device_with_shared_bus`), A.U36.015/A.U36.016 (cite it)
+- **From**: A.U24.65 (1), A.U25.25 (2), A.U25.48 (`device_with_shared_bus`, as A.U36.015 amends it), A.U36.015/A.U36.016
+  (cite it); M_TWIN's TEST_HELP gap (the two lookups its tests call; gap pass G3)
 - **Site**: new `tests/_twin_devices.py`.
 - **Change**: `generated_devices() -> list[str]` (sorted stems of `build/generated_src/sensortask_*_wiring_plan.json`,
-  asserted non-empty), `wiring_plan(device) -> dict`, `device_with(driver) -> str`, `device_with_shared_bus(a, b) ->
-  str`; each raises with the device set it searched when nothing matches.
+  asserted non-empty), `wiring_plan(device) -> dict`, `device_with(*drivers: str) -> str` (the first generated device
+  whose plan wires every named driver; `device_with("isl29125")` is the one-driver call), `devices_with_shared_bus() ->
+  list[tuple[str, str, list[str]]]` (every `(device, bus, occupants)` whose plan puts two or more bus occupants on one
+  bus, in device then bus order); `device_with` raises with the device set it searched when nothing matches, and
+  `devices_with_shared_bus()` asserts non-empty the same way.
 - **Resolved**: A.U24.65 and A.U25.25 each create a derived-device helper and both say "one helper" — merged here at U24
-  (A.U24.65 lands first), U25 adding the two property lookups.
+  (A.U24.65 lands first), U25 adding the two property lookups. A.U25.48's `device_with_shared_bus(a, b)` picks one device
+  for one pair; A.U36.015 amends it to loop over every device with a shared bus (V24: all devices, derived), which
+  M.TWIN.102 calls as `devices_with_shared_bus()`; M.TWIN.144/.146/.150 call `device_with` with one or more drivers —
+  the signatures follow the callers (gap pass G3).
 - **Unit**: U24 (stage U25: `device_with*`).
 - **Depends**: —
 - **Blast carried by**: twin tests' device choice → A.U25.48 (TWIN); SPEC C.8/E.2.1 cite the module → A.U36.015/A.U36.016
@@ -1286,13 +1313,21 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
 - **Kind**: test
 
 ### M.TEST_HELP.058 Create the NTP frame builder and fake server
-- **From**: A.U24.49, A.U24.76
+- **From**: A.U24.49, A.U24.76; A.U35.15 (`serve_once()` returns `bool`) and A.U24.70 (port from the band) — M_TEST_UNIT
+  GAP-U8 (gap pass G3)
 - **Site**: new `tests/_ntp_frames.py`.
-- **Change**: `make_ntp_reply(…)` (with `_src_const.NTP_EPOCH_DELTA`) and one public `FakeNtpServer`.
+- **Change**: `make_ntp_reply(…)` (with `_src_const.NTP_EPOCH_DELTA`) and one public `FakeNtpServer(port: int)`: the
+  caller passes the port from its own `PortAllocator` (M.TEST_HELP.056; e.g. `FakeNtpServer(_PORTS.next())`), never an
+  ephemeral or literal one; a real `socket.socket()` bound to `127.0.0.1:<port>`, non-blocking, polled with `ipoll(0)`
+  (its comment: "# ipoll(0) returns an always-truthy iterator on this port - iterate and check the flags."). `async
+  serve_once(reply: bytes | None) -> bool`: answers one request with `reply` (`None` drops it) and returns `True`, or
+  returns `False` when its poll budget (HEAD's 1000 rounds × 10 ms) runs out — bounded by iterations, not a
+  wall-clock cap (A.U35.15); `close()`.
 - **Resolved**: —
-- **Unit**: U24
-- **Depends**: M.TEST_HELP.044.
-- **Blast carried by**: three `make_ntp_reply`/`FakeNtpServer` copies → A.U24.49/A.U24.76 (TEST_UNIT).
+- **Unit**: U24 (stage U35: the `bool` return with A.U35.15).
+- **Depends**: M.TEST_HELP.044, M.TEST_HELP.056.
+- **Blast carried by**: three `make_ntp_reply`/`FakeNtpServer` copies → A.U24.49/A.U24.76 (TEST_UNIT); `serve_once() is
+  True` assertions → M.TEST_UNIT.111.
 - **Kind**: test
 
 ### M.TEST_HELP.059 Create the recording fixed random source
@@ -1702,7 +1737,7 @@ None. Every conflict in this cluster was settled by an owner row, a verified act
 | A.U24.63 | M.TEST_HELP.041, M.TEST_HELP.044 |
 | A.U24.65 | M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.033, M.TEST_HELP.035, M.TEST_HELP.055 |
 | A.U24.67 | M.TEST_HELP.023, M.TEST_HELP.031, M.TEST_HELP.034 (holds at M.TEST_HELP.031) |
-| A.U24.70 | M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.056 |
+| A.U24.70 | M.TEST_HELP.029, M.TEST_HELP.032, M.TEST_HELP.056, M.TEST_HELP.058 |
 | A.U24.72 | M.TEST_HELP.004 |
 | A.U24.73 | M.TEST_HELP.007, M.TEST_HELP.008, M.TEST_HELP.009, M.TEST_HELP.010, M.TEST_HELP.019, M.TEST_HELP.020, M.TEST_HELP.023, M.TEST_HELP.025, M.TEST_HELP.026, M.TEST_HELP.028, M.TEST_HELP.029, M.TEST_HELP.034, M.TEST_HELP.043, M.TEST_HELP.051 |
 | A.U24.76 | M.TEST_HELP.058 |
@@ -1796,3 +1831,7 @@ None. Every conflict in this cluster was settled by an owner row, a verified act
 | A.U25.26 | blast-only (twin `WLAN.status()`; the unit half is A.U24.19 in M.TEST_HELP.007) |
 | A.U30.12 | blast-only, holds (in-body threshold pairs removed by TEST_UNIT; the per-test restore it relies on is M.TEST_HELP.002) |
 | A.U36.014 | dropped (CLAUDE.md hazard-rule text only; no helper change) |
+| A.U31.07 | M.TEST_HELP.037 (gap pass G3) |
+| A.U35.15 | M.TEST_HELP.058 (gap pass G3) |
+| A.U10.06 | M.TEST_HELP.002 (gap pass G3) |
+| A.U30.19 | M.TEST_HELP.002 (gap pass G3) |
