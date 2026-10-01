@@ -6913,7 +6913,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.334 Every L1 test file opens with one header docstring
 - **From**: AC_NOTES 42 (1) (lead, 2026-10-01: G9/R16 "every file opens with exactly one header block", every-file
-  scope owner PQ6, 2026-09-26; the gate checks presence).
+  scope owner PQ6, 2026-09-26; the gate checks presence), A.U27.28 (5) (header presence: the 23 `tests/test_*.py` of its
+  count, each "a ≤ 3-line header naming what the file tests").
 - **Site**: line 1 of each file below (HEAD has no module docstring in any of them; new and renamed paths as the
   conventions give them).
 - **Change**: each file gains a module docstring of ≤ 3 lines (one line where it suffices), naming what its tests
@@ -6967,8 +6968,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: AC_NOTES 42 (1) settles the former owner question 1 (presence is required).
 - **Unit**: U27 (with the header-presence check).
 - **Depends**: the merged changes of each file (renames U10).
-- **Blast carried by**: the presence check over `tests/` → G9/R16's gate (TSC, `tests_scripts/test_comment_block_cap.py`
-  or its sibling).
+- **Blast carried by**: the presence check and the over-cap rewraps of (3) → A.U27.28 (TSC,
+  `tests_scripts/test_comment_block_cap.py`); `tests/microtest.py`'s header → M.TEST_HELP.002.
 - **Kind**: test
 
 ## Gaps for other clusters
@@ -7541,6 +7542,7 @@ text names the file only to state that it is unchanged; the M-ID is where that w
 | A.U27.03 | M.TEST_UNIT.332 |
 | A.U27.07 | M.TEST_UNIT.003, M.TEST_UNIT.006, M.TEST_UNIT.197, M.TEST_UNIT.295, M.TEST_UNIT.296, M.TEST_UNIT.297, M.TEST_UNIT.298, M.TEST_UNIT.299 |
 | A.U27.15 | M.TEST_UNIT.295 |
+| A.U27.28 | M.TEST_UNIT.334 ((5) header presence for this cluster's 23 files; (3)'s rewraps stay with the action itself, TSC) |
 | A.U27.30 | M.TEST_UNIT.111, M.TEST_UNIT.118, M.TEST_UNIT.153, M.TEST_UNIT.220 |
 | A.U28.27 | M.TEST_UNIT.272; holds (read) at M.TEST_UNIT.057 |
 | A.U28.28 | M.TEST_UNIT.037, M.TEST_UNIT.058, M.TEST_UNIT.095, M.TEST_UNIT.113, M.TEST_UNIT.249, M.TEST_UNIT.332; holds (read) at M.TEST_UNIT.210 |
