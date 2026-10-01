@@ -1,8 +1,8 @@
 # A-C gap pass, group G3: TEST_UNIT, TEST_HELP, TWIN, TSC (2026-10-01)
 
 Inputs read: the "Gaps for other clusters" section of all 16 `M_*.md`, the three late SPEC gaps of `gap_prompt.md`,
-`AC_NOTES.md` items 34-45 (45 in full), OR126-OR133, and the coordinator's two hand-offs (GAPS_G1 H3, GAPS_G4 hand-off
-3). Each item's carrying change was read in its body, not only its ledger row. The brief also lists the change bodies of
+`AC_NOTES.md` items 34-45 (45 in full), OR126-OR133, and the coordinator's three hand-offs (GAPS_G1 H3, GAPS_G2 H-2
+to H-4, GAPS_G4 hand-off 3). Each item's carrying change was read in its body, not only its ledger row. The brief also lists the change bodies of
 all 16 merges as input, so a second sweep read every "Blast carried by" line that names TEST_UNIT, TEST_HELP, TWIN, TSC
 or "TST": about 1,000 pointers. Each named A-ID was checked against the target file's text, and every pointer the target
 did not carry was read against its action (table B). Edited: `M_TEST_UNIT.md`, `M_TEST_HELP.md`, `M_TWIN.md`,
@@ -97,6 +97,16 @@ did not carry was read against its action (table B). Edited: `M_TEST_UNIT.md`, `
 | 83 | GAPS_G4 hand-off 3 (b) | TSC | rollover floor and `--allow-multi-day-rollover` forwarded | amended M.TSC.122 | — |
 | 84 | GAPS_G4 hand-off 3 (c) | TSC | `TOOLS` gains the rollover runner | amended M.TSC.217 | — |
 | 85 | GAPS_G4 hand-off 3 (d) | TSC | record cases for `overrides` and `lwip` from the build dir | amended M.TSC.032 | — (the key list also takes M.SCR.067's `BuildDate`, `deviceToml`, `uartCrc`, `autostart`; it had HEAD's `buildDate`) |
+| 86 | GAPS_G2 H-2 (a) | TEST_UNIT | `handle_set_cmd()` returns the per-field `WriteValidity`; `ok_descr` gone | amended M.TEST_UNIT.004, .005 | — (every `:195-355` test asserts the returned dict; `test_handle_set_cmd_ok_descr_override` goes) |
+| 87 | GAPS_G2 H-2 (b) | TEST_UNIT | validators take `object`; `type_or_range_error()` refuses with `(True, None)` | amended M.TEST_UNIT.251 | — |
+| 88 | GAPS_G2 H-2 (c) | TEST_UNIT | readers of the G2 private names follow | amended M.TEST_UNIT.111; new conventions bullet in M_TEST_UNIT naming every privatised attribute and its HEAD readers | — |
+| 89 | GAPS_G2 H-2 (d) | TEST_UNIT | readiness L1 gains `SystemService`, `SensorReader` (+ subclasses), `FRAMManager`; `WifiService`/`WebserverService` `setup() -> bool` | amended M.TEST_UNIT.293 | — |
+| 90 | GAPS_G2 H-3 | TEST_HELP | `sysfunct.watchdog` → `_watchdog`; `_uart_comm_harness.py` UARTComm attributes | amended M.TEST_HELP.037 | the harness half is disposed: the harness reads none of the privatised names (grep at HEAD: only `listener.cancel()`, a task) |
+| 91 | GAPS_G2 H-3 | TWIN | twin readers of the private names | amended M.TWIN.158 (`:153-154` `_payload_size`, `_timeout`) | — (no other twin reader: `module.watchdog` is the generated module's global, and the runner reaches the UART buses through `machine.peripheral()`, M.TWIN.049) |
+| 92 | GAPS_G2 H-4 (a) | TSC | readiness check counts an inherited flag; three new flag carriers | amended M.TSC.112 | — |
+| 93 | GAPS_G2 H-4 (b) | TSC | GAP-D7 check reads `chunk._block_addr` | amended M.TSC.075 | — |
+| 94 | GAPS_G2 H-4 (c) | TSC | `test_port_lock.py` also drives the JS lock (re-entrant, inherited) | amended M.TSC.206 | — |
+| 95 | GAPS_G2 H-4 (d) | TSC | no E.5.1 narrowing row | disposed | no TSC change writes an E.5.1 row (grep of `E.5.1`/A.U35.41 in M_TSC: none). The row is SPEC's (GAPS_G2 H-5 (c)) |
 
 ## B. "Blast carried by" pointers naming a G3 cluster that no G3 change carried
 
@@ -184,12 +194,13 @@ action's own stated alternative (A.U26.43's L1 form; A.U25.65's "else the senten
 
 ## Counts
 
-- Items read: 106. Table A has 85: 77 gap-section items (row 30 is also late SPEC gap 3; row 4 is also GAPS_G1 H3), 4
-  AC_NOTES items and 4 GAPS_G4 hand-off items. Table B has 21 uncarried blast pointers.
+- Items read: 116. Table A has 95: 77 gap-section items (row 30 is also late SPEC gap 3; row 4 is also GAPS_G1 H3), 4
+  AC_NOTES items, 4 GAPS_G4 hand-off items and 10 GAPS_G2 hand-off items. Table B has 21 uncarried blast pointers.
 - Carried as found: 56 (table A).
-- Amended: 35. Table A has 22: rows 1-4, 25, 29, 30, 37, 46, 55, 61, 65, 66, 69, 70, 72-74 and 82-85. Table B has 13:
-  B6-B12 and B15-B20.
+- Amended: 44. Table A has 31: rows 1-4, 25, 29, 30, 37, 46, 55, 61, 65, 66, 69, 70, 72-74, 82-85 and 86-94. Table B
+  has 13: B6-B12 and B15-B20.
 - New merged changes: 7. They are M.TEST_UNIT.335-.339 (B1-B5; .335 also carries table A row 56) and M.TSC.226 and .227
   (B13, B14).
-- Disposed: 7. Table A has 6: rows 9, 15, 21, 26, 60 and 62. Table B has 1: row B21, passed to SCR in hand-off 3 (a).
+- Disposed: 8. Table A has 7: rows 9, 15, 21, 26, 60, 62 and 95. Table B has 1: row B21, passed to SCR in hand-off
+  3 (a).
 - Handed off: 6 entries (TOOL, HW_BENCH, SCR, SRC_NET, DOCS, orchestrator).

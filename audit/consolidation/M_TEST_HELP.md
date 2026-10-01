@@ -961,7 +961,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 - **Change**: (1) `setup_batch_runs_every_unit_in_the_collected_order` (renamed from the
   `…sysfunct_then_fram_then_conn…` name): records `run_setups()`'s units through the recorder of
   `tests/_boot_recorder.py` and asserts they equal `_collect_setups()`'s order, which now includes scd30, neopixel and
-  webserver; the per-class function-level imports go. (2) Boot feeds: asserts `module.sysfunct.watchdog is wdt` and
+  webserver; the per-class function-level imports go. (2) Boot feeds: asserts `module.sysfunct._watchdog is wdt` (private after M.SRC_CORE.008, gap pass G2; GAPS_G2 H-3)
+  and
   `wdt.feed_count` rises by one per setup unit (the WP label goes, M.TEST_HELP.034). (3) New
   `boot_sequence_matches_the_generated_expectation` (A.U20.07's L1): `main()` run until `supervise_tasks()` is entered
   (the recorder raises its stop exception there), the list equals the expected JSON's `boot_sequence`. (4) New unfed-

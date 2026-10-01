@@ -179,3 +179,6 @@ Items the per-unit files cannot settle alone; A-C resolves each when it merges b
 48. Lead, 2026-10-01, for A-C2: M.DOCS.024 folds G2's newly private UART attributes into the U10 privatisation changelog
     row (B39), so B40-B64 keep their numbers. The order must therefore have `UART`'s `txbuf` (U13) and `UARTLinkDriver`
     (U17) work use the private names from U10 onward.
+49. Lead, 2026-10-01: gap pass G3 also swept the "Blast carried by" pointers naming its clusters and found 21 carried
+    nowhere, plus four test files and `host_typecheck.ini` in no cluster (AC_NOTES 47). G1, G2 and G4 now run the same
+    pointer sweep on their clusters, and A-C3 repeats it repo-wide with the Site trace.

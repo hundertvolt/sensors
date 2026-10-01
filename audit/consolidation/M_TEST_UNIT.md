@@ -64,6 +64,21 @@ test change (the product clusters carry those items as "→ A-ID (TEST_UNIT)").
   reader/system setter that stages one) drives the write and `await <manager>.flush_pending()` inside the same
   coroutine — the HEAD pattern of `run(write)` followed by a separate `run(flush_pending())` would await a task the
   first call already cancelled (D-T21).
+- **Private by default, the gap-pass G2 sweep** (M_SRC_CORE GAP-G12, GAPS_G2 H-2 (c); gap pass G3): attributes with no
+  reader outside their class became private in M.SRC_CORE.008 (`SystemService._watchdog`, `_ntp_is_synced`,
+  `_boot_signature`), .036/.037 (`_max_module_error`), .049 (`ConfigManager._cfg_vals`), .081 (`_block_addr`,
+  `_verify_counter`), M.SRC_NET.009 (`DNSQuery._data`), .044-.050 (NTP `_network_available_locked`, `_get_dns_server`,
+  `_dns_timeout_ms`, `_dns_tries`, `_ntp_fetch_timeout_ms`, `_retry_s`, `_retry_max_s`), .078 (`_hotspot_time`,
+  `_conn_fail_to_hotspot`), .155/.156 (`UARTComm._uart`, `_role`, `_payload_size`, `_timeout`, `_uid`), .192/.195
+  (`UART._cancel`, `_txbuf`), .213/.215 (`UARTLinkDriver._role`). A test that reads or writes one of these on its
+  instance follows in the unit of the product change; the readers at HEAD are `tests/test_system_service.py:162, 167,
+  189, 228, 947-948` (`svc.watchdog`), `tests/test_asy_fram_manager.py` and `tests/test_fram_integration.py`
+  (`chunk.block_addr`, `verify_counter`; also `test_ntp_fram_system_integration.py`, `test_voc_algorithm.py`,
+  `test_print_log.py`, `test_notification_fram_integration.py` for `block_addr`), `tests/test_asy_uart_comm.py:96, 844,
+  936, 1414, 1595-1596, 1922, 1955, 2173, 2184` (`payload_size`, `uart`), `tests/test_asy_uart_driver.py` (`cancel`
+  writes, `:839-841`), `tests/test_asy_ntp_client.py` (M.TEST_UNIT.111's timeout write). Constructor keywords keep their
+  public names; a grep per attribute is qualified by its object, since `timeout`, `cancel`, `data` and `cfg_vals` also
+  name unrelated locals and fake attributes. SLF001 is ignored under `tests/**`.
 - **`@tunable` tags** (A.U8C/A.U8C2, test-tier grammar A.U8.02): a literal a later constituent deletes (driven time
   A.U35.13/.14, the removed 5 s caps A.U35.15, the removed in-body `gc.threshold` A.U30.12/.13) takes no tag — its
   row is withdrawn (A.U35.13/.14/.15 and A.U30.12/.13 say so); every other tagged literal becomes its module constant
@@ -2538,7 +2553,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   200`, each `# @tunable l1.asy_ntp_client_<…> = <v>` as A.U8C.13/A.U8C2.03 name them. `:2167` comment → "# longer than
   one failed attempt against a closed loopback port" (`_NTP_CONN_TIMEOUT` is gone). The recovery test re-reads its
   `Synced` waits after A.U18.21: `ntp_force_sync()` clears `Synced`, so `_wait_synced(target=True)` after the retry is
-  the meaningful check (holds). The self-heal test: `client.ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS`; the
+  the meaningful check (holds). The self-heal test: `client._ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS` (private after M.SRC_NET.050 as
+  amended in gap pass G2); the
   `_episode_errs` element of its return goes; `ErrCount == 3` and one `code("E", "NTP_NO_REPLY")` slot. The last test
   fetches `("127.0.0.1", 123)` under the redirect ("# 123 is a const() in the product, not a module attribute; the
   redirect maps it").
@@ -6059,12 +6075,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `setup()`, no method guarding on it): its row asserts `initialized is False` before `setup()` and `True` after, and that
   every public method before `setup()` answers the construction defaults — `get_data()` `NOTIFY(Triggered=False,
   TS=None)`, `get_dict_cfg()` the config store's not-valid answer, `get_error_counter()` an empty log — never an
-  `AttributeError`. Module docstring ≤ 3 lines
+  `AttributeError`. Rows added by gap pass G2's flags (GAPS_G2 H-2 (d); gap pass G3): `SystemService` (its own
+  `initialized`), `SensorReader` (set in its `setup()`) and through it every `SensorReaderConfig` subclass, `FRAMManager`
+  (`initialized` replaces `_was_up`: before `setup()` a chunk request answers as the not-up manager did), `WifiService`
+  and `WebserverService` (each `setup()` returns `bool`, asserted `True` after a healthy setup and `False` after the
+  forced failure). Module docstring ≤ 3 lines
   naming G5/R14's rule in words.
 - **Resolved**: AC_NOTES 38 settles the exempt set and the NeopixelDriver gate; AC_NOTES 42 (2) voids its `_finalized`
   reading and keeps `NotificationService` in the check with `self.initialized` (G5/R14).
 - **Unit**: U10 (lands after U13's `deinit()` bool, as A.U10.22 states).
-- **Depends**: M.TEST_UNIT.079 (NeopixelDriver gate cases); M_SRC_SENS NeopixelDriver gate (GAP); M.SRC_SENS.033 as
+- **Depends**: M.SRC_CORE.008, .036, .039, .092, M.SRC_NET.079, .119 (the G2 flags and `bool` setups); M.TEST_UNIT.079
+  (NeopixelDriver gate cases); M_SRC_SENS NeopixelDriver gate (GAP); M.SRC_SENS.033 as
   amended at d280140 (`NotificationService.initialized`); every class's M.SRC_* `setup()` end state.
 - **Blast carried by**: L0 → A.U10.22 (TSC); SPEC C.13 → A.U10.22 (SPEC).
 - **Kind**: test
@@ -7074,7 +7095,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `manager, chip = make_fram_manager()` then `run(manager.setup())`, and the reboot builds `manager2, _ =
   make_fram_manager(chip=chip)` (same chip, fresh objects; `:151` goes). The six `errno=1` sites write and read back
   `_PLANTED = code("E", "CALLBACK")` (one module constant: "# any catalog code; the tests pin separation and survival,
-  not the code"); `:119-121` → "# A planted entry: the driver reports no faults of its own (Part A.4); this exercises
+  not the code"); `:107` compares `pixel.pr.fram._block_addr != notify.pr.fram._block_addr` (private after
+  M.SRC_CORE.081, gap pass G2); `:119-121` → "# A planted entry: the driver reports no faults of its own (Part A.4); this exercises
   the FRAM-backed history." `PrintLogHistoryStore` and `FRAMChunk` `isinstance` checks hold.
 - **Resolved**: the file is in no CLUSTERS.md list, so no merge carried M.SRC_SENS.031's A.U2.17 pointer or the U5/U10
   constructor changes its sibling files take (M.TEST_UNIT.265, .276) — written here to the same end states (gap pass G3).

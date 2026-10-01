@@ -1439,7 +1439,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_device_script_fram_regions.py
 ### M.TSC.075 Raw FRAM scratch regions lie outside the production layout
-- **From**: A.U26.24; HW_DEV GAP-D7 (M.HW_DEV.066), AD-8 (disjoint regions, M.HW_DEV.124/.132).
+- **From**: A.U26.24; HW_DEV GAP-D7 (M.HW_DEV.066), AD-8 (disjoint regions, M.HW_DEV.124/.132); GAPS_G2 H-4 (b) (the
+  chunk's address is `_block_addr` after M.SRC_CORE.081; gap pass G3).
 - **Site**: new `tests_scripts/test_device_script_fram_regions.py`.
 - **Change**: every device script issuing a raw `set_values`/`get_values` declares `_SCRATCH_REGIONS`
   (and `_EVIDENCE_REGIONS` for a production read) covering every raw call, its addresses expressed from those tuples;
@@ -1447,7 +1448,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `allocated_size` read by booting the bench device's generated module under the Unix-port twin (the
   `test_digital_twin_boot_contiguity.py` harness) and `part_size` the bench TOML's FRAM `max_size`; every
   `_EVIDENCE_REGIONS` script runs under the session evidence save; a raw call addressed through a `get_chunk()`
-  result (`chunk.block_addr …`) is chunk-scoped (covered by the clear-in-`finally` check), not undeclared scratch. A
+  result (`chunk._block_addr …`, the private name M.SRC_CORE.081 gives it) is chunk-scoped (covered by the clear-in-`finally` check), not undeclared scratch. A
   missing Unix-port build fails.
 - **Resolved**: —
 - **Unit**: U26
@@ -2136,10 +2137,15 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ## tests_scripts/test_readiness_gates.py
 ### M.TSC.112 Every class with an async `setup()` gates on readiness
 - **From**: A.U10.22 (L0 half); SRC_SENS GAP-17 per the lead's ruling (AC_NOTES 38); SRC_NET gap 3 (`WifiService`'s
-  `setup()` override, `SensorReaderConfig`, `UARTLinkDriver` gains the flag, M.SRC_NET.213/.215).
+  `setup()` override, `SensorReaderConfig`, `UARTLinkDriver` gains the flag, M.SRC_NET.213/.215); GAPS_G2 H-4 (a) (an
+  override that awaits `super().setup()` inherits the flag; `SystemService`, `SensorReader` and `FRAMManager` now carry
+  it, M.SRC_CORE.008/.036/.039/.092; gap pass G3).
 - **Site**: new `tests_scripts/test_readiness_gates.py`.
 - **Change**: AST over `src/`: every class defining `async def setup` assigns `self.initialized = False` in `__init__`
-  and `True` inside `setup()` (or inherits both from a base that does, resolved within `src/`), except a named list
+  and `True` inside `setup()` (or inherits both from a base that does, resolved within `src/`: a class whose `setup()`
+  awaits `super().setup()` of such a base counts as setting it — `SensorReaderConfig` over `SensorReader`, `WifiService`
+  and `NotificationService` over theirs; `SystemService`, `SensorReader` and `FRAMManager`, whose `initialized` replaces
+  `_was_up`, set it themselves), except a named list
   with reasons: `ConfigManager` (`valid`) and the protocol classes
   `BMP3XX_I2C`, `SCD30_I2C`, `SGP40_I2C`, `ISL29125_I2C` plus `I2CDevice` ("build everything in `__init__`; `setup()`
   only probes and configures the chip"); `NeopixelDriver` and `NotificationService` are checked (each carries
@@ -3701,16 +3707,19 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_port_lock.py
 ### M.TSC.206 One lock per product-fixed port, inherited by children
-- **From**: A.U24.69, A.U27.39; SCR gap 3 (inherited-owner cases, M.SCR.012/.013).
+- **From**: A.U24.69, A.U27.39; SCR gap 3 (inherited-owner cases, M.SCR.012/.013); GAPS_G2 H-4 (c) (the JS lock of
+  M.WEB.078 keeps the same contract; gap pass G3).
 - **Site**: new `tests_scripts/test_port_lock.py`.
 - **Change**: two shells taking the same lock: the second exits 1 naming the port and the holder; a lock left by a dead
   PID is taken over; the lock dir is gone after the holder exits (normally and on `kill -TERM`); a child of the holder (the
   inherited `SENSORS_PORT_LOCK_OWNER`/`SENSORS_PORT_LOCKS_HELD`) is accepted, an unrelated holder refused; release
-  removes only own locks; the CPython reader (M.SCR.013) honours the same contract; a held 53 lock makes
+  removes only own locks; the CPython reader (M.SCR.013) honours the same contract; `tests_js/_port_lock.js` (driven
+  through `node -e`) honours it too: a second acquisition in the same process is re-entrant, a child of a shell holder
+  (inherited variables) is accepted, an unrelated holder refused (M.WEB.078); a held 53 lock makes
   `run_unix_port_integration.sh --device <derived>` exit 1.
 - **Resolved**: —
 - **Unit**: U27 (stage U24).
-- **Depends**: M.SCR.012, M.SCR.013.
+- **Depends**: M.SCR.012, M.SCR.013, M.WEB.078.
 - **Blast carried by**: —
 - **Kind**: test
 

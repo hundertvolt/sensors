@@ -3312,6 +3312,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   fake_b)` and the bounded pollers; `:66-69` comment → "# Joined as the bench jumper joins them; the pollers are bounded
   because the twin UART's ioctl() answers EINVAL to all but POLL, so a real select.poll() never sees readiness
   (digital_twin/README.md)." `:200` → `bytes(answer) == asy_uart_link_driver._BANNER`. `:173-175` per A.U16.01.
+  `:153-154` read `initiator._payload_size == responder._payload_size` and `initiator._timeout == responder._timeout`
+  (`UARTComm`'s private names after M.SRC_NET.155 as amended in gap pass G2; GAPS_G2 H-3, gap pass G3; the `:147`
+  comment keeps the out-of-band rule).
   `:265` test gains, after the banner GET, one `uart_set(0x02, bytes((i * 5) & 0xFF for i in range(140)))` (three data
   chunks) asserted `True` while the noise tasks run (A.U35.22). `:283-305` per A.U17.04 (comment its three lines). `:382-423`
   per A.U17.05; `:413` per A.U28.28 (7). Leak tests (`:339` and the hammer): retention as a per-transfer rate, G7/R22 —
