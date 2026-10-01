@@ -11,13 +11,13 @@
   }
  },
  "changes": 1883,
- "steps": 6500,
- "edges": 75149,
+ "steps": 6498,
+ "edges": 75171,
  "edge_kinds": {
-  "action": 61749,
-  "dep-M": 7509,
-  "dep-A": 2982,
-  "blast": 5821,
+  "action": 61776,
+  "dep-M": 7511,
+  "dep-A": 2992,
+  "blast": 5819,
   "sweep": 447
  },
  "violations_remaining": [],
@@ -1266,11 +1266,12 @@
   }
  ],
  "in_unit_edges_dropped_to_break_cycles": {
-  "blast": 254,
-  "dep-M": 673,
+  "blast": 253,
+  "dep-M": 671,
   "dep-A": 149
  },
  "no_step_changes": [
+  "M.SRC_CORE.108",
   "M.TSC.183",
   "M.TSC.225"
  ],

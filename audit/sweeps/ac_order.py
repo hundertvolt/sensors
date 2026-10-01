@@ -658,7 +658,7 @@ SYNTH = {
     "M.DOCS.109": {"title": "The integrate-module skill points into Part K (AC3_S S-13 = AC3_R R-04)", "file": "audit/consolidation/M_DOCS.md",
                    "live": ["A.U36.543"], "T": ["U36"], "files": [".claude/skills/integrate-module/SKILL.md"],
                    "depends": ["M.SPEC.142", "M.SPEC.046"]},
-    "M.PROC.R04": {"title": "U36: two baseline runs of the Part K skill (AC3_R R-04; ID pending)", "file": "audit/consolidation/M_PROC.md",
+    "M.PROC.048": {"title": "U36: two baseline runs of the Part K skill (AC3_R R-04)", "file": "audit/consolidation/M_PROC.md",
                    "live": ["A.U36.543"], "T": ["U36"], "files": [], "depends": ["M.DOCS.109"]},
     "M.PROC.046": {"title": "U10 rename and key sweeps run once over the whole tree (AC3_S S-15)", "file": "audit/consolidation/M_PROC.md",
                    "live": ["A.U10.18", "A.U10.35", "A.U10.37", "A.U10.38", "A.U10.40", "A.U10.43", "A.U10.44"], "T": ["U10"],
@@ -676,8 +676,8 @@ for _k, _d in _S05.items():
 BASELINE = ["A.U0.02", "A.U0.03", "A.U0.04", "A.U0.06"]
 # Change-level cycles settled at step level as one co-landing commit (M-file ledger notes record each).
 COLAND = [("M.TWIN.019", "M.TWIN.033"), ("M.DOCS.008", "M.DOCS.011")]
-# Changes that create nothing (their Unit slot reads "none", A-C2): no step.
-NOSTEP = {"M.TSC.183", "M.TSC.225"}
+# Changes that create nothing (their Unit slot reads "none", A-C2; "— (no step)", AC3_R R-03): no step.
+NOSTEP = {"M.TSC.183", "M.TSC.225", "M.SRC_CORE.108"}
 # Changes whose Unit slot lands every row with its own action ("per row as listed", "each adding action's own unit").
 OWNUNIT = {"M.DOCS.024", "M.DOCS.064", "M.DOCS.066", "M.SPEC.156"}
 # Per-change relocations a Unit slot states in words (the parser cannot read them from the unit tokens).
@@ -1101,10 +1101,10 @@ def render_md(wo, R):
     w("## 2. Counts")
     w("")
     nimp = sum(u["implicit_steps"] for u in units)
-    w(f"- Merged changes: {c['changes']} (1,865 in the M files plus {c['changes'] - 1865} the A-C3 reports propose, "
-      "placed now with the IDs they propose: AC3_S M.GEN.064, M.SRC_CORE.132, M.SRC_SENS.093, the eight S-05 "
+    w(f"- Merged changes: {c['changes']} (1,865 from the cluster merges plus {c['changes'] - 1865} the A-C3 reports "
+      "proposed, now in the M files: AC3_S M.GEN.064, M.SRC_CORE.132, M.SRC_SENS.093, the eight S-05 "
       "docstring changes, M.HW_BENCH.137, M.TEST_UNIT.341, M.TWIN.166, M.DOCS.109 (= AC3_R R-04's doc change), "
-      "M.PROC.046/.047; AC3_R R-04's run change as M.PROC.R04, ID pending). Changes with no step: "
+      "M.PROC.046/.047; AC3_R R-04's run change M.PROC.048). Changes with no step: "
       f"{', '.join(c['no_step_changes'])}.")
     w(f"- Steps: {c['steps']} ({c['steps'] - nimp} named by their Unit slot, {nimp} implicit per rule 2) in "
       f"{len(units)} units.")
@@ -1221,7 +1221,7 @@ def render_md(wo, R):
       "(the same set as AC3_S S-17); M.PROC.021 carries A.U32.05 in U32; M.PROC.003 (5a), the namespace proof, runs in U0 "
       "after the baseline, and the test schedule (section 4) waits on it.")
     w("- **AC3_R R-04 = AC3_S S-13**: M.DOCS.109 (the integrate-module skill file) in U36 after M.SPEC.142/.046; the "
-      "baseline-run change (ID pending, `M.PROC.R04` here) in U36 after M.DOCS.109.")
+      "baseline-run change M.PROC.048 in U36 after M.DOCS.109.")
     w("- **AC3_S new changes**: M.GEN.064 (freezefs re-vendor) in U0R; M.SRC_CORE.132 and M.SRC_SENS.093 (D.15 order) "
       "in U10, each after every other U10 step on its files; the eight S-05 docstring changes (M.GEN.065, M.SCR.075, "
       "M.TSC.228, M.TEST_HELP.068, M.TEST_UNIT.340, M.TWIN.165, M.HW_BENCH.136, M.HW_DEV.158) in U10; M.HW_BENCH.137 in "

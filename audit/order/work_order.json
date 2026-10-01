@@ -58,13 +58,13 @@
    }
   },
   "changes": 1883,
-  "steps": 6500,
-  "edges": 75149,
+  "steps": 6498,
+  "edges": 75171,
   "edge_kinds": {
-   "action": 61749,
-   "dep-M": 7509,
-   "dep-A": 2982,
-   "blast": 5821,
+   "action": 61776,
+   "dep-M": 7511,
+   "dep-A": 2992,
+   "blast": 5819,
    "sweep": 447
   },
   "violations_remaining": [],
@@ -1313,11 +1313,12 @@
    }
   ],
   "in_unit_edges_dropped_to_break_cycles": {
-   "blast": 254,
-   "dep-M": 673,
+   "blast": 253,
+   "dep-M": 671,
    "dep-A": 149
   },
   "no_step_changes": [
+   "M.SRC_CORE.108",
    "M.TSC.183",
    "M.TSC.225"
   ],
@@ -1496,6 +1497,9 @@
      "M.PROC.005"
     ],
     [
+     "M.PROC.003"
+    ],
+    [
      "M.PROC.006"
     ],
     [
@@ -1524,6 +1528,9 @@
     ],
     [
      "M.SPEC.009"
+    ],
+    [
+     "M.SPEC.010"
     ],
     [
      "M.SPEC.016"
@@ -1643,6 +1650,48 @@
      "M.SPEC.153"
     ],
     [
+     "M.DOCS.062",
+     "M.DOCS.065",
+     "M.SPEC.037",
+     "M.SPEC.108",
+     "M.SPEC.121",
+     "M.SPEC.132",
+     "M.SPEC.154"
+    ],
+    [
+     "M.DOCS.063"
+    ],
+    [
+     "M.DOCS.064"
+    ],
+    [
+     "M.DOCS.077"
+    ],
+    [
+     "M.SPEC.041"
+    ],
+    [
+     "M.SPEC.050"
+    ],
+    [
+     "M.SPEC.072"
+    ],
+    [
+     "M.SPEC.080"
+    ],
+    [
+     "M.SPEC.082"
+    ],
+    [
+     "M.SPEC.094"
+    ],
+    [
+     "M.SPEC.104"
+    ],
+    [
+     "M.SPEC.114"
+    ],
+    [
      "M.SRC_CORE.008"
     ],
     [
@@ -1665,6 +1714,9 @@
     ],
     [
      "M.SRC_CORE.091"
+    ],
+    [
+     "M.SPEC.126"
     ],
     [
      "M.SRC_CORE.102"
@@ -1712,6 +1764,9 @@
      "M.SRC_NET.210"
     ],
     [
+     "M.SPEC.139"
+    ],
+    [
      "M.SRC_NET.215"
     ],
     [
@@ -1719,60 +1774,6 @@
     ],
     [
      "M.SRC_SENS.032"
-    ],
-    [
-     "M.PROC.003"
-    ],
-    [
-     "M.SPEC.010"
-    ],
-    [
-     "M.DOCS.062",
-     "M.DOCS.065",
-     "M.SPEC.037",
-     "M.SPEC.108",
-     "M.SPEC.121",
-     "M.SPEC.132",
-     "M.SPEC.154"
-    ],
-    [
-     "M.DOCS.063"
-    ],
-    [
-     "M.DOCS.064"
-    ],
-    [
-     "M.DOCS.077"
-    ],
-    [
-     "M.SPEC.041"
-    ],
-    [
-     "M.SPEC.050"
-    ],
-    [
-     "M.SPEC.072"
-    ],
-    [
-     "M.SPEC.080"
-    ],
-    [
-     "M.SPEC.082"
-    ],
-    [
-     "M.SPEC.094"
-    ],
-    [
-     "M.SPEC.104"
-    ],
-    [
-     "M.SPEC.114"
-    ],
-    [
-     "M.SPEC.126"
-    ],
-    [
-     "M.SPEC.139"
     ],
     [
      "M.SRC_SENS.054"
@@ -2109,6 +2110,7 @@
     "audit/artefacts/ENV/baseline.md",
     "audit/artefacts/ENV/history_trace.md",
     "audit/do_not_reopen.md",
+    "audit/dprov/D1.md",
     "audit/sweeps/extract_datasheets.py",
     "audit/sweeps/packet.py",
     "audit/sweeps/resolve_refs.py",
@@ -2826,6 +2828,7 @@
     "audit/artefacts/ENV/baseline.md",
     "audit/artefacts/ENV/dependency_refresh.md",
     "audit/consolidation/M_*.md",
+    "audit/dprov/D1.md",
     "audit/sweeps/extract_datasheets.py",
     "baseline.md",
     "digital_twin/README.md",
@@ -5453,6 +5456,9 @@
    "implicit_steps": 64,
    "order": [
     [
+     "M.GEN.035"
+    ],
+    [
      "M.GEN.046"
     ],
     [
@@ -5760,9 +5766,6 @@
      "M.SRC_SENS.062",
      "M.SRC_SENS.064",
      "M.TEST_UNIT.095"
-    ],
-    [
-     "M.GEN.035"
     ],
     [
      "M.GEN.030"
@@ -6418,13 +6421,13 @@
      "M.DOCS.063"
     ],
     [
-     "M.GEN.009"
-    ],
-    [
      "M.GEN.015"
     ],
     [
      "M.GEN.035"
+    ],
+    [
+     "M.GEN.009"
     ],
     [
      "M.HW_BENCH.037"
@@ -9756,8 +9759,8 @@
    "unit": "U10",
    "steps": 601,
    "actions": 63,
-   "explicit_steps": 443,
-   "implicit_steps": 158,
+   "explicit_steps": 444,
+   "implicit_steps": 157,
    "order": [
     [
      "M.DOCS.027"
@@ -9793,6 +9796,9 @@
      "M.HW_BENCH.086"
     ],
     [
+     "M.HW_BENCH.100"
+    ],
+    [
      "M.HW_BENCH.101"
     ],
     [
@@ -9808,6 +9814,9 @@
      "M.HW_BENCH.136"
     ],
     [
+     "M.HW_DEV.158"
+    ],
+    [
      "M.SCR.049"
     ],
     [
@@ -9817,7 +9826,13 @@
      "M.SCR.063"
     ],
     [
+     "M.SCR.065"
+    ],
+    [
      "M.SCR.067"
+    ],
+    [
+     "M.SCR.069"
     ],
     [
      "M.SCR.075"
@@ -10276,6 +10291,18 @@
      "M.TOOL.033"
     ],
     [
+     "M.TOOL.035"
+    ],
+    [
+     "M.TOOL.043"
+    ],
+    [
+     "M.TOOL.066"
+    ],
+    [
+     "M.TOOL.067"
+    ],
+    [
      "M.TSC.001"
     ],
     [
@@ -10283,6 +10310,9 @@
     ],
     [
      "M.TSC.038"
+    ],
+    [
+     "M.TSC.065"
     ],
     [
      "M.TSC.091"
@@ -10708,19 +10738,7 @@
      "M.HW_BENCH.081"
     ],
     [
-     "M.HW_BENCH.100"
-    ],
-    [
      "M.HW_DEV.117"
-    ],
-    [
-     "M.HW_DEV.158"
-    ],
-    [
-     "M.SCR.065"
-    ],
-    [
-     "M.SCR.069"
     ],
     [
      "M.SPEC.057"
@@ -11044,18 +11062,6 @@
      "M.TEST_UNIT.311"
     ],
     [
-     "M.TOOL.035"
-    ],
-    [
-     "M.TOOL.043"
-    ],
-    [
-     "M.TOOL.066"
-    ],
-    [
-     "M.TOOL.067"
-    ],
-    [
      "M.TSC.040"
     ],
     [
@@ -11063,9 +11069,6 @@
     ],
     [
      "M.TSC.047"
-    ],
-    [
-     "M.TSC.065"
     ],
     [
      "M.TSC.069"
@@ -12717,10 +12720,10 @@
   },
   {
    "unit": "U13",
-   "steps": 116,
-   "actions": 29,
+   "steps": 115,
+   "actions": 28,
    "explicit_steps": 95,
-   "implicit_steps": 21,
+   "implicit_steps": 20,
    "order": [
     [
      "M.GEN.005"
@@ -12776,6 +12779,9 @@
      "M.SPEC.048"
     ],
     [
+     "M.SPEC.049"
+    ],
+    [
      "M.SPEC.051"
     ],
     [
@@ -12795,12 +12801,6 @@
     ],
     [
      "M.SPEC.139"
-    ],
-    [
-     "M.SRC_CORE.108"
-    ],
-    [
-     "M.SPEC.049"
     ],
     [
      "M.SRC_NET.100"
@@ -16901,18 +16901,6 @@
      "M.HW_BENCH.137"
     ],
     [
-     "M.SRC_CORE.100"
-    ],
-    [
-     "M.SRC_CORE.101"
-    ],
-    [
-     "M.SRC_SENS.041"
-    ],
-    [
-     "M.TOOL.023"
-    ],
-    [
      "M.HW_BENCH.039"
     ],
     [
@@ -16938,6 +16926,18 @@
     ],
     [
      "M.SCR.069"
+    ],
+    [
+     "M.SRC_CORE.100"
+    ],
+    [
+     "M.SRC_CORE.101"
+    ],
+    [
+     "M.SRC_SENS.041"
+    ],
+    [
+     "M.TOOL.023"
     ],
     [
      "M.TOOL.035"
@@ -23856,6 +23856,12 @@
      "M.HW_DEV.140"
     ],
     [
+     "M.PROC.018"
+    ],
+    [
+     "M.HW_BENCH.103"
+    ],
+    [
      "M.SCR.009"
     ],
     [
@@ -23890,6 +23896,9 @@
     ],
     [
      "M.SRC_NET.130"
+    ],
+    [
+     "M.SRC_SENS.038"
     ],
     [
      "M.TEST_HELP.003"
@@ -23937,16 +23946,7 @@
      "M.DOCS.014"
     ],
     [
-     "M.HW_BENCH.103"
-    ],
-    [
-     "M.PROC.018"
-    ],
-    [
      "M.DOCS.068"
-    ],
-    [
-     "M.SRC_SENS.038"
     ],
     [
      "M.TOOL.024"
@@ -24264,6 +24264,7 @@
     "SPECIFICATION.md",
     "THIRD_PARTY_LICENSES.md",
     "buildgen/codegen.py",
+    "datasheets",
     "digital_twin/_fram_chip.py",
     "digital_twin/launch.py",
     "digital_twin/machine.py",
@@ -25417,9 +25418,9 @@
   },
   {
    "unit": "U31",
-   "steps": 99,
+   "steps": 100,
    "actions": 33,
-   "explicit_steps": 76,
+   "explicit_steps": 77,
    "implicit_steps": 23,
    "order": [
     [
@@ -25503,6 +25504,9 @@
      "M.SRC_SENS.068",
      "M.SRC_SENS.069",
      "M.TSC.128"
+    ],
+    [
+     "M.SCR.015"
     ],
     [
      "M.SPEC.018"
@@ -25663,6 +25667,7 @@
     "digital_twin/README.md",
     "digital_twin/network.py",
     "digital_twin/run_generic_integration.py",
+    "scripts/_check_gc_collect_sites.py",
     "scripts/_digital_twin_scenarios.py",
     "src/asy_bmp3xx_driver.py",
     "src/asy_captive_dns.py",
@@ -26632,10 +26637,10 @@
   },
   {
    "unit": "U35",
-   "steps": 185,
+   "steps": 184,
    "actions": 75,
    "explicit_steps": 127,
-   "implicit_steps": 58,
+   "implicit_steps": 57,
    "order": [
     [
      "M.HW_BENCH.050"
@@ -27048,9 +27053,6 @@
     ],
     [
      "M.HW_BENCH.121"
-    ],
-    [
-     "M.HW_BENCH.130"
     ],
     [
      "M.HW_DEV.010"
@@ -27502,9 +27504,9 @@
   {
    "unit": "U36",
    "steps": 404,
-   "actions": 252,
-   "explicit_steps": 273,
-   "implicit_steps": 131,
+   "actions": 253,
+   "explicit_steps": 275,
+   "implicit_steps": 129,
    "order": [
     [
      "M.DOCS.002"
@@ -28008,7 +28010,7 @@
      "M.HW_DEV.131"
     ],
     [
-     "M.PROC.R04"
+     "M.PROC.048"
     ],
     [
      "M.SCR.058"
@@ -28575,6 +28577,7 @@
     "buildgen/version.py",
     "buildgen/web_tag.py",
     "buildgen/wiring.py",
+    "datasheets",
     "dev_legacy/README.md",
     "device_scripts",
     "devices/wozi.toml",
@@ -29364,9 +29367,9 @@
   },
   {
    "unit": "C",
-   "steps": 83,
+   "steps": 82,
    "actions": 33,
-   "explicit_steps": 38,
+   "explicit_steps": 37,
    "implicit_steps": 45,
    "order": [
     [
@@ -29554,9 +29557,6 @@
      "M.SPEC.157"
     ],
     [
-     "M.SRC_CORE.108"
-    ],
-    [
      "M.TSC.028"
     ],
     [
@@ -29644,7 +29644,6 @@
     "scripts/run_manual_hardware_tests.sh",
     "sgp40_conformance_probe.py",
     "sgp40_fram_backup_restore.py",
-    "src/asy_fram_driver.py",
     "tests_hardware/README.md",
     "tests_hardware/bench/conftest.py",
     "tests_hardware/bench/test_modlwip_send_stall.py",
@@ -29676,14 +29675,11 @@
     "tests_scripts/test_bench_restores_serving.py"
    ],
    "scoped_tests": [
-    "tests/test_asy_fram_driver.py",
-    "tests/test_asy_fram_wire_trace.py",
     "tests/test_asy_neopixel_driver.py",
     "tests/test_asy_webserver_service.py",
     "tests/test_asy_wifi_service.py",
     "tests/test_digital_twin_bmp3xx.py",
     "tests/test_digital_twin_bus_hazard_concurrency.py",
-    "tests/test_digital_twin_fram.py",
     "tests/test_digital_twin_isl29125.py",
     "tests/test_digital_twin_isl29125_autorange.py",
     "tests/test_digital_twin_launch.py",
@@ -29761,8 +29757,7 @@
     "scripts/test.sh (unit tier at gc -1, with its backgrounded tests_scripts pytest tier)",
     "GC_THRESHOLD=32768 scripts/test.sh (unit tier at the boot threshold)",
     "scripts/run_digital_twin_ci.sh <device> for every devices/*.toml (twin tier, both GC stages)",
-    "npm run lint, lint:html, lint:css, typecheck; npm run test:unit; npm run test:put-matrix (web tier, port-binding)",
-    "scripts/test.sh --coverage and npm run test:coverage (the unit touches src/; the report never gates, the test result does)"
+    "npm run lint, lint:html, lint:css, typecheck; npm run test:unit; npm run test:put-matrix (web tier, port-binding)"
    ],
    "independent_later_units": [],
    "hardware_rounds": {
@@ -30185,7 +30180,7 @@
    "change": "M.DOCS.078",
    "unit": "U0",
    "file": "audit/consolidation/M_DOCS.md",
-   "title": "The WoZi rule: tags, the invalid-test sentence, \"device\"",
+   "title": "The WoZi rule: never flashed, tags, the invalid-test sentence",
    "carries": [
     "A.U0.23",
     "A.U0.32"
@@ -57010,11 +57005,11 @@
     "A.U10.38"
    ],
    "landing": {
-    "A.U10.31": "own unit (implicit step: code/test site, blast closed in its unit)",
-    "A.U10.37": "own unit (implicit step: code/test site, blast closed in its unit)",
-    "A.U10.38": "own unit (implicit step: code/test site, blast closed in its unit)"
+    "A.U10.31": "own unit, named in the Unit slot",
+    "A.U10.37": "own unit, named in the Unit slot",
+    "A.U10.38": "own unit, named in the Unit slot"
    },
-   "named_in_unit_slot": false
+   "named_in_unit_slot": true
   },
   {
    "change": "M.SRC_CORE.063",
@@ -67064,11 +67059,9 @@
    "file": "audit/consolidation/M_DOCS.md",
    "title": "\"Real-hardware work still owed\": one row per measurement, in round order",
    "carries": [
-    "A.U13.04",
     "A.U13.R02"
    ],
    "landing": {
-    "A.U13.04": "own unit (the Unit slot lands each row with its action)",
     "A.U13.R02": "own unit (the Unit slot lands each row with its action)"
    },
    "named_in_unit_slot": false
@@ -67603,19 +67596,6 @@
     "A.U13.09": "own unit, named in the Unit slot"
    },
    "named_in_unit_slot": true
-  },
-  {
-   "change": "M.SRC_CORE.108",
-   "unit": "U13",
-   "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "FRAM CS from power-on is a hardware measurement, no code",
-   "carries": [
-    "A.U13.04"
-   ],
-   "landing": {
-    "A.U13.04": "own unit (implicit step: code/test site, blast closed in its unit)"
-   },
-   "named_in_unit_slot": false
   },
   {
    "change": "M.SRC_NET.100",
@@ -110556,6 +110536,15 @@
    "named_in_unit_slot": false
   },
   {
+   "change": "M.SCR.015",
+   "unit": "U31",
+   "file": "audit/consolidation/M_SCR.md",
+   "title": "One AST checker for `gc.collect()` and `gc.threshold()` sites",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.SCR.017",
    "unit": "U31",
    "file": "audit/consolidation/M_SCR.md",
@@ -111852,7 +111841,7 @@
    "change": "M.PROC.021",
    "unit": "U32",
    "file": "audit/consolidation/M_PROC.md",
-   "title": "U32: re-run the legacy-function check at the sync point",
+   "title": "U32: re-run the legacy-function and legacy-value checks at the sync point",
    "carries": [
     "A.U32.04",
     "A.U32.05"
@@ -113456,19 +113445,6 @@
    ],
    "landing": {
     "A.U35.49": "own unit (the Unit slot writes it early in end form; confirmed in place here)"
-   },
-   "named_in_unit_slot": false
-  },
-  {
-   "change": "M.HW_BENCH.130",
-   "unit": "U35",
-   "file": "audit/consolidation/M_HW_BENCH.md",
-   "title": "Persistence-write gating: one budget table, the checks, the flash-cycle list",
-   "carries": [
-    "A.U35.51"
-   ],
-   "landing": {
-    "A.U35.51": "own unit (the Unit slot writes it early in end form; confirmed in place here)"
    },
    "named_in_unit_slot": false
   },
@@ -116397,7 +116373,7 @@
    "change": "M.DOCS.078",
    "unit": "U36",
    "file": "audit/consolidation/M_DOCS.md",
-   "title": "The WoZi rule: tags, the invalid-test sentence, \"device\"",
+   "title": "The WoZi rule: never flashed, tags, the invalid-test sentence",
    "carries": [
     "A.U36.512"
    ],
@@ -117304,10 +117280,10 @@
     "A.S0930.41"
    ],
    "landing": {
-    "A.S0930.30": "own unit (the Unit slot writes it early in end form; confirmed in place here)",
-    "A.S0930.41": "own unit (the Unit slot writes it early in end form; confirmed in place here)"
+    "A.S0930.30": "own unit, named in the Unit slot",
+    "A.S0930.41": "own unit, named in the Unit slot"
    },
-   "named_in_unit_slot": false
+   "named_in_unit_slot": true
   },
   {
    "change": "M.HW_BENCH.123",
@@ -117389,12 +117365,14 @@
    "file": "audit/consolidation/M_HW_BENCH.md",
    "title": "Persistence-write gating: one budget table, the checks, the flash-cycle list",
    "carries": [
-    "A.S0930.30"
+    "A.S0930.30",
+    "A.U35.51"
    ],
    "landing": {
-    "A.S0930.30": "own unit (the Unit slot writes it early in end form; confirmed in place here)"
+    "A.S0930.30": "own unit, named in the Unit slot",
+    "A.U35.51": "deferred to the next Unit-slot unit (doc site)"
    },
-   "named_in_unit_slot": false
+   "named_in_unit_slot": true
   },
   {
    "change": "M.HW_BENCH.131",
@@ -117621,10 +117599,10 @@
    "named_in_unit_slot": true
   },
   {
-   "change": "M.PROC.R04",
+   "change": "M.PROC.048",
    "unit": "U36",
    "file": "audit/consolidation/M_PROC.md",
-   "title": "U36: two baseline runs of the Part K skill (AC3_R R-04; ID pending)",
+   "title": "U36: two baseline runs of the Part K skill (AC3_R R-04)",
    "carries": [
     "A.U36.543"
    ],
@@ -119377,6 +119355,7 @@
     "A.U23.45",
     "A.U23.49",
     "A.U25.12",
+    "A.U32.06",
     "A.U36.500",
     "A.U36.503",
     "A.U36.504",
@@ -119408,6 +119387,7 @@
     "A.U23.45": "deferred to the next Unit-slot unit (doc site)",
     "A.U23.49": "deferred to the next Unit-slot unit (doc site)",
     "A.U25.12": "deferred to the next Unit-slot unit (doc site)",
+    "A.U32.06": "deferred to the next Unit-slot unit (doc site)",
     "A.U36.500": "own unit, named in the Unit slot",
     "A.U36.503": "own unit, named in the Unit slot",
     "A.U36.504": "own unit, named in the Unit slot",
@@ -123645,15 +123625,6 @@
     "A.C.03": "own unit, named in the Unit slot",
     "A.C.10": "own unit, named in the Unit slot"
    },
-   "named_in_unit_slot": true
-  },
-  {
-   "change": "M.SRC_CORE.108",
-   "unit": "C",
-   "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "FRAM CS from power-on is a hardware measurement, no code",
-   "carries": [],
-   "landing": {},
    "named_in_unit_slot": true
   },
   {

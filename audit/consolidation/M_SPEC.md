@@ -4257,8 +4257,8 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   paragraph. (3) Wire cost: "At the defaults (`payload_size=48`, CRC16)" → A.S0930.08's "(`payload_size=48` with CRC16;
   `dev` runs without, 53 bytes)"; `:5530-5532` "This is accepted for the intended traffic … and is not on its own a reason
   to change the wire format" → "The wire format stays as it is until the C side is reconciled (owner, 2026-09-25); the ratio fits the
-  intended traffic (short bursts between two participants) — `UART_C_PORT_CHANGELOG.md` A10/A11 hold the two candidates
-  that would change it". (4) `:5534-5542` per A.U13.17: "defaulting to **20 ms**" → "defaulting to 2 ms with a 50 ms idle
+  intended traffic (short bursts between two participants); the two candidates that would change it, a bare 5-byte ACK
+  header and COBS-delimited variable-length frames through the framing codec, wait for that reconciliation". (4) `:5534-5542` per A.U13.17: "defaulting to **20 ms**" → "defaulting to 2 ms with a 50 ms idle
   rate, the dev bench's measured pair"; "Measured against the defaults" → "Measured at the former 20 ms default"; "must
   therefore be constructed with a single-digit `poll_wait_ms`" gains ", which the driver default (2 ms) is". (5) `:5546`
   "(Part F.5.9)" → "(F.8.3)". (6) `:5554-5566`: the poll-interval floor recomputed at the 2 ms default (≈ 80 bytes,
@@ -6139,6 +6139,7 @@ section that stays.
 | AC3_O O-22 | A-C3 | M.SPEC.136: "not touched in this audit" → "stays as it is until the C side is reconciled" (the M.DOCS.076 half is DOCS's) |
 | AC3_O O-23 | A-C3 | M.SPEC.054, M.SPEC.064, M.SPEC.075, M.SPEC.082: tags in "(owner, YYYY-MM-DD)" form |
 | AC3_O B (placeholders) | A-C3 | M.SPEC.111 `<A.U10.08's check>` → `tests_scripts/test_watchdog_feed_sites.py` (M.TSC.155); M.SPEC.144 `<A.U6.15's check>` → `test_no_variant_literals.py` (M.TSC.110) |
+| G9/R12 (lead, applier 2 hand-off H-3) | A-C3 | M.SPEC.136 (3): the changelog-entry citation `UART_C_PORT_CHANGELOG.md` A10/A11 → the two candidates stated in place (G9/R12 lists `SPECIFICATION.md:5532` (A10/A11) itself) |
 
 ## A-C2 order notes (2026-10-01)
 

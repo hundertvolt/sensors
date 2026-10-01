@@ -1811,7 +1811,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: new `tests_scripts/test_frozen_inputs_reproducible.py`.
 - **Change**: for every `DEVICE_NAMES` device, a CPython subprocess run twice (`PYTHONHASHSEED=0`, `=4242`) stages the
   Python modules with `stage_python_modules()` into its own `tmp_path` under a fixed build date and prints `name  sha256`
-  for every staged file plus the rendered manifest text; the outputs are byte-identical.
+  for every staged file plus the rendered manifest text; the outputs are byte-identical, and the rendered manifest holds
+  no bare directory `freeze()` (every directory freeze names its sorted file list).
 - **Resolved**: —
 - **Unit**: U27
 - **Depends**: M.SCR.066, M.SCR.070.
@@ -4748,6 +4749,7 @@ None. Every conflict was settled from the actions, the registers or an owner ans
 | AC3_S S-14 | M.TSC.165: From gains A.S0930.34 (4); Change appends the `_commanded_reset_deadline_s()` case. Adapted: S-14's Unit "with M.SCR.054 (S0930, after U25)" is not written — A-C2 already placed this part in U26 in the Unit slot (A.S0930.34 needs A.U26.71's guard derivation; WORK_ORDER 3.6) |
 | AC3_S S-05 (TSC list) | new M.TSC.228 (U10), after the file's highest number under its own heading; Site re-checked by AST at this HEAD (the 71 docstrings of the 27 listed files, exactly S-05's list; `test_comment_block_cap.py:37` stays M.TSC.065's) |
 | AC3_O O-05 (b) / M.TSC.110 interplay | no TSC amendment: `tests_js/definitions.test.js:205-207`'s `wozi` comment is removed by M.WEB.053 (O-05 (b), WEB's applier), whose U6 stage holds that site; until it lands the file sits in M.TSC.110's `_NOT_YET_CLEANED` like any file carrying a literal at landing, so the check's own mechanism covers it. O-28's wording changes are in `devices/` and `*.md`, both outside M.TSC.110's scan |
+| AC3_R R-05 (lead, applier 2 hand-off H-2) | M.TSC.094's Change gains the "no bare directory `freeze()`" assertion M.SCR.066's Blast names |
 
 ## A-C2 order notes (2026-10-01)
 
