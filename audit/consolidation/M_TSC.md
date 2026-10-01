@@ -2240,3 +2240,64 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Depends**: A.U7.07, A.U24.03/.04/.08/.11/.60/.76 (TEST_HELP/TEST_UNIT).
 - **Blast carried by**: SPEC E.2/E.2.1 → those actions (SPEC).
 - **Kind**: test
+
+## tests_scripts/test_persistence_write_marker_completeness.py
+### M.TSC.119 The wear guard derives its classes and sees every way a test writes
+- **From**: A.U26.06 (class/module marks; device scripts; raw sockets; docstring blind-spot lines; bites), A.U26.71 (2)
+  (dispatch-only derivation from the `@web`-derived classes; the always-executed class persists; `_JUSTIFIED_UNMARKED`
+  proofs `Invalid`/`Unchanged`/ignored, checked in their own file), A.U6.17 (7) (`_ROUTE_DISPATCH_FIELDS` and the regex
+  replaced by the union over `DEVICE_NAMES` of `dispatch: true` fields in `definitions_for_toml()`; sibling
+  `_always_executed_fields()`; the subset guard), A.S0930.19 (`"resetconfig"` counts as persisting), A.S0930.34 (3)
+  (`'{"SystemCmd": "bootloader"}'` not flagged), HW_DEV GAP-D8 (a write-mode `open(` and a raw SCD30 configuration
+  `writeto` count as persisting device calls, M.HW_DEV.101/.123/.155/.156), A.U26.15 (`_repair_leftover` joins
+  `_KNOWN_PERSISTING_HELPERS`), A.U26.20 and A.C.13 and A.U26.71 (1) (`_JUSTIFIED_UNMARKED` reasons), A.U10.41 (`:29`
+  reason names the new largest string field), A.U36.544 (`:230`, `:243` "F14"/"F15" → the reason in place), M.TSC.001
+  (`config_manager.py` → `asy_config_manager.py` in the `:22-23` comment); read: A.U26.39 (`:38-44` fixture stays),
+  A.U26.07/.08/.12/.14, A.U31.05, A.U16.07, A.S0930.06, A.S0930.28, A.U36.504, A.U35.51 (its conformance list reads this
+  file), A.U8C2.16 (`:206` forwarding wrapper shape unchanged).
+- **Site**: `tests_scripts/test_persistence_write_marker_completeness.py:1-350`, new tests.
+- **Change**: docstring (≤ 3 lines) plus one line per remaining blind spot naming its closing check; `_marked_tests(path)`
+  reads function, enclosing-class and module `pytestmark` marks; the dispatch-only class = union over `DEVICE_NAMES` of
+  `dispatch: true` fields from `definitions_for_toml()`, the always-executed class = `alwaysExecuted: true` fields, guard:
+  `{"SGPResetVOC", "ISLCalibrate", "SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"} <= dispatch_only` and
+  `{"AmbPres", "ForceCalRef", "ContMeas"} <= always_executed` (names after A.U10.40's harmonisation); always-executed
+  fields persist even when repeated; `_PERSISTING_COMMAND_WORDS` = the one `_SYSTEM_CMDS` word whose purpose deletes every
+  config file (`"resetconfig"`, read by `ast` from `src/asy_webserver_service.py`), so a PUT body carrying it is
+  persisting while `"erasefram"`, `"reboot"`, `"bootloader"` stay unflagged (`:340-344` parametrisation gains those three
+  rows, plus a flagged `resetconfig` row and its synthetic bite); `_JUSTIFIED_UNMARKED` proofs accepted: `== "Invalid"`,
+  `== "Unchanged"` (stored fields only), the ignored-key form, each entry found in its own tier file; entries: the
+  all-invalid PUT, the largest-body test ("its <field> is one over its own max, so it is rejected Invalid and nothing is
+  staged"), the hotspot role-reversal and bus-concurrency re-trigger PUTs ("Unchanged: nothing is written"), the
+  Hostname/SSID edge values ("exceed their byte bounds and are rejected"), the oversized-body test ("refused unread:
+  nothing persists"); `_KNOWN_PERSISTING_HELPERS` gains `_repair_leftover` ("repairs an aborted run's leftover; runs only
+  when one exists"); new `test_every_device_script_that_persists_is_run_only_by_a_gated_test` (`_PERSISTING_DEVICE_CALLS`
+  = the two config writers and the SCD30 NVM setters, each asserted still an `async def` in `src/`, plus a write-mode
+  `open(` and an SCD30 `writeto` of a configuration command 0x4600/0x0010/0x5403…, plus `build_system(`/`main(` without a
+  scratch `cfg_path`; runners found by the `"<script>.py"` string; each runner marked, a named persisting helper, or the
+  script in `_PREREQUISITE_DEVICE_SCRIPTS` with its reason — the SCD30 start script and the standard-state repair
+  script; a persisting script with no runner fails); new `test_no_raw_socket_request_persists` (`_JUSTIFIED_RAW_REQUESTS`,
+  today the malformed raw-request test); every new check has a synthetic bite; `:230`, `:243` comments state the reason
+  without the F-labels.
+- **Resolved**: A.U6.17 (7) (U6) and A.U26.71 (2) (U26) both replace `_ROUTE_DISPATCH_FIELDS` — U26's derivation reads
+  A.U6.17's classes, one end state; A.S0930.19's word list is expressed as a value-level exception inside that
+  derivation (its own Depends).
+- **Unit**: U26 (stages U6 derivation, U10 names/reason).
+- **Depends**: M.GEN.017 (`alwaysExecuted`), M.HW_DEV.040/.101/.123/.155/.156, M.HW_BENCH.080/.088.
+- **Blast carried by**: README dispatch-only sentence → A.S0930.19 (HW_BENCH, M.HW_BENCH.130).
+- **Kind**: test
+
+### M.TSC.120 Marker registry: strict, every gate flag names its marker
+- **From**: A.U26.74 (4) (built-in set drops `timeout`; every `--allow-*` maps to a registered marker of the same kebab
+  name, `--soak-duration` named), M.HW_BENCH.002 (marker set), A.U26.14 (read: `toolchain_reverify` registered).
+- **Site**: `tests_scripts/test_persistence_write_marker_completeness.py:366-384`.
+- **Change**: `test_no_test_carries_an_unregistered_marker`: comment → "--strict-markers is on (pyproject addopts), so an
+  unregistered marker fails collection; this names it before a hardware run would."; built-in set `{"parametrize",
+  "skipif", "skip", "xfail", "usefixtures", "filterwarnings"}`; new: every `--allow-<x>` option in
+  `tests_hardware/conftest.py` maps to registered marker `<x>` with dashes as underscores (`--soak-duration` ↔
+  `soak_duration` named as the one valued gate); `test_the_extra_write_marker_is_never_carried_alone` holds.
+- **Resolved**: A.U26.74's blast says the test "allows an inert `timeout`"; its Change (4) drops it — the Change governs
+  (M.HW_BENCH.002 Blast agrees).
+- **Unit**: U26
+- **Depends**: M.HW_BENCH.001, M.HW_BENCH.002, `pyproject.toml` `addopts` → A.U26.74 (1) (TOOL: Gaps).
+- **Blast carried by**: —
+- **Kind**: test
