@@ -1,0 +1,35 @@
+# Pass 3 merge ledger — agent E (`audit/pass2/G9.md`, `audit/pass2/G10.md`)
+
+- P006 | G9/R12 | applied | four named sites plus C1.27's 19 and C1.28's three pointers added to State; C1.14/C1.25/C1.26 checked at HEAD
+- P007 | G9/R11 | applied | SPEC:96-99 `DataManager` site added; Reader's `_datastruct`/`_datalock` confirmed at `base_classes.py:173-174`
+- P018 | G9/R12 | applied | `multi_instance.toml:1, :12` "axis 9/11" pointers added (checked at HEAD)
+- P034 | G9/R11 | applied | `digital_twin/README.md:761-767` correction added with the D1 tag; `:600` message checked
+- P042 | G9/R03 | not applied | replaced by L12 (LEAD_MERGE section 1, OR104.a (2))
+- P050 | G10/R28 | applied | "(`class=\"device-name\"` has neither)" deleted; `html/style.css:108-111` styles `.app-title .device-name`
+- P055 | G9/R12 | applied | `js/field-format.js` pointer added at :26 (not :27); "the H.7 citation above" written out as `live-backend-put-matrix.test.js:82, :87` and `live-backend.test.js:2`
+- P066 | G9/R03 | applied | verify-period defect added; lines corrected to `asy_sgp40_driver.py:351-354, 408-412`; formula gives 0 from p = 67 (checked)
+- P072 | G9/R37 | applied | DOC.S25 no-change note added beside the factual list
+- P075 | G9/R27 | applied | five restorations added to the restored list; SPEC sites and commits checked at HEAD
+- P076 | G9/R28 | applied | CLAUDE.md:62-71 precedent rule-write added; CLAUDE.md:64 confirmed
+- P077 | G9/R37 | applied | V22 owner words and SPEC:4843/:4845 factual correction added; SPEC:4845 text confirmed
+- P079 | G9/R35 | applied | G9/R35 part only (twin owner-answer tags at `digital_twin/README.md` sites); G7 parts belong to another agent
+- P080 | G9/R24 | applied | SystemService settings-store deferred goal added to State
+- P082 | G9/R04 | applied | post-write hook reason restoration added; `api_response.py:89-91`, SPEC:1794-1795 confirmed
+- P084 | G9/R19 | not applied | merged by the lead with P100 into L14 (LEAD_MERGE section 1); its content arrives through L14
+- P085 | G9/R38 | applied | six restored owner tags added to State
+- P087 | G9/R33 | applied | pass-3 H1 trace outcomes added to State
+- P092 | G9/R36 | applied | B04 (a)/(b) relabelled owner (2026-09-03, `7c8dbbc`); Req and Rank's "B04 (b) agent" removed to match; conflicts with OR70.a's B04 relabel (see report)
+- P093 | G9/R36 | applied | C17 neighbouring "refusal is expected" rule tagged (owner, 2026-09-23); SPEC:4608, THR:293-294 confirmed
+- P094 | G9/R35 | applied | A48 gains its source quote (`af24a01`)
+- P095 | G9/R35 | applied | E05 extended to SPEC A.8:632-634 (checked); OR46.b keeps timeouts init-time, no conflict
+- P096 | G9/R27 | applied | SPEC C.3:1566 and `system_service.py:4-5` restorations added (both checked)
+- P098 | G9/R38 | applied | L10 row notes the owner/agent split; G2/R18 and G4/R46 parts belong to other agents
+- P100 | G9/R19 | not applied | merged by the lead into L14 (LEAD_MERGE section 1)
+- P115 | G9/R12 | applied | closed-stub repoint-then-delete line added (N.33)
+- P116 | G9/R34 | applied | consolidation-verdicts pointer added
+- P117 | G10/R03 | applied, corrected by the lead | N.74's "cyw43-driver absent" premise was wrong (separate checkout at `055d642`); the item-29 claim was checked and holds
+- P123 | G9/R31 | applied | `tests_hardware/README.md:1280-1286` merged into the existing BACKLOG.md:89-90 sentence; delivered files exist
+- P124 | G9/R11 | applied | eight stale-narrative sites added; each checked at HEAD
+- P135 | G9/R13 | applied | README pointer corrected to :734-735 (the sentence starts on :734)
+- L12 | G9/R03 | applied | option (a) `max(1, …)` fix and regression points added to State (OR104.a (2) checked)
+- L14 | G9/R19 | applied | owner's 2026-07-13 structural patterns added to Req; BACKLOG.md:74-76 pointers removal added to State

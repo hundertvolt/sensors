@@ -1,0 +1,342 @@
+{
+ "api-unknown-key-invalid": {
+  "at": "2026-10-01T21:36:03.909Z",
+  "note": "",
+  "status": "ok"
+ },
+ "apply-failure-marks-fields": {
+  "at": "2026-10-01T21:30:20.126Z",
+  "note": "",
+  "status": "ok"
+ },
+ "bench-psk-fallback": {
+  "at": "2026-10-02T11:10:57.602Z",
+  "note": "the password is a throwaway password used only once, no need for such complexity here.",
+  "status": "change"
+ },
+ "bench-sudo-checked": {
+  "at": "2026-10-02T11:09:57.899Z",
+  "note": "",
+  "status": "ok"
+ },
+ "c-stack-reboot": {
+  "at": "2026-10-01T21:31:00.296Z",
+  "note": "",
+  "status": "ok"
+ },
+ "ci-web-filter-base": {
+  "at": "2026-10-02T11:09:27.922Z",
+  "note": "",
+  "status": "ok"
+ },
+ "comment-cap-long-lines": {
+  "at": "2026-10-02T11:09:03.114Z",
+  "note": "",
+  "status": "ok"
+ },
+ "console-starvation-bench-test": {
+  "at": "2026-10-02T11:02:46.729Z",
+  "note": "Fine if \"a gated bench test\" means \"only if additional write wear is allowed by the flag\".",
+  "status": "ask"
+ },
+ "deactivated-snapshot": {
+  "at": "2026-10-02T05:49:35.692Z",
+  "note": "",
+  "status": "ok"
+ },
+ "dns-fallback-clear-confirm": {
+  "at": "2026-10-01T21:41:25.005Z",
+  "note": "Fine, and add a dialog to all system commands and the clear error history as well. But only on the website, not on the API side. The API stays single command.",
+  "status": "ask"
+ },
+ "dns-fallback-setting": {
+  "at": "2026-10-02T05:51:07.608Z",
+  "note": "",
+  "status": "ok"
+ },
+ "driven-time-and-rtc-steps": {
+  "at": "2026-10-02T11:21:28.252Z",
+  "note": "",
+  "status": "ok"
+ },
+ "envelope-codes-equal-http": {
+  "at": "2026-10-02T05:52:07.953Z",
+  "note": "",
+  "status": "ok"
+ },
+ "failed-push-no-flash-write": {
+  "at": "2026-10-02T05:58:50.453Z",
+  "note": "",
+  "status": "ok"
+ },
+ "favicon-inline": {
+  "at": "2026-10-02T11:15:11.090Z",
+  "note": "",
+  "status": "ok"
+ },
+ "hand-run-hardware-rows": {
+  "at": "2026-10-02T11:05:13.771Z",
+  "note": "What are these tests good for? Are they conducted only once or shall they become part of the general testing? Which added value do we get from them (if any)? This sounds a bit like leftovers from a hardware debugging round, if these actions do not deliver any added value, we can completely drop them.",
+  "status": "ask"
+ },
+ "heap-floors-kept": {
+  "at": "2026-10-02T10:57:09.786Z",
+  "note": "",
+  "status": "ok"
+ },
+ "hotspot-redirect": {
+  "at": "2026-10-02T05:51:25.408Z",
+  "note": "",
+  "status": "ok"
+ },
+ "http-head-limits": {
+  "at": "2026-10-01T22:03:54.978Z",
+  "note": "",
+  "status": "ok"
+ },
+ "humidity-helpers-removed": {
+  "at": "2026-10-02T05:45:07.633Z",
+  "note": "Keep them, they are also one of the kind \"useful, complete the functional suite, small, lightweight.\nAdapt the tests to be in line with the others.",
+  "status": "change"
+ },
+ "idle-poll-rate": {
+  "at": "2026-10-02T10:52:32.202Z",
+  "note": "What is the general background of this, and how and where is the rate specified and validated?",
+  "status": "ask"
+ },
+ "led-request-internal-queue": {
+  "at": "2026-10-02T06:05:08.503Z",
+  "note": "Fine, and this for a reason: internal LED commands are guaranteed to be bounded by number and frequency, they won't flood the device. External commands might quickly flood it into exhaustion. The refusal and error message lets the external caller knows to try again later.",
+  "status": "ask"
+ },
+ "legacy-wip-as-intent": {
+  "at": "2026-10-02T10:58:41.794Z",
+  "note": "If you mean the \"improved_quality\" folder which we moved to the promoted files, and just using what it once contained as a reference unless stated differently, yes.",
+  "status": "ask"
+ },
+ "licence-notices": {
+  "at": "2026-10-02T11:11:48.913Z",
+  "note": "",
+  "status": "ok"
+ },
+ "lwip-retry-on-full-queue": {
+  "at": "2026-10-01T22:01:42.893Z",
+  "note": "",
+  "status": "ok"
+ },
+ "negative-backup-age": {
+  "at": "2026-10-02T11:19:12.804Z",
+  "note": "",
+  "status": "ok"
+ },
+ "no-gcc14-ci-leg": {
+  "at": "2026-10-02T11:19:26.338Z",
+  "note": "",
+  "status": "ok"
+ },
+ "ntp-no-origin-check": {
+  "at": "2026-10-02T05:50:34.586Z",
+  "note": "",
+  "status": "ok"
+ },
+ "ntp-sync-last": {
+  "at": "2026-10-02T10:52:48.587Z",
+  "note": "",
+  "status": "ok"
+ },
+ "ntp-synced-goes-stale": {
+  "at": "2026-10-02T05:50:01.692Z",
+  "note": "",
+  "status": "ok"
+ },
+ "one-entry-per-fault": {
+  "at": "2026-10-02T06:01:32.235Z",
+  "note": "It should rather stay as is, upstream layers reacting to a downstream fault may encounter following errors going above the original fault, so getting a notion of a traceback and blast radius of an error is actually desirable.",
+  "status": "change"
+ },
+ "operator-actions-one-place": {
+  "at": "2026-10-02T11:14:51.435Z",
+  "note": "",
+  "status": "ok"
+ },
+ "pres-offset-warning": {
+  "at": "2026-10-02T06:08:44.290Z",
+  "note": "",
+  "status": "ok"
+ },
+ "reflash-runbook-erase": {
+  "at": "2026-10-01T21:33:49.547Z",
+  "note": "",
+  "status": "ok"
+ },
+ "release-defined-point": {
+  "at": "2026-10-01T22:00:24.640Z",
+  "note": "",
+  "status": "ok"
+ },
+ "release-version-2-0": {
+  "at": "2026-10-01T20:57:26.651Z",
+  "note": "",
+  "status": "ok"
+ },
+ "reproducible-image": {
+  "at": "2026-10-02T11:20:57.228Z",
+  "note": "Fine, but how to handle the difference between the actual build date and timestamp? They must differ for being genuine. Apart from that, everything shall be byte-identical.",
+  "status": "ask"
+ },
+ "reset-reason-codes": {
+  "at": "2026-10-02T05:57:38.183Z",
+  "note": "Good, and make the numbers clickable in the website like the errno and wrnno numbers.",
+  "status": "ask"
+ },
+ "rest-api-frozen-at-release": {
+  "at": "2026-10-01T20:58:55.100Z",
+  "note": "",
+  "status": "ok"
+ },
+ "rest-key-scheme": {
+  "at": "2026-10-01T20:57:37.547Z",
+  "note": "",
+  "status": "ok"
+ },
+ "retry-pass-flagged": {
+  "at": "2026-10-02T11:21:46.386Z",
+  "note": "",
+  "status": "ok"
+ },
+ "scd30-calibration-readiness": {
+  "at": "2026-10-01T21:35:31.989Z",
+  "note": "",
+  "status": "ok"
+ },
+ "scd30-write-path": {
+  "at": "2026-10-02T10:50:31.923Z",
+  "note": "",
+  "status": "ok"
+ },
+ "sgp40-chip-identity": {
+  "at": "2026-10-02T10:59:32.035Z",
+  "note": "",
+  "status": "ok"
+ },
+ "sgp40-wait-zero": {
+  "at": "2026-10-01T21:29:31.798Z",
+  "note": "",
+  "status": "ok"
+ },
+ "stale-as-fresh-every-driver": {
+  "at": "2026-10-02T10:59:18.402Z",
+  "note": "",
+  "status": "ok"
+ },
+ "standard-board-state": {
+  "at": "2026-10-02T11:01:15.259Z",
+  "note": "",
+  "status": "ok"
+ },
+ "standard-state-repair-optin": {
+  "at": "2026-10-02T11:00:50.994Z",
+  "note": "Fine, and if that happens, output a console message telling what happened and what options to repair exist.",
+  "status": "ask"
+ },
+ "state-code-values": {
+  "at": "2026-10-02T10:49:56.420Z",
+  "note": "",
+  "status": "ok"
+ },
+ "static-no-cache": {
+  "at": "2026-10-01T22:04:10.762Z",
+  "note": "",
+  "status": "ok"
+ },
+ "status-fields-added-and-left-out": {
+  "at": "2026-10-02T05:49:09.763Z",
+  "note": "Sounds good, and handle the dropped Http connections the same way as the dropped (general) connections, as we already discussed - last 24h with 24 counter buckets, no dynamic allocation and capped counters.",
+  "status": "ask"
+ },
+ "stub-versions-pinned": {
+  "at": "2026-10-02T11:08:47.650Z",
+  "note": "Fine, and we need to ensure that this will be updated along with Micropython when switching to a newer release.",
+  "status": "ask"
+ },
+ "system-command-sequence-details": {
+  "at": "2026-10-02T05:56:36.752Z",
+  "note": "Sounds fine, only it should also be ensured that no more writing commands are being sent to the SCD30 during reset. Actually, this should already be the case due to the rules \"only write to SCD30 triggered by API commands\" and \"reject any API command while waiting for the reset\". This mechanism is good enough, only make sure it's working watertight.",
+  "status": "ask"
+ },
+ "system-command-words": {
+  "at": "2026-10-02T05:52:37.880Z",
+  "note": "",
+  "status": "ok"
+ },
+ "threat-model-table": {
+  "at": "2026-10-02T11:11:26.129Z",
+  "note": "",
+  "status": "ok"
+ },
+ "threshold-rewrite-failure": {
+  "at": "2026-10-02T06:05:36.013Z",
+  "note": "",
+  "status": "ok"
+ },
+ "timestamps-before-ntp": {
+  "at": "2026-10-01T21:33:12.770Z",
+  "note": "",
+  "status": "ok"
+ },
+ "toml-build-metadata": {
+  "at": "2026-10-02T11:24:04.770Z",
+  "note": "Where are these keys actually stored? Come back at me concerning this.",
+  "status": "ask"
+ },
+ "twin-first-for-instruments": {
+  "at": "2026-10-02T11:22:05.201Z",
+  "note": "",
+  "status": "ok"
+ },
+ "twin-tolerates-ntp-offline": {
+  "at": "2026-10-02T11:06:58.729Z",
+  "note": "A local NTP responder is built for the twin, and we can even use it for building more unit tests checking the NTP client (the usual functional, error handling, biting coverage, regression tests)",
+  "status": "change"
+ },
+ "typecheck-stripper-text-edit": {
+  "at": "2026-10-02T11:07:41.254Z",
+  "note": "",
+  "status": "ok"
+ },
+ "uart-flash-erase-overrun": {
+  "at": "2026-10-02T10:56:37.858Z",
+  "note": "On which kind of flash erase could that happen? Just normal config writing or only during the full reset to defaults? In either case, this should not happen as a random side effect. Either don't lose a frame in general (preferred, if achievable with adequate effort), or halt the UART in some way for the time it takes (feels like a workaround only, though). Come back at me for this.",
+  "status": "change"
+ },
+ "unreadable-config-file": {
+  "at": "2026-10-01T21:32:54.938Z",
+  "note": "As discussed and stored here: \"Damaged config files (OR138)\"",
+  "status": "ask"
+ },
+ "website-accessibility": {
+  "at": "2026-10-01T21:40:01.611Z",
+  "note": "Fine, and make the \"back\" function of the browser work. Currently, clicking through the menu / the pages leaves no history, and a \"back\" immediately exits to the website visited before ever opening the sensor page. I want \"back\" to move backwards through the sensor subpages openend through the menu as well (actually the most intuitive way)",
+  "status": "ask"
+ },
+ "website-display-details": {
+  "at": "2026-10-02T11:19:12.731Z",
+  "note": "Fine, and maintain a reasonable number of digits per value (e.g. limit to 2 or 3 digits behind the decimal point, don't print full floats). But only for the website, the API delivers full resolution. Configured in the website config file, derived or defined from the value sourcing modules (e.g. Schema or inside the commented configs).",
+  "status": "ask"
+ },
+ "website-unattended": {
+  "at": "2026-10-01T20:59:26.861Z",
+  "note": "",
+  "status": "ok"
+ },
+ "wifi-off-led-pattern": {
+  "at": "2026-10-01T21:35:06.220Z",
+  "note": "Generally fine, and as discussed already, this shall respect the general WiFi LED setting (stay silent if turned off, apply whatever current pattern when turned on)",
+  "status": "ask"
+ },
+ "wozi-move-owner-operation": {
+  "at": "2026-10-02T11:14:54.618Z",
+  "note": "This is a remainder of the promotion process. There is nothing special for any of the builds (apart from some well contained exceptions for dev, which is somewhat special). For all normal builds, especially WoZi, there are no such specialties and they shall be removed from the docs.",
+  "status": "ask"
+ }
+}

@@ -1,0 +1,1167 @@
+{
+ "overview": {
+  "one_line": "The plan turns the audit into 1,883 concrete changes, applied in 41 ordered software units without stopping for you, then proven on the dev bench in two hardware sessions you start, and merged into main as release 2.0.",
+  "numbers": [
+   {
+    "label": "Requirements",
+    "value": "541",
+    "note": "Live requirements behind the plan; 278 rest directly on your own words and 52 more are ones you confirmed. The rest are datasheet or source facts, project conventions and engineering choices."
+   },
+   {
+    "label": "Merged changes",
+    "value": "1,883",
+    "note": "One change per place in the repo: every planned edit to the same file section was merged into one, with conflicts settled before execution."
+   },
+   {
+    "label": "Steps",
+    "value": "6,498",
+    "note": "The changes split by the unit they land in, ordered so that no step needs something a later step creates."
+   },
+   {
+    "label": "Units",
+    "value": "41 + 2",
+    "note": "41 software units run back to back, then the hardware phase and the close. The largest are the naming-and-core pass, the documentation pass and the test pass."
+   },
+   {
+    "label": "Hardware",
+    "value": "8 rounds in 2 sessions",
+    "note": "Nothing touches the board until the software work is done; each session needs your go-ahead in its own conversation."
+   },
+   {
+    "label": "Topics",
+    "value": "12",
+    "note": "The areas this review is split into, below."
+   }
+  ],
+  "what_you_are_asked": [
+   "Read the twelve areas and check the direction. Every change traces back to your requirements, a datasheet or source fact, or a project rule.",
+   "Go through the decisions taken on your behalf, sorted by weight. The routine ones can be approved as one batch; a 'no' changes only that item.",
+   "Confirm that the session may push to your private datasheets repository before the datasheet move (about two thirds of the way through). Without push access only the move and its two doc sections are skipped.",
+   "Plan the two hardware sessions. Each one starts only with your go-ahead in its own conversation, and for one round you need to be at the bench.",
+   "Give the execution go-ahead on this list, or on your corrections to it."
+  ],
+  "timeline": "Once you give the go-ahead, the 41 software units run one after another with no stops for you. You can look in at any sync point; each unit ends with a commit, a push, the full test gate at both GC stages and green CI, and the gate runs in the background while the next unit starts. The estimate for this part is about 5-8 working days with the planned test scheduling. It is an estimate, not a commitment. Then comes the hardware phase on the dev bench. Session 1 covers the bench-host check, first contact and the default run, the operator round with you at the bench, the gated wear run, the soaks, and the reflash rows last. Session 1 also holds the timer-rollover round, about two hours on a test image whose tick counters start just before their wrap. Session 2 is the release proof on the final tree. Last, with your agreement, comes one merge into main tagged v2.0 (the version number is one of the decisions for your review), and the plan and audit files are deleted."
+ },
+ "topics": [
+  {
+   "id": "sensors-and-drivers",
+   "title": "Sensors, buses and the status LED",
+   "summary": "Covers the four sensor drivers, the I2C/SPI bus layer, the VOC algorithm, the NeoPixel and the notification service. The main themes are your SCD30 write-only-on-change rule, the readiness and status codes you asked for, a step-by-step recovery ladder for a misbehaving bus or sensor, and one stale-reading rule shared by every driver.",
+   "highlights": [
+    {
+     "title": "SCD30 writes only what changed",
+     "text": "A sensor PUT now reads the chip first, writes only the fields that differ and answers 'Unchanged' for the rest, in legacy's fixed order. Ambient pressure and forced recalibration are always carried out. If the chip cannot be read back, the whole PUT is refused and nothing is written.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_SENS.053",
+      "M.SRC_SENS.050",
+      "M.SRC_CORE.047"
+     ]
+    },
+    {
+     "title": "FRC readiness on the measurements page",
+     "text": "The SCD30 publishes a readiness code (not measuring, settling with the seconds left, CO2 drifting, CO2 noisy, ready), so a forced recalibration is no longer guesswork. The noise floor, change-rate limit and window become ordinary settings. The state lives only in RAM, and a recalibration is never refused.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_SENS.051",
+      "M.SRC_SENS.052",
+      "M.SRC_SENS.055"
+     ]
+    },
+    {
+     "title": "ISL29125 calibration-light code",
+     "text": "A new 'Calibration Light' value tells you whether the current light suits the gain-ratio calibration: suitable, too dark, too bright, or not applicable right now.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_SENS.072",
+      "M.SRC_SENS.075",
+      "M.SRC_SENS.078"
+     ]
+    },
+    {
+     "title": "SGP40 shows its VOC algorithm state",
+     "text": "A new code shows blackout, learning (the first 24 h), settled, or restored from a backup. The backup timestamps read 'None since boot' or 'No timestamp' instead of 0 and -1. With a long backup period, every save is now verified.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_SENS.060",
+      "M.SRC_SENS.064",
+      "M.SRC_SENS.063"
+     ]
+    },
+    {
+     "title": "A recovery ladder before giving up",
+     "text": "When reads keep failing, a driver now tries small steps before its task ends: reset the sensor itself, clear the bus (up to nine clock pulses and a stop), then re-create the bus controller. A bus found held at boot is cleared once before its controller starts.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_SENS.008",
+      "M.SRC_SENS.010",
+      "M.SRC_CORE.037",
+      "M.SRC_SENS.044",
+      "M.SRC_SENS.054",
+      "M.SRC_SENS.065"
+     ]
+    },
+    {
+     "title": "One rule for stale readings",
+     "text": "A failed read keeps the last good sample with its original timestamp, never re-stamped, and the website shows each reading's age. The ISL29125 follows this rule instead of publishing empty values. A reading taken before the first NTP sync has no timestamp yet but still counts as good.",
+     "user_visible": true,
+     "refs": [
+      "M.SPEC.052",
+      "M.SRC_SENS.078",
+      "M.SRC_SENS.089",
+      "M.WEB.012"
+     ]
+    },
+    {
+     "title": "LED and notification fixes",
+     "text": "An LED command sent while a signal is running is refused at once with 'Failed'. The notification active window may now span midnight, for example 22:00 to 06:00.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_SENS.026",
+      "M.SRC_NET.122",
+      "M.SRC_SENS.037",
+      "M.SRC_SENS.032"
+     ]
+    },
+    {
+     "title": "SGP40 measurement race closed",
+     "text": "Two SGP40 measurements running at the same time could share one command buffer. The command is now staged inside the device session, so each measurement gets its own answer.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_SENS.068",
+      "M.HW_DEV.093"
+     ]
+    }
+   ],
+   "unchanged": "The SGP40's general-call reset stays exactly as implemented (your decision), and a missing or broken sensor still escalates through task restarts up to a reboot.",
+   "size": {
+    "changes": 93,
+    "units": "U0-U36 (mostly U10, U15, U30)"
+   },
+   "refs": [
+    "audit/consolidation/M_SRC_SENS.md"
+   ]
+  },
+  {
+   "id": "network-and-rest",
+   "title": "Wi-Fi, time, DNS and the REST API",
+   "summary": "Covers the Wi-Fi service, the NTP client, the DNS resolver, the captive DNS, the UDP socket and the web server. The API gets one consistent key scheme before the release and several new status fields. The web server stops silently ignoring unknown keys, and a network stall that could trip the watchdog is fixed at its source.",
+   "highlights": [
+    {
+     "title": "One spelling scheme for every API key",
+     "text": "Before the release, every REST and stored-config key follows one scheme, for example NTPHost, SampleInterval, TempOffset, MeasInterval, FlashInterval, LightCmdLED and ResetVOC; the legacy-derived spellings go. Every consumer moves in the same change. From the release on, a stored key can only change together with a migration.",
+     "user_visible": true,
+     "refs": [
+      "M.PROC.046",
+      "M.SRC_NET.043",
+      "M.SRC_SENS.041",
+      "M.SRC_SENS.072",
+      "M.GEN.014",
+      "M.TSC.018"
+     ]
+    },
+    {
+     "title": "New fields in the status page",
+     "text": "/status gains free heap, the last reset reason, the last task that ended, the device clock as Unix time, the web connections dropped in the last 24 hours (hourly bins, cleared by ResetErrors), the modules whose config file was unreadable or damaged at boot and the Wi-Fi status time.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.014"
+     ]
+    },
+    {
+     "title": "Unknown keys get an answer",
+     "text": "A PUT key that no settings group owns, or a sensor that does not exist, now gets 'Invalid' instead of being ignored. 'ResetErrors' clears all logs at once rather than one after another.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_NET.120",
+      "M.SRC_NET.123"
+     ]
+    },
+    {
+     "title": "DNS fallback servers become a setting",
+     "text": "The hard-coded public DNS pair becomes a Networking setting with the same default. It holds at most three servers and can be emptied. The captive DNS answers queries other than A or ANY with an empty NOERROR, as the RFCs require.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_NET.020",
+      "M.SRC_NET.043",
+      "M.SRC_NET.046",
+      "M.SRC_NET.009"
+     ]
+    },
+    {
+     "title": "NTP and Wi-Fi behave as you decided",
+     "text": "Changing the NTP settings clears 'Synced', as legacy did. The first sync runs after the tasks start, so the API answers while it runs. 'Connected' and the Wi-Fi uptime keep counting while the hotspot is up, and the hotspot password becomes settable on the Networking page.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_NET.055",
+      "M.GEN.006",
+      "M.SRC_NET.101",
+      "M.SRC_NET.073"
+     ]
+    },
+    {
+     "title": "A deactivated Wi-Fi blinks differently",
+     "text": "When Wi-Fi gives up for good, or its configuration is missing, the status LED shows its own pattern, a short blink every 3 s, so you can tell it apart from searching.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_NET.100",
+      "M.SRC_NET.084",
+      "M.SRC_NET.092"
+     ]
+    },
+    {
+     "title": "The 10-second send stall is fixed",
+     "text": "A client that stopped reading could hold the device inside one network send for up to 10 s, which is longer than the watchdog allows. A build-time patch makes that send return at once and retry cooperatively. The patch is removed once MicroPython ships the fix, and the bench first reproduces the stall before proving the fix.",
+     "user_visible": true,
+     "refs": [
+      "M.TOOL.039",
+      "M.TOOL.040",
+      "M.HW_BENCH.075"
+     ]
+    }
+   ],
+   "unchanged": "The routes stay as they are (/measurements, /sensors, /networking, /system, /status, /notification). No legacy path comes back, and writes stay unauthenticated on the trusted home LAN.",
+   "size": {
+    "changes": 102,
+    "units": "U0-U36 (mostly U10, U18, U19)"
+   },
+   "refs": [
+    "audit/consolidation/M_SRC_NET.md"
+   ]
+  },
+  {
+   "id": "uart-link",
+   "title": "The UART link",
+   "summary": "Covers the UART protocol module, its driver and the dev-only link exerciser. The wire format, constants and timings stay as agreed with the C side. The work makes the link testable in both CRC modes, closes a diagnostic blind spot and makes sure the UART code never makes the event loop wait.",
+   "highlights": [
+    {
+     "title": "CRC mode chosen per link in the device file",
+     "text": "Each UART link gets a crc setting (none or CRC16) in its device TOML, and the build refuses a pair whose two ends differ. dev keeps no CRC. The CRC16 mode is tested at every level, on the bench through a device script and one reflashed run.",
+     "user_visible": false,
+     "refs": [
+      "M.GEN.024",
+      "M.GEN.028",
+      "M.GEN.029",
+      "M.TWIN.154",
+      "M.HW_DEV.045",
+      "M.HW_BENCH.094"
+     ]
+    },
+    {
+     "title": "Two receiver-side tightenings for the C side to mirror",
+     "text": "A GET frame that declares more than one chunk is rejected, and a responder listens again at once after any validated command instead of backing off. Both only narrow what the receiver accepts, so a conforming peer is unaffected. Both are logged for the C reconciliation.",
+     "user_visible": false,
+     "refs": [
+      "M.DOCS.022",
+      "M.SRC_NET.159",
+      "M.SRC_NET.170"
+     ]
+    },
+    {
+     "title": "The mismatch diagnostic sees swallowed bytes",
+     "text": "Bytes that a failed frame read threw away now count toward the resync total. A mismatched pair then shows its diagnostic signature instead of looking like a quiet dead link.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_NET.162",
+      "M.SRC_NET.196",
+      "M.SRC_NET.200",
+      "M.SRC_NET.201"
+     ]
+    },
+    {
+     "title": "One log entry per event",
+     "text": "A routine resync is only printed. A warning is persisted only when the drain bound was hit, which means a babbling or misconfigured peer. A single fault no longer writes two entries.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_NET.162",
+      "M.SRC_NET.163",
+      "M.SRC_NET.158"
+     ]
+    },
+    {
+     "title": "The UART never makes the loop wait",
+     "text": "Writes go only into an empty transmit buffer, and readline reads only what has already arrived, so neither can hold the event loop.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_NET.195",
+      "M.SRC_NET.202",
+      "M.SRC_NET.199"
+     ]
+    },
+    {
+     "title": "Bad settings refused at construction",
+     "text": "A frame codec too small for one frame, a timeout beyond the tick horizon or a poll rate outside 1-9 ms is refused at setup, each with its own error number. Two of these numbers are new.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_NET.156",
+      "M.SRC_NET.153"
+     ]
+    },
+    {
+     "title": "A write hold-off that cannot get stuck",
+     "text": "After more than about six days of idle time, a stored write hold-off could look current again. It now expires.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_NET.160"
+     ]
+    }
+   ],
+   "unchanged": "The wire format, the agreed constants and timings and the no-negotiation rule all stay. Whether to chunk peer-sized allocations remains on your open-question list.",
+   "size": {
+    "changes": 47,
+    "units": "U0-U36 (mostly U10, U17)"
+   },
+   "refs": [
+    "audit/consolidation/M_SRC_NET.md"
+   ]
+  },
+  {
+   "id": "system-and-memory",
+   "title": "System service, logs, configuration and FRAM",
+   "summary": "Covers the system service and its supervisor, the base classes, the config manager, the logging module, the FRAM driver and manager, and the small helper modules. This adds the system commands and reset reasons you asked for, protects the short error logs from flooding and renumbers every error code into one catalog. It also makes the watchdog, the counters and the config writes provably safe.",
+   "highlights": [
+    {
+     "title": "Two new system commands, one controlled shutdown",
+     "text": "'Reset to defaults' and 'Erase FRAM' join reboot, bootloader and the backup pause. Reset to defaults deletes every config file, Wi-Fi and identity included, so the unit comes back as its hotspot. Reboot, bootloader and the two new commands all run one controlled sequence: stop the tasks, let writes finish, close storage, do the job, reboot.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_CORE.011",
+      "M.SRC_CORE.042",
+      "M.SRC_CORE.083",
+      "M.GEN.015",
+      "M.SRC_NET.121"
+     ]
+    },
+    {
+     "title": "The watchdog stays in charge",
+     "text": "While a command runs, only the sequence feeds the watchdog, one bounded step at a time, so a hung step still resets the unit. When tasks exceed their error budget, the supervisor feeds once, then stops feeding and reboots in a controlled way.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_CORE.009",
+      "M.SRC_CORE.016",
+      "M.TSC.155"
+     ]
+    },
+    {
+     "title": "The reset reason survives the reset",
+     "text": "Every intended reset records its reason in a small RAM area that survives a reset (no flash, no FRAM), and /status shows it. The codes cover power-on, watchdog, reboot, bootloader, error budget, config reset, FRAM erased, a boot failure with the phase it stopped in, and a C-stack overflow.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_CORE.006",
+      "M.GEN.034",
+      "M.TWIN.032"
+     ]
+    },
+    {
+     "title": "Short error logs no longer flood",
+     "text": "A code identical to the newest entry of a log is counted but takes no new slot, in RAM and FRAM logs alike, and the console still prints every occurrence. The six modules' own repeat flags go.",
+     "user_visible": true,
+     "refs": [
+      "M.SRC_CORE.063",
+      "M.SRC_CORE.082",
+      "M.SRC_NET.158"
+     ]
+    },
+    {
+     "title": "One error catalog for the whole project",
+     "text": "Every module is renumbered in one pass into shared and per-module bands, with one meaning per number. One catalog file feeds the code checks and the website's descriptions.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.034",
+      "M.SRC_CORE.005",
+      "M.TSC.088"
+     ]
+    },
+    {
+     "title": "No counter ever allocates",
+     "text": "Every counter stops at one shared cap below the small-integer limit (about 34 years in seconds). Uptimes come from measured ticks, never from the clock or NTP.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_CORE.031",
+      "M.SRC_CORE.013",
+      "M.TSC.069"
+     ]
+    },
+    {
+     "title": "Config files: no surprise writes",
+     "text": "A config file that is genuinely missing (after a fresh flash, an erase or Reset to defaults) is written once with its defaults at that boot (your answer in this review). An unreadable one is never overwritten, and a repair writes at most once per boot. The compare-before-write step is one shared building block.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_CORE.043",
+      "M.SRC_CORE.047"
+     ]
+    },
+    {
+     "title": "A FRAM chip that comes back is used again",
+     "text": "A FRAM chip lost at runtime goes quiet and is set up again once it answers, without a reboot. A declared chip that never came up escalates like any other missing chip.",
+     "user_visible": false,
+     "refs": [
+      "M.SRC_CORE.092",
+      "M.SRC_CORE.082",
+      "M.TWIN.116"
+     ]
+    }
+   ],
+   "unchanged": "The boot-only gc.collect() exception and the gc.threshold(32768) set once at boot stay; nothing new collects in the main loop.",
+   "size": {
+    "changes": 92,
+    "units": "U0-U36 (mostly U10, U11, U16)"
+   },
+   "refs": [
+    "audit/consolidation/M_SRC_CORE.md"
+   ]
+  },
+  {
+   "id": "website",
+   "title": "The website",
+   "summary": "Covers the JavaScript page, its mock server and test tier, and the page shell. The definitions now come only from the generated device data. The page gains what you asked for (clickable code descriptions, cleaner Apply behaviour, reading ages), and its look stays as it is apart from a contrast fix.",
+   "highlights": [
+    {
+     "title": "Generated definitions only",
+     "text": "The two hand-written definitions files are deleted. Every device's site and its mock data come from the @web tags, and every check derives the device set from the device files.",
+     "user_visible": false,
+     "refs": [
+      "M.GEN.063",
+      "M.WEB.043",
+      "M.SCR.020",
+      "M.WEB.056"
+     ]
+    },
+    {
+     "title": "Click a code to read it",
+     "text": "Error numbers and status codes (reset reason, VOC state, FRC readiness, calibration light) become clickable and show their description from the one catalog. The look is unchanged, and /status still carries numbers only.",
+     "user_visible": true,
+     "refs": [
+      "M.WEB.016",
+      "M.WEB.014",
+      "M.GEN.062",
+      "M.GEN.034"
+     ]
+    },
+    {
+     "title": "Apply sends once and tidies up",
+     "text": "After Apply, inputs the device accepted are cleared and rejected ones are kept for correction. Command fields reset, so a second Apply never resends a calibration or a command. The identity and NTP buttons read 'Apply & Reconnect' and 'Apply & Resync'.",
+     "user_visible": true,
+     "refs": [
+      "M.WEB.021",
+      "M.WEB.015",
+      "M.SRC_NET.073",
+      "M.SRC_NET.043"
+     ]
+    },
+    {
+     "title": "Ages, not raw timestamps",
+     "text": "Timestamps show as ages measured against the device's own clock, and special values show as text ('None since boot', 'No timestamp').",
+     "user_visible": true,
+     "refs": [
+      "M.WEB.012",
+      "M.WEB.025"
+     ]
+    },
+    {
+     "title": "A page that runs unattended",
+     "text": "Polling pauses while the tab is hidden and backs off up to a minute while the device is unreachable, and a section recovers by itself. The page reloads on its own when the device's firmware build changes.",
+     "user_visible": true,
+     "refs": [
+      "M.WEB.003",
+      "M.WEB.020",
+      "M.WEB.025"
+     ]
+    },
+    {
+     "title": "Contrast and accessibility",
+     "text": "In the light theme, the success, danger and warning colours darken slightly to meet AA contrast at the same hues, and controls get a visible border. An automated check covers labels, names and the drawer on every device and section.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.062",
+      "M.WEB.080",
+      "M.TSC.224"
+     ]
+    },
+    {
+     "title": "Small restorations",
+     "text": "The legacy favicon returns, inlined into the page. The Altitude field warns when its value is ignored because an ambient pressure is set.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.061",
+      "M.GEN.060",
+      "M.SRC_SENS.051",
+      "M.WEB.014"
+     ]
+    }
+   ],
+   "unchanged": "The page layout and look stay as they are (your 'don't change the current look'), and for that reason the per-type border cue on the history pills was dropped.",
+   "size": {
+    "changes": 64,
+    "units": "U0-U36 (mostly U23, U6, U24)"
+   },
+   "refs": [
+    "audit/consolidation/M_WEB.md",
+    "audit/consolidation/M_GEN.md"
+   ]
+  },
+  {
+   "id": "device-config-and-buildgen",
+   "title": "Device files and the build generator",
+   "summary": "Covers buildgen, the six device TOMLs and the vendored Microdot and freezefs. The generated boot entry and boot sequence take the fixed shape you asked for, and build errors say what to fix. The generator becomes the one source for the website definitions, the error catalog and a REST reference for each device.",
+   "highlights": [
+    {
+     "title": "Watchdog first, frozen code first",
+     "text": "The generated boot entry arms the watchdog before any product import. It puts frozen code ahead of the filesystem, so a stray .py file on the board cannot replace product code.",
+     "user_visible": false,
+     "refs": [
+      "M.GEN.001",
+      "M.TSC.045",
+      "M.TSC.093"
+     ]
+    },
+    {
+     "title": "A firmware build without autostart",
+     "text": "A build option makes an image that prints the one line to start the firmware by hand and then returns to the REPL, for Thonny sessions. The image gets its own file name, so it is never mistaken for the release image.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.001",
+      "M.SCR.065",
+      "M.GEN.019"
+     ]
+    },
+    {
+     "title": "The boot sequence is one fixed list",
+     "text": "Boot runs construction, then the setup list, then task starts, then timer starts, then the first NTP sync. The setup list is run by one system-service method that feeds the watchdog after each step. Each phase is marked, so a boot failure can be traced to its phase.",
+     "user_visible": false,
+     "refs": [
+      "M.GEN.006",
+      "M.SRC_CORE.015",
+      "M.GEN.010"
+     ]
+    },
+    {
+     "title": "Build errors that say what to fix",
+     "text": "Every build error names the rule, the place (device, instance, field) and the fix, without a traceback. Only a generator bug shows one.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.022",
+      "M.TSC.008",
+      "M.TSC.182"
+     ]
+    },
+    {
+     "title": "Pin rules from the RP2040 datasheet",
+     "text": "The generator accepts every pin function the RP2040 offers, not only the Pico W pinout labels. The wireless-reserved pins stay excluded.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.042",
+      "M.TSC.050"
+     ]
+    },
+    {
+     "title": "One catalog and a REST reference per device",
+     "text": "One error-number and status-code catalog lives with the generator. Each device build writes its own REST reference, which the website and the tests read.",
+     "user_visible": false,
+     "refs": [
+      "M.GEN.034",
+      "M.GEN.033",
+      "M.GEN.018"
+     ]
+    },
+    {
+     "title": "Vendored code refreshed, untouched",
+     "text": "Microdot is re-vendored as an unmodified upstream tag together with its own typing stubs (your choice), and freezefs the same way. Both are pinned by hash.",
+     "user_visible": false,
+     "refs": [
+      "M.GEN.051",
+      "M.GEN.050",
+      "M.GEN.064",
+      "M.TSC.154",
+      "M.TSC.153"
+     ]
+    },
+    {
+     "title": "Release version 2.0",
+     "text": "The firmware and website version both become 2.0. The number itself is one of the decisions for your review.",
+     "user_visible": true,
+     "refs": [
+      "M.GEN.021"
+     ]
+    }
+   ],
+   "unchanged": "Each device still lives entirely in its own TOML, and the hand-maintained driver table in the generator stays your owner-kept table.",
+   "size": {
+    "changes": 61,
+    "units": "U0-U37 (mostly U20, U10, U5)"
+   },
+   "refs": [
+    "audit/consolidation/M_GEN.md"
+   ]
+  },
+  {
+   "id": "tests",
+   "title": "The test suite and its standing checks",
+   "summary": "Covers the MicroPython unit tier, its fakes and helpers, and the host-side checks in tests_scripts. A dedicated campaign reviews every test for bite, and every generated device is tested on its own. Many rules that so far lived only in the documents get a check that fails the build.",
+   "highlights": [
+    {
+     "title": "Every test checked for bite",
+     "text": "The test campaign reviews every test in every tier and strengthens weak and blank ones without changing their goal. It proves bite by planting faults module by module in a throwaway copy.",
+     "user_visible": false,
+     "refs": [
+      "M.PROC.022",
+      "M.PROC.023"
+     ]
+    },
+    {
+     "title": "Each device tested on its own",
+     "text": "One per-device scenario file replaces the six per-device wrappers. The runner starts one job for each device found in the device files, so a new TOML is picked up without editing any test.",
+     "user_visible": false,
+     "refs": [
+      "M.TEST_UNIT.337",
+      "M.TWIN.108",
+      "M.SCR.041"
+     ]
+    },
+    {
+     "title": "Months of uptime in seconds",
+     "text": "A driven clock moves virtual time on demand, so tick wraps, long uptimes and timeouts are tested without waiting. A busy loop fails instead of hanging.",
+     "user_visible": false,
+     "refs": [
+      "M.TEST_HELP.065",
+      "M.TEST_UNIT.339",
+      "M.TEST_HELP.064"
+     ]
+    },
+    {
+     "title": "Wear proven by counters",
+     "text": "Write counters in the fake flash and the fake SCD30 prove 'written once, read back, not written again'. The wear guard derives from the definitions which fields always write.",
+     "user_visible": false,
+     "refs": [
+      "M.TEST_HELP.062",
+      "M.TSC.119"
+     ]
+    },
+    {
+     "title": "Rules that now fail the build",
+     "text": "New checks cover five rules: the error catalog must match every logging call, no device name may appear outside the device files, the tunables register must agree with its tags, the watchdog may be fed only at the pinned places, and the README's command reference must match every tool's --help.",
+     "user_visible": false,
+     "refs": [
+      "M.TSC.088",
+      "M.TSC.110",
+      "M.TSC.147",
+      "M.TSC.155",
+      "M.TSC.113"
+     ]
+    },
+    {
+     "title": "Stored settings pinned at the release",
+     "text": "The stored config keys of every device are recorded at the release. From then on, a renamed key or file fails a test unless it comes with a migration.",
+     "user_visible": false,
+     "refs": [
+      "M.TSC.018",
+      "M.TSC.129"
+     ]
+    },
+    {
+     "title": "Honest results",
+     "text": "The unit runner reports skipped tests, empty files and aborts by name. A file that ends without its summary line fails instead of passing.",
+     "user_visible": false,
+     "refs": [
+      "M.TEST_HELP.001",
+      "M.TEST_HELP.003"
+     ]
+    },
+    {
+     "title": "No port clashes between suites",
+     "text": "Each product-fixed port (DNS 53, NTP 123, the twin's web port) is held by one suite at a time under a lock. A port that is already taken fails the run at once and names the port.",
+     "user_visible": false,
+     "refs": [
+      "M.SCR.012",
+      "M.TSC.206",
+      "M.TEST_HELP.056"
+     ]
+    }
+   ],
+   "unchanged": "Unit tests keep running under the real MicroPython Unix port at both GC stages, and the bar stays zero MemoryError markers.",
+   "size": {
+    "changes": 637,
+    "units": "U0-D (mostly U24, U10, U2)"
+   },
+   "refs": [
+    "audit/consolidation/M_TEST_UNIT.md",
+    "audit/consolidation/M_TEST_HELP.md",
+    "audit/consolidation/M_TSC.md"
+   ]
+  },
+  {
+   "id": "digital-twin",
+   "title": "The digital twin",
+   "summary": "Covers the twin's hardware fakes, its runners and its tests. Test logic moves out of the device process into a host-side harness. The twin follows rp2 behaviour more closely, with a written fidelity table, and every device boots in it, with the UART link in both CRC modes.",
+   "highlights": [
+    {
+     "title": "Test logic leaves the device process",
+     "text": "Scenarios that drive requests move to a host-side harness, which talks to the twin over HTTP. The few scenarios that need control inside the running device use named test flags on the twin runner. These flags are off by default and checked to stay out of the product path.",
+     "user_visible": false,
+     "refs": [
+      "M.SCR.017",
+      "M.SCR.018",
+      "M.TWIN.051",
+      "M.TWIN.136",
+      "M.TEST_HELP.033"
+     ]
+    },
+    {
+     "title": "A written fidelity table",
+     "text": "The twin's README gains a table showing how the twin models each hardware fact (match, mismatch or not modelled). Each hardware round updates it.",
+     "user_visible": false,
+     "refs": [
+      "M.TWIN.059"
+     ]
+    },
+    {
+     "title": "Closer to rp2",
+     "text": "The machine fake now models the reset-surviving RAM and the reset cause, rp2's timer signature and its 16-alarm pool, one static bus object per bus id, and the I2C general call.",
+     "user_visible": false,
+     "refs": [
+      "M.TWIN.032",
+      "M.TWIN.030",
+      "M.TWIN.024",
+      "M.TWIN.138"
+     ]
+    },
+    {
+     "title": "Recovery proven in the twin",
+     "text": "Unplugging and re-plugging a sensor or the FRAM recovers without a reboot. A power loss after any FRAM write step leaves either the old or the new history, never a mix.",
+     "user_visible": false,
+     "refs": [
+      "M.TWIN.116",
+      "M.TWIN.112"
+     ]
+    },
+    {
+     "title": "Every device, both CRC modes",
+     "text": "CI runs one twin job per device found in the device files, and the twin runner runs the UART link again in CRC16 mode.",
+     "user_visible": false,
+     "refs": [
+      "M.TOOL.017",
+      "M.SCR.061",
+      "M.TWIN.154",
+      "M.TWIN.158"
+     ]
+    },
+    {
+     "title": "Two workarounds retire",
+     "text": "The heap-unwedge helper goes once a test proves the SIGINT fix is in every built Unix binary, and the segfault stress tool goes too. Both mechanisms stay documented.",
+     "user_visible": false,
+     "refs": [
+      "M.TWIN.056",
+      "M.TWIN.055",
+      "M.SPEC.106",
+      "M.TSC.115"
+     ]
+    }
+   ],
+   "unchanged": "The twin stays a Unix-port program that boots the real generated firmware, and no test code goes into src/ or the image.",
+   "size": {
+    "changes": 93,
+    "units": "U0-C (mostly U25, U24, U36)"
+   },
+   "refs": [
+    "audit/consolidation/M_TWIN.md"
+   ]
+  },
+  {
+   "id": "hardware-tests",
+   "title": "Hardware tests and the dev bench",
+   "summary": "Covers the flash and bench tiers, the device scripts, the manual tests and the bench host. Every hardware run now proves the lower levels first, saves the evidence before touching the board and takes board facts from data. The new features get their proof on real hardware. All of this is prepared now and runs only in the hardware phase.",
+   "highlights": [
+    {
+     "title": "Lower levels first, honest verdicts",
+     "text": "A flash or bench run first runs the unit, twin and web levels on the same commit and stops before touching the board if any of them fails. A run that skips them is never reported clean.",
+     "user_visible": false,
+     "refs": [
+      "M.SCR.006",
+      "M.SCR.030",
+      "M.SCR.031",
+      "M.TSC.196"
+     ]
+    },
+    {
+     "title": "Evidence before anything is cleared",
+     "text": "Each session starts by saving /status and a raw FRAM dump, and every test that clears the logs saves them first.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_BENCH.006",
+      "M.HW_BENCH.050",
+      "M.HW_DEV.150"
+     ]
+    },
+    {
+     "title": "SCD30 started at most once",
+     "text": "The shared prerequisite reads the measurement interval, waits for a measurement, and sends the start command only if none arrives, never twice in one session. The tests that depend on it run by default again.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_BENCH.044",
+      "M.HW_DEV.020",
+      "M.HW_DEV.080",
+      "M.TSC.212"
+     ]
+    },
+    {
+     "title": "Hardware proof for the new features",
+     "text": "New bench tests prove each reset code through /status, both system commands (config saved first and restored afterwards, FRAM evidence saved before an erase) and the recovery steps. They also prove the network-stall fix against an unpatched control image.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_BENCH.083",
+      "M.HW_BENCH.088",
+      "M.HW_BENCH.122",
+      "M.HW_BENCH.075"
+     ]
+    },
+    {
+     "title": "Twin first, then the board",
+     "text": "Every new or changed instrument runs against the twin before it enters a hardware round, and the result is recorded.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_DEV.010",
+      "M.HW_BENCH.091",
+      "M.HW_BENCH.092"
+     ]
+    },
+    {
+     "title": "Board facts from data",
+     "text": "Exactly one device file names the bench board. The scripts take pins and addresses from one rendered fact table instead of hard-coded values.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_BENCH.010",
+      "M.HW_DEV.001",
+      "M.TSC.179"
+     ]
+    },
+    {
+     "title": "Bench knowledge in one place, a safer bench host",
+     "text": "The dev bench's wiring, chips and manual bridge recipe move from the old dev_legacy notes into the hardware README. The bridge setup never puts a password on the command line and makes every change with the recovery switch armed.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_BENCH.111",
+      "M.HW_BENCH.112",
+      "M.TOOL.068"
+     ]
+    },
+    {
+     "title": "Old investigation scripts retired",
+     "text": "Scripts with no lasting value are deleted, among them both Wi-Fi reconnect repros, the raw UART stall script and the DebugLevel scripts.",
+     "user_visible": false,
+     "refs": [
+      "M.HW_DEV.112",
+      "M.HW_DEV.049",
+      "M.HW_DEV.039",
+      "M.HW_DEV.111"
+     ]
+    }
+   ],
+   "unchanged": "Nothing touches real hardware during the software units, and every wear gate (flash cycle, persistence write, extra SCD30 write) stays opt-in.",
+   "size": {
+    "changes": 222,
+    "units": "U0-C (mostly U26, U8C, U36)"
+   },
+   "refs": [
+    "audit/consolidation/M_HW_BENCH.md",
+    "audit/consolidation/M_HW_DEV.md"
+   ]
+  },
+  {
+   "id": "build-chain-and-ci",
+   "title": "Build chain, scripts and CI",
+   "summary": "Covers the runner scripts, the firmware and website builds, the toolchain installer, the lint and type configuration and the GitHub workflow. Every runner ends in the same readable way, builds keep their intermediate files for inspection and CI derives the device set. The installer and the lint limits get stricter.",
+   "highlights": [
+    {
+     "title": "One closing summary everywhere",
+     "text": "Every runner ends with the same block: an overall PASS/FAIL line, the passed, failed, skipped and deselected counts, the failing names and the exit code. A usage or setting error exits with 2.",
+     "user_visible": true,
+     "refs": [
+      "M.SCR.001",
+      "M.SCR.002",
+      "M.SCR.045",
+      "M.SCR.035",
+      "M.TSC.215"
+     ]
+    },
+    {
+     "title": "Build intermediates kept",
+     "text": "The staged firmware files and the manifest go to a per-device directory under build/. That directory is cleaned at the start of the next build, not at the end. Each .uf2 gets an image record and a size report.",
+     "user_visible": true,
+     "refs": [
+      "M.SCR.065",
+      "M.SCR.066",
+      "M.SCR.067"
+     ]
+    },
+    {
+     "title": "CI follows the device files",
+     "text": "A first job derives the device set. The twin runs one job per device, and the firmware build runs as a matrix over them. The Codecov upload goes, and coverage stays a report in the job summary.",
+     "user_visible": true,
+     "refs": [
+      "M.TOOL.016",
+      "M.TOOL.017",
+      "M.TOOL.018",
+      "M.TOOL.015"
+     ]
+    },
+    {
+     "title": "Three Unix-port builds",
+     "text": "Besides the plain and the coverage binaries, a third Unix build runs the real patched network send over a loopback lwIP, so the stall fix gets hammer tests on the host.",
+     "user_visible": false,
+     "refs": [
+      "M.TOOL.040",
+      "M.TOOL.056",
+      "M.TOOL.039"
+     ]
+    },
+    {
+     "title": "A tidier installer",
+     "text": "Setup holds one lock per toolchain directory, records what each build was made from, retries network steps and removes its own outdated builds and downloads.",
+     "user_visible": false,
+     "refs": [
+      "M.TOOL.061",
+      "M.TOOL.062",
+      "M.TOOL.063",
+      "M.TOOL.050"
+     ]
+    },
+    {
+     "title": "Stricter lint and types",
+     "text": "The argument-count limit drops to 8 (your number), every other limit sits at its measured maximum, and explicit Any is banned in all three type-check passes.",
+     "user_visible": false,
+     "refs": [
+      "M.TOOL.029",
+      "M.TSC.103",
+      "M.TSC.109",
+      "M.TOOL.033"
+     ]
+    },
+    {
+     "title": "Evidence archived, three runs kept",
+     "text": "Twin state, logs and coverage reports from a run move to a timestamped archive before the next run, and the newest three per runner are kept.",
+     "user_visible": false,
+     "refs": [
+      "M.SCR.003",
+      "M.TSC.177",
+      "M.SCR.044"
+     ]
+    },
+    {
+     "title": "Every tool pinned at its refreshed version",
+     "text": "Python tools, uv, Node packages and action tags are refreshed once, early, and stay pinned. The lock file is re-checked against the pins.",
+     "user_visible": false,
+     "refs": [
+      "M.TOOL.025",
+      "M.TOOL.024",
+      "M.TOOL.078",
+      "M.TOOL.020"
+     ]
+    }
+   ],
+   "unchanged": "ruff format stays unused, the per-file test timeout and retry stay as the hang backstop, and the three-attempt uv sync stays.",
+   "size": {
+    "changes": 154,
+    "units": "U0-D (mostly U27, U28, U21)"
+   },
+   "refs": [
+    "audit/consolidation/M_SCR.md",
+    "audit/consolidation/M_TOOL.md"
+   ]
+  },
+  {
+   "id": "documentation",
+   "title": "Documentation",
+   "summary": "Covers SPECIFICATION.md, CLAUDE.md, README.md, BACKLOG.md and the smaller root documents. They are rewritten to the current state, each rule with one short reason and a tag saying who decided it and when. They gain the design principles and the tunables register you asked for, and BACKLOG shrinks to four kinds of content.",
+   "highlights": [
+    {
+     "title": "Design principles up front",
+     "text": "A new Part 0 states the concept in your own words, the pillars and the patterns. It leads into one ordered checklist for anything added later.",
+     "user_visible": false,
+     "refs": [
+      "M.SPEC.002",
+      "M.SPEC.140"
+     ]
+    },
+    {
+     "title": "A register of tunable values",
+     "text": "A new Part N lists every tuned value with its location, how it was found, its margin and when to re-check it. Each value carries a tag in the code, and a check keeps the two in step.",
+     "user_visible": false,
+     "refs": [
+      "M.SPEC.155",
+      "M.SPEC.156",
+      "M.TSC.147"
+     ]
+    },
+    {
+     "title": "A task-oriented README",
+     "text": "README leads with copy-paste recipes: install, build and flash, tests per level and everyday variants. These are followed by a full command reference for each tool, checked against its --help, and a Release section listing the changes from the legacy firmware.",
+     "user_visible": true,
+     "refs": [
+      "M.DOCS.047",
+      "M.DOCS.049",
+      "M.DOCS.052",
+      "M.DOCS.059"
+     ]
+    },
+    {
+     "title": "BACKLOG with four kinds only",
+     "text": "BACKLOG keeps only owed hardware work, UART C-port items, owner-deferred goals with your reason, and one dated list of questions for you. Everything resolved moves to its permanent home or is removed.",
+     "user_visible": true,
+     "refs": [
+      "M.DOCS.061",
+      "M.DOCS.063",
+      "M.DOCS.065",
+      "M.DOCS.067"
+     ]
+    },
+    {
+     "title": "CLAUDE.md follows your decisions",
+     "text": "Rules are restated to match your answers. The recovery ladder replaces 'don't chase a wedged bus', MemoryError handling follows one criterion, the legacy units are recorded as running 1.24.1, and dev must meet every device's bar.",
+     "user_visible": false,
+     "refs": [
+      "M.DOCS.081",
+      "M.DOCS.083",
+      "M.DOCS.074",
+      "M.DOCS.077"
+     ]
+    },
+    {
+     "title": "Who decided, and when",
+     "text": "Every decision statement names who made it (you or the agent) and the date. A check fails on a decision with no actor or on a dead citation.",
+     "user_visible": false,
+     "refs": [
+      "M.TSC.071",
+      "M.TSC.063",
+      "M.SPEC.016",
+      "M.DOCS.091"
+     ]
+    },
+    {
+     "title": "Datasheets in your private repository",
+     "text": "The datasheets move into your private repository as a submodule at the same path, so every citation still resolves. The docs say how to get access, and nothing in the build or CI needs them.",
+     "user_visible": true,
+     "refs": [
+      "M.DOCS.068",
+      "M.SPEC.019",
+      "M.DOCS.014",
+      "M.PROC.018"
+     ]
+    },
+    {
+     "title": "An operator section and a module skill",
+     "text": "DEVICE_REFERENCE lists what still needs a person: Wi-Fi setup, AmbPres once, FRC with its readiness, calibration, and reading the reset reason before anything else. A repo skill points into the new-module checklist and is validated against ISL29125 and BMP3xx.",
+     "user_visible": true,
+     "refs": [
+      "M.DOCS.026",
+      "M.DOCS.109",
+      "M.PROC.048"
+     ]
+    }
+   ],
+   "unchanged": "UART_C_PORT_CHANGELOG.md stays until the C side is reconciled, and the plan file and audit/ go only at the very end.",
+   "size": {
+    "changes": 270,
+    "units": "U0-D (mostly U36, U0, U10)"
+   },
+   "refs": [
+    "audit/consolidation/M_SPEC.md",
+    "audit/consolidation/M_DOCS.md"
+   ]
+  },
+  {
+   "id": "execution-and-release",
+   "title": "How execution runs, the hardware phase and the release",
+   "summary": "Covers the procedures that frame the work rather than edit product code: the baseline, the dependency refresh, the legacy move, the test campaign, the close, the eight hardware rounds and the merge. They fix the order of work, what gets measured and when you are needed.",
+   "highlights": [
+    {
+     "title": "Measure first",
+     "text": "Before any change, every level runs once at both GC stages. Counts, times, peak memory, SSD writes and coverage are recorded, so every later unit compares against a known baseline.",
+     "user_visible": false,
+     "refs": [
+      "M.PROC.003",
+      "M.PROC.007"
+     ]
+    },
+    {
+     "title": "Dependencies refreshed early",
+     "text": "Right after the baseline, every external dependency is updated, one family per commit: MicroPython and its parts, the toolchain, Microdot, the stubs, the Python and Node tools and the actions. Workarounds fixed upstream are removed, and a second check runs at the close.",
+     "user_visible": false,
+     "refs": [
+      "M.PROC.008",
+      "M.PROC.009",
+      "M.PROC.031",
+      "M.TOOL.073"
+     ]
+    },
+    {
+     "title": "Legacy code into one folder",
+     "text": "python/, modules/, html_raw and the four build scripts move unchanged into legacy/firmware, and the old dev drivers into legacy/dev_drivers. The legacy build still works from there.",
+     "user_visible": true,
+     "refs": [
+      "M.PROC.014",
+      "M.PROC.015"
+     ]
+    },
+    {
+     "title": "Faster runs, same gates",
+     "text": "Inside a unit the affected tests run first, and the full gate runs on the unit's final tree. Suites that bind fixed ports run in parallel only once separate network namespaces are proven to give the same results.",
+     "user_visible": false,
+     "refs": [
+      "M.PROC.001",
+      "M.PROC.002",
+      "M.PROC.003",
+      "audit/order/WORK_ORDER.md section 4"
+     ]
+    },
+    {
+     "title": "History scanned for secrets once",
+     "text": "The whole git history is scanned once for secrets, with arduino/ excluded, and every hit gets a decision.",
+     "user_visible": false,
+     "refs": [
+      "M.PROC.020"
+     ]
+    },
+    {
+     "title": "The close re-checks everything",
+     "text": "At the end every rule is applied again file by file and the full suite reruns, pass after pass, until one pass ends all green. You then get a report with before-and-after numbers and the load tests.",
+     "user_visible": false,
+     "refs": [
+      "M.PROC.030",
+      "M.PROC.032",
+      "M.PROC.034"
+     ]
+    },
+    {
+     "title": "Eight hardware rounds in two sessions",
+     "text": "Session 1 covers the bench-host check, first contact and the default run, the operator round with you at the bench, the gated wear run, the soaks, the two-hour timer-rollover round on a tick-offset test image, and the reflash rows last. Session 2 is the release proof: the full tiers on an image without the GC threshold, then on the release image.",
+     "user_visible": true,
+     "refs": [
+      "M.PROC.036",
+      "M.PROC.039",
+      "M.PROC.041",
+      "M.PROC.042",
+      "M.PROC.043"
+     ]
+    },
+    {
+     "title": "One merge, one tag",
+     "text": "With your agreement, PR #107 merges into main as a merge commit and is tagged v2.0. Just before that, one commit deletes the plan file and audit/. The audit branch stays unless you say otherwise.",
+     "user_visible": true,
+     "refs": [
+      "M.PROC.044",
+      "M.DOCS.043"
+     ]
+    }
+   ],
+   "unchanged": "No unit runs anything on hardware, and the software units do not stop for you; you can look in at any sync point.",
+   "size": {
+    "changes": 48,
+    "units": "U0-D (mostly U0R, U35, phase C)"
+   },
+   "refs": [
+    "audit/consolidation/M_PROC.md",
+    "audit/order/WORK_ORDER.md"
+   ]
+  }
+ ]
+}
