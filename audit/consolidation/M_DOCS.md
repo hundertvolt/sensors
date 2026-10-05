@@ -1875,19 +1875,31 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Blast carried by**: BACKLOG dev-quirks bullet deleted the same unit (M.DOCS.065)
 - **Kind**: rule
 
-### M.DOCS.078 The WoZi rule: never flashed, tags, the invalid-test sentence
-- **From**: A.U0.23 (`:159-160`); A.U0.32 (`:166-169`); A.U36.512 (4) (`:159`); OR78.a (2)-(3) (AC3_O O-28)
+### M.DOCS.078 The `dev`-exception rule replaces the WoZi rule
+- **From**: A.U0.23 (`:159-160`); A.U0.32 (`:166-169`); A.U36.512 (4) (`:159`); OR78.a (2)-(3) (AC3_O O-28); OR140.a (18)
+  (owner, 2026-10-02: no build has anything special apart from `dev`'s contained exceptions; the WoZi-specific wording
+  of the promotion is removed) (A-C review fold)
 - **Site**: `CLAUDE.md:159-169`
-- **Change**: `:159-162` (through "unaffected by any real-hardware work.") → "**`wozi` is never physically flashed or
-  bench-tested; its correctness rests on L1/L2, and only `dev` is flashed** (owner, 2026-09-03, `a19691c`)"; `:166-169` → "That mismatch (…) is an invalid test by construction (owner,
-  2026-09-03, `5730e72`, paraphrase) — it tests nothing, and must not be repeated; dev's own firmware covers the shared
-  SCD30/SGP40 bus (owner, 2026-09-26: 'dev is different hardware, wozi cannot run on it and never will')".
-- **Resolved**: OR78.a (2)-(3) (2026-09-28, later than the 2026-09-03 rule) withdraws wozi's default and golden-reference
-  role; docs name a device as a current fact, never as a rule — "exemplary/base" goes; the fact stays (G1/R36). The
-  replaced span runs to `:162`'s sentence end so no fragment of the old sentence dangles (AC3_O O-28 named `:159-161`).
-- **Unit**: U36. Stage U0 (tags, `:166-169`).
+- **Change**: the whole bullet `:159-169` → "- **Every device but `dev` is built and tested alike; `dev` is the bench rig
+  and the one contained exception** (owner, 2026-10-02: 'There is nothing special for any of the builds (apart from
+  some well contained exceptions for dev, which is somewhat special)'). Only the `dev` board is flashed and
+  bench-tested by a session (owner, 2026-09-03, `a19691c`); every device's correctness rests on L0-L2, and a bench proof
+  of a shared mechanism on `dev`'s own image holds for every device. A session never flashes another device's image
+  onto the bench board: its pins do not match the bench wiring, so such a run tests nothing (owner, 2026-09-03,
+  `5730e72`, paraphrase) and must not be repeated." The HEAD text's "WoZi is the exemplary/base variant … never
+  physically flashed", its `scripts/build_firmware.py wozi` example and "dev is different hardware, wozi cannot run on it
+  and never will" go.
+- **Resolved**: OR78.a (2)-(3) (2026-09-28, later than the 2026-09-03 rule) withdrew wozi's default and golden-reference
+  role; OR140.a (18) (2026-10-02) goes further — no WoZi-specific rule remains: the facts that stay are `dev`'s (the one
+  flashed board) and the general invalid-test rule (A-C review fold; the earlier "`wozi` is never physically flashed or
+  bench-tested" sentence of A.U0.23 is replaced). The replaced span runs to `:169` so no fragment of the old bullet
+  dangles.
+- **Unit**: U0 (the owner's ruling predates B0; the U0 tags land inside the new text). Stage U36 (`:159` wording pass,
+  A.U36.512 (4), on the new text).
 - **Depends**: —
-- **Blast carried by**: SPEC term table (A.U36.512 (1), SPEC)
+- **Blast carried by**: SPEC term table (A.U36.512 (1), SPEC); SPEC A.3, B.11, E.6.6, L.1 (M.SPEC.007, M.SPEC.035,
+  M.SPEC.083, M.SPEC.144: their pointers name "CLAUDE.md's `dev` rule"); README flashing rule and Devices table
+  (M.DOCS.048, M.DOCS.045); `tests_hardware/README.md`'s WoZi wording → M.HW_BENCH (fold F20)
 - **Kind**: rule
 
 ### M.DOCS.079 The legacy rule names `legacy/` and what it may be used for

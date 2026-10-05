@@ -3748,15 +3748,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: Part N rows → A.U8.01 (SPEC).
 - **Kind**: test
 
-### M.TEST_UNIT.169 Readiness through the fake's poll mask; the real-poll guard holds
-- **From**: A.U24.15 (`:438-445` stay as local checks), GAP-T4 (M.TEST_HELP.010/.017).
+### M.TEST_UNIT.169 Readiness from the ring's fill level; the real-poll guard holds
+- **From**: A.U24.15 (`:438-445` stay as local checks), GAP-T4 (M.TEST_HELP.010/.017), OR141.a (4) (b), (f) (`ready()`
+  reads the ring's fill level, never a receive-side poll; A-C review fold).
 - **Site**: `tests/test_asy_uart_driver.py:438-445`.
-- **Change**: `test_no_uart_built_here_polls_through_a_real_select_poll` holds. No test in this file reads readiness
-  through `ioctl(…)` (grep at HEAD: none), so GAP-T4's `poll_mask()` rewrite has no site here; every test runs under the
-  after-each `real_poll_queries == 0` check and needs nothing more (none registers a real poll).
+- **Change**: `test_no_uart_built_here_polls_through_a_real_select_poll` holds and gains `rx_api_calls == 0` (from U13 the
+  receive side never polls, M.TEST_UNIT.344). No test in this file reads readiness through `ioctl(…)` (grep at HEAD:
+  none), so GAP-T4's `poll_mask()` rewrite has no site here; every test runs under the after-each `real_poll_queries ==
+  0` check and needs nothing more (none registers a real poll).
 - **Resolved**: —
-- **Unit**: U24.
-- **Depends**: M.TEST_HELP.010, .017.
+- **Unit**: U24 (stage U13: the `rx_api_calls` assertion with M.TEST_HELP.069).
+- **Depends**: M.TEST_HELP.010, .017, .069.
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3831,43 +3833,47 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.175 Readline paths take a size and are clamped
-- **From**: A.U13.12 (`:920-929, 1040-1070, 1628-1660, 1872-1880` hold; `:1068`, `:1775` gain `size`; comments; new L1).
+### M.TEST_UNIT.175 Readline paths read the ring, capped
+- **From**: A.U13.12 (`:920-929, 1040-1070, 1628-1660, 1872-1880` hold; `:1068`, `:1775` gain `size`; comments; new L1)
+  superseded by OR141.a (4) (b) (the driver never calls `uart.readline()`: a line is read from the DMA ring by index) and
+  OR143.a (2) (the readline cap) — A-C review fold.
 - **Site**: `tests/test_asy_uart_driver.py:1040-1070`, `:1628-1660`, `:1670`, `:1770-1785`, `:1873`.
-- **Change**: `patched_readline()` (`:1068`) and `no_readline()` (`:1775`) take `size: int = -1` and forward it; the
-  "no count to clamp" comments at `:1629`, `:1648`, `:1670`, `:1873` → "clamped to `any()` like every counted read".
-  New `test_a_line_longer_than_the_buffer_is_read_in_clamped_rounds` (each `readline()` request ≤ `any()` in the fake
-  log, `would_have_blocked_bytes` stays 0).
+- **Change**: the readline tests feed their lines through the fake link and assert the lines returned (`:1040-1070`,
+  `:1628-1660`, `:1872-1880` keep their goals: a multi-part line, an empty read, no probe of an empty buffer); the
+  `patched_readline()` (`:1068`) and `no_readline()` (`:1775`) stand-ins go (the driver calls no `uart.readline()`;
+  guard: `rx_api_calls == 0`, M.TEST_UNIT.344); the "no count to clamp" comments at `:1629`, `:1648`, `:1670`, `:1873`
+  → "read from the ring by index, never through the FIFO API". The clamped-rounds test is not written (no `readline()`
+  request exists to clamp); the cap's cases are M.TEST_UNIT.344 (d).
 - **Resolved**: —
 - **Unit**: U13.
-- **Depends**: M.SRC_NET.202; M.TEST_HELP.018 (fake `readline(size)`).
+- **Depends**: M.SRC_NET.202 (as the fold reworks it for the ring); [fold F25 M_SRC_NET]; M.TEST_HELP.069.
 - **Blast carried by**: —
 - **Kind**: test
 
 ### M.TEST_UNIT.176 Delimited reads: yields, discard counts, exact codec size, deinit races
 - **From**: A.U13.14 (`:600-676` hold; new L1), A.U17.13 (new L1s), A.U17.22 (`:514`, `:600-603`, `:678` hold; new L1),
-  A.U13.18 (new L1), A.U13.19 (new L1).
+  A.U13.18 (new L1), A.U13.19 (new L1); OR141.a (4) (f) (readiness from the ring's fill level; A-C review fold).
 - **Site**: new tests in the B2 and never-raises sections.
 - **Change**: `test_a_run_of_delimiters_lets_another_task_run` (64 delimiters then a frame: a counter task runs ≥ 4 times
   before the frame returns); discard-count cases on `discarded_bytes` — a mid-frame timeout adds the partial length, a
   CRC16 failure the whole frame, a COBS decode failure the consumed bytes, a start timeout 0, a good frame nothing, and
   a count set near `COUNTER_CAP` wraps without passing it; `test_an_exact_size_codec_delivers_a_full_frame`
   (`cobs_uart(max_frame=<frame + CRC>)` through `readinto_until_complete()`); `test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart`
-  (a `_StepPoller` whose ready round is followed by a task calling `deinit()`: `read()`, `readinto_until_complete()`,
+  (a ready round — the fake DMA's fill level stepping from 0 to a frame — followed by a task calling `deinit()`: `read()`, `readinto_until_complete()`,
   `write()` return `None`/`False` and the fake logs nothing after the deinit; the same for `_read_delimited()` with a
   COBS codec after 16 bytes); `test_an_idle_wait_beyond_the_ticks_range_returns_false`: `poll_idle_ms = 2**61` (the rig's
   half-period: `ticks_add()` refuses a delta ≥ period/2, `extmod/modtime.c:191-192`, and the 64-bit Unix port's period is
   2**62, SPEC F.1); first assert the precondition `time.ticks_add(time.ticks_ms(), 2**61)` raises `OverflowError` on this
-  interpreter (else the test fails naming the rig, never passes vacuously); then a bounded `_StepPoller` that reports
-  not-ready on its first `ipoll(0)` and ready on every later one (so the round reaches `asyncio.sleep_ms(poll_idle_ms)`):
+  interpreter (else the test fails naming the rig, never passes vacuously); then a ring empty on the first round and
+  holding a frame on every later one (so the round reaches `asyncio.sleep_ms(poll_idle_ms)`):
   `ready(timeout_ms=-1)` returns `False` without raising — the arm answers before the second poll, which would have
   reported ready; without the `OverflowError` arm the sleep's raise fails the test.
 - **Resolved**: A.U13.19's `2**29` is outside rp2's range (period 2**30) but inside the Unix rig's (2**62), so on the rig
   the sleep raised nothing and the never-ready poller returned `False` without reaching the degrade path the test is
-  named for (SPEC merge hand-back, late gap 3; M_SPEC gap 3). The rig's half-period and a poller ready on its second poll
-  make the test reach that path; F.8.2's rp2 sentence (M.SPEC.108) is unchanged (gap pass G3, 2026-10-01).
+  named for (SPEC merge hand-back, late gap 3; M_SPEC gap 3). The rig's half-period and a ring holding a frame from its
+  second round (a poller ready on its second poll before the DMA receive path) make the test reach that path; F.8.2's rp2 sentence (M.SPEC.108) is unchanged (gap pass G3, 2026-10-01).
 - **Unit**: U17 (stage U13).
-- **Depends**: M.SRC_NET.196, .199, .200, .201.
+- **Depends**: M.SRC_NET.196, .199, .200, .201; M.TEST_HELP.069 (the fill-level stepping, U13).
 - **Blast carried by**: —
 - **Kind**: test
 
