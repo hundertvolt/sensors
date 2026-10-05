@@ -615,25 +615,32 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
 
 ### M.TWIN.170 The twin's flash-write stall: a config flush holds the loop for the datasheet time, interrupts off
 - **From**: OR141.a (4) (g) (concurrent load "with the twin's flash write stalling the loop for the datasheet time"),
-  FOLD_BRIEF F25 (U25) — A-C review fold.
+  FOLD_BRIEF F25 (U25) — A-C review fold; AC_NOTES 54 (6) (lead ruling, 2026-10-05: the stall is one config flush, the
+  hold the ring floor is derived from).
 - **Site**: new `digital_twin/_flash_stall.py`.
 - **Change**: header (≤ 3 lines) "Models a flash write on the twin: rp2 programs its flash with interrupts off
   (ports/rp2/rp2_flash.c:170-174, v1.29.0), so a config flush holds the whole loop for the chip's erase and program
   time; installed from outside src/, as _wall_clock.py is." `install(module) -> None` rebinds the `open` the config
   manager module uses (applied from outside, no product hook, OR36) to a wrapper whose write-mode file, on `close()`,
-  busy-waits on `time.ticks_us()` for one sector erase plus one page program per 256 bytes written — W25Q16JV tSE 45 ms
-  typical / 400 ms max, tPP 0.4 ms / 3 ms (`datasheets/pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf`, the AC timing
-  table; each value cited on its line) — and marks the twin's interrupts off for that time, so the modelled UART RX
-  interrupt does not run while the DMA does (M.TWIN.169). Knob `use_max = False` ("twin-only test knob": the maxima).
-  `stalls` and `stalled_ms` (saturating, `_twin_common.saturating_add`) record what ran. One sector per write is an
-  approximation of littlefs's erase pattern, stated in the fidelity table. The runner installs it on every boot
+  busy-waits on `time.ticks_us()` for one config flush: `FLUSH_ERASES` sector erases plus one page program per 256
+  bytes written plus `FLUSH_EXTRA_PAGES` — W25Q16JV tSE 45 ms typical / 400 ms max, tPP 0.4 ms / 3 ms
+  (`datasheets/pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf`, the AC timing table; each value cited on its line) — and
+  marks the twin's interrupts off for that time, so the modelled UART RX interrupt does not run while the DMA does
+  (M.TWIN.169). `FLUSH_ERASES` and `FLUSH_EXTRA_PAGES` are the erase and metadata-program counts `asy_uart_comm`'s
+  `_FLASH_HOLD_MAX_MS` is derived from (M.SRC_NET.222, its tag row): at the maxima and the largest config file the stall
+  equals that constant, never more — the twin stalls for exactly the hold the ring floor is sized for. Knob `use_max =
+  False` ("twin-only test knob": the maxima). `stalls`, `stalled_ms` and `longest_ms` (saturating,
+  `_twin_common.saturating_add`) record what ran. The counts approximate littlefs's erase pattern by its worst case for
+  one flush, stated in the fidelity table. The runner installs it on every boot
   (typical times; a runner flag selects the maxima, its name decided at execution with the `--test-*` family, M.TWIN.051);
   an in-process L2 test installs it where it needs the stall.
 - **Resolved**: —
 - **Unit**: U25.
-- **Depends**: M.TWIN.001 (`saturating_add`), M.TWIN.169 (the interrupts-off flag the model reads).
+- **Depends**: M.TWIN.001 (`saturating_add`), M.TWIN.169 (the interrupts-off flag the model reads); M.SRC_NET.222
+  (`_FLASH_HOLD_MAX_MS` and its counts, U17).
 - **Blast carried by**: the runner's install → M.TWIN.171; the stall cases → M.TWIN.130; the concurrent-load scenario →
-  M.TWIN.171 and M.SCR.018; fidelity row → M.TWIN.059; README "What's here" bullet → M.TWIN.058.
+  M.TWIN.171 and M.SCR.018 (which checks the twin's counts against `_FLASH_HOLD_MAX_MS` read from source); fidelity row →
+  M.TWIN.059; README "What's here" bullet → M.TWIN.058.
 - **Kind**: code
 
 ## digital_twin/machine.py
@@ -1746,26 +1753,34 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **From**: OR141.a (4) (g) ("Concurrent load: both dev link instances under traffic alongside the webserver hammer,
   FRAM log writes and config PUTs, with the twin's flash write stalling the loop for the datasheet time; both GC stages,
   zero MemoryError"), OR143.a (4) (concurrent load — maximum-size trains alongside the webserver hammer, both GC stages,
-  zero MemoryError), FOLD_BRIEF F25/F27 (U25) — A-C review fold.
+  zero MemoryError), FOLD_BRIEF F25/F27 (U25) — A-C review fold; AC_NOTES 54 (6) (lead ruling, 2026-10-05: the ring floor
+  from one config flush's hold, which the twin's maximum stall equals).
 - **Site**: `digital_twin/run_generic_integration.py` (the DUT side: the stall installed, the links' counters on the
   shutdown line); the scenario itself in the host harness (`scripts/_digital_twin_scenarios.py`, G7/R19: request
   driving stays host-side).
 - **Change**: DUT side: the runner installs `_flash_stall` (M.TWIN.170) on the booted config manager module; the shutdown
   line (M.TWIN.050) gains `uart=<instance>:transfers=<n>,failures=<n>,overruns=<n>,…` for each wired `uart_link`, read
-  from the link driver's own counters and the receive path's lap count (no product hook, OR36). The scenario (host
+  from the link driver's own counters and the receive path's lap count (no product hook, OR36), and
+  `flash_stall_longest_ms=<n>` (`_flash_stall`'s `longest_ms`). The scenario (host
   side, M.SCR.018): dev booted by the runner at each GC stage, the stall at its typical and then its maximum
   times; both link instances exercising; the webserver hammer; a sustained FRAM-log fault through `--fault` (persisted
   writes); config PUTs at a steady rate (each a flash write, so each a stall); and, for OR143.a, the link carrying
   maximum-size and over-cap trains (how the exerciser is made to send them from outside the product is decided at
-  execution, with its reason recorded). Verdict: no link failure or overrun within the ring bound (the maximum stall is
-  inside it by the ring's size derivation, OR141.a (4) (e)); an over-cap train refused and logged once; zero
-  `MemoryError`/`memory allocation failed` in the run log (the twin gate, CLAUDE.md); the largest free block at the end
-  not below the boot-contiguity bound.
+  execution, with its reason recorded). Verdict: `flash_stall_longest_ms` at the maxima no longer than
+  `_FLASH_HOLD_MAX_MS` read from `src/asy_uart_comm.py` (the host harness's source reader) — the stall is the hold the
+  ring floor is derived from, so the ring holds everything the stop-and-wait peer sends during it: zero overruns at
+  every stall; a transaction a stall outlasts by its `timeout` fails and resyncs as J.5 states and the next completes
+  (counted, not a defect), and none fails for a stall shorter than the link's `timeout`; an over-cap train refused and
+  logged once; zero `MemoryError`/`memory allocation failed` in the run log (the twin gate, CLAUDE.md); the largest free
+  block at the end not below the boot-contiguity bound. `dev`'s ring (8,192 B, sized for the bench, M.GEN.066) is far
+  above the floor, so the floor's own sufficiency is proven at L1 by a ring at exactly the floor (M.TEST_UNIT.345 (f));
+  this run proves the system path.
 - **Resolved**: G7/R19 keeps request driving out of the twin's heap, so the hammer and the PUTs come from the host
   harness while the stall and the counters are twin-side; the scenario is one run of the CI suite's harness.
 - **Unit**: U25.
 - **Depends**: M.TWIN.050, M.TWIN.169, M.TWIN.170; M.SCR.018 (the host scenario); M.SRC_NET.221 (the receive
-  path's lap count); M.SRC_NET.220 (the cap and the chunked assembly).
+  path's lap count); M.SRC_NET.220 (the cap and the chunked assembly); M.SRC_NET.222 (`_FLASH_HOLD_MAX_MS`, the floor);
+  M.GEN.066 (`dev`'s declared ring, U20).
 - **Blast carried by**: the CI suite's run list and README "Automated CI suite" → M.TWIN.064 and M.SCR.018; the
   shutdown-line parser's new field → M.SCR.016, M.TSC.165.
 - **Kind**: code
@@ -3459,7 +3474,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `_check_two_initiations_one_instance(crc)`, `_check_clear_racing_a_transaction(crc, point)` (three points),
   `_check_both_ends_transmitting(crc)` with the assertions above; codes by name (`tests/_error_codes.py` `code()`); the
   wire logs parsed with the harness's `frames()`. Registration per mode: `for crc in (None, CRC16())` builds one
-  `test_<check>_<mode>` per check into `globals()` (the mode as `nocrc`/`crc16`). Tunables per C3 (row basis U8's N.1;
+  `test_<check>_<mode>` per check into `globals()` (the mode as `nocrc`/`crc16`). A received result (a `PieceBuffer`) is
+  compared with bytes only through the harness's `copied_out()` (M.TEST_HELP.070). Tunables per C3 (row basis U8's N.1;
   `_RUN_LIMIT_S`, the H2 recovery bound); the file's measured duration recorded in its row (A.U17.25's "measured at
   execution"). Registers `machine.reset_test_state`; trailer canonical.
 - **Resolved**: A.U17.25 says "building their pair on the twin's own `machine.UART` fakes with `UARTLink` … and
@@ -3469,7 +3485,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Unit**: U25 (A.U17.25's L2 files need A.U25.04's `reset_peripherals()`; S0930's both-mode plan co-lands)
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25.
 - **Depends**: M.TWIN.027, M.TWIN.028, M.TWIN.029, M.TWIN.035; M.TEST_HELP's `_uart_comm_harness` (guarded `run()`
-  removed there — this file uses `_async_harness`), M.TEST_HELP.045
+  removed there — this file uses `_async_harness`), M.TEST_HELP.045, M.TEST_HELP.070 (`copied_out()`)
 - **Blast carried by**: SPEC J.7 tier map row → A.U36.539 (SPEC); CLAUDE.md four-tier UART clause → A.U17.25/U36 (DOCS);
   L3/L4 halves → U26 (HW_DEV/HW_BENCH)
 - **Kind**: test
@@ -3492,7 +3508,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   appended by the bus's own CRC object when the arm has one; the verdict per value from the J.3/J.4 rule table the L1
   sweep (`tests/test_uart_comm_hazard.py:237-344`, A.U17.24) uses — imported from where A.U17.24 places it, not
   restated; the responder's wire is read after one quiet window (`_QUIET_WINDOW_MS`, tagged, 45). One test per field and
-  mode (`test_<field>_sweep_nocrc`, `test_<field>_boundaries_crc16`), each ending with one clean exchange. If the
+  mode (`test_<field>_sweep_nocrc`, `test_<field>_boundaries_crc16`), each ending with one clean exchange (a received
+  result compared through `copied_out()`, M.TEST_HELP.070). If the
   measured no-CRC duration exceeds the per-file timeout's margin the executor splits by field into two files — stated in
   the row, never by raising the timeout. Registers `machine.reset_test_state`; trailer canonical.
 - **Resolved**: —
@@ -3538,7 +3555,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `run(module.build_system(watchdog=machine.WDT(timeout=8000), cfg_path=cfg), _RUN_LIMIT_S)`, then `UARTLink(fake_a,
   fake_b)` and the bounded pollers; `:66-69` comment → "# Joined as the bench jumper joins them; the pollers are bounded
   because the twin UART's ioctl() answers EINVAL to all but POLL, so a real select.poll() never sees readiness
-  (digital_twin/README.md)." `:200` → `bytes(answer) == asy_uart_link_driver._BANNER`. `:173-175` per A.U16.01.
+  (digital_twin/README.md)." `:200` → `copied_out(answer) == asy_uart_link_driver._BANNER`. `:173-175` per A.U16.01.
+  U17 stage (AC_NOTES 54 (3)): the banner answer is a `PieceBuffer`, so `:198` `bytes(answer) == b"dev-uart-crossover"`
+  → `copied_out(answer) == b"dev-uart-crossover"` (`copied_out` from `tests/_uart_comm_harness.py`, M.TEST_HELP.070).
   `:153-154` read `initiator._payload_size == responder._payload_size` and `initiator._timeout == responder._timeout`
   (`UARTComm`'s private names after M.SRC_NET.155 as amended in gap pass G2; GAPS_G2 H-3, gap pass G3; the `:147`
   comment keeps the out-of-band rule).
@@ -3566,7 +3585,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   C1's rename makes it `UARTLinkDriver`.
 - **Unit**: U36 (stages: U17 A.U17.04/.05/.13; U24 harness, banner; U25 device from data, C4, CRC16 arm, rate bound;
   U30 A.U30.13; U35 A.U35.22; U36 A.U36.544's pointer)
-- **Depends**: M.TWIN.027-029, M.TWIN.035, M.TWIN.053; M.TEST_HELP.047, .055; A.U17.18 (plan `uart` key, GEN)
+- **Depends**: M.TWIN.027-029, M.TWIN.035, M.TWIN.053; M.TEST_HELP.047, .055, .070 (U17 stage); A.U17.18 (plan `uart`
+  key, GEN)
 - **Blast carried by**: Part N rows renamed/withdrawn → U8 rows (SPEC); the gc-site checker's two rows hold by name
   (A.U30.16, TSC); `UART_C_PORT_CHANGELOG.md` Class B for the banner → A.U24.67 (DOCS); SPEC J text naming this file
   (A.U17.15) → SPEC
@@ -4205,3 +4225,5 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.TWIN.104 (the damaged-config case: the boot repairs the corrupt file and it stays listed; test renamed `…_is_repaired_listed_then_deleted_and_rewritten_once`) | amended |
+| R54 | M.TWIN.170 (the stall is one config flush with the erase and program counts `_FLASH_HOLD_MAX_MS` is derived from; at the maxima it equals that hold; `longest_ms`), .171 (verdict: the longest stall within `_FLASH_HOLD_MAX_MS` read from source, zero overruns, a stall past `timeout` a counted failure and resync; `flash_stall_longest_ms` on the shutdown line), .158 (U17 stage: the banner answer compared through `copied_out()`) | amended |
+| R54 | M.TWIN.154, .156 (a received result compared through `copied_out()`) | amended |

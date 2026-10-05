@@ -526,8 +526,11 @@ Conventions used below (each defined once, then cited):
   PUTs at a steady rate that each change a stored value (each a flash write, so each a stall), and a sustained
   FRAM-log fault through `--fault` (persisted writes), while both link instances exercise (the twin's exerciser,
   including its maximum-size and over-cap trains as M.TWIN.171 provides them); the verdict reads the shutdown line's
-  `uart=` field (M.TWIN.171) and `/status`: no link failure and no overrun for every stall within the ring's bound,
-  each over-cap train refused and logged exactly once, every config PUT answered, zero `MemoryError` and `memory
+  `uart=` and `flash_stall_longest_ms=` fields (M.TWIN.171) and `/status`: the longest stall at the maxima no longer
+  than `_FLASH_HOLD_MAX_MS` read from `src/asy_uart_comm.py` by `ast` (the hold the ring floor is derived from), zero
+  overruns at every stall, no link failure for a stall shorter than the link's `timeout` and, for a longer one, the
+  failed transaction resynced and the next completed (AC_NOTES 54 (6), lead ruling, 2026-10-05), each over-cap train
+  refused and logged exactly once, every config PUT answered, zero `MemoryError` and `memory
   allocation failed` in the run log (the twin gate), the largest free block at the end not below the boot-contiguity
   bound (read from `tests_scripts/test_digital_twin_boot_contiguity.py` by `ast`).
 - **Resolved**: A.U22.03's `:377` comment edit dropped — A.U22.03 withdrawn (AC_NOTES 37). The in-process halves of
@@ -2519,3 +2522,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.SCR.060 (damaged-file cell: the unparseable and out-of-range files rewritten by one write and still listed, a missing-key file repaired and not listed; no longer "corrupt bytes unchanged") | amended |
+| R54 | M.SCR.018 ((m) verdict: the longest stall within `_FLASH_HOLD_MAX_MS` read from source, zero overruns, a stall past `timeout` a resynced failure; the new `flash_stall_longest_ms=` field) | amended |

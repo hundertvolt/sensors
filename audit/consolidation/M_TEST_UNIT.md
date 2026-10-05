@@ -3514,10 +3514,12 @@ session lock names, and the fake's rp2 probe/scan semantics.
   accepted). `:165-170` → `poll_wait_ms=9` and a 64-byte receive ring (not an rxbuf: from U17 the floor applies to the
   ring); `assert …` equals the ring-floor refusal's code (M.SRC_NET's, by catalog name); comment → "# A 9ms poll interval
   plus the module's 5ms of scheduling slack admits ~161 bytes at 115200 baud, so a 64-byte ring loses the tail of
-  anything sustained even though a frame fits." New `test_the_ring_floor_covers_the_longest_flash_write` (the floor is
-  the larger of one framed frame, one poll interval's bytes and the stop-and-wait bytes the peer can send during the
-  longest synchronous flash write, rounded up to a power of two — each term computed by the test from its own inputs,
-  W25Q16JV tSE max 400 ms; one power of two below it refused, exactly it accepted).`:181` → `code("E", "ALLOC")`; `Framing_COBS` → `FramingCOBS`. New
+  anything sustained even though a frame fits." New `test_the_ring_floor_covers_a_config_flush` (the floor is the
+  larger of one framed frame, one poll interval's bytes and what the stop-and-wait peer can send while one config
+  flush holds the loop — its one unacknowledged frame plus one framed frame per re-initiation, `4 × timeout` apart,
+  inside `_FLASH_HOLD_MAX_MS` (read with `src_const()`) — rounded up to a power of two; each term computed by the test
+  from its own inputs, at two `timeout`s so the re-initiation term both stays at zero and rises; one power of two below
+  it refused with `code("E", "UART_RXBUF")`, exactly it accepted; AC_NOTES 54 (6), (7)).`:181` → `code("E", "ALLOC")`; `Framing_COBS` → `FramingCOBS`. New
   `test_the_timeout_ceiling_keeps_every_deadline_a_valid_tick_delay` (89_478_485 accepted, its `_resync_window_ms() * 4`
   and `_backoff_max_ms` both below 2**29 by the test's own arithmetic; 89_478_486 refused with
   `code("E", "UART_TIMEOUT_PARAM")`); `test_a_poll_rate_outside_one_to_nine_ms_is_refused` (0 and 10 →
@@ -3727,10 +3729,13 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Change**: `dev_legacy/…` → `legacy/dev_drivers/…` at the three sites; `:2159` "Kept rather than relaxed" → "Kept rather
   than relaxed (agent, 2026-09-13)"; `:2161` "(SPECIFICATION.md Part J.1)" → "(SPECIFICATION.md Parts J.5, J.6)";
   `UART_Comm` → `UARTComm`; `:2168-2169` `_ERR_RXBUF` → `code("E", "UART_RXBUF")`; `run(scenario(), limit=60)` →
-  `run(scenario(), _BSEC_RUN_BOUND_S)`.
+  `run(scenario(), _BSEC_RUN_BOUND_S)`. U17 stage (AC_NOTES 54 (3)): the demonstration's `uart_get()` answers and the
+  peer's `result.payload` arrive as `PieceBuffer`s, so each goes through `copied_out()` (M.TEST_HELP.070) before
+  `struct.unpack()` or `bytes()` — `:2088` `received[…] = copied_out(result.payload)`, `:2092`, `:2101` `struct.unpack(…,
+  copied_out(res))`, `:2104` `copied_out(sized)`, `:2106` `copied_out(dont_care)`.
 - **Resolved**: —
-- **Unit**: U36 (stages U0 tag, U1 path, U2 code).
-- **Depends**: M.SRC_NET.153.
+- **Unit**: U36 (stages U0 tag, U1 path, U2 code, U17 copy-out).
+- **Depends**: M.SRC_NET.153; M.TEST_HELP.070 (U17 stage).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3740,9 +3745,13 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `chunk_bytes` in the shared piece primitive; `max_transfer_bytes` refusing a declared size before any allocation
   through the withheld ACK, logged once; a caller-supplied destination unchanged; tests: no receive allocation above
   `chunk_bytes` by a largest-block measurement, refusal before any allocation, a maximum-size train assembled
-  correctly, hammering with repeated maximum-size and over-cap trains), FOLD_BRIEF F25/F27 (U17) — A-C review fold.
-- **Site**: new sections in `tests/test_asy_uart_comm.py`; the piece primitive's cases in the test file of the module
-  that holds it (decided with the product change, M.SRC_CORE.134).
+  correctly, hammering with repeated maximum-size and over-cap trains), FOLD_BRIEF F25/F27 (U17) — A-C review fold;
+  AC_NOTES 54 (3) (a module-allocated result compared through the copy-out helper), (4) (an awaited path's
+  "allocates nothing" is no retained growth against an ambient control), (6) (the ring floor from one config flush),
+  (7) (`copy_into()` refuses a smaller destination) — lead rulings, 2026-10-05.
+- **Site**: new sections in `tests/test_asy_uart_comm.py`; the file's existing tests that read a module-allocated
+  result (g); the piece primitive's cases in the test file of the module that holds it (decided with the product
+  change, M.SRC_CORE.134).
 - **Change**: (a) Lap: `test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs` (a pair whose responder's consumer
   is held past the ring bound while the initiator streams: the overrun is logged by its catalog code once, J.7's
   resync runs, the next transaction completes; no lapped byte is delivered to a callback). (b) Chunking:
@@ -3756,21 +3765,38 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_a_caller_supplied_destination_is_still_filled_in_place` (the zero-copy path: no piece allocated);
   `test_chunk_bytes_outside_its_range_is_refused` (the constructor's refusal by its code). (c) Cap:
   `test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation` (CHUNKS × payload over the cap: the
-  ACK withheld, the sender's transfer fails as J states, one entry by its catalog code, and `gc.mem_alloc()` unchanged
-  across the refusal); the same for `exp_size` over the cap; `test_a_train_at_the_cap_is_accepted`. (d) Hammering:
+  ACK withheld, the sender's transfer fails as J states, one entry by its catalog code; no destination built for it —
+  the module's `PieceBuffer` name rebound to a counting subclass, the project's mocking mechanism, counts zero
+  constructions — and no retained growth: across a collect-bracketed run of 50 refusals `gc.mem_alloc()` grows no more
+  than across an ambient control awaiting a no-op coroutine the same number of times, the `_measure_retention()` shape
+  of `tests/test_uart_comm_hazard.py`); the same for `exp_size` over the cap; `test_a_train_at_the_cap_is_accepted`. (d) Hammering:
   `test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat` (200 alternating maximum-size and over-cap trains in
   each direction: every maximum-size train intact, every over-cap one refused, `gc.mem_free()` and the largest free
   block after the run within the first train's reading; zero `MemoryError` in the output — the suite gate). (e) The piece
-  primitive's own cases (length, iteration, copy-out into a caller buffer, a copy-out larger than the buffer refused, no
-  allocation after construction), beside the webserver's `_PieceWriter` cases it is modelled on. Tunables tagged per the
-  file's convention.
+  primitive's own cases (length, iteration, copy-out into a caller buffer, a destination smaller than the bytes from
+  `start` makes `copy_into()` return `False` with every byte of a sentinel-filled destination unchanged, no retained
+  growth after construction against an ambient control, as (c)), beside the webserver's `_PieceWriter` cases it is modelled on. (f) The floor holds a config
+  flush: `test_a_ring_at_its_floor_holds_a_config_flush` — a responder whose ring is exactly its `_min_rx_ring()` has
+  its consumer held for `_FLASH_HOLD_MAX_MS` (read with `src_const()`) while the initiator keeps initiating through its
+  fault recovery (timeout, drain, hold-off): no lap; the transaction the hold outlasts fails and resyncs as J.5 states
+  and the next completes; `test_a_ring_below_its_floor_is_refused` — the next smaller power of two refused at
+  construction by `code("E", "UART_RXBUF")`. (g) The file's existing tests that compare a module-allocated result with
+  bytes read it through `copied_out()` (M.TEST_HELP.070): the `ListenResult.payload` checks `:724`, `:1040`, `:1288`;
+  the `uart_get()` answers `:1081`, `:1132`, `:1220`, `:1245` and `:1375` (`== bytearray(b"hello")` → `copied_out(…) ==
+  b"hello"`); the delivery test's recorder `:1520` (`bytes(payload)` → `copied_out(payload)`). `:1630-1638`
+  `test_an_answer_that_exactly_fills_its_train_is_handed_back_uncopied` loses its premise (no right-size copy remains,
+  M.SRC_NET.220) and becomes `test_an_answer_that_exactly_fills_its_train_arrives_intact` (`copied_out(answer) ==
+  payload`). Return and parameter annotations naming such a result `bytearray | None` (`:1103`, `:1155`, `:1193`,
+  `:1519`, `:1543`, `:1724`) → `PieceBuffer | None`. `len()` and `is None` checks (`:1062-1064`, `:2142-2143`) stay.
+  The BSEC demonstration's lines are M.TEST_UNIT.167's U17 stage. Tunables tagged per the file's convention.
 - **Resolved**: the four starved-destination tests (`:1825-1910`) retire with the caught-`MemoryError` sites (M.TEST_UNIT
   .164); their goal — a peer-sized allocation never lands unguarded mid-transfer — is met by refusing before allocation
   and capping each piece, which (b)-(d) prove.
 - **Unit**: U17; stage U24: `src_const()` and the shared pair harness replace the file's local mirror and runner (as
   M.TEST_UNIT.153's harness stage does).
 - **Depends**: M.SRC_NET.222 (the ring floor and lap handling in `asy_uart_comm.py`), M.SRC_NET.220, M.SRC_CORE.134
-  (`chunk_bytes`, `max_transfer_bytes`, the piece primitive); M.TEST_UNIT.344; M.TEST_HELP.023, .044 (U24 stage).
+  (`chunk_bytes`, `max_transfer_bytes`, the piece primitive); M.TEST_UNIT.344; M.TEST_HELP.070 (`copied_out()`, U17);
+  M.TEST_HELP.023, .044 (U24 stage).
 - **Blast carried by**: the C-port changelog rows (Class A refusal, "no C impact" ring) → M.SRC_NET.220, M.SRC_NET.222; the concurrent-load and bench maximum-size transfers → M.TWIN.171, C.
 - **Kind**: test
 
@@ -3943,7 +3969,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.344 The DMA receive ring: unit and hammering tests; the capped readline
 - **From**: OR141.a (4) (b)-(d), (f), (g) (the receive path through a DREQ-paced DMA ring: count reload and modular wrap,
   a frame split across the ring end, a lap read as an overrun, the mask cleared after every init, the refusals, zero
-  allocation per read; hammering), OR143.a (2), (4) (`readline_until_complete()` capped, no growth by concatenation,
+  allocation per read — restated by AC_NOTES 54 (4) as no retained growth against an ambient control, an awaited read
+  being no plain call; hammering), OR143.a (2), (4) (`readline_until_complete()` capped, no growth by concatenation,
   over the cap the line discarded with a logged error), FOLD_BRIEF F25/F27 (U13) — A-C review fold.
 - **Site**: new sections in `tests/test_asy_uart_driver.py`; the file's existing receive tests.
 - **Change**: (a) The file's existing receive tests run on the DMA model (M.TEST_HELP.069): bytes fed through the fake
@@ -3960,9 +3987,11 @@ session lock names, and the fake's rp2 probe/scan semantics.
   the_ring_end_reads_whole` (a frame whose bytes straddle the last ring byte, every codec and CRC mode); `test_a_lap_is_an_
   overrun_never_data` (more unread bytes than the ring holds: the read reports the overrun, counted, and no lapped byte
   is returned); the refusals (a ring size not a power of two or outside 2-32768, a misaligned ring — each refused with the
-  driver's code, no channel armed; the size floor is the link's, M.TEST_UNIT.345/.155); `test_a_read_allocates_nothing`
-  (after a warm-up read, `gc.mem_alloc()` does not rise across 1 000 frame reads copied by index into the frame buffer —
-  measured in the `-1` stage run, holding at 32768; no in-body `gc.threshold`); `test_the_ring_is_allocated_once_in_setup`
+  driver's code, no channel armed; the size floor is the link's, M.TEST_UNIT.345/.155);
+  `test_a_read_retains_nothing` (after a warm-up read, a collect-bracketed run of 1 000 frame reads copied by index into
+  the frame buffer grows `gc.mem_alloc()` by no more than an ambient control that awaits a no-op coroutine 1 000 times —
+  the read is awaited, and the scheduler's own churn is the control's to absorb, as `tests/test_uart_comm_hazard.py`'s
+  `_measure_retention()` measures it; run at both GC stages, no in-body `gc.threshold`); `test_the_ring_is_allocated_once_in_setup`
   (its identity unchanged across a task restart and re-`init()`); `test_ready_keeps_its_yield_and_rates_on_the_fill_level`
   (`ready()` yields once per round and polls at `poll_wait_ms`/`poll_idle_ms`, reading the fill level). (c) Hammering:
   `test_thousands_of_back_to_back_frames_at_line_rate_lose_nothing` (5 000 frames at 11.52 B/ms with the ring held at its
@@ -4007,10 +4036,14 @@ session lock names, and the fake's rp2 probe/scan semantics.
   functions registered per mode by a file-local `_register_both_crc_modes()` (`("nocrc", None), ("crc16", CRC16)`, names
   suffixed `_nocrc`/`_crc16`), the shape of `tests/test_uart_comm_hazard.py`'s (copied: the harness owns the protocol
   layer's). Every `test_*` constructing `UART(…, poll_wait_ms=POLL_WAIT_MS)` adds `poll_idle_ms=POLL_WAIT_MS`.
+  U17 stage (AC_NOTES 54 (3)): the banner and echo answers (`:195`, `:216`) arrive as `PieceBuffer`s and are compared
+  through `copied_out()` (M.TEST_HELP.070, imported from `_uart_comm_harness`): `copied_out(answer) ==
+  b"dev-uart-crossover"`, `copied_out(answer) == b"hello"`; the echo test thereby also covers the responder answering
+  from its stored `PieceBuffer` (M.SRC_NET.213).
 - **Resolved**: A.U8C.19 imports `_LISTENER_DRAIN_S`/`_RUN_LIMIT_S`; M.TEST_HELP.024 published them without the
   underscore (D5 there), so this file imports the public names (GAP-T1).
-- **Unit**: U24 (stages U8C, U10, U13; A.S0930.03 in U24).
-- **Depends**: M.TEST_HELP.023, .024, .043; M.SRC_NET.211, .213.
+- **Unit**: U24 (stages U8C, U10, U13, U17 copy-out; A.S0930.03 in U24).
+- **Depends**: M.TEST_HELP.023, .024, .043; M.SRC_NET.211, .213; M.TEST_HELP.070 (U17 stage).
 - **Blast carried by**: Part N rows → A.U8.01 (SPEC).
 - **Kind**: test
 
@@ -6962,10 +6995,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (as M.TEST_UNIT.153). `hazard_pair()` stays synchronous: `assert run(pair.setup(), RUN_LIMIT_S) is True`; `raw_frame()`
   `run(crc().add(frame), RUN_LIMIT_S)` (both called only from a check's synchronous scope — the shared `run()` now
   raises if not). Every bare `run(x)` → `run(x, RUN_LIMIT_S)`; every `run(x, limit=N)` → the M.TEST_UNIT.316 constant.
+  U17 stage (AC_NOTES 54 (3)): a module-allocated result is a `PieceBuffer`, so every comparison of one with bytes goes
+  through `copied_out()` (M.TEST_HELP.070, imported with the harness names): `:315` (`result.payload`), `:661`, `:676`,
+  `:698`, `:755` (its message's `{bytes(answer)!r}` too), `:873`, `:924`, `:981`, `:1085`, `:1193`, `:1216` (`answer`),
+  `:1137` (`delivered.append(copied_out(result.payload))`); the return annotations `:686`, `:883`, `:1182` (and the U24
+  `scenario()` annotations above) name `PieceBuffer | None` for such a result.
 - **Resolved**: A.U0.40 rewrites the `:48` tag to "(agent, 2026-09-12)"; A.S0930.03 records the owner confirming the
   both-modes rule at every level (2026-09-30, OR116/OR118.a (1)) — the later owner row adds its tag beside the agent's.
-- **Unit**: U24 (stages U10 names, U13 comment, U0 tag).
-- **Depends**: M.TEST_HELP.023, .024, .043, .045; M.SRC_CORE.115; M.SRC_NET.153, .154.
+- **Unit**: U24 (stages U10 names, U13 comment, U0 tag, U17 copy-out).
+- **Depends**: M.TEST_HELP.023, .024, .043, .045; M.SRC_CORE.115; M.SRC_NET.153, .154; M.TEST_HELP.070 (U17 stage).
 - **Blast carried by**: the J.3 copies' check → A.U24.02 (TSC); `tests_scripts/test_import_placement.py` `_PENDING` entry
   → A.U0.07 (TSC).
 - **Kind**: test
@@ -8393,3 +8431,5 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F32 | — | none in this file |
 | F33 | M.TEST_UNIT.291 (and the D-T27 entry of the agent-decision list) | amended |
 | R54 | M.TEST_UNIT.253 (damaged files rewritten once and still faulted; missing/unknown key repaired, not faulted; Resolved settled), .309 (`get_config_faults()` cases), .343 (plain calls to the window counter), .332 (U19 stage: `uptime_s=`/`static=` by keyword) | amended |
+| R54 | M.TEST_UNIT.345 ((c) refusal: no destination built and no retained growth against an ambient control; (e) `copy_into()` returns `False` into a smaller destination; (f) the floor holds a config flush, below it refused by `UART_RXBUF`; (g) the file's module-allocated results compared through `copied_out()`), .344 (`test_a_read_retains_nothing`: collect-bracketed, against an ambient control awaiting a no-op coroutine as often), .167, .315, .178 (U17 copy-out stages) | amended |
+| R54 | M.TEST_UNIT.155 (the floor test renamed `test_the_ring_floor_covers_a_config_flush`: one config flush's hold, the peer's re-initiations `4 × timeout` apart; refused by `UART_RXBUF`) | amended |

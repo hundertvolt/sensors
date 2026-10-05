@@ -588,6 +588,30 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   `_…`) → GAP-T1 (TEST_UNIT, A.U8C.19); `tests/test_asy_uart_comm.py` likewise → A.U8C.17 (TEST_UNIT).
 - **Kind**: test
 
+### M.TEST_HELP.070 A copy-out helper for module-allocated UART results
+- **From**: AC_NOTES 54 (3) (lead ruling, 2026-10-05: a don't-care `uart_get()`/set-callback result is a `PieceBuffer`
+  from U17, compared in tests through a copy-out helper in `tests/`; `PieceBuffer` gains no `__eq__`; every test reading
+  such a result gets a U17 carrier).
+- **Site**: `tests/_uart_comm_harness.py` (new function after `frames()`).
+- **Change**: `def copied_out(received: "PieceBuffer | None") -> "bytes | None":` — `None` passes through (J.9's failure
+  sentinel); otherwise `dest = bytearray(len(received))`, `assert received.copy_into(dest), "copy_into() refused a
+  destination of the buffer's own length"`, `return bytes(dest)`. Comment (≤ 3 lines): "# A train received without a
+  caller's buffer arrives as a PieceBuffer, which has no __eq__: tests compare / # its bytes through this one copy-out."
+  `PieceBuffer` imported under `TYPE_CHECKING` only (`from asy_base_classes import PieceBuffer`). Every test comparing a
+  module-allocated result with bytes — a `uart_get()`/`uart_get(exp_size=n)` answer without a caller buffer, a
+  `ListenResult.payload`, a message callback's `payload`, or one handed to `struct.unpack()` — passes it through
+  `copied_out()` first; a `len()` or `is None` check needs no copy (`PieceBuffer` has `__len__`).
+- **Resolved**: one helper in the harness the L1/L2 UART files already import, rather than a `PieceBuffer.__eq__` the
+  product would carry for tests only (lead ruling, AC_NOTES 54 (3)). The twin link file imports it too (its `machine`
+  resolves to the twin's, as the twin hazard files' does, M.TEST_HELP.023 (6)). Device scripts cannot import `tests/`;
+  they copy out inline through `copy_into()` (M.HW_DEV.046, M.HW_DEV.051).
+- **Unit**: U17.
+- **Depends**: M.SRC_CORE.134 (`PieceBuffer.copy_into()`, U17).
+- **Blast carried by**: the callers, each with a U17 stage → M.TEST_UNIT.345 (g) (`tests/test_asy_uart_comm.py`),
+  M.TEST_UNIT.167 (its BSEC demonstration), M.TEST_UNIT.315 (`tests/test_uart_comm_hazard.py`), M.TEST_UNIT.178
+  (`tests/test_asy_uart_link_driver.py`), M.TWIN.158 (`tests/test_digital_twin_uart_link.py`).
+- **Kind**: test
+
 ## tests/_uart_link_contract.py
 
 ### M.TEST_HELP.025 Link contract reads readiness by mask, checks clamped readline
@@ -2026,3 +2050,4 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.TEST_HELP.040 (scenario 9: the boot repairs the corrupt file, still listed), M.TEST_HELP.041 (a missing or unknown key alone is never listed) | amended |
+| R54 | M.TEST_HELP.070 (new: `copied_out()`, the copy-out helper every test comparing a module-allocated UART result uses; U17) | added |

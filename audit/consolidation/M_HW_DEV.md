@@ -641,7 +641,7 @@ changes cite.
   = 120.0`, `_LONG_SCRIPT_TIMEOUT_S = 180.0` (A.U8C.110's IDs); the hazard test's timeout is a new row
   `l3.uart_crossover_hazards_timeout_s` sized at execution from the twin run. (9) The exchange test also
   asserts the maximum-size train intact in both directions, the over-cap train refused with exactly one logged entry,
-  and the responder's largest free block unchanged across the refusal (M.HW_DEV.046's facts; OR143.a (2), (4)); the
+  and the responder's largest free block, read after a collect on each side, unchanged across the refusal (M.HW_DEV.046's facts; OR143.a (2), (4)); the
   interrupts-off sweep and the soft reset during traffic are M.HW_DEV.160's.
 - **Resolved**: A.S0930.05 runs each script once per mode with no reflash (scripts run from RAM); A.U26.82's hazard
   script takes the same parameter. OR123's "L3 CRC16 device script over the same jumper" is this parametrisation, not
@@ -655,13 +655,16 @@ changes cite.
 - **Kind**: test, hardware (Round: R1 [H37]; CRC16 arm R1 [H37], reflash-free)
 
 ### M.HW_DEV.160 The DMA receive ring on silicon: interrupts off, a soft reset during traffic, an optional real write
-- **From**: OR141.a (4) (d), (g); OR143.a (5) (A-C review fold).
+- **From**: OR141.a (4) (d), (g); OR143.a (5) (A-C review fold); AC_NOTES 54 (6) (lead ruling, 2026-10-05: `dev`'s
+  ring 8,192 B, sized for these continuous-sender windows).
 - **Site**: `tests_hardware/flash/test_uart_crossover.py` (new tests after M.HW_DEV.045's).
 - **Change**: (1) `test_no_frame_is_lost_while_interrupts_are_off(board, crc_mode)` (default-on, no wear) runs
   `uart_dma_ring_interrupts_off.py` with the render extra `irq_off_windows_us` = 3,000, 45,000, 400,000 (W25Q16JV tPP
   max, tSE typical and max) and one window past the ring's bound (the ring size from the bench TOML through
-  `bench_facts`; the bound is the time the sender fills the ring at the TOML baudrate, computed host-side and named in
-  the message); asserts, for every window within the bound, `frames_intact == frames_sent`, `uartrsr_oe` False and
+  `bench_facts` — `dev` declares `rx_ring = 8192`, M.GEN.066, sized so the 400 ms window's 4,608 B at 115200 baud fit
+  with margin; the bound is the time the sender fills the ring at the TOML baudrate, about 711 ms for 8,192 B, computed
+  host-side and named in the message, and the over-bound window is the next whole 100 ms past it, 800 ms; the test
+  fails, not skips, if the declared ring would not hold the 400 ms window); asserts, for every window within the bound, `frames_intact == frames_sent`, `uartrsr_oe` False and
   `overrun_detected == 0`, and for the over-bound window `overrun_detected >= 1` with every frame after the resync
   intact; records `heap_before`, `heap_after`, `largest_before`, `largest_after`, `ring_bytes` through `result_note`.
   (2) `test_a_soft_reset_during_traffic_leaves_no_running_ring(board, crc_mode)` (default-on, no wear): the script with
@@ -690,7 +693,8 @@ changes cite.
   (`Coroutine[object, object, T]`), A.U26.78 (`_settled` → `_shared/settle.py`), A.U2.20 (blast: the error print
   `:132` holds), A.U8C.91 (`:29, :32, :33` mirrors → `BENCH`; `JOIN_STEP_MS`, `JOIN_BUDGET_MS` tags; `:83` →
   `_shared/watchdog.py`), A.U26.68; OR143.a (1), (2), (4) (A-C review fold: a maximum-size transfer over the crossover
-  jumper, and an over-cap train refused).
+  jumper, and an over-cap train refused); AC_NOTES 54 (3) (lead ruling, 2026-10-05: a module-allocated result read
+  through copy-out).
 - **Site**: `tests_hardware/device_scripts/uart_crossover_exchange.py:1-142`.
 - **Change**: docstring `:1-3` drops the literal pins ("…across the bench board's UART crossover jumper…"); comment
   `:4-6` "never through sensortask_dev's full task graph" → "never through the generated device module's task graph".
@@ -703,17 +707,22 @@ changes cite.
   default `chunk_bytes` (not a TOML key); after
   the exchange, a maximum-size train: `uart_set()` of `max_transfer_bytes` bytes (a per-run pattern) to a responder
   whose set callback gives no destination, so it is assembled in pieces of at most `chunk_bytes`
-  (M.SRC_NET.220), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte; then one train
+  (M.SRC_NET.220), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte piece by
+  piece through `pieces()` against the regenerated pattern (no copy the size of the train on the board); then one train
   declaring `max_transfer_bytes + 1` from the initiator's raw driver, which the responder refuses before allocating
   (the withheld ACK) and logs once, the responder's largest free block (`_shared/heap_probe.py`) read before and after.
   Facts: `crc_mode`, `get_answer_ok`, `set_ok`, `empty_set_ok`, `train_bytes`, `max_train_bytes`, `max_set_intact`,
   `max_get_intact`, `over_cap_refused`, `over_cap_entries`, `largest_block_before`, `largest_block_after`,
   `error_counts` (per instance), `done()`.
+  U17 stage (AC_NOTES 54 (3)), on the HEAD text: the banner answer is a `PieceBuffer` (no buffer protocol, no
+  `__eq__`; the board cannot import `tests/`), so `:112` `bytes(answer) != _BANNER` → `len(answer) != len(_BANNER) or
+  not answer.copy_into(scratch) or scratch != _BANNER`, `scratch = bytearray(len(_BANNER))` allocated once before the
+  exchange; the failure message keeps `{answer!r}` only for `None`, else reports the copied bytes.
 - **Resolved**: —
-- **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U26 writes the end form, after
-  U17's chunking and receive cap).
-- **Depends**: M.HW_DEV.001-.004; M.SRC_NET.220 (`chunk_bytes`, `max_transfer_bytes`, U17), M.GEN.066
-  (the cap and ring size in the device TOML, U20).
+- **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U17 the copy-out on the HEAD text;
+  U26 writes the end form, after U17's chunking and receive cap).
+- **Depends**: M.HW_DEV.001-.004; M.SRC_NET.220 (`chunk_bytes`, `max_transfer_bytes`, the `PieceBuffer` result, U17),
+  M.SRC_CORE.134 (`copy_into()`, `pieces()`, U17), M.GEN.066 (the cap and ring size in the device TOML, U20).
 - **Blast carried by**: UART changelog Class B entries for the API rename/constructor → A.U5.12/A.U10.38 (DOCS); twin
   record → M.HW_DEV.010; host assertions → M.HW_DEV.045 (9); the TOML keys reach `BENCH` → M.HW_BENCH.041.
 - **Kind**: test
@@ -820,12 +829,16 @@ changes cite.
 - **From**: A.U26.87 (1), A.S0930.05, A.U17.05 (the churn loop's `gc.collect()` goes), A.U30.16 (`_heap_floor`,
   `_main` baseline rows), A.U1.25 (`:141` comment), A.U26.44 (pins), A.U26.24 (no raw FRAM write: no region needed),
   A.U5.12, A.U10.38 (`FRAMManager`, `UARTComm`), A.U10.44 (`_listen_loop` already the end name), A.U8C.95, A.U8C2.41,
-  A.U26.68, A.U26.47 (3) (a churn `MemoryError` is a failure and the run ends FAIL; A-C3 S-10).
+  A.U26.68, A.U26.47 (3) (a churn `MemoryError` is a failure and the run ends FAIL; A-C3 S-10); AC_NOTES 54 (3) (lead
+  ruling, 2026-10-05: a module-allocated result read through copy-out).
 - **Site**: `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:1-232`.
 - **Change**: (1) The responder keeps the last `_CMD_ECHO` SET payload (a script-local message callback in its callbacks
   object) and answers an `_CMD_ECHO` GET with it; the initiator loop alternates the banner GET with a multi-chunk
   `uart_set(_CMD_ECHO, <PAYLOAD_SIZE * 2 + 7 bytes, per-round pattern>)` and the echo GET, compared byte for byte;
-  mismatches counted with the first five kept. (2) `_memory_churn_loop`'s `except MemoryError` keeps `held = []`,
+  mismatches counted with the first five kept. The stored SET payload and both answers are `PieceBuffer`s (the board
+  cannot import `tests/`'s helper): the responder answers the echo GET by one `copy_into()` into a `bytearray` of the
+  stored length, and the initiator compares each answer by `copy_into()` into a scratch of the expected length
+  allocated once (`False` or a length mismatch counts as a mismatch). (2) `_memory_churn_loop`'s `except MemoryError` keeps `held = []`,
   records one bounded failure ('churn allocation of 512 B failed while <= 25 blocks were held') and loses
   `gc.collect()`; the facts carry `alloc_failures`, and the host load test (M.HW_DEV.045) asserts it is 0, so the run
   fails on any churn allocation failure (CLAUDE.md's memory rule: a caught-and-degraded allocation failure is a defect).
@@ -837,9 +850,13 @@ changes cite.
   `set_total`, `echo_intact`, `echo_mismatch` (bounded record), `error_counts`, the five load counters, `heap_at_third`,
   `heap_at_end`; the floors move host-side; `done()`. (7) The `_heap_floor` comment `:108-110` loses "(queue F7)" (a
   work label, G9/R12), keeping its reason in ≤ 3 lines.
+  U17 stage (AC_NOTES 54 (3)), on the HEAD text: `:178` `bytes(answer) == _BANNER` → `len(answer) == len(_BANNER) and
+  answer.copy_into(scratch) and scratch == _BANNER`, `scratch = bytearray(len(_BANNER))` allocated once before the
+  loop.
 - **Resolved**: A.U26.87 and A.S0930.05 edit the same script: the echo SET runs in both modes.
-- **Unit**: U26 (A.U17.05's line lands in U17 on the HEAD text).
-- **Depends**: M.HW_DEV.001-.005; U17's lock check (N.27) recorded either way.
+- **Unit**: U26 (A.U17.05's line and the copy-out land in U17 on the HEAD text).
+- **Depends**: M.HW_DEV.001-.005; U17's lock check (N.27) recorded either way; M.SRC_NET.220 (the `PieceBuffer`
+  result), M.SRC_CORE.134 (`copy_into()`), both U17.
 - **Blast carried by**: README `:1265-1269` → A.U26.87 (3) (HW_BENCH); host assertions → M.HW_DEV.045.
 - **Kind**: test, hardware (Round: R1 [H37])
 
@@ -872,8 +889,9 @@ changes cite.
 - **Site**: new `tests_hardware/device_scripts/uart_link_echo_under_serving_load.py`.
 - **Change**: boots the rendered `device` module's (M.HW_DEV.001) `main(watchdog=arm())` as a task (the
   `serving_at_default_gc.py` pattern), waits for the webserver, then N times calls the initiator link's
-  `uart_set(_CMD_ECHO, <multi-chunk>)` and `uart_get(_CMD_ECHO)` through its public API (no `src/` change), reporting
-  `intact`/`total` and the exerciser's `Transfers`/`Failures` before and after as facts; every wait fed; `done()`.
+  `uart_set(_CMD_ECHO, <multi-chunk>)` and `uart_get(_CMD_ECHO)` through its public API (no `src/` change), the answer
+  (a `PieceBuffer`) compared by `copy_into()` into a scratch of the sent length allocated once (AC_NOTES 54 (3)),
+  reporting `intact`/`total` and the exerciser's `Transfers`/`Failures` before and after as facts; every wait fed; `done()`.
   Wear: none beyond the serving boot's (listed in `_PREREQUISITE_DEVICE_SCRIPTS` with the serving scripts' reason).
 - **Resolved**: —
 - **Unit**: U26.
@@ -886,13 +904,16 @@ changes cite.
 
 ### M.HW_DEV.159 Interrupts off on the receiving board: no frame lost within the ring's bound, an overrun beyond it
 - **From**: OR141.a (4) (d), (g) (the bench half: interrupts off without a flash write, a soft reset during traffic, the
-  heap before and after); OR143.a (5) (the ring allocated in `setup()`, its heap cost measured) (A-C review fold).
+  heap before and after); OR143.a (5) (the ring allocated in `setup()`, its heap cost measured) (A-C review fold);
+  AC_NOTES 54 (6) (lead ruling, 2026-10-05: `dev`'s ring 8,192 B, sized for these windows).
 - **Site**: new `tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py`.
 - **Change**: header ≤ 3 lines ("Holds interrupts off with machine.disable_irq() and a busy-wait while the other UART of
   the crossover pair keeps sending, to show the DMA receive ring loses no frame within its bound and reports an overrun
   beyond it - no flash write."). The receiver is a `UARTComm` responder on one UART of `BENCH`'s pair, over the
   driver's DMA receive ring (M.SRC_NET.221; bus parameters, CRC mode, ring size and `max_transfer_bytes` from
-  `BENCH`, M.HW_DEV.001); the sender, on the other UART, streams framed frames from one pre-built buffer through its own
+  `BENCH`, M.HW_DEV.001 — the ring `dev`'s TOML declares, 8,192 B (M.GEN.066): a continuous sender at 115200 baud fills
+  4,608 B in the longest within-bound window, 400 ms, and the whole ring in about 711 ms; `ring_bytes` reports what was
+  built); the sender, on the other UART, streams framed frames from one pre-built buffer through its own
   DMA channel paced by that UART's TX DREQ (RP2040 datasheet 2.5.3.1: UART0_TX 20, UART1_TX 22), so it keeps sending
   while interrupts are off. Heap: `gc.mem_free()` and the largest free block (`_shared/heap_probe.py`) before the
   receiver's `setup()` and after it (facts `heap_before`, `heap_after`, `largest_before`, `largest_after`,
@@ -906,8 +927,11 @@ changes cite.
   writes a sentinel into a fresh buffer of the ring's size that must stay intact for 1 s while the sender streams
   (`ring_untouched`); `"config_write"` streams while a scratch `ConfigManager` flushes one changed value. Facts as a
   list per window; `done()`. Wear: none, except `"config_write"`'s one owned write.
-- **Resolved**: the windows are the datasheet times of the longest synchronous flash operations, which
-  `ports/rp2/rp2_flash.c:170-174` (v1.29.0) runs with interrupts off (W25Q16JV tPP 0.4/3 ms, tSE 45/400 ms). The
+- **Resolved**: the windows are the datasheet times of the longest single flash operations, which
+  `ports/rp2/rp2_flash.c:170-174` (v1.29.0) runs with interrupts off (W25Q16JV tPP 0.4/3 ms, tSE 45/400 ms). The sender
+  streams at line rate, which a stop-and-wait peer never does, so the ring these windows need is the bench's, not the
+  protocol floor: the floor (one config flush's hold at the peer's stop-and-wait rate, M.SRC_NET.222) is far smaller,
+  and `dev` declares 8,192 B for this sweep (AC_NOTES 54 (6)). The
   sender's DMA register set-up, the drain-time bound and how the lap count is read are decided at execution against the
   U13 driver and the RP2040 datasheet, with their reasons recorded.
 - **Unit**: U26 (written; run through `TwinBoard` first with the twin's DMA fake — where the twin cannot model
@@ -2981,3 +3005,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F32 | convention B4, AD-1; M.HW_DEV.048, .050, .081, .089, .139, .141; .120, .144, .145 | amended (bounded polls; .120/.144/.145 kept as measured delays with their reason) |
 | F33 | — | none in this file |
 | R54 | M.HW_DEV.009 (Resolved: the boot repair rewrites a damaged production file, which stays listed) | amended |
+| R54 | M.HW_DEV.159, .160 (`dev`'s ring 8,192 B stated: 400 ms at 115200 baud is 4,608 B, the ring fills in about 711 ms, over-bound window 800 ms; the bench ring is the sweep's, not the protocol floor), .046, .051 (U17 stages: the banner answer copied out inline through `copy_into()`; the end-form echo and maximum-size train read through `copy_into()`/`pieces()`), .053 (echo answer compared by `copy_into()`) | amended |

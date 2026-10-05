@@ -57,12 +57,12 @@
     "rev": 2
    }
   },
-  "changes": 1907,
-  "steps": 6561,
-  "edges": 74894,
+  "changes": 1908,
+  "steps": 6569,
+  "edges": 74932,
   "edge_kinds": {
    "action": 60760,
-   "dep-M": 8272,
+   "dep-M": 8311,
    "dep-A": 3020,
    "blast": 5737,
    "sweep": 445
@@ -1304,7 +1304,7 @@
   ],
   "in_unit_edges_dropped_to_break_cycles": {
    "blast": 248,
-   "dep-M": 735,
+   "dep-M": 738,
    "dep-A": 151
   },
   "no_step_changes": [
@@ -1730,12 +1730,6 @@
      "M.SRC_NET.113"
     ],
     [
-     "M.SRC_NET.119"
-    ],
-    [
-     "M.SRC_NET.127"
-    ],
-    [
      "M.SRC_NET.164"
     ],
     [
@@ -1818,9 +1812,6 @@
     ],
     [
      "M.TEST_UNIT.200"
-    ],
-    [
-     "M.TEST_UNIT.207"
     ],
     [
      "M.TEST_UNIT.211"
@@ -1962,6 +1953,15 @@
     ],
     [
      "M.TEST_UNIT.332"
+    ],
+    [
+     "M.SRC_NET.119"
+    ],
+    [
+     "M.SRC_NET.127"
+    ],
+    [
+     "M.TEST_UNIT.207"
     ],
     [
      "M.TOOL.030"
@@ -13771,9 +13771,9 @@
   },
   {
    "unit": "U15",
-   "steps": 202,
+   "steps": 203,
    "actions": 62,
-   "explicit_steps": 171,
+   "explicit_steps": 172,
    "implicit_steps": 31,
    "order": [
     [
@@ -14318,6 +14318,9 @@
      "M.TSC.106"
     ],
     [
+     "M.TSC.111"
+    ],
+    [
      "M.TSC.130"
     ],
     [
@@ -14398,6 +14401,7 @@
     "src/asy_scd30_driver.py",
     "src/asy_sgp40_driver.py",
     "src/base_classes.py",
+    "test_one_entry_per_event.py",
     "tests/_bus_hazard_catalog.py",
     "tests/_sensortask_scenarios.py",
     "tests/test_asy_base_classes.py",
@@ -14447,6 +14451,7 @@
     "tests_scripts/test_buildgen_web_tag.py",
     "tests_scripts/test_counter_steps.py",
     "tests_scripts/test_driver_shape.py",
+    "tests_scripts/test_fault_or_warning_never_both.py",
     "tests_scripts/test_measurement_field_tuple_agreement.py",
     "tests_scripts/test_strip_type_checking.py"
    ],
@@ -14551,6 +14556,7 @@
     "tests_scripts/test_digital_twin_generated_boot.py",
     "tests_scripts/test_driver_shape.py",
     "tests_scripts/test_error_catalog.py",
+    "tests_scripts/test_fault_or_warning_never_both.py",
     "tests_scripts/test_fram_chunk_owner_sites.py",
     "tests_scripts/test_gc_collect_sites.py",
     "tests_scripts/test_generate_sensortask_modules.py",
@@ -14609,9 +14615,9 @@
   },
   {
    "unit": "U16",
-   "steps": 118,
+   "steps": 119,
    "actions": 36,
-   "explicit_steps": 100,
+   "explicit_steps": 101,
    "implicit_steps": 18,
    "order": [
     [
@@ -14924,6 +14930,9 @@
      "M.TSC.092"
     ],
     [
+     "M.TSC.111"
+    ],
+    [
      "M.TSC.176"
     ],
     [
@@ -14974,6 +14983,7 @@
     "src/base_classes.py",
     "src/print_log.py",
     "src/system_service.py",
+    "test_one_entry_per_event.py",
     "tests/_fram_chip_fake.py",
     "tests/_sensortask_scenarios.py",
     "tests/test_asy_base_classes.py",
@@ -15016,6 +15026,7 @@
     "tests_scripts/test_buildgen_twin_wiring.py",
     "tests_scripts/test_buildgen_validate.py",
     "tests_scripts/test_comment_block_cap.py",
+    "tests_scripts/test_fault_or_warning_never_both.py",
     "tests_scripts/test_fram_chunk_crc_sites.py",
     "tests_scripts/test_fram_chunk_owner_sites.py",
     "uart_link_under_concurrent_system_load.py"
@@ -15117,6 +15128,7 @@
     "tests_scripts/test_digital_twin_boot_contiguity.py",
     "tests_scripts/test_digital_twin_ci_suite_soak.py",
     "tests_scripts/test_digital_twin_generated_boot.py",
+    "tests_scripts/test_fault_or_warning_never_both.py",
     "tests_scripts/test_fram_chunk_crc_sites.py",
     "tests_scripts/test_fram_chunk_owner_sites.py",
     "tests_scripts/test_gc_collect_sites.py",
@@ -15160,9 +15172,9 @@
   },
   {
    "unit": "U17",
-   "steps": 101,
+   "steps": 107,
    "actions": 36,
-   "explicit_steps": 86,
+   "explicit_steps": 92,
    "implicit_steps": 15,
    "order": [
     [
@@ -15185,15 +15197,6 @@
     ],
     [
      "M.HW_DEV.047"
-    ],
-    [
-     "M.HW_DEV.051"
-    ],
-    [
-     "M.HW_DEV.048"
-    ],
-    [
-     "M.HW_DEV.050"
     ],
     [
      "M.SCR.061"
@@ -15280,6 +15283,24 @@
      "M.SRC_NET.211"
     ],
     [
+     "M.SRC_NET.216"
+    ],
+    [
+     "M.SRC_NET.220"
+    ],
+    [
+     "M.HW_DEV.051"
+    ],
+    [
+     "M.HW_DEV.048"
+    ],
+    [
+     "M.HW_DEV.050"
+    ],
+    [
+     "M.SPEC.111"
+    ],
+    [
      "M.SRC_NET.213"
     ],
     [
@@ -15290,15 +15311,6 @@
     ],
     [
      "M.SPEC.060"
-    ],
-    [
-     "M.SRC_NET.216"
-    ],
-    [
-     "M.SRC_NET.220"
-    ],
-    [
-     "M.SPEC.111"
     ],
     [
      "M.SRC_NET.222"
@@ -15314,6 +15326,9 @@
     ],
     [
      "M.TEST_HELP.064"
+    ],
+    [
+     "M.TEST_HELP.070"
     ],
     [
      "M.TEST_UNIT.078"
@@ -15340,10 +15355,16 @@
      "M.TEST_UNIT.164"
     ],
     [
+     "M.TEST_UNIT.167"
+    ],
+    [
      "M.TEST_UNIT.172"
     ],
     [
      "M.TEST_UNIT.176"
+    ],
+    [
+     "M.TEST_UNIT.178"
     ],
     [
      "M.TEST_UNIT.180"
@@ -15373,6 +15394,9 @@
      "M.TEST_UNIT.314"
     ],
     [
+     "M.TEST_UNIT.315"
+    ],
+    [
      "M.TEST_UNIT.317"
     ],
     [
@@ -15397,10 +15421,10 @@
      "M.SPEC.084"
     ],
     [
-     "M.TEST_UNIT.345"
+     "M.TEST_UNIT.344"
     ],
     [
-     "M.SPEC.137"
+     "M.TEST_UNIT.345"
     ],
     [
      "M.TOOL.033"
@@ -15415,7 +15439,13 @@
      "M.GEN.066"
     ],
     [
+     "M.HW_DEV.046"
+    ],
+    [
      "M.SPEC.136"
+    ],
+    [
+     "M.SPEC.137"
     ],
     [
      "M.SPEC.138"
@@ -15494,6 +15524,7 @@
     "src/base_classes.py",
     "src/framing_codecs.py",
     "tests/_ticks30.py",
+    "tests/_uart_comm_harness.py",
     "tests/test_asy_framing_codecs.py",
     "tests/test_asy_neopixel_driver.py",
     "tests/test_asy_uart_comm.py",
@@ -15508,6 +15539,7 @@
     "tests/test_notification_sgp40_integration.py",
     "tests/test_ticks_rollover.py",
     "tests/test_uart_comm_hazard.py",
+    "tests_hardware/device_scripts/uart_crossover_exchange.py",
     "tests_hardware/device_scripts/uart_crossover_recovery.py",
     "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py",
     "tests_hardware/device_scripts/uart_idle_poll_rate.py",
@@ -15582,6 +15614,7 @@
     "tests_scripts/test_error_catalog.py",
     "tests_scripts/test_gc_collect_sites.py",
     "tests_scripts/test_generate_sensortask_modules.py",
+    "tests_scripts/test_import_placement.py",
     "tests_scripts/test_js_coverage_report_dir.py",
     "tests_scripts/test_lint_sh.py",
     "tests_scripts/test_measurement_field_tuple_agreement.py",
@@ -37689,7 +37722,7 @@
    "change": "M.SRC_CORE.043",
    "unit": "U2",
    "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first",
+   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten, damaged repaired; file faults recorded; repair serialises first",
    "carries": [
     "A.U2.07"
    ],
@@ -56906,7 +56939,7 @@
    "change": "M.SRC_CORE.043",
    "unit": "U10",
    "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first",
+   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten, damaged repaired; file faults recorded; repair serialises first",
    "carries": [
     "A.U10.21",
     "A.U10.45"
@@ -64686,7 +64719,7 @@
    "change": "M.SRC_CORE.043",
    "unit": "U11",
    "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first",
+   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten, damaged repaired; file faults recorded; repair serialises first",
    "carries": [
     "A.U11.19",
     "A.U11.20",
@@ -72807,6 +72840,15 @@
    "named_in_unit_slot": true
   },
   {
+   "change": "M.TSC.111",
+   "unit": "U15",
+   "file": "audit/consolidation/M_TSC.md",
+   "title": "One occurrence is persisted as a fault or as a warning, never both",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.TSC.130",
    "unit": "U15",
    "file": "audit/consolidation/M_TSC.md",
@@ -74645,6 +74687,15 @@
    "named_in_unit_slot": true
   },
   {
+   "change": "M.TSC.111",
+   "unit": "U16",
+   "file": "audit/consolidation/M_TSC.md",
+   "title": "One occurrence is persisted as a fault or as a warning, never both",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.TSC.176",
    "unit": "U16",
    "file": "audit/consolidation/M_TSC.md",
@@ -74990,6 +75041,15 @@
    "unit": "U17",
    "file": "audit/consolidation/M_GEN.md",
    "title": "The UART ring size and the receive cap: declared together, checked together, passed through",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
+   "change": "M.HW_DEV.046",
+   "unit": "U17",
+   "file": "audit/consolidation/M_HW_DEV.md",
+   "title": "The exchange script takes its pair and CRC mode from `BENCH`",
    "carries": [],
    "landing": {},
    "named_in_unit_slot": true
@@ -75691,6 +75751,15 @@
    "named_in_unit_slot": false
   },
   {
+   "change": "M.TEST_HELP.070",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_HELP.md",
+   "title": "A copy-out helper for module-allocated UART results",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.TEST_UNIT.078",
    "unit": "U17",
    "file": "audit/consolidation/M_TEST_UNIT.md",
@@ -75799,6 +75868,15 @@
    "named_in_unit_slot": true
   },
   {
+   "change": "M.TEST_UNIT.167",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_UNIT.md",
+   "title": "Legacy BSEC demonstration: paths, tags, codes",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.TEST_UNIT.172",
    "unit": "U17",
    "file": "audit/consolidation/M_TEST_UNIT.md",
@@ -75826,6 +75904,15 @@
     "A.U17.13": "own unit, named in the Unit slot",
     "A.U17.22": "own unit, named in the Unit slot"
    },
+   "named_in_unit_slot": true
+  },
+  {
+   "change": "M.TEST_UNIT.178",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_UNIT.md",
+   "title": "Harness bounds imported; local pair asserts setup and takes a CRC",
+   "carries": [],
+   "landing": {},
    "named_in_unit_slot": true
   },
   {
@@ -75944,6 +76031,15 @@
    "named_in_unit_slot": true
   },
   {
+   "change": "M.TEST_UNIT.315",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_UNIT.md",
+   "title": "Imports, shared runner, sync-scope pair, wire copies, header comments",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.TEST_UNIT.317",
    "unit": "U17",
    "file": "audit/consolidation/M_TEST_UNIT.md",
@@ -76020,6 +76116,15 @@
     "A.U17.05": "own unit (implicit step: code/test site, blast closed in its unit)"
    },
    "named_in_unit_slot": false
+  },
+  {
+   "change": "M.TEST_UNIT.344",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_UNIT.md",
+   "title": "The DMA receive ring: unit and hammering tests; the capped readline",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
   },
   {
    "change": "M.TEST_UNIT.345",
@@ -114703,7 +114808,7 @@
    "change": "M.SRC_CORE.043",
    "unit": "U35",
    "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first",
+   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten, damaged repaired; file faults recorded; repair serialises first",
    "carries": [
     "A.U35.43"
    ],
@@ -120461,7 +120566,7 @@
    "change": "M.SRC_CORE.043",
    "unit": "U36",
    "file": "audit/consolidation/M_SRC_CORE.md",
-   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first",
+   "title": "`setup()`: a missing file written once with defaults; unreadable never overwritten, damaged repaired; file faults recorded; repair serialises first",
    "carries": [
     "A.U36.004"
    ],

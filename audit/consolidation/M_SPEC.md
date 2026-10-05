@@ -3512,7 +3512,7 @@ it; an unflipped fact keeps the text given here.
   row's guard names the test file (and function where one exists) at execution; the Part N column names only IDs the
   register carries (A.U31.01's own rule). Three rows of A.U31.01's text change (A-C review fold): (i) the consumer row
   `con.uart_fifo` → "| `con.uart_rx_ring` (a device with a `uart_link`) | the receive ring's capacity at the line rate,
-  sized to hold what the peer sends during the longest synchronous flash write under stop-and-wait (J.6) | the ring
+  sized to hold what the stop-and-wait peer sends while one config flush holds the loop (J.6) | the ring
   floor (J.6), `devices/dev.toml` | hard past the bound only: a lap is detected and handled as the receive overrun
   (J.7) |"; (ii) `stall.flash_program`: "only on an accepted PUT's deferred flush and the one boot repair" → "on an
   accepted PUT's deferred flush, the one boot repair and the one boot write of an absent file's defaults (C.7.3)";
@@ -4642,7 +4642,9 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   superseded), A.U2.20/A.U2.23 (codes 32, 22, 15), A.U0.37 V44 (`:5530-5531`), A.U13.17 (poll defaults 2/50 ms), A.U17.20
   (ceilings), A.U8.06 (Part N IDs), A.U36.532 (`:5546` F.5.9 → F.8.3), A.U16.07/A.U33.07 (cite the 80 B floor; no edit);
   OR141.a (4) (e) (the receive ring's size floor), OR143.a (2) (`max_transfer_bytes`, declared and checked with the
-  ring size) (A-C review fold).
+  ring size) (A-C review fold); AC_NOTES 54 (6), (7) (lead rulings, 2026-10-05: the floor from one config flush at
+  the peer's stop-and-wait arrival rate; the refusal by the existing `_ERR_UART_RXBUF`; `dev`'s ring sized for the
+  bench).
 - **Site**: `SPECIFICATION.md:5499-5566`.
 - **Change**: (1) `:5501-5505` → A.S0930.08's "`payload_size`, `timeout` and the CRC mode are **agreed out of band …**" and
   its build sentence. (2) `:5507-5521` → A.U17.15's "**Bytes a failed frame read drops count toward it** (owner,
@@ -4658,11 +4660,18 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   A.U13.17), then A.U17.20's ceiling sentence ("Both also have a ceiling: …"), each value citing its Part N row. (7)
   (A-C review fold) The `rxbuf` paragraph's subject becomes the receive ring: "**The receive ring is sized at
   construction against its floors** — the larger of one whole framed frame, one poll interval's arrivals (both as
-  above) and what the peer can send during the longest synchronous flash write under stop-and-wait (one frame plus every
-  retransmission its `timeout` and backoff fit), rounded up to a power of two; too small is a readiness-gate refusal
-  with its own errno, never a silent degradation, and the size is derived, never a bare number (owner, 2026-10-05).
-  `machine.UART`'s own receive buffer is held at its minimum, since nothing reads it (F.8.2)." — the driver-default
-  example (260 against 256) restated for the ring as landed; the `timeout` floor sentences stay. (8) After "Maximum
+  above) and what the peer can send while the longest synchronous flash operation holds the loop: one config flush,
+  whose sector erases and page programs littlefs runs without yielding (`uart.flash_hold_max_ms`, at the W25Q16JV
+  maxima). Under stop-and-wait the peer has one unacknowledged frame in flight and re-sends nothing (J.5); what else
+  arrives in the hold is one frame per re-initiation its fault recovery fits — each at least `timeout` (the missing ACK)
+  plus `1.5 × timeout` (the drain's quiet window) plus `1.5 × timeout` (the hold-off) after the last — so the floor is
+  one framed frame times `1 + hold // (4 × timeout)`, rounded up to a power of two. Too small is a readiness-gate
+  refusal with the errno a too-small `rxbuf` had, `UART_RXBUF` (78), never a silent degradation, and the size is
+  derived, never a bare number (owner, 2026-10-05). `machine.UART`'s own receive buffer is held at its minimum, since
+  nothing reads it (F.8.2). A device may declare a larger ring than its floor for a reason of its own: `dev` declares
+  8,192 bytes, sized for the bench's continuous-sender windows (400 ms of interrupts off at 115200 baud is 4,608 B),
+  which no stop-and-wait peer produces." — the driver-default example (260 against 256) restated for the ring as
+  landed; the `timeout` floor sentences stay. (8) After "Maximum
   transferable payload is `(0xFF - 1) × payload_size`." (A-C review fold): "An instance accepts at most its
   `max_transfer_bytes`: a train declaring more is refused before anything is allocated (J.8). The cap and the ring size
   are declared together in the link's device TOML and checked together by the build; they stay two values, since
@@ -4689,7 +4698,9 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   (`:5619-5625` mechanism; CLAUDE.md's "known hang cause"; M.DOCS.099), A.U36.040 (the growth path is F.7's), A.SDEP.16
   (`:5622` prewarm, conditional), A.U8C.43 + A.U8C2.15 (Part N IDs), M_DOCS gap 1 (c) (BACKLOG's UART-fakes entry; M.DOCS.065);
   OR141.a (4) (c), (g) (a lap is the receive overrun; the fakes model the DMA ring; hammering, concurrent load and the
-  interrupts-off sweep), OR143.a (4) (the chunking and cap tests) (A-C review fold).
+  interrupts-off sweep), OR143.a (4) (the chunking and cap tests) (A-C review fold); AC_NOTES 54 (4), (6) (lead
+  rulings, 2026-10-05: an awaited read's "allocates nothing" is no retained growth against an ambient control; the
+  twin's stall is one config flush, the hold the ring floor is sized for).
 - **Site**: `SPECIFICATION.md:5568-5625`.
 - **Change**: (1) `:5571-5574`: "(the permanent UART0↔UART1 crossover jumper, `dev_legacy/README.md`)" → "(… jumper,
   `tests_hardware/README.md` 'The dev bench')"; "`digital_twin/machine.py` (twin tier, which has no `UART` at all today)" →
@@ -4713,14 +4724,18 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   UART register model fills the receive ring independently of the event loop (F.8.2), so the count reload and modular
   wrap, a frame split across the ring end and a lap are exercised; a lap is the receive-buffer overrun of the fault list
   above — detected, counted and resynced, never read as data (owner, 2026-10-05)." The tier map gains the rows the fold
-  adds, each with its CRC modes: L1 — zero allocation per read at `gc.threshold(-1)`, no receive allocation above
-  `chunk_bytes`, a refusal before any allocation, the readline cap; hammering — thousands of back-to-back transactions at
+  adds, each with its CRC modes: L1 — no retained growth across a collect-bracketed run of reads, measured against an
+  ambient control awaiting a no-op coroutine as often (a read is awaited, so the scheduler's own churn is the
+  control's), at both GC stages; no receive allocation above `chunk_bytes`; a refusal before any allocation; a ring at
+  exactly its floor holding a config flush's hold; the readline cap; hammering — thousands of back-to-back transactions at
   the line rate with the ring at its fill boundary and random consumer stalls within and beyond the bound (no loss
   within it, a detected overrun beyond it), and repeated maximum-size and over-cap trains; L2 concurrent load — both
   `dev` link instances under traffic beside the webserver hammer, FRAM log writes and config PUTs, the twin's config
-  flush stalling the loop for the datasheet erase time, both GC stages, zero `MemoryError`; L3 — the interrupts-off sweep
+  flush stalling the loop for the datasheet erase and page-program times — at its maxima the same hold the ring floor
+  is derived from, so no overrun — both GC stages, zero `MemoryError`; L3 — the interrupts-off sweep
   without a flash write (`machine.disable_irq()` and a busy wait on `time.ticks_us()` for 3 ms, 45 ms, 400 ms and one
-  window past the ring's bound, while the other UART streams frames from its own DREQ-paced transmit DMA over the
+  window past the ring's bound — `dev`'s 8,192-byte ring fills in about 711 ms at 115200 baud — while the other UART
+  streams frames from its own DREQ-paced transmit DMA over the
   crossover jumper: every frame within the bound intact with UARTRSR's overrun bit clear, the over-bound window read as
   an overrun), a soft reset during traffic and a maximum-size transfer; a real config write during traffic only behind
   the persistence-write flag (owner, 2026-10-05). Cells are filled from the landed tests like the rest.
@@ -4767,8 +4782,9 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   they happen, so no caught `MemoryError` stands at them (I.2, I.4(a))." (5) New bullet after the frame-buffer bullet:
   "**The receive DMA ring**, in the bus driver: allocated once in the link's `setup()` (a unit of the one-time setup
   list, I.4(f.1)), held for the program's life and never reallocated by a task restart; a read copies from it by index
-  into the RX frame buffer, never through a slice, so steady-state reception allocates nothing (F.8.2; owner,
-  2026-10-05)."
+  into the RX frame buffer, never through a slice, so steady-state reception retains nothing: across a
+  collect-bracketed run of reads the heap grows no more than across an ambient control awaiting a no-op coroutine as
+  often (an awaited read is no plain call; F.8.2; owner, 2026-10-05)."
 - **Resolved**: A.U17.03's "an open owner question (BACKLOG.md, owner questions). Until it is answered a failed
   allocation degrades as the next bullet says" is superseded by OR143.a (owner, 2026-10-05: the parked chunking item
   becomes work; its BACKLOG question is removed, M.DOCS.067) — (3) states the end state (A-C review fold).
@@ -5247,9 +5263,13 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   review fold) `udp.poll_idle_ms = 100` keeps its value with "estimated (agent, <commit>) — measurement owed: the
   event-loop share an idle captive-DNS listener's polling takes and its first-query latency, L2 (twin) and L4 (bench)"
   (owner, 2026-10-05: kept, its measurement owed). New rows for the tunables the fold adds, by the IDs their `@tunable`
-  tags land: `UARTComm`'s `chunk_bytes` and `max_transfer_bytes` defaults and `dev`'s declared receive-ring size and cap
-  (Basis: J.6's floor derivation — one frame, one poll interval, the stop-and-wait bytes during the longest synchronous
-  flash write, rounded up to a power of two; Re-check trigger: a `payload_size`, `timeout`, baud or flash-part change);
+  tags land: `UARTComm`'s `chunk_bytes` and `max_transfer_bytes` defaults, its `uart.flash_hold_max_ms` (Basis: one
+  config flush's sector erases and page programs at the W25Q16JV maxima, tSE 400 ms and tPP 3 ms, counted from
+  littlefs's write path at the pinned tag; Re-check trigger: a flash-part, littlefs or largest-config-file change) and
+  `dev`'s declared cap; `dev.uart_rx_ring = 8192` (Basis: the bench's continuous-sender window, 400 ms at 115200 baud =
+  4,608 B rounded up to a power of two, above J.6's floor — one frame, one poll interval, the stop-and-wait peer's
+  frames during one config flush's hold; Re-check trigger: a bench window, baud, `payload_size`, `timeout` or
+  flash-part change);
   the hourly window's 24 bins of 3600 s (Basis: owner, 2026-10-01); the tick-offset override's 2**32 ms − 15 min
   (Basis: the wrap about 15 minutes after boot, owner, 2026-10-01); the interrupts-off sweep's windows (3 ms, 45 ms,
   400 ms and one past the ring bound: the W25Q16JV tPP/tSE figures, J.6). Each row is written in the unit that lands
@@ -6717,6 +6737,8 @@ C9 (above Part A) fixes the review-answer tag form.
 | F32 | M.SPEC.077 (E.2.3 "Waits poll") | amended |
 | F33 | — | none in this file |
 | R54 | M.SPEC.061 (C.7.3: an unreadable file never overwritten; a damaged one — unparseable, non-object, refused value — repaired and listed; a missing or unknown key not listed), M.SPEC.021 (A.8 `ConfigFaults` wording), the F03/F01 note below | amended |
+| R54 | M.SPEC.136 ((7) the floor from one config flush's hold at the peer's stop-and-wait rate; the refusal by `UART_RXBUF` (78), no new errno; `dev`'s 8,192 ring for the bench), .137 (L1 row: no retained growth against an ambient control, the floor-holds-a-flush case; L2 stall is the floor's hold; L3 over-bound window from the 8,192 ring), .138 ((5) reception retains nothing against an ambient control), .156 (rows `uart.flash_hold_max_ms`, `dev.uart_rx_ring = 8192`) | amended |
+| R54 | M.SPEC.097 (the `con.uart_rx_ring` row: sized for one config flush's hold, AC_NOTES 54 (6)) | amended |
 
 **F21 map** — where this file writes each answered decision's tag (C9). "explicit": the tag is written in the change;
 "C9": the tag sits in an action's text the change quotes and takes the C9 form at landing; "—": this file writes no tag

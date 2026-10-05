@@ -2835,7 +2835,8 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Kind**: code
 
 ### M.SRC_NET.220 Receive limits: trains without a caller's buffer arrive in pieces; an oversize train is refused
-- **From**: OR143.a (1)-(4) (A-C review fold); register G6/R21.
+- **From**: OR143.a (1)-(4) (A-C review fold); register G6/R21; AC_NOTES 54 (3), (7) (lead rulings, 2026-10-05: the
+  `PieceBuffer` result compared in tests through a copy-out helper; one `TransferLimits` forwarded by the link driver).
 - **Site**: `src/asy_uart_comm.py` — the constants block, `UARTComm.__init__()`, `_dest_size()`, `_get_unlocked()`,
   `_accept_set()`, `uart_get()`, `_recv_train()`.
 - **Change**: constants `_DEFAULT_CHUNK_BYTES = const(256)` with `# @tunable uart.chunk_bytes = 256` ("# the
@@ -2873,8 +2874,16 @@ annotation-only change carries none, per its constituent. No merged change here 
   M.SRC_NET.168; M.TEST_UNIT.345 (L1: no receive allocation over `chunk_bytes` by largest-block measurement, the
   refusal before any allocation, a maximum-size train assembled correctly; hammering: repeated maximum-size and
   over-cap trains — in U17) ; the harness builds `UARTComm` with the default limits (holds).
-- **Blast carried by**: the link driver's consumers → M.SRC_NET.213/.214; the generated `UARTLinkDriver(…)` passes
-  `max_transfer_bytes` from the device TOML → M.GEN.066 (U20); the concurrent-load test (trains alongside the webserver
+- **Blast carried by**: the link driver's consumers (one `TransferLimits` forwarded; the echo and the banner check
+  through copy-out) → M.SRC_NET.213/.214; the generated `UARTLinkDriver(…)` passes one `limits=TransferLimits(…)` built
+  from the device TOML's `max_transfer_bytes` and the source default `chunk_bytes` → M.GEN.066 (U20); every test that
+  compares a module-allocated result (`PieceBuffer`, no `__eq__`) with bytes reads it through the copy-out helper
+  `copied_out()` → M.TEST_HELP.070 (U17), with a U17 stage in each test change: M.TEST_UNIT.345 (g)
+  (`tests/test_asy_uart_comm.py`), M.TEST_UNIT.167 (its BSEC demonstration), M.TEST_UNIT.315
+  (`tests/test_uart_comm_hazard.py`), M.TEST_UNIT.178 (`tests/test_asy_uart_link_driver.py`), M.TWIN.158
+  (`tests/test_digital_twin_uart_link.py`); the device scripts copy out inline through `copy_into()` (no `tests/`
+  import on the board) → M.HW_DEV.046 (`uart_crossover_exchange.py`), M.HW_DEV.051
+  (`uart_link_under_concurrent_system_load.py`), each with a U17 stage; the concurrent-load test (trains alongside the webserver
   hammer, both GC stages, zero MemoryError) → M.TWIN.171 (U25); a bench maximum-size transfer over the crossover
   jumper → M.HW_DEV.045, M.HW_DEV.046 (C); SPEC J.6/J.8, Part I's heap budget (both limits count in it) and Part G (the piece
   primitive) → M.SPEC.136, M.SPEC.138, M.SPEC.126, M.SPEC.111; the UART changelog Class A entry → M.DOCS.022; BACKLOG question removed →
@@ -2882,28 +2891,48 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Kind**: code
 
 ### M.SRC_NET.222 The DMA ring's size floor; a lap is the receive overrun; the link's `setup()` allocates the ring
-- **From**: OR141.a (4) (c), (d), (e); OR143.a (5) (A-C review fold); register G6/R57.
-- **Site**: `src/asy_uart_comm.py` — `_validate_config()`, `_min_rxbuf()` (and a new `_min_rx_ring()`), `setup()`,
-  `_read_frame()`.
+- **From**: OR141.a (4) (c), (d), (e); OR143.a (5) (A-C review fold); register G6/R57; AC_NOTES 54 (6), (7) (lead
+  rulings, 2026-10-05: the floor from one config flush at the peer's stop-and-wait arrival rate; the refusal by the
+  existing `_ERR_UART_RXBUF`).
+- **Site**: `src/asy_uart_comm.py` — the constants block (`_FLASH_HOLD_MAX_MS`), `_validate_config()`, `_min_rxbuf()`
+  (and a new `_min_rx_ring()`), `setup()`, `_read_frame()`.
 - **Change**: `setup()` calls the bus's `setup_rx_ring()` once (M.SRC_NET.221), after the boot drain; `False` refuses
-  setup like a missing bus (`initialized` stays `False`, the existing refusal path). New `_min_rx_ring()`: the larger of
-  today's floors (one framed frame; one poll interval — `_min_rxbuf()`'s two terms) and what the peer can send during
-  the longest synchronous flash write under stop-and-wait (one frame plus every retransmission its timeout and backoff
-  fit in the W25Q16JV sector-erase maximum tSE 400 ms; `ports/rp2/rp2_flash.c:170-174` holds interrupts off for it),
-  rounded up to a power of two — derived, never a bare number; `_validate_config()` refuses a smaller ring with
-  `_ERR_UART_RXBUF`, as it refuses `rxbuf` today. A lap the driver reports is J.7's receive overrun: `_read_frame()`
-  fails the frame and the caller resyncs (M.SRC_NET.162), the lap never read as data. Comment (≤ 3 lines): "# The ring
-  holds what the peer can send while a flash write holds interrupts off: one frame and every retry its / # timeout and
-  backoff fit in a 400 ms sector erase (W25Q16JV tSE), rounded up to a power of two (owner, 2026-10-05)."
+  setup like a missing bus (`initialized` stays `False`, the existing refusal path). New constant `_FLASH_HOLD_MAX_MS =
+  const(<v>)` with `# @tunable uart.flash_hold_max_ms = <v>` and the comment (≤ 3 lines) "# The longest one synchronous
+  flash operation holds the loop: a config flush, whose sector erases and page / # programs littlefs runs without
+  yielding, at the W25Q16JV maxima (tSE 400 ms, tPP 3 ms)." — a platform constant beside `_GC_PAUSE_WORST_MS`, as that
+  one is; `<v>` = E × 400 + P × 3, where E and P are the sector erases and page programs littlefs makes for one flush
+  of the largest config file the generated schemas allow, traced in the pinned tag's `lib/littlefs` write path and
+  recorded with the tag at execution (`ports/rp2/rp2_flash.c:170-174`, v1.29.0, runs each with interrupts off; the
+  loop is held for the whole flush, since nothing in it yields). New `_min_rx_ring()`: the larger of today's floors (one
+  framed frame; one poll interval — `_min_rxbuf()`'s two terms) and what the peer can send while that flush holds the
+  loop, at its stop-and-wait arrival rate with its retries: its one unacknowledged frame, plus one framed frame per
+  re-initiation its fault recovery fits in `_FLASH_HOLD_MAX_MS` — J.5 re-sends nothing within a transaction, and a
+  re-initiation waits at least the missing ACK's `timeout`, the drain's `1.5 × timeout` quiet window and the
+  `1.5 × timeout` hold-off, so `wire × (1 + _FLASH_HOLD_MAX_MS // (4 × timeout))` (both ends share `timeout`, J.6) —
+  rounded up to a power of two; derived, never a bare number. `_validate_config()` refuses a smaller ring with the
+  module's existing `_ERR_UART_RXBUF` (78), the code it refuses `rxbuf` with today — no new code. A lap the driver
+  reports is J.7's receive overrun: `_read_frame()` fails the frame and the caller resyncs (M.SRC_NET.162), the lap
+  never read as data. Comment on `_min_rx_ring()` (≤ 3 lines): "# The ring holds what the stop-and-wait peer can send
+  while one config flush holds the loop: its one / # unacknowledged frame, plus one per re-initiation its timeout,
+  drain and hold-off fit in _FLASH_HOLD_MAX_MS / # (J.5), rounded up to a power of two (owner, 2026-10-05)."
 - **Resolved**: OR141.a (4) (e) states the floor; (c) the lap as J.7's overrun; OR143.a (5) puts the allocation in the
-  link's `setup()`. No wire change: the UART changelog entry is Class B ("no C impact", Python-internal).
+  link's `setup()`. AC_NOTES 54 (6) (lead ruling, 2026-10-05) replaces "one 400 ms sector erase" by the longest
+  synchronous flash operation the loop can be held in — one config flush, erases and page programs together — and
+  the peer's "retransmissions" are its re-initiations, J.5 re-sending nothing; (7) keeps the existing
+  `_ERR_UART_RXBUF`. At the `dev` link's 53-byte frame and default `timeout` the floor is a few frames' worth; `dev`'s
+  declared ring (8,192) is sized for the bench's continuous-sender windows, far above it (M.GEN.066). No wire change:
+  the UART changelog entry is Class B ("no C impact", Python-internal).
 - **Unit**: U17. Staged: U13 (`setup()` calls `setup_rx_ring()` and a lap fails the frame, with M.SRC_NET.221 — without
   it the link receives nothing once the FIFO path is gone).
 - **Depends**: M.SRC_NET.156 (`_validate_config()`), M.SRC_NET.162, M.SRC_NET.169, M.SRC_NET.221; M.TEST_UNIT.155, M.TEST_UNIT.345
   (the floor's derivation and refusal, a lap → resync; U17).
-- **Blast carried by**: the build checks the declared ring against the same floor → M.GEN.066 (U20); the twin's flash-write
-  stall and the concurrent-load test (both dev links, the webserver hammer, FRAM writes and config PUTs, both GC stages,
-  zero MemoryError) → M.TWIN.170, M.TWIN.171 (U25); SPEC J.6/J.7 → M.SPEC.136, M.SPEC.137; changelog "no C impact" → M.DOCS.024.
+- **Blast carried by**: the build checks the declared ring against the same floor (reading `_FLASH_HOLD_MAX_MS` from
+  source) and `dev` declares `rx_ring = 8192` → M.GEN.066 (U20); the floor's own sufficiency (a ring at exactly the floor
+  held for `_FLASH_HOLD_MAX_MS`) → M.TEST_UNIT.345 (f); the twin's flash-write stall, whose maximum is this same hold, and
+  the concurrent-load test (both dev links, the webserver hammer, FRAM writes and config PUTs, both GC stages, zero
+  MemoryError) → M.TWIN.170, M.TWIN.171 (U25); the build-check rows → M.TSC.057; SPEC J.6/J.7 → M.SPEC.136,
+  M.SPEC.137; Part N row `uart.flash_hold_max_ms` → M.SPEC.156; changelog "no C impact" → M.DOCS.024.
 - **Kind**: code
 
 ## src/asy_uart_driver.py
@@ -3212,7 +3241,8 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
   M.TEST_HELP.069 and M.TWIN.169 (a time-driven DMA and UART register model — in `tests/machine.py` or a
   new `tests/rp2.py`, and in `digital_twin/` so dev's twin boots) and M.TEST_UNIT.344 (L1: the count reload and
   modular wrap, a frame split across the ring end, a lap leading to an overrun, the mask cleared after every init, the
-  refusals, zero allocation per read at `gc.threshold(-1)`; hammering: thousands of back-to-back transactions at the
+  refusals, no retained growth across a collect-bracketed run of reads against an ambient control awaiting a no-op
+  coroutine as often; hammering: thousands of back-to-back transactions at the
   line rate with the ring at its fill boundary, random consumer stalls within and beyond the bound) — all co-land in
   U13.
 - **Blast carried by**: the readline cap → M.SRC_NET.202; the ring floor, the lap as overrun and the `setup()` call →
@@ -3280,7 +3310,8 @@ except A.U24.67's banner and the renames).
   (one `ResponderCallbacks`), A.U17.18 (1) (`self.uart` and its comment go), A.U10.35 (`failures` → `_failures`);
   adherence additions: `transfers` → `_transfers` (G10/R07, read outside only by tests; D.10 with its pair) and
   `self.initialized` (A.U10.22's readiness rule; kept: the exercise loop reads it); OR143.a (1)-(2) (the receive limits
-  forwarded; A-C review fold)
+  forwarded; A-C review fold); AC_NOTES 54 (3), (7) (lead rulings, 2026-10-05: the echo through copy-out; one
+  `TransferLimits` forwarded)
 - **Site**: `src/asy_uart_link_driver.py:43-83`
 - **Change**: `class UARTLinkDriver:` / `def __init__(self, uart: "UART | None", role: str, payload_size: int = 48, timeout:
   int = 1000, name_ext: str = "", log: "LogConfig" = DEFAULT_LOG, logger: "PrintLogHistory | None" = None) -> None:`;
@@ -3290,35 +3321,50 @@ except A.U24.67's banner and the renames).
   ResponderCallbacks(self._get_callback, self._set_callback, self._message_callback) if role == ROLE_RESPONDER else None`;
   `self._comm = UARTComm(uart, role, payload_size=payload_size, timeout=timeout, callbacks=callbacks, name=resolved_name,
   log=log, logger=logger)`; `name`/`pr` as today; `self._last_echo` as today; `self._transfers = 0`, `self._failures = 0`;
-  `self.initialized = False`. Fold stage U17 (OR143.a): the constructor forwards `max_transfer_bytes` (and
-  `chunk_bytes`) into `UARTComm` as M.SRC_NET.220's limits; `_message_callback()` receives a `PieceBuffer` for a SET and
-  keeps it as the echo, and `_get_callback()` answers the echo from it — whether through the stream form
-  (`uart_set_stream()`-style pull) or one copy-out bounded by `max_transfer_bytes` is decided at execution, with its
-  reason recorded.
+  `self.initialized = False`. Fold stage U17 (OR143.a; AC_NOTES 54 (7)): the constructor takes one more parameter,
+  `limits: "TransferLimits"` — M.SRC_NET.220's namedtuple, defaulting to the module's default limits as `.220` lands
+  them — and forwards it unchanged (`UARTComm(…, limits=limits)`), never its two fields as separate parameters: eight
+  parameters besides `self` (ruff does not count `self`), within `max-args = 8`; should `.220` fold `payload_size`/
+  `timeout` into the same object, the wrapper takes them through it too and drops its own two. `_message_callback(self,
+  cmd_id: int, cmd: int, payload: "PieceBuffer | None")` keeps the SET's `PieceBuffer` as the echo (no copy at
+  receipt), and `_get_callback()` answers from it by one copy-out (AC_NOTES 54 (3)): `echo = bytearray(len(stored))`,
+  `stored.copy_into(echo)`, `return True, echo` — bounded by the received train's size, itself at most
+  `max_transfer_bytes` (M.SRC_NET.220's cap); no `bytes(PieceBuffer)` anywhere (it has no buffer protocol). Comment
+  (≤ 3 lines) at the copy: "# The stored echo is a PieceBuffer (no buffer protocol): one copy-out, bounded by the
+  receive cap, / # answers the GET." The same stage adds `self._banner_check = bytearray(len(_BANNER))`, the exercise
+  loop's comparison scratch, allocated once (M.SRC_NET.214).
 - **Resolved**: A.U10.35's S09 list privatises `failures` but not `transfers`, though both are read outside the module
   only by `tests/test_asy_uart_link_driver.py` (grep at HEAD) — made private together (agent, adherence; OR2.c list). A.U10.22's
   L0 check requires every class with `async def setup` to set `initialized`; the wrapper had none (agent; OR2.c list).
+  AC_NOTES 54 (3) settles the echo's open choice as copy-out (the stream form withdrawn); (7) the one forwarded
+  `TransferLimits`.
 - **Unit**: U17 (A.U17.18). Staged: U5 (signature, callbacks), U10 (class name, private names, flag).
-- **Depends**: M.SRC_NET.154, M.SRC_NET.155, M.SRC_NET.211
+- **Depends**: M.SRC_NET.154, M.SRC_NET.155, M.SRC_NET.211; M.SRC_NET.220 (`TransferLimits`, the `PieceBuffer` result,
+  U17); M.SRC_CORE.134 (`copy_into()`, U17)
 - **Blast carried by**: twin `_wire_uart_crossover()` reads the generated buses, `buildgen/twin_wiring.py` plan shape →
-  A.U17.18 (TWIN, GEN); generated construction `(…, log=…)` → A.U5.03 (GEN); tests (`transfers`/`failures` readers,
-  constructor calls) → A.U5.02, A.U10.35 (TEST_UNIT, see Gaps for `_transfers`); `digital_twin/README.md:288-297`,
+  A.U17.18 (TWIN, GEN); generated construction `(…, log=…)` → A.U5.03 (GEN), its `limits=TransferLimits(…)` →
+  M.GEN.066; tests (`transfers`/`failures` readers, constructor calls) → A.U5.02, A.U10.35 (TEST_UNIT, see Gaps for
+  `_transfers`); the echo test's copy-out comparison → M.TEST_UNIT.178 (U17 stage); `digital_twin/README.md:288-297`,
   `validate.py:542-544` comment → A.U17.18 (TWIN, GEN); UART changelog Class B names → A.U10.38 (DOCS)
 - **Kind**: code
 
 ### M.SRC_NET.214 The exercise loop ends with its link and caps its counts
 - **From**: A.U17.07, A.U17.29, A.U10.35 (names), A.U10.44 (read: `_exercise_loop` already fits the scheme); OR143.a
-  (1) (the answer arrives as a `PieceBuffer`; A-C review fold)
+  (1) (the answer arrives as a `PieceBuffer`; A-C review fold); AC_NOTES 54 (3) (compared through copy-out; lead
+  ruling, 2026-10-05)
 - **Site**: `src/asy_uart_link_driver.py:110-120`
 - **Change**: `while self.initialized:` (comment's second sentence gains "Ends, like the responder's listen loop, when
   setup() failed: the supervisor's restart escalation is the path to a reboot for a link that cannot come up (C.7.2)."
-  — block ≤ 3 lines); success (fold stage U17: the answer, a `PieceBuffer`, compared with `_BANNER` piece by piece, no join) `if
+  — block ≤ 3 lines); success (fold stage U17: the answer, a `PieceBuffer`, is compared by copy-out into a scratch
+  `self._banner_check = bytearray(len(_BANNER))` allocated once in `__init__()`: `answer is not None and len(answer) ==
+  len(_BANNER) and answer.copy_into(self._banner_check) and self._banner_check == _BANNER` — `copy_into()`'s `False`
+  for a longer answer counts as a failure, and the round allocates nothing for the check) `if
   self._transfers < COUNTER_CAP: self._transfers += 1`; else `if self._failures <
   COUNTER_CAP: self._failures += 1`; the sleep unchanged.
 - **Resolved**: A.U17.07 tests `self._comm.initialized`; with the wrapper's own flag set from its comm's `setup()`
   (M.SRC_NET.215) the two are equal — the loop reads the wrapper's (agent; OR2.c list).
 - **Unit**: U17
-- **Depends**: M.SRC_NET.213, M.SRC_NET.215
+- **Depends**: M.SRC_NET.213, M.SRC_NET.215; M.SRC_CORE.134 (`copy_into()`, U17)
 - **Blast carried by**: tests (refused construction ends every task within 200 ms; counts stop at the cap) → A.U17.07,
   A.U17.29 (TEST_UNIT); SPEC C.7.2 → A.U17.07 (SPEC)
 - **Kind**: code
@@ -3872,3 +3918,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.SRC_NET.127, .129 (the window counter called without `await`), .162 (the unintelligible-link code is E89, as .153 and the catalog number it), .119 (Blast and Depends name M.TEST_UNIT.332's U19 `uptime_s=` stage) | amended |
+| R54 | M.SRC_NET.220 (Blast: the test carriers of the copy-out helper with their U17 stages; the generated `limits=TransferLimits(…)`), .222 (floor from one config flush, `_FLASH_HOLD_MAX_MS`, the peer's re-initiations under stop-and-wait; `_ERR_UART_RXBUF` kept; dev's 8,192 ring), .221 (Depends: no retained growth against an ambient control), .213 (one forwarded `TransferLimits` within `max-args = 8`; the echo answered by one copy-out), .214 (the banner compared by copy-out into a scratch allocated once) | amended |

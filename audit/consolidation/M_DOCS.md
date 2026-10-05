@@ -558,9 +558,10 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   - **B66** (U13): "`readline_until_complete()` is capped and no longer grows by concatenation: a line over the cap is
     discarded and the call returns `None` | No protocol path uses readline (B47); no wire effect".
   - **B67** (U17): "`UARTComm` refuses a receive ring below its floor — the larger of one framed frame, one poll
-    interval's arrivals and what the peer can send during the longest synchronous flash write under stop-and-wait,
-    rounded up to a power of two — and resyncs on a lap like any receive overrun | A local refusal and the existing
-    recovery; no byte, acceptance rule or timing on the wire changes".
+    interval's arrivals and what the stop-and-wait peer can send while one config flush holds the loop (its one
+    unacknowledged frame plus one per re-initiation its timeout, drain and hold-off allow), rounded up to a power of
+    two — with the code a too-small `rxbuf` had, and resyncs on a lap like any receive overrun | A local refusal and
+    the existing recovery; no byte, acceptance rule or timing on the wire changes".
   - **B68** (U17): "A train with no caller destination is assembled in pieces of at most `chunk_bytes` (a constructor
     argument with a reasoned default) instead of one peer-sized allocation, and the caught `MemoryError` at those
     allocations goes | Memory only: the bytes acknowledged and delivered are identical".
@@ -3039,6 +3040,7 @@ file's (M_HW_BENCH, M_TWIN): their F01/F04/F13/F16/F20 wording is those agents'.
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.DOCS.026 (Config Faults item: unreadable never overwritten, damaged repaired and listed), M.DOCS.082 (write list gains the damaged-file repair; the never-overwritten sentence narrowed to unreadable files) | amended |
+| R54 | M.DOCS.024 (B67: the floor from one config flush's hold at the peer's stop-and-wait rate; the `rxbuf` refusal code kept) | amended |
 
 **F21 map** — where this file writes each answered decision's tag. "explicit": written in the change; "conv.": the tag
 sits in an action's text the change quotes and takes the convention's form at landing; "—": no tag written here.

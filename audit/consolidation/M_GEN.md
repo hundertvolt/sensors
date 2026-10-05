@@ -824,7 +824,8 @@ change lists its stages; the end state is the last stage's.
 ### M.GEN.066 The UART ring size and the receive cap: declared together, checked together, passed through
 - **From**: OR143.a (2) ("the cap and the DMA ring size … declared together in the bus/instance TOML and checked
   together by buildgen"), OR141.a (4) (e) (the ring derived and refused like `rxbuf`) (A-C review fold); register
-  G6/R21, G6/R57.
+  G6/R21, G6/R57; AC_NOTES 54 (6), (7) (lead rulings, 2026-10-05: the floor from one config flush; `dev` states
+  `rx_ring` explicitly, sized for the bench; one `TransferLimits` forwarded).
 - **Site**: `buildgen/validate.py` (the allowed bus/instance field tables, `_check_uart_link_buses()`),
   `buildgen/codegen.py` (the `[bus.uart*]` construction line, `_build_args_uart_link`), `devices/dev.toml`
   (`[bus.uart0]`, `[bus.uart1]` and the two `uart_link` instances).
@@ -832,26 +833,40 @@ change lists its stages; the end state is the last stage's.
   `max_transfer_bytes` on the bus's one `uart_link` instance (the receive cap) — or both on the bus table: the placement
   is decided at execution, with its reason recorded. The build reads the pair together per link (refused like `rxbuf`
   today, `rule`/`fix` on every refusal): `rx_ring` a power of two within 2-32768 (CTRL.RING_SIZE, RP2040 datasheet
-  2.5.1.3) and at least the protocol's ring floor for the link's own frame, timeout and backoff — the arithmetic of
-  `asy_uart_comm`'s `_min_rx_ring()` (M.SRC_NET.222), read from source as `_check_uart_link_buses()` reads today's floors
-  (`rule="bus.uart-rx-ring"`); `max_transfer_bytes` at least one payload and at most the protocol's largest train,
+  2.5.1.3) and at least the protocol's ring floor for the link's own frame and `timeout` — the arithmetic of
+  `asy_uart_comm`'s `_min_rx_ring()` (M.SRC_NET.222): the larger of one framed frame and one poll interval's arrivals,
+  and the stop-and-wait peer's one unacknowledged frame plus one per re-initiation (`4 × timeout` apart) inside one
+  config flush's hold, `_FLASH_HOLD_MAX_MS` — that constant read from source as `_check_uart_link_buses()` reads
+  today's floors (`rule="bus.uart-rx-ring"`); `max_transfer_bytes` at least one payload and at most the protocol's largest train,
   `(_CHUNKS_MAX - 1) × payload_size` (`rule="instance.uart-transfer-cap"`). The two stay separate values (stop-and-wait:
   the ring never holds a whole transfer). Generated code passes `rx_ring=` to the bus's `UART(...)` (M.GEN.005's bus line)
-  and `max_transfer_bytes=` to `UARTLinkDriver(...)` (M.GEN.012's renderer). `devices/dev.toml` declares both for its two
-  links, each preceded by its tag (`# @tunable dev.uart_rx_ring = <v>`, `# @tunable dev.uart_max_transfer_bytes = <v>`;
-  values decided at execution from the floor's derivation and Part I's heap budget, recorded with the tags). `rxbuf` no
+  and one `limits=TransferLimits(<chunk_bytes>, <max_transfer_bytes>)` to `UARTLinkDriver(...)` (M.GEN.012's renderer;
+  `TransferLimits` added to the emitted `asy_uart_comm` import, M.SRC_NET.213 forwarding it whole), `<chunk_bytes>` the
+  constructor default read from `asy_uart_comm`'s source (`_DEFAULT_CHUNK_BYTES`; not a TOML key). `devices/dev.toml`
+  declares both for its two links, each preceded by its tag: `rx_ring = 8192` (`# @tunable dev.uart_rx_ring = 8192`) on
+  `[bus.uart0]` and `[bus.uart1]`, with the comment (≤ 3 lines) "# Sized for the bench's continuous-sender windows: 400
+  ms of interrupts off at 115200 baud is / # 4,608 B, rounded up to a power of two; far above the protocol's own floor
+  (Part J.6)." — the bench's interrupts-off sweep (M.HW_DEV.159/.160) streams frames at line rate for up to the 400 ms
+  W25Q16JV tSE maximum, which a stop-and-wait peer never does; and `max_transfer_bytes` (`# @tunable
+  dev.uart_max_transfer_bytes = <v>`, decided at execution from Part I's heap budget and the largest train the dev link
+  exercises, recorded with the tag). `rxbuf` no
   longer sizes the receive path (the ring does; `machine.UART`'s own buffer sits at its minimum, M.SRC_NET.221):
   whether the key stays as that minimum or goes, with its build check, is decided at execution, with its reason
   recorded. A device without a `uart_link` declares neither key.
 - **Resolved**: OR143.a (2) settles that the two values are declared and checked together; OR141.a (4) (e) that the ring
   is derived and refused, never a bare number. The default `chunk_bytes` is not a TOML key (OR143.a (1): a constructor
-  default).
+  default). AC_NOTES 54 (6): `dev` states `rx_ring` explicitly and sizes it for the bench (115200 baud is 11,520 B/s, so
+  400 ms is 4,608 B → 8,192), the build still checking it against the protocol floor; its two rings and their
+  alignment padding count in Part I's ring row (M.SPEC.126), `dev` being the bench rig. (7): the driver takes the limits
+  as one object, so the renderer emits one keyword.
 - **Unit**: U20 (after U13's `rx_ring` parameter and U17's floor and cap exist in `src/`).
 - **Depends**: M.GEN.025, M.GEN.027, M.GEN.005, M.GEN.012, M.GEN.053, M.SRC_NET.220, M.SRC_NET.221, M.SRC_NET.222;
   M.TSC.057 (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
   source, the shipped devices built; U20).
-- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → M.SPEC.146, M.SPEC.136; Part N rows `dev.uart_rx_ring`,
-  `dev.uart_max_transfer_bytes` → M.SPEC.156; the twin wiring reads the generated construction (TWIN, unchanged
+- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → M.SPEC.146, M.SPEC.136; Part N rows `dev.uart_rx_ring`
+  (8,192, basis: the bench's 400 ms continuous-sender window),
+  `dev.uart_max_transfer_bytes` → M.SPEC.156; the bench reads `rx_ring` through `bench_facts` and sizes its over-bound
+  window from it → M.HW_DEV.159, M.HW_DEV.160, M.HW_BENCH.041; the twin wiring reads the generated construction (TWIN, unchanged
   rule).
 - **Kind**: code
 
@@ -2004,3 +2019,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.GEN.008 (`ConfigFaults` comment: damaged = unparseable, non-object, refused value, repaired and listed), M.GEN.014 (field description: a damaged file is repaired at boot) | amended |
+| R54 | M.GEN.066 (floor read with `_FLASH_HOLD_MAX_MS` from source; `dev` states `rx_ring = 8192` for the bench's 400 ms continuous-sender window; the generated `limits=TransferLimits(…)`) | amended |

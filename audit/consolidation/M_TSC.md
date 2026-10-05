@@ -1078,7 +1078,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   refusal; `:1301-1310` replacement), A.U2.23 (`:1257`, `:1268`, in M.TSC.055); read: A.S0930.01 (`:1240-1384` hold —
   absent `crc` is `"none"`), A.U17.21 (`:1255-1287` hold); A.S0930.01's `test_uart_crc_modes_match_crc_checks` with
   SRC_CORE GAP-G10's names (`asy_crc_checks`, `CRCPass`; gap pass G3 — the test had no carrier); OR141.a (4) (e),
-  OR143.a (2) (A-C review fold: the ring size and receive cap rows).
+  OR143.a (2) (A-C review fold: the ring size and receive cap rows); AC_NOTES 54 (6) (lead ruling, 2026-10-05: the
+  floor from one config flush's hold; `dev`'s 8,192 ring).
 - **Site**: `tests_scripts/test_buildgen_validate.py:1236-1384`, new rows.
 - **Change**: `crc = "crc8"`, `16`, `"CRC16"`, `["crc16"]` each refused naming the legal set with `(field, instance) ==
   ("crc", label)`; a `none`/`crc16` pair refused naming both labels; `crc16`/`crc16` builds; a CRC pair at
@@ -1096,9 +1097,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
   table's width (`CRCPass` 0, `CRC16` 2); a table naming a class the module lacks fails naming it (bite on a `tmp_path`
   copy). New rows for the DMA receive ring and the receive cap, which a `uart_link` bus/instance declares together and
   buildgen checks together (OR141.a (4) (e), OR143.a (2), A-C review fold): a ring size that is not a power of two, one
-  below its derived floor (the larger of today's floors and the peer's stop-and-wait bytes during the longest
-  synchronous flash write, rounded up to a power of two) and one above 32,768 each refused naming the floor or the
-  limit with `(field, instance)`; a `max_transfer_bytes` outside its range refused (`chunk_bytes` is no TOML key); the edges and the
+  below its derived floor (the larger of today's floors and the stop-and-wait peer's one unacknowledged frame plus one
+  frame per re-initiation, `4 × timeout` apart, inside one config flush's hold — `_FLASH_HOLD_MAX_MS` read from a
+  `tmp_path` `src/` copy, so a raised hold raises the refused floor — rounded up to a power of two) and one above 32,768
+  each refused naming the floor or the limit with `(field, instance)`; `dev`'s `rx_ring = 8192` built; a `max_transfer_bytes` outside its range refused (`chunk_bytes` is no TOML key); the edges and the
   shipped devices built; an unstated value read from the driver source like `poll_idle_ms`. Rule names, keys and the
   floor's inputs follow M_GEN's check (M.GEN.066).
 - **Resolved**: A.S0930.01 writes the agreement test against HEAD's `src/crc_checks.py` and `CRC_Pass`; it lands after
@@ -4968,3 +4970,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F32 | — | none in this file |
 | F33 | — | none in this file |
 | R54 | M.TSC.111 (persisting-wrapper resolution, so UART `_resync()`'s `self._err()` pair is seen; U15 and U16 stages for the allow-list edits) | amended |
+| R54 | M.TSC.057 (the ring floor row: one config flush's hold read from source as `_FLASH_HOLD_MAX_MS`, the peer's re-initiations `4 × timeout` apart; `dev`'s 8,192 built) | amended |

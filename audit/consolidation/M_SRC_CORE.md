@@ -876,7 +876,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Kind**: code
 
 ### M.SRC_CORE.134 `PieceBuffer`: received bytes held in pieces of at most `piece_bytes`
-- **From**: OR143.a (1), (4) (A-C review fold); register G6/R21.
+- **From**: OR143.a (1), (4) (A-C review fold); register G6/R21; AC_NOTES 54 (3), (7) (lead rulings, 2026-10-05: no
+  `__eq__`; `copy_into()` refuses a smaller destination).
 - **Site**: `src/base_classes.py` (→ `src/asy_base_classes.py`) new class beside `RegionBuffer`.
 - **Change**: `class PieceBuffer:` with the comment (≤ 3 lines) "# Bytes too many for one allocation, held as pieces of
   at most piece_bytes: no allocation is larger / # than one piece (owner, 2026-10-05). Read through its length, its
@@ -886,8 +887,11 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   is not caught here (the caps bound every allocation; CLAUDE.md memory rule). `def __len__(self) -> int`; `def
   pieces(self)` iterates the pieces in order; `def write_at(self, offset: int, src: memoryview) -> bool` copies `src`
   into the pieces from `offset`, crossing a piece end by index (slice assignment per piece, no intermediate copy),
-  `False` for a range outside `0 … size`; `def copy_into(self, dest: bytearray | memoryview, start: int = 0) -> int`
-  copies from `start` into `dest` and returns the count. No method awaits.
+  `False` for a range outside `0 … size`; `def copy_into(self, dest: bytearray | memoryview, start: int = 0) -> bool`
+  copies the bytes from `start` to the end into the front of `dest` and returns `True`; a `start` outside `0 … size` or
+  a `dest` shorter than `size - start` returns `False` with nothing copied (`dest` untouched — never a partial copy a
+  caller could mistake for the whole). No `__eq__`: a caller compares through copy-out (tests through `copied_out()`,
+  M.TEST_HELP.070). No method awaits.
 - **Resolved**: OR143.a (1) asks for "a small shared primitive with length, iteration and copy-out, checked first
   against SPEC Part G's catalog (the webserver's `_PieceWriter` is the model)": Part G's `_PieceWriter` groups outgoing
   JSON text into pieces of at most `chunk_bytes` for a stream write and holds no received bytes, so it is the model,
@@ -896,8 +900,10 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   recorded.
 - **Unit**: U17 (lands with its user, the UART receive path, M.SRC_NET.220).
 - **Depends**: M.SRC_CORE.027 (`RegionBuffer`'s section, U16); M.TEST_UNIT.345 (L1 in U17: every piece at most
-  `piece_bytes`, a write crossing a piece end, copy-out at offsets, the largest block measured, refusals).
-- **Blast carried by**: the user → M.SRC_NET.220; SPEC Part G catalog entry and Part I's heap budget → M.SPEC.111, M.SPEC.126.
+  `piece_bytes`, a write crossing a piece end, copy-out at offsets, `copy_into()` returning `False` into a smaller
+  destination with nothing copied, the largest block measured, refusals).
+- **Blast carried by**: the user → M.SRC_NET.220; SPEC Part G catalog entry and Part I's heap budget → M.SPEC.111, M.SPEC.126;
+  the tests' copy-out helper → M.TEST_HELP.070.
 - **Kind**: code
 
 ### M.SRC_CORE.034 Record a C-stack overflow for the supervisor, in the one module every handler can import
@@ -2977,3 +2983,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F32 | — | none in this file |
 | F33 | — | none in this file (M.SRC_CORE.084/.088 already give `False` for both copies BUSY, as the corrected D-T27 line reads) |
 | R54 | M.SRC_CORE.043 (title, Change, Resolved: unreadable never overwritten; unparseable, non-object and refused-value (W10, key present) files repaired by the boot's one write and flagged; a missing or unknown key a repair only), .015 (`ConfigFaults` list wording), the `config_manager.py` section end state, the F01 row above; .133 (`HourlyWindowCounter` methods plain `def`) | amended |
+| R54 | M.SRC_CORE.134 (`copy_into()` → `bool`: `False` and nothing copied into a destination shorter than the bytes from `start`; no `__eq__`, tests copy out through M.TEST_HELP.070) | amended |
