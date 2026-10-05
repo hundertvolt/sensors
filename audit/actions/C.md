@@ -775,6 +775,12 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H81 | recovery-ladder thresholds (participant 2nd, bus clear 3rd, controller 4th failure; FRAM probe 2nd; three identification attempts) confirmed from the rung tests | SUPP_recovery closing note (`:923-925`) | L3 | R1 | own record |
 | H82 | `stations` query without the 100 ms settle keeps the right count (local-only image, reverted at once) | A.U18.43, A.SDEP.17 (W42) | L4, `flash_cycle` (2 flashes) | none | dropped (owner, 2026-10-05, OR141.a (5)): the 100 ms settle stays; two flashes for a harmless wait are not spent |
 | H83 | loaded free-heap floor from `MemFree` under the bench load | A.U30.09 | L4 | R1 | own record |
+| H84 | UART DMA receive ring with interrupts off and no flash write: `machine.disable_irq()` windows of 3 ms, 45 ms, 400 ms and one past the ring bound while a DREQ-paced TX DMA streams frames over the crossover jumper; every in-bound frame intact, UARTRSR OE clear, the over-bound window read as an overrun; a soft reset during traffic leaves the channels free and the new heap untouched | OR141.a (4); G6/R57; M.HW_DEV.159, M.HW_DEV.160 (1)-(2), M.PROC.049 (1) | L3 (dev device script) | R1 | own step |
+| H85 | the ring's heap cost and the largest free block before and after its allocation; its boot placement | OR141.a (4) (d), OR143.a (5); G6/R57; M.PROC.049 (1) | L3 | R1 | own record |
+| H86 | one run of today's interrupt-driven receive path in the H84 setup (45 ms and 400 ms), showing the byte loss; a throwaway worktree, not a permanent control arm | OR141.a (4) (g), OR21.a (2); M.PROC.049 (2) | L3 | R1 | own step |
+| H87 | one real config write during UART traffic: zero lost frames | OR141.a (4) (g); M.HW_DEV.160 (3), M.PROC.049 (3) | L3 `persistence_write` (1 flash write) | R3 | own step |
+| H88 | a maximum-size UART transfer both ways over the jumper and an over-cap transfer refused before allocation | OR143.a (4); G6/R21; M.HW_DEV.045, M.HW_DEV.046 | L3 | R1 | co-land |
+| H89 | the idle poll rate (100 ms) and its first-answer latency read on the bench | OR141.a (5); M.PROC.038 | L4 | R1 | own record |
 
 ## Ledger
 | register block | clause for this unit (short) | result |

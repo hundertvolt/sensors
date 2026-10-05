@@ -471,7 +471,7 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   statement, seeded with A.U17.12's desk-check rows; at execution re-checked after A.U17.03, A.U17.06, A.U17.13,
   A.U17.16 land, reading code sites by symbol (function or constant name) — the U10 renames and class reorder
   (M.SRC_NET merges of A.U10.18/.33/.44) move every `asy_uart_comm.py` line the seed cites. Rows other units change carry
-  that unit's action (J.5 warning text A.U3.08, as far as it stands after OR140.a (7)'s per-layer rule; J.6 poll default
+  that unit's action (J.5 warning text A.U3.08, kept by the lead's fold ruling on OR140.a (7); J.6 poll default
   A.U13.17; J.6 the DMA receive ring and J.7 a lap read as the receive overrun, U13/U17, [fold F25 M_SRC_NET]; J.6 the
   chunked assembly and the receive cap's refusal before any allocation, U17, [fold F27 M_SRC_NET]; J.9 errno alignment
   A.U2.20/A.U2.22); a row whose code does not hold is a finding of that unit (OR12.a), and, for a protocol-level
@@ -1552,7 +1552,7 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F08 | — | none in this file |
 | F09 | — | none in this file |
 | F10 | M.PROC.021 | amended (the work-in-progress code read as the owner's intent) |
-| F11 | M.PROC.017 | amended (J.5 row as far as A.U3.08 stands) |
+| F11 | M.PROC.017 | amended (J.5 row: A.U3.08 kept, lead ruling) |
 | F12 | — | none in this file |
 | F13 | — | none in this file |
 | F14 | — | none in this file |

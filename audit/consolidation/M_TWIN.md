@@ -1862,7 +1862,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   (comment "# armed before the script runs, as Board.run_isolated() does; a script constructing WDT again gets this one
   (ports/rp2/machine_wdt.c:43-57)"); `gc.threshold(n)` (default -1, the reactive stage); `exec(compile(source, path,
   "exec"), {"__name__": "__main__", "__file__": path})` with the comment "# runs the device script by path, as the board
-  runs it; no module is imported" (how the dynamic-load check classes this `exec` is the check's, [fold F23 M_TSC]); a `SystemExit` from the script returns its code; any other exception prints its traceback and
+  runs it; no module is imported" (outside the import check: ruff S102 governs an `exec`, lead ruling 2026-10-05); a `SystemExit` from the script returns its code; any other exception prints its traceback and
   returns 1; `machine.SimulatedRebootError` returns 3/4 (the runner's codes) after printing the `machine reset:` line.
   `__main__`: `sys.exit(main(sys.argv[1:]))`. No `tests/` import; no instrumentation flag (the script is the
   instrument).
@@ -2941,7 +2941,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   L2 half comes after its U20 product and L0/L1 halves because this file's system-command section and its C4 boot are
   born here (reason recorded; nothing in U20 needs them).
 - **Depends**: M.TWIN.011, M.TWIN.013, M.TWIN.026, M.TWIN.031; M.SRC_CORE controlled-shutdown sequence (`_reset_armed`,
-  `_reset_task`, `_reset_timer`); [fold F15 M_SRC_NET] (every API command refused while a sequence runs); [fold F03
+  `_reset_task`, `_reset_timer`); M.SRC_CORE.011, M.SRC_CORE.038 (every API command, the SCD30 setters
+  included, refused while a sequence runs); [fold F03
   M_SRC_CORE] (the fault state, the never-reading delete); [fold F03 M_GEN] (`ConfigFaults` in the status data)
 - **Blast carried by**: —
 - **Kind**: test
@@ -4181,6 +4182,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F13 | — | none in this file |
 | F14 | — | none in this file |
 | F15 | M.TWIN.104 | amended |
+| F15 | M.TWIN.104 (lead ruling 2026-10-05: token replaced by M.SRC_CORE.011, M.SRC_CORE.038) | amended |
 | F16 | M.TWIN.167, .168 | added |
 | F16 | M.TWIN.050, .053, .058, .061, .064, .066, .146 | amended |
 | F17 | — | none in this file |
@@ -4190,6 +4192,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F21 | M.TWIN.167 | tag |
 | F22 | — | none in this file |
 | F23 | M.TWIN.054, .144, .152, .158 (and convention C2) | amended |
+| F23 | M.TWIN.054 (lead ruling 2026-10-05: the `exec` is ruff S102's, not the import check's; token removed) | amended |
 | F24 | — | none in this file |
 | F25 | M.TWIN.169, .170, .171 | added |
 | F25 | M.TWIN.064, .130 | amended |

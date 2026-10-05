@@ -6420,8 +6420,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   only in the rows of classes whose product code reads that flag — the FRAM, SPI, UART and logging classes (`FRAMManager`:
   `initialized` replaces `_was_up`, before `setup()` a chunk request answers as the not-up manager did); `SensorReader`
   and through it every `SensorReaderConfig` subclass (`WifiService`, the NTP client, the notification service, every
-  reader), `WebserverService` and `NeopixelDriver` carry no such flag, and their rows, like every other row, assert only the
-  public answers and `setup()`'s `bool`. `NeopixelDriver`'s row: `on()`/`off()`/`toggle()`/
+  reader), `SystemService` (its flag withdrawn, lead ruling 2026-10-05), `WebserverService` and `NeopixelDriver` carry no
+  such flag, and their rows, like every other row, assert only the public answers and `setup()`'s `bool`. `NeopixelDriver`'s row: `on()`/`off()`/`toggle()`/
   `led_signal()`/`request_signal()` before `setup()` answer as M.SRC_SENS.023/.024 state after the fold; `NotificationService`'s
   row: every public method before `setup()` answers the construction defaults — `get_data()` `NOTIFY(Triggered=False,
   TS=None)`, `get_dict_cfg()` the config store's not-valid answer, `get_error_counter()` an empty log — never an
@@ -8341,6 +8341,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F02 | M.TEST_UNIT.343 | added |
 | F02 | M.TEST_UNIT.202 | amended |
 | F03 | M.TEST_UNIT.253, .254, .259, .306 | amended |
+| F03 | M.TEST_UNIT.306 (lead ruling 2026-10-05: a failed delete shows as reset reason 9 at the next boot, never "Failed") | amended |
 | F04 | — | none in this file |
 | F05 | — | none in this file |
 | F06 | — | none in this file |
@@ -8349,6 +8350,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F09 | M.TEST_UNIT.080 | amended |
 | F10 | — | none in this file |
 | F11 | M.TEST_UNIT.017, .024, .041, .044, .046, .060, .061, .063, .077, .086, .091, .113, .122, .132, .135, .136, .138, .142, .143, .218, .227, .255, .265, .279, .280 | amended |
+| F11 | M.TEST_UNIT.202 (lead ruling 2026-10-05: A.U3.11 narrowed; its "one W52" L1 becomes both warnings kept) | amended |
 | F12 | — | none in this file |
 | F13 | — | none in this file |
 | F14 | — | none in this file |
@@ -8368,6 +8370,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F27 | M.TEST_UNIT.344 (d), .345 | added |
 | F27 | M.TEST_UNIT.164 | amended |
 | F28 | M.TEST_UNIT.078, .079, .293 (and GAP-U3, Owner questions 2) | amended |
+| F28 | M.TEST_UNIT.293 (lead ruling 2026-10-05: `SystemService` carries no flag) | amended |
 | F29 | M.TEST_UNIT.104 | amended |
 | F30 | — | none in this file |
 | F31 | — | none in this file |

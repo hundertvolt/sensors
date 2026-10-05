@@ -120,14 +120,13 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
   ended without microtest's exit - no trailer, or it never ran"` and returns 1; `SystemExit` returns `exc.args[0]` when
   an int, 1 for a non-int argument, 0 for none; any other `BaseException` prints the traceback and returns 1. The inline
   `# noqa: S102` goes (pyproject per-file entry, A.U28.28). The `exec` stays unchanged: it runs a test file by path and
-  imports nothing; OR142.a (3)'s F.1 list does not name it, and how the dynamic-load check classes it is the check's
-  ([fold F23 M_TSC]).
+  imports nothing; OR142.a (3)'s F.1 list does not name it, and the import check does not look at it — ruff's S102
+  (its per-file entry) governs it (lead ruling 2026-10-05).
 - **Resolved**: —
 - **Unit**: U24 (the noqa removal waits for A.U28.28's per-file entry, U28: until then the inline noqa stays — stage 2
   U28 removes it).
 - **Depends**: M.TEST_HELP.001.
-- **Blast carried by**: per-file `S102` entry → A.U28.28 (TOOL); the dynamic-load check's treatment of the runner's
-  `exec` → [fold F23 M_TSC]; checker allowance (sets the stage) → A.U30.14 (TSC); test.sh dispatch → A.U7.03 (SCR); the twin scenario harness's own GC stages → A.U27.38 (SCR).
+- **Blast carried by**: per-file `S102` entry → A.U28.28 (TOOL); checker allowance (sets the stage) → A.U30.14 (TSC); test.sh dispatch → A.U7.03 (SCR); the twin scenario harness's own GC stages → A.U27.38 (SCR).
 - **Kind**: test
 
 ## tests/_coverage_runner.py
@@ -1100,8 +1099,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 - **Resolved**: —
 - **Unit**: U24 (stages with A.U11.03/A.U11.04 U11, A.S0930.* their unit, A.U19.01 U19); stage U20 (A-C review fold):
   (7)-(9), with the system-command code and the generated `/status` block.
-- **Depends**: M.TEST_HELP.035, M.TEST_HELP.011, M.TEST_HELP.062; [fold F15 M_SRC_NET] (every API command, the SCD30
-  setters included, refused while a sequence runs); [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block);
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.011, M.TEST_HELP.062; M.SRC_CORE.011, M.SRC_CORE.038 (every API command, the
+  SCD30 setters included, refused while a sequence runs); [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block);
   [fold F03 M_SRC_CORE] (the fault state, the never-reading delete).
 - **Blast carried by**: —
 - **Kind**: test
@@ -1619,7 +1618,7 @@ Absent at HEAD; no action creates it. A.U0.42 and A.U36.546 delete README.md's "
 - **GAP-H6 (TSC)**: `tests_scripts/test_import_placement.py` — the `_PENDING` entries for this cluster's files leave in
   U24 (H5); `_NAMED_EXCEPTIONS` holds `tests/_generated_module.py` (`load_generated`) and the two runners' `exec` (A.U10.30
   F.1 list). Superseded in the A-C review fold (OR141.a (2), OR142.a (3)): `load_generated()` is not written; the five
-  named `tests/` loaders keep their `__import__` lines; the runners' `exec` is the check's to class ([fold F23 M_TSC]).
+  named `tests/` loaders keep their `__import__` lines; the runners' `exec` is outside the import check, ruff S102's (lead ruling 2026-10-05).
 - **GAP-H7 (GEN)**: the scenarios read `expected_facts()` through `build/generated_src/sensortask_<device>_expected.json`
   (`boot_sequence`, `fram_wired`); `fram_wired` lists module labels only — the RAM-only config log is derived by the
   scenario from `_CFG_LOG_FRAM` (M.TEST_HELP.036, AC_NOTES 13), so GEN must not emit a per-logger exemption list.
@@ -2001,6 +2000,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F13 | — | none in this file |
 | F14 | — | none in this file |
 | F15 | M.TEST_HELP.040 | amended |
+| F15 | M.TEST_HELP.040 (lead ruling 2026-10-05: token replaced by M.SRC_CORE.011, M.SRC_CORE.038) | amended |
 | F16 | M.TEST_HELP.058 | amended |
 | F17 | — | none in this file |
 | F18 | — | none in this file |
@@ -2009,6 +2009,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F21 | — | none in this file |
 | F22 | — | none in this file |
 | F23 | M.TEST_HELP.003, .004, .028, .029, .032, .035, .040, .047 (and conventions H2, H5, GAP-H6) | amended |
+| F23 | M.TEST_HELP.003, .004 (and GAP-H6) (lead ruling 2026-10-05: the runners' `exec` is ruff S102's, not the import check's; tokens removed) | amended |
 | F24 | — | none in this file |
 | F25 | M.TEST_HELP.069 | added |
 | F25 | M.TEST_HELP.025, .028 | amended |

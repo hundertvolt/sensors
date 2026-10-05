@@ -2196,7 +2196,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Blast carried by**: CLAUDE.md/SPEC L.1 name the check → A.U6.15 (DOC/SPEC).
 - **Kind**: test
 
-## tests_scripts/test_one_entry_per_event.py
+## tests_scripts/test_fault_or_warning_never_both.py (A.U3.11's `test_one_entry_per_event.py`, renamed)
 ### M.TSC.111 One occurrence is persisted as a fault or as a warning, never both
 - **From**: A.U3.11, narrowed (lead ruling on the A-C review fold, 2026-10-05): OR140.a (7) drops "one entry per fault"
   (A.U3.04 and its carriers: every layer that meets a fault keeps its own persisted entry, as today), so the scan keeps
@@ -3261,7 +3261,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   codes only), A.U8.22 (read: `:223-286` test inputs untagged); A.U19.14 (`:257-259` cites BACKLOG item 24, which leaves
   at U19 — M_DOCS gap 2, gap pass G3); A.U25.33/A.U25.36 (2) and A.U35.28 (3) (the runner's shutdown-line fields this
   file parses — M.TWIN.050's Blast "their L0 parsers (TSC)" and M_SCR gap 4, gap pass G3); A.S0930.34 (4)
-  (deadline-helper case; AC3_S S-14).
+  (deadline-helper case; AC3_S S-14); M.TWIN.171 (the shutdown line's `uart=` field, A-C review fold, U25).
 - **Site**: `tests_scripts/test_digital_twin_ci_suite_errcount.py`.
 - **Change**: new cases: a history `[E10, W15, E10]` with counter 4 → 3 failures; fake procs with returncode −11, the
   suite's own timeout and its own SIGKILL each reported by name; each strict reader fails on a missing counter;
@@ -3277,11 +3277,15 @@ where a test pins an SCR product, the constituent action is cited and the depend
   a name → int dict (`-` → empty; a name out of order, a duplicate or a non-int count fails naming it),
   `fram_writes_unattributed=<n>` when present an int; a line missing any required field fails naming it.
   `_commanded_reset_deadline_s()` over a `tmp_path` copy of `src/asy_system_service.py` with `_RESET_DELAY` and
-  `_TASK_CHECK_TIME` changed equals their sum plus the named margin, following both.
+  `_TASK_CHECK_TIME` changed equals their sum plus the named margin, following both. The `uart=` field (M.TWIN.171,
+  A-C review fold): `uart=UART_init:transfers=12,failures=0,overruns=0;UART_resp:…` yields one dict per instance, a
+  missing or non-int count fails naming the instance, and the field is required exactly when the device's wiring plan
+  declares a `uart_link`.
 - **Resolved**: —
-- **Unit**: U35 (stages U19 the `:257-259` pointer, U25, U27; the `fram_writes`/`fram_writes_by` cases with A.U35.28).
+- **Unit**: U35 (stages U19 the `:257-259` pointer, U25 (the `uart=` cases with M.TWIN.171), U27; the
+  `fram_writes`/`fram_writes_by` cases with A.U35.28).
   A-C2 step order: A.S0930.34 (4)'s part (the deadline-helper case AC3_S S-14 adds) lands in U26, not U25 (A.S0930.34 needs A.U26.71's guard derivation, which lands in U26).
-- **Depends**: M.SCR.046-.049, M.SCR.016; M.TWIN.050 (the shutdown line's fields).
+- **Depends**: M.SCR.046-.049, M.SCR.016; M.TWIN.050 (the shutdown line's fields); M.TWIN.171 (`uart=`).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -4922,7 +4926,7 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F08 | — | none in this file |
 | F09 | — | none in this file |
 | F10 | — | none in this file |
-| F11 | M.TSC.111 | dropped (Unit — (no step; dropped by OR140.a (7))) |
+| F11 | M.TSC.111 | amended (lead ruling: narrowed to "a fault or a warning, never both" per function; file renamed `test_fault_or_warning_never_both.py`; Unit U3) |
 | F12 | — | none in this file |
 | F13 | M.TSC.026 | amended (L0 case for the console message) |
 | F14 | M.TSC.221 | amended (case over the real versions.toml) |

@@ -477,8 +477,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `led_signal()` (the REST command) is refused at once while a signal is queued or running (owner, 2026-09-29), and
   the refusal tells the caller to try again later: an external caller could flood the device into exhaustion (owner,
   2026-10-02); `request_signal()` (internal) waits for a running signal up to a deadline, then queues and returns —
-  never when its own ramp ends — because internal requests are bounded in number and rate (agent, 2026-09-29: legacy
-  queued internal requests without a bound; owner-reviewed, 2026-10-02). Values are sanitised when the
+  never when its own ramp ends — because internal requests are bounded in number and rate (owner, 2026-10-02: 'internal
+  LED commands are guaranteed to be bounded by number and frequency, they won't flood the device'; legacy queued them
+  without a bound). Values are sanitised when the
   request enters: colour bytes clamped to 0-255 (non-finite → 0), the duration floored at 0.1 s and capped at 60 s, a
   non-numeric value refused; a cancelled or failed ramp ends dark with the slot free. The pixel reports no faults
   (`NeoPixel.write()` hands `machine.bitstream()` only arguments the class builds itself, and the driver clamps every
@@ -936,7 +937,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
      sentence with "(agent, 2026-09-30)"; "Reset codes 3, 4, 7, 8, 9."; the escalation sentence "The supervisor's
      task-budget reboot resets directly, without the sequence."), followed by A.S0930.30's two-command purposes
      ("`resetconfig` ("Reset to defaults") deletes every schema-backed config file without reading it, readable or
-     not (owner, 2026-10-01); a delete that fails is logged and the command answers "Failed". After the reboot each file
+     not (owner, 2026-10-01): the command is answered when it is accepted, the deletes run in the shutdown sequence,
+     and a delete that fails is logged and shows as reset reason 9 (a command whose purpose did not complete) at the
+     next boot — never as an HTTP "Failed" (agent, 2026-10-05). After the reboot each file
      is written once with its defaults (C.7.3), so the unit comes back on the schema defaults, as the hotspot with its
      TOML hostname and hotspot password; FRAM logs and the SCD30's NVM are untouched (Wi-Fi and identity included,
      owner, 2026-09-30). `erasefram` ("Erase FRAM") zeroes the whole chip — every FRAM log and the SGP40 backup start
@@ -2244,8 +2247,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   repair" → "`setup()` writes at most once per boot: the defaults when the file is absent, or the one repair of an
   existing, readable file"; "`_flush_staged()` writes once per accepted PUT that changes a value" → "once per accepted
   PUT that changes a value, after its pushes; a flush equal to the file writes nothing"; new third item: "the store's
-  delete for "Reset to defaults" removes the file without reading it, whatever its readable state; a delete that fails
-  is logged and the command answers "Failed" (A.8; owner, 2026-10-01)". (3) "**Bounded by boots …**" paragraph:
+  delete for "Reset to defaults" removes the file without reading it, whatever its readable state (owner, 2026-10-01);
+  it runs in the shutdown sequence after the command was answered, so a delete that fails is logged and reads as reset
+  reason 9 at the next boot (A.8)". (3) "**Bounded by boots …**" paragraph:
   "(owner, 2026-09-24)" → A.U0.37 V52's "(owner, 2026-09-24; the bound — each write once per explicit change or once per
   boot — confirmed by the owner, 2026-09-26)" at `:1994`. (4) Phase C (A.C.17): the power-loss result is recorded in
   F.2's sentence, which this section cites ("A power cut during a write leaves a loadable file: F.2.").
@@ -2258,7 +2262,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   Stage 4 U20 ((1)'s `ConfigFaults` clause and (2)'s delete item, with the generated `/status` block and the
   system-command delete path); phase C ((4) pointer once F.2 has the result).
 - **Depends**: A.U11.19, A.U11.20, A.U11.28, A.C.17, M.SPEC.096; M.SRC_CORE.043/.047 (as the fold amends them);
-  [fold F03 M_GEN] (`ConfigFaults` in `/status`), [fold F03 M_SRC_CORE] (the unread delete and its "Failed").
+  [fold F03 M_GEN] (`ConfigFaults` in `/status`), [fold F03 M_SRC_CORE] (the unread delete; a failed one logged, reset reason 9).
 - **Blast carried by**: CLAUDE.md flash-write rule → A.U36.034 (DOCS, M.DOCS.082, as the fold amends it); CLAUDE.md
   wear rule's fresh-filesystem prerequisite → M.DOCS.086; A.8's `ConfigFaults` and reset text → M.SPEC.021; A.7's
   setup-batch sentence → M.SPEC.020.
@@ -2527,10 +2531,10 @@ Conventions every merged change below applies (stated once, not repeated per cha
   ready, `False` = degraded (already logged by the object); a protocol-layer setup keeps its documented raise for a chip
   that fails identification, which its reader's init catches. A class whose constructor refused persists that code in
   `setup()` and returns `False`." and "**Which classes carry the `initialized` flag**: only those whose product code
-  reads it — the FRAM classes (`FRAMManager`, its one readiness flag with no second "was up" attribute, and the chip
-  driver), the SPI classes, the UART classes and the logging classes — each setting `self.initialized = False` last in
-  `__init__` and `True` in `setup()`; a class where only a test would read it carries none (`SensorReader`,
-  `WebserverService`, `NeopixelDriver`, `NotificationService` among them) (agent, 2026-10-05). Every async `setup()`
+  reads it — the FRAM driver, the SPI driver, the UART protocol module (`UARTComm`) and the logging classes
+  (`asy_print_log.py`) — each setting `self.initialized = False` last in `__init__` and `True` in `setup()`; a class
+  where only a test would read it carries none (`SystemService`, `SensorReader`, `WebserverService`, `NeopixelDriver`,
+  `NotificationService` among them) (agent, 2026-10-05). Every async `setup()`
   returns `bool` — `WifiService` and `WebserverService` override it like the rest. The protocol classes and
   `I2CDevice` build everything in `__init__` and are named exempt in `tests_scripts/test_readiness_gates.py`."; the
   exact class list is the set the landed `src/` reads, checked by that test; closing: "Every class's gate (a call before `setup()` or after a failed one answers as
@@ -2540,11 +2544,11 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `WifiService`/`WebserverService`'s `setup()` return `bool`; AC_NOTES 38/42/44 settle the exempt protocol classes and
   the `NeopixelDriver`/`NotificationService` flags. C.13 names them (gap pass G1). The routine settlement
   initialized-flags (2026-10-05) narrows this: no flag on `SensorReader`, `WebserverService`, `NeopixelDriver`,
-  `NotificationService` (M.SRC_CORE.036/.039, M.SRC_NET.119, M.SRC_SENS.023/.033 as the fold amends them); whether
-  `SystemService` keeps one follows the same test — whether product code reads it — decided at execution, with its
-  reason recorded (A-C review fold).
+  `NotificationService` (M.SRC_CORE.036/.039, M.SRC_NET.119, M.SRC_SENS.023/.033 as the fold amends them), and none on
+  `SystemService` either: product code reads the flag only in the FRAM driver, the SPI driver, `UARTComm` and
+  `asy_print_log.py` (lead ruling, A-C review fold).
 - **Unit**: Stage 1 U10 ((2)); Stage 2 U13 (teardown list in C.7, M.SPEC.058); Stage 3 U14 ((1)); U5 (staged variant goes);
-  the class list lands at U16 with `FRAMManager`'s flag (M.SRC_CORE.092).
+  the class list lands at U16 with the FRAM classes' readiness changes (M.SRC_CORE.092).
 - **Depends**: A.U5.06, A.U10.21, A.U10.22, A.U13.16, A.U14.14, M.SPEC.090, M.SRC_CORE.036, M.SRC_CORE.039,
   M.SRC_CORE.092, M.SRC_NET.119, M.SRC_SENS.023, M.SRC_SENS.033.
 - **Blast carried by**: the fakes → A.U24.21/A.U25.17 (TEST_HELP/TWIN).
@@ -3195,8 +3199,8 @@ it; an unflipped fact keeps the text given here.
 - **Change**: (1) `:3452-3457` → "**Every import is a static `import`/`from … import` statement at module top**
   (agent, 2026-09-09, `3847c71`), AST-scannable without executing code — what lets a build derive a device's module set
   from the closure of real imports. **No code this project writes, generates or vendors into an image imports
-  dynamically**: `src/`, `ext/` and the generated boot, device and website modules have no `__import__`, `importlib`,
-  `exec` or `eval` — no site in any of the six devices' images at the pin — and the import check enforces it per image
+  dynamically**: `src/`, `ext/` and the generated boot, device and website modules have no `__import__` or `importlib`
+  — no site in any of the six devices' images at the pin — and the import check enforces it per image
   (owner, 2026-10-05). Outside the image, these host and test sites load by path or by name and are the only
   exceptions, each with its reason, kept in `tests_scripts/test_import_placement.py`'s `_NAMED_EXCEPTIONS`; the check
   fails on any site not listed, and the owner judges every listed one harmless (owner, 2026-10-05):
@@ -3208,8 +3212,8 @@ it; an unflipped fact keeps the text given here.
   `tests/_digital_twin_construction_scenarios.py`, `tests/_sensortask_scenarios.py` and
   `tests/_webserver_concurrency_scenarios.py` (a device module by its derived name); `tests/test_asy_isl29125_driver.py`
   (`__import__("time")` inside two test statements); `ext/freezefs/ffsextract.py` (vendored, build-time only; its
-  extract mode is never used). Files executed by path — `tests/_coverage_runner.py`, `tests/_threshold_runner.py` and
-  `digital_twin/run_device_script.py` — run a test file or a device script as `__main__` and are listed beside them.
+  extract mode is never used). Executing a file by path (`exec`) is not an import: ruff's S102 and its per-file
+  ignores govern it, not this list.
   **MicroPython's own bundled modules are platform code, never edited**, and carry two sites recorded here as platform
   facts: `extmod/asyncio/__init__.py:29` (v1.29.0), the lazy loader that imports a submodule on first use of `Lock`,
   `Event`, `wait_for`, `gather` or `start_server`, and micropython-lib's `dht.py:14`, frozen by the board manifest and
@@ -3231,17 +3235,18 @@ it; an unflipped fact keeps the text given here.
   rewrite of the device-module loaders through `tests/_generated_module.py` and of the ISL29125 test's `__import__`:
   no loader is rewritten, the HEAD sites are the list, and the ban's scope is the code in an image (A-C review fold).
   (b) A.U10.30 named `tests_hardware/isl29125_conformance.py:35`; M.HW_BENCH.038/.091 move that by-path `exec()` into `digital_twin/run_device_script.py` (GAP-B4) —
-  the end state names the twin runner. (c) A.U25.42 (c) repeats A.U10.30's twin dynamic load — one entry. (d) A.U36.036's
+  an `exec` is not an import, so neither it nor the two `tests/` exec runners is on the list: S102 governs them (lead
+  ruling, A-C review fold). (c) A.U25.42 (c) repeats A.U10.30's twin dynamic load — one entry. (d) A.U36.036's
   "a same-named `.py` earlier on the path wins over a frozen module" (the default path) and A.U20.03's boot entry putting
   `.frozen` first are both true: the first is the interpreter's default, the second the product's boot entry — kept
   adjacent so neither reads as contradicting the other.
 - **Unit**: Stage 1 U0 (A.U0.40 tag; A.U0.07's rule and pending list); Stage 2 U10 (the scope sentence, the named
   list and the two platform sites, with the import check that enforces them, OR142.a); Stage 3 U14
-  ((3)); Stage 4 U20 (A.U20.03 sentence); Stage 5 U25 (A.U25.42 (b); A.U25.58's proof name); Stage 6 U26 (GAP-B4
-  substitution); Stage 7 U36 (A.U36.036 paragraph); Stage 8 U37 ("pending list" goes).
-- **Depends**: A.U0.07, A.U10.30 (its check only; the rewrite dropped), A.U14.10, A.U20.03, A.U25.42, A.U25.58
+  ((3)); Stage 4 U20 (A.U20.03 sentence); Stage 5 U25 (A.U25.42 (b); A.U25.58's proof name); Stage 6 U26 (none
+  left: GAP-B4's exec is S102's, not the list's); Stage 7 U36 (A.U36.036 paragraph); Stage 8 U37 ("pending list" goes).
+- **Depends**: A.U0.07, A.U10.30 (its check only, narrowed to `__import__`/`importlib`; the rewrite dropped), A.U14.10, A.U20.03, A.U25.42, A.U25.58
   (M.TSC.093), A.U28.33, A.U36.036, A.U37.02, M.HW_BENCH.038, M.HW_BENCH.091; [fold F23 M_TSC] (the per-image check
-  failing on an unlisted site).
+  failing on an unlisted `__import__`/`importlib` site).
 - **Blast carried by**: A.9/E.3 `.frozen` pointers → M.SPEC.022/M.SPEC.078; `.gitignore` parenthesis → A.U36.036 (4)
   (M.PROC.019 (6), PROC — `.gitignore` is PROC's, gap pass G1); `pyproject.toml` PLC0415 entries → A.U37.02 (TOOL); the check's exception set → GAP-B4 (TSC); README
   frozen-code sentence → A.U32.02 (DOCS).
@@ -6675,7 +6680,7 @@ C9 (above Part A) fixes the review-answer tag form.
 |---|---|---|
 | F01 | M.SPEC.061 (C.7.3: absent file written once; write list), M.SPEC.096 (F.2 write-path clause), M.SPEC.021 (A.8 reset purpose: each file written once after the reboot), M.SPEC.020 (A.7 setup-batch sentence), M.SPEC.097 (`stall.flash_program` write list) | amended |
 | F02 | M.SPEC.021 (A.8 `HTTPDropped` 24-hour window, `ResetErrors` clears it), M.SPEC.111 (G.2 hourly window counter entry), M.SPEC.121 (H.7 counted in the window), M.SPEC.126 (I.2 row), M.SPEC.113 (values-not-shown tag) | amended |
-| F03 | M.SPEC.061 (C.7.3 `ConfigFaults`; delete unread), M.SPEC.021 (A.8 field; delete unread, failed delete "Failed"), M.SPEC.020 (fixed at the batch end), M.SPEC.113 (Status placement gains the row) | amended |
+| F03 | M.SPEC.061 (C.7.3 `ConfigFaults`; delete unread, a failed delete reads as reset reason 9), M.SPEC.021 (A.8 field; delete unread in the shutdown sequence, a failed delete reset reason 9, never an HTTP "Failed"), M.SPEC.020 (fixed at the batch end), M.SPEC.113 (Status placement gains the row) | amended |
 | F04 | M.SPEC.162 (new B.14.5 tick-offset override), M.SPEC.038 (B.14 count and test-only clause), M.SPEC.082 (E.6.3 rollover round), M.SPEC.092 (F.1 silicon rollover sentence), M.SPEC.150 (build info names the override), M.SPEC.156 (the offset's row) | added (M.SPEC.162), amended |
 | F05 | M.SPEC.036 (B.12: throwaway password, passed plainly, never committed) | amended |
 | F06 | M.SPEC.018 (A.5 console bullet), M.SPEC.097 (`stall.console` guard) | amended |
@@ -6745,7 +6750,7 @@ for it.
 | reset-reason-codes | ask | M.SPEC.119, M.SPEC.021 (4) | explicit (owner, 2026-10-02) |
 | failed-push-no-flash-write | ok | M.SPEC.055 | — |
 | one-entry-per-fault | change | M.SPEC.058 | explicit (owner, 2026-10-02) |
-| led-request-internal-queue | ask | M.SPEC.014, M.SPEC.021, M.SPEC.119 | explicit (agent, 2026-09-29; owner-reviewed, 2026-10-02) + the owner's added clause (owner, 2026-10-02) |
+| led-request-internal-queue | ask | M.SPEC.014, M.SPEC.021, M.SPEC.119 | explicit (owner, 2026-10-02) throughout (lead ruling) |
 | threshold-rewrite-failure | ok | M.SPEC.154 | C9 |
 | pres-offset-warning | ok | M.SPEC.151 (M.4), M.SPEC.059 | C9 |
 | state-code-values | ok | M.SPEC.012, M.SPEC.151, M.SPEC.154 | C9 |

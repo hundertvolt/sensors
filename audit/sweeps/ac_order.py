@@ -1274,7 +1274,7 @@ def render_md(wo, R):
     w("")
     w("No unit runs anything against hardware: every hardware duty is a phase-C round after U37 (C.md), each under the "
       "owner's go-ahead given in that round's own conversation. The table above names, per unit, the rounds whose "
-      "inventory rows (C.md H08-H83) exercise that unit's actions; a unit's changes are proven on silicon only there. "
+      "inventory rows (C.md H08-H89) exercise that unit's actions; a unit's changes are proven on silicon only there. "
       "Grouped into as few owner-approved sessions as the rounds' own dependencies allow:")
     w("")
     w("1. **Session 1 — R0, R1, R2, R3, R5, R6, R4** in one conversation: R0 needs no board; R1's clean default run is "

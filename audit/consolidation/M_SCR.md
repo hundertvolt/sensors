@@ -398,14 +398,17 @@ Conventions used below (each defined once, then cited):
   rule; no import from `tests_hardware/`); `exit_reason(code) -> str` naming 3 reset, 4 bootloader, 5 power loss and `-N` "killed by signal <name>"
   (A.U25.64); `http(method, port, path, body=None, timeout_s=…) -> tuple[int, JSONValue]`; errcount readers
   `errcount_entries(status) -> list[ErrcountEntry]`; `parse_shutdown_line(log)` for `… shutdown:
-  would_have_triggered_count=<n> feed_count=<n> mem_backup: r0=<4 words> public_destinations_refused=<n>` and
+  would_have_triggered_count=<n> feed_count=<n> mem_backup: r0=<4 words> public_destinations_refused=<n>`, plus the
+  `uart=<instance>:transfers=<n>,failures=<n>,overruns=<n>;…` field M.TWIN.171 adds (A-C review fold; one dict per
+  instance, required when the wiring plan declares a `uart_link`), and
   `parse_machine_reset_line(log)`; no normal-boot tolerance list: with the local NTP responder a normal boot logs no
   E or W entry at all (OR140.a (13)). Types: `JSONValue`,
   `JSONObject`, `ErrcountEntry` (TypedDict); no `Any`.
 - **Resolved**: A.U27.01's `_TwinRun` and A.U25.46's move land as one shape here (A.U27.01's Depends names this merge).
 - **Unit**: U27 (stages: U25 moves the helpers with A.U25.46 and passes the NTP responder once the twin has it, U27
   adds `TwinRun` fail-closed and types).
-- **Depends**: M.SCR.009, M.SCR.013; M.TWIN.051 (flags); [fold F16 M_TWIN] (the twin's local NTP responder, U25).
+- **Depends**: M.SCR.009, M.SCR.013; M.TWIN.051 (flags); [fold F16 M_TWIN] (the twin's local NTP responder, U25);
+  M.TWIN.171 (the `uart=` field, U25).
 - **Blast carried by**: users M.SCR.046-.060 (suite), M.SCR.017/.018 (harness); `tests_scripts/test_digital_twin_generated_boot.py`
   checks a normal boot with no tolerance → M.TSC.086 (amended); `tests_scripts/test_memory_error_gate_agreement.py`
   counts this module as the twin gate's site → A.U27.01 (TSC); L0 `tests_scripts/test_digital_twin_ci_suite_*.py` move
@@ -465,7 +468,8 @@ Conventions used below (each defined once, then cited):
   A.S0930.27 (2)/(4) and A.S0930.38 (3)/(4) (command states, hang per step); gap pass (GAPS_G3 hand-off 3, Table B
   B21): A.U19.07, A.U19.08/.10, A.U19.12 (their L2 cases, whose in-DUT carrier was retired), A.U35.28 (h)'s read of the
   per-logger `fram_writes_by=` field (2 × rate × window per logger; sum ≤ `fram_writes=`; `fram_writes_unattributed` > 0
-  fails) (lead ruling; M.TWIN.011/.050 as G3 amends them).
+  fails) (lead ruling; M.TWIN.011/.050 as G3 amends them); OR141.a (4) (g), OR143.a (4) (A-C review fold: (m), the host
+  side of M.TWIN.170/.171's concurrent-load scenario).
 - **Site**: `scripts/_digital_twin_scenarios.py` (the registry).
 - **Change**: the registry holds, each with its source goal and assertions kept (OR19.a (4)): (a) the 22
   webserver-concurrency helpers/scenarios of `tests/_webserver_concurrency_scenarios.py` rewritten host-side
@@ -514,16 +518,28 @@ Conventions used below (each defined once, then cited):
   bins (OR137.a) and a scenario's twin has run far less than 23 hours, so no bin ages out between the reads); `isl29125_config_put_during_get_loops` (A.U19.12,
   `drivers=("isl29125",)`: `GET /sensors` loops on three connections while one `PUT /sensors` changes the ISL29125
   `Resolution`; every GET's ISL29125 block equals either the before or the after configuration, never a mix, and the
-  PUT answers `Valid`).
+  PUT answers `Valid`). (m) The UART DMA ring under concurrent load (A-C review fold, OR141.a (4) (g), OR143.a (4); the
+  host side of M.TWIN.170/.171): `uart_ring_under_concurrent_load`, run on every device whose wiring plan declares a
+  `uart_link` pair (a device without one skips by name), launched twice — the twin's flash-write stall at its typical
+  and at its maximum times (M.TWIN.170's runner flag) — at the harness's GC stage (the suite runs it at both); for the
+  scenario's window the harness drives, concurrently: the webserver hammer (the ceiling-filling readers of (i)), config
+  PUTs at a steady rate that each change a stored value (each a flash write, so each a stall), and a sustained
+  FRAM-log fault through `--fault` (persisted writes), while both link instances exercise (the twin's exerciser,
+  including its maximum-size and over-cap trains as M.TWIN.171 provides them); the verdict reads the shutdown line's
+  `uart=` field (M.TWIN.171) and `/status`: no link failure and no overrun for every stall within the ring's bound,
+  each over-cap train refused and logged exactly once, every config PUT answered, zero `MemoryError` and `memory
+  allocation failed` in the run log (the twin gate), the largest free block at the end not below the boot-contiguity
+  bound (read from `tests_scripts/test_digital_twin_boot_contiguity.py` by `ast`).
 - **Resolved**: A.U22.03's `:377` comment edit dropped — A.U22.03 withdrawn (AC_NOTES 37). The in-process halves of
   A.S0930.27 (3)/(4)/(5) and A.S0930.38 (5) (wire-time knob, late-feed backstop, power loss) are TWIN's (M.TWIN.104) — no
   runner flag sets `wire_time_us_per_byte`, settled by M.TWIN.051's flag list.
 - **Unit**: U35 (stages: U25 (a)-(e) and (l) with A.U25.46/.74 — (l)'s product side lands in U19, before the harness
-  exists; U31 (j); U35 (f)-(i); S0930's (k) lands with A.S0930.27/.38 after U25 — each scenario lands in the unit of its
-  constituent).
+  exists; U25 (m) with M.TWIN.170/.171; U31 (j); U35 (f)-(i); S0930's (k) lands with A.S0930.27/.38 after U25 — each
+  scenario lands in the unit of its constituent).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.27 in U25, A.S0930.38 in U25.
 - **Depends**: M.SCR.017; M.TWIN.051/.104/.136/.144; M.TWIN.050 (`fram_writes=` and `fram_writes_by=` on the shutdown
-  line, G3's gap-pass amendment); A.U19.20 (route reference), A.U24.70 (band).
+  line, G3's gap-pass amendment); A.U19.20 (route reference), A.U24.70 (band); M.TWIN.170, M.TWIN.171 ((m): the stall,
+  the DUT side and the `uart=` field), M.SCR.016 (its `uart=` parse).
 - **Blast carried by**: the deleted in-DUT files → M.TEST_HELP.033, M.TWIN.136, M.TWIN.144 (TEST_HELP, TWIN); Part N rows
   for the harness's tags → A.U8.02/A.U8C (SPEC); `audit/b3/load.md` entries → A.U35.28/.29 (procedure); SPEC H.7.1/C.8
   citers repoint → A.U36.532/A.U36.544 (SPEC).
@@ -2492,7 +2508,7 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F22 | — | none in this file |
 | F23 | — | none in this file |
 | F24 | — | none in this file |
-| F25 | — | none in this file (the U25 concurrent-load and flash-stall tests are the twin's, M_TWIN/M_TEST_UNIT) |
+| F25 | M.SCR.018, M.SCR.016 | amended (lead ruling: (m) the host-side driver of M.TWIN.170/.171's concurrent-load scenario, U25; the shutdown line's `uart=` parse) |
 | F26 | M.SCR.066, M.SCR.067 | amended (the build date is a build input; real builds stamp UTC) |
 | F27 | — | none in this file |
 | F28 | — | none in this file |
