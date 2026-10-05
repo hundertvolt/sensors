@@ -419,19 +419,6 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
           sub.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
         });
       } else list.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
-      if (w.key !== "significant") {
-        var all = el("button", { cls: "btn secondary", type: "button", text: "Mark all unanswered " + w.key + " items fine" });
-        all.addEventListener("click", async function () {
-          all.disabled = true;
-          for (var i = 0; i < list.length; i++) {
-            if (answers[list[i].id]) continue;
-            await writeAnswer(list[i].id, { status: "ok", note: "", at: new Date().toISOString(), batch: true });
-          }
-          cards.forEach(function (c) { c._paint(); });
-          all.disabled = false;
-        });
-        head.appendChild(all);
-      }
       if (w.key === "routine") {
         var det = el("details", {}, [el("summary", { cls: "expand-hint", text: "Show the routine items, grouped by area" }), holder]);
         wrap.appendChild(det);
