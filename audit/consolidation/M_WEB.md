@@ -37,10 +37,14 @@ every B1 action (AC_NOTES 34-second).
   non-object, a missing or extra member, or a value outside its schema → "Invalid", a busy LED → "Failed"
   (M.SRC_NET.122); `PauseTime` 0-3600 int, out of range "Invalid" (M.SRC_NET.122).
 - **Options and labels** (M.GEN.015): `SystemCmd` options `reboot`, `bootloader`, `mempause` ("Pause backups for 5
-  minutes"), `resetconfig` "Reset to defaults", `erasefram` "Erase FRAM"; no confirmation key (OR121.a (2), OR122).
-- **`/status` keys** (M.GEN.008/.014): networking `IP`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`, `NTPSynced`,
-  `NTPLastSyncAge`, `NTPLastSync` (epoch), `HTTPDropped`, `WifiTS` (epoch), `Connected`, `Mode`, `WifiUptime`; system
-  `SysUptime`, `BootSignature`, `ResetReason` (codes 0-10, 20; M.SRC_CORE `_RR_*`: 1 power-on, 7 config reset, 8 FRAM
+  minutes"), `resetconfig` "Reset to defaults", `erasefram` "Erase FRAM"; the `SystemCmd` and `ResetErrors` fields carry
+  `"confirm": true` — the page asks before it sends either, the API stays one command per request (OR140.a (3), A-C
+  review fold; M.GEN.015).
+- **`/status` keys** (M.GEN.008/.014): networking `IPv4` (no `IP`: routine settlement "status-ip-and-ipv4", A-C
+  review fold), `Subnet`, `Gateway`, `DNS`, `RSSI`, `NTPSynced`,
+  `NTPLastSyncAge`, `NTPLastSync` (epoch), `HTTPDropped` (the last 24 hours, hourly resolution), `WifiTS` (epoch),
+  `Connected`, `Mode`, `WifiUptime`; system `SysUptime`, `BootSignature`, `ConfigFaults` (a list of module names, empty
+  when none; A-C review fold), `ResetReason` (codes 0-10, 20; M.SRC_CORE `_RR_*`: 1 power-on, 7 config reset, 8 FRAM
   erased), `MemFree`, `MemPaused`, `LastTaskEnd` (`null` or `{"Task": "<logger>.<starter>", "Uptime": <s>}`),
   `LocalTime`, `UTCTime` (`null` until NTP sync), `UnixTime` (`null` until NTP sync); time structs keyed `Year`,
   `Month`, `MDay`, `Hour`, `Minute`, `Second`, `Weekday`, `Yearday`; maintenance `sensors.<INSTANCE>.<Field>`; a guarded
@@ -170,7 +174,8 @@ every B1 action (AC_NOTES 34-second).
   (`codeTones`), A.U6.28 (2) (`byteLength`), A.U6.29 (3)/A.U6.30/A.U10.41/A.U18.10 (`shape` values), A.U23.17
   (`clearable`), A.U23.18 (`statusPath`), A.U23.23 (`ignoredWhenSet`), A.U23.49 (`resolution`), A.U23.16
   (`defaultValue` goes), A.U6.06 (`MockSamples` typedef), A.U10.40 (read: typedefs name no renamed key), M_SRC_SENS GAP-12
-  (`defaultValue` also on `Calibrate`; goes with the grammar key).
+  (`defaultValue` also on `Calibrate`; goes with the grammar key); OR140.a (3) (`confirm`), (16) (`defaultDecimals`)
+  (A-C review fold).
 - **Site**: `js/definitions.js:1-56` (header typedef block, the four inline comments).
 - **Change**: header prose `:2-4` unchanged. Typedefs: `SpecialValue` → `{value: number|string|null, meaning:
   string}`; `FieldDef` → `{key, label, unit?, kind: "readonly"|"number"|"string"|"enum"|"toggle"|"composite",
@@ -178,7 +183,8 @@ every B1 action (AC_NOTES 34-second).
   format?: "gmtimestruct"|"epoch"|"lasttaskend", float?, resolution?: number, dispatch?: boolean, alwaysExecuted?:
   boolean, path?: string[], statusPath?: string[], decimals?, byteLength?: boolean, shape?:
   "hostLabel"|"countryCode"|"hostName"|"ipv4List", clearable?: boolean, ignoredWhenSet?: string, codes?: Record<string,
-  string>, codeTones?: Record<string, "good"|"neutral"|"warn">}` (no `defaultValue`); `ErrcountGroup` gains `codes?: {E:
+  string>, codeTones?: Record<string, "good"|"neutral"|"warn">, confirm?: boolean}` (no `defaultValue`); `SiteDefinitions`
+  gains `defaultDecimals?: number` (the page's decimals for a non-integer number whose field carries none, M.GEN.018); `ErrcountGroup` gains `codes?: {E:
   Record<string, string>, W: Record<string, string>}`; `MockDeviceData` unchanged in shape; new `MockSamples` =
   `{measurements: Record<string, Record<string, unknown>>, sensorsConfig: Record<string, Record<string, unknown>>,
   networkingConfig: Record<string, unknown>, systemConfig: Record<string, unknown>, notificationConfig: Record<string,
@@ -195,7 +201,7 @@ every B1 action (AC_NOTES 34-second).
   ("the `format` union in `js/definitions.js:13`").
 - **Unit**: U32 (A.U32.06 latest). Stages: U6 (A.U6.06/.17/.19/.20/.27/.28/.29/.30), U18 (`hostName`/`ipv4List` with
   A.U10.41's PUT check landing in U18, M.SRC_NET.045, and A.U18.10), U23 (A.U23.16/.17/.18/.20/.23/.49), U32
-  (`lasttaskend`).
+  (`lasttaskend`); U23 also `confirm` and `defaultDecimals` (A-C review fold).
 - **Depends**: M.GEN.046/.017 (the generator emits these keys).
 - **Blast carried by**: every consumer of the types (`tsc` both passes, M.WEB.073); `tests_scripts/test_definitions_js_mirrors.py`
   and the shape corpus (A.U6.16, TSC); SPEC H.5 FieldDef list (A.U36.515, SPEC).
@@ -234,7 +240,7 @@ every B1 action (AC_NOTES 34-second).
   the ceiling), A.U23.09 (upper bound on both poll intervals), A.U6.16 (3) (`decimals` via `MAX_DECIMALS`), A.U6.19 (4)
   (`format`), A.U6.27 (3) (`codes` blocks), A.U23.20 (`codeTones`), A.U6.28 (2) (`byteLength`), A.U6.29 (3)/A.U6.30
   (`shape`), A.U23.17 (`clearable`), A.U23.18 (`statusPath`), A.U23.23 (`ignoredWhenSet`), A.U23.49 (`resolution`),
-  A.U5.18 (ceiling pinned), A.U6.08 (read: every device's generated definitions must pass).
+  A.U5.18 (ceiling pinned), A.U6.08 (read: every device's generated definitions must pass); OR140.a (3), (16) (A-C review fold).
 - **Site**: `js/definitions.js:96-219` `validateDefinitions()`, `validateFieldHints()`.
 - **Change**: `export function validateDefinitions(data)` keeps the top-level checks (`schemaVersion` semver + major,
   `device.id`, `landingSection` string, `sections` non-empty array, `landingSection` matches a key) and gains: every poll
@@ -256,20 +262,21 @@ every B1 action (AC_NOTES 34-second).
   `byteLength`/`clearable` booleans on a `string` field, `shape` ∈ {`hostLabel`, `countryCode`, `hostName`, `ipv4List`}
   on a `string` field, `statusPath` a non-empty array of non-empty strings on a `readonly` or `number` field,
   `ignoredWhenSet` a string naming another field of the same group, `resolution` a positive finite number on a `number`
-  field, `alwaysExecuted` a boolean. Each message names its `where` path. No function exceeds the ESLint `complexity`
+  field, `alwaysExecuted` a boolean, `confirm` a boolean on an `enum` or `toggle` field; at the top level
+  `defaultDecimals`, when present, an integer `0..MAX_DECIMALS`. Each message names its `where` path. No function exceeds the ESLint `complexity`
   ceiling (M.WEB.070).
 - **Resolved**: A.U23.10 lists the U23 hint keys and A.U6.27-.30 the U6 ones in the same `validateFieldHints()` — one
   function holds them; A.U10.41/A.U18.10 add `hostName`/`ipv4List` to A.U6.29's mechanism (no separate validator change
   named; the value set follows the tags, M.SRC_NET.043).
 - **Unit**: U32 (`lasttaskend` joins the `format` set, A.U32.06). Stages: U6 (A.U6.16/.19/.27/.28/.29/.30), U18
-  (`hostName`, `ipv4List`), U23 (A.U23.09/.10/.17/.18/.20/.23/.49 and the split).
+  (`hostName`, `ipv4List`), U23 (A.U23.09/.10/.17/.18/.20/.23/.49 and the split; `confirm`, `defaultDecimals`, A-C review fold).
 - **Depends**: M.WEB.004, M.WEB.005; A.U6.16's shared corpus file (TSC).
 - **Blast carried by**: `loadDefinitions()` (M.WEB.007); every device's generated definitions pass (A.U6.08,
   M.WEB.056); `tests_js/definitions.test.js` (M.WEB.053); `tests_js/definitions-shape-corpus.test.js` and
   `tests_scripts/definitions_shape_cases.json` gain one case per rejection (A.U6.16/A.U23.10, M.WEB.055 and TSC);
   `_shape_problems()` mirror (A.U6.16/A.U23.09/.10, TSC); `js/templates.js:158` "number or string" fallthrough sees no
   unknown kind (M.WEB.014); SPEC H.4 "Definitions validation" row (A.U36.510 (2), SPEC); complexity ceiling
-  (M.WEB.070).
+  (M.WEB.070); the Python shape mirror accepts the two keys → [fold F07 M_TSC].
 - **Kind**: code
 
 ### M.WEB.007 Definitions load through the queue
@@ -293,14 +300,15 @@ every B1 action (AC_NOTES 34-second).
 - **From**: A.U23.21 (epoch ages, special-value text, `context.deviceNowS`), A.U23.24 (`GMTIME_KEYS`, "invalid time
   value"), A.U32.06 (`lasttaskend` handler), A.U6.19 (read: until U23 `epoch` falls through to `String(value)`), A.U6.13
   and A.U36.544 (1) (the `:27` comment), A.U10.06 (read: `TS` `null` before NTP sync renders "—"), A.U10.40 (time-struct
-  keys), A.U23.22 (read: `UnixTime` has no `format`), A.U23.32 (read: the live matrix stops importing this module).
+  keys), A.U23.22 (read: `UnixTime` has no `format`), A.U23.32 (read: the live matrix stops importing this module); OR140.a (16) (the site default), OR138.a (1)
+  (`ConfigFaults`, a list) (A-C review fold).
 - **Site**: `js/field-format.js:1-40`.
 - **Change**: header → "Pure field-value formatting with no DOM dependency: templates.js puts its text into the page.
   / See SPECIFICATION.md Part H.8.1." (2 lines; the Node-harness reason goes, below). `:5-7` comment → "// A narrow
   local shape: the formatter reads only these members; a real FieldDef satisfies it structurally." and the typedef
   gains `specialValues?: {value: unknown, meaning: string}[]`. `import { GMTIME_KEYS } from "./api-contract.js";`.
   `export function formatFieldValue(field, value, context = { deviceNowS: null })` with `@param {{deviceNowS: number |
-  null}} [context]`, in this order: (1) `field.format === "epoch"` and `(field.specialValues ?? []).find((s) => s.value
+  null, defaultDecimals?: number}} [context]`, in this order: (1) `field.format === "epoch"` and `(field.specialValues ?? []).find((s) => s.value
   === value)` → that special's `meaning` (so `null` → "None since boot" and the shared no-timestamp value → "No
   timestamp", A.U6.20/A.U15.18); (2) `undefined`/`null` → "—"; (3) `mask` → eight "•"; (4) `enum` → option label or
   `String(value)`; (5) `gmtimestruct` → when `value` is a non-null object and each `GMTIME_KEYS` member is a finite
@@ -310,15 +318,18 @@ every B1 action (AC_NOTES 34-second).
   ${Uptime} s` ``, else "invalid value"; (7) `epoch` → a non-number passes to (9); `context.deviceNowS === null` →
   "age unknown"; `age = deviceNowS - value`; `age < -5` → "clock mismatch"; else with `a = Math.max(age, 0)`: `a < 120`
   → `` `${a} s ago` ``, `a < 7200` → `` `${Math.floor(a / 60)} min ago` ``, `a < 172800` → `` `${Math.floor(a / 3600)} h
-  ago` ``, else `` `${Math.floor(a / 86400)} d ago` ``; (8) `decimals` (unchanged, its 3-line comment kept); (9)
-  `String(value)`.
+  ago` ``, else `` `${Math.floor(a / 86400)} d ago` ``; (8) `decimals` (unchanged, its 3-line comment kept); (8a) a
+  finite non-integer number with no field `decimals` → `value.toFixed(context.defaultDecimals)` when the context carries
+  it (the site default from the definitions: 2-3 decimals on the page, full resolution in the API, owner, 2026-10-02);
+  (8b) an array → its items joined with ", ", an empty one "none" (`ConfigFaults`); (9) `String(value)`.
 - **Resolved**: A.U6.13 (`sensortask_<device>` wording) and A.U36.544 (1) ("the function's current home, grep in
   `src/`") rewrite the same comment; the function is emitted by `buildgen/codegen.py` (M.GEN.008), not in `src/` —
   that home is named. The header's "so a Node-context test harness can reuse it" is no longer true once A.U23.32 moves
   `_live_matrix_command.js` and the live matrix test to the independent `_expected_display.js` (adherence: comments
   state the current state, CLAUDE.md). The `lasttaskend` display text is not worded by A.U32.06 ("in the existing
   style") — agent decision D2.
-- **Unit**: U32 (A.U32.06). Stages: U6 (A.U6.13 comment — superseded by this text at U23), U23 (everything but (6)).
+- **Unit**: U32 (A.U32.06). Stages: U6 (A.U6.13 comment — superseded by this text at U23), U23 (everything but (6); (8a)
+  and (8b) with M.GEN.018 and the `ConfigFaults` row, A-C review fold).
 - **Depends**: M.WEB.001; M.GEN.014 (`format` values, specials in the definitions).
 - **Blast carried by**: callers `js/templates.js` (M.WEB.014/.015, passes `context`); `tests_js/templates.test.js`
   formatter cases (M.WEB.058); SPEC H.2 module list and H.8.1 (the Node-reuse reason goes; Gaps item 4); SPEC H.4
@@ -349,7 +360,7 @@ every B1 action (AC_NOTES 34-second).
   button, `CalLight` tone text), A.U23.21 (`title` instant, context), A.U23.11 (unavailable text), A.U23.37 (`buildField`
   private), A.U23.36 (read: masked input starts empty — holds), A.U6.28 (4) (byte hint), A.U6.29 (3) (host-label hint),
   A.U6.30 (read: the Country hint is its tag description), A.U23.49 (resolution hint), A.U6.20/A.U23.21 (specials shown
-  as text in place), M_SRC_SENS GAP-12 (`Calibrate` dispatch toggle with no GET value).
+  as text in place), M_SRC_SENS GAP-12 (`Calibrate` dispatch toggle with no GET value); OR140.a (8) (reset-reason codes clickable (A-C review fold)).
 - **Site**: `js/templates.js:18-174` (`buildFieldDescription()`, `buildField()`).
 - **Change**: `buildFieldDescription(field)` joins with " · ", in this order: number range (unchanged text); string
   length "Length: <min> to <max> characters" plus ", at most <max> bytes (UTF-8)" when `field.byteLength`; "Resolution:
@@ -384,7 +395,9 @@ every B1 action (AC_NOTES 34-second).
   OR94 keeps the look, so `Calibrate` (and `ResetVOC`) render Off with no `defaultValue` (settled by A.U23.14/.15,
   OR94). Specials in the hint for number fields only: an epoch readonly field shows its special's meaning in place
   (A.U23.21) and a "null = …" hint would add text the page never showed (OR94 "don't change the current look"; agent
-  decision D4). The code-value button's look is CSS's (M.GEN.062).
+  decision D4). The code-value button's look is CSS's (M.GEN.062). OR140.a (8) (owner, 2026-10-02): the reset-reason numbers are
+  clickable like errno/wrnno — `ResetReason` carries `codes` and no `codeTones` (M.GEN.014/.034), so it renders as
+  this code-value button with its description; no further code (A-C review fold).
 - **Unit**: U23. Stage U6: the byte and host-label hint parts (A.U6.28/.29).
 - **Depends**: M.WEB.012; M.GEN.062 (CSS for `.code-description`, `[data-code-tone]`, `.field-warning`; the
   `.field-value.code-value` button reset and the muted `.code-number` are Gaps item 5).
@@ -393,14 +406,15 @@ every B1 action (AC_NOTES 34-second).
 - **Kind**: code
 
 ### M.WEB.015 Cards build once, update in place, and reset after Apply
-- **From**: A.U23.08 (`updateFieldGroupValues()`), A.U23.15 (`resetControl()`), A.U23.40 (`groupIndex`), A.U23.21
+- **From**: OR140.a (16) (the display context carries `defaultDecimals` to `formatFieldValue()` (A-C review fold)), A.U23.08
+  (`updateFieldGroupValues()`), A.U23.15 (`resetControl()`), A.U23.40 (`groupIndex`), A.U23.21
   (context through the update functions), A.U23.11 (unavailable), A.U23.23 (sibling label), A.U6.18 (read:
   `submitLabel` rendered at `:201` — holds), A.U23.16 (reset to unset).
 - **Site**: `js/templates.js:176-209` `buildFieldGroupCard()`; new functions after it.
 - **Change**: `export function buildFieldGroupCard(group, currentValues, groupIndex, display)` — `display`:
-  `{deviceNowS: number | null, isUnavailable: (field: FieldDef) => boolean}`; each field built by `buildField(field,
+  `{deviceNowS: number | null, defaultDecimals?: number, isUnavailable: (field: FieldDef) => boolean}`; each field built by `buildField(field,
   resolveFieldValue(field, currentValues), Boolean(group.submit), \`field-${groupIndex}-${fieldIndex}\`, {deviceNowS,
-  unavailable: display.isUnavailable(field), siblingLabel})`, `siblingLabel` = the label of the group field whose key
+  defaultDecimals: display.defaultDecimals, unavailable: display.isUnavailable(field), siblingLabel})`, `siblingLabel` = the label of the group field whose key
   is `field.ignoredWhenSet`; the Apply button/result pair as today. New `export function updateFieldGroupValues(card,
   group, currentValues, display)` (JSDoc ≤ 3 lines: "Refreshes a built card in place from new values: every readonly
   value, and every number/string caption and placeholder; a toggle or select changes only by the user or by
@@ -535,7 +549,7 @@ every B1 action (AC_NOTES 34-second).
   (clock passed to the templates), A.U23.40 (`groupIndex`, `CSS.escape`), A.U23.42 (banner through
   `showBanner()`/`hideBanner()`; the `.hidden` reads go), A.U35.46 (read: `startPolling()`'s only caller), A.U8.18 (read:
   the interval `section.pollIntervalMs ?? defs.defaultPollIntervalMs`), A.U6.24 (read: `path` on the System section
-  resolves against the whole body).
+  resolves against the whole body); OR140.a (16) (`defaultDecimals` in the display context) (A-C review fold).
 - **Site**: `js/render.js:280-417` (`renderSection()`, `paint()`, `fetchOnce()`, `groupValuesFrom()`).
 - **Change**: `export function renderSection(defs, section, mainEl, context = {})` — `@param {{visibility?: Visibility,
   deviceClock?: DeviceClock, onRecovered?: () => void, applyTracker?: {begin: () => void, end: () => void}}} [context]`
@@ -558,7 +572,7 @@ every B1 action (AC_NOTES 34-second).
   controller and stops the loop. `paint(data, statusBody)` per `[groupIndex, group]`: an errcount group reads
   `statusBody.errcount` (an object, else `null`) and calls `updateErrcountGroup()` on its existing card or appends
   `buildErrcountGroup()`; a field group computes `values = groupValuesFrom(section, group, data, statusBody)` and
-  `display = {deviceNowS: context.deviceClock?.nowS() ?? null, isUnavailable}` where `isUnavailable(field)` is true when
+  `display = {deviceNowS: context.deviceClock?.nowS() ?? null, defaultDecimals: defs.defaultDecimals, isUnavailable}` where `isUnavailable(field)` is true when
   the group's source object is `isUnavailable()` or the walk of `field.path` (or of `field.statusPath` over the status
   body) meets an unavailable object before its leaf; an existing card (found with `CSS.escape(group.key)`) gets
   `baselines.set(card, values)` and `updateFieldGroupValues(card, group, values, display)`, a new one is built by
@@ -590,7 +604,8 @@ every B1 action (AC_NOTES 34-second).
   A.U23.06 (pending-Apply count), A.U23.40 (`groupIndex`), A.U0.53 + A.U23.45 (`:264-266` comment), A.U24.48 (`:262`
   disable reason), A.U36.544 (4) (`:225` pointer), A.U23.30 (read: the `:216-218` JSON-number fact), A.S0930.10 (read:
   the two new `SystemCmd` options need no code — the dropdown renders definitions' options and Apply sends the value),
-  M_SRC_CORE GAP-G13 (read: `coerce_numeric()` no longer exists).
+  M_SRC_CORE GAP-G13 (read: `coerce_numeric()` no longer exists); OR140.a (3) (confirmation before every system command
+  and the error-history clear (A-C review fold)).
 - **Site**: `js/render.js:179-278` `buildAndWireFieldGroup()`.
 - **Change**: `function buildAndWireFieldGroup(group, groupIndex, section, values, ctx)` — `ctx` = `{baselines,
   display, refreshAfterApply, isStopped, applyTracker}`: builds `buildFieldGroupCard(group, values, groupIndex, display)`,
@@ -613,8 +628,11 @@ every B1 action (AC_NOTES 34-second).
   resolveFieldValue(field, baselines.get(card)))`; the warnings are re-evaluated; `finally` → `button.disabled = false`,
   `applyTracker?.end()`. The optimistic `currentValues[key] = value` block (`:247-254`) goes. Apply click: `body =
   collectGroupBody(card, group, baselines.get(card))`; empty → "Nothing to submit - no fields were changed." (today's text;
-  the `:203-205` comment → "// Nothing changed: skip the round trip rather than PUT an empty body."); else `await
-  send(body)`. Clear: for each `[data-clear-for]` button of the card, a click → `if (!window.confirm(\`Clear
+  the `:203-205` comment → "// Nothing changed: skip the round trip rather than PUT an empty body."); else, for every
+  key of `body` whose field carries `confirm: true` (definitions-driven, never a key list), `window.confirm(\`${what}?\`)`
+  first — `what` the chosen option's label for an enum ("Reset to defaults?", "Reboot?"), the group's `submitLabel` for
+  a toggle ("Reset All Errors?") — and a declined one sends nothing (the controls stay as set; the API stays one command
+  per request, owner, 2026-10-02); then `await send(body)`. Clear: for each `[data-clear-for]` button of the card, a click → `if (!window.confirm(\`Clear
   ${field.label}?\`)) return;` → `await send({[field.key]: ""})` (never merged with the card's body). Warning: for each
   field with `ignoredWhenSet`, an `input` listener on the field's and the sibling's controls sets the warning's
   `dataset.shown` to `"true"` exactly when the field's input is non-empty and the sibling's effective value — its typed
@@ -624,9 +642,11 @@ every B1 action (AC_NOTES 34-second).
   Part H.4)" — the later text stands, its provenance moves to H.4's divergence row (A.U23.45). A.U24.48's `-- <reason>`
   makes the `:260-261` comment a duplicate, so the reason lives once, in the disable comment. GAP-G13's rename makes
   `coerce_numeric()` a stale name (adherence: a comment names the current fact). OR121/OR122: the two new commands use
-  the existing dropdown and Apply with no dialog — `window.confirm` is reached only by the DNS fallback Clear (A.U23.17,
-  owner OR56.a (2)); A.S0930.20 (5) pins both facts.
-- **Unit**: U24 (A.U24.48's reason). Stages: U0 (A.U0.53's relabel — superseded at U23), U23 (everything else).
+  the existing dropdown and Apply; OR140.a (3) (owner, 2026-10-02, the most recent) adds the browser's confirmation
+  before every system command and before clearing the error history, beside the DNS fallback Clear's (A.U23.17, owner
+  OR56.a (2)) — A.S0930.20 (5)'s zero-dialog pin inverts (M.WEB.054; A-C review fold).
+- **Unit**: U24 (A.U24.48's reason). Stages: U0 (A.U0.53's relabel — superseded at U23), U23 (everything else, the
+  `confirm` dialogs with M.GEN.015's flags).
 - **Depends**: M.WEB.015, M.WEB.018, M.WEB.019, M.WEB.020; A.U24.48's plugin (M.WEB.070/.071).
 - **Blast carried by**: `tests_js/render.test.js` (M.WEB.054); live matrix commands read state after the refresh
   (M.WEB.061); SPEC H.4 "After Apply", "Known accepted gap", legacy-divergence row (A.U23.15/.17/.45 Docs, SPEC).
@@ -655,7 +675,7 @@ every B1 action (AC_NOTES 34-second).
 - **From**: A.U23.07 (shell, `startShell()`, stop handle, `selectSection()` once), A.U23.06 (device clock, build
   watch, reload after pending Applies), A.U23.04 (visibility built once by the entry), A.U35.46 (2) (`selectSection()`'s
   narrowing comment, now here), A.U23.41 (read: non-entry modules never query `document`), OR36.a (1) (no test-only
-  seam).
+  seam); OR140.a (15) and the owner's `website-accessibility` note (the Back button walks the sections (A-C review fold)).
 - **Site**: new `js/shell.js`.
 - **Change**: header (3 lines) "The page shell both entries share: the nav, section switching, the device watch and
   one stop handle. / Takes every document-derived input from its entry (SPECIFICATION.md Part H.2, H.3)." Imports
@@ -665,12 +685,18 @@ every B1 action (AC_NOTES 34-second).
   web.device_watch_interval_ms = 60000` / `const DEVICE_WATCH_INTERVAL_MS = 60000;`. `export function visibilityOf(doc)`
   → `{isHidden: () => doc.visibilityState === "hidden", onChange: (cb) => { doc.addEventListener("visibilitychange",
   cb); return () => doc.removeEventListener("visibilitychange", cb); }}` (`@param {Document} doc`, `@returns
-  {Visibility}`). `export function startShell({defs, elements, keyTarget, visibility, reload})` (`elements` =
+  {Visibility}`). `export function historyOf(win)` → `{current: () => <the section key in win.location.hash, "#<key>", or null>,
+  push: (key) => win.history.pushState({section: key}, "", "#" + key), onPop: (cb) => { listener on "popstate" calling
+  cb(current()); returns its removal }}` (`@param {Window} win`); `export function startShell({defs, elements,
+  keyTarget, visibility, history, reload})` (`elements` =
   `{appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl}`, `keyTarget: EventTarget`, `reload: () => void`; `@returns
   {() => void}`): the clock — `offsetS = null`; `observe(body)` sets `offsetS = UnixTime - Date.now() / 1000` when
   `body.system.UnixTime` is a number; `nowS()` → `null` before that, else `Math.floor(Date.now() / 1000 + offsetS)`; the
   Apply count — `applyTracker.begin()` increments, `end()` decrements and calls `reload()` when a reload is pending and the
-  count is 0; `nav = initNav({...elements minus mainEl, defs, keyTarget, onSelect: selectSection})`; `selectSection(key)`
+  count is 0; `nav = initNav({...elements minus mainEl, defs, keyTarget, onSelect: (key) => selectSection(key, {push: true})})`;
+  a menu selection of another section pushes one history entry (`history.push(key)`), and `history.onPop` selects the
+  popped section without pushing, so the browser's Back and Forward walk the sections opened from the menu (owner,
+  2026-10-02); `selectSection(key)`
   finds the section (`if (section === undefined) { return; // unreachable - narrows the type for tsc: keys come from
   defs.sections }`), stops the current one, `nav.setCurrent(key)`, `stopSection = renderSection(defs, section,
   elements.mainEl, {visibility, deviceClock, onRecovered: watchOnce, applyTracker})`; `watchOnce()` — `GET /status`
@@ -678,14 +704,15 @@ every B1 action (AC_NOTES 34-second).
   `JSON.stringify()` is compared with the first one seen; a difference marks a reload pending and calls `reload()` at
   once when no Apply is pending; no `build` object, a failed request or a stopped shell → nothing; `stopWatch =
   startPolling(watchOnce, DEVICE_WATCH_INTERVAL_MS, {visibility, onError: () => { /* silent: the section's own GET owns
-  the banner */ }})`; then `selectSection(defs.landingSection)`. The returned `stop()` sets `stopped`, stops the
-  section and the watch (each releases its visibility subscription) and calls `nav.dispose()`.
+  the banner */ }})`; then `selectSection(history.current() ?? defs.landingSection)` — a deep link (`#<key>`) opens its section, an
+  unknown or absent one the landing section, with no entry pushed. The returned `stop()` sets `stopped`, stops the
+  section and the watch (each releases its visibility subscription) and calls `nav.dispose()` and the `onPop` removal.
 - **Resolved**: A.U23.07's `fetchImpl?` parameter has no production caller (every request goes through `pollManager`)
   — a test-only seam, so it goes (OR36.a (1); agent decision D7). The visibility source is built by one shell helper over
   the `Document` the entry passes, instead of a copy in each entry (G7/R35 "logic both entries need lives once"; the
   layering guard's rule — no `document.` query outside the entries — holds; agent decision D7). A.U35.46 (2)'s one-line
   comment lands here since A.U23.07 moves `selectSection()`.
-- **Unit**: U23 (A.U35.46 (2)'s comment folded in).
+- **Unit**: U23 (A.U35.46 (2)'s comment folded in; the section history with M.WEB.030/.031/.064, A-C review fold).
 - **Depends**: M.WEB.003, M.WEB.020, M.WEB.026; A.U19.06 (static files revalidate, so a reload fetches the new
   bundle; SRC_NET); A.U10.40 (`build` keys).
 - **Blast carried by**: entries `js/main.js`, `js/app.js` (M.WEB.030/.031); new `tests_js/shell.test.js` (M.WEB.064);
@@ -724,14 +751,14 @@ every B1 action (AC_NOTES 34-second).
 ### M.WEB.030 The production entry: load, name, start the shell
 - **From**: A.U23.07 (keeps only load/name/shell; returns the stop handle), A.U23.04 (document-derived visibility),
   A.U23.06 (`reload`), A.U23.42 (banner through `showBanner()`), A.U35.46 (2) (the duplicated `selectSection()` goes
-  with its comment).
+  with its comment); OR140.a (15) (the entry passes `historyOf(window)` (A-C review fold)).
 - **Site**: `js/main.js:1-60`.
 - **Change**: header `:1-5` unchanged. Imports: `loadDefinitions` (`./definitions.js`), `showBanner` (`./render.js`),
   `startShell`, `visibilityOf` (`./shell.js`). `export async function startApp(elements)` — the `@param` key list
   unchanged (A.U23.38's bootstrap check reads it), `@returns {Promise<() => void>}`: definitions load failure →
   `showBanner(errorBannerEl, \`Could not load definitions: ${String(error)}\`)` and `return () => { /* nothing was
   started */ };`; then `deviceNameEl.textContent = defs.device.displayName;` and `return startShell({defs, elements:
-  {appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl}, keyTarget: document, visibility: visibilityOf(document),
+  {appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl}, keyTarget: document, visibility: visibilityOf(document), history: historyOf(window),
   reload: () => window.location.reload()});`. `initNav`/`renderSection` imports and `selectSection()` go.
 - **Resolved**: —
 - **Unit**: U23.
@@ -747,7 +774,7 @@ every B1 action (AC_NOTES 34-second).
   (`composeMockData()`), A.U23.01 (startup loads through the queue), A.U23.07 (shell, stop handle), A.U23.42 (banner),
   A.U35.46 (2) (duplicate `selectSection()` goes), A.U28.24 (read: the preview serves `build/generated_src/definitions/`),
   A.U23.04 (the entry passes the document-derived visibility through the shared shell, as M.WEB.030 does for `main.js`;
-  AC3_S section 4).
+  AC3_S section 4); OR140.a (15) (the same `historyOf(window)` (A-C review fold)).
 - **Site**: `js/app.js:1-87`.
 - **Change**: header (3 lines) "Prototype entry point: picks a device from the build's definitions manifest
   (`?device=` overrides it), installs the / mock backend and starts the shared shell. Never staged (SPECIFICATION.md Part
@@ -759,7 +786,8 @@ every B1 action (AC_NOTES 34-second).
   is sorted); (3) `loadDefinitions(\`${DEFINITIONS_DIR}/${device}.json\`)` → on failure the banner "Could not load
   definitions for "<device>": <error>"; (4) `deviceNameEl.textContent`; (5) `pollManager.request("../mockdata/samples.json")`
   → on a non-ok status or failure the banner "Could not load mock fixture data for "<device>": <error>"; (6) `uninstall =
-  installMockFetch(defs, composeMockData(defs, samples))`; (7) `stopShell = startShell({...same as main.js})`; returns
+  installMockFetch(defs, composeMockData(defs, samples))`; (7) `stopShell = startShell({...same as main.js, history: historyOf(window)})` (the hash carries the section; the
+  `?device=` query stays the device's); returns
   `() => { stopShell(); uninstall(); }`. `DEFAULT_DEVICE`, `KNOWN_DEVICES`, `fetchWithTimeout` and `selectSection()` go.
 - **Resolved**: A.U6.07 fetches the manifest "via `fetchWithTimeout`"; A.U23.01 (later) moves every startup fetch into
   the queue and removes that export — `pollManager.request()` stands.
@@ -828,7 +856,7 @@ every B1 action (AC_NOTES 34-second).
   this replaces), A.U11.21 (the float32 gap is listed, not mirrored), A.U23.30 (int/float policy holds), A.U25.12 (7)
   (`ForceCalRef` reads back the last value applied), A.S0930.09/.20 (4) (the two new words, never persisted, near misses
   "Invalid"), A.S0930.31 (read: the mock stays stateless "Valid"/"Invalid" for commands), A.U17.19 (read:
-  `ResetErrors` leaves `UARTLINK_*` alone — holds), A.U10.40 (member and key names from the definitions).
+  `ResetErrors` leaves `UARTLINK_*` alone — holds), A.U10.40 (member and key names from the definitions); OR140.a (5) (the busy refusal's retry hint (A-C review fold)).
 - **Site**: `js/mock-server.js:24-249, :380-442` (`coerceAndValidate()`, the field-def maps, `applySparsePut()`,
   `dispatchRangedAction()`, `dispatchLightCmdLed()`, `dispatchSensorQuirkField()`, `applySensorQuirksForGet()`, the PUT
   branches).
@@ -850,7 +878,7 @@ every B1 action (AC_NOTES 34-second).
   an option's `value === raw`; a `number` is range-checked by `coerceAndValidate()` and, when it carries `statusPath`,
   written into the status data at that path (`PauseTime`); a `composite` (the LED command) is `INVALID` for a non-object,
   a missing member or one not in `subFields`, or a member failing `coerceAndValidate()`, `FAILED` while
-  `Date.now() < busyUntil`, else `VALID` with `busyUntil = Date.now() + T * 1000` (`T` the duration member, its name
+  `Date.now() < busyUntil` (the response then carries the server's `descr` "LED busy - retry later", M.SRC_NET.122), else `VALID` with `busyUntil = Date.now() + T * 1000` (`T` the duration member, its name
   pinned to `_LIGHT_CMD_FIELDS` by A.U23.27's mirror check); a `toggle` is validated as a boolean; a field with
   `alwaysExecuted` → validated, answered `VALID` (never `UNCHANGED`), and stored only when the device's composed data
   already carries the key (so `AmbPres` and `ForceCalRef` read back what was applied and `ContMeas`, which GET cannot
@@ -934,8 +962,9 @@ every B1 action (AC_NOTES 34-second).
   (`ResetReason` = 1, power-on), A.U32.06 (`LastTaskEnd` null), A.U6.24 + A.U10.40 (`build` keys `FirmwareVersion`,
   `WebsiteVersion`, `BuildDate`; every renamed key), A.U25.12 (7) (`ForceCalRef` 400), A.U6.15 (no variant literal), A.U6.29
   (read: accept-shaped sample values), A.U17.19 (read: `UARTLINK` counts); gap pass G2 (pointer sweep): A.U6.26 (the
-  `networkingConfig` `DNSFallback` sample, its mock half), A.U18.33 (read: the networking status keys `IP`, `IPv4`,
-  `Subnet`, `Gateway`, `DNS` are kept), A.U2.20 (the `UART` errcount sample takes UART catalog codes — HEAD's fixtures
+  `networkingConfig` `DNSFallback` sample, its mock half), A.U18.33 (read: the networking status keys `IPv4`,
+  `Subnet`, `Gateway`, `DNS` are kept; `IP` goes by the routine settlement "status-ip-and-ipv4"), OR138.a (1)
+  (`ConfigFaults`) (A-C review fold), A.U2.20 (the `UART` errcount sample takes UART catalog codes — HEAD's fixtures
   have no UART row).
 - **Site**: `mockdata/dev.json`, `mockdata/wozi.json` (deleted); new `mockdata/samples.json`.
 - **Change**: `mockdata/samples.json` — `{measurements, sensorsConfig, networkingConfig, systemConfig,
@@ -946,7 +975,7 @@ every B1 action (AC_NOTES 34-second).
   `FRCWindow` 60, `ForceCalRef` 400; networking `SSID`, `PW`, `HotspotPW` "12345678", `Country` "DE", `Hostname`
   "SensorNode", `LEDWifiOn`, `NTPHost` "pool.ntp.org", `NTPOffset`, `NTPInterval`, `DNSFallback` "8.8.8.8,1.1.1.1";
   system `DebugLevel`, `GMTOffset`, `DSTOffset`, `build` `{FirmwareVersion, WebsiteVersion, BuildDate}`; status networking
-  adds `HTTPDropped` 0 and `WifiTS` (a number), system adds `ResetReason` 1, `MemFree`, `LastTaskEnd` null, `UnixTime`
+  adds `HTTPDropped` 0 and `WifiTS` (a number) and carries no `IP` key, system adds `ConfigFaults` `[]`, `ResetReason` 1, `MemFree`, `LastTaskEnd` null, `UnixTime`
   null (served from the clock, M.WEB.042), `UTCTime`/`LocalTime` structs with `Year … Yearday`; `status.sensors` `SGP40`
   `{BackupTS: <epoch>, RestoreTS: 0}` and `UARTLINK` `{Transfers, Failures}`; `errcount.<logger base name>` samples
   (`WIFI`, `CFGMGR_WIFI`, `DNSSRV`, `NTP`, `CFGMGR_NTP`, `FRAM`, `SYSTEM`, `CFGMGR_SYSTEM`, `SCD30`, `CFGMGR_SCD30`,
@@ -961,7 +990,8 @@ every B1 action (AC_NOTES 34-second).
   row (it is listed in the definitions whether FRAM-backed or not, M.GEN.016; AC_NOTES 13).
 - **Unit**: U32 (`LastTaskEnd`, the latest). Stages: U6 (the file, seeded; the two files deleted), U10 (key renames,
   A.U10.40's script), U11 (`ResetReason`, `MemFree` with A.U6.22/.23), U15 (FRC, `VOCState`, `CalLight`, `RestoreTS`),
-  U18 (`DNSFallback`, `HotspotPW`), U19 (`HTTPDropped`, `WifiTS`), U25 (`ForceCalRef` 400 confirmed), U32.
+  U18 (`DNSFallback`, `HotspotPW`; the `IP` key out), U19 (`HTTPDropped`, `WifiTS`), U20 (`ConfigFaults` with its
+  definitions row, M.GEN.014), U25 (`ForceCalRef` 400 confirmed), U32.
 - **Depends**: A.U2.01 (catalog codes, GEN M.GEN.034).
 - **Blast carried by**: reader `composeMockData()` (M.WEB.043) via `js/app.js` (M.WEB.031); L0
   `tests_scripts/test_error_catalog.py` mockdata pass (A.U2.25/A.U3.15, TSC); `tests_scripts/test_js_coverage_excludes_json.py:13`
@@ -1073,7 +1103,8 @@ every B1 action (AC_NOTES 34-second).
   power-up and 400 after power-up (Interface Description 1.4.6)."; `:336` → "dispatches PUT /sensors' ContMeas as a
   command: bool-only, never persisted or reported by GET"; `:372` → "masks PW (and HotspotPW) on every GET /networking,
   whatever was applied"; every other title naming a `src/` function names one that exists at the end state (grep at
-  landing).
+  landing). Fold (A-C review): the busy `LightCmdLED` answer also carries the `descr` "LED busy -
+  retry later" (M.WEB.041).
 - **Resolved**: A.U9.03's "Failed for out-of-range" expectations at `:272-314` are A.U19.02's "Invalid" (A.U19.02 keeps
   only the busy refusal "Failed", M.SRC_NET.122).
 - **Unit**: U25 (A.U25.12). Stages: U6 (A.U6.13/.17/.28/.29/.30), U9 (busy), U10 (keys), U18 (`HotspotPW`, shapes), U19
@@ -1100,7 +1131,8 @@ every B1 action (AC_NOTES 34-second).
   case) goes; `:248-252` (null pass-through) stays with `defaultValue: 5000` removed from its field and its comment →
   "// CCT is legitimately null in a dark room; the renderer shows an em dash for it."; new: while a `pollManager.request()` is
   pending, `loadDefinitions()` issues no fetch until it settles (a stub counting concurrent fetches never sees 2). The
-  hang test's stub and assertion hold. Trailing `vi.useRealTimers()` go.
+  hang test's stub and assertion hold. Trailing `vi.useRealTimers()` go. Fold (A-C review): `confirm` accepted on an enum or toggle and refused elsewhere or
+  non-boolean; `defaultDecimals` accepted as an integer `0..100` and refused otherwise.
 - **Resolved**: —
 - **Unit**: U24 (restores). Stages: U6 (generated imports), U23 (A.U23.01/.09/.16/.37), U27 (header).
 - **Depends**: M.WEB.050, M.WEB.068, M.WEB.005-.007.
@@ -1131,8 +1163,9 @@ every B1 action (AC_NOTES 34-second).
   so "Nothing to submit"; `:468-535` (describe "… defaultValue") → an always-executed toggle with no GET value renders
   "—", is not submitted until set, is submitted `false` once set Off, returns to "—" after Apply; `:540-600` hold plus a
   dispatch toggle left Off gives "Nothing to submit"; `:583-620` gain: choosing "Erase FRAM" and Apply sends one PUT
-  `/system` with body exactly `{"SystemCmd":"erasefram"}` and calls `window.confirm` zero times (spy), the same for
-  "Reset to defaults", the select returns to "Select…"; `:647-666` hold with `data-shown`; `:668-676` gains "and a later
+  `/system` with body exactly `{"SystemCmd":"erasefram"}` after one `window.confirm` (spy answering `true`) asking
+  "Erase FRAM?", and sends nothing when the spy answers `false` (A-C review fold, OR140.a (3), inverting A.S0930.20 (5)'s
+  zero-call pin), the same for "Reset to defaults", the select returns to "Select…"; `:647-666` hold with `data-shown`; `:668-676` gains "and a later
   tick recovers it"; `:678-722` hold plus `"  "`, `"0x10"`, `"1e3"`, `"1,5"` each PUT the raw string and show Invalid,
   `" 12 "` PUTs 12; `:698-744` both cases expect "Invalid" and are renamed "… reports Invalid for …"; `:746-764` gains
   sub-inputs cleared after Valid; `:783-812` → "reads maintenance data by path" (`path: ["SGP40", "BackupTS"]`) plus two
@@ -1166,7 +1199,8 @@ every B1 action (AC_NOTES 34-second).
   filter."; `:584-586` → "// SystemCmd is never returned by GET /system (A.8), so the select starts on its placeholder
   and an untouched Apply sends nothing."; `:679-680` → "// JSON.stringify(NaN) is "null"; the raw text is sent instead
   so the server can refuse it."; `:864` names the section's status sub-request as M.WEB.020 names it (no `fetchOnce()`
-  if that function is gone).
+  if that function is gone). Fold (A-C review): "Reset All Errors" asks "Reset All Errors?" before its PUT and
+  sends nothing on cancel; a measurement float without `decimals` renders with the definitions' `defaultDecimals`.
 - **Resolved**: A.U23.14 says `:458-466` (second ResetErrors) holds and A.U23.15 (later in the same unit, and the
   behaviour it adds) turns it into "Nothing to submit" — A.U23.15's expectation stands. A.U23.05's "console.error once"
   case lands here (M.WEB.051's note). A.U36.544 (4) ":86 H.7 → H.4" applies to the comment A.U6.17 makes false (the mock
@@ -1277,7 +1311,9 @@ every B1 action (AC_NOTES 34-second).
   XSS (`:502-570`) hold, `:512-523` building its hostile field through a one-field `buildFieldGroupCard()` like the
   field-markup cases, plus a hostile code description rendered as text. `:399` → `src/asy_print_log.py's get_log()`
   (A.U10.37); `:328`'s title → "tags the card with data-group-key itself, like buildFieldGroupCard() (SPECIFICATION.md
-  Part H.3: js/templates.js owns the hook)" (AC3_O O-10).
+  Part H.3: js/templates.js owns the hook)" (AC3_O O-10). Fold (A-C review): `ResetReason` renders as a code button whose click shows "<n>:
+  <description>" (OR140.a (8)); a non-integer number renders through `defaultDecimals`, an integer unchanged, a field's
+  own `decimals` wins; an array renders joined, an empty one "none" (`ConfigFaults`).
 - **Resolved**: A.U0.28 (U0) writes `:399-400` "(owner, 2026-08-21, `9fd2a28`)"; A.U24.56 (U24) lists the same A28 site
   as "residue other units leave" with the text "(owner, 2026-08-21)" — A.U0.28 already carries it, so A.U24.56's A28
   bullet is void (its own scope is what other units leave) and A.U0.28's text stands.
@@ -1312,7 +1348,8 @@ every B1 action (AC_NOTES 34-second).
   `dispose()`. `main.test.js:127-128` comment → "// The point of inlining
   (SPECIFICATION.md H.2: the stager inlines definitions.json): a device build never fetches it." (the build script
   that inlines moves to `scripts/_stage_website.py`, A.U23.38; "H.7's follow-up round" is a process label, G9/R12);
-  `main.test.js:144` "scripts/build_website.sh" → "scripts/_stage_website.py" (AC3_O O-11).
+  `main.test.js:144` "scripts/build_website.sh" → "scripts/_stage_website.py" (AC3_O O-11). Fold (A-C review): every `startApp()` stub passes no real history — the entries build
+  `historyOf(window)` over the test's `window` (jsdom), the hash cleared in `afterEach`.
 - **Resolved**: —
 - **Unit**: U23. Stages: U6 (A.U6.07/.13), U27 (headers).
 - **Depends**: M.WEB.025, M.WEB.026, M.WEB.030, M.WEB.031.
@@ -1456,7 +1493,9 @@ every B1 action (AC_NOTES 34-second).
   current value and clicks Apply, expecting collectGroupBody() to sparse-omit it: no PUT fires, so no status is waited
   on." `remountAndReadField()` unchanged (an always-executed toggle reads back `"unset"`). New `archiveErrcount(_context,
   label)` — `GET /status`'s `errcount` written verbatim through `uv run scripts/_archive_evidence.py --runner live_twin`
-  (A.U7.20's helper) and returns the archive path.
+  (A.U7.20's helper) and returns the archive path. Fold (A-C review, OR140.a (3)): `applyField()` accepts the browser dialog of a field
+  carrying `confirm` (Playwright's dialog handler, `accept()`), asserting its message, and fails on a dialog it did not
+  expect.
 - **Resolved**: as M.WEB.061 for the shared frame. A.U23.16 "remountAndReadField() returns "unset" for ContMeas" needs no
   code: the remounted toggle's `data-value` is `"unset"` (M.WEB.014).
 - **Unit**: U27. Stages: U6, U7, U8, U23 (A.U23.16/.32/.33), U24, U25, U36 (`:151` pointer — folded into this
@@ -1504,7 +1543,8 @@ every B1 action (AC_NOTES 34-second).
   field of the `sensors` section. New action-field block per device with the field: `PauseTime` 5 twice → `"valid"`
   both, the Status page's "Remaining Pause Time" shows 1-5 on its next poll, 3601 → `"invalid"`; `LightCmdLED` (devices
   with a `neopixel` instance) `{R: 10, G: 20, B: 30, T: 1}` → `"valid"`, the same at once → `"failed"`, `{R: 256, …}` →
-  `"invalid"`; `SystemCmd` `mempause` → `"valid"`; `ResetErrors`: `archiveErrcount()` first, then Yes → `"valid"` and every
+  `"invalid"`; `SystemCmd` `mempause` → `"valid"` and `ResetErrors`: `archiveErrcount()` first, then Yes → `"valid"` — both
+  through the page's confirmation, accepted by the command (M.WEB.062; OR140.a (3), A-C review fold) — and every
   row reads 0 on the next poll; one comment line: "reboot, bootloader, resetconfig and erasefram end the twin process:
   covered at L1 and L2 (Run 13) and on silicon, not driven here."; the skip branch goes.
 - **Resolved**: A.U6.17 (6)'s derived category "two identical valid sends both Valid" would fail for `LightCmdLED`
@@ -1532,7 +1572,10 @@ every B1 action (AC_NOTES 34-second).
   on `keyTarget`, no request follows; start-stop-start leaves one set of listeners; a changed `build` on the second watch
   calls `reload` once, an unchanged one never; `nowS()` is `null` until `UnixTime` is a number, then tracks fake time;
   hidden pauses the watch; a watch whose `/system` GET rejects neither reloads nor rejects unhandled (`unhandledrejection`
-  spy); a changed build seen while an Apply is pending reloads only after that Apply settles.
+  spy); a changed build seen while an Apply is pending reloads only after that Apply settles. Fold (A-C review, OR140.a (15)): with a fake `history` (`current`/`push`/`onPop`): a menu
+  selection pushes one entry, selecting the current section pushes none, a pop selects the popped section without
+  pushing, Forward after Back re-selects, a deep-link key opens its section and an unknown one the landing section, and
+  `stop()` removes the pop listener.
 - **Resolved**: —
 - **Unit**: U23.
 - **Depends**: M.WEB.025.
@@ -2035,9 +2078,10 @@ every B1 action (AC_NOTES 34-second).
   device, M.WEB.031). OR94 / A28: the look is unchanged — the history pills keep their look and the type only colours the
   number (no border cue, AC_NOTES 26/37), `N` placeholders stay spans and the no-data rollup appears only when needed
   (D3), the specials hint stays on number fields (D4); the code descriptions appear only on click (OR94 "14 b"). OR121/
-  OR122: "Reset to defaults"/"Erase FRAM" come from the definitions' options with the existing dropdown and Apply, no
-  dialog — `window.confirm` is reached only by the DNS fallback Clear (owner OR56.a (2)), pinned by A.S0930.20 (5)'s
-  zero-call spy (M.WEB.054). OR42.a (3): a PUT is never retried or repeated, and a sent PUT is never aborted
+  OR122: "Reset to defaults"/"Erase FRAM" come from the definitions' options with the existing dropdown and Apply;
+  OR140.a (3) (owner, 2026-10-02): every system command and the error-history clear ask the browser's confirmation
+  first, beside the DNS fallback Clear's (owner OR56.a (2)); the API stays one command per request — A.S0930.20 (5)'s
+  zero-call spy inverts to one call (M.WEB.021, .054; A-C review fold). OR42.a (3): a PUT is never retried or repeated, and a sent PUT is never aborted
   (M.WEB.021). OR103 "no unbounded counters": the mock's uptimes saturate at `COUNTER_CAP` (M.WEB.042); the page's own
   failure count is bounded (finding below, fixed in M.WEB.003). ESLint rules the new code must pass: `prefer-named-capture-group` (regexes written
   non-capturing or named, M.WEB.018/.068/.079), `no-console` (only `console.error`, M.WEB.020), the sink ban (M.WEB.070).
@@ -2341,3 +2385,44 @@ Gap pass G2 rows (2026-10-01; `GAPS_G2.md` lists each item and its source):
 | AC3 O-12 | M.WEB.059 (`app.test.js` keeps the `aria-current` and HTTP-500 cases) |
 | AC3 O-13 | M.WEB.057 (`:73-74`, `:107-125`, `:96-98`) |
 | AC3 O-23 | M.WEB.060 (actor tag "(owner, 2026-08-24)") |
+
+## A-C review fold (2026-10-05)
+
+Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_merge.json` `outcome`, AC_NOTES 52).
+`[fold Fnn M_FILE]` tokens name a change another fold agent adds; the lead replaces them.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | — | none in this file |
+| F02 | product end state (`HTTPDropped` description) | amended |
+| F03 | M.WEB.012, .045, .058; product end state (`ConfigFaults`) | amended |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | M.WEB.004, .006, .021, .053, .054, .062, .063; product end state; rules checklist | amended |
+| F08 | — | none in this file |
+| F09 | M.WEB.041, .052 | amended |
+| F10 | — | none in this file |
+| F11 | — | none in this file |
+| F12 | M.WEB.014, .058 | amended (no code beyond the existing code-value button) |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | — | none in this file |
+| F16 | — | none in this file |
+| F17 | M.WEB.025, .030, .031, .059, .064 | amended |
+| F18 | M.WEB.004, .006, .012, .015, .020, .053, .054, .058 | amended |
+| F19 | — | none in this file |
+| F20 | — | none in this file |
+| F21 | — | none in this file (no change here writes a permanent tag for a reviewed decision) |
+| F22 | — | none in this file |
+| F23 | — | none in this file |
+| F24 | — | none in this file |
+| F25 | — | none in this file |
+| F26 | — | none in this file |
+| F27 | — | none in this file |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | M.WEB.045; product end state (no `IP`) | amended |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

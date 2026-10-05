@@ -710,8 +710,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   definitions carry is checked present on every `SystemCmd` option and on `ResetErrors` here, [fold F07 M_WEB]); (l)
   SCD30's errcount and readiness rows match its catalog entries (the three FRC readiness keys, A.U15.12); (m) every
   displayed number field whose value can carry a fraction (a float schema field, a float measurement value) has a
-  `decimals` hint from 0 to 3, equal to the value its `@web` tag or schema declares as buildgen carries it ([fold F18
-  M_GEN]); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
+  `decimals` hint from 0 to 3, equal to the value its `@web` tag or schema declares as buildgen carries it
+  ([fold F18 M_GEN]); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
 - **Resolved**: A.U2.21's edit of the golden files falls away with A.U6.04 (its test compares with the catalog only).
 - **Unit**: U23 (each property in its owner's unit: U2 (a), U6 (c)-(f), (i), (j at U18), U15 (l), U23 (b), (g), (h),
   (m), S0930 (k) with U10; (k)'s confirmation check in U23).
@@ -1625,6 +1625,25 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Blast carried by**: gate agreement → M.TSC.108.
 - **Kind**: test
 
+### M.TSC.230 The UART DMA ring lands with the boot's long-lived survivors
+- **From**: OR143.a (5), OR141.a (4) (d) (A-C review fold: the ring is allocated in the link's `setup()`, a unit of the
+  one-time setup list, so the placement reset puts it with the survivors; the boot contiguity test asserts where it
+  lands and the heap cost is measured).
+- **Site**: `tests_scripts/test_digital_twin_boot_contiguity.py` (new test).
+- **Change**: for every `DEVICE_NAMES` device whose wiring declares a `uart_link`, the boot probe reports each link's
+  ring address and size after the setup batch ([fold F25 M_TEST_HELP]); the test asserts every ring lies below the
+  probe's high band (`_HIGH_BAND`), among the survivors the placement reset keeps low (SPECIFICATION.md I.4(f.1)), and
+  that no ring is allocated outside a setup unit (its address is fixed once the batch ends: a second probe after the
+  task start reports the same address); the rings' net heap cost and the largest free block before and after the batch
+  are printed for SPEC I's ring row, never asserted against a literal. A device with no link is skipped by name. The
+  suppressed control arm (M.TSC.082) is unchanged; no new arm (OR21.a (2)).
+- **Resolved**: —
+- **Unit**: U13 (lands with the ring and the twin's DMA fake).
+- **Depends**: [fold F25 M_SRC_NET] (the ring allocated in `setup()`, U13), [fold F25 M_TWIN] (the twin's DMA fake
+  holds a real ring buffer, U13), [fold F25 M_TEST_HELP] (the probe reports the rings).
+- **Blast carried by**: SPEC I's ring heap entry → [fold F25 M_SPEC].
+- **Kind**: test
+
 ## tests_scripts/test_digital_twin_ci_suite_ceiling.py
 ### M.TSC.083 Ceiling runs over derived routes and neutral fixtures
 - **From**: A.U27.32 (`:74` `RunContext(...)` gains `get_routes`; `:117-176` burst cycles the fixture's GET routes; new:
@@ -1921,39 +1940,52 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Kind**: test
 
 ## tests_scripts/test_import_graph.py
-### M.TSC.098 The import graph: no cycles, no driver-to-driver edge, named dynamic loads
-- **From**: A.U10.30; HW_BENCH GAP-B4 (the conformance `exec()` exception moves to `digital_twin/run_device_script.py`,
-  M.HW_BENCH.038/.091, M.TWIN.054); TEST_HELP GAP-H6 (`tests/_generated_module.py` `load_generated`).
+### M.TSC.098 The import graph: no cycles, no driver-to-driver edge, no dynamic import in an image, named host sites
+- **From**: A.U10.30 (its loader-rewrite half dropped: OR141.a (2), OR142.a, A-C review fold); HW_BENCH GAP-B4 (the
+  conformance `exec()` site moves to `digital_twin/run_device_script.py`, M.HW_BENCH.038/.091, M.TWIN.054 — an `exec()`
+  of a file, ruff S102's, not this list); TEST_HELP GAP-H6 (`tests/_generated_module.py` `load_generated`: dropped with
+  the rewrite of the listed `tests/` loaders, OR142.a (3)); OR142.a (1)-(3) (the ban per image; the named list).
 - **Site**: new `tests_scripts/test_import_graph.py`.
 - **Change**: parses `src/`, `ext/` and every generated module built into `tmp_path` (`DEVICE_NAMES`): static edges
   after `TYPE_CHECKING` stripping; fails on a cycle, a sensor driver (`asy_*_driver.py` with a `*_Reader`) importing
   another driver, `asy_print_log.py` importing `asy_fram_manager` at runtime, a name imported from a module that
-  re-exports rather than defines it, a module name in both `src/` and `ext/`; repo-wide AST scan: any `__import__`,
-  `exec`, `eval` call or `import importlib`/`from importlib …` outside SPEC F.1's named list fails. The list (one place,
-  read from SPEC F.1's table or mirrored in the test with a pin to it): `tests/_generated_module.py` (`load_generated`),
-  `digital_twin/run_generic_integration.py` (device module by config), `buildgen/validate.py` (loads
-  `toolchain/micropython_overrides.py` by path), `tests_scripts/_script_loader.py` (a `scripts/`/`toolchain/` file by
-  path), `tests/_coverage_runner.py`, `tests/_threshold_runner.py` (execute a test file), `digital_twin/run_device_script.py`
-  (renders and executes a device script under the twin; replaces `tests_hardware/isl29125_conformance.py:35`).
-- **Resolved**: GAP-B4 moves the conformance exception's site; `test_buildgen_validate.py` patches `importlib` by dotted
-  name (M.TSC.055), so it needs no entry.
-- **Unit**: U26 (stage U10; the site moves with M.HW_BENCH.038 in U26).
-- **Depends**: A.U10.30 (`tests/_generated_module.py`, TEST_HELP), M.TWIN.054.
+  re-exports rather than defines it, a module name in both `src/` and `ext/`. Per image — every `DEVICE_NAMES` device's
+  frozen set (the `src/` and `ext/` modules it freezes, its generated boot entry, device module and website module) —
+  zero dynamic-import sites: no `__import__` call, no `importlib` import or use, no `exec`/`eval` of source; a planted
+  `__import__` in a `tmp_path` copy of a frozen module fails naming the device and the site. Outside the images, a
+  repo-wide AST scan fails on any `__import__` call or `importlib` import/use outside SPEC F.1's named host and test
+  exceptions, mirrored here with a pin to F.1's table: `tests_scripts/_script_loader.py`, `tests_scripts/conftest.py`,
+  `tests_scripts/test_buildgen_validate.py`, `tests_scripts/test_js_coverage_report_dir.py`, `buildgen/validate.py`,
+  `digital_twin/run_generic_integration.py`, `tests/_boot_contiguity_probe.py`,
+  `tests/_digital_twin_construction_scenarios.py`, `tests/_sensortask_scenarios.py`,
+  `tests/_webserver_concurrency_scenarios.py`, `tests/test_asy_isl29125_driver.py`, `ext/freezefs/ffsextract.py`
+  (vendored, build-time only, never frozen); none of them changes (the owner judged each harmless, OR142.a (3)).
+  MicroPython's own two bundled sites (`extmod/asyncio/__init__.py:29`, micropython-lib `dht.py:14`) are platform facts
+  F.1 records, re-read at each bump, outside this repo's scan. An `exec()` of a file's source (the coverage and
+  threshold runners, `digital_twin/run_device_script.py`) is ruff S102's, with its per-file reasons, not this list.
+- **Resolved**: GAP-B4 moves the conformance site, which is an `exec()` and so not in this list; `test_buildgen_validate.py`
+  keeps its `importlib` lines as a named exception (M.TSC.055, OR142.a (3)). Two listed files (`tests_scripts/conftest.py`,
+  `test_js_coverage_report_dir.py`) name `importlib` only in comment text; the check fails only on an unlisted site, so
+  the owner's list is mirrored as written.
+- **Unit**: U26 (stage U10: the per-image zero and the named list, OR142.a's U10 placement; U26 for the device-script
+  side, whose rendered static import holds no site, M.HW_DEV.001).
+- **Depends**: [fold F23 M_SPEC] (F.1's named list and the two platform sites), M.TWIN.054, M.HW_DEV.001.
 - **Blast carried by**: SPEC F.1 list → A.U10.30/GAP-B4 (SPEC).
 - **Kind**: test
 
 ## tests_scripts/test_import_placement.py
 ### M.TSC.099 No function-level or dynamic import outside the named list
 - **From**: A.U0.07, A.U37.02 (`_PENDING` removed once empty), TEST_HELP GAP-H6 (this cluster's `_PENDING` entries leave
-  in U24; `_NAMED_EXCEPTIONS` holds `load_generated` and the two runners' `exec`), HW_BENCH GAP-B4, HW_BENCH M.HW_BENCH
-  (its `_PENDING` entries leave in U26), TEST_UNIT (`tests/test_asy_isl29125_driver.py:1301, 1306` entries leave with
-  the module-level `import time`).
+  in U24; `_NAMED_EXCEPTIONS` held `load_generated` and the two runners' `exec` — superseded by OR142.a (3)'s named
+  list, A-C review fold), HW_BENCH GAP-B4, HW_BENCH M.HW_BENCH (its `_PENDING` entries leave in U26), TEST_UNIT
+  (`tests/test_asy_isl29125_driver.py:1301, 1306`: a named exception, its `__import__` stays, OR142.a (3)).
 - **Site**: new `tests_scripts/test_import_placement.py`.
 - **Change**: AST walk over every `.py` in `src/`, `buildgen/`, `digital_twin/`, `tests/`, `tests_scripts/`,
   `tests_hardware/`, `scripts/`, `toolchain/` (skipping `tests/_tmp/`): fails on an `Import`/`ImportFrom` inside a
   function body, and on `__import__`, `importlib.import_module`, `importlib.util.spec_from_file_location`/
-  `module_from_spec`/`exec_module`, or `exec()`/`compile(…, "exec")` of a file's source, unless in `_NAMED_EXCEPTIONS`
-  (SPEC F.1's list — the same seven entries as M.TSC.098) or `_PENDING` (keyed `(path, qualname, module or call)`,
+  `module_from_spec`/`exec_module`, unless in `_NAMED_EXCEPTIONS` (SPEC F.1's named list — the twelve files of
+  M.TSC.098, OR142.a (3); `tests/test_asy_isl29125_driver.py:1301, 1306`'s inline `__import__("time")` among them) or
+  `_PENDING` (keyed `(path, qualname, module or call)`,
   the HEAD set); a second test fails on a `_PENDING` entry that no longer occurs. Staged: U0 with the HEAD set; U10 names
   the dynamic sites; U24 empties `tests/`'s; U25 `digital_twin/`'s; U26 `tests_hardware/`'s (GAP-B4 site included);
   U27 `tests_scripts/`'s (85 entries in 13 files) and `scripts/`'s; U37 removes `_PENDING` and its test.
@@ -2304,6 +2336,27 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Unit**: U21
 - **Depends**: A.U21.09-.12, A.U21.16, A.U21.29, A.U21.31 (TOOLCHAIN).
 - **Blast carried by**: host lwIP hammer → A.U21.13 (TOOLCHAIN/TEST_UNIT); `test_test_sh.py` second loop → M.TSC.135.
+- **Kind**: test
+
+### M.TSC.229 The tick-offset test override: anchor, apply, readback, release refusal
+- **From**: OR139.a (1), (2) (A-C review fold); M.TOOL.080.
+- **Site**: `tests_scripts/test_micropython_overrides.py` (new module-level tests).
+- **Change**: the fake tree's rp2 layout gains `ports/rp2/mphalport.h` holding the pinned `mp_hal_ticks_ms()` body; the
+  anchor present once → `apply_tick_offset_override()` returns its make variables, writes nothing inside the fake tree
+  (recursive listing/mtime compare), and its replacement differs from the pinned text by exactly the one return line
+  (`difflib`), carrying `MICROPY_SENSORS_TICK_OFFSET_MS` and the sentinel; the anchor missing or present twice →
+  `OverrideError` naming the file and SPECIFICATION.md B.14, nothing written; `TICK_OFFSET_MS == 2**32 - 900000` and
+  `TICK_OFFSET_MS % 2**30 == 2**30 - 900000` (both wraps 15 minutes after boot); readback: a fake build whose compile
+  definitions hold the sentinel → `tick_offset_in_build()` true, without → false; `verify_tick_offset_in_build(…,
+  expected=False)` on a build carrying it raises "a release build carries the tick-offset test override", `expected=True`
+  on a build without it raises; structural: `build_firmware()` calls the apply function only under
+  `tick_offset_test=True` and calls the readback after every build with that value (monkeypatched); `CURRENT_OVERRIDE_DIRS`
+  holds `TICK_OFFSET_DIR_NAME`; the real pinned source passes the anchor check after a toolchain build (a missing
+  toolchain fails, never skips).
+- **Resolved**: —
+- **Unit**: U21
+- **Depends**: M.TOOL.080, M.TOOL.055, M.TOOL.042.
+- **Blast carried by**: —
 - **Kind**: test
 
 ## tests_scripts/test_microtest.py

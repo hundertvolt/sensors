@@ -1804,21 +1804,21 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   "A local NTP responder is built for the twin"), routine settlement `twin-choice-17` (its sync-dependent clock-jump cases
   run in the twin), OR141.a (5) (it covers the dropped hand-run NTP-outage row) — A-C review fold.
 - **Site**: new `digital_twin/unixport/_ntp_responder.py`.
-- **Change**: header (≤ 3 lines) "A local NTP server for twin and Unix-port runs: answers each client request on
-  loopback with the host's UTC time, so a booted twin syncs without reaching a public host; its test knobs make it
-  silent, unsynchronised, malformed or implausible." Imports only `asyncio`, `select`, `socket`, `struct` and `time` (no
+- **Change**: header (≤ 3 lines) "A local NTP server for twin and Unix-port runs (owner, 2026-10-02): answers each client
+  request on loopback with the host's UTC time, so a booted twin syncs without reaching a public host; its test knobs
+  make it silent, unsynchronised, malformed or implausible." Imports only `asyncio`, `select`, `socket`, `struct` and `time` (no
   `machine`, nothing from `tests/` or `digital_twin/`, so an L1 test may import it from the fake-free `unixport/`
   directory, M.TWIN.017). `def ntp_reply(unix_s: int, *, leap: int = 0, stratum: int = 1) -> bytes` — the 48-byte mode-4
   reply (version 3, as HEAD's test builders send), transmit timestamp `unix_s` plus `_NTP_EPOCH_DELTA = 2208988800`
-  (comment "# 1900 to 1970 in seconds (RFC 5905); a local copy, pinned to src/asy_ntp_client.py's by M.TWIN.168"); it is `tests/_ntp_frames.py`'s `make_ntp_reply()` moved
-  here, that module importing it (one implementation, the twin never importing `tests/`, G7/R02 — M.TEST_HELP.058).
+  (comment "# 1900 to 1970 in seconds (RFC 5905); a local copy, pinned to src/asy_ntp_client.py's by
+  tests/test_digital_twin_ntp.py"); it is `tests/_ntp_frames.py`'s `make_ntp_reply()` moved here, that module importing it (one implementation, the twin never importing `tests/`, G7/R02 — M.TEST_HELP.058).
   `class NtpResponder(port: int, host: str = "127.0.0.1")`: a non-blocking UDP socket bound at `(host, port)`;
   "twin-only test knob" attributes in `TEST_API`: `mode` — `"serve"` (default), `"silent"` (requests dropped: an outage),
   `"unsync"` (LI 3, stratum 0: a Kiss-of-Death reply), `"short"` (a 47-byte reply), `"implausible"` (a transmit time
   below the client's plausibility floor) — and `offset_s: int = 0` (added to the served time: a server whose clock
   differs from the host's); `requests: int` saturating at `_COUNTER_CAP = 0x3FFFFFFF` (comment: "# the project's counter
   cap (SPECIFICATION.md G.2), a local copy: this module imports nothing from digital_twin/", pinned equal to
-  `_twin_common.COUNTER_CAP` by M.TWIN.168). `async def serve(self) -> None`: per round one `ipoll(0)` on its own poll
+  `_twin_common.COUNTER_CAP` by M.TWIN.168's test). `async def serve(self) -> None`: per round one `ipoll(0)` on its own poll
   object (iterated and checked, never truth-tested), at most one datagram read, a 48-byte mode-3 request answered per
   `mode`, then `await asyncio.sleep_ms(_POLL_MS)` (`# @tunable twin.ntp_responder_poll_ms = 10`, row basis estimated —
   measurement owed): it never blocks the loop and never waits on a real `select.poll()` with a timeout (CLAUDE.md's
@@ -1832,8 +1832,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   synced with no NTP entry (OR140.a (13), most recent owner decision). `make_ntp_reply()` and the responder's builder are
   one implementation, placed in the import-safe directory as GAP-H3 placed the offline-NTP writer.
 - **Unit**: U25.
-- **Depends**: M.TWIN.017 (the `unixport/` directory and the shim), M.TEST_HELP.056 (port bands), M.TEST_HELP.058 (the
-  builder moves here).
+- **Depends**: M.TWIN.017 (the `unixport/` directory and the shim), M.TEST_HELP.056 (port bands), M.TEST_HELP.058 (its
+  builder moves here in the same unit, its U25 stage importing it back).
 - **Blast carried by**: the runner starts it unless `--online-ntp` → M.TWIN.050; the responder-config writer → M.TWIN.053;
   its L2 tests → M.TWIN.168; the new NTP-client L1 tests → M.TEST_UNIT.342; the clock-jump file's sync cases →
   M.TWIN.146; README "What's here", "Automated CI suite" Run 1 and "Runner flags" → M.TWIN.058, .064, .066; the twin
@@ -3164,7 +3164,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   reason), A.U11.24 / A.U4.02 (the three `write_config(…, schema)` calls follow the new signature), A.U30.15 (`:543-546,
   :627, :705, :779` `gc.collect()` props go), A.U25.50 / A.U0.29 (`:420-423` and `:709-713` comment heads carry actor and
   date), A.U8.08 (`:461` `l2.wdt_overrun_wait_s`), A.U8C.32 / A.U8C2.11 / A.U8C.24 / A.U8C.120 (tags; rows of moved code
-  withdrawn, C3), A.U15.41 (its L2 boot lives in M.TWIN.152 — this file's mention holds), C1, C2, C4, C5
+  withdrawn, C3), A.U15.41 (its L2 boot lives in M.TWIN.152 — this file's mention holds), OR141.a (5) (the 100 ms idle
+  poll rate stays with its measurement owed in the twin and on the bench; A-C review fold), C1, C2, C4, C5
 - **Site**: `tests/test_digital_twin_sensortask_integration.py` (whole file)
 - **Change**: header (≤ 3 lines) "In-process twin tier for the device named by TEST_DEVICE: its generated graph booted on
   the twin buses with no HTTP (requests are driven host-side by scripts/_digital_twin_scenarios.py). Driver-specific
@@ -3235,10 +3236,18 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   hour of `ntp.cettime()`; `chip.co2 = Walk(c, c, 0.0)` with `c` above `WarnCO2`; after one monitor cycle the twin
   pixel's `writes` holds a red frame and the module's status data reports `Triggered` true; the complementary window
   (On and Off swapped) → no new frame.
+  (10) `test_the_captive_dns_listener_idles_at_its_idle_rate` (driver-specific: `neopixel`, the same hotspot boot as
+  test 5; A.U18.05's measurement, OR141.a (5)): with no DNS traffic for a window of `_IDLE_WINDOW_S`, the listener's
+  wake-ups (its socket's `ready()` rounds, counted by wrapping the instance's bound method from the test — no product
+  hook) number at most `window / poll_idle_ms + 1` and at least `window / poll_idle_ms − 1`, read with `src_const` from
+  `src/asy_udp_socket.py`; the measured rate is printed as one `MEASURE udp.idle_wakeups_per_s=<n>` line, the twin half
+  of the rate's measured basis (the first-answer latency after silence is measured host-side, [fold F26 M_SCR]; the
+  bench half is C's).
   Tunables (C3): `_WAIT_POLL_S` (`l2.sensortask_integration_wait_poll_s`), `_RUN_BOUND_S` (now `:320` only),
   `_LONG_RUN_BOUND_S` (test 2), `_WAIT_TIMEOUT_S`, `_RESTART_WAIT_TIMEOUT_S`, `_SUPERVISOR_RUN_BOUND_S`,
   `_HOTSPOT_WAIT_TIMEOUT_S` (re-measured: five real failure cycles replace the poke), `_BIND_POLL_S`,
-  `_HOTSPOT_RUN_BOUND_S` (both test 5), `_REBOOT_RUN_BOUND_S` kept; withdrawn with the moved code —
+  `_HOTSPOT_RUN_BOUND_S` (both test 5), `_REBOOT_RUN_BOUND_S` kept, `_IDLE_WINDOW_S` new (test 10,
+  `l2.sensortask_integration_idle_window_s`); withdrawn with the moved code —
   `l2.sensortask_integration_dns_query_timeout_s`, `…_dns_query_poll_ms`, `…_override_poll_s`, `…_override_poll_tries`;
   `l2.twin_wdt_feed_interval_s` leaves this file (its row keeps `launch.py:41` and the bus-hazard site). Trailer canonical
   (A.U24.04).
@@ -3258,7 +3267,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   the harness asserts `MemPaused` true after `PUT /system {"SystemCmd": "mempause"}`, and the immediate-unpause branch is
   proven in-process by M.TWIN.104's A.U25.57 cases and at L1 — settled by A.U25.46 (4) ("replaced by a CLI flag or REST,
   never a new product hook").
-- **Unit**: U35 (stages: U24 harness/allocator/`Any` (C2); U25 the move, per-device form, C4, tests 1 and 3-9; U30 the
+- **Unit**: U35 (stages: U24 harness/allocator/`Any` (C2); U25 the move, per-device form, C4, tests 1 and 3-10 — test 10
+  is A.U18.05's twin measurement, which needs the in-process hotspot boot born here, so it follows the rate's U18
+  landing (reason recorded); U30 the
   `gc.collect()` props go (A.U30.15's own unit; until then they stay in tests 3, 6, 7); U35 test 2 per A.U35.31)
   A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
 - **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.031, M.TWIN.035, M.TWIN.040, M.TWIN.042, M.TWIN.053, M.TWIN.108 (marker
@@ -3273,7 +3284,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   socket has `settimeout`), `:784-818` mempause (A.U10.15, A.S0930.27 `:802` hold; the unpause call goes, (f)); the
   `PER_DEVICE` dispatch → A.U24.65 (3) (SCR, unchanged); port band row `dtsi` → M.TEST_HELP.056; `device_with(*drivers)` →
   TEST_HELP gap; the gc-site checker finds no row here after U30 → A.U30.16 (TSC); SPEC E.2.1 text → A.U36.016 (SPEC);
-  README "Running the twin's own tests" names the split → M.TWIN.063
+  README "Running the twin's own tests" names the split → M.TWIN.063; test 10's measured idle rate into the rate's row
+  basis → [fold F26 M_SPEC]
 - **Kind**: test
 
 ## tests/test_digital_twin_clock_jump.py (new)
@@ -4146,3 +4158,46 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.TWIN.140 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TWIN.144 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TWIN.154 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |
+
+## A-C review fold (2026-10-05)
+
+Owner answers OR136-OR143 and the routine settlements folded in (`audit/actions/FOLD_BRIEF.md`); one row per item and
+action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agents add.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.TWIN.104 | amended |
+| F02 | — | none in this file (checked: no twin test assumes a monotonic `HTTPDropped`; the host harness is SCR's) |
+| F03 | M.TWIN.104 | amended |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | M.TWIN.011 | amended |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | M.TWIN.104 | amended |
+| F16 | M.TWIN.167, .168 | added |
+| F16 | M.TWIN.050, .053, .058, .061, .064, .066, .146 | amended |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | — | none in this file (checked: every WoZi-specific twin text already goes in its merged change) |
+| F21 | M.TWIN.167 | tag |
+| F22 | — | none in this file |
+| F23 | M.TWIN.054, .144, .152, .158 (and convention C2) | amended |
+| F24 | — | none in this file |
+| F25 | M.TWIN.169, .170, .171 | added |
+| F25 | M.TWIN.064, .130 | amended |
+| F26 | M.TWIN.144 | amended |
+| F27 | M.TWIN.171 | added |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | M.TWIN.146 | amended |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

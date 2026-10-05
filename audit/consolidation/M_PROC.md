@@ -464,17 +464,21 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 - **Kind**: test (audit tool run)
 
 ### M.PROC.017 U17: a Part J ↔ code traceability table, re-checked after U17 lands
-- **From**: A.U17.12.
+- **From**: A.U17.12; OR141.a (4), OR143.a (1)-(3) (A-C review fold: the ring's and the cap's J.6/J.7 statements join the
+  table).
 - **Site**: new `audit/trace/UART_PART_J.md` (audit working file; deleted with `audit/` at phase D).
 - **Change**: the table `| Part J statement (quoted) | code site | test (level) | status |`, one row per normative
   statement, seeded with A.U17.12's desk-check rows; at execution re-checked after A.U17.03, A.U17.06, A.U17.13,
   A.U17.16 land, reading code sites by symbol (function or constant name) — the U10 renames and class reorder
   (M.SRC_NET merges of A.U10.18/.33/.44) move every `asy_uart_comm.py` line the seed cites. Rows other units change carry
-  that unit's action (J.5 warning text A.U3.08; J.6 poll default A.U13.17; J.9 errno alignment A.U2.20/A.U2.22); a row
-  whose code does not hold is a finding of that unit (OR12.a), and, for a protocol-level divergence, a Class A entry.
+  that unit's action (J.5 warning text A.U3.08, as far as it stands after OR140.a (7)'s per-layer rule; J.6 poll default
+  A.U13.17; J.6 the DMA receive ring and J.7 a lap read as the receive overrun, U13/U17, [fold F25 M_SRC_NET]; J.6 the
+  chunked assembly and the receive cap's refusal before any allocation, U17, [fold F27 M_SRC_NET]; J.9 errno alignment
+  A.U2.20/A.U2.22); a row whose code does not hold is a finding of that unit (OR12.a), and, for a protocol-level
+  divergence, a Class A entry (the receive cap's refusal is one, OR143.a (3); the ring is "no C impact").
 - **Resolved**: line drift from U10 — read by symbol (agent decision D5).
 - **Unit**: U17 (after its code actions).
-- **Depends**: A.U17.03, A.U17.06, A.U17.13, A.U17.16; the U10 renames.
+- **Depends**: A.U17.03, A.U17.06, A.U17.13, A.U17.16; the U10 renames; [fold F25 M_SRC_NET], [fold F27 M_SRC_NET].
 - **Blast carried by**: audit file only; its findings are the U17 actions named in its rows (M.SRC_NET/M.TEST_UNIT).
 - **Kind**: doc (audit file)
 
@@ -576,7 +580,8 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 - **Kind**: code (one-time, audit scratch), doc
 
 ### M.PROC.021 U32: re-run the legacy-function and legacy-value checks at the sync point
-- **From**: A.U32.04, A.U32.05.
+- **From**: A.U32.04, A.U32.05; OR140.a (6) (A-C review fold: the old work-in-progress folder's code counts as reference
+  for the owner's intent unless something states otherwise — the reading this check already applies).
 - **Site**: the audit working record (`audit/`; nothing permanent); read: the three modules at the U32 tip and the
   legacy files at their `legacy/firmware/` paths (M.PROC.014).
 - **Change**: A.U32.04's desk check repeated against the then-current code after U9/U15/U18 land, each function marked
@@ -589,7 +594,8 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   validate per M.GEN.013). Only owner questions and fixes are written (OR48.a (3) "no list or permanent record").
   Then A.U32.05's legacy-value trace is re-confirmed the same way against the then-current generated module (`/status`,
   `/measurements`, `/sensors`, `/networking`, `/system`): every legacy key of `modules/sensortask-wozi.py:146-530`
-  (arzi/neu the same minus BMP388) and of `8ec6fc1^:improved-quality/sensortask-wozi.py:395-415, 630-670` maps to its
+  (arzi/neu the same minus BMP388) and of `8ec6fc1^:improved-quality/sensortask-wozi.py:395-415, 630-670` (the
+  work-in-progress folder's code, read as the owner's intent unless something states otherwise) maps to its
   refactor place as A.U32.05 lists it, `UnixTime` (A.U23.22) and `LastTaskEnd` (A.U32.06, OR128) included; a key with no
   place is an owner question (OR43.a (1)).
 - **Resolved**: line drift — read by symbol (D5).
@@ -638,7 +644,8 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
 ### M.PROC.022 Open the B3 working files; the campaign ends when every row is terminal
 - **From**: A.U35.01; the campaign procedures A.U35.03, A.U35.04, A.U35.05, A.U35.08, A.U35.09 (1), A.U35.15
   (confirmation runs), A.U35.22 (1), A.U35.23, A.U35.28 (1), A.U35.35, A.U35.37, A.U35.41 (the verdict table), A.U35.50,
-  A.U35.51 (their file edits stay with the changes that carry them) (AC3_R R-01; the file rows of AC3_S S-17: A.U35.03
+  A.U35.51 (their file edits stay with the changes that carry them); A.U18.05 / OR141.a (5) (the idle poll's twin
+  measurement, A-C review fold) (AC3_R R-01; the file rows of AC3_S S-17: A.U35.03
   `review.md`, A.U35.04 `faults.md`, A.U35.08 `matrices.md`, A.U35.22 `levels.md` with M.PROC.023, A.U35.23 `timing.md`,
   A.U35.28 `load.md`, A.U35.41 `e51.md`, A.U35.50 `conformance.md`).
 - **Site**: new `audit/b3/` (audit working files, deleted with `audit/` at phase D).
@@ -658,8 +665,11 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   one fault-planting pass per module in a throwaway worktree through `audit/sweeps/plant.py`, nothing kept (A.U35.04),
   the two plants per memory gate and every check-style test triggered (A.U35.05); `matrices.md` — the assembly and actor
   × resource matrices, each gap tested at the lowest level that proves it (A.U35.08), and the recombination row
-  (A.U35.09 (1)); `timing.md` — B0, post-refresh and post-B3 columns per level and GC stage (A.U35.23) and the NTP
-  loopback confirmation runs (A.U35.15); `load.md` — the resource × level cells (A.U35.28 (1)); `e51.md` — the E.5.1
+  (A.U35.09 (1)); `timing.md` — B0, post-refresh and post-B3 columns per level and GC stage (A.U35.23), the NTP
+  loopback confirmation runs (A.U35.15), and the UDP idle poll's twin measurement (OR141.a (5), A-C review fold: a
+  hotspot-mode twin idling 60 s with no DNS traffic, its listener's poll rounds per second and loop share at the 100 ms
+  idle rate against the 20 ms transaction rate, and the first answer after the idle stretch; the bench half is
+  M.PROC.038's); `load.md` — the resource × level cells (A.U35.28 (1)); `e51.md` — the E.5.1
   verdict table (A.U35.41); `levels.md` — the multi-chunk SET ladder (A.U35.22 (1)); `conformance.md` — one four-tier
   bus-hazard row per bus-facing change of B2 and B3 (A.U35.50) and the wear-gate and host-churn table (A.U35.51).
 - **Resolved**: —
@@ -930,12 +940,15 @@ Standing for every step below (CLAUDE.md, C.md header): nothing runs on a board,
 without the owner's go-ahead given in that round's own conversation — "a go-ahead given to a different session, or to an
 earlier session that already ended, does not carry over"; "once granted, it covers the rest of that same conversation";
 subagents and child sessions inherit none. Only `dev` is ever flashed, with a dev-native image built from its own TOML
-through its own generated entry point; `wozi` and the four field units are never flashed or connected. The FRAM error
+through its own generated entry point; no other build's image is flashed and the field units are never connected (no
+build but `dev`, the contained bench exception, is special: OR140.a (18), A-C review fold). The FRAM error
 logs are read and saved before anything writes to the board (CLAUDE.md FRAM rule; its first-chunk caveat stated in every
 record). Wear spends only what the round's plan names, behind its marker.
 
 ### M.PROC.036 Phase C runs R0-R7 in one order under one frame
 - **From**: A.C.11 (1) (inventory rows delivered or re-queued), H01-H83 (`C.md` inventory), A.U37.01 (phase C after U37);
+  OR139.a (5) (two sessions, R6 inside session 1), OR140.a (18) (no WoZi-specific wording), OR141.a (4) (g), (5) (the
+  DMA ring's R1 proof; H78 and H82 dropped) (A-C review fold);
   read for the order: A.C.01-A.C.06, A.C.10, A.C.12-A.C.17, A.C.19 (merged into their files by HW_BENCH/HW_DEV/SCR/TWIN:
   M.HW_BENCH.006/.060/.123 frame, .120 bench facts, .102 power-cycle steps, .075 lwIP pair, .083/.119 reset codes,
   .130 budget table; M.HW_DEV.010/.055/.152/.154; M.SCR.006/.030-.034).
@@ -949,7 +962,7 @@ record). Wear spends only what the round's plan names, behind its marker.
   evidence first (`fram_evidence_saved`: `/status` over `--dut-ip` before any raw-REPL entry, then the raw FRAM dump;
   copied into the round record); lower levels on the recorded commit (`scripts/_run_lower_levels.sh`; never
   `--skip-lower-levels` for a reported result); the image built with `scripts/build_firmware.py <bench device>` (the bench
-  device from data, never `wozi`) with its image record, flashed through the one `reflash()` helper as the round's
+  device from data; no other build's image) with its image record, flashed through the one `reflash()` helper as the round's
   planned prerequisite write; the image proof (`board_image`) and the standard state (`standard_state`) at start and end;
   default flash tier then default bench tier (`scripts/run_bench_hardware_suite.sh`), each verdict's deselected count
   recorded; a gated run only after a clean default run of the same image record in the same conversation; ad-hoc scripts
@@ -967,15 +980,19 @@ record). Wear spends only what the round's plan names, behind its marker.
   removed only if the go-ahead names them, the GCC ≥ 14 mbedtls build if no trixie chroot did it, the speed probe ×10 with
   no board, the owner's DHCP-keying and BME688 confirmations, step timings and the host lwIP hammer); R1 first contact
   then the release candidate's default run (A.C.03: first contact read-only — REST bodies, `reset_cause()`, raw FRAM dump,
-  every `config_*.cfg`, the CRC32 "before" probe — then the default tiers, the R1 rows of the inventory, the measurements
-  of A.C.03 (4), M.PROC.038's hand rows H78-H81, and last M.PROC.037); R2 operator round (A.C.04, M.PROC.039's budget
+  every `config_*.cfg`, the CRC32 "before" probe — then the default tiers, the R1 rows of the inventory, the UART DMA
+  ring's silicon proof (M.PROC.049), the measurements of A.C.03 (4), M.PROC.038's kept rows H79-H81 and the idle-poll
+  reading, and last M.PROC.037); R2 operator round (A.C.04, M.PROC.039's budget
   stated first: M1 rig geometry, manual rungs, the power-cycle and power-cut steps, scope rows only if the owner provides
   a scope, the browser pass with the head capture, the field units' TOML check by the owner without flashing); R3 gated
   wear run (A.C.05: `--allow-persistence-write`, then with `--allow-scd30-extra-write`, then `--allow-neopixel-sweep
   --allow-persistence-write`; the role reversal's destructive stage 6 last, its USB recovery named before it); R4 the
   `flash_cycle` rows (A.C.06: the lwIP pair — control image first, then the override on the release image —, the CRC16
-  reflash run, the reflash smoke test, `--allow-toolchain-reverify` once, H82 only if planned, M.PROC.038); R5 soak
-  (M.PROC.040); R6 rollover (M.PROC.041); R7 release proof, last (M.PROC.042). Inventory rows marked "co-land" run inside
+  reflash run, the reflash smoke test, `--allow-toolchain-reverify` once; H82 dropped, M.PROC.038); R5 soak
+  (M.PROC.040); R6 rollover on the tick-offset test image, about two hours (M.PROC.041); R7 release proof, last
+  (M.PROC.042). **Sessions** (OR139.a (5), A-C review fold): two — session 1 runs R0, R1, R2, R3, R5, then R6, then R4
+  (R4's reflash rows end on the standard image, after R6's test image), in one conversation; session 2 runs R7 after
+  every phase-C delta is applied and one re-verification pass is green. Inventory rows marked "co-land" run inside
   their round's suite run; "own" rows are the round's steps. H76 (the UART babbling peer) stays owed (owner, 2026-09-25);
   H77 is withdrawn (AC_NOTES 11, 23). (4) **A moved firmware pin** (refresh or M.PROC.031): R1 and R5 run on the pin the
   tree carries, with the F.5 on-target confirmations and `sys.implementation` (row H60); a failure on the moved pin goes
@@ -1014,16 +1031,17 @@ record). Wear spends only what the round's plan names, behind its marker.
   arm → A.U35.05 (3) (SCR M.SCR.047).
 - **Kind**: test, hardware
 
-### M.PROC.038 The hand-run rows H78-H82: instruments and records
+### M.PROC.038 The hand-run rows: three one-time measurements kept, two dropped, the idle-poll reading owed
 - **From**: M_HW_BENCH GAP-B8 (H78-H82 "own step"/"own record" with no instrument in any action); A.C.03 (4), A.C.06 (5)
-  (read); A.U2.13 (H78), A.U10.13 (H79), A.U9.04 (H80), SUPP_recovery closing note (H81), A.U18.43/A.SDEP.17 W42 (H82).
-- **Site**: the round records `audit/c/R1.md`, `audit/c/R4.md`; ad-hoc scripts and commands saved verbatim in the record
-  (none committed).
-- **Change**: each row is run by hand under the armed network switch where it touches the bench network, each script
-  under `timeout` with retries capped, and recorded with its image: (H78, R1) with the board serving, the bench Pi blocks
-  the DUT's UDP 123 through `bench_control`'s fault helper (the same mechanism the bench network tests use) for longer than
-  the `SGPWaitTimeNTP` read from `GET /sensors`, then unblocks; twice; `GET /status` after each shows one SGP40 entry
-  (today's wrnno 35 / `W13`, the catalog name after U2) per outage and `ErrCount` rising per backup; zero wear. (H79, R1)
+  (read); A.U10.13 (H79), A.U9.04 (H80), SUPP_recovery closing note (H81); A.U2.13 (H78) and A.U18.43/A.SDEP.17 W42 (H82)
+  dropped (OR141.a (5): the NTP-outage watch is covered by the twin's local NTP responder, OR140.a (13); the image
+  without the 100 ms hotspot settle is not built, the settle stays); A.U18.05 (the idle poll rate's owed measurement,
+  OR141.a (5)) (A-C review fold).
+- **Site**: the round record `audit/c/R1.md`; ad-hoc scripts and commands saved verbatim in the record (none
+  committed).
+- **Change**: three one-time measurements, each run once, by hand, under the armed network switch where it touches the
+  bench network, each script under `timeout` with retries capped, and recorded with its image (owner, 2026-10-05: kept
+  because each sets a tuned value's basis; not part of the general testing). (H79, R1)
   after the default tiers, one read-only script under `timeout` builds each driver of the bench device over its bench-facts
   bus and address, feeds the watchdog, and times 100 product reads per driver; the maximum per driver is the
   `stagger.min_read_separation_ms` input (A.U10.13). (H80, R1) with the bench API load running (the bench tier's load
@@ -1032,28 +1050,58 @@ record). Wear spends only what the round's plan names, behind its marker.
   is the `_MAX_SIGNAL_S` input (A.U9.04); if the image logs no such line, the row is recorded "no instrument on this image".
   (H81, R1) the failure count at which each rung fired, read from the rung tests' recorded facts of the default run
   (participant 2nd, bus clear 3rd, controller 4th failure; FRAM probe 2nd; three identification attempts); a rung test that
-  does not report its count is recorded so. (H82, R4, only if the round's plan names it) a local-only image built in a
-  throwaway worktree with the 100 ms settle before `status("stations")` removed, flashed through `reflash()`, the bench
-  joining and leaving the DUT's hotspot ten times inside the armed switch, the station count read each time and compared
-  with the joined count; the round's standard image reflashed at once (2 flash cycles in R4's budget). A row whose result
+  does not report its count is recorded so. H78 and H82 are not run (dropped above). The idle poll rate (owner,
+  2026-10-05: 100 ms stays, its measurement owed on the twin and the bench): while the default run holds the board in
+  its hotspot, the bench measures the captive DNS listener's first answer after at least 2 s of silence (ten samples),
+  and the idle loop share where the image reports it; recorded as the 100 ms row's bench basis beside the twin's
+  (M.PROC.022, `timing.md`); the exact reading is decided at execution with its reason recorded. A row whose result
   should be repeatable comes back as an A.C.10 delta (a gated bench test in HW_BENCH), not as a permanent ad-hoc script.
 - **Resolved**: GAP-B8's "the round runs them by hand under the armed switch" adopted; the instruments above are the
-  concrete hand steps — agent decision D7.
-- **Unit**: phase C, R1 (H78-H81), R4 (H82).
-- **Depends**: M.PROC.036; R1's default run (H79-H81 read its outputs).
-- **Blast carried by**: Part N rows `stagger.min_read_separation_ms`, `_MAX_SIGNAL_S`, the ladder thresholds → A.C.10 deltas
-  (SPEC); the `stations` settle removal → A.U18.43's trigger (SRC_NET, delta); BACKLOG "Not yet confirmed on silicon" (1)
-  → A.U37.05 (DOCS).
+  concrete hand steps — agent decision D7. The owner's question (what the five rows are worth) is answered: three kept
+  as one-time measurements, two dropped (OR141.a (5)).
+- **Unit**: phase C, R1.
+- **Depends**: M.PROC.036; R1's default run (H79-H81 read its outputs); M.SRC_NET.028 (the 100 ms idle poll, A.U18.05).
+- **Blast carried by**: Part N rows `stagger.min_read_separation_ms`, `_MAX_SIGNAL_S`, the ladder thresholds and the
+  UDP idle poll → A.C.10 deltas (SPEC); BACKLOG "Not yet confirmed on silicon" (1) → A.U37.05 (DOCS); the inventory's H78
+  and H82 rows dropped → C.md's inventory (lead; not an M file).
+- **Kind**: hardware
+
+### M.PROC.049 R1: the UART DMA ring on silicon, and one run of the old receive path
+- **From**: OR141.a (4) (d), (g); OR143.a (4), (5) (A-C review fold: the bench half of the DMA receive ring and of the
+  receive cap — interrupts off without a flash write, a soft reset during traffic, the heap before and after, a
+  maximum-size transfer over the jumper, and a one-time run of today's interrupt-driven path showing it loses bytes,
+  not a permanent control arm, OR21.a (2)).
+- **Site**: the round record `audit/c/R1.md`; a throwaway worktree of R1's commit for the old-path run (never
+  committed); the flash tier.
+- **Change**: in R1, after the clean default run of the release candidate: (1) the default flash tier's link tests
+  already ran M.HW_DEV.160 (1)-(2) and M.HW_DEV.045 (9); their facts — per window frames sent and intact, UARTRSR OE,
+  the overrun count beyond the bound; channels free and the ring untouched after the soft reset; the heap cost and
+  largest free block before and after the ring's allocation; the maximum-size train both ways and the over-cap refusal
+  — are copied into the record with the image. (2) Once, in a throwaway worktree: a copy of `uart_dma_ring_interrupts_off.py`
+  whose receiver reads through `machine.UART`'s own interrupt-driven receive (the receive buffer at its default, no DMA
+  set-up), run through `run_isolated()` with the 45 ms and 400 ms windows; the record holds the bytes lost and the OE
+  flag (expected: lost bytes and OE set), stating that the run exists to show the loss and is not repeated. The
+  worktree is removed; nothing of it enters the tree. (3) R3 runs M.HW_DEV.160 (3), the optional real config write
+  during traffic, behind `--allow-persistence-write`. The measured heap and timing figures go to SPEC I/J.6/F.5.8 as
+  A.C.10 deltas. Wear: none in R1; one flash write in R3.
+- **Resolved**: the one-time old-path run is a round step rather than a test, so no permanent control arm exists
+  (OR21.a (2)); the worktree form is the lwIP control image's (M.HW_BENCH.075).
+- **Unit**: phase C, R1 (session 1); (3) R3.
+- **Depends**: M.PROC.036; M.HW_DEV.045, M.HW_DEV.046, M.HW_DEV.159, M.HW_DEV.160.
+- **Blast carried by**: SPEC I's ring row, J.6, F.5.8 → A.C.10 deltas (SPEC); a new inventory row in C.md for the sweep
+  and the old-path run (lead; not an M file).
 - **Kind**: hardware
 
 ### M.PROC.039 R2's plan states its write budget before the operator starts
-- **From**: M_HW_BENCH GAP-B9; A.C.04 (Blast "Wear"), M.HW_BENCH.102 (the manual steps' writes), A.C.17.
+- **From**: M_HW_BENCH GAP-B9; A.C.04 (Blast "Wear"), M.HW_BENCH.102 (the manual steps' writes), A.C.17; OR136.a (1)
+  (A-C review fold: an absent file's first write after the reset).
 - **Site**: `audit/c/R2.md` (the plan section, written before step (1) of A.C.04).
 - **Change**: R2's plan lists, before the owner starts, every write the round spends, with the step that spends it:
   `manual_persistence.py`'s flash-config step — 2 flash writes (the value and its restore); its SCD30 NVM step — 2 SCD30
   NVM writes (`MeasInterval` changed and restored, stated in the step before it runs, M.HW_BENCH.102 (2)); the
   config-write power cut (A.C.17) — ≤ 60 scratch flash writes and 3 removals over its three repetitions; the `resetconfig`
-  power cut — the deletions it completes plus one restore write per config file; the `erasefram` power cut — FRAM erases
+  power cut — the deletions it completes, the following boot's one defaults write per deleted file (OR136.a (1)), plus
+  one restore write per config file; the `erasefram` power cut — FRAM erases
   only (FRAM is not wear, listed for the evidence they overwrite: evidence saved first); power cycles — none; the browser
   pass — none (a no-op Apply answers "Unchanged"). The operator confirms the budget in the conversation before step (1);
   any step that would spend beyond it stops for the owner.
@@ -1079,29 +1127,40 @@ record). Wear spends only what the round's plan names, behind its marker.
   (SPEC); the trigger distribution vs the twin's sequencer → A.C.10 (TWIN).
 - **Kind**: hardware
 
-### M.PROC.041 R6: the 12.4-day rollover run, the board touched by nothing else
-- **From**: A.C.08; M.SCR.074 (the rollover runner; GAPS_G4 hand-off 2, gap pass G1).
+### M.PROC.041 R6: about two hours on the tick-offset test image, inside session 1
+- **From**: A.C.08; M.SCR.074 (the rollover runner; GAPS_G4 hand-off 2, gap pass G1); OR139.a (1)-(5) (A-C review fold:
+  a test build whose millisecond count starts 2**32 ms minus 15 minutes after boot, one flash cycle, about two hours,
+  run inside session 1 after R5 and before R4; the release proof stays last).
 - **Site**: `scripts/run_bench_rollover_test.sh` (M.SCR.074) running `tests_hardware/bench/test_ticks_ms_rollover.py`
   (M.HW_BENCH.089); `audit/c/R6.md`.
-- **Change**: on the release-candidate image, after R5, with no other round running on the board for the window: started
-  with the rollover runner `scripts/run_bench_rollover_test.sh` (M.SCR.074: the clean-run wrapper with the
-  `multi_day_rollover` floor and `--allow-multi-day-rollover`, no lower levels, run record and verdict) — detached on the bench Pi under `timeout` of the window plus margin; the network switch armed across
-  the session-start fixtures (the stale-credential scan may take the AP slave down) and disarmed once the hourly REST
-  polls begin (they change no network state); runs until `SysUptime` passes `2**30 / 1000 + 3600` s. If the conversation
-  that started it ends, nothing further is sent to the board or the bench network until a new conversation's go-ahead
-  names R6, which then reads the runner's log and verdict. If a later delta changes tick-handling code (grep `ticks_` in
-  the delta), the owner decides whether R6 repeats; the record names the image it proved. Wear: none.
+- **Change**: in session 1, after R5's clean runs of the release candidate and before R4, with no other round running on
+  the board for the window: the rollover runner `scripts/run_bench_rollover_test.sh` (M.SCR.074) builds the bench
+  board's tick-offset test image from the release candidate's commit (it differs only by the override; its record and
+  build info name it), then the clean-run wrapper with the `multi_day_rollover` floor, `--allow-multi-day-rollover`,
+  `--allow-flash-cycle` and `--rollover-image` runs the test, which saves the FRAM evidence, flashes the test image
+  through `reflash()` (one flash cycle, in the round's flash budget) and polls `/status` and `/measurements` for about
+  two hours with the same health verdicts (no lower levels, run record and verdict); started detached on the bench Pi
+  under `timeout` of the window plus margin; the network switch armed across the session-start fixtures (the
+  stale-credential scan may take the AP slave down) and disarmed once the REST polls begin (they change no network
+  state). The board is left on the test image; R4 then flashes its own images and ends on the round's standard image.
+  If the conversation ends first, nothing further is sent to the board or the bench network until a new conversation's
+  go-ahead names R6, which then reads the runner's log and verdict. If a later delta changes tick-handling code (grep
+  `ticks_` in the delta), the owner decides whether R6 repeats; the record names the image it proved. The driven-clock
+  proofs of L1/L2 stay. Wear: one flash cycle.
 - **Resolved**: the flash, bench and soak runners never select `multi_day_rollover` (M.SCR.030/.031 floors exclude it,
   M.SCR.032's floor is `soak_duration`); R6 starts through the rollover runner, so the verdict is a recorded clean run —
   agent decision D8, through the rollover runner. The hand-written wrapper call it used before is replaced by M.SCR.074
-  (AC_NOTES 45 settled by GAPS_G4's AD-19; gap pass G1).
-- **Unit**: phase C, R6.
-- **Depends**: M.PROC.040; M.SCR.074; A.U26.29, A.U26.36, A.U26.74.
-- **Blast carried by**: the driven-time proofs are L1/L2 (LEAD/R04); BACKLOG's G6 row removed → A.C.10 (DOCS).
+  (AC_NOTES 45 settled by GAPS_G4's AD-19; gap pass G1). OR139.a replaces the 12.4-day run and its own session.
+- **Unit**: phase C, R6 (session 1, after R5, before R4).
+- **Depends**: M.PROC.040; M.SCR.074; M.HW_BENCH.089; M.TOOL.080; A.U26.29, A.U26.36, A.U26.74.
+- **Blast carried by**: the driven-time proofs are L1/L2 (LEAD/R04); BACKLOG's G6 row removed → A.C.10 (DOCS); R4 runs
+  after R6 (M.PROC.036 (3)); `tests_hardware/README.md`'s rollover text → M.HW_BENCH.126; SPEC B.14 and E.6 →
+  [fold F04 M_SPEC]; WORK_ORDER section 5's two sessions → the lead's order regeneration.
 - **Kind**: hardware
 
 ### M.PROC.042 R7, last: the two-image GC proof on the final tree
-- **From**: A.C.09; A.U8.06 (UART tunables on both images); OR40.a (3).
+- **From**: A.C.09; A.U8.06 (UART tunables on both images); OR40.a (3); OR139.a (2), (5) (A-C review fold: no release
+  image carries the test override; R7 is the second session).
 - **Site**: `audit/c/R7.md`; the no-threshold image from a throwaway worktree; the release image from the final commit.
 - **Change**: only after every phase-C delta is applied and one re-verification pass on that tree ended all green
   (M.PROC.043 (3)): (1) the no-threshold image — the final commit in a throwaway worktree with the boot-entry generator's
@@ -1109,7 +1168,9 @@ record). Wear spends only what the round's plan names, behind its marker.
   @tunable gc.threshold_bytes`, M.GEN.001; never committed), built (record `dirty: true`), flashed, then the full default
   flash and bench tiers with `--image-record` at that worktree's record: zero allocation markers in both hardware gates;
   (2) the release image built from the final commit, flashed, the full default flash and bench tiers again; the UART
-  tunables' figures recorded on both images. The record lists the timestamped boot log, the trigger distribution (R5's
+  tunables' figures recorded on both images. Both records' `overrides` must not name the tick-offset test override
+  (the build's release refusal, M.TOOL.080, already fails such a build; the record is checked once more here, OR139.a
+  (2)). R7 is session 2, alone (OR139.a (5)). The record lists the timestamped boot log, the trigger distribution (R5's
   long run if the tree has not changed since, else `scripts/run_bench_soak_tests.sh --duration long` on this image),
   every `ResetReason` observed across R1-R7 with its cause, the bench Pi's stale-package list re-checked (A.C.02 (4)), and
   the F17 verdict: every reset of phase C attributed — F17 closes; any unexplained reset is a new finding with its code
@@ -1206,12 +1267,15 @@ Checked by reading every finished merge's ledger and From lines (2026-10-01). "R
 | A.U31.12 | I2C probe settle in whole ms | M.SRC_SENS.007/.013 | — |
 
 ### M.PROC.046 U10 rename and key sweeps run once over the whole tree
-- **From**: A.U10.18, A.U10.35, A.U10.37, A.U10.38, A.U10.40, A.U10.43, A.U10.44 (the whole-tree halves; AC3_S S-15).
+- **From**: A.U10.18, A.U10.35, A.U10.37, A.U10.38, A.U10.40, A.U10.43, A.U10.44 (the whole-tree halves; AC3_S S-15);
+  OR141.a (3) (A-C review fold: `voc_algorithm.py` keeps its upstream names).
 - **Site**: every tracked file outside `legacy/`, `ext/`, `arduino/`, `audit/` and the UART changelog that a renamed
   name or key reaches (each action's own query); the per-file merged changes carry their files' context edits.
 - **Change**: per action, in U10 after its per-file changes: the action's script/rename map is applied once over the
   scope, then its completion check runs — `grep -rn` of every old name/key empty (A.U10.37/.38/.40/.43/.44), the
-  three mypy passes clean with no `attr-defined` (A.U10.35/.18). The files AC3_S S-15 lists (A.U10.40: 16 files;
+  three mypy passes clean with no `attr-defined` (A.U10.35/.18). No sweep renames anything inside `src/voc_algorithm.py`
+  except the class other modules import (a literal port: upstream names, casing and order, OR141.a (3), A-C review fold).
+  The files AC3_S S-15 lists (A.U10.40: 16 files;
   A.U10.37: 14; A.U10.38: 33; A.U10.18: `src/asy_sgp40_driver.py:169`'s `_datalock` comment → `_data_lock`) are named
   in the step's record as covered by this sweep.
 - **Resolved**: the cluster conventions (TEST_UNIT "U10 rename sweep", HW_BENCH/HW_DEV B1, SRC_SENS "Names") describe
@@ -1222,11 +1286,14 @@ Checked by reading every finished merge's ledger and From lines (2026-10-01). "R
 - **Kind**: code, test, doc
 
 ### M.PROC.047 U36 host-scope reorder runs once over every Python scope
-- **From**: A.U36.038 (2) (AC3_S S-15: carriers only M.GEN.010/.011, M.SCR.063, M.TEST_HELP.034).
+- **From**: A.U36.038 (2) (AC3_S S-15: carriers only M.GEN.010/.011, M.SCR.063, M.TEST_HELP.034); OR141.a (3) (A-C
+  review fold: `voc_algorithm.py` is not reordered).
 - **Site**: every Python file of the eight lint scopes (`src/`, `tests/`, `digital_twin/`, `buildgen/`, `toolchain/`,
   `scripts/`, `tests_scripts/`, `tests_hardware/`).
 - **Change**: A.U36.038 (2)'s script-driven D.15 member reorder, a pure move per class, applied once after M.TSC.044/.064's
-  widened check lands; each file AST-verified (same (name, body) set, comment multiset unchanged).
+  widened check lands; each file AST-verified (same (name, body) set, comment multiset unchanged). `src/voc_algorithm.py`
+  is not reordered: the one named exception to D.15, a literal port keeping the upstream order (OR141.a (3), A-C review
+  fold).
 - **Resolved**: GEN/SCR/TEST_HELP/WEB carry their files' context; this step covers the rest (`digital_twin/`,
   `toolchain/`, the `tests/` and `tests_scripts/` files, `tests_hardware/`).
 - **Unit**: U36 (after M.TSC.044/.064).

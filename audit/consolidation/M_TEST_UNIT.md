@@ -1106,7 +1106,7 @@ layer that logs them at HEAD, each asserted by the catalog name the fold gives i
   OR140.a (7); A-C review fold).
 - **Site**: `tests/test_asy_fram_manager.py:2336-2470`.
 - **Change**: banner → "# Status-byte failures, branch by branch: one code per condition (Part C.7.1); each layer the
-  failure reaches keeps its own entry." The six tests keep their injection points and their HEAD entries, each asserted
+  failure reaches keeps its own entry (owner, 2026-10-02)." The six tests keep their injection points and their HEAD entries, each asserted
   by the condition's catalog name instead of its per-byte number: idle-mark write failure on byte 1 / byte 2 → `write()`
   `False` with the chunk layer's status-byte write entry; busy-mark byte-2 read failure → read `None` with the status-byte
   read entry; byte 2 neither idle nor uninit (`0x7F`) → `code("E", "FRAM_STATUS_BYTE")`; busy-mark byte-2 write failure
@@ -1921,7 +1921,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
     `driver._start_signal_event.is_set()`, `led_signal(0, 10, 0, 0.1) is False`, and after the ramp no frame with a
     green component exists; the refusal's console line (captured with `record_prints()`) is M.SRC_SENS.026's refusal
     text, which tells the caller to retry later (OR140.a (5)); its `:349-355` comment block → "# The busy signal is
-    _start_signal_event, set for the whole ramp; an external request while it is set is refused, never queued." The
+    _start_signal_event, set for the whole ramp; an external request while it is set is refused, never queued (owner,
+    2026-10-02)." The
     `start_signal_lock`/`ext_start_signal` asserts go.
   - `test_request_signal_low_freq_boundary_never_divides_by_zero` (`freq=1`, `_frame_ms` 1000) and the fractional-`t`
     and large-`t` tests advance the virtual clock by the ramp's own length; their "needs real time" comments go; the
@@ -3504,12 +3505,16 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.155 Construction refusals: poll range, timeout ceiling, codec size
 - **From**: A.U17.20 (`:105-111`, `:165-170`; new L1s), A.U17.22 (`:177`, `:183` hold; new L1), A.U2.20 (`:181`
-  code).
+  code); OR141.a (4) (e) (the rxbuf floor becomes the DMA ring's size floor, refused the same way; A-C review fold).
 - **Site**: `tests/test_asy_uart_comm.py:102-185`; new tests after `:185`.
 - **Change**: `:105-111` → `poll_wait_ms=9, poll_idle_ms=9` (floor 2 × 9 + 9 + 21 = 48: 30 still refused, 200
-  accepted). `:165-170` → `poll_wait_ms=9`; `assert … == code("E", "UART_RXBUF")`; comment → "# A 9ms poll interval plus
-  the module's 5ms of scheduling slack admits ~161 bytes at 115200 baud, so a 64-byte rxbuf loses the tail of anything
-  sustained even though a frame fits." `:181` → `code("E", "ALLOC")`; `Framing_COBS` → `FramingCOBS`. New
+  accepted). `:165-170` → `poll_wait_ms=9` and a 64-byte receive ring (not an rxbuf: from U17 the floor applies to the
+  ring); `assert …` equals the ring-floor refusal's code (M.SRC_NET's, by catalog name); comment → "# A 9ms poll interval
+  plus the module's 5ms of scheduling slack admits ~161 bytes at 115200 baud, so a 64-byte ring loses the tail of
+  anything sustained even though a frame fits." New `test_the_ring_floor_covers_the_longest_flash_write` (the floor is
+  the larger of one framed frame, one poll interval's bytes and the stop-and-wait bytes the peer can send during the
+  longest synchronous flash write, rounded up to a power of two — each term computed by the test from its own inputs,
+  W25Q16JV tSE max 400 ms; one power of two below it refused, exactly it accepted).`:181` → `code("E", "ALLOC")`; `Framing_COBS` → `FramingCOBS`. New
   `test_the_timeout_ceiling_keeps_every_deadline_a_valid_tick_delay` (89_478_485 accepted, its `_resync_window_ms() * 4`
   and `_backoff_max_ms` both below 2**29 by the test's own arithmetic; 89_478_486 refused with
   `code("E", "UART_TIMEOUT_PARAM")`); `test_a_poll_rate_outside_one_to_nine_ms_is_refused` (0 and 10 →
@@ -3518,8 +3523,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `code("E", "UART_CODEC_SIZE")`, exactly that size accepted, and a pair on exact-sized codecs completes a GET and a SET
   with no CRC and with CRC16).
 - **Resolved**: —
-- **Unit**: U17.
-- **Depends**: M.SRC_NET.152, .153, .156.
+- **Unit**: U17 (the ring-floor cases with OR141.a (4)'s U17 part).
+- **Depends**: M.SRC_NET.152, .153, .156; [fold F25 M_SRC_NET] (the ring-size floor in `asy_uart_comm.py`).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3661,7 +3666,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.164 Fault histories without the resync warning; renumbered codes
 - **From**: A.U3.02 + A.U3.08 (`:1458-1506`, `:1729-1746`, `:1763, 1781, 1841, 1884, 1944, 2033`, `:1983-2000`),
-  A.U2.20 (`:1666`, `:1702`, `:1822`, and every `persisted()` literal), A.U10.35 (`:1700`).
+  A.U2.20 (`:1666`, `:1702`, `:1822`, and every `persisted()` literal), A.U10.35 (`:1700`); OR143.a (1)-(2) (the
+  peer-sized destination and right-sizing allocations and their caught-`MemoryError` sites go; A-C review fold).
 - **Site**: `tests/test_asy_uart_comm.py:1458-1506`, `:1640-2033`.
 - **Change**: `test_a_repeating_fault_does_not_bury_the_errno_under_resync_warnings` → `…_spends_one_slot`: five
   identical no-ACK faults leave `recorded == [("E", code("E", "UART_NO_ACK"))]` and `ErrCount == 5` (no resync warning
@@ -3669,8 +3675,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   recovery and one more fault, `ErrCount == 3` and the history still holds one no-ACK slot (identical to the newest
   entry); its comment states the central rule. `test_a_rejected_command_is_distinguishable_from_a_link_fault`: `("W",
   14)` → `("W", code("W", "UART_CMD_DECLINED"))`. `:1666` `["W14"]` → `[_w("UART_CMD_DECLINED")]`; `:1702` `["E16"]` →
-  `[_e("BAD_ARG")]`; `"E21"` → `_e("UART_WRITE_FAILED")`, `"E29"` → `_e("UART_GET_ID_MISMATCH")`, `"E24"`/`"E14"` →
-  `_e("ALLOC")`, `"E25"` → `_e("UART_SIZE_MISMATCH")`, `"E33"` → `_e("UART_STREAM_SHORT")`, `"E26"` → `_e("CALLBACK")`;
+  `[_e("BAD_ARG")]`; `"E21"` → `_e("UART_WRITE_FAILED")`, `"E29"` → `_e("UART_GET_ID_MISMATCH")`, `"E14"` (`:1944`, the
+  internal-buffer recheck) → `_e("ALLOC")`; the four starved-destination tests (`:1825-1910`, `"E24"`) go with the
+  allocations they starve (guard: M.TEST_UNIT.345's chunk and cap cases), `"E25"` → `_e("UART_SIZE_MISMATCH")`, `"E33"` → `_e("UART_STREAM_SHORT")`, `"E26"` → `_e("CALLBACK")`;
   every `"W10"` element goes from its expected list (`[errno, "W10"]` → `[errno]`), and `:1729-1746`'s `"W10" in log`
   becomes an assertion that the resync ran (`_holdoff_active is True`). The comments naming "errno 21"/"errno 33"/
   "errno 26" name the catalog codes. `test_two_declined_ids_in_rotation_do_not_refill_the_history_either` →
@@ -3678,8 +3685,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   after `reset_error_counter()` one more refusal gives the same one-slot history; comment → "# Alternating declined ids
   are one code, W56: one slot, every refusal counted (C.7.1)."
 - **Resolved**: —
-- **Unit**: U3 (stage U2 numbers, U10 names).
-- **Depends**: M.SRC_NET.153, .158, .162, .163.
+- **Unit**: U3 (stage U2 numbers, U10 names; stage U17: the four starved-destination tests go with OR143.a's chunking).
+- **Depends**: M.SRC_NET.153, .158, .162, .163; [fold F27 M_SRC_NET] (the chunked assembly, from U17).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3722,6 +3729,47 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U36 (stages U0 tag, U1 path, U2 code).
 - **Depends**: M.SRC_NET.153.
 - **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.345 The link over the DMA ring: a lap is an overrun; chunked assembly and the receive cap
+- **From**: OR141.a (4) (c), (e) (a lap handled as J.7's receive overrun, the ring-size floor), OR143.a (1)-(4)
+  (`chunk_bytes` with a reasoned default; a train without a caller destination assembled in pieces of at most
+  `chunk_bytes` in the shared piece primitive; `max_transfer_bytes` refusing a declared size before any allocation
+  through the withheld ACK, logged once; a caller-supplied destination unchanged; tests: no receive allocation above
+  `chunk_bytes` by a largest-block measurement, refusal before any allocation, a maximum-size train assembled
+  correctly, hammering with repeated maximum-size and over-cap trains), FOLD_BRIEF F25/F27 (U17) — A-C review fold.
+- **Site**: new sections in `tests/test_asy_uart_comm.py`; the piece primitive's cases in the test file of the module
+  that holds it (decided with the product change, [fold F27 M_SRC_NET]).
+- **Change**: (a) Lap: `test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs` (a pair whose responder's consumer
+  is held past the ring bound while the initiator streams: the overrun is logged by its catalog code once, J.7's
+  resync runs, the next transaction completes; no lapped byte is delivered to a callback). (b) Chunking:
+  `test_the_default_chunk_bytes_is_the_reasoned_one` (read from source with `src_const`, the reason in a one-line
+  comment); `test_a_dont_care_set_is_assembled_in_pieces_no_larger_than_chunk_bytes` and the same for `uart_get(exp_size=
+  None)` — the largest single receive allocation of a maximum-size train is at most `chunk_bytes` (OR143.a (4)'s
+  largest-block measurement; whether it reads each piece's size through the primitive or the heap's largest free block
+  around the transfer is decided at execution, with its reason recorded — never by filling the heap, CLAUDE.md's
+  structural-proof rule), and the train completes with every byte equal to what was sent, read through the primitive's
+  length, iteration and copy-out;
+  `test_a_caller_supplied_destination_is_still_filled_in_place` (the zero-copy path: no piece allocated);
+  `test_chunk_bytes_outside_its_range_is_refused` (the constructor's refusal by its code). (c) Cap:
+  `test_a_declared_size_over_max_transfer_bytes_is_refused_before_any_allocation` (CHUNKS × payload over the cap: the
+  ACK withheld, the sender's transfer fails as J states, one entry by its catalog code, and `gc.mem_alloc()` unchanged
+  across the refusal); the same for `exp_size` over the cap; `test_a_train_at_the_cap_is_accepted`. (d) Hammering:
+  `test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat` (200 alternating maximum-size and over-cap trains in
+  each direction: every maximum-size train intact, every over-cap one refused, `gc.mem_free()` and the largest free
+  block after the run within the first train's reading; zero `MemoryError` in the output — the suite gate). (e) The piece
+  primitive's own cases (length, iteration, copy-out into a caller buffer, a copy-out larger than the buffer refused, no
+  allocation after construction), beside the webserver's `_PieceWriter` cases it is modelled on. Tunables tagged per the
+  file's convention.
+- **Resolved**: the four starved-destination tests (`:1825-1910`) retire with the caught-`MemoryError` sites (M.TEST_UNIT
+  .164); their goal — a peer-sized allocation never lands unguarded mid-transfer — is met by refusing before allocation
+  and capping each piece, which (b)-(d) prove.
+- **Unit**: U17; stage U24: `src_const()` and the shared pair harness replace the file's local mirror and runner (as
+  M.TEST_UNIT.153's harness stage does).
+- **Depends**: [fold F25 M_SRC_NET] (the ring floor and lap handling in `asy_uart_comm.py`), [fold F27 M_SRC_NET]
+  (`chunk_bytes`, `max_transfer_bytes`, the piece primitive); M.TEST_UNIT.344; M.TEST_HELP.023, .044 (U24 stage).
+- **Blast carried by**: the C-port changelog rows (Class A refusal, "no C impact" ring) → [fold F27 M_SRC_NET], [fold F25
+  M_SRC_NET]; the concurrent-load and bench maximum-size transfers → M.TWIN.171, C.
 - **Kind**: test
 
 ## tests/test_asy_uart_driver.py
@@ -3909,8 +3957,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_the_fill_level_is_the_modular_difference_of_totals` (totals across the count's wrap); `test_a_frame_split_across_
   the_ring_end_reads_whole` (a frame whose bytes straddle the last ring byte, every codec and CRC mode); `test_a_lap_is_an_
   overrun_never_data` (more unread bytes than the ring holds: the read reports the overrun, counted, and no lapped byte
-  is returned); the construction refusals (a ring size not a power of two, outside 2-32768, below the size the caller
-  declares, a misaligned ring — each refused with the driver's code, nothing armed); `test_a_read_allocates_nothing`
+  is returned); the refusals (a ring size not a power of two or outside 2-32768, a misaligned ring — each refused with the
+  driver's code, no channel armed; the size floor is the link's, M.TEST_UNIT.345/.155); `test_a_read_allocates_nothing`
   (after a warm-up read, `gc.mem_alloc()` does not rise across 1 000 frame reads copied by index into the frame buffer —
   measured in the `-1` stage run, holding at 32768; no in-body `gc.threshold`); `test_the_ring_is_allocated_once_in_setup`
   (its identity unchanged across a task restart and re-`init()`); `test_ready_keeps_its_yield_and_rates_on_the_fill_level`
@@ -6004,7 +6052,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Change**: `:209-216`: `still_running is True`; `ErrCount == 2`; the last two entries are `code("E", "READ")` and the
   streak's own entry by its catalog name (the `_last_two_err_nums()` helper keeps its role, reading codes by name); the
   comment → "# One faulted cycle persists the driver's read error and the reader's streak step: each layer the fault
-  reaches keeps its entry (SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment names `_signal_loop()`'s
+  reaches keeps its entry (owner, 2026-10-02; SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment names `_signal_loop()`'s
   startup off frame. `:259-264`: `ErrCount == 2`, the same two entries, comment "# history keeps the fault; the later
   success only resets the streak." NOTIFY counts stay 0.
 - **Resolved**: —
@@ -6931,18 +6979,20 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.317 Direct constructions take one callbacks object; the rxbuf refusal names its code
 - **From**: A.U5.12 (`:789`, `:808`, `:1115`, `:1171`), A.U13.17 (the driver's idle default is now 50 ms), A.U2.20
   (rxbuf code), A.U13.13 (read: frames fit the driver buffers — holds), A.U24.73 (`:1182`); adherence (`:783` changelog
-  label; a vacuous refusal assertion).
+  label; a vacuous refusal assertion); OR141.a (4) (e) (the refusal is the ring floor's from U17; A-C review fold).
 - **Site**: `tests/test_uart_comm_hazard.py:781-791`, `:805-811`, `:1113-1118`, `:1170-1192`.
 - **Change**: `_mismatched_responder()`, the lost-ACK responder and `reborn` → `UARTComm(pair.driver_b, ROLE_RESPONDER,
   payload_size=…, timeout=pair.responder.timeout, callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None),
   name=…)`; `_mismatched_responder() -> UARTComm`. The construction-refusal check builds `Driver(0, tx_pin=0, rx_pin=1,
   rxbuf=32, txbuf=256, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)` — with the new 50 ms idle default the
   timeout floor (2 × 1 + 50 + 21) would refuse it first and the bare `_init_errno != 0` would pass for the wrong reason
-  — and asserts `comm._init_errno == code("E", "UART_RXBUF")`; its comment's "(B17)" → "(SPECIFICATION.md Part J.6)".
+  — and asserts `comm._init_errno == code("E", "UART_RXBUF")`; from U17 the same check builds the driver with a ring below
+  the floor and asserts the ring-floor code (M.SRC_NET's, by catalog name); its comment's "(B17)" → "(SPECIFICATION.md
+  Part J.6)".
   The reset-peer check creates each attempt's listener inside `one()` (no task created at synchronous scope, no
   default-argument binding), `one() -> "bytearray | None"`.
 - **Resolved**: —
-- **Unit**: U5 (stages U13 idle rate, U2 code, U36 label).
+- **Unit**: U5 (stages U13 idle rate, U2 code, U17 ring floor, U36 label).
 - **Depends**: M.SRC_NET.154, .155, .156; M.SRC_NET (driver `poll_idle_ms = 50`, A.U13.17).
 - **Blast carried by**: —
 - **Kind**: test
@@ -8275,3 +8325,47 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.TEST_UNIT.307 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
 | M.TEST_UNIT.336 | Unit | appended: A-C2 step order: A.U2.17's part lands in U3, not U2 (it follows A.U2.17's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.TEST_UNIT.337 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Owner answers OR136-OR143 and the routine settlements folded in (`audit/actions/FOLD_BRIEF.md`); one row per item and
+action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agents add.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.TEST_UNIT.024, .077, .253, .254, .256, .257, .258, .306 | amended |
+| F02 | M.TEST_UNIT.343 | added |
+| F02 | M.TEST_UNIT.202 | amended |
+| F03 | M.TEST_UNIT.253, .254, .259, .306 | amended |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | M.TEST_UNIT.270, .271, .273 | amended |
+| F09 | M.TEST_UNIT.080 | amended |
+| F10 | — | none in this file |
+| F11 | M.TEST_UNIT.017, .024, .041, .044, .046, .060, .061, .063, .077, .086, .091, .113, .122, .132, .135, .136, .138, .142, .143, .218, .227, .255, .265, .279, .280 | amended |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | M.TEST_UNIT.306 | amended |
+| F16 | M.TEST_UNIT.342 | added |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | M.TEST_UNIT.213 | amended |
+| F20 | — | none in this file (checked: the remaining WoZi mentions in these test files are legacy citations or test input data; the device-naming comments already go in M.TEST_UNIT.199/.233/.251) |
+| F21 | M.TEST_UNIT.046, .080, .279 | tag |
+| F22 | — | none in this file |
+| F23 | M.TEST_UNIT.064 (and the Conventions bullet "Function-level imports") | amended |
+| F24 | — | none in this file (checked: the VOC tests use upstream names only) |
+| F25 | M.TEST_UNIT.344, .345 | added |
+| F25 | M.TEST_UNIT.155, .169, .175, .176, .317 | amended |
+| F26 | — | none in this file (the idle-rate twin measurement is M.TWIN.144 test 10) |
+| F27 | M.TEST_UNIT.344 (d), .345 | added |
+| F27 | M.TEST_UNIT.164 | amended |
+| F28 | M.TEST_UNIT.078, .079, .293 (and GAP-U3, Owner questions 2) | amended |
+| F29 | M.TEST_UNIT.104 | amended |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | M.TEST_UNIT.291 (and the D-T27 entry of the agent-decision list) | amended |

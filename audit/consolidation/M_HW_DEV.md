@@ -676,8 +676,8 @@ changes cite.
   behind `--allow-persistence-write` (owner, 2026-10-05, OR141.a (4) (g)). The one-time run of the old
   interrupt-driven receive path is a round step, not a test here (no permanent control arm, OR21.a (2)): M.PROC.049.
 - **Unit**: U26 (written; the twin run first, M.HW_DEV.010); executed in phase C.
-- **Depends**: M.HW_DEV.159, M.HW_DEV.045, M.HW_BENCH.012, M.HW_BENCH.041 (the ring size in `bench_facts`), [fold F25
-  M_SRC_NET] (the DMA receive ring, U13).
+- **Depends**: M.HW_DEV.159, M.HW_DEV.045, M.HW_BENCH.012, M.HW_BENCH.041 (the ring size in `bench_facts`),
+  [fold F25 M_SRC_NET] (the DMA receive ring, U13).
 - **Blast carried by**: (3) joins the wear guard's marked set → M.TSC.119; budget table row (1 write) → M.HW_BENCH.130;
   README UART bullets → M.HW_BENCH.115; the measured heap and timing figures → A.C.10 deltas (SPEC I, J.6, F.5.8).
 - **Kind**: test, hardware (Round: R1, session 1 — a new inventory row for the sweep and the soft reset; (3) R3 gated)
@@ -700,8 +700,8 @@ changes cite.
   `_shared/settle.py`; `JOIN_STEP_MS`/`JOIN_BUDGET_MS` become `_JOIN_STEP_MS`/`_JOIN_BUDGET_MS` with their tags. Both
   instances take `chunk_bytes`, `max_transfer_bytes` and the ring size from `BENCH` (the TOML, [fold F27 M_GEN]); after
   the exchange, a maximum-size train: `uart_set()` of `max_transfer_bytes` bytes (a per-run pattern) to a responder
-  whose set callback gives no destination, so it is assembled in pieces of at most `chunk_bytes` ([fold F27
-  M_SRC_NET]), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte; then one train
+  whose set callback gives no destination, so it is assembled in pieces of at most `chunk_bytes`
+  ([fold F27 M_SRC_NET]), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte; then one train
   declaring `max_transfer_bytes + 1` from the initiator's raw driver, which the responder refuses before allocating
   (the withheld ACK) and logs once, the responder's largest free block (`_shared/heap_probe.py`) read before and after.
   Facts: `crc_mode`, `get_answer_ok`, `set_ok`, `empty_set_ok`, `train_bytes`, `max_train_bytes`, `max_set_intact`,
@@ -752,8 +752,8 @@ changes cite.
   (A-C review fold: the driver receives through its DMA ring, so the measured read is a ring copy).
 - **Site**: `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:1-168`.
 - **Change**: (1) Fold: `_trial` records the DMA ring's fill level when the driver's `ready()` first reports the measured
-  frame (fact `first_ready_bytes`; `uart.any()` and POLLIN are no longer the driver's receive path, [fold F25
-  M_SRC_NET]); the comment `:107` → "(the copy into txbuf is timed separately and reported as
+  frame (fact `first_ready_bytes`; `uart.any()` and POLLIN are no longer the driver's receive path,
+  [fold F25 M_SRC_NET]); the comment `:107` → "(the copy into txbuf is timed separately and reported as
   `txcopy_us`)" — `ticks_us()` around the `write()`, outside the measured window. (2) Readline leg: one trial reading
   a `\n`-terminated frame through `readline_until_complete()`, its worst call span a fact (`readline_span_us`).
   (3) Pins and buffers from `BENCH` (the raw writer UART on `BENCH["bus"]["uart0"]`, the driver on `uart1`); `FRAME`
@@ -2398,11 +2398,13 @@ changes cite.
 
 ### M.HW_DEV.153 Float idempotence and a reload through a scratch manager
 - **From**: A.U11.21, A.U26.18 (scratch removed on every path, leftover first), A.U26.44/A.U26.49 (the float fields' ranges
-  rendered from the `_VAL_*` tuples instead of embedded), A.U26.68.
+  rendered from the `_VAL_*` tuples instead of embedded), A.U26.68; OR136.a (1) (A-C review fold: primed, so the absent
+  scratch file's first write is not spent).
 - **Site**: new `tests_hardware/device_scripts/config_float_round_trip.py`.
 - **Change**: for each float field's min/max and 200 evenly spaced values (ranges from `BENCH["float_fields"]`), checks
-  idempotence of the stored form; writes one value through a `config_HWTEST_FLOAT.cfg` manager, rebuilds the manager
-  from the file, a repeat write answers "Unchanged"; the scratch file removed first and in `finally`; facts
+  idempotence of the stored form; writes one value through a `config_HWTEST_FLOAT.cfg` manager primed in RAM from its
+  schema (no `setup()`, so no first write of defaults over the absent file, OR136.a (1); G1/R07's priming), rebuilds
+  the manager from the file through `setup()`'s read path, a repeat write answers "Unchanged"; the scratch file removed first and in `finally`; facts
   `non_idempotent` (bounded), `repeat_validity`; `done()`.
 - **Resolved**: A.U11.21 embeds the values "(device scripts cannot read host files)"; the rendering (A.U26.44) delivers
   them from the source tuples, which is the G1/R41 form (agent decision AD-10).
@@ -2433,9 +2435,11 @@ changes cite.
 ## tests_hardware/device_scripts/config_write_loop_scratch.py, config_scratch_readback.py (new)
 
 ### M.HW_DEV.155 Power cut during a scratch config write: the writer and the read-back
-- **From**: A.C.17, A.U26.18, A.U26.68.
+- **From**: A.C.17, A.U26.18, A.U26.68; OR136.a (1) (A-C review fold: the writer is primed, so the budget's 20 writes
+  hold).
 - **Site**: two new device scripts (run by the manual step in `manual/manual_persistence.py`, HW_BENCH).
-- **Change**: the writer builds a `ConfigManager` over `config_HWTEST_POWERLOSS.cfg` (two-field schema), writes
+- **Change**: the writer builds a `ConfigManager` over `config_HWTEST_POWERLOSS.cfg` (two-field schema), primed in RAM
+  from its schema (no `setup()`, so the absent file's first write of defaults, OR136.a (1), is not spent), writes
   alternating values through `write_config()` + `flush_pending()`, printing `WROTE <n> <value>` after each (a banner
   the operator watches), at most 20 writes, fed; the read-back loads the file through `setup()`'s read path, reports
   `parsed`, `values`, `repaired`, then removes the file (the allowed scratch cleanup); `done()`.

@@ -721,7 +721,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
      another: construction (`build_system()`, whose first statement is `reset_reason = begin_boot()`, A.8), the
      one-time setup batch (`SystemService.run_setups()`), task starts (`start_tasks()`), timer starts
      (`start_timers()`), then the first NTP force sync — last, so the webserver already answers during it (owner,
-     2026-09-28: 'Boot order is tasks before timers'; legacy started the timers first; NTP last: agent, 2026-09-28) —
+     2026-09-28: 'Boot order is tasks before timers'; legacy started the timers first; NTP last: agent, 2026-09-28;
+     owner-reviewed, 2026-10-02) —
      and finally `supervise_tasks()`, which runs the supervisor as its own task; the supervisor parks when a shutdown
      command takes the watchdog over (A.8); one supervisor pass, its escalation included, stays inside Part N's
      `system.scan_budget`. Each transition is recorded in `machine.mem_backup()` region 1 (`boot_phase()`), so a boot
@@ -841,8 +842,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   U36: the whole section as above (A.U36.003/.004 latest; later units' facts — U31's clause, U32's task names — folded
   in).
 - **Depends**: A.U11.05/.06/.10/.11, A.U20.02-.07, A.U5.02-.11, A.U10.07/.10/.12, A.U16.17/.R03, A.U31.03, A.U36.003,
-  M.SPEC.156 (the rows cited), M.SPEC.008; M.SRC_CORE.043 (absent-file write, as the fold amends it); [fold F03
-  M_GEN] (`ConfigFaults` in the generated `/status` block); [fold F25 M_SRC_NET] (the ring in the link's `setup()`).
+  M.SPEC.156 (the rows cited), M.SPEC.008; M.SRC_CORE.043 (absent-file write, as the fold amends it);
+  [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block); [fold F25 M_SRC_NET] (the ring in the link's `setup()`).
 - **Blast carried by**: CLAUDE.md FRAM rule pointer → A.U36.002 (DOCS); code/test comments citing A.7 → A.U36.004
   (SRC/TEST clusters); `buildgen/codegen.py` docstrings naming A.7 → A.U20.15 (GEN); `tests_hardware/README.md:1395`
   → A.U36.004 (8) (HW_BENCH).
@@ -2245,8 +2246,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   third item — the absent-file write, the unreadable-file rule and the fault state land in U11, M.SRC_CORE.043/.047);
   Stage 4 U20 ((1)'s `ConfigFaults` clause and (2)'s delete item, with the generated `/status` block and the
   system-command delete path); phase C ((4) pointer once F.2 has the result).
-- **Depends**: A.U11.19, A.U11.20, A.U11.28, A.C.17, M.SPEC.096; M.SRC_CORE.043/.047 (as the fold amends them); [fold
-  F03 M_GEN] (`ConfigFaults` in `/status`), [fold F03 M_SRC_CORE] (the unread delete and its "Failed").
+- **Depends**: A.U11.19, A.U11.20, A.U11.28, A.C.17, M.SPEC.096; M.SRC_CORE.043/.047 (as the fold amends them);
+  [fold F03 M_GEN] (`ConfigFaults` in `/status`), [fold F03 M_SRC_CORE] (the unread delete and its "Failed").
 - **Blast carried by**: CLAUDE.md flash-write rule → A.U36.034 (DOCS, M.DOCS.082, as the fold amends it); CLAUDE.md
   wear rule's fresh-filesystem prerequisite → M.DOCS.086; A.8's `ConfigFaults` and reset text → M.SPEC.021; A.7's
   setup-batch sentence → M.SPEC.020.
@@ -4001,7 +4002,8 @@ U36 change that owns its paragraph below.
   phase C has run, the floor sentence gains its evidence note: "(checked on the bench, <date>: <engines and widths>)"
   (A.C.04 (6)). (2) After `:4288`, A.U36.500 (2)'s "**Placement.**" paragraph verbatim (its Status list already names
   `LastTaskEnd`, A.U32.06) and its "**Values deliberately not shown**" sentence (A.U19.10 (2)'s four values), its tag
-  "(owner, 2026-10-02)" (C9: the owner answered it, adding the 24-hour `HTTPDropped`, A.8). (3) `:4290-4293` "**Predecessor**: `html_raw/{general,arzi,dev,wozi}` is the legacy, still-deployed site …" →
+  "(owner, 2026-10-02)" (C9: the owner answered it, adding the 24-hour `HTTPDropped`, A.8). The Placement paragraph's
+  Status list gains `ConfigFaults` (A-C review fold; the website row lands in U23, OR138.a). (3) `:4290-4293` "**Predecessor**: `html_raw/{general,arzi,dev,wozi}` is the legacy, still-deployed site …" →
   "**Predecessor**: `legacy/firmware/html_raw/{general,arzi,dev,wozi}` is the legacy site the owner's legacy units serve,
   targeting the legacy REST shape (PUT-with-`cmd`-envelope, `Led`-prefixed fields); this Part's website targets the refactored REST
   shape from the start and keeps no legacy compatibility (owner, 2026-09-26) — not a reskin."
@@ -4012,7 +4014,8 @@ U36 change that owns its paragraph below.
 - **Unit**: Stage 1 U0 (A.U0.29 tags); Stage 2 U1 ((3) path); Stage 3 U36 ((1)-(3) rest; the history clause after U23
   lands it); Stage 4 phase C (evidence note).
 - **Depends**: A.U0.29, A.U1.02, A.U6.18-A.U6.26, A.U19.10, A.U23.22, A.U23.43, A.U23.44, A.U23.48, A.U32.06, A.U36.500,
-  A.U36.501, A.U36.510, A.C.04; [fold F17 M_WEB] (history entries per subpage, deep links).
+  A.U36.501, A.U36.510, A.C.04; [fold F17 M_WEB] (history entries per subpage, deep links), [fold F03 M_WEB] (the
+  `ConfigFaults` row).
 - **Blast carried by**: `eslint.config.js` `ecmaVersion: 2022` → A.U36.501 (2) (WEB); H.5.1's generator-owned paragraph
   pointer → M.SPEC.118.
 - **Kind**: rule, doc
@@ -4140,8 +4143,8 @@ U36 change that owns its paragraph below.
   pointer needs only L.6.4 — DOCS drops M.DOCS.092's "the `@web`/`@web-group` grammar H.5.1" half (gap for DOCS).
 - **Unit**: Stage 1 U0 ((4)); Stage 2 U15 ((5)); Stage 3 U20 ((3), (6) catalog); Stage 3b U23 ((4)'s fold sentence, with
   the tag field, the generator's default and the renderer); Stage 4 U36 ((1), (2), (6) pointer, (7)).
-- **Depends**: A.U0.16, A.U6.01, A.U15.17, A.U20.25, A.U20.30, A.U36.500, A.U36.514, A.U36.515, M.SPEC.003; [fold F18
-  M_GEN] (the tag field and the generated `decimals`), [fold F18 M_WEB] (the renderer).
+- **Depends**: A.U0.16, A.U6.01, A.U15.17, A.U20.25, A.U20.30, A.U36.500, A.U36.514, A.U36.515, M.SPEC.003;
+  [fold F18 M_GEN] (the tag field and the generated `decimals`), [fold F18 M_WEB] (the renderer).
 - **Blast carried by**: L.4 bullet → A.U36.515 (4) (M.SPEC.147); L.6.4 rows → A.U36.514 (M.SPEC.149); `web_tag.py`
   comments → A.U36.514 (6) (GEN).
 - **Kind**: doc
@@ -4360,7 +4363,8 @@ U36 change that owns its paragraph below.
   concatenation; no caught `MemoryError` stands at these sites (owner, 2026-10-05; J.8)" and "the receive DMA ring —
   construction phase (the link's `setup()` in the one-time setup list), long-lived, fixed by the device TOML's ring size,
   allocated once and never reallocated by a task restart; its alignment padding fixed; net heap cost and largest free
-  block before and after: <twin figure, U25>, <dev figure, phase C> (owner, 2026-10-05)" — A.U0.12's interim "bounded, or
+  block before and after: <the twin's figure> on the twin, <the board's figure> on `dev` (owner,
+  2026-10-05)" — the twin figure written when the catalog lands (measured in U25), the `dev` figure after phase C — A.U0.12's interim "bounded, or
   unbounded pending owner question 1 (BACKLOG.md)" is the U0 text they replace (A.U0.12's own U0 wording no longer names
   an owner question: the chunking became work before B0, M.DOCS.067); (b) the I2C scratch row carries A.U13.02's sentence as A.U30.21 corrects it ("a held view of the scratch
   halves it: one slice per read"), A.U30.07's burst rows, and A.U30.02 (8)'s fallback verdict; (c) the `crc_checks`
@@ -4644,8 +4648,8 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   TOML sentence, with the keys and the build check); Stage 6 U36 ((1), (3) defaults, (5)) — A.S0930.08 is part of the
   2026-09-30 set landing with the CRC-mode wiring.
 - **Depends**: A.U0.37, A.U2.23, A.U3.08, A.U8.06, A.U13.17, A.U17.13, A.U17.15, A.U17.20, A.S0930.01, A.S0930.08, M.SPEC.003;
-  [fold F25 M_SRC_NET] (the ring in `asy_uart_driver.py`, its floor and refusal in `asy_uart_comm.py`), [fold F27
-  M_SRC_NET] (`max_transfer_bytes`), [fold F27 M_GEN] (the TOML keys and their joint build check).
+  [fold F25 M_SRC_NET] (the ring in `asy_uart_driver.py`, its floor and refusal in `asy_uart_comm.py`),
+  [fold F27 M_SRC_NET] (`max_transfer_bytes`), [fold F27 M_GEN] (the TOML keys and their joint build check).
 - **Blast carried by**: changelog B26 → A.U17.15 (UART); `devices/dev.toml:39-40` comment → A.U13.17 (GEN); C.7.2 build
   refusals → M.SPEC.060.
 - **Kind**: rule, doc
@@ -4920,8 +4924,8 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
 - **Unit**: Stage 1 U0 ((2) `:6136` tag); Stage 2 U5/U9 (LED lines); Stage 3 U10 (key names); Stage 4 U20 ((3) table, (4);
   the ring-size and `max_transfer_bytes` rows with their keys and joint check); Stage 5 U26/U29/U31 (rows `bench`, A.11
   pointer, `timeout` bound); Stage 6 U36 ((1), `:6131`; `crc` row with A.S0930.01).
-- **Depends**: A.U5.07, A.U10.43, A.U20.19, A.U20.29, A.U20.34, A.U20.35, A.U26.01, A.U29.03, A.U31.08, A.S0930.01; [fold
-  F27 M_GEN] (the two TOML keys and their joint check).
+- **Depends**: A.U5.07, A.U10.43, A.U20.19, A.U20.29, A.U20.34, A.U20.35, A.U26.01, A.U29.03, A.U31.08, A.S0930.01;
+  [fold F27 M_GEN] (the two TOML keys and their joint check).
 - **Blast carried by**: `devices/*.toml` banners → A.U20.29 (GEN); the table's test → A.U20.35 (TSC).
 - **Kind**: rule, doc
 
@@ -5018,8 +5022,8 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   279, (5) checks, with the fold's ring/cap and `bench`/`hardware_family` checks); Stage 6 U33 ((5) last paragraph);
   Stage 7 U36 ((3) opening and web rows, `decimals` among the keys as U23 leaves them, `crc` with the 2026-09-30 set).
 - **Depends**: A.U0.29, A.U0.33, A.U0.39, A.U5.03, A.U5.07, A.U5.11, A.U8.03, A.U15.16, A.U20.01, A.U20.09, A.U20.17,
-  A.U20.18, A.U20.20, A.U20.21, A.U20.24, A.U20.25, A.U20.34, A.U33.03, A.U36.514, A.S0930.01, M.DOCS.092; [fold F27
-  M_GEN] (the ring/cap check), [fold F18 M_GEN] (`decimals` for every numeric field).
+  A.U20.18, A.U20.20, A.U20.21, A.U20.24, A.U20.25, A.U20.34, A.U33.03, A.U36.514, A.S0930.01, M.DOCS.092;
+  [fold F27 M_GEN] (the ring/cap check), [fold F18 M_GEN] (`decimals` for every numeric field).
 - **Blast carried by**: the tag-family comments in `buildgen/` and `src/` → A.U36.514 (6) (GEN, SRC_*); BACKLOG `:638-658` →
   A.U33.03 (DOCS); `test_buildgen_web_tag.py` table check → A.U36.514 (TSC).
 - **Kind**: rule, doc
@@ -5229,8 +5233,8 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   whose action changes the row (U17, U18, U24-U26, U31, U35); (2) with the action that creates the literal; (7) at U28's CI run.
 - **Depends**: A.U8.01-A.U8.24, A.U8C.*, A.U8C2.*, A.U10.07, A.U28.36, A.U31.01, A.U31.03, M.HW_BENCH.067/.075/.082,
   M.HW_BENCH.014, M.HW_DEV.004/.048/.049/.068/.117/.140, M.TEST_HELP.028, M.SCR.040/.054/.063, M.TEST_UNIT.090/.091, M.TOOL.016/.041/.046, M.TWIN.132/.144/.146/.158,
-  M.WEB (gap 7), M.SRC_SENS.002/.008/.021; [fold F25 M_SRC_NET], [fold F27 M_SRC_NET], [fold F27 M_GEN], [fold F02
-  M_SRC_CORE], [fold F04 M_TOOL], [fold F25 M_HW_DEV] (the tags of the fold's new tunables).
+  M.WEB (gap 7), M.SRC_SENS.002/.008/.021; [fold F25 M_SRC_NET], [fold F27 M_SRC_NET], [fold F27 M_GEN],
+  [fold F02 M_SRC_CORE], [fold F04 M_TOOL], [fold F25 M_HW_DEV] (the tags of the fold's new tunables).
 - **Blast carried by**: the tags themselves → their tagging actions (each tier's cluster); the register check → M.SPEC.155.
 - **Kind**: doc
 
@@ -6642,3 +6646,139 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.SPEC.137 | Unit | appended: A-C2 step order: A.U17.25's part lands in U25, not U24 (it follows A.U17.25's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.SPEC.139 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U11 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
 | M.SPEC.147 | Unit | appended: A-C2 step order: A.U2.24's part lands in U6, not U2 (it needs A.U2.21, which lands in U6); A.U0.59's part lands in U25, not U2 (it follows A.U0.59's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's review answers (OR136-OR143, `audit/actions/FOLD_ANSWERS.md`, the routine settlements of
+`audit/review/routine_merge.json`, AC_NOTES 52) into the changes above, per `audit/actions/FOLD_BRIEF.md`. Every amended
+change names its source in From with "(A-C review fold)"; one change is added (M.SPEC.162, placed in Part B). Convention
+C9 (above Part A) fixes the review-answer tag form.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.SPEC.061 (C.7.3: absent file written once; write list), M.SPEC.096 (F.2 write-path clause), M.SPEC.021 (A.8 reset purpose: each file written once after the reboot), M.SPEC.020 (A.7 setup-batch sentence), M.SPEC.097 (`stall.flash_program` write list) | amended |
+| F02 | M.SPEC.021 (A.8 `HTTPDropped` 24-hour window, `ResetErrors` clears it), M.SPEC.111 (G.2 hourly window counter entry), M.SPEC.121 (H.7 counted in the window), M.SPEC.126 (I.2 row), M.SPEC.113 (values-not-shown tag) | amended |
+| F03 | M.SPEC.061 (C.7.3 `ConfigFaults`; delete unread), M.SPEC.021 (A.8 field; delete unread, failed delete "Failed"), M.SPEC.020 (fixed at the batch end), M.SPEC.113 (Status placement gains the row) | amended |
+| F04 | M.SPEC.162 (new B.14.5 tick-offset override), M.SPEC.038 (B.14 count and test-only clause), M.SPEC.082 (E.6.3 rollover round), M.SPEC.092 (F.1 silicon rollover sentence), M.SPEC.150 (build info names the override), M.SPEC.156 (the offset's row) | added (M.SPEC.162), amended |
+| F05 | M.SPEC.036 (B.12: throwaway password, passed plainly, never committed) | amended |
+| F06 | M.SPEC.018 (A.5 console bullet), M.SPEC.097 (`stall.console` guard) | amended |
+| F07 | M.SPEC.021 (A.8: API one command, website confirms), M.SPEC.116 (H.4 "Confirmations" row) | amended |
+| F08 | M.SPEC.111 (G.2 derived quantities: the Magnus humidity domain; helpers stay) | amended |
+| F09 | M.SPEC.014 (A.4: internal queue bounded, external refusal says retry), M.SPEC.021 (A.8 `LightCmdLED`), M.SPEC.119 (H.6) | amended |
+| F10 | — | none in this file |
+| F11 | M.SPEC.058 (C.7: per-layer rule; pair scan dropped), M.SPEC.010 (A.4 FRAM), M.SPEC.051 (A.U3.03 dropped), M.SPEC.054 (C.5 caller rule), M.SPEC.059 (A.U3.09 dropped), M.SPEC.101 (F.5.2) | amended |
+| F12 | M.SPEC.119 (H.6: readonly status codes clickable) | amended |
+| F13 | — | none in this file |
+| F14 | M.SPEC.035 (B.11 bump sentence), M.SPEC.043 (B.15 stubs move with the bump) | amended |
+| F15 | M.SPEC.021 (A.8: no SCD30 write during a sequence) | amended |
+| F16 | M.SPEC.023 (A.10: the twin's NTP responder) | amended |
+| F17 | M.SPEC.113 (H.1 history clause), M.SPEC.116 (H.4 "Navigation history" row) | amended |
+| F18 | M.SPEC.116 (H.4 "Displayed precision" row), M.SPEC.118 (H.5.1 `decimals` for every value), M.SPEC.149 (L.6.4 key set) | amended |
+| F19 | M.SPEC.017 (A.4 Wi-Fi: the off pattern follows `LEDWifiOn`) | amended |
+| F20 | M.SPEC.007 (A.3), M.SPEC.035 (B.11 A.U36.011 sentence), M.SPEC.083 (E.6.6 `dev-only-bench` reason), M.SPEC.144 (L.1) | amended |
+| F21 | C9 (the form); explicit in M.SPEC.014, .017, .018, .020, .021, .022, .023, .035, .036, .043, .058, .061, .092, .108, .111, .113, .116, .118, .119, .146, .150; the full map is the table below | tag |
+| F22 | M.SPEC.146 (L.3 rows: kept in `[device]`, checked, never emitted), M.SPEC.149 (L.6.6 check) | amended |
+| F23 | M.SPEC.089 (F.1: scope per image, the named list, the two platform sites; A.U10.30's loader rewrite dropped), M.SPEC.145 (L.2), M.SPEC.087 (Part F checklist re-reads the two sites) | amended |
+| F24 | M.SPEC.047 (C.2), M.SPEC.075 (D.15), M.SPEC.098 (F.4), M.SPEC.002 (0.4 tag) | amended |
+| F25 | M.SPEC.050 (C.3.2 receive side), M.SPEC.108 (F.8.2 DMA ring), M.SPEC.136 (J.6 ring floor), M.SPEC.137 (J.7 lap, fakes, tier rows), M.SPEC.138 (J.8 ring bullet), M.SPEC.126 (I.2 ring row), M.SPEC.130 (I.4(f.1) survivor), M.SPEC.097 (F.3: `con.uart_rx_ring`, not crossed; open point 2 superseded), M.SPEC.020 (A.7), M.SPEC.156 (rows) | amended |
+| F26 | M.SPEC.035 (B.11 build date), M.SPEC.147 (L.4), M.SPEC.150 (L.7 build-date paragraph), M.SPEC.108 (F.8.3 idle rate kept, measurement owed), M.SPEC.156 (`udp.poll_idle_ms` owed) | amended |
+| F27 | M.SPEC.138 (J.8 end state), M.SPEC.136 (J.6 cap), M.SPEC.050 (C.3.2 readline cap), M.SPEC.111 (G.2 piece primitive), M.SPEC.126 (I.2 UART row), M.SPEC.137 (J.7 tests), M.SPEC.146 (L.3 keys), M.SPEC.149 (L.6.6 check), M.SPEC.156 (rows) | amended |
+| F28 | M.SPEC.070 (C.13: the flag only where product code reads it) | amended |
+| F29 | — | none in this file |
+| F30 | — | none in this file (no SPEC change names the `IP` key; A.8 lists no networking key by name) |
+| F31 | M.SPEC.023 (A.10 clock-jump sentence) | amended |
+| F32 | M.SPEC.077 (E.2.3 "Waits poll") | amended |
+| F33 | — | none in this file |
+
+**F21 map** — where this file writes each answered decision's tag (C9). "explicit": the tag is written in the change;
+"C9": the tag sits in an action's text the change quotes and takes the C9 form at landing; "—": this file writes no tag
+for it.
+
+| Decision (FOLD_ANSWERS) | status | M-ID | form |
+|---|---|---|---|
+| release-version-2-0 | ok | M.SPEC.150 (4) | C9 |
+| rest-key-scheme | ok | M.SPEC.021 (1) | explicit |
+| rest-api-frozen-at-release | ok | M.SPEC.115, M.SPEC.021 (1) | — (owner tags stand) |
+| website-unattended | ok | M.SPEC.116 (poll rows) | explicit |
+| website-accessibility | ask | M.SPEC.113 | explicit (owner, 2026-10-02) |
+| dns-fallback-clear-confirm | ask | M.SPEC.116, M.SPEC.021 (6) | explicit (owner, 2026-10-02) |
+| sgp40-wait-zero | ok | M.SPEC.118 (5) | — |
+| apply-failure-marks-fields | ok | M.SPEC.119 | — |
+| c-stack-reboot | ok | M.SPEC.092 (3) | explicit |
+| unreadable-config-file | ask | M.SPEC.061, M.SPEC.021 | explicit (owner, 2026-10-01: the ruling is OR138) |
+| timestamps-before-ntp | ok | M.SPEC.111 item 4 | explicit |
+| reflash-runbook-erase | ok | — (README, M_DOCS) | — |
+| wifi-off-led-pattern | ask | M.SPEC.017 | explicit (owner, 2026-10-02) |
+| scd30-calibration-readiness | ok | M.SPEC.151 (M.2) | C9 |
+| api-unknown-key-invalid | ok | M.SPEC.021 (5) | — |
+| release-defined-point | ok | M.SPEC.150 (4) | C9 |
+| lwip-retry-on-full-queue | ok | M.SPEC.042 (owner tag stands), M.SPEC.097 | — |
+| humidity-helpers-removed | change | M.SPEC.111 item 11 | explicit (owner, 2026-10-02) |
+| http-head-limits | ok | M.SPEC.018 | C9 |
+| static-no-cache | ok | M.SPEC.022 | explicit |
+| status-fields-added-and-left-out | ask | M.SPEC.021 (3), M.SPEC.113 | explicit (owner, 2026-10-01 for `HTTPDropped`, OR137; owner, 2026-10-02 for the values left out) |
+| deactivated-snapshot | ok | M.SPEC.021 (3) | — |
+| ntp-synced-goes-stale | ok | M.SPEC.060 | C9 |
+| ntp-no-origin-check | ok | M.SPEC.060 | C9 |
+| dns-fallback-setting | ok | M.SPEC.060 | C9 |
+| hotspot-redirect | ok | M.SPEC.018 (10) | C9 if its text carries a tag |
+| envelope-codes-equal-http | ok | M.SPEC.056 | C9 |
+| system-command-words | ok | M.SPEC.021 (5) | — (owner tag stands) |
+| system-command-sequence-details | ask | M.SPEC.021 (6) | explicit (owner, 2026-10-02) |
+| reset-reason-codes | ask | M.SPEC.119, M.SPEC.021 (4) | explicit (owner, 2026-10-02) |
+| failed-push-no-flash-write | ok | M.SPEC.055 | — |
+| one-entry-per-fault | change | M.SPEC.058 | explicit (owner, 2026-10-02) |
+| led-request-internal-queue | ask | M.SPEC.014, M.SPEC.021, M.SPEC.119 | explicit (agent, 2026-09-29; owner-reviewed, 2026-10-02) + the owner's added clause (owner, 2026-10-02) |
+| threshold-rewrite-failure | ok | M.SPEC.154 | C9 |
+| pres-offset-warning | ok | M.SPEC.151 (M.4), M.SPEC.059 | C9 |
+| state-code-values | ok | M.SPEC.012, M.SPEC.151, M.SPEC.154 | C9 |
+| scd30-write-path | ok | M.SPEC.053 | C9 |
+| idle-poll-rate | ask | M.SPEC.108 (3)(e), M.SPEC.156 | explicit (owner, 2026-10-05) |
+| ntp-sync-last | ok | M.SPEC.020 item 4 | explicit |
+| uart-flash-erase-overrun | change | M.SPEC.097, M.SPEC.108 | explicit (owner, 2026-10-05) |
+| heap-floors-kept | ok | M.SPEC.156 (heap rows' Basis) | C9 |
+| legacy-wip-as-intent | ask | — (CLAUDE.md, M_DOCS) | — |
+| stale-as-fresh-every-driver | ok | M.SPEC.052 | C9 |
+| sgp40-chip-identity | ok | M.SPEC.151 (M.3) | C9 |
+| standard-state-repair-optin | ask | — | — |
+| standard-board-state | ok | — | — |
+| console-starvation-bench-test | ask | M.SPEC.018, M.SPEC.097 | explicit (owner, 2026-10-02) |
+| hand-run-hardware-rows | ask | — (BACKLOG, M_DOCS) | — |
+| twin-tolerates-ntp-offline | change | M.SPEC.023 | explicit (owner, 2026-10-02) |
+| typecheck-stripper-text-edit | ok | M.SPEC.035 (5) | explicit |
+| stub-versions-pinned | ask | M.SPEC.035, M.SPEC.043 | explicit (owner, 2026-10-02) |
+| comment-cap-long-lines | ok | M.SPEC.075 (D.11) | C9 |
+| ci-web-filter-base | ok | M.SPEC.034, M.SPEC.124 | C9 |
+| bench-sudo-checked | ok | — | — |
+| bench-psk-fallback | change | M.SPEC.036 | explicit (owner, 2026-10-02) |
+| threat-model-table | ok | M.SPEC.024 | C9 |
+| licence-notices | ok | — (THIRD_PARTY, M_DOCS) | — |
+| wozi-move-owner-operation | ask | M.SPEC.007, M.SPEC.035, M.SPEC.083, M.SPEC.144 | explicit (owner, 2026-10-02) |
+| operator-actions-one-place | ok | — (DEVICE_REFERENCE, M_DOCS) | — |
+| favicon-inline | ok | M.SPEC.116 (if a row names it) | C9 |
+| website-display-details | ask | M.SPEC.118, M.SPEC.116 | explicit (owner, 2026-10-02) |
+| negative-backup-age | ok | M.SPEC.010 item 7 | — |
+| no-gcc14-ci-leg | ok | M.SPEC.031, M.SPEC.045 | C9 |
+| reproducible-image | ask | M.SPEC.035, M.SPEC.147, M.SPEC.150 | explicit (owner, 2026-10-05) |
+| driven-time-and-rtc-steps | ok | M.SPEC.077 | C9 |
+| retry-pass-flagged | ok | M.SPEC.078, M.SPEC.086 | C9 |
+| twin-first-for-instruments | ok | M.SPEC.082, M.SPEC.085 | C9 |
+| toml-build-metadata | ask | M.SPEC.146 | explicit (owner, 2026-10-05) |
+
+**Fold readings recorded for the lead** (each also in its change's Resolved or Change slot):
+- F11 scope: the owner dropped the detecting-layer rule ("one entry per fault"). Dropped here with it: A.U3.03 (base
+  streak entry printed), A.U3.04 (FRAM layers), A.U3.05 (callers of a failed config read), A.U3.09 (SGP40 above FRAM),
+  A.U3.11 (the pair scan and its allow-list). Kept, because they rest on OR56 (1)'s "never both" within one layer and on
+  the newest-entry repeat rule, not on the dropped rule: A.U3.01/.02/.10's repeat rule, A.U3.06 (one SYSTEM entry per
+  task end), A.U3.07 (one give-up entry in WIFI's own log), A.U3.08 (UART fault persists, resync prints), A.U3.12-.15.
+  If the product or test agents keep or drop a different set, C.7's paragraph (M.SPEC.058) and C.4.1 (M.SPEC.051)
+  follow theirs.
+- F23: the owner's twelve named sites are F.1's list; the three by-path `exec()` runners (`tests/_coverage_runner.py`,
+  `tests/_threshold_runner.py`, `digital_twin/run_device_script.py`) were already named by the merged text and stay
+  listed beside them, since the import check scans `exec` too.
+- F28: whether `SystemService` keeps `initialized` follows the settlement's test (does product code read it) and is
+  decided at execution with its reason recorded.
+- F03/F01: "corrupt" (unparseable) files are never overwritten; a readable file with a bad, missing or unknown key gets
+  its one repair; both kinds are listed in `ConfigFaults` (OR136.a (2), OR138.a (1)).
+- F27: `readline_until_complete()` lives in a layer without its own logger (C.7.1); which layer writes the over-cap entry
+  is decided at execution.

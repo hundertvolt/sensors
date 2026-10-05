@@ -687,7 +687,9 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
 - **From**: A.U24.79, A.U20.02, A.U20.06, A.U10.12, A.U11.10, A.U32.06, A.U10.30 dropped (OR141.a (2), OR142.a (3): this
   file is an F.1-named loader, its `__import__` stays; A-C review fold), A.U24.46, A.U24.43 (2), A.U24.22,
   A.U8C.01, A.U8C.72 (mirror), A.U27.28, A.U36.544 (`:7`), A.U0.07 (`:125-126`), A.U10.37/A.U10.35 (H1), A.U10.07,
-  A.U30.16, A.U31.03, A.U31.17, A.S0930.13 (hold), A.U24.07 (hold), A.U24.73
+  A.U30.16, A.U31.03, A.U31.17, A.S0930.13 (hold), A.U24.07 (hold), A.U24.73; OR141.a (4) (d) and OR143.a (5) (the UART
+  DMA ring is allocated in the link's `setup()`, a unit of the one-time setup list: its placement and its heap cost are
+  read from this probe's maps; A-C review fold)
 - **Site**: `tests/_boot_contiguity_probe.py:1-7` (header), `:12` (`fram_fake_class` import), `:33-38` (bounds),
   `:42-48` `_dump()` (comment `:43-44`), `:76-113` (`_drive_timers()`, `_run_starter_loop()`), `:116-161` `_main()`.
 - **Change**: (1) Header → module docstring (≤ 3 lines): "Boots one generated device and prints a labelled
@@ -715,12 +717,15 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   never enter the supervisor" combine with M_GEN's `main()` order (tasks before timers): the probe measures the
   sequence `main()` runs. A.U8C.01's grace and poll rows exist only for the counting loop `start_tasks()` makes
   unnecessary — withdrawn (agent decision D8).
-- **Unit**: U32 (latest: `task_names=`); stage U20 carries the boot entry/`main()` split, `run_setups()` and
+- **Unit**: U32 (latest: `task_names=`); stage U13 (A-C review fold): the probe run on `dev` before and after the DMA ring
+  lands, its `after_batch` maps giving the twin half of the ring's net heap cost and largest free block (no probe code
+  change: the ring is one more survivor of the batch); stage U20 carries the boot entry/`main()` split, `run_setups()` and
   `start_tasks()` (with A.U20.02/A.U20.06/A.U11.10); stage U10 the two-list `start_timers()`; U8C tags; U24 the helper
   calls and header; U36 the `:7` repoint.
 - **Depends**: M.TEST_HELP.047 (`boot_generated`), M.TEST_HELP.046 (`require_fresh`), M.TEST_HELP.035
   (`seed_occupants`, FRAM factory).
-- **Blast carried by**: the board mirror `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py`
+- **Blast carried by**: the ring's measured cost into SPEC I → [fold F25 M_SPEC]; the boot-contiguity assertion on where
+  the ring lands → [fold F25 M_TSC]; the board mirror `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py`
   follows the same order and drops `_STARTER_LOOP_GRACE_MS` → GAP-H1 (HW_DEV, A.U8C.72/A.U20.06);
   `tests_scripts/test_digital_twin_boot_contiguity.py:262` `_MIRRORED_BOUNDS` drops `_STARTER_LOOP_GRACE_MS` and its
   `:242-254` source counts read `_collect_setups()` → GAP-H1 (TSC, A.U11.10); GC-site checker rows `_dump`,
@@ -984,7 +989,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 - **From**: A.U24.79 (`:651-677`), A.U10.10 (`:550-…`), A.U11.10, A.U20.07 (L1), A.U10.07 (3), A.U31.03, A.U10.08
   (L1 scan budget), A.U11.07 (setup-phase code), A.U20.38 (3), A.U11.34, A.U9.10 (c), A.U10.19 (L1 inventory),
   A.U11.35 (holds), A.U31.01 (holds), A.U31.17 (holds), A.U31.07 (the scan escalates at the first end past the budget,
-  OR130: the per-pass bound; M.SRC_CORE.016's and M.TEST_UNIT.309's blasts, gap pass G3)
+  OR130: the per-pass bound; M.SRC_CORE.016's and M.TEST_UNIT.309's blasts, gap pass G3); OR136.a (1), (3), (4) (a
+  fresh filesystem gets each config file written once with its defaults at that boot; A-C review fold)
 - **Site**: `tests/_sensortask_scenarios.py:552-650` (setup batch order scenario), `:651-677`
   (`_scenario_boot_feeds_the_watchdog`); new scenarios.
 - **Change**: (1) `setup_batch_runs_every_unit_in_the_collected_order` (renamed from the
@@ -1004,11 +1010,17 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   New setup-failure scenario (A.U11.07): one module's `setup()` replaced to raise stops the
   boot and the next `begin_boot()` reads 12. (7) New dropped-logger scenario (A.U20.38 (3)), every-measurement-starts-
   `None` scenario (A.U11.34), timer-starter seam check (A.U9.10 (c)), and the per-device task inventory fan-in (A.U10.19).
+  (8) New `a_fresh_filesystem_boot_writes_each_config_file_once` (OR136.a): `build(device)` over an empty config dir
+  under `WriteCountingOpen(asy_config_manager)` (M.TEST_HELP.062) counts exactly one write-mode open per config store
+  whose schema stores a value (the stores read from the built module's own collected config stores, never a hand list),
+  none for a command-only schema (the NTP store's one write is the repair that completes the partial file the offline-NTP
+  writer puts there before the boot); each written file then holds its schema's full key set; a second `build()` over
+  the same dir counts none.
 - **Resolved**: —
 - **Unit**: U24 (each new scenario lands with its constituent: A.U10.07/A.U10.08/A.U10.19 U10, A.U11.07/A.U11.10/A.U11.34
-  U11, A.U20.07/A.U20.38 U20, A.U31.03 U31; (2) U24; (5) lands in U10 with "≤ k" and takes A.U31.07's per-pass bound in
+  and (8) U11, A.U20.07/A.U20.38 U20, A.U31.03 U31; (2) U24; (5) lands in U10 with "≤ k" and takes A.U31.07's per-pass bound in
   U31).
-- **Depends**: M.TEST_HELP.035, M.TEST_HELP.061.
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.061, M.TEST_HELP.062; M.SRC_CORE.043 (as the fold amends it for OR136.a).
 - **Blast carried by**: Part N rows `boot.unfed_stretch_*`/`boot.setup_unit_stretch_ms` → A.U10.07/A.U31.03 (SPEC);
   L0 feed-site check → A.U10.08 (TSC); expected JSON → A.U20.07 (GEN).
 - **Kind**: test
@@ -1966,3 +1978,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.TEST_HELP.035 | Unit | appended: A-C2 step order: A.U24.65's part lands in U25, not U24 (it needs A.U25.25, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TEST_HELP.056 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it needs A.U24.65, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TEST_HELP.058 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Owner answers OR136-OR143 and the routine settlements folded in (`audit/actions/FOLD_BRIEF.md`); one row per item and
+action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agents add.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.TEST_HELP.037 | amended |
+| F02 | M.TEST_HELP.041 | amended |
+| F03 | M.TEST_HELP.040, .041 | amended |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | — | none in this file (checked: M.TEST_HELP.041 (2) already asserts the refused back-to-back LED command) |
+| F10 | — | none in this file |
+| F11 | — | none in this file (checked: no U3 carrier here) |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | M.TEST_HELP.040 | amended |
+| F16 | M.TEST_HELP.058 | amended |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | — | none in this file |
+| F21 | — | none in this file |
+| F22 | — | none in this file |
+| F23 | M.TEST_HELP.003, .004, .028, .029, .032, .035, .040, .047 (and conventions H2, H5, GAP-H6) | amended |
+| F24 | — | none in this file |
+| F25 | M.TEST_HELP.069 | added |
+| F25 | M.TEST_HELP.025, .028 | amended |
+| F26 | — | none in this file |
+| F27 | — | none in this file (the unit fakes of M.TEST_HELP.069 carry the trains; the tests are TEST_UNIT's) |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | M.TEST_HELP.041 | amended |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

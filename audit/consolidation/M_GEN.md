@@ -189,7 +189,7 @@ change lists its stages; the end state is the last stage's.
   sysfunct.start_tasks(_collect_task_starters(), task_names=_collect_task_names())` /
   `sysfunct.boot_phase(BOOT_TIMERS)` / `await sysfunct.start_timers(_collect_trigger_starters(),
   _collect_timer_starters())` / `sysfunct.boot_phase(BOOT_NTP)` / "# first NTP sync last: tasks already serve while it
-  runs (agent, 2026-09-28)" / `await ntp.ntp_force_sync()` / `sysfunct.boot_phase(BOOT_DONE)` / `await
+  runs (agent, 2026-09-28; owner-reviewed, 2026-10-02)" / `await ntp.ntp_force_sync()` / `sysfunct.boot_phase(BOOT_DONE)` / `await
   sysfunct.supervise_tasks()`. No `feed_watchdog()`, no `gc.collect()` emitted anywhere in the module (feeds: inside
   `run_setups()` per unit and `supervise_tasks()` per round, plus OR130's one escalation feed inside the supervisor).
 - **Resolved**: AC_NOTES 25/33/37 — A.U25.69 firm (four keywords), A.U22.03 withdrawn (OR126.a (4)). OR75.a order
@@ -227,7 +227,8 @@ change lists its stages; the end state is the last stage's.
   (keys, `_gmtimestruct_to_dict` members), A.U23.24 (read: JS mirror test pins the members), A.U20.16 (1) (one SGP40
   adapter per instance), A.U18.33 (snapshot), A.U19.10 (`HTTPDropped`, `WifiTS`), A.U11.05 (`ResetReason`),
   A.U11.08 (`MemFree`), A.U32.06 (`LastTaskEnd`), A.U6.21 (`UTCTime` gate), A.U23.22 (`UnixTime`), A.U10.46/A.U20.32
-  (JsonDict annotations), A.U20.41 (2), A.U20.42 (no asserts), A.U32.05 (read), A.U36.029/A.U36.044 (read).
+  (JsonDict annotations), A.U20.41 (2), A.U20.42 (no asserts), A.U32.05 (read), A.U36.029/A.U36.044 (read); OR138.a (1) (`ConfigFaults`) and the routine settlement "status-ip-and-ipv4" (`IP`
+  goes) (A-C review fold).
 - **Site**: `buildgen/codegen.py:517-596` `_emit_callbacks()`.
 - **Change**: emitted functions: `_gmtimestruct_to_dict(t: "GMTimeStruct | None") -> "JsonDict | None"` with keys
   `Year, Month, MDay, Hour, Minute, Second, Weekday, Yearday`, `None` → `None`; `async def _system_cmd_callback(cmd:
@@ -238,29 +239,34 @@ change lists its stages; the end state is the last stage's.
   neopixel.led_signal(r, g, b, t)` (the `_FIELD_LED_*` schemas and validation leave the template — webserver's
   `_LIGHT_CMD_FIELDS`); `_notification_pause_callback` unchanged in role; one `async def
   _sgp_maintenance_status_<var>()` per SGP40 instance reading `<var>.get_mem_status()`; `_networking_status()`: `wifi =
-  await conn.get_data()` once, `"IP": wifi.IP, "IPv4": wifi.IP, "Subnet", "Gateway", "DNS"`, `"RSSI": wifi.RSSI` (the snapshot field is `RSSI`,
+  await conn.get_data()` once, `"IPv4": wifi.IP, "Subnet", "Gateway", "DNS"` (no `IP` key), `"RSSI": wifi.RSSI` (the snapshot field is `RSSI`,
   M.SRC_NET.074; M_SRC_NET gap 2, gap pass G1),
   NTP half from one `ntp.get_data()` as `NTPSynced`/`NTPLastSyncAge`/`NTPLastSync`, `"HTTPDropped": await
   webserver.get_dropped_count()`, `"WifiTS": wifi.TS`; `_system_status()`: `SysUptime`, `BootSignature`,
-  `"ResetReason": sysfunct.get_reset_reason()`, `"MemFree": gc.mem_free()`, `MemPaused`, `"LastTaskEnd":
+  `"ResetReason": sysfunct.get_reset_reason()`, `"MemFree": gc.mem_free()`, `MemPaused`, `"ConfigFaults": sysfunct.get_config_faults()` (the modules whose config
+  file was unreadable or damaged at this boot, fixed at the end of the setup batch, M.SRC_CORE.015), `"LastTaskEnd":
   sysfunct.get_last_task_end()`, `LocalTime`, `utc = time.gmtime() if await ntp.ntp_issynced() else None` then
   `"UTCTime": _gmtimestruct_to_dict(utc)`, `"UnixTime": utc_now()`; `_notification_status()` unchanged in role. No
   `get_wlan_ifconfig`/`get_wlan_rssi` calls; no `assert` lines; every instance reference via `instance_var()`.
 - **Resolved**: (a) A.U11.03 callback flush vs A.S0930.11 — SUPP wins (M.GEN.007). (b) A.U9.03 (neopixel
   `request_signal` body) and A.U11.S01 (type narrowing added to `_notification_led_callback`) vs A.U19.02 (callback
   delegates to `led_signal`, validation in the webserver) — A.U19.02 wins, its Depends names A.U9.03 as superseded;
-  A.U11.S01's narrowing has no site left. (c) A.U18.33 leaves `IP` vs `IPv4` to A.U10.40; A.U10.40 keeps both
-  (`IPv4` "the standard spelling", `IP` unchanged in scheme) — both stay (agent decision D3). (d) A.U19.10's "first
+  A.U11.S01's narrowing has no site left. (c) A.U18.33 leaves `IP` vs `IPv4` to A.U10.40, which keeps both
+  (`IPv4` "the standard spelling"); the routine settlement "status-ip-and-ipv4" (lead, A-C review, OR43.a (2)) keeps
+  `IPv4` only — the refactor-added `IP` key carried the identical address — so `IP` goes (agent decision D3
+  withdrawn). (d) A.U19.10's "first
   line becomes `assert …`" vs A.U20.42 (asserts go) — A.U20.42 wins (later sibling action, same template; its
   globals make the assert unneeded).
 - **Unit**: U32 (latest: A.U32.06). Stages: U10 (A.U10.40 key renames with the JS/mock rename script), U11
   (`ResetReason`, `MemFree` — in U20's commit with A.U11.05's template lines), U18 (snapshot with A.U18.33's
-  `get_wlan_*` removal), U19 (LED callback with A.U19.02; `HTTPDropped`/`WifiTS` with A.U19.08), U20 (command
-  callback, SGP40 adapters, UTC gate, annotations), U23 (`UnixTime`), U32 (`LastTaskEnd`).
+  `get_wlan_*` removal; the `IP` key out, A-C review fold), U19 (LED callback with A.U19.02; `HTTPDropped`/`WifiTS` with A.U19.08), U20 (command
+  callback, SGP40 adapters, UTC gate, annotations; `ConfigFaults` with M.SRC_CORE.015, A-C review fold), U23 (`UnixTime`), U32 (`LastTaskEnd`).
   A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
-- **Depends**: A.S0930.12 (bool returns), A.U11.03/.05, A.U19.02, A.U19.08, A.U18.33, A.U32.06, A.U10.06 (`utc_now`).
+- **Depends**: M.SRC_CORE.015 (`get_config_faults()`, U20); [fold F30 M_TEST_UNIT] and [fold F30 M_TWIN] (tests reading
+  `IP` from `/status` follow, U18); A.S0930.12 (bool returns), A.U11.03/.05, A.U19.02, A.U19.08, A.U18.33, A.U32.06, A.U10.06 (`utc_now`).
 - **Blast carried by**: definitions catalog rows (`MemFree`, `ResetReason`, `LastTaskEnd`, `UnixTime`, `HTTPDropped`,
-  `WifiTS`) → M.GEN.014; mock data rows and `js/field-format.js` handlers → A.U6.06/A.U32.06/A.U23.22 (WEB);
+  `WifiTS`, `ConfigFaults`; `IP` out) → M.GEN.014; `mockdata/samples.json` → M.WEB.045; bench and docs naming `IP` →
+  [fold F30 M_HW_BENCH], [fold F30 M_SPEC]; mock data rows and `js/field-format.js` handlers → A.U6.06/A.U32.06/A.U23.22 (WEB);
   `tests_scripts/test_js_api_mirrors.py` → A.U23.24 (TST); SPEC H.6.1 wire table → A.U36.044 (SPEC); Part H
   not-shown list → A.U19.10 (2) (SPEC).
 - **Kind**: code
@@ -270,10 +276,11 @@ change lists its stages; the end state is the last stage's.
   renames), A.U20.16 (1) (maintenance entry per SGP40), A.U20.38 (settings table lifted to module level), A.U20.14
   (1) (arg-type ignores go), A.U20.41 (constructor name), A.U27.07 (read: its fixture mirrors this shape), A.U6.26
   (read: the SettingsGroup entry is U18/U19's), A.U32.04 (read: resync after a settings change held); A.U6.20 (2)
-  (`:629`, `:634` read `MAINTENANCE_NAMES`; AC3_S S-11).
+  (`:629`, `:634` read `MAINTENANCE_NAMES`; AC3_S S-11); OR137.a (1) (the uptime reader; A-C review fold).
 - **Site**: `buildgen/codegen.py:599-651` `_emit_webserver()`.
 - **Change**: emitted `webserver = WebserverService(app, routes=RouteSources(...), serving=ServingLimits(<max_connections>,
-  <backlog>, …literals), static=StaticSite(...), log=…)` with the build info keys `FirmwareVersion`, `WebsiteVersion`,
+  <backlog>, …literals), uptime_s=sysfunct.get_uptime, static=StaticSite(...), log=…)` (the drop window's uptime reader,
+  M.SRC_NET.119) with the build info keys `FirmwareVersion`, `WebsiteVersion`,
   `BuildDate`; settings groups rendered from a module-level table in `codegen.py` (not inline strings): networking —
   `SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname", "HotspotPW"), post_fct=conn.reconnect_wifi)`,
   `SettingsGroup(conn, ("LEDWifiOn",))`, `SettingsGroup(ntp, ("NTPHost", "NTPOffset", "NTPInterval"),
@@ -284,7 +291,7 @@ change lists its stages; the end state is the last stage's.
 - **Resolved**: A.U5.04's config-object rewrite and A.U10.40's `build` key rename touch the same dict — both apply
   (the object carries the renamed keys). A.U6.26 defers the group to U18 — A.U18.10's form is taken.
 - **Unit**: U20 (latest: A.U20.16/.38). Stages: U5 (config objects with A.U5.04/.05), U10 (keys A.U10.40), U18
-  (`HotspotPW`, DNS fallback group with A.U18.10/.38).
+  (`HotspotPW`, DNS fallback group with A.U18.10/.38), U19 (`uptime_s=` with M.SRC_NET.119, A-C review fold).
 - **Depends**: A.U5.04, A.U5.05, A.U18.10, A.U18.38 (SRC_NET); M.GEN.035.
 - **Blast carried by**: definitions networking groups → M.GEN.014 (A.U6.25/A.U6.26/A.U18.38 fields);
   `tests/test_setter_microdot_integration.py` fixture → A.U27.07 (TST).
@@ -383,13 +390,15 @@ change lists its stages; the end state is the last stage's.
   `MAINTENANCE_NAMES` from `model.py`, `specialValues` incl. `null`), A.U23.19 (`path` on maintenance fields), A.U6.27
   (`codes` on status rows), A.U23.20 (`codeTones` where the catalog has tones), A.U10.40 (key renames), A.U20.15
   (`:373-375` comment), A.U20.32 (`JsonDict`), A.U17.19 (read: "since boot" descriptions `:439, :443` hold), A.U6.21
-  (read: no website change for the gate).
+  (read: no website change for the gate); OR137.a (5) (the `HTTPDropped` description), OR138.a (1) (`ConfigFaults`
+  row), routine settlement "status-ip-and-ipv4" (`IP` row out) (A-C review fold).
 - **Site**: `buildgen/definitions.py:393-457` `_status_section()` (and `:363-390` ordering comment).
 - **Change**: networking status fields keyed per A.U10.40 (`RSSI`, `NTPSynced`, `NTPLastSyncAge`, `NTPLastSync` with
   `"format": "epoch"` and no unit), `Connected` "True while the Wi-Fi link is up, hotspot included.", `WifiUptime`
-  "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down.", new `HTTPDropped` ("Dropped
-  Connections", readonly, A.U19.10's description) and `WifiTS` ("Wi-Fi Status Time", readonly, `format` epoch);
-  system fields add `MemFree` (A.U6.22), `ResetReason` (A.U6.23, `"codes"` inlined from `error_catalog.json`'s
+  "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down.", the `IP` row goes (`IPv4` stays), new `HTTPDropped` ("Dropped
+  Connections", readonly, description "Web connections dropped in the last 24 hours, hourly resolution.") and `WifiTS` ("Wi-Fi Status Time", readonly, `format` epoch);
+  system fields add `ConfigFaults` ("Config Faults", readonly, description "Modules whose config file existed at
+  this boot but could not be read or was damaged; empty when none. Listed until the next boot."), `MemFree` (A.U6.22), `ResetReason` (A.U6.23, `"codes"` inlined from `error_catalog.json`'s
   `status.ResetReason` table), `LastTaskEnd` (`"format": "lasttaskend"`, A.U32.06's label/description), `UTCTime`
   (renamed), `UnixTime` ("Device Clock", unit s, A.U23.22's description, after `UTCTime`); maintenance group: SGP40 rows
   built from the driver's `@web BackupTS`/`RestoreTS` tags per instance (key `f"{resolved_name}_{field}"`, `"path":
@@ -400,7 +409,8 @@ change lists its stages; the end state is the last stage's.
   so itself). A.U20.15's `:373` rewrite is kept (A.U6.04 deletes the hand files, so "matching every hand-written" has
   no referent).
 - **Unit**: U32 (latest: A.U32.06). Stages: U6 (A.U6.19/.20/.22/.23/.27), U10 (keys), U11 (`ResetReason` codes table
-  via A.U6.27), U18 (A.U18.35), U19 (A.U19.10), U20 (types, comment), U23 (`UnixTime`, `path`, `codeTones`), U32.
+  via A.U6.27), U18 (A.U18.35; the `IP` row out), U19 (A.U19.10; the `HTTPDropped` description with M.SRC_CORE.133), U20 (types,
+  comment; the `ConfigFaults` row with its key, M.GEN.008 — the parity checks need both together), U23 (`UnixTime`, `path`, `codeTones`), U32.
 - **Depends**: M.GEN.008 (the template publishes the keys), M.GEN.034 (catalog), M.GEN.035 (`MAINTENANCE_NAMES`),
   M.GEN.046 (web_tag `format`/`codes` keys).
 - **Blast carried by**: mock data rows (`mockdata/samples.json` `status.*`) → A.U6.06 (WEB); `js/field-format.js`
@@ -414,13 +424,15 @@ change lists its stages; the end state is the last stage's.
   (build group), A.U6.25 (DNSSRV errcount group on Networking), A.U6.26 (DNS fallback field on Networking, from its
   tag), A.U20.41 (`:347` path → `asy_system_service.py`), A.U36.544 (`:22` L.7 → H.5), A.U20.15 (`:470, :472`
   comments), A.U20.32 (types), A.U6.18/A.S0930.34/A.U10.29/A.U36.500 (read: labels, options rendering, `_SYSTEM_CMDS`
-  comment, `:31` description hold).
+  comment, `:31` description hold); OR140.a (3) (the page confirms commands and the error reset; A-C review fold).
 - **Site**: `buildgen/definitions.py:20-85` (header, `_SECTION_SKELETON`, `_WARN_SIGNAL_WEB_CATALOG`, command,
   notification and reset groups), `:332-356` (`_networking_section()`, `_system_section()`), `:460-483`
   (`_notification_section()`).
 - **Change**: `_SYSTEM_COMMAND_GROUP` options in order `reboot`, `bootloader`, `mempause` ("Pause backups for 5
   minutes"), `{"value": "resetconfig", "label": "Reset to defaults"}`, `{"value": "erasefram", "label": "Erase
-  FRAM"}` — no confirmation dialog (OR122); `_NOTIFICATION_FLASH_GROUP` field key `LightCmdLED` with members `R`, `G`,
+  FRAM"}`, and the `SystemCmd` field gains `"confirm": True`; `_RESET_ERRORS_GROUP`'s `ResetErrors` field gains
+  `"confirm": True` (the page asks the browser's confirmation before it sends either, owner, 2026-10-02; the API stays
+  one command per request, no key on the wire); `_NOTIFICATION_FLASH_GROUP` field key `LightCmdLED` with members `R`, `G`,
   `B`, `T` and `"dispatch": True`; `_NOTIFICATION_PAUSE_GROUP`'s `PauseTime` gains `"dispatch": True` and
   `"statusPath": ["notification", "PauseTime"]`; `_WARN_SIGNAL_WEB_CATALOG` goes (warn fields from `WARN_SIGNALS`,
   M.GEN.036); `_system_section()` reads `asy_system_service.py` and appends a "Build" group (`FirmwareVersion`,
@@ -429,13 +441,15 @@ change lists its stages; the end state is the last stage's.
   errcount helper with the `codes` block); the section comments state the rule in place ("catalog order is display
   order", "keyed by resolved_name"); the header cites SPEC H.5.
 - **Resolved**: A.S0930.34 (1) "options unchanged" predates A.S0930.10 in reading order but states the website needs
-  no L0 code change — consistent. No dialog: OR121.a/OR122 (owner) over OR117.a (3).
+  no L0 code change — consistent. OR140.a (3) (owner, 2026-10-02, the most recent) supersedes OR121.a/OR122's "no dialog" for the page: every system
+  command and the error-history clear ask first, as the DNS fallback Clear does; the API is unchanged.
 - **Unit**: U20 (latest: A.S0930.10, A.U20.27/.41). Stages: U6 (A.U6.17/.24/.25/.26), U10 (member/key renames),
-  U23 (`statusPath`), U36 (`:22` citation).
+  U23 (`statusPath`; the two `confirm` flags with M.WEB.004/.006/.021, A-C review fold), U36 (`:22` citation).
 - **Depends**: M.GEN.016 (errcount helper), M.GEN.036, M.GEN.008 (callback answers the two words), A.S0930.12
   (SRC_CORE preflight).
 - **Blast carried by**: `js/mock-server.js` dispatch/SystemCmd handlers and `tests_js/` → A.S0930.20 (5), A.U6.17
-  (WEB/TST); `tests_scripts/test_buildgen_definitions.py` option/label pins → A.S0930.20, A.U20.27 (TST); SPEC H.4/H.5
+  (WEB/TST), the `confirm` flag read by the page → M.WEB.021 and validated → M.WEB.006, its Python shape mirror →
+  [fold F07 M_TSC]; `tests_scripts/test_buildgen_definitions.py` option/label pins → A.S0930.20, A.U20.27 (TST); SPEC H.4/H.5
   → A.U6.24/A.U6.25 Docs (SPEC).
 - **Kind**: code
 
@@ -469,11 +483,14 @@ change lists its stages; the end state is the last stage's.
   (`clearable`), A.U23.23 (`ignoredWhenSet`), A.U23.49 (`resolution`), A.U6.17 (`alwaysExecuted`), A.U20.25 (hidden
   schema check in `_DriverTags`/`_build_field_def`), A.U20.30 (warn fields from `WARN_SIGNALS`), A.U6.01 (3)
   (`_sensor_instance_specs()` fallback goes), A.U15.17 (`:208-210` comment example), A.U20.32 (types), A.U23.30 (read:
-  `float` flag policy pinned by a test); M_WEB gap 3 (a string field's schema special), gap pass G1.
+  `float` flag policy pinned by a test); M_WEB gap 3 (a string field's schema special), gap pass G1; OR140.a (16) (decimals from the value's source; A-C
+  review fold).
 - **Site**: `buildgen/definitions.py:131-329` (`_coerce_special_value`, `_string_field`, `_number_field`,
   `_build_field_def`, `_group_shell`, `_mandatory_group`, `_sensor_instance_specs`) and `:460-483`'s warn fields.
 - **Change**: `_build_field_def()` emits, where the tag sets them: `format`, `codes` (table inlined), `codeTones`,
-  `byteLength` (string), `shape` (string), `clearable` (string), `ignoredWhenSet`, `resolution` (number),
+  `byteLength` (string), `shape` (string), `clearable` (string), `ignoredWhenSet`, `resolution` (number), `decimals` (the tag's, or — for a number field whose tag sets none but has a
+  `resolution` r — the digits r needs: `0.01` → 2, `0.1` → 1, `1` → 0; the value's own source decides the page's
+  decimals, the API keeps full resolution, owner, 2026-10-02),
   `alwaysExecuted`, `specialValues` for number and readonly fields (`special:null` → `None`) and for string fields —
   `_string_field()` emits a string field's schema special with its tag's `special:` label (`PW`'s `""` → "Open network",
   so the mock accepts what the server accepts, OR43.a (2), M.WEB.041); it never emits `defaultValue`. A schema field with no `@web` tag and no `hidden` marker is a `BuildError` (A.U20.25's rule).
@@ -484,7 +501,7 @@ change lists its stages; the end state is the last stage's.
   `BuildInternalError` — A.U20.17's class is used. A.U6.28 assumed the string special was carried; `_string_field()`
   emitted none, so a `""` the server accepts was refused by the mock — the string branch emits it (M_WEB gap 3; gap
   pass G1).
-- **Unit**: U23 (latest). Stages: U6 (format, specialValues, codes, byteLength, shape, alwaysExecuted, order), U15
+- **Unit**: U23 (latest; the derived `decimals`, A-C review fold). Stages: U6 (format, specialValues, codes, byteLength, shape, alwaysExecuted, order), U15
   (comment), U18 (string specials, with the `PW` tag), U20 (hidden check, warn catalog, types).
 - **Depends**: M.GEN.046 (tag keys), M.GEN.036, M.GEN.045 (strict schemas), M.GEN.022 (`BuildInternalError`).
 - **Blast carried by**: `js/definitions.js` typedef/validator for every new key → A.U6.19/.27/.28/.29, A.U23.16/.17/
@@ -496,19 +513,21 @@ change lists its stages; the end state is the last stage's.
 - **From**: A.U6.01 (1)(2) (`definitions_for_toml()`), A.U19.20 (api reference step), A.U8.18 (poll interval tag),
   A.U20.17 (3) (CLI catch, tmp + `os.replace`), A.U27.29 (exit idiom, one user-error class), A.U20.32
   (`JsonDict`), A.U37.11 (read: `WEBSITE_VERSION` consumer, value from `version.py`), A.U23.09 (read: 3000 within
-  bounds).
+  bounds); OR140.a (16) (`defaultDecimals`; A-C review fold).
 - **Site**: `buildgen/definitions.py:28-34` (`pollIntervalMs`), `:486-538` (`generate_definitions()`, `main()`).
 - **Change**: new `definitions_for_toml(toml_path: Path, src_dir: Path) -> JsonDict` (`build_model()` →
   `build_construction_order()` → `generate_definitions()`), used by `main()`; one module constant
   `_POLL_INTERVAL_MS = 3000` under `# @tunable web.poll_interval_ms = 3000`, read by both the status section and
-  `defaultPollIntervalMs`; the generation step also writes the device's REST reference from
+  `defaultPollIntervalMs`; `_DEFAULT_DECIMALS = 2` under `# @tunable web.default_decimals = 2`, emitted as the
+  definitions' top-level `defaultDecimals` — the page's decimals for a non-integer number whose field carries none
+  (owner, 2026-10-02: 2-3 decimals on the page, full resolution in the API); the generation step also writes the device's REST reference from
   `buildgen.api_reference.generate_api_reference(model, src_dir)`; `main()` catches `BuildError` and `OSError` (one
   line `buildgen: <message>` on stderr, exit 1), writes each output to `<name>.tmp` then `os.replace()`, and ends
   `if __name__ == "__main__": raise SystemExit(main())`.
 - **Resolved**: A.U8.18 tagged two sites; one constant with one tag serves both (the tag rule wants the literal on
   the next line — two literals would need two tags; one constant is the smaller change, same ID). Agent decision D5.
 - **Unit**: U27 (latest: A.U27.29). Stages: U6 (`definitions_for_toml`), U8 (tag), U19 (api reference), U20 (CLI
-  errors, types).
+  errors, types), U23 (`defaultDecimals` with M.WEB.004/.006/.012, A-C review fold).
 - **Depends**: M.GEN.033 (api_reference.py), M.GEN.022.
 - **Blast carried by**: Part N row `web.poll_interval_ms` sites → A.U8.18 (SPEC); CLI contract test → A.U20.17 (5)
   (TST); `scripts/build_website.sh`/staging of the reference → A.U19.20 (SCR).
@@ -649,7 +668,8 @@ change lists its stages; the end state is the last stage's.
   A.U8.09 (its `ntp.check_interval_s` tag at `:71` goes with the copy), A.U20.41 (1) (`_DEVICE_WIRING_CONSUMERS` →
   `(module_file, consumer_label)` pairs, `asy_system_service.py`), A.U20.40 (`:50-52` comment), A.U10.39
   (`_VAL_HOST` → `_VAL_HOSTNAME` in comments `:64, :73, :118, :124`), A.U8.14 (read: `_MAX_CONNECTIONS_FLOOR` is
-  not tagged), A.U10.30/A.U0.07 (read: the `importlib.util` loader stays, named in SPEC F.1).
+  not tagged), A.U10.30/A.U0.07 (read: the `importlib.util` loader stays, named in SPEC F.1); OR141.a (1), (2), OR142.a (A-C
+  review fold: confirmed, no further change).
 - **Site**: `buildgen/validate.py:1-94` (imports, bus/device field tables, `_UART_LINK_ROLES`, device-field constants,
   `_DEVICE_WIRING_CONSUMERS`).
 - **Change**: imports gain `UART_CRC_MODES`; `_ALLOWED_DEVICE_FIELDS` gains `bench` (bool, not emitted) and
@@ -661,7 +681,11 @@ change lists its stages; the end state is the last stage's.
   rates than the constructor's defaults (Part J.6)."; comments cite `_VAL_HOSTNAME`/`_VAL_HOTSPOT_PW` by their
   current names.
 - **Resolved**: A.U8.09 tags `validate.py:71`; A.U20.27 deletes that copy (AST read) — A.U20.27 wins, as A.U20.27's
-  own Depends states ("its tag on `validate.py:71` goes with the copy").
+  own Depends states ("its tag on `validate.py:71` goes with the copy"). A-C review fold: OR141.a (1) (owner,
+  2026-10-05) keeps `bench` and `hardware_family` in the device files' `[device]` section, checked by the build
+  (M.GEN.026) and never emitted — as written here; agent decision D6 is now the owner's. OR141.a (2)/OR142.a: this
+  file's `importlib.util` loader is one of SPEC F.1's named host exceptions — it needs no change, and no change here
+  rewrites it.
 - **Unit**: U26 (latest: A.U26.01). Stages: U10 (comment names with A.U10.39), U20 (the rest).
 - **Depends**: M.GEN.026, M.GEN.024.
 - **Blast carried by**: `tests_hardware/harness.py` `bench_device()` → A.U26.01 (HW); family test → A.U20.19 (TST).
@@ -788,6 +812,40 @@ change lists its stages; the end state is the last stage's.
 - **Blast carried by**: —
 - **Kind**: code
 
+### M.GEN.066 The UART ring size and the receive cap: declared together, checked together, passed through
+- **From**: OR143.a (2) ("the cap and the DMA ring size … declared together in the bus/instance TOML and checked
+  together by buildgen"), OR141.a (4) (e) (the ring derived and refused like `rxbuf`) (A-C review fold); register
+  G6/R21, G6/R57.
+- **Site**: `buildgen/validate.py` (the allowed bus/instance field tables, `_check_uart_link_buses()`),
+  `buildgen/codegen.py` (the `[bus.uart*]` construction line, `_build_args_uart_link`), `devices/dev.toml`
+  (`[bus.uart0]`, `[bus.uart1]` and the two `uart_link` instances).
+- **Change**: two keys per link: `rx_ring` on its `[bus.uartN]` table (the DMA ring in bytes, a power of two) and
+  `max_transfer_bytes` on the bus's one `uart_link` instance (the receive cap) — or both on the bus table: the placement
+  is decided at execution, with its reason recorded. The build reads the pair together per link (refused like `rxbuf`
+  today, `rule`/`fix` on every refusal): `rx_ring` a power of two within 2-32768 (CTRL.RING_SIZE, RP2040 datasheet
+  2.5.1.3) and at least the protocol's ring floor for the link's own frame, timeout and backoff — the arithmetic of
+  `asy_uart_comm`'s `_min_rx_ring()` (M.SRC_NET.222), read from source as `_check_uart_link_buses()` reads today's floors
+  (`rule="bus.uart-rx-ring"`); `max_transfer_bytes` at least one payload and at most the protocol's largest train,
+  `(_CHUNKS_MAX - 1) × payload_size` (`rule="instance.uart-transfer-cap"`). The two stay separate values (stop-and-wait:
+  the ring never holds a whole transfer). Generated code passes `rx_ring=` to the bus's `UART(...)` (M.GEN.005's bus line)
+  and `max_transfer_bytes=` to `UARTLinkDriver(...)` (M.GEN.012's renderer). `devices/dev.toml` declares both for its two
+  links, each preceded by its tag (`# @tunable dev.uart_rx_ring = <v>`, `# @tunable dev.uart_max_transfer_bytes = <v>`;
+  values decided at execution from the floor's derivation and Part I's heap budget, recorded with the tags). `rxbuf` no
+  longer sizes the receive path (the ring does; `machine.UART`'s own buffer sits at its minimum, M.SRC_NET.221):
+  whether the key stays as that minimum or goes, with its build check, is decided at execution, with its reason
+  recorded. A device without a `uart_link` declares neither key.
+- **Resolved**: OR143.a (2) settles that the two values are declared and checked together; OR141.a (4) (e) that the ring
+  is derived and refused, never a bare number. The default `chunk_bytes` is not a TOML key (OR143.a (1): a constructor
+  default).
+- **Unit**: U20 (after U13's `rx_ring` parameter and U17's floor and cap exist in `src/`).
+- **Depends**: M.GEN.025, M.GEN.027, M.GEN.005, M.GEN.012, M.GEN.053, M.SRC_NET.220, M.SRC_NET.221, M.SRC_NET.222;
+  [fold F27 M_TSC] (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
+  source; `tests_scripts/test_device_tomls.py`: dev declares both; U20).
+- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → [fold F25 M_SPEC]; Part N rows `dev.uart_rx_ring`,
+  `dev.uart_max_transfer_bytes` → [fold F27 M_SPEC]; the twin wiring reads the generated construction (TWIN, unchanged
+  rule).
+- **Kind**: code
+
 ## buildgen/jsontypes.py (new)
 
 ### M.GEN.032 Host JSON type aliases
@@ -829,7 +887,8 @@ change lists its stages; the end state is the last stage's.
   table content), A.U15.12/.19/.36 (FRCState/VOCState/CalLight tables), A.U2.02/.03/.21/.22/.24/.25, A.U24.46,
   A.U36.537, A.U6.04, A.U6.06, A.U3.15 (read: consumers and tests); gap pass G1: M_SRC_CORE GAP-G2, M_SRC_NET gap 1,
   M_SRC_SENS GAP-7 (with A.U10.R01, A.U15.24, A.U18.06, A.U18.14, A.U18.15, A.U14.26, A.U19 A-C note 3 as their merges
-  number them).
+  number them); OR140.a (7) (per-layer entries), routine settlement "ntp-malformed-text", OR143.a (2) (A-C review
+  fold).
 - **Site**: new `buildgen/error_catalog.json`.
 - **Change**: A.U2.01's object `{"format": 1, "range": [1, 127], "owners": {...}, "codes": {"E": {...}, "W": {...}},
   "status": {"ResetReason": {...}, "VOCState": {...}, "FRCState": {...}, "CalLight": {...}}}` with A.U2.01's band
@@ -842,7 +901,7 @@ change lists its stages; the end state is the last stage's.
   `BackupMaxAge` or dated in the future"; errno 15 `SOURCE` text "a producer's `get_data()` raised or returned a
   non-numeric field" (A.U9.08, M.SRC_SENS.035); errno 16 `CLOCK` `retired` (its last sites go: SYSTEM's with A.U10.06, NTP's
   `cettime()` handler with U18 register fix 10 — M.SRC_CORE.005/.080, M.SRC_NET.047/.053); errno 69 `NTP_MALFORMED` text "the reply is
-  malformed or could not be parsed" (M.SRC_NET.049); errno 72 `NTP_NOT_SENT` (A.U18.14, U18 register fix 9;
+  malformed" (unchanged: an allocation failure in the parser logs shared 20 `ALLOC`, M.SRC_NET.049); errno 72 `NTP_NOT_SENT` (A.U18.14, U18 register fix 9;
   M.SRC_NET.047); the shared warnings W11 `DERIVED_DOMAIN` (A.U15.24) and W12
   `SOCKET_TEARDOWN` (A.U18.15; owners DNSSRV, the resolver and NTP), W14 `DEVICE_RECOVERY` and W15 `BUS_RECOVERY`
   (A.U10.R01) — M.SRC_SENS.043's numbering, over M_SRC_NET's 11 for `SOCKET_TEARDOWN`; DNSSRV W42 `DNS_RECV_FAILED` (U18
@@ -850,16 +909,27 @@ change lists its stages; the end state is the last stage's.
   `HTTP_START_FAILED` (M.SRC_NET.112); the shared rows' owner lists name WIFI on E17 `TIMER` and NTP on W10 and E21. Every
   code constant a merged `src/` change defines has its row, under that constant's name and number, in the unit that
   lands the constant; the row's text states what the site logs. Status tables filled by their defining units
-  (`CalLight` entries carry `tone`: 0 neutral, 1 good, 2 warn, 3 warn). Host-side only, never frozen.
+  (`CalLight` entries carry `tone`: 0 neutral, 1 good, 2 warn, 3 warn). The per-layer rule (OR140.a (7), owner
+  2026-10-02: every layer that meets a fault keeps its own persisted entry): errno 1 `STREAK` stays live, "the
+  consecutive-failure streak increased" (A.U2.06's retirement falls with A.U3.03, M.SRC_CORE.037); new shared rows
+  `CFG_READ` E and W, "the module's own config read failed; it runs on its fallback" (M.SRC_NET.047/.077,
+  M.SRC_SENS.031/.040/.059/.071); the FRAM band's chunk-layer rows (block write, status read, status write, payload
+  write, read, clear write, clear, and the invalid-block warning, M.SRC_CORE.080); WIFI `WLAN_GIVE_UP`
+  (M.SRC_NET.077); SGP40 `SGP_BACKUP_CLEAR`, `SGP_BACKUP_WRITE`, `SGP_NO_BACKUP` (M.SRC_SENS.059) — each numbered at
+  execution after its band's last used code (the shared pair: the next free shared codes), in landing order, the
+  catalog the numbering source; every A.U2.01 row text that names a site "printed after A.U3.0x" states the persisted
+  entry instead. UART 93 `UART_TRANSFER_CAP` "a declared train over max_transfer_bytes was refused" (M.SRC_NET.153/.220). Host-side only, never frozen.
 - **Resolved**: A.U2.21's golden-file edit falls away with A.U6.04 (A.U2.21 says so). `SOCKET_TEARDOWN`: M_SRC_NET
   (M.SRC_NET.004/.023/.047, written first) numbers it W11; M.SRC_SENS.043 (later, SUPP_recovery conflicts row 7) gives W11
   to `DERIVED_DOMAIN` and W12 to `SOCKET_TEARDOWN`, and M_TEST_UNIT follows it (GAP-U5) — W12 (gap pass G1). The
   C-stack errno: A.U30.19 says "<catalog number, A.U2.01>"; M.SRC_CORE.005 fixes shared 25 (M_SRC_CORE GAP-G2).
 - **Unit**: U35 (latest constituent: A.U35.55's retirement). Stages: U2 (file), U10 (16 retired with A.U10.06), U11
   (register fixes, ResetReason), U13 (52), U15 (34, W11, status tables), U17 (UART codes 91/92), U18 (W12, DNSSRV 42/43,
-  69, NTP owners), U19 (W48, W60-62), U23 (tones), U30 (C-stack 25, ResetReason 20).
+  69, NTP owners), U19 (W48, W60-62), U23 (tones), U30 (C-stack 25, ResetReason 20); fold stages (A-C review): U2 (the per-layer rows
+  with their source constants), U17 (93).
   A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
-- **Depends**: A.U2.01-.03 (catalog, test, helper), each code's source constant (SRC_* clusters).
+- **Depends**: A.U2.01-.03 (catalog, test, helper), each code's source constant (SRC_* clusters); [fold F11 M_TEST_HELP]
+  (`tests/_error_codes.py` follows the per-layer rows, U2).
 - **Blast carried by**: `tests_scripts/test_error_catalog.py` → A.U2.02/A.U36.537 (TST); `tests/_error_codes.py` →
   A.U2.03 (TST); SPEC C.7/C.7.1 → A.U2.22 (SPEC); `.inputs_stamp.json` input set → A.U24.46 (TST); the generated
   definitions' `codes` and so the website read the catalog (M.GEN.016 — no hand mirror, M_SRC_CORE GAP-G2's "JS mirror");
@@ -1137,15 +1207,18 @@ change lists its stages; the end state is the last stage's.
 ## devices/dev.toml
 
 ### M.GEN.052 dev header and `[device]`: bench key, wiring comment
-- **From**: A.U26.01 (2) (`bench = true`), A.U20.23 (`[device.wiring]` comment), A.U13.04/A.U35.21/A.U31.01/A.U24.66/
+- **From**: A.U26.01 (2) (`bench = true`), A.U20.23 (`[device.wiring]` comment), OR140.a (18) (the header's WoZi
+  wording goes; A-C review fold), A.U13.04/A.U35.21/A.U31.01/A.U24.66/
   A.U7.16/A.U10.R01/A.U36.529/A.U15.39/A.U26.24/A.U35.33/A.U36.022 (read: cite values, no edit), A.U0.23/A.U1.04/A.U1.08
   (Blast pointers to `:38`/`:153-154`, carried by M.GEN.053/.054).
-- **Site**: `devices/dev.toml:4-19` (`[device]`, `[device.wiring]` comment).
-- **Change**: `[device]` gains, after `max_connections`, `# The board on the bench: flashed and tested by
+- **Site**: `devices/dev.toml:1-2` (header), `:4-19` (`[device]`, `[device.wiring]` comment).
+- **Change**: header `:1-2` → `# dev.toml - the bench rig: the one build with bench-only parts, flashed by the hardware
+  tiers;` / `# every other device is a normal build (owner, 2026-10-02). The source of truth buildgen reads` / `#
+  (SPECIFICATION.md Part L).` (each line within the file's 100 characters) (no WoZi rule, no "wozi's pins"); `[device]` gains, after `max_connections`, `# The board on the bench: flashed and tested by
   tests_hardware/ (owner, 2026-09-03; the only one flashed).` / `bench = true`; `:16` → `# Mandatory-infra-to-instance
   links; each optional, absence disables that link (owner, 2026-09-09).`
 - **Resolved**: —
-- **Unit**: U26 (latest: A.U26.01); A.U20.23's comment in U20.
+- **Unit**: U26 (latest: A.U26.01); A.U20.23's comment in U20; the header in U36 (A-C review fold, with the docs).
 - **Depends**: M.GEN.025/026 (`bench` accepted).
 - **Blast carried by**: `tests_hardware/harness.py` → A.U26.01 (HW).
 - **Kind**: code
@@ -1171,7 +1244,7 @@ change lists its stages; the end state is the last stage's.
 ### M.GEN.054 dev instances and sections: trigger_s, banners, link comment
 - **From**: A.U10.43 (`trigger_s`), A.U16.01 (`:96-98`), A.U20.29 (banners 100 chars; `:148` title `multi-instance
   services`), A.U20.23 (`:135` per-signal comment), A.U20.15 (`:150-151` "WP3" goes), A.U0.28 (`:153-154` tag),
-  A.S0930.01 (6) (crc line), A.U20.10 (read: `:118` already names the part).
+  A.S0930.01 (6) (crc line), A.U20.10 (read: `:118` already names the part); OR140.a (18) (A-C review fold).
 - **Site**: `devices/dev.toml:59-172`.
 - **Change**: SCD30 `trigger_s = 3`; ISL29125 comment first line `# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ),
   bench-validated.` (the chunk-order sentence goes); banners `# --- sensor drivers ` / `# --- singleton services ` /
@@ -1179,8 +1252,8 @@ change lists its stages; the end state is the last stage's.
   each optional; absence disables that warning signal (owner, 2026-09-09).`; the link section comment: `# Each end gets
   its own fram_target chunk, so a fault on one end stays attributable (only the` / `# link's own error history is made
   durable, Part J.1).` / `#` / `# crc (optional, per end): "none" (default) or "crc16"; both ends must agree (Part
-  J.6).` / `#` / `# wozi never gets a UART instance: it is never flashed, so the peripheral would be untestable` /
-  `# (agent, 2026-09-11; CLAUDE.md).` — no `crc` key added.
+  J.6).` / `#` / `# Only dev has UART links: the crossover jumper they exercise is on the bench (owner, 2026-10-02).` —
+  no `crc` key added (OR140.a (18): the WoZi-specific "never flashed" reason goes; A-C review fold).
 - **Resolved**: A.U20.15/A.U0.28/A.S0930.01 edit separate paragraphs of one block — all kept, each paragraph ≤ 3 lines.
 - **Unit**: U20 (latest among U10/U16/U20/SUPP-U20); A.U0.28's tag lands in U0, A.U16.01's deletion in U16, `trigger_s`
   in U10.
@@ -1191,16 +1264,16 @@ change lists its stages; the end state is the last stage's.
 ## devices/wozi.toml
 
 ### M.GEN.055 wozi: header, trigger_s, banners, wiring comments
-- **From**: A.U36.520 (`:1-2`), OR78.a (2)-(3) (header wording; AC3_O O-28), A.U10.43, A.U20.29, A.U20.23 (`:16`,
+- **From**: A.U36.520 (`:1-2`), OR78.a (2)-(3) (header wording; AC3_O O-28), OR140.a (18) (A-C review fold), A.U10.43, A.U20.29, A.U20.23 (`:16`,
   `:98`), A.U20.10 (read: `:81` already names the part), A.U13.04/A.U10.R01 (read).
 - **Site**: `devices/wozi.toml:1-3, 16, 38, 45, 75, 98`.
-- **Change**: header → `# wozi.toml - never physically flashed; its correctness rests on L1/L2 (CLAUDE.md).` /
+- **Change**: header → `# wozi.toml - a normal device build like every device but dev (owner, 2026-10-02).` /
   `# Wiring sourced from legacy/firmware/modules/sensortask-wozi.py (legacy, read-only reference); bmp3xx's 0x77 is the legacy driver's default.` / `# The source of truth buildgen reads (SPECIFICATION.md
   Part L).`; `trigger_s = 3` (every sensor instance); the two banners at 100 characters with titles `sensor drivers`,
   `singleton services`; `:16` and `:98` as in M.GEN.052/.054.
 - **Resolved**: OR78.a (2)-(3) withdraws wozi's golden-reference role: "the exemplary/base device" goes; AC3_O O-28's
-  "never physically flashed; its correctness rests on L1/L2" replaces the header's whole first clause, which already
-  said "never physically flashed" (no repetition).
+  "never physically flashed; its correctness rests on L1/L2" is in turn superseded by OR140.a (18) (owner, 2026-10-02:
+  no build except dev is special; A-C review fold) — the header states the general rule.
 - **Unit**: U36 (latest: A.U36.520); stages U10 (`trigger_s`), U20 (banners, comments).
 - **Depends**: A.U1.01 (legacy move, LEGACY/DOC cluster), M.GEN.024.
 - **Blast carried by**: —
@@ -1512,7 +1585,7 @@ look of the website"; M.GEN.062)
 - **D2** one boot-entry file name, `sensortask_<device>_main.py`, for the CLI and the batch writer (A.U20.15 over
   A.U24.54) — M.GEN.019.
 - **D3** `/status` networking keeps both `IP` and `IPv4` (A.U18.33 left it to A.U10.40, which removes neither) —
-  M.GEN.008.
+  M.GEN.008. Withdrawn by the routine settlement "status-ip-and-ipv4" (A-C review fold): `IPv4` only.
 - **D4** `dev.toml`'s crossover comment rewrapped and tightened to keep 3 lines within 100 characters — M.GEN.053.
 - **D5** one `_POLL_INTERVAL_MS` constant under one `web.poll_interval_ms` tag instead of two tagged literals —
   M.GEN.018.
@@ -1880,3 +1953,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.GEN.016 | Unit | appended: A-C2 step order: A.U2.21's part lands in U6, not U2 (it needs A.U6.04, which lands in U6). | dependency deferral (an edge ran from a later step) |
 | M.GEN.033 | Unit | appended: A-C2: stage U20 — the `BuildError` rule/fix and `JsonDict` forms land with M.GEN.022 and M.GEN.032 (U20); in U19 the module is written with the plain `BuildError` and `dict` annotations of its day. | Depends edge ran from a later step: M.GEN.022/.032 land in U20, after this change |
 | M.GEN.034 | Unit | appended: A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_merge.json` `outcome`, AC_NOTES 52).
+`[fold Fnn M_FILE]` tokens name a change another fold agent adds; the lead replaces them.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | — | none in this file |
+| F02 | M.GEN.009, .014 | amended |
+| F03 | M.GEN.008, .014 | amended |
+| F04 | — | none in this file (the build-info marker is U21/U27's; see the fold report) |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | M.GEN.015 | amended |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | M.GEN.034 | amended |
+| F12 | — | none in this file (`ResetReason` already carries `codes` and no `codeTones`, so the page renders it as a clickable code, M.WEB.014) |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | — | none in this file |
+| F16 | — | none in this file |
+| F17 | — | none in this file |
+| F18 | M.GEN.017, .018 | amended |
+| F19 | — | none in this file |
+| F20 | M.GEN.052, .054, .055 | amended |
+| F21 | M.GEN.006 | tag |
+| F22 | M.GEN.025 | amended |
+| F23 | M.GEN.025 | amended |
+| F24 | — | none in this file |
+| F25 | M.GEN.066 | added |
+| F26 | — | none in this file (`build_date` is already a `generate_device()` input at HEAD; the two-build check is M.SCR.066's) |
+| F27 | M.GEN.066 (one change with F25) | added |
+| F27 | M.GEN.034 (93) | amended |
+| F28 | — | none in this file |
+| F29 | M.GEN.034 | amended |
+| F30 | M.GEN.008, .014 ("Agent decisions" D3 withdrawn) | amended |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

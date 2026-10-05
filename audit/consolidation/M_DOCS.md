@@ -1503,7 +1503,7 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
 - **Kind**: doc
 
 ### M.DOCS.065 "Deferred": only owner-deferred goals with their reason, and the C-port item
-- **From**: A.U0.39, A.U2.09, A.U3.04 (SPI RX `:474-477`); A.U0.34, A.U15.42 (`FiltCoeff` `:478-480`); A.U0.38 (V01,
+- **From**: A.U0.39, A.U2.09 (SPI RX `:474-477`; A.U3.04 dropped, OR140.a (7)); A.U0.34, A.U15.42 (`FiltCoeff` `:478-480`); A.U0.38 (V01,
   `arduino/` `:481-483`); A.U0.34, A.U1.19 (`:493`), A.U10.41 (`NTP_Host` `:484-514`); A.U13.06 (`SPIDevice`
   `:614-625`); A.U0.58, A.U36.544 (max-args `:626-637`); A.U0.34, A.U33.03 (buildspec `:638-658`); device-name entry
   (`:659-677`); A.U36.042 (soak trap `:678-683`); A.U0.12 (UART fakes `:684-697` relabel, four UART findings
@@ -1537,7 +1537,8 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   "modlwip non-blocking send stall — watched upstream: micropython issue 19704, PRs 19705 and 19708 … The
   `modlwip_eagain` build override stays until the pin carries a real fix … (owner, 2026-09-30)". (6) the chroot list
   (M.DOCS.066). Every other HEAD entry leaves, at the unit named: SPI RX overrun — tagged at U0 (A.U0.39), numbers at
-  U2/U3 (A.U2.09, A.U3.04), a settled fact moved to SPEC F.5.2 at U37 (Gaps: SPEC); `FiltCoeff` — A.U0.34 re-words
+  U2 (A.U2.09; A.U3.04's U3 edit dropped with the one-entry rule, A-C review fold), a settled fact moved to SPEC F.5.2
+  at U37 (Gaps: SPEC); `FiltCoeff` — A.U0.34 re-words
   at U0, deleted at U15 by A.U15.42; `NTP_Host` — A.U0.34 re-words at U0, A.U1.19 edits `:493` at U1, deleted at U10
   by A.U10.41 (the key renamed `NTPHost` with its bound); `SPIDevice` — deleted at U13 (A.U13.06, SPEC G.2); max-args —
   the max-args ratchet is folded into the chroot list at U36 (A.U0.58's tag, A.U36.544's label removal); buildspec —
@@ -1858,8 +1859,8 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   file's header carries the same words, M.DOCS.015). The duplicated Class-A clause appears once (agent, consistency).
   A.U0.23's "during this audit" → "until the C reconciliation": after phase D deletes `audit/`, "this audit" names
   nothing (G9/R12; AC3_O O-22).
-- **Unit**: U36. Stages: U0 (A.U0.23, A.U0.32, A.U0.38 — `:144-146` without the WoZi clause from the start), U10 (names),
-  U13 (the DMA-ring clause, with the receive path), U17 (lifecycle and scope clause), U36 (A.U36.025).
+- **Unit**: U36. Stages: U0 (A.U0.23, A.U0.32, A.U0.38), U10 (names), U13 (the DMA-ring clause, with the receive path),
+  U17 (lifecycle and scope clause), U36 (A.U36.025; the WoZi clause of `:144-146` removed).
 - **Depends**: M.DOCS.015, M.DOCS.016, M.DOCS.017, M.DOCS.018; M.SPEC.108 (F.8.2's receive-path paragraph, U13)
 - **Blast carried by**: changelog header/intro/deployment status (M.DOCS.015-.017); SPEC J.1 (A.U17.08, A.U0.38, SPEC)
 - **Kind**: rule
@@ -1894,8 +1895,8 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   flashed board) and the general invalid-test rule (A-C review fold; the earlier "`wozi` is never physically flashed or
   bench-tested" sentence of A.U0.23 is replaced). The replaced span runs to `:169` so no fragment of the old bullet
   dangles.
-- **Unit**: U0 (the owner's ruling predates B0; the U0 tags land inside the new text). Stage U36 (`:159` wording pass,
-  A.U36.512 (4), on the new text).
+- **Unit**: U36 (the docs pass that removes the WoZi wording). Stage U0: A.U0.23/A.U0.32's tags on HEAD's text
+  (`:159-160`, `:166-169`), which U36 replaces whole, carrying the two owner tags of 2026-09-03 into the new text.
 - **Depends**: —
 - **Blast carried by**: SPEC term table (A.U36.512 (1), SPEC); SPEC A.3, B.11, E.6.6, L.1 (M.SPEC.007, M.SPEC.035,
   M.SPEC.083, M.SPEC.144: their pointers name "CLAUDE.md's `dev` rule"); README flashing rule and Devices table
@@ -1952,22 +1953,38 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Kind**: rule
 
 ### M.DOCS.082 The Wi-Fi backstop names both write paths; a new limited-endurance write rule
-- **From**: A.U0.32 (`:197-203`); A.U36.034 (1)-(2); A.U36.544 (5) (item 6 pointer)
+- **From**: A.U0.32 (`:197-203`); A.U36.034 (1)-(2); A.U36.544 (5) (item 6 pointer); OR136.a (1)-(3) (an absent config
+  file is written once with its defaults), OR138.a (1)-(2) (a damaged file is listed in `ConfigFaults`; the reset
+  deletes it unread) (A-C review fold)
 - **Site**: `CLAUDE.md:197-203`, new bullet after it
 - **Change**: head (A.U0.32) "— a power cycle/`hard_reset()` stays the recovery, because the owner judged an independent
   reachability probe not worth its complexity (owner, 2026-09-04, `655e4f9`, paraphrase; confirmed 2026-09-26).**";
-  the "Confirmed inherently safe" sentence → A.U36.034 (1)'s "Safe: the flash is written only on an API action — an
-  accepted, value-changing PUT or the `SystemCmd` `"resetconfig"` — or in at most one repair per boot (next rule), and
-  a deferred write resolves long before a sustained outage triggers a power cycle; the one residual window — a power
-  loss between a PUT's response and its deferred write — loses that change silently and never corrupts (owner,
-  2026-09-26; SPECIFICATION.md F.2)."; the foreclosure sentence and "(BACKLOG.md keeps only a closed pointer, open
-  question 6)" go. New bullet: A.U36.034 (2)'s "- **The firmware writes a limited-endurance store only on a user or API
-  action** …" verbatim.
+  the "Confirmed inherently safe" sentence → A.U36.034 (1)'s sentence with its write list amended (A-C review fold):
+  "Safe: the flash is written only on an API action — an accepted, value-changing PUT or the `SystemCmd`
+  `"resetconfig"` — or once per boot when a config file is absent or needs repair (next rule), and a deferred write
+  resolves long before a sustained outage triggers a power cycle; the one residual window — a power loss between a
+  PUT's response and its deferred write — loses that change silently and never corrupts (owner, 2026-09-26;
+  SPECIFICATION.md F.2)."; the foreclosure sentence and "(BACKLOG.md keeps only a closed pointer, open question 6)" go.
+  New bullet: A.U36.034 (2)'s text with its flash-filesystem sentences amended (A-C review fold): "- **The firmware
+  writes a limited-endurance store only on a user or API action, or once to create or repair a config file** (owner,
+  2026-09-26: 'never write without user / api interaction as a standing rule'). The flash filesystem is written only
+  through `ConfigManager`: on an accepted PUT that changed a value; at boot, once with the schema defaults when a config
+  file is genuinely absent — after a fresh flash, a filesystem erase or "Reset to defaults" (owner, 2026-10-01: 'if the
+  file is genuinely missing, it shall be written once with defaults') — or in at most one repair per boot of an
+  existing, readable file with a bad, missing or unknown key (owner, 2026-09-26); or by the `SystemCmd`
+  `"resetconfig"`, which deletes every config file without reading it (owner, 2026-09-30; unread, owner, 2026-10-01).
+  The SCD30's NVM is written only on an accepted PUT that changed a value or by a command the PUT names (`AmbPres` and
+  `ForceCalRef` always send; `ContMeas` false stops measurement, whose status the chip keeps in NVM). A file that cannot
+  be read or is corrupt is never overwritten — it is listed in `/status` `ConfigFaults` — a command-only schema has no
+  file, and nothing re-runs a write on its own: no timer, retry or cross-boot flag. FRAM is outside this rule. Full
+  account: SPECIFICATION.md C.7.3 and F.2."
 - **Resolved**: A.U0.32 rewrites the head and drops the foreclosure (U0); A.U36.034 rewrites the safety sentence (U36);
-  A.U36.544 removes the item-6 pointer (U36) — merged.
+  A.U36.544 removes the item-6 pointer (U36) — merged. A.U36.034 (2)'s "A missing config file creates nothing" is
+  superseded by OR136.a (owner, 2026-10-01), its "an unreadable one is never overwritten" kept and joined by OR138.a's
+  fault list (A-C review fold).
 - **Unit**: U36. Stage U0.
-- **Depends**: SPEC C.7.3, F.2 (SPEC)
-- **Blast carried by**: M.DOCS.063 (item 6 stub deleted)
+- **Depends**: SPEC C.7.3, F.2 (SPEC; M.SPEC.061, M.SPEC.096 as the fold amends them)
+- **Blast carried by**: M.DOCS.063 (item 6 stub deleted); the wear rule's fresh-filesystem sentence → M.DOCS.086
 - **Kind**: rule
 
 ### M.DOCS.083 `MemoryError` handling follows one criterion
@@ -1985,7 +2002,8 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 
 ### M.DOCS.084 Adafruit, long-blocking, boot latency, UART no-block: tags, paths, pointers
 - **From**: A.U0.23 (`:207`, `:213`, `:231`); A.U1.12 (`:208`); A.U36.541 (3) (`:214`); A.U31.03 (boot-latency last
-  sentence); A.U36.532 (`:233-234`); A.U31.01 (`:210-212` unchanged); A.SDEP.17 W25 via M.PROC.011 (conditional; gap pass G1)
+  sentence); A.U36.532 (`:233-234`); A.U31.01 (`:210-212` unchanged); A.SDEP.17 W25 via M.PROC.011 (conditional; gap pass G1);
+  OR141.a (4) (b), (f) (the receive side reads a DMA ring; the clamp is its fill level) (A-C review fold)
 - **Site**: `CLAUDE.md:207-236`
 - **Change**: `:207` "(keeping attribution)" gains "(owner, 2026-07-13, `b64857d`)"; `:208` the Microdot path →
   `legacy/firmware/python/CommonDrivers/microdot.py`; `:210-212` unchanged; `:213` "(WP6, owner-established
@@ -1997,10 +2015,15 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   and F.8.3 — F.8.2 also states" (and "(Part F.5.9)" at `:231` → "(Part F.8.3)"). Conditional (M.PROC.011, W25): if
   the U0 re-read finds `machine.UART.read()/readinto()`'s per-byte wait changed at the refreshed pin, the bullet's
   mechanism sentence ("wait out `timeout_char` for every byte … measured: 4.4ms per 53-byte frame") follows the source
-  and F.8.2; the rule (clamp to `uart.any()`, a real yield in `ready()`) stays as the owner set it.
+  and F.8.2; the rule (clamp to `uart.any()`, a real yield in `ready()`) stays as the owner set it. (A-C review fold, U13)
+  The clamp's object follows the receive path: "a clamp to `uart.any()` on every read" → "a clamp to the bytes already
+  received on every read — the DMA receive ring's fill level, since the driver never calls `machine.UART`'s receive
+  side (owner, 2026-10-05)", and the mechanism sentence is kept as the reason the driver bypasses `machine.UART.read()`;
+  the yield in `ready()` and both poll rates stay.
 - **Resolved**: —
-- **Unit**: U36. Stages U0, U1, U31.
-- **Depends**: SPEC 0.1 (A.U36.541), F.3 table (A.U31.01), F.8 renumbering (A.U36.532) — SPEC
+- **Unit**: U36. Stages U0, U1, U13 (the clamp's object, with the DMA receive path), U31.
+- **Depends**: SPEC 0.1 (A.U36.541), F.3 table (A.U31.01), F.8 renumbering (A.U36.532) — SPEC; M.SPEC.108 (F.8.2's receive
+  path, U13); [fold F25 M_SRC_NET]
 - **Blast carried by**: —
 - **Kind**: rule
 
@@ -2029,19 +2052,26 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 
 ### M.DOCS.086 The wear rule: FRAM is not wear, the flag names, `resetconfig`, the invariant sentence
 - **From**: A.U0.37 (`:249-251`); A.U26.74 (5); A.S0930.30, A.S0930.19 (dispatch-only exception); A.U36.546 (1)
-  (`:272-283`)
+  (`:272-283`); OR136.a (4) (the fresh-filesystem default writes are prerequisites), OR140.a (2) (the console-starvation
+  test is gated) (A-C review fold)
 - **Site**: `CLAUDE.md:249-283`
 - **Change**: after "(project owner's explicit, standing direction, 2026-09-17)" add "FRAM writes are not wear (owner,
   2026-09-26: 'FRAM writes do not count as wear.')"; flags and markers as A.U26.74 renames them —
   `--allow-persistence-writes` → `--allow-persistence-write`, `long_soak` → `soak_duration` (with `--soak-duration`),
   `--allow-multi-day-rollover-wait` → `--allow-multi-day-rollover`; "a *dispatch-only* PUT persists nothing and is
   deliberately outside the gate" → "… deliberately outside the gate, except `SystemCmd` `"resetconfig"`, whose purpose
-  deletes every config file (owner, 2026-09-30)"; `:272-283` ("Found the hard way: `tests/test_tmp_scratch.py` created
+  deletes every config file (owner, 2026-09-30)"; after the prerequisite sentence ("…stays unmarked and allowed …")
+  (A-C review fold): "A boot on a fresh filesystem writes each config file once with its defaults; a test that boots one
+  reaches those writes as a prerequisite, never as the write under test, so they stay unmarked (owner, 2026-10-01). The
+  console-starvation bench test spends two flash writes it owns and runs only behind the persistence-write flag (owner,
+  2026-10-02)."; `:272-283` ("Found the hard way: `tests/test_tmp_scratch.py` created
   400,000 … find the invariant instead.") → "When a test seems to need brute-force scale, it proves the invariant
   instead (SPECIFICATION.md E.3)."
 - **Resolved**: —
-- **Unit**: U36. Stages: U0 (FRAM sentence), U26 (flag names land with the rename), U36.
-- **Depends**: SPEC E.3 gains the account (A.U36.546, SPEC); SPEC H dispatch-only row (A.S0930.30, SPEC)
+- **Unit**: U36. Stages: U0 (FRAM sentence), U11 (the fresh-filesystem sentence, with the absent-file write), U26 (flag
+  names land with the rename; the console-test sentence with its gate), U36.
+- **Depends**: SPEC E.3 gains the account (A.U36.546, SPEC); SPEC H dispatch-only row (A.S0930.30, SPEC); M.SRC_CORE.043
+  (the absent-file write), M.HW_BENCH.082 (the gated console test)
 - **Blast carried by**: `tests_scripts/test_persistence_write_marker_completeness.py` (A.S0930.19, TSC)
 - **Kind**: rule
 
@@ -2166,10 +2196,15 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Kind**: rule
 
 ### M.DOCS.093 Workflow, parity, test changes, recorded failures, close-out, agents, re-verification
-- **From**: A.U0.11 (`:444-446`, `:449-464`); A.U36.529, A.U36.021 (`:447-448`); A.U36.017 (2); A.U36.018; A.U37.08
+- **From**: A.U0.11 (`:444-446`, `:449-464`); A.U36.529, A.U36.021 (`:447-448`); A.U36.017 (2); A.U36.018; A.U37.08;
+  OR140.a (6) (the old work-in-progress folder's code is a reference for the owner's intent unless stated otherwise;
+  G9/R02 wording) (A-C review fold)
 - **Site**: `CLAUDE.md:444-464`, bullets appended before `## Code quality tooling` (`:466`)
 - **Change**: end state, in this order: A.U36.529's "- **Legacy parity means no lost function.** …" bullet, its list
-  entry reading "the ISL29125 legacy driver" (no parenthesis), then A.U36.021's sentence "Where a legacy driver proved
+  entry reading "the ISL29125 legacy driver" (no parenthesis), its `improved-quality/` sentence replaced by the owner's
+  ruling (A-C review fold): "Code the owner committed into the retired `improved-quality/` work-in-progress folder
+  (`8c4a73d`), since promoted into `src/`, counts as a reference for the owner's intent unless something states
+  otherwise (owner, 2026-10-02)." — then A.U36.021's sentence "Where a legacy driver proved
   nothing in service — the ISL29125's only ran a smoke test — parity is with its evident intent wherever the owner's
   list does not decide (SPECIFICATION.md M.1)."; A.U0.11's "**Workflow for substantial work** (owner, 2026-09-26: …)"
   bullet replacing `:444-446` and `:449-464`; A.U36.017's "- **A failing test is a regression to fix; a test changes
@@ -2386,10 +2421,12 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 
 ### M.DOCS.105 Stub bullets, the retired-fork bullet, and the tunables rule
 - **From**: A.U27.02 (`:805-820`, `:841-854`); A.U27.03 (`:821-840`); A.U36.546 (1); A.SDEP.15 (W08-W10); A.U36.548 (4)
-  (`:855-857`); A.U8.01 (new bullet)
+  (`:855-857`); A.U8.01 (new bullet); OR140.a (11) (the stub version moves with every MicroPython bump, enforced by a
+  check) (A-C review fold)
 - **Site**: `CLAUDE.md:805-857`, new bullet
-- **Change**: `:805-820` "Version is auto-derived, not a separate hand-kept pin" → "The stub X.Y.Z is checked against the
-  ref; the post-releases are pinned in `toolchain/versions.toml`'s `[stubs]`" (A.U27.02), the rest kept; `:821-840` →
+- **Change**: `:805-820` "Version is auto-derived, not a separate hand-kept pin" → "The post-releases are pinned in
+  `toolchain/versions.toml`'s `[stubs]` and move with every MicroPython bump: a check fails while their X.Y.Z differs
+  from the ref (owner, 2026-10-02)" (A.U27.02; A-C review fold: the owner's ruling and tag), the rest kept; `:821-840` →
   "**`mypy src tests` resolves `from machine import X` to `tests/machine.py`'s fake**, not the board stub; the board
   stub's missing zero-argument `Timer()` is a stub gap listed in SPECIFICATION.md B.15, and `I2C.deinit()`/`SPI.deinit()`
   are no-ops on rp2 (F.5.1)." — deleted if A.SDEP.15's W10 finds the gap fixed; `:841-854` → "**`scripts/typecheck.sh`
@@ -2402,7 +2439,7 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Resolved**: A.U27.02/.03 hand their CLAUDE wording to U36; A.U36.546's shapes take it. F.5.1 stays F.5.1 (A.U36.532
   renumbers only F.5.7-F.5.9).
 - **Unit**: U36. Stages: U0 (A.SDEP.15 outcomes), U8 (tunables bullet), U27.
-- **Depends**: SPEC B.15 stub list (A.U27.03, SPEC); SPEC Part N (A.U8.01, SPEC)
+- **Depends**: SPEC B.15 stub list (A.U27.03, SPEC); SPEC Part N (A.U8.01, SPEC); M.SCR.027 (the X.Y.Z check)
 - **Blast carried by**: `tests_scripts/test_typecheck_sh.py` (TSC)
 - **Kind**: rule
 
@@ -2949,3 +2986,88 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.DOCS.063 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3); A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U14.R01's part lands in U18, not U14 (it follows A.U14.R01's own change, which lands in U18). | dependency deferral (an edge ran from a later step) |
 | M.DOCS.065 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U15 (it follows A.U14.R01's own change, which lands in U18). | dependency deferral (an edge ran from a later step) |
 | M.DOCS.081 | Unit | appended: A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's review answers (OR136-OR143, `audit/actions/FOLD_ANSWERS.md`, the routine settlements of
+`audit/review/routine_merge.json`, AC_NOTES 52) into the changes above, per `audit/actions/FOLD_BRIEF.md`. Every amended
+change names its source in From with "(A-C review fold)"; no change is added. The standing convention "Review-answer
+tags" (top of this file) fixes the tag form. `tests_hardware/README.md` and `digital_twin/README.md` are not this
+file's (M_HW_BENCH, M_TWIN): their F01/F04/F13/F16/F20 wording is those agents'.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.DOCS.082 (CLAUDE.md flash-write rule and Wi-Fi safety sentence), M.DOCS.086 (wear rule: the fresh-filesystem writes are prerequisites), M.DOCS.026 (DEVICE_REFERENCE: each file written once after "Reset to defaults") | amended |
+| F02 | M.DOCS.032 (DEVICE_REFERENCE: the reset clears `HTTPDropped`) | amended |
+| F03 | M.DOCS.026 (DEVICE_REFERENCE "Config Faults" item), M.DOCS.082 (CLAUDE.md: a damaged file is listed, deleted unread) | amended |
+| F04 | M.DOCS.049 (README recipe: the rollover runner flashes the test image, ~2 h), M.DOCS.052 (command-line reference), M.DOCS.064 (BACKLOG G6 row), M.DOCS.066 (chroot list: the override at U21) | amended |
+| F05 | M.DOCS.047 (README: throwaway password, passed plainly), M.DOCS.066 (chroot list) | amended |
+| F06 | M.DOCS.064 (owed row gated), M.DOCS.086 (wear rule) | amended |
+| F07 | M.DOCS.032 (the page confirms before the reset) | amended |
+| F08 | — | none in this file |
+| F09 | M.DOCS.027 (DEVICE_REFERENCE: try again later; internal notifications queue) | amended |
+| F10 | M.DOCS.093 (CLAUDE.md parity bullet: the old work-in-progress folder as reference for the owner's intent) | amended |
+| F11 | M.DOCS.065 (BACKLOG SPI RX entry: A.U3.04's U3 edit dropped) | amended |
+| F12 | — | none in this file (A.U36.531's item in M.DOCS.026 already says "click the code for its meaning") |
+| F13 | — | none in this file (`tests_hardware/README.md`, M_HW_BENCH) |
+| F14 | M.DOCS.105 (CLAUDE.md stub bullet), M.DOCS.066 (chroot list names the check) | amended |
+| F15 | — | none in this file |
+| F16 | M.DOCS.064 (the NTP-outage hand-run row dropped: the twin's responder covers it) | amended |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | M.DOCS.027 (every Wi-Fi pattern follows `LEDWifiOn`) | amended |
+| F20 | M.DOCS.078 (CLAUDE.md: the `dev`-exception rule replaces the WoZi rule), M.DOCS.076 (UART bullet's WoZi clause), M.DOCS.045 (README Devices), M.DOCS.048 (README flashing rule and runbook lead) | amended |
+| F21 | the "Review-answer tags" convention; explicit in M.DOCS.011, .026, .048, .059 and the owner-ruling tags of F01-F27; the full map is the table below | tag |
+| F22 | — | none in this file |
+| F23 | — | none in this file (no doc here names dynamic imports) |
+| F24 | — | none in this file |
+| F25 | M.DOCS.024 (Class B rows B65, B67), M.DOCS.020 (constants table), M.DOCS.084 (CLAUDE.md no-block rule: clamp to the ring's fill level), M.DOCS.076 (UART bullet: DMA ring), M.DOCS.064 (receive-ring owed rows) | amended |
+| F26 | M.DOCS.064 (hand-run rows: three kept, two dropped; idle-rate measurement row), M.DOCS.066 (chroot list: build-date input) | amended |
+| F27 | M.DOCS.067 (owner question entry 1 removed), M.DOCS.022 (Class A row A15), M.DOCS.024 (Class B rows B66, B68, B69), M.DOCS.019 (A15 in the order), M.DOCS.020 (constants), M.DOCS.065 (UART-findings sub-bullet), M.DOCS.064 (maximum-size transfer row) | amended |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |
+
+**F21 map** — where this file writes each answered decision's tag. "explicit": written in the change; "conv.": the tag
+sits in an action's text the change quotes and takes the convention's form at landing; "—": no tag written here.
+
+| Decision (FOLD_ANSWERS) | status | M-ID | form |
+|---|---|---|---|
+| release-version-2-0 | ok | M.DOCS.059 | explicit (Resolved names the form) |
+| release-defined-point | ok | M.DOCS.059 | explicit (as above) |
+| reflash-runbook-erase | ok | M.DOCS.048 | explicit |
+| scd30-calibration-readiness | ok | M.DOCS.026 (cites Part N rows) | — |
+| ntp-synced-goes-stale | ok | M.DOCS.028 | — (owner tag stands) |
+| dns-fallback-setting | ok | M.DOCS.028 | — |
+| negative-backup-age | ok | M.DOCS.030 | — |
+| state-code-values | ok | M.DOCS.030 | — |
+| comment-cap-long-lines | ok | M.DOCS.092 | conv. |
+| bench-sudo-checked | ok | M.DOCS.047 (points to `tests_hardware/README.md`) | — |
+| licence-notices | ok | M.DOCS.011 | explicit |
+| operator-actions-one-place | ok | M.DOCS.026 | explicit |
+| twin-first-for-instruments | ok | M.DOCS.037 | conv. |
+| no-gcc14-ci-leg | ok | M.DOCS.106 | conv. |
+| unreadable-config-file | ask | M.DOCS.082, M.DOCS.026 | explicit (owner, 2026-10-01: the ruling is OR138) |
+| wifi-off-led-pattern | ask | M.DOCS.027 | explicit (owner, 2026-10-02) |
+| status-fields-added-and-left-out | ask | M.DOCS.032 | explicit via OR137 (`HTTPDropped`) |
+| dns-fallback-clear-confirm | ask | M.DOCS.032 | explicit (owner, 2026-10-02) |
+| led-request-internal-queue | ask | M.DOCS.027 | explicit (owner, 2026-10-02) |
+| legacy-wip-as-intent | ask | M.DOCS.093 | explicit (owner, 2026-10-02) |
+| console-starvation-bench-test | ask | M.DOCS.086, M.DOCS.064 | explicit (owner, 2026-10-02) |
+| hand-run-hardware-rows | ask | M.DOCS.064 | explicit (owner, 2026-10-05) |
+| idle-poll-rate | ask | M.DOCS.064 | explicit (owner, 2026-10-05) |
+| uart-flash-erase-overrun | change | M.DOCS.084, M.DOCS.076, M.DOCS.024 | explicit (owner, 2026-10-05) |
+| stub-versions-pinned | ask | M.DOCS.105 | explicit (owner, 2026-10-02) |
+| bench-psk-fallback | change | M.DOCS.047 | explicit (owner, 2026-10-02) |
+| wozi-move-owner-operation | ask | M.DOCS.078, M.DOCS.076, M.DOCS.045, M.DOCS.048 | explicit (owner, 2026-10-02) |
+| twin-tolerates-ntp-offline | change | M.DOCS.064 | explicit via the dropped row |
+| reproducible-image | ask | M.DOCS.066 | — (no tag in the chroot list) |
+| one-entry-per-fault | change | M.DOCS.065 | — (no permanent text) |
+| every other decision | — | — | no tag written in this file |
+
+**Outside the brief, noticed while folding:** OR144/OR144.a (2026-10-05, standing push permission to
+`hundertvolt/datasheets`) satisfies the owner precondition that M.DOCS.014's Unit, M.DOCS.047's and M.DOCS.068's slots and M.SPEC.005/.019 name
+("the owner confirms push access …, AC_NOTES 37"); those slots are left for the lead.
