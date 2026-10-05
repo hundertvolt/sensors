@@ -364,7 +364,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ### LEAD/R35 The owner's review is self-contained, layered and friendly
 - **Req**: The A-C review package is read by the owner alone, so it answers its own follow-up questions without burying them: (1) a short overview first — where the audit stands, what the owner is asked to decide, and roughly how long the review takes; (2) one section per topic in plain language: what changes, why, what it means for the owner, and the consequence of saying no; (3) agent decisions grouped and sorted by weight, the routine ones approvable as a batch and the weighty ones one by one; (4) every detail (M-IDs, register rows, file lists) is one link away, never in the main reading path; (5) no audit jargon or temporary IDs in the main text; (6) the owner can answer inline, and each answer is recorded as an OR row.
-- **Sources**: OR135/OR135.a · OR2.c (agent decisions reviewed by the owner) · the owner question format (a top-level decision in max 10 words, then options and consequences)
+- **Sources**: OR135/OR135.a · OR2.c (agent decisions reviewed by the owner) · the owner question format (a top-level decision in max 10 words, then options and consequences), OR140/OR140.a (the answers, `audit/review/answers.json`)
 - **Rank**: owner — "keep it at a level where I won't need to ask for details for every topic, but at the same time not overwhelming, not exhausting, human-oriented and friendly, so it will be a rewarding task for me" (owner, 2026-10-01, OR135)
 - **State**: work: process — shapes the A-C review package after A-C3.
 - **Home**: the A-C review package (audit deliverable)

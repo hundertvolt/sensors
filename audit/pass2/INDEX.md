@@ -202,5 +202,6 @@ Rank: owner 278, agent 126, fact 68, owner-confirmed 52, convention 17.
 - **OR137** (1): G6/R39
 - **OR138** (3): G5/R34, G6/R39, LEAD/R32
 - **OR139** (1): G1/R23
+- **OR140** (1): LEAD/R35
 
 OR rows without a live requirement: none (OR62.a is overtaken by OR64.a; OR106-OR108 and OR111 are process rows carried by CONSOLIDATION section 2 and plan 4.4).
