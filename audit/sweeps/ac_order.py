@@ -1229,8 +1229,22 @@ def render_md(wo, R):
       "A.U10.18/.35/.37/.38/.40/.43/.44 (one sweep each, before U11); M.PROC.047 in U36 after M.TSC.044/.064. "
       "AC3_S's From completions (S-02, S-03, S-08-S-12, S-14, S-16, S-17 and its section 4) are placed as constituents of "
       "the changes they name; the only one that moves a part is S-14 (A.S0930.34 (4) in M.TSC.165 lands in U26, noted).")
-    w("- **AC3_R R-03** proposes M.SRC_CORE.108's Unit → \"— (no step)\" with its body; left for the lead with the body "
-      "(the order then loses that change's U13 step only).")
+    w("- **AC3_R R-03** applied: M.SRC_CORE.108's Unit reads \"— (no step)\", so the order has no step for it.")
+    w("")
+    w("### 3.7 The A-C review fold (OR136-OR144)")
+    w("")
+    w("- The owner's review answers are folded into the M files; each file's \"A-C review fold\" ledger lists, per "
+      "answer, the changes added or amended, and AC_NOTES 52-53 hold the lead's rulings.")
+    w("- New changes: M.SRC_CORE.133 (hourly window counter, U19) and .134 (`PieceBuffer`, U17); M.SRC_NET.220 (U17), "
+      ".221 (the DMA receive ring, U13) and .222 (U17, staged at U13); M.SRC_SENS.094 (U23); M.GEN.066 (U20); "
+      "M.TEST_UNIT.342 (U25), .343 (U19), .344 (U13), .345 (U17); M.TEST_HELP.069 (U13); M.TWIN.167, .168, .170, .171 "
+      "(U25) and .169 (U13); M.SPEC.162; M.TOOL.080 and M.TSC.229 (U21); M.TSC.230 (U13); M.HW_DEV.159/.160 (written in "
+      "U26, run in phase C R1); M.PROC.049 (phase C R1, R3). M.TSC.111 stays as the narrowed fault-or-warning scan (U3), "
+      "its allow-list edited at U15 and U16 by the changes that move a pair.")
+    w("- Ordering effects: the DMA receive ring, its unit and twin fakes, the boot-contiguity check of where the ring "
+      "lands and the probe co-land in U13; the chunking and the transfer cap land in U17; the tick-offset build option "
+      "lands in U27. Eight U2 renumbering parts that now name a U3 log-split action are deferred into U3 with it "
+      "(M.SRC_NET.047/.050/.086, M.SRC_SENS.035/.043/.044/.063/.074).")
     w("")
     w("## 4. Test schedule (LEAD/R34, OR134.a)")
     w("")
@@ -1286,14 +1300,11 @@ def render_md(wo, R):
     w("2. **Session 2 — R7**, the release proof, only after every phase-C delta is applied and one re-verification pass is "
       "green (A.C.09, A.C.11).")
     w("")
-    w("A hardware row that needs the owner's push access to `hundertvolt/datasheets` is not one of these: that is an owner "
-      "step before U28 (below).")
-    w("")
     w("## 6. Needing the owner")
     w("")
-    w("- **Push access to the private `hundertvolt/datasheets` repository before U28** (AC_NOTES 37; M.PROC.018, A.U28.35 "
-      "the move, and M.DOCS' U34/U36 sections that describe it). Without it the move and its two doc sections are not "
-      "executed; the rest of the order is unaffected.")
+    w("- **Push access to the private `hundertvolt/datasheets` repository** is granted (OR144: standing permission, "
+      "tested by a dry run), so the move in U28 (M.PROC.018, A.U28.35) and the M.DOCS U34/U36 sections that describe it "
+      "run as ordered.")
     w("- **Two hardware go-aheads** (section 5), R2 with the owner at the bench.")
     w("- No ordering question is open: every finding above was settled by an action's own text, a register or owner row, "
       "or a merge's stated Unit choice. Two placements the owner may notice in the review: the six driver renumberings "
