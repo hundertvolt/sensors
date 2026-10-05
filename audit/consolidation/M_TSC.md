@@ -2239,14 +2239,16 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `setup()` override, `SensorReaderConfig`, `UARTLinkDriver` gains the flag, M.SRC_NET.213/.215); GAPS_G2 H-4 (a) (an
   override that awaits `super().setup()` inherits the flag; `SystemService`, `SensorReader` and `FRAMManager` now carry
   it, M.SRC_CORE.008/.036/.039/.092; gap pass G3); routine settlement initialized-flags (OR36.a (1), A-C review fold:
-  `initialized` only where product code reads it — the FRAM, SPI, UART and logging classes — and not on `SensorReader`,
-  `WebserverService`, `NeopixelDriver` or `NotificationService`).
+  `initialized` only where product code reads it — the FRAM, SPI, UART and logging classes — and not on `SystemService`, `SensorReader`,
+  `WebserverService`, `NeopixelDriver` or `NotificationService`; this supersedes the gap pass's
+  `SystemService`/`SensorReader` flag above).
 - **Site**: new `tests_scripts/test_readiness_gates.py`.
 - **Change**: AST over `src/`: every class that assigns `self.initialized` sets it `False` in `__init__` and `True`
   inside `setup()` (or inherits both from a base in `src/` that does: a `setup()` awaiting `super().setup()` of such a
   base counts as setting it), and product code in `src/` reads that class's `initialized` somewhere (an attribute read
   outside its own assignments) — a flag only a test would read fails, naming the class; the classes the rule finds at
-  landing are the FRAM, SPI, UART and logging classes, and `SensorReader` (with its subclasses), `WebserverService`,
+  landing are the FRAM, SPI, UART and logging classes, and `SystemService`, `SensorReader` (with its subclasses),
+  `WebserverService`,
   `NeopixelDriver` and `NotificationService` carry none (a bite: a `tmp_path` copy adding an unread flag to one of them
   fails); `ConfigManager` keeps its own `valid`; every `deinit`/`close`/
   `disconnect`/`stop_*`/`cleanup` method on a class with no `self.pr` returns `-> bool`, except chip commands
@@ -4944,7 +4946,8 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F19 | — | none in this file |
 | F20 | — | none in this file (OR78.a's literal removals already carry the device names here) |
 | F21 | M.TSC.065 | tag (comment-cap-long-lines: "(agent, 2026-09-30; owner-reviewed, 2026-10-02)") |
-| F22 | M.TSC.039 | amended (the `_shape_problems()` mirror checks `confirm` and `defaultDecimals` as `validateDefinitions()` does; M.TSC.056's buildgen-side checks already cover both keys) |
+| F22 | — | none in this file |
+| F07, F18 | M.TSC.039 | amended (the `_shape_problems()` mirror checks `confirm` and `defaultDecimals` as `validateDefinitions()` does) |
 | F23 | M.TSC.098, M.TSC.099, M.TSC.055, M.TSC.185 | amended (per-image zero; OR142.a's named list; the importlib rewrite in test_buildgen_validate.py dropped; device scripts hold no dynamic import) |
 | F24 | M.TSC.064 | amended (voc_algorithm.py the one named naming and D.15 exception) |
 | F25 | M.TSC.230 | added (the ring lands with the boot survivors, U13) |

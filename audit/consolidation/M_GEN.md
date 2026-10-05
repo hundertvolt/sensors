@@ -925,7 +925,7 @@ change lists its stages; the end state is the last stage's.
   (M.SRC_NET.077); SGP40 `SGP_BACKUP_CLEAR`, `SGP_BACKUP_WRITE`, `SGP_NO_BACKUP` (M.SRC_SENS.059) — each numbered at
   execution after its band's last used code (the shared pair: the next free shared codes), in landing order, the
   catalog the numbering source; every A.U2.01 row text that names a site "printed after A.U3.0x" states the persisted
-  entry instead. UART 93 `UART_TRANSFER_CAP` "a declared train over max_transfer_bytes was refused" (M.SRC_NET.153/.220). Host-side only, never frozen.
+  entry instead. UART 93 `UART_TRANSFER_CAP` "a declared train or a line over max_transfer_bytes was refused" (M.SRC_NET.153/.220/.202). Host-side only, never frozen.
 - **Resolved**: A.U2.21's golden-file edit falls away with A.U6.04 (A.U2.21 says so). `SOCKET_TEARDOWN`: M_SRC_NET
   (M.SRC_NET.004/.023/.047, written first) numbers it W11; M.SRC_SENS.043 (later, SUPP_recovery conflicts row 7) gives W11
   to `DERIVED_DOMAIN` and W12 to `SOCKET_TEARDOWN`, and M_TEST_UNIT follows it (GAP-U5) — W12 (gap pass G1). The

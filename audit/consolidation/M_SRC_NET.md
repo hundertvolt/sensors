@@ -3108,20 +3108,24 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
 - **Change**: `readline()`: comment "# Clamped like every counted read: readline() reads byte by byte, each missing byte a
   blocking wait (F.8.2)."; `want = self._buffered(uart, self.rxbuf)` / `return uart.readline(want) if want else None`.
   `readline_until_complete()`: `want = self._buffered(uart, self.rxbuf)` / `if not want: await
-  asyncio.sleep_ms(self.poll_wait_ms); continue` / `add = uart.readline(want)`. Fold (A-C review, OR143.a (2)): `readline_until_complete()` gains `max_bytes: int`
-  (the caller's cap, the link's `max_transfer_bytes` for a link) and no longer grows by concatenation: one buffer of
-  `max_bytes` per call, filled by index (from the DMA ring once M.SRC_NET.221 lands — the ring replaces
-  `uart.readline()`); a line longer than `max_bytes` is read to its end, discarded (counted in `discarded_bytes`) and the
-  call returns `None`; the `except MemoryError` and its owner-question comment go. The driver carries no logger, so the
-  over-cap line reaches the log through the caller (no product caller at HEAD); whether the driver gains a log path is
-  decided at execution, with its reason recorded.
+  asyncio.sleep_ms(self.poll_wait_ms); continue` / `add = uart.readline(want)`. Fold (A-C review, OR143.a (2); lead ruling, AC_NOTES 54): from U13 the
+  line's bytes come from the DMA ring (M.SRC_NET.221 replaces `uart.readline()`); in U17
+  `readline_until_complete(max_bytes, chunk_bytes, log, start_timeout_ms=-1, timeout_ms=-1) -> PieceBuffer | None`
+  takes the caller's cap (a link's `max_transfer_bytes`), piece size and `PrintLog` (the driver keeps no logger), and
+  assembles the line in a `PieceBuffer` (M.SRC_CORE.134) of pieces of at most `chunk_bytes`, copied by index — no
+  growth by concatenation and no allocation larger than a piece; a line longer than `max_bytes` is read to its end,
+  its pieces released, counted in `discarded_bytes`, logged once with `await log.err_s("UART line over the cap,
+  discarded:", n, errno=_ERR_UART_TRANSFER_CAP)` (93), and the call returns `None`; the `except MemoryError` and its
+  owner-question comment go.
 - **Resolved**: OR143.a (owner, 2026-10-05) answers the BACKLOG owner question this comment named: the readline path
   gets the same receive cap and stops growing.
-- **Unit**: U17 (F.5.8 written until U36). Staged: U13 (the clamp; the readline cap, OR143.a (2), and its reads from the
-  ring land in U13 with M.SRC_NET.221).
-- **Depends**: M.SRC_NET.221 (U13); M.TEST_UNIT.344 (the cap, the discard, no growth; U13)
+- **Unit**: U17 (the cap, the pieces and the log, with M.SRC_CORE.134 and error 93; F.5.8 written until U36).
+  Staged: U13 (the clamp and the reads from the ring, with M.SRC_NET.221).
+- **Depends**: M.SRC_NET.221 (U13); M.SRC_CORE.134 (`PieceBuffer`, U17); M.SRC_NET.153 (93); M.TEST_UNIT.344 (its
+  U17 readline cases)
 - **Blast carried by**: fakes `readline(self, size=-1)` → A.U13.12 (TEST_HELP, TWIN); contract check → A.U13.12
-  (TEST_HELP); L3 readline leg → A.U13.12/U26 (HW_DEV); UART changelog Class B (corrects B25) → A.U13.12 (DOCS)
+  (TEST_HELP); L3 readline leg → A.U13.12/U26 (HW_DEV), which reads the
+  returned `PieceBuffer` through its copy-out → M.HW_DEV.048; UART changelog Class B (corrects B25) → A.U13.12 (DOCS)
 - **Kind**: code
 
 ### M.SRC_NET.203 Writes send nothing for a zero-length payload

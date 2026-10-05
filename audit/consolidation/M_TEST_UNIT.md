@@ -2721,8 +2721,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   failure fails the test; and the function test first asserts `Synced` false with the responder `"silent"`, so a client
   syncing without a reply fails it. Regressions: `test_a_failed_resync_never_resets_the_staleness_count` (synced, then
   the responder silent for more than the stale threshold's intervals, driven by the file's fake time: `Synced` turns
-  false, no failed attempt reset the count — the owner-reviewed `ntp-synced-goes-stale` rule); `test_a_responder_back_
-  mid_backoff_syncs_at_the_next_attempt` (silent, two failed attempts, then `"serve"`: synced on the next attempt, the
+  false, no failed attempt reset the count — the owner-reviewed `ntp-synced-goes-stale` rule); 
+  `test_a_responder_back_mid_backoff_syncs_at_the_next_attempt` (silent, two failed attempts, then `"serve"`: synced on the next attempt, the
   backoff back at `_RETRY_S`). Tunables tagged per the file's convention (`l1.asy_ntp_client_responder_wait_ms`, row
   basis U8's N.1 rule).
 - **Resolved**: the file's `FakeNtpServer` cases (M.TEST_UNIT.111) stay: they script single replies byte for byte;
@@ -3970,12 +3970,14 @@ session lock names, and the fake's rp2 probe/scan semantics.
   beyond_the_bound` (stalls drawn from a seeded generator — file-local until U24, then `FixedRandom` (M.TEST_HELP.059) —
   up to and past the ring's time bound:
   zero loss within it, one detected overrun per stall beyond it, the link back in step after). (d) The readline cap
-  (OR143.a (2)): `test_a_line_over_the_cap_is_discarded_and_logged_once` (`None`, one error entry by its catalog name, the
-  next line returned intact); `test_a_line_at_the_cap_is_returned`; `test_a_line_arriving_in_fifty_pieces_allocates_no_
-  more_than_one_arriving_whole` (`gc.mem_alloc()` deltas compared: no growth by concatenation). Tunables tagged per the
+  (OR143.a (2), U17 stage): `test_a_line_over_the_cap_is_discarded_and_logged_once` (`None`, one
+  `code("E", "UART_TRANSFER_CAP")` entry in the passed log, the next line returned intact);
+  `test_a_line_at_the_cap_is_returned` (its copy-out equals the sent bytes);
+  `test_no_readline_allocation_exceeds_chunk_bytes` (a cap-sized line arriving in fifty pieces: the largest block
+  allocated during the call is at most `chunk_bytes`, by largest-free-block measurement — no growth by concatenation). Tunables tagged per the
   file's convention (U8's N.1 rule).
 - **Resolved**: —
-- **Unit**: U13 (with the driver's receive path and the fakes; the readline cap is OR143.a's U13 part); stage U24: the
+- **Unit**: U13 (with the driver's receive path and the fakes); stage U17: (d), with the readline cap; stage U24: the
   shared `run()` and `FixedRandom` replace the file-local forms (M.TEST_UNIT.168's harness stage).
 - **Depends**: M.SRC_NET.221 (the DMA receive path), M.SRC_NET.202 (the readline cap); M.TEST_HELP.069;
   M.TEST_HELP.043, .059 (U24 stage).
@@ -5028,8 +5030,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   Cases: `test_counts_in_one_hour_sum` (three adds at t, t + 10 s, t + 3599 s → 3); `test_the_bins_shift_hour_by_hour`
   (one add per hour for 30 hours → 24 after the 30th, the oldest six gone; a read at the start of hour h + 24 no longer
   holds hour h's count); `test_a_count_leaves_the_window_between_23_and_24_hours` (an add at the end of an hour still
-  counted 23 h later, gone at the 24 h boundary; an add at the start of an hour counted until 24 h); `test_a_gap_of_a_day_
-  or_more_clears_every_bin` (adds, then a read 86 400 s and 10 × 86 400 s later → 0, then new adds count from 1);
+  counted 23 h later, gone at the 24 h boundary; an add at the start of an hour counted until 24 h); 
+  `test_a_gap_of_a_day_or_more_clears_every_bin` (adds, then a read 86 400 s and 10 × 86 400 s later → 0, then new adds count from 1);
   `test_a_bin_and_the_sum_saturate_at_the_cap` (`COUNTER_CAP` adds into one bin stays `COUNTER_CAP`; bins whose sum
   exceeds it read `COUNTER_CAP`, driven by setting the bins from the test, never by a brute-force loop — CLAUDE.md's
   structural-proof rule); `test_reset_clears_every_bin` (then counting resumes in the current hour);

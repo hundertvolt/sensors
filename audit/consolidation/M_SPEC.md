@@ -2168,7 +2168,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `buildgen/error_catalog.json`; `tests_scripts/test_error_catalog.py` checks every logging call against it". The
   per-module rows, "Seven modules still number inside the reserved range" and "renumbered to 10+ on its next substantial
   change" go. Kept as statements beside the table: "The FRAM manager's chunks log into the manager's RAM-only history:
-  the FRAM module never has FRAM logging of its own (owner)."; the UART decision "**`wrnno` W11 outranks W10** (owner,
+  the FRAM module never has FRAM logging of its own: a FRAM fault logged into that same FRAM is
+  lost with it."; the UART decision "**`wrnno` W11 outranks W10** (owner,
   2026-09-18): a resync prints; the drain bound persists W11, so 'the peer never stopped sending' is what a field log
   carries"; the WIFI authentication code reads "authentication or handshake failed": cyw43 reports any failed AUTH event
   or key exchange as BADAUTH (`lib/cyw43-driver/src/cyw43_ctrl.c`), not proof of a wrong password; the no-logging layers

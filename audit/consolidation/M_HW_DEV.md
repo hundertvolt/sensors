@@ -725,7 +725,7 @@ changes cite.
   A.U26.68; OR141.a (4) (b) (A-C review fold: the injector's re-init re-applies the DMA receive set-up).
 - **Site**: `tests_hardware/device_scripts/uart_crossover_recovery.py:1-159`.
 - **Change**: docstring `:2` "within the specified window" → "within the protocol's resync bound (timed)"; comment
-  `:4-6` → "The UART fault catalog is mock-only (no injection hardware will be bought, owner 2026-09-22); this injector
+  `:4-6` → "The UART fault catalog is mock-only (no injection hardware will be bought, owner, 2026-09-22); this injector
   reaches the two faults the bench can make: silence and a baud mismatch." `_build()` takes the pair, buffers and CRC
   mode from `BENCH` (`PeripheralInjector` gets the responder bus's id/tx/rx from `BENCH`, its `_reinit` the bus's
   rxbuf/txbuf); every re-init the injector makes on the responder's UART is followed by the driver's own DMA set-up

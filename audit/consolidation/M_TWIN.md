@@ -2164,10 +2164,10 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   L.4); both are produced host-side in CPython (the Unix port has no `tomllib`)." The Python example keeps the synthetic
   fixture path. `:253-268` keeps the "first on `MICROPYPATH`" explanation; the shell line names the layout file. New
   paragraph: "Before the boot the runner calls `machine.configure_wiring(plan)` and every `configure_*_state_path()`
-  (each raises once a bus exists), starts the local NTP responder and writes the config pointing at it into its `--config-dir` unless `--online-ntp`
-  (M.TWIN.167; OR140.a (13), A-C review fold), then runs
+  (each raises once a bus exists), starts the local NTP responder and writes the config pointing at it into its `--config-dir` unless `--online-ntp`,
+  then runs
   `module.main(watchdog=machine.WDT(timeout=8000), cfg_path=…, web_host=…, web_port=…)` — the generated entry's four
-  keywords (owner, 2026-09-30)." `:270-279`, `:282-287`, `:288-297` per A.U36.513 (7) and A.U17.18, with the plan shape
+  keywords (owner, 2026-09-30)." (The responder sentence: M.TWIN.167; OR140.a (13), A-C review fold.) `:270-279`, `:282-287`, `:288-297` per A.U36.513 (7) and A.U17.18, with the plan shape
   stated once: "the plan's shape is `buildgen/twin_wiring.py`'s `TwinWiringPlan` (`buses`, `spi`, `pins`, optional `uart`
   with `initiator_bus`/`responder_bus`); `tests_scripts/test_twin_wiring_contract.py` checks every reader". `:281-282`
   (launch "left alone") → "`launch.py` reads the same plan for its bus wiring (`--wiring-plan`) but boots no product
