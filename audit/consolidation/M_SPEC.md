@@ -203,7 +203,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U1.14; Stage 3 U34: (5)'s freezefs commit form only if U0 did not move it (A.U34.08); Stage 4 U36: (1), (4), (6), (7). Each stage is a
   disjoint line set; no stage is a prerequisite of another unit's work except Stage 1, which keeps A.1 true when the
   vendored files change in U0.
-- **Depends**: A.U1.01-A.U1.04 (the move), A.SDEP.06/.07, A.U28.35 (datasheets move; owner step first, AC_NOTES 37).
+- **Depends**: A.U1.01-A.U1.04 (the move), A.SDEP.06/.07, A.U28.35 (datasheets move; owner step first, AC_NOTES 37 —
+  satisfied: standing push permission, owner, 2026-10-05, OR144.a; A-C review fold).
 - **Blast carried by**: A.U1.09's old-path check (TSC) reads A.1 → A.U1.09; README/CLAUDE.md/THIRD_PARTY wording of
   the same exclusion → A.U34.01/A.U34.02 (DOCS).
 - **Kind**: doc
@@ -674,7 +675,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   unchanged" — one paragraph, both. A.U15.39's separate ISL29125 paragraph and A.U36.019's "list" are one list (A.U36.019:
   "A.U15.39's ISL29125 paragraph … is that list's first entry").
 - **Unit**: U36 (after A.U28.35's move and its owner step: the Claude GitHub App's push access to
-  `hundertvolt/datasheets` confirmed first, AC_NOTES 37).
+  `hundertvolt/datasheets` confirmed first, AC_NOTES 37 — satisfied: the owner gave standing push permission, owner,
+  2026-10-05, OR144.a; A-C review fold).
 - **Depends**: A.U28.35 (and its owner step), M.SPEC.151/.152 (M.4, M.5 exist in the same unit).
 - **Blast carried by**: CLAUDE.md "Datasheets" → A.U36.019 (2)/A.U36.545 (2) (DOCS); README → A.U36.545 (3)/A.U36.547
   (DOCS); A.U0.08's check skipping `datasheets/` while uninitialised → A.U0.08 (TSC).
@@ -6688,7 +6690,7 @@ C9 (above Part A) fixes the review-answer tag form.
 | F08 | M.SPEC.111 (G.2 derived quantities: the Magnus humidity domain; helpers stay) | amended |
 | F09 | M.SPEC.014 (A.4: internal queue bounded, external refusal says retry), M.SPEC.021 (A.8 `LightCmdLED`), M.SPEC.119 (H.6) | amended |
 | F10 | — | none in this file |
-| F11 | M.SPEC.058 (C.7: per-layer rule; pair scan dropped), M.SPEC.010 (A.4 FRAM), M.SPEC.051 (A.U3.03 dropped), M.SPEC.054 (C.5 caller rule), M.SPEC.059 (A.U3.09 dropped), M.SPEC.101 (F.5.2) | amended |
+| F11 | M.SPEC.058 (C.7: per-layer rule plus the mixed-kind rule and its narrowed scan), M.SPEC.051 (C.4.1 (5): the same two rules; A.U3.03 dropped), M.SPEC.010 (A.4 FRAM), M.SPEC.054 (A.U3.05's caller half dropped), M.SPEC.059 (A.U3.09 dropped), M.SPEC.062 (A.U3.07 dropped), M.SPEC.101 (F.5.2) | amended |
 | F12 | M.SPEC.119 (H.6: readonly status codes clickable) | amended |
 | F13 | — | none in this file |
 | F14 | M.SPEC.035 (B.11 bump sentence), M.SPEC.043 (B.15 stubs move with the bump) | amended |
@@ -6700,7 +6702,7 @@ C9 (above Part A) fixes the review-answer tag form.
 | F20 | M.SPEC.007 (A.3), M.SPEC.035 (B.11 A.U36.011 sentence), M.SPEC.083 (E.6.6 `dev-only-bench` reason), M.SPEC.144 (L.1) | amended |
 | F21 | C9 (the form); explicit in M.SPEC.014, .017, .018, .020, .021, .022, .023, .035, .036, .043, .058, .061, .092, .108, .111, .113, .116, .118, .119, .146, .150; the full map is the table below | tag |
 | F22 | M.SPEC.146 (L.3 rows: kept in `[device]`, checked, never emitted), M.SPEC.149 (L.6.6 check) | amended |
-| F23 | M.SPEC.089 (F.1: scope per image, the named list, the two platform sites; A.U10.30's loader rewrite dropped), M.SPEC.145 (L.2), M.SPEC.087 (Part F checklist re-reads the two sites) | amended |
+| F23 | M.SPEC.089 (F.1: scope per image, the owner's 12 named sites and the two platform sites; `exec` is S102's, not the list's; A.U10.30's loader rewrite dropped), M.SPEC.145 (L.2), M.SPEC.087 (Part F checklist re-reads the two sites) | amended |
 | F24 | M.SPEC.047 (C.2), M.SPEC.075 (D.15), M.SPEC.098 (F.4), M.SPEC.002 (0.4 tag) | amended |
 | F25 | M.SPEC.050 (C.3.2 receive side), M.SPEC.108 (F.8.2 DMA ring), M.SPEC.136 (J.6 ring floor), M.SPEC.137 (J.7 lap, fakes, tier rows), M.SPEC.138 (J.8 ring bullet), M.SPEC.126 (I.2 ring row), M.SPEC.130 (I.4(f.1) survivor), M.SPEC.097 (F.3: `con.uart_rx_ring`, not crossed; open point 2 superseded), M.SPEC.020 (A.7), M.SPEC.156 (rows) | amended |
 | F26 | M.SPEC.035 (B.11 build date), M.SPEC.147 (L.4), M.SPEC.150 (L.7 build-date paragraph), M.SPEC.108 (F.8.3 idle rate kept, measurement owed), M.SPEC.156 (`udp.poll_idle_ms` owed) | amended |
@@ -6787,20 +6789,22 @@ for it.
 | twin-first-for-instruments | ok | M.SPEC.082, M.SPEC.085 | C9 |
 | toml-build-metadata | ask | M.SPEC.146 | explicit (owner, 2026-10-05) |
 
-**Fold readings recorded for the lead** (each also in its change's Resolved or Change slot):
-- F11 scope: the owner dropped the detecting-layer rule ("one entry per fault"). Dropped here with it: A.U3.03 (base
-  streak entry printed), A.U3.04 (FRAM layers), A.U3.05 (callers of a failed config read), A.U3.09 (SGP40 above FRAM),
-  A.U3.11 (the pair scan and its allow-list). Kept, because they rest on OR56 (1)'s "never both" within one layer and on
-  the newest-entry repeat rule, not on the dropped rule: A.U3.01/.02/.10's repeat rule, A.U3.06 (one SYSTEM entry per
-  task end), A.U3.07 (one give-up entry in WIFI's own log), A.U3.08 (UART fault persists, resync prints), A.U3.12-.15.
-  If the product or test agents keep or drop a different set, C.7's paragraph (M.SPEC.058) and C.4.1 (M.SPEC.051)
-  follow theirs.
-- F23: the owner's twelve named sites are F.1's list; the three by-path `exec()` runners (`tests/_coverage_runner.py`,
-  `tests/_threshold_runner.py`, `digital_twin/run_device_script.py`) were already named by the merged text and stay
-  listed beside them, since the import check scans `exec` too.
-- F28: whether `SystemService` keeps `initialized` follows the settlement's test (does product code read it) and is
-  decided at execution with its reason recorded.
+**Fold readings, as settled by the lead's rulings (2026-10-05)** (each also in its change's slots):
+- F11 scope: dropped A.U3.03, A.U3.04, A.U3.05's caller half, A.U3.07, A.U3.09 (cross-layer and reaction entries stay
+  persisted, owner, 2026-10-02). Kept: A.U3.06, A.U3.08, the newest-entry rule parts (A.U3.01/.02/.10, A.U3.12-.15),
+  A.U3.05's `ConfigManager` half. A.U3.11 is narrowed to the owner's literal 2026-09-26 rule: one occurrence is never
+  persisted as both an error and a warning in one log; the L0 scan flags an `err_s` and a `wrn_s` for one occurrence in
+  one function, its allow-list keeping only reasons that still hold. C.7 (M.SPEC.058) and C.4.1 (M.SPEC.051 (5)) state
+  the per-layer rule and the mixed-kind rule with its scan.
+- F23: the import check covers `__import__` and `importlib`; F.1's list is the owner's 12 sites plus MicroPython's two
+  bundled sites; executing a file by path is S102's (ruff), not the list's.
+- F09: the LED queue decision is tagged "(owner, 2026-10-02)" everywhere.
+- F03: "Reset to defaults" is answered at acceptance; the deletes run unread in the shutdown sequence; a failed delete is
+  logged and reads as reset reason 9 at the next boot, never an HTTP "Failed" (M.SPEC.021, M.SPEC.061).
+- F28: `SystemService` carries no `initialized`; product code reads the flag only in the FRAM driver, the SPI driver,
+  `UARTComm` and `asy_print_log.py` (M.SPEC.070).
 - F03/F01: "corrupt" (unparseable) files are never overwritten; a readable file with a bad, missing or unknown key gets
   its one repair; both kinds are listed in `ConfigFaults` (OR136.a (2), OR138.a (1)).
 - F27: `readline_until_complete()` lives in a layer without its own logger (C.7.1); which layer writes the over-cap entry
   is decided at execution.
+- OR144: the datasheet push precondition of M.SPEC.005 (Depends) and M.SPEC.019 (Unit) is stated as satisfied.

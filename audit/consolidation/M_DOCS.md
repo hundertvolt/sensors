@@ -262,8 +262,9 @@ Standing conventions for every merged change below:
   before the move still contain them (history not rewritten, owner, 2026-09-28). Nothing in the build, lint, test or CI
   needs them."
 - **Resolved**: —
-- **Unit**: U34 (after A.U28.35's move in U28). Precondition (AC_NOTES 37): the owner confirms push access to
-  `hundertvolt/datasheets` before A.U28.35 runs; if the move does not happen, this section is not written.
+- **Unit**: U34 (after A.U28.35's move in U28). Precondition (AC_NOTES 37) satisfied: the owner gave standing push
+  permission to `hundertvolt/datasheets` (owner, 2026-10-05; OR144.a), so A.U28.35's move runs and this section is
+  written (A-C review fold, lead ruling).
 - **Depends**: A.U28.35
 - **Blast carried by**: README/CLAUDE.md/SPEC A.6 location text → M.DOCS.047, M.DOCS.068, A.U36.545 (SPEC)
 - **Kind**: doc
@@ -1002,8 +1003,8 @@ place unchanged.
   Node SHASUMS; third build), U27 (build flavour names), U28 (Playwright clause; uv pin line), U36 (recipe form, datasheet
   line, bridge sentence).
 - **Depends**: M.TOOL (U21 installer changes: `--password` gone, `BENCH_AP_PASSWORD` passed plainly to `nmcli` as the
-  fold amends A.U21.19's change, `_TIER_COMMANDS`, record, resolver, `build-lwip`), A.U28.35 (submodule; owner
-  push-access step, AC_NOTES 37)
+  fold amends A.U21.19's change, `_TIER_COMMANDS`, record, resolver, `build-lwip`), A.U28.35 (submodule; the owner's
+  push-access step, AC_NOTES 37, satisfied: standing push permission, owner, 2026-10-05, OR144.a)
 - **Blast carried by**: `setup_toolchain.py --help` ↔ README → `test_readme_reference.py` (TSC); `tests_hardware/README.md`
   Prerequisites/host network → M.HW_BENCH (HW_BENCH); SPEC A.6/B.5/B.12/B.13 → A.U36.545/A.U21.03/A.U21.24/A.U36.523
   (SPEC)
@@ -1676,7 +1677,7 @@ accounts, measurements and recipes live in SPECIFICATION.md or a README (A.U36.5
 merged per bullet; a bullet edited by several actions gets one block naming every stage. Line numbers are HEAD's.
 
 ### M.DOCS.068 Intro and "Datasheets": the submodule, the cite-the-page rule
-- **From**: A.U36.019 (2); A.U36.545 (2); M.PROC.018 (owner push-access step, AC_NOTES 37); agent (intro clause)
+- **From**: A.U36.019 (2); A.U36.545 (2); M.PROC.018 (owner push-access step, AC_NOTES 37; satisfied by OR144.a); agent (intro clause)
 - **Site**: `CLAUDE.md:3-6`, `:8-13`
 - **Change**: `:10-12` end state: "Short version: `datasheets/` is the private submodule `hundertvolt/datasheets` (`git
   submodule update --init datasheets`; SPECIFICATION.md A.6). Read the datasheet in `datasheets/` first for any
@@ -1685,7 +1686,9 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   "(BACKLOG.md's open-questions/deferred-work list included)" → "(BACKLOG.md included)" — BACKLOG's end-state content
   (M.DOCS.061) is not an open-questions/deferred-work list.
 - **Resolved**: A.U36.545 (2) prefixes A.U36.019's text — both kept, in that order. The submodule sentence is written
-  only once the move happened (M.PROC.018, the owner's push-access step; M.DOCS.014 the same condition).
+  only once the move happened (M.PROC.018, the owner's push-access step; M.DOCS.014 the same condition) — that step is
+  satisfied: the owner gave standing push permission (owner, 2026-10-05; OR144.a), so the move and this text land (A-C
+  review fold, lead ruling).
 - **Unit**: U36 (after A.U28.35's move, U28)
 - **Depends**: A.U28.35 (TOOL), M.PROC.018
 - **Blast carried by**: SPEC A.6 (A.U36.019 (1), A.U36.545 (1), SPEC); README install recipe (M.DOCS.047)
@@ -2569,7 +2572,7 @@ rules; the decisions taken on the owner's behalf are listed below for the OR2.c 
 ## Agent decisions for the OR2.c review
 
 1. M.DOCS.014 / M.DOCS.068: the datasheets-location text is written only after the owner's push-access step
-   (AC_NOTES 37, M.PROC.018).
+   (AC_NOTES 37, M.PROC.018). Satisfied: standing push permission (owner, 2026-10-05; OR144.a; A-C review fold).
 2. M.DOCS.021: A7's "Status as built" sentence for the TOML `crc` key (adherence above).
 3. M.DOCS.035: the third Unix build named in HEAP_FRAGMENTATION's build list.
 4. M.DOCS.048: the legacy hotspot password replaced by a pointer.
@@ -3068,6 +3071,6 @@ sits in an action's text the change quotes and takes the convention's form at la
 | one-entry-per-fault | change | M.DOCS.065 | — (no permanent text) |
 | every other decision | — | — | no tag written in this file |
 
-**Outside the brief, noticed while folding:** OR144/OR144.a (2026-10-05, standing push permission to
-`hundertvolt/datasheets`) satisfies the owner precondition that M.DOCS.014's Unit, M.DOCS.047's and M.DOCS.068's slots and M.SPEC.005/.019 name
-("the owner confirms push access …, AC_NOTES 37"); those slots are left for the lead.
+**OR144 (lead ruling):** OR144.a (owner, 2026-10-05: standing push permission to `hundertvolt/datasheets`) satisfies
+the owner precondition of M.DOCS.014's Unit and M.DOCS.047's and M.DOCS.068's slots (and M.SPEC.005/.019); each now
+states it as satisfied.
