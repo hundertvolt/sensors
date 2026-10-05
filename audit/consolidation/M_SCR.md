@@ -1484,7 +1484,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: —
 - **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'); the
   first-write and damaged-file cells after U11's `ConfigManager` change and U20's `/status` field and delete path.
-- **Depends**: M.SCR.059; M.SRC_CORE.043 (OR136.a), M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the `ConfigFaults` state), M.GEN.008, M.GEN.014 (fold F03)
+- **Depends**: M.SCR.059; M.SRC_CORE.043 (OR136.a), M.SRC_CORE.043, M.SRC_CORE.015 (the `ConfigFaults` state), M.GEN.008, M.SRC_CORE.042
   (the generated `/status` field and the delete path that never reads).
 - **Blast carried by**: product commands → A.S0930 SRC actions (SRC_CORE); `_LOG_EVENT` level read by `ast` from
   `src/asy_print_log.py`.
@@ -1692,7 +1692,7 @@ Conventions used below (each defined once, then cited):
   *, autostart=True, build_date=None, test_overrides=())` = `generate_device(device_toml, src, ext,
   build_date=build_date, test_overrides=test_overrides)` → `stage_python_modules()` → the website step
   (`scripts/build_website.sh <device> <stage>/frozen_html.py`); `test_overrides` names a test-only firmware override in
-  the generated build info (`("tick_offset_test",)` for the rollover image, OR139.a (2); M.GEN.019, M.GEN.009 (fold F04)). The build
+  the generated build info (`("tick_offset_test",)` for the rollover image, OR139.a (2); M.GEN.019, M.GEN.009). The build
   date is the build's one time input: `main()` passes the current UTC time (M.SCR.067), a reproducibility check one
   fixed date, and nothing else staged depends on when the build runs; comment above `build_stage_dir()`: "build_date is
   an input: real builds stamp their UTC build time, the reproducibility check passes a fixed one (owner, 2026-10-05).".
@@ -1742,7 +1742,7 @@ Conventions used below (each defined once, then cited):
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: M.SCR.065; M.TOOL.041 (`read_lwip_macros_from_build()`, `verify_modlwip_eagain_in_build()` public),
   M.TOOL.055 (D3: the uf2 path returned, the build dir beside it), M.TOOL.039 (`MODLWIP_OVERRIDE_DIR_NAME`), M.TOOL.080
-  (`tick_offset_in_build()`) (TOOL); M.GEN.019, M.GEN.009 (fold F04) (`generate_device(test_overrides=…)` names the override in
+  (`tick_offset_in_build()`) (TOOL); M.GEN.019, M.GEN.009 (`generate_device(test_overrides=…)` names the override in
   the build info).
 - **Blast carried by**: `bench/conftest.py` image check → M.HW_BENCH.060; lwIP control image (built in a throwaway worktree,
   record `overrides: []`) → M.HW_BENCH.075/A.C.06; CRC16 image → M.HW_BENCH.094; the rollover image → M.HW_BENCH.089,

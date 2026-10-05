@@ -791,7 +791,7 @@ special, OR140.a (18)).
   `devices/<device>.toml`: `device_module` (`sensortask_<device>`), `bus` (each `[bus.*]` table's full parameter set —
   I2C id/scl/sda/frequency/timeout, the key absent when the TOML sets none; SPI id/sck/mosi/miso; UART id/tx/rx/baudrate/
   rxbuf/txbuf/poll_wait_ms/poll_idle_ms and `crc`, `"none"` when absent, plus the DMA receive ring's size and the
-  link's `chunk_bytes`/`max_transfer_bytes` as the TOML declares them, M.GEN.066, M.GEN.034 (fold F27)), `instances` (per instance driver, bus,
+  link's `max_transfer_bytes` as the TOML declares them, M.GEN.066; `chunk_bytes` stays the constructor default), `instances` (per instance driver, bus,
   address, `irq_pin`/`cs_pin`/`pin`), `addresses`, `fram_max_size`, `fram_wired`, `fram_backed_loggers`, and the driver
   constants a script copies, nested per chip (`isl29125`: `{"mode_rgb": …}`, read as `BENCH["isl29125"]["mode_rgb"]`),
   read from `src/` by A.U20.28's `ast` reader (one reader, reused). Gap pass (M_HW_DEV GAP-D6), the further build facts
