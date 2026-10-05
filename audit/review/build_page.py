@@ -33,7 +33,7 @@ def merge_routine(data: dict, extra: dict) -> None:
             d["refs"] = list(d.get("refs", [])) + [c.strip() for c in s["cite"].split(";") if c.strip()]
     data["decisions"] = [d for d in data["decisions"] if d["weight"] != "routine"]
     for q in questions:
-        q = dict(q, weight="open", member_titles=[titles[m] for m in q["members"]])
+        q = dict(q, weight="open", member_titles=[titles[m] for m in q["members"]], answered=extra.get("answered_in_chat", {}).get(q["id"]))
         data["decisions"].insert(0, q)
     print(f"routine: {len(settled)} settled, {len(questions)} open questions covering {len(members)} items")
 

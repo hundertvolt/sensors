@@ -4,8 +4,8 @@
   "hand-run-hardware-rows": "These are one-time measurements, not regular tests; anything worth repeating already becomes a gated test. Kept: read time per driver (100 reads each; the only measured basis for the minimum spacing between sensor reads), the longest LED ramp (sets the deadline the LED request waits for), and the recovery-step failure counts (read from the default run's output, so free). Dropped: the NTP-outage check (your twin NTP responder covers it in automated tests) and the image without the 100 ms hotspot settle (2 flashes to see whether a harmless wait could go; the wait stays).",
   "idle-poll-rate": "A task waiting for traffic that may never come (the captive DNS listener) checks its socket in a loop; at the 20 ms rate it wakes 50 times a second for nothing. The UART driver already uses a slower idle rate, and this applies the same pattern. Defined as one named value in the module and entered in the specification's settings table with its reason; unit tests check that a wait with a deadline sleeps 20 ms and one without sleeps 100 ms. Correction: the 100 ms is a reasoned choice (5x fewer idle wake-ups, at most 100 ms extra on the first answer after silence), not yet measured; its measurement in the twin and on the bench is still owed.",
   "reproducible-image": "The date is an input to the build. Every real build stamps its actual UTC time into the build info; the reproducibility check builds twice with the same fixed date and compares everything else byte for byte. So two real builds of one commit differ only in that one build-info line, and a check proves that changing only the date changes only that line.",
-  "toml-build-metadata": "They live in each device's own file under devices/, in its [device] section: 'bench = true' only in dev.toml (tells the hardware test runners which board is on the bench), and 'hardware_family = \"arzi-neu\"' in the klkizi, grkizi and schlafzi files (tells the tests these three are the same hardware; a test checks they differ only in name and hostname). The build checks both keys but never puts them into the firmware. Your decision is in 'Still open' below.",
-  "uart-flash-erase-overrun": "It happens on any flash write, not only Reset to defaults: saving a changed setting, the one-time boot repair, the first write of defaults, and the deletes. Each write erases at least one 4 KB block with interrupts off, 45 ms typically and up to 400 ms (W25Q16JV datasheet); the UART's receive buffer holds 32 bytes, about 2.8 ms at 115200 baud. Only boards with a UART link are affected, today only dev. Your decision is in 'Still open' below."
+  "toml-build-metadata": "They live in each device's own file under devices/, in its [device] section: 'bench = true' only in dev.toml (tells the hardware test runners which board is on the bench), and 'hardware_family = \"arzi-neu\"' in the klkizi, grkizi and schlafzi files (tells the tests these three are the same hardware; a test checks they differ only in name and hostname). The build checks both keys but never puts them into the firmware. You answered it in the conversation (5 October); see 'Answered in the conversation' below.",
+  "uart-flash-erase-overrun": "It happens on any flash write, not only Reset to defaults: saving a changed setting, the one-time boot repair, the first write of defaults, and the deletes. Each write erases at least one 4 KB block with interrupts off, 45 ms typically and up to 400 ms (W25Q16JV datasheet); the UART's receive buffer holds 32 bytes, about 2.8 ms at 115200 baud. Only boards with a UART link are affected, today only dev. You answered it in the conversation (5 October); see 'Answered in the conversation' below."
  },
  "open_extra": [
   {
@@ -57,10 +57,32 @@
    "recommended": "DMA receive ring",
    "members": [],
    "refs": [
-    "W25Q16JV datasheet (Winbond; not in datasheets/)",
+    "datasheets/pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf (tSE, tPP)",
     "SPECIFICATION.md Part J",
     "uart-flash-erase-overrun"
    ]
   }
- ]
+ ],
+ "answered_in_chat": {
+  "toml-test-keys": {
+   "choice": "Keep in the device files",
+   "at": "2026-10-05",
+   "note": ""
+  },
+  "uart-no-frame-loss": {
+   "choice": "DMA receive ring",
+   "at": "2026-10-05",
+   "note": "Keep a strict eye on how it integrates with heap allocation and fragmentation; add hammering and concurrent load tests to the usual unit tests; test the interrupts-off situation without writing the flash."
+  },
+  "dynamic-import-scope": {
+   "choice": "Firmware graph only, named exceptions",
+   "at": "2026-10-05",
+   "note": ""
+  },
+  "voc-literal-port": {
+   "choice": "Keep it literal",
+   "at": "2026-10-05",
+   "note": ""
+  }
+ }
 }

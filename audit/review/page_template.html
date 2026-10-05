@@ -136,6 +136,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
 .routine-list { display: flex; flex-direction: column; gap: 10px; }
 .decision.settled { border-left-color: var(--line); background: var(--bg); }
 .decision.question { border-left-color: var(--accent); }
+.options li.not-chosen { opacity: .6; }
 .options { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
 .options p { margin: 2px 0 0; }
 .options .tag { margin-left: 8px; }
@@ -240,7 +241,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
   var store = null;
   var LOCAL_KEY = "sensors-review-answers";
   var WEIGHTS = [
-    { key: "open", title: "Still open", text: "The few questions no rule, earlier answer, document or best practice settles. Pick an option, or ask." },
+    { key: "open", title: "Answered in the conversation", text: "The four questions no rule, earlier answer, document or best practice settled. You answered them in the conversation on 5 October; they are recorded as your decisions (OR141) and need nothing more here." },
     { key: "significant", title: "Significant", text: "Something you or a user would notice: behaviour, the API, the website, the release, wear or scope." },
     { key: "moderate", title: "Moderate", text: "A design choice inside the code, with a plausible alternative." },
     { key: "settled", title: "Settled without you", text: "Small choices, each settled by your earlier answers, a project rule, the docs, best practice, or because it changes nothing that matters. They are recorded as my decisions, not yours, and need no answer. Anything you disagree with, name it in the go-ahead note." }
@@ -276,7 +277,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
   function loadLocal() { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch (e) { return {}; } }
   function saveLocal() { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(answers)); } catch (e) { /* storage unavailable */ } }
 
-  function decisionIds() { return (DATA.decisions || []).filter(function (d) { return d.weight !== "settled"; }).map(function (d) { return d.id; }); }
+  function decisionIds() { return (DATA.decisions || []).filter(function (d) { return d.weight !== "settled" && !d.answered; }).map(function (d) { return d.id; }); }
   function updateMeter() {
     var ids = decisionIds();
     var c = { ok: 0, change: 0, ask: 0 };
@@ -373,7 +374,27 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
     return card;
   }
 
+  function renderAnswered(q) {
+    var card = el("article", { cls: "decision question answered", id: "d-" + q.id });
+    var topicTitle = (DATA.topicTitles || {})[q.topic] || q.topic || "";
+    card.appendChild(el("div", { cls: "topline" }, [el("h3", { text: q.question }), el("span", { cls: "topic-label", text: topicTitle })]));
+    card.appendChild(el("p", { cls: "muted", text: q.title }));
+    var ol = el("ol", { cls: "options" });
+    q.options.forEach(function (o) {
+      var head = el("b", { text: o.label });
+      if (o.label === q.answered.choice) head.appendChild(el("span", { cls: "tag", text: "your answer" }));
+      ol.appendChild(el("li", { cls: o.label === q.answered.choice ? "chosen" : "not-chosen" }, [head, el("p", { text: o.consequence })]));
+    });
+    card.appendChild(ol);
+    if (q.answered.note) card.appendChild(el("p", {}, [el("b", { text: "Your note: " }), document.createTextNode(q.answered.note)]));
+    if (q.member_titles && q.member_titles.length) card.appendChild(el("p", { cls: "muted", text: "This answers: " + q.member_titles.join("; ") + "." }));
+    var r = refList(q.refs); if (r) card.appendChild(r);
+    card._paint = function () {};
+    return card;
+  }
+
   function renderQuestion(q) {
+    if (q.answered) return renderAnswered(q);
     var card = el("article", { cls: "decision question", id: "d-" + q.id });
     var topicTitle = (DATA.topicTitles || {})[q.topic] || q.topic || "";
     card.appendChild(el("div", { cls: "topline" }, [el("h3", { text: q.question }), el("span", { cls: "topic-label", text: topicTitle })]));

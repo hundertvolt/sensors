@@ -35,7 +35,7 @@
   ],
   "what_you_are_asked": [
    "Read the twelve areas and check the direction. Every change traces back to your requirements, a datasheet or source fact, or a project rule.",
-   "Answer the four questions still open. The 293 small items are settled by your earlier answers, project rules, docs or best practice; they are shown for reference and need no answer.",
+   "The four questions left open are answered (in the conversation, 5 October; recorded as OR141). The 293 small items are settled by your earlier answers, project rules, docs or best practice; they are shown for reference and need no answer.",
    "Confirm that the session may push to your private datasheets repository before the datasheet move (about two thirds of the way through). Without push access only the move and its two doc sections are skipped.",
    "Plan the two hardware sessions. Each one starts only with your go-ahead in its own conversation, and for one round you need to be at the bench.",
    "Give the execution go-ahead on this list, or on your corrections to it."
