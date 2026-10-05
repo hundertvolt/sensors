@@ -398,11 +398,11 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   A.S0930.13 names `supervise_tasks()` (SUPP's LEAD/R32 State puts this code in U11; its Depends on A.U20.06 is met by
   the U11 stage of M.SRC_CORE.016).
   Fold stage (A-C review) — U20: the stores closed at acceptance, with M.SRC_CORE.038's refusal and M.SRC_CORE.041's
-  `writes_closed()`, and its L1 proof [fold F15 M_TEST_UNIT]; the twin proof lands in U25 [fold F15 M_TWIN].
+  `writes_closed()`, and its L1 proof M.TEST_UNIT.306 (fold F15); the twin proof lands in U25 M.TWIN.104 (fold F15).
   A-C2 step order: A.S0930.12's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.14's part lands in U20, not U11 (it needs A.U20.06, which lands in U20); A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.006, .008, .009, .010, .016 (U11 stage); M.SRC_CORE.041/.042 (`close_writes()`,
   `delete_file()`); M.SRC_CORE.083 (`quiesce()`, `erase_ready()`, `erase_chip()`); M.SRC_CORE.038 (closed-store refusal),
-  M.SRC_CORE.041 (`writes_closed()`); [fold F15 M_TEST_UNIT] (U20).
+  M.SRC_CORE.041 (`writes_closed()`); M.TEST_UNIT.306 (fold F15) (U20).
 - **Blast carried by**: generated `_system_cmd_callback` returning the service's answer for five words → A.S0930.11
   (GEN); `_SYSTEM_CMDS` words → A.S0930.09 (SRC_NET); definitions dropdown → A.S0930.10 (GEN); L0-L4 tests →
   A.S0930.20-.29, .34-.40 (TSC, TEST_UNIT, TEST_HELP, TWIN, HW_DEV, HW_BENCH); wear gate counts `"resetconfig"` →
@@ -513,7 +513,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Resolved**: `AsyncCallback` (A.U11.S04) vs `setup() -> bool` (A.U10.21) → `SetupFct` (M.SRC_CORE.003 Resolved).
 - **Unit**: U20 (co-lands with the generator's `_collect_setups()` and the guard changes in one commit, A.U11.10 Depends).
 - **Depends**: M.SRC_CORE.009, M.SRC_CORE.030; M.SRC_CORE.043/.049 (`faulted`, `module_name`, U11);
-  [fold F03 M_TEST_UNIT] (the list's L1 cases, U20).
+  M.TEST_UNIT.253, M.TEST_UNIT.254, M.TEST_UNIT.259, M.TEST_UNIT.306 (fold F03) (the list's L1 cases, U20).
 - **Blast carried by**: generated `_collect_setups()` and `main()` call; generated module loses its `gc.collect()`s and
   feeds → A.U20.06, A.U11.10 codegen half (GEN); `scripts/lint.sh` gc/`method-assign` guards and message →
   A.U11.10 (SCR); `tests_scripts/test_gc_collect_sites.py` set `{("asy_system_service.py", "start_tasks"),
@@ -802,10 +802,10 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   is far below Part F.1's `[x] * n` fault range; the hour index stays a small int over the whole `COUNTER_CAP` uptime
   range. The value is the window's sum, capped at `COUNTER_CAP`; `reset()` is what `ResetErrors` reaches (M.SRC_NET.129).
 - **Unit**: U19 (lands with its first user, the webserver's drop counter: M.SRC_NET.119/.127/.129).
-- **Depends**: M.SRC_CORE.031 (`COUNTER_CAP`); [fold F02 M_TEST_UNIT] (driven-clock L1 cases in U19: the bin shift, a gap
+- **Depends**: M.SRC_CORE.031 (`COUNTER_CAP`); M.TEST_UNIT.343, M.TEST_UNIT.202 (fold F02) (driven-clock L1 cases in U19: the bin shift, a gap
   of a day or more, the cap, the reset, zero heap allocation per `add()`/`total()` at `gc.threshold(-1)`).
 - **Blast carried by**: the user → M.SRC_NET.119, .127, .129; the docstring names it → M.SRC_CORE.030 (U19 stage); SPEC
-  Part G catalog entry and A.5/A.8 `HTTPDropped` wording ("in the last 24 hours, hourly resolution") → [fold F02 M_SPEC];
+  Part G catalog entry and A.5/A.8 `HTTPDropped` wording ("in the last 24 hours, hourly resolution") → M.SPEC.021, M.SPEC.111, M.SPEC.121, M.SPEC.126, M.SPEC.113 (fold F02);
   the long-lived-object catalog gains the webserver's one instance (24 bins, allocated at construction) → [fold F02
   M_SPEC].
 - **Kind**: code
@@ -892,7 +892,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   method names and the iteration form (the pieces, or memoryviews of them) are decided at execution, with the reason
   recorded.
 - **Unit**: U17 (lands with its user, the UART receive path, M.SRC_NET.220).
-- **Depends**: M.SRC_CORE.027 (`RegionBuffer`'s section, U16); [fold F27 M_TEST_UNIT] (L1 in U17: every piece at most
+- **Depends**: M.SRC_CORE.027 (`RegionBuffer`'s section, U16); M.TEST_UNIT.344, M.TEST_UNIT.345, M.TEST_UNIT.164 (fold F27) (L1 in U17: every piece at most
   `piece_bytes`, a write crossing a piece end, copy-out at offsets, the largest block measured, refusals).
 - **Blast carried by**: the user → M.SRC_NET.220; SPEC Part G catalog entry and Part I's heap budget → [fold F27
   M_SPEC].
@@ -1003,7 +1003,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Blast carried by**: drivers' `_recover_device()` overrides and `_init_failed()`/`_init_done()` calls →
   A.U15.R01-R04, A.U18.R01 (SRC_SENS, SRC_NET); catalog wrnno 14/15 → A.U2.01 merge (GEN); driver/integration tests
   re-derived → A.U10.R01 blast (TEST_UNIT); new L1 ladder cases → A.U10.R01 (TEST_UNIT); `tests/test_base_classes.py:474-739`
-  streak pins keep the persisted errno 1 (A.U3.03 dropped) → [fold F11 M_TEST_UNIT]; Part N rows and relation → A.U10.R01/A.U8.02 (SPEC); SPEC C.4/C.7/G.2/F.2 →
+  streak pins keep the persisted errno 1 (A.U3.03 dropped) → M.TEST_UNIT.227; Part N rows and relation → A.U10.R01/A.U8.02 (SPEC); SPEC C.4/C.7/G.2/F.2 →
   A.U10.R01, A.U3.03 (SPEC); `tests_scripts/test_counter_steps.py` must not flag `_err_cnt_internal` (bounded by the
   give-up, pass-4 K.36) → GAP-G6 (TSC).
 - **Kind**: code
@@ -1039,7 +1039,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Unit**: U19 (A.U19.12 is the latest constituent; stages: U2 names; U4 the move and the narrower snapshot; U11 lock,
   recovery check, deferred commit; U19 GET under the lock and result constants; U30 `fields` once and
   `report_if_fatal`; fold stage U20: the closed-store refusal, with M.SRC_CORE.011's close at acceptance and its tests
-  [fold F15 M_TEST_UNIT]). A.U30.08 is pulled forward into U11's rewrite of the same lines (no prerequisite; one edit).
+  M.TEST_UNIT.306 (fold F15)). A.U30.08 is pulled forward into U11's rewrite of the same lines (no prerequisite; one edit).
 - **Depends**: M.SRC_CORE.036, M.SRC_CORE.044 (`write_config(data, defer=…)`, `commit()`), M.SRC_CORE.045 (constants).
 - **Blast carried by**: SCD30 chip store overrides (`_set_mgr_cfg`/`_get_mgr_cfg`, `_commit_mgr_cfg()` no-op) → A.U4.04,
   A.U15.12 (SRC_SENS); `api_response.handle_set_cmd()` → M.SRC_CORE.072; webserver `_put_sensors()`/`_get_sensors()` →
@@ -1081,7 +1081,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   _FIELDS, …)` → A.U15.40, A.U15.41, A.U15.12 (SRC_SENS); codegen `needs_setup` for a `SensorReader` subclass →
   A.U10.10 (GEN); L1 `_trigger_loop()` cases, timer-fault tests → A.U15.40, A.U15.41 (TEST_UNIT; M.TEST_UNIT already follows GAP-8); logger
   `initialized` after the batch → A.U10.10 (TEST_HELP); tests and the L0 check reading a reader's `initialized` →
-  [fold F28 M_TEST_UNIT], [fold F28 M_TSC] (A.U10.22's scope narrowed); SPEC C.9/C.13/G.2 → A.U10.14, A.U10.21, A.U15.40 (SPEC).
+  M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.293 (fold F28), M.TSC.112 (fold F28) (A.U10.22's scope narrowed); SPEC C.9/C.13/G.2 → A.U10.14, A.U10.21, A.U15.40 (SPEC).
 - **Kind**: code
 
 ### M.SRC_CORE.040 `SensorReaderConfig`: the file store over the base orchestration
@@ -1393,7 +1393,7 @@ for the config reset.
 - **Depends**: M.SRC_CORE.041, M.SRC_CORE.049 (`errno` import).
 - **Blast carried by**: caller S5 (M.SRC_CORE.011); tests → A.S0930.21/.25/.27/.28/.29 (TEST_UNIT, TWIN, HW_DEV,
   HW_BENCH, `persistence_write` gate A.S0930.19), plus an unreadable or damaged file deleted and a failed delete ending
-  in code 9 → [fold F03 M_TEST_UNIT]; SPEC C.5.2/C.7.3 → A.S0930.16/.30 (SPEC) with [fold F03 M_SPEC].
+  in code 9 → M.TEST_UNIT.253, M.TEST_UNIT.254, M.TEST_UNIT.259, M.TEST_UNIT.306 (fold F03); SPEC C.5.2/C.7.3 → A.S0930.16/.30 (SPEC) with M.SPEC.061, M.SPEC.021, M.SPEC.020, M.SPEC.113 (fold F03).
 - **Kind**: code
 
 ### M.SRC_CORE.043 `setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first
@@ -1435,18 +1435,18 @@ for the config reset.
   narrowed pair scan (an error and a warning for one occurrence in one function, owner, 2026-09-26) allow-lists the pair
   with that reason (A-C review fold).
 - **Unit**: U11 (U2 names as stage).
-- **Depends**: M.SRC_CORE.049, .047; [fold F01 M_TEST_UNIT] (the write-counter tests expect exactly one write per file on
-  a fresh filesystem; the `faulted` cases) and [fold F01 M_TWIN] (a fresh twin config dir gets every module's file at
+- **Depends**: M.SRC_CORE.049, .047; M.TEST_UNIT.024, M.TEST_UNIT.077, M.TEST_UNIT.253, M.TEST_UNIT.254, M.TEST_UNIT.256, M.TEST_UNIT.257, M.TEST_UNIT.258, M.TEST_UNIT.306 (fold F01) (the write-counter tests expect exactly one write per file on
+  a fresh filesystem; the `faulted` cases) and M.TWIN.104 (fold F01) (a fresh twin config dir gets every module's file at
   its first boot) co-land in U11.
 - **Blast carried by**: SystemService reads `writable` (M.SRC_CORE.017) and `faulted` (M.SRC_CORE.015); tests
   `tests/test_config_manager.py` (A.U11.19's list `:838-846`, `:1074-1126`, `:1347-1356`, `:2275-2509`; A.U11.20's
   `:2275-2298`), `tests/test_base_classes.py:1013-1016, 1449-1452` → A.U11.19, A.U11.20, A.U11.23 with the missing-file
-  write and the fault flag → [fold F01 M_TEST_UNIT] (TEST_UNIT); twin configs start empty, so a fresh twin run writes
-  every module's file once → [fold F01 M_TWIN] (TWIN); hardware tests that boot a fresh filesystem reach the write as an
-  unmarked prerequisite → [fold F01 M_HW_BENCH]; L0 "normal boot logs nothing" → A.U35.38/.39 dropped (OR140.a (13)):
-  the twin's normal-boot log check expects NTP synced → [fold F16 M_TWIN]; mockdata W22/W24 rows → A.U2.25/A.U3.15
+  write and the fault flag → M.TEST_UNIT.024, M.TEST_UNIT.077, M.TEST_UNIT.253, M.TEST_UNIT.254, M.TEST_UNIT.256, M.TEST_UNIT.257, M.TEST_UNIT.258, M.TEST_UNIT.306 (fold F01) (TEST_UNIT); twin configs start empty, so a fresh twin run writes
+  every module's file once → M.TWIN.104 (fold F01) (TWIN); hardware tests that boot a fresh filesystem reach the write as an
+  unmarked prerequisite → M.HW_BENCH.006, M.HW_BENCH.016, M.HW_BENCH.088, M.HW_BENCH.113, M.HW_BENCH.130 (fold F01); L0 "normal boot logs nothing" → A.U35.38/.39 dropped (OR140.a (13)):
+  the twin's normal-boot log check expects NTP synced → M.TWIN.168; mockdata W22/W24 rows → A.U2.25/A.U3.15
   (WEB); SPEC C.7.3, C.5.2.1, the CLAUDE.md wear and flash-write wording and the Reset-to-defaults text → A.U11.19,
-  A.U11.20 with [fold F01 M_SPEC] and [fold F01 M_DOCS]; register G5/R34 and LEAD/R32 (updated for OR136/OR138).
+  A.U11.20 with M.SPEC.061, M.SPEC.096, M.SPEC.021, M.SPEC.020, M.SPEC.097 (fold F01) and M.DOCS.082, M.DOCS.086, M.DOCS.026 (fold F01); register G5/R34 and LEAD/R32 (updated for OR136/OR138).
 - **Kind**: code
 
 ## src/print_log.py (→ `src/asy_print_log.py`)
@@ -1827,7 +1827,7 @@ both persist.
 - **Depends**: M.SRC_CORE.081, .084, .085.
 - **Blast carried by**: `PrintLogHistoryStore._read()` (M.SRC_CORE.065); SGP40 restore reads falsy → A.U16.06 (SRC_SENS,
   unchanged); tests `tests/test_asy_fram_manager.py:235, 839, 885-910, 1003, 1085-1096, 2094, 2210-2248, 2332, 2433` and
-  new L1 cases → A.U16.06 (TEST_UNIT), the per-layer entries → [fold F11 M_TEST_UNIT]; `:329-331` comment → A.U16.08 (TEST_UNIT); L2 WP chip keeps its bytes →
+  new L1 cases → A.U16.06 (TEST_UNIT), the per-layer entries → M.TEST_UNIT.041, .044, .046; `_read()` joins the fault-or-warning scan's allow-list (an invalid block, then a failed repair write) → M.TSC.111; `:329-331` comment → A.U16.08 (TEST_UNIT); L2 WP chip keeps its bytes →
   A.U16.06 (TWIN); SPEC A.4 `:205-206`, `:214`, C.7 → A.U16.06, A.U16.08 (SPEC).
 - **Kind**: code
 
@@ -1870,7 +1870,7 @@ both persist.
 - **Resolved**: —
 - **Unit**: U16 (stages U2 with the chunk layer's codes, U14 comment; U30 `report_if_fatal`).
 - **Depends**: M.SRC_CORE.084.
-- **Blast carried by**: as M.SRC_CORE.082/.088 (A.U2.09 test lines; A.U3.04 dropped) → [fold F11 M_TEST_UNIT]; wire traces unchanged except the blank
+- **Blast carried by**: as M.SRC_CORE.082/.088 (A.U2.09 test lines; A.U3.04 dropped) → M.TEST_UNIT.041, .044, .046; wire traces unchanged except the blank
   case (M.SRC_CORE.084).
 - **Kind**: code
 
@@ -2195,7 +2195,7 @@ chip lost mid-run, takes both FRAM locks for every hold (`setup()` and `set_writ
 - **Blast carried by**: device script `fram_write_protect_roundtrip.py:27, 63` (calls it outside the lock, holds);
   L1 exclusion case → A.U16.10 (TEST_UNIT); four-tier bus-hazard runs unchanged → A.U16.10 (TEST_UNIT, TWIN, HW_DEV,
   HW_BENCH); SPEC C.8 → A.U16.10 (SPEC); a stuck latch with a mismatched readback persists only the fault →
-  [fold F11 M_TEST_UNIT].
+  M.TEST_UNIT.033; `set_write_protected()` leaves the fault-or-warning scan's allow-list → M.TSC.111.
 - **Kind**: code
 
 ### M.SRC_CORE.106 `setup()`: both locks, identification retried, partial protection reported, bool contract
@@ -2503,12 +2503,12 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
   the removal (AC_NOTES 8, A.U12.09); G3/R06's other branch ("the clamp is aligned") applies instead. Tag form (rule 6,
   status change): the decision's permanent text, where SPEC G.2 writes it, carries "(owner, 2026-10-02)".
 - **Unit**: U12.
-- **Depends**: M.SRC_CORE.130 (catch form, U10); [fold F08 M_TEST_UNIT] (the humidity tests in
+- **Depends**: M.SRC_CORE.130 (catch form, U10); M.TEST_UNIT.271 (the humidity tests in
   `tests/test_math_helpers.py:204-299` kept and aligned with the other helpers' shape, vectors and edge cases — the
   out-of-range result now `None` — in U12).
-- **Blast carried by**: `tests/test_math_helpers.py:204-299` → [fold F08 M_TEST_UNIT]; A.U35.42's stand-in tests reach
+- **Blast carried by**: `tests/test_math_helpers.py:204-299` → M.TEST_UNIT.271; A.U35.42's stand-in tests reach
   the two kept catches too (M.SRC_CORE.130); SPEC G.2 derived-quantities entry (the Magnus domain and the no-clamp
-  sentence) → A.U12.10 with [fold F08 M_SPEC].
+  sentence) → A.U12.10 with M.SPEC.111 (fold F08).
 - **Kind**: code, test
 
 ### M.SRC_CORE.129 Colour chain: sRGB literal note as a fact, unquoted return annotations

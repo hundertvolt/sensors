@@ -424,7 +424,7 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   applied-python |".
 - **Resolved**: —
 - **Unit**: U17 (A15 with `max_transfer_bytes` and its refusal)
-- **Depends**: M.SRC_NET.159, M.SRC_NET.170, M.DOCS.019; [fold F27 M_SRC_NET] (the refusal)
+- **Depends**: M.SRC_NET.159, M.SRC_NET.170, M.DOCS.019; M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the refusal)
 - **Blast carried by**: SPEC J.4/J.5 → A.U17.16/A.U17.17 (SPEC); tests → M_TEST_UNIT (A.U17.16/.17)
 - **Kind**: doc
 
@@ -579,8 +579,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   A.U17.21/A.U20.18 (build-side refusal, no module change), A.U35.47/A.U0.49/A.U8.06 (comments only), A.U35.48 (no UART
   path changed by its merge).
 - **Unit**: per row as listed (U2 … U35); the merged change is complete at U35.
-- **Depends**: each row's code change (M.SRC_NET.150-.216, M.SRC_CORE.115-.122; for B65-B69 [fold F25 M_SRC_NET],
-  [fold F27 M_SRC_NET], [fold F27 M_GEN]); M.DOCS.019 (Status column from U17)
+- **Depends**: each row's code change (M.SRC_NET.150-.216, M.SRC_CORE.115-.122; for B65-B69 M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25),
+  M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27), M.GEN.066, M.GEN.034 (fold F27)); M.DOCS.019 (Status column from U17)
 - **Blast carried by**: order and status → M.TSC.152; A.U37.04 (4)'s close check (every commit touching
   `src/asy_uart_comm.py` has its row) → audit record
 - **Kind**: doc
@@ -624,7 +624,7 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
 - **Resolved**: —
 - **Unit**: U36
 - **Depends**: A.U6.18, A.U6.23 (labels; GEN/WEB), A.U15.12 (`FRCState`, SRC_SENS), A.U14.17 (SPEC F.2 text), A.U32.01 (README
-  runbook, M.DOCS.048), A.U36.530 (SPEC A.4), M.DOCS.032; [fold F03 M_WEB] (the Config Faults row's label), M.SPEC.021
+  runbook, M.DOCS.048), A.U36.530 (SPEC A.4), M.DOCS.032; M.WEB.012, M.WEB.045, M.WEB.058 (fold F03) (the Config Faults row's label), M.SPEC.021
   (A.8's `ConfigFaults`)
 - **Blast carried by**: README runbook links here → M.DOCS.048; SPEC F.2 → A.U14.17 (SPEC)
 - **Kind**: doc
@@ -652,7 +652,7 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   deactivated pattern clause and the fold's "follows `LEDWifiOn`" sentence, with M.SRC_NET.077/.100), U36 (the bullet's
   full rewrite, the fold's retry/queue sentence with it).
 - **Depends**: M.SRC_NET (WiFi LED patterns, `_LED_DEACTIVATED_*_MS`; M.SRC_NET.077/.100 as the fold amends them),
-  A.U9.01/A.U9.03 (SRC_SENS/GEN); [fold F09 M_SRC_NET] (the refusal's retry wording)
+  A.U9.01/A.U9.03 (SRC_SENS/GEN); M.SRC_NET.122 (fold F09) (the refusal's retry wording)
 - **Blast carried by**: SPEC A.4 WiFi, H, A.8 → A.U18.30, A.U9.03 (SPEC); field help → A.U9.01 (GEN)
 - **Kind**: doc
 
@@ -743,8 +743,8 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
 - **Resolved**: —
 - **Unit**: U19 (the `HTTPDropped` clause with the window counter, U19); stage U23 (the confirmation sentence, with the
   website's confirm dialog)
-- **Depends**: M.SRC_NET (A.U11.31's concurrent reset, U11); [fold F02 M_SRC_NET] (`ResetErrors` clears the window),
-  [fold F07 M_WEB] (the confirm dialog)
+- **Depends**: M.SRC_NET (A.U11.31's concurrent reset, U11); M.SRC_NET.119, M.SRC_NET.127, M.SRC_NET.129 (fold F02) (`ResetErrors` clears the window),
+  M.WEB.004, M.WEB.006, M.WEB.021, M.WEB.053, M.WEB.054, M.WEB.062, M.WEB.063 (fold F07) (the confirm dialog)
 - **Blast carried by**: SPEC H.4/C.7 → A.U11.31, A.U36.503 (SPEC); BACKLOG item 24 → M.DOCS.063
 - **Kind**: doc
 
@@ -1497,8 +1497,8 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   each round's delta (A.C.10, M.PROC.036 (2)) removes every row it delivered, with every citation of it (G9/R31; e.g.
   G6 after R6, M.PROC.041), and A.C.11 leaves only rows the owner re-queued (gap pass G1).
 - **Depends**: A.U36.001 (`tests_hardware/README.md` "How a round runs", HW_BENCH); the phase-C inventory (PROC,
-  M.PROC.036-.043, M.PROC.038/.041 as the fold amends them); A.C.10, A.C.11 (the phase-C removals); [fold F25 M_HW_DEV]
-  and [fold F25 M_PROC] (the receive-ring rows and their round), [fold F27 M_HW_BENCH] (the maximum-size transfer)
+  M.PROC.036-.043, M.PROC.038/.041 as the fold amends them); A.C.10, A.C.11 (the phase-C removals); M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25)
+  and M.PROC.049, M.PROC.017, M.PROC.036 (fold F25) (the receive-ring rows and their round), M.HW_BENCH.041, M.HW_BENCH.115 (fold F27) (the maximum-size transfer)
 - **Blast carried by**: no test cites these bullets (grep `Real-hardware work` in `tests*/`: none); twin parameters
   named per row (TWIN); CLAUDE.md go-ahead rule (M.DOCS.087) unchanged
 - **Kind**: doc
@@ -2026,7 +2026,7 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Resolved**: —
 - **Unit**: U36. Stages U0, U1, U13 (the clamp's object, with the DMA receive path), U31.
 - **Depends**: SPEC 0.1 (A.U36.541), F.3 table (A.U31.01), F.8 renumbering (A.U36.532) — SPEC; M.SPEC.108 (F.8.2's receive
-  path, U13); [fold F25 M_SRC_NET]
+  path, U13); M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25)
 - **Blast carried by**: —
 - **Kind**: rule
 

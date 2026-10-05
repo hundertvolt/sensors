@@ -418,7 +418,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Unit**: U10 (no edit)
 - **Depends**: —
 - **Blast carried by**: A.U10.47's convention check must exempt this file from the D.15 order rule, as it exempts its
-  casing → GAP-3 (TSC) with [fold F24 M_TSC]; D.15 and the naming Part name the exception → [fold F24 M_SPEC]
+  casing → GAP-3 (TSC) with M.TSC.064 (fold F24); D.15 and the naming Part name the exception → M.SPEC.047, M.SPEC.075, M.SPEC.098, M.SPEC.002 (fold F24)
 - **Kind**: rule
 
 ## src/asy_neopixel_driver.py
@@ -542,7 +542,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: A.U10.21's `PrintLogHistory*.setup()` return (SRC_CORE)
 - **Blast carried by**: generated batch `await neopixel.setup()` and `needs_setup` → A.U10.10 (GEN); tests
   `tests/test_asy_neopixel_driver.py:453-464` → A.U10.10 (TEST_UNIT); tests and the L0 check reading the flag →
-  [fold F28 M_TEST_UNIT], [fold F28 M_TSC] (A.U10.22's scope)
+  M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.293 (fold F28), M.TSC.112 (fold F28) (A.U10.22's scope)
 - **Kind**: code
 
 ### M.SRC_SENS.025 Overlay task, starters and fan-in methods
@@ -855,7 +855,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (sleeps)
 - **Depends**: M.SRC_SENS.031, M.SRC_SENS.033, M.SRC_SENS.034
 - **Blast carried by**: `_in_window()` table, one-cycle and L2 window tests → A.U9.01 (TEST_UNIT, TWIN); config-failure
-  tests `:665-686, :1350-1407` keep the module's own entry → [fold F11 M_TEST_UNIT]; DEVICE_REFERENCE window bullet → A.U9.01 (DOCS); SPEC A.4 → A.U9.01
+  tests `:665-686, :1350-1407` keep the module's own entry → M.TEST_UNIT.086, .091; DEVICE_REFERENCE window bullet → A.U9.01 (DOCS); SPEC A.4 → A.U9.01
 - **Kind**: code
 
 ## src/asy_bmp3xx_driver.py
@@ -1611,7 +1611,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: M.SRC_SENS.062, M.SRC_SENS.059 (codes); A.U16.18 (FRAM side, SRC_CORE)
 - **Blast carried by**: L1/L2 backup cases (`_verify_every` table, WaitTimeNTP 0, −60 s age, single re-read, first-boot
   blank chunk, blackout skip) → A.U15.17/A.U16.18 (TEST_UNIT, TWIN), the SGP40 entries kept beside FRAM's →
-  [fold F11 M_TEST_UNIT]; `tests/test_asy_sgp40_driver.py:1055-1056`
+  M.TEST_UNIT.136, .138; `tests/test_asy_sgp40_driver.py:1055-1056`
   stub order → A.U16.18; W13 tests → A.U3.02; BACKLOG `:362-365` → A.U3.02 (DOCS); SPEC C.7.1 SGP40 row → A.U2.22 (SPEC)
 - **Kind**: code
 
@@ -1957,7 +1957,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: M.SRC_SENS.073; A.U10.R01, A.U13.R01, A.U10.10
 - **Blast carried by**: L1 restart cases (filter, `_irq_fired`) → A.U15.34 (TEST_UNIT); SPEC M.1.2 "State across a task
   restart" table (gains `_int_held` and the re-arm flag rows) → A.U15.34/A.U15.R04 (SPEC); config-read tests
-  `tests/test_asy_isl29125_driver.py:875` keep the module's own entry → [fold F11 M_TEST_UNIT]; streak tests `:953, :2539` → A.U15.R04/A.U10.R01
+  `tests/test_asy_isl29125_driver.py:875` keep the module's own entry → M.TEST_UNIT.060; streak tests `:953, :2539` → A.U15.R04/A.U10.R01
 - **Kind**: code
 
 ### M.SRC_SENS.075 `_read_isl()`: timestamp, unsettled discard, INT parking, CalLight code
@@ -2026,7 +2026,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Blast carried by**: `tests/test_asy_isl29125_driver.py:1566-1595` (one slot, `ErrCount == 5`) → A.U3.14 (TEST_UNIT; the RF175
   one-entry case goes with A.U3.03, dropped by OR140.a (7)); rung cases (no-brownout re-apply, raising burst, no `recover()` on config-read failure)
   and the mid-operation hazard case → A.U15.R04 (TEST_UNIT, TWIN); twin Run 5c (`settled > 0`) holds → A.U15.R04 (SCR);
-  SPEC `:6675-6678` → A.U3.14/A.U3.10 (SPEC); SPEC M.1.2 restart row → A.U15.R04
+  SPEC `:6675-6678` → A.U3.14/A.U3.10 (SPEC); SPEC M.1.2 restart row → A.U15.R04; `_recover_brownout()` leaves the fault-or-warning scan's allow-list → M.TSC.111.
 - **Kind**: code
 
 ### M.SRC_SENS.077 Silent helper catches print; the dead-INT re-arm

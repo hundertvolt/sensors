@@ -677,7 +677,7 @@ changes cite.
   interrupt-driven receive path is a round step, not a test here (no permanent control arm, OR21.a (2)): M.PROC.049.
 - **Unit**: U26 (written; the twin run first, M.HW_DEV.010); executed in phase C.
 - **Depends**: M.HW_DEV.159, M.HW_DEV.045, M.HW_BENCH.012, M.HW_BENCH.041 (the ring size in `bench_facts`),
-  [fold F25 M_SRC_NET] (the DMA receive ring, U13).
+  M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the DMA receive ring, U13).
 - **Blast carried by**: (3) joins the wear guard's marked set → M.TSC.119; budget table row (1 write) → M.HW_BENCH.130;
   README UART bullets → M.HW_BENCH.115; the measured heap and timing figures → A.C.10 deltas (SPEC I, J.6, F.5.8).
 - **Kind**: test, hardware (Round: R1, session 1 — a new inventory row for the sweep and the soft reset; (3) R3 gated)
@@ -698,10 +698,10 @@ changes cite.
   `BAUDRATE` constants and the comment `:30-31` go. `UARTComm(uart0, ROLE_INITIATOR, payload_size=…, timeout=…,
   name="UART_INIT")`, the responder with `callbacks=_Callbacks()` (get/set). `_settled` included from
   `_shared/settle.py`; `JOIN_STEP_MS`/`JOIN_BUDGET_MS` become `_JOIN_STEP_MS`/`_JOIN_BUDGET_MS` with their tags. Both
-  instances take `chunk_bytes`, `max_transfer_bytes` and the ring size from `BENCH` (the TOML, [fold F27 M_GEN]); after
+  instances take `chunk_bytes`, `max_transfer_bytes` and the ring size from `BENCH` (the TOML, M.GEN.066, M.GEN.034 (fold F27)); after
   the exchange, a maximum-size train: `uart_set()` of `max_transfer_bytes` bytes (a per-run pattern) to a responder
   whose set callback gives no destination, so it is assembled in pieces of at most `chunk_bytes`
-  ([fold F27 M_SRC_NET]), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte; then one train
+  (M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27)), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte; then one train
   declaring `max_transfer_bytes + 1` from the initiator's raw driver, which the responder refuses before allocating
   (the withheld ACK) and logs once, the responder's largest free block (`_shared/heap_probe.py`) read before and after.
   Facts: `crc_mode`, `get_answer_ok`, `set_ok`, `empty_set_ok`, `train_bytes`, `max_train_bytes`, `max_set_intact`,
@@ -710,7 +710,7 @@ changes cite.
 - **Resolved**: —
 - **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U26 writes the end form, after
   U17's chunking and receive cap).
-- **Depends**: M.HW_DEV.001-.004; [fold F27 M_SRC_NET] (`chunk_bytes`, `max_transfer_bytes`, U17), [fold F27 M_GEN]
+- **Depends**: M.HW_DEV.001-.004; M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (`chunk_bytes`, `max_transfer_bytes`, U17), M.GEN.066, M.GEN.034 (fold F27)
   (the cap and ring size in the device TOML, U20).
 - **Blast carried by**: UART changelog Class B entries for the API rename/constructor → A.U5.12/A.U10.38 (DOCS); twin
   record → M.HW_DEV.010; host assertions → M.HW_DEV.045 (9); the TOML keys reach `BENCH` → M.HW_BENCH.041.
@@ -730,7 +730,7 @@ changes cite.
   rxbuf/txbuf); every re-init the injector makes on the responder's UART is followed by the driver's own DMA set-up
   (RXIM/RTIM cleared, RXDMAE set, OR141.a (4) (b)) — through the driver's init entry if the U13 driver offers one, else
   by the script calling the driver's re-apply after `restore()`, decided at execution against the U13 API with its
-  reason recorded ([fold F25 M_SRC_NET]). After the silence case, a desync case: `injector.desync()`, `uart_set(_CMD_ECHO, b"skew")` is False and
+  reason recorded (M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25)). After the silence case, a desync case: `injector.desync()`, `uart_set(_CMD_ECHO, b"skew")` is False and
   the initiator log holds a frame/ACK error; `restore()`, `await responder.clear()`, the next transfer succeeds. Both
   recoveries timed (`ticks_ms()` from `restore()` to the first success) and reported against `BENCH["resync_bound_ms"]`
   (extra: `_DRAIN_BOUND_MULT`, `_RESYNC_NUM/_RESYNC_DEN` × timeout plus one timeout, read host-side by `ast`). Facts:
@@ -753,7 +753,7 @@ changes cite.
 - **Site**: `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:1-168`.
 - **Change**: (1) Fold: `_trial` records the DMA ring's fill level when the driver's `ready()` first reports the measured
   frame (fact `first_ready_bytes`; `uart.any()` and POLLIN are no longer the driver's receive path,
-  [fold F25 M_SRC_NET]); the comment `:107` → "(the copy into txbuf is timed separately and reported as
+  M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25)); the comment `:107` → "(the copy into txbuf is timed separately and reported as
   `txcopy_us`)" — `ticks_us()` around the `write()`, outside the measured window. (2) Readline leg: one trial reading
   a `\n`-terminated frame through `readline_until_complete()`, its worst call span a fact (`readline_span_us`).
   (3) Pins and buffers from `BENCH` (the raw writer UART on `BENCH["bus"]["uart0"]`, the driver on `uart1`); `FRAME`
@@ -770,7 +770,7 @@ changes cite.
 - **Resolved**: the comparisons move host-side (A.U26.68), so Part N's `loop.uart_call_span_max_us` "Checked by"
   cell names the host test, not `:155-157` (GAP-D4, SPEC).
 - **Unit**: U26 (after U13's DMA receive ring).
-- **Depends**: M.SRC_NET (A.U13.12 clamp), [fold F25 M_SRC_NET] (the DMA receive ring and its fill level, U13),
+- **Depends**: M.SRC_NET (A.U13.12 clamp), M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the DMA receive ring and its fill level, U13),
   M.HW_DEV.001-.004.
 - **Blast carried by**: GAP-D4 (SPEC Part N cell); U30 allow-list rows for the two pre-window collects → A.U30.16
   (TSC); host assertions → M.HW_DEV.045.
@@ -889,7 +889,7 @@ changes cite.
 - **Change**: header ≤ 3 lines ("Holds interrupts off with machine.disable_irq() and a busy-wait while the other UART of
   the crossover pair keeps sending, to show the DMA receive ring loses no frame within its bound and reports an overrun
   beyond it - no flash write."). The receiver is a `UARTComm` responder on one UART of `BENCH`'s pair, over the
-  driver's DMA receive ring ([fold F25 M_SRC_NET]; bus parameters, CRC mode, ring size and `max_transfer_bytes` from
+  driver's DMA receive ring (M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25); bus parameters, CRC mode, ring size and `max_transfer_bytes` from
   `BENCH`, M.HW_DEV.001); the sender, on the other UART, streams framed frames from one pre-built buffer through its own
   DMA channel paced by that UART's TX DREQ (RP2040 datasheet 2.5.3.1: UART0_TX 20, UART1_TX 22), so it keeps sending
   while interrupts are off. Heap: `gc.mem_free()` and the largest free block (`_shared/heap_probe.py`) before the
@@ -911,8 +911,8 @@ changes cite.
 - **Unit**: U26 (written; run through `TwinBoard` first with the twin's DMA fake — where the twin cannot model
   `disable_irq()` holding the loop, its `twin_record.json` entry is an `exception` with that reason, M.HW_DEV.010);
   executed in phase C.
-- **Depends**: M.HW_DEV.001-.005, M.HW_DEV.010; [fold F25 M_SRC_NET] (the DMA receive ring, U13; the ring floor and
-  lap-as-overrun, U17); [fold F25 M_TWIN] (the twin's DMA fake, U13); [fold F27 M_GEN] (the ring size and
+- **Depends**: M.HW_DEV.001-.005, M.HW_DEV.010; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the DMA receive ring, U13; the ring floor and
+  lap-as-overrun, U17); M.TWIN.169, M.TWIN.170, M.TWIN.171, M.TWIN.064, M.TWIN.130 (fold F25) (the twin's DMA fake, U13); M.GEN.066, M.GEN.034 (fold F27) (the ring size and
   `max_transfer_bytes` in the device TOML).
 - **Blast carried by**: host tests → M.HW_DEV.160; the one-time run of the old receive path → M.PROC.049; the ring and
   cap keys in `bench_facts` → M.HW_BENCH.041.

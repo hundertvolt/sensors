@@ -558,7 +558,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   dir was created; a `--no-autostart` build stages into its own `-noautostart` work dir (M.SCR.065); (g)
   `--tick-offset-test` (OR139.a, A-C review fold): `st.build_firmware` (stubbed) receives `tick_offset_test=True`, the
   default output ends `-tickoffset.uf2`, the work dir carries `-tickoffset`, the staged generated module's build info
-  names the override ([fold F04 M_GEN]), and with the fake `tick_offset_in_build()` true the record's `overrides`
+  names the override (M.GEN.019, M.GEN.009 (fold F04)), and with the fake `tick_offset_in_build()` true the record's `overrides`
   holds `"tick_offset_test"`; a default build passes `tick_offset_test=False` and its record never names it.
 - **Resolved**: —
 - **Unit**: U27 (U26 record; S0930 rows land with their U26/U27 owners).
@@ -707,11 +707,11 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (`HotspotPW` included: A.U18.38 publishes it, the exception goes); (k) the `SystemCmd` options are exactly `_SYSTEM_CMDS` (`ast`, `src/asy_webserver_service.py`)
   in order, labels "Reset to defaults" and "Erase FRAM" (the browser confirmation the website asks before each system
   command and before clearing the error history, OR140.a (3), is asserted where M_WEB places it: a confirmation text the
-  definitions carry is checked present on every `SystemCmd` option and on `ResetErrors` here, [fold F07 M_WEB]); (l)
+  definitions carry is checked present on every `SystemCmd` option and on `ResetErrors` here, M.WEB.004, M.WEB.006, M.WEB.021, M.WEB.053, M.WEB.054, M.WEB.062, M.WEB.063 (fold F07)); (l)
   SCD30's errcount and readiness rows match its catalog entries (the three FRC readiness keys, A.U15.12); (m) every
   displayed number field whose value can carry a fraction (a float schema field, a float measurement value) has a
   `decimals` hint from 0 to 3, equal to the value its `@web` tag or schema declares as buildgen carries it
-  ([fold F18 M_GEN]); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
+  (M.GEN.017, M.GEN.018 (fold F18)); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
 - **Resolved**: A.U2.21's edit of the golden files falls away with A.U6.04 (its test compares with the catalog only).
 - **Unit**: U23 (each property in its owner's unit: U2 (a), U6 (c)-(f), (i), (j at U18), U15 (l), U23 (b), (g), (h),
   (m), S0930 (k) with U10; (k)'s confirmation check in U23).
@@ -1097,7 +1097,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   synchronous flash write, rounded up to a power of two) and one above 32,768 each refused naming the floor or the
   limit with `(field, instance)`; a `max_transfer_bytes` or `chunk_bytes` outside its range refused; the edges and the
   shipped devices built; an unstated value read from the driver source like `poll_idle_ms`. Rule names, keys and the
-  floor's inputs follow M_GEN's check ([fold F27 M_GEN]).
+  floor's inputs follow M_GEN's check (M.GEN.066, M.GEN.034 (fold F27)).
 - **Resolved**: A.S0930.01 writes the agreement test against HEAD's `src/crc_checks.py` and `CRC_Pass`; it lands after
   U10's rename (A.U10.37/A.U10.38, M.SRC_CORE.115), so it reads the end-state module and class (SRC_CORE GAP-G10; the
   table itself says `CRCPass`, M.GEN.024 as amended in gap pass G1). A.U13.17's replacement (poll 464/465) fails
@@ -1631,7 +1631,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   lands and the heap cost is measured).
 - **Site**: `tests_scripts/test_digital_twin_boot_contiguity.py` (new test).
 - **Change**: for every `DEVICE_NAMES` device whose wiring declares a `uart_link`, the boot probe reports each link's
-  ring address and size after the setup batch ([fold F25 M_TEST_HELP]); the test asserts every ring lies below the
+  ring address and size after the setup batch (M.TEST_HELP.069, M.TEST_HELP.025, M.TEST_HELP.028 (fold F25)); the test asserts every ring lies below the
   probe's high band (`_HIGH_BAND`), among the survivors the placement reset keeps low (SPECIFICATION.md I.4(f.1)), and
   that no ring is allocated outside a setup unit (its address is fixed once the batch ends: a second probe after the
   task start reports the same address); the rings' net heap cost and the largest free block before and after the batch
@@ -1639,9 +1639,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
   suppressed control arm (M.TSC.082) is unchanged; no new arm (OR21.a (2)).
 - **Resolved**: —
 - **Unit**: U13 (lands with the ring and the twin's DMA fake).
-- **Depends**: [fold F25 M_SRC_NET] (the ring allocated in `setup()`, U13), [fold F25 M_TWIN] (the twin's DMA fake
-  holds a real ring buffer, U13), [fold F25 M_TEST_HELP] (the probe reports the rings).
-- **Blast carried by**: SPEC I's ring heap entry → [fold F25 M_SPEC].
+- **Depends**: M.SRC_NET.221, M.SRC_NET.222 (the ring allocated in `setup()`, U13), M.TWIN.169 (the twin's DMA fake
+  holds a real ring buffer, U13), M.TEST_HELP.069 (the probe reports the rings).
+- **Blast carried by**: SPEC I's ring heap entry → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25).
 - **Kind**: test
 
 ## tests_scripts/test_digital_twin_ci_suite_ceiling.py
@@ -1728,7 +1728,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   generator's module runs for every device, not just ast.parse()s (SPECIFICATION.md Part L.4)." ("Session 3's" goes).
 - **Resolved**: —
 - **Unit**: U35 (stages U6, U7, U20, U24; the NTP expectation after U25's responder).
-- **Depends**: M.GEN.014/.033, M.SCR.016 (`scripts/_twin_process.py`), M.HW_BENCH.016; [fold F16 M_TWIN] (the twin's
+- **Depends**: M.GEN.014/.033, M.SCR.016 (`scripts/_twin_process.py`), M.HW_BENCH.016; M.TWIN.167 (the twin's
   local NTP responder).
 - **Blast carried by**: —
 - **Kind**: test
@@ -1969,7 +1969,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   the owner's list is mirrored as written.
 - **Unit**: U26 (stage U10: the per-image zero and the named list, OR142.a's U10 placement; U26 for the device-script
   side, whose rendered static import holds no site, M.HW_DEV.001).
-- **Depends**: [fold F23 M_SPEC] (F.1's named list and the two platform sites), M.TWIN.054, M.HW_DEV.001.
+- **Depends**: M.SPEC.089, M.SPEC.145, M.SPEC.087 (fold F23) (F.1's named list and the two platform sites), M.TWIN.054, M.HW_DEV.001.
 - **Blast carried by**: SPEC F.1 list → A.U10.30/GAP-B4 (SPEC).
 - **Kind**: test
 
@@ -2212,18 +2212,22 @@ where a test pins an SCR product, the constituent action is cited and the depend
   never paired (cross-layer entries allowed). The allow-list holds only the mixed pairs whose reasons still hold in the
   tree U3 leaves: ISL `_recover_brownout()` and `_check_divergence()` (the event, then a failed re-apply), UART
   `_resync()` (the drain bound and an unintelligible link are separate conditions), `set_write_protected()` (the
-  warning, then the failed write), `ConfigManager.setup()` (a read warning, then a failed write) — each keyed by
+  warning, then the failed write), `ConfigManager.setup()` (a file warning, then a failed repair write) — each keyed by
   function name and catalog names, not numbers, and re-derived at each later landing that renames or removes one (a
   listed pair that no longer occurs fails, so the list stays exact); A.U3.11's same-kind entries (`_get_dict_cfg()`,
   `_set_dict_cfg()`, SGP40 `_read_sgp()`, WEBSERVER `_serve()`'s two warnings, `ConfigManager.setup()`'s warning
-  chain) leave the list, the scan no longer flagging them. Bites (synthetic `tmp_path` copies): a planted `wrn_s` then
+  chain) leave the list, the scan no longer flagging them. Later landings edit the list with the change that moves a pair:
+  ISL `_recover_brownout()` leaves at U15 (M.SRC_SENS's re-apply moves its fault into `_reapply_configuration()`),
+  `set_write_protected()` leaves at U16 (M.SRC_CORE.105 tests the mismatch before the stuck latch), and the FRAM
+  manager's `_read()` (an invalid block, then a failed repair write of it) joins at the landing that first puts both
+  entries in that one function (M.SRC_CORE.088, U16). Bites (synthetic `tmp_path` copies): a planted `wrn_s` then
   `err_s` for one occurrence fails naming the function; a planted second `err_s` after an `err_s` passes.
 - **Resolved**: A.U3.11's pair scan enforced the dropped one-entry rule; the lead's ruling keeps it for the
   fault-or-warning half only, the half OR140.a (7) does not touch.
 - **Unit**: U3
 - **Depends**: A.U3.06, A.U3.08 (kept; SRC) — the scan reads the tree U3 leaves.
 - **Blast carried by**: SPEC C.7 names the check and its rule (fault or warning, never both; one entry per layer) →
-  [fold F11 M_SPEC].
+  M.SPEC.058, M.SPEC.051, M.SPEC.010, M.SPEC.054, M.SPEC.059, M.SPEC.062, M.SPEC.101 (fold F11).
 - **Kind**: test
 
 ## tests_scripts/test_readiness_gates.py

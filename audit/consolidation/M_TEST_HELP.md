@@ -723,8 +723,8 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   calls and header; U36 the `:7` repoint.
 - **Depends**: M.TEST_HELP.047 (`boot_generated`), M.TEST_HELP.046 (`require_fresh`), M.TEST_HELP.035
   (`seed_occupants`, FRAM factory).
-- **Blast carried by**: the ring's measured cost into SPEC I → [fold F25 M_SPEC]; the boot-contiguity assertion on where
-  the ring lands → [fold F25 M_TSC]; the board mirror `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py`
+- **Blast carried by**: the ring's measured cost into SPEC I → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25); the boot-contiguity assertion on where
+  the ring lands → M.TSC.230 (fold F25); the board mirror `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py`
   follows the same order and drops `_STARTER_LOOP_GRACE_MS` → GAP-H1 (HW_DEV, A.U8C.72/A.U20.06);
   `tests_scripts/test_digital_twin_boot_contiguity.py:262` `_MIRRORED_BOUNDS` drops `_STARTER_LOOP_GRACE_MS` and its
   `:242-254` source counts read `_collect_setups()` → GAP-H1 (TSC, A.U11.10); GC-site checker rows `_dump`,
@@ -1100,8 +1100,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 - **Unit**: U24 (stages with A.U11.03/A.U11.04 U11, A.S0930.* their unit, A.U19.01 U19); stage U20 (A-C review fold):
   (7)-(9), with the system-command code and the generated `/status` block.
 - **Depends**: M.TEST_HELP.035, M.TEST_HELP.011, M.TEST_HELP.062; M.SRC_CORE.011, M.SRC_CORE.038 (every API command, the
-  SCD30 setters included, refused while a sequence runs); [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block);
-  [fold F03 M_SRC_CORE] (the fault state, the never-reading delete).
+  SCD30 setters included, refused while a sequence runs); M.GEN.008, M.GEN.014 (fold F03) (`ConfigFaults` in the generated `/status` block);
+  M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the fault state, the never-reading delete).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -1134,8 +1134,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   path, A.U24.32's assertion).
 - **Unit**: U24 (stages with each constituent's unit: U4, U5, U6, U9, U10, U11, U18, U19, U23, U32; A-C review fold:
   the `HTTPDropped` reset with the window in U19, the `ConfigFaults` scenarios with the generated block in U20).
-- **Depends**: M.TEST_HELP.035, M.TEST_HELP.050; [fold F02 M_SRC_NET] (the windowed drop count and its reset);
-  [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block); [fold F03 M_SRC_CORE] (the fault state).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.050; M.SRC_NET.119, M.SRC_NET.127, M.SRC_NET.129 (fold F02) (the windowed drop count and its reset);
+  M.GEN.008, M.GEN.014 (fold F03) (`ConfigFaults` in the generated `/status` block); M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the fault state).
 - **Blast carried by**: A.U6.22 status-field parity (definitions both ways) → GEN/WEB.
 - **Kind**: test
 
@@ -1541,10 +1541,11 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
 - **Resolved**: the time-driven model is what OR141.a (4) (g) asks of the unit tier; the twin carries the same model
   (M.TWIN.169) and the shared contract checks both (M.TEST_HELP.025).
 - **Unit**: U13 (with the driver's DMA receive path, so every existing UART test runs on it from that unit on).
-- **Depends**: M.TEST_HELP.010, .017, .018; [fold F25 M_SRC_NET] (the driver's receive path).
+- **Depends**: M.TEST_HELP.010, .018; M.SRC_NET.221 (the driver's receive path); M.TEST_HELP.017 [follows] (U14: its poll
+  fake and comment edits keep the DMA model as it stands).
 - **Blast carried by**: the shared link contract's DMA checks → M.TEST_HELP.025; the pair harness builds both drivers
   through their `setup()` (the ring allocated there) → M.TEST_HELP.023 (holds); the receive tests → M.TEST_UNIT.169, .175,
-  .176, .344, .345; the main mypy pass resolves `rp2` to the fake where `tests/` is in scope → [fold F25 M_TOOL]; the
+  .176, .344, .345; the main mypy pass resolves `rp2` to the fake where `tests/` is in scope, as it does `machine` (holds, no config change); the
   twin's model → M.TWIN.169.
 - **Kind**: test
 

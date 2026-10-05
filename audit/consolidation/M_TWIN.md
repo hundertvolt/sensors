@@ -633,7 +633,7 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
 - **Unit**: U25.
 - **Depends**: M.TWIN.001 (`saturating_add`), M.TWIN.169 (the interrupts-off flag the model reads).
 - **Blast carried by**: the runner's install → M.TWIN.171; the stall cases → M.TWIN.130; the concurrent-load scenario →
-  M.TWIN.171 and [fold F25 M_SCR]; fidelity row → M.TWIN.059; README "What's here" bullet → M.TWIN.058.
+  M.TWIN.171 and M.SCR.018, M.SCR.016 (fold F25); fidelity row → M.TWIN.059; README "What's here" bullet → M.TWIN.058.
 - **Kind**: code
 
 ## digital_twin/machine.py
@@ -1240,7 +1240,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   forward.
 - **Resolved**: —
 - **Unit**: U13 (with the driver's DMA receive path, so dev's twin boots from that unit on).
-- **Depends**: M.TWIN.027 (the link's delivery, its U25 shape later); [fold F25 M_SRC_NET] (the driver's receive path).
+- **Depends**: M.TWIN.027 (the link's delivery, its U25 shape later); M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the driver's receive path).
 - **Blast carried by**: the fake's own L2 cases and the shared contract's DMA checks → M.TWIN.130, M.TEST_HELP.025; the
   twin UART link tests → M.TWIN.158; fidelity rows (DMA ring, IRQ mask, OE, the finaliser) → M.TWIN.059; rp2 constants →
   M.TWIN.138; the twin mypy pass resolves `rp2` to this module (its `files` cover `digital_twin`, M.TWIN.075 — no edit).
@@ -1753,7 +1753,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Change**: DUT side: the runner installs `_flash_stall` (M.TWIN.170) on the booted config manager module; the shutdown
   line (M.TWIN.050) gains `uart=<instance>:transfers=<n>,failures=<n>,overruns=<n>,…` for each wired `uart_link`, read
   from the link driver's own counters and the receive path's lap count (no product hook, OR36). The scenario (host
-  side, [fold F25 M_SCR]): dev booted by the runner at each GC stage, the stall at its typical and then its maximum
+  side, M.SCR.018, M.SCR.016 (fold F25)): dev booted by the runner at each GC stage, the stall at its typical and then its maximum
   times; both link instances exercising; the webserver hammer; a sustained FRAM-log fault through `--fault` (persisted
   writes); config PUTs at a steady rate (each a flash write, so each a stall); and, for OR143.a, the link carrying
   maximum-size and over-cap trains (how the exerciser is made to send them from outside the product is decided at
@@ -1764,10 +1764,10 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Resolved**: G7/R19 keeps request driving out of the twin's heap, so the hammer and the PUTs come from the host
   harness while the stall and the counters are twin-side; the scenario is one run of the CI suite's harness.
 - **Unit**: U25.
-- **Depends**: M.TWIN.050, M.TWIN.169, M.TWIN.170; [fold F25 M_SCR] (the host scenario); [fold F25 M_SRC_NET] (the receive
-  path's lap count); [fold F27 M_SRC_NET] (the cap and the chunked assembly).
-- **Blast carried by**: the CI suite's run list and README "Automated CI suite" → M.TWIN.064 and [fold F25 M_SCR]; the
-  shutdown-line parser's new field → [fold F25 M_TSC].
+- **Depends**: M.TWIN.050, M.TWIN.169, M.TWIN.170; M.SCR.018, M.SCR.016 (fold F25) (the host scenario); M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the receive
+  path's lap count); M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the cap and the chunked assembly).
+- **Blast carried by**: the CI suite's run list and README "Automated CI suite" → M.TWIN.064 and M.SCR.018, M.SCR.016 (fold F25); the
+  shutdown-line parser's new field → M.TSC.230 (fold F25).
 - **Kind**: code
 
 ## digital_twin/unixport/_offline_ntp_config.py (new)
@@ -1837,7 +1837,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Blast carried by**: the runner starts it unless `--online-ntp` → M.TWIN.050; the responder-config writer → M.TWIN.053;
   its L2 tests → M.TWIN.168; the new NTP-client L1 tests → M.TEST_UNIT.342; the clock-jump file's sync cases →
   M.TWIN.146; README "What's here", "Automated CI suite" Run 1 and "Runner flags" → M.TWIN.058, .064, .066; the twin
-  normal-boot log checks expect NTP synced (A.U35.38/.39's tolerance dropped) → [fold F16 M_SCR], [fold F16 M_TSC]; ruff
+  normal-boot log checks expect NTP synced (A.U35.38/.39's tolerance dropped) → M.SCR.016, M.SCR.049 (fold F16), M.TSC.086, M.TSC.165 (fold F16); ruff
   and mypy scope by directory, the twin pass's `mypy_path` already holding `digital_twin/unixport` → M.TWIN.075 (no edit).
 - **Kind**: code
 
@@ -2943,7 +2943,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Depends**: M.TWIN.011, M.TWIN.013, M.TWIN.026, M.TWIN.031; M.SRC_CORE controlled-shutdown sequence (`_reset_armed`,
   `_reset_task`, `_reset_timer`); M.SRC_CORE.011, M.SRC_CORE.038 (every API command, the SCD30 setters
   included, refused while a sequence runs); [fold F03
-  M_SRC_CORE] (the fault state, the never-reading delete); [fold F03 M_GEN] (`ConfigFaults` in the status data)
+  M_SRC_CORE] (the fault state, the never-reading delete); M.GEN.008, M.GEN.014 (fold F03) (`ConfigFaults` in the status data)
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3242,7 +3242,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   wake-ups (its socket's `ready()` rounds, counted by wrapping the instance's bound method from the test — no product
   hook) number at most `window / poll_idle_ms + 1` and at least `window / poll_idle_ms − 1`, read with `src_const` from
   `src/asy_udp_socket.py`; the measured rate is printed as one `MEASURE udp.idle_wakeups_per_s=<n>` line, the twin half
-  of the rate's measured basis (the first-answer latency after silence is measured host-side, [fold F26 M_SCR]; the
+  of the rate's measured basis (the first-answer latency after silence is measured host-side, M.SCR.066, M.SCR.067 (fold F26); the
   bench half is C's).
   Tunables (C3): `_WAIT_POLL_S` (`l2.sensortask_integration_wait_poll_s`), `_RUN_BOUND_S` (now `:320` only),
   `_LONG_RUN_BOUND_S` (test 2), `_WAIT_TIMEOUT_S`, `_RESTART_WAIT_TIMEOUT_S`, `_SUPERVISOR_RUN_BOUND_S`,
@@ -3286,7 +3286,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `PER_DEVICE` dispatch → A.U24.65 (3) (SCR, unchanged); port band row `dtsi` → M.TEST_HELP.056; `device_with(*drivers)` →
   TEST_HELP gap; the gc-site checker finds no row here after U30 → A.U30.16 (TSC); SPEC E.2.1 text → A.U36.016 (SPEC);
   README "Running the twin's own tests" names the split → M.TWIN.063; test 10's measured idle rate into the rate's row
-  basis → [fold F26 M_SPEC]
+  basis → M.SPEC.035, M.SPEC.147, M.SPEC.150, M.SPEC.108, M.SPEC.156 (fold F26)
 - **Kind**: test
 
 ## tests/test_digital_twin_clock_jump.py (new)
@@ -3639,7 +3639,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   and backoff).
 - **Blast carried by**: the `tests/test_digital_twin_*.py` glob picks it up (`scripts/test.sh`; `digital_twin/typecheck.ini`
   `files`, M.TWIN.075 — no edit); the port band row for this file → M.TEST_HELP.056; Part N row → SPEC (U8's rule);
-  the hand-run NTP-outage row's removal from M.PROC.038 → [fold F26 M_PROC].
+  the hand-run NTP-outage row's removal from M.PROC.038 → M.PROC.038, M.PROC.022, M.PROC.036 (fold F26).
 - **Kind**: test
 
 ## Cross-file: A-C3 sweep changes (new)

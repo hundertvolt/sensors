@@ -388,7 +388,7 @@ Conventions used below (each defined once, then cited):
   -> TwinRun` building the runner argv of M.TWIN.051 (`--module --wiring-plan --host --port --device
   --fram-state-path --scd30-state-path --mem-backup-state-path --config-dir --online-ntp --seed --fault --hang
   --wifi-outcome --duration --gc-threshold --mem-sample-interval-ms` plus `--test-…` flags, and the local NTP
-  responder the twin runner provides, on by default so a normal boot syncs [fold F16 M_TWIN]) with
+  responder the twin runner provides, on by default so a normal boot syncs M.TWIN.167) with
   `MICROPYPATH = micropypath("twin")` (tomllib read of `scripts/micropypath.toml`) and `TZ=UTC` (until A.SDEP.16's W15
   check retires it); `wait_until_serving(run, port, timeout_s)` (poll, never sleep-then-assume); `shutdown(run,
   timeout_s) -> int`; `wait_exit(run, timeout_s) -> int`; `read_log(run) -> str` and `log_from(run, offset) -> str`;
@@ -407,7 +407,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U27.01's `_TwinRun` and A.U25.46's move land as one shape here (A.U27.01's Depends names this merge).
 - **Unit**: U27 (stages: U25 moves the helpers with A.U25.46 and passes the NTP responder once the twin has it, U27
   adds `TwinRun` fail-closed and types).
-- **Depends**: M.SCR.009, M.SCR.013; M.TWIN.051 (flags); [fold F16 M_TWIN] (the twin's local NTP responder, U25);
+- **Depends**: M.SCR.009, M.SCR.013; M.TWIN.051 (flags); M.TWIN.167 (the twin's local NTP responder, U25);
   M.TWIN.171 (the `uart=` field, U25).
 - **Blast carried by**: users M.SCR.046-.060 (suite), M.SCR.017/.018 (harness); `tests_scripts/test_digital_twin_generated_boot.py`
   checks a normal boot with no tolerance → M.TSC.086 (amended); `tests_scripts/test_memory_error_gate_agreement.py`
@@ -1286,7 +1286,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: A.U6.21's L2 clause ("existing twin CI boot log … U25 checks") was carried by no U25 action — added here
   (gap closed in-cluster, agent decision AD-8).
 - **Unit**: U35 (after U25's NTP responder).
-- **Depends**: M.SCR.016, M.SCR.048; [fold F16 M_TWIN] (the twin's local NTP responder); product fixes a clean boot needs
+- **Depends**: M.SCR.016, M.SCR.048; M.TWIN.167 (the twin's local NTP responder); product fixes a clean boot needs
   (M.SRC_CORE.043: an absent file's one defaults write prints, never logs — SRC; A.U3.09 dropped with A.U3.04,
   OR140.a (7)).
 - **Blast carried by**: `test_digital_twin_generated_boot.py` checks the same clean boot → M.TSC.086; `audit/b3/review.md`
@@ -1484,7 +1484,7 @@ Conventions used below (each defined once, then cited):
 - **Resolved**: —
 - **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'); the
   first-write and damaged-file cells after U11's `ConfigManager` change and U20's `/status` field and delete path.
-- **Depends**: M.SCR.059; M.SRC_CORE.043 (OR136.a), [fold F03 M_SRC_CORE] (the `ConfigFaults` state), [fold F03 M_GEN]
+- **Depends**: M.SCR.059; M.SRC_CORE.043 (OR136.a), M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the `ConfigFaults` state), M.GEN.008, M.GEN.014 (fold F03)
   (the generated `/status` field and the delete path that never reads).
 - **Blast carried by**: product commands → A.S0930 SRC actions (SRC_CORE); `_LOG_EVENT` level read by `ast` from
   `src/asy_print_log.py`.
@@ -1692,7 +1692,7 @@ Conventions used below (each defined once, then cited):
   *, autostart=True, build_date=None, test_overrides=())` = `generate_device(device_toml, src, ext,
   build_date=build_date, test_overrides=test_overrides)` → `stage_python_modules()` → the website step
   (`scripts/build_website.sh <device> <stage>/frozen_html.py`); `test_overrides` names a test-only firmware override in
-  the generated build info (`("tick_offset_test",)` for the rollover image, OR139.a (2); [fold F04 M_GEN]). The build
+  the generated build info (`("tick_offset_test",)` for the rollover image, OR139.a (2); M.GEN.019, M.GEN.009 (fold F04)). The build
   date is the build's one time input: `main()` passes the current UTC time (M.SCR.067), a reproducibility check one
   fixed date, and nothing else staged depends on when the build runs; comment above `build_stage_dir()`: "build_date is
   an input: real builds stamp their UTC build time, the reproducibility check passes a fixed one (owner, 2026-10-05).".
@@ -1742,7 +1742,7 @@ Conventions used below (each defined once, then cited):
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: M.SCR.065; M.TOOL.041 (`read_lwip_macros_from_build()`, `verify_modlwip_eagain_in_build()` public),
   M.TOOL.055 (D3: the uf2 path returned, the build dir beside it), M.TOOL.039 (`MODLWIP_OVERRIDE_DIR_NAME`), M.TOOL.080
-  (`tick_offset_in_build()`) (TOOL); [fold F04 M_GEN] (`generate_device(test_overrides=…)` names the override in
+  (`tick_offset_in_build()`) (TOOL); M.GEN.019, M.GEN.009 (fold F04) (`generate_device(test_overrides=…)` names the override in
   the build info).
 - **Blast carried by**: `bench/conftest.py` image check → M.HW_BENCH.060; lwIP control image (built in a throwaway worktree,
   record `overrides: []`) → M.HW_BENCH.075/A.C.06; CRC16 image → M.HW_BENCH.094; the rollover image → M.HW_BENCH.089,

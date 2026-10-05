@@ -262,11 +262,10 @@ change lists its stages; the end state is the last stage's.
   `get_wlan_*` removal; the `IP` key out, A-C review fold), U19 (LED callback with A.U19.02; `HTTPDropped`/`WifiTS` with A.U19.08), U20 (command
   callback, SGP40 adapters, UTC gate, annotations; `ConfigFaults` with M.SRC_CORE.015, A-C review fold), U23 (`UnixTime`), U32 (`LastTaskEnd`).
   A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
-- **Depends**: M.SRC_CORE.015 (`get_config_faults()`, U20); [fold F30 M_TEST_UNIT] and [fold F30 M_TWIN] (tests reading
-  `IP` from `/status` follow, U18); A.S0930.12 (bool returns), A.U11.03/.05, A.U19.02, A.U19.08, A.U18.33, A.U32.06, A.U10.06 (`utc_now`).
+- **Depends**: M.SRC_CORE.015 (`get_config_faults()`, U20); M.TEST_HELP.041 (the helper reading
+  `IP` from `/status` follows, U18); A.S0930.12 (bool returns), A.U11.03/.05, A.U19.02, A.U19.08, A.U18.33, A.U32.06, A.U10.06 (`utc_now`).
 - **Blast carried by**: definitions catalog rows (`MemFree`, `ResetReason`, `LastTaskEnd`, `UnixTime`, `HTTPDropped`,
-  `WifiTS`, `ConfigFaults`; `IP` out) → M.GEN.014; `mockdata/samples.json` → M.WEB.045; bench and docs naming `IP` →
-  [fold F30 M_HW_BENCH], [fold F30 M_SPEC]; mock data rows and `js/field-format.js` handlers → A.U6.06/A.U32.06/A.U23.22 (WEB);
+  `WifiTS`, `ConfigFaults`; `IP` out) → M.GEN.014; `mockdata/samples.json` → M.WEB.045; mock data rows and `js/field-format.js` handlers → A.U6.06/A.U32.06/A.U23.22 (WEB);
   `tests_scripts/test_js_api_mirrors.py` → A.U23.24 (TST); SPEC H.6.1 wire table → A.U36.044 (SPEC); Part H
   not-shown list → A.U19.10 (2) (SPEC).
 - **Kind**: code
@@ -452,7 +451,7 @@ change lists its stages; the end state is the last stage's.
   (SRC_CORE preflight).
 - **Blast carried by**: `js/mock-server.js` dispatch/SystemCmd handlers and `tests_js/` → A.S0930.20 (5), A.U6.17
   (WEB/TST), the `confirm` flag read by the page → M.WEB.021 and validated → M.WEB.006, its Python shape mirror →
-  [fold F07 M_TSC]; `tests_scripts/test_buildgen_definitions.py` option/label pins → A.S0930.20, A.U20.27 (TST); SPEC H.4/H.5
+  M.TSC.040 (fold F07); `tests_scripts/test_buildgen_definitions.py` option/label pins → A.S0930.20, A.U20.27 (TST); SPEC H.4/H.5
   → A.U6.24/A.U6.25 Docs (SPEC).
 - **Kind**: code
 
@@ -847,10 +846,10 @@ change lists its stages; the end state is the last stage's.
   default).
 - **Unit**: U20 (after U13's `rx_ring` parameter and U17's floor and cap exist in `src/`).
 - **Depends**: M.GEN.025, M.GEN.027, M.GEN.005, M.GEN.012, M.GEN.053, M.SRC_NET.220, M.SRC_NET.221, M.SRC_NET.222;
-  [fold F27 M_TSC] (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
+  M.TSC.057 (fold F27) (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
   source; `tests_scripts/test_device_tomls.py`: dev declares both; U20).
-- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → [fold F25 M_SPEC]; Part N rows `dev.uart_rx_ring`,
-  `dev.uart_max_transfer_bytes` → [fold F27 M_SPEC]; the twin wiring reads the generated construction (TWIN, unchanged
+- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25); Part N rows `dev.uart_rx_ring`,
+  `dev.uart_max_transfer_bytes` → M.SPEC.138, M.SPEC.136, M.SPEC.050, M.SPEC.111, M.SPEC.126, M.SPEC.137, M.SPEC.146, M.SPEC.149, M.SPEC.156 (fold F27); the twin wiring reads the generated construction (TWIN, unchanged
   rule).
 - **Kind**: code
 
@@ -936,8 +935,7 @@ change lists its stages; the end state is the last stage's.
   69, NTP owners), U19 (W48, W60-62), U23 (tones), U30 (C-stack 25, ResetReason 20); fold stages (A-C review): U2 (the per-layer rows
   with their source constants), U17 (93).
   A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
-- **Depends**: A.U2.01-.03 (catalog, test, helper), each code's source constant (SRC_* clusters); [fold F11 M_TEST_HELP]
-  (`tests/_error_codes.py` follows the per-layer rows, U2).
+- **Depends**: A.U2.01-.03 (catalog, test, helper), each code's source constant (SRC_* clusters).
 - **Blast carried by**: `tests_scripts/test_error_catalog.py` → A.U2.02/A.U36.537 (TST); `tests/_error_codes.py` →
   A.U2.03 (TST); SPEC C.7/C.7.1 → A.U2.22 (SPEC); `.inputs_stamp.json` input set → A.U24.46 (TST); the generated
   definitions' `codes` and so the website read the catalog (M.GEN.016 — no hand mirror, M_SRC_CORE GAP-G2's "JS mirror");

@@ -472,13 +472,13 @@ apply and fix no longer needed workarounds to clean implementations. … adhere 
   A.U17.16 land, reading code sites by symbol (function or constant name) — the U10 renames and class reorder
   (M.SRC_NET merges of A.U10.18/.33/.44) move every `asy_uart_comm.py` line the seed cites. Rows other units change carry
   that unit's action (J.5 warning text A.U3.08, kept by the lead's fold ruling on OR140.a (7); J.6 poll default
-  A.U13.17; J.6 the DMA receive ring and J.7 a lap read as the receive overrun, U13/U17, [fold F25 M_SRC_NET]; J.6 the
-  chunked assembly and the receive cap's refusal before any allocation, U17, [fold F27 M_SRC_NET]; J.9 errno alignment
+  A.U13.17; J.6 the DMA receive ring and J.7 a lap read as the receive overrun, U13/U17, M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25); J.6 the
+  chunked assembly and the receive cap's refusal before any allocation, U17, M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27); J.9 errno alignment
   A.U2.20/A.U2.22); a row whose code does not hold is a finding of that unit (OR12.a), and, for a protocol-level
   divergence, a Class A entry (the receive cap's refusal is one, OR143.a (3); the ring is "no C impact").
 - **Resolved**: line drift from U10 — read by symbol (agent decision D5).
 - **Unit**: U17 (after its code actions).
-- **Depends**: A.U17.03, A.U17.06, A.U17.13, A.U17.16; the U10 renames; [fold F25 M_SRC_NET], [fold F27 M_SRC_NET].
+- **Depends**: A.U17.03, A.U17.06, A.U17.13, A.U17.16; the U10 renames; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27).
 - **Blast carried by**: audit file only; its findings are the U17 actions named in its rows (M.SRC_NET/M.TEST_UNIT).
 - **Kind**: doc (audit file)
 
@@ -1155,7 +1155,7 @@ record). Wear spends only what the round's plan names, behind its marker.
 - **Depends**: M.PROC.040; M.SCR.074; M.HW_BENCH.089; M.TOOL.080; A.U26.29, A.U26.36, A.U26.74.
 - **Blast carried by**: the driven-time proofs are L1/L2 (LEAD/R04); BACKLOG's G6 row removed → A.C.10 (DOCS); R4 runs
   after R6 (M.PROC.036 (3)); `tests_hardware/README.md`'s rollover text → M.HW_BENCH.126; SPEC B.14 and E.6 →
-  [fold F04 M_SPEC]; WORK_ORDER section 5's two sessions → the lead's order regeneration.
+  M.SPEC.162, M.SPEC.038, M.SPEC.082, M.SPEC.092, M.SPEC.150, M.SPEC.156 (fold F04); WORK_ORDER section 5's two sessions → the lead's order regeneration.
 - **Kind**: hardware
 
 ### M.PROC.042 R7, last: the two-image GC proof on the final tree

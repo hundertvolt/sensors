@@ -1105,9 +1105,9 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 - **Depends**: M.TOOL.035, M.TOOL.036, M.TOOL.042.
 - **Blast carried by**: `build_firmware()`'s keyword and the release readback → M.TOOL.055; L0 cases (anchor present
   once → applies, anchor moved → `OverrideError`, the sentinel read back, a build without the flag carrying it →
-  refused) → M.TSC.229; the image record and build info → M.SCR.067 [fold F04 M_GEN]; SPEC B.14 subsection, E.6's
-  rollover paragraph → [fold F04 M_SPEC]; CLAUDE.md's version-bump practice names this anchor among the re-checked ones →
-  [fold F04 M_DOCS]; the round → M.PROC.041.
+  refused) → M.TSC.229; the image record and build info → M.SCR.067 M.GEN.019, M.GEN.009 (fold F04); SPEC B.14 subsection, E.6's
+  rollover paragraph → M.SPEC.162, M.SPEC.038, M.SPEC.082, M.SPEC.092, M.SPEC.150, M.SPEC.156 (fold F04); CLAUDE.md's version-bump practice names this anchor among the re-checked ones →
+  M.DOCS.049, M.DOCS.052, M.DOCS.064, M.DOCS.066 (fold F04); the round → M.PROC.041.
 - **Kind**: code
 
 ## toolchain/setup_toolchain.py

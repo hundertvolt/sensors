@@ -276,7 +276,7 @@ every B1 action (AC_NOTES 34-second).
   `tests_scripts/definitions_shape_cases.json` gain one case per rejection (A.U6.16/A.U23.10, M.WEB.055 and TSC);
   `_shape_problems()` mirror (A.U6.16/A.U23.09/.10, TSC); `js/templates.js:158` "number or string" fallthrough sees no
   unknown kind (M.WEB.014); SPEC H.4 "Definitions validation" row (A.U36.510 (2), SPEC); complexity ceiling
-  (M.WEB.070); the Python shape mirror accepts the two keys → [fold F07 M_TSC].
+  (M.WEB.070); the Python shape mirror accepts the two keys → M.TSC.040 (fold F07).
 - **Kind**: code
 
 ### M.WEB.007 Definitions load through the queue

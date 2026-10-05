@@ -10,18 +10,18 @@
    "rev": 2
   }
  },
- "changes": 1883,
- "steps": 6498,
- "edges": 75171,
+ "changes": 1907,
+ "steps": 6561,
+ "edges": 75622,
  "edge_kinds": {
-  "action": 61776,
-  "dep-M": 7511,
-  "dep-A": 2992,
-  "blast": 5819,
-  "sweep": 447
+  "action": 60760,
+  "dep-M": 9038,
+  "dep-A": 3020,
+  "blast": 5737,
+  "sweep": 445
  },
  "violations_remaining": [],
- "deferrals": 192,
+ "deferrals": 194,
  "in_unit_cycles": [
   {
    "unit": "U0",
@@ -103,28 +103,23 @@
   {
    "unit": "U3",
    "steps": [
-    "M.SRC_CORE.080",
     "M.SRC_NET.046",
-    "M.SRC_NET.047",
     "M.SRC_NET.048",
     "M.SRC_NET.049",
-    "M.SRC_NET.050",
-    "M.SRC_NET.086",
     "M.SRC_NET.088",
     "M.SRC_NET.089",
     "M.SRC_NET.096",
     "M.SRC_NET.153",
     "M.SRC_NET.158",
     "M.SRC_NET.161",
-    "M.SRC_NET.162",
-    "M.SRC_SENS.035",
-    "M.SRC_SENS.043",
-    "M.SRC_SENS.044",
-    "M.SRC_SENS.059",
-    "M.SRC_SENS.063",
-    "M.SRC_SENS.064",
-    "M.SRC_SENS.065",
-    "M.SRC_SENS.074"
+    "M.SRC_NET.162"
+   ]
+  },
+  {
+   "unit": "U3",
+   "steps": [
+    "M.SPEC.051",
+    "M.SPEC.058"
    ]
   },
   {
@@ -418,7 +413,6 @@
     "M.TEST_UNIT.122",
     "M.TEST_UNIT.125",
     "M.TEST_UNIT.131",
-    "M.TEST_UNIT.135",
     "M.TEST_UNIT.141",
     "M.TEST_UNIT.148",
     "M.TEST_UNIT.159",
@@ -560,7 +554,6 @@
     "M.GEN.010",
     "M.SPEC.010",
     "M.SRC_CORE.080",
-    "M.SRC_CORE.082",
     "M.SRC_CORE.085",
     "M.SRC_CORE.087",
     "M.SRC_CORE.088",
@@ -777,7 +770,6 @@
     "M.TEST_HELP.048",
     "M.TEST_UNIT.007",
     "M.TEST_UNIT.015",
-    "M.TEST_UNIT.017",
     "M.TEST_UNIT.039",
     "M.TEST_UNIT.104",
     "M.TEST_UNIT.112",
@@ -804,7 +796,6 @@
   {
    "unit": "U25",
    "steps": [
-    "M.SCR.016",
     "M.SCR.017",
     "M.SCR.018",
     "M.SCR.040",
@@ -813,7 +804,6 @@
     "M.SCR.046",
     "M.SCR.047",
     "M.SCR.048",
-    "M.SCR.049",
     "M.SCR.050",
     "M.SCR.051",
     "M.SCR.052",
@@ -1266,9 +1256,9 @@
   }
  ],
  "in_unit_edges_dropped_to_break_cycles": {
-  "blast": 253,
-  "dep-M": 671,
-  "dep-A": 149
+  "blast": 248,
+  "dep-M": 760,
+  "dep-A": 151
  },
  "no_step_changes": [
   "M.SRC_CORE.108",
