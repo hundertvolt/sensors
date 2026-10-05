@@ -338,5 +338,10 @@
   "at": "2026-10-02T11:14:54.618Z",
   "note": "This is a remainder of the promotion process. There is nothing special for any of the builds (apart from some well contained exceptions for dev, which is somewhat special). For all normal builds, especially WoZi, there are no such specialties and they shall be removed from the docs.",
   "status": "ask"
+ },
+ "go-ahead": {
+  "at": "2026-10-05T18:40:04.214Z",
+  "note": "I want one parked item to be fixed: the UART chunking for large allocations. We already applied a very similar mechanism to the Webserver - a reasonably defaulted chunk size constructor argument which limits the maximum size of contiguous allocations. This shall be added here as well.\nA general maximum buffer size, catching uncapped heap flooding in general if too large incoming transmissions occur, is also to be implemented - probably this goes well along with the ring buffer size. Special care must be taken for the ring buffer allocation, this should probably happen during the init phase where the long term survivor allocations are done with the interleaved gc.collect calls, so the ring buffer lands at a benign place of the heap.",
+  "status": "withheld"
  }
 }
