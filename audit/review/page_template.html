@@ -134,6 +134,11 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
 .btn.secondary { background: var(--accent-soft); color: var(--accent); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 .routine-list { display: flex; flex-direction: column; gap: 10px; }
+.decision.settled { border-left-color: var(--line); background: var(--bg); }
+.decision.question { border-left-color: var(--accent); }
+.options { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.options p { margin: 2px 0 0; }
+.options .tag { margin-left: 8px; }
 .notice { background: var(--change-soft); color: var(--ink); border-radius: 8px; padding: 10px 14px; font-size: var(--step--1); }
 .goahead { background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .mobile-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
@@ -198,7 +203,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
     <section id="decisions">
       <span class="eyebrow">Decisions taken on your behalf</span>
       <h2>Decisions to look at</h2>
-      <p class="muted">Where no rule or earlier decision of yours settled a question, I chose the more conservative, easily reversible option. These are those choices, heaviest first.</p>
+      <p class="muted">The few questions still open come first. Below them are the choices I made where no rule or earlier answer of yours decided it, heaviest first, and then the small items settled without you.</p>
       <div id="decisionGroups" class="items"></div>
     </section>
 
@@ -235,11 +240,13 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
   var store = null;
   var LOCAL_KEY = "sensors-review-answers";
   var WEIGHTS = [
+    { key: "open", title: "Still open", text: "The few questions no rule, earlier answer, document or best practice settles. Pick an option, or ask." },
     { key: "significant", title: "Significant", text: "Something you or a user would notice: behaviour, the API, the website, the release, wear or scope." },
     { key: "moderate", title: "Moderate", text: "A design choice inside the code, with a plausible alternative." },
-    { key: "routine", title: "Routine", text: "Mechanical or conventional choices. You can approve them all at once and still answer any single one." }
+    { key: "settled", title: "Settled without you", text: "Small choices, each settled by your earlier answers, a project rule, the docs, best practice, or because it changes nothing that matters. They are recorded as my decisions, not yours, and need no answer. Anything you disagree with, name it in the go-ahead note." }
   ];
   var CHOICES = [["ok", "Fine"], ["change", "Change it"], ["ask", "I have a question"]];
+  var STEPS = { "rule": "Your rules and earlier answers", "style": "Project style elsewhere", "docs": "Documentation and datasheets", "best-practice": "Best practice", "similar": "Same as a similar item", "net-effect": "No net effect that matters" };
 
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -269,7 +276,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
   function loadLocal() { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch (e) { return {}; } }
   function saveLocal() { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(answers)); } catch (e) { /* storage unavailable */ } }
 
-  function decisionIds() { return (DATA.decisions || []).map(function (d) { return d.id; }); }
+  function decisionIds() { return (DATA.decisions || []).filter(function (d) { return d.weight !== "settled"; }).map(function (d) { return d.id; }); }
   function updateMeter() {
     var ids = decisionIds();
     var c = { ok: 0, change: 0, ask: 0 };
@@ -310,7 +317,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
     var topicTitle = (DATA.topicTitles || {})[d.topic] || d.topic || "";
     card.appendChild(el("div", { cls: "topline" }, [el("h3", { text: d.title }), el("span", { cls: "topic-label", text: topicTitle })]));
     var kv = el("dl", { cls: "kv" });
-    [["What I decided", d.decision], ["Why", d.why], ["If you say no", d.if_no], ["The other option", d.alternative]].forEach(function (p) {
+    [["What I decided", d.decision], ["Why", d.why], ["If you say no", d.if_no], ["The other option", d.alternative], ["My reply to your note", (DATA.replies || {})[d.id]]].forEach(function (p) {
       if (!p[1]) return;
       kv.appendChild(el("dt", { text: p[0] })); kv.appendChild(el("dd", { text: p[1] }));
     });
@@ -347,6 +354,72 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
       card.setAttribute("data-status", a ? a.status : "");
       Array.prototype.forEach.call(choices.children, function (b) { b.setAttribute("aria-pressed", a && a.status === b.getAttribute("data-v") ? "true" : "false"); });
       note.hidden = !(a && (a.status === "change" || a.status === "ask"));
+      if (a && document.activeElement !== note && a.note !== undefined && note.value !== a.note) note.value = a.note;
+    }
+    card._paint = paint;
+    paint();
+    return card;
+  }
+
+  function renderSettled(d) {
+    var card = el("article", { cls: "decision settled", id: "d-" + d.id });
+    card.appendChild(el("div", { cls: "topline" }, [el("h3", { text: d.title }), el("span", { cls: "topic-label", text: STEPS[d.step] || d.step })]));
+    var kv = el("dl", { cls: "kv" });
+    var rows = d.outcome ? [["What stands", d.outcome], ["First proposed", d.decision]] : [["What I decided", d.decision]];
+    rows.concat([["How it is settled", d.settled_why]]).forEach(function (p) { kv.appendChild(el("dt", { text: p[0] })); kv.appendChild(el("dd", { text: p[1] })); });
+    card.appendChild(kv);
+    var r = refList(d.refs); if (r) card.appendChild(r);
+    card._paint = function () {};
+    return card;
+  }
+
+  function renderQuestion(q) {
+    var card = el("article", { cls: "decision question", id: "d-" + q.id });
+    var topicTitle = (DATA.topicTitles || {})[q.topic] || q.topic || "";
+    card.appendChild(el("div", { cls: "topline" }, [el("h3", { text: q.question }), el("span", { cls: "topic-label", text: topicTitle })]));
+    card.appendChild(el("p", { cls: "muted", text: q.title }));
+    card.appendChild(el("p", { text: q.context }));
+    var ol = el("ol", { cls: "options" });
+    q.options.forEach(function (o) {
+      var head = el("b", { text: o.label });
+      if (o.label === q.recommended) head.appendChild(el("span", { cls: "tag", text: "recommended" }));
+      ol.appendChild(el("li", {}, [head, el("p", { text: o.consequence })]));
+    });
+    card.appendChild(ol);
+    if (q.member_titles && q.member_titles.length) card.appendChild(el("p", { cls: "muted", text: "This answers: " + q.member_titles.join("; ") + "." }));
+    var choices = el("div", { cls: "choices", role: "group", "aria-label": "Your answer" });
+    var note = el("textarea", { placeholder: "Anything to add, or your question?", "aria-label": "Note for " + q.question });
+    var saved = el("span", { cls: "saved" });
+    var picks = q.options.map(function (o) { return ["ok", o.label]; }).concat([["ask", "I have a question"]]);
+    picks.forEach(function (c) {
+      var b = el("button", { cls: "choice", type: "button", "data-v": c[0], "data-label": c[1], "aria-pressed": "false", text: c[1] });
+      b.addEventListener("click", async function () {
+        var cur = answers[q.id] || {};
+        var body = { status: c[0], choice: c[0] === "ok" ? c[1] : "", note: note.value.trim() || cur.note || "", at: new Date().toISOString() };
+        saved.textContent = "Saving…";
+        saved.textContent = savedText(await writeAnswer(q.id, body));
+        paint();
+      });
+      choices.appendChild(b);
+    });
+    note.addEventListener("change", async function () {
+      var cur = answers[q.id];
+      if (!cur) return;
+      var body = { status: cur.status, choice: cur.choice || "", note: note.value.trim(), at: new Date().toISOString() };
+      saved.textContent = "Saving…";
+      saved.textContent = savedText(await writeAnswer(q.id, body));
+    });
+    card.appendChild(choices);
+    card.appendChild(note);
+    card.appendChild(saved);
+    var r = refList(q.refs); if (r) card.appendChild(r);
+    function paint() {
+      var a = answers[q.id];
+      card.setAttribute("data-status", a ? a.status : "");
+      Array.prototype.forEach.call(choices.children, function (b) {
+        var on = a && (a.status === "ask" ? b.getAttribute("data-v") === "ask" : b.getAttribute("data-label") === a.choice);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
       if (a && document.activeElement !== note && a.note !== undefined && note.value !== a.note) note.value = a.note;
     }
     card._paint = paint;
@@ -410,17 +483,18 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
       var wrap = el("div", { cls: "items", id: "w-" + w.key });
       var head = el("div", { cls: "group-head" }, [el("div", {}, [el("h3", { text: w.title + " (" + list.length + ")" }), el("p", { cls: "muted", text: w.text })])]);
       wrap.appendChild(head);
-      var holder = el("div", { cls: w.key === "routine" ? "routine-list" : "items" });
-      if (w.key === "routine") {
+      var holder = el("div", { cls: w.key === "settled" ? "routine-list" : "items" });
+      var make = w.key === "open" ? renderQuestion : w.key === "settled" ? renderSettled : renderDecision;
+      if (w.key === "settled") {
         (DATA.topics || []).forEach(function (t) {
           var sub = list.filter(function (d) { return d.topic === t.id; });
           if (!sub.length) return;
           holder.appendChild(el("h4", { cls: "eyebrow", text: t.title + " · " + sub.length }));
-          sub.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
+          sub.forEach(function (d) { var c = make(d); cards.push(c); holder.appendChild(c); });
         });
-      } else list.forEach(function (d) { var c = renderDecision(d); cards.push(c); holder.appendChild(c); });
-      if (w.key === "routine") {
-        var det = el("details", {}, [el("summary", { cls: "expand-hint", text: "Show the routine items, grouped by area" }), holder]);
+      } else list.forEach(function (d) { var c = make(d); cards.push(c); holder.appendChild(c); });
+      if (w.key === "settled") {
+        var det = el("details", {}, [el("summary", { cls: "expand-hint", text: "Show the settled items, grouped by area" }), holder]);
         wrap.appendChild(det);
       } else wrap.appendChild(holder);
       groups.appendChild(wrap);
@@ -434,7 +508,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px 10px; bord
     var nav = [["start", "Start here"], ["glance", "At a glance"], ["steps", "Your to-dos"], ["hardware", "Hardware sessions"], ["topics", "Areas"], ["decisions", "Decisions"], ["parked", "Parked"], ["go", "Go-ahead"]];
     var rail = document.getElementById("railNav"), mob = document.getElementById("mobileNav");
     nav.forEach(function (n) {
-      var cnt = n[0] === "decisions" ? String((DATA.decisions || []).length) : n[0] === "topics" ? String((DATA.topics || []).length) : "";
+      var cnt = n[0] === "decisions" ? String(decisionIds().length) : n[0] === "topics" ? String((DATA.topics || []).length) : "";
       rail.appendChild(el("a", { href: "#" + n[0] }, [el("span", { text: n[1] }), el("span", { cls: "count", text: cnt })]));
       if (n[0] !== "start") mob.appendChild(el("a", { href: "#" + n[0], text: n[1] }));
     });
