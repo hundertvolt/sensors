@@ -507,8 +507,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   Part I.4(f.1))." No guard around a setup (every `setup()` is never-raise; one that raises ends the boot, attributed by
   the phase marker); results are discarded (A.U16.17 reads FRAM's state through `fram.initialized`, not this return). After the loop:
   `self._config_faults = [store.module_name for store in self._config_stores if store.faulted]` — the modules whose
-  config file existed at this boot but was unreadable or damaged, fixed for the rest of the boot (a repair write
-  does not clear it), at most one name per store, built once; new `def get_config_faults(self) -> list[str]: return
+  config file existed at this boot but was unreadable (never overwritten) or damaged — unparseable, not a JSON object,
+  or holding a value the schema refuses — fixed for the rest of the boot (the boot's repair write of a damaged file
+  does not clear it; a missing or unknown key alone is a repair, not listed), at most one name per store, built once; new `def get_config_faults(self) -> list[str]: return
   self._config_faults` (the generated `/status` block reads it, M.GEN.008).
 - **Resolved**: `AsyncCallback` (A.U11.S04) vs `setup() -> bool` (A.U10.21) → `SetupFct` (M.SRC_CORE.003 Resolved).
 - **Unit**: U20 (co-lands with the generator's `_collect_setups()` and the guard changes in one commit, A.U11.10 Depends).
@@ -789,18 +790,21 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   None`: `self._bins = [0] * _WINDOW_HOURS` (the one allocation, at construction), `self._hour = 0` (the uptime hour
   the bins were last advanced to). `def _advance(self, now_s: int) -> None`: `hour = now_s // _HOUR_S`; `gap = hour -
   self._hour`; `if gap <= 0: return`; `if gap >= _WINDOW_HOURS:` every bin zeroed; else the bin of each hour
-  `self._hour + 1 … hour` (index `h % _WINDOW_HOURS`) zeroed; `self._hour = hour`. `async def add(self, now_s: int) ->
+  `self._hour + 1 … hour` (index `h % _WINDOW_HOURS`) zeroed; `self._hour = hour`. `def add(self, now_s: int) ->
   None`: `self._advance(now_s)`; `i = self._hour % _WINDOW_HOURS`; `if self._bins[i] < COUNTER_CAP: self._bins[i] += 1`.
-  `async def total(self, now_s: int) -> int`: `self._advance(now_s)`; `s = 0`; per bin `if b >= COUNTER_CAP - s:
+  `def total(self, now_s: int) -> int`: `self._advance(now_s)`; `s = 0`; per bin `if b >= COUNTER_CAP - s:
   return COUNTER_CAP`, `s += b` (checked before the step, so no intermediate leaves the small-int range); `return s`.
-  `async def reset(self) -> None`: every bin zeroed (the hour kept). "# No method awaits, so no lock is needed; kept
-  async for a uniform call shape." as the sibling scalars. `now_s` is the caller's `SysUptime` reading
+  `def reset(self) -> None`: every bin zeroed (the hour kept). All three are plain `def` (nothing in them awaits, and
+  within one coroutine step no other task runs, so no lock is needed): "# Plain methods: nothing here awaits, so no
+  other task can interleave and no lock is needed." `now_s` is the caller's `SysUptime` reading
   (`SystemService.get_uptime()`, measured `TickSeconds`), passed in, so the class holds no clock of its own.
 - **Resolved**: OR137.a (4) asks for "one small reusable primitive (an hourly window counter beside the other shared
   counters)": a class in `asy_base_classes` next to `LockedCounter`, entered in SPEC Part G's catalog. The bins are a
   list of small ints, each capped at `COUNTER_CAP`, so a step stores an immediate value and never allocates; `[0] * 24`
   is far below Part F.1's `[x] * n` fault range; the hour index stays a small int over the whole `COUNTER_CAP` uptime
   range. The value is the window's sum, capped at `COUNTER_CAP`; `reset()` is what `ResetErrors` reaches (M.SRC_NET.129).
+  The methods are plain `def`, not the async sibling-scalar shape: nothing in them awaits (lead ruling 2026-10-05, AC_NOTES
+  54 (4)); the callers (M.SRC_NET.127, .129) call them without `await`.
 - **Unit**: U19 (lands with its first user, the webserver's drop counter: M.SRC_NET.119/.127/.129).
 - **Depends**: M.SRC_CORE.031 (`COUNTER_CAP`); M.TEST_UNIT.343 (driven-clock L1 cases in U19: the bin shift, a gap
   of a day or more, the cap, the reset, zero heap allocation per `add()`/`total()` at `gc.threshold(-1)`).
@@ -1132,7 +1136,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 End state: the schema helpers (unguarded, typed inputs only; malformed schemas rejected statically), the shared
 `compare_before_write()` primitive, `config_filename()`, the four result-word constants, and `ConfigManager`: a store
 that writes the schema defaults once for a genuinely missing file, never overwrites an unreadable one (`writable`),
-records a file that existed but was unreadable or damaged (`faulted`, for `/status` `ConfigFaults`), validates
+records a file that existed but was unreadable or damaged — unparseable, not an object, a refused value — (`faulted`,
+for `/status` `ConfigFaults`; a damaged file is repaired by the boot's one write and stays recorded), validates
 against its own schema, compares in stored form, stages only once its flush task exists, can defer the flush until the
 caller's pushes finish (`commit()`), serialises before opening, closes race-free for a reset and deletes its own file
 for the config reset.
@@ -1394,7 +1399,7 @@ for the config reset.
   in code 9 → M.TEST_UNIT.259, M.TEST_UNIT.306; SPEC C.5.2/C.7.3 → A.S0930.16/.30 (SPEC) with M.SPEC.061, M.SPEC.021.
 - **Kind**: code
 
-### M.SRC_CORE.043 `setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first
+### M.SRC_CORE.043 `setup()`: a missing file written once with defaults; unreadable never overwritten, damaged repaired; file faults recorded; repair serialises first
 - **From**: A.U11.19 (the ENOENT split; its no-write clause superseded by OR136.a (1)), A.U11.20, A.U11.23 (repair
   half), A.U35.43 (2) (`:423`, `:479` `TypeError`), A.U2.07, A.U10.21, A.U36.004 (7), A.U10.45; OR136.a (1)-(4),
   OR138.a (1) (A-C review fold).
@@ -1409,9 +1414,11 @@ for the config reset.
   `_ERR_CFG_NO_DEFAULTS` / `_ERR_CFG_BAD_DEFAULT` (`return False`) and `_WRN_STORED_DEFAULT`; `rewrite` from a readable
   file (bad or missing key, unknown keys → `_WRN_CFG_KEYS_REMOVED`, a readable file with corrupt JSON or a non-object).
   File faults: `self.faulted = True` when the file existed but could not be read (`OSError` other than ENOENT,
-  `MemoryError`) or was damaged as a whole — unparseable JSON (W21) or not a JSON object (W20). A missing or unknown key,
-  or a stored value the schema refuses (W10), is a repair (the one write of this boot), not damage, and sets no flag
-  (lead ruling, 2026-10-05, on OR138.a (1)'s "unparseable or invalid"). The flag is never cleared during the boot, also when the write below repaired
+  `MemoryError`; never overwritten) or was damaged — unparseable JSON (W21), not a JSON object (W20), or holding a
+  stored value the schema refuses (W10 with the key present in the file); those three are repaired by the one write of
+  this boot and stay flagged. A missing key (the same W10, key absent) or an unknown key (W23) is a repair only and
+  sets no flag: schema drift across a firmware update, not damage (lead
+  ruling, 2026-10-05, on OR138.a (1)'s "unparseable or invalid"). The flag is never cleared during the boot, also when the write below repaired
   the file; the module's persisted warning stays (one per boot). Then `self._cache = valid_cfg`, `self.valid = True`;
   no write when not `writable`, when `valid_cfg` is empty (every field special-alone: `self.pr.one(…, "- schema stores
   no values, no file")` — a command-only schema creates no file, and its absence stays that printed note) or when the
@@ -1424,8 +1431,9 @@ for the config reset.
 - **Resolved**: A.U11.19 (missing) and A.U11.20 (unreadable) split HEAD's one `except (MemoryError, OSError, TypeError)`
   by errno; A.U35.43 drops `TypeError` (the filename is a typed `str`). OR136.a (owner, 2026-10-01, the most recent
   owner decision) supersedes OR71.a (2)'s "a first boot with no config file writes nothing": a genuinely absent file is
-  written once at that boot; an unreadable or corrupt file is still never overwritten and a bad, missing or unknown
-  key is still repaired by at most one write per boot (OR71.a (2), unchanged there). OR138.a (1): the flag is the
+  written once at that boot; an unreadable file is still never overwritten, while a damaged one (unparseable, not an
+  object, a refused value) and a missing or unknown key are repaired by at most one write per boot (OR71.a (2); the
+  damaged file stays listed after its repair, OR138.a (1), lead ruling 2026-10-05). OR138.a (1): the flag is the
   store's half of `/status` `ConfigFaults` (the list: M.SRC_CORE.015; the key: M.GEN.008). Wear (CLAUDE.md rule): a
   test that boots a fresh filesystem reaches this write as a prerequisite, not as the write under test, so it stays
   unmarked by `persistence_write` (A-C review fold). One function, two occurrences: a file warning (W20/W21/W10/W22)
@@ -2934,7 +2942,7 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 
 | Fnn | M-ID(s) | action |
 |---|---|---|
-| F01 | M.SRC_CORE.043, .042, .049 (and the section end state); .043 again for the lead ruling of 2026-10-05 (a missing or unknown key and a refused value are a repair; `faulted` only for a file unreadable or invalid as a whole) | amended |
+| F01 | M.SRC_CORE.043, .042, .049 (and the section end state); .043 again for the lead ruling of 2026-10-05 (a missing or unknown key is a repair; `faulted` for a file unreadable, unparseable, not an object or holding a refused value — the last three repaired and still listed; restated by R54 below) | amended |
 | F02 | M.SRC_CORE.133 | added |
 | F02 | M.SRC_CORE.030 | amended |
 | F03 | M.SRC_CORE.043, .049, .015, .008, .042, .011 (.042/.011 per the lead ruling of 2026-10-05: a failed delete is logged and shows as reset reason 9 at the next boot, never an HTTP "Failed") | amended |
@@ -2968,3 +2976,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file (M.SRC_CORE.084/.088 already give `False` for both copies BUSY, as the corrected D-T27 line reads) |
+| R54 | M.SRC_CORE.043 (title, Change, Resolved: unreadable never overwritten; unparseable, non-object and refused-value (W10, key present) files repaired by the boot's one write and flagged; a missing or unknown key a repair only), .015 (`ConfigFaults` list wording), the `config_manager.py` section end state, the F01 row above; .133 (`HourlyWindowCounter` methods plain `def`) | amended |

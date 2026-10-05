@@ -1094,7 +1094,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   setter field the schema declares, plus one `PUT /networking`, one `ResetErrors` and a second system command: every one
   answers "Failed" (or the gate's same-command "Valid" with nothing new started), and `scd30_nvm_writes()` is unchanged
   from the moment the command was accepted to the reset. (9) New: `resetconfig` on a device whose `config_NTP.cfg` was
-  replaced by corrupt JSON before boot — `GET /status` lists `"NTP"` in `ConfigFaults` before the command; after the
+  replaced by corrupt JSON before boot — the boot repairs it and `GET /status` still lists `"NTP"` in `ConfigFaults`
+  before the command; after the
   reset and a rebuild over the same directory every schema-backed file exists once with its defaults and `ConfigFaults`
   is `[]`.
 - **Resolved**: —
@@ -1127,7 +1128,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   refusal and reading 0 after `PUT /status {"ResetErrors": true}` (the window cleared, OR137.a (2)); `ConfigFaults`
   listing exactly the modules whose file was planted unreadable (`OSError(5)` on its read) or damaged (corrupt JSON, a
   non-object, a value outside its field) before the boot, and still listing a damaged one
-  after the boot repair rewrote its file (OR138.a (1)). (5) Build info equals
+  after the boot repair rewrote its file, never a module whose file only lacked a key or held an unknown one (repaired,
+  not listed) (OR138.a (1)). (5) Build info equals
   the generated module's embedded values via `src_const` (A.U24.63). (6) New non-finite scenario: every float field and
   float config value set to NaN/±inf in turn, every GET route strict-parses with `null` there (A.U10.27). (7) New
   serving-demand scenario (A.U19.13's L1). Keys follow A.U10.40's map as it lands.
@@ -2023,3 +2025,4 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.TEST_HELP.040 (scenario 9: the boot repairs the corrupt file, still listed), M.TEST_HELP.041 (a missing or unknown key alone is never listed) | amended |

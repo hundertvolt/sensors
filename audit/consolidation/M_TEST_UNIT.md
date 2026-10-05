@@ -5026,7 +5026,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Site**: new section after the shared-scalar tests (`tests/test_base_classes.py`, after M.TEST_UNIT.225's section).
 - **Change**: section comment "# The hourly window counter (SPECIFICATION.md G): 24 fixed bins advanced lazily from the
   uptime seconds; a count leaves the window 23-24 hours after it happened." The uptime seconds are fed from the test
-  (the primitive reads the `SysUptime` count it is given, OR137.a (1); its call shape follows the product change).
+  (the primitive reads the `SysUptime` count it is given, OR137.a (1)); every call is a plain one — `add(now_s)`,
+  `total(now_s)`, `reset()`, no `await` (M.SRC_CORE.133's plain methods).
   Cases: `test_counts_in_one_hour_sum` (three adds at t, t + 10 s, t + 3599 s → 3); `test_the_bins_shift_hour_by_hour`
   (one add per hour for 30 hours → 24 after the 30th, the oldest six gone; a read at the start of hour h + 24 no longer
   holds hour h's count); `test_a_count_leaves_the_window_between_23_and_24_hours` (an add at the end of an hour still
@@ -5036,8 +5037,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   exceeds it read `COUNTER_CAP`, driven by setting the bins from the test, never by a brute-force loop — CLAUDE.md's
   structural-proof rule); `test_reset_clears_every_bin` (then counting resumes in the current hour);
   `test_no_add_or_read_allocates` (at the process's GC stage, no in-body `gc.threshold` (A.U30.12/.13): `gc.mem_alloc()`
-  does not rise across 1 000 adds and reads spanning several hour changes, after one warm-up add — the bins are
-  allocated once at construction); `test_the_bins_are_allocated_once_at_construction` (the bin store's identity
+  does not rise across 1 000 plain, un-awaited adds and reads spanning several hour changes, after one warm-up add —
+  the bins are allocated once at construction; with no coroutine in the measured path the zero holds literally); `test_the_bins_are_allocated_once_at_construction` (the bin store's identity
   unchanged across adds, reads, hour changes and `reset()`).
 - **Resolved**: —
 - **Unit**: U19 (the primitive lands with its first user, OR137.a).
@@ -5504,14 +5505,16 @@ session lock names, and the fake's rp2 probe/scan semantics.
   M.TEST_UNIT.257's `:2301`). Config faults (OR138.a (1), U11
   stage of the fault state): a file that is unparseable (`:929` corrupt JSON), not an object, or invalid (a value outside
   its field) reports the store's config fault after `setup()`, and still reports it after the boot repair rewrote the
-  file; an absent file, a valid file and a directory path report none (the directory is `CFG_PATH_IS_DIR`'s refusal,
-  not a file that existed) — the fault accessor is M.SRC_CORE's (M.SRC_CORE.043, M.SRC_CORE.049).
+  file (`WriteCountingOpen(cm)`: exactly one write, the file then valid JSON holding the defaults for what was lost);
+  a readable file whose only fault is a missing key or an unknown key is repaired by that one write and reports none
+  (schema drift, not damage); an absent file, a valid file and a directory path report none (the directory is
+  `CFG_PATH_IS_DIR`'s refusal, not a file that existed) — the fault accessor is M.SRC_CORE's (M.SRC_CORE.043, M.SRC_CORE.049).
 - **Resolved**: A.U11.19's "a missing file writes nothing" (OR71.a (2)'s first-boot clause) is superseded by OR136.a
   (most recent owner decision wins): the HEAD expectations of `:838`, `:1074-1116`, `:1200`, `:1347`, `:1449` and `:2395`
   return, `:838` gaining the write count; A.U11.19's surviving halves stay — the unreadable file (M.TEST_UNIT.254), the
-  command-only schema (`:1118`) and the error-history codes. Which damaged shapes count as "invalid" (a value outside its
-  field certainly; a missing or unknown key per M.SRC_CORE's definition) is decided with the product change, the rows
-  following it.
+  command-only schema (`:1118`) and the error-history codes. Which shapes count as damage is settled (lead ruling
+  2026-10-05 on OR138.a (1), M.SRC_CORE.043): unparseable, not an object, or a value the schema refuses — each repaired
+  and still listed; a missing or unknown key is a repair only, not listed.
 - **Unit**: U11 (stages U2 codes, U14 comment; the version stamp with the pin move, U0/U37).
 - **Depends**: M.SRC_CORE.043 (as the fold amends it, OR136.a); M.SRC_CORE.043, M.SRC_CORE.049 (the config-fault state);
   M.TEST_HELP.062 (`WriteCountingOpen`).
@@ -6826,8 +6829,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   after it); A.U32.06 (`get_last_task_end()`: `None` before, `{"Task": "X", "Uptime": <fake uptime>}` after, a starter
   raising at start sets nothing, two tasks of one module differ); A.U11.10 (`run_setups()` awaits in order, feeds once
   after each, collects N + 1 times with the feed first, a raising setup propagates and nothing after it runs;
-  `get_config_faults()` after the batch names each faulted store's module once, in list order, omits a store that
-  repaired a missing key, and keeps its list after a later repair write — A-C review fold); A.S0930.24
+  `get_config_faults()` after the batch names each faulted store's module once, in list order — an unreadable file's
+  store and a store whose unparseable or value-refused file the boot repaired alike — omits a store that only repaired a
+  missing or unknown key, and keeps its list after a later repair write — A-C review fold); A.S0930.24
   (a)-(e) and A.S0930.36 (a)-(e) as listed there (takeover leaves direct/supervisor/`run_setups()` feeds unchanged; the
   healthy count `2 + stores + chunks + tasks + (…) + 1` with the gap bounds from `_TASK_CHECK_TIME` read from source; one
   hang test per step S1-S6, 1 s pumped with `feed_count` frozen; the S6 arm failure; a refused command never stops the
@@ -7309,13 +7313,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
   removal trigger: SPECIFICATION.md B.15." with `<pin>` the version the A.SDEP.08 re-check confirms. `_make_request()`
   passes `sock=(_NoopHolder(), _NoopHolder())` (a file-local one-method `hold()` fake, as M.TEST_UNIT.196).
   `_make_app()` builds `WebserverService(app, RouteSources([], [], None, None, None, None, [], [], []),
-  ServingLimits(<each field from its src/ default via src_const>), StaticSite("/html", "index.html", None))` and runs
-  `run(service.setup())`, unbounded like the file's dispatch calls.
+  ServingLimits(<each field from its src/ default via src_const>), uptime_s=_uptime_s, static=StaticSite("/html",
+  "index.html", None))` — `uptime_s` and `static` by keyword, since the required `uptime_s` sits before `static`
+  (M.SRC_NET.119); `_uptime_s` a file-local `async def _uptime_s() -> int: return 0` (no drop is counted here) — and
+  runs `run(service.setup())`, unbounded like the file's dispatch calls.
 - **Resolved**: A.U23.47 retypes the local `run()`; A.U24.08 deletes it for the shared harness, whose `Coroutine` alias
   carries the typing — the deletion is the end state. Test files do not import one another, so A.U19.05's "through
   A.U5.04's helper" is the same three-object construction written here, not an import of `test_asy_webserver_service`'s
   `_make_service()`.
-- **Unit**: U24 (stages U0 imports, U5 objects, U8/U0 stub re-vendor, U19 `sock`, U20 noqa, U27 trigger). The `:15`
+- **Unit**: U24 (stages U0 imports, U5 objects, U8/U0 stub re-vendor, U19 `sock` and the keyword `uptime_s=`/`static=`
+  with M.SRC_NET.119's required reader — without it the positional `StaticSite` binds to `uptime_s` and the file fails
+  from U19 to U24, U20 noqa, U27 trigger). The `:15`
   `noqa` goes in U20, in the commit that adds `allowed-unused-imports = ["frozen_html"]` (M.TOOL.031's U20 stage): RUF100
   fails on the stale `noqa` the same day, so it cannot wait for U28 (M_TOOL gap 5, gap pass G3).
 - **Depends**: M.TEST_HELP.008 (`_strict_json`), .043, .044, .055 (`_twin_devices`);
@@ -8384,3 +8392,4 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | M.TEST_UNIT.291 (and the D-T27 entry of the agent-decision list) | amended |
+| R54 | M.TEST_UNIT.253 (damaged files rewritten once and still faulted; missing/unknown key repaired, not faulted; Resolved settled), .309 (`get_config_faults()` cases), .343 (plain calls to the window counter), .332 (U19 stage: `uptime_s=`/`static=` by keyword) | amended |

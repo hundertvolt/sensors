@@ -2026,9 +2026,12 @@ added, unmodified upstream stubs, A.U8.23).
 - **Unit**: U19 (staged: U5 objects/`log`, U10 cap/setup, U19 the window and `uptime_s` with M.SRC_CORE.133, U31 ms
   attributes)
 - **Depends**: M.SRC_NET.112, M.SRC_NET.124, A.U10.01, M.SRC_CORE.133 (U19); M.TEST_UNIT.202 (`_make_service()`
-  passes `uptime_s`; the window's L1 cases at the drop sites) and M.TSC.112 (A.U10.22's scope) co-land
+  passes `uptime_s`; the window's L1 cases at the drop sites), M.TEST_UNIT.332's U19 stage (`uptime_s=` by keyword) and
+  M.TSC.112 (A.U10.22's scope) co-land
 - **Blast carried by**: generated `_emit_webserver()` builds the three objects from TOML values and `src/` constants →
   A.U5.04/A.U5.05 (GEN), with `uptime_s=sysfunct.get_uptime` → M.GEN.009 (U19 stage); `_make_service()` test helper builds the objects (153 call sites unchanged) → A.U5.04 (tests);
+  `tests/test_website_build_integration.py`'s `_make_app()`, which builds the service positionally, passes `uptime_s=`
+  (and `static=`) by keyword from U19 → M.TEST_UNIT.332 (U19 stage);
   route-table equality test → A.U19.20 (tests); tests reading `_per_call_timeout_s`/`_outer_cap_s` → `_ms` → A.U31.18
   (tests); SPEC A.5/A.8/H.7/I.3 constructor mentions, A.7 step 14, G.2 config-object entry → A.U5.04 (docs)
 - **Kind**: code
@@ -2220,8 +2223,8 @@ added, unmodified upstream stubs, A.U8.23).
   (`_StreamLike` annotations), A.U0.29 (`:698` comment), A.U30.19, A.U10.01 (the gauge's cap); OR137.a (1), (3) (the window, a trace without a running total; A-C review
   fold)
 - **Site**: `src/asy_webserver_service.py:692-731`
-- **Change**: new `async def _note_drop(self, wrnno: int, what: str) -> None: await self._dropped.add(await
-  self._uptime_s()); await self.pr.wrn_s(what, wrnno=wrnno)` (each drop still traces once, without a running total,
+- **Change**: new `async def _note_drop(self, wrnno: int, what: str) -> None: self._dropped.add(await
+  self._uptime_s()); await self.pr.wrn_s(what, wrnno=wrnno)` (the counter's methods are plain `def`, M.SRC_CORE.133) (each drop still traces once, without a running total,
   OR137.a (3); one comment line: "# One entry
   per event; a run of identical codes spends one history slot (print_log's newest-entry rule)."). `async def
   _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:` (the `Any` comment `:693-695` goes: the one
@@ -2292,10 +2295,10 @@ added, unmodified upstream stubs, A.U8.23).
   `get_task_starters(self) -> "list[TaskStarter]": return [self.start_asy_serve]`; `get_timer_starters(self) ->
   "list[Callable[[], None]]": return []` with the comment "# No machine.Timer in this module: kept empty, not omitted, so
   callers treat every module alike (SPECIFICATION.md C.9)."; `get_error_sources(self) -> "list[ErrorSource]"` (comment
-  kept); `get_loggers()` unchanged; new `async def get_dropped_count(self) -> int: return await
+  kept); `get_loggers()` unchanged; new `async def get_dropped_count(self) -> int: return
   self._dropped.total(await self._uptime_s())` (the drops of the last 24 hours, hourly resolution, capped at
-  `COUNTER_CAP`); `async def reset_error_counter(self) -> bool: await self._dropped.reset(); return await
-  self.pr.reset()` (`ResetErrors` clears the window, OR137.a (2)).
+  `COUNTER_CAP`; `total()` and `reset()` are plain calls, M.SRC_CORE.133); `async def reset_error_counter(self) -> bool:
+  self._dropped.reset(); return await self.pr.reset()` (`ResetErrors` clears the window, OR137.a (2)).
 - **Resolved**: HEAD's "found missing entirely during the Step 7 audit, unlike those two" names a temporary plan step
   (G9/R12: permanent text cites no temporary plan by section or number) and is history (CLAUDE.md working agreement);
   no action carries it — rewritten here.
@@ -2623,7 +2626,8 @@ annotation-only change carries none, per its constituent. No merged change here 
   `_DIAG_RESYNC_STREAK` unchanged.
 - **Resolved**: A.U3.08 "prints 'Resyncing the link' and persists W54 only when `_drain_bound_hit`" with "W11's precedence
   kept" — written as one or the other (the persisted W54 text says it resynced), matching HEAD's one-slot precedence. A W54
-  and a following 91 (through `_err()`) are two conditions — the drain bound and an unintelligible link — so both
+  and a following E89 `UART_LINK_UNINTELLIGIBLE` (through `_err()`; 89 per M.SRC_NET.153 and M.GEN.034's band order,
+  91 being `UART_POLL_RATE`) are two conditions — the drain bound and an unintelligible link — so both
   persist — the narrowed pair scan (an error and a warning for one occurrence in
   one function, owner, 2026-09-26) allow-lists it with that reason (A-C review fold).
 - **Unit**: U17. Staged: U3 (logging), U17 (count, cap).
@@ -3867,3 +3871,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.SRC_NET.127, .129 (the window counter called without `await`), .162 (the unintelligible-link code is E89, as .153 and the catalog number it), .119 (Blast and Depends name M.TEST_UNIT.332's U19 `uptime_s=` stage) | amended |

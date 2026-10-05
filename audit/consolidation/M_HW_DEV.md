@@ -270,7 +270,8 @@ changes cite.
   directory and persist a CFGMGR write-failure entry per store. A created and removed scratch directory keeps G1/R07's
   "never write over a production config file" at one prerequisite write per store and run (agent, 2026-10-05; the
   alternative, building over the production files, writes nothing on a board in the standard state but touches a
-  production file whenever one is absent or damaged).
+  production file whenever one is absent or damaged — the boot's one repair write rewrites a damaged file, which
+  stays listed in `ConfigFaults`, lead ruling 2026-10-05 on OR138.a (1)).
 - **Unit**: U26 (after U20/U11/U10's API lands).
 - **Depends**: M.SRC_CORE (`start_tasks`, `run_setups`, `boot_phase`), M.GEN (`_collect_setups()`, required
   `watchdog`), M.SRC_CORE.043 (OR136.a: an absent file is written once with its defaults).
@@ -2979,3 +2980,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F31 | — | none in this file |
 | F32 | convention B4, AD-1; M.HW_DEV.048, .050, .081, .089, .139, .141; .120, .144, .145 | amended (bounded polls; .120/.144/.145 kept as measured delays with their reason) |
 | F33 | — | none in this file |
+| R54 | M.HW_DEV.009 (Resolved: the boot repair rewrites a damaged production file, which stays listed) | amended |

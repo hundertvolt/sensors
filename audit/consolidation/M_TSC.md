@@ -2211,7 +2211,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Change**: AST scan of every function in `src/*.py` and every generated device module (built into `tmp_path` over
   `DEVICE_NAMES`): a persisted `err_s` and a persisted `wrn_s` reachable one after the other on one straight-line path of
   the same function, with no `return` between, fail unless allow-listed with both events named and why they are two
-  occurrences; two `err_s` or two `wrn_s` on one path pass (same kind), and an entry in another function or layer is
+  occurrences. The scan first resolves each module's persisting wrappers: a method of that module whose body persists
+  through `err_s` (or `wrn_s`) counts as that kind at its call sites, so UART `_resync()`'s `wrn_s` then
+  `self._err(…)` (whose body calls `self.pr.err_s`) is seen as a mixed pair; a bite plants a wrapper-only pair and
+  fails. Two `err_s` or two `wrn_s` on one path pass (same kind), and an entry in another function or layer is
   never paired (cross-layer entries allowed). The allow-list holds only the mixed pairs whose reasons still hold in the
   tree U3 leaves: ISL `_recover_brownout()` and `_check_divergence()` (the event, then a failed re-apply), UART
   `_resync()` (the drain bound and an unintelligible link are separate conditions), `set_write_protected()` (the
@@ -2226,9 +2229,14 @@ where a test pins an SCR product, the constituent action is cited and the depend
   entries in that one function (M.SRC_CORE.088, U16). Bites (synthetic `tmp_path` copies): a planted `wrn_s` then
   `err_s` for one occurrence fails naming the function; a planted second `err_s` after an `err_s` passes.
 - **Resolved**: A.U3.11's pair scan enforced the dropped one-entry rule; the lead's ruling keeps it for the
-  fault-or-warning half only, the half OR140.a (7) does not touch.
-- **Unit**: U3
-- **Depends**: A.U3.06, A.U3.08 (kept; SRC) — the scan reads the tree U3 leaves.
+  fault-or-warning half only, the half OR140.a (7) does not touch. Wrapper resolution and the U15/U16 stages: lead
+  ruling 2026-10-05 (AC_NOTES 54 (5)) — without the first, UART `_resync()`'s listed pair would never be seen and the
+  exact-list check would fail it as stale.
+- **Unit**: U3. Stages: U15 (ISL `_recover_brownout()` leaves the allow-list, with M.SRC_SENS.076's move of its fault into
+  `_reapply_configuration()`), U16 (`set_write_protected()` leaves with M.SRC_CORE.105; the FRAM manager's `_read()`
+  joins with M.SRC_CORE.088).
+- **Depends**: A.U3.06, A.U3.08 (kept; SRC) — the scan reads the tree U3 leaves; M.SRC_SENS.076 (U15 stage),
+  M.SRC_CORE.105, M.SRC_CORE.088 (U16 stage).
 - **Blast carried by**: SPEC C.7 names the check and its rule (fault or warning, never both; one entry per layer) →
   M.SPEC.058.
 - **Kind**: test
@@ -4959,3 +4967,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.TSC.111 (persisting-wrapper resolution, so UART `_resync()`'s `self._err()` pair is seen; U15 and U16 stages for the allow-list edits) | amended |

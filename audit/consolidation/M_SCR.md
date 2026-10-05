@@ -1473,10 +1473,11 @@ Conventions used below (each defined once, then cited):
   dir; the relaunch writes each schema-backed file exactly once, holding its schema defaults (OR136.a (1): the
   config dir's files counted against the build's schema-backed stores, none for a command-only schema), Hostname
   from the TOML, `ResetReason` 7, `ConfigFaults` empty; a damaged-file cell: a launch whose config dir holds one module's
-  file as bytes that are not JSON and another's with a key out of range → `/status` `ConfigFaults` names both, the
-  corrupt file's bytes unchanged after the boot, the bad-key file repaired by one write (and still listed for that
-  boot); then `resetconfig` deletes both without reading them, and the relaunch shows `ConfigFaults` empty and every
-  file at its defaults (OR138.a (1), (2)); `erasefram` → `Valid`, reset exit, every FRAM-backed counter 0, `ResetReason` 8; the
+  file as bytes that are not JSON, another's with a key out of range and a third's missing one key → `/status`
+  `ConfigFaults` names the first two only; each of the three files is rewritten by one write at that boot (the
+  unparseable one to its defaults, the other two with the value restored), the first two still listed for that
+  boot, the missing-key one a repair only; then `resetconfig` deletes every file without reading it, and the relaunch
+  shows `ConfigFaults` empty and every file at its defaults (OR138.a (1), (2)); `erasefram` → `Valid`, reset exit, every FRAM-backed counter 0, `ResetReason` 8; the
   near-miss list → `Invalid`, serving continues; `PUT /system {"DebugLevel": 4}` then `reboot` → the S1-S4 step lines in
   order, no S5, `machine reset: kind=reset`, `ResetReason` 3, `DebugLevel` 4 kept, every FRAM history ⊇ before; the same
   for `bootloader` (`kind=bootloader`, code 4); `would_have_triggered_count == 0` on every launch. The states and hangs are
@@ -2517,3 +2518,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.SCR.060 (damaged-file cell: the unparseable and out-of-range files rewritten by one write and still listed, a missing-key file repaired and not listed; no longer "corrupt bytes unchanged") | amended |

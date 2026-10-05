@@ -615,8 +615,10 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   clearing; power-cycle a unit whose I2C sensors stay unreadable after a reboot; the reflash runbook in README.md
   "Moving a legacy unit to this firmware"), with the labels as the definitions carry them at landing; and (A-C review
   fold) after the Last Reset Reason item, one more: "**Config Faults** (Status) names a module whose config file existed
-  at this boot but could not be read or was damaged; it runs on its defaults until fixed, and **Reset to defaults**
-  deletes every config file, damaged ones included, after which each is written once with its defaults (owner,
+  at this boot but could not be read or was damaged (unparseable, not a JSON object, or holding a value the schema
+  refuses). An unreadable file is never overwritten and its module runs on its defaults; a damaged one was rewritten
+  at this boot, its lost values back at their defaults, and stays listed until the next boot. **Reset to defaults**
+  deletes every config file, unreadable ones included, after which each is written once with its defaults (owner,
   2026-10-01)." The `ForceCalRef`
   item cites the FRC readiness defaults by their SPECIFICATION.md Part N rows (`sens.scd30_frc_*`), not by value; the
   bench measures them in phase C (M.HW_BENCH.085, R5), and that round's delta (A.C.10) restates any figure this file
@@ -1974,17 +1976,20 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
   through `ConfigManager`: on an accepted PUT that changed a value; at boot, once with the schema defaults when a config
   file is genuinely absent — after a fresh flash, a filesystem erase or "Reset to defaults" (owner, 2026-10-01: 'if the
   file is genuinely missing, it shall be written once with defaults') — or in at most one repair per boot of an
-  existing, readable file with a bad, missing or unknown key (owner, 2026-09-26); or by the `SystemCmd`
+  existing, readable file with a bad, missing or unknown key (owner, 2026-09-26) or that is damaged — unparseable or
+  not a JSON object (owner, 2026-10-01); or by the `SystemCmd`
   `"resetconfig"`, which deletes every config file without reading it (owner, 2026-09-30; unread, owner, 2026-10-01).
   The SCD30's NVM is written only on an accepted PUT that changed a value or by a command the PUT names (`AmbPres` and
   `ForceCalRef` always send; `ContMeas` false stops measurement, whose status the chip keeps in NVM). A file that cannot
-  be read or is corrupt is never overwritten — it is listed in `/status` `ConfigFaults` — a command-only schema has no
+  be read is never overwritten; it and a damaged file (unparseable, not an object, a refused value — repaired by the
+  boot's one write) are listed in `/status` `ConfigFaults` for that boot. A command-only schema has no
   file, and nothing re-runs a write on its own: no timer, retry or cross-boot flag. FRAM is outside this rule. Full
   account: SPECIFICATION.md C.7.3 and F.2."
 - **Resolved**: A.U0.32 rewrites the head and drops the foreclosure (U0); A.U36.034 rewrites the safety sentence (U36);
   A.U36.544 removes the item-6 pointer (U36) — merged. A.U36.034 (2)'s "A missing config file creates nothing" is
   superseded by OR136.a (owner, 2026-10-01), its "an unreadable one is never overwritten" kept and joined by OR138.a's
-  fault list (A-C review fold).
+  fault list (A-C review fold); a damaged file (unparseable, non-object, refused value) is repaired by the boot's one
+  write and still listed, a missing or unknown key is a repair only (lead ruling 2026-10-05 on OR138.a (1)).
 - **Unit**: U36. Stage U0.
 - **Depends**: SPEC C.7.3, F.2 (SPEC; M.SPEC.061, M.SPEC.096 as the fold amends them)
 - **Blast carried by**: M.DOCS.063 (item 6 stub deleted); the wear rule's fresh-filesystem sentence → M.DOCS.086
@@ -3033,6 +3038,7 @@ file's (M_HW_BENCH, M_TWIN): their F01/F04/F13/F16/F20 wording is those agents'.
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.DOCS.026 (Config Faults item: unreadable never overwritten, damaged repaired and listed), M.DOCS.082 (write list gains the damaged-file repair; the never-overwritten sentence narrowed to unreadable files) | amended |
 
 **F21 map** — where this file writes each answered decision's tag. "explicit": written in the change; "conv.": the tag
 sits in an action's text the change quotes and takes the convention's form at landing; "—": no tag written here.

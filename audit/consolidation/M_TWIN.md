@@ -2931,9 +2931,10 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   window that covers every SCD30 cycle, the twin chip's NVM write counter (`Scd30Chip.nvm_writes`, M.TWIN.013) does not
   move; then for each of the four words in turn, from acceptance to the armed reset, every SCD30 setter field sent through
   the webserver's own in-process dispatch (the path the REST handler takes, G7/R19) at each step the sequence awaits
-  answers "Failed" and the counter does not move; `test_a_damaged_config_file_is_listed_then_deleted_and_rewritten_once` —
-  a corrupt-JSON `config_SYSTEM.cfg` planted in the run's config dir before the boot: the system status data the `/status`
-  route serialises lists `"SYSTEM"` in `ConfigFaults`; `resetconfig` reaches the armed reset with no schema-backed file
+  answers "Failed" and the counter does not move; `test_a_damaged_config_file_is_repaired_listed_then_deleted_and_rewritten_once` —
+  a corrupt-JSON `config_SYSTEM.cfg` planted in the run's config dir before the boot: the boot's one write repairs it
+  (valid JSON at its defaults) and the system status data the `/status` route serialises still lists `"SYSTEM"` in
+  `ConfigFaults`; `resetconfig` reaches the armed reset with no schema-backed file
   left (none read); a second boot over the same dir writes each file once with its defaults (OR136.a (1)) and
   `ConfigFaults` is `[]`.
 - **Resolved**: —
@@ -4203,3 +4204,4 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F31 | M.TWIN.146 | amended |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.TWIN.104 (the damaged-config case: the boot repairs the corrupt file and it stays listed; test renamed `…_is_repaired_listed_then_deleted_and_rewritten_once`) | amended |

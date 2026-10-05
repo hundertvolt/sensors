@@ -244,7 +244,8 @@ change lists its stages; the end state is the last stage's.
   NTP half from one `ntp.get_data()` as `NTPSynced`/`NTPLastSyncAge`/`NTPLastSync`, `"HTTPDropped": await
   webserver.get_dropped_count()`, `"WifiTS": wifi.TS`; `_system_status()`: `SysUptime`, `BootSignature`,
   `"ResetReason": sysfunct.get_reset_reason()`, `"MemFree": gc.mem_free()`, `MemPaused`, `"ConfigFaults": sysfunct.get_config_faults()` (the modules whose config
-  file was unreadable or damaged at this boot, fixed at the end of the setup batch, M.SRC_CORE.015), `"LastTaskEnd":
+  file was unreadable or damaged — unparseable, not an object, a refused value; repaired at boot and still listed — at
+  this boot, fixed at the end of the setup batch, M.SRC_CORE.015), `"LastTaskEnd":
   sysfunct.get_last_task_end()`, `LocalTime`, `utc = time.gmtime() if await ntp.ntp_issynced() else None` then
   `"UTCTime": _gmtimestruct_to_dict(utc)`, `"UnixTime": utc_now()`; `_notification_status()` unchanged in role. No
   `get_wlan_ifconfig`/`get_wlan_rssi` calls; no `assert` lines; every instance reference via `instance_var()`.
@@ -400,7 +401,8 @@ change lists its stages; the end state is the last stage's.
   "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down.", the `IP` row goes (`IPv4` stays), new `HTTPDropped` ("Dropped
   Connections", readonly, description "Web connections dropped in the last 24 hours, hourly resolution.") and `WifiTS` ("Wi-Fi Status Time", readonly, `format` epoch);
   system fields add `ConfigFaults` ("Config Faults", readonly, description "Modules whose config file existed at
-  this boot but could not be read or was damaged; empty when none. Listed until the next boot."), `MemFree` (A.U6.22), `ResetReason` (A.U6.23, `"codes"` inlined from `error_catalog.json`'s
+  this boot but could not be read or was damaged (a damaged file is repaired at boot); empty when none. Listed until
+  the next boot."), `MemFree` (A.U6.22), `ResetReason` (A.U6.23, `"codes"` inlined from `error_catalog.json`'s
   `status.ResetReason` table), `LastTaskEnd` (`"format": "lasttaskend"`, A.U32.06's label/description), `UTCTime`
   (renamed), `UnixTime` ("Device Clock", unit s, A.U23.22's description, after `UTCTime`); maintenance group: SGP40 rows
   built from the driver's `@web BackupTS`/`RestoreTS` tags per instance (key `f"{resolved_name}_{field}"`, `"path":
@@ -2001,3 +2003,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+| R54 | M.GEN.008 (`ConfigFaults` comment: damaged = unparseable, non-object, refused value, repaired and listed), M.GEN.014 (field description: a damaged file is repaired at boot) | amended |

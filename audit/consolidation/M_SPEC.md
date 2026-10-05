@@ -903,9 +903,10 @@ Conventions every merged change below applies (stated once, not repeated per cha
      G.2), each bin and the sum capped at `COUNTER_CAP`, so a drop leaves the count 23-24 hours after it happened; no
      drop, read or hour change allocates; `ResetErrors` clears it; each drop is also traced once (A.5; owner,
      2026-10-01). `ConfigFaults`: the names of the modules whose config file existed at this boot but could not be read
-     or was damaged (unparseable or invalid), an empty list when there are none — fixed when the boot setup batch ends
-     (A.7), bounded by the build's config stores, and a module stays listed for the rest of the boot even when the boot
-     repair rewrote its file; the module's persisted warning stays, once per boot (owner, 2026-10-01).
+     or was damaged (unparseable, not a JSON object, or holding a value the schema refuses), an empty list when there
+     are none — fixed when the boot setup batch ends (A.7), bounded by the build's config stores, and a module stays
+     listed for the rest of the boot even when the boot repair rewrote its file; a missing or unknown key alone is a
+     repair, not listed (C.7.3); the module's persisted warning stays, once per boot (owner, 2026-10-01).
      `SGP40_BackupTS`/`SGP40_RestoreTS`: `null` = none since boot, `0` = no timestamp (owner, 2026-09-29). `errcount`:
      one entry per module plus one per `ConfigManager` (`CFGMGR_<name>`)."
   4. Code tables: "Every `/status` code table — `ResetReason` here, `FRCState` (M.2), `VOCState` (M.3), `CalLight`
@@ -2238,12 +2239,13 @@ Conventions every merged change below applies (stated once, not repeated per cha
   open fails with ENOENT: after a fresh flash, a filesystem erase or "Reset to defaults") is written once, at that
   boot, with the schema defaults, through the same compare-before-write path as every other write, so every module's
   file exists after the first boot (owner, 2026-10-01). A command-only schema persists no field and has no file to
-  write; its absence stays a printed note. A file that exists but cannot be read (an I/O error, `MemoryError`) or is
-  corrupt is served from defaults and never overwritten (owner, 2026-09-26); a readable file with a bad, missing or
-  unknown key gets at most one repair write per boot (owner, 2026-09-26). A module whose file existed at this boot but
-  could not be read or was damaged (unparseable or invalid) is listed in `/status` `ConfigFaults` for the rest of the
-  boot, even after the boot repair rewrote its file, and keeps its persisted warning, once per boot (A.8; owner,
-  2026-10-01)." "Before this, a failed setup write left the manager
+  write; its absence stays a printed note. A file that exists but cannot be read (an I/O error, `MemoryError`) is
+  served from defaults and never overwritten (owner, 2026-09-26); a readable file with a bad, missing or unknown key
+  gets at most one repair write per boot (owner, 2026-09-26), and so does a damaged one — unparseable, not a JSON
+  object, or holding a value the schema refuses (owner, 2026-10-01). A module whose file existed at this boot but
+  could not be read or was damaged is listed in `/status` `ConfigFaults` for the rest of the boot, even after the boot
+  repair rewrote its file, and keeps its persisted warning, once per boot (A.8; owner, 2026-10-01); a missing or
+  unknown key alone is a repair, not listed — schema drift across a firmware update, not damage." "Before this, a failed setup write left the manager
   invalid: … (owner, 2026-09-24)." → "Were a failed setup write to leave the manager invalid, every reader's init would
   fail, the supervisor would reboot and every boot would repeat the write — a reboot loop writing the flash each pass
   (owner, 2026-09-24)." (2) Write-site list: "`setup()` writes at most once, only when the file is missing or needs
@@ -6714,6 +6716,7 @@ C9 (above Part A) fixes the review-answer tag form.
 | F31 | M.SPEC.023 (A.10 clock-jump sentence) | amended |
 | F32 | M.SPEC.077 (E.2.3 "Waits poll") | amended |
 | F33 | — | none in this file |
+| R54 | M.SPEC.061 (C.7.3: an unreadable file never overwritten; a damaged one — unparseable, non-object, refused value — repaired and listed; a missing or unknown key not listed), M.SPEC.021 (A.8 `ConfigFaults` wording), the F03/F01 note below | amended |
 
 **F21 map** — where this file writes each answered decision's tag (C9). "explicit": the tag is written in the change;
 "C9": the tag sits in an action's text the change quotes and takes the C9 form at landing; "—": this file writes no tag
@@ -6804,8 +6807,10 @@ for it.
   logged and reads as reset reason 9 at the next boot, never an HTTP "Failed" (M.SPEC.021, M.SPEC.061).
 - F28: `SystemService` carries no `initialized`; product code reads the flag only in the FRAM driver, the SPI driver,
   `UARTComm` and `asy_print_log.py` (M.SPEC.070).
-- F03/F01: "corrupt" (unparseable) files are never overwritten; a readable file with a bad, missing or unknown key gets
-  its one repair; both kinds are listed in `ConfigFaults` (OR136.a (2), OR138.a (1)).
+- F03/F01 (restated by the lead ruling of 2026-10-05 on OR138.a (1)): an unreadable file (I/O error, `MemoryError`) is
+  never overwritten; an unparseable file, a non-object or a value the schema refuses gets the boot's one repair write;
+  all four are listed in `ConfigFaults` for that boot, the repaired ones included. A missing or unknown key gets its
+  repair and is not listed (OR136.a (2), OR138.a (1)).
 - F27: `readline_until_complete()` lives in a layer without its own logger (C.7.1); which layer writes the over-cap entry
   is decided at execution.
 - OR144: the datasheet push precondition of M.SPEC.005 (Depends) and M.SPEC.019 (Unit) is stated as satisfied.
