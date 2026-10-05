@@ -2169,7 +2169,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   honest per-kind return), never an `isinstance()` here — routed with the finding that M.SRC_CORE.047 still writes
   A.U11.S01's never-true `type()` checks into `type_or_range_error()` against the same ruling (GAP-14). Gap pass G2: the
   lead's ruling (AC_NOTES 38) gave that type-level form — `checked_numeric()` returns `int | float | None`
-  (M.SRC_CORE.047, M_SRC_CORE GAP-G13), which `_checked_cfg()` returns as is.
+  (M.SRC_CORE.047, M_SRC_CORE GAP-G13), which `_checked_cfg()` returns as is. `_check_divergence()`'s W31 and a
+  following 13 are the divergence and a separate failed re-apply, so both persist — the narrowed pair scan (an error and a warning for one occurrence in
+  one function, owner, 2026-09-26) allow-lists it with that reason (A-C review fold).
 - **Unit**: U15 (stages U2, U10; U30 handlers)
   A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: A.U11.S01 (slot type, SRC_CORE), M.SRC_CORE.047 (`checked_numeric()`)
@@ -2775,7 +2777,7 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F08 | — | none in this file |
 | F09 | M.SRC_SENS.026, .027 | amended |
 | F10 | — | none in this file |
-| F11 | M.SRC_SENS.031, .035, .037, .040, .043, .044, .059, .063, .064, .071, .074, .089, .054, .076 (A.U3.05's caller half, A.U3.09's SGP40 half and A.U3.03 dropped) | amended |
+| F11 | M.SRC_SENS.031, .035, .037, .040, .043, .044, .059, .063, .064, .071, .074, .089, .054, .076 (A.U3.05's caller half, A.U3.09's SGP40 half and A.U3.03 dropped); .082 names its W31/13 pair (A.U3.11 narrowed, lead ruling 2026-10-05) | amended |
 | F12 | — | none in this file |
 | F13 | — | none in this file |
 | F14 | — | none in this file |

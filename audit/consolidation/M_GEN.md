@@ -276,12 +276,15 @@ change lists its stages; the end state is the last stage's.
   renames), A.U20.16 (1) (maintenance entry per SGP40), A.U20.38 (settings table lifted to module level), A.U20.14
   (1) (arg-type ignores go), A.U20.41 (constructor name), A.U27.07 (read: its fixture mirrors this shape), A.U6.26
   (read: the SettingsGroup entry is U18/U19's), A.U32.04 (read: resync after a settings change held); A.U6.20 (2)
-  (`:629`, `:634` read `MAINTENANCE_NAMES`; AC3_S S-11); OR137.a (1) (the uptime reader; A-C review fold).
+  (`:629`, `:634` read `MAINTENANCE_NAMES`; AC3_S S-11); OR137.a (1) (the uptime reader; A-C review fold); OR139.a (2) (the build info names a test override; A-C review fold).
 - **Site**: `buildgen/codegen.py:599-651` `_emit_webserver()`.
 - **Change**: emitted `webserver = WebserverService(app, routes=RouteSources(...), serving=ServingLimits(<max_connections>,
   <backlog>, …literals), uptime_s=sysfunct.get_uptime, static=StaticSite(...), log=…)` (the drop window's uptime reader,
   M.SRC_NET.119) with the build info keys `FirmwareVersion`, `WebsiteVersion`,
-  `BuildDate`; settings groups rendered from a module-level table in `codegen.py` (not inline strings): networking —
+  `BuildDate`, plus `TestOverrides` (the sorted `test_overrides` names, e.g. `["tick_offset_test"]`) only when
+  `generate_module_source()` was given any — a release image's `/system` `build` object keeps exactly its three keys, so
+  the generated API reference and the website's Build group are unchanged, and a test image says what it is from the
+  device itself; settings groups rendered from a module-level table in `codegen.py` (not inline strings): networking —
   `SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname", "HotspotPW"), post_fct=conn.reconnect_wifi)`,
   `SettingsGroup(conn, ("LEDWifiOn",))`, `SettingsGroup(ntp, ("NTPHost", "NTPOffset", "NTPInterval"),
   post_asy_fct=…)`, `SettingsGroup(ntp, ("DNSFallback",))`; system `DebugLevel`, `GMTOffset`/`DSTOffset` (unchanged
@@ -291,7 +294,7 @@ change lists its stages; the end state is the last stage's.
 - **Resolved**: A.U5.04's config-object rewrite and A.U10.40's `build` key rename touch the same dict — both apply
   (the object carries the renamed keys). A.U6.26 defers the group to U18 — A.U18.10's form is taken.
 - **Unit**: U20 (latest: A.U20.16/.38). Stages: U5 (config objects with A.U5.04/.05), U10 (keys A.U10.40), U18
-  (`HotspotPW`, DNS fallback group with A.U18.10/.38), U19 (`uptime_s=` with M.SRC_NET.119, A-C review fold).
+  (`HotspotPW`, DNS fallback group with A.U18.10/.38), U19 (`uptime_s=` with M.SRC_NET.119, A-C review fold), U27 (`TestOverrides` with M.GEN.019, A-C review fold).
 - **Depends**: A.U5.04, A.U5.05, A.U18.10, A.U18.38 (SRC_NET); M.GEN.035.
 - **Blast carried by**: definitions networking groups → M.GEN.014 (A.U6.25/A.U6.26/A.U18.38 fields);
   `tests/test_setter_microdot_integration.py` fixture → A.U27.07 (TST).
@@ -541,7 +544,8 @@ change lists its stages; the end state is the last stage's.
   `module_source`), A.U20.18 (4) (`compile()` of every emitted source), A.U20.17 (3) (CLI catch, tmp + `os.replace`),
   A.U27.29 (exit idiom), A.U20.15 (docstring `:1-3`, help `:42`, file names `:57`), A.U24.54 (generated boot-entry file
   name), A.U6.02/A.U36.547/A.U36.513/A.U36.535/A.U1.23 (read: the batch writer's use, README CLI reference, comment
-  targets hold); gap pass G1: M_TEST_HELP GAP-H7, M_SRC_CORE GAP-G7 / M_SRC_SENS GAP-10 (AC_NOTES 13).
+  targets hold); gap pass G1: M_TEST_HELP GAP-H7, M_SRC_CORE GAP-G7 / M_SRC_SENS GAP-10 (AC_NOTES 13); OR139.a (2) (the build info
+  names the tick-offset test override; A-C review fold).
 - **Site**: `buildgen/generate.py:1-62`.
 - **Change**: docstring "… (`scripts/_generate_sensortask_modules.py` and `scripts/build_firmware.py` write them)";
   `GeneratedDevice` gains `boot_entry_noautostart_source: str` and `expected_facts: dict[str, JsonValue]`;
@@ -554,7 +558,10 @@ change lists its stages; the end state is the last stage's.
   False` on the class or a base, M.SRC_CORE.040; `SCD30_Reader` sets it), never from a list kept in `buildgen/`, so no
   device names `CFGMGR_SCD30`; no per-logger exemption list is emitted; the CLI writes `sensortask_<device>.py`, `sensortask_<device>_main.py`,
   `sensortask_<device>_main_noautostart.py` via `.tmp` + `os.replace()`, help "boot entry (frozen as main.py)",
-  catches `BuildError`/`OSError` (exit 1, one line), ends `raise SystemExit(main())`.
+  catches `BuildError`/`OSError` (exit 1, one line), ends `raise SystemExit(main())`. `generate_device()` gains the
+  keyword `test_overrides: tuple[str, ...] = ()` and passes it to `generate_module_source()`, which hands it to
+  `_emit_webserver()` (M.GEN.009); the CLI never sets it (only `scripts/build_firmware.py --tick-offset-test` passes
+  `("tick_offset_test",)`, M.SCR.067).
 - **Resolved**: A.U24.54 names the generated boot-entry file `<device>_boot.py` "as `buildgen/generate.py:57`'s CLI
   does"; A.U20.15 renames that CLI output to `sensortask_<device>_main.py` (the name it is frozen under is
   `main.py`) — one name, A.U20.15's, since A.U24.54's own reason is parity with the CLI (agent decision D2; A.U24.54's
@@ -564,11 +571,12 @@ change lists its stages; the end state is the last stage's.
   also reads (M.TEST_HELP.036) — rather than a second hand list (M_TEST_HELP GAP-H7; agent decision, OR2.c review; gap
   pass G1).
 - **Unit**: U27 (latest: A.U27.29). Stages: U20 (all U20 constituents; prerequisite of U24-U26 tests), U26
-  (`fram_backed_loggers`).
+  (`fram_backed_loggers`), U27 (`test_overrides` with M.GEN.009's key, after U21's M.TOOL.080; A-C review fold).
 - **Depends**: M.GEN.001, M.GEN.020, M.GEN.022, M.GEN.032 (`JsonValue`).
 - **Blast carried by**: `scripts/_generate_sensortask_modules.py` writing `_expected.json` and boot files → A.U20.07
   / A.U24.54 (SCR); `tests_hardware/harness.py` `fram_backed_logger_names()` → A.U26.23 (HW); README CLI reference →
-  A.U36.547 (DOC).
+  A.U36.547 (DOC); the caller passing `test_overrides` → M.SCR.067; the L0 case reading the staged module's build info →
+  M.TSC.032 (g).
 - **Kind**: code
 
 ## buildgen/frozen_modules.py
@@ -1964,7 +1972,7 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F01 | — | none in this file |
 | F02 | M.GEN.009, .014 | amended |
 | F03 | M.GEN.008, .014 | amended |
-| F04 | — | none in this file (the build-info marker is U21/U27's; see the fold report) |
+| F04 | M.GEN.019, .009 (lead ruling 2026-10-05: `generate_device(test_overrides=…)`; `TestOverrides` in the build info only for a test image) | amended |
 | F05 | — | none in this file |
 | F06 | — | none in this file |
 | F07 | M.GEN.015 | amended |

@@ -2195,7 +2195,8 @@ added, unmodified upstream stubs, A.U8.23).
 - **Kind**: code
 
 ### M.SRC_NET.126 `_close_writer()`: both failures persisted, millisecond bound
-- **From**: A.U2.19 (w4 → 52, w5 → 53), A.U3.11 (dropped: OR140.a (7), A-C review fold: W53 stays persisted after a W52), A.U31.18
+- **From**: A.U2.19 (w4 → 52, w5 → 53), A.U3.11 (narrowed: OR140.a (7), A-C review fold — the pair scan flags only an error and a
+  warning persisted for one occurrence in one function; W52 then W53 are two warnings, so W53 stays persisted), A.U31.18
   (`wait_for_ms`), A.U30.19
 - **Site**: `src/asy_webserver_service.py:680-690`
 - **Change**: `try: writer.close()` / `except Exception as e:` `report_if_fatal(e)`, comment kept (≤ 3 lines), `await
@@ -2204,11 +2205,12 @@ added, unmodified upstream stubs, A.U8.23).
   comment "# bounds a hanging wait_closed() (F.6)"; `await self.pr.wrn_s("Error waiting for writer to close:", e,
   wrnno=_WRN_HTTP_WAIT_CLOSED)` — both persisted, as at HEAD (no `close_failed` flag).
 - **Resolved**: A.U3.11's "one close, one entry" rested on the one-entry-per-fault reading, which the owner dropped
-  (OR140.a (7), A-C review fold): each failure keeps its entry, as today.
+  (OR140.a (7), A-C review fold): each failure keeps its entry, as today; A.U3.11 itself stays, narrowed to an error and
+  a warning for one occurrence (owner, 2026-09-26), which two warnings are not.
 - **Unit**: U31 (A.U31.18 latest; U2 codes, U30 fatal report — staged)
 - **Depends**: M.SRC_NET.112
-- **Blast carried by**: the one-entry-per-event L0 scan and its L1 "exactly one W52" test are dropped with A.U3.11
-  (OR140.a (7)) → [fold F11 M_TSC], [fold F11 M_TEST_UNIT]; persisted-warning tests read the entry →
+- **Blast carried by**: the L0 pair scan narrows to an error and a warning for one occurrence in one function (A.U3.11 as
+  narrowed, OR140.a (7)) → [fold F11 M_TSC]; its L1 "exactly one W52" test goes → [fold F11 M_TEST_UNIT]; persisted-warning tests read the entry →
   A.U24.41 (tests)
 - **Kind**: code
 
@@ -2621,7 +2623,10 @@ annotation-only change carries none, per its constituent. No merged change here 
   peer that only speaks when spoken to never shows the mismatch signature (J.6)." `_valid_frames == 0` gate and
   `_DIAG_RESYNC_STREAK` unchanged.
 - **Resolved**: A.U3.08 "prints 'Resyncing the link' and persists W54 only when `_drain_bound_hit`" with "W11's precedence
-  kept" — written as one or the other (the persisted W54 text says it resynced), matching HEAD's one-slot precedence.
+  kept" — written as one or the other (the persisted W54 text says it resynced), matching HEAD's one-slot precedence. A W54
+  and a following 91 (through `_err()`) are two conditions — the drain bound and an unintelligible link — so both
+  persist — the narrowed pair scan (an error and a warning for one occurrence in
+  one function, owner, 2026-09-26) allow-lists it with that reason (A-C review fold).
 - **Unit**: U17. Staged: U3 (logging), U17 (count, cap).
 - **Depends**: M.SRC_NET.153, M.SRC_NET.158, M.SRC_NET.196/.200/.201 (the driver's `discarded_bytes`), A.U10.01
 - **Blast carried by**: tests (fault with quiet line adds one entry; bound adds errno + 54; streak saturates at 2; the
@@ -3834,7 +3839,7 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F08 | — | none in this file |
 | F09 | M.SRC_NET.122 | amended |
 | F10 | — | none in this file |
-| F11 | M.SRC_NET.047, .050, .057, .077, .084, .086, .088, .100, .126 (A.U3.05's caller half, A.U3.07, A.U3.11 dropped; A.U3.08 kept) | amended |
+| F11 | M.SRC_NET.047, .050, .057, .077, .084, .086, .088, .100, .126 (A.U3.05's caller half and A.U3.07 dropped; A.U3.11 narrowed, lead ruling 2026-10-05: W52 then W53 stay; A.U3.08 kept); .162 names its W54/91 pair | amended |
 | F12 | — | none in this file |
 | F13 | — | none in this file |
 | F14 | — | none in this file |

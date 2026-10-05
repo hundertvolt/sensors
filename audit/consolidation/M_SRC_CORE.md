@@ -387,9 +387,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `except (…, Exception)` is broad, so it binds `e` (A.S0930.14's `pass` form becomes the call; U30 stage).
   A-C review fold: OR140.a (12) — no SCD30 write can happen while the sequence runs: the only SCD30 writes are
   API-triggered config PUTs, and from acceptance every config PUT is refused (the stores closed in (6)), every
-  system command by rules (1)/(2) and `mempause` by M.SRC_CORE.012; tests prove it watertight. OR138.a (2)'s
-  "a failed delete answers Failed" is answered through S5's `ok` → code 9 (M.SRC_CORE.042), since the request
-  was answered at acceptance; flagged to the lead.
+  system command by rules (1)/(2) and `mempause` by M.SRC_CORE.012; tests prove it watertight. OR138.a (2) (as
+  corrected by the lead, 2026-10-05): the command is answered at acceptance, so a failed delete is logged and shows as
+  reset reason 9 at the next boot (S5's `ok` → `_RR_COMMAND_INCOMPLETE`, M.SRC_CORE.042), never as an HTTP "Failed".
 - **Unit**: stages — U11: gate and sequence for `reboot`, `bootloader` and `resetconfig` (S3 uses the manager's
   `quiesce()`, landed in U11 by M.SRC_CORE.083's first stage); U16: `erase_fram()`, the erase preflight and S5's erase
   branch, with the manager's erase trio (M.SRC_CORE.083). The REST words reach the gate in U19/U20 (A.S0930.09/.11).
@@ -597,7 +597,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Unit**: stages, each a prerequisite of work in its own or an earlier-numbered consumer —
   **U2/U3**: named codes at HEAD sites and one entry per task end (A.U2.02's catalog check needs them; A.U3.06's one
   entry per task end rests on OR56's "a fault or a warning, never both" for one layer and stays — A.U3.11's pair scan
-  is dropped, OR140.a (7), A-C review fold). **U11** (the body above except `start_tasks()`/`supervise_tasks()`, C-stack and names): `start_and_check_tasks(
+  is narrowed to an error and a warning persisted for one occurrence in one function, OR140.a (7), A-C review fold). **U11** (the body above except `start_tasks()`/`supervise_tasks()`, C-stack and names): `start_and_check_tasks(
   task_starters)` keeps its name and start loop (with `sleep_ms`, the placement-reset comment and without `pr.setup()`),
   stores `self._tasks`/`self._task_starters`, then does what `supervise_tasks()` does (spawns `_supervise()`, waits on
   `_never`); `_supervise()` is final except (ii)'s C-stack branch; log lines name the task index. This is the stage the
@@ -1385,9 +1385,10 @@ for the config reset.
   for its three FRC settings, which the reset deletes like every other store's (OR124.a "every schema-backed
   `config_<name>.cfg`") — the comment reads "the SCD30's chip settings stay in its own NVM" (agent, 2026-10-01).
   OR138.a (2) (A-C review fold): the delete was already read-free; the text now says so, and the after-reboot sentence
-  follows OR136.a. Its "a failed delete … the command answers 'Failed'": the command is answered at acceptance, before
-  S5 runs (OR126.a (3), M.SRC_CORE.011), so a failed delete answers through S5's `ok` — reset reason 9 "command
-  incomplete" after the reboot — and this logged line (console: FRAM is quiesced at S3); flagged to the lead.
+  follows OR136.a. The command is answered at acceptance, before S5 runs (OR126.a (3),
+  M.SRC_CORE.011): a failed delete is logged (this line; console, FRAM being quiesced at S3) and shows as reset reason
+  9 "command incomplete" at the next boot (S5's `ok`), never as an HTTP "Failed" (OR138.a (2) as corrected by the
+  lead, 2026-10-05).
 - **Unit**: U11.
 - **Depends**: M.SRC_CORE.041, M.SRC_CORE.049 (`errno` import).
 - **Blast carried by**: caller S5 (M.SRC_CORE.011); tests → A.S0930.21/.25/.27/.28/.29 (TEST_UNIT, TWIN, HW_DEV,
@@ -1410,9 +1411,9 @@ for the config reset.
   `_ERR_CFG_NO_DEFAULTS` / `_ERR_CFG_BAD_DEFAULT` (`return False`) and `_WRN_STORED_DEFAULT`; `rewrite` from a readable
   file (bad or missing key, unknown keys → `_WRN_CFG_KEYS_REMOVED`, a readable file with corrupt JSON or a non-object).
   File faults: `self.faulted = True` when the file existed but could not be read (`OSError` other than ENOENT,
-  `MemoryError`) or was damaged — unparseable JSON (W21), not an object (W20), or a stored value the schema refuses
-  (W10); whether a missing or unknown key alone (a schema change between builds) counts as damage is decided at
-  execution, with its reason recorded. The flag is never cleared during the boot, also when the write below repaired
+  `MemoryError`) or was damaged as a whole — unparseable JSON (W21) or not a JSON object (W20). A missing or unknown key,
+  or a stored value the schema refuses (W10), is a repair (the one write of this boot), not damage, and sets no flag
+  (lead ruling, 2026-10-05, on OR138.a (1)'s "unparseable or invalid"). The flag is never cleared during the boot, also when the write below repaired
   the file; the module's persisted warning stays (one per boot). Then `self._cache = valid_cfg`, `self.valid = True`;
   no write when not `writable`, when `valid_cfg` is empty (every field special-alone: `self.pr.one(…, "- schema stores
   no values, no file")` — a command-only schema creates no file, and its absence stays that printed note) or when the
@@ -1429,7 +1430,10 @@ for the config reset.
   key is still repaired by at most one write per boot (OR71.a (2), unchanged there). OR138.a (1): the flag is the
   store's half of `/status` `ConfigFaults` (the list: M.SRC_CORE.015; the key: M.GEN.008). Wear (CLAUDE.md rule): a
   test that boots a fresh filesystem reaches this write as a prerequisite, not as the write under test, so it stays
-  unmarked by `persistence_write` (A-C review fold).
+  unmarked by `persistence_write` (A-C review fold). One function, two occurrences: a file warning (W20/W21/W10/W22)
+  and a failed repair write (`_ERR_CFG_FILE_WRITE`) are the finding and a separate failed write, so both persist; the
+  narrowed pair scan (an error and a warning for one occurrence in one function, owner, 2026-09-26) allow-lists the pair
+  with that reason (A-C review fold).
 - **Unit**: U11 (U2 names as stage).
 - **Depends**: M.SRC_CORE.049, .047; [fold F01 M_TEST_UNIT] (the write-counter tests expect exactly one write per file on
   a fresh filesystem; the `faulted` cases) and [fold F01 M_TWIN] (a fresh twin config dir gets every module's file at
@@ -1816,7 +1820,9 @@ both persist.
   `(valid, uninit, match, fault)` (missing scratch → persisted `_ERR_ALLOC` and `(False, False, False, True)`, A.U16.06
   (1)). No `_episode_wrn()` call and no `_episode_wrns` reset remain.
 - **Resolved**: A.U3.04 is dropped (OR140.a (7), A-C review fold); the 20 at `_check_buf is None` stays — a condition
-  this layer detects itself, which A.U16.06 lists as a fault.
+  this layer detects itself, which A.U16.06 lists as a fault. A block's invalid-data warning and a failed repair write
+  of that block are the finding and a separate failed write, so both persist — the narrowed pair scan (an error and a warning for one occurrence in
+  one function, owner, 2026-09-26) allow-lists it with that reason (A-C review fold).
 - **Unit**: U16.
 - **Depends**: M.SRC_CORE.081, .084, .085.
 - **Blast carried by**: `PrintLogHistoryStore._read()` (M.SRC_CORE.065); SGP40 restore reads falsy → A.U16.06 (SRC_SENS,
@@ -2172,12 +2178,15 @@ chip lost mid-run, takes both FRAM locks for every hold (`setup()` and `set_writ
 - **Kind**: code
 
 ### M.SRC_CORE.105 `set_write_protected()` takes both FRAM locks
-- **From**: A.U16.10, A.U13.09, A.U16.R01, A.U2.09.
+- **From**: A.U16.10, A.U13.09, A.U16.R01, A.U2.09; A.U3.11 as narrowed (an error and a warning never both persisted
+  for one occurrence in one function; A-C review fold).
 - **Site**: `src/asy_fram_driver.py:357-379`.
 - **Change**: not init → `_ERR_NOT_INIT`; `async with self:` → `status = _SV_BUS_DOWN if not
   self._spidev.spi.available else self._set_write_protected(value=value)`; `await asyncio.sleep(0)`; BUS_DOWN →
   `_ERR_FRAM_BUS_DOWN`, `False`; WEL_NOT_SET → `wrn_s(…, "write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)`,
-  `False`; RETRIED → evt; STUCK → `_WRN_FRAM_WEL_STUCK`; MISMATCH → `_ERR_FRAM_WP_MISMATCH`, `False`; evt; `True`.
+  `False`; RETRIED → evt; MISMATCH → `_ERR_FRAM_WP_MISMATCH`, `False`; STUCK → `_WRN_FRAM_WEL_STUCK`; evt; `True` —
+  the mismatch is tested before the stuck latch, so one call persists the fault or the warning, never both (HEAD warns
+  w27 and then errs 45 for the same call; owner, 2026-09-26).
   Comment `:358-360` → "# Takes both FRAM locks itself like setup(): never call it inside `async with fram:` (asyncio.Lock
   is not reentrant)."
 - **Resolved**: —
@@ -2185,7 +2194,8 @@ chip lost mid-run, takes both FRAM locks for every hold (`setup()` and `set_writ
 - **Depends**: M.SRC_CORE.102, .103.
 - **Blast carried by**: device script `fram_write_protect_roundtrip.py:27, 63` (calls it outside the lock, holds);
   L1 exclusion case → A.U16.10 (TEST_UNIT); four-tier bus-hazard runs unchanged → A.U16.10 (TEST_UNIT, TWIN, HW_DEV,
-  HW_BENCH); SPEC C.8 → A.U16.10 (SPEC).
+  HW_BENCH); SPEC C.8 → A.U16.10 (SPEC); a stuck latch with a mismatched readback persists only the fault →
+  [fold F11 M_TEST_UNIT].
 - **Kind**: code
 
 ### M.SRC_CORE.106 `setup()`: both locks, identification retried, partial protection reported, bool contract
@@ -2928,10 +2938,10 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 
 | Fnn | M-ID(s) | action |
 |---|---|---|
-| F01 | M.SRC_CORE.043, .042, .049 (and the section end state) | amended |
+| F01 | M.SRC_CORE.043, .042, .049 (and the section end state); .043 again for the lead ruling of 2026-10-05 (a missing or unknown key and a refused value are a repair; `faulted` only for a file unreadable or invalid as a whole) | amended |
 | F02 | M.SRC_CORE.133 | added |
 | F02 | M.SRC_CORE.030 | amended |
-| F03 | M.SRC_CORE.043, .049, .015, .008, .042, .011 | amended |
+| F03 | M.SRC_CORE.043, .049, .015, .008, .042, .011 (.042/.011 per the lead ruling of 2026-10-05: a failed delete is logged and shows as reset reason 9 at the next boot, never an HTTP "Failed") | amended |
 | F04 | — | none in this file |
 | F05 | — | none in this file |
 | F06 | — | none in this file |
@@ -2939,7 +2949,7 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F08 | M.SRC_CORE.128 (A.U12.09 dropped; rewritten as keep-and-gate), .125, .127, .130 | amended |
 | F09 | — | none in this file |
 | F10 | — | none in this file |
-| F11 | M.SRC_CORE.037, .080, .082, .084, .085, .088, .087, .090, .016, .048 (A.U3.03/.04 dropped; A.U3.05/.09 own halves kept) | amended |
+| F11 | M.SRC_CORE.037, .080, .082, .084, .085, .088, .087, .090, .016, .048 (A.U3.03/.04 dropped; A.U3.05/.09 own halves kept; A.U3.11 narrowed, lead ruling 2026-10-05: .105 tests the fault before the warning; .043 and .088 name their two-occurrence pairs) | amended |
 | F12 | — | none in this file |
 | F13 | — | none in this file |
 | F14 | — | none in this file |
