@@ -217,7 +217,7 @@ special, OR140.a (18)).
   bench: A.U26.12's reader `board.exec("import json\ntry:\n  print('LEVEL=' + str(json.load(open('config_SYSTEM.cfg')).get('DebugLevel')))\nexcept OSError:\n  print('LEVEL=absent')")`
   then `board.hard_reset()`; bench: `GET /system`, strict parse), FRAM write-protect clear (`fram_evidence_saved`'s dump
   fact `write_protected` is `False` — `fram_raw_dump.py` reads the status register read-only, M.HW_DEV.150; no second
-  script, and never `fram_manager_roundtrip.py`, which writes chunk 0; gap pass, GAP-D6), no `config_HWTEST_*` file (read-only `os.listdir()` exec, then `hard_reset()`), and the
+  script, and never `fram_manager_roundtrip.py`, which writes chunk 0; gap pass, GAP-D6), no `config_HWTEST_*` file and no `hwtest-scratch` directory (M.HW_DEV.009's, OR136.a fold) (read-only `os.listdir()` exec, then `hard_reset()`), and the
   SCD30 snapshot (`MeasInterval`, `AmbPres`, `TempOffs`, `Altitude`, `SelfCal` from `GET /sensors`; flash-only runs
   read it through the interval-read script of A.U26.07 and record what that script yields). `_STANDARD_DEBUG_LEVEL = 5`
   with its bound checked against `asy_system_service`'s `_VAL_DEBUG_LEVEL` maximum by `ast`. A deviation first prints
@@ -3247,7 +3247,7 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 
 | Fnn | M-ID(s) | action |
 |---|---|---|
-| F01 | M.HW_BENCH.016, .088, .113, .130 | amended |
+| F01 | M.HW_BENCH.006, .016, .088, .113, .130 | amended (the standard state also checks the scratch directory) |
 | F02 | M.HW_BENCH.081 | amended (read after the burst, the 24-hour window) |
 | F03 | M.HW_BENCH.088 | amended (ConfigFaults empty after the reset) |
 | F04 | M.HW_BENCH.001, .002, .060, .089, .126, .130 | amended (`--rollover-image`; texts; the test image refused outside the rollover run; the ~2 h test flashing once; budget) |

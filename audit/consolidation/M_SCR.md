@@ -1902,8 +1902,8 @@ Conventions used below (each defined once, then cited):
   `--help` → "Usage: scripts/run_bench_rollover_test.sh [pytest args]", "other arguments go to pytest; a -m you pass
   narrows the selection", "builds and flashes the tick-offset test image, then about two hours of polls: start it
   detached (tests_hardware/README.md)", exit 0, no side effect; no option of its own, so no usage error of its own
-  (every other argument reaches pytest, whose own usage errors the wrapper reports). Body: the bench device from
-  `scripts/_devices.sh`; the image built with `uv run --no-sync scripts/build_firmware.py "$device" --tick-offset-test`
+  (every other argument reaches pytest, whose own usage errors the wrapper reports). Body: the bench device from data
+  (the one TOML with `[device] bench = true`, found as the other bench runners find it); the image built with `uv run --no-sync scripts/build_firmware.py "$device" --tick-offset-test`
   (output `build/firmware-<device>-tickoffset.uf2` and its record, M.SCR.065/.067) after the run's one retried sync —
   a failed build exits 1 with the build's message before anything reaches the board; then
   `scripts/_require_clean_hardware_run.sh --runner run_bench_rollover_test --levels "rollover (not a level)"
