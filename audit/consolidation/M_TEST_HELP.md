@@ -111,8 +111,8 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 ## tests/_threshold_runner.py
 
 ### M.TEST_HELP.003 Threshold runner never passes an incomplete file
-- **From**: A.U24.05, A.U28.28, A.U27.28, A.U10.30 (F.1 entry; superseded by OR142.a (3)'s named list, A-C review
-  fold), A.U0.07 (`_PENDING` entry), A.U30.14 (allowance)
+- **From**: A.U24.05, A.U28.28, A.U27.28, A.U10.30 dropped (OR142.a (3): its F.1 entry for this runner — the named
+  list does not carry it; A-C review fold), A.U0.07 (`_PENDING` entry), A.U30.14 (allowance)
 - **Site**: `tests/_threshold_runner.py:1-27` (`#` header `:1-9`, `_run()` `:12-24`, `exec` `:20` with `# noqa: S102`).
 - **Change**: the `#` header → a module docstring (≤ 3 lines): "Runs one test file at a given `gc.threshold()` stage:
   sets the threshold, executes the file as `__main__`, returns the file's exit code." `_run()`: `sys.argv[:] =
@@ -133,8 +133,8 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 ## tests/_coverage_runner.py
 
 ### M.TEST_HELP.004 Coverage runner dumps on every path, traces generated modules
-- **From**: A.U24.05, A.U24.72 (1), A.U28.28, A.U27.28, A.U10.30 (superseded by OR142.a (3)'s named list, A-C review
-  fold), A.U0.07, A.U36.526 (blast)
+- **From**: A.U24.05, A.U24.72 (1), A.U28.28, A.U27.28, A.U10.30 dropped (OR142.a (3): the named list does not carry
+  this runner; A-C review fold), A.U0.07, A.U36.526 (blast)
 - **Site**: `tests/_coverage_runner.py:1-71` (`#` header, `_TRACED_PREFIXES` `:24`, `_run()` `:27-68`, dump `:65-66`).
 - **Change**: header → module docstring (≤ 3 lines): "Runs one test file under `sys.settrace` and dumps the executed
   lines of the traced prefixes as JSON for `scripts/_render_coverage.py` (SPECIFICATION.md E.5)."

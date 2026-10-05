@@ -4887,3 +4887,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.TSC.202 | Unit | appended: A-C2: stage U24 — the check re-points at M.WEB.082's shared helper module when it lands (U24). | Depends edge ran from a later step: M.WEB.082 lands in U24 |
 | M.TSC.205 | Unit | appended: A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25). | dependency deferral (an edge ran from a later step) |
 | M.TSC.225 | Unit | was: — → now: none (A-C2: no step — no action defines the file). | no Unit slot |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine settlements, AC_NOTES 52) per
+`audit/actions/FOLD_BRIEF.md`. Cross-file dependencies on changes other fold agents add are written as
+`[fold Fnn M_FILE]` tokens.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.TSC.025, M.TSC.073, M.TSC.119 | amended |
+| F02 | — | none in this file |
+| F03 | — | none in this file |
+| F04 | M.TSC.229; M.TSC.032, M.TSC.122, M.TSC.196 | added (M.TSC.229); amended (M.TSC.032, .122, .196) |
+| F05 | M.TSC.126 | amended |
+| F06 | — | none in this file |
+| F07 | M.TSC.040 | amended ((k): no "no confirmation key"; the confirmation checked where M_WEB places it) |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | M.TSC.111 | dropped (Unit — (no step; dropped by OR140.a (7))) |
+| F12 | — | none in this file |
+| F13 | M.TSC.026 | amended (L0 case for the console message) |
+| F14 | M.TSC.221 | amended (case over the real versions.toml) |
+| F15 | — | none in this file |
+| F16 | M.TSC.086, M.TSC.165 | amended (no NTP tolerance; NTP synced on a normal boot) |
+| F17 | — | none in this file |
+| F18 | M.TSC.040 | amended ((m): a decimals hint per displayed fractional value) |
+| F19 | — | none in this file |
+| F20 | — | none in this file (OR78.a's literal removals already carry the device names here) |
+| F21 | M.TSC.065 | tag (comment-cap-long-lines: "(agent, 2026-09-30; owner-reviewed, 2026-10-02)") |
+| F22 | — | none in this file (M.TSC.056 already accepts and refuses both keys; confirmed) |
+| F23 | M.TSC.098, M.TSC.099, M.TSC.055, M.TSC.185 | amended (per-image zero; OR142.a's named list; the importlib rewrite in test_buildgen_validate.py dropped; device scripts hold no dynamic import) |
+| F24 | M.TSC.064 | amended (voc_algorithm.py the one named naming and D.15 exception) |
+| F25 | M.TSC.230 | added (the ring lands with the boot survivors, U13) |
+| F26 | M.TSC.094 | amended (date-only change touches only the date line) |
+| F27 | M.TSC.057 | amended (ring size and receive cap rows, U20) |
+| F28 | M.TSC.112 | amended (the flag exists exactly where product code reads it) |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

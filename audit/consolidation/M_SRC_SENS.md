@@ -586,7 +586,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **From**: A.U9.04, A.U9.06, A.U31.13; OR140.a (5) (A-C review fold)
 - **Site**: `src/asy_neopixel_driver.py:145-153`
 - **Change**: one comment line above it "# Internal requests are bounded in number and rate, so one waits for a running
-  signal, then queues; an external command is refused instead (agent, 2026-09-29; owner-reviewed, 2026-10-02).";
+  signal, then queues; an external command is refused instead, and told to retry (owner, 2026-10-02).";
   `async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:` — `values = _signal_values(…)`,
   `None` → `return False`; `deadline = time.ticks_add(time.ticks_ms(), _SIGNAL_WAIT_MS)`; `while
   self._start_signal_event.is_set():` — past the deadline `self.pr.evt("Internal LED command dropped: signal still
@@ -2786,7 +2786,7 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F19 | — | none in this file |
 | F20 | — | none in this file |
 | F21 | M.SRC_SENS.051 | tag |
-| F21 | M.SRC_SENS.027 (the internal-queue comment: `(agent, 2026-09-29; owner-reviewed, 2026-10-02)` per F09) | amended |
+| F21 | M.SRC_SENS.027 (the internal-queue comment: `(owner, 2026-10-02)`, the owner's answer gave the reason; lead correction) | amended |
 | F22 | — | none in this file |
 | F23 | — | none in this file |
 | F24 | M.SRC_SENS.018 | amended |

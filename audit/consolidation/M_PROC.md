@@ -1533,3 +1533,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 |---|---|---|---|
 | M.PROC.027 | Depends | `A.S0930.01-A.S0930.08` → `A.S0930.01-A.S0930.06, A.S0930.07 [follows], A.S0930.08 [follows] (docs, U36)` | the two doc actions land in U36; the U35 check reads tests, not docs |
 | M.PROC.044 | Unit | appended: A-C2 step order: A.U37.16's part lands in D, not U37 (it needs A.U37.15, which lands in D). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine settlements, AC_NOTES 52) per
+`audit/actions/FOLD_BRIEF.md`. Cross-file dependencies on changes other fold agents add are written as
+`[fold Fnn M_FILE]` tokens.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.PROC.039 | amended (R2 budget: the following boot's defaults write) |
+| F02 | — | none in this file |
+| F03 | — | none in this file |
+| F04 | M.PROC.036, .041, .042 | amended (two sessions; R6 ~2 h in session 1 after R5, before R4; release records checked) |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | M.PROC.021 | amended (the work-in-progress code read as the owner's intent) |
+| F11 | M.PROC.017 | amended (J.5 row as far as A.U3.08 stands) |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | — | none in this file |
+| F16 | — | none in this file |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | P7 header, M.PROC.036 | amended |
+| F21 | — | none in this file |
+| F22 | — | none in this file |
+| F23 | — | none in this file |
+| F24 | M.PROC.046, .047 | amended (no rename or reorder inside voc_algorithm.py) |
+| F25 | M.PROC.049; M.PROC.017, .036 | added (M.PROC.049, phase C R1/R3); amended (.017, .036) |
+| F26 | M.PROC.038, .022, .036 | amended (three rows kept, H78/H82 dropped; idle-poll twin and bench measurement) |
+| F27 | M.PROC.017, .049 | amended (J.6 cap rows; the maximum-size train recorded) |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

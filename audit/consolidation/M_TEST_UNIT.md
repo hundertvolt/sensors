@@ -1517,9 +1517,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.064 The settle window: the bound's reason
-- **From**: A.U15.22 (`:1291-1310` comment), A.U10.30 (`:1301, 1306` `__import__("time")`) dropped (OR141.a (2),
-  OR142.a (3): this file is one of the host/test sites SPEC F.1 lists by name and the owner judges harmless — the
-  loader stays, no change; A-C review fold), A.U0.07 (no function-level import statement remains at these lines).
+- **From**: A.U15.22 (`:1291-1310` comment), A.U10.30 dropped (OR141.a (2), OR142.a (3): its `:1301, 1306`
+  `__import__("time")` rewrite — this file is one of the host/test sites SPEC F.1 lists by name and the owner judges
+  harmless, the loader stays; A-C review fold), A.U0.07 (no function-level import statement remains at these lines).
 - **Site**: `tests/test_asy_isl29125_driver.py:1269-1310`.
 - **Change**: `:1292-1293` → "# The bound keeps the loop from starving; past it the cycle is discarded (see
   test_an_unsettled_cycle_is_no_failure)."; the four `__import__("time")` calls at `:1301, 1306` stay as written (an F.1
@@ -5602,9 +5602,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.258 Write-count guarantees and the source pin
-- **From**: A.U11.19 (`:2364-2376`, `:2409-2416`, `:2419-2433`, `:2472-2493`, `:2496-2509` start from a readable file
-  with a bad key) superseded by OR136.a (1) (an absent file's one defaults write is the write those tests fail, as at
-  HEAD; A-C review fold), A.U4.02 (unchanged PUT opens nothing; `:2472` extended past the reboot), A.U2.07 (`[4]`, `[14, 12, 14,
+- **From**: A.U11.19 dropped (OR136.a (1): `:2364-2376`, `:2409-2416`, `:2419-2433`, `:2472-2493`, `:2496-2509` keep
+  HEAD's absent file, whose one defaults write is the write those tests fail; A-C review fold), A.U4.02 (unchanged PUT opens nothing; `:2472` extended past the reboot), A.U2.07 (`[4]`, `[14, 12, 14,
   10]`), A.U35.43 (2) (`:2409`'s `TypeError` class), A.U11.23 (`json.dump(` count 0), A.U4.01 (source pin covers the new
   function), A.U10.35 (`self._config_file`), A.U11.28 (read: `create_task(` count 1 holds).
 - **Site**: `tests/test_config_manager.py:2321-2541`.

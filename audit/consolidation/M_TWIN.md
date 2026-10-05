@@ -1849,9 +1849,9 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   the script in a fresh `__main__`-like dict, exit with the script's status), A.U35.49 (runs every instrument at both GC
   stages), A.U30.18 (3) Blast (the C-stack device script builds `dev` through this route — holds), A.U25.43 / A.U25.34
   (a `main()` in `digital_twin/` that can boot a device prewarms, then shims, first), A.U25.33 (3) (the shim's
-  public-destination guard covers every Unix-port run), A.U8.08 (`wdt.timeout_ms` site), A.U10.30 (F.1's named `exec`
-  exception) superseded by OR142.a (3) (F.1's named list does not carry this file: the `exec` runs a script by path and
-  imports nothing; A-C review fold), C5
+  public-destination guard covers every Unix-port run), A.U8.08 (`wdt.timeout_ms` site), A.U10.30 dropped (OR142.a (3):
+  F.1's named list does not carry this file — the `exec` runs a script by path and imports nothing; A-C review fold),
+  C5
 - **Site**: new `digital_twin/run_device_script.py`
 - **Change**: header (≤ 3 lines): "Runs one tests_hardware device script unchanged under the twin, as Board.run_isolated()
   runs it on silicon: the device's wiring plan, the one armed watchdog, the requested GC stage. Every instrument passes

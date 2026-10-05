@@ -2459,3 +2459,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.SCR.065 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26. | AC3_R R-08 (h) |
 | M.SCR.067 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26. | AC3_R R-08 (h) |
 | M.SCR.068 | Unit | appended: A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.04 in U25. | AC3_R R-08 (h) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine settlements, AC_NOTES 52) per
+`audit/actions/FOLD_BRIEF.md`. Cross-file dependencies on changes other fold agents add are written as
+`[fold Fnn M_FILE]` tokens.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.SCR.049, M.SCR.060 | amended (the relaunch writes each file once; Depends follow M.SRC_CORE.043) |
+| F02 | M.SCR.018 | amended ((l): the 24-hour window, exact within a scenario) |
+| F03 | M.SCR.060 | amended (ConfigFaults and the unread delete cells) |
+| F04 | M.SCR.074, M.SCR.065, M.SCR.066, M.SCR.067, M.SCR.032 | amended (test-image build, `--tick-offset-test`, record and build-info marker, header) |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | M.SCR.049 | amended (A.U3.09 out of Depends) |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | M.SCR.027 | amended (From; the mismatch message names the rule) |
+| F15 | — | none in this file |
+| F16 | M.SCR.016, M.SCR.049 | amended (tolerance constant gone; the twin's NTP responder; Run 1 expects NTP synced) |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | — | none in this file |
+| F21 | M.SCR.066, M.SCR.074 | tag (build-date comment "(owner, 2026-10-05)"; runner header names OR139's "(owner, 2026-10-01)") |
+| F22 | — | none in this file |
+| F23 | — | none in this file |
+| F24 | — | none in this file |
+| F25 | — | none in this file (the U25 concurrent-load and flash-stall tests are the twin's, M_TWIN/M_TEST_UNIT) |
+| F26 | M.SCR.066, M.SCR.067 | amended (the build date is a build input; real builds stamp UTC) |
+| F27 | — | none in this file |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

@@ -2222,3 +2222,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 |---|---|---|---|
 | M.TOOL.021 | Unit | appended: A-C2 step order: A.U28.13's part lands in U0 (A.SDEP.05: "A.U28.13 (pulled forward)" into the GitHub Actions pin refresh). | a part lands outside the Unit slot's units by an action's own text |
 | M.TOOL.078 | Unit | appended: A-C2 step order: A.U37.16's part lands in D, not U37 (it needs A.U37.15, which lands in D). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine settlements, AC_NOTES 52) per
+`audit/actions/FOLD_BRIEF.md`. Cross-file dependencies on changes other fold agents add are written as
+`[fold Fnn M_FILE]` tokens.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | — | none in this file |
+| F02 | — | none in this file |
+| F03 | — | none in this file |
+| F04 | M.TOOL.080; M.TOOL.042, M.TOOL.055 | added (M.TOOL.080, U21); amended (M.TOOL.042, .055: keyword and release refusal) |
+| F05 | M.TOOL.046, M.TOOL.068 | amended (the PSK passed plainly; edit path and fallback dropped; agent-decision list line updated) |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | — | none in this file |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | M.TOOL.077 | amended (the comment: stubs move with every ref change) |
+| F15 | — | none in this file |
+| F16 | — | none in this file |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | — | none in this file |
+| F21 | M.TOOL.065, M.TOOL.068 | tag (bench-sudo-checked owner-reviewed, no audit ID in the comment; bench-psk ruling "(owner, 2026-10-02)") |
+| F22 | — | none in this file |
+| F23 | — | none in this file (no dynamic-import site in toolchain/ or the CI files; the S102 reasons for the exec runners stay) |
+| F24 | — | none in this file (the `src/voc_algorithm.py` N801 per-file entry stays as merged) |
+| F25 | — | none in this file |
+| F26 | — | none in this file |
+| F27 | — | none in this file |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

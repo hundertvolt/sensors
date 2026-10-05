@@ -1556,8 +1556,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
 ### M.SPEC.162 New B.14.5: the test-only tick-offset override for the rollover round
 - **From**: OR139/OR139.a (1)-(5) (owner, 2026-10-01: a test build with a starting offset); AC_NOTES 52 (OR139 owed:
   the override with its anchor check and release-build refusal, the build-info marker, SPEC B.14) (A-C review fold, F04).
-- **Site**: new `### B.14.5 `ticks_offset` (test-only) - the tick counts wrap about 15 minutes after boot` after the
-  `modlwip_eagain` subsection (HEAD B.14.3 and the U21 B.14.4 still exist at U21); renumbered B.14.4 at U36 with
+- **Site**: new subsection `### B.14.5`, titled with the override's name as landed in `micropython_overrides.py` and
+  "(test-only) - the tick counts wrap about 15 minutes after boot", after the `modlwip_eagain` subsection (HEAD B.14.3 and the U21 B.14.4 still exist at U21); renumbered B.14.4 at U36 with
   M.SPEC.042 (2)'s renumbering.
 - **Change**: one subsection, in B.14's per-override shape: "**What it does.** A test build of the `dev` image that
   differs from it by one build define: `mp_hal_ticks_ms()` (`ports/rp2/mphalport.h:96-98`, v1.29.0, which also feeds
@@ -1575,8 +1575,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (C7); how the test build is requested on the build's command line is decided at execution, with its reason recorded.
 - **Resolved**: — (new subsection; B.14.3/B.14.4 numbering per M.SPEC.042 (b): this one is B.14.5 until U36 deletes
   HEAD's B.14.3, then B.14.4).
-- **Unit**: Stage 1 U21 (the subsection, with the override, its anchor check and the release-build refusal); Stage 2
-  U27 (the build-information sentence, where the build information is produced, M.SCR); Stage 3 U36 (renumbered B.14.4
+- **Unit**: Stage 1 U21 (the subsection, with the override, its anchor check and the release-build refusal; without
+  the clause "the build information names it" unless the code writing that name lands in U21 too); Stage 2 U27 (that
+  clause, with the build information that names the override, where M.SCR produces it); Stage 3 U36 (renumbered B.14.4
   with M.SPEC.042 (2), every citer repointed).
 - **Depends**: [fold F04 M_TOOL] (the override, anchor check and release-build refusal in
   `toolchain/micropython_overrides.py`), [fold F04 M_SCR] (the build information names the override; the rollover
@@ -1950,8 +1951,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Resolved**: A.U15.17's Blast sentence and A.U0.17's insertion edit the same clause — one sentence carrying both
   (A.U15.17 "co-lands with A.U10.40/A.U10.42's C.5 edits"); A.U10.40/A.U10.42 touch C.5.3 only. A.U11.29's
   `coerce_numeric()` naming is superseded by GAP-G13 (C7).
-- **Unit**: Stage 1 U0 ((1) owner insertion); Stage 2 U3 ((3) caller rule — the per-layer rule states HEAD's
-  behaviour, so it may land at U3 or with (3)'s float sentence in U11); Stage 3 U10 ((7)); Stage 4 U11 ((3) float,
+- **Unit**: Stage 1 U0 ((1) owner insertion); Stage 2 U3 ((3) caller rule, stating the per-layer behaviour HEAD
+  already has, with C.7's paragraph); Stage 3 U10 ((7)); Stage 4 U11 ((3) float,
   (4), (5)); Stage 5 U15 ((1) in-range meanings, (2) `FiltCoeff`); Stage 6 U20 ((6)); Stage 7 U35 ((3) first sentence);
   Stage 8 U36 ((2) scope rule).
 - **Depends**: A.U0.17, A.U10.39, A.U11.21, A.U11.29, A.U11.33, A.U15.17, A.U15.42, A.U20.12, A.U35.43,
@@ -3787,14 +3788,17 @@ it; an unflipped fact keeps the text given here.
   deadline-free listen (agent, 2026-09-30; kept with its measurement owed, owner, 2026-10-05): the idle rate trades the
   first-query latency of an idle listener against the event-loop share its polling takes, specified as Part N
   `udp.poll_idle_ms`, bounded by the build, and measured on the twin and on the bench"; (f) the rates cite Part N (`uart.poll_wait_ms`, `uart.poll_idle_ms`,
-  `udp.poll_wait_ms`, `udp.poll_idle_ms`, by the IDs A.U8.06/A.U8.11 land). (4) If W25 finds the per-byte wait gone, F.8.2's
+  `udp.poll_wait_ms`, `udp.poll_idle_ms`, by the IDs A.U8.06/A.U8.11 land); (g) (A-C review fold, U13) the section's
+  description of the UART `ready()`'s check: it reads the receive ring's fill level instead of polling the receive side
+  (`ipoll()`/`uart.any()`), and sleeps `poll_wait_ms` inside a transaction and `poll_idle_ms` with no deadline — the
+  cost argument and the rule stay as written (owner, 2026-10-05; F.8.2). (4) If W25 finds the per-byte wait gone, F.8.2's
   mechanism text follows the source; the clamp and the yield stay (the owner's no-blocking rule).
 - **Resolved**: (a) A.U0.44 L15 and A.U14.R01 blast (a) rewrite `:3998-3999` — one sentence carrying R01's ladder and
   L15's owner tag. (b) A.U26.59 folds `uart_read_never_blocks_the_loop.py` into the driver script; A.U8C2.42's citation of
   the raw script is withdrawn with it (M.HW_DEV.049). (c) `UartLinkExerciser` → `UARTLinkDriver` (C7). (d) A.U13.12's
   clamp makes HEAD's "gate on `any()`" readline wording false — rewritten in (2)(a).
-- **Unit**: Stage 1 U0 (A20, L15 tags, T4); Stage 2 U13 ((2)(a), (3)(c), (3)(d) degrade half; (2)(f) with the DMA
-  receive path, its fakes and tests — the "proven on the bench" clause added in phase C with the soft-reset run);
+- **Unit**: Stage 1 U0 (A20, L15 tags, T4); Stage 2 U13 ((2)(a), (3)(c), (3)(d) degrade half; (2)(f) and (3)(g) with
+  the DMA receive path, its fakes and tests — the "proven on the bench" clause added in phase C with the soft-reset run);
   Stage 3 U14 ((2)(e), the backstop sentence); Stage 4 U16 (hold-timing script); Stage 5 U18 ((3)(e) with the idle-rate
   change and its owed measurement, A.U18.05); Stage 6 U20 ((3)(d) build half); Stage 7 U26 ((2)(b)); Stage 8 U36 (the
   move with every citer, M.SPEC.003; (2)(d), (3)(a)-(b)).
@@ -3929,9 +3933,10 @@ it; an unflipped fact keeps the text given here.
       setter that writes persistent memory"; A.U5.04's "**Config objects** — parameters that travel together are one
       namedtuple built by generated code"; "**Dotted-quad parsing** — `asy_dns_client.py`'s `ipv4_to_int()`, never a
       second parser" (A.U18.08); "**UDP client and the one poller pattern** — `asy_udp_socket.py`'s `UDPSocket` makes one
-      connect attempt per construction; every wait goes through its `ready()`, which, like the UART driver's, polls
-      `ipoll(0)` and sleeps `poll_wait_ms` inside an exchange and `poll_idle_ms` when waiting with no deadline (F.8.3;
-      Part N `udp.*`, `uart.*`)" (A.U18.13, A.U18.05, A.U8.11).
+      connect attempt per construction; every wait goes through its `ready()`, which, like the UART driver's, checks
+      readiness without blocking — `ipoll(0)` for the socket, the receive ring's fill level for a UART (F.8.2) — and
+      sleeps `poll_wait_ms` inside an exchange and `poll_idle_ms` when waiting with no deadline (F.8.3; Part N `udp.*`,
+      `uart.*`)" (A.U18.13, A.U18.05, A.U8.11; the UART clause as the fold's DMA receive path leaves it, U13).
   18. New, after the streaming entry (A-C review fold): "**Bounded piece assembly** — the shared piece primitive (its
       module and class name as landed; the webserver's streaming `_PieceWriter` is its model): a payload whose size
       the caller did not fix is held as pieces of at most `chunk_bytes`, with its length, iteration and a copy-out, so
@@ -4365,8 +4370,9 @@ U36 change that owns its paragraph below.
   allocated once and never reallocated by a task restart; its alignment padding fixed; net heap cost and largest free
   block before and after: <the twin's figure> on the twin, <the board's figure> on `dev` (owner,
   2026-10-05)" — the twin figure written when the catalog lands (measured in U25), the `dev` figure after phase C — A.U0.12's interim "bounded, or
-  unbounded pending owner question 1 (BACKLOG.md)" is the U0 text they replace (A.U0.12's own U0 wording no longer names
-  an owner question: the chunking became work before B0, M.DOCS.067); (b) the I2C scratch row carries A.U13.02's sentence as A.U30.21 corrects it ("a held view of the scratch
+  unbounded pending owner question 1 (BACKLOG.md)" is the U0 text they replace (A.U0.12's U0 wording itself
+  changes: "bounded, or — the UART receive allocations — to be chunked and capped (owner, 2026-10-05; J.8)", since the
+  chunking became work before B0 and no owner question is entered, M.DOCS.067); (b) the I2C scratch row carries A.U13.02's sentence as A.U30.21 corrects it ("a held view of the scratch
   halves it: one slice per read"), A.U30.07's burst rows, and A.U30.02 (8)'s fallback verdict; (c) the `crc_checks`
   row is A.U30.11's text with the owner quote and date; (d) the captive-DNS and UDP rows state "one question of at most
   255 octets, a reply of at most 287 B" and "512 B for DNS (RFC 1035 §4.2.1), 48 B for NTP (RFC 5905 §7.3)" (A.U18.02,

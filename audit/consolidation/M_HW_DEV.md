@@ -2936,3 +2936,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.HW_DEV.068 | Unit | appended: A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20). | dependency deferral (an edge ran from a later step) |
 | M.HW_DEV.142 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.HW_DEV.143 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine settlements, AC_NOTES 52) per
+`audit/actions/FOLD_BRIEF.md`. Cross-file dependencies on changes other fold agents add are written as
+`[fold Fnn M_FILE]` tokens.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.HW_DEV.009, .037, .095, .096, .120, .153, .155; .073, .116 (From) | amended (a created and removed scratch directory; two writes in the reboot test; primed scratch managers) |
+| F02 | — | none in this file |
+| F03 | M.HW_DEV.095, .096 | amended (a damaged scratch file deleted unread) |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | — | none in this file |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | — | none in this file |
+| F16 | — | none in this file |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | cluster header, M.HW_DEV.055 | amended |
+| F21 | M.HW_DEV.116 | tag (heap-floors-kept: "(agent, 2026-09-19; owner-reviewed, 2026-10-02)") |
+| F22 | — | none in this file |
+| F23 | M.HW_DEV.001, .053, .073, .116, .120 | amended (a rendered static import replaces `__import__`) |
+| F24 | — | none in this file |
+| F25 | M.HW_DEV.159, .160; M.HW_DEV.045, .047, .048 | added (M.HW_DEV.159 script, .160 host tests, U26 / R1 session 1); amended (.045, .047, .048) |
+| F26 | — | none in this file |
+| F27 | M.HW_DEV.045, .046 | amended (maximum-size train and over-cap refusal over the jumper) |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | convention B4, AD-1; M.HW_DEV.048, .050, .081, .089, .139, .141; .120, .144, .145 | amended (bounded polls; .120/.144/.145 kept as measured delays with their reason) |
+| F33 | — | none in this file |

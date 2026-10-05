@@ -3238,3 +3238,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.HW_BENCH.095 | Unit | appended: A-C2 step order: A.U2.15's part lands in U3, not U2 (it follows A.U2.15's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.HW_BENCH.114 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it follows A.U2.12's own change, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.HW_BENCH.133 | Unit | appended: A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine settlements, AC_NOTES 52) per
+`audit/actions/FOLD_BRIEF.md`. Cross-file dependencies on changes other fold agents add are written as
+`[fold Fnn M_FILE]` tokens.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.HW_BENCH.016, .088, .113, .130 | amended |
+| F02 | M.HW_BENCH.081 | amended (read after the burst, the 24-hour window) |
+| F03 | M.HW_BENCH.088 | amended (ConfigFaults empty after the reset) |
+| F04 | M.HW_BENCH.001, .002, .060, .089, .126, .130 | amended (`--rollover-image`; texts; the test image refused outside the rollover run; the ~2 h test flashing once; budget) |
+| F05 | M.HW_BENCH.112 | amended (the PSK passed plainly; no edit path, no limitation note) |
+| F06 | M.HW_BENCH.082 | amended (From: behind the persistence-write flag, confirmed) |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | M.HW_BENCH.101 | amended (the busy refusal asks to retry; no answer word pinned) |
+| F10 | — | none in this file |
+| F11 | M.HW_BENCH.116 | amended (A.U3.04 dropped: one entry per layer) |
+| F12 | — | none in this file |
+| F13 | M.HW_BENCH.006, .123 | amended (the console message and its README line) |
+| F14 | — | none in this file |
+| F15 | — | none in this file |
+| F16 | — | none in this file |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | cluster header, M.HW_BENCH.104, .125 | amended (no WoZi-specific wording) |
+| F21 | M.HW_BENCH.046, .006, .112, .123 | tag (heap-floors-kept owner-reviewed; the ask/change rulings "(owner, 2026-10-02)") |
+| F22 | — | none in this file |
+| F23 | M.HW_BENCH.012 | amended (the renderer rewrites the marked import line) |
+| F24 | — | none in this file |
+| F25 | M.HW_BENCH.041, .115, .130 | amended (ring size in `bench_facts`; README UART block; budget row) |
+| F26 | — | none in this file |
+| F27 | M.HW_BENCH.041, .115 | amended (cap keys in `bench_facts`; README sentence) |
+| F28 | — | none in this file |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |
