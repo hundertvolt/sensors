@@ -405,16 +405,20 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 
 ### M.SRC_SENS.018 The literal port keeps its member order
 - **From**: A.U10.33 (lists `voc_algorithm.py:55 DFRobot_vocalgorithmParams` and `:181 VOCAlgorithm` "only if U12's
-  literal-port verdict, G3/R10, allows reordering a Sensirion port")
+  literal-port verdict, G3/R10, allows reordering a Sensirion port"); OR141.a (3) (A-C review fold)
 - **Site**: `src/voc_algorithm.py:55, :181`
 - **Change**: none — the two classes are not reordered.
 - **Resolved**: G3/R10 as A.U12.15 records it: the port traces its reference 1:1 ("literal-port rule … the named
   exception to the Adafruit rule", agent, 2026-07-21); a D.15 reorder would break the operation-order diff against
-  the C source that A.U12.12's vectors and A.U12.15's F.4 text rely on. A.U10.33's condition is therefore not met.
+  the C source that A.U12.12's vectors and A.U12.15's F.4 text rely on. A.U10.33's condition is therefore not met. OR141.a (3) (owner, 2026-10-05) makes it the rule: the file stays a
+  literal port — upstream names, casing and order — and is the one named exception to the naming rules and to the
+  member-ordering rule (D.15); only `VOCAlgorithm`, the class other modules import, follows the scheme. No change in
+  this cluster renames or reorders inside the file (checked: M.SRC_SENS.014-.017 keep every name and the order, A-C
+  review fold).
 - **Unit**: U10 (no edit)
 - **Depends**: —
 - **Blast carried by**: A.U10.47's convention check must exempt this file from the D.15 order rule, as it exempts its
-  casing → GAP-3 (TSC)
+  casing → GAP-3 (TSC) with [fold F24 M_TSC]; D.15 and the naming Part name the exception → [fold F24 M_SPEC]
 - **Kind**: rule
 
 ## src/asy_neopixel_driver.py
@@ -498,7 +502,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 ### M.SRC_SENS.023 `NeopixelDriver.__init__`: log config, fixed values, private state
 - **From**: A.U5.02 (`(neopixel_pin, log)`), A.U17.27 (fixed values), A.U9.02 (`ext_rgbt`, `ext_start_signal` go),
   A.U9.04 (`start_signal_lock` goes), A.U10.17 (lock reason), A.U10.18 (`led_overl_lock` → `_overlay_lock`), A.U10.35
-  (`pixel`, `start_signal_event`, `led_overl_bri`, `led_overl_on` private), A.U31.13 (`_frame_ms`)
+  (`pixel`, `start_signal_event`, `led_overl_bri`, `led_overl_on` private), A.U31.13 (`_frame_ms`); routine settlement "initialized-flags" (no flag; A-C review fold)
 - **Site**: `src/asy_neopixel_driver.py:43-68`
 - **Change**: `def __init__(self, neopixel_pin: int, log: LogConfig = DEFAULT_LOG) -> None:` —
   `self.pr: PrintLogHistory = make_logger(log, _NAME)`; `self.name = _NAME` (comment kept); `self._pixel =
@@ -506,8 +510,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `self._start_signal_event = asyncio.Event()`; `self._overlay_lock = asyncio.Lock()` with the reason "# serialises the
   pixel and its write() between the overlay and a signal ramp"; `self._overlay_start = asyncio.ThreadSafeFlag()`;
   `self._overlay_bri = _LED_OVERL_BRI`; `self._overlay_rgb: tuple[int, int, int] = (0, 0, 0)`; `self._overlay_on =
-  False`; `self._neopixel_freq = _NEOPIXEL_FREQ_HZ`; `self._frame_ms = 1000 // _NEOPIXEL_FREQ_HZ` (50 ms, exact). Last: `self.initialized = False` (G5/R14's gate,
-  AC_NOTES 38/44).
+  False`; `self._neopixel_freq = _NEOPIXEL_FREQ_HZ`; `self._frame_ms = 1000 // _NEOPIXEL_FREQ_HZ` (50 ms, exact). No `initialized`: nothing in the product reads the driver's
+  readiness (routine settlement "initialized-flags", A-C review fold, replacing AC_NOTES 38/44's addition).
 - **Resolved**: one name stem for the overlay state: A.U10.18 writes `_overlay_lock` while A.U10.35's mechanical rule
   would give `_led_overl_bri`/`_led_overl_on` beside it; D.10 in-file consistency → `_overlay_*` for all five (agent,
   2026-10-01). `rgbt`, `led_overl_start`, `led_overl_rgb` have no outside reader → private by default (G10/R07).
@@ -524,11 +528,12 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Kind**: code
 
 ### M.SRC_SENS.024 `NeopixelDriver.setup()`: the logger in the boot batch
-- **From**: A.U10.10 (new `setup()`), A.U10.21 (`-> bool`), AC_NOTES 38/44 (`initialized`, GAP-U3, TSC gap)
+- **From**: A.U10.10 (new `setup()`), A.U10.21 (`-> bool`); AC_NOTES 38/44's `initialized` withdrawn by the routine
+  settlement "initialized-flags" (A-C review fold)
 - **Site**: `src/asy_neopixel_driver.py` new method (D.15 position)
 - **Change**: `async def setup(self) -> bool:` `ok = await self.pr.setup()` (the logger's own `setup()` returns
-  `initialized` after A.U10.21); `self.initialized = True`; `return ok`. No method guards on `initialized` (AC_NOTES
-  44): every member exists from construction and both tasks start after the boot batch, so a call before `setup()`
+  `initialized` after A.U10.21); `return ok`. No readiness flag and no guard (the routine settlement "initialized-flags": the
+  flag stays only where product code reads it): every member exists from construction and both tasks start after the boot batch, so a call before `setup()`
   answers as after it — `on()`/`off()`/`toggle()` record the overlay state and return `None` (applied when the overlay
   task starts, M.SRC_SENS.025), `led_signal()`/`request_signal()` answer `True`/`False` by their own rules
   (M.SRC_SENS.026/.027), the request held until the signal task runs; the log calls go to the logger's own gate.
@@ -536,7 +541,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Unit**: U10
 - **Depends**: A.U10.21's `PrintLogHistory*.setup()` return (SRC_CORE)
 - **Blast carried by**: generated batch `await neopixel.setup()` and `needs_setup` → A.U10.10 (GEN); tests
-  `tests/test_asy_neopixel_driver.py:453-464` → A.U10.10 (TEST_UNIT)
+  `tests/test_asy_neopixel_driver.py:453-464` → A.U10.10 (TEST_UNIT); tests and the L0 check reading the flag →
+  [fold F28 M_TEST_UNIT], [fold F28 M_TSC] (A.U10.22's scope)
 - **Kind**: code
 
 ### M.SRC_SENS.025 Overlay task, starters and fan-in methods
@@ -563,11 +569,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Kind**: code
 
 ### M.SRC_SENS.026 `led_signal()`: refused at once while busy
-- **From**: A.U9.02, A.U9.06
+- **From**: A.U9.02, A.U9.06; OR140.a (5) (the refusal says retry later; A-C review fold)
 - **Site**: `src/asy_neopixel_driver.py:137-143`
 - **Change**: `def led_signal(self, r: int, g: int, b: int, t: float) -> bool:` — `values = _signal_values(r, g, b,
   t)`; `None` → `return False`; `if self._start_signal_event.is_set(): self.pr.evt("External LED command refused:
-  busy."); return False`; `self._rgbt = values`; `self._start_signal_event.set()`; `return True` (no `await`, so no lock).
+  busy, retry later."); return False` (the REST answer carries the same retry hint, M.SRC_NET.122); `self._rgbt = values`; `self._start_signal_event.set()`; `return True` (no `await`, so no lock).
 - **Resolved**: —
 - **Unit**: U9 (prerequisite of A.U9.03's generated REST LED callback, U9)
 - **Depends**: M.SRC_SENS.022
@@ -577,15 +583,19 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Kind**: code
 
 ### M.SRC_SENS.027 `request_signal()`: bounded wait, frame-period poll
-- **From**: A.U9.04, A.U9.06, A.U31.13
+- **From**: A.U9.04, A.U9.06, A.U31.13; OR140.a (5) (A-C review fold)
 - **Site**: `src/asy_neopixel_driver.py:145-153`
-- **Change**: `async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:` — `values = _signal_values(…)`,
+- **Change**: one comment line above it "# Internal requests are bounded in number and rate, so one waits for a running
+  signal, then queues; an external command is refused instead (agent, 2026-09-29; owner-reviewed, 2026-10-02).";
+  `async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:` — `values = _signal_values(…)`,
   `None` → `return False`; `deadline = time.ticks_add(time.ticks_ms(), _SIGNAL_WAIT_MS)`; `while
   self._start_signal_event.is_set():` — past the deadline `self.pr.evt("Internal LED command dropped: signal still
   busy.")`, `return False`; else `await asyncio.sleep_ms(self._frame_ms)`; then `self._rgbt = values`,
   `self._start_signal_event.set()`, `return True`. The `start_signal_lock` is gone (no await between the final check and
   the set).
-- **Resolved**: A.U9.04 writes the poll as `asyncio.sleep(self.neopixel_dt)` (a float sleep); A.U31.13 makes it
+- **Resolved**: OR140.a (5) (owner, 2026-10-02): internal requests may wait and queue because they are bounded in
+  number and rate; external ones are refused when busy and told to retry (M.SRC_SENS.026, M.SRC_NET.122) — the merged
+  behaviour already matched; the comment records it with the review tag. A.U9.04 writes the poll as `asyncio.sleep(self.neopixel_dt)` (a float sleep); A.U31.13 makes it
   `sleep_ms(self._frame_ms)` (U31 conflict table) — the merged end state is A.U31.13's.
 - **Unit**: stage U9 (A.U9.04 with a float `sleep(self.neopixel_dt)`, lock removal — A.U10.17 in U10 relies on the lock
   being gone); stage U31 (`sleep_ms`)
@@ -664,9 +674,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 ### M.SRC_SENS.031 Module constants, catalog names and wiring tags
 - **From**: A.U2.17 + A.U2.04 (`_ERR_`/`_WRN_` block), A.U8.12 (`notify.loop_tick_s`, `notify.min_sleep_s`,
   `notify.cfg_fail_interval_s`), A.U31.14 (ms/int forms), A.U9.08 (`_ERR_SOURCE` use), A.U5.03 (`@wiring … log`),
-  A.U10.38 (`FRAMManager`)
+  A.U10.38 (`FRAMManager`); OR140.a (7) (the config-read codes; A-C review fold)
 - **Site**: `src/asy_notification_service.py:48-55`
-- **Change**: after the imports, one block: `_ERR_CALLBACK = const(14)`, `_ERR_SOURCE = const(15)`,
+- **Change**: after the imports, one block: `_ERR_CALLBACK = const(14)`, `_ERR_SOURCE = const(15)`, `_ERR_CFG_READ` (shared: the module's own config read failed and it runs on its fallback — kept persisted by
+  OR140.a (7); the next free shared code, numbered at execution with the catalog as the numbering source, M.GEN.034),
+  `_WRN_CFG_READ` (its warning twin, HEAD's w5),
   `_WRN_NOTIFY_NAME_COLLISION = const(44)`, `_WRN_NOTIFY_SCHEMA_SHAPE = const(45)` (46/47 retired, not declared);
   `_MAX_OVERRIDE_TIME = const(3600)`, `_NAME = const("NOTIFY")`; `# @tunable notify.loop_tick_s = 1` / `_LOOP_TICK_S =
   const(1)`; `# @tunable notify.min_sleep_ms = 100` / `_MIN_SLEEP_MS = const(100)`; `# @tunable
@@ -719,7 +731,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   superseded by the removal), A.U5.06 (signals at construction; `register()`/`finalize()`/`_finalized` go), A.U5.02
   (`log`), A.U10.38 (`NotificationCoordinator` → `NotificationService`), A.U9.09 (`_pause`), A.U2.17 (W44/W45 names),
   A.U22.04 (callback types), A.U10.39 (`cfg_schema` → `_cfg_schema`), A.U10.21 (`setup() -> bool`), A.U11.31
-  (`reset_error_counter()` returns the reset's bool)
+  (`reset_error_counter()` returns the reset's bool); routine settlement "initialized-flags" (A-C review fold)
 - **Site**: `src/asy_notification_service.py:110-173, 247-316`
 - **Change**: `NotificationSignal(name, value: ValueRef, field_schema, color, *, above=True)` stores `name`, `value`,
   `field_schema`, `color`, `above` (the HEAD comment `:122-124` → "# A reference to the producer plus the field to read
@@ -732,15 +744,16 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `(message, wrnno)` in `self._pending_wrn`; then `super().__init__(NOTIFY(Triggered=False, TS=None), _NAME,
   combined_schema, max_module_error=0, cfg_path=cfg_path, log=log)`; `self._request_signal_cb`,
   `self._local_time_callback`, `self._registered` (the accepted tuple), `self._pause = TickSeconds(count_down=True)`,
-  `self._auto_active = True`, `self.initialized = False` (G5/R14's gate; AC_NOTES 42). `register()`, `finalize()`, `_finalized`, `_reject_registration()`'s late/again codes and
+  `self._auto_active = True` (no `initialized`: routine settlement "initialized-flags", A-C review fold, replacing
+  AC_NOTES 42's addition). `register()`, `finalize()`, `_finalized`, `_reject_registration()`'s late/again codes and
   every `if not self._finalized` guard (`get_data`, `get_dict_data`, `get_dict_cfg`, `get_error_counter`, `setup`,
   `reset_error_counter`, both loops) go; `get_data()` keeps `# Narrows to this Reader's concrete NOTIFY - see
   SPECIFICATION.md C.4.2's get_data() convention.` directly above `return await self._get_meas_data()  # type:
   ignore[return-value]`; `get_dict_data()` uses `name=self.name`; `get_dict_cfg()` → `self._get_dict_cfg(self.name,
   self._cfg_schema)`; `get_error_counter()` → `return await self.pr.get_log()`; the `reset_error_counter()` override
   goes (the inherited one returns the reset's bool, A.U11.31). `async def setup(self) -> bool:` `ok = await
-  super().setup()`; then each buffered refusal `await self.pr.wrn_s(msg, wrnno=code)` (the buffer emptied); `self.initialized = True`;
-  `return ok`. No method guards on `initialized`: every member exists from construction, the config reads answer through
+  super().setup()`; then each buffered refusal `await self.pr.wrn_s(msg, wrnno=code)` (the buffer emptied);
+  `return ok`. No readiness flag and no guard: every member exists from construction, the config reads answer through
   `ConfigManager.valid` and the log through `PrintLog`'s own gate, so a call before `setup()` answers the construction
   defaults (`NOTIFY(Triggered=False, TS=None)`, the store's not-valid answer, an empty log) (AC_NOTES 42).
 - **Resolved**: (1) A.U11.31 gives the not-finalised early return `True` "until A.U5.06 removes the guard" — the guard
@@ -780,9 +793,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   tests) go → A.U10.06 (TEST_UNIT); `_FastAsyncSleep` gains `sleep_ms` → A.U31.14/A.U24.49 (TEST_HELP)
 - **Kind**: code
 
-### M.SRC_SENS.035 `_check_one()`: value reference, numeric guard, one entry per event
+### M.SRC_SENS.035 `_check_one()`: value reference, numeric guard, the threshold read keeps its entry
 - **From**: A.U5.11 (`notif.value.source`/`.field`), A.U9.08 (non-numeric and NaN), A.U22.02/A.U23.37 (no attribute
-  writes), A.U2.17 (e10 → 15 SOURCE), A.U3.05 (threshold read failure → console), A.U30.19
+  writes), A.U2.17 (e10 → 15 SOURCE), A.U3.05 (dropped: OR140.a (7), A-C review fold: the threshold read failure stays persisted), A.U30.19
 - **Site**: `src/asy_notification_service.py:194-221`
 - **Change**: `async def _check_one(self, notif: NotificationSignal) -> bool:` — `source: _ValueSource =
   notif.value.source` (annotated local narrows the untyped namedtuple field, C.4.2 idiom); `try: data = await
@@ -790,14 +803,14 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE); return False`; `if value is None: return
   False`; `if type(value) not in (int, float, bool): await self.pr.err_s(notif.name, "Value not numeric:",
   type(value).__name__, errno=_ERR_SOURCE); return False`; `if value != value: return False  # NaN never triggers`;
-  `thresholds = await self.cfgmgr.get_float_values(notif.field_schema)`; `None` → `self.pr.err(notif.name, "Threshold
-  config read failed!")`, `return False` (the config store persisted the cause, A.U3.05); `threshold = thresholds[0]`;
+  `thresholds = await self.cfgmgr.get_float_values(notif.field_schema)`; `None` → `await self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)`, `return False`
+  (this layer's own entry beside the config store's, as at HEAD); `threshold = thresholds[0]`;
   `numeric_value = float(value)` (cannot raise now; comment → "# float() cannot raise here: value is numeric."); return
   the comparison.
 - **Resolved**: A.U9.08 writes `notif.last_value = None`/`notif.triggered = False` in its new branches — dropped with
   the attributes (A.U22.02's Depends). `bool` counts as numeric (A.U9.08 "(`bool` counts as `int`)") — written as an
   explicit type set because MicroPython's `bool` is not an `int` subclass (`py/objbool.c:87-96`, A.U11.S01).
-- **Unit**: stages U2, U3, U5, U9 (numeric guard, with the attribute writes already absent), U22, U30
+- **Unit**: stages U2, U5, U9 (numeric guard, with the attribute writes already absent), U22, U30
 - **Depends**: M.SRC_SENS.033
 - **Blast carried by**: tests `:768-801`, `:873-893` (`"abc"`, `[1]`, `"1800"` rows), `FakeValue` typing → A.U9.08
   (TEST_UNIT); catalog row 15 wording "raised or returned a non-numeric field" → A.U9.08 into A.U2.01 (GEN)
@@ -825,23 +838,24 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 
 ### M.SRC_SENS.037 `_monitor_loop()`: midnight window, one log path, ms sleeps
 - **From**: A.U9.01 (`_in_window()`), A.U10.10 (`pr.setup()` leaves the task), A.U3.02 (`cfg_failing`, `repeat=` go),
-  A.U3.05 (the config-read warning → console), A.U8.12/A.U31.14 (`_CFG_FAIL_INTERVAL_S`, `sleep_ms`), A.U5.06 (guard
+  A.U3.05 (dropped: OR140.a (7), A-C review fold: the config-read warning stays persisted), A.U8.12/A.U31.14 (`_CFG_FAIL_INTERVAL_S`, `sleep_ms`), A.U5.06 (guard
   and `_flush_pending_registration_warnings()` go: `setup()` persists refusals), A.U10.44 (name)
 - **Site**: `src/asy_notification_service.py:332-376` and a new module function
 - **Change**: new module function `_in_window(on_min: int, off_min: int, cur_min: int) -> bool` exactly as A.U9.01
   writes. `async def _monitor_loop(self) -> None:` — no setup, no guard; the comment `:337-339` stays; `while True:` `t0 =
-  time.ticks_ms()`; the three config reads; on any failure `interv = _CFG_FAIL_INTERVAL_S` and `self.pr.err("Error reading
-  own configuration!")` (console; `ConfigManager` persisted the cause); else the window test `if _in_window(on_min_of_day,
+  time.ticks_ms()`; the three config reads; on any failure `interv = _CFG_FAIL_INTERVAL_S` and `await self.pr.wrn_s("Error reading
+  own configuration!", wrnno=_WRN_CFG_READ)` (persisted every failing cycle, as at HEAD; a repeat spends no slot
+  under the newest-entry rule); else the window test `if _in_window(on_min_of_day,
   off_min_of_day, cur_min_of_day):`, the per-signal loop with `await asyncio.sleep_ms(round(flash_dur * 2000))` after a
   triggered flash, `await self._store_notif_data(any_triggered=any_triggered)`; `await
   asyncio.sleep_ms(self._next_sleep_ms(interv, t0))`.
-- **Resolved**: A.U3.02 (the `cfg_failing` flag) and A.U3.05 ("NTP `:225` and NOTIFY `:355` … A.U3.05 makes them console
-  lines") agree: the line becomes a console print, the flag and `repeat=` go.
-- **Unit**: stages U3 (log), U5 (flush moved to `setup()`), U8 (constant), U9 (window), U10 (setup out, name), U31
+- **Resolved**: A.U3.02 removes the `cfg_failing` flag and `repeat=`; A.U3.05's console line is dropped (OR140.a (7),
+  A-C review fold), so the line stays a persisted warning, written directly.
+- **Unit**: stages U3 (`repeat=` out), U5 (flush moved to `setup()`), U8 (constant), U9 (window), U10 (setup out, name), U31
   (sleeps)
 - **Depends**: M.SRC_SENS.031, M.SRC_SENS.033, M.SRC_SENS.034
 - **Blast carried by**: `_in_window()` table, one-cycle and L2 window tests → A.U9.01 (TEST_UNIT, TWIN); config-failure
-  tests `:665-686, :1350-1407` → A.U3.05 (TEST_UNIT); DEVICE_REFERENCE window bullet → A.U9.01 (DOCS); SPEC A.4 → A.U9.01
+  tests `:665-686, :1350-1407` keep the module's own entry → [fold F11 M_TEST_UNIT]; DEVICE_REFERENCE window bullet → A.U9.01 (DOCS); SPEC A.4 → A.U9.01
 - **Kind**: code
 
 ## src/asy_bmp3xx_driver.py
@@ -887,7 +901,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Site**: `src/asy_bmp3xx_driver.py:36-72`
 - **Change**: `_REG_ERR_CMD_BIT = const(0x02)` (comment unchanged). After the imports the catalog block:
   `_ERR_INIT = const(10)`, `_ERR_READ = const(11)`, `_ERR_CHIP_GET = const(12)`, `_ERR_CHIP_SET = const(13)`,
-  `_ERR_BAD_ARG = const(21)`, `_WRN_DERIVED_DOMAIN = const(11)`. `# @tunable bmp3xx.cmd_rdy_timeout_ms = 50` /
+  `_ERR_BAD_ARG = const(21)`, `_ERR_CFG_READ` (shared: the module's own config read failed and it runs on its fallback — kept persisted by
+  OR140.a (7); the next free shared code, numbered at execution with the catalog as the numbering source, M.GEN.034), `_WRN_DERIVED_DOMAIN = const(11)`. `# @tunable bmp3xx.cmd_rdy_timeout_ms = 50` /
   `_CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy is set whenever no command is executing (DS001 4.3.3); the datasheet gives
   no bound, so 50 ms bounds a bus fault (agent)`; `# @tunable bmp3xx.meas_timeout_ms = 300` / `_MEAS_TIMEOUT_MS =
   const(300)  # ~150 ms worst case at x32/x32 (3.9.2 typical + Table 22 max margin); 300 ms bounds a stuck STATUS`;
@@ -959,11 +974,12 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 ### M.SRC_SENS.043 `_read_bmp()`, `_store_bmp()`: one timestamp, captured config, domain warning
 - **From**: A.U10.06 (`utc_now()` before the `try`; store guard on values only), A.U15.22 (2) (`_cycle_comp` captured
   before the first await), A.U15.24 (W11 `DERIVED_DOMAIN`), A.U12.08 (`altitude_baro` → `pressure_at_height`), A.U3.05
-  (the config-read line → console), A.U2.10 (numbers), A.U30.19
+  (dropped: OR140.a (7), A-C review fold: the config-read entry stays persisted), A.U2.10 (numbers), A.U30.19
 - **Site**: `src/asy_bmp3xx_driver.py:185-196, 227-249`
 - **Change**: `__init__` gains `self._cycle_comp: list[float] = [0.0, 0.0, 0.0, 15.0]` (overwritten in place, never
   reallocated). `_read_bmp()`: `timestamp = utc_now()`; `comp = await self.cfgmgr.get_float_values(<the four float
-  _VAL_ tuples>)`; on a failed read `self.pr.err("Error reading config data!")` (console) and the fallback
+  _VAL_ tuples>)`; on a failed read `await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)` (persisted, as at HEAD)
+  and the fallback
   `[0.0, 0.0, 0.0, 15.0]` copied into `self._cycle_comp` element-wise, else the four values copied in; then `try:
   pressure, temperature = await self._bmp.get_pressure_and_temperature()`, `self.pr.all("read")` `except Exception as e:
   report_if_fatal(e); pressure = temperature = None; await self.pr.err_s("Read failed:", e, errno=_ERR_READ)`; return
@@ -978,7 +994,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `DERIVED_DOMAIN` = 11, `SOCKET_TEARDOWN` = 12; A.U10.R01's W14/W15 keep their numbers (agent, 2026-10-01). (2)
   A.U15.22's capture moves the config read ahead of the conversion; A.U10.06 puts the timestamp before the `try` — both
   hold: timestamp, capture, then the conversion.
-- **Unit**: stages U2, U3, U10, U12 (helper name), U15, U30
+- **Unit**: stages U2, U10, U12 (helper name), U15, U30
 - **Depends**: M.SRC_SENS.040, M.SRC_SENS.041; A.U12.08, A.U2.01 (W11 row)
 - **Blast carried by**: L1 staleness/capture/domain cases → A.U15.22/A.U15.24/A.U10.06 (TEST_UNIT); catalog row W11 and
   W12 → A.U15.24 and A.U18.15 into A.U2.01 (GEN, SRC_NET: GAP-7 for the number); SPEC C.4.2/M.4/C.7.1 → A.U15.22/
@@ -987,11 +1003,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 
 ### M.SRC_SENS.044 `_init_bmp()`, the stored-config re-apply and the participant rung
 - **From**: A.U15.R03 (`_apply_stored_config()`, `_recover_device()`, `_init_failed()`/`_init_done()`), A.U10.10
-  (`pr.setup()` leaves), A.U10.21 (`self._bmp.setup()` takes no parameters), A.U3.05 (config read → console), A.U2.10
+  (`pr.setup()` leaves), A.U10.21 (`self._bmp.setup()` takes no parameters), A.U3.05 (dropped: OR140.a (7), A-C review fold: the config-read entry stays persisted), A.U2.10
   (numbers), A.U11.27 (`_set_lock` held by the rung), A.U30.19
 - **Site**: `src/asy_bmp3xx_driver.py:198-225` and two new methods
 - **Change**: `_apply_stored_config(self) -> int` (new, the HEAD `:209-223` body): a failed config read →
-  `self.pr.err("Error reading config data!")` (console), `return 1`; `await self.set_trigger_s(cfg_values[0])`; the three
+  `await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)` (persisted, as at HEAD), `return 1`; `await self.set_trigger_s(cfg_values[0])`; the three
   chip writes in `try`, on failure `report_if_fatal(e)`, `await self.pr.err_s("Error setting config data:", e,
   errno=_ERR_CHIP_SET)`, `return 2`; `return 0`; comment "# 0 applied, 1 config unreadable (no bus rung), 2 a chip write
   failed". `_init_bmp()`: `self._err_cnt_internal = 0`; `try: await self._bmp.setup()` `except Exception as e:
@@ -1005,7 +1021,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   errno-13 branch)"; `_apply_stored_config()` also runs inside `_recover_device()`, where calling `_init_failed()` (a
   controller rung) from inside the participant rung would nest two ladder steps. So the helper returns a code and only
   `_init_bmp()` calls `_init_failed()` for a chip-write failure (agent precision of A.U15.R03, OR2.c list).
-- **Unit**: U15 (stages U2, U3, U10 as for M.SRC_SENS.043; U30 handler)
+- **Unit**: U15 (stages U2, U10 as for M.SRC_SENS.043; U30 handler)
 - **Depends**: M.SRC_SENS.042; A.U10.R01, A.U13.R01, A.U11.27
 - **Blast carried by**: streak tests `tests/test_asy_bmp3xx_driver.py:1400-1411, 1977-1988` and the new rung cases →
   A.U15.R03/A.U10.R01 (TEST_UNIT); four tiers of the mid-operation reset → A.U15.R03 (TEST_UNIT, TWIN incl.
@@ -1117,7 +1133,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 
 ### M.SRC_SENS.089 A pre-sync `TS` of `None` is not a failed read
 - **From**: adherence finding (A.U10.06 × `SensorReader._error_check()`); A.U10.06 (a pre-sync sample is published with
-  `TS` `None`), A.U15.22 (4) (ISL29125's `condition` precedent), A.U3.03/A.U10.R01 (what a counted failure costs)
+  `TS` `None`), A.U15.22 (4) (ISL29125's `condition` precedent), A.U3.03 (dropped: OR140.a (7), A-C review fold), A.U10.R01 (what a counted failure costs)
 - **Site**: `src/asy_bmp3xx_driver.py:392` (`_read_loop()`'s streak call); the same call in SCD30 (M.SRC_SENS.090),
   SGP40 (M.SRC_SENS.091) and ISL29125 (M.SRC_SENS.083)
 - **Change**: `if not await self._error_check(results, condition=results[0] is None): return` with one comment line "#
@@ -1205,7 +1221,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_VAL_FRC_NOISE = const((("FRCNoise", "float", 20.0, 1.0, 500.0, None),))`, `_VAL_FRC_RATE = const((("FRCRate",
   "float", 10.0, 0.1, 1000.0, None),))`, `_VAL_FRC_WINDOW = const((("FRCWindow", "int", 60, 20, 3600, None),))` with the
   comment "# FRC readiness settings: noise floor 2 x the repeatability (owner, 2026-09-29: 1-2 x); rate and window
-  provisional until measured on the bench (agent, 2026-09-29)." Tags (one line each): `AmbPres … alwaysExecuted=true`;
+  provisional until measured on the bench (agent, 2026-09-29; owner-reviewed, 2026-10-02)." Tags (one line each): `AmbPres … alwaysExecuted=true`;
   `Altitude … description="Only used while Ambient Pressure is 0; a pressure value overrides it." ignoredWhenSet=AmbPres`;
   the source comment "# Interface Description 1.4.6 and its FRC section (p14), Low Power Mode note (6 min / 5
   intervals), Field Calibration note (the configured interval)." above `ForceCalRef … description="A calibration run,
@@ -1316,7 +1332,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Unit**: U15 (stages U2, U10; U30 handler)
 - **Depends**: M.SRC_SENS.052, M.SRC_SENS.057; A.U10.R01, A.U13.R01
 - **Blast carried by**: streak/rung tests `tests/test_asy_scd30_driver.py:1286-1331` and new cases, notification
-  integration `ErrCount`s → A.U15.R01/A.U3.03 (TEST_UNIT); four tiers (L3 `bus_concurrency_cross_device_scd30_sgp40.py`
+  integration `ErrCount`s → A.U15.R01 (TEST_UNIT; the base class's errno 1 stays persisted, A.U3.03 dropped); four tiers (L3 `bus_concurrency_cross_device_scd30_sgp40.py`
   reset step) → A.U15.R01 (HW_DEV); twin CI Runs 3/4/5c → A.U15.R01/A.U13.R01 (SCR); SPEC A.4 → A.U15.04/A.U15.R01
 - **Kind**: code
 
@@ -1446,7 +1462,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_SERIAL_READ_WAIT_MS`, `_SELF_TEST_WAIT_MS`, `_GENERAL_CALL_RESET_WAIT_S`), A.U2.13 + A.U2.04 (catalog block),
   A.U15.17 (3) (W34 renamed `SGP_BACKUP_AGE`), A.U15.14 (tick bounds, compensation records), A.U15.18 (`_NO_TIMESTAMP`),
   A.U15.19 (`_VOC_SETTLED_SAMPLES`), A.U15.28 (`_SGP40_ADDR`), A.U15.R02 + A.U31.10 (`_CMD_HEATER_OFF`,
-  `_HEATER_OFF_MAX_MS`), A.U15.40 (3) (`_N_*` right after `_VAL_*`)
+  `_HEATER_OFF_MAX_MS`), A.U15.40 (3) (`_N_*` right after `_VAL_*`); OR140.a (7) (the config-read and backup codes; A-C review fold)
 - **Site**: `src/asy_sgp40_driver.py:44-59`
 - **Change**: `# @tunable sgp40.fram_verify_mins = 60` / `_FRAM_VERIFY_MINS = const(60)` (its two-line comment kept);
   `_MAX_NTP_WAITTIME = const(600)`; `# @tunable sgp40.backup_counter_max = 100000` / `_BACKUP_COUNTER_MAX =
@@ -1460,7 +1476,10 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_T_TICKS_MIN_C = const(-45.0)`, `_T_TICKS_MAX_C = const(130.0)`, `_RH_TICKS_MAX = const(100.0)`; the catalog block
   `_ERR_INIT = const(10)`, `_ERR_READ = const(11)`, `_ERR_CHIP_SET = const(13)`, `_ERR_SOURCE = const(15)`,
   `_ERR_SGP_ALGO_STATE = const(58)`, `_WRN_SGP_RESTORED_NO_TS = const(33)`, `_WRN_SGP_BACKUP_AGE = const(34)`,
-  `_WRN_SGP_WRITTEN_NO_TS = const(35)`.
+  `_WRN_SGP_WRITTEN_NO_TS = const(35)`, `_ERR_CFG_READ` (shared: the module's own config read failed and it runs on its fallback — kept persisted by
+  OR140.a (7); the next free shared code, numbered at execution with the catalog as the numbering source, M.GEN.034), and the SGP40-band codes of the backup entries
+  OR140.a (7) keeps persisted (HEAD's e14/e15/w10): `_ERR_SGP_BACKUP_CLEAR`, `_ERR_SGP_BACKUP_WRITE`,
+  `_WRN_SGP_NO_BACKUP` — numbered at execution after the band's last used code (M.GEN.034).
 - **Resolved**: A.U8.07's wait names are integer ms already except the general-call wait, an int of seconds, which the
   float-sleep rule allows (A.U31.10 keeps it). The heater-off bound is untagged (a datasheet fact, A.U15.R02).
 - **Unit**: U15 (stages U2 catalog, U8 tags, U31 heater-off ms form lands with A.U15.R02 in U15 as written by A.U31.10)
@@ -1556,48 +1575,53 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 ### M.SRC_SENS.063 Backup schedule, restore and backup write
 - **From**: A.U15.17 (1)-(4) (`_verify_every()`, WaitTimeNTP 0, age check, no per-second re-read), A.U16.18 (bool-first
   unpack; negative age expired — the same condition as A.U15.17 (3)), A.U15.18 (`_NO_TIMESTAMP`), A.U3.02 (W35 on every
-  untimestamped backup; `_no_ts_episode`/`repeat=` go), A.U3.09 (`:251-254, :373-377, :426-429` → console), A.U3.05
-  (`:206, :348` config reads → console), A.U2.13 (numbers), adherence (`:231-232` "(see module docstring)" points to text
+  untimestamped backup; `_no_ts_episode`/`repeat=` go), A.U3.09 (dropped: OR140.a (7), A-C review fold: the SGP40 lines stay persisted), A.U3.05
+  (dropped: OR140.a (7), A-C review fold: the `:206, :348` config reads stay persisted), A.U2.13 (numbers), adherence (`:231-232` "(see module docstring)" points to text
   the docstring does not hold)
 - **Site**: `src/asy_sgp40_driver.py:196-234, 342-361, 363-446`
 - **Change**: module function `_verify_every(backup_period_min: int) -> int: return max(1, int(math.ceil((10 *
   _FRAM_VERIFY_MINS) / backup_period_min) * 0.1))` with A.U15.17 (1)'s comment; `_init_sgp()` and `_run_backup()` call it.
-  `_check_storage()`: a failed config read → `self.pr.err("Error reading config data!")` (console) and the early return;
+  `_check_storage()`: a failed config read → `await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)`
+  and the early return;
   `:231-232` comment → "# Explicit unpack-then-repack so mypy sees a real 3-tuple without a typing.cast (C.4.2)." The
-  storage part of `_init_sgp()`: a failed read → console line, `return False`; `if cfg_values[0] > 0: await
+  storage part of `_init_sgp()`: a failed read → the same persisted entry, `return False`; `if cfg_values[0] > 0: await
   self._ts_storage.set_verify(_verify_every(cfg_values[0]))`; `wait = min(cfg_values[1], _MAX_NTP_WAITTIME)`;
   `self._voc_init = max(1, wait)` ("# 0 = never wait: one restore attempt on the first cycle, as legacy");
   `self._voc_write = wait`; `self._restore_waiting = False`. `_run_restore()`: at the top (after the argument guard) `if
   self._restore_waiting and self._voc_init > 0 and not await self._ntp_synced(): return False`; `res, ts, age = await
-  self._ts_storage.read_into(buf)`; no backup → `self.pr.wrn("No backup found!")` (console), `self._voc_init = 0`, return
-  `False`; `ts is None` → `wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)`, `ts =
+  self._ts_storage.read_into(buf)`; no backup → `self._voc_init = 0`, return `False`, with `res is None` (unreadable: the FRAM layer
+  persisted its fault) → `await self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)` (SGP40's own entry, as
+  at HEAD) and `res is False` (blank, a first boot) → the console line (an expected condition, G5/R21); `ts is None` → `wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)`, `ts =
   _NO_TIMESTAMP`; `age is None` with `_voc_init > 0` → `self._restore_waiting = True`, the NTP-wait event, return
   `False`; otherwise `self._voc_init = 0`, `self._restore_waiting = False`, and `if cfg_values[1] > 0 and (age < 0 or age >
   60 * cfg_values[1]): await self.pr.wrn_s("Backup age out of range (too old, or dated in the future)",
   wrnno=_WRN_SGP_BACKUP_AGE); return False`; `self._restored_from = ts`; `return True`. `_run_backup()`: verify period
   through `_verify_every()`; `res, ntp_synced, ts = await self._ts_storage.write_into(buf, require_ntp=require_ntp)`; a
-  failed write → `self.pr.err("Write error during backup!")` (console; the FRAM layer persisted the cause); the two
+  failed write → `await self.pr.err_s("Write error during backup!", errno=_ERR_SGP_BACKUP_WRITE)` (SGP40's own entry
+  beside the FRAM layer's, as at HEAD); the two
   `_no_ts_episode` lines go; the untimestamped branch `await self.pr.wrn_s("Backup written without timestamp.",
   wrnno=_WRN_SGP_WRITTEN_NO_TS)` every time.
 - **Resolved**: A.U15.17 (3) and A.U16.18 write the same negative-age condition at `:390` — one `if`, in A.U16.18's
   form (gap pass G2, M_TEST_UNIT GAP-U1): G5/R31 "a staleness limit of 0 accepts any age; a negative age … counts as
-  expired under a nonzero limit", so a negative age expires only when `BackupMaxAge` > 0 (M.TEST_UNIT.138 pins it). A.U3.09 and
-  A.U2.13 agree: w10/e14/e15 print, the FRAM manager persists.
+  expired under a nonzero limit", so a negative age expires only when `BackupMaxAge` > 0 (M.TEST_UNIT.138 pins it). A.U3.09's and
+  A.U3.05's console halves are dropped (OR140.a (7), A-C review fold): e14/e15/w10 and the two config reads stay
+  persisted under their catalog codes; G5/R21 keeps the first-boot blank restore a print.
 - **Unit**: U16 (latest: A.U16.18's unpack order co-lands with the FRAM manager's return-shape change; stages U2, U3,
   U15)
-- **Depends**: M.SRC_SENS.062; A.U16.18 (FRAM side, SRC_CORE), A.U3.04 (FRAM persists the cause)
+- **Depends**: M.SRC_SENS.062, M.SRC_SENS.059 (codes); A.U16.18 (FRAM side, SRC_CORE)
 - **Blast carried by**: L1/L2 backup cases (`_verify_every` table, WaitTimeNTP 0, −60 s age, single re-read, first-boot
-  blank chunk, blackout skip) → A.U15.17/A.U16.18/A.U3.09 (TEST_UNIT, TWIN); `tests/test_asy_sgp40_driver.py:1055-1056`
+  blank chunk, blackout skip) → A.U15.17/A.U16.18 (TEST_UNIT, TWIN), the SGP40 entries kept beside FRAM's →
+  [fold F11 M_TEST_UNIT]; `tests/test_asy_sgp40_driver.py:1055-1056`
   stub order → A.U16.18; W13 tests → A.U3.02; BACKLOG `:362-365` → A.U3.02 (DOCS); SPEC C.7.1 SGP40 row → A.U2.22 (SPEC)
 - **Kind**: code
 
 ### M.SRC_SENS.064 `_read_sgp()`: timestamp, checked compensation, VOC state
 - **From**: A.U10.06 (timestamp before the `try`), A.U15.14 (finite check through the primitive, first in the `try`),
-  A.U5.11 (reference reads), A.U15.19 (`VOCState`), A.U3.09 (`:251-254` clear failure → console), A.U2.13 (18 → 15,
+  A.U5.11 (reference reads), A.U15.19 (`VOCState`), A.U3.09 (dropped: OR140.a (7), A-C review fold: the clear failure stays persisted), A.U2.13 (18 → 15,
   16/17 → 58), A.U30.19
 - **Site**: `src/asy_sgp40_driver.py:236-328`
-- **Change**: the reset block as today (private names), the FRAM clear failure → `self.pr.err("Error clearing FRAM!")`
-  (console). Compensation read: `t_src: _ValueSource = self._temperature.source`, `h_src: _ValueSource =
+- **Change**: the reset block as today (private names), the FRAM clear failure → `await self.pr.err_s("Error clearing FRAM!",
+  errno=_ERR_SGP_BACKUP_CLEAR)` (SGP40's own entry, as at HEAD). Compensation read: `t_src: _ValueSource = self._temperature.source`, `h_src: _ValueSource =
   self._humidity.source`; `try: temp_data = await t_src.get_data(); hum_data = await h_src.get_data()` `except Exception as
   e: report_if_fatal(e); await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE); temp_val, hum_val =
   None, None` `else:` the two `getattr(…, <ref>.field, None)` reads (`temp_val: object`, `hum_val: object`). The `None`
@@ -1616,7 +1640,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   tuples here are temporaries (accepted). Gap pass G2: `measure_index_and_raw()` takes `float`s, so the values come from
   `checked_float()` (`object` in, `float | None` out), never from a narrowing test — M_SRC_CORE GAP-G13 and the lead's
   L1/GAP-14 ruling applied to this typed consumer (M.SRC_CORE.047).
-- **Unit**: U15 (stages U2, U3, U5, U10, U30)
+- **Unit**: U15 (stages U2, U5, U10, U30)
   A-C2 step order: A.U2.13's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.062, M.SRC_SENS.068, M.SRC_CORE.047 (`checked_float()`)
 - **Blast carried by**: L1 NaN/inf/`True` and lost-reset regression, VOCState cases → A.U15.14/A.U15.19 (TEST_UNIT); L2
@@ -1812,7 +1836,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   stored-tick bound of _evaluate_range()`. `_ISL29125_ADDR = const(0x44)  # hard-wired "1000100" (FN8424 p15): a second
   part needs another bus`. The catalog block: `_ERR_INIT = const(10)`, `_ERR_READ = const(11)`, `_ERR_CHIP_GET =
   const(12)`, `_ERR_CHIP_SET = const(13)`, `_ERR_BAD_ARG = const(21)`, `_ERR_ISL_STATUS_READ = const(55)`,
-  `_ERR_ISL_BUS_FAULT = const(56)`, `_WRN_ISL_BROWNOUT = const(30)`, `_WRN_ISL_DIVERGED = const(31)`,
+  `_ERR_ISL_BUS_FAULT = const(56)`, `_ERR_CFG_READ` (shared: the module's own config read failed and it runs on its fallback — kept persisted by
+  OR140.a (7); the next free shared code, numbered at execution with the catalog as the numbering source, M.GEN.034), `_WRN_ISL_BROWNOUT = const(30)`, `_WRN_ISL_DIVERGED = const(31)`,
   `_WRN_ISL_PERIODIC_ONLY = const(32)`.
 - **Resolved**: A.U0.35's text "Device/maths constants, not config fields (agent classification, 2026-09-14)" and the
   existing M.1.1 pointer fit two lines together (3-line cap); its tag is written in the "(actor, YYYY-MM-DD)" form,
@@ -1909,15 +1934,15 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 
 ### M.SRC_SENS.074 `_init_isl()`: restart resets, cached filter, the init rungs
 - **From**: A.U10.10 (`pr.setup()` leaves), A.U15.34 (resets), A.U15.22 (3) (`_filt_coeff` from the init batch), A.U3.05
-  (config read → console), A.U2.12 (numbers), A.U15.R04 (3) (`_init_failed()`/`_init_done()`), A.U10.43
+  (dropped: OR140.a (7), A-C review fold: the config-read entry stays persisted), A.U2.12 (numbers), A.U15.R04 (3) (`_init_failed()`/`_init_done()`), A.U10.43
   (`set_trigger_s`), A.U10.39 (names), A.U10.21 (`setup()` returns `True` or raises), A.U30.19
 - **Site**: `src/asy_isl29125_driver.py:292-348`
 - **Change**: first lines (A.U15.34): `self._err_cnt_internal = 0`; `self._filtered[0] = self._filtered[1] =
   self._filtered[2] = None` (in place); `self._irq_fired = False`; `self._periodic_only_switches = 0`; `self._int_held =
   False`; `self._int_rearmed = False`. `try: await self._isl.setup()` `except Exception as e: report_if_fatal(e); await
   self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT); await self._init_failed(); return False`. Config batch
-  with the new `_VAL_` names; a failed or short read → `self.pr.err("Error reading config data!")` (console, the config
-  store persisted the cause) and `return False` (no rung). The `:319-320` comment → "# set_trigger_s() never raises (logs
+  with the new `_VAL_` names; a failed or short read → `await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)` (this
+  layer's own entry beside the config store's, as at HEAD) and `return False` (no rung). The `:319-320` comment → "# set_trigger_s() never raises (logs
   BAD_ARG, keeps the previous value) - a bad stored / # SampleInterval is a pure software timing knob, not a reason to
   fail this whole init attempt."; `await self.set_trigger_s(int_values[0])`; `self._ar_thresh, self._ar_dwell_s,
   self._filt_coeff = float_values[0], float_values[1], float_values[2]`; the rest as HEAD; the configure `except
@@ -1928,11 +1953,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   batch (A.U15.34's Depends). `_int_rearmed` (A.U15.R05's flag) joins the reset list: an episode never outlives the
   task — agent addition, OR2.c list. Kept on purpose, as A.U15.34 states: `_reconciled_write_failures`, the calibration
   run and candidate, `_last_switch_ms`, the cached knobs.
-- **Unit**: U15 (stages U2, U3, U10; U30 handlers)
+- **Unit**: U15 (stages U2, U10; U30 handlers)
 - **Depends**: M.SRC_SENS.073; A.U10.R01, A.U13.R01, A.U10.10
 - **Blast carried by**: L1 restart cases (filter, `_irq_fired`) → A.U15.34 (TEST_UNIT); SPEC M.1.2 "State across a task
   restart" table (gains `_int_held` and the re-arm flag rows) → A.U15.34/A.U15.R04 (SPEC); config-read tests
-  `tests/test_asy_isl29125_driver.py:875` → A.U3.05 (TEST_UNIT); streak tests `:953, :2539` → A.U15.R04/A.U10.R01
+  `tests/test_asy_isl29125_driver.py:875` keep the module's own entry → [fold F11 M_TEST_UNIT]; streak tests `:953, :2539` → A.U15.R04/A.U10.R01
 - **Kind**: code
 
 ### M.SRC_SENS.075 `_read_isl()`: timestamp, unsettled discard, INT parking, CalLight code
@@ -1998,8 +2023,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Unit**: U15 (stage U3 latch removal; U30 handler)
   A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.080 (`_switch_range()`), A.U10.R01
-- **Blast carried by**: `tests/test_asy_isl29125_driver.py:1566-1595` (one slot, `ErrCount == 5`) and the RF175 case →
-  A.U3.14/A.U3.03 (TEST_UNIT); rung cases (no-brownout re-apply, raising burst, no `recover()` on config-read failure)
+- **Blast carried by**: `tests/test_asy_isl29125_driver.py:1566-1595` (one slot, `ErrCount == 5`) → A.U3.14 (TEST_UNIT; the RF175
+  one-entry case goes with A.U3.03, dropped by OR140.a (7)); rung cases (no-brownout re-apply, raising burst, no `recover()` on config-read failure)
   and the mid-operation hazard case → A.U15.R04 (TEST_UNIT, TWIN); twin Run 5c (`settled > 0`) holds → A.U15.R04 (SCR);
   SPEC `:6675-6678` → A.U3.14/A.U3.10 (SPEC); SPEC M.1.2 restart row → A.U15.R04
 - **Kind**: code
@@ -2343,6 +2368,28 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Unit**: U10 (last U10 change per file).
 - **Depends**: the file's other U10 changes.
 - **Blast carried by**: lint/typecheck baselines → A.U10.33 (TOOL).
+- **Kind**: code
+
+## src/asy_scd30_driver.py, src/asy_bmp3xx_driver.py, src/asy_sgp40_driver.py (`@web` measurement tags)
+
+### M.SRC_SENS.094 Float measurement tags state the page's decimals where the site default does not fit
+- **From**: OR140.a (16) and the owner's `website-display-details` note (A-C review fold).
+- **Site**: the `@web` measurement tags of `src/asy_scd30_driver.py:98-102` (`CO2`, `Temp`, `Hum`, `WetBulb`,
+  `DewPoint`), `src/asy_bmp3xx_driver.py:106-108` (`Pres`, `Temp`, `SLPres`); `src/asy_sgp40_driver.py:75-76` checked
+  (the VOC index and the raw ticks are integers: no key).
+- **Change**: the page shows each value with a sensible number of decimals (2-3, fewer where the value's resolution is
+  coarser), the API keeps full resolution (owner, 2026-10-02). A float measurement whose sensible count differs from
+  the site default (`defaultDecimals`, 2, M.GEN.018) gets the existing `decimals=<n>` key on its tag line; one that
+  fits the default gets none. Each value's count follows its sensor's datasheet resolution and is decided at execution,
+  with the reason recorded (the CO2 reading, for one, resolves whole ppm). The ISL29125 tags already carry `decimals`
+  (HEAD) and keep them.
+- **Resolved**: the source of a value's decimals is its tag (a field of the `@web` tag) or, for a schema float, its
+  schema (`resolution`, M.GEN.017); the site default covers every other non-integer number (M.GEN.018, M.WEB.012).
+- **Unit**: U23.
+- **Depends**: M.GEN.017, M.GEN.018 (the defaults and the emission), M.SRC_SENS.051 (SCD30's tag block); the tag
+  grammar's `decimals` key exists at HEAD (`buildgen/web_tag.py`).
+- **Blast carried by**: the generated definitions carry the keys (M.GEN.017); the page renders them (M.WEB.012); the live
+  tier's expected display follows the definitions (M.WEB.069, unchanged rule).
 - **Kind**: code
 
 ## Gaps for other clusters
@@ -2710,3 +2757,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.SRC_SENS.082 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.SRC_SENS.084 | Unit | appended: A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3). | dependency deferral (an edge ran from a later step) |
 | M.SRC_SENS.089 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13). | dependency deferral (an edge ran from a later step) |
+
+## A-C review fold (2026-10-05)
+
+Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_merge.json` `outcome`, AC_NOTES 52).
+`[fold Fnn M_FILE]` tokens name a change another fold agent adds; the lead replaces them.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | — | none in this file |
+| F02 | — | none in this file |
+| F03 | — | none in this file |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | — | none in this file |
+| F09 | M.SRC_SENS.026, .027 | amended |
+| F10 | — | none in this file |
+| F11 | M.SRC_SENS.031, .035, .037, .040, .043, .044, .059, .063, .064, .071, .074, .089, .054, .076 (A.U3.05's caller half, A.U3.09's SGP40 half and A.U3.03 dropped) | amended |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | — | none in this file (SCD30's chip writes are refused by the reader base, M_SRC_CORE; only API-triggered SCD30 writes exist — checked: no settings write outside `_set_mgr_cfg()`'s forwarders, M.SRC_SENS.053; `_init_scd()` only reads and the recovery rung's soft reset writes no setting, M.SRC_SENS.054) |
+| F16 | — | none in this file |
+| F17 | — | none in this file |
+| F18 | M.SRC_SENS.094 | added |
+| F19 | — | none in this file |
+| F20 | — | none in this file |
+| F21 | M.SRC_SENS.051 | tag |
+| F21 | M.SRC_SENS.027 (the internal-queue comment: `(agent, 2026-09-29; owner-reviewed, 2026-10-02)` per F09) | amended |
+| F22 | — | none in this file |
+| F23 | — | none in this file |
+| F24 | M.SRC_SENS.018 | amended |
+| F25 | — | none in this file |
+| F26 | — | none in this file |
+| F27 | — | none in this file |
+| F28 | M.SRC_SENS.023, .024, .033 | amended |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file |

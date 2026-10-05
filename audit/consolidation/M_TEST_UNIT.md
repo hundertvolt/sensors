@@ -3884,6 +3884,48 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
+### M.TEST_UNIT.344 The DMA receive ring: unit and hammering tests; the capped readline
+- **From**: OR141.a (4) (b)-(d), (f), (g) (the receive path through a DREQ-paced DMA ring: count reload and modular wrap,
+  a frame split across the ring end, a lap read as an overrun, the mask cleared after every init, the refusals, zero
+  allocation per read; hammering), OR143.a (2), (4) (`readline_until_complete()` capped, no growth by concatenation,
+  over the cap the line discarded with a logged error), FOLD_BRIEF F25/F27 (U13) — A-C review fold.
+- **Site**: new sections in `tests/test_asy_uart_driver.py`; the file's existing receive tests.
+- **Change**: (a) The file's existing receive tests run on the DMA model (M.TEST_HELP.069): bytes fed through the fake
+  link or the RX FIFO reach the driver through the ring; a test that scripted readiness with `_StepPoller` scripts the
+  fake DMA's arrival instead (`_StepPoller` stays only where the transmit side still polls); a test asserting receive-side
+  `read`/`readinto`/`readline` entries in the fake log asserts the bytes it returns instead — M.TEST_UNIT.169, .175 and
+  .176 carry their specifics. (b) New unit cases: `test_every_init_clears_the_rx_interrupt_mask_and_enables_rx_dma`
+  (after `setup()` and after each re-`init()` the driver makes: UARTIMSC RXIM/RTIM clear, UARTDMACR RXDMAE set);
+  `test_the_receive_path_never_touches_the_fifo_api` (a run of reads, readlines and waits: `rx_api_calls == 0`, the
+  `machine.UART` rxbuf at its minimum, 32); `test_progress_is_read_from_the_transfer_count_only` (the fake's E12-stale
+  `WRITE_ADDR` never changes a result); `test_the_count_reload_keeps_reception_going` (the paced channel's count driven to
+  0: the chained channel reloads it, no byte lost, the reload value ≤ 2**30 − 1 so `count` is a small int);
+  `test_the_fill_level_is_the_modular_difference_of_totals` (totals across the count's wrap); `test_a_frame_split_across_
+  the_ring_end_reads_whole` (a frame whose bytes straddle the last ring byte, every codec and CRC mode); `test_a_lap_is_an_
+  overrun_never_data` (more unread bytes than the ring holds: the read reports the overrun, counted, and no lapped byte
+  is returned); the construction refusals (a ring size not a power of two, outside 2-32768, below the size the caller
+  declares, a misaligned ring — each refused with the driver's code, nothing armed); `test_a_read_allocates_nothing`
+  (after a warm-up read, `gc.mem_alloc()` does not rise across 1 000 frame reads copied by index into the frame buffer —
+  measured in the `-1` stage run, holding at 32768; no in-body `gc.threshold`); `test_the_ring_is_allocated_once_in_setup`
+  (its identity unchanged across a task restart and re-`init()`); `test_ready_keeps_its_yield_and_rates_on_the_fill_level`
+  (`ready()` yields once per round and polls at `poll_wait_ms`/`poll_idle_ms`, reading the fill level). (c) Hammering:
+  `test_thousands_of_back_to_back_frames_at_line_rate_lose_nothing` (5 000 frames at 11.52 B/ms with the ring held at its
+  fill boundary by the consumer's pacing: every frame intact, no overrun) and `test_random_consumer_stalls_within_and_
+  beyond_the_bound` (stalls drawn from a seeded generator — file-local until U24, then `FixedRandom` (M.TEST_HELP.059) —
+  up to and past the ring's time bound:
+  zero loss within it, one detected overrun per stall beyond it, the link back in step after). (d) The readline cap
+  (OR143.a (2)): `test_a_line_over_the_cap_is_discarded_and_logged_once` (`None`, one error entry by its catalog name, the
+  next line returned intact); `test_a_line_at_the_cap_is_returned`; `test_a_line_arriving_in_fifty_pieces_allocates_no_
+  more_than_one_arriving_whole` (`gc.mem_alloc()` deltas compared: no growth by concatenation). Tunables tagged per the
+  file's convention (U8's N.1 rule).
+- **Resolved**: —
+- **Unit**: U13 (with the driver's receive path and the fakes; the readline cap is OR143.a's U13 part); stage U24: the
+  shared `run()` and `FixedRandom` replace the file-local forms (M.TEST_UNIT.168's harness stage).
+- **Depends**: [fold F25 M_SRC_NET] (the DMA receive path), [fold F27 M_SRC_NET] (the readline cap); M.TEST_HELP.069;
+  M.TEST_HELP.043, .059 (U24 stage).
+- **Blast carried by**: the comm-level ring floor and lap → M.TEST_UNIT.345; L2 → M.TWIN.130, .171; bench → C.
+- **Kind**: test
+
 ## tests/test_asy_uart_link_driver.py
 
 ### M.TEST_UNIT.178 Harness bounds imported; local pair asserts setup and takes a CRC

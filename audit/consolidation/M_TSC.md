@@ -420,20 +420,24 @@ where a test pins an SCR product, the constituent action is cited and the depend
   marker; `crash_lines()` returns a `Traceback` line and each `MEMORY_ERROR_MARKERS` line; `observe_during()` with a
   fake board whose log thread yields lines before, during and after the action returns all three windows (the tail
   constant `_OBSERVE_TAIL_AFTER_S` patched small).
-- **Resolved**: A.U11.19 rewords the missing-file branch (no `:478` line); the pin keeps `config is ready` (`:468`) and
-  the FRAM line — as M.HW_BENCH.016 states.
+- **Resolved**: A.U11.19 rewords the print-only branches; an absent file is written once with its defaults again
+  (OR136.a (1), A-C review fold) and prints its own line ending "config is ready", so the pin keeps `config is ready`
+  (present on a first boot and on a readable one) and the FRAM line — as M.HW_BENCH.016 states.
 - **Unit**: U26
-- **Depends**: M.HW_BENCH.016, A.U11.19.
+- **Depends**: M.HW_BENCH.016, M.SRC_CORE.043 (OR136.a).
 - **Blast carried by**: —
 - **Kind**: test
 
 ### M.TSC.026 Wrapper contracts: DebugLevel parse, picotool retry, iptables listing, no-sync
 - **From**: A.U26.12 (LEVEL parse), A.U26.14 (`_retryable_picotool_exit`), A.U26.15 (default reads), A.U26.21
   (`allow_missing` stubs → listing form), A.U26.13 (stubs adapt to two calls), A.U26.75 (`--no-sync` argv);
-  M.HW_BENCH.006/.011/.014/.020/.080.
+  M.HW_BENCH.006/.011/.014/.020/.080; OR140.a (9) (A-C review fold: the console message's L0 case).
 - **Site**: new cases and existing `subprocess.run` stubs in `tests_scripts/test_bench_harness_helpers.py`.
 - **Change**: (a) the standard-state fixture's DebugLevel parse on a fake board: `LEVEL=5` passes, `LEVEL=3` and
-  `LEVEL=absent` fail naming the repair. (b) `_retryable_picotool_exit(249)` is true, any other code false. (c) the
+  `LEVEL=absent` fail naming the repair; a fake board with two deviations (DebugLevel 3, write-protect set) and a wrong
+  image record: the console message is written through the terminal reporter before the failure, holds one line per
+  deviation with the value read and the standard one, names `--repair-standard-state` for the two it repairs and the
+  reflash for the image (OR140.a (9), A-C review fold). (b) `_retryable_picotool_exit(249)` is true, any other code false. (c) the
   default read of `_VAL_NH` and of each pushed sensor field equals the value its `src/` tuple declares (independent
   `ast` read of `src/`). (d) any stub of the bench `iptables` wrapper answers the `-D` then listing form
   (M.HW_BENCH.020); stubs of `_mpremote` expect the two-call shape (M.HW_BENCH.011). (e) AST rule: no `["uv", "run", …]`
@@ -534,7 +538,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (relative `--toolchain-dir` resolved), A.U27.29 (missing device through `main()`), A.U26.02 (record keys), A.U26.85
   (`overrides`), A.U27.35 (work dir), A.SDEP.03 (read: pytest deprecations; refresh in U0/U37); M.SCR.067's end state
   (`BuildDate`, `deviceToml`, `uartCrc`, `autostart`; `lwip`/`overrides` re-read from the build dir — GAPS_G4 hand-off
-  3 (d), gap pass G3).
+  3 (d), gap pass G3); OR139.a (1)-(2) (A-C review fold: the `--tick-offset-test` cases).
 - **Site**: `tests_scripts/test_build_firmware.py:170-199`, new cases.
 - **Change**: new cases — (a) `--device-toml <tmp>.toml` (a copy of a derived device's TOML with a different hostname)
   stages a generated module carrying that hostname; a missing `--device-toml` path fails before staging; (b)
@@ -551,11 +555,16 @@ where a test pins an SCR product, the constituent action is cited and the depend
   build dir (the returned uf2's parent), never the copied output; the record's work dir is `tmp_path` (the test points
   `REPO_ROOT`-relative `build/` away by
   monkeypatching the module's work root), so no case writes into the live tree; the error-path cases assert no work
-  dir was created; a `--no-autostart` build stages into its own `-noautostart` work dir (M.SCR.065).
+  dir was created; a `--no-autostart` build stages into its own `-noautostart` work dir (M.SCR.065); (g)
+  `--tick-offset-test` (OR139.a, A-C review fold): `st.build_firmware` (stubbed) receives `tick_offset_test=True`, the
+  default output ends `-tickoffset.uf2`, the work dir carries `-tickoffset`, the staged generated module's build info
+  names the override ([fold F04 M_GEN]), and with the fake `tick_offset_in_build()` true the record's `overrides`
+  holds `"tick_offset_test"`; a default build passes `tick_offset_test=False` and its record never names it.
 - **Resolved**: —
 - **Unit**: U27 (U26 record; S0930 rows land with their U26/U27 owners).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
-- **Depends**: M.SCR.065, M.SCR.066, M.SCR.067 (A.S0930.06, A.U27.36, A.U21.22, A.U21.08, A.U26.02, A.U27.35).
+- **Depends**: M.SCR.065, M.SCR.066, M.SCR.067 (A.S0930.06, A.U27.36, A.U21.22, A.U21.08, A.U26.02, A.U27.35);
+  M.TOOL.080 (the reader (g) fakes).
 - **Blast carried by**: HW reflash helper → M.HW_BENCH.014; README build recipe → A.U27.36 (DOC).
 - **Kind**: test
 
@@ -681,7 +690,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   errcount group; `DNSSRV` in networking), A.U23.18 (`PauseTime`'s `statusPath` resolves in `_notification_status()`),
   A.U23.30 (`float: true` ⇔ `ConfigSchema` float), A.U6.18 (identity/NTP submit labels), A.U6.28 + A.U18.38 (`bytes=true`
   set = `_RADIO_FIELDS` with no `HotspotPW` exception), A.S0930.20 (1) (`SystemCmd` options), A.U15.12 (SCD30 errcount
-  expectations), A.U16.20 (read: `:182-210` builds unchanged).
+  expectations), A.U16.20 (read: `:182-210` builds unchanged); OR140.a (3), (16) (A-C review fold: the confirmation
+  replaces "no confirmation key"; a decimals hint per displayed fractional value).
 - **Site**: new tests in `tests_scripts/test_buildgen_definitions.py` (all parametrised over `DEVICE_NAMES`).
 - **Change**: one test per property: (a) the errcount `codes` block equals `buildgen/error_catalog.json`'s non-retired
   codes exactly; (b) `codeTones` equals the catalog's tones; (c) every field `codes` table equals the catalog's
@@ -695,11 +705,16 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `bytes=true` field set of `asy_wifi_service.py` equals `_RADIO_FIELDS`, which M.SRC_NET.075 writes as
   `schema_names(...)` over the radio schemas — the test resolves that call through `buildgen.schema_ast` (SRC_NET gap 3)
   (`HotspotPW` included: A.U18.38 publishes it, the exception goes); (k) the `SystemCmd` options are exactly `_SYSTEM_CMDS` (`ast`, `src/asy_webserver_service.py`)
-  in order, labels "Reset to defaults" and "Erase FRAM", no confirmation key in the group; (l) SCD30's errcount and
-  readiness rows match its catalog entries (the three FRC readiness keys, A.U15.12). Key names follow A.U10.40.
+  in order, labels "Reset to defaults" and "Erase FRAM" (the browser confirmation the website asks before each system
+  command and before clearing the error history, OR140.a (3), is asserted where M_WEB places it: a confirmation text the
+  definitions carry is checked present on every `SystemCmd` option and on `ResetErrors` here, [fold F07 M_WEB]); (l)
+  SCD30's errcount and readiness rows match its catalog entries (the three FRC readiness keys, A.U15.12); (m) every
+  displayed number field whose value can carry a fraction (a float schema field, a float measurement value) has a
+  `decimals` hint from 0 to 3, equal to the value its `@web` tag or schema declares as buildgen carries it ([fold F18
+  M_GEN]); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
 - **Resolved**: A.U2.21's edit of the golden files falls away with A.U6.04 (its test compares with the catalog only).
 - **Unit**: U23 (each property in its owner's unit: U2 (a), U6 (c)-(f), (i), (j at U18), U15 (l), U23 (b), (g), (h),
-  S0930 (k) with U10).
+  (m), S0930 (k) with U10; (k)'s confirmation check in U23).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24.
 - **Depends**: A.U2.01 catalog (GEN), A.U6.17-A.U6.28 tags (SRC/GEN), A.U10.40 (keys).
 - **Blast carried by**: JS/mock halves → A.U6.27/A.U23.20/A.S0930.20 (4)-(5) (WEB).
@@ -997,7 +1012,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **From**: A.U20.37 (2)-(3) (`_build()` default name `"dev"` → `"fixture"`; the 30 no-assert accept tests gain their
   assertion), A.U24.51 (`:1326-1331`, `:1730-1738` → `DEVICE_NAMES`), A.U24.66 (26 literals), A.U20.19 (`:479, 500,
   745, 753, 760, 768` gain `"name_ext": ""`; `:549-650` collision guards keep a one-line extension-point comment),
-  A.U10.43 (`trigger_sec` keys and test names), A.U24.75 (pin tests out), A.U10.30 (`:5`, `:1593` `importlib`), A.U2.23
+  A.U10.43 (`trigger_sec` keys and test names), A.U24.75 (pin tests out), A.U10.30 (`:5`, `:1593` `importlib`: dropped
+  by OR141.a (2)/OR142.a (3), the file a named exception, A-C review fold), A.U2.23
   (`:1257`, `:1268` code-number comments), A.U36.004 (`:935-936`), A.U36.544 (`:718` "(Phase 2)" dropped), A.U0.28
   (`:1729` tag); read: A.SDEP.08 (`:1576` fixture literal stays, a synthetic input), A.U7.26 (`:1208` stays a skip),
   A.U28.29 (the S105/S106 per-file comment is `pyproject.toml`'s), A.U20.41 (staged consumer file names hold),
@@ -1011,14 +1027,15 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `spec.wiring[<field>] == {"default": True, …}` and the rendered `_Default<Field>(…)` call; absent optional fields
   absent from `spec.wiring` and the rendered call; `spec.requires_tags`; the link roles and buses; the effective
   connection ceiling via `device_max_connections()`; the bus/instance tables); every-device loops are
-  `@pytest.mark.parametrize("device", DEVICE_NAMES)` with `device_toml(device)`; `:5` `import importlib.util` goes and
-  `:1593` patches `"buildgen.validate.importlib.util.spec_from_file_location"` by dotted name (no `importlib` import
-  in the test, so the import-graph check needs no exception for it); `:1257`, `:1268` cite catalog names, not
+  `@pytest.mark.parametrize("device", DEVICE_NAMES)` with `device_toml(device)`; `:5`'s `import importlib.util` and
+  `:1593`'s patch stay as they are (the file is one of SPEC F.1's named host and test exceptions, OR142.a (3));
+  `:1257`, `:1268` cite catalog names, not
   numbers; `:935-936` → "(sysfunct/conn/ntp/webserver, the implicit FRAM-wiring / # rule of SPECIFICATION.md A.7)";
   `:718` drops "(Phase 2)"; `:1729` sentence gains "; the ceiling value itself is the agent's sweep result (agent,
   2026-09-22)"; the direct `pico_gpio` tests (`:279-292`, `:295-`, role-transposed) move to
   `test_buildgen_pico_gpio.py` (M.TSC.050).
-- **Resolved**: A.U10.30 offers "patch without importing" or "list in F.1"; the first is taken (no new named exception).
+- **Resolved**: A.U10.30 offers "patch without importing" or "list in F.1"; OR142.a (3) lists the file in F.1 by name and
+  drops every rewrite of a listed site (A-C review fold), so the `importlib` lines stay.
 - **Unit**: U24 (U0 tag; U2 comments; U10 suffix/import; U20 assertions, fixture name, `name_ext`; U36 comments).
 - **Depends**: M.TSC.002, M.TSC.005.
 - **Blast carried by**: —
@@ -1057,7 +1074,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   A.U17.21 (poll ceiling, timeout ceiling, source-read variant), A.U13.17 (`:1290-1299` defaults comment, `rxbuf = 52`
   refusal; `:1301-1310` replacement), A.U2.23 (`:1257`, `:1268`, in M.TSC.055); read: A.S0930.01 (`:1240-1384` hold —
   absent `crc` is `"none"`), A.U17.21 (`:1255-1287` hold); A.S0930.01's `test_uart_crc_modes_match_crc_checks` with
-  SRC_CORE GAP-G10's names (`asy_crc_checks`, `CRCPass`; gap pass G3 — the test had no carrier).
+  SRC_CORE GAP-G10's names (`asy_crc_checks`, `CRCPass`; gap pass G3 — the test had no carrier); OR141.a (4) (e),
+  OR143.a (2) (A-C review fold: the ring size and receive cap rows).
 - **Site**: `tests_scripts/test_buildgen_validate.py:1236-1384`, new rows.
 - **Change**: `crc = "crc8"`, `16`, `"CRC16"`, `["crc16"]` each refused naming the legal set with `(field, instance) ==
   ("crc", label)`; a `none`/`crc16` pair refused naming both labels; `crc16`/`crc16` builds; a CRC pair at
@@ -1073,13 +1091,20 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `test_uart_crc_modes_match_crc_checks`: reads `src/asy_crc_checks.py` by `ast`; every class named in
   `buildspec.UART_CRC_MODES` exists there and its `__init__`'s `super().__init__(<int>, …)` first argument equals the
   table's width (`CRCPass` 0, `CRC16` 2); a table naming a class the module lacks fails naming it (bite on a `tmp_path`
-  copy).
+  copy). New rows for the DMA receive ring and the receive cap, which a `uart_link` bus/instance declares together and
+  buildgen checks together (OR141.a (4) (e), OR143.a (2), A-C review fold): a ring size that is not a power of two, one
+  below its derived floor (the larger of today's floors and the peer's stop-and-wait bytes during the longest
+  synchronous flash write, rounded up to a power of two) and one above 32,768 each refused naming the floor or the
+  limit with `(field, instance)`; a `max_transfer_bytes` or `chunk_bytes` outside its range refused; the edges and the
+  shipped devices built; an unstated value read from the driver source like `poll_idle_ms`. Rule names, keys and the
+  floor's inputs follow M_GEN's check ([fold F27 M_GEN]).
 - **Resolved**: A.S0930.01 writes the agreement test against HEAD's `src/crc_checks.py` and `CRC_Pass`; it lands after
   U10's rename (A.U10.37/A.U10.38, M.SRC_CORE.115), so it reads the end-state module and class (SRC_CORE GAP-G10; the
   table itself says `CRCPass`, M.GEN.024 as amended in gap pass G1). A.U13.17's replacement (poll 464/465) fails
   A.U17.21's single-digit poll check before its floor; the
   source-copy form A.U17.21 writes is taken (its own AC note amends A.U13.17's test).
-- **Unit**: U17 (stages U13 comment/defaults; S0930 CRC rows with A.S0930.01's unit).
+- **Unit**: U17 (stages U13 comment/defaults; S0930 CRC rows with A.S0930.01's unit; U20 the ring and cap rows, with
+  M_GEN's check).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.01 in U20.
 - **Depends**: M.GEN.024, M.GEN.027, M.GEN.029; M.SRC_CORE.115 (module and class names); A.U13.17/A.U17.20 driver
   constants (SRC_UART).
@@ -1203,7 +1228,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ## tests_scripts/test_code_conventions.py
 ### M.TSC.064 Code conventions over `src/` and generated modules
 - **From**: A.U10.47; SRC_SENS GAP-3 (`voc_algorithm.py` exempt from D.15 order); A.U36.542 (read: SPEC 0.4 catalog names
-  this file); A.U36.038 (D.15 checks widen beyond `src/` — its own checks).
+  this file); A.U36.038 (D.15 checks widen beyond `src/` — its own checks); OR141.a (3) (A-C review fold:
+  `voc_algorithm.py` is the one named exception to the naming rules and to D.15, a literal port).
 - **Site**: new `tests_scripts/test_code_conventions.py`.
 - **Change**: parses every `src/*.py` and every generated module built into `tmp_path` over `DEVICE_NAMES`; fails on
   (1) a module with an `async def` in its public API lacking the `asy_` prefix (generated `sensortask_<device>`
@@ -1213,7 +1239,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (4) an `err_s`/`wrn_s` call passing its number positionally or without `errno=`/`wrnno=`; (5) `print(` outside
   `asy_print_log.py`; (6) `assert` in `src/` and in generated modules (the generated narrowing asserts are gone,
   M.GEN.004/A.U20.42, so no name exemption remains); (7) D.15 order in every `src/` class and module-level function
-  list, `src/voc_algorithm.py` exempt by name (a literal port keeps the upstream operation order, M.SRC_SENS.018);
+  list, `src/voc_algorithm.py` exempt by name (a literal port keeps the upstream names, casing and order, M.SRC_SENS.018;
+  every naming rule here exempts it too, except for the class other modules import, which follows the scheme);
   (8) a quoted annotation naming no `TYPE_CHECKING` symbol. One `tmp_path` negative copy per rule.
 - **Resolved**: A.U10.47 (6) exempts the generated asserts "until U20 decides"; A.U20.42 removes them (M.GEN.004) — the
   exemption is not written.
@@ -1235,7 +1262,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_comment_block_cap.py
 ### M.TSC.065 The cap counts per line, per length, and checks headers everywhere
-- **From**: A.U27.28 (1)-(6), A.U27.30 (`_DIVIDER`), A.U8.03 (`@tunable` in `_TAGS`), A.U20.33 (future import); read
+- **From**: A.U27.28 (1)-(6), A.U27.30 (`_DIVIDER`), A.U8.03 (`@tunable` in `_TAGS`), A.U20.33 (future import); OR140.a
+  (A-C review fold: the wrap width's tag form); read
   (each "stays green" — the edited comments obey the cap, no change here): A.S0930.08, A.S0930.30, A.SDEP.21, A.U0.07,
   A.U0.16, A.U0.18, A.U0.20, A.U0.28, A.U0.29, A.U0.31, A.U0.35, A.U0.39, A.U0.40, A.U0.41, A.U0.42, A.U0.48, A.U1.09,
   A.U1.21, A.U1.25, A.U10.34, A.U11.30, A.U16.01, A.U16.08, A.U16.12, A.U16.14, A.U16.16, A.U19.21, A.U20.15, A.U20.23,
@@ -1246,7 +1274,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Change**: `from __future__ import annotations` goes; `_TAGS` gains `"@tunable"` (comment names the family); a tag
   line leaves the count but its block's other lines count (the `:59` whole-block exemption goes); PEP 723 lines count
   as punctuation only between `# /// script` and the closing `# ///`; a line counts `ceil(len(stripped) / 110)` (the
-  110 width stated in the docstring as "(agent, 2026-09-30)"); `_DIVIDER = re.compile(r"^#\s*-{4,}\s*$")` and a test
+  110 width stated in the docstring as "(agent, 2026-09-30; owner-reviewed, 2026-10-02)"); `_DIVIDER = re.compile(r"^#\s*-{4,}\s*$")` and a test
   that no comment line consists only of `=`, `~`, `*` or `#` rule characters; header presence: every Python file in the
   eight scopes plus `build/generated_src` has a module docstring, every shell file a comment block after the shebang,
   every `js/`, `tests_js/`, `html/` script and CSS file a leading `/** */` or `//` block, `html/index.html` a `<!-- -->`
@@ -1409,18 +1437,20 @@ where a test pins an SCR product, the constituent action is cited and the depend
   comment and `_writing_scripts()` lose `wifi_service_reconnect_repro.py`; M.HW_DEV.112), A.U20.33, M.TSC.001
   (`base_classes.py` ×2 → `asy_base_classes.py`); read: A.U11.28 (`:130-140` holds), A.S0930.16 (flush semantics kept
   for scripts), A.U26.44 (one `BENCH` line, unaffected), A.U24.13 (`:13` insert), A.U8C.76/A.U8C.99/A.U8C2.32 (static
-  readers unaffected).
+  readers unaffected); OR136.a (1) (A-C review fold: the scratch directory's removal is checked too).
 - **Site**: `tests_scripts/test_device_script_config_flush.py:1-140`, new test.
 - **Change**: `from __future__ import annotations` goes; `_JUSTIFIED_UNFLUSHED["isl29125_mechanism_envelope.py"]` →
   "flushes in its `finally` before removing the scratch file" — or the entry is deleted if the explicit flush makes
   the main check pass (the stale-entry test then requires it); `:68-70` comment names no retired script ("a write can
   sit in a helper that takes the object as a parameter while the flush sits in `_main`"); new
   `test_every_scratch_config_file_is_removed`: every `config_HWTEST_*` literal in a device script is removed by a
-  script of the same host test in a `finally` (or by the host test's own cleanup), naming any path nobody removes. Reads
-  the raw sources (includes carry no config writes, M.HW_DEV.003).
+  script of the same host test in a `finally` (or by the host test's own cleanup), naming any path nobody removes; the
+  same for `_SCRATCH_CFG_PATH`: every script that builds over it removes the directory's files and the directory in a
+  `finally`, or its host test does after a reset (M.HW_DEV.009: a build there writes each store's defaults once, an
+  absent file's first write, OR136.a). Reads the raw sources (includes carry no config writes, M.HW_DEV.003).
 - **Resolved**: —
 - **Unit**: U26
-- **Depends**: M.HW_DEV.039, .101, .112, .142.
+- **Depends**: M.HW_DEV.009, .039, .101, .112, .142.
 - **Blast carried by**: the flagged scripts fixed in the same change → M.HW_DEV (their scripts).
 - **Kind**: test
 
@@ -1662,8 +1692,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ### M.TSC.086 A booted device answers as its definitions say, cleanly
 - **From**: A.U24.55 (2) (strict JSON with the device's own sections; boot-sequence markers in order), A.U24.36 (`:47`
   `_SMOKE_ENDPOINTS` from `ROUTES` by `ast`), A.U6.22 (Status readonly-field parity), A.U6.24 (System `path` parity),
-  A.U6.25 (`:108-113` errcount union), A.U35.39 (normal boot logs no E/W, the named NTP tolerance from
-  `scripts/_twin_process.py`), A.U7.22 (marker gate), A.U20.16 (the multi-instance fixture serves both SGP40 entries),
+  A.U6.25 (`:108-113` errcount union), A.U35.39 (normal boot logs no E/W; its NTP tolerance dropped by OR140.a (13):
+  the twin's local NTP responder, A-C review fold), A.U7.22 (marker gate), A.U20.16 (the multi-instance fixture serves both SGP40 entries),
   A.U6.20 (read: errcount only, unaffected).
 - **Site**: `tests_scripts/test_digital_twin_generated_boot.py:40-135`, `:196-221`.
 - **Change**: `_SMOKE_ENDPOINTS` = the GET paths of `ROUTES` read by `ast` from `src/asy_webserver_service.py`, with only
@@ -1672,14 +1702,15 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `render.js` does) is present in `GET /status` and every readonly System `path` resolves in `GET /system`; the errcount
   module set is the union over every errcount group; the twin log shows the boot-sequence markers of
   `expected_facts()["boot_sequence"]` in order; `_normal_boot_log_failures(body)`: any errcount history item of type E
-  or W fails ("<module> logged <type><num> on a normal boot") except the NTP tolerance constant loaded from
-  `scripts/_twin_process.py` via `load_script_module` (condition NTP `Synced` false); any output line holding a
+  or W fails ("<module> logged <type><num> on a normal boot"), NTP included — the twin's local NTP responder answers, so
+  a normal boot syncs and `NTPSynced` turns true within NTP's first-sync deadline (polled, bounded); any output line holding a
   `harness.MEMORY_ERROR_MARKERS` marker fails; the multi-instance fixture's `/status` carries `SGP40` and `SGP40_<ext>`;
   adherence fix (no history narrative): `:213-215` → "# Every real device's own TOML, generated fresh here: proof the
   generator's module runs for every device, not just ast.parse()s (SPECIFICATION.md Part L.4)." ("Session 3's" goes).
 - **Resolved**: —
-- **Unit**: U35 (stages U6, U7, U20, U24).
-- **Depends**: M.GEN.014/.033, M.SCR.016 (`scripts/_twin_process.py`), M.HW_BENCH.016.
+- **Unit**: U35 (stages U6, U7, U20, U24; the NTP expectation after U25's responder).
+- **Depends**: M.GEN.014/.033, M.SCR.016 (`scripts/_twin_process.py`), M.HW_BENCH.016; [fold F16 M_TWIN] (the twin's
+  local NTP responder).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -1806,13 +1837,17 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Kind**: test
 
 ## tests_scripts/test_frozen_inputs_reproducible.py
-### M.TSC.094 Staged firmware inputs are reproducible
-- **From**: A.U27.34 (2).
+### M.TSC.094 Staged firmware inputs are reproducible; the build date is the one input that differs
+- **From**: A.U27.34 (2); OR141.a (5) (A-C review fold: the build date a build input, two builds with one fixed date,
+  changing only the date changes only that line — decision reproducible-image).
 - **Site**: new `tests_scripts/test_frozen_inputs_reproducible.py`.
 - **Change**: for every `DEVICE_NAMES` device, a CPython subprocess run twice (`PYTHONHASHSEED=0`, `=4242`) stages the
   Python modules with `stage_python_modules()` into its own `tmp_path` under a fixed build date and prints `name  sha256`
   for every staged file plus the rendered manifest text; the outputs are byte-identical, and the rendered manifest holds
-  no bare directory `freeze()` (every directory freeze names its sorted file list).
+  no bare directory `freeze()` (every directory freeze names its sorted file list). A third run with only the build
+  date changed differs from the first in exactly one place: the generated device module's line carrying the date (any
+  other staged file or line that differs fails, naming it), so the date is the build's one time input (OR141.a (5),
+  A-C review fold).
 - **Resolved**: —
 - **Unit**: U27
 - **Depends**: M.SCR.066, M.SCR.070.
@@ -2131,7 +2166,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_one_entry_per_event.py
 ### M.TSC.111 No two persisted log entries for one event on one path
-- **From**: A.U3.11.
+- **From**: A.U3.11 dropped (OR140.a (7): every layer that meets a fault keeps its own persisted entry, as today; the
+  pair scan enforced the dropped one-entry rule, A-C review fold).
 - **Site**: new `tests_scripts/test_one_entry_per_event.py`.
 - **Change**: AST scan of every function in `src/*.py` and every generated module: two persisted `err_s`/`wrn_s` calls on
   one straight-line path with no `return` between fail unless allow-listed with both events named and why they differ;
@@ -2140,35 +2176,35 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `_read_sgp()`; WEBSERVER `_serve()`), each keyed by function name and catalog names (not numbers), re-derived at
   each later landing that renames a function; `_close_writer()` is not listed; bite: a planted second `err_s`.
 - **Resolved**: —
-- **Unit**: U3
+- **Unit**: — (no step; dropped by OR140.a (7))
 - **Depends**: A.U3.03-A.U3.09 (SRC).
 - **Blast carried by**: cross-function pairs → their L1 tests (A.U3.03-.09, A.U3.14; TEST_UNIT).
 - **Kind**: test
 
 ## tests_scripts/test_readiness_gates.py
-### M.TSC.112 Every class with an async `setup()` gates on readiness
+### M.TSC.112 A readiness flag exists exactly where product code reads it
 - **From**: A.U10.22 (L0 half); SRC_SENS GAP-17 per the lead's ruling (AC_NOTES 38); SRC_NET gap 3 (`WifiService`'s
   `setup()` override, `SensorReaderConfig`, `UARTLinkDriver` gains the flag, M.SRC_NET.213/.215); GAPS_G2 H-4 (a) (an
   override that awaits `super().setup()` inherits the flag; `SystemService`, `SensorReader` and `FRAMManager` now carry
-  it, M.SRC_CORE.008/.036/.039/.092; gap pass G3).
+  it, M.SRC_CORE.008/.036/.039/.092; gap pass G3); routine settlement initialized-flags (OR36.a (1), A-C review fold:
+  `initialized` only where product code reads it — the FRAM, SPI, UART and logging classes — and not on `SensorReader`,
+  `WebserverService`, `NeopixelDriver` or `NotificationService`).
 - **Site**: new `tests_scripts/test_readiness_gates.py`.
-- **Change**: AST over `src/`: every class defining `async def setup` assigns `self.initialized = False` in `__init__`
-  and `True` inside `setup()` (or inherits both from a base that does, resolved within `src/`: a class whose `setup()`
-  awaits `super().setup()` of such a base counts as setting it — `SensorReaderConfig` over `SensorReader`, `WifiService`
-  and `NotificationService` over theirs; `SystemService`, `SensorReader` and `FRAMManager`, whose `initialized` replaces
-  `_was_up`, set it themselves), except a named list
-  with reasons: `ConfigManager` (`valid`) and the protocol classes
-  `BMP3XX_I2C`, `SCD30_I2C`, `SGP40_I2C`, `ISL29125_I2C` plus `I2CDevice` ("build everything in `__init__`; `setup()`
-  only probes and configures the chip"); `NeopixelDriver` and `NotificationService` are checked (each carries
-  `self.initialized`, AC_NOTES 42 (2): `_finalized` is gone with M.SRC_SENS.033); every `deinit`/`close`/
+- **Change**: AST over `src/`: every class that assigns `self.initialized` sets it `False` in `__init__` and `True`
+  inside `setup()` (or inherits both from a base in `src/` that does: a `setup()` awaiting `super().setup()` of such a
+  base counts as setting it), and product code in `src/` reads that class's `initialized` somewhere (an attribute read
+  outside its own assignments) — a flag only a test would read fails, naming the class; the classes the rule finds at
+  landing are the FRAM, SPI, UART and logging classes, and `SensorReader` (with its subclasses), `WebserverService`,
+  `NeopixelDriver` and `NotificationService` carry none (a bite: a `tmp_path` copy adding an unread flag to one of them
+  fails); `ConfigManager` keeps its own `valid`; every `deinit`/`close`/
   `disconnect`/`stop_*`/`cleanup` method on a class with no `self.pr` returns `-> bool`, except chip commands
   (`stop_*` on a `*_I2C` protocol class) and `_TimeoutStreamProxy.close` (a mirror, by name).
-- **Resolved**: GAP-17 — the lead's ruling (AC_NOTES 38): protocol classes and `I2CDevice` named exempt,
-  `NeopixelDriver` gets `initialized`; AC_NOTES 42 (2) voids "`_finalized` counts as its gate" (M.SRC_SENS.033 removes
-  `_finalized`): `NotificationService` carries `initialized` and stays in the check.
+- **Resolved**: GAP-17 — the lead's ruling (AC_NOTES 38) and AC_NOTES 42 (2) gave `NeopixelDriver` and
+  `NotificationService` the flag; the routine settlement initialized-flags (AC_NOTES 52, OR36.a (1)) supersedes both:
+  the flag lives only where product code reads it, so the check tests the reading, not the presence of `setup()`.
 - **Unit**: U10 (after A.U13's `deinit()` changes; until then they are listed pending).
-- **Depends**: M.SRC_SENS.023/.024 (NeopixelDriver gate, AC_NOTES 44), M.SRC_SENS.033 (NotificationService
-  gate), M.SRC_NET.213/.215, A.U10.21.
+- **Depends**: M.SRC_CORE.036/.039, M.SRC_NET.119, M.SRC_SENS.023/.033 (the flag removed where only a test read it,
+  as the A-C review fold amends them), M.SRC_NET.213/.215, A.U10.21.
 - **Blast carried by**: the L1 half → M.TEST_UNIT (A.U10.22 L1); SPEC C.13 → A.U10.22 (SPEC).
 - **Kind**: test
 
@@ -2306,7 +2342,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   "restores the standard board state"; M.HW_DEV's script), A.U26.10 (the two `main()`-based serving scripts join
   `_PREREQUISITE_DEVICE_SCRIPTS`; M.HW_DEV.009/.120's blast, gap pass G3), A.C.17 (the manual branch: a persisting script
   run from a `tests_hardware/manual/` step needs the operator's confirmation; M.HW_BENCH.102's blast, gap pass G3),
-  A.U26.20 and A.C.13 and A.U26.71 (1) (`_JUSTIFIED_UNMARKED` reasons), A.U10.41 (`:29`
+  A.U26.20 and A.C.13 and A.U26.71 (1) (`_JUSTIFIED_UNMARKED` reasons), OR136.a (1), (4) (A-C review fold: an absent
+  file's first write is a prerequisite, the serving scripts' reason names it), A.U10.41 (`:29`
   reason names the new largest string field), A.U36.544 (`:230`, `:243` "F14"/"F15" → the reason in place), M.TSC.001
   (`config_manager.py` → `asy_config_manager.py` in the `:22-23` comment); read: A.U26.39 (`:38-44` fixture stays),
   A.U26.07/.08/.12/.14, A.U31.05, A.U16.07, A.S0930.06, A.S0930.28, A.U36.504, A.U35.51 (its conformance list reads this
@@ -2332,8 +2369,11 @@ where a test pins an SCR product, the constituent action is cited and the depend
   scratch `cfg_path`; runners found by the `"<script>.py"` string; each runner marked, a named persisting helper, or the
   script in `_PREREQUISITE_DEVICE_SCRIPTS` with its reason — the SCD30 start script, the standard-state repair
   script, and the two `main()`-based serving scripts `serving_at_default_gc.py` and `heap_under_connection_ceiling.py`
-  ("boots `main()` over the production config, which carries the WiFi credentials; its only possible write is the repair
-  a production boot of a malformed file makes", A.U26.10); a persisting script with no runner fails); runners are also
+  ("boots `main()` over the production config, which carries the WiFi credentials; its only possible writes are the ones
+  a production boot makes anyway: a genuinely absent file's first write and a malformed file's repair", A.U26.10 with
+  OR136.a); a build over the scratch directory (`_SCRATCH_CFG_PATH`) writes each store's defaults once there, an absent
+  file's first write and so a prerequisite (OR136.a (4)), and stays unflagged — M.TSC.073 requires the directory's
+  removal; a persisting script with no runner fails); runners are also
   searched in `tests_hardware/manual/*.py`: a manual step that runs a persisting script must hold a `confirm(` call
   before the run call in the same step function (`ast`) and the script be listed in `_MANUAL_PERSISTING_STEPS =
   {<script>: <reason>}` (`config_write_loop_scratch.py`: "up to 20 scratch flash writes and one removal, stated and
@@ -2411,8 +2451,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   "<floor>"`; one or more caller `-m`/`-mEXPR` → exactly one `-m "(<floor>) and (<last caller expr>)"`, printed and in
   the record; flash and bench runners pass `not soak_duration and not multi_day_rollover`, the soak runner
   `soak_duration` with `--soak-duration`, the rollover runner `multi_day_rollover` (no caller `-m` → `-m
-  "multi_day_rollover"`; `-m foo` → `-m "(multi_day_rollover) and (foo)"`) with `--allow-multi-day-rollover` reaching
-  pytest; the wrapper exports `EVIDENCE_DIR` pointing at the run's archive directory
+  "multi_day_rollover"`; `-m foo` → `-m "(multi_day_rollover) and (foo)"`) with `--allow-multi-day-rollover`,
+  `--allow-flash-cycle` and `--rollover-image <path>` reaching pytest (OR139.a, A-C review fold); the wrapper exports `EVIDENCE_DIR` pointing at the run's archive directory
   (M.SCR.034, HW_BENCH GAP-B6); the verdict cases themselves live in `test_hardware_verdict.py` (M.TSC.197).
 - **Resolved**: A.U26.35/A.U26.74's edits of `:18-19` fall inside A.U7.14's rewrite — one rewrite with the new names.
 - **Unit**: U27 (stage U7 rewrite; names U26).
@@ -2474,8 +2514,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TSC.126 Bench host: password off argv, documentation MAC, armed switch, netfilter, commands
-- **From**: A.U21.19 (password never in argv), A.U21.20 (`:239-249` → MAC `00:00:5e:00:53:01`), A.U21.23 (dead-man's
+### M.TSC.126 Bench host: the password passed plainly, documentation MAC, armed switch, netfilter, commands
+- **From**: A.U21.19 (the password's source and its one print; "never in argv" dropped by OR140.a (1), A-C review fold),
+  A.U21.20 (`:239-249` → MAC `00:00:5e:00:53:01`), A.U21.23 (dead-man's
   switch around bridge changes; `:394-429` fakes answer the new queries), A.U21.25 (`:370-382`: `tee` not a temp `cp`),
   A.U21.24 (`:154-198` → table-driven command checks; `ensure_node()` asks for `curl` first), A.U21.21 (`:519-571`
   `ensure_node`: `_node_release` pair; SHASUMS errors named), A.U21.28 (`:60-112` resolver by `2e8a` plus the MicroPython
@@ -2485,8 +2526,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: `tests_scripts/test_setup_toolchain_env.py:1-10`, `:60-112`, `:154-198`, `:239-249`, `:370-571`, new tests.
 - **Change**: header comment `:5` → "README.md's tier table defines 'flash' and 'bench'; tests_hardware/README.md holds
   the manual nmcli recipe"; the parsed MAC fixture is `00:00:5e:00:53:01` (a documentation-reserved address);
-  credential tests: no recorded argv contains the password, the `edit` call's `stdin_text` sets it, `main(["--password",
-  "x"])` is an argparse error, `run_env()` reads `BENCH_AP_PASSWORD`; bridge creation fakes answer `nmcli -g
+  credential tests: the password reaches exactly one recorded argv, the `nmcli connection modify` with `wifi-sec.psk`,
+  and the echoed command line shows it redacted; no `nmcli connection edit` call and no `stdin_text` is recorded; a
+  generated password is printed once, a `$BENCH_AP_PASSWORD` one never; `main(["--password", "x"])` is an argparse
+  error, `run_env()` reads `BENCH_AP_PASSWORD` (OR140.a (1), A-C review fold: a throwaway password passed plainly); bridge creation fakes answer `nmcli -g
   GENERAL.CONNECTION device show eth0`, `systemctl is-active` (active → inactive), `ip -o -4 addr show br0`, `ip -o route
   get`; new: a poll that never sees an address raises `SetupError` with no `systemctl stop` recorded, `is-active` not
   active after arming → `SetupError` and no `nmcli connection add`, a profile name with a space is shell-quoted in the
@@ -3147,7 +3190,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ### M.TSC.165 Suite helpers: failure events, signals, strict readers, a missing log fails
 - **From**: A.U25.36 (`_failure_events()`/`_error_codes()`/`_reset_line()` cases), A.U25.64 (signal-report cases), A.U25.66
   (missing-counter case per site), A.U27.01 (`:367-377` inverted: a missing log and an empty log fail), A.U35.38
-  (normal-boot check cases), SCR gap 3 (Run 1's `UTCTime`/`LocalTime` null check, M.SCR.049), A.U25.35 (helpers move to
+  (normal-boot check cases; the tolerance cases dropped by OR140.a (13), A-C review fold), SCR gap 3 (Run 1's `UTCTime`/`LocalTime` null check, M.SCR.049), A.U25.35 (helpers move to
   the run context), A.U20.28 (the plan reader follows the producer), M.TSC.001 (`print_log.py`), A.U11.31 (read: status
   codes only), A.U8.22 (read: `:223-286` test inputs untagged); A.U19.14 (`:257-259` cites BACKLOG item 24, which leaves
   at U19 — M_DOCS gap 2, gap pass G3); A.U25.33/A.U25.36 (2) and A.U35.28 (3) (the runner's shutdown-line fields this
@@ -3157,8 +3200,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Change**: new cases: a history `[E10, W15, E10]` with counter 4 → 3 failures; fake procs with returncode −11, the
   suite's own timeout and its own SIGKILL each reported by name; each strict reader fails on a missing counter;
   `test_a_missing_log_is_not_reported_as_a_memory_error` → `test_a_missing_or_empty_log_fails_the_run`; normal-boot check:
-  one W fails, NTP's tolerated code passes while not synced, synced + NTP entry fails; Run 1: `UTCTime`/`LocalTime` are
-  null before the first sync and both present after; the tolerance constant comes from `scripts/_twin_process.py`.
+  one W fails, an NTP entry fails whether or not NTP has synced (no tolerance list exists); Run 1: `UTCTime`/`LocalTime`
+  are null before the first sync and both present after, and a run whose `NTPSynced` never turns true within the bound
+  fails naming NTP.
   The section comment `:257-259` → "# _put_reset_errors_timed() - the elapsed-time budget (SPECIFICATION.md C.7). A
   timeout only catches a call that never finished; the budget covers the band between a normal reset and the server's
   own cap." (history clause "the suite was blind" goes). Shutdown-line parser cases (the suite's helper for the runner's
@@ -3442,10 +3486,14 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ### M.TSC.185 Device scripts take board facts from `BENCH` only
 - **From**: A.U26.44 (4); HW_DEV GAP-D1 (`.pyi` keys = `bench_facts.build()` keys + declared extras, M.HW_DEV.001), GAP-D14
   (conformance probes' register maps exempt, M.HW_DEV.132/.144); A.U26.46 (the README bench-facts table has no row without
-  a date and a source; placed here, beside the facts it records).
+  a date and a source; placed here, beside the facts it records); OR141.a (2), OR142.a (3) (A-C review fold: the device
+  module through a rendered static import, no dynamic import).
 - **Site**: new `tests_scripts/test_device_script_bench_facts.py`.
 - **Change**: AST over every device script: no numeric pin/bus argument literal in an `I2C(`/`SPI(`/`UART(`/`Pin(`/
-  `NeopixelDriver(`/`NeoPixel(` call, no `import sensortask_`, no copy of a driver's `_…_ADDR`/register constant bound to
+  `NeopixelDriver(`/`NeoPixel(` call, no `import sensortask_`, no `__import__`/`importlib` (SPEC F.1's named list is
+  closed), the device module only through the one `import _bench_device as device  # rendered: …` line, whose rewrite
+  by `render_device_script()` to the bench device's module is proven on a rendered `tmp_path` copy, and
+  `_bench_device.pyi` declaring every attribute a script reads from `device` (M.HW_DEV.001), no copy of a driver's `_…_ADDR`/register constant bound to
   a name — except the register maps of `*_conformance_probe.py` (datasheet values with pages; their addresses, pins and
   mode values still come from `BENCH`); every `BENCH[...]` key a script reads exists in `bench_facts.build()` for every
   `bench = true` TOML (rendered for every derived device, builds without error) or is a declared render extra;
@@ -3594,13 +3642,17 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_hardware_runners.py
 ### M.TSC.196 Hardware runners run every lower level first
-- **From**: A.U7.18; M.SCR.006, M.SCR.030-.032; M.SCR.074 (the rollover runner; GAPS_G4 hand-off 3 (a), gap pass G3).
+- **From**: A.U7.18; M.SCR.006, M.SCR.030-.032; M.SCR.074 (the rollover runner; GAPS_G4 hand-off 3 (a), gap pass G3;
+  its test-image build, OR139.a, A-C review fold).
 - **Site**: new `tests_scripts/test_hardware_runners.py`.
 - **Change**: with stubbed `scripts/test.sh`, `npm`, `run_digital_twin_ci.sh`, `uv`: a failing L1 stops before any
   pytest-on-hardware call; the device loop is derived from `devices/*.toml` minus `zz_test_*`; `--skip-lower-levels`
   yields NOT CLEAN; the bench runner runs flash then bench as two steps; the soak runner's block says `Levels: soak
   duration <d> (not a level)`; `scripts/run_bench_rollover_test.sh` makes no lower-level call (no stubbed `test.sh`,
-  `npm` or twin-suite invocation recorded) and its block reads `Levels: rollover (not a level)`.
+  `npm` or twin-suite invocation recorded), calls `scripts/build_firmware.py <bench device> --tick-offset-test` before
+  the wrapper (a failing stub build exits 1 with no wrapper call), passes `--allow-flash-cycle` and `--rollover-image
+  build/firmware-<bench device>-tickoffset.uf2`, syncs once, and its block reads `Levels: rollover (not a level)`
+  (OR139.a, A-C review fold).
 - **Resolved**: —
 - **Unit**: U27 (stage U7).
 - **Depends**: M.SCR.006, M.SCR.030, M.SCR.031, M.SCR.032, M.SCR.074.
@@ -3932,14 +3984,17 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ## tests_scripts/test_typecheck_sh.py
 ### M.TSC.221 `typecheck.sh`: exact stub pins, repairs that fail on a moved tree, summary
 - **From**: A.U21.04 (stub install block), A.U27.02 (pin check and repairs), A.U7.12 (summary block), A.SDEP.15 (the
-  fabricated trees keep all three states); M.SCR.026, M.SCR.027.
+  fabricated trees keep all three states); M.SCR.026, M.SCR.027; OR140.a (11) (A-C review fold: the stub version moves
+  with every MicroPython bump, the real table checked).
 - **Site**: new `tests_scripts/test_typecheck_sh.py`.
 - **Change**: the stub block (between its marker comments) run with a fake `uv`: a spec change wipes a planted stale file,
   an unchanged spec keeps it, two dist-info dirs → exit 1 with the message; the pin check against a tmp `versions.toml`:
   mismatched X.Y.Z → exit 1 naming the key, matching → prints both; the repair block on fabricated trees: defect present →
   repaired, fixed tree → untouched, missing `asyncio/` or `builtins.pyi` → exit 1 naming the path, `_asyncio.pyi` without
   `class _Future` → exit 1; stub `mypy`/`uv`/`python3`: one failing twin pass → `failed 1` naming
-  `digital_twin/typecheck.ini`, exit 1; a failing stub install → the block names "stub install", exit 1.
+  `digital_twin/typecheck.ini`, exit 1; a failing stub install → the block names "stub install", exit 1. A case over the
+  real `toolchain/versions.toml` (no install): both `[stubs]` pins' X.Y.Z equal `[micropython] ref`'s, so a MicroPython
+  bump without the stub move fails the unit tier as well as the typecheck (OR140.a (11), A-C review fold).
 - **Resolved**: A.U21.04, A.U27.02 and A.U7.12 each create this file — one file.
 - **Unit**: U27 (stages U7, U21).
 - **Depends**: M.SCR.026, M.SCR.027.

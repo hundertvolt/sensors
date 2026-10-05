@@ -611,6 +611,31 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   M.TWIN.059; README "What's here" bullet → M.TWIN.058; ruff/mypy pick it up by directory
 - **Kind**: code
 
+## digital_twin/_flash_stall.py (new)
+
+### M.TWIN.170 The twin's flash-write stall: a config flush holds the loop for the datasheet time, interrupts off
+- **From**: OR141.a (4) (g) (concurrent load "with the twin's flash write stalling the loop for the datasheet time"),
+  FOLD_BRIEF F25 (U25) — A-C review fold.
+- **Site**: new `digital_twin/_flash_stall.py`.
+- **Change**: header (≤ 3 lines) "Models a flash write on the twin: rp2 programs its flash with interrupts off
+  (ports/rp2/rp2_flash.c:170-174, v1.29.0), so a config flush holds the whole loop for the chip's erase and program
+  time; installed from outside src/, as _wall_clock.py is." `install(module) -> None` rebinds the `open` the config
+  manager module uses (applied from outside, no product hook, OR36) to a wrapper whose write-mode file, on `close()`,
+  busy-waits on `time.ticks_us()` for one sector erase plus one page program per 256 bytes written — W25Q16JV tSE 45 ms
+  typical / 400 ms max, tPP 0.4 ms / 3 ms (`datasheets/pico w/Winbond_W25Q16JV_Datasheet_RevF.pdf`, the AC timing
+  table; each value cited on its line) — and marks the twin's interrupts off for that time, so the modelled UART RX
+  interrupt does not run while the DMA does (M.TWIN.169). Knob `use_max = False` ("twin-only test knob": the maxima).
+  `stalls` and `stalled_ms` (saturating, `_twin_common.saturating_add`) record what ran. One sector per write is an
+  approximation of littlefs's erase pattern, stated in the fidelity table. The runner installs it on every boot
+  (typical times; a runner flag selects the maxima, its name decided at execution with the `--test-*` family, M.TWIN.051);
+  an in-process L2 test installs it where it needs the stall.
+- **Resolved**: —
+- **Unit**: U25.
+- **Depends**: M.TWIN.001 (`saturating_add`), M.TWIN.169 (the interrupts-off flag the model reads).
+- **Blast carried by**: the runner's install → M.TWIN.171; the stall cases → M.TWIN.130; the concurrent-load scenario →
+  M.TWIN.171 and [fold F25 M_SCR]; fidelity row → M.TWIN.059; README "What's here" bullet → M.TWIN.058.
+- **Kind**: code
+
 ## digital_twin/machine.py
 
 Shared for M.TWIN.020-036: every class gains a `TEST_API` tuple naming each public name the real rp2 type lacks
@@ -1190,6 +1215,37 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 - **Blast carried by**: A.U27.28's gate (TSC) finds nothing to rewrap in this file
 - **Kind**: doc
 
+## digital_twin/rp2.py (new)
+
+### M.TWIN.169 The twin's time-driven DMA and UART register model, so dev's twin boots on the DMA receive path
+- **From**: OR141.a (4) (a)-(d), (g) (the receive path through a DREQ-paced DMA ring; the twin fakes carry the same
+  time-driven model as the unit fakes), FOLD_BRIEF F25 (the twin fakes land in U13 with the driver, so dev's twin boots)
+  — A-C review fold.
+- **Site**: new `digital_twin/rp2.py` (the `rp2.DMA` fake) and `digital_twin/machine.py` (the UART register block behind
+  `mem32`, the modelled RX interrupt, `rx_api_calls`).
+- **Change**: the same model M.TEST_HELP.069 states for the unit tier, on the twin's own classes and independent of
+  `tests/` (the twin imports nothing from it, G7/R02): `rp2.DMA` with `config()`, `pack_ctrl()` (the fields the driver
+  sets), `count` (TRANS_COUNT), `active()`, `close()`, the chained reload, the ring wrap on the write address, the
+  natural-alignment refusal and an RP2040-E12 stale `WRITE_ADDR`; the paced channel takes bytes from the UART's RX FIFO
+  (the twin link's delivered bytes, M.TWIN.027) at the DREQ pace, computed from the twin's monotonic clock at each
+  register read, so a stalled loop (M.TWIN.170) does not stop it. The UART register block (UARTRSR, UARTIMSC, UARTDMACR at
+  `0x40034000`/`0x40038000`, RP2040 datasheet 4.2.8): RXIM/RTIM set by every construction and `init()`
+  (`machine_uart.c:455`); while set, a modelled RX interrupt drains the FIFO into rxbuf (`:162-188`) — and it does not run
+  inside a twin flash stall (interrupts off), so a FIFO the DMA does not drain overflows there and sets UARTRSR OE after
+  32 bytes (`machine_uart.c:90`); RXDMAE gates the DREQ. `rx_api_calls` counts receive-side `any()`/`read()`/`readinto()`/
+  `readline()`/poll. Each modelled rp2 fact cites its v1.29.0 line and is pinned by M.TWIN.138 (C6); every knob says
+  "twin-only test knob" and joins `TEST_API`. `rp2.DMA` has a finaliser that aborts the channel, as `rp2_dma.c:365, 637-673`
+  (a soft reset in the twin is a process exit, so the finaliser is modelled for fidelity only and says so in the
+  fidelity table). Lands on HEAD's twin UART in U13; M.TWIN.028's U25 rewrite of `class UART` carries the register block
+  forward.
+- **Resolved**: —
+- **Unit**: U13 (with the driver's DMA receive path, so dev's twin boots from that unit on).
+- **Depends**: M.TWIN.027 (the link's delivery, its U25 shape later); [fold F25 M_SRC_NET] (the driver's receive path).
+- **Blast carried by**: the fake's own L2 cases and the shared contract's DMA checks → M.TWIN.130, M.TEST_HELP.025; the
+  twin UART link tests → M.TWIN.158; fidelity rows (DMA ring, IRQ mask, OE, the finaliser) → M.TWIN.059; rp2 constants →
+  M.TWIN.138; the twin mypy pass resolves `rp2` to this module (its `files` cover `digital_twin`, M.TWIN.075 — no edit).
+- **Kind**: code
+
 ## digital_twin/network.py
 
 ### M.TWIN.040 Twin WLAN: per-interface singletons, cyw43 status rules, AP address, TEST-NET STA, bounded logs
@@ -1686,6 +1742,34 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   Run 11 paragraph → M.TWIN.065
 - **Kind**: code
 
+### M.TWIN.171 Concurrent load on dev's twin: both links under traffic, the webserver hammer, FRAM writes and config PUTs
+- **From**: OR141.a (4) (g) ("Concurrent load: both dev link instances under traffic alongside the webserver hammer,
+  FRAM log writes and config PUTs, with the twin's flash write stalling the loop for the datasheet time; both GC stages,
+  zero MemoryError"), OR143.a (4) (concurrent load — maximum-size trains alongside the webserver hammer, both GC stages,
+  zero MemoryError), FOLD_BRIEF F25/F27 (U25) — A-C review fold.
+- **Site**: `digital_twin/run_generic_integration.py` (the DUT side: the stall installed, the links' counters on the
+  shutdown line); the scenario itself in the host harness (`scripts/_digital_twin_scenarios.py`, G7/R19: request
+  driving stays host-side).
+- **Change**: DUT side: the runner installs `_flash_stall` (M.TWIN.170) on the booted config manager module; the shutdown
+  line (M.TWIN.050) gains `uart=<instance>:transfers=<n>,failures=<n>,overruns=<n>,…` for each wired `uart_link`, read
+  from the link driver's own counters and the receive path's lap count (no product hook, OR36). The scenario (host
+  side, [fold F25 M_SCR]): dev booted by the runner at each GC stage, the stall at its typical and then its maximum
+  times; both link instances exercising; the webserver hammer; a sustained FRAM-log fault through `--fault` (persisted
+  writes); config PUTs at a steady rate (each a flash write, so each a stall); and, for OR143.a, the link carrying
+  maximum-size and over-cap trains (how the exerciser is made to send them from outside the product is decided at
+  execution, with its reason recorded). Verdict: no link failure or overrun within the ring bound (the maximum stall is
+  inside it by the ring's size derivation, OR141.a (4) (e)); an over-cap train refused and logged once; zero
+  `MemoryError`/`memory allocation failed` in the run log (the twin gate, CLAUDE.md); the largest free block at the end
+  not below the boot-contiguity bound.
+- **Resolved**: G7/R19 keeps request driving out of the twin's heap, so the hammer and the PUTs come from the host
+  harness while the stall and the counters are twin-side; the scenario is one run of the CI suite's harness.
+- **Unit**: U25.
+- **Depends**: M.TWIN.050, M.TWIN.169, M.TWIN.170; [fold F25 M_SCR] (the host scenario); [fold F25 M_SRC_NET] (the receive
+  path's lap count); [fold F27 M_SRC_NET] (the cap and the chunked assembly).
+- **Blast carried by**: the CI suite's run list and README "Automated CI suite" → M.TWIN.064 and [fold F25 M_SCR]; the
+  shutdown-line parser's new field → [fold F25 M_TSC].
+- **Kind**: code
+
 ## digital_twin/unixport/_offline_ntp_config.py (new)
 
 ### M.TWIN.053 One NTP config writer both tiers import: offline, or the twin's local responder
@@ -2174,7 +2258,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `DNSServer` → `CaptiveDNS`), A.S0930.04 (the `dev` runs in both CRC modes via `--device-toml`), A.U25.44 (Run 7's shim
   sentence points to `unixport/`), A.U25.34 (Run 7's capability check fails loudly); gap pass G3: M_DOCS gap 5 / M_PROC
   gap 3 (c) and G1's hand-off H3 (the `:453-456` clause), M.SCR.053's blast (Run 5's keyed fault), A.U30.19 (Run 12's
-  code 20, M.SRC_CORE.016's blast)
+  code 20, M.SRC_CORE.016's blast); OR141.a (4) (g) (the dev concurrent-load run, M.TWIN.171; A-C review fold)
 - **Site**: `digital_twin/README.md:378-585`
 - **Change**: the section keeps its structure (intro, Clean/Build/Test, numbered runs, logs paragraph) with: intro
   `:380-386` unchanged in substance; examples `scripts/run_digital_twin_ci.sh <device>` (a missing device prints usage and
@@ -2192,7 +2276,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   driver, each in its own process); new **Run 12** (reset reasons: power-on, bootloader with its assumption, region 0
   cleared — A.U25.55; from U30 also the C-stack code 20 after a `--fault <device>:<op>:stack` run, A.U30.19, M.TWIN.044)
   and **Run 13** (system commands: `resetconfig`, `erasefram`, the near-miss list, states, hazards,
-  watchdog with the SPI wire-time knob, per-step hangs through `--test-shutdown-hang`, power loss — A.S0930.27/.38); a
+  watchdog with the SPI wire-time knob, per-step hangs through `--test-shutdown-hang`, power loss — A.S0930.27/.38); the
+  `dev` concurrent-load run (both links under traffic with the flash stall, the webserver hammer, FRAM writes and
+  config PUTs, M.TWIN.171; A-C review fold); a
   sentence "every run's log is checked for zero `MemoryError`/`memory allocation failed` and for
   `public_destinations_refused=0`"; the `dev` passes run once per CRC mode (A.S0930.04). Every history clause ("used to
   stand here", "until both were corrected", "measured here at roughly 1 in 8" kept only as the measured fact with its
@@ -2206,7 +2292,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   starts from this text (A-C merges)" — applied in that order. A.U11.31 hands `:505-507` to U25 (A.U25.65).
 - **Unit**: U36 (U25 rewrites, the `:453-456` deletion and Run 5's fault; U27 archive; U30 Run 12's code 20; U35 Run 1
   sentence)
-- **Depends**: M.TWIN.050, M.TWIN.051, M.TWIN.167
+- **Depends**: M.TWIN.050, M.TWIN.051, M.TWIN.167, M.TWIN.171
 - **Blast carried by**: `scripts/_digital_twin_ci_suite.py`, `scripts/run_digital_twin_ci.sh` → their actions (SCR)
 - **Kind**: doc
 
@@ -2740,14 +2826,19 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `would_have_blocked_bytes` at the cap stay), A.U25.30 (`settle()` inside a coroutine raises `RuntimeError`; 64 bytes at
   1200 baud settle no earlier than their wire time, with a bounded count of `_advance()` calls), A.U8C.28 (its tags),
   A.U13.12 (a `readline(n)` with fewer queued counts `n - queued` — the contract's new check), A.U13.13 (`txdone()` True),
-  M.TWIN.028 (ioctl `-EINVAL` for `MP_STREAM_GET_FILENO`)
+  M.TWIN.028 (ioctl `-EINVAL` for `MP_STREAM_GET_FILENO`); OR141.a (4) (g) (the twin DMA model's own cases; A-C review
+  fold)
 - **Site**: `tests/test_digital_twin_machine_uart.py` (whole file)
 - **Change**: as listed; UART constructions pass rp2-valid TX/RX pins from the plan; a new `test_ioctl_answers_einval_
   to_get_fileno` (`uart.ioctl(10, 0) == -errno.EINVAL`) and `test_a_buffer_below_32_is_clamped`; the `l2.machine_uart_*`
-  tags per A.U8C.28. Trailer.
+  tags per A.U8C.28. New (M.TWIN.169, U13 stage): the shared contract's DMA checks run on the twin fake and
+  `test_the_finaliser_aborts_the_channel`; with M.TWIN.170 (U25): `test_the_dma_keeps_filling_the_ring_through_a_flash_
+  stall` (bytes in flight across a modelled flash write: the ring holds every byte afterwards, UARTRSR OE clear) and
+  `test_a_set_mask_overflows_the_fifo_inside_a_flash_stall` (RXIM left set, the same stall: OE set, bytes past 32 lost).
+  Trailer.
 - **Resolved**: —
-- **Unit**: U25 (stage U8C)
-- **Depends**: M.TWIN.027-029
+- **Unit**: U25 (stage U8C; stage U13: the contract's DMA checks and the finaliser case, with M.TWIN.169)
+- **Depends**: M.TWIN.027-029, M.TWIN.169, M.TWIN.170 (the two stall cases)
 - **Blast carried by**: `tests/_uart_link_contract.py` (`poll_mask`, `readline(size)` check) → A.U24.80/A.U13.12 (TEST_HELP)
 - **Kind**: test
 

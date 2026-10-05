@@ -36,7 +36,7 @@ def main():
     plan = PLAN.read_text()
     topics = set(re.findall(r"\*\*([A-Z]{2,5}\.[TS]\d{2})\*\*", plan))
     prov = set(re.findall(r"(?m)^\| (A2-\d{2}|[ABCDEVL]\d{2}) \|", (ROOT / "DECISION_PROVENANCE.md").read_text()))
-    ors = {f"OR{n}" for n in range(1, 144)}
+    ors = {f"OR{n}" for n in range(1, 145)}
     rows = [
         ("candidates (direct or via cluster)", cand, covered),
         ("clusters", set(clusters), got),
