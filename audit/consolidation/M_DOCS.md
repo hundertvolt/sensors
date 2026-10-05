@@ -23,6 +23,12 @@ Standing conventions for every merged change below:
   2026-09-30)".
 - **MicroPython pin text**: wherever a doc below names "v1.29.0" as the pin or as the version a fact was verified at, the
   text follows the pin B0's dependency refresh leaves (A.SDEP.08 (4), A.SDEP.21), re-stamped in the same SDEP commit.
+- **Review-answer tags (A-C review fold, 2026-10-05)**: where a change below writes the permanent tag of one of the 68
+  decisions the owner answered on 2026-10-02 (`audit/actions/FOLD_ANSWERS.md`), a decision answered "fine" reads
+  "(agent, <its date>; owner-reviewed, 2026-10-02)" (an existing owner tag stays as it is); one answered with a change or
+  a question carries the owner's ruling in place of the proposed text, tagged "(owner, 2026-10-02)"; the 2026-10-05
+  rulings (OR141-OR143) are "(owner, 2026-10-05)". This holds also inside an action's text quoted "verbatim". Which
+  change carries which decision's tag: the F21 table in "A-C review fold (2026-10-05)" at the end.
 
 ## THIRD_PARTY_LICENSES.md
 
@@ -200,13 +206,13 @@ Standing conventions for every merged change below:
 - **Kind**: doc
 
 ### M.DOCS.011 A section states what the image and website contain
-- **From**: A.U34.09 (1)
+- **From**: A.U34.09 (1); F21 tag form (licence-notices) (A-C review fold)
 - **Site**: new section "## What the firmware image and the website contain" before "## Not third-party (built into
   MicroPython itself)" (`:157`)
 - **Change**: A.U34.09 (1)'s section text verbatim (compiled-in components with their licences, frozen micropython-lib
   packages and port modules, this repo's frozen modules, "No license text is frozen", the website bundles no npm
-  package, and "**Publishing an image** (agent, 2026-09-30; public MIT repository, owner, 2026-09-26): …" with its notice
-  list). The executor reads each submodule licence at the commit named and each in-tree component's source headers,
+  package, and "**Publishing an image** (agent, 2026-09-30; owner-reviewed, 2026-10-02; public MIT repository, owner,
+  2026-09-26): …" with its notice list). The executor reads each submodule licence at the commit named and each in-tree component's source headers,
   corrects any licence the file contradicts, records which of mbedTLS's two licences the image uses and any Apache-2.0
   `NOTICE`; the component list and commits are those of the pin B0's refresh leaves (re-derived if it moved).
 - **Resolved**: —
@@ -329,13 +335,13 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
 - **Kind**: doc
 
 ### M.DOCS.019 One closed status set; rows in number order; a Status column for Class B
-- **From**: A.U17.09
+- **From**: A.U17.09; OR143.a (3) (row A15 joins the order) (A-C review fold)
 - **Site**: `UART_C_PORT_CHANGELOG.md:48-49` (status line), `:53-66` (Class A table), `:70-103` (Class B table)
 - **Change**: `:48-49` → "Status values, a closed set: `proposed` (agreed in principle, not yet implemented),
   `applied-python` (live in `src/`; pending the C side for Class A, final for Class B), `recorded` (nothing to change on
   either side — an existing rule written down so the C side is checked against it), `reconciled` (done on both sides —
   the entry can be removed). A qualifier goes into the entry's own text, never into the Status cell." Class A rows
-  ordered A1 … A14 (A13/A14 from M.DOCS.022); Status cells: A4 `recorded`, A8 `recorded`, A6 `applied-python`, A7
+  ordered A1 … A15 (A13/A14/A15 from M.DOCS.022); Status cells: A4 `recorded`, A8 `recorded`, A6 `applied-python`, A7
   `applied-python`, A11 `proposed`; A1-A3, A5, A9, A10, A12 unchanged. Class B gains a trailing `Status` column, every
   row `applied-python`.
 - **Resolved**: —
@@ -345,7 +351,7 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
 - **Kind**: doc
 
 ### M.DOCS.020 A constants table the check reads
-- **From**: A.U17.11 (1)
+- **From**: A.U17.11 (1); OR143.a (1)-(2), OR141.a (4) (the constants the fold adds) (A-C review fold)
 - **Site**: new section "## Constants the check reads" after "## How to use this file"
 - **Change**: one sentence "Every integer `const()` of `src/asy_uart_comm.py` except the log codes, with its value, its
   class and the entry that last changed it; `tests_scripts/test_uart_changelog.py` fails when this table and the module
@@ -357,7 +363,11 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   `_DRAIN_BOUND_MULT`, `_MIN_CHUNKS`, `_BACKOFF_MULT`, `_BACKOFF_MAX_MULT`; Class B: `_GATE_STEP_MS`,
   `_GC_PAUSE_WORST_MS`, `_POLL_JITTER_MS`, `_DIAG_RESYNC_STREAK`, `_CALLBACK_PAIR_LEN`, `_CMD_ID_MAX`,
   `_TICKS_HORIZON_MS`, `_POLL_WAIT_MAX_MS`. A constant present in the module but in neither list is classed by the same
-  rule at execution (a wire value or recovery timing is A) and reported in the unit's commit.
+  rule at execution (a wire value or recovery timing is A) and reported in the unit's commit. (A-C review fold) A
+  `const()` the receive chunking, the receive cap or the ring floor adds to the module (OR143.a, OR141.a (4)) joins the
+  table in its landing commit: a default or bound that decides which train is accepted (the `max_transfer_bytes`
+  default) is Class A, a memory-only one (the `chunk_bytes` default, a ring-floor term) Class B; `Last entry` names the
+  row that introduced it (M.DOCS.022 A15, M.DOCS.024 B65-B69).
 - **Resolved**: —
 - **Unit**: U17 (after A.U17.20's two constants; every constant-changing action — A.U2.20, A.U3.02, A.U10.29, A.U17.20 —
   lands at or before U17)
@@ -392,8 +402,9 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   TEST_UNIT)
 - **Kind**: doc
 
-### M.DOCS.022 Two new Class A rows: GET is one chunk; a validated command resets the backoff
-- **From**: A.U17.16, A.U17.17, A.U17.30
+### M.DOCS.022 Three new Class A rows: GET is one chunk; a validated command resets the backoff; the receive cap
+- **From**: A.U17.16, A.U17.17, A.U17.30; OR143.a (2)-(3) (the oversize-train refusal, Class A, receiver-only) (A-C
+  review fold)
 - **Site**: Class A table, after A12
 - **Change**: "| A13 | Reject a GET frame whose `CHUNKS` is not 1 | J.4 defines a GET as a one-chunk train, and a GET
   declaring more chunks was answered as though it were one | That the C sender always emits `CHUNKS = 1` on a GET. A
@@ -402,10 +413,17 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   (`ListenResult.cmd` set); a listen that returns no command kind backs off (`timeout/2` doubling to `5 × timeout`) | A
   declined command used to send the loop into that backoff, so an initiator retrying after its own resync (about
   `4 × timeout`) could transmit while the responder slept and fail again | That the C responder does not back off after a
-  declined or aborted command beyond the initiator's retry window | applied-python |".
+  declined or aborted command beyond the initiator's retry window | applied-python |" and (A-C review fold) "| A15 |
+  Refuse, before anything is allocated, a train whose declared size — its `CHUNKS`, or the size the local caller
+  expects — exceeds the receiver's `max_transfer_bytes` (a constructor argument with a default, declared per link in the
+  device TOML): the ACK is withheld, as for any rejected frame, and the refusal is logged once | A peer could declare up
+  to 64,770 bytes at `payload_size = 255` and the receiver allocated it, so a large or hostile transmission could flood
+  the heap (owner, 2026-10-05) | That the C sender never declares more than the receiver's cap, and whether the C
+  receiver refuses the same way. A receiver-only tightening: a conforming peer within the cap is unaffected |
+  applied-python |".
 - **Resolved**: —
-- **Unit**: U17
-- **Depends**: M.SRC_NET.159, M.SRC_NET.170, M.DOCS.019
+- **Unit**: U17 (A15 with `max_transfer_bytes` and its refusal)
+- **Depends**: M.SRC_NET.159, M.SRC_NET.170, M.DOCS.019; [fold F27 M_SRC_NET] (the refusal)
 - **Blast carried by**: SPEC J.4/J.5 → A.U17.16/A.U17.17 (SPEC); tests → M_TEST_UNIT (A.U17.16/.17)
 - **Kind**: doc
 
@@ -439,7 +457,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   A.U10.04, A.U10.18, A.U10.29, A.U10.35 (+`set_callback`, M_SRC_NET gap 6), A.U10.37 + A.U10.38, A.U10.44 + A.U32.06,
   A.U10.45, A.U11.31, A.U12.02, A.U12.03, A.U12.16, A.U13.12, A.U13.13, A.U13.14, A.U13.17, A.U13.18, A.U16.05, A.U17.01,
   A.U17.06, A.U17.10, A.U17.14, A.U17.20, A.U17.22, A.U17.26, A.U17.28, A.S0930.07, A.U24.67, A.U30.19, A.U35.44, A.U17.30
-  (the numbering rule)
+  (the numbering rule); OR141.a (4) (f) (the DMA receive ring, "no C impact"), OR143.a (1)-(2) (the chunked assembly,
+  the readline cap, the TOML keys) (A-C review fold)
 - **Site**: Class B table, after B32
 - **Change**: rows (Change | Why no wire effect), each with Status `applied-python` once the column exists:
   - **B33** (U2): "`errno`/`wrnno` values move into the project's global catalog and their constants take the catalog
@@ -527,6 +546,25 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
     (`report_if_fatal()`) | No wire change".
   - **B64** (U35): "`CRCBase._crc()` takes the polynomial its caller has already checked instead of re-testing pass mode,
     and `add()`/`add_into()` no longer wrap `pack_into` in an unreachable `ValueError` catch | No emitted byte changes".
+  - (A-C review fold) Five rows, numbered at landing in landing order with the rows above (B65/B66 after B51, B67/B68
+    after B60, B69 after B61), each "no C impact":
+  - **B65** (U13): "Each link receives through a DMA ring: after every init the driver clears the UART's RX and
+    RX-timeout interrupt masks and enables its RX DMA request; a DMA channel paced by that request fills a
+    power-of-two ring held for the program's life, a chained channel reloads its count, and reads copy from the ring by
+    index; `machine.UART`'s receive calls are no longer made and its receive buffer drops to its minimum; a lap of the
+    ring is detected and handled as a receive overrun | No byte on the wire changes and no accept/reject rule moves;
+    bytes arriving while a flash write holds interrupts off are no longer lost (owner, 2026-10-05)".
+  - **B66** (U13): "`readline_until_complete()` is capped and no longer grows by concatenation: a line over the cap is
+    discarded and the call returns `None` | No protocol path uses readline (B47); no wire effect".
+  - **B67** (U17): "`UARTComm` refuses a receive ring below its floor — the larger of one framed frame, one poll
+    interval's arrivals and what the peer can send during the longest synchronous flash write under stop-and-wait,
+    rounded up to a power of two — and resyncs on a lap like any receive overrun | A local refusal and the existing
+    recovery; no byte, acceptance rule or timing on the wire changes".
+  - **B68** (U17): "A train with no caller destination is assembled in pieces of at most `chunk_bytes` (a constructor
+    argument with a reasoned default) instead of one peer-sized allocation, and the caught `MemoryError` at those
+    allocations goes | Memory only: the bytes acknowledged and delivered are identical".
+  - **B69** (U20): "Each `uart_link` end declares its receive-ring size and `max_transfer_bytes` in the device TOML, and
+    the build checks the two together | Wiring only; the cap's refusal is A15".
 - **Resolved**: A.U32.06's own row ("`start_listen`, `start_exercise`") and A.U10.44's are one row with the U10 names
   (M.SRC_NET.170, M_SRC_NET gap 6). A.U10.35's row adds `set_callback` (M.SRC_NET.155 makes it private; gap 6). A.U3.13's row
   adds the synchronous `_note_valid_frame()` (M.SRC_NET.164; gap 6 — no constituent carried it). A.U10.37/A.U10.38's two
@@ -540,7 +578,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   A.U17.21/A.U20.18 (build-side refusal, no module change), A.U35.47/A.U0.49/A.U8.06 (comments only), A.U35.48 (no UART
   path changed by its merge).
 - **Unit**: per row as listed (U2 … U35); the merged change is complete at U35.
-- **Depends**: each row's code change (M.SRC_NET.150-.216, M.SRC_CORE.115-.122); M.DOCS.019 (Status column from U17)
+- **Depends**: each row's code change (M.SRC_NET.150-.216, M.SRC_CORE.115-.122; for B65-B69 [fold F25 M_SRC_NET],
+  [fold F27 M_SRC_NET], [fold F27 M_GEN]); M.DOCS.019 (Status column from U17)
 - **Blast carried by**: order and status → M.TSC.152; A.U37.04 (4)'s close check (every commit touching
   `src/asy_uart_comm.py` has its row) → audit record
 - **Kind**: doc
@@ -567,7 +606,8 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   A.U32.01 (the runbook pointer), A.U19.14 (linked section)
 - **Site**: `DEVICE_REFERENCE.md`, new "## Commissioning and operating: what needs a person" after the header (`:1-5`),
   before "## Neopixel LED"
-- **Change**: A.U36.531's section verbatim (items 1-8: Wi-Fi setup through the hotspot; `AmbPres` once; `ForceCalRef`
+- **Change**: A.U36.531's section verbatim, its decision tag in the review form "(agent, 2026-09-27; owner-reviewed,
+  2026-10-02)" (A-C review fold, F21) (items 1-8: Wi-Fi setup through the hotspot; `AmbPres` once; `ForceCalRef`
   with **FRC Readiness**; `SelfCal`; ISL29125 calibration; read **Last Reset Reason** and save `GET /status` before
   clearing; power-cycle a unit whose I2C sensors stay unreadable after a reboot; the reflash runbook in README.md
   "Moving a legacy unit to this firmware"), with the labels as the definitions carry them at landing. The `ForceCalRef`
@@ -583,22 +623,27 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
 
 ### M.DOCS.027 The Neopixel section states the Wi-Fi LED patterns, the window and the refusal
 - **From**: A.U36.546 (4) (the overlay bullet checked against the firmware), A.U18.30 (deactivated pattern), A.U10.40
-  (`LedWifiOn` → `LEDWifiOn`), A.U9.01 (window bullet), A.U9.03 (manual flash refusal)
+  (`LedWifiOn` → `LEDWifiOn`), A.U9.01 (window bullet), A.U9.03 (manual flash refusal); OR140.a (17) (the Wi-Fi-off pattern
+  follows the Wi-Fi LED setting), OR140.a (5) (the refusal tells the caller to retry later) (A-C review fold)
 - **Site**: `DEVICE_REFERENCE.md:7-25`
 - **Change**: `:11-14` (WiFi status overlay bullet; "on/off only … not a live connectivity signal" contradicts the
   service, which blinks the overlay per link state) → "- **Wi-Fi status overlay** — a dim white glow showing the Wi-Fi
   state while `/networking`'s `LEDWifiOn` is on (off: the overlay stays dark): searching for the network — toggling
   every half second; connected — on; disconnected — off; serving the fallback hotspot — on with a short gap every 3 s,
   steadily on once a client has joined; Wi-Fi switched off (a second failure streak after the hotspot ran, or no
-  readable Wi-Fi configuration) — off with a short blink every 3 s, until a power cycle." The notification bullet
-  `:15-19` gains, after the brightness/duration sentence: "It flashes only inside the notification window
-  `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual flash (`LightCmdLED`) is
-  refused ("Failed") while another flash is still playing." Table unchanged.
+  readable Wi-Fi configuration) — off with a short blink every 3 s, until a power cycle. Every one of these patterns
+  follows `LEDWifiOn`, the switched-off one included: dark while it is off, shown as soon as it is switched on (owner,
+  2026-10-02)." The notification bullet `:15-19` gains, after the brightness/duration sentence: "It flashes only inside
+  the notification window `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual
+  flash (`LightCmdLED`) is refused ("Failed") while another flash is still playing — try again later; a notification the
+  unit raises itself waits for the playing flash and then queues, since the unit's own notifications are few and spaced
+  (owner, 2026-10-02)." Table unchanged.
 - **Resolved**: the pattern list is read from the service at landing (A.U36.546 (4): the executor checks the text against
   `asy_wifi_service.py`/`asy_neopixel_driver.py` and corrects any mismatch); `LightCmdLED` per A.U10.40.
 - **Unit**: U36. Stages: U9 (window and refusal sentences, old key names), U10 (`LEDWifiOn`, `LightCmdLED`), U18 (the
   deactivated pattern clause), U36 (the bullet's full rewrite).
-- **Depends**: M.SRC_NET (WiFi LED patterns, `_LED_DEACTIVATED_*_MS`), A.U9.01/A.U9.03 (SRC_SENS/GEN)
+- **Depends**: M.SRC_NET (WiFi LED patterns, `_LED_DEACTIVATED_*_MS`; M.SRC_NET.077/.100 as the fold amends them),
+  A.U9.01/A.U9.03 (SRC_SENS/GEN); [fold F09 M_SRC_NET] (the refusal's retry wording)
 - **Blast carried by**: SPEC A.4 WiFi, H, A.8 → A.U18.30, A.U9.03 (SPEC); field help → A.U9.01 (GEN)
 - **Kind**: doc
 

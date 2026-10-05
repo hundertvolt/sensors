@@ -1060,15 +1060,54 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 - **From**: A.U21.30 (`CURRENT_OVERRIDE_DIRS`).
 - **Site**: new module constant after the readback section's constants.
 - **Change**: `CURRENT_OVERRIDE_DIRS = ("unix_kbd_intr_variant", LWIP_OVERRIDE_BOARD_DIR_NAME,
-  MODLWIP_OVERRIDE_DIR_NAME, "unix_lwip_host_variant")` with "# Every directory the apply_*() functions write under
+  MODLWIP_OVERRIDE_DIR_NAME, "unix_lwip_host_variant", TICK_OFFSET_DIR_NAME)` (the last from M.TOOL.080, OR139.a, A-C
+  review fold) with "# Every directory the apply_*() functions write under
   build_overrides/; setup removes any other it finds there." (`"unix_kbd_intr_variant"` and the host variant's name become
   named constants `UNIX_KBD_INTR_DIR_NAME`, `UNIX_LWIP_HOST_DIR_NAME`, used by their apply functions). A retired override
   (A.SDEP.11 (c), A.SDEP.13 (a)) leaves the tuple with its section.
 - **Resolved**: —
 - **Unit**: U21.
-- **Depends**: M.TOOL.037, M.TOOL.039, M.TOOL.040.
+- **Depends**: M.TOOL.037, M.TOOL.039, M.TOOL.040, M.TOOL.080.
 - **Blast carried by**: `remove_outdated_leftovers()` → M.TOOL.063; L0 (the tuple equals the names the apply functions
   write, read from their output) → A.U21.30 (TSC).
+- **Kind**: code
+
+### M.TOOL.080 tick_offset_test: a test-only override that starts the millisecond count 15 minutes before the wrap
+- **From**: OR139.a (1), (2), (5) (A-C review fold: the rollover round's test image differs from the dev image by one
+  build define, applied here as a test-only override with its anchor check, named in the build info, refused in any
+  release build, its anchors re-verified at every MicroPython bump).
+- **Site**: new section after M.TOOL.042's constant (before the readback section's callers).
+- **Change**: banner (≤ 3 prose lines) "tick_offset_test: a TEST-ONLY build in which mp_hal_ticks_ms() returns the time
+  since boot plus 2**32 ms minus 15 minutes, so ticks_ms() and the 32-bit millisecond count wrap about 15 minutes after
+  boot (owner, 2026-10-01). Never in a release image. Full account: SPECIFICATION.md B.14."; constants
+  `TICK_OFFSET_DIR_NAME = "tick_offset_test"`, `TICK_OFFSET_SENTINEL = "MICROPY_SENSORS_TICK_OFFSET_TEST_APPLIED"`,
+  `TICK_OFFSET_MS = 2**32 - 15 * 60 * 1000` (with "# 15 minutes before the 32-bit wrap; 2**32 is also a multiple of
+  ticks_ms()'s 2**30 period, so both wrap together"), and `_TICK_OFFSET_ANCHOR`, the pinned body of `mp_hal_ticks_ms()`
+  in `ports/rp2/mphalport.h` (`return to_ms_since_boot(get_absolute_time());`, `:96-98` at v1.29.0, re-derived at the
+  refreshed pin). `verify_tick_offset_anchor(micropython_dir)`: the anchor exactly once inside `mp_hal_ticks_ms()`, else
+  `OverrideError` naming the file and "re-derive this override's anchor and its replacement (SPECIFICATION.md B.14); do
+  not build the test image unpatched". `apply_tick_offset_override(micropython_dir, overrides_dir) -> dict[str, str]`
+  (`_embeddable()` both dirs, M.TOOL.036) makes the pinned `mp_hal_ticks_ms()` return `(mp_uint_t)(to_ms_since_boot(
+  get_absolute_time()) + MICROPY_SENSORS_TICK_OFFSET_MS)` (32-bit unsigned arithmetic, so the sum wraps), defines
+  `MICROPY_SENSORS_TICK_OFFSET_MS` as `TICK_OFFSET_MS`'s literal and the sentinel `1`, and returns the make variables
+  `build_firmware()` merges; the hardware timer is never written (RP2040 datasheet 4.6.2: the SDK expects it to
+  increase monotonically). How the replacement reaches the inline function (a patched header copy put ahead of the
+  original on the include path, as `modlwip_eagain` swaps its source, or an equivalent the pinned build allows) is
+  decided at execution against the pinned `ports/rp2` build, with its reason recorded in SPEC B.14. Readers:
+  `tick_offset_in_build(build_dir) -> bool` (the sentinel among the build's compile definitions, read the way
+  M.TOOL.041 reads the others) and `verify_tick_offset_in_build(build_dir, *, expected: bool)` raising `OverrideError`
+  on a mismatch — "a release build carries the tick-offset test override" when `expected` is false, the release
+  refusal. `CURRENT_OVERRIDE_DIRS` gains `TICK_OFFSET_DIR_NAME` (M.TOOL.042).
+- **Resolved**: OR139.a (1) says "one build define": the define is `MICROPY_SENSORS_TICK_OFFSET_MS`; the inline
+  function's body has no hook for it at v1.29.0, so the override also supplies the one replaced line (the anchor), the
+  same verify-then-apply shape as the other overrides.
+- **Unit**: U21 (with the other overrides; the build-info and runner sides in U27, M.SCR.065/.067/.074).
+- **Depends**: M.TOOL.035, M.TOOL.036, M.TOOL.042.
+- **Blast carried by**: `build_firmware()`'s keyword and the release readback → M.TOOL.055; L0 cases (anchor present
+  once → applies, anchor moved → `OverrideError`, the sentinel read back, a build without the flag carrying it →
+  refused) → M.TSC.229; the image record and build info → M.SCR.067 [fold F04 M_GEN]; SPEC B.14 subsection, E.6's
+  rollover paragraph → [fold F04 M_SPEC]; CLAUDE.md's version-bump practice names this anchor among the re-checked ones →
+  [fold F04 M_DOCS]; the round → M.PROC.041.
 - **Kind**: code
 
 ## toolchain/setup_toolchain.py
@@ -1125,7 +1164,8 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 ### M.TOOL.046 run() streams, is always bounded, retries network steps and redacts secrets
 - **From**: A.U21.17 (`run()`, three budgets, retries, `run_retried()` forwarding, `node_on_path_matches()` timeout),
   A.U8.14 (tags on `UV_SYNC_ATTEMPTS` and `backoff_s`), A.U28.01 (the one shell retry definition `run_retried()` matches),
-  A.U21.19/A.U21.25 (users of `stdin_text`, `secrets`).
+  A.U21.19/A.U21.25 (users of `stdin_text`, `secrets`; A.U21.19's `stdin_text` use dropped by OR140.a (1), the PSK
+  passed plainly — `secrets=` still redacts it from the echoed command, A-C review fold).
 - **Site**: `toolchain/setup_toolchain.py:110-133` and every `run()` call site (`:168-173, :188, :193-206, :228, :240,
   :246, :270-283, :292, :298, :309, :318, :338, :386, :395, :441, :463, :526, :586, :703, :749, :760, :774, :798, :803,
   :819-838, :855-923, :960, :995-1007, :1019, :1038, :1050, :1058`) plus `:945`.
@@ -1288,7 +1328,8 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 
 ### M.TOOL.055 build_firmware(): two overrides in, both proven, no global flag
 - **From**: A.U21.10 (modlwip override applied and proven), A.U21.15, A.U21.16/A.SDEP.12 (no `CFLAGS_EXTRA`, M.TOOL.044),
-  A.U21.17 (build budget), A.U26.02 (blast: the image record's lwIP dict), D3.
+  A.U21.17 (build budget), A.U26.02 (blast: the image record's lwIP dict), D3; OR139.a (1)-(2) (A-C review fold: the
+  tick-offset test override by keyword, refused in every build without it).
 - **Site**: `toolchain/setup_toolchain.py:321-350`.
 - **Change**: after `apply_lwip_connection_counts_override()`, `micropython_overrides.apply_modlwip_eagain_override(
   micropython_dir, overrides_dir)`; the two dicts merged into `override_make_vars` (a duplicate key → `SetupError`);
@@ -1298,12 +1339,17 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   copy_path)` (copy path from `USER_C_MODULES`). Comment `:322-324` → "# Builds the RP2 firmware, optionally with an
   extra FROZEN_MANIFEST=. Always applies and then proves the lwIP-options and modlwip_eagain overrides (SPECIFICATION.md
   B.14); lwip_macros defaults to versions.toml's [lwip], toolchain_dir to micropython_dir's parent." Returns the uf2
-  path as today. Under A.SDEP.13 (a): no modlwip call or proof.
+  path as today. Under A.SDEP.13 (a): no modlwip call or proof. A keyword `tick_offset_test: bool = False` (OR139.a, A-C
+  review fold): when true, `micropython_overrides.apply_tick_offset_override()` joins the merged make variables and the
+  build dir is the test image's own (so a later release build never reuses its objects); after every build,
+  `verify_tick_offset_in_build(build_dir, expected=tick_offset_test)` — a build without the flag that carries the
+  override fails (the release refusal; CI's `firmware-build-verify` builds every device without it, so CI proves the
+  absence each run).
 - **Resolved**: A.U26.02 wants the built image's lwIP dict "returned from it or re-read from its build dir" — D3 (agent):
   the return type stays a `Path` (callers `run_verification_sequence()` and `scripts/build_firmware.py` unchanged); the
   image record re-reads `micropython_overrides.read_lwip_macros_from_build(uf2.parent, lwip_macros)`.
 - **Unit**: U21.
-- **Depends**: M.TOOL.039, M.TOOL.041, M.TOOL.044, M.TOOL.053.
+- **Depends**: M.TOOL.039, M.TOOL.041, M.TOOL.044, M.TOOL.053, M.TOOL.080.
 - **Blast carried by**: `test_micropython_overrides.py:804-880` fakes (`build.make`, the object, `USER_C_MODULES` in
   `make_cmd`) → A.U21.10 (TSC); `test_build_firmware.py:202` real proof in CI → M.TOOL.018; A.U26.02's re-read → Gaps (SCR).
 - **Kind**: code
@@ -1480,7 +1526,7 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 
 ### M.TOOL.065 Every command a tier runs is checked from one table, and the bench tier's sudo too
 - **From**: A.U21.24 (`_TIER_COMMANDS`, `ensure_commands()`), A.U21.26 (`check_passwordless_sudo()`), G10/R07 (the three
-  `ensure_*()` one shape).
+  `ensure_*()` one shape); OR140.a (A-C review fold: bench-sudo-checked owner-reviewed, the tag form).
 - **Site**: `toolchain/setup_toolchain.py:707-742` (three constants, three functions).
 - **Change**: as A.U21.24: the three functions and constants → `_TIER_COMMANDS = {"generic": (("curl", "curl"),),
   "bench": (("nmcli", "network-manager"), ("ip", "iproute2"), ("iptables", "iptables"), ("sysctl", "procps"), ("modprobe",
@@ -1490,7 +1536,8 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   `_BENCH_SUDO_COMMANDS = ("nmcli", "iw", "iptables", "tc", "tee", "picotool", "timeout", "systemd-run", "systemctl")`,
   `check_passwordless_sudo(commands)` probing `sudo -n <abs path> <version arg>` (remote-query budget), one `SetupError`
   naming every refused command and `tests_hardware/README.md` Prerequisites; root passes. The installer writes no sudoers
-  file (agent, 2026-09-30, OR2.c).
+  file; the comment above `check_passwordless_sudo()` says so with the tag "(agent, 2026-09-30; owner-reviewed,
+  2026-10-02)" (A-C review fold: decision bench-sudo-checked, the tag form; no audit ID in the comment).
 - **Resolved**: —
 - **Unit**: U21.
 - **Depends**: M.TOOL.049.
@@ -1528,8 +1575,9 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   (TSC).
 - **Kind**: code
 
-### M.TOOL.068 ensure_bench_bridge(): the password never reaches argv; every change runs under an armed switch
-- **From**: A.U21.19 (PSK through `nmcli connection edit` stdin, `secrets=`, the one print), A.U21.23 (`_armed_recovery()`,
+### M.TOOL.068 ensure_bench_bridge(): the throwaway password passed plainly; every change runs under an armed switch
+- **From**: A.U21.19 (`secrets=`, the one print; its `nmcli connection edit` stdin path and argv fallback dropped by
+  OR140.a (1): the password is a throwaway used once, passed plainly, A-C review fold), A.U21.23 (`_armed_recovery()`,
   the post-up poll, the channel self-heal armed, the MAC remedy text, two tags), A.U21.17 (budgets), A.U36.522 (blast:
   README describes it).
 - **Site**: `toolchain/setup_toolchain.py:843-926` and new `_armed_recovery()`.
@@ -1540,18 +1588,18 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   tool.bench_bridge_recovery_arm_s = 300` / `_BRIDGE_RECOVERY_ARM_S = 300`, `# @tunable tool.bench_bridge_up_poll_s = 90` /
   `_BRIDGE_UP_POLL_S = 90`; the creation sequence inside one `_armed_recovery()`, then the bounded 2 s poll for an `br0`
   address and `dev br0` in `ip -o route get 1.1.1.1`; the channel self-heal inside its own `_armed_recovery(uplink, None,
-  …)` with the same poll; the MAC-mismatch remedy gains "arm SPECIFICATION.md B.13's recovery timer first". As A.U21.19:
-  the `modify` keeps `wifi-sec.key-mgmt … wifi-sec.pmf disable` without the PSK pair; the PSK set by `run(["sudo",
-  "nmcli", "connection", "edit", BENCH_AP_CONN], stdin_text="set 802-11-wireless-security.psk <password>\nsave
-  persistent\nquit\n", secrets=(password,), timeout_s=_REMOTE_QUERY_TIMEOUT_S)` before `connection up` (fallback if
-  `edit` reads no piped commands: the PSK in that one `modify`'s argv, redacted by `secrets=`, documented in
-  `tests_hardware/README.md` — OR2.c list); a generated password printed once with "Save this password now", a
-  `$BENCH_AP_PASSWORD` one never printed; the comment names the variable.
+  …)` with the same poll; the MAC-mismatch remedy gains "arm SPECIFICATION.md B.13's recovery timer first". The
+  `modify` keeps `wifi-sec.key-mgmt … wifi-sec.pmf disable` and carries the PSK pair `wifi-sec.psk <password>` plainly
+  on its command line (the password from `$BENCH_AP_PASSWORD`, or generated; a throwaway used once, never committed),
+  `secrets=(password,)` keeping it out of the echoed command; no interactive `nmcli connection edit`, no
+  known-limitation note; a generated password printed once with "Save this password now", a `$BENCH_AP_PASSWORD` one
+  never printed; the comment names the variable and states "a throwaway password used once, passed plainly (owner,
+  2026-10-02)".
 - **Resolved**: A.U21.19 and A.U21.23 rewrite one creation sequence — both in one change (A.U21.19 Depends A.U21.23).
 - **Unit**: U21.
 - **Depends**: M.TOOL.046, M.TOOL.067.
-- **Blast carried by**: `test_setup_toolchain_env.py:293-429` (arm/disarm order, PSK never in argv, printed once) →
-  A.U21.19/A.U21.23 (TSC); Part N rows for the two tags → A.U21.23 (SPEC); SPEC B.13, CLAUDE.md dead-man's-switch rule,
+- **Blast carried by**: `test_setup_toolchain_env.py:293-429` (arm/disarm order; the PSK in the one `modify`'s argv,
+  redacted from the echo, printed once when generated) → A.U21.19/A.U21.23 (TSC, M.TSC.126); Part N rows for the two tags → A.U21.23 (SPEC); SPEC B.13, CLAUDE.md dead-man's-switch rule,
   `tests_hardware/README.md` → A.U21.23 (SPEC, DOCS, HW_BENCH); README bridge text → A.U36.522 (DOCS); phase C
   first real run → A.U21.23 (PROC).
 - **Kind**: code
@@ -1700,18 +1748,20 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 
 ### M.TOOL.077 Exact stub post-releases pinned beside the ref
 - **From**: A.U27.02 (1) (`[stubs]` `board`, `stdlib`), A.SDEP.09 (the post-releases installed and recorded at the
-  refresh), A.SDEP.15 (stub repairs re-checked against them), A.SDEP.25 (U37 re-check).
+  refresh), A.SDEP.15 (stub repairs re-checked against them), A.SDEP.25 (U37 re-check); OR140.a (11) (A-C review fold:
+  the stub version moves with every MicroPython bump, enforced by a check — decision stub-versions-pinned).
 - **Site**: `toolchain/versions.toml`, new table after `[micropython]`.
-- **Change**: "# Exact stub releases; X.Y.Z must equal [micropython] ref's (typecheck.sh checks). Bump deliberately,
-  re-running typecheck.sh." / `[stubs]` / `board = "<X.Y.Z.postN>"` / `stdlib = "<X.Y.Z.postM>"` — the
+- **Change**: "# Exact stub releases; they move with every [micropython] ref change, X.Y.Z equal to the ref's
+  (scripts/typecheck.sh and tests_scripts check; owner, 2026-10-02). Re-run typecheck.sh after a bump." / `[stubs]` / `board = "<X.Y.Z.postN>"` / `stdlib = "<X.Y.Z.postM>"` — the
   `micropython-rp2-rpi_pico_w-stubs` and `micropython-stdlib-stubs` versions A.SDEP.09 recorded from `typings/*.dist-info`.
 - **Resolved**: A.U27.02 reads the versions "after one run at execution (A.U21.04 prints them)"; A.SDEP.09 records them at
   the refresh — the pins are A.SDEP.09's recorded versions (SUPP_deps co-landing 10), re-read at U27 if a later
   post-release was installed meanwhile.
 - **Unit**: U27. Re-checked at U37 (A.SDEP.25).
 - **Depends**: M.TOOL.073, A.SDEP.09; M.TOOL.047 (same commit: the typed table accepts `[stubs]`).
-- **Blast carried by**: `scripts/typecheck.sh` reads and checks the pins → A.U27.02 (SCR); `test_typecheck_sh.py` →
-  A.U27.02 (TSC); SPEC F.5.5/B.11, CLAUDE.md stub bullets → A.U27.02 (SPEC, DOCS); BACKLOG chroot entry → A.U27.02 (DOCS).
+- **Blast carried by**: `scripts/typecheck.sh` reads and checks the pins → A.U27.02 (SCR, M.SCR.027); `test_typecheck_sh.py`
+  → A.U27.02 (TSC), whose case over the real `toolchain/versions.toml` fails the unit tier on a mismatched bump
+  (M.TSC.221); SPEC F.5.5/B.11, CLAUDE.md stub bullets → A.U27.02 (SPEC, DOCS); BACKLOG chroot entry → A.U27.02 (DOCS).
 - **Kind**: code
 
 ## uv.lock
@@ -1917,7 +1967,7 @@ GEN Q2 (OR132) touches no TOOL file.
 - **D17** (A-C gap pass) TOOL carries `host_typecheck.ini`, which CLUSTERS.md names under no cluster, beside the other
   two mypy configs' strictness lines (M.TOOL.079); the stripper's N802 per-file entry is not written (M.TOOL.030).
 - Carried, decided in A-L and listed there for this review: A.U21.26 (sudoers checked and listed, never written),
-  A.U21.19's argv fallback for the PSK, A.U21.13's one-time unpatched control build (not a CI arm), A.U28.07 (the web
+  A.U21.19's argv fallback for the PSK (superseded: passed plainly, owner, 2026-10-02, OR140.a (1)), A.U21.13's one-time unpatched control build (not a CI arm), A.U28.07 (the web
   filter's last-green base), A.U28.19 (monthly Firefox period), A.U28.27 (host TRY003/EM exemptions), A.U28.36 (budget
   margin rule), A.U28.01 (the second composite action).
 

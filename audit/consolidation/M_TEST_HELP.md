@@ -593,17 +593,24 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
 
 ### M.TEST_HELP.025 Link contract reads readiness by mask, checks clamped readline
 - **From**: A.U24.15 (2), A.U24.80, A.U13.12 (contract), A.U24.06, A.U36.532 (`:197`), A.U25.04/A.U25.30 (hold),
-  A.U24.73
+  A.U24.73; OR141.a (4) (the unit and twin DMA models answer alike; A-C review fold)
 - **Site**: `tests/_uart_link_contract.py:55-70` (`check_pollin_follows_fifo_content`,
   `check_pollout_follows_writable_gate`), `:195-197` (comment "F.5.8"), `:209-215` (readline check comment), `:225-246`
   `ALL_CHECKS`.
 - **Change**: readiness reads `b.poll_mask(select.POLLIN)` / `a.poll_mask(select.POLLOUT)` instead of `ioctl(3, …)`;
   new `check_readline_with_a_size_is_clamped_and_counted` (a `readline(n)` with fewer than `n` queued counts `n -
   queued`, identically in both fakes) listed in `ALL_CHECKS`; the readline comment `:211` → "clamped to `any()` like
-  every counted read"; `:197` "F.5.8" → "F.8.2" (U36). `LinkFactory` typed through `_protocols.UARTLike`.
+  every counted read"; `:197` "F.5.8" → "F.8.2" (U36). `LinkFactory` typed through `_protocols.UARTLike`. New DMA
+  checks in `ALL_CHECKS`, run identically on both fakes (M.TEST_HELP.069, M.TWIN.169): `check_init_sets_the_rx_interrupt_
+  mask` (RXIM/RTIM set after construction and after every `init()`); `check_dma_fills_the_ring_without_a_loop_turn`
+  (bytes written by the peer land in the ring as the fake clock advances, with no `await`); `check_the_ring_wraps_on_its_
+  write_address` and `check_the_chained_channel_reloads_the_count`; `check_a_lap_is_visible_in_the_totals` (more bytes
+  than the ring holds: the modular totals show the lap); `check_a_set_mask_steals_bytes` (RXIM left set: the modelled
+  interrupt drains the FIFO into rxbuf and the ring misses them).
 - **Resolved**: —
-- **Unit**: U24 (the new check lands with A.U13.12's fakes in U13 — stage 1; the `:197` repoint U36).
-- **Depends**: M.TEST_HELP.017, M.TEST_HELP.018.
+- **Unit**: U24 (the new check lands with A.U13.12's fakes in U13 — stage 1; the DMA checks land in U13 with
+  M.TEST_HELP.069/M.TWIN.169; the `:197` repoint U36).
+- **Depends**: M.TEST_HELP.017, M.TEST_HELP.018, M.TEST_HELP.069; M.TWIN.169.
 - **Blast carried by**: completeness test `test_every_contract_check_is_registered` in `tests/test_machine_uart_link.py`
   → A.U24.06 (TEST_UNIT); twin `poll_mask()` and `readline(size)` → A.U24.80/A.U13.12 (TWIN).
 - **Kind**: test
@@ -1493,6 +1500,41 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
 - **Unit**: U35
 - **Depends**: M.TEST_HELP.043.
 - **Blast carried by**: one sweep per path in its test file → A.U35.48 (TEST_UNIT).
+- **Kind**: test
+
+### M.TEST_HELP.069 Create the unit tier's time-driven DMA and UART register model
+- **From**: OR141.a (4) (g) (unit tests run on "a time-driven fake DMA and UART register model" that fills the ring
+  independently of the event loop) and OR141.a (4) (a)-(d) (the facts it models), FOLD_BRIEF F25 (the unit fakes land in
+  U13 with the driver) — A-C review fold.
+- **Site**: `tests/machine.py` (the UART register block and `mem32`) and a new `tests/rp2.py` (the `rp2.DMA` fake) —
+  which of the two holds the DMA class is decided at execution with the driver's import (`rp2.DMA` on silicon), its
+  reason recorded.
+- **Change**: (1) `rp2.DMA` fake modelling the surface the receive path uses (v1.29.0 `ports/rp2/rp2_dma.c`): `config(read,
+  write, count, ctrl, trigger)`, `pack_ctrl(**fields)` with the fields the driver sets (`treq_sel`, `ring_sel`,
+  `ring_size`, `inc_read`, `inc_write`, `size`, `chain_to`), `count` (TRANS_COUNT, read as a small int, `:392`),
+  `active()`, `close()`; a chained channel whose completion reloads the paced channel's count. The paced channel moves
+  bytes from its UART's RX FIFO into the ring at the DREQ pace (RP2040 datasheet 2.5.3.1: UART0_RX 21, UART1_RX 23), the
+  write address wrapping on the ring (`RING_SIZE` on the write address, 2.5.1.3), computed from a fake clock
+  (`Timer.clock_ms`/the `ticks_us` source the fakes share) at each register read, so the ring fills with no event-loop
+  turn; it refuses a ring not naturally aligned to its power-of-two size. `WRITE_ADDR` reads wrong during ring
+  transfers, as RP2040-E12 states (the fake answers a deliberately stale value), so a driver reading it fails a test.
+  (2) The UART fake gains its register block behind `machine.mem32[<UART base> + <offset>]` (RP2040 datasheet 4.2.8:
+  UARTRSR, UARTIMSC, UARTDMACR; UART0 `0x40034000`, UART1 `0x40038000`): every construction and `init()` sets
+  RXIM/RTIM in UARTIMSC, as `machine_uart.c:455` does; while either is set the fake's modelled RX interrupt drains the
+  FIFO into the `machine.UART` rxbuf (`:162-188`), so a driver that leaves the mask set loses bytes to it; UARTDMACR
+  RXDMAE gates the DREQ; UARTRSR OE sets when the FIFO overflows with no DMA draining it. The UART fake counts every
+  receive-side `any()`, `read()`, `readinto()`, `readline()` and receive poll in `rx_api_calls` (the driver's receive path
+  must leave it 0). (3) Test knobs, each "test-only knob" in `TEST_API`: a consumer-stall and an arrival-rate setting
+  (line rate by default: 8N1 at 115200 baud, 11.52 B/ms) and a direct ring-fill setter for boundary cases. (4)
+  `reset_test_state()` (M.TEST_HELP.010) resets the DMA channels, the register blocks and `rx_api_calls`.
+- **Resolved**: the time-driven model is what OR141.a (4) (g) asks of the unit tier; the twin carries the same model
+  (M.TWIN.169) and the shared contract checks both (M.TEST_HELP.025).
+- **Unit**: U13 (with the driver's DMA receive path, so every existing UART test runs on it from that unit on).
+- **Depends**: M.TEST_HELP.010, .017, .018; [fold F25 M_SRC_NET] (the driver's receive path).
+- **Blast carried by**: the shared link contract's DMA checks → M.TEST_HELP.025; the pair harness builds both drivers
+  through their `setup()` (the ring allocated there) → M.TEST_HELP.023 (holds); the receive tests → M.TEST_UNIT.169, .175,
+  .176, .344, .345; the main mypy pass resolves `rp2` to the fake where `tests/` is in scope → [fold F25 M_TOOL]; the
+  twin's model → M.TWIN.169.
 - **Kind**: test
 
 ## Cross-file: A-C3 sweep changes (new)

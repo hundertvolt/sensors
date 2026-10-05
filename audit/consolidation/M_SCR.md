@@ -706,11 +706,13 @@ Conventions used below (each defined once, then cited):
 ### M.SCR.027 Exact stub pins, a recorded install, repairs that fail on a moved tree
 - **From**: A.U27.02, A.U21.04, A.SDEP.08 (`:68-79` message names the hold-back choice — kept), A.SDEP.09 (U0
   procedure: install and record post-releases), A.SDEP.15 (repairs retired if fixed upstream — conditional), A.U27.03
-  (doc removal triggers, blast), A.SDEP.25 (U37 re-check, procedure).
+  (doc removal triggers, blast), A.SDEP.25 (U37 re-check, procedure); OR140.a (11) (A-C review fold: the stub version
+  moves with every MicroPython bump, enforced by this check; decision stub-versions-pinned, owner, 2026-10-02).
 - **Site**: `scripts/typecheck.sh:16-97`.
 - **Change**: `derive_stub_pins()` (one `python3` heredoc, no in-heredoc version check): reads `[micropython] ref` and
   `[stubs] board`/`stdlib` from `toolchain/versions.toml`, checks each pin against `^X\.Y\.Z(\.post\d+)?$` for the ref's
-  `X.Y.Z` (else A.U27.02's error), prints `<board> <stdlib>`. `stub_spec="micropython-rp2-rpi_pico_w-stubs==<board>
+  `X.Y.Z` (else A.U27.02's error, naming both versions and "move [stubs] with every [micropython] ref change"), prints
+  `<board> <stdlib>`. `stub_spec="micropython-rp2-rpi_pico_w-stubs==<board>
   micropython-stdlib-stubs==<stdlib>"`; when `typings/.stub-spec`'s first line differs from it (or is missing) `rm -rf
   typings` first; `uv pip install --quiet --target typings` of both exact pins (the `:68-79` no-release message kept,
   naming the pin that failed); after install exactly one `typings/micropython_rp2_rpi_pico_w_stubs-*.dist-info` and one
@@ -1691,9 +1693,11 @@ Conventions used below (each defined once, then cited):
 ### M.SCR.067 Image record and size report beside every `.uf2`
 - **From**: A.U26.02 (record), A.U26.85 (`overrides`), A.S0930.06 (1) (`deviceToml`, `uartCrc`), A.U27.31 (size report),
   A.U27.36 (`autostart: false`), A.U10.40 (`buildDate` → `BuildDate`), A.U36.521 (resize trigger names the report —
-  blast), M.HW_BENCH.060/.075/.094 (readers).
+  blast), M.HW_BENCH.060/.075/.094 (readers); OR139.a (2) (A-C review fold: the record names the tick-offset test
+  override), OR141.a (5) (the build date a real build stamps).
 - **Site**: `scripts/build_firmware.py:158-165` (after `st.build_firmware()`).
-- **Change**: `build_date = current_build_date()` computed once and passed down; after the `.uf2` copy, `image_report(build_dir)
+- **Change**: `build_date = current_build_date()` (the current UTC time: a real build stamps when it was built)
+  computed once and passed down, with `test_overrides=("tick_offset_test",)` under `--tick-offset-test`; after the `.uf2` copy, `image_report(build_dir)
   -> ImageReport` (`used = __flash_binary_end - 0x10000000`, `fs_base = __micropy_flash_size__ -
   __micropy_flash_storage_bytes__ - __micropy_romfs_bytes__`, read with the toolchain's `arm-none-eabi-nm` from the
   `firmware.elf` beside the `.uf2`; `used > fs_base` → `BuildInternalError`), printed `== Image: <used> B of <fs_base> B
@@ -1706,7 +1710,9 @@ Conventions used below (each defined once, then cited):
   copy_path)` passes with the `micropython_dir` and copy path `st.build_firmware()` used — `<overrides dir>/
   modlwip_eagain/modlwip.c`, `MODLWIP_OVERRIDE_DIR_NAME` — `[]` when it raises `OverrideError`, as for the round's
   control image built with the override call removed; `[]` throughout under A.SDEP.13 (a), where the section does not
-  exist), `deviceToml` (repo-relative path built from), `uartCrc` (per UART bus mode),
+  exist; plus `"tick_offset_test"` when `micropython_overrides.tick_offset_in_build(uf2.parent)`
+  is true, M.TOOL.080 — a record naming it is the rollover image, which every bench run but the rollover runner's
+  refuses, M.HW_BENCH.060), `deviceToml` (repo-relative path built from), `uartCrc` (per UART bus mode),
   `imageUsedBytes`, `filesystemBaseBytes`, `imageFreeBytes`, `autostart` (bool). Final line for `--no-autostart`: "Built
   without autostart: start with the line the board prints at boot".
 - **Resolved**: A.U26.02's key `buildDate` follows A.U10.40's rename to `BuildDate` (A.U26.02 states it; M.HW_BENCH.060
@@ -1715,13 +1721,17 @@ Conventions used below (each defined once, then cited):
   returning the uf2 `Path`, so both keys are re-read from the build dir by the two public readers M.TOOL.041 keeps
   (M_TOOL gap 3; M_SCR gap 2 (d) withdrawn, gap pass, agent decision AD-20). Only the modlwip override is optional: the
   lwIP-options override is in every rp2 build and its effect is the `lwip` key, so a control image reads `[]`.
-- **Unit**: U27 (stages: U26 record and `overrides`; S0930 `deviceToml`/`uartCrc` after U27).
+- **Unit**: U27 (stages: U26 record and `overrides`; S0930 `deviceToml`/`uartCrc` after U27; the tick-offset entry in
+  U27 after U21's M.TOOL.080).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: M.SCR.065; M.TOOL.041 (`read_lwip_macros_from_build()`, `verify_modlwip_eagain_in_build()` public),
-  M.TOOL.055 (D3: the uf2 path returned, the build dir beside it), M.TOOL.039 (`MODLWIP_OVERRIDE_DIR_NAME`) (TOOL).
+  M.TOOL.055 (D3: the uf2 path returned, the build dir beside it), M.TOOL.039 (`MODLWIP_OVERRIDE_DIR_NAME`), M.TOOL.080
+  (`tick_offset_in_build()`) (TOOL); [fold F04 M_GEN] (`generate_device(test_overrides=…)` names the override in
+  the build info).
 - **Blast carried by**: `bench/conftest.py` image check → M.HW_BENCH.060; lwIP control image (built in a throwaway worktree,
-  record `overrides: []`) → M.HW_BENCH.075/A.C.06; CRC16 image → M.HW_BENCH.094; L0 `tests_scripts/test_build_firmware.py`
-  record keys and report parse (fake `nm`) → A.U26.02/A.U27.31 (TSC); BACKLOG resize item → A.U36.521 (DOCS); CI
+  record `overrides: []`) → M.HW_BENCH.075/A.C.06; CRC16 image → M.HW_BENCH.094; the rollover image → M.HW_BENCH.089,
+  M.SCR.074; L0 `tests_scripts/test_build_firmware.py` record keys, the tick-offset entry and report parse (fake `nm`) →
+  A.U26.02/A.U27.31 (TSC, M.TSC.032); BACKLOG resize item → A.U36.521 (DOCS); CI
   `firmware-build-verify` prints the size line → A.U28.43 (TOOL).
 - **Kind**: code
 
