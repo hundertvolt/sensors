@@ -3471,12 +3471,15 @@ where a test pins an SCR product, the constituent action is cited and the depend
 
 ## tests_scripts/test_board_image_fixture.py
 ### M.TSC.180 The bench tier proves the board runs this round's image
-- **From**: A.U26.03; M.HW_BENCH.060.
+- **From**: A.U26.03; M.HW_BENCH.060; OR139.a (2) (A-C review fold: the tick-offset test image refused outside the
+  rollover run).
 - **Site**: new `tests_scripts/test_board_image_fixture.py`.
 - **Change**: the fixture function with a fake `http_client.fetch` and a tmp image record: equal build dates pass; a
-  different date, a different device, a non-empty ensemble finding, a missing record each exit with the named cause.
+  different date, a different device, a non-empty ensemble finding, a missing record each exit with the named cause; a
+  record whose `overrides` names the tick-offset test override exits "the board runs the tick-offset test image" unless
+  `--allow-multi-day-rollover` is set, and passes with it.
 - **Resolved**: —
-- **Unit**: U26
+- **Unit**: U26 (the tick-offset case in U27, with M.SCR.067's record entry).
 - **Depends**: M.HW_BENCH.060, M.SCR.067 (record).
 - **Blast carried by**: collect-only behaviour → M.TSC.137.
 - **Kind**: test
@@ -4899,7 +4902,7 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F01 | M.TSC.025, M.TSC.073, M.TSC.119 | amended |
 | F02 | — | none in this file |
 | F03 | — | none in this file |
-| F04 | M.TSC.229; M.TSC.032, M.TSC.122, M.TSC.196 | added (M.TSC.229); amended (M.TSC.032, .122, .196) |
+| F04 | M.TSC.229; M.TSC.032, M.TSC.122, M.TSC.180, M.TSC.196 | added (M.TSC.229); amended (M.TSC.032, .122, .180, .196) |
 | F05 | M.TSC.126 | amended |
 | F06 | — | none in this file |
 | F07 | M.TSC.040 | amended ((k): no "no confirmation key"; the confirmation checked where M_WEB places it) |
