@@ -29,7 +29,9 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 - **H2 Harness migration** (U24): `run()`/`run_timed()`/`_cancel*` → `tests/_async_harness.py` (M.TEST_HELP.043, a
   bounded copy keeps its bound); `const()` mirrors → `tests/_src_const.py` (M.TEST_HELP.044); response bodies →
   `strict_loads()` (M.TEST_HELP.008); the device set and wiring plans → `tests/_twin_devices.py` (M.TEST_HELP.055);
-  generated modules through `load_generated()`/`boot_generated()` after `require_fresh()` (M.TEST_HELP.046/.047);
+  generated modules loaded by name only at the sites SPEC F.1 names (their `__import__` lines stay, OR141.a (2)/OR142.a
+  (3); A-C review fold) and booted through `boot_generated(module, device, …)` after `require_fresh()`
+  (M.TEST_HELP.046/.047);
   catalog codes `code("E"|"W", NAME)` (`tests/_error_codes.py`, M.TEST_HELP.045); `inject_fault(op, exc_type, *args,
   times=…)` (M.TEST_HELP.015).
 - **H3 `@tunable` tags** (A.U8C, grammar A.U8.02): every tagged literal becomes the module constant its row writes,
@@ -39,8 +41,11 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
   header a constituent rewrites is written to that bar in the same edit (A.U27.28's gate then finds nothing here).
 - **H5 Function-level imports** (A.U0.07, owner unit U24 for `tests/`): every function-body import in a cluster file
   moves to module level (or to the `TYPE_CHECKING` block when used only in annotations) in the file's U24 change, and its
-  `_PENDING` entry leaves `tests_scripts/test_import_placement.py` in the same commit; by-name loads go through
-  `load_generated()` (A.U10.30, the one named F.1 exception for `tests/`) and the two runners' `exec()` (F.1 named).
+  `_PENDING` entry leaves `tests_scripts/test_import_placement.py` in the same commit; a by-name load of a generated
+  module stays at the five `tests/` files SPEC F.1 names (`_boot_contiguity_probe.py`, `_digital_twin_construction_
+  scenarios.py`, `_sensortask_scenarios.py`, `_webserver_concurrency_scenarios.py`, `test_asy_isl29125_driver.py`; OR142.a
+  (3)), each loader unchanged, and no other `tests/` file gains one (the A.U10.30 consolidation into `load_generated()` is
+  dropped, OR141.a (2); A-C review fold).
 - **H6 Ordering last** (A.U36.038): each Python file here is re-sorted to D.15 by the script-driven pure move after every
   other change on it (U36), the decorator `_register` in each scenario library being the named import-time exception.
 
@@ -106,33 +111,37 @@ was checked against it. `git diff 8e36b1e dd06040 -- tests src digital_twin` is 
 ## tests/_threshold_runner.py
 
 ### M.TEST_HELP.003 Threshold runner never passes an incomplete file
-- **From**: A.U24.05, A.U28.28, A.U27.28, A.U10.30 (F.1 entry), A.U0.07 (`_PENDING` entry), A.U30.14 (allowance)
+- **From**: A.U24.05, A.U28.28, A.U27.28, A.U10.30 (F.1 entry; superseded by OR142.a (3)'s named list, A-C review
+  fold), A.U0.07 (`_PENDING` entry), A.U30.14 (allowance)
 - **Site**: `tests/_threshold_runner.py:1-27` (`#` header `:1-9`, `_run()` `:12-24`, `exec` `:20` with `# noqa: S102`).
 - **Change**: the `#` header → a module docstring (≤ 3 lines): "Runs one test file at a given `gc.threshold()` stage:
   sets the threshold, executes the file as `__main__`, returns the file's exit code." `_run()`: `sys.argv[:] =
   [test_file]` after the runner reads its own arguments; `exec()` returning with no `SystemExit` prints `"runner: <file>
   ended without microtest's exit - no trailer, or it never ran"` and returns 1; `SystemExit` returns `exc.args[0]` when
   an int, 1 for a non-int argument, 0 for none; any other `BaseException` prints the traceback and returns 1. The inline
-  `# noqa: S102` goes (pyproject per-file entry, A.U28.28). The `exec` stays the F.1-named by-path load (A.U10.30); its
-  `_PENDING` entry becomes a `_NAMED_EXCEPTIONS` entry.
+  `# noqa: S102` goes (pyproject per-file entry, A.U28.28). The `exec` stays unchanged: it runs a test file by path and
+  imports nothing; OR142.a (3)'s F.1 list does not name it, and how the dynamic-load check classes it is the check's
+  ([fold F23 M_TSC]).
 - **Resolved**: —
 - **Unit**: U24 (the noqa removal waits for A.U28.28's per-file entry, U28: until then the inline noqa stays — stage 2
   U28 removes it).
 - **Depends**: M.TEST_HELP.001.
-- **Blast carried by**: per-file `S102` entry → A.U28.28 (TOOL); F.1 list → A.U10.30 (SPEC); checker allowance (sets the
-  stage) → A.U30.14 (TSC); test.sh dispatch → A.U7.03 (SCR); the twin scenario harness's own GC stages → A.U27.38 (SCR).
+- **Blast carried by**: per-file `S102` entry → A.U28.28 (TOOL); the dynamic-load check's treatment of the runner's
+  `exec` → [fold F23 M_TSC]; checker allowance (sets the stage) → A.U30.14 (TSC); test.sh dispatch → A.U7.03 (SCR); the twin scenario harness's own GC stages → A.U27.38 (SCR).
 - **Kind**: test
 
 ## tests/_coverage_runner.py
 
 ### M.TEST_HELP.004 Coverage runner dumps on every path, traces generated modules
-- **From**: A.U24.05, A.U24.72 (1), A.U28.28, A.U27.28, A.U10.30, A.U0.07, A.U36.526 (blast)
+- **From**: A.U24.05, A.U24.72 (1), A.U28.28, A.U27.28, A.U10.30 (superseded by OR142.a (3)'s named list, A-C review
+  fold), A.U0.07, A.U36.526 (blast)
 - **Site**: `tests/_coverage_runner.py:1-71` (`#` header, `_TRACED_PREFIXES` `:24`, `_run()` `:27-68`, dump `:65-66`).
 - **Change**: header → module docstring (≤ 3 lines): "Runs one test file under `sys.settrace` and dumps the executed
   lines of the traced prefixes as JSON for `scripts/_render_coverage.py` (SPECIFICATION.md E.5)."
   `_TRACED_PREFIXES = ("src/", "digital_twin/", "build/generated_src/")`. `_run()` follows M.TEST_HELP.003's exit rules
   (no `SystemExit` → message and 1; non-int → 1; escape → traceback, 1; `sys.argv[:] = [test_file]`), and the JSON dump
-  moves into the `finally` so it is written on every path. Inline `# noqa: S102` goes (A.U28.28); F.1-named `exec`.
+  moves into the `finally` so it is written on every path. Inline `# noqa: S102` goes (A.U28.28); the `exec` is
+  unchanged, as M.TEST_HELP.003's.
 - **Resolved**: —
 - **Unit**: U24 (noqa stage U28 as M.TEST_HELP.003).
 - **Depends**: M.TEST_HELP.003.
@@ -668,7 +677,8 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
 ## tests/_boot_contiguity_probe.py
 
 ### M.TEST_HELP.028 Boot probe follows the generated boot sequence step for step
-- **From**: A.U24.79, A.U20.02, A.U20.06, A.U10.12, A.U11.10, A.U32.06, A.U10.30, A.U24.46, A.U24.43 (2), A.U24.22,
+- **From**: A.U24.79, A.U20.02, A.U20.06, A.U10.12, A.U11.10, A.U32.06, A.U10.30 dropped (OR141.a (2), OR142.a (3): this
+  file is an F.1-named loader, its `__import__` stays; A-C review fold), A.U24.46, A.U24.43 (2), A.U24.22,
   A.U8C.01, A.U8C.72 (mirror), A.U27.28, A.U36.544 (`:7`), A.U0.07 (`:125-126`), A.U10.37/A.U10.35 (H1), A.U10.07,
   A.U30.16, A.U31.03, A.U31.17, A.S0930.13 (hold), A.U24.07 (hold), A.U24.73
 - **Site**: `tests/_boot_contiguity_probe.py:1-7` (header), `:12` (`fram_fake_class` import), `:33-38` (bounds),
@@ -680,7 +690,7 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   occupants (`_sensortask_scenarios.seed_occupants(device)`, M.TEST_HELP.035) and installs the device's FRAM fake
   factory; one `_ProbeGc` on `asy_system_service.gc`, its label switched by wrapping
   `asy_system_service.SystemService.run_setups` ("batch" inside, "starter" outside), since both lists run in
-  `SystemService` (A.U11.10); `_dump("baseline")`; timed `module, wdt = await boot_generated(device, cfg_path=…,
+  `SystemService` (A.U11.10); `_dump("baseline")`; timed `module, wdt = await boot_generated(module, device, cfg_path=…,
   web_host="127.0.0.1", web_port=0)` (construction plus `run_setups()`); `_dump("after_batch")`; then main()'s order:
   `await asyncio.wait_for(sysfunct.start_tasks(module._collect_task_starters(),
   task_names=module._collect_task_names()), _STARTER_LOOP_TIMEOUT_MS / 1000)` — it returns after its last placement
@@ -692,7 +702,8 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   (their rows withdrawn, H3). (4) `:43-44` "(MEASUREMENTS M2.2's pinning artefact)" and `:160` "(MEASUREMENTS M3.9)" →
   "(HEAP_FRAGMENTATION_MEASUREMENTS.md archive §M2.2 / §M3.9, commit `12640c2`)" where those headings exist in the
   archive, else the parenthesis goes (A.U36.544 (2)'s rule). (5) Function-level `import system_service` moves to module
-  level as `import asy_system_service`; no `__import__` (H5). No `Any`.
+  level as `import asy_system_service`; the `:125` `module = __import__(f"sensortask_{device}")` stays (an F.1-named
+  site, H5) and hands its module to `boot_generated()`. No `Any`.
 - **Resolved**: A.U10.12's "probe adapted to the two-list `start_timers()`" and A.U20.06's "switch to `start_tasks()`,
   never enter the supervisor" combine with M_GEN's `main()` order (tasks before timers): the probe measures the
   sequence `main()` runs. A.U8C.01's grace and poll rows exist only for the counting loop `start_tasks()` makes
@@ -716,7 +727,8 @@ its two HTTP scenarios move to the host-side harness (A.U25.46, OR125.a).
 
 ### M.TEST_HELP.029 Twin construction library: derived devices, shared boot, honest checks
 - **From**: A.U24.79, A.U20.02, A.U20.06, A.U24.65 (1)/(4), A.U24.70, A.U24.08, A.U24.06, A.U24.50 (twin `Skip`),
-  A.U24.43 (1) (derived names), A.U10.30, A.U24.46, A.U25.03/A.U25.24 (`reset_peripherals()` first), A.U25.33
+  A.U24.43 (1) (derived names), A.U10.30 dropped (OR141.a (2), OR142.a (3): F.1-named loader, unchanged; A-C review
+  fold), A.U24.46, A.U25.03/A.U25.24 (`reset_peripherals()` first), A.U25.33
   (offline NTP), A.U25.48 (`:1`), A.U8C.02 (`_RUN_TIMEOUT_S`), A.U20.42 (holds), A.U25.43 (holds), A.U27.23 (holds),
   A.U0.07, A.U10.40 (H1 key), A.U24.73
 - **Site**: `tests/_digital_twin_construction_scenarios.py:1-3` (docstring), `:41-42` `run_timed()`, `:47`
@@ -729,7 +741,8 @@ its two HTTP scenarios move to the host-side harness (A.U25.46, OR125.a).
   derived set. (4) Port base: this library's band from `_port_bands` (A.U24.70), the device's offset its index in
   `generated_devices()`, band-end asserted; the port comment `:64-66` → one line naming the band table. (5)
   `_boot_device(port, device)`: `machine.reset_peripherals()`, `network.reset_interfaces()`,
-  `machine.configure_wiring(wiring_plan(device))`, then `module, wdt = await boot_generated(device, cfg_path=cfg_dir,
+  `machine.configure_wiring(wiring_plan(device))`, then the `:98` `module = __import__(f"sensortask_{device}")` (kept,
+  F.1-named) and `module, wdt = await boot_generated(module, device, cfg_path=cfg_dir,
   web_host="127.0.0.1", web_port=port)`, whose `offline_ntp=True` default writes the offline NTP config through the one
   `write_offline_ntp_config()` (M.TEST_HELP.047; key `NTPHost`, A.U10.40 lands first); `require_fresh()` once at
   import. (6) Boots scenario: `"watchdog"` leaves the mandatory tuple (the global is gone) and the mandatory and optional
@@ -796,13 +809,14 @@ its two HTTP scenarios move to the host-side harness (A.U25.46, OR125.a).
 ## tests/_webserver_concurrency_scenarios.py
 
 ### M.TEST_HELP.032 Concurrency library: U24 keeps it running on the shared helpers
-- **From**: A.U24.08, A.U24.79, A.U24.65 (1)/(4), A.U24.70, A.U24.06, A.U24.46, A.U10.30, A.U20.02, A.U20.06,
+- **From**: A.U24.08, A.U24.79, A.U24.65 (1)/(4), A.U24.70, A.U24.06, A.U24.46, A.U10.30 dropped (OR141.a (2), OR142.a
+  (3): F.1-named loader, unchanged; A-C review fold), A.U20.02, A.U20.06,
   A.U24.21 (seeding through the shared boot), A.U0.07, A.U10.37/A.U10.40 (H1), A.U5.04 (constructor objects, blast)
 - **Site**: `tests/_webserver_concurrency_scenarios.py:55` `run_timed`, `:61` `_DEVICES`, `:70-81`
   `_PORT_BASE_BY_DEVICE`, `:97-102` `_boot()`, `:144` `_cancel`, `:266-273`/`:844-866` registration.
 - **Change**: the mechanical stage only, so the file keeps working between U24 and its retirement in U25: harness
   imports (`run_timed`, `cancel`), the derived device set and port band (as M.TEST_HELP.029 (3)-(4)), `_boot()` →
-  `boot_generated(device, …)` with `require_fresh()` at import, the scenario-count assert in `register_for_device()`,
+  the kept `:100` `__import__` line then `boot_generated(module, device, …)`, with `require_fresh()` at import, the scenario-count assert in `register_for_device()`,
   H1 renames as each lands. No scenario body changes.
 - **Resolved**: every content action on this file (M.TEST_HELP.033's list) is written once, into the host harness —
   agent decision D10 (as M.TEST_HELP.031).
@@ -875,7 +889,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 
 ### M.TEST_HELP.035 Scenario infrastructure: shared boot, derived sets, strict bodies
 - **From**: A.U24.79, A.U24.08, A.U24.43 (1)/(2), A.U24.65 (1)/(2), A.U24.22 (2), A.U24.21 (seeding), A.U24.46,
-  A.U10.30, A.U24.60, A.U24.50 (1), A.U24.06, A.U20.02, A.U20.06, A.U11.10, A.U20.11 (`_all_loggers` via
+  A.U10.30 dropped (OR141.a (2), OR142.a (3): F.1-named loader, its four `__import__` lines unchanged; A-C review fold),
+  A.U24.60, A.U24.50 (1), A.U24.06, A.U20.02, A.U20.06, A.U11.10, A.U20.11 (`_all_loggers` via
   `get_loggers()`), A.U15.12/GAP-10 (SCD30 cfgmgr), A.U19.06 (`sock=`), A.S0930.37 (1) (`_dispatch_async`), A.U19.11
   (holds), A.U20.42 (holds), A.U24.09 (holds), A.U5.02/A.U5.04 (constructor blast), A.U18.10 (offline NTP config)
 - **Site**: `tests/_sensortask_scenarios.py:41-42` `run()`, `:52-57` `status_body()`, `:62` `_DEVICES`, `:65-90`
@@ -891,7 +906,8 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   for every plan I2C bus, constructs the fake `machine.I2C(id, …)` (the per-id entry the product then reuses) and runs
   each occupant's catalog adapter `seed()` (which adds the address to `attached`); an occupant with no adapter fails
   with the catalog's actionable message. (5) `_boot(device, cfg_path=None, **kw)` → `seed_occupants(device)`, install
-  the FRAM factory, `return await boot_generated(device, cfg_path=…, **kw)` — whose default `offline_ntp=True` writes
+  the FRAM factory, `module = __import__(f"sensortask_{device}")` (`:127`, kept), `return await boot_generated(module,
+  device, cfg_path=…, **kw)` — whose default `offline_ntp=True` writes
   `config_NTP.cfg` = `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` into the cfg dir when absent (A.U18.10: L1 boots
   set it through the stored config, so no L1 run queries a public DNS server) (module and WDT; construction plus
   `run_setups()`); `build()` = `run(_boot(…))` and only ever called from synchronous scenario scope. (6) Owners and
@@ -1037,11 +1053,13 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
 
 ### M.TEST_HELP.040 System-command scenarios run as one tracked coroutine each
 - **From**: A.U11.03, A.U11.04, A.U10.15, A.S0930.11 (holds), A.S0930.26, A.S0930.37, A.U11.31, A.U17.19 (holds),
-  A.U19.01, A.U24.17 (reset raises), A.U0.35 (`:967`)
+  A.U19.01, A.U24.17 (reset raises), A.U0.35 (`:967`); OR140.a (12) (no SCD30 write while a system-command sequence
+  runs, proven watertight; A-C review fold), OR138.a (1)-(2) (`ConfigFaults` and the never-reading delete; A-C review
+  fold)
 - **Site**: `tests/_sensortask_scenarios.py:953-984` (reboot arms the timer, reboot flushes a pending write, invalid
   command), `:1146-1179` (ResetErrors); new scenarios.
 - **Change**: a command scenario is one coroutine driven by one `run()` from synchronous scope: `module, wdt = await
-  boot_generated(device, …)`, `await sysfunct.start_tasks(…, task_names=…)`, `sup = create_task(sysfunct.supervise_tasks())`,
+  _boot(device, …)` (the file's named loader, then `boot_generated(module, device, …)`), `await sysfunct.start_tasks(…, task_names=…)`, `sup = create_task(sysfunct.supervise_tasks())`,
   `await _dispatch_async(…)`, `await sysfunct._shutdown_task`, the fake reset timer's `trigger()` inside `try … except
   machine.SimulatedResetError` (or `SimulatedBootloaderEntryError`), `sleep(0)` until the reset task is done, then
   `sup` cancelled and awaited — never `build()`/`_dispatch()` inside it. (1) Reboot: "Valid"; after the trigger
@@ -1049,17 +1067,31 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   {"LedWifiOn": …}` before the trigger is on disk after it; a write after the trigger is refused. (3) Invalid
   command "Invalid". (4) New `resetconfig`, `erasefram`, bootloader and reboot scenarios at both GC stages (A.S0930.26/
   A.S0930.37's bodies). (5) ResetErrors scenarios assert `result["ResetErrors"] == "Valid"`. (6) New: `PUT /networking
-  {"NoSuchKey": 1}` → `"Invalid"` (A.U19.01).
+  {"NoSuchKey": 1}` → `"Invalid"` (A.U19.01). (7) New, every device declaring an SCD30: only the API writes the SCD30 —
+  after the boot setup, `scd30_nvm_writes()` (M.TEST_HELP.062) over the seeded fake bus stays unchanged while the tasks
+  and timers run a driven window covering every SCD30 cycle and its timers; the only writes it then counts come from a
+  `PUT /sensors {"SCD30": …}`. (8) New, same devices, for each of the four words: the tracked coroutine holds the sequence
+  at each step S1-S6 by a gate (never a sleep) and sends `PUT /sensors {"SCD30": {<one setter field>}}` for every SCD30
+  setter field the schema declares, plus one `PUT /networking`, one `ResetErrors` and a second system command: every one
+  answers "Failed" (or the gate's same-command "Valid" with nothing new started), and `scd30_nvm_writes()` is unchanged
+  from the moment the command was accepted to the reset. (9) New: `resetconfig` on a device whose `config_NTP.cfg` was
+  replaced by corrupt JSON before boot — `GET /status` lists `"NTP"` in `ConfigFaults` before the command; after the
+  reset and a rebuild over the same directory every schema-backed file exists once with its defaults and `ConfigFaults`
+  is `[]`.
 - **Resolved**: —
-- **Unit**: U24 (stages with A.U11.03/A.U11.04 U11, A.S0930.* their unit, A.U19.01 U19).
-- **Depends**: M.TEST_HELP.035, M.TEST_HELP.011.
+- **Unit**: U24 (stages with A.U11.03/A.U11.04 U11, A.S0930.* their unit, A.U19.01 U19); stage U20 (A-C review fold):
+  (7)-(9), with the system-command code and the generated `/status` block.
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.011, M.TEST_HELP.062; [fold F15 M_SRC_NET] (every API command, the SCD30
+  setters included, refused while a sequence runs); [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block);
+  [fold F03 M_SRC_CORE] (the fault state, the never-reading delete).
 - **Blast carried by**: —
 - **Kind**: test
 
 ### M.TEST_HELP.041 REST scenarios assert what their names claim
 - **From**: A.U24.32 (1)/(2), A.U4.04, A.U19.02, A.U9.03, A.U10.40 (keys), A.U18.21, A.U18.33, A.U18.38, A.U18.39,
   A.U5.07, A.U11.05, A.U11.08, A.U19.10, A.U23.22, A.U32.06, A.U6.21, A.U24.63, A.U10.27, A.U19.13, A.U15.12 (holds),
-  A.U20.16 (holds), A.U23.33 (holds), A.U19.11 (holds)
+  A.U20.16 (holds), A.U23.33 (holds), A.U19.11 (holds); routine settlement `status-ip-and-ipv4` (AC_NOTES 52, `IPv4`
+  only; A-C review fold); OR137.a (2) (`ResetErrors` clears `HTTPDropped`), OR138.a (1) (`ConfigFaults`) — A-C review fold
 - **Site**: `tests/_sensortask_scenarios.py:869-950` (measurements/sensors/networking/NTP/GMT scenarios), `:986-1093`
   (LED command, PauseTime, WarnCO2), `:1102-1142` (status keys, build info), `:1185-1262` (hotspot); new scenarios.
 - **Change**: (1) SCD30 PUT: after `PUT /sensors {"SCD30": {"MeasInterval": 4}}` (A.U10.40 key), `GET /sensors` shows 4
@@ -1068,17 +1100,24 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   answer `"Invalid"` (A.U19.02); new back-to-back case: first `"Valid"`, second `"Failed"` within 100 ms
   (A.U9.03). (3) Networking: new mask-string PUT (`PW`, `HotspotPW` "********" stored verbatim, GET masked; A.U18.39);
   new `HotspotPW` PUT configures the next hotspot start (A.U18.38); NTP settings change clears `Synced` (A.U18.21);
-  status snapshot with `wifi_mode_lock` held answers `Connected: true` and `IPv4 == IP`, AP mode `RSSI` null with no
+  status snapshot with `wifi_mode_lock` held answers `Connected: true` and the address under `IPv4`, with no `IP` key
+  (routine settlement `status-ip-and-ipv4`), AP mode `RSSI` null with no
   rssi query (A.U18.33); WiFi LED construction passes `led_pin` (A.U5.07). (4) Status keys: `ResetReason`, `MemFree`
-  (int), `HTTPDropped`, `WifiTS`, `UnixTime`, `LastTaskEnd`, and `UtcTime is None` before sync; new scenarios for
-  `UtcTime`/`UnixTime` after `set_utc_valid(True)`, `HTTPDropped` rising after a forced refusal. (5) Build info equals
+  (int), `HTTPDropped`, `WifiTS`, `UnixTime`, `LastTaskEnd`, `ConfigFaults` (`[]` on a clean boot), and `UtcTime is None`
+  before sync; new scenarios for `UtcTime`/`UnixTime` after `set_utc_valid(True)`, `HTTPDropped` rising after a forced
+  refusal and reading 0 after `PUT /status {"ResetErrors": true}` (the window cleared, OR137.a (2)); `ConfigFaults`
+  listing exactly the modules whose file was planted unreadable (`OSError(5)` on its read) or damaged (corrupt JSON, a
+  non-object, a value outside its field) before the boot, and still listing a damaged one
+  after the boot repair rewrote its file (OR138.a (1)). (5) Build info equals
   the generated module's embedded values via `src_const` (A.U24.63). (6) New non-finite scenario: every float field and
   float config value set to NaN/±inf in turn, every GET route strict-parses with `null` there (A.U10.27). (7) New
   serving-demand scenario (A.U19.13's L1). Keys follow A.U10.40's map as it lands.
 - **Resolved**: A.U24.32's "SCD30 PUT path" and A.U4.04's chip-store PUT co-land on `:898-905` — merged as (1) (A.U4.04's
   path, A.U24.32's assertion).
-- **Unit**: U24 (stages with each constituent's unit: U4, U5, U6, U9, U10, U11, U18, U19, U23, U32).
-- **Depends**: M.TEST_HELP.035, M.TEST_HELP.050.
+- **Unit**: U24 (stages with each constituent's unit: U4, U5, U6, U9, U10, U11, U18, U19, U23, U32; A-C review fold:
+  the `HTTPDropped` reset with the window in U19, the `ConfigFaults` scenarios with the generated block in U20).
+- **Depends**: M.TEST_HELP.035, M.TEST_HELP.050; [fold F02 M_SRC_NET] (the windowed drop count and its reset);
+  [fold F03 M_GEN] (`ConfigFaults` in the generated `/status` block); [fold F03 M_SRC_CORE] (the fault state).
 - **Blast carried by**: A.U6.22 status-field parity (definitions both ways) → GEN/WEB.
 - **Kind**: test
 
@@ -1163,13 +1202,14 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   `tests/test_digital_twin_run_generic_integration.py`) → M.TEST_HELP.028/.029/.032/.035, A.U24.46 (TEST_UNIT, TWIN).
 - **Kind**: test
 
-### M.TEST_HELP.047 Create the generated-module loader and boot helper
-- **From**: A.U10.30, A.U24.79, A.U18.10/A.U25.33 (offline NTP), A.U20.02, A.U20.06, A.U11.10
+### M.TEST_HELP.047 Create the generated-module boot helper
+- **From**: A.U10.30 dropped (OR141.a (2), OR142.a (3): `load_generated()` would be a new by-name loader outside SPEC
+  F.1's named list; the five named `tests/` loaders stay; A-C review fold), A.U24.79, A.U18.10/A.U25.33 (offline NTP), A.U20.02, A.U20.06, A.U11.10
 - **Site**: new `tests/_generated_module.py`.
-- **Change**: `load_generated(device) -> module` (the one F.1-named `tests/` load by a data-derived name);
-  `write_offline_ntp_config(cfg_dir)` writes `config_NTP.cfg` = `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` only when
-  absent (RFC 5737 TEST-NET-1; the product's flat JSON format); `async boot_generated(device, *, offline_ntp=True,
-  **kwargs) -> tuple[module, WDT]`: constructs one `machine.WDT` with the timeout parsed from
+- **Change**: no by-name load in this file (it is not on F.1's list): the caller passes the module it loaded at its own
+  named site. `write_offline_ntp_config(cfg_dir)` writes `config_NTP.cfg` = `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` only when
+  absent (RFC 5737 TEST-NET-1; the product's flat JSON format); `async boot_generated(module, device, *,
+  offline_ntp=True, **kwargs) -> tuple[module, WDT]`: constructs one `machine.WDT` with the timeout parsed from
   `build/generated_src/<device>_boot.py`'s `watchdog = WDT(timeout=<n>)` line (never a copied 8000), writes the offline
   config into `kwargs["cfg_path"]` when asked, `await module.build_system(watchdog=wdt, **kwargs)`, `await
   module.sysfunct.run_setups(module._collect_setups())`, returns both.
@@ -1180,11 +1220,13 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   module imports it from there (`from _offline_ntp_config import write_offline_ntp_config`, the directory already on
   the L1 path for the UDP shim), its callers unchanged — one implementation throughout (GAP-H3 as M_TWIN resolves it; gap
   pass G3).
-- **Unit**: U24 (stage U10: `load_generated()`; stage U20: `boot_generated()` and the offline write, with the boot entry
-  and `run_setups()`; stage U25: the offline writer imported from `digital_twin/unixport/`, with M.TWIN.053).
+- **Unit**: U24 (stage U20: `boot_generated()` and the offline write, with the boot entry and `run_setups()`; stage U25:
+  the offline writer imported from `digital_twin/unixport/`, with M.TWIN.053). The U10 stage (`load_generated()`) is
+  dropped.
 - **Depends**: M.TEST_HELP.046.
-- **Blast carried by**: the seven `__import__(f"sensortask_{device}")` sites → M.TEST_HELP.028/.029/.032/.035, A.U10.30
-  (TEST_UNIT); SPEC F.1 named list → A.U10.30 (SPEC); twin runner and the moved writer → M.TWIN.053 (GAP-H3).
+- **Blast carried by**: the seven `__import__(f"sensortask_{device}")` sites stay at their named files and pass their
+  module in → M.TEST_HELP.028/.029/.032/.035; SPEC F.1 names the five `tests/` files (OR142.a (3), SPEC); the in-process
+  twin tests' by-name load → M_TWIN C2 (a named twin-tier site); twin runner and the moved writer → M.TWIN.053 (GAP-H3).
 - **Kind**: test
 
 ### M.TEST_HELP.048 Create the shared machine-fake contract suite
@@ -1322,7 +1364,8 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
 
 ### M.TEST_HELP.058 Create the NTP frame builder and fake server
 - **From**: A.U24.49, A.U24.76; A.U35.15 (`serve_once()` returns `bool`) and A.U24.70 (port from the band) — M_TEST_UNIT
-  GAP-U8 (gap pass G3)
+  GAP-U8 (gap pass G3); OR140.a (13) (the twin's local NTP responder builds the same replies: one builder, A-C review
+  fold)
 - **Site**: new `tests/_ntp_frames.py`.
 - **Change**: `make_ntp_reply(…)` (with `_src_const.NTP_EPOCH_DELTA`) and one public `FakeNtpServer(port: int)`: the
   caller passes the port from its own `PortAllocator` (M.TEST_HELP.056; e.g. `FakeNtpServer(_PORTS.next())`), never an
@@ -1330,11 +1373,14 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   (its comment: "# ipoll(0) returns an always-truthy iterator on this port - iterate and check the flags."). `async
   serve_once(reply: bytes | None) -> bool`: answers one request with `reply` (`None` drops it) and returns `True`, or
   returns `False` when its poll budget (HEAD's 1000 rounds × 10 ms) runs out — bounded by iterations, not a
-  wall-clock cap (A.U35.15); `close()`.
+  wall-clock cap (A.U35.15); `close()`. From U25 the reply builder lives in `digital_twin/unixport/_ntp_responder.py` as
+  `ntp_reply()` (M.TWIN.167: the twin imports nothing from `tests/`) and `make_ntp_reply()` is that function imported here
+  (`from _ntp_responder import ntp_reply as make_ntp_reply`, the directory already on the L1 path for the UDP shim), its
+  callers unchanged — one implementation, as GAP-H3 placed the offline-NTP writer.
 - **Resolved**: —
-- **Unit**: U24 (stage U35: the `bool` return with A.U35.15).
+- **Unit**: U24 (stage U25: the builder moves with M.TWIN.167; stage U35: the `bool` return with A.U35.15).
   A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
-- **Depends**: M.TEST_HELP.044, M.TEST_HELP.056.
+- **Depends**: M.TEST_HELP.044, M.TEST_HELP.056; M.TWIN.167 (U25 stage).
 - **Blast carried by**: three `make_ntp_reply`/`FakeNtpServer` copies → A.U24.49/A.U24.76 (TEST_UNIT); `serve_once() is
   True` assertions → M.TEST_UNIT.111.
 - **Kind**: test
@@ -1518,7 +1564,8 @@ Absent at HEAD; no action creates it. A.U0.42 and A.U36.546 delete README.md's "
   deleted; its sentence moves with the harness).
 - **GAP-H6 (TSC)**: `tests_scripts/test_import_placement.py` — the `_PENDING` entries for this cluster's files leave in
   U24 (H5); `_NAMED_EXCEPTIONS` holds `tests/_generated_module.py` (`load_generated`) and the two runners' `exec` (A.U10.30
-  F.1 list).
+  F.1 list). Superseded in the A-C review fold (OR141.a (2), OR142.a (3)): `load_generated()` is not written; the five
+  named `tests/` loaders keep their `__import__` lines; the runners' `exec` is the check's to class ([fold F23 M_TSC]).
 - **GAP-H7 (GEN)**: the scenarios read `expected_facts()` through `build/generated_src/sensortask_<device>_expected.json`
   (`boot_sequence`, `fram_wired`); `fram_wired` lists module labels only — the RAM-only config log is derived by the
   scenario from `_CFG_LOG_FRAM` (M.TEST_HELP.036, AC_NOTES 13), so GEN must not emit a per-logger exemption list.

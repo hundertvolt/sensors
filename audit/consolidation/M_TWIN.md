@@ -39,8 +39,12 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   (A.U24.30); MicroPython-side port allocators → `tests/_port_bands.py` (A.U24.70); folded `const()` mirrors →
   `tests/_src_const.py` (A.U24.01); response bodies → `strict_loads()` (A.U24.60); the canonical trailer (A.U24.04);
   `inject_fault(op, OSError(errno.X, "m"), times=n)` → `inject_fault(op, OSError, errno.X, "m", times=n)` (A.U25.70 /
-  A.U24.78); generated modules through `tests/_generated_module.py` `load_generated(device)` (A.U10.30) after
-  `tests/_generated_tree.py` `require_fresh()` (A.U24.46); the device set from `tests/_twin_devices.py`
+  A.U24.78); a generated module loaded by name only at a site SPEC F.1 names (A.U10.30's `load_generated()` dropped,
+  OR141.a (2), OR142.a (3); A-C review fold): the in-process twin files call `load_device(device)` of
+  `tests/_digital_twin_construction_scenarios.py`, that named file's existing `__import__(f"sensortask_{device}")` line
+  (`:98`) held in one public function of the same file, the dynamic import itself unchanged — whether importing the
+  library from another twin file repeats its module-level prewarm and shim calls (each must be idempotent or skipped) is
+  decided at execution, with its reason recorded; then `tests/_generated_tree.py` `require_fresh()` (A.U24.46); the device set from `tests/_twin_devices.py`
   (`generated_devices()`, `wiring_plan(device)`, `device_with(*drivers)`, `devices_with_shared_bus()` — M.TEST_HELP.055
   as amended in the gap pass; A.U25.25 /
   A.U25.48, the one helper A.U24.65 also uses); catalog codes `code("E"|"W", <NAME>)` from `tests/_error_codes.py` (A.U2.03, M.TEST_HELP.045).
@@ -219,7 +223,8 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   constant it sits on; the RDID citations move to `machine.py`'s table, M.TWIN.025), A.U27.28 (header), A.U25.37 (the
   `fram` vocabulary `readinto|wren|silent`), A.S0930.17 / A.S0930.27 Blast (the erase's 1,024 × 256 B writes and the
   WREN-drop refusal run against this fake), A.U16.R01/R02/R03 Blasts (the three knobs, "U25"), A.U16.09, A.U11.09,
-  A.U13.03, A.U2.09, A.U3.04, A.U24.22 (Blasts: "no codes" / "sees no traffic" / independent — hold); A.U35.28 (3)
+  A.U13.03, A.U2.09, A.U24.22 (Blasts: "no codes" / "sees no traffic" / independent — hold), A.U3.04 dropped (OR140.a
+  (7); its Blast held here, nothing changes; A-C review fold); A.U35.28 (3)
   (the chip's write count read at exit; "an exit line field if absent" — M_SCR gap 4, gap pass G3)
 - **Site**: `digital_twin/_fram_chip.py:1-3, 13-33, 36-46, 57-94, 108-157`
 - **Change**: header → "Twin fake of an SPI FRAM: answers asy_fram_driver.py's opcode/CS-session protocol, independent
@@ -1523,8 +1528,9 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   M.TWIN.061
 - **Kind**: code
 
-### M.TWIN.050 Runner `main()` and exits: offline NTP, wall clock, passed watchdog, reset exit codes, one shutdown line
-- **From**: A.U25.33 (2)-(3) (writes the offline `config_NTP.cfg` before `module.main()` unless `--online-ntp`; prints
+### M.TWIN.050 Runner `main()` and exits: the local NTP responder, wall clock, passed watchdog, reset exit codes, one shutdown line
+- **From**: OR140.a (13) (the runner's boot syncs against the twin's local NTP responder, M.TWIN.167; A-C review fold),
+  A.U25.33 (2)-(3) (writes the `config_NTP.cfg` before `module.main()` unless `--online-ntp`; prints
   the shim's refused count in the shutdown line), A.U25.71 (installs the wall clock for every loaded `src/` module after
   the import), A.U20.02 (passes `watchdog=machine.WDT(timeout=8000)` to `module.main()`; reads its own WDT, not the
   removed module global), A.U20.06 (the `main()` keywords the runner passes), A.U25.69 / OR126.a (1) (the four
@@ -1544,8 +1550,9 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   one line each: "# first: before anything registers a poll object (unix_port_poll_prewarm.py)" / "# second: before any
   UDPSocket exists (tests_scripts/test_twin_entry_point_order.py)"); `configure_fram_state_path`,
   `configure_scd30_state_path`, `configure_mem_backup_state_path` (`""` → `None`); plan read, `configure_wiring(plan)`;
-  `random.seed(seed)` when given; `_ensure_dir(config.config_dir)`; unless `config.online_ntp`,
-  `write_offline_ntp_config(config.config_dir)`; the start line lists the grouped fields; `module = __import__(config.module)`
+  `random.seed(seed)` when given; `_ensure_dir(config.config_dir)`; unless `config.online_ntp`, an `NtpResponder` on its
+  port (M.TWIN.167) whose `serve()` joins the runner's tracked tasks and is closed by `_shutdown_cleanup()`, and
+  `write_responder_ntp_config(config.config_dir)` (M.TWIN.053); the start line lists the grouped fields; `module = __import__(config.module)`
   with the comment "# loaded by its run-time name (SPECIFICATION.md F.1 named exception)"; `_wall_clock.install(m for m in sys.modules.values() if
   getattr(m, "time", None) is time)` (comment "# rp2's RTC is the wall clock: an NTP set must move time.time() here too");
   `watchdog = machine.WDT(timeout=8000)` with `# @tunable wdt.timeout_ms = 8000`; `main_task =
@@ -1583,7 +1590,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   `fram_writes=`/`fram_writes_by=` fields with A.U35.28; the per-logger field by lead direction — a total can hide one
   module over its own rate, M.SCR.018 (h) and M.SCR.051 read it — gap pass G3)
   A-C2 step order: A.U24.47's part lands in U25, not U24 (it follows A.U24.47's own change, which lands in U25).
-- **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.032, M.TWIN.034, M.TWIN.046, M.TWIN.047, M.TWIN.049, M.TWIN.053
+- **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.032, M.TWIN.034, M.TWIN.046, M.TWIN.047, M.TWIN.049, M.TWIN.053,
+  M.TWIN.167
 - **Blast carried by**: CI suite exit codes 3/4 (and 5 unused there), the `machine reset:` and shutdown-line fields
   (`mem_backup: r0=`, `public_destinations_refused=`, `fram_writes=`, `fram_writes_by=`) → A.U25.36, A.U25.33/A.U25.35, A.U35.28 (SCR,
   M.SCR.051/.018) and their L0 parser cases (M.TSC.165);
@@ -1680,25 +1688,73 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
 
 ## digital_twin/unixport/_offline_ntp_config.py (new)
 
-### M.TWIN.053 One offline-NTP config writer both tiers import
-- **From**: A.U25.33 (2) (`write_offline_ntp_config(cfg_dir)` writes `config_NTP.cfg` only when absent), A.U18.10 (the
+### M.TWIN.053 One NTP config writer both tiers import: offline, or the twin's local responder
+- **From**: A.U25.33 (2) (`write_offline_ntp_config(cfg_dir)` writes `config_NTP.cfg` only when absent), OR140.a (13) (a
+  booted twin syncs against the twin's local NTP responder, M.TWIN.167; A-C review fold), A.U18.10 (the
   `DNSFallback` key), A.U10.40 (`NTP_Host` → `NTPHost`), GAP-H3 of M_TEST_HELP (one implementation; born in
   `tests/_generated_module.py` at U20, "the twin runner imports it (or TWIN moves that one function to an import-safe
   module both tiers reach)")
 - **Site**: new `digital_twin/unixport/_offline_ntp_config.py`
-- **Change**: header (≤ 3 lines) "Writes the offline NTP config a twin or Unix-port boot starts from, so no run reaches a
-  public NTP or DNS host: TEST-NET-1 (RFC 5737) as the NTP host and no DNS fallback." `def
-  write_offline_ntp_config(cfg_dir: str) -> None` — writes `{"NTPHost": "192.0.2.1", "DNSFallback": ""}` (the product's
-  flat JSON config format) to `<cfg_dir>/config_NTP.cfg` only when that file is absent (an existing file is the run's own
-  state). Imports only `json` and `os` (no `machine`, no `tests/`).
+- **Change**: header (≤ 3 lines) "Writes the NTP config a twin or Unix-port boot starts from, so no run reaches a public
+  NTP or DNS host: the twin's local responder on loopback, or TEST-NET-1 (RFC 5737) where a run must not sync; never a DNS
+  fallback." `def write_ntp_config(cfg_dir: str, host: str) -> None` — writes `{"NTPHost": host, "DNSFallback": ""}` (the
+  product's flat JSON config format) to `<cfg_dir>/config_NTP.cfg` only when that file is absent (an existing file is the
+  run's own state); `def write_offline_ntp_config(cfg_dir: str) -> None` calls it with `"192.0.2.1"` and `def
+  write_responder_ntp_config(cfg_dir: str) -> None` with `"127.0.0.1"` (the responder's host, M.TWIN.167). Imports only
+  `json` and `os` (no `machine`, no `tests/`).
 - **Resolved**: GAP-H3: the runner may not import `tests/` (G7/R02, A.U25.44's guard), so the function moves at U25 from
   `tests/_generated_module.py` (M.TEST_HELP.047, U20) to this import-safe module in A.U18.12's fake-free directory, which
   L1 boots already put on `sys.path` for the UDP shim; `tests/_generated_module.py` then imports it — TEST_HELP gap.
-- **Unit**: U25
+- **Unit**: U25 (the responder writer with M.TWIN.167)
 - **Depends**: M.TWIN.017 (the directory), A.U10.40
-- **Blast carried by**: the runner → M.TWIN.050; `tests/_generated_module.py` drops its copy and imports this →
+- **Blast carried by**: the runner (the responder config unless `--online-ntp`) → M.TWIN.050; `tests/_generated_module.py` drops its copy and imports this →
   TEST_HELP gap (GAP-H3's resolution); the in-process twin boot helpers (C4) import it → M.TWIN.100-164; ruff/mypy scope
   by directory
+- **Kind**: code
+
+## digital_twin/unixport/_ntp_responder.py (new)
+
+### M.TWIN.167 The twin's local NTP responder
+- **From**: OR140.a (13) (the twin gets a local NTP responder, also used for new NTP-client unit tests; it replaces the
+  log tolerance A.U35.38/.39 planned, which is dropped), FOLD_ANSWERS `twin-tolerates-ntp-offline` (owner, 2026-10-02:
+  "A local NTP responder is built for the twin"), routine settlement `twin-choice-17` (its sync-dependent clock-jump cases
+  run in the twin), OR141.a (5) (it covers the dropped hand-run NTP-outage row) — A-C review fold.
+- **Site**: new `digital_twin/unixport/_ntp_responder.py`.
+- **Change**: header (≤ 3 lines) "A local NTP server for twin and Unix-port runs: answers each client request on
+  loopback with the host's UTC time, so a booted twin syncs without reaching a public host; its test knobs make it
+  silent, unsynchronised, malformed or implausible." Imports only `asyncio`, `select`, `socket`, `struct` and `time` (no
+  `machine`, nothing from `tests/` or `digital_twin/`, so an L1 test may import it from the fake-free `unixport/`
+  directory, M.TWIN.017). `def ntp_reply(unix_s: int, *, leap: int = 0, stratum: int = 1) -> bytes` — the 48-byte mode-4
+  reply (version 3, as HEAD's test builders send), transmit timestamp `unix_s` plus `_NTP_EPOCH_DELTA = 2208988800`
+  (comment "# 1900 to 1970 in seconds (RFC 5905); a local copy, pinned to src/asy_ntp_client.py's by M.TWIN.168"); it is `tests/_ntp_frames.py`'s `make_ntp_reply()` moved
+  here, that module importing it (one implementation, the twin never importing `tests/`, G7/R02 — M.TEST_HELP.058).
+  `class NtpResponder(port: int, host: str = "127.0.0.1")`: a non-blocking UDP socket bound at `(host, port)`;
+  "twin-only test knob" attributes in `TEST_API`: `mode` — `"serve"` (default), `"silent"` (requests dropped: an outage),
+  `"unsync"` (LI 3, stratum 0: a Kiss-of-Death reply), `"short"` (a 47-byte reply), `"implausible"` (a transmit time
+  below the client's plausibility floor) — and `offset_s: int = 0` (added to the served time: a server whose clock
+  differs from the host's); `requests: int` saturating at `_COUNTER_CAP = 0x3FFFFFFF` (comment: "# the project's counter
+  cap (SPECIFICATION.md G.2), a local copy: this module imports nothing from digital_twin/", pinned equal to
+  `_twin_common.COUNTER_CAP` by M.TWIN.168). `async def serve(self) -> None`: per round one `ipoll(0)` on its own poll
+  object (iterated and checked, never truth-tested), at most one datagram read, a 48-byte mode-3 request answered per
+  `mode`, then `await asyncio.sleep_ms(_POLL_MS)` (`# @tunable twin.ntp_responder_poll_ms = 10`, row basis estimated —
+  measurement owed): it never blocks the loop and never waits on a real `select.poll()` with a timeout (CLAUDE.md's
+  bounded-poller rule); `close()` closes the socket. The served time is `time.time() + offset_s` of the host (the Unix
+  port's UTC clock). How the client's datagram to port 123 reaches it — the responder bound at `127.0.0.1:123` under the
+  binary's `CAP_NET_BIND_SERVICE`, or the UDP shim (M.TWIN.017) mapping a loopback port-123 destination to the
+  responder's port from the band table — is decided at execution, with its reason recorded; either way the product is
+  untouched (OR36) and the shim still refuses every public destination.
+- **Resolved**: the owner replaced A.U35.38/.39's tolerance (the normal-boot log check tolerating NTP's no-resolve and
+  no-reply codes while unsynced) with this responder: a twin boot now syncs, and the normal-boot check expects NTP
+  synced with no NTP entry (OR140.a (13), most recent owner decision). `make_ntp_reply()` and the responder's builder are
+  one implementation, placed in the import-safe directory as GAP-H3 placed the offline-NTP writer.
+- **Unit**: U25.
+- **Depends**: M.TWIN.017 (the `unixport/` directory and the shim), M.TEST_HELP.056 (port bands), M.TEST_HELP.058 (the
+  builder moves here).
+- **Blast carried by**: the runner starts it unless `--online-ntp` → M.TWIN.050; the responder-config writer → M.TWIN.053;
+  its L2 tests → M.TWIN.168; the new NTP-client L1 tests → M.TEST_UNIT.342; the clock-jump file's sync cases →
+  M.TWIN.146; README "What's here", "Automated CI suite" Run 1 and "Runner flags" → M.TWIN.058, .064, .066; the twin
+  normal-boot log checks expect NTP synced (A.U35.38/.39's tolerance dropped) → [fold F16 M_SCR], [fold F16 M_TSC]; ruff
+  and mypy scope by directory, the twin pass's `mypy_path` already holding `digital_twin/unixport` → M.TWIN.075 (no edit).
 - **Kind**: code
 
 ## digital_twin/run_device_script.py (new)
@@ -1710,7 +1766,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   stages), A.U30.18 (3) Blast (the C-stack device script builds `dev` through this route — holds), A.U25.43 / A.U25.34
   (a `main()` in `digital_twin/` that can boot a device prewarms, then shims, first), A.U25.33 (3) (the shim's
   public-destination guard covers every Unix-port run), A.U8.08 (`wdt.timeout_ms` site), A.U10.30 (F.1's named `exec`
-  exception), C5
+  exception) superseded by OR142.a (3) (F.1's named list does not carry this file: the `exec` runs a script by path and
+  imports nothing; A-C review fold), C5
 - **Site**: new `digital_twin/run_device_script.py`
 - **Change**: header (≤ 3 lines): "Runs one tests_hardware device script unchanged under the twin, as Board.run_isolated()
   runs it on silicon: the device's wiring plan, the one armed watchdog, the requested GC stage. Every instrument passes
@@ -1720,8 +1777,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   `machine.configure_wiring(json.load(plan))`; `machine.WDT(timeout=8000)` with `# @tunable wdt.timeout_ms = 8000`
   (comment "# armed before the script runs, as Board.run_isolated() does; a script constructing WDT again gets this one
   (ports/rp2/machine_wdt.c:43-57)"); `gc.threshold(n)` (default -1, the reactive stage); `exec(compile(source, path,
-  "exec"), {"__name__": "__main__", "__file__": path})` with the comment "# SPECIFICATION.md F.1 named exception: a test
-  file executed by path"; a `SystemExit` from the script returns its code; any other exception prints its traceback and
+  "exec"), {"__name__": "__main__", "__file__": path})` with the comment "# runs the device script by path, as the board
+  runs it; no module is imported" (how the dynamic-load check classes this `exec` is the check's, [fold F23 M_TSC]); a `SystemExit` from the script returns its code; any other exception prints its traceback and
   returns 1; `machine.SimulatedRebootError` returns 3/4 (the runner's codes) after printing the `machine reset:` line.
   `__main__`: `sys.exit(main(sys.argv[1:]))`. No `tests/` import; no instrumentation flag (the script is the
   instrument).
@@ -1873,7 +1930,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   is given), A.U25.70 / A.U24.82 (`:144-147` fault-surface paragraph: fresh exceptions, `match`, `pending()`), A.U25.59
   (`unplug`/`plug` named), A.U14.28 (shim bullet keeps its pointer), A.U7.01 (level wording follows SPEC E.6), A.SDEP.08
   (`:78` re-read at the pin), A.U25.71 / M.TWIN.019 (`_wall_clock.py` bullet, gap: no action writes it), M.TWIN.001,
-  M.TWIN.053, M.TWIN.054 (new modules' bullets)
+  M.TWIN.053, M.TWIN.054 (new modules' bullets), M.TWIN.167 (the responder's bullet, OR140.a (13); A-C review fold)
 - **Site**: `digital_twin/README.md:1-147`
 - **Change**: intro `:1-14`: "— any real device of `devices/*.toml`, or a synthetic fixture —"; the real-time Timers and
   bounded random values carry "(owner, 2026-08-12)"; `:12-14` keeps the separation sentence and names
@@ -1894,8 +1951,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   NeoPixel stores a GRB bytearray; owner tag `:104-112` "reaching the host's real network through every connect phase");
   `_http_client.py` (real HTTP over real sockets, owner tag; refusal → `CeilingRefusedError`, incomplete →
   `IncompleteResponseError`, both `OSError`; strict JSON check, the lazy import's reason "so `_http_client` imports without
-  `tests/` on the path"; `timeout_s`; shape parity with `tests_hardware/http_client.py`); `unixport/` (the UDP shim and the
-  offline-NTP writer; L1 tests may put it on their path because it holds no hardware fake); `unix_port_poll_prewarm.py`
+  `tests/` on the path"; `timeout_s`; shape parity with `tests_hardware/http_client.py`); `unixport/` (the UDP shim, the
+  NTP config writer and the local NTP responder a booted twin syncs against, with its silent/unsynchronised/malformed/
+  implausible knobs; L1 tests may put it on their path because it holds no hardware fake); `unix_port_poll_prewarm.py`
   (callers: every entry that boots a device with real sockets, first; the 64-port scan from 17400, a fixed row of
   `tests/_port_bands.py`; "(the defect and its removal trigger: SPECIFICATION.md F.7)"); `launch.py` (`--wiring-plan`
   required; reads every wired SCD30/SGP40/BMP3XX; owner tag on `--fault`); `run_generic_integration.py` (A.U36.513 (7)'s
@@ -1909,7 +1967,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   (SPEC F.7 is the fact's one home, both actions agree). A.U25.71 adds `_wall_clock.py` with no README line; the bullet
   is added here (gap closed).
 - **Unit**: U36 (U25 restructures)
-- **Depends**: M.TWIN.001-057
+- **Depends**: M.TWIN.001-057, M.TWIN.167
 - **Blast carried by**: SPEC A.10/E.6.5 point to the fidelity table → A.U25.01 (SPEC); root README recipe pointers →
   A.U36.547 (DOCS)
 - **Kind**: doc
@@ -2014,7 +2072,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   off the booted module by name"), A.U20.28 (`:288-291` states the shape once by pointing at `buildgen/twin_wiring.py`'s
   `TwinWiringPlan`), A.U20.02 ("Booting a generated device": the runner passes the WDT to `main(watchdog=…)`), A.U25.69 /
   OR126.a (1) (the four keywords), A.U27.15 (`:265` generated-boot form names `scripts/micropypath.toml`), A.U25.33 (the
-  runner writes the offline NTP config before boot), A.U25.24 (the configure order stated once), A.U36.513 (the
+  runner writes the NTP config before boot — since the A-C review fold the local responder's), A.U25.24 (the configure order stated once), A.U36.513 (the
   "Session-3" wording goes)
 - **Site**: `digital_twin/README.md:232-297`
 - **Change**: `:234-239`: "`run_generic_integration.py` boots any device by consuming a `buildgen.generate.generate_device()`
@@ -2022,7 +2080,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   L.4); both are produced host-side in CPython (the Unix port has no `tomllib`)." The Python example keeps the synthetic
   fixture path. `:253-268` keeps the "first on `MICROPYPATH`" explanation; the shell line names the layout file. New
   paragraph: "Before the boot the runner calls `machine.configure_wiring(plan)` and every `configure_*_state_path()`
-  (each raises once a bus exists), writes the offline NTP config into its `--config-dir` unless `--online-ntp`, then runs
+  (each raises once a bus exists), starts the local NTP responder and writes the config pointing at it into its `--config-dir` unless `--online-ntp`
+  (M.TWIN.167; OR140.a (13), A-C review fold), then runs
   `module.main(watchdog=machine.WDT(timeout=8000), cfg_path=…, web_host=…, web_port=…)` — the generated entry's four
   keywords (owner, 2026-09-30)." `:270-279`, `:282-287`, `:288-297` per A.U36.513 (7) and A.U17.18, with the plan shape
   stated once: "the plan's shape is `buildgen/twin_wiring.py`'s `TwinWiringPlan` (`buses`, `spi`, `pins`, optional `uart`
@@ -2095,7 +2154,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   A.U25.48 (`:388-391` examples name a device; a missing device is a usage error), A.U25.55 (Run 12 added; the counts at
   `:390`, `:408`, `:412` cut to "every run"), A.U27.17 (`:410` "one more if run 11's soak retries" goes), A.U25.64 (lists
   `--only`/`--repeat`), A.U7.09 (the summary block text), A.U35.38 (Run 1: "reads, keeps and checks the logs, then
-  clears them"), A.U25.36 (Runs 3, 4, 5, 5b, 5c rewritten to their new claims: Run 3 the combined-fault escalation cell
+  clears them"; its NTP tolerance dropped, OR140.a (13): Run 1 boots against the local NTP responder and expects NTP
+  synced; A-C review fold), A.U25.36 (Runs 3, 4, 5, 5b, 5c rewritten to their new claims: Run 3 the combined-fault escalation cell
   ending in a simulated reset with exit 3; Run 4 `ResetReason` = supervisor escalation and region 0 cleared; Run 5 counts
   failure events, codes by name; 5b the exact ring all-or-nothing; 5c through the product reboot path), A.S0930.38 /
   A.S0930.41 (`:483-489` → "5c. A commanded reboot through the controlled shutdown — FRAM drained, then every task stopped,
@@ -2120,7 +2180,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `:380-386` unchanged in substance; examples `scripts/run_digital_twin_ci.sh <device>` (a missing device prints usage and
   exits 2) and `--only <run>`/`--repeat <n>`; **State** replaces **Clean** (A.U25.35's sentence) with A.U27.16's archive
   sentence; **Test** drops every run count ("runs every run twice, once per GC stage"; "a fixed port 18080"); runs 1-11b
-  rewritten to A.U25.36/A.U25.37/A.U25.38/A.U35.38's claims; Run 3 restates the FRAM fault as `fram:silent` (the chip
+  rewritten to A.U25.36/A.U25.37/A.U25.38/A.U35.38's claims, Run 1's reading "boots against the twin's local NTP
+  responder, reads, keeps and checks the logs — no error or warning entry from any module, NTP synced — then clears
+  them"; Run 3 restates the FRAM fault as `fram:silent` (the chip
   answers zeros and keeps its bytes, so nothing is torn) and whether `fram` stays out of Run 4's reset-to-0 sweep is
   recorded from one execution run (A.U25.37's own instruction); Run 5 (`:466-471`) names its fault as the suite boots
   it — `sgp40:readfrom_into:3:0x260F`, three faults on measure-raw reads only, sparing setup's serial read and the
@@ -2144,7 +2206,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   starts from this text (A-C merges)" — applied in that order. A.U11.31 hands `:505-507` to U25 (A.U25.65).
 - **Unit**: U36 (U25 rewrites, the `:453-456` deletion and Run 5's fault; U27 archive; U30 Run 12's code 20; U35 Run 1
   sentence)
-- **Depends**: M.TWIN.050, M.TWIN.051
+- **Depends**: M.TWIN.050, M.TWIN.051, M.TWIN.167
 - **Blast carried by**: `scripts/_digital_twin_ci_suite.py`, `scripts/run_digital_twin_ci.sh` → their actions (SCR)
 - **Kind**: doc
 
@@ -2175,12 +2237,13 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **From**: A.U25.74 (README flag table "test-only instrumentation (owner, 2026-09-30)"), A.U31.06 (`--test-loop-lag-ms`
   in the flag table), A.U35.31 (`--test-watchdog-fault` beside `--fault`/`--wifi-outcome`; the fidelity note), A.S0930.27
   (`--test-shutdown-hang` and its steps), A.U24.53 (runner flags: `--config-dir`), A.U25.32 / A.U25.09 / A.U25.33 (state
-  paths, `--config-dir`, `--mem-backup-state-path`, `--online-ntp`), M.TWIN.051 (`--test-fault-status-interval-ms`)
+  paths, `--config-dir`, `--mem-backup-state-path`, `--online-ntp`), M.TWIN.051 (`--test-fault-status-interval-ms`),
+  OR140.a (13) (`--online-ntp` off now runs the local responder, M.TWIN.050/.167; A-C review fold)
 - **Site**: `digital_twin/README.md` new `### Runner flags` after "Booting a generated device"
 - **Change**: a table `Flag | Default | Effect`: `--module`, `--wiring-plan` (required), `--device`, `--host`/`--port`
   (`localhost`/`8080`, owner, 2026-08-13), `--config-dir` (`digital_twin/config/`), `--fram-state-path`,
   `--scd30-state-path`, `--mem-backup-state-path` (`digital_twin/*.json`; `""` in memory), `--online-ntp` (off: the
-  offline NTP config is written), `--seed`, `--fault DEVICE:OP[:TIMES[:MATCH]]`, `--hang DEVICE:OP:SECONDS[:TIMES]`,
+  local NTP responder runs and the config pointing at it is written; on: neither, the stored config is used), `--seed`, `--fault DEVICE:OP[:TIMES[:MATCH]]`, `--hang DEVICE:OP:SECONDS[:TIMES]`,
   `--wifi-outcome`, `--duration`, `--gc-threshold` (32768), `--mem-sample-interval-ms`; then "Test-only instrumentation
   (owner, 2026-09-30), every flag off by default and absent from the product's entry path
   (`tests_scripts/test_twin_runner_test_flags.py`):" `--test-hold-closing-slot` (`SLOT_HELD`/`SLOT_RELEASED`),
@@ -2191,7 +2254,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   error, 3 simulated reset, 4 bootloader, 5 power loss.
 - **Resolved**: —
 - **Unit**: U25 (U31 and U35 add their rows)
-- **Depends**: M.TWIN.047, M.TWIN.050, M.TWIN.051
+- **Depends**: M.TWIN.047, M.TWIN.050, M.TWIN.051, M.TWIN.167
 - **Blast carried by**: root README command-line reference → A.U36.547 (DOCS)
 - **Kind**: doc
 
@@ -2763,18 +2826,32 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   at the armed reset (`_reset_armed` True) before the Timer fires; then from outside `sysfunct._reset_timer.deinit()`,
   `sysfunct._reset_task.cancel()` and the `supervise_tasks()` task's cancel, each awaited), A.S0930.27 (0) (FRAM evidence
   first: a copy of the twin chip's memory into the test's scratch before the command), A.U25.15 (rollover, `silent`,
-  WREN-drop)
+  WREN-drop); OR140.a (12) (no SCD30 write while a system-command sequence runs, proven at L2 too), OR138.a (1)-(2)
+  (`ConfigFaults`, the never-reading delete) and OR136.a (1) (the defaults written once at the next boot) — A-C review
+  fold
 - **Site**: `tests/test_digital_twin_bus_hazard_concurrency.py` (new section "system commands")
 - **Change**: three cases on `device_with("fram")` (FRAM alone on its bus — stated) and one on a shared-bus device:
   `test_erase_racing_a_logger_write_never_tears_a_chunk`, `test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_
   usable`, `test_the_erase_feeds_the_watchdog_at_bus_speed` (knob 8 µs/byte; asserts `would_have_triggered_count == 0` and
   every unit address below `size`), `test_a_hung_spi_transfer_is_caught_by_the_late_feed_backstop`; each stops at the
   armed reset and tears down as A.S0930.38 (5) states; before each command the chip memory is copied into the test's
-  `TmpScratch` (the FRAM-log rule, twin case).
+  `TmpScratch` (the FRAM-log rule, twin case). Two more on `device_with("scd30")` (A-C review fold):
+  `test_no_scd30_write_reaches_the_chip_while_a_system_command_runs` — first, with the graph's tasks and timers running a
+  window that covers every SCD30 cycle, the twin chip's NVM write counter (`Scd30Chip.nvm_writes`, M.TWIN.013) does not
+  move; then for each of the four words in turn, from acceptance to the armed reset, every SCD30 setter field sent through
+  the webserver's own in-process dispatch (the path the REST handler takes, G7/R19) at each step the sequence awaits
+  answers "Failed" and the counter does not move; `test_a_damaged_config_file_is_listed_then_deleted_and_rewritten_once` —
+  a corrupt-JSON `config_SYSTEM.cfg` planted in the run's config dir before the boot: the system status data the `/status`
+  route serialises lists `"SYSTEM"` in `ConfigFaults`; `resetconfig` reaches the armed reset with no schema-backed file
+  left (none read); a second boot over the same dir writes each file once with its defaults (OR136.a (1)) and
+  `ConfigFaults` is `[]`.
 - **Resolved**: —
-- **Unit**: U25 (co-lands with SUPP_owner_0930, AC_NOTES 34/36)
-- **Depends**: M.TWIN.011, M.TWIN.026, M.TWIN.031; M.SRC_CORE controlled-shutdown sequence (`_reset_armed`,
-  `_reset_task`, `_reset_timer`)
+- **Unit**: U25 (co-lands with SUPP_owner_0930, AC_NOTES 34/36). The two A-C review fold cases land in U25 too: OR138.a's
+  L2 half comes after its U20 product and L0/L1 halves because this file's system-command section and its C4 boot are
+  born here (reason recorded; nothing in U20 needs them).
+- **Depends**: M.TWIN.011, M.TWIN.013, M.TWIN.026, M.TWIN.031; M.SRC_CORE controlled-shutdown sequence (`_reset_armed`,
+  `_reset_task`, `_reset_timer`); [fold F15 M_SRC_NET] (every API command refused while a sequence runs); [fold F03
+  M_SRC_CORE] (the fault state, the never-reading delete); [fold F03 M_GEN] (`ConfigFaults` in the status data)
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3002,7 +3079,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   the twin buses with no HTTP (requests are driven host-side by scripts/_digital_twin_scenarios.py). Driver-specific
   scenarios run only on the device tests/_twin_devices.py picks for them (SPECIFICATION.md E.2.1)." `PER_DEVICE = True`;
   `device = os.getenv("TEST_DEVICE")` with M.TWIN.108's import-time `RuntimeError` when unset; `module =
-  load_generated(device)` (C2) replaces `import sensortask_wozi`. Module setup per C4 (`sys.path` gains `ext`,
+  load_device(device)` (C2) replaces `import sensortask_wozi`. Module setup per C4 (`sys.path` gains `ext`,
   `digital_twin`, `digital_twin/unixport`; `prewarm_poll_set()` then `patch_asy_udp_socket_for_unix_port()`, one comment
   line each pointing at `digital_twin/README.md`'s shim and prewarm sections); the four E402 lines carry "# noqa: E402 -
   imported after the prewarm and the UDP shim (C4 order)" once. Imports `json`, `select`, `socket`, `_http_client` and
@@ -3117,11 +3194,13 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   most once per cycle), A.U18.26 (L2 half "pending U25": (a) `cettime()` before and after a backward step across the
   March switch returns the stepped clock's offset; (b) synced at t0, the RTC stepped forward one year and back two:
   `Synced`/`LastSyncAge` follow ticks only; (c)/(d) need a successful sync — see Resolved), A.U25.71 ("A.U10.28 (c)'s and
-  A.U18.26's L2 halves use `step()`"), LEAD/R05 (clock-jump injection at L1/L2), A.U36.016 (device choice), C2, C4
+  A.U18.26's L2 halves use `step()`"), LEAD/R05 (clock-jump injection at L1/L2), A.U36.016 (device choice), routine
+  settlement `twin-choice-17` (AC_NOTES 52: with the twin's local NTP responder the two sync-dependent cases also run
+  here, keeping their unit-level proofs) and OR140.a (13) (the responder, M.TWIN.167) — A-C review fold, C2, C4
 - **Site**: new `tests/test_digital_twin_clock_jump.py`
 - **Change**: header (≤ 3 lines) "Wall-clock consumers across an RTC step on the twin (the RTC is the wall clock, as on
-  rp2): reader TS, backup age, the notification window and NTP's cettime and staleness. Clock handling is device-
-  independent; each case runs on one device tests/_twin_devices.py picks, the L1 suites cover every module." Module
+  rp2): reader TS, backup age, the notification window, NTP's cettime and staleness, and a real sync against the local
+  NTP responder. Each case runs on one device tests/_twin_devices.py picks; the L1 suites cover every module." Module
   setup per C4. Each case: C4 boot of its device through `build_system(watchdog=…)`, then `clock =
   _wall_clock.install(m for m in sys.modules.values() if getattr(m, "time", None) is time)` (the runner's own line,
   M.TWIN.050), `ntp._set_synced(value=True)` where a case needs a synced clock (A.U9.01's stated in-process method); steps
@@ -3135,15 +3214,23 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   never two in one cycle. (4) any device (`generated_devices()[0]`): `step()` to 2026-03-29 00:59 UTC then back across
   01:00 UTC — `ntp.cettime()` returns the offset of the clock as stepped each time (CET then CEST then CET). (5) same
   device, synced at t0: `step(+365 * 86400)` then `step(-2 * 365 * 86400)` — `Synced` stays true and `LastSyncAge`
-  equals the ticks elapsed since t0 (± 1 s). Tunables tagged per C3 (`l2.clock_jump_wait_timeout_s`, row basis U8's N.1
+  equals the ticks elapsed since t0 (± 1 s). (6) A.U18.26 (c), same device booted with `write_responder_ntp_config()`
+  (M.TWIN.053) and an `NtpResponder` (M.TWIN.167) run from the test's coroutine, `mode = "silent"` through the boot: the
+  clock stepped to rp2's boot default (2021-01-01 00:00 UTC, `ports/rp2/main.c:141-145`), then `mode = "serve"`; the
+  client's next attempt (its own retry path, no product hook) sets the clock to the served time (± 1 s), `LastSyncAge`
+  restarts at 0 and the staleness count runs from that moment. (7)
+  A.U18.26 (d), same boot: `NTPOffset` changed through the client's own config-apply path (the one the REST handler
+  calls): `Synced` reads false at once, the next sync against the responder sets the clock to the served time shifted
+  by the offset (± 1 s) and `Synced` true again. Tunables tagged per C3 (`l2.clock_jump_wait_timeout_s`, row basis U8's N.1
   rule). Registers `machine.reset_test_state`; trailer canonical.
 - **Resolved**: A.U18.26 (c) ("the first RTC set … by a successful sync") and (d) ("an `NTP_Offset_S` PUT followed by a
-  successful sync") need a sync the offline twin cannot complete (A.U25.33 keeps every twin run off public hosts; no NTP
-  server fake exists, A.U9.01's own statement); their L1 cases prove them, and this file states it in its header line —
-  agent decision (OR2.c list). A.U25.71 says the L2 halves "use `step()`" but no action writes the file; it is created
+  successful sync") were left to L1 while the twin had no NTP server; the routine settlement `twin-choice-17` (AC_NOTES
+  52) runs them here too through the local responder (M.TWIN.167), every run still off public hosts (the responder is on
+  loopback), and their L1 cases stay. A.U25.71 says the L2 halves "use `step()`" but no action writes the file; it is created
   here (the gap M.TWIN.019 records).
-- **Unit**: U25
-- **Depends**: M.TWIN.019, M.TWIN.033, M.TWIN.050 (install line); A.U10.28, A.U18.26 (L1 halves, fake-clock helper);
+- **Unit**: U25 (cases (6)-(7) after M.TWIN.167 in the same unit)
+- **Depends**: M.TWIN.019, M.TWIN.033, M.TWIN.050 (install line), M.TWIN.053, M.TWIN.167; A.U10.28, A.U18.26 (L1 halves,
+  fake-clock helper);
   M.TEST_HELP.055 (`device_with(*drivers)` — TEST_HELP gap)
 - **Blast carried by**: SPEC C.9/F cites the tests (A.U10.28/A.U18.26's doc halves, SPEC); the `tests/test_digital_twin_*.py`
   glob picks it up (`scripts/test.sh`; `digital_twin/typecheck.ini`'s `files`, M.TWIN.075 — no edit)
@@ -3215,7 +3302,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Change**: header (≤ 3 lines) "rp2's 16-alarm pool exhausted under the generated graph of the device named by
   TEST_DEVICE: every failed arm is handled in place and none reboots by itself (owner, 2026-07-18). The finaliser case
   is not reachable here (digital_twin/README.md fidelity table)." `PER_DEVICE = True` with M.TWIN.108's guard; C4 module
-  setup; `module = load_generated(device)`; every case boots through `build_system(watchdog=wdt, …)` after
+  setup; `module = load_device(device)` (C2); every case boots through `build_system(watchdog=wdt, …)` after
   `machine.set_alarm_pool_free(n)` and restores 16 in `finally`. (1) `set_alarm_pool_free(0)`; `start_timers(
   _collect_trigger_starters(), _collect_timer_starters())`, `start_tasks(…, task_names=…)`, `supervise_tasks()` as a
   task; for each reader in the plan: its task is seen done with one persisted arm-failure entry (`code("E",
@@ -3340,7 +3427,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Change**: header → "Twin-tier coverage of the generated UART crossover link (SPECIFICATION.md J.7) on the device
   tests/_twin_devices.py finds wiring a uart_link pair, its two peripherals joined as the bench jumper joins them, plus
   pair-level CRC16 and mismatch cases." Module setup per C4; `device = device_with("uart_link")`, `module =
-  load_generated(device)`, `_buses = wiring_plan(device)["uart"]` (`initiator_bus`/`responder_bus` name the module
+  load_device(device)` (C2), `_buses = wiring_plan(device)["uart"]` (`initiator_bus`/`responder_bus` name the module
   globals, A.U17.18); `fakes()` and `build_linked_system()` read `getattr(module, _buses[...])`; the two exerciser
   globals found by role on the module. `build_linked_system()`: `machine.reset_peripherals()`,
   `network.reset_interfaces()`, `machine.configure_wiring(wiring_plan(device))`, `write_offline_ntp_config(cfg)`,
@@ -3414,6 +3501,41 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Blast carried by**: `scripts/test.sh` per-device expansion has nothing to expand here after U25 (SCR);
   `digital_twin/typecheck.ini` glob — no edit (M.TWIN.075); README "Running the twin's own tests" (M.TWIN.063); CLAUDE.md
   bullet → A.U36.546 (DOCS)
+- **Kind**: test
+
+## tests/test_digital_twin_ntp.py (new)
+
+### M.TWIN.168 The local NTP responder at L2, and a booted twin syncing, losing and regaining it
+- **From**: OR140.a (13) (the responder replaces A.U35.38/.39's tolerance; the twin's normal boot expects NTP synced),
+  OR141.a (5) (the dropped hand-run NTP-outage row — blocking NTP to watch the SGP40 log — is covered by the responder in
+  automated tests) — A-C review fold; C2, C4, C5.
+- **Site**: new `tests/test_digital_twin_ntp.py` (in-process, no HTTP).
+- **Change**: header (≤ 3 lines) "The twin's local NTP responder and a generated device syncing against it: the
+  responder's replies and knobs, a first sync, an outage and its recovery, and each failure reply reaching the client's
+  catalog code (SPECIFICATION.md C.7.2)." Module setup per C4, the boot writing `write_responder_ntp_config()` (M.TWIN.053)
+  and running one `NtpResponder` (M.TWIN.167) on a port from the file's band in the test's own coroutine (closed in
+  `finally`). Cases: (1) the responder alone — a 48-byte mode-3 request over loopback gets a 48-byte mode-4 reply whose
+  transmit time is within 2 s of the host's UTC; `offset_s` shifts it exactly; `"silent"` answers nothing, `"unsync"`
+  LI 3 / stratum 0, `"short"` 47 bytes, `"implausible"` a time below the client's floor (read with `src_const` from
+  `src/asy_ntp_client.py`); `requests` stops at `_COUNTER_CAP`, which equals `_twin_common.COUNTER_CAP`, and
+  `_NTP_EPOCH_DELTA` equals the client's source value (`src_const`); a ticker task
+  advancing beside `serve()` is never starved (the responder never blocks the loop). (2) device-generic
+  (`generated_devices()[0]`): after the boot's first force sync `Synced` is true, the wall clock is within 2 s of the host's
+  UTC, and NTP's log holds no error or warning entry — the in-process mirror of the normal-boot check (A.U35.38/.39 as
+  amended). (3) outage and recovery: `mode = "silent"` from boot — `Synced` stays false, NTP's log holds its no-reply code
+  in one slot, the attempts back off as C.7.2 states; then `mode = "serve"` — synced within the backoff bound. On
+  `device_with("sgp40", "fram")`, the same outage with `WaitTimeNTP` above 0 and a flushed timestamped backup from a first
+  boot: no restore while the responder is silent, the restore (with its `RestoreTS`) after the sync, and no SGP40 log
+  entry (the wait and a timestamped restore print only). (4) `"unsync"`, `"short"`, `"implausible"` each leave
+  `Synced` false with the client's `NTP_UNSYNC_REPLY`, `NTP_MALFORMED`, `NTP_IMPLAUSIBLE` entry. Tunables tagged per C3
+  (`l2.ntp_sync_wait_timeout_s`, row basis U8's N.1 rule). Registers `machine.reset_test_state`; trailer canonical.
+- **Resolved**: —
+- **Unit**: U25 (after M.TWIN.167 in the same unit).
+- **Depends**: M.TWIN.019, M.TWIN.053, M.TWIN.167; M.TEST_HELP.044, .055, .056; M.SRC_NET.046-.050 (the client's codes
+  and backoff).
+- **Blast carried by**: the `tests/test_digital_twin_*.py` glob picks it up (`scripts/test.sh`; `digital_twin/typecheck.ini`
+  `files`, M.TWIN.075 — no edit); the port band row for this file → M.TEST_HELP.056; Part N row → SPEC (U8's rule);
+  the hand-run NTP-outage row's removal from M.PROC.038 → [fold F26 M_PROC].
 - **Kind**: test
 
 ## Cross-file: A-C3 sweep changes (new)

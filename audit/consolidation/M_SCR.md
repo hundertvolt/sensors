@@ -377,8 +377,9 @@ Conventions used below (each defined once, then cited):
 
 ### M.SCR.016 Shared twin-process helpers for the suite and the harness
 - **From**: A.U25.46 (helpers move: `_spawn`/`_shutdown`/`_wait_until_serving`/`_wait_exit`/`_read_log`/`_http`/errcount
-  readers), A.U27.01 (`_TwinRun`, fail closed), A.U25.64 (signal deaths), A.U25.36 (exit codes 3/4/5), A.U35.38/.39 (NTP
-  tolerance constant), A.U27.27 (types), A.U27.37 (ceiling lookup import), A.U25.38 (polls), A.U27.39 (lock import).
+  readers), A.U27.01 (`_TwinRun`, fail closed), A.U25.64 (signal deaths), A.U25.36 (exit codes 3/4/5), A.U35.38/.39
+  dropped (OR140.a (13): the twin gets a local NTP responder instead of a log tolerance, A-C review fold), A.U27.27
+  (types), A.U27.37 (ceiling lookup import), A.U25.38 (polls), A.U27.39 (lock import).
 - **Site**: new `scripts/_twin_process.py`.
 - **Change**: Python script convention (library). `@dataclass class TwinRun` (proc, `log_path: Path`, `log_file`,
   `device`, `state_dir`), replacing `proc.ci_log_file` and its `type: ignore`; `spawn(device, *, micropython_bin,
@@ -386,7 +387,8 @@ Conventions used below (each defined once, then cited):
   fault=(), hang=(), wifi_outcome=(), seed=None, duration=None, mem_sample_interval_ms=None, test_flags=(), log_path)
   -> TwinRun` building the runner argv of M.TWIN.051 (`--module --wiring-plan --host --port --device
   --fram-state-path --scd30-state-path --mem-backup-state-path --config-dir --online-ntp --seed --fault --hang
-  --wifi-outcome --duration --gc-threshold --mem-sample-interval-ms` plus `--test-…` flags) with
+  --wifi-outcome --duration --gc-threshold --mem-sample-interval-ms` plus `--test-…` flags, and the local NTP
+  responder the twin runner provides, on by default so a normal boot syncs [fold F16 M_TWIN]) with
   `MICROPYPATH = micropypath("twin")` (tomllib read of `scripts/micropypath.toml`) and `TZ=UTC` (until A.SDEP.16's W15
   check retires it); `wait_until_serving(run, port, timeout_s)` (poll, never sleep-then-assume); `shutdown(run,
   timeout_s) -> int`; `wait_exit(run, timeout_s) -> int`; `read_log(run) -> str` and `log_from(run, offset) -> str`;
@@ -397,17 +399,17 @@ Conventions used below (each defined once, then cited):
   (A.U25.64); `http(method, port, path, body=None, timeout_s=…) -> tuple[int, JSONValue]`; errcount readers
   `errcount_entries(status) -> list[ErrcountEntry]`; `parse_shutdown_line(log)` for `… shutdown:
   would_have_triggered_count=<n> feed_count=<n> mem_backup: r0=<4 words> public_destinations_refused=<n>` and
-  `parse_machine_reset_line(log)`; `NORMAL_BOOT_TOLERATED = {"NTP": (<catalog names A.U35.38 lists>,)}` with
-  `NORMAL_BOOT_TOLERATED_CONDITION = "NTPSynced is false"` and its in-place reason (one line). Types: `JSONValue`,
+  `parse_machine_reset_line(log)`; no normal-boot tolerance list: with the local NTP responder a normal boot logs no
+  E or W entry at all (OR140.a (13)). Types: `JSONValue`,
   `JSONObject`, `ErrcountEntry` (TypedDict); no `Any`.
 - **Resolved**: A.U27.01's `_TwinRun` and A.U25.46's move land as one shape here (A.U27.01's Depends names this merge).
-- **Unit**: U27 (the last of U25/U27/U35's edits; stages: U25 moves the helpers with A.U25.46, U27 adds `TwinRun`
-  fail-closed and types, U35 adds the tolerance constant).
-- **Depends**: M.SCR.009, M.SCR.013; M.TWIN.051 (flags).
+- **Unit**: U27 (stages: U25 moves the helpers with A.U25.46 and passes the NTP responder once the twin has it, U27
+  adds `TwinRun` fail-closed and types).
+- **Depends**: M.SCR.009, M.SCR.013; M.TWIN.051 (flags); [fold F16 M_TWIN] (the twin's local NTP responder, U25).
 - **Blast carried by**: users M.SCR.046-.060 (suite), M.SCR.017/.018 (harness); `tests_scripts/test_digital_twin_generated_boot.py`
-  reads the tolerance constant through `load_script_module` → A.U35.39 (TSC); `tests_scripts/test_memory_error_gate_agreement.py`
+  checks a normal boot with no tolerance → M.TSC.086 (amended); `tests_scripts/test_memory_error_gate_agreement.py`
   counts this module as the twin gate's site → A.U27.01 (TSC); L0 `tests_scripts/test_digital_twin_ci_suite_*.py` move
-  their helper imports → A.U25.46 (TSC).
+  their helper imports → A.U25.46 (TSC); the tolerance constant's readers go → M.TSC.086, M.TSC.165.
 - **Kind**: code
 
 ## scripts/_digital_twin_scenarios.py (new)
@@ -508,7 +510,8 @@ Conventions used below (each defined once, then cited):
   marker, and a following `GET /status` serves); `refusal_at_the_ceiling_is_counted` (A.U19.08/.10: `/status`
   `HTTPDropped` read, the ceiling filled with held connections from the one route table's limit, one further connection
   refused as A.U25.31 classifies it, the holders released, then `HTTPDropped` read again equals the first read plus the
-  refusals the harness counted — one per forced refusal); `isl29125_config_put_during_get_loops` (A.U19.12,
+  refusals the harness counted — one per forced refusal; exact because `HTTPDropped` sums the last 24 hours in hourly
+  bins (OR137.a) and a scenario's twin has run far less than 23 hours, so no bin ages out between the reads); `isl29125_config_put_during_get_loops` (A.U19.12,
   `drivers=("isl29125",)`: `GET /sensors` loops on three connections while one `PUT /sensors` changes the ISL29125
   `Resolution`; every GET's ISL29125 block equals either the before or the after configuration, never a mix, and the
   PUT answers `Valid`).
@@ -823,8 +826,8 @@ Conventions used below (each defined once, then cited):
 - **Site**: `scripts/run_bench_soak_tests.sh:1-22`.
 - **Change**: header (3 lines): "Runs only @pytest.mark.soak_duration tests at one named duration - an opt-in on top of
   the bench tier (owner, 2026-09-26) that the general runners never bundle (owner, 2026-09-04). Durations:
-  tests_hardware/soak_durations.py; the ~12.4-day rollover wait is not a soak: scripts/run_bench_rollover_test.sh."
-  (gap pass: names the rollover's own runner, M.SCR.074) Usage `scripts/run_bench_soak_tests.sh --duration {short,mid,long} [pytest args]`;
+  tests_hardware/soak_durations.py; the tick-rollover round is not a soak: scripts/run_bench_rollover_test.sh."
+  (gap pass: names the rollover's own runner, M.SCR.074; A-C review fold: OR139.a, the round is no longer 12.4 days) Usage `scripts/run_bench_soak_tests.sh --duration {short,mid,long} [pytest args]`;
   `--help` exit 0; a missing or unknown duration → usage, exit 2; then `scripts/_require_clean_hardware_run.sh --runner
   run_bench_soak_tests --levels "soak duration <d> (not a level)" --marker-floor "soak_duration" tests_hardware/flash
   tests_hardware/bench --soak-duration "<d>" "$@"`.
@@ -1250,21 +1253,25 @@ Conventions used below (each defined once, then cited):
   (`--help` exit 0) → A.U7.19 (TSC); `digital_twin/README.md` "Automated CI suite" → A.U25.65/A.U36.513 (TWIN/DOCS).
 - **Kind**: code
 
-### M.SCR.049 Run 1: read and keep every log before the clear; nothing logged on a normal boot
-- **From**: A.U35.38, A.U35.37 (scan: tolerated codes only with an in-place reason), A.U6.21 (`UTCTime`/`LocalTime` null
+### M.SCR.049 Run 1: read and keep every log before the clear; nothing logged on a normal boot, NTP synced
+- **From**: A.U35.38 dropped (OR140.a (13): no NTP tolerance, the twin's local NTP responder instead, A-C review fold),
+  A.U35.37 (scan: tolerated codes only with an in-place reason), A.U6.21 (`UTCTime`/`LocalTime` null
   while unsynced — the gap its blast names), A.U25.35 (archive per run), A.U2.03, A.U10.40 (key names), A.U11.31
   (`ResetErrors` answers per field — blast: `Valid`), A.U36.004 (`:84, :983` keep their rule text — blast).
 - **Site**: `scripts/_digital_twin_ci_suite.py:632-665` (`_run_1_baseline`).
 - **Change**: after serving, one `GET /status` and one `GET /system` read together: `errcount` written to
-  `<pass>/runs/run1_errcount.json`; every module's history has no E and no W entry except the NTP names of
-  `_twin_process.NORMAL_BOOT_TOLERATED` while `NTPSynced` is false (reason in place); while `NTPSynced` is false,
-  `UTCTime` and `LocalTime` are `null`; then the `ResetErrors` PUT as today (answer `Valid`, timed against
+  `<pass>/runs/run1_errcount.json`; every module's history has no E and no W entry (no tolerance list: the twin's
+  local NTP responder answers, OR140.a (13)); while `NTPSynced` is false, `UTCTime` and `LocalTime` are `null`; then
+  `/status` is polled (bounded by NTP's own first-sync deadline, read from the generated module) until `NTPSynced` is
+  true, after which both are non-null; then the `ResetErrors` PUT as today (answer `Valid`, timed against
   `_RESET_ERRORS_BUDGET_S`). The `:663` state check reads `ctx.state_dir`.
 - **Resolved**: A.U6.21's L2 clause ("existing twin CI boot log … U25 checks") was carried by no U25 action — added here
   (gap closed in-cluster, agent decision AD-8).
-- **Unit**: U35.
-- **Depends**: M.SCR.016 (tolerance constant), M.SCR.048; product fixes a clean boot needs (A.U3.09, A.U11.19 — SRC).
-- **Blast carried by**: `test_digital_twin_generated_boot.py` uses the same constant → A.U35.39 (TSC); `audit/b3/review.md`
+- **Unit**: U35 (after U25's NTP responder).
+- **Depends**: M.SCR.016, M.SCR.048; [fold F16 M_TWIN] (the twin's local NTP responder); product fixes a clean boot needs
+  (M.SRC_CORE.043: an absent file's one defaults write prints, never logs — SRC; A.U3.09 dropped with A.U3.04,
+  OR140.a (7)).
+- **Blast carried by**: `test_digital_twin_generated_boot.py` checks the same clean boot → M.TSC.086; `audit/b3/review.md`
   classification → A.U35.37 (procedure).
 - **Kind**: test
 
@@ -1440,18 +1447,27 @@ Conventions used below (each defined once, then cited):
 - **Kind**: test
 
 ### M.SCR.060 Run 13: the system commands end to end
-- **From**: A.S0930.27 (0)-(1), A.S0930.38 (3), A.U35.02 (both stages — procedure).
+- **From**: A.S0930.27 (0)-(1), A.S0930.38 (3), A.U35.02 (both stages — procedure); OR136.a (1), OR138.a (1)-(2) (A-C
+  review fold: the relaunch writes each file once; damaged files are listed and deleted unread).
 - **Site**: new `_run_13_system_commands` after Run 12.
 - **Change**: FRAM evidence first (errcount JSON and a copy of the pass's FRAM state file into the run's archive) before
-  any `erasefram`; cells in fresh state: `resetconfig` → `Valid`, reset exit, relaunch with no `config_*.cfg`, Hostname
-  from the TOML, `ResetReason` 7; `erasefram` → `Valid`, reset exit, every FRAM-backed counter 0, `ResetReason` 8; the
+  any `erasefram`; cells in fresh state: `resetconfig` → `Valid`, reset exit with no `config_*.cfg` left in the config
+  dir; the relaunch writes each schema-backed file exactly once, holding its schema defaults (OR136.a (1): the
+  config dir's files counted against the build's schema-backed stores, none for a command-only schema), Hostname
+  from the TOML, `ResetReason` 7, `ConfigFaults` empty; a damaged-file cell: a launch whose config dir holds one module's
+  file as bytes that are not JSON and another's with a key out of range → `/status` `ConfigFaults` names both, the
+  corrupt file's bytes unchanged after the boot, the bad-key file repaired by one write (and still listed for that
+  boot); then `resetconfig` deletes both without reading them, and the relaunch shows `ConfigFaults` empty and every
+  file at its defaults (OR138.a (1), (2)); `erasefram` → `Valid`, reset exit, every FRAM-backed counter 0, `ResetReason` 8; the
   near-miss list → `Invalid`, serving continues; `PUT /system {"DebugLevel": 4}` then `reboot` → the S1-S4 step lines in
   order, no S5, `machine reset: kind=reset`, `ResetReason` 3, `DebugLevel` 4 kept, every FRAM history ⊇ before; the same
   for `bootloader` (`kind=bootloader`, code 4); `would_have_triggered_count == 0` on every launch. The states and hangs are
   the harness's (M.SCR.018 (k)).
 - **Resolved**: —
-- **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)').
-- **Depends**: M.SCR.059.
+- **Unit**: U25 (SUPP_owner_0930's L2 half, after A.U25.36 and A.U25.55 in the same unit; LEAD/R32 'U25 (L2)'); the
+  first-write and damaged-file cells after U11's `ConfigManager` change and U20's `/status` field and delete path.
+- **Depends**: M.SCR.059; M.SRC_CORE.043 (OR136.a), [fold F03 M_SRC_CORE] (the `ConfigFaults` state), [fold F03 M_GEN]
+  (the generated `/status` field and the delete path that never reads).
 - **Blast carried by**: product commands → A.S0930 SRC actions (SRC_CORE); `_LOG_EVENT` level read by `ast` from
   `src/asy_print_log.py`.
 - **Kind**: test
@@ -1593,7 +1609,8 @@ Conventions used below (each defined once, then cited):
   on the stripper import), A.U28.28 (E402 reasons), A.U20.33 (no `from __future__`), A.U7.19 (`--help`), A.U21.29 (typed
   versions table), A.U10.34 (module docstring kept for argparse), A.U36.513 (comments cite the generator), A.U1.04/.16,
   A.U32.01, A.U36.547 (docs naming the command — blast), A.C.01 (5) (round image — procedure), A.U26.14 (reflash test
-  calls it — blast), A.U8C.121 (test timeouts — blast), A.U37.07 (every device built — procedure).
+  calls it — blast), A.U8C.121 (test timeouts — blast), A.U37.07 (every device built — procedure); OR139.a (1)-(2)
+  (A-C review fold: the tick-offset test image is built by a flag, never by default).
 - **Site**: `scripts/build_firmware.py:1-47`, `:111-173`.
 - **Change**: docstring (3 lines) as HEAD, naming `--no-autostart` and the work dir; usage lines `uv run
   scripts/build_firmware.py <device>` / `… <device> --output build/firmware-<device>.uf2`. No `from __future__`; the three
@@ -1602,7 +1619,10 @@ Conventions used below (each defined once, then cited):
   `mypy_path` gains `scripts`). Arguments: `device` ("a devices/<device>.toml stem"), `--device-toml PATH` (default
   `devices/<device>.toml`; a missing file → `BuildError` naming it), `--output` (default
   `build/firmware-<device>.uf2`, or `build/firmware-<device>-noautostart.uf2` with `--no-autostart`), `--no-autostart`
-  (A.U27.36's help text), `--toolchain-dir` (`.resolve()`d), `--jobs`. `main()`: under `st.toolchain_lock(toolchain_dir)`
+  (A.U27.36's help text), `--tick-offset-test` ("build the rollover round's test image: MicroPython's millisecond count
+  starts 2**32 ms minus 15 minutes after boot (SPECIFICATION.md B.14); never a release image"; default output
+  `build/firmware-<device>-tickoffset.uf2`, work dir suffix `-tickoffset`; passes `tick_offset_test=True` to
+  `st.build_firmware()`, M.TOOL.055/.080), `--toolchain-dir` (`.resolve()`d), `--jobs`. `main()`: under `st.toolchain_lock(toolchain_dir)`
   (held from before the `mpy-cross` wipe until the record is written); a toolchain dir without the toolchain record →
   "the toolchain at <dir> is incomplete or predates the build record - run `uv run toolchain/setup_toolchain.py setup`
   first"; prints the record's `built_ref` and `micropython_commit`; `work = build/firmware/<device>[-noautostart]`
@@ -1612,14 +1632,16 @@ Conventions used below (each defined once, then cited):
   `BuildInternalError` and anything else propagate with a traceback. `if __name__ == "__main__": raise SystemExit(main())`.
 - **Resolved**: A.U27.35's work dir per device collides between the normal and no-autostart builds of one device — the
   `-noautostart` suffix keeps them apart (agent decision AD-13). `RuntimeError` conversions (`:64-67`) go (A.U27.29).
-- **Unit**: U27 (stages: U21 lock/record/resolve; S0930 `--device-toml` lands after U27 on top).
+  `--tick-offset-test` gets its own suffix for the same reason.
+- **Unit**: U27 (stages: U21 lock/record/resolve; S0930 `--device-toml` lands after U27 on top; the
+  `--tick-offset-test` flag in U27, after U21's override M.TOOL.080).
   A-C2 step order: A.U8C.121's part lands in U8C2, not U8C (it needs A.U8C2.22, which lands in U8C2).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
 - **Depends**: A.U21.22 (`toolchain_lock`), A.U21.03 (record), A.U27.29/A.U20.17 (`SetupError`/`OverrideError` derive
   from `Exception`, `BuildInternalError`) (TOOL, GEN); M.SCR.070 (`StripError`).
 - **Blast carried by**: `tests_scripts/test_build_firmware.py` (work dir kept and wiped next time; `--no-autostart`
-  output; `--device-toml`; lock contention message; error lines without traceback) → A.U27.35/A.U27.36/A.S0930.06/
-  A.U21.22/A.U27.29 (TSC); README build section, flash runbook → A.U27.35 docs/A.U32.01 (DOCS); `.gitignore`
+  output; `--device-toml`; lock contention message; error lines without traceback; `--tick-offset-test` output, work dir
+  and the keyword passed) → A.U27.35/A.U27.36/A.S0930.06/A.U21.22/A.U27.29 (TSC, M.TSC.032); README build section, flash runbook → A.U27.35 docs/A.U32.01 (DOCS); `.gitignore`
   `build/` covers the work dir (A.U28.33, TOOL); `ci.yml` `firmware-build-verify` per device (A.U28.06, TOOL).
 - **Kind**: code
 
@@ -1630,7 +1652,9 @@ Conventions used below (each defined once, then cited):
   (`:52-53` reason in place), A.U20.13 (frozen set from the module's own imports — blast, `generated.frozen_modules`
   unchanged), A.U20.05/A.U24.54/A.U1.23 (boot entry source — blast), A.U8.23/A.U34.12/A.U34.09/A.SDEP.06 (named modules
   only: `ext/typings/microdot/` never staged, OR131 — holds), A.U21.10 (every rp2 build carries the override — blast),
-  A.U20.36 (buildgen's reproducibility half — blast).
+  A.U20.36 (buildgen's reproducibility half — blast); OR141.a (5) (A-C review fold: the build date is a build input,
+  the reproducibility check builds twice with one fixed date — decision reproducible-image), OR139.a (2) (the build info
+  names a test override).
 - **Site**: `scripts/build_firmware.py:39-108`.
 - **Change**: `_MANIFEST_TEMPLATE` = the expanded board manifest (below) followed by `freeze({stage_dir!r},
   {files!r})\n`, `files = tuple(sorted(p.name for p in stage_dir.glob("*.py")))`, comment "listed sorted, so the image is
@@ -1647,15 +1671,21 @@ Conventions used below (each defined once, then cited):
   strip-and-write each module, the generated device module through the same `_stage_stripped()` path (from its text,
   path `build/generated_src/sensortask_<device>.py` for messages), and `main.py` = `generated.boot_entry_source` or
   `generated.boot_entry_noautostart_source`; the "nothing to strip" comment goes. `build_stage_dir(stage_dir, device_toml,
-  *, autostart=True, build_date=None)` = `generate_device(device_toml, src, ext, build_date=build_date)` →
-  `stage_python_modules()` → the website step (`scripts/build_website.sh <device> <stage>/frozen_html.py`).
+  *, autostart=True, build_date=None, test_overrides=())` = `generate_device(device_toml, src, ext,
+  build_date=build_date, test_overrides=test_overrides)` → `stage_python_modules()` → the website step
+  (`scripts/build_website.sh <device> <stage>/frozen_html.py`); `test_overrides` names a test-only firmware override in
+  the generated build info (`("tick_offset_test",)` for the rollover image, OR139.a (2); [fold F04 M_GEN]). The build
+  date is the build's one time input: `main()` passes the current UTC time (M.SCR.067), a reproducibility check one
+  fixed date, and nothing else staged depends on when the build runs; comment above `build_stage_dir()`: "build_date is
+  an input: real builds stamp their UTC build time, the reproducibility check passes a fixed one (owner, 2026-10-05).".
 - **Resolved**: LEAD/R13's residual (A.U27.34, "parked for A-C"): closed by expanding the board manifest's directory
   freeze into a sorted explicit list, as the Req's one-order rule demands (AC3_R R-05).
 - **Unit**: U27.
 - **Depends**: M.SCR.070, M.SCR.071; A.U20.05/A.U20.14 (generated sources, GEN); A.U26.02 (`build_date` keyword).
 - **Blast carried by**: `tests_scripts/test_stripped_image_boots.py` (compiled stage boots in the twin) → A.U27.05 (TSC);
   `tests_scripts/test_frozen_inputs_reproducible.py` → M.TSC.094 (A.U27.34), which also asserts the rendered manifest has
-  no bare directory `freeze()` (AC3_R R-05; hand-off to TSC, M.TSC.094's Change); SPEC B.11 → A.U27.34/A.U36.534 docs (SPEC).
+  no bare directory `freeze()` (AC3_R R-05; hand-off to TSC, M.TSC.094's Change) and that changing only the date
+  changes only the date's line (OR141.a (5)); SPEC B.11 → A.U27.34/A.U36.534 docs (SPEC).
 - **Kind**: code
 
 ### M.SCR.067 Image record and size report beside every `.uf2`
@@ -1846,24 +1876,32 @@ Conventions used below (each defined once, then cited):
 
 ## scripts/run_bench_rollover_test.sh (new, A-C gap pass)
 
-### M.SCR.074 Rollover runner: the one documented path to `multi_day_rollover`
+### M.SCR.074 Rollover runner: builds the tick-offset test image, the one documented path to `multi_day_rollover`
 - **From**: AC_NOTES 45 / M_PROC gap 5 (no runner selects `multi_day_rollover`: M.SCR.030/.031 floors exclude it,
   M.SCR.032's floor is `soak_duration`), A.C.08/M.PROC.041 (R6 starts the rollover through the clean-run wrapper with a
   `multi_day_rollover` floor, agent decision D8 there), A.U26.36/M.HW_BENCH.089 (the bench test, its in-test skip on
   `--allow-multi-day-rollover`), A.U27.19 (`--marker-floor`; "a caller's `-m` narrows"), A.U26.74 (flag name), A.U7.13/
   A.U7.14 (run record, verdict), A.U7.18 (a long opt-in runs on top of a clean bench run, no lower levels — as the soak
   runner), A.U7.19 (`--help`), A.U26.75/A.U28.01 (one retried sync, then `--no-sync`, inside the wrapper), A.U27.33
-  (shell convention), OR133 (exit codes).
+  (shell convention), OR133 (exit codes); OR139.a (1)-(3) (A-C review fold: the runner builds the bench board's
+  tick-offset test image, the rollover test flashes it once and polls about two hours).
 - **Site**: new `scripts/run_bench_rollover_test.sh`.
-- **Change**: shell convention; header (3 lines): "Runs only @pytest.mark.multi_day_rollover tests - the ~12.4-day
-  ticks_ms() rollover observed over REST (tests_hardware/bench/test_ticks_ms_rollover.py) - on top of a clean bench run
-  of the same image. Never a soak and never bundled with a suite runner (owner, 2026-09-26); it writes nothing."
+- **Change**: shell convention; header (3 lines): "Builds the bench board's tick-offset test image (ticks wrap about 15
+  minutes after boot; owner, 2026-10-01) and runs only @pytest.mark.multi_day_rollover tests on it for about two hours,
+  on top of a clean bench run. Never a soak, never bundled with a suite runner (owner, 2026-09-26); one flash cycle."
   `--help` → "Usage: scripts/run_bench_rollover_test.sh [pytest args]", "other arguments go to pytest; a -m you pass
-  narrows the selection", "the run takes ~12.4 days: start it detached (tests_hardware/README.md)", exit 0, no side
-  effect; no option of its own, so no usage error of its own (every other argument reaches pytest, whose own usage
-  errors the wrapper reports). Body: `scripts/_require_clean_hardware_run.sh --runner run_bench_rollover_test --levels
-  "rollover (not a level)" --marker-floor "multi_day_rollover" tests_hardware/bench --allow-multi-day-rollover "$@"`,
-  exiting with its code (E.10: 0, 1, 2, 4). No lower levels, no trap (nothing temporary).
+  narrows the selection", "builds and flashes the tick-offset test image, then about two hours of polls: start it
+  detached (tests_hardware/README.md)", exit 0, no side effect; no option of its own, so no usage error of its own
+  (every other argument reaches pytest, whose own usage errors the wrapper reports). Body: the bench device from
+  `scripts/_devices.sh`; the image built with `uv run --no-sync scripts/build_firmware.py "$device" --tick-offset-test`
+  (output `build/firmware-<device>-tickoffset.uf2` and its record, M.SCR.065/.067) after the run's one retried sync —
+  a failed build exits 1 with the build's message before anything reaches the board; then
+  `scripts/_require_clean_hardware_run.sh --runner run_bench_rollover_test --levels "rollover (not a level)"
+  --marker-floor "multi_day_rollover" tests_hardware/bench --allow-multi-day-rollover --allow-flash-cycle
+  --rollover-image "build/firmware-$device-tickoffset.uf2" "$@"`, exiting with its code (E.10: 0, 1, 2, 4). No lower
+  levels, no trap (the image stays under `build/`). Where the one sync sits (before the build, the wrapper then not
+  syncing again, or the build moved after the wrapper's own sync) is decided at execution against M.SCR.034, with its
+  reason recorded; the run syncs once either way.
 - **Resolved**: AC_NOTES 45 leaves the path open: a soak-runner mode (M_PROC gap 5's example) or a README recipe naming
   the wrapper call. A soak-runner mode is ruled out by G1/R23 ("runs only behind `multi_day_rollover`, never in a soak
   tier", owner, 2026-09-26) and M.SCR.032's own header ("not a soak"). The README recipe at HEAD and in M.DOCS.049
@@ -1872,12 +1910,17 @@ Conventions used below (each defined once, then cited):
   `_require_clean_hardware_run.sh` with four internal options is not the copy-paste command OR15 asks for. A runner
   per opt-in long run, like the soak runner, is the one shape (OR24 "one material"; OR15 "an automated summary at the
   end") — agent decision AD-19 (gap pass). Its owner tag is G1/R23's rank line ("(owner, 2026-09-26)", OR33.a (1)).
-- **Unit**: U27 (with the other runners' floors, A.U27.19; the bench test exists from U26).
-- **Depends**: M.SCR.034 (`--marker-floor`, the verdict), M.SCR.014; M.HW_BENCH.089 (the test), M.HW_BENCH.001/.002
-  (the flag and marker).
+  A-C review fold: OR139.a's test image is built here and flashed by the test through the one `reflash()` helper, so
+  the flash sits behind `flash_cycle` like every other reflash; the owner tag of the test image is OR139's
+  "(owner, 2026-10-01)".
+- **Unit**: U27 (with the other runners' floors, A.U27.19; the bench test exists from U26; the override from U21).
+- **Depends**: M.SCR.034 (`--marker-floor`, the verdict), M.SCR.014, M.SCR.065 (`--tick-offset-test`), M.SCR.067 (the
+  record naming the override); M.HW_BENCH.089 (the test), M.HW_BENCH.001/.002 (the flags, `--rollover-image`, the
+  marker); M.TOOL.080 (the override).
 - **Blast carried by**: `tests_scripts/test_hardware_runners.py` (no lower-levels call; the block reads `Levels: rollover
-  (not a level)`), `test_require_clean_hardware_run_sh.py` (`-m foo` → `(multi_day_rollover) and (foo)`;
-  `--allow-multi-day-rollover` forwarded), `test_tool_help.py`'s `TOOLS` → hand-off TSC (M.TSC.196, M.TSC.122,
+  (not a level)`; the build runs before the wrapper with `--tick-offset-test`, a failing build exits 1 before it;
+  `--allow-flash-cycle` and `--rollover-image` forwarded), `test_require_clean_hardware_run_sh.py` (`-m foo` →
+  `(multi_day_rollover) and (foo)`; `--allow-multi-day-rollover` forwarded), `test_tool_help.py`'s `TOOLS` → hand-off TSC (M.TSC.196, M.TSC.122,
   M.TSC.217, GAPS_G4); README.md Recipes rollover line and the CLI reference entry → hand-off DOCS (M.DOCS.049,
   M.DOCS.052, GAPS_G4); R6's start command → hand-off PROC (M.PROC.041, GAPS_G4); `tests_hardware/README.md` Running
   → M.HW_BENCH.126 (amended); M.SCR.032's header names it (amended); shellcheck and the comment-cap gate cover it by

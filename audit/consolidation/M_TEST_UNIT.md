@@ -46,8 +46,9 @@ test change (the product clusters carry those items as "→ A-ID (TEST_UNIT)").
   fake state that `microtest.after_each(reset_test_state)` now performs (`Timer.all_timers.clear()`, `raise_on_arm`
   restores, `reset_count = 0`) go unless a test resets mid-body on purpose (A.U24.07 (4)); a reader built on FRAM passes
   `log=LogConfig(<manager>, 10, None)` (A.U5.02, M.SRC_CORE's `LogConfig(fram, history_length, debug)`).
-- **Function-level imports** (A.U0.07: `tests/` holds 91 in 29 files in its `_PENDING` set, which U24 empties, plus the
-  dynamic sites A.U10.30 names): every `import`/`from … import` inside a test function or helper moves to the file's
+- **Function-level imports** (A.U0.07: `tests/` holds 91 in 29 files in its `_PENDING` set, which U24 empties; the
+  dynamic sites A.U10.30 named stay as SPEC F.1's named host/test exceptions, untouched — OR141.a (2), OR142.a, A-C review
+  fold): every `import`/`from … import` inside a test function or helper moves to the file's
   module-level imports (an alias such as `import time as _time` becomes the module's `time`), so the L0
   `tests_scripts/test_import_placement.py` entry for that file can leave `_PENDING`; the `if __name__ == "__main__":`
   `import microtest` is module level and stays. A file's section names this only where it changes more than an import
@@ -449,9 +450,11 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
 - **Kind**: test
 
 ### M.TEST_UNIT.017 Reader integration: catalog numbers, config failures, the rung, the capture rule
-- **From**: A.U2.10 (`:1306, 1325, 1343, 1382, 1437`), A.U3.05 (`:1323-1343`, `:1346-1390`), A.U15.22 (2) (`_store_bmp()`
+- **From**: A.U2.10 (`:1306, 1325, 1343, 1382, 1437`), A.U3.05 dropped (OR140.a (7): the reader keeps its own entry for
+  a config-read failure beside `CFGMGR_BMP3XX`'s; A-C review fold), A.U15.22 (2) (`_store_bmp()`
   uses the captured values; new capture and last-sample L1), A.U15.24 (W11 L1), A.U10.06 (L1 `TS` before sync),
-  A.U10.R01 + A.U15.R03 (`:1393-1411` re-derived; four new rung L1), A.U2.06 + A.U3.03 (no errno-1 streak entry),
+  A.U10.R01 + A.U15.R03 (`:1393-1411` re-derived; four new rung L1), A.U2.06, A.U3.03 dropped (OR140.a (7): the
+  streak entry stays),
   A.U5.02 + A.U10.10 (`:1468-1510` FRAM-backed reader), A.U12.08 (`:1388` comment), A.U24.49 (FRAM builder).
 - **Site**: `tests/test_asy_bmp3xx_driver.py:1217-1510`; new tests after `:1510`.
 - **Change**:
@@ -464,16 +467,18 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
     "BUS_RECOVERY")` (`_init_failed()` re-initialises the controller, A.U10.R01 (5)); `ErrCount` re-derived from those
     two entries.
   - `test_init_bmp_fails_and_logs_when_config_data_unreadable`: `reader.cfgmgr.valid = False`; `_init_bmp()` is
-    `False`; the BMP3XX log has no entry (a console line only, A.U3.05) and `CFGMGR_BMP3XX` has exactly one
-    `code("E", "CFG_NOT_VALID")`; no bus rung ran (the fake log holds no `recover` marker).
+    `False`; the BMP3XX log's newest entry is its own config-read code (HEAD's 12, by the catalog name the fold gives
+    it back) and `CFGMGR_BMP3XX` holds `code("E", "CFG_NOT_VALID")`; no bus rung ran (the fake log holds no `recover`
+    marker).
   - `test_store_bmp_falls_back_to_default_compensation_values_when_config_unreadable` → `…read_bmp_captures_the_default_compensation…`:
     baseline as today (offsets written with `write_config({...})`, read + store, offsets applied); then
     `reader.cfgmgr.valid = False`, `results = _read_bmp()` (the capture falls back to `[0.0, 0.0, 0.0, 15.0]`), `_store_bmp(results)`;
-    assertions: `CFGMGR_BMP3XX` newest entry `code("E", "CFG_NOT_VALID")`, the BMP3XX log unchanged, `Pres == results[0]`,
+    assertions: `CFGMGR_BMP3XX` newest entry `code("E", "CFG_NOT_VALID")`, the BMP3XX log's newest entry its own
+    compensation-read code (HEAD's 14, type "E", by the catalog name the fold gives it back), `Pres == results[0]`,
     `Temp == results[1]`, `SLPres == results[0]` (`:1386-1388` comment names `pressure_at_height()`), `TS == results[2]`.
   - `test_reader_read_error_check_threshold_and_self_heal`: outcomes stay `[True, True, False, True]`; the log shows one
     `code("E", "CHIP_SET")` "Soft reset failed" from the device rung at the 2nd failure (NAKed reset), then
-    `code("E", "GIVE_UP")`; no streak entry per failed cycle (A.U3.03).
+    `code("E", "GIVE_UP")`, with the streak's own entry per failed cycle between them as at HEAD (OR140.a (7)).
   - `test_reader_uses_fram_backed_print_log_when_fram_provided`: manager built with `make_fram_manager()`
     (`tests/_fram_builders.py`, A.U24.49), reader `BMP3XX_Reader(i2c, address=_ADDR, cfg_path=cfg_path,
     log=LogConfig(manager, 10, None))`, `await reader.setup()` replaces the `pr.setup()` call and its `:1477-1482`
@@ -497,11 +502,12 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
     10 → no entry.
 - **Resolved**: A.U15.24's example (raw 1000 hPa, `PressOffset` 750) is outside the schema's ±500 hPa bound, so no
   write can store it; the same domain exit is produced by an in-schema offset on the file's planted reading (agent
-  correction). A.U15.R03's "logs its own errno 12/13 as today" is M.SRC_SENS.044's code-returning helper (config
-  unreadable prints only).
-- **Unit**: U15 (stages U2 numbers, U3 console/CFGMGR, U5 constructor, U10 setup/ladder/TS, U24 builder).
+  correction). A.U15.R03's "logs its own errno 12/13 as today" stands as written (A.U3.05's print-only reading dropped,
+  OR140.a (7)).
+- **Unit**: U15 (stages U2 numbers, U5 constructor, U10 setup/ladder/TS, U24 builder).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.047, M.SRC_CORE.037, M.SRC_CORE.040; A.U2.03.
+- **Depends**: M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.047, M.SRC_CORE.037, M.SRC_CORE.040 (as the fold reverts
+  A.U3.03/A.U3.05); A.U2.03; [fold F11 M_GEN] (catalog names for the restored reader and streak codes).
 - **Blast carried by**: four tiers of the mid-operation reset → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.R03, L1), A.U13.R02/A.U15.R03 (TWIN, HW_DEV); catalog W11/W14/W15 rows → A.U2.01 (GEN).
 - **Kind**: test
@@ -600,7 +606,9 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
 
 ### M.TEST_UNIT.024 The unwritable-config test uses the shared write counter
 - **From**: A.U4.06 (`:2040-2076` → `WriteCountingOpen`), A.U2.07 (`:2072` 4 → `code("E", "CFG_FILE_WRITE")`),
-  A.U3.05 + A.U2.10 (`:2071` "12 not in" — 12 is CHIP_GET after the renumbering).
+  A.U2.10 (`:2071` "12 not in" — 12 is CHIP_GET after the renumbering), A.U3.05 dropped (OR140.a (7); the reader logs
+  nothing here either way: its config is valid on the defaults); OR136.a (1) (the one setup write of the absent file
+  into the missing directory is the CFG_FILE_WRITE entry) — A-C review fold.
 - **Site**: `tests/test_asy_bmp3xx_driver.py:2062-2072`.
 - **Change**: the local `counting_open` and the `config_manager.open` swap become `with
   WriteCountingOpen(asy_config_manager) as counter:` (`tests/_write_counters.py`), asserting `counter.writes == 0`;
@@ -915,16 +923,16 @@ retried, the chip-loss probe, bus-down statuses, both locks for every hold, `ver
 
 ## tests/test_asy_fram_manager.py
 
-End state: the chunk layer's tests against M.SRC_CORE.080-093 — `FRAMManager`/`FRAMChunk`/`FRAMTimestampedChunk`, one
-persisted entry per failure at the detecting layer (the rest console lines), the catalog's FRAM band, a tri-state
-read, blank blocks never marked busy, no `override_pause`, no episodes (the central newest-entry rule), bool-first
+End state: the chunk layer's tests against M.SRC_CORE.080-093 — `FRAMManager`/`FRAMChunk`/`FRAMTimestampedChunk`, every
+layer that meets a failure keeping its own persisted entry as at HEAD (OR140.a (7): the planned one-entry-per-fault
+split of A.U3.04 is dropped; A-C review fold), the catalog's FRAM band, a tri-state read, blank blocks never marked busy, no `override_pause`, no episodes (the central newest-entry rule), bool-first
 timestamped writes on `utc_now()`, the erase trio, the chip-watch task. **Code map for every assertion of this file**
 (A.U2.09 + A.U3.04): 31/34 → `code("E", "FRAM_STATUS_BYTE")` (46), 36 → FRAM_STATUS_DISAGREE (47), 17/38 →
 FRAM_CRC_FAILED (48), 46 → FRAM_DATA_CRC (49), 63/64 → FRAM_VERIFY (50), 73 → FRAM_COPIES_DIFFER (51), 83 → INIT
 (10), 85/87 → CALLBACK (14), 26/47/58 → UNEXPECTED (23), 48/60/70/81/84 → BAD_ARG (21), w60/w70/w80 → `code("W",
-"FRAM_PAUSED")` (25); 10/11/18/19/20/30/32/33/35/37/39/50/51(HEAD)/57/61/62/71/72/80 become console lines — an
-assertion on one of them becomes "the operation's result and no persisted entry from this layer" (recorded console
-lines through `tests/_recording_print.py` where the test's point is the message); 82/86/88 retire with their handlers.
+"FRAM_PAUSED")` (25); 10/11/18/19/20/30/32/33/35/37/39/50/51(HEAD)/57/61/62/71/72/80 stay persisted entries of the
+layer that logs them at HEAD, each asserted by the catalog name the fold gives it back ([fold F11 M_GEN]; A.U2.09's
+"not allocated (a print after U3)" row no longer applies to them); 82/86/88 retire with their handlers.
 
 ### M.TEST_UNIT.039 Harness, builders, folded constants, names
 - **From**: A.U24.08 (`run()`), A.U24.49 (`make_manager` → `tests/_fram_builders.make_fram_manager()`), A.U24.76
@@ -964,15 +972,15 @@ lines through `tests/_recording_print.py` where the test's point is the message)
 ### M.TEST_UNIT.041 Dual copy, status bytes and torn writes, by catalog code
 - **From**: A.U2.09/A.U3.04 (`:235, 283, 325, 592, 614, 756, 1548, 1576, 2332`), A.U16.08 (`:329-331` comment and the
   owner tag), A.U16.09 (`:1538`, `:1686-1687` re-read against the mixed-pair rule; `:2509-2511` comment; new blank-read
-  L1), A.U16.06 (new tri-state L1), A.U3.04 (new one-entry-per-fault L1), A.U3.09 (new missing-buffer L1), A.U26.43
+  L1), A.U16.06 (new tri-state L1), A.U3.04 dropped (OR140.a (7): every layer keeps its own persisted entry; A-C review
+  fold), A.U3.09 (new missing-buffer L1; its one-entry half dropped with A.U3.04), A.U26.43
   (blast: the seam count the reset-race seed script relies on; M.HW_DEV.060/.063 → TSC, placed here, gap pass G3).
 - **Site**: `tests/test_asy_fram_manager.py:212-350`, `:984-1096`, `:1525-1580`, `:1644-1852`, `:2476-2584`; new
   tests after `:350`.
 - **Change**: every code assertion follows the map above (e.g. `:235` `31` → `code("E", "FRAM_STATUS_BYTE")`, `:614`
-  `73` → FRAM_COPIES_DIFFER); console-only codes (`:816-817` 10/61, `:838-839` 32/72, `:1054` 71, `:1082` 72, `:1673`
-  62, `:1717` 11, `:1761` 18, `:1783` 37, `:1830` 39, `:1850` 57) become "the operation's result, and the log holds only
-  the detecting layer's entry" (for a planted driver failure, the driver's own code; for an injected sentinel failure,
-  no entry). `:329-331` → "# A write torn between block 0 and block 1: both blocks valid (CRC_Pass, both status bytes
+  `73` → FRAM_COPIES_DIFFER); the multi-layer sequences (`:816-817` 10/61, `:838-839` 32/72, `:1054` 71, `:1082` 72,
+  `:1673` 62, `:1717` 11, `:1761` 18, `:1783` 37, `:1830` 39, `:1850` 57) keep HEAD's per-layer entries, each by its
+  catalog name, under the newest-entry rule (an identical newest code spends no slot). `:329-331` → "# A write torn between block 0 and block 1: both blocks valid (CRC_Pass, both status bytes
   IDLE) but / # different, and no generation counter says which is right, so the read fails rather than guesses /
   # (owner, 2026-07-18)." and the test asserts exactly one FRAM_COPIES_DIFFER entry. `:1538` and `:1686-1687` (UNINIT
   planted into one byte): a mixed pair still fails the consistency check (one FRAM_STATUS_DISAGREE) and the idle byte
@@ -981,25 +989,30 @@ lines through `tests/_recording_print.py` where the test's point is the message)
   returns." New: `test_a_never_written_chunk_read_twice_reports_uninitialised_both_times` (both `read_into()` `False`,
   both status bytes still 0x00, no FRAM-log entry; the same after `clear()`);
   `test_read_into_is_tri_state` (driver not initialised → `None`; both blocks with a bad status byte → `False`; a blank
-  chunk → `False`; a failed repair write → `None`); `test_each_planted_fault_adds_exactly_one_entry` (driver not
-  initialised, WEL not set, status byte BUSY, CRC mismatch in block 0 with a good block 1, both blocks invalid,
-  verification mismatch — one operation each, one persisted entry each with the mapped code);
-  `test_after_a_failed_setup_ten_writes_leave_one_slot_and_errcount_ten` (RF171);
-  `test_a_verify_pass_whose_block_read_fails_the_crc_adds_one_entry` (FRAM_DATA_CRC);
-  `test_an_unallocatable_check_length_adds_one_alloc_entry_on_read_and_write` (`code("E", "ALLOC")`);
-  `test_a_missing_chunk_buffer_persists_alloc_once` (A.U3.09);
+  chunk → `False`; a failed repair write → `None`); `test_a_planted_fault_leaves_an_entry_at_every_layer_it_reaches`
+  (driver not initialised, WEL not set, status byte BUSY, CRC mismatch in block 0 with a good block 1, both blocks
+  invalid, verification mismatch — one operation each: the detecting layer's entry first, then each propagating
+  layer's own, in HEAD's order, so the history shows how far the fault reached, OR140.a (7));
+  `test_a_verify_pass_whose_block_read_fails_the_crc_logs_fram_data_crc` (FRAM_DATA_CRC among the entries);
+  `test_an_unallocatable_check_length_logs_alloc_on_read_and_write` (`code("E", "ALLOC")` from the detecting site, the
+  propagating layers' entries after it); `test_a_missing_chunk_buffer_logs_alloc` (A.U3.09's check, per-layer); the
+  one-slot RF171 test (`…ten_writes_leave_one_slot…`) is not written (it needed A.U3.04's single entry);
   `test_one_chunk_write_is_five_driver_transfers_in_seam_order` (A.U26.43): the manager's driver `set_values_sync`
   wrapped by a recording instance attribute; one `_write_chunk()` (one block of the dual-copy write, the first one a
   `write_into()` makes) is exactly five calls, in the order the seed script's `SEAM` 1-5 names them — status byte 1
   BUSY, status byte 2 BUSY, payload+CRC, status byte 1 IDLE, status byte 2 IDLE (address and first byte asserted per
   call) — so a changed write sequence fails here before a flash round.
-- **Resolved**: A.U3.04 and A.U2.09 co-land (same sites); the map above is their joint end state. A.U26.43 asks for its
+- **Resolved**: A.U3.04 is dropped by OR140.a (7) (owner, 2026-10-02: "upstream layers reacting to a downstream fault
+  may encounter following errors … a notion of a traceback and blast radius of an error is actually desirable"); A.U2.09
+  alone renames the sites, and the per-layer entries keep HEAD's order (A-C review fold). A.U26.43 asks for its
   seam-count check "read by `ast` or pinned by an L1 test with a recording fake"; the status writes go through one
   helper called per byte (`asy_fram_manager.py:244`), so an `ast` count of call sites is not the transfer count — the
   L1 form is taken (M.HW_DEV.060/.063 named TSC; gap pass G3).
-- **Unit**: U16 (stages U2 numbers, U3 persist/print split; the seam-count test with A.U26.43 in U26).
-- **Depends**: M.SRC_CORE.082, .084, .085, .088, .090; A.U2.03.
-- **Blast carried by**: SPEC A.4 FRAM error flow → A.U3.04 (SPEC); L2 double read → A.U16.09 (TWIN).
+- **Unit**: U16 (stages U2 numbers; the seam-count test with A.U26.43 in U26).
+- **Depends**: M.SRC_CORE.082, .084, .085, .088, .090 (as the fold reverts A.U3.04's split); A.U2.03; [fold F11 M_GEN]
+  (catalog names for the per-layer codes A.U2.09 left unallocated).
+- **Blast carried by**: SPEC A.4 FRAM error flow keeps its per-layer entries (A.U3.04's text dropped, SPEC); L2 double
+  read → A.U16.09 (TWIN).
 - **Kind**: test
 
 ### M.TEST_UNIT.042 Pause: no override seam; the queued read fault proves the gate
@@ -1050,21 +1063,24 @@ lines through `tests/_recording_print.py` where the test's point is the message)
 - **Kind**: test
 
 ### M.TEST_UNIT.044 Fault-injection, regression and edge tests by catalog code
-- **From**: A.U2.09/A.U3.04 (`:774-790`, `:798-980`, `:1393-1436`, `:1444-1520`), A.U13.08 (`:1409-1436`), A.U24.56
-  (`:886` tag), A.U8C.08 (`:751`).
+- **From**: A.U2.09 (`:774-790`, `:798-980`, `:1393-1436`, `:1444-1520`), A.U3.04 dropped (OR140.a (7): every layer
+  keeps its own persisted entry; A-C review fold), A.U13.08 (`:1409-1436`), A.U24.56 (`:886` tag), A.U8C.08 (`:751`).
 - **Site**: `tests/test_asy_fram_manager.py:720-980`, `:1376-1520`.
 - **Change**: `:751` `wait_for(…, 5)` → `_READ_WAIT_S` (`# @tunable l1.asy_fram_manager_read_wait_s = 5`). `:774-790`
-  → `test_oversized_write_persists_one_bad_arg_entry` (`code("E", "BAD_ARG")` once; the "84 not colliding with clear's
-  80" claim goes: `clear()`'s failure is a console line now). `:886` → "# Intended, accepted behaviour, not a defect
-  (owner, 2026-09-11; SPEC A.4):"; `:909-910` → the read refused (`None`), the driver's write-protected warning the one
-  persisted entry, data intact after unprotect. `:952-975`: write/read/clear each fail, the log holds `code("E",
-  "NOT_INIT")` (driver guard), identical repeats in one slot with `ErrCount` 3. `:1393-1407` → `code("E", "INIT")`.
+  → `test_oversized_write_persists_a_bad_arg_entry` (`code("E", "BAD_ARG")`; the "84 not colliding with clear's 80"
+  claim becomes the two catalog names, both still persisted). `:886` → "# Intended, accepted behaviour, not a defect
+  (owner, 2026-09-11; SPEC A.4):"; `:909-910` → the read refused (`None`), the driver's write-protected warning and the
+  chunk layer's own entry persisted as at HEAD, data intact after unprotect. `:952-975`: write/read/clear each fail, the
+  log holds the driver guard's `code("E", "NOT_INIT")` and each chunk layer's own entry per operation, as at HEAD, under
+  the newest-entry rule. `:1393-1407` → `code("E", "INIT")`.
   `:1410-1436` → `test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run`: each operation fails, the
-  log holds `code("E", "FRAM_BUS_DOWN")` (the driver's status, M.SRC_CORE.104) and no UNEXPECTED entry; its comment →
-  "# A deinitialised bus is reported by the driver as bus-down; the chunk layer fails the operation and prints."
+  log holds `code("E", "FRAM_BUS_DOWN")` (the driver's status, M.SRC_CORE.104) and the chunk layer's own entry, no
+  UNEXPECTED entry; its comment → "# A deinitialised bus is reported by the driver as bus-down; the chunk layer fails
+  the operation and logs its own entry."
 - **Resolved**: —
 - **Unit**: U16 (stages U2, U8C tag, U13 bus-down, U24 tag text).
-- **Depends**: M.SRC_CORE.082-.085, .104.
+- **Depends**: M.SRC_CORE.082-.085, .104 (as the fold reverts A.U3.04's split); [fold F11 M_GEN] (catalog names for
+  the per-layer codes).
 - **Blast carried by**: Part N row → A.U8.01 (SPEC).
 - **Kind**: test
 
@@ -1085,19 +1101,22 @@ lines through `tests/_recording_print.py` where the test's point is the message)
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.046 The status-byte errno spread becomes one entry per event
-- **From**: A.U2.09 (the `err=` arithmetic goes), A.U3.04 (status-byte read/write failures print).
+### M.TEST_UNIT.046 The status-byte errno spread: one code per condition, every layer's entry kept
+- **From**: A.U2.09 (the `err=` arithmetic goes), A.U3.04 dropped (status-byte read/write failures keep persisting,
+  OR140.a (7); A-C review fold).
 - **Site**: `tests/test_asy_fram_manager.py:2336-2470`.
-- **Change**: banner → "# Status-byte failures, branch by branch: the detecting layer persists one entry (Part
-  C.7.1); a propagated failure prints." The six tests keep their injection points and become: idle-mark write failure on
-  byte 1 / byte 2 → `write()` `False`, no persisted entry (the injected report persisted nothing; the chunk layer
-  prints); busy-mark byte-2 read failure → read `None`, no entry; byte 2 neither idle nor uninit (`0x7F`) → exactly one
-  `code("E", "FRAM_STATUS_BYTE")`; busy-mark byte-2 write failure → no entry; clear's byte-2 failure → `clear()`
-  `False`, no entry. Names drop the HEAD numbers (`…reports_errno_19` → `…fails_the_write_without_a_second_entry`, …).
-- **Resolved**: the per-byte numbers they pinned are retired by A.U2.09 (one code per condition); one-entry-per-event
-  (OR56.a (1)) is the replacement guard.
+- **Change**: banner → "# Status-byte failures, branch by branch: one code per condition (Part C.7.1); each layer the
+  failure reaches keeps its own entry." The six tests keep their injection points and their HEAD entries, each asserted
+  by the condition's catalog name instead of its per-byte number: idle-mark write failure on byte 1 / byte 2 → `write()`
+  `False` with the chunk layer's status-byte write entry; busy-mark byte-2 read failure → read `None` with the status-byte
+  read entry; byte 2 neither idle nor uninit (`0x7F`) → `code("E", "FRAM_STATUS_BYTE")`; busy-mark byte-2 write failure
+  → the status-byte write entry; clear's byte-2 failure → `clear()` `False` with clear's entry. Names drop the HEAD
+  numbers (`…reports_errno_19` → `…logs_the_status_byte_write_failure`, …).
+- **Resolved**: the per-byte numbers they pinned are retired by A.U2.09 (one code per condition); the planned print-only
+  split (A.U3.04, read from OR56.a (1)) is dropped by OR140.a (7), so the entries stay.
 - **Unit**: U16.
-- **Depends**: M.SRC_CORE.084, .085.
+- **Depends**: M.SRC_CORE.084, .085 (as the fold reverts A.U3.04's split); [fold F11 M_GEN] (catalog names for the
+  status-byte read/write and clear codes).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -1368,30 +1387,32 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.060 Reader construction and init: catalog numbers, the init rungs, restart state
-- **From**: A.U24.67 (`:826-827` comment), A.U2.12 (`:862`, `:897`), A.U3.05 (`:875`), A.U10.R01 + A.U15.R04
+- **From**: A.U24.67 (`:826-827` comment), A.U2.12 (`:862`, `:897`), A.U3.05 dropped (OR140.a (7): `:875` keeps the
+  reader's own entry beside the store's; A-C review fold), A.U10.R01 + A.U15.R04
   (`_init_failed()`/`_init_done()`; config-read failure runs no rung), A.U15.34 (new restart L1), A.U10.10.
 - **Site**: `tests/test_asy_isl29125_driver.py:825-923`.
 - **Change**: `:826-827` → "# Requirement 20, satisfied here or nowhere: every generated device's object graph is built
   against a fake holding no ISL registers." The three construction tests drop `all_timers.clear()`.
   `test_init_returns_false_and_logs_errno_10…` → `…logs_an_init_error_and_reinitialises_the_controller`: `errors()[-1]
   == code("E", "INIT")` and one `code("W", "BUS_RECOVERY")` (`_init_failed()`'s controller rung on `_recovery_bus`).
-  `…errno_12_when_the_config_is_unreadable` → `…_config_is_unreadable_logs_in_the_config_store_only`: the ISL29125 log
-  is empty, `CFGMGR_ISL29125` holds exactly one `code("E", "CFG_NOT_VALID")`, `reader._recovery_bus.recoveries` is
-  unchanged (no rung). `…errno_13_when_applying_the_config_raises` → `…logs_chip_set…`: `code("E", "CHIP_SET")` then
+  `…errno_12_when_the_config_is_unreadable` → `…_config_is_unreadable_logs_in_both_layers`: the ISL29125 log's newest
+  entry is its own config-read code (HEAD's 12, by the catalog name the fold gives it back), `CFGMGR_ISL29125` holds
+  `code("E", "CFG_NOT_VALID")`, `reader._recovery_bus.recoveries` is unchanged (no rung). `…errno_13_when_applying_the_config_raises` → `…logs_chip_set…`: `code("E", "CHIP_SET")` then
   `code("W", "BUS_RECOVERY")`. `test_init_leaves_no_state_behind_after_a_failed_attempt` holds. New (A.U15.34):
   `test_a_restart_resets_the_output_filter` (filter 0.5 on, two samples stored, `_init_isl()` again: the next stored
   `Lux` equals that cycle's raw lux) and `test_an_edge_seen_before_a_restart_is_not_credited_after_it` (`_irq_fired =
   True`, `_init_isl()`, then a periodic-led switching cycle counts one periodic-only decision).
 - **Resolved**: —
-- **Unit**: U15 (stages U2 numbers, U3 console, U10 ladder).
+- **Unit**: U15 (stages U2 numbers, U10 ladder).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.074, M.SRC_CORE.037.
+- **Depends**: M.SRC_SENS.074, M.SRC_CORE.037 (as the fold reverts A.U3.05); [fold F11 M_GEN] (the restored code's name).
 - **Blast carried by**: SPEC M.1.2 restart table → A.U15.34 (SPEC).
 - **Kind**: test
 
 ### M.TEST_UNIT.061 The read loop and the streak: ladder, give-up, pre-sync cycles
 - **From**: A.U10.R01 + A.U15.R04 (`:953`, `:2539` re-derived; new participant-rung L1), A.U10.44 (`_read_loop`),
-  A.U15.43 (the loop returns `None`), A.U2.06 + A.U3.03 (`:1056` comment; RF175 brownout entry), A.U10.35
+  A.U15.43 (the loop returns `None`), A.U2.06 (`:1056` comment), A.U3.03 dropped (OR140.a (7): the streak entry and the
+  brownout's two entries stay; A-C review fold), A.U10.35
   (`read_event` → `_read_event`), A.U24.08 (`_cancel_and_join` → `cancel`), A.U10.06 + GAP-15 lead ruling (pre-sync
   L1; direct `_error_check()` callers sync first).
 - **Site**: `tests/test_asy_isl29125_driver.py:926-991`, `:1039-1057`, `:1597-1612`, `:2535-2592`.
@@ -1402,12 +1423,13 @@ session lock names, and the fake's rp2 probe/scan semantics.
     `…climbs_the_ladder_then_gives_up`: three failed cycles return `True`, the fourth `False`; the 2nd failure ran the
     participant rung once (`_reapply_configuration()` on the NAKed bus: one `code("E", "CHIP_SET")`, no
     `DEVICE_RECOVERY`), the 3rd the bus rung once (`reader._recovery_bus.recoveries` stepped by one, one
-    `code("W", "BUS_RECOVERY")`), and the log ends `code("E", "GIVE_UP")`; no streak entry per cycle.
+    `code("W", "BUS_RECOVERY")`), and the log ends `code("E", "GIVE_UP")`; each failed cycle also keeps the streak's own
+    entry (by its catalog name), as at HEAD.
   - `test_a_dark_room_never_increments_the_error_counter` and `test_brownout_does_not_feed_the_leaky_bucket…` call
     `set_utc_valid()` first (flag reset in `finally`): both call `_error_check(results)` directly, where a pre-sync
-    `TS` would count. `:1056` → `assert errors(counters) == []  # a dark cycle is no failure; the streak itself only
-    prints`. The brownout-bucket test adds: after the brownout cycle the log holds exactly one entry,
-    `code("W", "ISL_BROWNOUT")` (A.U3.03 RF175).
+    `TS` would count. `:1056` → `assert errors(counters) == []  # a dark cycle is no failure`. The brownout-bucket test
+    keeps HEAD's two entries by name: `code("W", "ISL_BROWNOUT")` from the driver, then the streak's own entry from the
+    all-None sample (each layer the brownout reaches logs, OR140.a (7)).
   - `test_the_read_loop_stores_healthy_samples_and_gives_up…` (`max_module_error=2`): drives `reader._read_loop()`
     (its `_read_event.wait` patched with the inline ignore), asserts the coroutine returned `None`; the two healthy
     cycles reach the store and publish; the 2nd failed cycle ran the participant rung (the healthy fake takes the
@@ -1427,9 +1449,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U15.R04's "see the re-apply at the 2nd failure" and A.U10.R01's rung order give the expected logs
   above; GAP-15's per-reader condition (M.SRC_SENS.083: `results[0] is None and not self._unsettled_cycle`) is what
   the two new cycles pin.
-- **Unit**: U15 (stages U3 console streak, U10 ladder/`_read_loop`/`TS`).
+- **Unit**: U15 (stages U10 ladder/`_read_loop`/`TS`).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037.
+- **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037 (as the fold reverts A.U3.03); [fold F11 M_GEN] (the
+  streak's catalog entry).
 - **Blast carried by**: the mid-operation re-apply case → M.TEST_UNIT.238 (L1) and M.TWIN.102 (L2); twin Run 5c holds →
   A.U15.R04 (SCR).
 - **Kind**: test
@@ -1471,8 +1494,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.063 Filter and store: the cached coefficient, the captured span
-- **From**: A.U15.22 (3) (`:1127-1146` holds; `:1149-1175` goes; the store reads no config), A.U3.05 (`:1168`, gone
-  with its test), A.U11.24 (`:1141` `write_config`), A.U24.61 (`:1141` `cfg_schema`), A.U36.506 (read: the `None`
+- **From**: A.U15.22 (3) (`:1127-1146` holds; `:1149-1175` goes; the store reads no config), A.U3.05 dropped (OR140.a
+  (7); `:1168` goes with its test for A.U15.22 (3)'s reason anyway; A-C review fold), A.U11.24 (`:1141` `write_config`), A.U24.61 (`:1141` `cfg_schema`), A.U36.506 (read: the `None`
   cases are A.U15.22's), adherence (`:1847-1872`'s injection point no longer exists).
 - **Site**: `tests/test_asy_isl29125_driver.py:1127-1172`, `:1847-1872`.
 - **Change**: `test_output_filter_applies_only_when_filtcoeff_is_positive` holds; its `:1141` line →
@@ -1493,18 +1516,23 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.064 The settle window: the bound's reason, a module `time`
-- **From**: A.U15.22 (`:1291-1310` comment), A.U10.30 (`:1301, 1306` `__import__("time")`), A.U0.07.
+### M.TEST_UNIT.064 The settle window: the bound's reason
+- **From**: A.U15.22 (`:1291-1310` comment), A.U10.30 (`:1301, 1306` `__import__("time")`) dropped (OR141.a (2),
+  OR142.a (3): this file is one of the host/test sites SPEC F.1 lists by name and the owner judges harmless — the
+  loader stays, no change; A-C review fold), A.U0.07 (no function-level import statement remains at these lines).
 - **Site**: `tests/test_asy_isl29125_driver.py:1269-1310`.
 - **Change**: `:1292-1293` → "# The bound keeps the loop from starving; past it the cycle is discarded (see
-  test_an_unsettled_cycle_is_no_failure)."; the four `__import__("time")` calls read the module-level `time`
-  (`reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500)`). `test_no_sample_is_reported_during_the_settle_window`
-  holds (its `asyncio.sleep_ms` swap stays local and restored in `finally`; the shared `FastAsyncSleep` patches
-  `sleep_ms` as HEAD's did).
-- **Resolved**: —
-- **Unit**: U10 (the dynamic import, A.U10.30) and U15 (the comment).
+  test_an_unsettled_cycle_is_no_failure)."; the four `__import__("time")` calls at `:1301, 1306` stay as written (an F.1
+  named site). `test_no_sample_is_reported_during_the_settle_window` holds (its `asyncio.sleep_ms` swap stays local and
+  restored in `finally`; the shared `FastAsyncSleep` patches `sleep_ms` as HEAD's did).
+- **Resolved**: A.U10.30's rewrite of this file's dynamic site is dropped by OR141.a (2)/OR142.a (any change that
+  rewrites a named loader to remove its dynamic import is dropped); the function-level-import moves elsewhere in the file
+  are unaffected.
+- **Unit**: U15 (the comment).
 - **Depends**: M.SRC_SENS.079.
-- **Blast carried by**: `tests_scripts/test_import_placement.py` `_PENDING` loses the two entries → A.U0.07 (TSC).
+- **Blast carried by**: SPEC F.1's named list keeps `tests/test_asy_isl29125_driver.py` and the dynamic-import check
+  allows it by name; `tests_scripts/test_import_placement.py` treats these two lines as that named site, not as `_PENDING`
+  entries → A.U10's F.1 list and check (TSC, SPEC).
 - **Kind**: test
 
 ### M.TEST_UNIT.065 Auto-range: catalog numbers, the parked INT, the dead-line re-arm, the dwell horizon
@@ -1802,8 +1830,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.077 The unwritable config file
-- **From**: A.U10.10 (`:3284`), A.U2.07 (`:3293` 4 → CFG_FILE_WRITE), A.U3.05 + A.U2.12 (`:3292` "12 not in"), A.U24.07
-  (`:3280`).
+- **From**: A.U10.10 (`:3284`), A.U2.07 (`:3293` 4 → CFG_FILE_WRITE), A.U2.12 (`:3292` "12 not in"), A.U3.05 dropped
+  (OR140.a (7); nothing here depended on it), OR136.a (1) (the setup write of the absent file is the CFG_FILE_WRITE
+  entry) — A-C review fold, A.U24.07 (`:3280`).
 - **Site**: `tests/test_asy_isl29125_driver.py:3278-3293`.
 - **Change**: built through `_make_i2c()`, `run(reader.setup())` (no `all_timers.clear()`); `:3292` → the ISL29125 log
   has `ErrCount == 0`; `:3293` → `CFGMGR_ISL29125`'s newest entry is `code("E", "CFG_FILE_WRITE")`. Comment `:3279` →
@@ -1820,8 +1849,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U17.27 (`:31-35` `make_driver()` sets the values after construction), A.U31.13 (`neopixel_dt` →
   `_frame_ms`), GAP-5 (M_SRC_SENS: the `_overlay_*` stem), A.U10.35 (`driver.pixel` ×35 via `_pixel()`), A.U35.13
   (`DrivenTime` replaces the 36 real sleeps), A.U8C.11 (tags on those sleeps), A.U35.12 (`:41`), A.U24.08 (`run`,
-  `_cancel_all` `:45-51`), A.U22.04 (`:12`, `:21` typing), A.U10.37/A.U10.38 (`crc_checks.CRC_Base`), A.U10.10 +
-  GAP-17 lead ruling (AC_NOTES 38: `NeopixelDriver` gets an `initialized` gate), A.U5.02.
+  `_cancel_all` `:45-51`), A.U22.04 (`:12`, `:21` typing), A.U10.37/A.U10.38 (`crc_checks.CRC_Base`), A.U10.10,
+  GAP-17 lead ruling (AC_NOTES 38: an `initialized` gate on `NeopixelDriver`) dropped (routine settlement
+  `initialized-flags`, AC_NOTES 52; A-C review fold), A.U5.02.
 - **Site**: `tests/test_asy_neopixel_driver.py:1-52`.
 - **Change**: imports `from _async_harness import run, cancel`, `from _driven_time
   import DrivenTime`, `from _error_codes import code`, `from asy_print_log import LogConfig`; TYPE_CHECKING drops
@@ -1841,15 +1871,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
   tags"). A.U10.35's mechanical `led_overl_*` names vs M.SRC_SENS.023's `_overlay_*`: the product's (GAP-5).
 - **Unit**: U35 (driven time; stages U9 arbitration, U10 names/`setup()`, U17 fixed values, U22 typing, U24 harness,
   U31 `_frame_ms`).
-- **Depends**: M.SRC_SENS.021, .023, .024; TEST_HELP `tests/_driven_time.py` (A.U35.10), `tests/neopixel.py` (A.U24.25);
-  the `initialized` gate on `NeopixelDriver` (GAP, see "Gaps for other clusters").
+- **Depends**: M.SRC_SENS.021, .023, .024; TEST_HELP `tests/_driven_time.py` (A.U35.10), `tests/neopixel.py` (A.U24.25).
 - **Blast carried by**: Part N `l1.asy_neopixel_driver_*` rows withdrawn → A.U35.13 (SPEC); the same IDs' other site
   `tests/test_neopixel_wifi_integration.py` → M.TEST_UNIT in that file (A.U8C.35 vs A.U35.13).
 - **Kind**: test
 
 ### M.TEST_UNIT.079 Overlay and logger tests: private state, the gate, the FRAM-backed reboot
 - **From**: A.U10.18 (`led_overl_lock` → `_overlay_lock`), A.U10.35/GAP-5 (`led_overl_on` → `_overlay_on`), A.U22.01
-  (existing counts hold: one more frame per task start), A.U10.10 (`:453-464`), GAP-17 lead ruling, A.U5.02 (`:495`,
+  (existing counts hold: one more frame per task start), A.U10.10 (`:453-464`), GAP-17 lead ruling dropped (routine
+  settlement `initialized-flags`, AC_NOTES 52: no `initialized` on `NeopixelDriver`; A-C review fold), A.U5.02 (`:495`,
   `:504` `fram=` → `log=`), A.U16.19 (`:475`, `:479` `override_pause` goes), A.U11.S03 (hold: the `arg-type` ignore),
   A.U24.39 (`:667`), A.U35.13.
 - **Site**: `tests/test_asy_neopixel_driver.py:54-177`, `:448-524`, `:648-674`.
@@ -1859,8 +1889,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
     (it pointed at a module docstring this file does not have). `test_repeated_on_is_idempotent…` holds (its count is
     relative to a snapshot taken after the tasks started).
   - `test_pr_setup_runs_before_any_ramp_is_committed` → `test_setup_initialises_the_logger_and_the_driver_before_any_task`:
-    a driver built with `NeopixelDriver(0)` (no builder) has `pr.initialized is False` and `initialized is False`;
-    `run(driver.setup()) is True`; both are `True` before any task starts (no task calls `pr.setup()` any more).
+    a driver built with `NeopixelDriver(0)` (no builder) has `pr.initialized is False` (the logger's own flag);
+    `run(driver.setup()) is True`; `pr.initialized` is `True` before any task starts (no task calls `pr.setup()` any
+    more). The driver itself carries no `initialized` flag (nothing in the product reads one).
   - `_FakeFramChunk.write_into(buf)`/`read_into(buf)` lose `override_pause`; the reboot test builds
     `NeopixelDriver(0, log=LogConfig(fram, 10, None))` (the `arg-type` ignore and its reason stay) and calls
     `await driverN.setup()` in place of `pr.setup()` (the `:498-499` comment goes).
@@ -1870,7 +1901,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   - `test_on_off_toggle_satisfy_led_control_protocol_signatures` → `test_on_off_toggle_drive_the_pixel_through_the_overlay_task`
     (A.U24.39): with the tasks started under driven time, `on()` records the overlay colour, `off()` `(0, 0, 0)`,
     `toggle()` the overlay colour again.
-- **Resolved**: A.U10.10's "`pr.initialized` after task start → after `setup()`" and the GAP-17 gate land in one test.
+- **Resolved**: A.U10.10's "`pr.initialized` after task start → after `setup()`" lands in this test; the GAP-17 gate is
+  not added (routine settlement `initialized-flags`).
 - **Unit**: U10 (stages U5 `log=`, U16 fake keyword, U24 assertion).
 - **Depends**: M.SRC_SENS.023, .024, .025; M.SRC_CORE.090 (`get_chunk()`'s parameters, which the fake manager mirrors).
 - **Blast carried by**: per-class readiness L1 → M.TEST_UNIT in `tests/test_readiness_gates.py` (A.U10.22).
@@ -1879,16 +1911,18 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.080 Signal arbitration: refused at once while busy, a bounded internal wait
 - **From**: A.U9.02 (`:333-346` holds, comment; `:348-372` flips; `:319-331`, `:374-402`, `:409-423` hold; new L1), A.U9.04
   (`:229-264` hold; new deadline L1), A.U9.05 (`:185-312`, `:425-446` hold; new cancel L1), A.U22.01 (new restart L1
-  (1)-(3)), A.U35.13 (`:290` "needs real time", `:305`, `:395`).
+  (1)-(3)), A.U35.13 (`:290` "needs real time", `:305`, `:395`); OR140.a (5) (internal requests wait then queue,
+  external ones are refused with a retry-later message; A-C review fold).
 - **Site**: `tests/test_asy_neopixel_driver.py:180-446`; new tests after `:446`.
 - **Change**:
   - `:337-338` comment → "# No task started: led_signal() decides on _start_signal_event alone, with no await."
   - `test_led_signal_returns_true_while_a_previous_request_is_already_animating` →
     `test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued`: mid-ramp
     `driver._start_signal_event.is_set()`, `led_signal(0, 10, 0, 0.1) is False`, and after the ramp no frame with a
-    green component exists; its `:349-355` comment block → "# The busy signal is _start_signal_event, set for the
-    whole ramp; an external request while it is set is refused, never queued." The `start_signal_lock`/
-    `ext_start_signal` asserts go.
+    green component exists; the refusal's console line (captured with `record_prints()`) is M.SRC_SENS.026's refusal
+    text, which tells the caller to retry later (OR140.a (5)); its `:349-355` comment block → "# The busy signal is
+    _start_signal_event, set for the whole ramp; an external request while it is set is refused, never queued." The
+    `start_signal_lock`/`ext_start_signal` asserts go.
   - `test_request_signal_low_freq_boundary_never_divides_by_zero` (`freq=1`, `_frame_ms` 1000) and the fractional-`t`
     and large-`t` tests advance the virtual clock by the ramp's own length; their "needs real time" comments go; the
     `>= 30` count becomes `== 31` (15 frames per direction at 20 Hz plus the final black, hand-computed from
@@ -1910,8 +1944,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
     `tests/test_system_service.py`'s supervisor tests build it: one restart, SYSTEM's newest entry `code("E",
     "TASK_RAISED")` once).
 - **Resolved**: —
-- **Unit**: U9 (stages U22 restart cases, U35 driven time).
-- **Depends**: M.SRC_SENS.026, .027, .028, .025; M.SRC_CORE (supervisor task-ended code, A.U3.06).
+- **Unit**: U9 (stages U22 restart cases, U24 `record_prints()` for the refusal line, U35 driven time).
+- **Depends**: M.SRC_SENS.026 (its refusal text as the fold amends it), .027, .028, .025; M.SRC_CORE (supervisor
+  task-ended code, A.U3.06); M.TEST_HELP.050 (`record_prints()`).
 - **Blast carried by**: `tests/test_notification_neopixel_integration.py:133-154` flip → M.TEST_UNIT in that file
   (A.U9.02); L2 restart case → A.U22.01 (TWIN).
 - **Kind**: test
@@ -2030,19 +2065,22 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.086 Shared history: catalog numbers, one slot per repeat, config reads fail in the store
 - **From**: A.U2.17 (`:619`, `:686`, `:720`), A.U3.01 (`:696-720` `[10, 10]` → one slot, `ErrCount == 2`), A.U3.05
-  (`:665-686` breaks the real config store), A.U22.02/A.U23.37 (`:682` goes), A.U9.10 (`:689-693` stays), A.U10.10.
+  (`:665-686` breaks the real config store; its print-only half dropped, OR140.a (7): NOTIFY keeps its own entry; A-C
+  review fold), A.U22.02/A.U23.37 (`:682` goes), A.U9.10 (`:689-693` stays), A.U10.10.
 - **Site**: `tests/test_asy_notification_service.py:592-720`.
 - **Change**: the in-scenario `pr.setup()` lines go (the builder ran `setup()`).
   `test_signal_value_failure_and_own_time_callback_failure_share_one_history`: `ErrCount == 2`, the ring holds
   `code("E", "SOURCE")` then `code("E", "CALLBACK")`. `test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read`
-  → `…threshold_config_cannot_be_read_logs_in_the_config_store`: the patched `get_float_values` goes; the test pops
-  `"WarnCO2"` from `service.cfgmgr._cache` (a missing key in the real store); `_check_one()` is `False`; the NOTIFY log
-  is empty; `CFGMGR_NOTIFY` holds one `code("E", "CONTRACT")`; `:682` goes. `test_two_signals_failures_share_one_errno…`
+  → `…threshold_config_cannot_be_read_logs_in_both_layers`: the patched `get_float_values` goes; the test pops
+  `"WarnCO2"` from `service.cfgmgr._cache` (a missing key in the real store); `_check_one()` is `False`; the NOTIFY log's
+  newest entry is its own config-read code (HEAD's 11, by the catalog name the fold gives it back); `CFGMGR_NOTIFY` holds
+  `code("E", "CONTRACT")`; `:682` goes. `test_two_signals_failures_share_one_errno…`
   → `…share_one_code_and_one_slot`: `ErrCount == 2`, the newest entry `code("E", "SOURCE")` and one slot for both
   (the names are in the console lines). `test_the_defaulted_signal_sink…` holds.
 - **Resolved**: —
 - **Unit**: U3 (stages U2 codes, U22 attribute removal).
-- **Depends**: M.SRC_SENS.034, .035; M.SRC_CORE (`_get_values()` → CONTRACT on a `KeyError`).
+- **Depends**: M.SRC_SENS.034, .035 (as the fold reverts A.U3.05); M.SRC_CORE (`_get_values()` → CONTRACT on a
+  `KeyError`); [fold F11 M_GEN] (the restored NOTIFY code's name).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -2128,8 +2166,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: twin `:349-390` and bench `:115-141` → A.U9.09 (TWIN, HW_BENCH).
 - **Kind**: test
 
-### M.TEST_UNIT.091 Own-config read failures print; the next sleep in milliseconds
-- **From**: A.U3.05 + A.U3.02 (`:1350-1407` rewritten: the store logs, NOTIFY prints), A.U31.14 (`:1256-1279`
+### M.TEST_UNIT.091 Own-config read failures log in both layers; the next sleep in milliseconds
+- **From**: A.U3.02 (`:1350-1407` rewritten to the central slot rule), A.U3.05 dropped (OR140.a (7): NOTIFY keeps its
+  own entry beside the store's; A-C review fold), A.U31.14 (`:1256-1279`
   `_next_sleep_ms`), A.U8C.12 (`:1266` `_ELAPSED_STIMULUS_MS`), A.U8C2.02 (`:1268` `_NEXT_SLEEP_MIN_S`), A.U35.13
   (`:1245`), A.U10.06 (`:1439` needs a sync), A.U24.49 (`_FastAsyncSleep`).
 - **Site**: `tests/test_asy_notification_service.py:1232-1279`, `:1350-1440`.
@@ -2140,16 +2179,18 @@ session lock names, and the fake's rp2 probe/scan semantics.
   59000`), `_NEXT_SLEEP_MIN_MS < service._next_sleep_ms(60.0, t0) < 60000`; the local `import time` goes (module level).
   `…floors_at_point_one…` → `test_next_sleep_ms_floors_at_the_minimum_when_elapsed_exceeds_the_interval`: `== 100`.
   The three config-failure tests keep popping `"FlashBri"` from the real store's cache and run under `FastAsyncSleep()`
-  (shared, both sleeps): `…persists_one_slot` asserts the task still runs, the NOTIFY log is empty, and
-  `CFGMGR_NOTIFY` has `ErrCount > 5` with exactly one `code("E", "CONTRACT")` in its ring; `…persists_the_config_read_warning_afresh_after_a_good_read`
-  → `test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slot` (the store's ring holds one
-  CONTRACT entry, `ErrCount` counts both runs; the HEAD "afresh" claim is retired by the newest-entry rule, OR35.b);
+  (shared, both sleeps): `…persists_one_slot` asserts the task still runs, the NOTIFY log holds its own config-read
+  code (HEAD's 11, by the catalog name the fold gives it back) in one slot with `ErrCount > 5`, and `CFGMGR_NOTIFY`
+  likewise one `code("E", "CONTRACT")` slot; `…persists_the_config_read_warning_afresh_after_a_good_read`
+  → `test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slot` (each of the two rings holds one
+  slot, `ErrCount` counts both runs; the HEAD "afresh" claim is retired by the newest-entry rule, OR35.b);
   `…self_heals_in_place…` calls `set_utc_valid()` first (flag reset in `finally`) so `ts_after is not None` still
   proves a stored cycle.
 - **Resolved**: A.U8C2.02's `next_sleep_min_s = 59.0` follows A.U31.14's millisecond return: the constant and its row ID
   take the ms unit (A.U10.43's suffix rule) — agent decision, OR2.c list.
-- **Unit**: U31 (stages U3 log path, U8 tags, U10 sync).
-- **Depends**: M.SRC_SENS.034, .037; M.SRC_CORE.032.
+- **Unit**: U31 (stages U3 slot rule, U8 tags, U10 sync).
+- **Depends**: M.SRC_SENS.034, .037 (as the fold reverts A.U3.05); M.SRC_CORE.032; [fold F11 M_GEN] (the restored
+  NOTIFY code's name).
 - **Blast carried by**: Part N row ID `l1.asy_notification_service_next_sleep_min_ms` → GAP (SPEC, see "Gaps").
 - **Kind**: test
 
@@ -2407,7 +2448,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U24.49 (`make_ntp_reply()` `:968-977` → `tests/_ntp_frames.py`), A.U24.01 (`:965` `_NTP_EPOCH_DELTA` →
   `_src_const.NTP_EPOCH_DELTA`; `:1095, 1104, 1113` → `src_const`), A.U24.42 (`:1024-1027` asserts the hand-computed
   time), A.U14.26 (`:1030-1047` goes; new structural and `MemoryError` L1; `:1073-1074` comment), A.U8.09 (the window
-  mirrors, now source reads), A.U24.24 (blast: the RTC read-back at `:987-989`; M_TEST_HELP GAP-T3, gap pass G3).
+  mirrors, now source reads), A.U24.24 (blast: the RTC read-back at `:987-989`; M_TEST_HELP GAP-T3, gap pass G3);
+  routine settlement `ntp-malformed-text` (AC_NOTES 52: the allocation failure logs the shared ALLOC 20, errno 69 stays
+  "malformed" only; A-C review fold).
 - **Site**: `tests/test_asy_ntp_client.py:956-1155`.
 - **Change**: the local `_NTP_EPOCH_DELTA`/`make_ntp_reply()` go (imported). `test_parse_ntp_reply_arbitrary_binary_content_never_raises`
   → `…decodes_arbitrary_bytes_as_their_transmit_timestamp`: `bytes(range(48))` gives `(2057, 6, 14, 17, 21, 47, …)`
@@ -2417,7 +2460,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `src_const("src/asy_ntp_client.py", "_NTP_MAX_PLAUSIBLE_UNIX_TIME") < 2**32`. New
   `test_an_allocation_failure_while_parsing_returns_none` (`asy_ntp_client.time` replaced by a stand-in whose `gmtime()`
   raises `MemoryError("injected for the parse path")` — worded clear of the gate's markers — restored in `finally`:
-  `None` and one `code("E", "NTP_MALFORMED")`). `:1073-1074` → "# NTP's 32-bit seconds-since-1900 field wraps in 2036,
+  `None` and one `code("E", "ALLOC")` — the shared allocation code; `NTP_MALFORMED` stays the malformed-reply code). `:1073-1074` → "# NTP's 32-bit seconds-since-1900 field wraps in 2036,
   unrelated to the device clock, which runs to 2106 (Part F.1); a post-2036 server sends a small wrapped value." The
   floor/ceiling tests read `_FLOOR`/`_CEILING = src_const("src/asy_ntp_client.py", "_NTP_MIN_PLAUSIBLE_UNIX_TIME"/
   "_NTP_MAX_PLAUSIBLE_UNIX_TIME")` (their "compiled away, hardcoded" comments go).
@@ -2429,7 +2472,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   sites rather than gaining tags.
 - **Unit**: U14 (stages U24 shared frames, source reads and the RTC read-back with M.TEST_HELP.021).
 - **Depends**: M.SRC_NET.042, .049; TEST_HELP `_ntp_frames.py`, `_src_const.NTP_EPOCH_DELTA`, M.TEST_HELP.021.
-- **Blast carried by**: catalog 69 text → M_SRC_NET gap (GEN).
+- **Blast carried by**: — (catalog 69 keeps its "malformed" text; the allocation failure uses the shared ALLOC entry).
 - **Kind**: test
 
 ### M.TEST_UNIT.105 Sync failure and success: codes, mirrors, one slot per repeat
@@ -2625,16 +2668,18 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U3.02 (`:2314-2420` rewritten to the central rule), A.U2.15 (codes 11 → console, 12 → `NTP_DNS`, 13 → gone,
   14 → `NTP_IMPLAUSIBLE`, 15 → `NTP_MALFORMED`, 21 → `NTP_NO_REPLY`, w2 → `NTP_UNSYNC_REPLY`), A.U3.05 (`:2340-2347`
   breaks the real store), M.SRC_NET.048 (`:2360-2362` goes), A.U28.28 (1) (`:2336` B905 noqa), A.U5.10 (`:2321`
-  constructor), A.U8C.13 (`:2366`), A.U10.10 (`_twice_one_slot`'s `pr.setup()`).
+  constructor), A.U8C.13 (`:2366`), A.U10.10 (`_twice_one_slot`'s `pr.setup()`); A.U3.05's print-only half dropped (OR140.a
+  (7): the NTP log keeps its own entry; A-C review fold).
 - **Site**: `tests/test_asy_ntp_client.py:2314-2436`.
 - **Change**: section comment → "# Part C.7.2: never give up, back off while unsynced, one ring slot per repeated code
   (the central newest-entry rule)". `test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes` builds
   `NTPClient(asyncio.Lock(), _net_ok, _no_dns, NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, _RETRY_S,
   _RETRY_MAX_S), cfg_path=…)` and expects `(_RETRY_S, _RETRY_MAX_S, _RETRY_S, 0)` (the source values 10/600).
   `_twice_one_slot()` drops its `pr.setup()` and its `noqa` (the per-file B905 entry carries the reason).
-  `test_missing_config_failure_is_counted_twice_but_persisted_once` → `…logs_in_the_config_store_only`: the real store
-  broken (`_make_invalid_cfg_client()`); the NTP log is empty, `CFGMGR_NTP` holds one `code("E", "CFG_NOT_VALID")` slot
-  with `ErrCount == 4` (the attempt reads the store twice, M.SRC_NET.046). The DNS, no-reply, implausible, malformed and unsync tests expect `(2, [code("E", "NTP_DNS")],
+  `test_missing_config_failure_is_counted_twice_but_persisted_once` → `…logs_in_both_layers_one_slot_each`: the real
+  store broken (`_make_invalid_cfg_client()`); the NTP log holds its own config-read code (HEAD's 11, by the catalog name
+  the fold gives it back) in one slot, `ErrCount` counting both attempts, and `CFGMGR_NTP` holds one `code("E",
+  "CFG_NOT_VALID")` slot with `ErrCount == 4` (the attempt reads the store twice, M.SRC_NET.046). The DNS, no-reply, implausible, malformed and unsync tests expect `(2, [code("E", "NTP_DNS")],
   ["E"])`, `(2, [NTP_NO_REPLY], ["E"])`, `(2, [NTP_IMPLAUSIBLE], …)`, `(2, [NTP_MALFORMED], …)`, `(2,
   [code("W", "NTP_UNSYNC_REPLY")], ["W"])`; `# @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100` on the
   no-reply timing. `test_invalid_server_address_is_counted_twice_but_persisted_once` is removed with the construction
@@ -2643,11 +2688,47 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `wrn_s(…, wrnno=n)`: two slots, types `["E", "W"]`). `test_every_distinct_failure_code_keeps_its_own_slot_within_one_episode`
   → `test_distinct_codes_each_keep_a_slot` over the six live NTP codes through `client.pr`. The backoff-restart test
   holds.
-- **Resolved**: A.U3.05 moves the missing-config line to the console (M.SRC_NET.050); the test's goal — a repeated
-  failure is counted, not re-persisted — moves to the config store that persists it.
+- **Resolved**: the test's goal — a repeated failure is counted, not re-persisted — holds in both layers under the
+  newest-entry rule; A.U3.05's console move (M.SRC_NET.050) is dropped by OR140.a (7), and A.U2.15's "11 → console"
+  with it.
 - **Unit**: U3 (stages U2 codes, U5 constructor, U18 removal and keys).
-- **Depends**: M.SRC_NET.046-.050; M.SRC_CORE (`_get_values()` codes, newest-entry rule).
+- **Depends**: M.SRC_NET.046-.050 (.050 as the fold reverts A.U3.05); M.SRC_CORE (`_get_values()` codes, newest-entry
+  rule); [fold F11 M_GEN] (the restored NTP code's name).
 - **Blast carried by**: `pyproject.toml` B905 entry → A.U28.28 (TOOL).
+- **Kind**: test
+
+### M.TEST_UNIT.342 The NTP client against the twin's local responder: function, failures, staleness, recovery
+- **From**: OR140.a (13) (new NTP-client unit tests use the twin's local NTP responder: function, error handling, the
+  biting cases and regressions), FOLD_ANSWERS `ntp-synced-goes-stale` (status ok) and `twin-tolerates-ntp-offline`
+  (owner, 2026-10-02) — A-C review fold.
+- **Site**: new section at the end of `tests/test_asy_ntp_client.py`.
+- **Change**: banner "# ---- The client against the twin's local NTP responder (digital_twin/unixport/_ntp_responder.py):
+  a real UDP round trip on loopback per attempt ----". `from _ntp_responder import NtpResponder` (the directory already on
+  the file's path for the UDP shim). Each test builds a real `NTPClient` through the file's builder with `NTPHost`
+  `"127.0.0.1"` and an empty `DNSFallback`, starts `NtpResponder(_PORTS.next())`'s `serve()` beside the client in one
+  coroutine under `with redirect_udp_port(asy_ntp_client, 123, responder_port):` (M.TEST_HELP.066), and closes both in
+  `finally`. Function: `test_a_sync_against_the_responder_sets_the_rtc_and_synced` — one forced sync: `Synced` true,
+  `LastSyncAge` 0, the RTC fake's time within 2 s of the served time; `test_the_servers_offset_moves_the_set_time` —
+  `offset_s = 3600`: the set time moves by 3600 s (± 1 s). Error handling, one test per failure mode, each run twice: `"silent"`
+  → `code("E", "NTP_NO_REPLY")` in one slot, `ErrCount` 2, the retry interval doubling from `_RETRY_S` toward
+  `_RETRY_MAX_S` (`src_const`); `"unsync"` → `code("W", "NTP_UNSYNC_REPLY")`; `"short"` → `code("E", "NTP_MALFORMED")`;
+  `"implausible"` → `code("E", "NTP_IMPLAUSIBLE")`. Biting: every failure test also asserts what a sync would have changed
+  stays unchanged — the RTC fake untouched, `Synced` false, `LastSyncAge` not reset — so a client that ignored the
+  failure fails the test; and the function test first asserts `Synced` false with the responder `"silent"`, so a client
+  syncing without a reply fails it. Regressions: `test_a_failed_resync_never_resets_the_staleness_count` (synced, then
+  the responder silent for more than the stale threshold's intervals, driven by the file's fake time: `Synced` turns
+  false, no failed attempt reset the count — the owner-reviewed `ntp-synced-goes-stale` rule); `test_a_responder_back_
+  mid_backoff_syncs_at_the_next_attempt` (silent, two failed attempts, then `"serve"`: synced on the next attempt, the
+  backoff back at `_RETRY_S`). Tunables tagged per the file's convention (`l1.asy_ntp_client_responder_wait_ms`, row
+  basis U8's N.1 rule).
+- **Resolved**: the file's `FakeNtpServer` cases (M.TEST_UNIT.111) stay: they script single replies byte for byte;
+  these exercise the client against the same responder a booted twin syncs with (M.TWIN.167/.168), their reply builder
+  one implementation with `make_ntp_reply()` (M.TEST_HELP.058).
+- **Unit**: U25 (after M.TWIN.167, same unit).
+- **Depends**: M.TWIN.167; M.TEST_HELP.044, .056, .058, .066; M.SRC_NET.046-.050 (the client's codes, backoff and
+  staleness).
+- **Blast carried by**: Part N row → SPEC (U8's rule); the port band row for this file's responder ports →
+  M.TEST_HELP.056.
 - **Kind**: test
 
 ## tests/test_asy_scd30_driver.py
@@ -2821,7 +2902,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.122 Init, the read loop and the ladder; FRC readiness; the staleness rules
 - **From**: A.U10.44 (`read_loop()` → `_read_loop()`), A.U15.43 (returns `None`), A.U15.R01 + A.U10.R01 (`:1286-1331`
-  re-derived; new rung L1), A.U2.06 + A.U3.03 (no streak entry), A.U10.06 (`:1251` needs a sync), GAP-15 lead ruling
+  re-derived; new rung L1), A.U2.06, A.U3.03 dropped (OR140.a (7): the streak keeps its entry; A-C review fold), A.U10.06 (`:1251` needs a sync), GAP-15 lead ruling
   (pre-sync L1), A.U15.22 (new last-sample and not-ready L1), A.U15.12 (new FRC L1 (a)-(f), (h), (i)), A.U10.35
   (`reader.scd`, `read_event`), M.SRC_SENS.057 (`read_measurement()` returns `bool`).
 - **Site**: `tests/test_asy_scd30_driver.py:1196-1370`; new tests after `:1370`.
@@ -2829,8 +2910,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (inline ignores kept) and the read fake returns `True` (new data). `test_init_scd_returns_false_immediately_when_probe_fails…`
   adds: one `code("E", "INIT")` and one `code("W", "BUS_RECOVERY")` (`_init_failed()`'s controller rung). The full-iteration
   test calls `set_utc_valid()` first (flag reset by the hook) for `data.TS is not None`. The give-up test
-  (`max_module_error=1`) drives `_read_loop()`, asserts the task returned `None`, `ErrCount == 3` with the ring holding
-  `code("E", "READ")` then `code("E", "GIVE_UP")` (the rung never runs below its threshold). The recovery test
+  (`max_module_error=1`) drives `_read_loop()`, asserts the task returned `None`, and the ring holds `code("E", "READ")`,
+  the streak's own entry per failed cycle (by its catalog name) and then `code("E", "GIVE_UP")`, `ErrCount` re-derived
+  from those entries (the rung never runs below its threshold). The recovery test
   (`max_module_error=5`, two failures then a good read) stubs `reader._scd.reset` (else a real 2.5 s wait) and asserts
   one call and one `code("W", "DEVICE_RECOVERY")`, and the third read stored. `test_read_loop_returns_false_when_init_fails`
   → `…ends_when_init_fails` (`None`). The two starter tests call `start_asy_read()`/`start_asy_irq()` and end through
@@ -2847,9 +2929,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `_store_scd()` interleaved into a republish (a `_get_meas_data` patched to yield) keeps the fresh sample; (i) after
   1,800 samples every stored sum is a `float` below 2**30.
 - **Resolved**: A.U15.R01's "stubs `reader.scd.reset`" is written with A.U10.35's private name.
-- **Unit**: U15 (stages U3 console streak, U10 ladder/`TS`/names).
+- **Unit**: U15 (stages U10 ladder/`TS`/names).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.054, .055, .090; M.SRC_CORE.037; SRC_CORE `SensorReader._republish()` (A.U15.12).
+- **Depends**: M.SRC_SENS.054, .055, .090; M.SRC_CORE.037 (as the fold reverts A.U3.03); SRC_CORE
+  `SensorReader._republish()` (A.U15.12); [fold F11 M_GEN] (the streak's catalog entry).
 - **Blast carried by**: the mid-operation reset across siblings → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.R01) and A.U15.R01 (TWIN, HW_DEV); notification `ErrCount`s → M.TEST_UNIT in the two SCD30 notification files.
 - **Kind**: test
@@ -3011,20 +3094,21 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.132 Streak tests follow the ladder; the heater-off rung
-- **From**: A.U10.R01, A.U15.R02 (re-derive `:369-443`, `:505-510`, `:585-589`; new heater-off L1), A.U3.03 (streak
-  increases print), A.U2.06.
+- **From**: A.U10.R01, A.U15.R02 (re-derive `:369-443`, `:505-510`, `:585-589`; new heater-off L1), A.U3.03 dropped
+  (OR140.a (7): each streak step keeps its entry; A-C review fold), A.U2.06.
 - **Site**: `tests/test_asy_sgp40_driver.py:502-512`, `:584-600`.
 - **Change**: `test_get_error_counter_reflects_logged_errors` → three failed checks at `max_module_error=2`: the 2nd
   writes `0x36 0x15` to `0x59` once and logs one `code("W", "DEVICE_RECOVERY")`; the 3rd logs `code("E", "GIVE_UP")`;
-  no entry per streak step (`ErrCount == 2`). The give-up and recover tests keep their return values; the recover test
+  each streak step keeps its own entry (by its catalog name) as at HEAD, `ErrCount` re-derived from the ring's entries. The give-up and recover tests keep their return values; the recover test
   also asserts the heater-off write happened once. New `test_two_failed_cycles_turn_the_heater_off_once` (exactly one
   `0x36 0x15` write to `0x59`, no write to `0x00` beyond setup's, one `DEVICE_RECOVERY`, the VOC algorithm object
   identical before and after); `test_a_raising_heater_off_logs_one_chip_set_and_no_recovery_warning` (the write faults:
   one `code("E", "CHIP_SET")`, no `DEVICE_RECOVERY`, no raise).
 - **Resolved**: —
-- **Unit**: U15 (stages U2, U3, U10).
+- **Unit**: U15 (stages U2, U10).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_CORE.037; M.SRC_SENS.065, .069.
+- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03); M.SRC_SENS.065, .069; [fold F11 M_GEN] (the streak's
+  catalog entry).
 - **Blast carried by**: twin/L3 heater-off tiers → A.U15.R02 (TWIN, HW_DEV); hazard sweep → M.TEST_UNIT for
   `tests/_bus_hazard_catalog.py` is TEST_HELP's (A.U15.R02).
 - **Kind**: test
@@ -3060,37 +3144,43 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.135 Reset sub-parts through references; the lost-reset regression
-- **From**: A.U5.11 (`:691-796` direct `temperature_source` reassign), A.U3.09 (FRAM clear failure → console),
+- **From**: A.U5.11 (`:691-796` direct `temperature_source` reassign), A.U3.09 dropped (OR140.a (7): the FRAM clear
+  failure keeps SGP40's own entry; A-C review fold),
   A.U15.14 (lost-reset regression), A.U10.35.
 - **Site**: `tests/test_asy_sgp40_driver.py:691-796`.
 - **Change**: each `reader.temperature_source = …`/`humidity_source = …` reassignment → `reader._temperature =
   ValueRef(<source>, "Temp")`/`reader._humidity = ValueRef(<source>, "Hum")`; the sub-part flags read
-  `_reset_fram_cleared`/`_reset_algo_applied`. A FRAM clear failure leaves the SGP40 log empty (a console line). The
+  `_reset_fram_cleared`/`_reset_algo_applied`. A FRAM clear failure keeps the SGP40 log's own entry (HEAD's
+  "Error clearing FRAM!", by the catalog name the fold gives it back) beside FRAM's. The
   `:770-776` mypy narrowing workaround and its comment go (the algorithm is no longer optional, A.U30.04). New
   `test_a_nan_cycle_keeps_a_pending_algorithm_reset` (`reset_voc(flag=True)`, a cycle with `Temp = nan` leaves
   `_reset_algo_applied` `False`, the next valid cycle applies the reset).
 - **Resolved**: —
-- **Unit**: U15 (stages U3, U5, U30).
-- **Depends**: M.SRC_SENS.062, .064, .067.
+- **Unit**: U15 (stages U5, U30).
+- **Depends**: M.SRC_SENS.062, .064, .067 (as the fold reverts A.U3.09); [fold F11 M_GEN] (the restored SGP40 code's name).
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.136 Backup writes: FRAM logs the cause, every untimestamped backup warns
-- **From**: A.U3.09 (`:883-913`; new three cases), A.U3.02 (`:1068-1140`), A.U15.18 (`(0, 0)` memory status; `:966`
+### M.TEST_UNIT.136 Backup writes: FRAM and SGP40 each log a failure, every untimestamped backup warns
+- **From**: A.U3.09 (`:883-913`; new three cases) with its one-entry half dropped (OR140.a (7): SGP40 keeps its own
+  entry beside FRAM's; A-C review fold), A.U3.02 (`:1068-1140`), A.U15.18 (`(0, 0)` memory status; `:966`
   comment), A.U16.18 (`:1055-1056` bool-first stub), A.U2.13 (13 → 35), A.U15.17 (`:916-961` holds).
 - **Site**: `tests/test_asy_sgp40_driver.py:883-1128`.
-- **Change**: `:883-913` → FRAM's log holds one `code("W", "FRAM_PAUSED")`, SGP40's `ErrCount == 0`. Escape-hatch tests
+- **Change**: `:883-913` → FRAM's log holds `code("W", "FRAM_PAUSED")` and SGP40's log its own backup-write entry
+  (HEAD's 14, by the catalog name the fold gives it back). Escape-hatch tests
   hold with `_voc_init` seeding; `:966`'s "-1" sentinel comment → "# 0 = no timestamp (the special value)". `_w13_slots`
   → `_written_no_ts_slots` counting `code("W", "SGP_WRITTEN_NO_TS")`; each run of untimestamped backups spends one slot
   (identical repeats spend none) while `ErrCount` counts every backup; the "ends the episode" tests flip to one slot.
   `failing_write_into` stubs return `(False, False, -1)` → bool-first `(False, <ntp_synced>, <ts>)` order per the merged
-  `write_into()` shape. New: `test_crc_invalid_backup_logs_once_in_fram_and_never_in_sgp40`,
-  `test_a_paused_store_logs_once_in_fram_and_never_in_sgp40`, `test_a_failed_backup_write_logs_once_in_fram_and_never_in_sgp40`;
+  `write_into()` shape. New: `test_crc_invalid_backup_logs_in_fram_and_in_sgp40`,
+  `test_a_paused_store_logs_in_fram_and_in_sgp40`, `test_a_failed_backup_write_logs_in_fram_and_in_sgp40` (each layer the
+  failure reaches keeps one entry of its own, the history showing how far it reached);
   `test_an_untimestamped_backup_restores_to_memory_status_zero_zero` (`get_mem_status() == (0, 0)`).
 - **Resolved**: —
-- **Unit**: U16 (stages U2, U3, U15).
+- **Unit**: U16 (stages U2, U3 slot rule, U15).
   A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
-- **Depends**: M.SRC_SENS.063; FRAM manager return shape (M.SRC_CORE, A.U16.18).
+- **Depends**: M.SRC_SENS.063 (as the fold reverts A.U3.09); FRAM manager return shape (M.SRC_CORE, A.U16.18); [fold F11 M_GEN]
+  (the restored SGP40 codes' names).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3111,13 +3201,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U15.17 (2)-(4) (WaitTimeNTP 0; −60 s age; one `read_into()` while waiting; first-boot blank chunk;
   blackout skip), A.U16.18 (negative age expired under a nonzero limit, limit 0 accepts any age), A.U10.28 (age signed),
   A.U10.06 (`_OldTime` → UTC flag), A.U30.04 (`:1601` comment), A.U11.24 (`write_config(data)`), A.U2.13 (11 → 33,
-  12 → 34), A.U3.09 (no-backup → console).
+  12 → 34), A.U3.09 dropped (OR140.a (7): an unreadable backup keeps SGP40's own warning beside FRAM's entry; A-C
+  review fold).
 - **Site**: `tests/test_asy_sgp40_driver.py:1187-1250`, `:1579-1770`, `:2064-2225`.
 - **Change**: `_OldTime` (monkeypatching `asy_fram_manager.time.mktime`) → the test drives the timestamp through
   `asy_base_classes.set_utc_valid()` and a fake `time` on `asy_base_classes` (reset in `finally`). `:1601` comment →
   "built at construction". Each `write_config({…}, schema)` → `write_config({…})`. Branch comments "wrnno=11"/"12" →
-  the catalog names; asserts `code("W", "SGP_RESTORED_NO_TS")`/`code("W", "SGP_BACKUP_AGE")`; a missing backup leaves
-  the SGP40 log empty. New: `test_wait_time_ntp_zero_restores_on_the_first_cycle` (timestamped backup, NTP never
+  the catalog names; asserts `code("W", "SGP_RESTORED_NO_TS")`/`code("W", "SGP_BACKUP_AGE")`; an unreadable backup
+  (`read_into()` `None`) keeps SGP40's own no-backup warning (HEAD's w10, by the catalog name the fold gives it back)
+  beside FRAM's entry, while a blank chunk (`False`, a first boot) logs nothing (A.U15.17). New: `test_wait_time_ntp_zero_restores_on_the_first_cycle` (timestamped backup, NTP never
   synced: restored on cycle one, `_restored_from` = the backup's TS); `test_a_backup_dated_in_the_future_is_refused_under_a_limit`
   (age −60 s, `BackupMaxAge` 120 → refused, one `SGP_BACKUP_AGE`); `test_a_zero_age_limit_accepts_a_future_dated_backup`
   (age −60 s, `BackupMaxAge` 0 → restored); `test_waiting_for_ntp_reads_the_chunk_once` (30 cycles unsynced: one
@@ -3130,7 +3222,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   fix is GAP-U1 (SRC_SENS) below.
 - **Unit**: U16 (stages U2, U3, U10, U11, U15, U30).
   A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
-- **Depends**: M.SRC_SENS.063 (with the gap's condition); M.SRC_CORE.032; M.TEST_HELP.057.
+- **Depends**: M.SRC_SENS.063 (with the gap's condition; as the fold reverts A.U3.09); M.SRC_CORE.032;
+  M.TEST_HELP.057; [fold F11 M_GEN] (the restored SGP40 code's name).
 - **Blast carried by**: L2 twin backup cases → A.U15.17 (TWIN).
 - **Kind**: test
 
@@ -3178,7 +3271,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.142 Compensation encoding and the FRAM-backed log hold
-- **From**: A.U12.18 (`:1810-1820`, `:2357-2363` hold), A.U3.09, A.U2.13.
+- **From**: A.U12.18 (`:1810-1820`, `:2357-2363` hold), A.U3.09 dropped (OR140.a (7); these holds never depended on
+  it; A-C review fold), A.U2.13.
 - **Site**: `tests/test_asy_sgp40_driver.py:1778-1959`, `:2349-2370`.
 - **Change**: hold, with the shared builders (`make_fram_manager(chip=…)`, M.TEST_HELP.057, for the reboot-shaped
   cases), `run(reader.setup())`, catalog names in the assertions and the four-field tuples.
@@ -3189,19 +3283,22 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.143 Init failures: INIT plus controller rung; config reads to CFGMGR
-- **From**: A.U15.R02 (3) (`_init_failed()`), A.U10.R01 (5), A.U3.05 (`:1995-2002`, `:2047-2054`), A.U15.41 (re-arm in
+### M.TEST_UNIT.143 Init failures: INIT plus controller rung; config reads in both layers
+- **From**: A.U15.R02 (3) (`_init_failed()`), A.U10.R01 (5), A.U3.05 (`:1995-2002`, `:2047-2054`: the real store broken)
+  with its print-only half dropped (OR140.a (7): SGP40 keeps its own entry; A-C review fold), A.U15.41 (re-arm in
   `_init_sgp()`), A.U15.17 (`:2005-2030` cap holds).
 - **Site**: `tests/test_asy_sgp40_driver.py:1968-2054`.
 - **Change**: `:1968-1978` → newest `code("E", "INIT")` and one `code("W", "BUS_RECOVERY")`. `:1980-2002` and
-  `:2031-2054` break the real `ConfigManager` (an invalid stored key) instead of patching the read: the SGP40 log stays
-  empty, `CFGMGR_SGP40` holds one `code("E", "CFG_NOT_VALID")`. The stale-wait cap test holds with `_voc_init`/
+  `:2031-2054` break the real `ConfigManager` (an invalid stored key) instead of patching the read: the SGP40 log keeps
+  its own config-read entry (HEAD's 12/13, by the catalog name the fold gives it back), `CFGMGR_SGP40` holds `code("E",
+  "CFG_NOT_VALID")`. The stale-wait cap test holds with `_voc_init`/
   `_voc_write`. New `test_init_rearms_a_failed_timer_first` (`_timer_error` set: `_init_sgp()` clears it and arms the
   trigger timer before the setup exchange).
 - **Resolved**: —
-- **Unit**: U15 (stages U3, U10).
+- **Unit**: U15 (stage U10).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.063, .065; M.SRC_CORE.037.
+- **Depends**: M.SRC_SENS.063, .065 (as the fold reverts A.U3.05); M.SRC_CORE.037; [fold F11 M_GEN] (the restored SGP40 code's
+  name).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -4229,7 +4326,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U19.08 (ceiling refusals logged; peer-reset entries; seven-refusals L1), A.U2.19 (49 vs 50; new L1), A.U3.11
   (new L1: one W52), A.U24.41 (`:1590-1597`, `:1606-1611`), A.U14.03 (`:1656-1665` holds, `:1657-1658` pointer), A.SDEP.13
   (read: `:1648-1660` path re-checked at the pin), A.U19.06 (new L1s: closed stream on HEAD, raising and timed-out
-  writes; `Cache-Control`), A.U3.12 (reclaim repeats spend one slot), A.U3.01.
+  writes; `Cache-Control`), A.U3.12 (reclaim repeats spend one slot), A.U3.01; OR137.a (1)-(3) (`get_dropped_count()` is
+  the 24-hour window's sum, cleared by `ResetErrors`, each drop still traced once; A-C review fold).
 - **Site**: `tests/test_asy_webserver_service.py:1149-1720`, `:3052-3101`.
 - **Change**: `test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed` → `…_closed_and_logged`: the
   refusal adds one `code("W", "HTTP_REFUSED")` and `get_dropped_count()` reads 1; the F1 slot-held test's refusal
@@ -4239,15 +4337,19 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `:1657-1658` comment points to H.7.1 as A.U14.03 writes it. `test_serve_absorbs_an_eoferror_raised_directly_by_handle_
   request` → `test_an_eoferror_from_handle_request_is_an_unexpected_error` (the `EOFError` arm is gone: one
   `code("E", "UNEXPECTED")`, slot freed). `test_a_write_phase_timeout_is_logged_once_not_twice` asserts
-  `code("W", "HTTP_CALL_TIMEOUT")`. New: `test_seven_refusals_count_seven_and_spend_one_slot` (`_dropped` 7, `ErrCount`
-  +7, one history slot); `test_an_outer_cap_timeout_logs_the_request_cap_code` (a Slowloris-paced request tripping only
+  `code("W", "HTTP_CALL_TIMEOUT")`. New: `test_seven_refusals_count_seven_and_spend_one_slot` (`get_dropped_count()` 7,
+  `ErrCount` +7, one history slot); `test_dropped_connections_leave_the_count_after_a_day` (the service's uptime source
+  driven from the test: two refusals, then 23 h later still 2, 24 h later 0, a new refusal 1 — the window is the
+  primitive's, M.TEST_UNIT.343); `test_reset_errors_clears_the_dropped_count` (three refusals, then the service's
+  `ResetErrors` path: `get_dropped_count() == 0`, the next refusal 1); `test_an_outer_cap_timeout_logs_the_request_cap_code` (a Slowloris-paced request tripping only
   the outer cap → one `code("W", "HTTP_REQUEST_CAP")`); `test_a_close_that_raises_and_whose_wait_fails_adds_one_w52`;
   `test_repeated_reclaims_spend_one_slot` (five per-call reclaims: `ErrCount` 5, one slot);
   `test_a_head_request_closes_the_opened_static_stream`, `test_a_failed_or_timed_out_static_body_write_closes_the_stream`
   (a stub mount whose file object records `close()`), `test_a_static_get_answers_cache_control_no_cache`.
 - **Resolved**: —
 - **Unit**: U19 (stages U2, U3, U14, U24).
-- **Depends**: M.SRC_NET.124, .126, .127, .129.
+- **Depends**: M.SRC_NET.124, .126, .127, .129; [fold F02 M_SRC_NET] (the drop path counting into the window, its reset);
+  M.TEST_UNIT.343.
 - **Blast carried by**: twin concurrency scenarios → A.U19.08 (TWIN).
 - **Kind**: test
 
@@ -4463,7 +4565,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   gains the deactivated pattern; new L1s), A.U18.31 (`:657-690` inverted; `:2626-2640`, `:866-884` hold), A.U10.20 (new
   L1 through a raising `_led_on` double, M_SRC_NET gap 5), A.U24.38 (`:565-575`, `:621-640` via recorded prints), A.U24.32
   (read here: the `record_prints` helper), A.U31.15 (`:659` comment; durations 100/2900 ms), A.U18.40 (`set_wifi_led`
-  selects the ext LED).
+  selects the ext LED); OR140.a (17) (the Wi-Fi-off pattern respects the Wi-Fi LED setting: silent when off, the
+  current pattern when turned on; A-C review fold).
 - **Site**: `tests/test_asy_wifi_service.py:558-768`, `:1377-1387`, `:1695-1716`, `:2109-2134`, `:2618-2646`.
 - **Change**: `test_set_wifi_led_true_selects_the_ext_led_when_no_gpio_pin` → `…selects_the_ext_led`.
   `test_set_ext_led_never_touches_push_callbacks_or_triggers_a_reconnect` goes (no setter; guard: the generated
@@ -4474,13 +4577,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
   LED is on; after `_reset_wlan_connect_state()` it is off and stays off once the cancelled task has run; awaiting the
   cancelled task raises `CancelledError`). New `test_the_hotspot_pattern_is_on_2900_off_100` and
   `test_deactivated_with_the_led_enabled_blinks_100_on_2900_off` (the recorded `sleep_ms` durations); `…deactivated_with_
-  the_led_disabled_stays_dark`; `test_a_raising_led_helper_ends_the_flash_task_with_one_unexpected_entry` (`_led_on`
+  the_led_disabled_stays_dark` (no LED call at all); `test_turning_the_wifi_led_on_while_deactivated_starts_its_pattern`
+  and `test_turning_the_wifi_led_off_mid_pattern_goes_dark` (the setting changed through the `LEDWifiOn` config-apply
+  path while deactivated: on → the 100/2900 ms pattern, off → the LED off and no further LED call; when the change takes
+  effect within the running pattern follows M.SRC_NET.077/.100); `test_a_raising_led_helper_ends_the_flash_task_with_one_unexpected_entry` (`_led_on`
   replaced on the instance by a raising double — the real helper absorbs the LED's own raise — one `code("E",
   "UNEXPECTED")`).
 - **Resolved**: A.U10.20's L1 ("an LED whose `on()` raises") cannot reach the task top through the real helper; it is
   driven through a replaced `_led_on` (M_SRC_NET gap 5, G5/R54).
 - **Unit**: U18 (stages U5, U10, U24, U31).
-- **Depends**: M.SRC_NET.084, .087, .092, .098, .100; M.TEST_HELP.050 (`record_prints`).
+- **Depends**: M.SRC_NET.084, .087, .092, .098, .100 (.077/.100 as the fold states OR140.a (17)); M.TEST_HELP.050
+  (`record_prints`).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -4565,23 +4672,28 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.218 Missing config goes to CFGMGR; give-up persists GIVE_UP; the radio rung
-- **From**: A.U3.05 (`:1700-1737` → `CFGMGR_WIFI`), A.U3.07 (`:2229-2238` renamed; `:3050`; new L1), A.U10.R01 + A.U18.R01
+### M.TEST_UNIT.218 Missing config logs in both layers; the give-up keeps both entries; the radio rung
+- **From**: A.U3.05 (`:1700-1737` break the real store) and A.U3.07 (`:2229-2238`, `:3050`), each with its one-entry half
+  dropped (OR140.a (7): WIFI keeps its own config-read entry beside `CFGMGR_WIFI`'s, and the give-up keeps WIFI's own
+  entry beside the base GIVE_UP; A-C review fold), A.U10.R01 + A.U18.R01
   (streak tests re-derived; new L1s), A.U10.18 (read: the give-up test's patched loop).
 - **Site**: `tests/test_asy_wifi_service.py:1695-1749`, `:2220-2283`, `:3040-3056`; new tests.
 - **Change**: the three missing-config tests break the real `ConfigManager` (`_make_invalid_cfg_client()`): WIFI's log
-  holds no entry, `CFGMGR_WIFI` one `code("E", "CFG_NOT_VALID")`; the names lose `persists_wrnno_N`. `test_wlan_connect_
-  gives_up_after_repeated_hardware_failures_and_persists_errno_17` → `test_connect_loop_gives_up_after_repeated_hardware_
-  failures_and_persists_give_up` (runs under `FastAsyncSleep()`: the 2nd failure's radio rung sleeps its settles; the log
-  ends `code("E", "GIVE_UP")`, exactly once); `:3050` → `assert code("E", "GIVE_UP") not in …`. New
+  keeps its own config-read entry (HEAD's code, by the catalog name the fold gives it back), `CFGMGR_WIFI` holds
+  `code("E", "CFG_NOT_VALID")`; the names lose `persists_wrnno_N`. `test_wlan_connect_gives_up_after_repeated_hardware_
+  failures_and_persists_errno_17` → `test_connect_loop_gives_up_after_repeated_hardware_failures_and_persists_both_
+  entries` (runs under `FastAsyncSleep()`: the 2nd failure's radio rung sleeps its settles; the log holds the base
+  `code("E", "GIVE_UP")` and WIFI's own give-up entry, HEAD's 17 by the catalog name the fold gives it back, each once);
+  `:3050` → neither of the two codes is in the log. New
   `test_two_failed_iterations_re_select_the_radio_once` (one `deinit()` and one `WLAN(STA_IF)` construction on the fake,
   one `code("W", "DEVICE_RECOVERY")`); `…in_hotspot_the_ap_is_re_selected`; `…deactivated_makes_no_radio_call`;
   `test_a_raising_deinit_logs_one_mode_switch_entry_and_no_recovery_warning`; `test_the_radio_rung_fires_again_after_a_
   restart_and_a_good_iteration`.
 - **Resolved**: —
-- **Unit**: U18 (stages U3, U10).
+- **Unit**: U18 (stage U10).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_NET.084, .100, .102; M.SRC_CORE.037.
+- **Depends**: M.SRC_NET.084, .100, .102 (as the fold reverts A.U3.05/A.U3.07); M.SRC_CORE.037; [fold F11 M_GEN] (the restored WIFI
+  codes' names).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -4721,23 +4833,24 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.227 The streak prints; the ladder climbs one rung per failure
-- **From**: A.U3.03 (`:474, 638, 647, 658, 668, 690, 706, 718, 739` drive persistence through `err_s()` or assert
-  `err_count == 0`; new L1), A.U2.06 (5 lines), A.U10.R01 (`:472-510` hold; new ladder L1s), A.U11.31 (reset returns
+### M.TEST_UNIT.227 The streak keeps its entry; the ladder climbs one rung per failure
+- **From**: A.U3.03 dropped (OR140.a (7): every layer that meets a fault keeps its own persisted entry, the base class's
+  streak entry included; A-C review fold), A.U2.06 (5 lines), A.U10.R01 (`:472-510` hold; new ladder L1s), A.U11.31 (reset returns
   `True`).
 - **Site**: `tests/test_base_classes.py:472-740`; new tests.
-- **Change**: tests that used the streak entry to persist now persist through an explicit `err_s()` or assert
-  `err_count == 0` after a streak increment (a console line only). `test_sensorreader_reset_error_counter_clears_history`
-  asserts `run(reader.reset_error_counter()) is True`. New `test_a_failing_cycle_adds_exactly_the_drivers_entry` (a
-  failing cycle: one persisted entry, the driver's own, `ErrCount` +1; the give-up adds `code("E", "GIVE_UP")`);
+- **Change**: the tests that use the streak entry to persist (`:474, 638, 647, 658, 668, 690, 706, 718, 739`) keep it,
+  asserted by its catalog name instead of the number 1 (the name the fold gives the streak code back, [fold F11 M_GEN]).
+  `test_sensorreader_reset_error_counter_clears_history` asserts `run(reader.reset_error_counter()) is True`. New
+  `test_a_failing_cycle_keeps_the_drivers_and_the_streaks_entries` (a failing cycle: the driver's own entry, then the
+  streak's, under the newest-entry rule; the give-up adds `code("E", "GIVE_UP")`);
   `test_the_ladder_fires_each_rung_once_in_order` (a subclass with a counting `_recover_device()` and a stub bus whose
   `clear()`/`recover()` count: failures 1…6 fire nothing / device once / bus clear once / controller once / nothing /
   give-up); `test_a_success_mid_streak_fires_nothing_new_until_the_streak_returns_to_zero`;
   `test_an_externally_zeroed_streak_re_arms_every_rung` (a task restart, one good cycle, a new streak climbs again).
 - **Resolved**: —
-- **Unit**: U10 (stages U2, U3, U11).
+- **Unit**: U10 (stages U2, U11).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_CORE.037.
+- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03); [fold F11 M_GEN] (the streak's catalog entry).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -4799,6 +4912,33 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U11 (stages U0 tags, U4, U19, U24, U30).
 - **Depends**: M.SRC_CORE.038; M.TEST_HELP.062 (`WriteCountingOpen`).
 - **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.343 The hourly window counter under a driven clock
+- **From**: OR137.a (1)-(4) (`HTTPDropped` counts the last 24 hours in 24 hourly bins: a reusable primitive beside the
+  shared counters, tested under a driven clock — bin shift, a gap of a day or more, the cap, the reset, no heap
+  allocation per drop or read), FOLD_ANSWERS `status-fields-added-and-left-out` (owner's note, 2026-10-02) — A-C review
+  fold.
+- **Site**: new section after the shared-scalar tests (`tests/test_base_classes.py`, after M.TEST_UNIT.225's section).
+- **Change**: section comment "# The hourly window counter (SPECIFICATION.md G): 24 fixed bins advanced lazily from the
+  uptime seconds; a count leaves the window 23-24 hours after it happened." The uptime seconds are fed from the test
+  (the primitive reads the `SysUptime` count it is given, OR137.a (1); its call shape follows the product change).
+  Cases: `test_counts_in_one_hour_sum` (three adds at t, t + 10 s, t + 3599 s → 3); `test_the_bins_shift_hour_by_hour`
+  (one add per hour for 30 hours → 24 after the 30th, the oldest six gone; a read at the start of hour h + 24 no longer
+  holds hour h's count); `test_a_count_leaves_the_window_between_23_and_24_hours` (an add at the end of an hour still
+  counted 23 h later, gone at the 24 h boundary; an add at the start of an hour counted until 24 h); `test_a_gap_of_a_day_
+  or_more_clears_every_bin` (adds, then a read 86 400 s and 10 × 86 400 s later → 0, then new adds count from 1);
+  `test_a_bin_and_the_sum_saturate_at_the_cap` (`COUNTER_CAP` adds into one bin stays `COUNTER_CAP`; bins whose sum
+  exceeds it read `COUNTER_CAP`, driven by setting the bins from the test, never by a brute-force loop — CLAUDE.md's
+  structural-proof rule); `test_reset_clears_every_bin` (then counting resumes in the current hour);
+  `test_no_add_or_read_allocates` (at the process's GC stage, no in-body `gc.threshold` (A.U30.12/.13): `gc.mem_alloc()`
+  does not rise across 1 000 adds and reads spanning several hour changes, after one warm-up add — the bins are
+  allocated once at construction); `test_the_bins_are_allocated_once_at_construction` (the bin store's identity
+  unchanged across adds, reads, hour changes and `reset()`).
+- **Resolved**: —
+- **Unit**: U19 (the primitive lands with its first user, OR137.a).
+- **Depends**: [fold F02 M_SRC_CORE] (the primitive in `base_classes.py`); M.SRC_CORE.031 (`COUNTER_CAP`).
+- **Blast carried by**: SPEC Part G catalog entry → [fold F02 M_SPEC]; the webserver's use → M.TEST_UNIT.202.
 - **Kind**: test
 
 ## tests/test_bus_hazard_generated.py
@@ -5235,50 +5375,68 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.253 `setup()`: a missing file writes nothing; error history by code
-- **From**: A.U11.19 (`:838-846`, `:1074-1126`, `:1347-1356`, `:2395-2406`; new L1s), A.U2.07 (`:2141-2205` counts →
-  codes), A.U14.11 + A.SDEP.08 (`:929-935` comment), A.U35.37 (read: first-boot W24 retired, checked landed).
+### M.TEST_UNIT.253 `setup()`: an absent file is written once with the defaults; error history by code
+- **From**: A.U11.19 as superseded by OR136.a (1)-(3) (an absent file is written once, at that boot, with the schema
+  defaults through the compare-before-write path; a command-only schema has no file; A-C review fold) (`:838-846`,
+  `:1074-1126`, `:1347-1356`, `:2395-2406`; new L1s), OR138.a (1) (a damaged file is a config fault; A-C review fold),
+  A.U2.07 (`:2141-2205` counts → codes), A.U14.11 + A.SDEP.08 (`:929-935` comment), A.U35.37 (read: first-boot W24
+  retired, checked landed).
 - **Site**: `tests/test_config_manager.py:833-1360`, `:2135-2205`, `:2395-2406`.
-- **Change**: `:838` → `test_configmanager_serves_defaults_without_a_file_when_missing`: valid, `get_dict()` the four
-  defaults, `os.stat(path)` raises `ENOENT`, no persisted entry. The four special-only tests `:1074-1116` assert after
-  `run(_write_flushed(mgr, {<one stored field>: <changed value>}))` on a schema adding one ordinary field (the file
-  then exists and lacks the special key), `get_dict([special])` still `None`. `:1118` → `…entirely_special_only_
-  creates_no_file`: no file after setup and after `write_config({"Special": 3})`, no persisted entry. `:1347` → no
-  write attempted, no persisted entry, defaults served. `:2395` writes the valid file by hand instead of "creates it".
-  `:1200` (non-string field name): the file appears only after `run(_write_flushed(mgr, {123: 6}))` and reads `{"123":
-  6}`; `get_dict([123]) == {123: 6}`, `get_dict(["123"])` is `None`. `:1449` (cache after delete): the file is created
-  by a flushed change first, then removed out of band; reads serve the cache. `:929-935` → "# MicroPython's json.load()
-  pairs tokens in order (Part F.1), re-confirmed on the pinned <pin version> interpreter; distinct from the
-  "unterminated" case / # (fixed upstream in 2025, commit 9ef16b466, which only covers a missing closing brace or
-  bracket)." (second block stays). `:2157` asserts one `code("E", "CFG_PATH_IS_DIR")`; `:2173` adds `code("E",
-  "CFG_NOT_VALID")` (ErrCount 2); `:2189` one `code("W", "CFG_FILE_JSON")`. New: `test_a_missing_file_costs_no_write_
-  until_the_first_change` (`WriteCountingOpen(cm)`: zero writes through setup and an unchanged PUT, one write of the
-  defaults plus the change on the first changing PUT, file content checked).
-- **Resolved**: —
+- **Change**: `:838` → `test_configmanager_writes_the_defaults_once_when_the_file_is_absent`: valid, the file holds the four
+  defaults, `WriteCountingOpen(cm)` counts exactly one write-mode open during `setup()`, no persisted entry, no config
+  fault. The four special-only tests `:1074-1116` hold as at HEAD (the file written at setup lacks the special key,
+  `get_dict([special])` still `None`). `:1118` → `…entirely_special_only_creates_no_file`: a command-only schema has no
+  file after setup and after `write_config({"Special": 3})`, no persisted entry (OR136.a (3)). `:1347` (missing parent
+  directory) holds as at HEAD with the code by name: the one defaults write fails, valid, defaults served, one
+  `code("E", "CFG_FILE_WRITE")`. `:2395` holds as at HEAD (setup creates the valid file the second manager reads).
+  `:1200` (non-string field name) and `:1449` (cache after delete) hold as at HEAD (the file exists after setup).
+  `:929-935` → "# MicroPython's json.load() pairs tokens in order (Part F.1), re-confirmed on the pinned <pin version>
+  interpreter; distinct from the "unterminated" case / # (fixed upstream in 2025, commit 9ef16b466, which only covers a
+  missing closing brace or bracket)." (second block stays). `:2157` asserts one `code("E", "CFG_PATH_IS_DIR")`; `:2173`
+  adds `code("E", "CFG_NOT_VALID")` (ErrCount 2); `:2189` one `code("W", "CFG_FILE_JSON")`. New:
+  `test_an_absent_file_is_written_once_per_boot_and_never_again` (`WriteCountingOpen(cm)`: one write through the first
+  setup holding exactly the defaults, then a second manager's `setup()` on the now-present file and an unchanged PUT open
+  nothing — one write per file per fresh filesystem, OR136.a (4); the serialise-first half of that write is
+  M.TEST_UNIT.257's `:2301`). Config faults (OR138.a (1), U11
+  stage of the fault state): a file that is unparseable (`:929` corrupt JSON), not an object, or invalid (a value outside
+  its field) reports the store's config fault after `setup()`, and still reports it after the boot repair rewrote the
+  file; an absent file, a valid file and a directory path report none (the directory is `CFG_PATH_IS_DIR`'s refusal,
+  not a file that existed) — the fault accessor is M.SRC_CORE's ([fold F03 M_SRC_CORE]).
+- **Resolved**: A.U11.19's "a missing file writes nothing" (OR71.a (2)'s first-boot clause) is superseded by OR136.a
+  (most recent owner decision wins): the HEAD expectations of `:838`, `:1074-1116`, `:1200`, `:1347`, `:1449` and `:2395`
+  return, `:838` gaining the write count; A.U11.19's surviving halves stay — the unreadable file (M.TEST_UNIT.254), the
+  command-only schema (`:1118`) and the error-history codes. Which damaged shapes count as "invalid" (a value outside its
+  field certainly; a missing or unknown key per M.SRC_CORE's definition) is decided with the product change, the rows
+  following it.
 - **Unit**: U11 (stages U2 codes, U14 comment; the version stamp with the pin move, U0/U37).
-- **Depends**: M.SRC_CORE.043.
+- **Depends**: M.SRC_CORE.043 (as the fold amends it, OR136.a); [fold F03 M_SRC_CORE] (the config-fault state);
+  M.TEST_HELP.062 (`WriteCountingOpen`).
 - **Blast carried by**: `tests/test_base_classes.py:1013-1016, 1449-1452` → M.TEST_UNIT.229, .230 (this file's base
-  counterpart, merged there); SPEC F.1 paragraph → A.U14.11 (SPEC).
+  counterpart, merged there: no persisted entry for an absent file, a command-only schema writes no file — both hold
+  under OR136.a); SPEC F.1 paragraph → A.U14.11 (SPEC).
 - **Kind**: test
 
 ### M.TEST_UNIT.254 `setup()`: an unreadable file is never overwritten
-- **From**: A.U11.20 (`:2275-2298`; new L1s), A.U35.43 (2) (`:869-878` goes: a non-string filename).
+- **From**: A.U11.20 (`:2275-2298`; new L1s), A.U35.43 (2) (`:869-878` goes: a non-string filename), OR138.a (1) (an
+  unreadable file is a config fault, listed for the rest of the boot; A-C review fold).
 - **Site**: `tests/test_config_manager.py:869-878`, `:2275-2298`; new tests.
 - **Change**: `:869-878` goes (typed `str` filename; guard: mypy on every constructor call, G5/R18). `:2275` →
   `…memoryerror_from_json_load_serves_defaults_and_keeps_the_file`: valid, defaults served, the file still holds
   `{"Count": 7}`, one `code("W", "CFG_FILE_UNREADABLE")`, `mgr.writable is False`, `write_config({"Count": 8}) == (False,
-  {})`. New: `test_an_eio_on_stat_or_open_leaves_the_file_untouched` — `cm.os` replaced by a module whose `stat` raises
+  {})`, and the store reports its config fault. New: `test_an_eio_on_stat_or_open_leaves_the_file_untouched` — `cm.os` replaced by a module whose `stat` raises
   `OSError(5)`, then (second case) `cm.open` raising `OSError(5)` for reads (both restored in `finally`): zero write-mode
-  opens, file bytes unchanged, one W22, defaults served, `write_config()` → `(False, {})`.
+  opens, file bytes unchanged, one W22, defaults served, `write_config()` → `(False, {})`, the config fault reported.
+  An `ENOENT` from the same stand-in is no fault: the absent-file path of M.TEST_UNIT.253 runs (one defaults write).
 - **Resolved**: —
 - **Unit**: U11.
-- **Depends**: M.SRC_CORE.043.
+- **Depends**: M.SRC_CORE.043; [fold F03 M_SRC_CORE] (the config-fault state).
 - **Blast carried by**: —
 - **Kind**: test
 
 ### M.TEST_UNIT.255 Readers: exact-type getters, one CONTRACT entry per refusal
 - **From**: A.U11.29 (`:1534-1540` inverts; new L1s; `:1496-1532`, `:1542-1552` hold), A.U3.05 (refusals persist one
-  24), A.U11.17 (`:1572-1583` goes), A.U35.43 (2) (`:1462-1470` goes).
+  24 in the store; its "none in the caller" half dropped, OR140.a (7); A-C review fold), A.U11.17 (`:1572-1583` goes),
+  A.U35.43 (2) (`:1462-1470` goes).
 - **Site**: `tests/test_config_manager.py:1359-1584`.
 - **Change**: `:1496`, `:1504`, `:1523` keep `None` and assert one `code("E", "CONTRACT")` entry (comments → "# a str value
   is not an int/float"); `:1534` → `test_get_str_values_refuses_a_non_str_value`: `get_str_values(_VAL_INT) is None` plus
@@ -5289,20 +5447,21 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U11 (stage U3 entries).
 - **Depends**: M.SRC_CORE.048.
-- **Blast carried by**: caller-module L1 (one entry in `CFGMGR_<name>`, none in the module) → A.U3.05 (base/driver
-  files' sections).
+- **Blast carried by**: caller-module L1 (one entry in `CFGMGR_<name>` and the caller's own entry, per layer, OR140.a
+  (7)) → the base/driver files' sections (M.TEST_UNIT.017, .060, .086, .091, .113, .143, .218).
 - **Kind**: test
 
 ### M.TEST_UNIT.256 `write_config()`: own schema, compare-before-write, stored-form floats
 - **From**: A.U11.24 (62 second-argument sites; `:1826-1836` goes), A.U11.25 (`:1900-1911` goes), A.U4.01 (`:1813-1823`
-  holds; outcome-row L1s), A.U11.21 (`_stored_float` L1), A.U2.07 (`:1988` 14 → CFG_FILE_WRITE), A.U35.43 (2) (read).
+  holds; outcome-row L1s), A.U11.21 (`_stored_float` L1), A.U2.07 (`:1988` 14 → CFG_FILE_WRITE), A.U35.43 (2) (read),
+  OR136.a (1) (`:1949`'s file exists after setup; A-C review fold).
 - **Site**: `tests/test_config_manager.py:1586-2133`.
 - **Change**: every `write_config(data, <schema>)` loses its second argument (no test's outcome depends on a narrower
   schema: each passes a sub-schema of the manager's own records, grep). `:1813` asserts `(False, {})` and one
   `code("E", "BAD_ARG")`. `:1784` simulates the drift on `_cache` (`del mgr._cache["Count"]`), the file no longer read.
-  `:1914` writes the corrupted file by hand after setup, then `_write_flushed` → "Valid", file holds 7. `:1949` drops
-  `os.remove(path)` (no file after a missing-file setup), its write/read/flush run as one coroutine and it asserts
-  `code("E", "CFG_FILE_WRITE")`. Tests reading the file or `_cache` after a write (`:1638`, `:1655`, `:1703`, `:1736`,
+  `:1914` writes the corrupted file by hand after setup, then `_write_flushed` → "Valid", file holds 7. `:1949` keeps
+  `os.remove(path)` (setup wrote the absent file's defaults, OR136.a), its write/read/flush run as one coroutine and it
+  asserts `code("E", "CFG_FILE_WRITE")`. Tests reading the file or `_cache` after a write (`:1638`, `:1655`, `:1703`, `:1736`,
   `:1762`, `:1860`, `:1931`, `:2117`) do so through `_write_flushed` or one coroutine ending in `flush_pending()`.
   New: `test_compare_before_write_outcome_rows` (unknown key, type error, range error, `always` key, missing current key,
   equal at resolution, different at resolution, int-for-float coercion — each row's outcome and returned value) and
@@ -5320,14 +5479,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.257 Deferred flush: create then stage, commit, supersede, serialise first
 - **From**: A.U11.22 (task-creation failure L1), A.U11.28 (equal snapshot opens nothing; deferred `create_task` failure;
   `:1736-1782` hold), A.U35.43 (1) (supersede L1), A.U11.23 (`_MemoryErrorJson.dumps`; `:2239-2272`, `:2301-2320`; serialise-
-  first L1), A.U10.20 (unserialisable snapshot L1), A.U11.19 (`:2301` starts from a readable file).
+  first L1), A.U10.20 (unserialisable snapshot L1), A.U11.19 (`:2301` starts from a readable file; as superseded by
+  OR136.a (1), the absent-file case returns beside it; A-C review fold).
 - **Site**: `tests/test_config_manager.py:1729-1782`, `:2206-2320`; new tests.
 - **Change**: `_MemoryErrorJson` gains `dumps(obj)` raising on `raise_on_dump` (`dump` stays for symmetry of the
-  fake; comment names both). `:2239`: write and flush in one coroutine under the fault; no file exists afterwards
-  (serialisation fails before the open: `os.stat` → ENOENT), `_cache == {"Count": 8}`, one `code("E",
+  fake; comment names both). `:2239`: write and flush in one coroutine under the fault; the file still holds setup's
+  defaults `{"Count": 5}` byte for byte (serialisation fails before the open), `_cache == {"Count": 8}`, one `code("E",
   "CFG_FILE_WRITE")`; then "Unchanged" for 8 and a flushed 9 writes `{"Count": 9}` (the truncation comment goes).
-  `:2301` starts from a readable file holding an out-of-range `Count`: the repair's `dumps` fails, valid, defaults
-  served, newest code CFG_FILE_WRITE, file bytes unchanged. New: `test_a_failed_task_creation_stages_nothing` —
+  `:2301` keeps HEAD's absent file (the defaults write's `dumps` fails: no file appears, valid, defaults served, one
+  `code("E", "CFG_FILE_WRITE")` — the one write of OR136.a (1) goes through the serialise-first path) and gains a second
+  case from a readable file holding an out-of-range `Count`: the repair's `dumps` fails, valid, defaults served, newest
+  code CFG_FILE_WRITE, file bytes unchanged. New: `test_a_failed_task_creation_stages_nothing` —
   `cm.asyncio.create_task` replaced by a raiser of `MemoryError` (restored in `finally`), for `defer=False` and
   `defer=True`: `(False, {})`, `get_dict()` the old value, `_staged is None`, one `code("E", "ALLOC")`;
   `test_a_flush_equal_to_the_cache_opens_nothing`; `test_two_deferred_writes_then_one_commit_write_the_second_once`
@@ -5345,12 +5507,14 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.258 Write-count guarantees and the source pin
 - **From**: A.U11.19 (`:2364-2376`, `:2409-2416`, `:2419-2433`, `:2472-2493`, `:2496-2509` start from a readable file
-  with a bad key), A.U4.02 (unchanged PUT opens nothing; `:2472` extended past the reboot), A.U2.07 (`[4]`, `[14, 12, 14,
+  with a bad key) superseded by OR136.a (1) (an absent file's one defaults write is the write those tests fail, as at
+  HEAD; A-C review fold), A.U4.02 (unchanged PUT opens nothing; `:2472` extended past the reboot), A.U2.07 (`[4]`, `[14, 12, 14,
   10]`), A.U35.43 (2) (`:2409`'s `TypeError` class), A.U11.23 (`json.dump(` count 0), A.U4.01 (source pin covers the new
   function), A.U10.35 (`self._config_file`), A.U11.28 (read: `create_task(` count 1 holds).
 - **Site**: `tests/test_config_manager.py:2321-2541`.
-- **Change**: the five setup-write-failure tests write `{"Count": 99, "Offset": 1.5, "Name": "abc", "Enabled": true}`
-  by hand first (Count out of range → one repair write); each `(1, [4])` → `(1, [code("E", "CFG_FILE_WRITE")])`;
+- **Change**: the five setup-write-failure tests keep HEAD's absent file (the one write of the defaults is the write
+  that fails; `:2496`'s next boot finds the file still absent and its one write is the defaults again, comment "# the
+  next boot's one write of the defaults"); each `(1, [4])` → `(1, [code("E", "CFG_FILE_WRITE")])`;
   `:2409` iterates `OSError(28)`, `OSError(5)`, `MemoryError` (the `TypeError` case goes: the path is a typed `str`);
   `:2453` → `[CFG_FILE_WRITE, BAD_ARG, CFG_FILE_WRITE, BAD_ARG]` by `code()` (alternating codes: four slots under the
   newest-entry rule). Each write/flush pair runs as one coroutine. `:2472` continues after the fresh boot: the same
@@ -5366,12 +5530,16 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.259 Closing for a reset, `delete_file()`, the store-level interleavings
 - **From**: A.U11.04 (closed-store L1s), A.S0930.21 (f) (`delete_file()`), A.S0930.22 (2) (config flush in flight at
-  close), A.S0930.16 (read: `:1736-1782`, `create_task(` count hold).
+  close), A.S0930.16 (read: `:1736-1782`, `create_task(` count hold), OR138.a (2) (the delete never reads the file and
+  does not depend on the store's readable state; A-C review fold).
 - **Site**: new section after `:2135`.
 - **Change**: `test_a_closed_store_refuses_writes_and_opens_nothing` (`close_writes()`, then `write_config()` → `(False,
   {})`, zero write-mode opens); `test_delete_file_*` — an existing file → `True`, gone; absent → `True`; `cm.os.remove`
   raising `OSError(5)` twice → `False`, one console line, file present; raising once then succeeding → `True`, gone;
-  `write_config()` afterwards → `(False, {})`. Interleavings, each forced by a gate, never a sleep: (a) a flush held at
+  `write_config()` afterwards → `(False, {})`. `test_delete_file_removes_an_unreadable_or_damaged_file_without_reading_
+  it` (OR138.a (2)): a store whose `setup()` met an `OSError(5)` read (`writable is False`, the config fault reported)
+  and a store whose file holds corrupt JSON each answer `True` and the file is gone, with `WriteCountingOpen(cm)`
+  counting zero opens of any mode during `delete_file()`. Interleavings, each forced by a gate, never a sleep: (a) a flush held at
   the lock (the test holds `mgr._config_lock`) when `close_writes()` + `flush_pending()` arrive — after release the
   file holds the accepted value; (b) a `write_config()` suspended inside the lock (its logger's `err_s` gated on an
   `asyncio.Event`, one invalid key in the request) finishes staging and its flush is the one `flush_pending()` awaits;
@@ -5380,8 +5548,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   mechanics land here, the command-level interleavings in `tests/test_system_service.py` (as M.TEST_UNIT.048 placed
   the FRAM half). A "gated `open` stand-in" cannot suspend (`open()` is synchronous); the lock and the logger are the
   store's two await points inside the write path, so the gates sit there.
-- **Unit**: U11 (A.S0930 cases land with A.S0930.16, the reset unit).
-- **Depends**: M.SRC_CORE.041, .042.
+- **Unit**: U11 (A.S0930 cases land with A.S0930.16, the reset unit); stage U20 (A-C review fold): the unreadable/damaged-
+  file deletion test, with the never-reading delete path (OR138.a (2)).
+- **Depends**: M.SRC_CORE.041, .042; [fold F03 M_SRC_CORE] (the delete path that never reads).
 - **Blast carried by**: twin/L3/L4 reset legs → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test
 
@@ -5490,7 +5659,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (`:37-39` `_STATUS_BUSY` → `src_const`), A.U10.37/A.U10.38 (`FRAMManager`, `FRAMChunk`, `asy_crc_checks`, `CRCPass`,
   `asy_base_classes`, `asy_print_log`; docstring names), A.U5.02 (the 12 `SensorReader(Meas(…), 3, fram=manager)` calls
   `:71-403`), A.U10.10 (`reader.pr.setup()` → `reader.setup()`), A.U16.18 (`:92` unpack order), A.U24.56 (`:300`),
-  A.U2.09 + A.U3.04 (the 19 code lines: literal errno/wrnno values), A.U24.73 (`Any`).
+  A.U2.09 (the 19 code lines: literal errno/wrnno values), A.U3.04 dropped (OR140.a (7); the 19 lines are test-chosen
+  codes, so nothing here depended on it; A-C review fold), A.U24.73 (`Any`).
 - **Site**: `tests/test_fram_integration.py:1-56`, `:68-415`.
 - **Change**: docstring → "Full-stack integration: tests/_fram_chip_fake.py's MB85RS64V under asy_spi_driver/
   asy_fram_driver/asy_fram_manager and their real consumers in asy_print_log/asy_base_classes - mocked at the SPI bus,
@@ -5590,7 +5760,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.270 Wet bulb: the cold-dry corner refused; edge inputs against hand-worked values
 - **From**: A.U12.06 (`:49-51` corrected; new corner L1s; `:25-68` hold), A.U24.39 (`:49` (rewritten by A.U12.06),
-  `:118`, `:183`, `:328`, `:493`, `:541` compared with hand-worked references; `:236`/`:287` go with the helpers).
+  `:118`, `:183`, `:328`, `:493`, `:541` compared with hand-worked references; `:236`/`:287` — the humidity helpers stay,
+  OR140.a (4): those two land in M.TEST_UNIT.271's aligned humidity section; A-C review fold).
 - **Site**: `tests/test_math_helpers.py:49-51`, `:118-120`, `:183-185`, `:328-330`, `:493-495`, `:541-543`; new test after
   `:68`.
 - **Change**: `:49` asserts `(-20.0, 75.0)`, `(10.0, 5.0)`, `(50.0, 5.0)`, `(50.0, 99.0)` accepted (the corner line's
@@ -5608,15 +5779,27 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: SCD30 `WetBulb` in the corner → A.U12.06 (SRC_SENS, behaviour only).
 - **Kind**: test
 
-### M.TEST_UNIT.271 `altitude_baro` tests renamed; humidity-conversion tests go
-- **From**: A.U12.08 (`:139-201` banner and ten tests), A.U12.09 (`:204-299` go).
+### M.TEST_UNIT.271 `altitude_baro` tests renamed; humidity-conversion tests kept and aligned
+- **From**: A.U12.08 (`:139-201` banner and ten tests), A.U12.09 dropped (OR140.a (4): `abs_humidity()`/`rel_humidity()`
+  stay, their tests aligned with the other helpers' and the helpers with the no-clamp rule; A-C review fold), A.U24.39
+  (`:236`, `:287` compared with hand-worked references, moved here from M.TEST_UNIT.270).
 - **Site**: `tests/test_math_helpers.py:138-299`.
 - **Change**: banner `pressure_at_height`; every `mh.altitude_baro(` → `mh.pressure_at_height(` and `test_altitude_baro_*`
-  → `test_pressure_at_height_*` (mechanical). The `abs_humidity`/`rel_humidity` section (`:204-299`) is deleted with the
-  functions (no product caller; AC_NOTES 8).
-- **Resolved**: —
+  → `test_pressure_at_height_*` (mechanical). The `abs_humidity`/`rel_humidity` section (`:204-299`) stays and takes the
+  neighbouring helpers' shape: one banner per function; `None` inputs; reference vectors with the arithmetic in a ≤ 3-line
+  comment each, at the neighbouring tests' tolerance, replacing the range check `8.0 < result < 9.5` (`:213-216`) — the
+  legacy Magnus form `13.23454 · RH / (T + 273.15) · 10^(a·T / (b + T))`, water branch a 7.5, b 237.4, ice branch 7.6,
+  240.7: `abs_humidity(20.0, 50.0)` → 8.6365 g/m³, `(40.0, 100.0)` → 50.983, `(-30.0, 100.0)` → 0.4505 (ice branch),
+  `(0.0, 100.0)` → 4.8452 and `(-0.1, 100.0)` → 4.8118 (the branch switch at 0 °C); the boundary tests `:236`/`:287`
+  compare with those hand-worked values instead of `is not None`; out-of-domain inputs and NaN/±inf → `None` as today;
+  `rel_humidity()` round-trips each vector within the tolerance. No clamp (G.2 "nothing clamps"): `test_rel_humidity_
+  clamped_high` (`:255-260`) → `test_rel_humidity_refuses_a_value_above_saturation` — `rel_humidity(20.0, 20.0)` (115.8 %)
+  and `(40.0, 100.0)` (196 %) → `None`, never 100.0; its comment states the rule in one line.
+- **Resolved**: AC_NOTES 8 / A.U12.09's removal is overtaken by the owner's later answer (OR140.a (4), most recent owner
+  decision wins); the no-clamp rule is A.U12.10's G.2 wording ("returns `None` outside the domain … nothing clamps"),
+  which the kept helpers now follow.
 - **Unit**: U12.
-- **Depends**: M.SRC_CORE.127, .128.
+- **Depends**: M.SRC_CORE.127; [fold F08 M_SRC_CORE] (the humidity helpers kept, `rel_humidity()` without its clamp).
 - **Blast carried by**: `tests/test_asy_bmp3xx_driver.py:1388` comment → M.TEST_UNIT.007-.024 (bmp section, A.U12.08).
 - **Kind**: test
 
@@ -5635,15 +5818,17 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.273 Every residual catch reached through a stand-in `math`
-- **From**: A.U35.42 (1) (one test per function with a residual catch).
+- **From**: A.U35.42 (1) (one test per function with a residual catch), OR140.a (4) (the humidity helpers stay; A-C
+  review fold).
 - **Site**: new tests at the end of `tests/test_math_helpers.py`.
-- **Change**: `test_residual_math_errors_return_none` — for `wet_bulb_temperature`, `dew_point`, `pressure_at_height`
-  (the three catches left, M.SRC_CORE.130): `mh.math` replaced by a stand-in whose `log`/`exp`/`atan`/`sqrt` raise
-  `ValueError("stand-in domain error")`, then `OverflowError` (an `ArithmeticError`); each call with an in-domain
-  argument returns `None`; the real `math` restored in `finally`.
-- **Resolved**: A.U35.42 lists five catches; A.U12.09 removes two functions first, so three remain (M.SRC_CORE.130).
+- **Change**: `test_residual_math_errors_return_none` — for `wet_bulb_temperature`, `dew_point`, `pressure_at_height`,
+  `abs_humidity`, `rel_humidity` (the five catches A.U35.42 lists): `mh.math` replaced by a stand-in whose
+  `log`/`exp`/`atan`/`sqrt`/`pow` raise `ValueError("stand-in domain error")`, then `OverflowError` (an
+  `ArithmeticError`); each call with an in-domain argument returns `None`; the real `math` restored in `finally`.
+- **Resolved**: A.U35.42 lists five catches; A.U12.09's removal of two of them is dropped (OR140.a (4), A-C review fold),
+  so all five stay (M.SRC_CORE.130 as the fold amends it).
 - **Unit**: U35.
-- **Depends**: M.SRC_CORE.130.
+- **Depends**: M.SRC_CORE.130; [fold F08 M_SRC_CORE] (the two humidity helpers kept with their catches).
 - **Blast carried by**: SPEC E.5.1 row → A.U35.41 (SPEC).
 - **Kind**: test
 
@@ -5764,19 +5949,21 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: —
 - **Kind**: test
 
-### M.TEST_UNIT.279 A faulted SCD30 cycle: one entry, attributed to SCD30 alone
-- **From**: A.U3.03 (`:211-216`, `:262-264` ErrCount 2 → 1, last entry the read error), A.U2.06 + A.U2.11 (`:211-216`:
-  no streak entry), A.U10.R01 + A.U15.R01 (read: one failure fires no recovery rung; re-derived counts hold at 1).
+### M.TEST_UNIT.279 A faulted SCD30 cycle: the driver's and the streak's entries, attributed to SCD30 alone
+- **From**: A.U3.03 dropped (OR140.a (7): `:211-216`, `:262-264` keep HEAD's `ErrCount` 2, the streak entry kept; A-C
+  review fold), A.U2.06 + A.U2.11 (`:211-216` codes by name), A.U10.R01 + A.U15.R01 (read: one failure fires no recovery rung; re-derived counts hold at 1).
 - **Site**: `tests/test_notification_scd30_integration.py:189-264`.
-- **Change**: `:209-216`: `still_running is True`; `ErrCount == 1`; the newest entry `code("E", "READ")` (the
-  `_last_two_err_nums()` helper → `_newest_code(log, "SCD30")`); the comment → "# One faulted cycle persists exactly the
-  driver's read error; the streak step prints only (SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment
-  names `_signal_loop()`'s startup off frame. `:259-264`: `ErrCount == 1`, newest `code("E", "READ")`, comment "#
-  history keeps the fault; the later success only resets the streak (a print, no entry)." NOTIFY counts stay 0.
+- **Change**: `:209-216`: `still_running is True`; `ErrCount == 2`; the last two entries are `code("E", "READ")` and the
+  streak's own entry by its catalog name (the `_last_two_err_nums()` helper keeps its role, reading codes by name); the
+  comment → "# One faulted cycle persists the driver's read error and the reader's streak step: each layer the fault
+  reaches keeps its entry (SPECIFICATION.md C.7)." (no audit ID, A-C3 O-16) `:220` comment names `_signal_loop()`'s
+  startup off frame. `:259-264`: `ErrCount == 2`, the same two entries, comment "# history keeps the fault; the later
+  success only resets the streak." NOTIFY counts stay 0.
 - **Resolved**: —
 - **Unit**: U3 (stage U2 codes).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_CORE.037 (one entry per failing cycle); M.SRC_SENS (SCD30 read error).
+- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03: the streak entry per failing cycle); M.SRC_SENS (SCD30 read
+  error); [fold F11 M_GEN] (the streak's catalog entry).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -5799,7 +5986,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   _i2c`. `drive_scd_cycle()`/`_drive_sgp_cycle()` → `_drive_*` and run with the UTC flag set (reset in `finally`), the
   SGP40 helper passing the condition `_read_loop()` computes (M.SRC_SENS.091). `make_dual_stack()` → the service built
   with both signals over `ValueRef`s. Waits under `DrivenTime` (two ramps: the product's `2 × 2 × FlashDur`; one ramp:
-  `2 × FlashDur`), no tags. `:282` `ErrCount == 1` (A.U3.03), newest `code("E", "READ")`.
+  `2 × FlashDur`), no tags. `:282` keeps HEAD's `ErrCount == 2`, the codes by name: the driver's `code("E", "READ")` and the
+  streak's own entry (A.U3.03's single entry dropped, OR140.a (7); A-C review fold).
 - **Resolved**: A.U8C.38's tags vs A.U35.13 — not written.
 - **Unit**: U35 (stages U3, U5, U10, U15, U24, U31, U36).
 - **Depends**: M.TEST_UNIT.278 (SCD30 builder), M.TEST_UNIT.281 (SGP40 builder); M.SRC_SENS.067, .068, .091.
@@ -6072,14 +6260,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (`:401`, `:408`, `:586`, `:601`, `:629`; new L1s: unreadable store kept, blank re-initialised), A.U11.31 (`:476-524`,
   `:555-577` gain `reset()`'s result; `:511-524` → `False`; new L1), A.U11.09 (`:539-553` holds, gains the history bytes),
   A.U14.19 (new gated-write L1; the existing fakes are not gated), A.U16.R03 (read: `tests/test_asy_fram_manager.py`'s
-  re-persist case uses this file's store pattern, M.TEST_UNIT.048).
+  re-persist case uses this file's store pattern, M.TEST_UNIT.048); routine settlement `unit-test-d-t27` and AC_NOTES 52
+  (`:629` stays `False`; A-C review fold).
 - **Site**: `tests/test_print_log.py:377-691`; new tests.
 - **Change**: `:399-401` (`fram is None`): `_write()` `False`, `_read()` `None`. `:408` (blank chunk) `_read() is False`
   holds. `:536` → `run(store._read()) == (1, ())` (the read returns the stored count and entries). `:546` sets
   `_err_count`; `:539-553` holds with the two history bytes asserted after the header. `:579-586` (get_chunk raising
   `MemoryError`): `fram is None`, `_write()` `False`, `_read()` `None`. `:589-597` goes (the real chunk's `write_into()`
   cannot raise; guard: `:598`'s MemoryError read case and the `None`-buffer case below). `:598-601` → `_read()` `None`.
-  `:629` → `_read()` `None` (both copies torn: unreadable, not blank). `:484`, `:505`, `:561` assert `reset()` is `True`;
+  `:629` (both copies BUSY) keeps `_read() is False` (blank or invalid, started fresh; not unreadable). `:484`, `:505`, `:561` assert `reset()` is `True`;
   `:518` asserts `run(store.reset()) is False`. New: `test_a_none_data_buffer_fails_write_and_read_without_raising`
   (`none_buffer=True`: `_write()` `False`, `_read()` `None`); `test_an_unreadable_store_keeps_its_bytes_and_stays_ram_
   only` (a chunk reading `None` at `setup()`: chip bytes untouched, `initialized is False`, `setup()` `False`, a later
@@ -6088,9 +6277,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `write_into()` awaits a test-held `asyncio.Event` and records payloads; three concurrent `err_s()`: releasing the gate
   lets exactly two writes through, the first and the newest, the last payload holds all three entries, the superseded
   call returns `True`).
-- **Resolved**: A.U16.06 lists `:629` among the fault fakes going to `None` while the chunk's own split
-  (M.SRC_CORE.088) returns `False` for blank-or-invalid data; A.U16.06 states the site's end value and both blocks
-  carry a BUSY status (a status fault, not blank data) — `None` kept as written (agent decision D-T27).
+- **Resolved**: A.U16.06 lists `:629` among the fault fakes going to `None`, but the merged code answers `False` there:
+  M.SRC_CORE.084 returns `None` from a busy status byte without setting the fault flag, so M.SRC_CORE.088 reads the
+  chunk as invalid with no fault (`False`), and G5/R25 re-initialises exactly such a chunk — `:629` stays `_read() is
+  False` (agent decision D-T27, corrected by the routine settlement `unit-test-d-t27`, AC_NOTES 52; A-C review fold).
 - **Unit**: U16 (stages U11, U14).
 - **Depends**: M.SRC_CORE.064, .065, .088.
 - **Blast carried by**: —
@@ -6117,7 +6307,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.293 Every class with an async setup answers before and after a failed setup
 - **From**: A.U10.22 (the L1 half; the L0 AST check is `tests_scripts/test_readiness_gates.py`, TSC), A.U10.21 (a
-  refused construction: `setup()` `False`, the refusal persisted), GAP-17 lead ruling (AC_NOTES 38).
+  refused construction: `setup()` `False`, the refusal persisted), GAP-17 lead ruling (AC_NOTES 38); routine settlement
+  `initialized-flags` (AC_NOTES 52, OR36.a (1): `initialized` only where product code reads it; A-C review fold).
 - **Site**: new `tests/test_readiness_gates.py`.
 - **Change**: one table of `(class, builder, forced-failure, {public method: documented answer})` rows, one row per `src/`
   class with an async `setup()` that A.U10.22's L0 check gates (the same class list, read from the L0 test's exported
@@ -6126,25 +6317,26 @@ session lock names, and the fake's rp2 probe/scan semantics.
   the answer is the documented one — a sentinel (`None`, `False`, `{}`), `"Failed"` per requested key, or the documented
   raise — never an `AttributeError`; a refused construction's `setup()` returns `False` and its log holds the refusal.
   Exempt by name, as the L0 check names them (AC_NOTES 38): the chip protocol classes (`BMP3XX_I2C`, `SCD30_I2C`,
-  `SGP40_I2C`, `ISL29125_I2C`) and `I2CDevice`; `ConfigManager` is gated on `valid`; `NeopixelDriver` on its
-  `initialized` gate (its row: `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` before `setup()` — `initialized`
-  False → True; before `setup()` the overlay calls return `None`, `led_signal()`/`request_signal()` answer by their own
-  rules, M.SRC_SENS.024 as amended, AC_NOTES 44); `NotificationService` is gated (`initialized` False until
-  `setup()`, no method guarding on it): its row asserts `initialized is False` before `setup()` and `True` after, and that
-  every public method before `setup()` answers the construction defaults — `get_data()` `NOTIFY(Triggered=False,
+  `SGP40_I2C`, `ISL29125_I2C`) and `I2CDevice`; `ConfigManager` is gated on `valid`. An `initialized` assertion appears
+  only in the rows of classes whose product code reads that flag — the FRAM, SPI, UART and logging classes (`FRAMManager`:
+  `initialized` replaces `_was_up`, before `setup()` a chunk request answers as the not-up manager did); `SensorReader`
+  and through it every `SensorReaderConfig` subclass (`WifiService`, the NTP client, the notification service, every
+  reader), `WebserverService` and `NeopixelDriver` carry no such flag, and their rows, like every other row, assert only the
+  public answers and `setup()`'s `bool`. `NeopixelDriver`'s row: `on()`/`off()`/`toggle()`/
+  `led_signal()`/`request_signal()` before `setup()` answer as M.SRC_SENS.023/.024 state after the fold; `NotificationService`'s
+  row: every public method before `setup()` answers the construction defaults — `get_data()` `NOTIFY(Triggered=False,
   TS=None)`, `get_dict_cfg()` the config store's not-valid answer, `get_error_counter()` an empty log — never an
-  `AttributeError`. Rows added by gap pass G2's flags (GAPS_G2 H-2 (d); gap pass G3): `SystemService` (its own
-  `initialized`), `SensorReader` (set in its `setup()`) and through it every `SensorReaderConfig` subclass, `FRAMManager`
-  (`initialized` replaces `_was_up`: before `setup()` a chunk request answers as the not-up manager did), `WifiService`
-  and `WebserverService` (each `setup()` returns `bool`, asserted `True` after a healthy setup and `False` after the
-  forced failure). Module docstring ≤ 3 lines
-  naming G5/R14's rule in words.
-- **Resolved**: AC_NOTES 38 settles the exempt set and the NeopixelDriver gate; AC_NOTES 42 (2) voids its `_finalized`
-  reading and keeps `NotificationService` in the check with `self.initialized` (G5/R14).
+  `AttributeError`. Rows added by gap pass G2's `bool` setups (GAPS_G2 H-2 (d); gap pass G3): `SystemService`,
+  `SensorReader`/`SensorReaderConfig`, `FRAMManager`, `WifiService` and `WebserverService` (each `setup()` returns `bool`,
+  asserted `True` after a healthy setup and `False` after the forced failure). Module docstring ≤ 3 lines naming G5/R14's
+  rule in words.
+- **Resolved**: AC_NOTES 38 settles the exempt set; the routine settlement `initialized-flags` (AC_NOTES 52) supersedes
+  the `NeopixelDriver` gate (AC_NOTES 38/44) and AC_NOTES 42 (2)'s `NotificationService.initialized`, and narrows A.U10.22's
+  check scope to the classes whose product code reads the flag: no row reads a flag only a test would read.
 - **Unit**: U10 (lands after U13's `deinit()` bool, as A.U10.22 states).
-- **Depends**: M.SRC_CORE.008, .036, .039, .092, M.SRC_NET.079, .119 (the G2 flags and `bool` setups); M.TEST_UNIT.079
-  (NeopixelDriver gate cases); M_SRC_SENS NeopixelDriver gate (GAP); M.SRC_SENS.033 as
-  amended at d280140 (`NotificationService.initialized`); every class's M.SRC_* `setup()` end state.
+- **Depends**: M.SRC_CORE.008, .036, .039, .092, M.SRC_NET.079, .119 (the `bool` setups; the flags as amended by the
+  fold); M.TEST_UNIT.079 (NeopixelDriver before-`setup()` cases); M.SRC_SENS.023, .024, .033 as amended by the fold;
+  every class's M.SRC_* `setup()` end state.
 - **Blast carried by**: L0 → A.U10.22 (TSC); SPEC C.13 → A.U10.22 (SPEC).
 - **Kind**: test
 
@@ -6432,31 +6624,40 @@ session lock names, and the fake's rp2 probe/scan semantics.
 ### M.TEST_UNIT.306 Config reset and FRAM erase: the sequence, refusals, step errors, power cuts
 - **From**: A.S0930.21 (a)-(e), A.S0930.25 (power-cut proof), A.S0930.22 (1)-(5) (states and hazards, per purpose),
   A.S0930.32 (the escalation-vs-preflight and command-during-escalation-log interleavings), A.U22.01 (read: a task ending
-  persists exactly one entry — M.TEST_UNIT.308).
+  persists exactly one entry — M.TEST_UNIT.308); OR136.a (1) (the rebuild writes each deleted file once with its
+  defaults), OR138.a (2) (the reset deletes every schema-backed file whatever its readable state; a failed delete is
+  logged and answers "Failed"), OR140.a (12) (no SCD30 write while a sequence runs) — A-C review fold.
 - **Site**: new section after the reboot tests.
 - **Change**: as A.S0930.21 lists: (a) `test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_
-  code_7`; (b) `test_erase_fram_zeroes_every_byte_and_reboots_with_code_8` on the 8 KB and 256 KB fakes; (c)
+  code_7`, one of the stores built over an unreadable file (`OSError(5)` at its `setup()`: `writable is False`, the config
+  fault reported) and one over a corrupt-JSON file, both deleted like the rest with no read of either (OR138.a (2)); (b) `test_erase_fram_zeroes_every_byte_and_reboots_with_code_8` on the 8 KB and 256 KB fakes; (c)
   `test_an_erased_chip_boots_like_a_new_one`, `test_an_all_zero_block_never_validates_even_with_an_idle_status`; (d) the
   refusals (reset armed, no store, no storage, chip uninitialised, write-protected 0x8C, `create_task` raising, the other
   command under way, the same one), each answering `False` with nothing changed and the supervisor still feeding; (e) the
-  step errors, each continuing to code 9 without hanging. A.S0930.25: the fake's `cut_after_bytes` knob and a test-local
+  step errors, each continuing to code 9 without hanging; a store whose delete fails twice logs its line and the command
+  reports "Failed" for it (OR138.a (2)) — where that answer surfaces (the command result or the code 9 the next boot
+  reports) is M.SRC_CORE.011's as the fold amends it, the assertion following it. A.S0930.25: the fake's `cut_after_bytes` knob and a test-local
   `PowerCut(BaseException)`: (1) structural — after pass 1 every allocated block's status bytes are 0x00 and no pass-2
   byte precedes the last pass-1 status write; (2) enumerated cut points (each status byte of pass 1; first, middle and
   last byte of each overlapping pass-2 unit): a rebuild restores each ring exactly or blank, logging only {status bytes
   disagree, block uninitialised}; config: `cm.os` replaced so `remove` raises `PowerCut` after k removals, k = 0 … stores:
-  the rebuild serves the remaining files and defaults, writing nothing at boot. A.S0930.22 (1)-(5) per purpose (boot
+  the rebuild serves the remaining files unchanged (no write to any of them) and writes each removed file once with its
+  defaults (OR136.a (1): one write per absent file, counted by `WriteCountingOpen`). A.S0930.22 (1)-(5) per purpose (boot
   accepted before the supervisor ran; a flush in flight; a FRAM write between its blocks; a bus session cancelled by S4;
   `mempause` active then `erase_fram()`), (6)-(9) (armed reset refused, the supervisor dying past budget during the
   sequence arms nothing, both orders of two commands, a command + reboot + mempause at once, a PUT during S5 answering
-  "Failed"), each interleaving forced by an `asyncio.Event` gate, never a sleep. A.S0930.32:
+  "Failed" — the SCD30 setter fields among them, M.TEST_HELP.040 (8) proving the zero chip writes on the real graph), each interleaving forced by an `asyncio.Event` gate, never a sleep. A.S0930.32:
   `test_an_escalation_armed_during_the_erase_preflight_refuses_the_command` and
   `test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset`.
 - **Resolved**: A.S0930.22 lists `tests/test_config_manager.py` beside this file; the store-level mechanics land in
   M.TEST_UNIT.259, the command-level cases here. It also lists `tests/test_asy_fram_manager.py`: case (3) runs here
   through the command sequence with the gated fake chip, so that file gains nothing (A-C3 S-18).
-- **Unit**: U11 (config reset), U16 (erase).
+- **Unit**: U11 (config reset), U16 (erase); stage U20 (A-C review fold): the unreadable/damaged-store deletion and the
+  failed-delete answer, with the delete path (OR138.a (2)); the power-cut rebuild's defaults write lands in U11 with OR136.a.
   A-C2 step order: A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
-- **Depends**: M.SRC_CORE.011, .041, .042, .083; TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25, A.U24.22).
+- **Depends**: M.SRC_CORE.011, .041, .042, .083 (as the fold amends them for OR136.a/OR138.a); [fold F03 M_SRC_CORE]
+  (the config-fault state and the never-reading delete); TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25,
+  A.U24.22); M.TEST_HELP.062 (`WriteCountingOpen`).
 - **Blast carried by**: L2-L4 → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test
 
@@ -7280,7 +7481,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **GAP-U2 (TSC)**: `tests_scripts/test_error_catalog.py` (A.U2.02) asserts that each of its keyword idioms (`errno=`,
   `wrnno=`) matches at least once over `src/` — A.U24.50 (3)'s non-vacuity floor moves there with the L1 test it
   hardened, which A.U2.02 removes (M.TEST_UNIT.157, D-T14).
-- **GAP-U3 (SRC_SENS)** — closed by M.SRC_SENS.023/.024 as amended (AC_NOTES 44): AC_NOTES 38 gives `NeopixelDriver` an `initialized` gate, but no merged product change adds it:
+- **GAP-U3 (SRC_SENS)** — closed by M.SRC_SENS.023/.024 as amended (AC_NOTES 44), then void: the routine settlement
+  `initialized-flags` (AC_NOTES 52, A-C review fold) adds no `initialized` to `NeopixelDriver`; the readiness row asserts
+  its public answers only. Original text: AC_NOTES 38 gives `NeopixelDriver` an `initialized` gate, but no merged product change adds it:
   where it is set (`setup()`), and what `on()`/`off()`/`toggle()`/`led_signal()`/`request_signal()` answer before
   `setup()`. M.TEST_UNIT.079 and the readiness L1 (M.TEST_UNIT.293) assert those answers once defined.
 - **GAP-U4 (SRC_SENS, observation)**: a stored config value outside the chip's domain (a stale file) makes
@@ -7337,7 +7540,9 @@ None open. Both questions this merge raised are settled by AC_NOTES 42 (lead, 20
 1. Header block on the 23 L1 files without one — settled by G9/R16 (every file opens with exactly one header block,
    every-file scope owner PQ6; the gate checks presence): M.TEST_UNIT.334.
 2. `NotificationService`'s readiness gate — AC_NOTES 38's `_finalized` reading is void; per G5/R14 the class carries
-   `self.initialized` and stays in A.U10.22's check: M.TEST_UNIT.293's row.
+   `self.initialized` and stays in A.U10.22's check: M.TEST_UNIT.293's row. Superseded in the A-C review fold by the
+   routine settlement `initialized-flags` (AC_NOTES 52): no `initialized` on `NotificationService`; its row asserts the
+   construction defaults only.
 
 ## Agent decisions for the OR2.c review
 
@@ -7370,7 +7575,8 @@ None open. Both questions this merge raised are settled by AC_NOTES 42 (lead, 20
 24. D-T24 — the non-dict data test holds: the product keeps its `None` branch (M.TEST_UNIT.256).
 25. D-T25 — A.S0930.22 (2) gates at the lock and logger, `open()` being synchronous (M.TEST_UNIT.259).
 26. D-T26 — the no-autostart boot entry is executed too (M.TEST_UNIT.269).
-27. D-T27 — print-log both-busy read answers `None` (M.TEST_UNIT.291).
+27. D-T27 — print-log both-busy read answers `False` (blank or invalid, started fresh), not `None` (M.TEST_UNIT.291;
+    corrected in the A-C review fold, routine settlement `unit-test-d-t27`).
 28. D-T28 — the no-autostart entry is checked by `ast` for no `WDT` construction (M.TEST_UNIT.294).
 29. D-T29 — a failing starter is persisted and printed (M.TEST_UNIT.304).
 30. D-T30 — no UDP crossing tests: the UDP module keeps no tick site (M.TEST_UNIT.313).

@@ -446,7 +446,8 @@ actions only where they name a product line.
   failed socket setup, connect() or bind()` with `# @tunable udp.retry_backoff_ms = 500`; `_POLL_WAIT_MS = const(20)`
   with `# @tunable udp.poll_wait_ms = 20` (a wait with a deadline, inside an exchange; owner-confirmed 2026-07-19);
   `_POLL_IDLE_MS = const(100)` with `# @tunable udp.poll_idle_ms = 100` (a wait with no deadline: the captive DNS
-  listen; tuned agent choice 2026-09-30, measurement owed). `class UDPSocket:`; `__init__(self, addr: tuple[str, int],
+  listen; 100 ms stays with its measurement owed — the loop share at idle on the twin and on the bench, owner,
+  2026-10-05, OR141.a (5); A-C review fold). `class UDPSocket:`; `__init__(self, addr: tuple[str, int],
   mode: 'Literal["client", "server"]' = "client") -> None:` — the mode check unchanged; `:43-49` → `if not
   (isinstance(addr, tuple) and len(addr) == _ADDR_TUPLE_LEN and isinstance(addr[0], str) and isinstance(addr[1],
   int)): raise TypeError(f"addr must be a (host: str, port: int) tuple, got {addr!r}")` (the bytes branch, its comment
@@ -513,7 +514,9 @@ actions only where they name a product line.
   `ready()`, breaking G6/R34 "`AsyUDPSocket` I/O … never raise" (HEAD maps it to `False`, `:145-148`); the merged body
   keeps the branch and the `wait_for_ms` call inside one `try` that maps `TypeError` to `False` — settled by G6/R34.
 - **Unit**: U18 (A.U10.26's structure lands in U10 with the 20 ms `wait_time_ms` passed through — staged: U10 writes
-  `_poll()`/`wait_for_ms` with `wait_time_ms` kept, U18 removes the parameter and splits the rate)
+  `_poll()`/`wait_for_ms` with `wait_time_ms` kept, U18 removes the parameter and splits the rate); the owed measurement
+  of the 100 ms idle rate (the loop share at idle, OR141.a (5), A-C review fold) lands where its tiers run: the twin
+  [fold F26 M_TWIN] (U25) and the bench [fold F26 M_HW_BENCH] (C)
 - **Depends**: M.SRC_NET.026, M.SRC_NET.027
 - **Blast carried by**: callers `sendto()`/`write()`/`recvfrom()` pass no rate (M.SRC_NET.030); `asy_captive_dns`
   listens with no deadline (M.SRC_NET.007); tests (renamed deadline-rate test, dropped `wait_time_ms` arguments,
@@ -669,8 +672,8 @@ actions only where they name a product line.
   const((("NTPInterval", "int", 12, 1, 24, None),))`, `_VAL_GMT_OFFSET` (`GMTOffset`), `_VAL_DST_OFFSET`
   (`DSTOffset`) unchanged values; new `_VAL_DNS_FALLBACK = const((("DNSFallback", "str", "8.8.8.8,1.1.1.1", 0, 47,
   None),))` with its two-line comment "# DNS servers tried after the DHCP-provided one, in order; empty = none. Default:
-  today's public pair" / "# (owner, 2026-09-26). At most three (agent, 2026-09-30), which bounds the NTP attempt's lock
-  hold (SPECIFICATION.md C.8)." Tags: `# @web-group section=networking submitGroup=ntp label="NTP Time Sync" submit=true
+  today's public pair" / "# (owner, 2026-09-26). At most three (agent, 2026-09-30; owner-reviewed, 2026-10-02), which bounds the NTP
+  attempt's lock hold (SPECIFICATION.md C.8)." Tags: `# @web-group section=networking submitGroup=ntp label="NTP Time Sync" submit=true
   submitLabel="Apply & Resync"`; `# @web NTPHost … label="NTP Server Address" shape=hostName`; `# @web NTPOffset …
   unit="s" description=…` (text unchanged); `# @web NTPInterval … unit="h"`; new `# @web-group section=networking
   submitGroup=dns label="DNS Fallback Servers" submit=true` and `# @web DNSFallback section=networking submitGroup=dns
@@ -779,11 +782,14 @@ actions only where they name a product line.
 - **Kind**: code
 
 ### M.SRC_NET.047 Named error-code block for NTP
-- **From**: A.U2.04, A.U2.15 (renumbering, W→E for callbacks), A.U3.02, A.U3.05 (e11/e18 become console lines),
+- **From**: A.U2.04, A.U2.15 (renumbering, W→E for callbacks), A.U3.02, A.U3.05 (dropped: OR140.a (7), A-C review fold: e11/e18 stay persisted),
   A.U18.14 (72), A.U18.15 (shared w12; W12 after gap pass G2: M.SRC_SENS.043, the later merge, gives W11 to `DERIVED_DOMAIN` (SUPP_recovery conflicts row 7); the catalog takes W12 (M.GEN.034; G1 hand-off H1; M_SRC_SENS GAP-7, M_TEST_UNIT GAP-U5)), A.U10.41/A.U18.10 (21 for the PUT refusal; shared w10 for the stored-host
   default); register fix 10 (no `CLOCK` code left here)
 - **Site**: `src/asy_ntp_client.py`, one block after the imports
-- **Change**: `_ERR_CALLBACK = const(14)`, `_ERR_TIMER = const(17)`, `_ERR_BAD_ARG = const(21)`, `_ERR_NTP_DNS =
+- **Change**: `_ERR_CALLBACK = const(14)`, `_ERR_TIMER = const(17)`, `_ERR_ALLOC = const(20)` (the parser's allocation
+  failure, M.SRC_NET.049), `_ERR_BAD_ARG = const(21)`, `_ERR_CFG_READ` (shared: the module's own config read failed and
+  it runs on its fallback — HEAD's e11/e18, kept persisted by OR140.a (7); the next free shared code, numbered at
+  execution with the catalog as the numbering source, M.GEN.034), `_ERR_NTP_DNS =
   const(67)`, `_ERR_NTP_IMPLAUSIBLE = const(68)`, `_ERR_NTP_MALFORMED = const(69)`, `_ERR_NTP_RETRIES = const(70)`,
   `_ERR_NTP_NO_REPLY = const(71)`, `_ERR_NTP_NOT_SENT = const(72)`, `_WRN_STORED_DEFAULT = const(10)`,
   `_WRN_SOCKET_TEARDOWN = const(12)`, `_WRN_NTP_UNSYNC_REPLY = const(40)`. No `_ERR_CLOCK`: `cettime()`'s handler goes
@@ -791,8 +797,8 @@ actions only where they name a product line.
 - **Resolved**: A.U2.15 maps e19 → 16 CLOCK for `cettime()`; U18 register fix 10 (lead, ruling V.U18.R10) removes that
   handler ("`cettime()`'s handler takes the same rule": no catch), so NTP logs no 16 — with A.U10.06 retiring SYSTEM e2
   and FRAM e86/e88, catalog row 16 has no site left (gap for the catalog cluster, below).
-- **Unit**: U18 (staged: U2 writes the renumbered constants for the HEAD sites, U3 removes e11/e18's persistence, U18
-  the end state)
+- **Unit**: U18 (staged: U2 writes the renumbered constants for the HEAD sites, e11/e18 as `_ERR_CFG_READ`; U18 the end
+  state with `_ERR_ALLOC`)
 - **Depends**: A.U2.01 with U18 register fix 9 (72, w12, w42 text)
 - **Blast carried by**: NTP catalog rows and js mock rows → A.U2.01/A.U2.21 (catalog/WEB); tests (22 NTP code
   assertions, `scripts/_digital_twin_ci_suite.py:62, 1026-1027`, bench `test_network_resilience.py` code sets) →
@@ -827,42 +833,45 @@ actions only where they name a product line.
 
 ### M.SRC_NET.049 `_parse_ntp_reply()`: direct codes, reachable failures only
 - **From**: A.U14.26 (3) (drop `OverflowError`, add `MemoryError`, comment), A.U2.15/A.U3.02 (codes, direct calls),
-  A.U10.43 (`raw_seconds` → `raw_s`), A.U10.45 (except order)
+  A.U10.43 (`raw_seconds` → `raw_s`), A.U10.45 (except order); routine settlement "ntp-malformed-text" (an allocation
+  failure logs the shared ALLOC code; A-C review fold)
 - **Site**: `src/asy_ntp_client.py:243-270`
 - **Change**: unsynced/KoD branch → `await self.pr.wrn_s("NTP reply unsynchronized or Kiss-of-Death, rejecting:",
   leap_indicator, stratum, wrnno=_WRN_NTP_UNSYNC_REPLY)`; `raw_s = struct.unpack("!I", msg[40:44])[0]`; implausible →
-  `errno=_ERR_NTP_IMPLAUSIBLE`; `except (IndexError, MemoryError, OSError, ValueError) as e:` with the comment "#
-  malformed/truncated reply (MicroPython's struct raises plain ValueError, not struct.error) or an" / "# allocation
-  failure (Part F.1) - treat like no response."; message → `await self.pr.err_s("Unusable NTP response, treating as no
-  response:", e, errno=_ERR_NTP_MALFORMED)`.
-- **Resolved**: A.U14.26 asks A-C to check errno 69's text ("the reply is malformed", A.U2.01) now that an allocation
-  failure lands there too: the site message and the catalog text must both say what is logged — site "Unusable NTP
-  response", catalog 69 text "the reply is malformed or could not be parsed" (name `NTP_MALFORMED` kept); agent reading,
-  OR2.c list; the catalog half is a gap for the catalog cluster. U18 register fix 10 (no catch for the `_now()` shapes
+  `errno=_ERR_NTP_IMPLAUSIBLE`; `except MemoryError as e: await self.pr.err_s("NTP reply could not be parsed, treating as no response:", e,
+  errno=_ERR_ALLOC)` (the shared allocation code, Part F.1), then `except (IndexError, OSError, ValueError) as e:` with
+  the comment "# malformed/truncated reply (MicroPython's struct raises plain ValueError, not struct.error) - treat like
+  no response." and `await self.pr.err_s("Malformed NTP reply, treating as no response:", e, errno=_ERR_NTP_MALFORMED)`.
+- **Resolved**: A.U14.26 asks A-C to check errno 69's text ("the reply is malformed", A.U2.01) once an allocation
+  failure reaches the handler: settled by the routine settlement "ntp-malformed-text" (A-C review fold, replacing the
+  agent reading that widened 69) — the allocation failure logs the shared errno 20 ALLOC, and 69 keeps meaning only "the
+  reply is malformed" (catalog text unchanged, M.GEN.034). U18 register fix 10 (no catch for the `_now()` shapes
   and `cettime()`) does not name this site; A.U14.26 (3) stands here (the gmtime of a reply value is not one of those
   shapes).
 - **Unit**: U18 (A.U14.26 is U14: staged — U14 writes the except tuple and comment; U18 the code names and message)
 - **Depends**: M.SRC_NET.047
 - **Blast carried by**: tests (`gmtime` overflow test removed, `_NTP_MAX_PLAUSIBLE_UNIX_TIME < 2**32` structural test,
-  `MemoryError("simulated allocation failure")` injection returning `None`, the `:1073-1074` comment) → A.U14.26
-  (tests cluster); catalog 69 text → gap (catalog cluster, A.U2.01)
+  `MemoryError("simulated allocation failure")` injection returning `None` and logging 20, not 69 → [fold F29
+  M_TEST_UNIT], the `:1073-1074` comment) → A.U14.26
+  (tests cluster); catalog 69 text unchanged → M.GEN.034
 - **Kind**: code
 
 ### M.SRC_NET.050 `_run_ntp_sync_attempt()`: renamed callback, console config line, three-value config
-- **From**: A.U10.18 (`network_available_locked`, message text), A.U2.15 (callback W→E 14), A.U3.05 (missing config →
-  console), A.U18.10 (config tuple, third argument), A.U10.31 (unquote the return annotation if its names are runtime)
+- **From**: A.U10.18 (`network_available_locked`, message text), A.U2.15 (callback W→E 14), A.U3.05 (dropped: OR140.a (7), A-C review fold: the missing-config
+  entry stays persisted), A.U18.10 (config tuple, third argument), A.U10.31 (unquote the return annotation if its names are runtime)
 - **Site**: `src/asy_ntp_client.py:213-241`
 - **Change**: `network_ok = self._network_available_locked()`; except → `await self.pr.err_s("network_available_locked()
   callback failed:", e, errno=_ERR_CALLBACK)`; missing config → `await self._set_synced(value=False)` then
-  `self.pr.err("Missing NTP configuration!")` (console, no number); `ntp_host, fallback, ntp_offs = ntp_config`;
+  `await self.pr.err_s("Missing NTP configuration!", errno=_ERR_CFG_READ)` (persisted: this layer's own entry beside
+  `CFGMGR_NTP`'s, as at HEAD); `ntp_host, fallback, ntp_offs = ntp_config`;
   `addr = await self._resolve_ntp_server(ntp_host, dns_server, fallback)`; `tm = await self._parse_ntp_reply(msg,
   ntp_offs)`; the rest unchanged. Return annotation `-> tuple[tuple[int, ...] | None, bool]` unquoted (no
   `TYPE_CHECKING` name).
 - **Resolved**: —
 - **Unit**: U18
 - **Depends**: M.SRC_NET.046, M.SRC_NET.048
-- **Blast carried by**: tests (callback-failure code class E, missing-config test now one `CFGMGR_NTP` entry and none in
-  NTP's log) → A.U2.15, A.U3.05 (tests cluster)
+- **Blast carried by**: tests (callback-failure code class E, missing-config test keeps one `CFGMGR_NTP` entry and one in
+  NTP's own log) → A.U2.15 (tests cluster), [fold F11 M_TEST_UNIT]
 - **Kind**: code
 
 ### M.SRC_NET.051 `_handle_ntp_sync_failure()`: codes, ONE_SHOT backstop comment, private names
@@ -991,12 +1000,14 @@ actions only where they name a product line.
 
 ### M.SRC_NET.057 `_refresh_loop()`: staleness on the tick age, console config line
 - **From**: A.U10.44 (`ntp_time_hours_counter()` → `_refresh_loop()`), A.U18.20 (stale test on `_sync_age`, comment),
-  A.U3.05 (errno 18 → console), A.U10.39 (name), A.U10.35 (names)
+  A.U3.05 (dropped: OR140.a (7), A-C review fold: errno 18 stays persisted), A.U10.39 (name), A.U10.35 (names)
 - **Site**: `src/asy_ntp_client.py:446-474` `ntp_time_hours_counter()`
 - **Change**: `async def _refresh_loop(self) -> None:`; `ntp_interv = await self.cfgmgr.get_int_values(_VAL_NTP_INTERVAL)`; missing → `ntp_interv = [12]` and
-  `self.pr.err("Missing NTP configuration, defaulting interval to 12h!")` (console); synced branch → the two-line comment
+  `await self.pr.err_s("Missing NTP configuration, defaulting interval to 12h!", errno=_ERR_CFG_READ)` (persisted, as
+  at HEAD); synced branch → the two-line comment
   "# Stale once the last success is _NTP_ASYNC_INTERV intervals old; a failed due resync resets only the due cadence,
-  never this age" / "# (agent, 2026-09-27; legacy's intent, legacy/firmware/python/CommonDrivers/async_connect.py:450-461)."
+  never this age" / "# (agent, 2026-09-27; owner-reviewed, 2026-10-02; legacy's intent,
+  legacy/firmware/python/CommonDrivers/async_connect.py:450-461)."
   then `if self._sync_age.read() >= _NTP_ASYNC_INTERV * ntp_interv[0] * 3600: await self._set_synced(value=False)`
   `else: self._ntp_sec_count += _NTP_CHECK_INTERV`; the due logic and resets unchanged with private names.
 - **Resolved**: —
@@ -1195,7 +1206,7 @@ actions only where they name a product line.
 
 ### M.SRC_NET.077 Named timing and CYW43 constants; the code block
 - **From**: A.U8.10 (names, tags), A.U31.15 (milliseconds), A.U18.30 (LED pattern names, deactivated pair), A.U18.40
-  (`_WIFI_REFRESH_S`), A.U18.27 (`_STAT_JOINED_NO_IP`, `_PM_NO_POWERSAVE`), A.U2.04 + A.U2.14 + A.U18.24 + A.U10.20 +
+  (`_WIFI_REFRESH_S`), OR140.a (7) and (17) (A-C review fold), A.U18.27 (`_STAT_JOINED_NO_IP`, `_PM_NO_POWERSAVE`), A.U2.04 + A.U2.14 + A.U18.24 + A.U10.20 +
   A.U6.29 (codes), A.U10.39 (names in comments)
 - **Site**: `src/asy_wifi_service.py:110-129` and a new code block after the imports
 - **Change**: `_STA_DISCONNECT_WAIT_ITERS = const(20)` with comment "# 20 × 500 ms = 10 s max wait for isconnected() to
@@ -1206,7 +1217,8 @@ actions only where they name a product line.
   `_WLAN_DEINIT_SETTLE_S = const(1)`, `_WLAN_MODE_SETTLE_S = const(1)`, `_STA_RETRY_AFTER_LOSS_S = const(60)`,
   `_RECONNECT_CALLER_GRACE_S = const(5)`, `_RECONNECT_SETTLE_S = const(3)`, `_LED_HOTSPOT_ON_MS = const(2900)`,
   `_LED_HOTSPOT_OFF_MS = const(100)`, `_LED_DEACTIVATED_ON_MS = const(100)`, `_LED_DEACTIVATED_OFF_MS = const(2900)`
-  (basis "the hotspot pattern inverted (agent, 2026-09-30)"), `_WIFI_REFRESH_S = const(5)` (`wifi.refresh_s = 5`); the
+  (basis "the hotspot pattern inverted; it shows through the Wi-Fi LED setting like every pattern (owner,
+  2026-10-02)"), `_WIFI_REFRESH_S = const(5)` (`wifi.refresh_s = 5`); the
   field-count constants' comments name `_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW` / `_VAL_SSID + _VAL_PW +
   _VAL_COUNTRY + _VAL_HOSTNAME`; phase constants unchanged; `:128-129` → `_STAT_JOINED_NO_IP = const(2)  # cyw43
   CYW43_LINK_NOIP (cyw43.h:100): joined, no IP yet; network exports no name for it (extmod/modnetwork.c:197-202,
@@ -1216,7 +1228,10 @@ actions only where they name a product line.
   `_ERR_WLAN_MODE_SWITCH = const(60)`, `_ERR_WLAN_AP_START = const(61)`, `_ERR_WLAN_STA_START = const(62)`,
   `_ERR_WLAN_STA_POLL = const(63)`, `_ERR_WLAN_STA_DISCONNECT = const(64)`, `_ERR_WLAN_OFF = const(65)`,
   `_WRN_STORED_DEFAULT = const(10)`, `_WRN_WLAN_AUTH_FAILED = const(36)`, `_WRN_WLAN_NO_AP = const(37)`,
-  `_WRN_WLAN_CONNECT_FAILED = const(38)`, `_WRN_WLAN_STATUS_UNKNOWN = const(39)`.
+  `_WRN_WLAN_CONNECT_FAILED = const(38)`, `_WRN_WLAN_STATUS_UNKNOWN = const(39)`; and, kept persisted by OR140.a (7)
+  (A-C review fold): `_WRN_CFG_READ` (shared: HEAD's wrnno 1/2/3, the missing WLAN configuration) and
+  `_ERR_WLAN_GIVE_UP` (WIFI band: HEAD's errno 17 give-up, which shared 17 `TIMER` no longer names) — numbered at
+  execution, the catalog the numbering source (M.GEN.034).
 - **Resolved**: (1) A.U8.10's `_LED_FLASH_ON_S`/`_OFF_S` (2.9/0.1) → A.U18.30's `_LED_HOTSPOT_*` → A.U31.15's `_MS`: each
   later action names the earlier as its Depends; the last stands, Part N rows renamed once. (2) `wifi_refresh_sec`: A.U8.10
   tags it at A.U5.09's `WifiConfig` constant, A.U5.09 groups it, A.U31.15 turns the loop sleep into
@@ -1380,16 +1395,17 @@ actions only where they name a product line.
 - **Kind**: code
 
 ### M.SRC_NET.084 Missing LED configuration deactivates with the LED on its default
-- **From**: A.U18.30 (LED default so the pattern shows), A.U3.05 (wrnno 1 → console), A.U10.39 (name)
+- **From**: A.U18.30 (LED default so the pattern shows), A.U3.05 (dropped: OR140.a (7), A-C review fold: wrnno 1 stays persisted), A.U10.39 (name)
 - **Site**: `src/asy_wifi_service.py:318-325` `_apply_initial_led_config()`; `:219-223` `_read_wifi_led_cfg()`
 - **Change**: `_read_wifi_led_cfg()` reads `_VAL_LED_WIFI_ON`; `_apply_initial_led_config()`: `led_cfg is None` →
   `await self.set_wifi_led(status=_VAL_LED_WIFI_ON[0][2])` (the schema default, `True`), `self._conn_phase =
-  _PHASE_DEACTIVATED`, `self.pr.err("Missing WLAN configuration!")` (console, no number); else unchanged.
+  _PHASE_DEACTIVATED`, `await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)` (persisted, as at HEAD); else
+  unchanged.
 - **Resolved**: —
 - **Unit**: U18
 - **Depends**: M.SRC_NET.072
-- **Blast carried by**: tests (`…missing_config_persists_wrnno_1_and_deactivates` → one `CFGMGR_WIFI` entry, none in
-  WIFI's own log, `client._led is not None`) → A.U3.05, A.U18.30 (tests); the deactivated pattern starts in the loop
+- **Blast carried by**: tests (`…missing_config_persists_wrnno_1_and_deactivates` keeps its WIFI entry beside `CFGMGR_WIFI`'s, renumbered,
+  `client._led is not None`) → A.U18.30 (tests), [fold F11 M_TEST_UNIT]; the deactivated pattern starts in the loop
   (M.SRC_NET.100)
 - **Kind**: code
 
@@ -1409,13 +1425,13 @@ actions only where they name a product line.
 - **Kind**: code
 
 ### M.SRC_NET.086 Hotspot bring-up split; the running AP is never reconfigured
-- **From**: A.U18.28 (split, comment), A.U10.18 (`async with`), A.U3.05 (wrnno 2 → console), A.U2.14 (61), A.U18.27
+- **From**: A.U18.28 (split, comment), A.U10.18 (`async with`), A.U3.05 (dropped: OR140.a (7), A-C review fold: wrnno 2 stays persisted), A.U2.14 (61), A.U18.27
   (`_PM_NO_POWERSAVE`), A.U10.39 (names), A.U10.38 (`CaptiveDNS.run()` in the comment), A.U10.35 (names)
 - **Site**: `src/asy_wifi_service.py:353-394` `_start_hotspot()`, `_activate_hotspot_ap()`, `_configure_hotspot_ap()`
 - **Change**: `_start_hotspot()`: `await self._select_wifi_mode(network.AP_IF)`, `await self._bring_up_hotspot_ap()`,
   `self._hotspot_started_once = True`. New `_bring_up_hotspot_ap()`: `async with self.wifi_mode_lock:` LED config and
-  `get_str_values(_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)`; missing → `self.pr.err("Missing WLAN
-  configuration!")` and `await self.set_wifi_led(status=False)`; else `set_wifi_led(status=led_cfg)`, `_radio_values(…)`,
+  `get_str_values(_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)`; missing → `await self.pr.wrn_s("Missing WLAN
+  configuration!", wrnno=_WRN_CFG_READ)` and `await self.set_wifi_led(status=False)`; else `set_wifi_led(status=led_cfg)`, `_radio_values(…)`,
   `await self._activate_hotspot_ap(country, hostname, password)`. `_activate_hotspot_ap()`: `errno=_ERR_WLAN_AP_START`.
   `_configure_hotspot_ap()`: comment `:378-380` → "# Configures only an inactive AP: re-applying essid/password to a
   running one can drop its beacon (cyw43)." / "# Reached on a hotspot phase's first tick and when the selected AP reports
@@ -1453,13 +1469,13 @@ actions only where they name a product line.
 - **Kind**: code
 
 ### M.SRC_NET.088 STA connect path: console config line, named codes, retry wait outside the lock
-- **From**: A.U3.05 (wrnno 3 → console), A.U2.14 (62, 65), A.U18.27 (`_PM_NO_POWERSAVE`), A.U3.02 (episode reset
+- **From**: A.U3.05 (dropped: OR140.a (7), A-C review fold: wrnno 3 stays persisted), A.U2.14 (62, 65), A.U18.27 (`_PM_NO_POWERSAVE`), A.U3.02 (episode reset
   goes), A.U18.32 (1) (retry wait unlocked), A.U10.18 (`async with`), A.U8.10 (`_STA_RETRY_AFTER_LOSS_S`,
   `_WLAN_DOWN_SETTLE_S`), A.U10.39 (names), A.U10.35 (names)
 - **Site**: `src/asy_wifi_service.py:432-501` (`_attempt_sta_connect()` … `_deactivate_wlan_permanently()`),
   `:583-590` `_run_sta_mode()`, `:632-636` `_handle_sta_connection_result()`
 - **Change**: `_attempt_sta_connect()`: reads `_VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME`; missing →
-  `self.pr.err("Missing WLAN configuration!")` and return; `_connection_failures` on an empty SSID. `_trigger_sta_connect()`:
+  `await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)` and return; `_connection_failures` on an empty SSID. `_trigger_sta_connect()`:
   `pm=_PM_NO_POWERSAVE`, `errno=_ERR_WLAN_STA_START`. `_on_sta_connected()`: the `_episode_wrns = 0` line goes.
   `_on_sta_disconnected(self) -> bool`: event line; `retry_due = self._conn_phase == _PHASE_STA_ESTABLISHED`; if due the
   "retrying in 1 minute" event line, else `await self._register_sta_connection_failure()`; `self._led_off()`; the status
@@ -1638,26 +1654,31 @@ actions only where they name a product line.
 
 ### M.SRC_NET.100 `_connect_loop()`: timer re-arm, deactivated pattern, console give-up, constant refresh
 - **From**: A.U10.44 (`wlan_connect()` → `_connect_loop()`), A.U10.10 (lazy setups go), A.U18.24 (1) (tick re-arm),
-  A.U18.30 (deactivated pattern), A.U3.07 (give-up → console), A.U18.40 (`_WIFI_REFRESH_S`), A.U10.R01 (the streak it
+  A.U18.30 (deactivated pattern), A.U3.07 (dropped: OR140.a (7), A-C review fold: the give-up stays persisted), OR140.a (17) (the deactivated
+  pattern respects the Wi-Fi LED setting; A-C review fold), A.U18.40 (`_WIFI_REFRESH_S`), A.U10.R01 (the streak it
   zeroes; the ladder in `_error_check()`), A.U10.35 (names)
 - **Site**: `src/asy_wifi_service.py:814-841` `wlan_connect()`
 - **Change**: `async def _connect_loop(self) -> None:` — `self._err_cnt_internal = 0` (comment kept), `_reset_wlan_connect_state()`,
   `await self._apply_initial_led_config()`; loop: `if self._conn_phase == _PHASE_DEACTIVATED:` the `all()` line, then
-  "# Deactivated: a distinct pattern (owner, 2026-09-29), a short blink every 3 s (agent, 2026-09-30)." and `if
+  "# Deactivated: a distinct pattern (owner, 2026-09-29), a short blink every 3 s that obeys the Wi-Fi LED setting
+  / # like every pattern: silent while it is off, shown once it is turned on (owner, 2026-10-02)." (the flash task
+  lights only through `_led_on()`/`_led_off()`, which do nothing while `self._led` is `None`, and `set_wifi_led()`
+  sets or clears `self._led` live, M.SRC_NET.098 — no further code) and `if
   self._ledflash is None: self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(_LED_DEACTIVATED_ON_MS,
   _LED_DEACTIVATED_OFF_MS))`; else `self._hw_op_failed = False`; `if self._tick_armed is False: self._tick_armed =
   arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")` and, still `False`,
   `await self.pr.err_s("WiFi uptime timer not armed", errno=_ERR_TIMER)` and `self._hw_op_failed = True`; reconnect
   trigger, hotspot/STA branch as today; the streak comment's "matching a Reader's read_loop() returning False" →
-  "_read_loop()"; give-up → `self.pr.err("Giving up after repeated WLAN hardware failures, restarting task.")` (console:
-  `_error_check()`'s errno 2 is the persisted entry) and `return`; after the branch `await
+  "_read_loop()"; give-up → `await self.pr.err_s("Giving up after repeated WLAN hardware failures, restarting task.",
+  errno=_ERR_WLAN_GIVE_UP)` (WIFI's own entry beside `_error_check()`'s errno 2, as at HEAD) and `return`; after the branch `await
   asyncio.sleep(_WIFI_REFRESH_S)`.
 - **Resolved**: —
-- **Unit**: U18 (staged: U3 console give-up, U10 name/setup removal)
+- **Unit**: U18 (staged: U10 name/setup removal)
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_NET.077, M.SRC_NET.079, M.SRC_NET.092, M.SRC_NET.102, A.U10.R01
 - **Blast carried by**: tests (tick re-arm cases, `max_module_error` failed re-arms end the loop, deactivated pattern,
-  give-up expects errno 2 once, streak tests re-derived for the recovery rung) → A.U18.24, A.U18.30, A.U3.07, A.U18.R01
+  give-up expects errno 2 and the WIFI give-up code once [fold F11 M_TEST_UNIT], the deactivated pattern silent with
+  `LEDWifiOn` off and shown once it is turned on [fold F19 M_TEST_UNIT], streak tests re-derived for the recovery rung) → A.U18.24, A.U18.30, A.U3.07, A.U18.R01
   (tests); `_RUN_PHASE_ALLOWED` gains `WifiService._connect_loop`/`_ledflash` "the deactivated-state LED pattern" →
   A.U30.03 (tests, its "earlier units' new sites join" clause); SPEC C.9 / A.4 → A.U18.24, A.U18.30 (docs)
 - **Kind**: code
@@ -1964,12 +1985,13 @@ added, unmodified upstream stubs, A.U8.23).
   F.1 `readexactly(-1)` fact → A.U19.07 (docs); `_RequestLike.sock` member (`asy_api_response.py`) → A.U19.06 (SRC_CORE)
 - **Kind**: code
 
-### M.SRC_NET.119 `WebserverService.__init__`: three config objects, one route loop, drop counter, readiness flag
+### M.SRC_NET.119 `WebserverService.__init__`: three config objects, one route loop, the 24-hour drop window
 - **From**: A.U5.04 (`ServingLimits`, `StaticSite`, `RouteSources`; `__init__(app, routes, serving, static=None,
   log=DEFAULT_LOG)`), A.U5.02 (`log`), A.U5.05 (defaults from constants; the `max(chunk_bytes, 1)` clamp stays),
   A.U19.20 (route loop), A.U19.05 (static routes object), A.U19.08 (`_dropped`), A.U10.01 (`_open_conns` on the shared
-  cap), A.U31.18 (ms attributes), A.U19.15 (error statuses), A.U0.29 (`:387` comment), A.U10.10/A.U10.22 (`setup()` and
-  its readiness flag), A.U19.17 (types)
+  cap), A.U31.18 (ms attributes), A.U19.15 (error statuses), A.U0.29 (`:387` comment), A.U10.10 (`setup()`), A.U10.22 (dropped: routine settlement
+  "initialized-flags", A-C review fold), A.U19.17 (types); OR137.a (1)-(3) (the drop window, the uptime reader; A-C
+  review fold)
 - **Site**: `src/asy_webserver_service.py:294-400`
 - **Change**: module-level namedtuples (A.U5.04): `ServingLimits = namedtuple("ServingLimits", ("max_content_length",
   "chunk_bytes", "max_connections", "backlog", "per_call_timeout_s", "outer_cap_s", "host", "port"))`, `StaticSite =
@@ -1979,28 +2001,35 @@ added, unmodified upstream stubs, A.U8.23).
   comment carrying the reasons HEAD's parameter comments give (`max_content_length` I.6, `chunk_bytes` I.3 and the
   `>= 1` clamp, `max_connections`/`backlog` H.7 relationship, `build_info` L.7 verbatim sub-entry, `is_hotspot_active`
   A.5 captive fallback). `def __init__(self, app: "_MicrodotApp", routes: RouteSources, serving: ServingLimits,
-  static: StaticSite | None = None, log: LogConfig = DEFAULT_LOG) -> None:` — `self.pr: PrintLogHistory =
-  make_logger(log, _NAME)`; `self.initialized = False`; the `routes` fields indexed as today (`_index_by_name`,
+  static: StaticSite | None = None, log: LogConfig = DEFAULT_LOG) -> None:` — with one more keyword before `static`:
+  `uptime_s: "Callable[[], Awaitable[int]]"` (required, no default: the device's `SysUptime` reader,
+  `SystemService.get_uptime`, which the drop window advances from); `self.pr: PrintLogHistory =
+  make_logger(log, _NAME)`; `self._uptime_s = uptime_s`; the `routes` fields indexed as today (`_index_by_name`,
   `_index_pairs`, `dict(… or {})`); `self._max_connections`, `self._chunk_bytes = max(serving.chunk_bytes, 1)`, the
   backlog clamp and its comment; `self._per_call_timeout_ms = round(serving.per_call_timeout_s * 1000)`,
   `self._outer_cap_ms = round(serving.outer_cap_s * 1000)`; `self._host`, `self._port`; `self._open_conns =
-  LockedCounter(init_value=0)`; `self._dropped = LockedCounter(init_value=0)`; `Request.max_content_length`/`max_body_length`
+  LockedCounter(init_value=0)`; `self._dropped = HourlyWindowCounter()` (M.SRC_CORE.133: the drops of the last 24 hours in 24 hourly bins, allocated
+  once here; `HTTPDropped`, owner, 2026-10-01); `Request.max_content_length`/`max_body_length`
   lines and their comments unchanged; routes: `for method, path, handler in ROUTES: (app.get if method == "GET" else
   app.put)(path)(getattr(self, handler))`; `after_request`/`after_error_request` with the comment "(SPECIFICATION.md Part
   A.8)" (no "decision 7"); `for status_code in _ERROR_STATUSES: app.errorhandler(status_code)(_shaped_error_handler(status_code))`;
   the catch-all comment and `app.errorhandler(Exception)(self._handle_unhandled_exception)`; `if static is not None:`
   the `:396-398` comment, `site_routes = _StaticRoutes(static, self._chunk_bytes, self.pr)`,
   `app.get("/")(site_routes.get_index)`, `app.get("/<path:filename>")(site_routes.get)`. New `async def setup(self) ->
-  bool: await self.pr.setup(); self.initialized = True; return True` (A.U10.21's one contract; gap pass G2).
-- **Resolved**: A.U10.22's readiness check requires `self.initialized` in every class that defines `async def setup`
-  (G5/R14); A.U10.10 gives this class one and no action writes the flag — added here (the flag gates nothing else: routes
-  are registered at construction and the server starts only after the boot batch, A.U10.10's order). A.U19.08 writes
-  `LockedCounter(init_value=0)` "with A.U10.01's cap" — the default `max_val` is `COUNTER_CAP` after A.U10.01, so no
-  argument is passed.
-- **Unit**: U19 (staged: U5 objects/`log`, U10 cap/setup/flag, U31 ms attributes)
-- **Depends**: M.SRC_NET.112, M.SRC_NET.124, A.U10.01
+  bool: await self.pr.setup(); return True` (A.U10.21's one contract; gap pass G2; no `initialized`, see Resolved).
+- **Resolved**: the routine settlement "initialized-flags" (lead, A-C review, OR36.a (1)) keeps the readiness flag only
+  where product code reads it (the FRAM, SPI, UART and logging classes): nothing reads the webserver's (routes are
+  registered at construction and the server starts only after the boot batch, A.U10.10's order), so gap pass G2's flag
+  is withdrawn and A.U10.22's L0 check narrows to those classes. A.U19.08's `LockedCounter(init_value=0)` is replaced by
+  the window (OR137.a (1), owner, 2026-10-01): the field keeps its name and now reads "in the last 24 hours, hourly
+  resolution"; the uptime reader is a constructor argument because the window advances lazily from `SysUptime`, which
+  only `SystemService` holds.
+- **Unit**: U19 (staged: U5 objects/`log`, U10 cap/setup, U19 the window and `uptime_s` with M.SRC_CORE.133, U31 ms
+  attributes)
+- **Depends**: M.SRC_NET.112, M.SRC_NET.124, A.U10.01, M.SRC_CORE.133 (U19); [fold F02 M_TEST_UNIT] (`_make_service()`
+  passes `uptime_s`; the window's L1 cases at the drop sites) and [fold F28 M_TSC] (A.U10.22's scope) co-land
 - **Blast carried by**: generated `_emit_webserver()` builds the three objects from TOML values and `src/` constants →
-  A.U5.04/A.U5.05 (GEN); `_make_service()` test helper builds the objects (153 call sites unchanged) → A.U5.04 (tests);
+  A.U5.04/A.U5.05 (GEN), with `uptime_s=sysfunct.get_uptime` → M.GEN.009 (U19 stage); `_make_service()` test helper builds the objects (153 call sites unchanged) → A.U5.04 (tests);
   route-table equality test → A.U19.20 (tests); tests reading `_per_call_timeout_s`/`_outer_cap_s` → `_ms` → A.U31.18
   (tests); SPEC A.5/A.8/H.7/I.3 constructor mentions, A.7 step 14, G.2 config-object entry → A.U5.04 (docs)
 - **Kind**: code
@@ -2067,7 +2096,8 @@ added, unmodified upstream stubs, A.U8.23).
 ### M.SRC_NET.122 Notification dispatch validates the LED command and the pause through synthetic schemas
 - **From**: A.U19.02 (LED validation; callback `(r, g, b, t)`; busy → `FAILED`), A.U19.03 (pause pre-check goes), A.U10.40
   (`LightCmdLED`, members `R/G/B/T`), A.U2.19 (e3/e5 → 14), A.U19.16, A.U30.19, A.U9.09 (comment wording referenced by
-  A.U19.03), M_SRC_CORE GAP-G13 (per-kind validators; gap pass G2)
+  A.U19.03), M_SRC_CORE GAP-G13 (per-kind validators; gap pass G2); OR140.a (5) (the refusal tells the caller to
+  retry; A-C review fold)
 - **Site**: `src/asy_webserver_service.py:522-565`
 - **Change**: `_put_notification()`: `("LightCmdLED", "PauseTime")` dispatch keys; `if "LightCmdLED" in body:
   results["LightCmdLED"] = await self._dispatch_notification_led(body["LightCmdLED"])`; `PauseTime` as today.
@@ -2077,7 +2107,10 @@ added, unmodified upstream stubs, A.U8.23).
   `int`/`float`); then the guarded call `ok = await
   self._notification_led(r, g, b, t)` with `except Exception as e: report_if_fatal(e); await self.pr.err_s("notification_led
   callback failed:", e, errno=_ERR_CALLBACK); return FAILED`; `return VALID if ok else FAILED` (a busy LED answers
-  "Failed", owner, 2026-09-29). `_dispatch_notification_pause(payload: object) -> str`: comment "# Out of range is
+  "Failed", owner, 2026-09-29); a busy refusal (`ok` False, told apart from a raising callback) makes
+  `_put_notification()` answer with the envelope `descr` "LED busy - retry later" (`ar.make_response(0, descr=…,
+  result=results)`), so the external caller knows to retry; one comment line "# External LED commands are refused while
+  a signal runs and told to retry; internal ones wait, bounded (owner, 2026-10-02)." `_dispatch_notification_pause(payload: object) -> str`: comment "# Out of range is
   Invalid, never clamped (legacy rejected it)." (with the shared constant comment of M.SRC_NET.112); `if
   self._notification_pause is None: return INVALID`; `pause = checked_int(payload,
   _PAUSE_TIME_FIELD)`; `if pause is None: return INVALID`; the guarded call as above (`errno=_ERR_CALLBACK`,
@@ -2090,7 +2123,8 @@ added, unmodified upstream stubs, A.U8.23).
 - **Depends**: M.SRC_NET.112, M.SRC_CORE.047 (the validators, U11), A.U9.03 (its generated callback body is superseded
   by A.U19.02's)
 - **Blast carried by**: generated `_notification_led_callback(r, g, b, t)` and the removal of `_FIELD_LED_*` → A.U19.02
-  (GEN); js mock `dispatchLightCmdLed()` "Failed" → "Invalid", members → A.U19.02/A.U10.40/U23 (WEB); tests (seven
+  (GEN); js mock `dispatchLightCmdLed()` "Failed" → "Invalid", members → A.U19.02/A.U10.40/U23 (WEB), the busy `descr`
+  mirrored → M.WEB.041 (U23 stage); the descr's L1 case → [fold F09 M_TEST_UNIT]; tests (seven
   scenarios "Failed" → "Invalid", fake callback signatures, new malformed cases, pause list/dict cases) → A.U19.02,
   A.U19.03 (tests); `src/config_manager.py:124-127` comment names this dispatcher → M.SRC_CORE.047 (its two-line comment above
   `checked_int()`; M_GEN gap 4, U19 A-C note 5); SPEC H.6/A.8 → A.U19.02 (docs)
@@ -2132,7 +2166,7 @@ added, unmodified upstream stubs, A.U8.23).
   `self._site.mount`/`.index`/`.is_hotspot_active`, the `..` guard and its comment, no `assert`; right after `open()`:
   `request.sock[1].hold(stream)` with "# closed when the connection ends, a HEAD or aborted response included"; the
   `:662-663` comment pair; `response.headers["Content-Length"] = str(size)`; `response.headers["Cache-Control"] =
-  "no-cache"  # revalidate before reuse: a reflashed page is never served stale (agent, 2026-09-30)`;
+  "no-cache"  # revalidate before reuse: a reflashed page is never served stale (agent, 2026-09-30; owner-reviewed, 2026-10-02)`;
   `response.send_file_buffer_size = self._chunk_bytes` with the comment "# Microdot v2.6.2 reads 1,024 B per send_file
   chunk (ext/microdot.py:567, 746); ours is the one write bound." / "# Re-check at a Microdot bump." (version and lines of
   the tag B0 vendors, A.SDEP.06/A.SDEP.18). The three HEAD methods on `WebserverService` go.
@@ -2160,21 +2194,21 @@ added, unmodified upstream stubs, A.U8.23).
   (tests); the L0 fatal-report check names this handler → A.U30.19 (tests)
 - **Kind**: code
 
-### M.SRC_NET.126 `_close_writer()`: one entry per close, millisecond bound
-- **From**: A.U2.19 (w4 → 52, w5 → 53), A.U3.11 (W53 prints when W52 fired in the same call), A.U31.18
+### M.SRC_NET.126 `_close_writer()`: both failures persisted, millisecond bound
+- **From**: A.U2.19 (w4 → 52, w5 → 53), A.U3.11 (dropped: OR140.a (7), A-C review fold: W53 stays persisted after a W52), A.U31.18
   (`wait_for_ms`), A.U30.19
 - **Site**: `src/asy_webserver_service.py:680-690`
-- **Change**: `close_failed = False`; `try: writer.close()` / `except Exception as e:` `report_if_fatal(e)`, comment kept
-  (≤ 3 lines), `await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)`,
-  `close_failed = True`; `try: await asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)` / `except
-  Exception as e:` `report_if_fatal(e)`; comment "# bounds a hanging wait_closed() (F.6); after a failed close() it only
-  prints: one close, one entry"; `if close_failed: self.pr.wrn("Error waiting for writer to close:", e)` `else: await
-  self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)`.
-- **Resolved**: —
-- **Unit**: U31 (A.U31.18 latest; U3 one-entry rule, U2 codes, U30 fatal report — staged)
+- **Change**: `try: writer.close()` / `except Exception as e:` `report_if_fatal(e)`, comment kept (≤ 3 lines), `await
+  self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)`; `try: await
+  asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)` / `except Exception as e:` `report_if_fatal(e)`;
+  comment "# bounds a hanging wait_closed() (F.6)"; `await self.pr.wrn_s("Error waiting for writer to close:", e,
+  wrnno=_WRN_HTTP_WAIT_CLOSED)` — both persisted, as at HEAD (no `close_failed` flag).
+- **Resolved**: A.U3.11's "one close, one entry" rested on the one-entry-per-fault reading, which the owner dropped
+  (OR140.a (7), A-C review fold): each failure keeps its entry, as today.
+- **Unit**: U31 (A.U31.18 latest; U2 codes, U30 fatal report — staged)
 - **Depends**: M.SRC_NET.112
-- **Blast carried by**: the one-entry-per-event L0 scan (no allow-list entry for this pair) and the L1 "close that raises
-  and whose wait then fails adds exactly one W52" test → A.U3.11 (tests); persisted-warning tests read the entry →
+- **Blast carried by**: the one-entry-per-event L0 scan and its L1 "exactly one W52" test are dropped with A.U3.11
+  (OR140.a (7)) → [fold F11 M_TSC], [fold F11 M_TEST_UNIT]; persisted-warning tests read the entry →
   A.U24.41 (tests)
 - **Kind**: code
 
@@ -2182,10 +2216,12 @@ added, unmodified upstream stubs, A.U8.23).
 - **From**: A.U19.08 ((1)-(3), (4), (6), (7): `_note_drop()`, refusal/peer-reset/bad-head traces, `EOFError` arm goes,
   comment), A.U2.19 (49 vs 50 by `timed_out`, w3 → 51, e1 → 23), A.U19.07 (`head_refused` flag read after
   `handle_request()`), A.U19.06 (`release()` in `finally`), A.U31.18 (`wait_for_ms`, `_ms` bounds), A.U19.17
-  (`_StreamLike` annotations), A.U0.29 (`:698` comment), A.U30.19, A.U10.01 (the gauge's cap)
+  (`_StreamLike` annotations), A.U0.29 (`:698` comment), A.U30.19, A.U10.01 (the gauge's cap); OR137.a (1), (3) (the window, a trace without a running total; A-C review
+  fold)
 - **Site**: `src/asy_webserver_service.py:692-731`
-- **Change**: new `async def _note_drop(self, wrnno: int, what: str) -> None: await self._dropped.increment(); await
-  self.pr.wrn_s(what, "- dropped so far:", await self._dropped.get_value(), wrnno=wrnno)` (one comment line: "# One entry
+- **Change**: new `async def _note_drop(self, wrnno: int, what: str) -> None: await self._dropped.add(await
+  self._uptime_s()); await self.pr.wrn_s(what, wrnno=wrnno)` (each drop still traces once, without a running total,
+  OR137.a (3); one comment line: "# One entry
   per event; a run of identical codes spends one history slot (print_log's newest-entry rule)."). `async def
   _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:` (the `Any` comment `:693-695` goes: the one
   mismatch moves to `start_server()`, M.SRC_NET.128); `current = await self._open_conns.increment()`; over the ceiling:
@@ -2214,7 +2250,8 @@ added, unmodified upstream stubs, A.U8.23).
 - **Blast carried by**: `HTTPDropped` in the generated `/status` networking block (`get_dropped_count()`, M.SRC_NET.129)
   → A.U19.10 (GEN); tests (ceiling refusals now logged — tests asserting no log invert; peer-reset entries; W49/W50;
   seven-refusals counter case; preconnect EOF no entry) → A.U19.08, A.U2.19 (tests); `tests_hardware` benign-code lists gain
-  60/48 → A.U19.08 (HW); twin concurrency scenario `HTTPDropped` rises → A.U19.08/A.U19.10 (TWIN); SPEC H.7 drop/accept
+  60/48 → A.U19.08 (HW); twin concurrency scenario `HTTPDropped` rises → A.U19.08/A.U19.10 (TWIN), and every twin or bench assertion that
+  reads `HTTPDropped` as a monotonic total follows the 24-hour window → [fold F02 M_TWIN], [fold F02 M_HW_BENCH]; SPEC H.7 drop/accept
   sentences with register fix 2's heap clause, A.5 ladder sentence → A.U19.08 (docs); catalog rows → U19 A-C note 3
   (catalog)
 - **Kind**: code
@@ -2246,7 +2283,8 @@ added, unmodified upstream stubs, A.U8.23).
 
 ### M.SRC_NET.129 Starters, error sources, drop count and a comment without history
 - **From**: A.U10.44 (`_start_serving()` → `start_asy_serve()`), A.U19.17 (`TaskStarter`, `ErrorSource`), A.U19.10
-  (`get_dropped_count()`), A.U11.31 (`reset_error_counter() -> bool`); adherence finding (`:749-752` cites a temporary
+  (`get_dropped_count()`), A.U11.31 (`reset_error_counter() -> bool`); OR137.a (1)-(2) (the window's sum; `ResetErrors`
+  clears it; A-C review fold); adherence finding (`:749-752` cites a temporary
   plan step, G9/R12, and is history)
 - **Site**: `src/asy_webserver_service.py:741-767`
 - **Change**: `def start_asy_serve(self) -> "asyncio.Task[None]": return asyncio.get_event_loop().create_task(self._serve_loop())`;
@@ -2254,12 +2292,14 @@ added, unmodified upstream stubs, A.U8.23).
   "list[Callable[[], None]]": return []` with the comment "# No machine.Timer in this module: kept empty, not omitted, so
   callers treat every module alike (SPECIFICATION.md C.9)."; `get_error_sources(self) -> "list[ErrorSource]"` (comment
   kept); `get_loggers()` unchanged; new `async def get_dropped_count(self) -> int: return await
-  self._dropped.get_value()`; `async def reset_error_counter(self) -> bool: return await self.pr.reset()`.
+  self._dropped.total(await self._uptime_s())` (the drops of the last 24 hours, hourly resolution, capped at
+  `COUNTER_CAP`); `async def reset_error_counter(self) -> bool: await self._dropped.reset(); return await
+  self.pr.reset()` (`ResetErrors` clears the window, OR137.a (2)).
 - **Resolved**: HEAD's "found missing entirely during the Step 7 audit, unlike those two" names a temporary plan step
   (G9/R12: permanent text cites no temporary plan by section or number) and is history (CLAUDE.md working agreement);
   no action carries it — rewritten here.
 - **Unit**: U19 (U10 stage: starter name; U11 stage: `-> bool`)
-- **Depends**: M.SRC_NET.127
+- **Depends**: M.SRC_NET.127, M.SRC_CORE.133
 - **Blast carried by**: generated collectors call `get_task_starters()`; generated `_networking_status()` reads
   `webserver.get_dropped_count()` → A.U19.10 (GEN); tests calling `_start_serving()`/`_run()` by name → A.U10.44 (tests)
 - **Kind**: code

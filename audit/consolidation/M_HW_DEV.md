@@ -14,8 +14,9 @@ empty, so every line cited holds at HEAD `16e841a`; the tip moved to `27a3694` w
 (L0, mypy, `--collect-only`, twin run first, A.U26.05); it executes on silicon only in the phase-C round its "Round"
 line names (A.C.02-A.C.09, inventory H01-H83 of `audit/actions/C.md`), under the owner's go-ahead given in that
 round's own conversation (CLAUDE.md go-ahead rule; A.C.01 (1)). Only the bench board named by data
-(`[device].bench`, today `dev`, A.U26.01) is flashed, with a dev-native image from its own TOML; `wozi` is never
-flashed and no script carries a wozi pin (A.C.01 (5); CLAUDE.md WoZi rule).
+(`[device].bench`, today `dev`, A.U26.01) is flashed, with a dev-native image from its own TOML; no other build's
+image is ever flashed and no script carries a device pin (A.C.01 (5); OR78.a; A-C review fold: no build but `dev`, the
+contained bench exception, is special, OR140.a (18)).
 
 ## Conventions every merged change applies
 
@@ -45,17 +46,19 @@ changes cite.
   ≤ 3 prose lines (A.U10.34); module docstrings stay as the one header (≤ 3 lines, A.U27.28's counting).
 - **B4** U8C/U8C2 tags (A.U8.02 grammar): every tagged literal becomes the module constant its row writes; a literal a
   later change deletes, moves host-side or replaces by a `BENCH` read loses its tag at that site (named per change; the
-  row's site list follows, SPEC Part N — carried by SPEC as A.U8.01's table). U8C's "deferred U26" items: U26 made no
-  keep-or-poll decision for any device-script sleep (its G7/R23 ledger row reads "U25/U8 parts: NO-CLAUSE"), so each is
-  kept and becomes the named constant with the provisional ID U8C's table gives (U8C's own "if kept" branch; agent
-  decision AD-1).
+  row's site list follows, SPEC Part N — carried by SPEC as A.U8.01's table). U8C's "deferred U26" items (A-C review
+  fold, routine settlement device-script-sleeps, G7/R23; replaces agent decision AD-1): each fixed wait becomes a bounded
+  poll for the state it waits on wherever that state can be read, its deadline the named constant with the provisional
+  ID U8C's table gives; it stays a named, measured delay only where there is nothing to read or a check would disturb
+  the test, with that reason in one comment line beside it. Each per-file change below names its site's outcome.
 
 ## Cluster-wide merged changes (the two contracts)
 
 ### M.HW_DEV.001 Board facts reach every script through one rendered `BENCH` dict
 - **From**: A.U26.44 (3)(4), A.U26.49 (bounds as render extras), A.U26.48 (3) (`WORST_CASE_ALLOCATION` as an extra),
   A.S0930.05 (`crc` fact), A.U26.23 (3) (`fram_wired`/`fram_backed_loggers`), A.U8.06/A.U8C.91-.95 (the `dev.uart_*`
-  mirrors), A.U27.25 (blast: `pyproject.toml:363, 370` "one static `import sensortask_dev`" texts).
+  mirrors), A.U27.25 (blast: `pyproject.toml:363, 370` "one static `import sensortask_dev`" texts); OR141.a (2),
+  OR142.a (3) (A-C review fold: no dynamic import in a device script).
 - **Site**: new `tests_hardware/device_scripts/bench_facts.pyi`; every device script that constructs a bus or
   peripheral from literals (grep `I2C(|SPI(|UART(|NeopixelDriver(|Pin(`: 39 at HEAD), imports `sensortask_dev` (six
   scripts, 25 sites) or copies a driver constant (`_MODE_RGB = 0x05` at `bus_concurrency_scd30_write_vs_siblings.py:15`,
@@ -69,19 +72,28 @@ changes cite.
   every pin, bus parameter, address, UART pair, copied register constant and per-run value from it:
   `bus = BENCH["bus"]["i2c1"]` → `asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"],
   frequency=bus["frequency"], **({"timeout": bus["timeout"]} if "timeout" in bus else {}))` (a TOML without `timeout`
-  keeps rp2's default); `import sensortask_dev` → `device = __import__(BENCH["device_module"])`; comments "sensortask_dev's
-  own …" → "the generated device module's …". (3) Tags at those sites (B4): every `dev.uart_poll_wait_ms`,
+  keeps rp2's default); `import sensortask_dev` → `import _bench_device as device  # rendered: the bench device's
+  generated module`, the one marked line `harness.render_device_script()` rewrites to `import <BENCH["device_module"]>
+  as device` (M.HW_BENCH.012), so a script holds a static import and no dynamic one; a type-check-only
+  `tests_hardware/device_scripts/_bench_device.pyi` declares the generated module's API the scripts call
+  (`build_system`, `main`, `sysfunct`, `_collect_setups`, `_collect_task_starters`, `_collect_task_names`, the
+  instance attributes they read), identical for every device because one template generates them; comments
+  "sensortask_dev's own …" → "the generated device module's …". (3) Tags at those sites (B4): every `dev.uart_poll_wait_ms`,
   `dev.uart_poll_idle_ms`, `dev.uart_rxbuf` mirror (A.U8C.91-.95) is replaced by its `BENCH` read and loses the tag;
   the TOML is the source those Part N rows already name.
 - **Resolved**: A.U26.44 allows "take … or are pinned" (G1/R40); rendering is the one form here because the module name
   cannot be pinned (OR78.a). A.U31.05/.06's "import frozen `sensortask_dev`" texts read `BENCH["device_module"]`
-  (OR78.a postdates neither's wording; the owner row governs).
+  (OR78.a postdates neither's wording; the owner row governs). A-C review fold (OR141.a (2), OR142.a (3)): SPEC F.1's
+  list of dynamic-import sites is closed and the import check fails on any site outside it, so the earlier
+  `device = __import__(BENCH["device_module"])` form goes; the rendered static import keeps both rules (agent,
+  2026-10-05).
 - **Unit**: U26 (the scripts written by later units are born in this form).
 - **Depends**: M.HW_BENCH.012 (`render_device_script()`), M.HW_BENCH.041 (`bench_facts.build()`), A.U20.28 (`ast`
   address reader), A.S0930.01 (`crc` key).
 - **Blast carried by**: the L0 guard `tests_scripts/test_device_script_bench_facts.py` (no pin/bus literal, no
-  `import sensortask_`, no copied driver constant; every key read exists for every `bench = true` TOML) → A.U26.44
-  (TSC); the `.pyi` key set equal to `bench_facts.build()`'s keys plus the declared extras → GAP-D1 (TSC);
+  `import sensortask_`, no copied driver constant; every key read exists for every `bench = true` TOML; the device module
+  only through the one marked `import _bench_device as device` line, its rewrite proven) → A.U26.44 (TSC, M.TSC.185);
+  the twin runs the same rendered text (`TwinBoard` renders through the harness, M.HW_BENCH.091); the `.pyi` key set equal to `bench_facts.build()`'s keys plus the declared extras → GAP-D1 (TSC);
   `pyproject.toml:363, 370` comments → A.U26.44/A.U27.25 (TOOL); README habit "take every board fact from `BENCH`" →
   M.HW_BENCH README change; SPEC E.6.5 → A.U26.44 (SPEC).
 - **Kind**: code, test
@@ -226,30 +238,46 @@ changes cite.
   A.U26.16 (TSC); README habit "park the rig in `finally`" → A.U26.16 (HW_BENCH).
 - **Kind**: test
 
-### M.HW_DEV.009 Full-system scripts: required watchdog, scratch config, the generated order
+### M.HW_DEV.009 Full-system scripts: required watchdog, a scratch config directory, the generated order
 - **From**: A.U26.10, A.U20.02 (required `watchdog=`), A.U20.06/A.U11.10/A.U10.12/A.U32.06 (the `main()` sequence and
   the split supervisor), A.U10.44 (starter names), A.U11.06 (a script that ran `build_system()` leaves a boot-phase
-  breadcrumb), A.U26.06 (2) (the guard reads `build_system(` without the scratch path as persisting).
+  breadcrumb), A.U26.06 (2) (the guard reads `build_system(` without the scratch path as persisting); OR136.a (1), (4)
+  (A-C review fold: a genuinely absent config file is written once with its defaults, a prerequisite write).
 - **Site**: `allocation_need_per_source.py`, `fram_capacity_after_full_system_build.py`,
   `heap_headroom_after_full_system_build.py`, `heap_layout_after_full_boot_sequence.py`, `serving_at_default_gc.py`,
   `heap_under_connection_ceiling.py`, `uart_link_under_concurrent_system_load.py`, and every new script that builds the
   system.
-- **Change**: (1) The four construction-only scripts pass `cfg_path=_SCRATCH_CFG_PATH` with `_SCRATCH_CFG_PATH =
-  "hwtest-scratch-absent/"` and the comment "Absent on purpose: a full build here must not repair or create a
-  production config file; setup() serves defaults and writes nothing." (2) Every `build_system(`/`main(` call passes
+- **Change**: (1) The four construction-only scripts, and every later script that builds the system for a measurement
+  or a command, pass `cfg_path=_SCRATCH_CFG_PATH` with `_SCRATCH_CFG_PATH = "hwtest-scratch/"` and the comment "A scratch
+  directory: every setup() finds its file absent here and writes its defaults once, never a production file." Before
+  the build the script removes a leftover scratch directory's files and the directory (`ENOENT` passes) and creates it
+  (`os.mkdir`); every path out of the script removes the files and the directory in a `finally`, and a script that ends
+  in a product reset leaves that removal to its host test's cleanup exec. Each run spends one flash write per
+  schema-backed config store of the bench build, into the scratch directory: the first write OR136.a (1) makes for a
+  genuinely absent file, a prerequisite of the build rather than the write under test, so it stays unmarked by
+  `persistence_write` (OR136.a (4)). (2) Every `build_system(`/`main(` call passes
   `watchdog=wdt` (`arm()`, M.HW_DEV.004); a script that replays the boot uses the generated helpers in the generated
   order — `build_system()` → `run_setups(_collect_setups())` → `start_tasks(_collect_task_starters(),
   _collect_task_names())` → `start_timers(triggers, timers)` → `ntp_force_sync()` — and never `start_and_check_tasks()`
   (gone). (3) The two `main()`-based serving scripts keep `cfg_path=""` with one comment line beside the call: the
-  only write they can cause is the repair a production boot of a malformed file makes anyway. (4) A script that ran
+  only writes they can cause are the ones a production boot makes anyway (a genuinely absent file's first write, a
+  malformed file's repair). (4) A script that ran
   `build_system()` ends by clearing FRAM region 1's boot-phase mark (or reports the phase it reached), so the reset after
   it reads as the boot phase it is and the reset-code oracle is not misled.
 - **Resolved**: A.U32.06 offers `task_names=None`; M.SRC_CORE.016 settles it required (GAP-G5); scripts pass it.
+  A-C review fold (OR136.a): A.U26.10's directory that never exists relied on A.U11.19's "an absent file writes
+  nothing"; with the first write restored, every `setup()` over it would attempt that write, fail at the missing
+  directory and persist a CFGMGR write-failure entry per store. A created and removed scratch directory keeps G1/R07's
+  "never write over a production config file" at one prerequisite write per store and run (agent, 2026-10-05; the
+  alternative, building over the production files, writes nothing on a board in the standard state but touches a
+  production file whenever one is absent or damaged).
 - **Unit**: U26 (after U20/U11/U10's API lands).
 - **Depends**: M.SRC_CORE (`start_tasks`, `run_setups`, `boot_phase`), M.GEN (`_collect_setups()`, required
-  `watchdog`), A.U11.19 (absent file writes nothing).
-- **Blast carried by**: `_PREREQUISITE_DEVICE_SCRIPTS` entries for the two serving scripts → A.U26.06/A.U26.10 (TSC);
-  README tooling-write table row "full-build scripts: no write" → A.U26.10 (HW_BENCH).
+  `watchdog`), M.SRC_CORE.043 (OR136.a: an absent file is written once with its defaults).
+- **Blast carried by**: `_PREREQUISITE_DEVICE_SCRIPTS` entries for the two serving scripts → A.U26.06/A.U26.10 (TSC,
+  M.TSC.119); every script building over the scratch directory removes it → M.TSC.073; README tooling-write table row
+  "full-build scripts: one defaults write per config store into a scratch directory, removed after" → A.U26.10
+  (HW_BENCH, M.HW_BENCH.113); budget table → M.HW_BENCH.130.
 - **Kind**: test
 
 ### M.HW_DEV.010 Every instrument runs in the twin first
@@ -512,19 +540,22 @@ changes cite.
 
 ## tests_hardware/device_scripts/reboot_persist_write.py
 
-### M.HW_DEV.037 The write phase removes a leftover first and spends exactly one write
+### M.HW_DEV.037 The write phase removes a leftover first and spends exactly one owned write
 - **From**: A.U26.18, A.U11.24 (`write_config()` takes no schema), A.U10.37 (`asy_config_manager`), A.U11.33 (guard:
-  `config_HWTEST_*` exempt), A.U1.06 (blast), A.U26.68, A.U11.19 (the absent-file `setup()` writes nothing).
+  `config_HWTEST_*` exempt), A.U1.06 (blast), A.U26.68, A.U11.19 (superseded for an absent file by OR136.a (1): the
+  absent-file `setup()` writes the defaults once) (A-C review fold).
 - **Site**: `tests_hardware/device_scripts/reboot_persist_write.py:1-25` (HEAD script lines `:6-25`).
 - **Change**: `import asy_config_manager as cm`; before constructing the manager: `os.remove(_PATH)` in a `try` where
   `ENOENT` passes and any other `OSError` reports `fact("leftover_remove_errno", e.errno)` then `done()`; then
-  `setup()`, `write_config({"Marker": _MARKER_VALUE})` (no schema argument), `flush_pending()`, facts `written`,
-  `flushed`, `done()`. The three-line comment `:20-22` becomes one line ("write_config() stages; the flush is its own
+  `setup()` (the file is absent, so it writes the schema defaults once: a prerequisite, OR136.a (4)),
+  `write_config({"Marker": _MARKER_VALUE})` (no schema argument; the write the test owns), `flush_pending()`, facts
+  `written`, `flushed`, `done()` — two flash writes in all. The three-line comment `:20-22` becomes one line ("write_config() stages; the flush is its own
   task, so it is awaited here").
 - **Resolved**: —
 - **Unit**: U26 (U11 adapts the call shape first, A.U11.24's blast).
-- **Depends**: A.U11.19, A.U11.24.
-- **Blast carried by**: flush-guard check `tests_scripts/test_device_script_config_flush.py` (holds) → A.U26.18 (TSC).
+- **Depends**: M.SRC_CORE.043 (OR136.a), A.U11.24.
+- **Blast carried by**: flush-guard check `tests_scripts/test_device_script_config_flush.py` (holds) → A.U26.18 (TSC);
+  the reboot test's row in the budget table (2: the defaults write and the marker) → M.HW_BENCH.130.
 - **Kind**: test
 
 ## tests_hardware/device_scripts/reboot_persist_read.py
@@ -586,7 +617,8 @@ changes cite.
   go), A.U26.33 (4) (message names the resync bound), A.U26.82 (new hazard test), A.U26.87 (1) (the load test asserts
   SET/GET echo counts), A.U13.13 (blast: must pass unchanged), A.U26.68, A.U26.51 (`uart_link`, `machine_uart`),
   A.U20.33 (B2), A.U8C.110, OR123 (both CRC modes over the same jumper, owner), A.U26.47 (3) (a churn `MemoryError`
-  fails the run; A-C3 S-10).
+  fails the run; A-C3 S-10); OR141.a (4) (b)(f), OR143.a (4) (A-C review fold: the DMA receive ring's facts; the
+  maximum-size transfer over the jumper).
 - **Site**: `tests_hardware/flash/test_uart_crossover.py:1-85`.
 - **Change**: (1) Docstring `:1` → "…across the bench board's permanent UART crossover jumper…"; the comment `:18-21`
   names "the bench device's TOML `uart_link` instances" and states a missing module fails. (2) `_run_or_fail(board,
@@ -594,7 +626,8 @@ changes cite.
   `ImportError` text → `pytest.fail(…)`. `RESULT_RE`/`_assert_pass` go. (3) `@pytest.mark.parametrize("crc_mode",
   ["none", "crc16"])` on the exchange, recovery, hazards and load tests; each passes `CRC_MODE=crc_mode` and asserts
   `facts["crc_mode"] == crc_mode`. (4) `test_a_clamped_read_never_holds_the_cpu_for_a_frame_still_arriving` (`:58-63`)
-  goes; the driver test asserts `facts["first_pollin_bytes"] < facts["frame"]` (the folded precondition),
+  goes; the driver test asserts `facts["first_ready_bytes"] < facts["frame"]` (the folded precondition, read from the
+  DMA ring's fill level, M.HW_DEV.048),
   `facts["driver_span_us"] <= facts["span_max_us"]`, `facts["control_span_us"] >= facts["span_max_us"]` and the readline
   leg's span (A.U13.12). (5) Recovery asserts silence and desync each failed then recovered within
   `facts["resync_bound_ms"]` (the bound rendered from `src/asy_uart_comm.py`'s consts by `ast`, named in the message)
@@ -605,7 +638,10 @@ changes cite.
   bound, zero error counts, every load counter but `alloc_failures` > 0, heap growth ≤ bound, and echo `intact == total`
   for the multi-chunk SETs; the load test asserts `alloc_failures == 0` (A.U26.47 (3)). (8) Timeouts `_SCRIPT_TIMEOUT_S
   = 120.0`, `_LONG_SCRIPT_TIMEOUT_S = 180.0` (A.U8C.110's IDs); the hazard test's timeout is a new row
-  `l3.uart_crossover_hazards_timeout_s` sized at execution from the twin run.
+  `l3.uart_crossover_hazards_timeout_s` sized at execution from the twin run. (9) The exchange test also
+  asserts the maximum-size train intact in both directions, the over-cap train refused with exactly one logged entry,
+  and the responder's largest free block unchanged across the refusal (M.HW_DEV.046's facts; OR143.a (2), (4)); the
+  interrupts-off sweep and the soft reset during traffic are M.HW_DEV.160's.
 - **Resolved**: A.S0930.05 runs each script once per mode with no reflash (scripts run from RAM); A.U26.82's hazard
   script takes the same parameter. OR123's "L3 CRC16 device script over the same jumper" is this parametrisation, not
   a separate script.
@@ -617,13 +653,43 @@ changes cite.
   A.U36.539 (DOCS); twin record → M.HW_DEV.010.
 - **Kind**: test, hardware (Round: R1 [H37]; CRC16 arm R1 [H37], reflash-free)
 
+### M.HW_DEV.160 The DMA receive ring on silicon: interrupts off, a soft reset during traffic, an optional real write
+- **From**: OR141.a (4) (d), (g); OR143.a (5) (A-C review fold).
+- **Site**: `tests_hardware/flash/test_uart_crossover.py` (new tests after M.HW_DEV.045's).
+- **Change**: (1) `test_no_frame_is_lost_while_interrupts_are_off(board, crc_mode)` (default-on, no wear) runs
+  `uart_dma_ring_interrupts_off.py` with the render extra `irq_off_windows_us` = 3,000, 45,000, 400,000 (W25Q16JV tPP
+  max, tSE typical and max) and one window past the ring's bound (the ring size from the bench TOML through
+  `bench_facts`; the bound is the time the sender fills the ring at the TOML baudrate, computed host-side and named in
+  the message); asserts, for every window within the bound, `frames_intact == frames_sent`, `uartrsr_oe` False and
+  `overrun_detected == 0`, and for the over-bound window `overrun_detected >= 1` with every frame after the resync
+  intact; records `heap_before`, `heap_after`, `largest_before`, `largest_after`, `ring_bytes` through `result_note`.
+  (2) `test_a_soft_reset_during_traffic_leaves_no_running_ring(board, crc_mode)` (default-on, no wear): the script with
+  `STATE="soft_reset"`; on its `RESET_NOW` banner the host sends the raw-REPL soft reset while frames arrive, then runs
+  it with `STATE="after_soft_reset"` and asserts `channels_free` and `ring_untouched` (the `rp2.DMA` finaliser aborts
+  the channels and soft reset sweeps them, `ports/rp2/rp2_dma.c:365, 637-673` and `main.c:303` at v1.29.0, re-checked
+  against the refreshed pin), then `hard_reset()`. (3) `@pytest.mark.persistence_write
+  test_a_real_config_write_during_traffic_loses_no_frame(board, crc_mode)`: `STATE="config_write"`, the same stream
+  while the script's scratch `ConfigManager` flushes one changed value (one owned flash write: the flash driver's own
+  interrupts-off window); every frame intact, `uartrsr_oe` False; the scratch file removed in `finally`. Every test
+  reads its output through `harness.MEMORY_ERROR_MARKERS`.
+- **Resolved**: the bench proves the interrupts-off case without writing flash, and the one real write stays optional
+  behind `--allow-persistence-write` (owner, 2026-10-05, OR141.a (4) (g)). The one-time run of the old
+  interrupt-driven receive path is a round step, not a test here (no permanent control arm, OR21.a (2)): M.PROC.049.
+- **Unit**: U26 (written; the twin run first, M.HW_DEV.010); executed in phase C.
+- **Depends**: M.HW_DEV.159, M.HW_DEV.045, M.HW_BENCH.012, M.HW_BENCH.041 (the ring size in `bench_facts`), [fold F25
+  M_SRC_NET] (the DMA receive ring, U13).
+- **Blast carried by**: (3) joins the wear guard's marked set → M.TSC.119; budget table row (1 write) → M.HW_BENCH.130;
+  README UART bullets → M.HW_BENCH.115; the measured heap and timing figures → A.C.10 deltas (SPEC I, J.6, F.5.8).
+- **Kind**: test, hardware (Round: R1, session 1 — a new inventory row for the sweep and the soft reset; (3) R3 gated)
+
 ## tests_hardware/device_scripts/uart_crossover_exchange.py
 
 ### M.HW_DEV.046 The exchange script takes its pair and CRC mode from `BENCH`
 - **From**: A.S0930.05, A.U26.44, A.U5.12 (one callbacks object, one `log` object), A.U10.38 (`UARTComm`), A.U26.76
   (`Coroutine[object, object, T]`), A.U26.78 (`_settled` → `_shared/settle.py`), A.U2.20 (blast: the error print
   `:132` holds), A.U8C.91 (`:29, :32, :33` mirrors → `BENCH`; `JOIN_STEP_MS`, `JOIN_BUDGET_MS` tags; `:83` →
-  `_shared/watchdog.py`), A.U26.68.
+  `_shared/watchdog.py`), A.U26.68; OR143.a (1), (2), (4) (A-C review fold: a maximum-size transfer over the crossover
+  jumper, and an over-cap train refused).
 - **Site**: `tests_hardware/device_scripts/uart_crossover_exchange.py:1-142`.
 - **Change**: docstring `:1-3` drops the literal pins ("…across the bench board's UART crossover jumper…"); comment
   `:4-6` "never through sensortask_dev's full task graph" → "never through the generated device module's task graph".
@@ -631,13 +697,23 @@ changes cite.
   poll_idle_ms), `crc=CRC16()` when `BENCH["CRC_MODE"] == "crc16"` (else the default `CRCPass`); the `POLL_*`, `BUF_BYTES`,
   `BAUDRATE` constants and the comment `:30-31` go. `UARTComm(uart0, ROLE_INITIATOR, payload_size=…, timeout=…,
   name="UART_INIT")`, the responder with `callbacks=_Callbacks()` (get/set). `_settled` included from
-  `_shared/settle.py`; `JOIN_STEP_MS`/`JOIN_BUDGET_MS` become `_JOIN_STEP_MS`/`_JOIN_BUDGET_MS` with their tags.
-  Facts: `crc_mode`, `get_answer_ok`, `set_ok`, `empty_set_ok`, `train_bytes`, `error_counts` (per instance), `done()`.
+  `_shared/settle.py`; `JOIN_STEP_MS`/`JOIN_BUDGET_MS` become `_JOIN_STEP_MS`/`_JOIN_BUDGET_MS` with their tags. Both
+  instances take `chunk_bytes`, `max_transfer_bytes` and the ring size from `BENCH` (the TOML, [fold F27 M_GEN]); after
+  the exchange, a maximum-size train: `uart_set()` of `max_transfer_bytes` bytes (a per-run pattern) to a responder
+  whose set callback gives no destination, so it is assembled in pieces of at most `chunk_bytes` ([fold F27
+  M_SRC_NET]), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte; then one train
+  declaring `max_transfer_bytes + 1` from the initiator's raw driver, which the responder refuses before allocating
+  (the withheld ACK) and logs once, the responder's largest free block (`_shared/heap_probe.py`) read before and after.
+  Facts: `crc_mode`, `get_answer_ok`, `set_ok`, `empty_set_ok`, `train_bytes`, `max_train_bytes`, `max_set_intact`,
+  `max_get_intact`, `over_cap_refused`, `over_cap_entries`, `largest_block_before`, `largest_block_after`,
+  `error_counts` (per instance), `done()`.
 - **Resolved**: —
-- **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U26 writes the end form).
-- **Depends**: M.HW_DEV.001-.004.
+- **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U26 writes the end form, after
+  U17's chunking and receive cap).
+- **Depends**: M.HW_DEV.001-.004; [fold F27 M_SRC_NET] (`chunk_bytes`, `max_transfer_bytes`, U17), [fold F27 M_GEN]
+  (the cap and ring size in the device TOML, U20).
 - **Blast carried by**: UART changelog Class B entries for the API rename/constructor → A.U5.12/A.U10.38 (DOCS); twin
-  record → M.HW_DEV.010.
+  record → M.HW_DEV.010; host assertions → M.HW_DEV.045 (9); the TOML keys reach `BENCH` → M.HW_BENCH.041.
 - **Kind**: test
 
 ## tests_hardware/device_scripts/uart_crossover_recovery.py
@@ -645,13 +721,16 @@ changes cite.
 ### M.HW_DEV.047 Recovery: silence and baud desync, both timed against the resync bound
 - **From**: A.U26.33, A.U26.86/A.U36.028 (the injector comment takes the one wording), A.S0930.05, A.U26.44, A.U5.12,
   A.U10.38, A.U26.76, A.U26.78 (`_settled`), A.U17.33/A.U17.25 (blast: stays the L3 silence/desync rung), A.U8C.92,
-  A.U26.68.
+  A.U26.68; OR141.a (4) (b) (A-C review fold: the injector's re-init re-applies the DMA receive set-up).
 - **Site**: `tests_hardware/device_scripts/uart_crossover_recovery.py:1-159`.
 - **Change**: docstring `:2` "within the specified window" → "within the protocol's resync bound (timed)"; comment
   `:4-6` → "The UART fault catalog is mock-only (no injection hardware will be bought, owner 2026-09-22); this injector
   reaches the two faults the bench can make: silence and a baud mismatch." `_build()` takes the pair, buffers and CRC
   mode from `BENCH` (`PeripheralInjector` gets the responder bus's id/tx/rx from `BENCH`, its `_reinit` the bus's
-  rxbuf/txbuf). After the silence case, a desync case: `injector.desync()`, `uart_set(_CMD_ECHO, b"skew")` is False and
+  rxbuf/txbuf); every re-init the injector makes on the responder's UART is followed by the driver's own DMA set-up
+  (RXIM/RTIM cleared, RXDMAE set, OR141.a (4) (b)) — through the driver's init entry if the U13 driver offers one, else
+  by the script calling the driver's re-apply after `restore()`, decided at execution against the U13 API with its
+  reason recorded ([fold F25 M_SRC_NET]). After the silence case, a desync case: `injector.desync()`, `uart_set(_CMD_ECHO, b"skew")` is False and
   the initiator log holds a frame/ACK error; `restore()`, `await responder.clear()`, the next transfer succeeds. Both
   recoveries timed (`ticks_ms()` from `restore()` to the first success) and reported against `BENCH["resync_bound_ms"]`
   (extra: `_DRAIN_BOUND_MULT`, `_RESYNC_NUM/_RESYNC_DEN` × timeout plus one timeout, read host-side by `ast`). Facts:
@@ -669,24 +748,30 @@ changes cite.
 ### M.HW_DEV.048 The driver's read span, the folded POLLIN precondition and a readline leg
 - **From**: A.U26.59, A.U13.12 (L3 readline leg), A.U17.05/A.U30.16 (the collects before timed windows are allowed),
   A.U28.30 (`:135` keeps its coded ignore with a reason), A.U8.19 (Part N `loop.uart_call_span_max_us` checked here),
-  A.U26.44, A.U8C.93, A.U8C2.39, A.U26.68, AD-1 (deferred `:106`).
+  A.U26.44, A.U8C.93, A.U8C2.39, A.U26.68, AD-1 (deferred `:106`; superseded by convention B4); OR141.a (4) (b), (f)
+  (A-C review fold: the driver receives through its DMA ring, so the measured read is a ring copy).
 - **Site**: `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py:1-168`.
-- **Change**: (1) Fold: `_trial` records `uart.any()` at the first POLLIN of the measured frame (fact
-  `first_pollin_bytes`); the comment `:107` → "(the copy into txbuf is timed separately and reported as
+- **Change**: (1) Fold: `_trial` records the DMA ring's fill level when the driver's `ready()` first reports the measured
+  frame (fact `first_ready_bytes`; `uart.any()` and POLLIN are no longer the driver's receive path, [fold F25
+  M_SRC_NET]); the comment `:107` → "(the copy into txbuf is timed separately and reported as
   `txcopy_us`)" — `ticks_us()` around the `write()`, outside the measured window. (2) Readline leg: one trial reading
   a `\n`-terminated frame through `readline_until_complete()`, its worst call span a fact (`readline_span_us`).
   (3) Pins and buffers from `BENCH` (the raw writer UART on `BENCH["bus"]["uart0"]`, the driver on `uart1`); `FRAME`
   stays (one framed frame at payload 48) with its comment no longer citing the deleted script. (4) Constants per
   A.U8C.93/A.U8C2.39: `_TRIALS`, `_START_TIMEOUT_MS`, `_READ_TIMEOUT_MS`, `_RAW_DEADLINE_MS`, `_IDLE_WINDOW_MS`,
-  `_SPAN_FRACTION`; the `:106` settle `sleep_ms(5)` kept as `_TICKER_START_MS = 5`
-  (`l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms`, AD-1); `:126` → `arm()`. (5) `:135` →
-  `drv._uart = timed  # type: ignore[assignment]  # the timed wrapper stands in for machine.UART`. (6) Facts:
-  `frame`, `wire_us`, `span_max_us`, `driver_span_us`, `control_span_us`, `first_pollin_bytes`, `txcopy_us`,
+  `_SPAN_FRACTION`; the `:106` settle `sleep_ms(5)` becomes a bounded poll until the ticker task has recorded its first
+  tick, its deadline `_TICKER_START_MS` (`l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms`, re-sized as a
+  deadline at execution; convention B4); `:126` → `arm()`. (5) `:135`'s timed wrapper of `drv._uart` and its
+  `type: ignore` go (the driver no longer reads `machine.UART`): the driver span is timed around each awaited driver
+  read call, and the control arm reads one frame with a raw `machine.UART.readinto()` on the receiving UART before the
+  driver's DMA set-up takes that UART's receive side over. (6) Facts:
+  `frame`, `wire_us`, `span_max_us`, `driver_span_us`, `control_span_us`, `first_ready_bytes`, `txcopy_us`,
   `readline_span_us`, `driver_gap_us`, `control_gap_us`, `idle_gap_us`, `intact` (per trial), `done()`.
 - **Resolved**: the comparisons move host-side (A.U26.68), so Part N's `loop.uart_call_span_max_us` "Checked by"
   cell names the host test, not `:155-157` (GAP-D4, SPEC).
-- **Unit**: U26.
-- **Depends**: M.SRC_NET (A.U13.12 clamp), M.HW_DEV.001-.004.
+- **Unit**: U26 (after U13's DMA receive ring).
+- **Depends**: M.SRC_NET (A.U13.12 clamp), [fold F25 M_SRC_NET] (the DMA receive ring and its fill level, U13),
+  M.HW_DEV.001-.004.
 - **Blast carried by**: GAP-D4 (SPEC Part N cell); U30 allow-list rows for the two pre-window collects → A.U30.16
   (TSC); host assertions → M.HW_DEV.045.
 - **Kind**: test, hardware (Round: R1 [H37])
@@ -710,13 +795,16 @@ changes cite.
 
 ### M.HW_DEV.050 Idle poll rate: the pair stated explicitly from `BENCH`
 - **From**: A.U13.17 (blast: passes both rates explicitly), A.U17.05/A.U30.16 (`:52` pre-window collect allowed),
-  A.U5.12, A.U10.38, A.U26.44, A.U8C.94, A.U8C2.40, A.U26.68, AD-1 (`:64`, `:78`).
+  A.U5.12, A.U10.38, A.U26.44, A.U8C.94, A.U8C2.40, A.U26.68, AD-1 (`:64`, `:78`; superseded by convention B4, A-C
+  review fold).
 - **Site**: `tests_hardware/device_scripts/uart_idle_poll_rate.py:1-109`.
 - **Change**: the bus from `BENCH["bus"]["uart1"]`, `poll_wait_ms`/`poll_idle_ms` from `BENCH`, passed explicitly in
   both arms (fast arm: idle = wait); `UARTComm(…, callbacks=_Callbacks())`. Constants: `_SAMPLE_MS`, `_MIN_RATIO`,
   `_SAMPLE_STEP_MS`, `_STOP_POLL_MS`, `_EXPECTED_ROUNDS_FACTOR`, `_STOP_POLL_TRIES` with their rows; the deferred
-  sleeps kept as `_PARK_SETTLE_MS = 100` (`l3.uart_idle_poll_rate_park_settle_ms`) and `_CANCEL_SETTLE_MS = 20`
-  (`l3.uart_idle_poll_rate_cancel_settle_ms`, AD-1). Facts `fast_rounds` (a, b), `idle_rounds` (a, b), `sample_ms`,
+  sleeps become bounded polls (convention B4): the park settle waits until the listener's round counter has advanced
+  once at the idle rate, deadline `_PARK_SETTLE_MS` (`l3.uart_idle_poll_rate_park_settle_ms`), and the cancel settle
+  until the cancelled task reports done, deadline `_CANCEL_SETTLE_MS` (`l3.uart_idle_poll_rate_cancel_settle_ms`), both
+  re-sized as deadlines at execution. Facts `fast_rounds` (a, b), `idle_rounds` (a, b), `sample_ms`,
   `expected_idle_rounds`, `min_ratio`; the ratio and band checks move host-side; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
@@ -777,9 +865,10 @@ changes cite.
 
 ### M.HW_DEV.053 L4: the serving board's initiator carries an echoed multi-chunk SET
 - **From**: A.U26.87 (2), A.U26.44 (device module from `BENCH`), A.U26.10 (the `main()`-based serving form keeps
-  `cfg_path=""`), A.U20.02 (`watchdog=`), A.U26.68.
+  `cfg_path=""`), A.U20.02 (`watchdog=`), A.U26.68; OR142.a (3) (A-C review fold: the rendered static import,
+  M.HW_DEV.001).
 - **Site**: new `tests_hardware/device_scripts/uart_link_echo_under_serving_load.py`.
-- **Change**: boots `device = __import__(BENCH["device_module"])`'s `main(watchdog=arm())` as a task (the
+- **Change**: boots the rendered `device` module's (M.HW_DEV.001) `main(watchdog=arm())` as a task (the
   `serving_at_default_gc.py` pattern), waits for the webserver, then N times calls the initiator link's
   `uart_set(_CMD_ECHO, <multi-chunk>)` and `uart_get(_CMD_ECHO)` through its public API (no `src/` change), reporting
   `intact`/`total` and the exerciser's `Transfers`/`Failures` before and after as facts; every wait fed; `done()`.
@@ -791,13 +880,52 @@ changes cite.
   → A.U26.06 (TSC).
 - **Kind**: test, hardware (Round: R1 bench [H37])
 
+## tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py (new)
+
+### M.HW_DEV.159 Interrupts off on the receiving board: no frame lost within the ring's bound, an overrun beyond it
+- **From**: OR141.a (4) (d), (g) (the bench half: interrupts off without a flash write, a soft reset during traffic, the
+  heap before and after); OR143.a (5) (the ring allocated in `setup()`, its heap cost measured) (A-C review fold).
+- **Site**: new `tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py`.
+- **Change**: header ≤ 3 lines ("Holds interrupts off with machine.disable_irq() and a busy-wait while the other UART of
+  the crossover pair keeps sending, to show the DMA receive ring loses no frame within its bound and reports an overrun
+  beyond it - no flash write."). The receiver is a `UARTComm` responder on one UART of `BENCH`'s pair, over the
+  driver's DMA receive ring ([fold F25 M_SRC_NET]; bus parameters, CRC mode, ring size and `max_transfer_bytes` from
+  `BENCH`, M.HW_DEV.001); the sender, on the other UART, streams framed frames from one pre-built buffer through its own
+  DMA channel paced by that UART's TX DREQ (RP2040 datasheet 2.5.3.1: UART0_TX 20, UART1_TX 22), so it keeps sending
+  while interrupts are off. Heap: `gc.mem_free()` and the largest free block (`_shared/heap_probe.py`) before the
+  receiver's `setup()` and after it (facts `heap_before`, `heap_after`, `largest_before`, `largest_after`,
+  `ring_bytes`). Sweep, per window of `BENCH["irq_off_windows_us"]`: `state = machine.disable_irq()`, a busy-wait on
+  `time.ticks_us()` (the hardware timer, readable with interrupts off) until the window has passed,
+  `machine.enable_irq(state)`; the watchdog (`arm()`) fed before and after each window, the longest window below its
+  timeout; then the receiver drains and the window's record holds `frames_sent`, `frames_intact`, `overrun_detected`
+  (the driver's lap count) and `uartrsr_oe` (bit 3 of UARTRSR at the receiving UART's base + 0x004, RP2040 datasheet
+  4.2.8 Table 427, read once through `machine.mem32` after the window). `STATE` extras: `"soft_reset"` streams and
+  prints `RESET_NOW` while frames arrive; `"after_soft_reset"` claims the same DMA channels (`channels_free`) and
+  writes a sentinel into a fresh buffer of the ring's size that must stay intact for 1 s while the sender streams
+  (`ring_untouched`); `"config_write"` streams while a scratch `ConfigManager` flushes one changed value. Facts as a
+  list per window; `done()`. Wear: none, except `"config_write"`'s one owned write.
+- **Resolved**: the windows are the datasheet times of the longest synchronous flash operations, which
+  `ports/rp2/rp2_flash.c:170-174` (v1.29.0) runs with interrupts off (W25Q16JV tPP 0.4/3 ms, tSE 45/400 ms). The
+  sender's DMA register set-up, the drain-time bound and how the lap count is read are decided at execution against the
+  U13 driver and the RP2040 datasheet, with their reasons recorded.
+- **Unit**: U26 (written; run through `TwinBoard` first with the twin's DMA fake — where the twin cannot model
+  `disable_irq()` holding the loop, its `twin_record.json` entry is an `exception` with that reason, M.HW_DEV.010);
+  executed in phase C.
+- **Depends**: M.HW_DEV.001-.005, M.HW_DEV.010; [fold F25 M_SRC_NET] (the DMA receive ring, U13; the ring floor and
+  lap-as-overrun, U17); [fold F25 M_TWIN] (the twin's DMA fake, U13); [fold F27 M_GEN] (the ring size and
+  `max_transfer_bytes` in the device TOML).
+- **Blast carried by**: host tests → M.HW_DEV.160; the one-time run of the old receive path → M.PROC.049; the ring and
+  cap keys in `bench_facts` → M.HW_BENCH.041.
+- **Kind**: test, hardware (Round: R1, session 1 — a new inventory row)
+
 ## tests_hardware/flash/test_toolchain_flash_boot.py
 
 ### M.HW_DEV.055 Toolchain checks: the re-verify gated, the reflash through the one helper on the bench image
 - **From**: A.U26.14 (2)-(4), A.S0930.06 (2) (the shared `reflash()`), A.C.06 (3)-(4) (R4 rows), A.U26.75 (`--no-sync`
   at `:35`, `:61`), A.U26.02 (blast: the build writes its image record beside the `.uf2`), A.U21.22 (blast: the build
   subprocess may now see the toolchain-lock message), A.U36.010 (blast: "hardcoded pins" text is A.U26.14's site),
-  A.U1.06 (blast), A.U26.51, A.U20.33 (B2), A.U8C.109, A.U8C2.46.
+  A.U1.06 (blast), A.U26.51, A.U20.33 (B2), A.U8C.109, A.U8C2.46; OR140.a (18) (A-C review fold: the comment states
+  the general rule, no WoZi-specific wording).
 - **Site**: `tests_hardware/flash/test_toolchain_flash_boot.py:1-92`.
 - **Change**: (1) `test_env_tier_flash_recurring_run_is_idempotent` gains `@pytest.mark.toolchain_reverify` and the
   in-test skip "a full toolchain re-verification: network fetches and ~8 min of builds; pass
@@ -807,7 +935,7 @@ changes cite.
   `["uv", "run", "--no-sync", "scripts/build_firmware.py", name, "--output", str(uf2_path)]` with
   `_BUILD_TIMEOUT_S = 600` (`l3.toolchain_flash_boot_build_timeout_s`), asserts the image record exists beside it,
   then `harness.reflash(board, uf2_path)`; the comment `:57-58` → "the bench board's image, built from its own TOML (a
-  dev-native proof; wozi is never flashed, CLAUDE.md)"; the loop `:71-92` and its comment go into the helper. (3) The
+  dev-native proof; sessions flash only the bench board, CLAUDE.md)"; the loop `:71-92` and its comment go into the helper. (3) The
   `Item 19/20/23` dividers become one `#` line each naming the check (no plan numbers, no "Part 2 item 8"); the
   BOOTSEL first-flash note keeps its one fact ("a blank board has no running firmware to enter the bootloader from").
   (4) `test_mpremote_connection_is_stable_across_repeated_calls`: `_REACHABILITY_CALLS = 5`
@@ -1103,9 +1231,10 @@ changes cite.
   after construction), A.U20.11 (blast: the L1 half
   reads the same key), A.U26.10 (scratch `cfg_path`), A.U20.02 (`watchdog=`), A.U26.44 (device module from `BENCH`),
   A.U26.16 (the build constructs the NeoPixel: parked in `finally`), A.U36.544 (`:1` "WP4/Topic 6's real-hardware
-  capacity check" → "the real-hardware FRAM capacity check"), A.U26.68.
+  capacity check" → "the real-hardware FRAM capacity check"), A.U26.68; OR142.a (3), OR136.a (A-C review fold: the
+  rendered static import; the scratch directory of M.HW_DEV.009).
 - **Site**: `tests_hardware/device_scripts/fram_capacity_after_full_system_build.py:1-54`.
-- **Change**: `device = __import__(BENCH["device_module"])`; `await device.build_system(watchdog=arm(),
+- **Change**: the rendered `import _bench_device as device` (M.HW_DEV.001); `await device.build_system(watchdog=arm(),
   cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)` then `await device.sysfunct.run_setups(
   device._collect_setups())` (construction alone allocates no chunk once A.U20.06 moves the setup batch out of
   `build_system()`; A.U20.06's blast) (M.HW_DEV.009); `_CANDIDATE_MODULE_NAMES` and its
@@ -1190,7 +1319,8 @@ changes cite.
 - **From**: A.U26.08 (1) (docstring drops "the ONE script allowed…"; the writer re-sends `get_ambient_pressure()`
   instead of `1013` at `:67`), A.U26.07 (the start command moves to its own script; this one is no longer the
   prerequisite), A.U0.18 (`:2-3` owner tag), A.U26.49 (bounds from `plausibility_bounds.py` as render extras),
-  A.U26.69 (bounded failure record), A.U26.44, A.U8C.84, A.U8C2.37, AD-1 (`:64`), A.U26.68.
+  A.U26.69 (bounded failure record), A.U26.44, A.U8C.84, A.U8C2.37, AD-1 (`:64`; superseded by convention B4, A-C
+  review fold), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py:1-89`.
 - **Change**: docstring → "Isolated-driver device script: the SCD30 same-device concurrency proof every device gets
   (owner, 2026-09-03; SPECIFICATION.md Part C.8): a reader against a concurrent ambient-pressure write that re-sends
@@ -1198,7 +1328,9 @@ changes cite.
   `prior = await scd.get_ambient_pressure()` first and sends it back (a failed read or a value neither 0 nor 700..1400
   → fact `write_skipped`, no send); CO2/humidity/temperature bounds from `BENCH["bounds"]`; the comment `:66` goes;
   `_READ_ITERATIONS = 40`, `_SETTLE_S = 12.0`, `_SETTLE_STEP_S = 0.5` (`:32`, `:35`), `_RUN_BOUND_S = 60.0`,
-  `_WDT_FEED_EVERY = 10`, `_WRITER_DELAY_S = 0.2` (`l3.scd30_same_device_rw_concurrency_writer_delay_s`, AD-1); read
+  `_WDT_FEED_EVERY = 10`; the writer's head start becomes a bounded poll until the reader has completed its first read
+  (a shared counter), deadline `_WRITER_DELAY_S` (`l3.scd30_same_device_rw_concurrency_writer_delay_s`, re-sized as a
+  deadline at execution; convention B4); read
   errors as the bounded record; facts `read_completed`, `write_done`, `write_error`, `ambient_sent`, `errors`; `done()`.
 - **Resolved**: A.U0.18 tags the HEAD sentence A.U26.08 rewrites; the tag is kept in the rewritten docstring.
 - **Unit**: U26 (A.U0.18's tag lands in U0 on the HEAD text).
@@ -1330,11 +1462,13 @@ changes cite.
 ## tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py
 
 ### M.HW_DEV.089 ISL29125 read-vs-write concurrency, constants named
-- **From**: A.U15.S01/A.U15.R04 (blasts: unchanged, must pass), A.U26.44, A.U26.69, A.U8C.80, AD-1 (`:53`), A.U26.68.
+- **From**: A.U15.S01/A.U15.R04 (blasts: unchanged, must pass), A.U26.44, A.U26.69, A.U8C.80, AD-1 (`:53`; superseded by
+  convention B4, A-C review fold), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py:1-90`.
 - **Change**: bus from `BENCH`; `_READ_ITERATIONS`, `_WRITE_ITERATIONS`, `_READ_STEP_MS`, `_WRITE_STEP_MS` with their
-  rows; the `:53` writer head start kept as `_WRITER_DELAY_MS = 120` (`l3.isl29125_same_device_rw_concurrency_writer_
-  delay_ms`, AD-1); the reserved-bit mask `0xC8` stays a datasheet constant (p.12 Table 15) with its citation; facts `reads`, `torn_reads`, `writes_ok`, `errors`; `done()`.
+  rows; the `:53` writer head start becomes a bounded poll until the reader has completed its first read, deadline
+  `_WRITER_DELAY_MS` (`l3.isl29125_same_device_rw_concurrency_writer_delay_ms`, re-sized as a deadline at execution;
+  convention B4); the reserved-bit mask `0xC8` stays a datasheet constant (p.12 Table 15) with its citation; facts `reads`, `torn_reads`, `writes_ok`, `errors`; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.001-.005.
@@ -1420,13 +1554,16 @@ changes cite.
 - **From**: A.S0930.28 (1)-(4), (6)-(8), A.S0930.39 (2)-(5), A.S0930.19 (blast: `resetconfig` counts as persisting),
   A.S0930.33 (blast: the starve script holds), A.U26.22, A.U26.26, A.U26.47 (soak markers), A.U26.68, A.U26.51 (its
   `COVERS_TWIN_SCENARIOS`: the twin's command sequence runs, A.S0930.27), A.U31.01 (blast: the feed-gap figures are
-  F.3 rows' measurements).
+  F.3 rows' measurements); OR136.a (1), OR138.a (2) (A-C review fold: every scratch file exists after the build's
+  setups; a damaged file is deleted without being read).
 - **Site**: new `tests_hardware/flash/test_system_commands.py`.
 - **Change**: header ≤ 3 lines; module constants for every bound (the 7.5-10.0 s hang window, the < 100 ms erase feed
   gap, `_TASK_CHECK_TIME + _RESET_DELAY` read from `src/asy_system_service.py` by `ast`). Tests, each saving FRAM
   evidence first where the command or a reset can touch it (`save_fram_raw(board, <name>)`): (1)
   `test_config_reset_deletes_every_config_file_and_reboots` `@pytest.mark.persistence_write` — production `config_*.cfg`
-  names and bytes read before and after (read-only exec) unchanged, the scratch directory empty after; (2)
+  names and bytes read before and after (read-only exec) unchanged, the scratch directory empty after, its damaged file
+  included (the command deletes a file without reading it, OR138.a (2)), then the test's cleanup exec removes the empty
+  directory; (2)
   `test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty` — after the production boot `fram_raw_dump.py`: every
   byte outside the build's chunk layout 0x00, every chunk an empty ring or blank; (3) refusals — near-miss words
   "Invalid", no reset; `erasefram` with the chip write-protected → "Failed" and no reset for 10 s; (4) states — the erase
@@ -1436,7 +1573,9 @@ changes cite.
   7.5-10.0 s after the `HANG` line; (7) `test_a_reset_mid_erase_leaves_every_chunk_old_or_blank` — `hard_reset()` at
   0.2/1.0/2.0 s after `ERASE START`, raw dump: seeded ring or blank only; `test_bootloader_command_shuts_down_then_
   enters_bootsel` — step lines in order, serial loss, `sudo picotool reboot` exits 0, production boot serves; the hang
-  case for `reboot`; (8) each test reads the output through `harness.MEMORY_ERROR_MARKERS`. The reboot no-tear test
+  case for `reboot`; (8) each test reads the output through `harness.MEMORY_ERROR_MARKERS`; (9) every test whose script
+  builds over the scratch directory and ends in a reset removes the directory's files and the directory in its
+  `finally` (one exec, then `hard_reset()`, M.HW_DEV.009). The reboot no-tear test
   lives in `flash/test_bus_concurrency.py` (M.HW_DEV.080).
 - **Resolved**: A.S0930.28's "prints the largest gap" and the step lines become facts/banners (AD-3 for the lines read
   before a reset); markers per A.U26.74's names (`--allow-persistence-write`).
@@ -1449,10 +1588,13 @@ changes cite.
 ## tests_hardware/device_scripts/system_command_config_reset.py (new)
 
 ### M.HW_DEV.096 `resetconfig` through the generated callback over a scratch store set
-- **From**: A.S0930.28 (1)(4), A.U26.10/A.U26.18 (scratch path removed on every path), A.U26.44, A.U26.68.
+- **From**: A.S0930.28 (1)(4), A.U26.10/A.U26.18 (scratch path removed on every path), A.U26.44, A.U26.68; OR136.a (1),
+  OR138.a (2) (A-C review fold: the setups create every scratch file; a damaged file joins the set the command deletes).
 - **Site**: new `tests_hardware/device_scripts/system_command_config_reset.py`.
-- **Change**: builds the generated bench system over `_SCRATCH_CFG_PATH` with `watchdog=arm()` (M.HW_DEV.009), writes one
-  changed value per store (each scratch file exists), reports the scratch listing, then calls the generated
+- **Change**: builds the generated bench system over `_SCRATCH_CFG_PATH` with `watchdog=arm()` (M.HW_DEV.009); its
+  setups write every scratch file once with its defaults (an absent file's first write, OR136.a (1)), so no further
+  write is needed for each file to exist; then one store's scratch file is overwritten with bytes that are not JSON (a
+  damaged file, one owned write), the scratch listing reported, then the script calls the generated
   `_system_cmd_callback("resetconfig")` and lets the product reset end the run (`run_isolated_expect_reset()`); a
   pre-reset failure removes the scratch directory and reports; `STATE` extras select the in-flight variants of (4).
 - **Resolved**: —
@@ -1750,15 +1892,17 @@ changes cite.
   scripts — structural once shared), A.U30.16 (baseline rows: in the include now), A.U0.28 (`:34` "(agent,
   2026-09-19)"), A.U8.14 (`:117` `gc.threshold(32768)` mirror tag), A.U27.09 (blast: the `typecheck.sh` comment naming
   this script's static import), A.U8C.71, A.U8C.72 (shared IDs), A.U8C2.30, A.U31.05 (blast: the stretch script builds
-  as this one does), A.U26.68.
+  as this one does), A.U26.68; OR142.a (3), OR136.a, heap-floors-kept (owner-reviewed, OR140.a) (A-C review fold: the
+  rendered static import; the scratch directory of M.HW_DEV.009; the tag form).
 - **Site**: `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py:1-131`.
-- **Change**: `device = __import__(BENCH["device_module"])`; `await device.build_system(watchdog=arm(),
+- **Change**: the rendered `import _bench_device as device` (M.HW_DEV.001); `await device.build_system(watchdog=arm(),
   cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)` then `await device.sysfunct.run_setups(
   device._collect_setups())` (the HEAD measurement point included the batch); `# @include _shared/heap_probe.py`
   (probe constants and their three tags live there once); `_WORST_CASE_ALLOCATION` → `BENCH["worst_case_allocation"]`
   (its tag withdrawn here: `heap_bounds.py` holds it); `_MIN_LARGEST_BLOCK = 2 * worst` with
   `l3.heap_headroom_after_full_system_build_worst_case_factor = 2` (A.U8C2.30's row, basis "a requirement"); `_MAX_USED
-  = 100_000` tagged; the `:34` sentence gains "(agent, 2026-09-19)"; `gc.threshold(32768)` at `:117` gets
+  = 100_000` tagged; the `:34` sentence gains "(agent, 2026-09-19; owner-reviewed, 2026-10-02)" (the heap bounds the
+  owner confirmed, A-C review fold); `gc.threshold(32768)` at `:117` gets
   `# @tunable` mirror tag `build.gc_threshold`; facts `gc_threshold` (both stages), `heap` per label (free, alloc,
   largest_block, retained), `used`, `max_used`, `largest_block`, `min_largest_block`; the `mem_info(1)` maps printed as
   labelled raw blocks (the host parser's input); `done()`.
@@ -1842,12 +1986,14 @@ changes cite.
 ### M.HW_DEV.120 Serving at the default GC stage: rendered device, `main(watchdog=…)`, shared dump
 - **From**: A.U26.10 (`:93` keeps `cfg_path=""`, with the one-line comment), A.U20.02 (`main(watchdog=…)`), A.U26.44,
   A.U26.78 (`_dump` → `_shared/map_dump.py`), A.U30.16 (`_observe` row), A.U26.87 (blast: pattern reused by the echo
-  script), A.U8C.86 (constants; `boot_wait_s` shared ID), A.U26.68.
+  script), A.U8C.86 (constants; `boot_wait_s` shared ID), A.U26.68; OR142.a (3), OR136.a (1), G7/R23 (A-C review fold:
+  the rendered static import; the comment names an absent file's first write; the boot wait kept with its reason).
 - **Site**: `tests_hardware/device_scripts/serving_at_default_gc.py:1-140`.
-- **Change**: `device = __import__(BENCH["device_module"])`; `asyncio.create_task(device.main(watchdog=arm()))`
-  with the comment "production config path: the only write it can cause is the repair a production boot of a malformed
-  file makes anyway"; `_BOOT_S` stays a fixed wait (no in-process readiness request: it would share the heap under
-  measurement, E.9) as `_BOOT_WAIT_S` with the shared row `l3.heap_under_connection_ceiling_boot_wait_s`; constants per
+- **Change**: the rendered `import _bench_device as device` (M.HW_DEV.001); `asyncio.create_task(device.main(
+  watchdog=arm()))` with the comment "production config path: the only writes it can cause are the ones a production
+  boot makes anyway (an absent file's first write, a malformed file's repair)"; `_BOOT_S` stays a fixed wait (no
+  in-process readiness request: it would share the heap under measurement, E.9; a kept delay under convention B4) as
+  `_BOOT_WAIT_S` with the shared row `l3.heap_under_connection_ceiling_boot_wait_s`; constants per
   A.U8C.86; the `=== MAP … ===` blocks stay raw (`heap_map.parse_labelled()`'s input); `GC_THRESHOLD`,
   `PHASES_INCOMPLETE`, `FAILURE_MAPS` → facts; `done()` at the window end.
 - **Resolved**: —
@@ -2060,13 +2206,15 @@ changes cite.
 ### M.HW_DEV.139 ISL29125 plausibility read: rig parked, lux out, priming kept read-only
 - **From**: A.U26.16 (NeoPixel parked in `finally`), A.U26.49 (lux bound FN8424 p.1 host-side; the room-light floor stays
   a tagged script fact), A.U26.34 (blast: its RAM-priming pattern `:32-37` is reused), A.U5.02, A.U26.44, A.U8C.78,
-  A.U8C2.34, AD-1 (`:29`), A.U26.68.
+  A.U8C2.34, AD-1 (`:29`; superseded by convention B4, A-C review fold), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/isl29125_plausibility_read.py:1-60`.
 - **Change**: the raw `NeoPixel(Pin(18), 1)` (pin from `BENCH`) is the first statement in the `try` whose `finally` sets
   it dark (HEAD parks it on the success path only; the early `return` after a failed wait skips it); bus and pins from
   `BENCH`; the priming line reads `reader.get_cfg_schema()` (A.U10.39/A.U24.61's rule, this reader too);
-  `_ROOM_LIGHT_MIN_LUX = 5.0`, `_POLL_S`, `_POLL_TRIES` tagged; the `:29` light settle kept as `_LIGHT_SETTLE_MS = 300`
-  (`l3.isl29125_plausibility_read_light_settle_ms`, AD-1); facts `lux`, `rgb`, `hsb`, `cct`, `range_act`; the CCT/HSB
+  `_ROOM_LIGHT_MIN_LUX = 5.0`, `_POLL_S`, `_POLL_TRIES` tagged; the `:29` light settle becomes part of the reading poll
+  that follows: the poll accepts only a sample converted after the scene was lit (the reader's sample timestamp later
+  than the pixel write), so no fixed wait remains; `_LIGHT_SETTLE_MS` (`l3.isl29125_plausibility_read_light_settle_ms`)
+  is withdrawn with the wait (convention B4); facts `lux`, `rgb`, `hsb`, `cct`, `range_act`; the CCT/HSB
   coherence checks host-side; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
@@ -2095,13 +2243,14 @@ changes cite.
 
 ### M.HW_DEV.141 SGP40 FRAM backup/restore with the TOML's bus timeout and a cleared chunk
 - **From**: A.U14.04/A.U26.44 (`:54` timeout), A.U5.11, A.U5.02, A.U26.78 (`_FixedSource`), A.U26.22 (5) (chunk cleared
-  after), A.U15.17/A.U15.18 (blasts: defaults and the `restored_from is None` check hold), A.U8C.87, AD-1 (`:15`, `:16`
-  kept), A.U26.68.
+  after), A.U15.17/A.U15.18 (blasts: defaults and the `restored_from is None` check hold), A.U8C.87, AD-1 (`:15`, `:16`;
+  superseded by convention B4, A-C review fold), A.U26.68.
 - **Site**: `tests_hardware/device_scripts/sgp40_fram_backup_restore.py:1-125`.
 - **Change**: bus and FRAM from `BENCH`; readers in A.U5.11's shape; the two priming lines read
-  `reader.get_cfg_schema()` (A.U10.39/A.U24.61); fixed source included; `_BACKUP_WAIT_S = 75.0`
-  (`l3.sgp40_fram_backup_restore_backup_wait_s`) and `_RESTORE_WAIT_S = 10.0` (`…_restore_wait_s`) tagged (AD-1), waited
-  through `fed_sleep_ms`; facts `backup_written`, `restored_from`, `restored_state_matches`; the backup chunk cleared in
+  `reader.get_cfg_schema()` (A.U10.39/A.U24.61); fixed source included; the two fixed waits become bounded polls fed
+  through `fed_sleep_ms` steps (convention B4): the first until `get_mem_status()` reports a completed backup, deadline
+  `_BACKUP_WAIT_S = 75.0` (`l3.sgp40_fram_backup_restore_backup_wait_s`), the second until the fresh reader reports its
+  restore (`restored_from` set), deadline `_RESTORE_WAIT_S = 10.0` (`…_restore_wait_s`); facts `backup_written`, `restored_from`, `restored_state_matches`; the backup chunk cleared in
   `finally`; `done()`.
 - **Resolved**: —
 - **Unit**: U26.
@@ -2164,13 +2313,16 @@ changes cite.
 ### M.HW_DEV.144 The ISL29125 probe: constants from `BENCH`, settles named, run from the conformance gate
 - **From**: A.U26.66 (3) (its test moves to `flash/test_chip_conformance.py`), A.U26.44 (`:20` `_MODE_RGB` copy), A.C.16
   (blast: already reads the configuration before/after reset, keys A03-A05), A.C.19 (2) (runs in R1), A.U8C.77 (`:12`
-  wdt → `arm()`), A.U8C2.33 (deferred settles `:87`, `:104, :134, …` kept as named constants, AD-1).
+  wdt → `arm()`), A.U8C2.33 (deferred settles `:87`, `:104, :134, …` kept as named constants, AD-1; kept under
+  convention B4's exception, A-C review fold).
 - **Site**: `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py:1-160`.
 - **Change**: bus, `ADDR`, `INT_PIN` and `MODE_RGB` from `BENCH`; `_WDT = arm()` and the twin branch `:13-14` goes
   (the twin runner arms a recording WDT, A.U26.05); the `REG_*`/`CFG1_*` register map stays the datasheet's, each with
   its page, independent of the driver the probe's twin comparison is meant to check (GAP-D14); `_WRITE_SETTLE_MS = 50`
   (`l3.isl29125_mock_conformance_probe_write_settle_ms`) and `_CONVERSION_SETTLE_MS`
-  (`l3.isl29125_mock_conformance_probe_conversion_settle_ms`) named; output stays `KEY=VALUE` plus `DONE=1` (the
+  (`l3.isl29125_mock_conformance_probe_conversion_settle_ms`) named and kept as measured delays, each with one comment
+  line: the probe characterises the chip's own write-settle and conversion timing for the twin comparison, so a
+  register read inside those windows would become part of what is measured (convention B4's exception); output stays `KEY=VALUE` plus `DONE=1` (the
   comparison protocol, M.HW_DEV.131); the conversion-cycle series added as keys.
 - **Resolved**: —
 - **Unit**: U26.
@@ -2185,7 +2337,9 @@ changes cite.
   A.U15.R05 (blasts: unchanged), A.U10.43 (unit suffixes), A.U26.16, A.U5.02, A.U26.44, A.U8C.79, A.U8C2.35, A.U26.68.
 - **Site**: `tests_hardware/device_scripts/isl29125_real_irq_edge.py:1-125`.
 - **Change**: pins (INT) and bus from `BENCH`; NeoPixel parked in `finally`; identifiers with the end-state unit suffixes;
-  constants per A.U8C.79/A.U8C2.35 (the deferred `first_conversion_cycles` kept, AD-1); facts `fast_path_ms`,
+  constants per A.U8C.79/A.U8C2.35 (the deferred `first_conversion_cycles` kept as a measured delay under convention B4's
+  exception, with its reason in one comment line: the waits are the experiment — reading the data registers early is
+  what the CONFIG1-restart measurement compares, so a readiness check would disturb it); facts `fast_path_ms`,
   `persist_unit`, `config1_restart` (reported only), `done()`; the PRST verdict host-side.
 - **Resolved**: —
 - **Unit**: U26.
@@ -2426,8 +2580,8 @@ None. Every conflict met was settled by an owner row, the register, a verified f
 
 ## Agent decisions for the OR2.c review
 
-- **AD-1**: the device-script sleeps U8C/U8C2 deferred to U26 ("deferred U26") have no U26 keep-or-poll decision (G7/R23
-  ledger row "NO-CLAUSE"); each is kept and becomes the named constant with U8C's provisional ID ("if kept" branch).
+- **AD-1** (superseded by the A-C review fold, routine settlement device-script-sleeps): the deferred device-script
+  sleeps were kept as named constants; each now becomes a bounded poll where its state can be read (convention B4).
 - **AD-2**: a script using a `_shared/` include also writes `if TYPE_CHECKING: from _shared.<name> import …` so the main
   mypy pass resolves the inlined names (M.HW_DEV.003).
 - **AD-3**: scripts whose subject ends in a reset or never returns report banners/facts before it and no `DONE`; their

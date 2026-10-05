@@ -210,7 +210,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **From**: A.U5.02, A.U5.08, A.U11.03 (1), A.U11.05 (`reset_reason`), A.U11.01, A.U10.01 (`boot_signature` →
   `LockedValue`), A.U10.35 (seven attributes private), A.U11.32, A.U10.39 (`_cfg_schema`), A.U11.12 (1) dropped (see
   Resolved), A.S0930.12/.13 (state), A.U20.06 (`_tasks`, `_task_starters`), A.U32.06 (`_task_names`, `_last_task_end`),
-  A.U10.12 (`_sequencer_flag`), A.U10.15 (`_unpause_flag`), A.U0.41 (`:92` tag), A.U10.46 (types).
+  A.U10.12 (`_sequencer_flag`), A.U10.15 (`_unpause_flag`), A.U0.41 (`:92` tag), A.U10.46 (types); OR138.a (1)
+  (`_config_faults`) and routine settlement "initialized-flags" (no `initialized`) (A-C review fold).
 - **Site**: `src/system_service.py:63-109`.
 - **Change**: signature `(self, asy_ntp_callback: "NtpSyncFct", watchdog: WDT | None = None, storage: "FRAMManager |
   None" = None, level_setters: "Callable[[], list[Callable[[int], bool]]] | None" = None, config_stores: "Callable[[],
@@ -237,8 +238,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   asyncio.Task[None] | None = None`, `self._supervisor_parked = asyncio.Event()`, `self._never = asyncio.Event()` ("#
   never set: supervise_tasks() and a parked supervisor wait on it for good"); `self._task_starters: list[TaskStarter] =
   []`, `self._tasks: list[asyncio.Task[None] | None] = []`, `self._task_names: list[str] = []`, `self._last_task_end:
-  dict[str, str | int] | None = None`; last `self.initialized = False` (G5/R14's readiness flag, set by `setup()`,
-  M.SRC_CORE.017). Gone: `self.uptime` (`LockedCounter`), `self.timers_running`, `self.cfg_schema`,
+  dict[str, str | int] | None = None`; `self._config_faults: list[str] = []` (filled once by `run_setups()`,
+  M.SRC_CORE.015). No `initialized` (Resolved (e)). Gone: `self.uptime` (`LockedCounter`), `self.timers_running`, `self.cfg_schema`,
   `self._current_debug_level` and its comment `:103-104`, the registry comment `:106-108` (→ "# Every logger's own
   set_level(), resolved once from the provider in setup() and called on every level change."). Every list is filled once
   at boot and never grows (OR110.a (1)).
@@ -252,14 +253,15 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   write-only attribute is dead state (G5/R54; OR36.a (1)), so it goes (agent, 2026-10-01; "Agent decisions" 4). (d) Gap pass G2: `watchdog`, `ntp_is_synced`, `boot_signature` have no reader outside the class in `src/` or the generated
   code (the status reads `get_boot_signature()`), so G10/R07 "private by default" makes them `_watchdog`,
   `_ntp_is_synced`, `_boot_signature` (M_SRC_CORE GAP-G12 applied across `src/`); every use follows (M.SRC_CORE.009,
-  .013). (e) `initialized`: G5/R14 (every class with an async `setup()` carries it; A.U10.22's L0 check, M.TSC.112),
-  in the form AC_NOTES 42/44 rule for `NotificationService`/`NeopixelDriver` — no method guards on it (M_SRC_NET gap 3).
+  .013). (e) `initialized`: not added — the routine settlement "initialized-flags" (lead, A-C review, OR36.a (1)) keeps the
+  flag only where product code reads it (the FRAM, SPI, UART and logging classes), and nothing reads the service's;
+  A.U10.22's L0 check narrows to those classes (A-C review fold; replaces gap pass G2's addition).
 - **Unit**: stages — U5: `fram` → `storage`, `history_length`/`debug` → `log`, `level_setters` provider (A.U5.02,
   A.U5.08; A.U5.03's generated `log=`/`storage=` and A.U5.18's check need them); U10: `boot_signature` → `LockedValue`
   (must precede A.U10.01's cap in the same unit, K.03), the seven private names (A.U10.35), `_cfg_schema` (A.U10.39),
   `_sequencer_flag` (A.U10.12), `self._uptime` stays a `LockedCounter` until U11; U11: the final state above
   (`config_stores`, `reset_reason`, `TickSeconds`, gate/ownership/reset state, `_unpause_flag`, `_tasks`/`_task_starters`
-  used by the U11 supervisor, M.SRC_CORE.016); U32: `_task_names`, `_last_task_end`.
+  used by the U11 supervisor, M.SRC_CORE.016); U32: `_task_names`, `_last_task_end`. Fold stage U20: `_config_faults` with M.SRC_CORE.015.
 - **Depends**: M.SRC_CORE.001, M.SRC_CORE.003, M.SRC_CORE.006, M.SRC_CORE.032 (`TickSeconds`), M.SRC_CORE.046
   (`config_filename`), M.SRC_CORE.061 (`LogConfig`).
 - **Blast carried by**: generated `sysfunct` line (`storage=`, `log=`, `level_setters=_collect_level_setters`,
@@ -343,7 +345,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 
 ### M.SRC_CORE.011 One command gate and one controlled shutdown for all four words
 - **From**: A.S0930.12, A.S0930.14, A.S0930.31 (1)-(3), A.S0930.32 (1); A.U11.03 (4) dropped (superseded by A.S0930.31
-  (1)); A.U10.46 (types).
+  (1)); A.U10.46 (types); OR140.a (12), OR138.a (2) (A-C review fold).
 - **Site**: `src/system_service.py:347-351` `reboot_system()`/`reboot_bootloader()`; new `reset_to_defaults()`,
   `erase_fram()`, `_request_shutdown()`, `_shutdown_sequence()`.
 - **Change**: `async def reboot_system(self) -> bool: return await self._request_shutdown(_RR_REBOOT)`; likewise
@@ -356,7 +358,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   naming its reason, sets `self._shutdown = 0`, returns `False`; (4a) `if self._reset_armed: self._shutdown = 0;
   self.pr.evt("Command refused: a reset is already armed"); return False` — from here to (6) nothing awaits; (5) `try:
   self._shutdown_task = asyncio.create_task(self._shutdown_sequence(purpose))` / `except MemoryError as e:
-  self.pr.err("Could not start the shutdown:", e)`, `self._shutdown = 0`, `return False`; (6) `self._feed_owned = True`;
+  self.pr.err("Could not start the shutdown:", e)`, `self._shutdown = 0`, `return False`; (6) `self._feed_owned = True`; then, with no await between, every store's `close_writes()` (one-way) with the
+  comment "# From acceptance on nothing writes a store or a chip: no SCD30 write while the sequence runs (owner,
+  2026-10-02)." — every config PUT is refused from here (M.SRC_CORE.038's closed-store refusal);
   `self.pr.evt("System command accepted, controlled shutdown for", _purpose_name(purpose))`; `return True`.
   `_shutdown_sequence(purpose) -> None` (comment ≤ 3 lines: "# One controlled shutdown for a system command (owner,
   2026-09-30): no step has a timeout that moves on - / # a hung step is not fed, so the watchdog resets the unit; the
@@ -364,7 +368,10 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   None or not task.done():` `await self._supervisor_parked.wait()`, `task = self._supervisor_task`, `task.cancel()`,
   `try: await task` / `except asyncio.CancelledError: pass`; `if task is None or not task.done(): return` (no feed
   follows); `self.pr.evt("Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone")`; `self._own_feed()`.
-  S2 `ok = await self._flush_config_stores(close=True, step_done=self._own_feed)`; one `evt` line. S3
+  S2 `ok = await self._flush_config_stores(close=True, step_done=self._own_feed)`; one `evt` line; a PUT that
+  already held its module's config lock at acceptance has finished its writes when S2 completes — how S2 waits it
+  out (each store given its owner's `_set_lock`, or the sequence taking the module locks) is decided at execution,
+  with its reason recorded. S3
   `self._storage_timer.deinit()`; `if self._storage is not None: await self._storage.quiesce(self._own_feed)`; one line.
   S4 cancel every `self._tasks` entry not done, then per entry `try: await t` / `except (asyncio.CancelledError,
   Exception) as e: report_if_fatal(e)`, `self._own_feed()`; one line. S5 only `if purpose in (_RR_CONFIG_RESET,
@@ -378,6 +385,11 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   owner, 2026-09-30); A.S0930.12's `if self._shutdown: return False` guard for the two old words is replaced by rule (1)
   (SUPP conflict 10). S4's handler: A.U30.19 requires `report_if_fatal()` as every broad handler's first statement; S4's
   `except (…, Exception)` is broad, so it binds `e` (A.S0930.14's `pass` form becomes the call; U30 stage).
+  A-C review fold: OR140.a (12) — no SCD30 write can happen while the sequence runs: the only SCD30 writes are
+  API-triggered config PUTs, and from acceptance every config PUT is refused (the stores closed in (6)), every
+  system command by rules (1)/(2) and `mempause` by M.SRC_CORE.012; tests prove it watertight. OR138.a (2)'s
+  "a failed delete answers Failed" is answered through S5's `ok` → code 9 (M.SRC_CORE.042), since the request
+  was answered at acceptance; flagged to the lead.
 - **Unit**: stages — U11: gate and sequence for `reboot`, `bootloader` and `resetconfig` (S3 uses the manager's
   `quiesce()`, landed in U11 by M.SRC_CORE.083's first stage); U16: `erase_fram()`, the erase preflight and S5's erase
   branch, with the manager's erase trio (M.SRC_CORE.083). The REST words reach the gate in U19/U20 (A.S0930.09/.11).
@@ -385,9 +397,12 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   inside `start_and_check_tasks()`; U20 only splits the start loop out), which is how this lands before A.U20.06 although
   A.S0930.13 names `supervise_tasks()` (SUPP's LEAD/R32 State puts this code in U11; its Depends on A.U20.06 is met by
   the U11 stage of M.SRC_CORE.016).
+  Fold stage (A-C review) — U20: the stores closed at acceptance, with M.SRC_CORE.038's refusal and M.SRC_CORE.041's
+  `writes_closed()`, and its L1 proof [fold F15 M_TEST_UNIT]; the twin proof lands in U25 [fold F15 M_TWIN].
   A-C2 step order: A.S0930.12's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.14's part lands in U20, not U11 (it needs A.U20.06, which lands in U20); A.S0930.31's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.006, .008, .009, .010, .016 (U11 stage); M.SRC_CORE.041/.042 (`close_writes()`,
-  `delete_file()`); M.SRC_CORE.083 (`quiesce()`, `erase_ready()`, `erase_chip()`).
+  `delete_file()`); M.SRC_CORE.083 (`quiesce()`, `erase_ready()`, `erase_chip()`); M.SRC_CORE.038 (closed-store refusal),
+  M.SRC_CORE.041 (`writes_closed()`); [fold F15 M_TEST_UNIT] (U20).
 - **Blast carried by**: generated `_system_cmd_callback` returning the service's answer for five words → A.S0930.11
   (GEN); `_SYSTEM_CMDS` words → A.S0930.09 (SRC_NET); definitions dropdown → A.S0930.10 (GEN); L0-L4 tests →
   A.S0930.20-.29, .34-.40 (TSC, TEST_UNIT, TEST_HELP, TWIN, HW_DEV, HW_BENCH); wear gate counts `"resetconfig"` →
@@ -482,17 +497,23 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 - **Kind**: code
 
 ### M.SRC_CORE.015 The boot setup list runs in one method
-- **From**: A.U11.10, A.U11.S04 (typed, no `Any`), A.U10.21 (setups return `bool`), A.U20.06 (4) (the caller).
+- **From**: A.U11.10, A.U11.S04 (typed, no `Any`), A.U10.21 (setups return `bool`), A.U20.06 (4) (the caller);
+  OR138.a (1) (the `ConfigFaults` list; A-C review fold).
 - **Site**: `src/system_service.py` new `run_setups()` beside `start_timers()`.
 - **Change**: `async def run_setups(self, setups: "list[SetupFct]") -> None`: `gc.collect()`; `for setup in setups:
   await setup()`, `self.feed_watchdog()`, `gc.collect()`. Comments moved from the generator, two lines at most: "# fed
   after every one-time setup(), never inside a loop, so the batch cannot starve the watchdog however many modules a /
   # device wires; the collect comes after the feed - it is the slow part (the boot placement reset, SPECIFICATION.md
   Part I.4(f.1))." No guard around a setup (every `setup()` is never-raise; one that raises ends the boot, attributed by
-  the phase marker); results are discarded (A.U16.17 reads FRAM's state through `fram.initialized`, not this return).
+  the phase marker); results are discarded (A.U16.17 reads FRAM's state through `fram.initialized`, not this return). After the loop:
+  `self._config_faults = [store.module_name for store in self._config_stores if store.faulted]` — the modules whose
+  config file existed at this boot but was unreadable or damaged, fixed for the rest of the boot (a repair write
+  does not clear it), at most one name per store, built once; new `def get_config_faults(self) -> list[str]: return
+  self._config_faults` (the generated `/status` block reads it, M.GEN.008).
 - **Resolved**: `AsyncCallback` (A.U11.S04) vs `setup() -> bool` (A.U10.21) → `SetupFct` (M.SRC_CORE.003 Resolved).
 - **Unit**: U20 (co-lands with the generator's `_collect_setups()` and the guard changes in one commit, A.U11.10 Depends).
-- **Depends**: M.SRC_CORE.009, M.SRC_CORE.030.
+- **Depends**: M.SRC_CORE.009, M.SRC_CORE.030; M.SRC_CORE.043/.049 (`faulted`, `module_name`, U11);
+  [fold F03 M_TEST_UNIT] (the list's L1 cases, U20).
 - **Blast carried by**: generated `_collect_setups()` and `main()` call; generated module loses its `gc.collect()`s and
   feeds → A.U20.06, A.U11.10 codegen half (GEN); `scripts/lint.sh` gc/`method-assign` guards and message →
   A.U11.10 (SCR); `tests_scripts/test_gc_collect_sites.py` set `{("asy_system_service.py", "start_tasks"),
@@ -574,8 +595,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   only so a test … can reach inside") — it is a required parameter; direct callers pass names (GAP-G5; agent,
   2026-10-01; "Agent decisions" 2).
 - **Unit**: stages, each a prerequisite of work in its own or an earlier-numbered consumer —
-  **U2/U3**: named codes at HEAD sites and one entry per task end (A.U2.02's catalog check, A.U3.11's pair scan need
-  them). **U11** (the body above except `start_tasks()`/`supervise_tasks()`, C-stack and names): `start_and_check_tasks(
+  **U2/U3**: named codes at HEAD sites and one entry per task end (A.U2.02's catalog check needs them; A.U3.06's one
+  entry per task end rests on OR56's "a fault or a warning, never both" for one layer and stays — A.U3.11's pair scan
+  is dropped, OR140.a (7), A-C review fold). **U11** (the body above except `start_tasks()`/`supervise_tasks()`, C-stack and names): `start_and_check_tasks(
   task_starters)` keeps its name and start loop (with `sleep_ms`, the placement-reset comment and without `pr.setup()`),
   stores `self._tasks`/`self._task_starters`, then does what `supervise_tasks()` does (spawns `_supervise()`, waits on
   `_never`); `_supervise()` is final except (ii)'s C-stack branch; log lines name the task index. This is the stage the
@@ -613,8 +635,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   self._level_setters = self._level_setters_provider()`; `if self._config_stores_provider is not None:
   self._config_stores = self._config_stores_provider()`; `await self.cfgmgr.setup()`; `if self.cfgmgr.writable:` read
   `level = await self.cfgmgr.get_int_values(self._cfg_schema)` and `if level is not None: await
-  self._apply_level(level[0])` (an unreadable store keeps every logger at its constructed level); `self.initialized =
-  True`; `return self.cfgmgr.valid`; comment (≤ 3 lines) "# Resolves both boot providers once, then the persisted level: the store's
+  self._apply_level(level[0])` (an unreadable store keeps every logger at its constructed level); `return
+  self.cfgmgr.valid`; comment (≤ 3 lines) "# Resolves both boot providers once, then the persisted level: the store's
   value wins over the / # constructor's debug=, an unreadable store keeps the constructed level (Part C.13's
   sync-__init__/async-setup())." `get_cfg_schema()` → `self._cfg_schema`. `async def get_dict_cfg(self)`: `names =
   schema_names(self._cfg_schema)`; `values = await self.cfgmgr.get_dict(names)`; `return {_NAME: values if values is not
@@ -629,8 +651,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   errno=_ERR_CALLBACK)`. Gone: `set_level_setters()` (A.U5.08), `get_debug_level()` and `_current_debug_level` (A.U35.41),
   `set_debug_level()` (M.SRC_CORE.018).
 - **Resolved**: A.U11.12 (1)(3) vs A.U35.41 (removal) → removal (the later G5/R54 verdict; A.U11.12 conditions itself on
-  it). A.U11.12 (2) uses `self.cfgmgr.writable` (A.U11.20's flag, M.SRC_CORE.043). Gap pass G2: `self.initialized =
-  True` (G5/R14, M.SRC_CORE.008 (e)); `data: "JsonMapping"` per U19 A-C note 2 (M_SRC_NET gap 4: the webserver's
+  it). A.U11.12 (2) uses `self.cfgmgr.writable` (A.U11.20's flag, M.SRC_CORE.043). Gap pass G2's `self.initialized = True` is withdrawn by the routine settlement "initialized-flags" (M.SRC_CORE.008
+  (e); A-C review fold); `data: "JsonMapping"` per U19 A-C note 2 (M_SRC_NET gap 4: the webserver's
   `_ModuleLike._set_dict_cfg()` Protocol, M.SRC_NET.111, types the body `JsonMapping`, so every implementer accepts it).
 - **Unit**: U11 (U5 stage: `set_level_setters()` → provider resolved in `setup()`; U10 stage: `pr.setup()` first,
   `-> bool`, nested `get_dict_cfg()` with the webserver's `_cfg_values()` (A.U10.36 is one change across both files),
@@ -693,7 +715,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
 ## src/base_classes.py (→ `src/asy_base_classes.py`)
 
 End state: the session lock (`Lockable`, `DeviceSession`), `RegionBuffer`, the lock-free shared scalars
-(`LockedCounter`/`LockedFlag`/`LockedValue`) under `COUNTER_CAP`, the primitives `TickSeconds`, `arm_tick_timer()`,
+(`LockedCounter`/`LockedFlag`/`LockedValue`) under `COUNTER_CAP`, the 24-hour `HourlyWindowCounter`, the primitives
+`TickSeconds`, `arm_tick_timer()`,
 `utc_now()`/`set_utc_valid()`, `ValueRef`, the typing aliases, and
 `SensorReader` (logger, sample, error streak with the recovery ladder, trigger divider, timer-fault path, the whole
 config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig` adding the file store.
@@ -701,10 +724,11 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 ### M.SRC_CORE.030 Header, top comment, imports and the shared typing aliases
 - **From**: A.U10.17 (header scalars), A.U16.05 (header buffers), A.U10.46 and A.U11.S02 (alias block, `Any` gone),
   A.U10.31 (quoting), A.U10.10 (the `:5-7` comment's premise), A.U5.01/A.U5.02, A.U10.37; `SetupFct` (M.SRC_CORE.003
-  Resolved).
+  Resolved); OR137.a (4) (the docstring names the window counter; A-C review fold).
 - **Site**: `src/base_classes.py:1-28`.
 - **Change**: docstring line 1 "Shared base classes and primitives: the session lock (Lockable, DeviceSession), region
-  buffers (RegionBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed
+  buffers (RegionBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue, HourlyWindowCounter: no method awaits,
+  so no lock), elapsed
   seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader,
   SensorReaderConfig) with error bookkeeping, the recovery ladder and optional JSON config storage."; line 2 unchanged.
   Comment `:5-7` → "# __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then
@@ -726,7 +750,7 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   its Protocol before that) — the later contract is typed.
 - **Unit**: U10 (aliases, header, quoting); U11 adds `PushFct`/`NtpSyncFct`/`AsyncCallback`/`JsonMapping` and
   `SetupFct` with their users (A.U11.S02 is SUPP_coverage over U11); U15/U16 edit the header words for `DeviceSession`/
-  `RegionBuffer` with their classes.
+  `RegionBuffer` with their classes; U19 adds `HourlyWindowCounter` with its class (M.SRC_CORE.133, A-C review fold).
 - **Depends**: M.SRC_CORE.001, M.SRC_CORE.061 (`LogConfig`, `DEFAULT_LOG`).
 - **Blast carried by**: users importing the aliases (`asy_system_service.py` M.SRC_CORE.003, `asy_api_response.py`
   M.SRC_CORE.071, the webserver, drivers, generated modules) → A.U10.46/A.U11.S02 per file (SRC_NET, SRC_SENS, GEN);
@@ -753,6 +777,37 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `asy_uart_comm.py:659` `COUNTER_CAP` import → A.U10.04 (SRC_NET); `tests/test_base_classes.py:278-366` → A.U10.01,
   A.U10.17 (TEST_UNIT); driven-cap tests → A.U35.35 (TEST_UNIT); `tests_scripts/test_counter_steps.py` → A.U10.05 (TSC);
   SPEC G.2 `:4184-4186`, C.8 → A.U10.01, A.U10.17 (SPEC).
+- **Kind**: code
+
+### M.SRC_CORE.133 `HourlyWindowCounter`: events in the last 24 hours, from 24 fixed hourly bins
+- **From**: OR137.a (1)-(5), OR140.a (10) and the owner's status-fields note (A-C review fold); register G6/R39.
+- **Site**: `src/base_classes.py` (→ `src/asy_base_classes.py`) new class beside `LockedCounter`.
+- **Change**: module constants `_WINDOW_HOURS = const(24)`, `_HOUR_S = const(3600)` (the window's definition, untagged).
+  `class HourlyWindowCounter:` — comment (≤ 3 lines) "# Events in the last 24 hours at hourly resolution: 24 fixed bins
+  advanced lazily from the uptime / # seconds (monotonic, untouched by NTP steps), so no event, read or hour change
+  allocates; an event / # leaves the window 23-24 hours after it happened (owner, 2026-10-01)."; `__init__(self) ->
+  None`: `self._bins = [0] * _WINDOW_HOURS` (the one allocation, at construction), `self._hour = 0` (the uptime hour
+  the bins were last advanced to). `def _advance(self, now_s: int) -> None`: `hour = now_s // _HOUR_S`; `gap = hour -
+  self._hour`; `if gap <= 0: return`; `if gap >= _WINDOW_HOURS:` every bin zeroed; else the bin of each hour
+  `self._hour + 1 … hour` (index `h % _WINDOW_HOURS`) zeroed; `self._hour = hour`. `async def add(self, now_s: int) ->
+  None`: `self._advance(now_s)`; `i = self._hour % _WINDOW_HOURS`; `if self._bins[i] < COUNTER_CAP: self._bins[i] += 1`.
+  `async def total(self, now_s: int) -> int`: `self._advance(now_s)`; `s = 0`; per bin `if b >= COUNTER_CAP - s:
+  return COUNTER_CAP`, `s += b` (checked before the step, so no intermediate leaves the small-int range); `return s`.
+  `async def reset(self) -> None`: every bin zeroed (the hour kept). "# No method awaits, so no lock is needed; kept
+  async for a uniform call shape." as the sibling scalars. `now_s` is the caller's `SysUptime` reading
+  (`SystemService.get_uptime()`, measured `TickSeconds`), passed in, so the class holds no clock of its own.
+- **Resolved**: OR137.a (4) asks for "one small reusable primitive (an hourly window counter beside the other shared
+  counters)": a class in `asy_base_classes` next to `LockedCounter`, entered in SPEC Part G's catalog. The bins are a
+  list of small ints, each capped at `COUNTER_CAP`, so a step stores an immediate value and never allocates; `[0] * 24`
+  is far below Part F.1's `[x] * n` fault range; the hour index stays a small int over the whole `COUNTER_CAP` uptime
+  range. The value is the window's sum, capped at `COUNTER_CAP`; `reset()` is what `ResetErrors` reaches (M.SRC_NET.129).
+- **Unit**: U19 (lands with its first user, the webserver's drop counter: M.SRC_NET.119/.127/.129).
+- **Depends**: M.SRC_CORE.031 (`COUNTER_CAP`); [fold F02 M_TEST_UNIT] (driven-clock L1 cases in U19: the bin shift, a gap
+  of a day or more, the cap, the reset, zero heap allocation per `add()`/`total()` at `gc.threshold(-1)`).
+- **Blast carried by**: the user → M.SRC_NET.119, .127, .129; the docstring names it → M.SRC_CORE.030 (U19 stage); SPEC
+  Part G catalog entry and A.5/A.8 `HTTPDropped` wording ("in the last 24 hours, hourly resolution") → [fold F02 M_SPEC];
+  the long-lived-object catalog gains the webserver's one instance (24 bins, allocated at construction) → [fold F02
+  M_SPEC].
 - **Kind**: code
 
 ### M.SRC_CORE.032 Elapsed seconds, the tick-timer starter and the UTC timestamp
@@ -817,6 +872,32 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   (DOCS); SPEC `:3025, 3481, 4200-4216, 4797, 4871, 5640` → A.U16.05 (SPEC).
 - **Kind**: code
 
+### M.SRC_CORE.134 `PieceBuffer`: received bytes held in pieces of at most `piece_bytes`
+- **From**: OR143.a (1), (4) (A-C review fold); register G6/R21.
+- **Site**: `src/base_classes.py` (→ `src/asy_base_classes.py`) new class beside `RegionBuffer`.
+- **Change**: `class PieceBuffer:` with the comment (≤ 3 lines) "# Bytes too many for one allocation, held as pieces of
+  at most piece_bytes: no allocation is larger / # than one piece (owner, 2026-10-05). Read through its length, its
+  pieces and copy-out, never joined." `__init__(self, size: int, piece_bytes: int) -> None`: `self._size = size`,
+  `self._piece_bytes = piece_bytes`, `self._pieces = [bytearray(min(piece_bytes, size - start)) for start in range(0,
+  size, piece_bytes)]` — every piece allocated at construction, after the caller's cap admitted `size`; a `MemoryError`
+  is not caught here (the caps bound every allocation; CLAUDE.md memory rule). `def __len__(self) -> int`; `def
+  pieces(self)` iterates the pieces in order; `def write_at(self, offset: int, src: memoryview) -> bool` copies `src`
+  into the pieces from `offset`, crossing a piece end by index (slice assignment per piece, no intermediate copy),
+  `False` for a range outside `0 … size`; `def copy_into(self, dest: bytearray | memoryview, start: int = 0) -> int`
+  copies from `start` into `dest` and returns the count. No method awaits.
+- **Resolved**: OR143.a (1) asks for "a small shared primitive with length, iteration and copy-out, checked first
+  against SPEC Part G's catalog (the webserver's `_PieceWriter` is the model)": Part G's `_PieceWriter` groups outgoing
+  JSON text into pieces of at most `chunk_bytes` for a stream write and holds no received bytes, so it is the model,
+  not the home; the new class sits beside `RegionBuffer` (the shared buffer classes) and enters Part G's catalog. The
+  method names and the iteration form (the pieces, or memoryviews of them) are decided at execution, with the reason
+  recorded.
+- **Unit**: U17 (lands with its user, the UART receive path, M.SRC_NET.220).
+- **Depends**: M.SRC_CORE.027 (`RegionBuffer`'s section, U16); [fold F27 M_TEST_UNIT] (L1 in U17: every piece at most
+  `piece_bytes`, a write crossing a piece end, copy-out at offsets, the largest block measured, refusals).
+- **Blast carried by**: the user → M.SRC_NET.220; SPEC Part G catalog entry and Part I's heap budget → [fold F27
+  M_SPEC].
+- **Kind**: code
+
 ### M.SRC_CORE.034 Record a C-stack overflow for the supervisor, in the one module every handler can import
 - **From**: A.U30.19 (1)(2) — home moved from `base_classes.py` to `print_log.py` (see Resolved).
 - **Site**: `src/print_log.py` (→ `asy_print_log.py`) new module flag and two functions; the broad handlers of this
@@ -863,7 +944,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 ### M.SRC_CORE.036 `SensorReader` constructor: fixed tail, one logger path, the module's fixed-size state
 - **From**: A.U5.02, A.U35.45 (`logger=` goes), A.U10.19 (`:163-165` comment — dropped: its branch is removed),
   A.U10.18 (`_datalock` → `_data_lock`), A.U4.03 (callback dicts move here), A.U11.27 (`_set_lock`), A.U10.R01 (ladder
-  state), A.U15.41 (`_timer_error`), A.U8.12 (`module.max_error` default tag), A.U11.S02 (types).
+  state), A.U15.41 (`_timer_error`), A.U8.12 (`module.max_error` default tag), A.U11.S02 (types); routine settlement "initialized-flags" (no
+  `initialized`; A-C review fold).
 - **Site**: `src/base_classes.py:151-176`.
 - **Change**: `def __init__(self, init_data: "NamedTuple", name: str, max_module_error: int = 5, name_ext: str = "", log:
   LogConfig = DEFAULT_LOG) -> None` (the default `5` tagged `module.max_error`); `resolved_name = instance_name(name,
@@ -873,10 +955,10 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `self._set_lock = asyncio.Lock()` ("# serialises one module's config GET and PUT (Part C.5.2)"); `self._push_callbacks:
   dict[str, PushFct] = {}` and `self._get_callbacks: dict[str, Callable[[], Awaitable[CfgValue]]] = {}` with their
   `:283-287` comments; `self._rungs = 0`, `self._bus_mark = 0`, `self._recovery_bus: "I2C | None" = None`;
-  `self._timer_error: Exception | None = None`; last `self.initialized = False` (G5/R14, set by `setup()`, M.SRC_CORE.039;
-  every subclass inherits it). Every attribute is fixed-size (OR110.a). Gap pass G2: `max_module_error` has no reader outside
-  the class (G10/R07, M_SRC_CORE GAP-G12) → `_max_module_error`; the flag per M_SRC_NET gap 3 (`SensorReaderConfig`'s
-  missing `initialized`).
+  `self._timer_error: Exception | None = None`. No `initialized`: no product code reads a reader's readiness (routine
+  settlement "initialized-flags": the flag stays only in the FRAM, SPI, UART and logging classes). Every attribute is fixed-size (OR110.a). Gap pass G2: `max_module_error` has no reader outside
+  the class (G10/R07, M_SRC_CORE GAP-G12) → `_max_module_error`; gap pass G2's flag (M_SRC_NET gap 3) is withdrawn
+  by the same settlement (A-C review fold).
 - **Resolved**: A.U5.02 keeps `logger=None` at the tail; A.U35.45 removes it (its Depends names A.U5.02/A.U5.18/A.U10.19
   for A-C) — removed; the tail probe's `logger` allow-list loses `SensorReader` (A.U5.18).
 - **Unit**: U11 (stages: U5 signature and `make_logger(log, …)`; U4 the two dicts moved; U10 `_data_lock`, ladder state
@@ -890,43 +972,45 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   (TEST_UNIT); A.U5.18's probe allow-list → A.U5.18 (TSC); Part N `module.max_error` sites → A.U8.12 (SPEC).
 - **Kind**: code
 
-### M.SRC_CORE.037 The error streak climbs one recovery ladder; one entry per failed cycle
-- **From**: A.U2.06, A.U3.03, A.U10.R01 (1)-(6), A.U11.31 (`reset_error_counter() -> bool`), A.U30.19 (handler).
+### M.SRC_CORE.037 The error streak climbs one recovery ladder; the streak increase stays a persisted entry
+- **From**: A.U2.06, A.U3.03 (dropped: OR140.a (7), A-C review fold), A.U10.R01 (1)-(6), A.U11.31 (`reset_error_counter() -> bool`), A.U30.19 (handler).
 - **Site**: `src/base_classes.py:218-230` `_error_check()`, `:243-248` `reset_error_counter()`; new `_recover_device()`,
   `_climb_ladder()`, `_recover_bus()`, `_init_failed()`, `_init_done()`; module constants.
-- **Change**: constants `_ERR_GIVE_UP = const(2)` … `_ERR_RECOVERY_WRITE_RAISED = const(9)`, `_ERR_CALLBACK =
+- **Change**: constants `_ERR_STREAK = const(1)`, `_ERR_GIVE_UP = const(2)` … `_ERR_RECOVERY_WRITE_RAISED = const(9)`, `_ERR_CALLBACK =
   const(14)`, `_ERR_TIMER = const(17)`, `_WRN_CALLBACK_KEYS = const(1)`, `_WRN_CFG_KEYS = const(2)`,
   `_WRN_DEVICE_RECOVERY = const(14)`, `_WRN_BUS_RECOVERY = const(15)`; `_RECOVER_DEVICE_AT = const(2)`,
   `_RECOVER_BUS_AT = const(3)`, `_RECOVER_CONTROLLER_AT = const(4)` with their `@tunable` tags and the one comment line
   of A.U10.R01 (1); `_RUNG_DEVICE/_RUNG_BUS/_RUNG_CONTROLLER = const(1/2/4)`. `_error_check()`: on a failure (`any(res is
   None …) and condition`): if the streak is 0 and `_recovery_bus` is set, `self._bus_mark =
-  self._recovery_bus.recoveries`; `self._err_cnt_internal += 1`; `self.pr.err("Error counter increased to", n)`
-  (console, A.U3.03); `if n > self._max_module_error: await self.pr.err_s("Maximum error count reached!",
+  self._recovery_bus.recoveries`; `self._err_cnt_internal += 1`; `await self.pr.err_s("Error counter increased to", n,
+  errno=_ERR_STREAK)` (persisted, as at HEAD: every layer that meets a fault keeps its own entry, owner, 2026-10-02); `if n > self._max_module_error: await self.pr.err_s("Maximum error count reached!",
   errno=_ERR_GIVE_UP); return False`; else `await self._climb_ladder()`; on a non-failure pass the HEAD decrement, then
   `if self._err_cnt_internal == 0: self._rungs = 0`. The ladder methods, their logging (one warning per rung that ran,
   none for a failed participant rung beyond the hook's own error, a raising hook → one `_ERR_CALLBACK` entry after
   `report_if_fatal(e)`), the per-bus episode check and `_init_failed()`/`_init_done()` exactly as A.U10.R01 (3)-(5).
   `reset_error_counter() -> bool`: `self._err_cnt_internal = 0`; `self._rungs = 0`; `return await self.pr.reset()`.
-- **Resolved**: A.U3.03's console `pr.err()` for the streak and A.U10.R01's ladder climb sit in the same branch; the
-  give-up test stays first (A.U10.R01 (4)). The failure test itself stays HEAD's (`any(res is None …) and condition`):
+- **Resolved**: A.U3.03 is dropped (OR140.a (7), owner, A-C review fold: "every layer that meets a fault keeps its own
+  persisted entry, as today"): the streak increase stays the base class's persisted errno 1 beside the driver's own
+  read-failure entry, and A.U2.06's "no `_ERR_STREAK`, errno 1 retired" falls with it (the catalog keeps row 1,
+  M.GEN.034). The entry, then the ladder climb, in the same branch; the give-up test stays first (A.U10.R01 (4)). The failure test itself stays HEAD's (`any(res is None …) and condition`):
   after A.U10.06 a reader's `TS` is `None` before the first NTP sync, and each reader passes `condition=results[0] is
   None` instead (lead ruling, 2026-10-01, M_SRC_SENS GAP-15; M.SRC_SENS.083, .089-.091); the SPEC C.7 bullet stating it
   is SPEC's.
-- **Unit**: U10 (A.U10.R01's U10 half; stages U2 names, U3 console streak line; U11 `-> bool`; U30 `report_if_fatal`).
+- **Unit**: U10 (A.U10.R01's U10 half; stages U2 names with `_ERR_STREAK`; U11 `-> bool`; U30 `report_if_fatal`).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it needs A.U13.R01, which lands in U13).
 - **Depends**: M.SRC_CORE.036; A.U13.R01 (`I2C.clear()`, `recover()`, `recoveries`, `take_boot_clear_status()`,
   SRC_SENS) lands before or with it.
 - **Blast carried by**: drivers' `_recover_device()` overrides and `_init_failed()`/`_init_done()` calls →
   A.U15.R01-R04, A.U18.R01 (SRC_SENS, SRC_NET); catalog wrnno 14/15 → A.U2.01 merge (GEN); driver/integration tests
   re-derived → A.U10.R01 blast (TEST_UNIT); new L1 ladder cases → A.U10.R01 (TEST_UNIT); `tests/test_base_classes.py:474-739`
-  streak pins → A.U3.03 (TEST_UNIT); Part N rows and relation → A.U10.R01/A.U8.02 (SPEC); SPEC C.4/C.7/G.2/F.2 →
+  streak pins keep the persisted errno 1 (A.U3.03 dropped) → [fold F11 M_TEST_UNIT]; Part N rows and relation → A.U10.R01/A.U8.02 (SPEC); SPEC C.4/C.7/G.2/F.2 →
   A.U10.R01, A.U3.03 (SPEC); `tests_scripts/test_counter_steps.py` must not flag `_err_cnt_internal` (bounded by the
   give-up, pass-4 K.36) → GAP-G6 (TSC).
 - **Kind**: code
 
 ### M.SRC_CORE.038 Config GET and PUT orchestration on `SensorReader`, one per-module lock
 - **From**: A.U4.03, A.U11.27, A.U11.28 (`_commit_mgr_cfg()` in a `finally`), A.U19.12, A.U30.08, A.U2.06, A.U19.16,
-  A.U11.S02, A.U30.19.
+  A.U11.S02, A.U30.19; OR140.a (12) (closed-store refusal; A-C review fold).
 - **Site**: `src/base_classes.py:182-212` (`_get_mgr_cfg()`, `_get_dict_cfg()`), `:251-256`, `:290-397` (moved from
   `SensorReaderConfig`).
 - **Change**: on `SensorReader`: `_get_mgr_cfg()` default `{}`; new default `_set_mgr_cfg(data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool,
@@ -936,7 +1020,11 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `_ERR_CFG_CALLBACK_RAISED`). `_set_dict_cfg(data: "JsonMapping", cfg_vals: "ConfigSchema") -> "WriteValidity"` (gap pass G2: U19 A-C note 2 — the
   route passes the raw body; every override of `_set_mgr_cfg()` takes the same `JsonMapping`, M.SRC_CORE.040,
   M.SRC_NET.045/.096, M.SRC_SENS.053): whole body under `async with
-  self._set_lock:`; `fields = schema_dict(cfg_vals)` once; the snapshot keys are those persisted (`check_cfg_get_default
+  self._set_lock:`; first `if self._writes_closed(): return dict.fromkeys(data, FAILED)` with the comment "# Closed by
+  an accepted system command: nothing writes, flash or chip, until the reset (owner, 2026-10-02)." — new default
+  `def _writes_closed(self) -> bool: return False` on `SensorReader`, `SensorReaderConfig` reads its store
+  (M.SRC_CORE.040), so no persist, push or chip write starts once the stores are closed (SCD30's chip keys included,
+  M.SRC_SENS.053); `fields = schema_dict(cfg_vals)` once; the snapshot keys are those persisted (`check_cfg_get_default
   (field)[0]`) **and** having a push callback; persist through `_set_mgr_cfg()` with `_checked_write_results()`
   (module-level, unchanged); every requested key missing from `results` → `FAILED`; a not-persisted write → every key
   `FAILED`; push loop over `VALID` keys (`fields.get(key)`), a failed push → `FAILED` and `await
@@ -950,7 +1038,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   calls `_get_dict_cfg()`/`_set_dict_cfg()`); A.U11.28's `finally` and A.U11.27's lock nest as lock → try/finally.
 - **Unit**: U19 (A.U19.12 is the latest constituent; stages: U2 names; U4 the move and the narrower snapshot; U11 lock,
   recovery check, deferred commit; U19 GET under the lock and result constants; U30 `fields` once and
-  `report_if_fatal`). A.U30.08 is pulled forward into U11's rewrite of the same lines (no prerequisite; one edit).
+  `report_if_fatal`; fold stage U20: the closed-store refusal, with M.SRC_CORE.011's close at acceptance and its tests
+  [fold F15 M_TEST_UNIT]). A.U30.08 is pulled forward into U11's rewrite of the same lines (no prerequisite; one edit).
 - **Depends**: M.SRC_CORE.036, M.SRC_CORE.044 (`write_config(data, defer=…)`, `commit()`), M.SRC_CORE.045 (constants).
 - **Blast carried by**: SCD30 chip store overrides (`_set_mgr_cfg`/`_get_mgr_cfg`, `_commit_mgr_cfg()` no-op) → A.U4.04,
   A.U15.12 (SRC_SENS); `api_response.handle_set_cmd()` → M.SRC_CORE.072; webserver `_put_sensors()`/`_get_sensors()` →
@@ -961,10 +1050,10 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 
 ### M.SRC_CORE.039 Reader lifecycle helpers: setup, trigger starters, divider, timer fault, republish
 - **From**: A.U10.10, A.U10.21, A.U10.12 (`get_trigger_starters()`), A.U15.40 (2) (the shared divider), A.U10.44
-  (its name `_trigger_loop()`, M_SRC_SENS GAP-8), A.U10.22/G5/R14 (`initialized`, M_SRC_NET gap 3), A.U15.41
+  (its name `_trigger_loop()`, M_SRC_SENS GAP-8), A.U10.22 (dropped: routine settlement "initialized-flags", A-C review fold), A.U15.41
   (`_timer_failed()`, `_timer_fault()`), A.U15.12 (`_republish()`).
 - **Site**: `src/base_classes.py` `SensorReader` new methods.
-- **Change**: `async def setup(self) -> bool: await self.pr.setup(); self.initialized = True; return True` ("True = ready; a
+- **Change**: `async def setup(self) -> bool: await self.pr.setup(); return True` ("True = ready; a
   logger that could not reach its store has logged it and runs in RAM"). `def get_trigger_starters(self) -> "list[TimerStarter]": return []`.
   `async def _trigger_loop(self) -> None` — the byte-identical body of the two `_base_trigger()` copies (count
   `_base_trigger_event` ticks in `_trigger_counter`, set `_read_event` every `await self._trigger_period.get_value()`; the
@@ -982,8 +1071,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `SensorReader.setup()` returns `True` (A.U10.21 names returns for the other classes; a plain reader has no store).
   Gap pass G2: A.U15.40 names the divider `_divide_trigger()`, A.U10.44 (U10, earlier) names every task coroutine
   `_<what>_loop` and maps `_base_trigger` → `_trigger_loop` — A.U10.44's name (M.SRC_SENS.045, M_SRC_SENS GAP-8); the
-  drivers' `start_asy_trigger()` creates it (M.SRC_SENS.045/.083). `initialized` set in `setup()` (G5/R14,
-  M.SRC_CORE.036).
+  drivers' `start_asy_trigger()` creates it (M.SRC_SENS.045/.083). No `initialized` (routine settlement "initialized-flags",
+  A-C review fold; M.SRC_CORE.036).
 - **Unit**: U15 (latest: A.U15.12/.40/.41; stages U10: `setup()` and `get_trigger_starters()` — A.U10.10's boot batch
   and A.U10.12's trigger plan need them in U10).
 - **Depends**: M.SRC_CORE.036, M.SRC_CORE.037 (`_ERR_TIMER`).
@@ -991,13 +1080,15 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `start_timer()` arm failures call `_timer_failed()`; SCD30/SGP40 check `_timer_fault()`; SCD30 calls `_republish(
   _FIELDS, …)` → A.U15.40, A.U15.41, A.U15.12 (SRC_SENS); codegen `needs_setup` for a `SensorReader` subclass →
   A.U10.10 (GEN); L1 `_trigger_loop()` cases, timer-fault tests → A.U15.40, A.U15.41 (TEST_UNIT; M.TEST_UNIT already follows GAP-8); logger
-  `initialized` after the batch → A.U10.10 (TEST_HELP); SPEC C.9/C.13/G.2 → A.U10.14, A.U10.21, A.U15.40 (SPEC).
+  `initialized` after the batch → A.U10.10 (TEST_HELP); tests and the L0 check reading a reader's `initialized` →
+  [fold F28 M_TEST_UNIT], [fold F28 M_TSC] (A.U10.22's scope narrowed); SPEC C.9/C.13/G.2 → A.U10.14, A.U10.21, A.U15.40 (SPEC).
 - **Kind**: code
 
 ### M.SRC_CORE.040 `SensorReaderConfig`: the file store over the base orchestration
 - **From**: A.U5.02, A.U11.32, A.U10.39 (`_cfg_schema`), A.U11.24 + A.U11.28 (`write_config(data, defer=True)`,
   `_commit_mgr_cfg()`), A.U10.10/A.U10.21 (`setup()`), A.U11.S02 (types); AC_NOTES 13 (the `CFGMGR_SCD30` logger stays
-  RAM-only) — no action writes its mechanism (see Resolved).
+  RAM-only) — no action writes its mechanism (see Resolved); OR140.a (12) (`_writes_closed()`), routine settlement
+  "initialized-flags" (A-C review fold).
 - **Site**: `src/base_classes.py:259-414`.
 - **Change**: `__init__(self, init_data, name, default_vals, max_module_error: int = 5, name_ext: str = "", cfg_path:
   str = "", log: LogConfig = DEFAULT_LOG)` → `super().__init__(init_data, name, max_module_error=max_module_error,
@@ -1009,14 +1100,15 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   self.cfgmgr.write_config(data, defer=True)`;
   `_commit_mgr_cfg()` → `self.cfgmgr.commit()`; `get_error_sources() -> "list[ErrorSource]"`; `get_loggers()`;
   `get_cfg_schema()` → `self._cfg_schema` (its "stays a public attribute" comment goes); `async def setup(self) -> bool:
-  await super().setup(); await self.cfgmgr.setup(); return self.cfgmgr.valid` (`initialized` set by the base `setup()`,
-  M.SRC_CORE.039).
+  await super().setup(); await self.cfgmgr.setup(); return self.cfgmgr.valid`; `def _writes_closed(self) -> bool: return
+  self.cfgmgr.writes_closed()` (the store closed by an accepted system command refuses the module's PUTs,
+  M.SRC_CORE.038).
 - **Resolved**: AC_NOTES 13 / the U15 lead note (OR99 "No flash writes, no extra FRAM chunk") keep `CFGMGR_SCD30`
   RAM-only while SCD30's own logger stays FRAM-wired; A.U15.12 makes `SCD30_Reader` a `SensorReaderConfig`, whose
   constructor passes one `log` to both loggers. A class attribute read at construction is the least change that keeps
   the tail rule (no ninth, non-tail parameter) and needs no generated wiring (agent, 2026-10-01; "Agent decisions" 9);
   `SCD30_Reader` sets `_CFG_LOG_FRAM = False` (GAP-G7, SRC_SENS merges A.U15.12).
-- **Unit**: U15 (A.U15.12 needs the attribute; stages U5 signature/`log`, U10 `_cfg_schema`/`setup() -> bool`, U11
+- **Unit**: U15 (fold stage U20: `_writes_closed()` with M.SRC_CORE.038/.041; A.U15.12 needs the attribute; stages U5 signature/`log`, U10 `_cfg_schema`/`setup() -> bool`, U11
   `config_filename()`/`write_config(data, defer=True)`/`_commit_mgr_cfg()`).
 - **Depends**: M.SRC_CORE.036, .038, .044, .046.
 - **Blast carried by**: every subclass (BMP3XX, ISL29125, SGP40, NOTIFY, NTP, WIFI, SCD30) → A.U5.02 (SRC_SENS, SRC_NET);
@@ -1041,7 +1133,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 
 End state: the schema helpers (unguarded, typed inputs only; malformed schemas rejected statically), the shared
 `compare_before_write()` primitive, `config_filename()`, the four result-word constants, and `ConfigManager`: a store
-that serves defaults from RAM for a missing file (no write), never overwrites an unreadable one (`writable`), validates
+that writes the schema defaults once for a genuinely missing file, never overwrites an unreadable one (`writable`),
+records a file that existed but was unreadable or damaged (`faulted`, for `/status` `ConfigFaults`), validates
 against its own schema, compares in stored form, stages only once its flush task exists, can defer the flush until the
 caller's pushes finish (`commit()`), serialises before opening, closes race-free for a reset and deletes its own file
 for the config reset.
@@ -1050,7 +1143,8 @@ for the config reset.
 - **From**: A.U0.42 (`:7`), A.U36.514 (`:46-48`), A.U36.004 (1) (`:217`), A.U5.02 (constructor), A.U2.04/A.U2.07
   (constants), A.U10.17 (lock reason), A.U10.18 (`config_lock` → `_config_lock`), A.U10.35 (`config_file` →
   `_config_file`), A.U11.04 (`_closed`), A.U11.20 (`writable`), A.U11.28 (`_commit_ready`), A.U11.31
-  (`reset_error_counter() -> bool`), A.U11.S01 (`T` gains `bool`, `Any` goes), A.U19.16 (`Final`), A.U10.31, A.U10.37.
+  (`reset_error_counter() -> bool`), A.U11.S01 (`T` gains `bool`, `Any` goes), A.U19.16 (`Final`), A.U10.31, A.U10.37;
+  OR138.a (1) (`faulted`, `module_name`; A-C review fold).
 - **Site**: `src/config_manager.py:1-50`, `:215-232`, `:261-265`.
 - **Change**: docstring line 1 names `asy_base_classes.py`; line 2 "Every public function/method returns a documented
   "invalid" sentinel, never raises (for typed inputs; a malformed schema fails the static schema check)." `:7` →
@@ -1068,12 +1162,14 @@ for the config reset.
   `self.pr = make_logger(log, self.name)` with the comment "# Inherits its owning module's logging config - FRAM-backed
   when the module is (the implicit FRAM-wiring / # rule, SPECIFICATION.md A.7) - so its failure history survives a
   reboot like the module's own."; `self._config_lock = asyncio.Lock()` ("# serialises the config file and its staged
-  snapshot"); `self._config_file`, `self._cfg_vals` (gap pass G2: no reader outside the class, G10/R07), `self.valid = False`, `self.writable = True`, `self._closed = False`,
+  snapshot"); `self._config_file`, `self._cfg_vals` (gap pass G2: no reader outside the class, G10/R07), `self.valid = False`, `self.writable = True`, `self.faulted = False` (set by `setup()`, M.SRC_CORE.043; read once
+  by the system service at the end of the boot setup batch, M.SRC_CORE.015), `self.module_name = name` (the module
+  name `/status` `ConfigFaults` lists; public for the same reader), `self._closed = False`,
   `self._cache`, `self._staged` (comment `:228-230` kept), `self._pending_flush`, `self._commit_ready = asyncio.Event()`
   (set: "# cleared while a deferred snapshot waits for its commit()"; `_commit_ready.set()` in `__init__`).
   `reset_error_counter() -> bool: return await self.pr.reset()`.
 - **Resolved**: A.U36.004 (1)'s condition "follows A.U5.02's wording and keeps this citation" — applied.
-- **Unit**: U11 (stages: U0 tag lines of M.SRC_CORE.047; U2 constants at HEAD sites; U5 `log`; U10 names/lock reason;
+- **Unit**: U11 (`faulted` and `module_name` with M.SRC_CORE.043's fault state, A-C review fold; stages: U0 tag lines of M.SRC_CORE.047; U2 constants at HEAD sites; U5 `log`; U10 names/lock reason;
   U36's two cite edits pulled into U11 — comment-only, the file's own unit).
 - **Depends**: M.SRC_CORE.001, M.SRC_CORE.034, M.SRC_CORE.061.
 - **Blast carried by**: `ConfigManager(…, fram=…)` callers → M.SRC_CORE.008/.040 and A.U5.02 (SRC_NET: webserver/Wi-Fi if
@@ -1184,7 +1280,8 @@ for the config reset.
 - **Kind**: code
 
 ### M.SRC_CORE.048 Readers: one persisting layer, exact-type getters
-- **From**: A.U3.05, A.U11.29, A.U11.S01 (3), A.U35.43 (2) (`get_dict()`'s `TypeError`), A.U2.07.
+- **From**: A.U3.05 (the `ConfigManager` half: it persists what it detects; its caller half dropped: OR140.a (7)),
+  A.U11.29, A.U11.S01 (3), A.U35.43 (2) (`get_dict()`'s `TypeError`), A.U2.07.
 - **Site**: `src/config_manager.py:240-297`.
 - **Change**: `_get_values(keys) -> "list[CfgValue] | None"` (`_ERR_CFG_NOT_VALID`; `KeyError` → `_ERR_CONTRACT`).
   `_get_converted_values()` goes; new `_get_typed_values(keys, coerce: "Callable[[CfgValue], T | None]") -> "list[T] |
@@ -1199,7 +1296,8 @@ for the config reset.
   coercer-per-type parameter gives the narrowing at the type level instead.
 - **Unit**: U11 (U3 stage: the 24 reports; U2 names).
 - **Depends**: M.SRC_CORE.047, .049.
-- **Blast carried by**: the eleven caller sites print instead of persisting → A.U3.05 (SRC_SENS, SRC_NET); the 21
+- **Blast carried by**: the eleven caller sites keep their own persisted entries (A.U3.05's caller half dropped, OR140.a (7)):
+  M.SRC_SENS.035/.037/.043/.044/.063/.074, M.SRC_NET.050/.057/.084/.086/.088; the 21
   getter call sites unchanged → A.U11.29; tests `test_config_manager.py:1496-1552`, caller-module tests → A.U3.05,
   A.U11.29 (TEST_UNIT); SPEC C.5 `:1731-1734`, C.5/C.7 caller rule → A.U11.29, A.U3.05 (SPEC).
 - **Kind**: code
@@ -1257,63 +1355,94 @@ for the config reset.
 
 ### M.SRC_CORE.041 Closing and flushing for a reset
 - **From**: A.U11.04 (`close_writes()`, `flush_pending()` releases a deferred flush), A.U11.28 (`commit()`),
-  A.S0930.16 (2) (read `_pending_flush` under the lock).
+  A.S0930.16 (2) (read `_pending_flush` under the lock); OR140.a (12) (`writes_closed()`; A-C review fold).
 - **Site**: `src/config_manager.py:390-400` `flush_pending()`; new `close_writes()`, `commit()`.
-- **Change**: `def close_writes(self) -> None: self._closed = True` (one-way). `def commit(self) -> None:
+- **Change**: `def close_writes(self) -> None: self._closed = True` (one-way). `def writes_closed(self) -> bool:
+  return self._closed` (read by the reader base's PUT refusal, M.SRC_CORE.038/.040). `def commit(self) -> None:
   self._commit_ready.set()`. `async def flush_pending(self) -> None`: `self._commit_ready.set()`; `async with
   self._config_lock: pending = self._pending_flush`; `if pending is not None: await pending`; comment (≤ 3 lines) "#
   Releases a deferred flush, then awaits the latest flush task read under the lock, so a write_config() / # that held the
   lock has finished staging first; an earlier, superseded task no-ops by its identity check."
 - **Resolved**: SUPP conflict 1 (additive).
-- **Unit**: U11.
+- **Unit**: U11 (fold stage U20: `writes_closed()`, with M.SRC_CORE.011's close at acceptance).
 - **Depends**: M.SRC_CORE.044.
 - **Blast carried by**: callers `_flush_config_stores()` (M.SRC_CORE.010), device scripts' flush guard →
   A.U11.28 (TSC `test_device_script_config_flush.py`); L1 close tests → A.U11.04, A.S0930.21/.22 (TEST_UNIT); SPEC
   C.5.2/C.7.3 "a closed store refuses writes" → A.S0930.16 (SPEC).
 - **Kind**: code
 
-### M.SRC_CORE.042 A store deletes its own file for "Reset to defaults"
-- **From**: A.S0930.16 (3).
+### M.SRC_CORE.042 A store deletes its own file for "Reset to defaults", readable or not
+- **From**: A.S0930.16 (3); OR138.a (2), OR136.a (1) (A-C review fold).
 - **Site**: `src/config_manager.py` new `delete_file()`.
 - **Change**: exactly A.S0930.16 (3): `async def delete_file(self) -> bool`: `self.close_writes()`; `async with
   self._config_lock:` `os.remove(self._config_file)`, `except OSError as e:` ENOENT → `True`; otherwise one retry, a second
   failure → `self.pr.err(self._config_file, "- could not be deleted:", e)`, `False`; success → `self.pr.evt(…, "- deleted,
-  defaults at the next boot")`, `True`. Comment (≤ 3 lines) "# Reset to defaults (owner, 2026-09-30): the next boot
-  serves the schema defaults; the SCD30 keeps its / # settings in its own NVM and has no file."
+  written with the defaults after the reboot")`, `True`. The delete never reads the file and consults neither `writable`
+  nor `valid`, so a file that was unreadable or damaged at boot is deleted like any other. Comment (≤ 3 lines) "# Reset
+  to defaults (owner, 2026-09-30): deletes the file unread, readable or not (owner, 2026-10-01); / # after the reboot each
+  file is written once with its defaults. The SCD30's chip settings stay in its own NVM."
 - **Resolved**: the comment's SCD30 clause holds for the chip settings; after A.U15.12 SCD30 owns a `config_SCD30.cfg`
   for its three FRC settings, which the reset deletes like every other store's (OR124.a "every schema-backed
   `config_<name>.cfg`") — the comment reads "the SCD30's chip settings stay in its own NVM" (agent, 2026-10-01).
+  OR138.a (2) (A-C review fold): the delete was already read-free; the text now says so, and the after-reboot sentence
+  follows OR136.a. Its "a failed delete … the command answers 'Failed'": the command is answered at acceptance, before
+  S5 runs (OR126.a (3), M.SRC_CORE.011), so a failed delete answers through S5's `ok` — reset reason 9 "command
+  incomplete" after the reboot — and this logged line (console: FRAM is quiesced at S3); flagged to the lead.
 - **Unit**: U11.
 - **Depends**: M.SRC_CORE.041, M.SRC_CORE.049 (`errno` import).
 - **Blast carried by**: caller S5 (M.SRC_CORE.011); tests → A.S0930.21/.25/.27/.28/.29 (TEST_UNIT, TWIN, HW_DEV,
-  HW_BENCH, `persistence_write` gate A.S0930.19); SPEC C.5.2/C.7.3 → A.S0930.16/.30 (SPEC).
+  HW_BENCH, `persistence_write` gate A.S0930.19), plus an unreadable or damaged file deleted and a failed delete ending
+  in code 9 → [fold F03 M_TEST_UNIT]; SPEC C.5.2/C.7.3 → A.S0930.16/.30 (SPEC) with [fold F03 M_SPEC].
 - **Kind**: code
 
-### M.SRC_CORE.043 `setup()`: missing file writes nothing; unreadable never overwritten; repair serialises first
-- **From**: A.U11.19, A.U11.20, A.U11.23 (repair half), A.U35.43 (2) (`:423`, `:479` `TypeError`), A.U2.07, A.U10.21,
-  A.U36.004 (7), A.U10.45.
+### M.SRC_CORE.043 `setup()`: a missing file written once with defaults; unreadable never overwritten; file faults recorded; repair serialises first
+- **From**: A.U11.19 (the ENOENT split; its no-write clause superseded by OR136.a (1)), A.U11.20, A.U11.23 (repair
+  half), A.U35.43 (2) (`:423`, `:479` `TypeError`), A.U2.07, A.U10.21, A.U36.004 (7), A.U10.45; OR136.a (1)-(4),
+  OR138.a (1) (A-C review fold).
 - **Site**: `src/config_manager.py:402-485`.
 - **Change**: `async def setup(self) -> bool`; `await self.pr.setup()` with the `:403-405` comment's cite → "(the implicit
   FRAM-wiring rule, SPECIFICATION.md A.7)". Read: directory → `_ERR_CFG_PATH_IS_DIR`, `return False`; non-object →
   `_WRN_CFG_FILE_NOT_OBJECT`; bad JSON → `_WRN_CFG_FILE_JSON`; `except OSError as e:` `e.errno == errno.ENOENT` →
-  `missing = True`, `self.pr.one("Config file", self._config_file, "not present - defaults in RAM until the first
-  change")`; any other `OSError` and `except MemoryError` → `await self.pr.wrn_s("Config file", self._config_file, "could
-  not be read:", e, wrnno=_WRN_CFG_FILE_UNREADABLE)`, `self.writable = False`. Schema loop as HEAD with `_ERR_CFG_NO_DEFAULTS`
-  / `_ERR_CFG_BAD_DEFAULT` (`return False`) and `_WRN_STORED_DEFAULT`; `rewrite` only from a readable file (bad or missing
-  key, unknown keys → `_WRN_CFG_KEYS_REMOVED`, a readable file with corrupt JSON or a non-object). Then `self._cache =
-  valid_cfg`, `self.valid = True`; no write when `missing`, when not `writable`, when `valid_cfg` is empty (every field
-  special-alone: `self.pr.one(…, "- schema stores no values, no file")`) or when nothing needs repair; otherwise the one
-  repair write: `text = json.dumps(valid_cfg)`, then `with open(…, "w") as f: f.write(text)`, `except (MemoryError,
-  OSError) as e:` `_ERR_CFG_FILE_WRITE` (comments `:480`, `:482-483` kept). `return self.valid`.
+  `missing = True`, `self.pr.one("Config file", self._config_file, "not present - writing the defaults once")` with one
+  comment line "# A genuinely absent file is written once with the defaults (owner, 2026-10-01); an unreadable one never
+  is."; any other `OSError` and `except MemoryError` → `await self.pr.wrn_s("Config file", self._config_file, "could
+  not be read:", e, wrnno=_WRN_CFG_FILE_UNREADABLE)`, `self.writable = False`. Schema loop as HEAD with
+  `_ERR_CFG_NO_DEFAULTS` / `_ERR_CFG_BAD_DEFAULT` (`return False`) and `_WRN_STORED_DEFAULT`; `rewrite` from a readable
+  file (bad or missing key, unknown keys → `_WRN_CFG_KEYS_REMOVED`, a readable file with corrupt JSON or a non-object).
+  File faults: `self.faulted = True` when the file existed but could not be read (`OSError` other than ENOENT,
+  `MemoryError`) or was damaged — unparseable JSON (W21), not an object (W20), or a stored value the schema refuses
+  (W10); whether a missing or unknown key alone (a schema change between builds) counts as damage is decided at
+  execution, with its reason recorded. The flag is never cleared during the boot, also when the write below repaired
+  the file; the module's persisted warning stays (one per boot). Then `self._cache = valid_cfg`, `self.valid = True`;
+  no write when not `writable`, when `valid_cfg` is empty (every field special-alone: `self.pr.one(…, "- schema stores
+  no values, no file")` — a command-only schema creates no file, and its absence stays that printed note) or when the
+  file is readable and nothing needs repair; otherwise the one write of this boot — the repair of a readable file, or
+  the schema defaults when `missing` — through one path, compare-before-write applied to the stored state (an absent
+  file stores nothing, so every default is a change and is written once): `text = json.dumps(valid_cfg)`, then `with
+  open(…, "w") as f: f.write(text)`, `except (MemoryError, OSError) as e:` `_ERR_CFG_FILE_WRITE` (comments `:480`,
+  `:482-483` kept). `return self.valid`. After a fresh flash, a filesystem erase or "Reset to defaults" every
+  schema-backed module's file therefore exists after the first boot: one write per file per fresh filesystem.
 - **Resolved**: A.U11.19 (missing) and A.U11.20 (unreadable) split HEAD's one `except (MemoryError, OSError, TypeError)`
-  by errno; A.U35.43 drops `TypeError` (the filename is a typed `str`).
+  by errno; A.U35.43 drops `TypeError` (the filename is a typed `str`). OR136.a (owner, 2026-10-01, the most recent
+  owner decision) supersedes OR71.a (2)'s "a first boot with no config file writes nothing": a genuinely absent file is
+  written once at that boot; an unreadable or corrupt file is still never overwritten and a bad, missing or unknown
+  key is still repaired by at most one write per boot (OR71.a (2), unchanged there). OR138.a (1): the flag is the
+  store's half of `/status` `ConfigFaults` (the list: M.SRC_CORE.015; the key: M.GEN.008). Wear (CLAUDE.md rule): a
+  test that boots a fresh filesystem reaches this write as a prerequisite, not as the write under test, so it stays
+  unmarked by `persistence_write` (A-C review fold).
 - **Unit**: U11 (U2 names as stage).
-- **Depends**: M.SRC_CORE.049, .047.
-- **Blast carried by**: SystemService reads `writable` (M.SRC_CORE.017); tests `tests/test_config_manager.py` (A.U11.19's
-  list `:838-846`, `:1074-1126`, `:1347-1356`, `:2275-2509`; A.U11.20's `:2275-2298`), `tests/test_base_classes.py:1013-1016,
-  1449-1452` → A.U11.19, A.U11.20, A.U11.23 (TEST_UNIT); twin configs start empty → holds (TWIN, README note A.U11.19);
-  L0 "normal boot logs nothing" → A.U35.38/.39 (TSC, TWIN); mockdata W22/W24 rows → A.U2.25/A.U3.15 (WEB); SPEC C.7.3,
-  C.5.2.1, LEAD/R32 register fix 2 → A.U11.19, A.U11.20 (SPEC, register).
+- **Depends**: M.SRC_CORE.049, .047; [fold F01 M_TEST_UNIT] (the write-counter tests expect exactly one write per file on
+  a fresh filesystem; the `faulted` cases) and [fold F01 M_TWIN] (a fresh twin config dir gets every module's file at
+  its first boot) co-land in U11.
+- **Blast carried by**: SystemService reads `writable` (M.SRC_CORE.017) and `faulted` (M.SRC_CORE.015); tests
+  `tests/test_config_manager.py` (A.U11.19's list `:838-846`, `:1074-1126`, `:1347-1356`, `:2275-2509`; A.U11.20's
+  `:2275-2298`), `tests/test_base_classes.py:1013-1016, 1449-1452` → A.U11.19, A.U11.20, A.U11.23 with the missing-file
+  write and the fault flag → [fold F01 M_TEST_UNIT] (TEST_UNIT); twin configs start empty, so a fresh twin run writes
+  every module's file once → [fold F01 M_TWIN] (TWIN); hardware tests that boot a fresh filesystem reach the write as an
+  unmarked prerequisite → [fold F01 M_HW_BENCH]; L0 "normal boot logs nothing" → A.U35.38/.39 dropped (OR140.a (13)):
+  the twin's normal-boot log check expects NTP synced → [fold F16 M_TWIN]; mockdata W22/W24 rows → A.U2.25/A.U3.15
+  (WEB); SPEC C.7.3, C.5.2.1, the CLAUDE.md wear and flash-write wording and the Reset-to-defaults text → A.U11.19,
+  A.U11.20 with [fold F01 M_SPEC] and [fold F01 M_DOCS]; register G5/R34 and LEAD/R32 (updated for OR136/OR138).
 - **Kind**: code
 
 ## src/print_log.py (→ `src/asy_print_log.py`)
@@ -1580,12 +1709,15 @@ always answers OK with per-field results, a failing post-write hook turning its 
 
 End state: `FRAMManager` (renamed) with a RAM-only log, a bump-pointer allocator that also records its chunks, the
 storage pause, the erase trio (`quiesce()`, `erase_ready()`, `erase_chip()`), a supervised chip-watch task that
-escalates a dead or lost chip; `_FRAMBaseChunk` with one entry per failure, a tri-state read (valid / blank-or-invalid /
+escalates a dead or lost chip; `_FRAMBaseChunk` with a tri-state read (valid / blank-or-invalid /
 unreadable), blank blocks never marked busy, no `override_pause`, no episode flags; `FRAMChunk`/`FRAMTimestampedChunk`
-built from their manager, the timestamped one on `utc_now()`, bool first.
+built from their manager, the timestamped one on `utc_now()`, bool first. Every layer that meets a chunk failure
+keeps its own persisted entry, as at HEAD (OR140.a (7), A-C review fold): a driver guard and the chunk's own entry
+both persist.
 
 ### M.SRC_CORE.080 Header, imports, constants and the `max_size` limits tag
-- **From**: A.U16.01 (header pointer), A.U3.02 (`_WRN_EPISODE_BASE` goes), A.U2.04/A.U2.09/A.U3.04/A.U3.09 (constants),
+- **From**: A.U16.01 (header pointer), A.U3.02 (`_WRN_EPISODE_BASE` goes), A.U2.04/A.U2.09/A.U3.09 (constants), A.U3.04
+  (dropped: OR140.a (7), A-C review fold),
   A.U16.20 (tag), A.S0930.17 (`_ERASE_UNIT`), A.U10.37/A.U10.38 (imports, names), A.U16.S01 (types), A.U16.05
   (`RegionBuffer`), A.U10.06 (`utc_now`), A.U16.R03 (tunables are the driver's), M.SRC_CORE.034 (`report_if_fatal`).
 - **Site**: `src/asy_fram_manager.py:1-38`.
@@ -1600,17 +1732,23 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
   webserver's chunked writes use (Part I.3)"); `_ERR_INIT = const(10)`, `_ERR_CALLBACK = const(14)`, `_ERR_ALLOC =
   const(20)`, `_ERR_BAD_ARG = const(21)`, `_ERR_UNEXPECTED = const(23)`, `_ERR_FRAM_STATUS_BYTE = const(46)`,
   `_ERR_FRAM_STATUS_DISAGREE = const(47)`, `_ERR_FRAM_CRC_FAILED = const(48)`, `_ERR_FRAM_DATA_CRC = const(49)`,
-  `_ERR_FRAM_VERIFY = const(50)`, `_ERR_FRAM_COPIES_DIFFER = const(51)`, `_WRN_FRAM_PAUSED = const(25)`; one comment line
+  `_ERR_FRAM_VERIFY = const(50)`, `_ERR_FRAM_COPIES_DIFFER = const(51)`, `_WRN_FRAM_PAUSED = const(25)`, and the chunk
+  layer's own entries for a failure an inner layer also persisted (HEAD's 61/62, 71/72, 18, 37, 57, 80, the status-byte
+  read/write codes and w71-73, kept persisted by OR140.a (7)): `_ERR_FRAM_BLOCK_WRITE`, `_ERR_FRAM_STATUS_READ`,
+  `_ERR_FRAM_STATUS_WRITE`, `_ERR_FRAM_PAYLOAD_WRITE`, `_ERR_FRAM_READ`, `_ERR_FRAM_CLEAR_WRITE`, `_ERR_FRAM_CLEAR`,
+  `_WRN_FRAM_BLOCK_INVALID` — new FRAM-band rows after the band's last used code, numbered at execution in landing
+  order with the catalog as the numbering source (M.GEN.034); one comment line
   "# The legal chip sizes; tests_scripts/test_buildgen_limits.py keeps them equal to asy_fram_driver's
   _KNOWN_PRODUCT_IDS." and the tag `# @limits max_size in {0x2000, 0x40000}`.
 - **Resolved**: e16 CLOCK (`:550`, `:614`) retires with A.U10.06; e82 (`:563`) retires with A.U35.55; neither gets a
   constant.
-- **Unit**: U16 (stages: U2 constants at HEAD sites; U3 `_WRN_EPISODE_BASE` removal; U10 renames/imports).
+- **Unit**: U16 (stages: U2 constants at HEAD sites, the chunk layer's own codes included; U3 `_WRN_EPISODE_BASE`
+  removal; U10 renames/imports).
 - **Depends**: M.SRC_CORE.001, .027, .032, M.SRC_CORE.115; M.SRC_CORE.034 [follows] (its U30 handler lines in this file come after) (`CRCBase`, `CRCPass`).
 - **Blast carried by**: `buildgen/validate.py` `_check_limits()` reads the tag; the new L0 agreement test and the
   bad-size case → A.U16.20 (GEN, TSC); fixtures `novel_combo.toml:121`, `multi_instance.toml:98` → 0x40000 → A.U16.20/
-  A.U16.17 (TSC); catalog rows (46-51, 25, retirements 16/82, errno 20's "A.U3.09's new FRAM buffer checks") → A.U2.01
-  merge (GEN); SPEC A.4/A.7/C.7/K.7 layout-within-one-build text, C.3.1 size sentence → A.U16.01, A.U0.38, A.U16.20
+  A.U16.17 (TSC); catalog rows (46-51, 25, the chunk layer's own codes, retirements 16/82, errno 20's "A.U3.09's new FRAM buffer
+  checks") → A.U2.01 merge (GEN, M.GEN.034); SPEC A.4/A.7/C.7/K.7 layout-within-one-build text, C.3.1 size sentence → A.U16.01, A.U0.38, A.U16.20
   (SPEC); `devices/dev.toml:96-98` comment → A.U16.01 (GEN); `tests/test_digital_twin_uart_link.py:173-175` → A.U16.01
   (TWIN).
 - **Kind**: code, doc
@@ -1636,61 +1774,65 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
   GAP-D7 (`chunk.block_addr`) → hand-offs TEST_UNIT, TEST_HELP, HW_DEV, TSC (`GAPS_G2.md`).
 - **Kind**: code
 
-### M.SRC_CORE.082 Chunk write: silent while the chip is lost, one entry per failure
-- **From**: A.U16.19, A.U3.02, A.U3.04, A.U2.09, A.U16.R03 (5).
+### M.SRC_CORE.082 Chunk write: silent while the chip is lost; the chunk layer keeps its own entry
+- **From**: A.U16.19, A.U3.02, A.U3.04 (dropped: OR140.a (7), A-C review fold), A.U2.09, A.U16.R03 (5).
 - **Site**: `src/asy_fram_manager.py:96-126` `_write()`.
 - **Change**: `async def _write(self, buf: bytearray) -> bool`: `if self.fram.lost.is_set(): return False` (no log: the
   loss is its one errno-54 event); under `self._op_lock`: `if self._mempause():` `wrn_s("FRAM communication paused, not
   writing FRAM!", wrnno=_WRN_FRAM_PAUSED)`, `False`; size mismatch → `err_s(…, errno=_ERR_BAD_ARG)`; a failed block
-  write → `self.pr.err("Writing block N failed!")` (the inner layer persisted), `False`; verify pass: per block `valid,
-  uninit, match, fault = await self._compare_with(buf, addr)`; `uninit or (valid and not match)` → `err_s("Block", n,
-  "write verification error!", errno=_ERR_FRAM_VERIFY)`; `not valid and not uninit` → `self.pr.err(...)`; either →
-  `False`; the `_episode_wrns = 0` reset goes.
+  write → `err_s("Writing block N failed!", errno=_ERR_FRAM_BLOCK_WRITE)` (this layer's own entry beside the inner one,
+  as at HEAD), `False`; verify pass: per block `valid,
+  uninit, match, fault = await self._compare_with(buf, addr)`; `not valid or uninit or not match` → `err_s("Block", n,
+  "write verification error!", errno=_ERR_FRAM_VERIFY)` (every verify failure persists, as at HEAD), `False`; the `_episode_wrns = 0` reset goes.
 - **Resolved**: A.U16.R03 (5) also asks the driver's reporters to pass `repeat=True` for NOT_INIT while lost; A.U3.01
   removes `repeat=` from every logger, and with this entry guard no chunk operation reaches the driver while lost — that
   clause is dropped (M.SRC_CORE.103 Resolved).
-- **Unit**: U16 (stages: U2 numbers; U3 persist/print split and episode removal).
+- **Unit**: U16 (stages: U2 numbers; U3 episode removal).
 - **Depends**: M.SRC_CORE.081, M.SRC_CORE.088 (`_compare_with()` 4-tuple), M.SRC_CORE.102 (`lost`).
-- **Blast carried by**: tests asserting multi-entry sequences (`tests/test_asy_fram_manager.py`, `:952`,
-  `tests/test_fram_integration.py` 19 lines) and new one-entry-per-fault cases → A.U3.04 (TEST_UNIT); override tests
+- **Blast carried by**: tests asserting the multi-entry sequences (`tests/test_asy_fram_manager.py`, `:952`,
+  `tests/test_fram_integration.py` 19 lines) keep them, renumbered (A.U2.09; A.U3.04 dropped) → [fold F11
+  M_TEST_UNIT]; override tests
   `:428-440`, `:1117-1130` deleted, `:1109, :1253-1254` → A.U16.19 (TEST_UNIT); twin hazard file `:414-432, :463-464` →
   A.U16.19 (TWIN); device scripts `fram_pause_unpause_and_gating.py`, `fram_write_protect_roundtrip.py` → A.U16.19
-  (HW_DEV); SPEC A.4 `:175, 185, 207-208`, F.5.2 `:3752`, BACKLOG `:476` → A.U3.04, A.U16.19 (SPEC, DOCS);
-  `tests_hardware/README.md:401` → A.U3.04 (HW_BENCH).
+  (HW_DEV); SPEC A.4 `:175, 185, 207-208`, F.5.2 `:3752`, BACKLOG `:476` → A.U16.19 and the renumbering A.U2.09 (SPEC, DOCS;
+  A.U3.04's one-entry text dropped); `tests_hardware/README.md:401` → A.U2.09 (HW_BENCH; the pair stays two entries).
 - **Kind**: code
 
 ### M.SRC_CORE.088 Chunk read: tri-state result, faults told from invalid data
-- **From**: A.U16.06 (1)-(2), A.U3.04, A.U3.02, A.U16.08 (`:174-175` comment), A.U16.19, A.U16.R03 (5), A.U2.09.
+- **From**: A.U16.06 (1)-(2), A.U3.04 (dropped: OR140.a (7), A-C review fold), A.U3.02, A.U16.08 (`:174-175` comment), A.U16.19, A.U16.R03 (5), A.U2.09.
 - **Site**: `src/asy_fram_manager.py:128-221` (`_read()`, `_read_progress()`, `_read_into()`, `_compare_with()`).
 - **Change**: `async def _read(self, buf: bytearray) -> bool | None`: `if self.fram.lost.is_set(): return None`; under
   `_op_lock`: paused → `wrn_s(…, wrnno=_WRN_FRAM_PAUSED)`, `None`; size mismatch → `_ERR_BAD_ARG`, `None`; block 0
-  `valid, uninit, fault = await self._read_into(buf, addr0)`; not valid → console line ("Uninitialized data" evt / "Read
-  fault in block 0" / "Invalid data in block 0", "reading block 1"); block 1 likewise; neither valid → `None` if either
-  faulted, else `False`; block 1 valid → repair block 0, a failed repair write → `self.pr.err(…)`, `None`; block 0 valid →
-  `_compare_with()` block 1 (4-tuple), not valid → console line and repair block 1 (failed → `None`); not matching →
+  `valid, uninit, fault = await self._read_into(buf, addr0)`; not valid → "Uninitialized data in block 0, reading block 1" evt,
+  else `wrn_s("Read fault in block 0, reading block 1" / "Invalid data in block 0, reading block 1",
+  wrnno=_WRN_FRAM_BLOCK_INVALID)` (persisted, as HEAD's w71-73); block 1 likewise; neither valid → `None` if either
+  faulted, else `False`; block 1 valid → repair block 0, a failed repair write → `err_s("Writing block 0 failed!", errno=_ERR_FRAM_BLOCK_WRITE)`, `None`; block 0 valid →
+  `_compare_with()` block 1 (4-tuple), not valid → the evt (uninitialised) or `_WRN_FRAM_BLOCK_INVALID`, then repair block 1 (a failed write → `_ERR_FRAM_BLOCK_WRITE`,
+  `None`); not matching →
   comment "# No generation counter says which block is newer, so a write torn between blocks leaves two valid / # but
   differing copies: a hard failure, never a guess (owner, 2026-07-18). The next write heals it." and `err_s("Both
   blocks valid but different data", errno=_ERR_FRAM_COPIES_DIFFER)`, `False`; else `True`. `_read_into()` resets
   `_read_fault` with the other state and returns `(valid, uninit, self._read_fault)`; `_compare_with()` returns
-  `(valid, uninit, match, fault)` (missing scratch → persisted `_ERR_ALLOC` and `(False, False, False, True)`, A.U3.04 +
-  A.U16.06 (1)). No `_episode_wrn()` call and no `_episode_wrns` reset remain.
-- **Resolved**: A.U3.04 persists 20 when `_check_buf is None`; A.U16.06 lists the same site as a fault — both apply.
+  `(valid, uninit, match, fault)` (missing scratch → persisted `_ERR_ALLOC` and `(False, False, False, True)`, A.U16.06
+  (1)). No `_episode_wrn()` call and no `_episode_wrns` reset remain.
+- **Resolved**: A.U3.04 is dropped (OR140.a (7), A-C review fold); the 20 at `_check_buf is None` stays — a condition
+  this layer detects itself, which A.U16.06 lists as a fault.
 - **Unit**: U16.
 - **Depends**: M.SRC_CORE.081, .084, .085.
 - **Blast carried by**: `PrintLogHistoryStore._read()` (M.SRC_CORE.065); SGP40 restore reads falsy → A.U16.06 (SRC_SENS,
   unchanged); tests `tests/test_asy_fram_manager.py:235, 839, 885-910, 1003, 1085-1096, 2094, 2210-2248, 2332, 2433` and
-  new L1 cases → A.U16.06, A.U3.04 (TEST_UNIT); `:329-331` comment → A.U16.08 (TEST_UNIT); L2 WP chip keeps its bytes →
+  new L1 cases → A.U16.06 (TEST_UNIT), the per-layer entries → [fold F11 M_TEST_UNIT]; `:329-331` comment → A.U16.08 (TEST_UNIT); L2 WP chip keeps its bytes →
   A.U16.06 (TWIN); SPEC A.4 `:205-206`, `:214`, C.7 → A.U16.06, A.U16.08 (SPEC).
 - **Kind**: code
 
 ### M.SRC_CORE.084 Status bytes: a blank block takes no busy marker; faults flagged; no errno arithmetic
-- **From**: A.U2.09 (`err=` goes), A.U16.09, A.U16.06 (1), A.U3.04.
+- **From**: A.U2.09 (`err=` goes), A.U16.09, A.U16.06 (1), A.U3.04 (dropped: OR140.a (7), A-C review fold).
 - **Site**: `src/asy_fram_manager.py:223-268`.
 - **Change**: `_set_check_sb(self, fram, st_addr, val, *, check_idle) -> bool | None`: `check_idle` read failure →
-  `await fram.report_get_values(read_status)`, `self.pr.err("Read status byte failed!")`, `self._read_fault = True`,
+  `await fram.report_get_values(read_status)`, `err_s("Read status byte failed!", errno=_ERR_FRAM_STATUS_READ)`, `self._read_fault = True`,
   `None`; a byte neither idle nor uninit → `err_s("Read status byte is not", _STATUS_IDLE, "but", stat[0],
   errno=_ERR_FRAM_STATUS_BYTE)`, `None`; a byte reading `_STATUS_UNINIT` → `return True` with "# a blank block is never
-  read, so it takes no busy marker and stays blank"; the write → failure `self.pr.err("Write status byte failed!")`,
+  read, so it takes no busy marker and stays blank"; the write → failure `err_s("Write status byte failed!", errno=_ERR_FRAM_STATUS_WRITE)`,
   `self._read_fault = True`, `None`; else `False`. The `:240-242` and `:256-257` errno-spread comments go.
   `_handle_status_bytes(self, fram, addr, val, *, check_idle) -> bool | None`: two calls without `err`; inconsistent
   pair → `err_s(…, errno=_ERR_FRAM_STATUS_DISAGREE)`, `None`.
@@ -1704,24 +1846,25 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 - **Kind**: code
 
 ### M.SRC_CORE.085 Block operations: numbered by the catalog, faults flagged, overflow-free comments
-- **From**: A.U2.09, A.U3.04, A.U16.06 (1), A.U14.10 (`:368`), A.U16.19 (`clear()`), A.U16.R03 (5) (`clear()`), A.U30.19,
+- **From**: A.U2.09, A.U3.04 (dropped: OR140.a (7), A-C review fold), A.U16.06 (1), A.U14.10 (`:368`), A.U16.19 (`clear()`), A.U16.R03 (5) (`clear()`), A.U30.19,
   A.U10.45.
 - **Site**: `src/asy_fram_manager.py:270-399` (`_write_chunk()`, `_read_chunk()`, `_clear_chunk()`, `clear()`).
 - **Change**: every `_handle_status_bytes()` call loses `err=` and its "check_idle=… may only set err to err + N"
   comment; `_write_chunk()`: CRC not computable → `err_s(…, errno=_ERR_FRAM_CRC_FAILED)`; payload write failure →
-  `self.pr.err("_write_chunk failed!")`; `except Exception as e: report_if_fatal(e)`, `err_s(…, errno=_ERR_UNEXPECTED)`.
+  `err_s("_write_chunk failed!", errno=_ERR_FRAM_PAYLOAD_WRITE)`; `except Exception as e: report_if_fatal(e)`, `err_s(…, errno=_ERR_UNEXPECTED)`.
   `_read_chunk()`: zero-length buffer → `err_s(…, errno=_ERR_BAD_ARG)` and `_read_fault = True`; driver read failure →
-  `report_get_values()`, `self.pr.err("FRAM read error in _read_chunk!")`, fault; incremental CRC failure → `err_s(…,
+  `report_get_values()`, `err_s("FRAM read error in _read_chunk!", errno=_ERR_FRAM_READ)`, fault; incremental CRC failure → `err_s(…,
   errno=_ERR_FRAM_CRC_FAILED)`, fault; data CRC mismatch → `err_s(…, errno=_ERR_FRAM_DATA_CRC)` (content, not a fault);
   `except Exception as e: report_if_fatal(e)`, `_ERR_UNEXPECTED`, fault. `_clear_chunk()`: comment `:367-368` → "#
   bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without building that list first / #
-  `[x] * n` can segfault uncatchably for large n (Part F.1)."; write failure → `self.pr.err(…)`; `except Exception as
+  `[x] * n` can segfault uncatchably for large n (Part F.1)."; write failure → `err_s(…, errno=_ERR_FRAM_CLEAR_WRITE)`; `except Exception as
   e: report_if_fatal(e)`, `_ERR_UNEXPECTED`. `clear(self) -> bool`: `if self.fram.lost.is_set(): return False`; paused →
-  `wrn_s(…, wrnno=_WRN_FRAM_PAUSED)`; a failed block → `self.pr.err("Clearing chunks failed!")`.
+  `wrn_s(…, wrnno=_WRN_FRAM_PAUSED)`; a failed block → `err_s("Clearing chunks failed!", errno=_ERR_FRAM_CLEAR)` (each a layer's own entry, as at
+  HEAD; OR140.a (7)).
 - **Resolved**: —
-- **Unit**: U16 (stages U2, U3, U14 comment; U30 `report_if_fatal`).
+- **Unit**: U16 (stages U2 with the chunk layer's codes, U14 comment; U30 `report_if_fatal`).
 - **Depends**: M.SRC_CORE.084.
-- **Blast carried by**: as M.SRC_CORE.082/.088 (A.U3.04, A.U2.09 test lines); wire traces unchanged except the blank
+- **Blast carried by**: as M.SRC_CORE.082/.088 (A.U2.09 test lines; A.U3.04 dropped) → [fold F11 M_TEST_UNIT]; wire traces unchanged except the blank
   case (M.SRC_CORE.084).
 - **Kind**: code
 
@@ -1749,7 +1892,7 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 - **Kind**: code
 
 ### M.SRC_CORE.090 Plain chunk I/O: one entry for a missing buffer; the unreachable second check stated
-- **From**: A.U3.09, A.U35.47, A.U16.06 (3), A.U16.19, A.U11.S03 (2), A.U2.09 (e84 → 21), A.U10.38 (`FRAMChunk`).
+- **From**: A.U3.09 (the `None`-buffer 20s; its SGP40 half dropped: OR140.a (7)), A.U35.47, A.U16.06 (3), A.U16.19, A.U11.S03 (2), A.U2.09 (e84 → 21), A.U10.38 (`FRAMChunk`).
 - **Site**: `src/asy_fram_manager.py:413-465`.
 - **Change**: `class FRAMChunk(_FRAMBaseChunk)` with the manager constructor (the explicit `__init__` that only
   forwarded goes). `get_buffer() -> FRAMChunkBuffer`. `write(data)`: `databuf is None` → `err_s("No buffer for the chunk
@@ -1772,7 +1915,7 @@ built from their manager, the timestamped one on `utc_now()`, bool first.
 - **Kind**: code
 
 ### M.SRC_CORE.087 Timestamped chunk: `utc_now()`, bool-first writes, no unreachable guards
-- **From**: A.U16.18, A.U10.06, A.U14.26 (1) dropped (V.U18.R10: no catch around the timestamp), A.U35.55, A.U3.09,
+- **From**: A.U16.18, A.U10.06, A.U14.26 (1) dropped (V.U18.R10: no catch around the timestamp), A.U35.55, A.U3.09 (the `None`-buffer 20s; its SGP40 half dropped: OR140.a (7)),
   A.U35.47, A.U16.19, A.U16.S01, A.U10.35 (`_ntp_sync_callback`), A.U2.09 (85/87 → 14), A.U30.19, A.U5.13, A.U10.38.
 - **Site**: `src/asy_fram_manager.py:484-615`.
 - **Change**: `class FRAMTimestampedChunk(_FRAMBaseChunk)`: `__init__(self, manager, base_addr, size, ntp_sync_callback:
@@ -2283,18 +2426,18 @@ input bounded by `max_frame` (`_checked()`), decode input by the encoded worst c
 
 ## src/math_helpers.py (name kept: no `async def`, A.U10.47)
 
-End state: eight pure functions in alphabetical order (`cct_mccamy`, `chromaticity_xy`, `dew_point`, `ema_step`,
-`pressure_at_height`, `rgb_to_hsb`, `rgb_to_xyz`, `wet_bulb_temperature`); the humidity conversions gone; Stull's wet bulb
+End state: ten pure functions in alphabetical order (`abs_humidity`, `cct_mccamy`, `chromaticity_xy`, `dew_point`,
+`ema_step`, `pressure_at_height`, `rel_humidity`, `rgb_to_hsb`, `rgb_to_xyz`, `wet_bulb_temperature`); the humidity
+conversions kept and gated, never clamped (OR140.a (4), A-C review fold); Stull's wet bulb
 refused in the cold-dry corner the paper excludes; the CCT span stated with its measured error; residual-error catches
 kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a stand-in `math`.
 
 ### M.SRC_CORE.125 Docstring and the domain-constant block
-- **From**: A.U12.09 (docstring, the four `_MAGNUS_*` constants go), A.U12.06 (four corner constants), A.U12.07 (the CCT
-  span comment).
-- **Site**: `src/math_helpers.py:1-3`, `:13-16`, `:27-30`, `:41-42`.
-- **Change**: docstring line 1-2 "… meteorological (wet-bulb temperature, dew / point, barometric correction), colorimetric
-  (…)"; after `_WB_RH_MAX` the four constants `_WB_CORNER_T0 = const(-20.0)`, `_WB_CORNER_RH0 = const(75.0)`,
-  `_WB_CORNER_T1 = const(10.0)`, `_WB_CORNER_RH1 = const(5.0)`; `:27-30` deleted; `:41-42`'s trailing comments go and one
+- **From**: A.U12.09 (dropped: OR140.a (4), A-C review fold — the docstring and the four `_MAGNUS_*` constants stay),
+  A.U12.06 (four corner constants), A.U12.07 (the CCT span comment).
+- **Site**: `src/math_helpers.py:13-16`, `:41-42`.
+- **Change**: the docstring keeps "humidity conversions" and `:27-30` (`_MAGNUS_*`) stay; after `_WB_RH_MAX` the four constants `_WB_CORNER_T0 = const(-20.0)`, `_WB_CORNER_RH0 = const(75.0)`,
+  `_WB_CORNER_T1 = const(10.0)`, `_WB_CORNER_RH1 = const(5.0)`; `:41-42`'s trailing comments go and one
   line above `_CCT_MIN` reads "# Output span 2000-12500 K. On the Planckian locus the cubic is within 1 % up to 9000 K,
   -1.2 % at 10000 K, / # -3.5 % at 12500 K (Planck's law, CIE 1931 2-degree observer; agent, 2026-09-29)."
 - **Resolved**: A.U12.07's text writes "2° observer"; the same unit's A.U12.06 keeps this file ASCII (`degC`, RUF003), so
@@ -2327,7 +2470,7 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
   reading to sea level. Range: BMP388/390 datasheet (its only caller)."; body unchanged but for the catch tuple
   (M.SRC_CORE.130). No alias.
 - **Resolved**: —
-- **Unit**: U12; the function then sits at its alphabetical slot between `ema_step` and `rgb_to_hsb` (A.U10.33's U10
+- **Unit**: U12; the function then sits at its alphabetical slot between `ema_step` and `rel_humidity` (A.U10.33's U10
   reorder ran under the old name, so the rename moves it; the D.15 check of A.U10.47 would fail otherwise).
 - **Depends**: M.SRC_CORE.130 (U10's order).
 - **Blast carried by**: `src/asy_bmp3xx_driver.py:243` call → A.U12.08 / A.U15.23 (SRC_SENS, already written as
@@ -2335,15 +2478,27 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
   comment → A.U12.08 (TEST_UNIT); SPEC `:2611` → A.U12.08 (SPEC).
 - **Kind**: code, test, doc
 
-### M.SRC_CORE.128 The unused humidity conversions go
-- **From**: A.U12.09.
-- **Site**: `src/math_helpers.py:101-137`.
-- **Change**: `abs_humidity()` and `rel_humidity()` deleted (with the constants in M.SRC_CORE.125).
-- **Resolved**: AC_NOTES 8 (removal, not the clamp alignment; listed for the OR2.c review by the lead).
+### M.SRC_CORE.128 The humidity conversions stay, gated to their domain and never clamped
+- **From**: A.U12.09 (dropped: OR140.a (4), A-C review fold); OR140.a (4) (keep both, align their tests with the other
+  helpers', the no-clamp rule); G3/R06 ("`rel_humidity()`'s 0-100 clamp is aligned", the "ice-phase" comment corrected).
+- **Site**: `src/math_helpers.py:101-137` (`abs_humidity()`, `rel_humidity()`).
+- **Change**: both functions stay. `rel_humidity()`: the final `max(0.0, min(100.0, rh))` goes — a result outside
+  `0.0 <= rh <= 100.0` returns `None` (the project's no-clamp rule: a derived value outside its source's domain is
+  `None`, never clamped); its first comment line → "# Inverse of abs_humidity's Magnus-type formula; a result outside
+  0-100 % is out of domain: None, never clamped." `abs_humidity()`'s comment "a/b pick the ice- vs water-phase
+  constants" no longer calls the below-zero pair an ice-phase pair: it names the legacy formula's two Magnus constant
+  pairs (at/above and below 0 degC) with their source, the exact wording and reference decided at execution with the
+  source recorded. Inputs, gates and formulas unchanged; the catch tuple per M.SRC_CORE.130.
+- **Resolved**: OR140.a (4) (owner, 2026-10-02: "useful, complete the functional suite, small, lightweight") reverses
+  the removal (AC_NOTES 8, A.U12.09); G3/R06's other branch ("the clamp is aligned") applies instead. Tag form (rule 6,
+  status change): the decision's permanent text, where SPEC G.2 writes it, carries "(owner, 2026-10-02)".
 - **Unit**: U12.
-- **Depends**: —
-- **Blast carried by**: `tests/test_math_helpers.py:204-299` → A.U12.09 (TEST_UNIT); A.U35.42's site list shrinks to the
-  surviving catches (M.SRC_CORE.130).
+- **Depends**: M.SRC_CORE.130 (catch form, U10); [fold F08 M_TEST_UNIT] (the humidity tests in
+  `tests/test_math_helpers.py:204-299` kept and aligned with the other helpers' shape, vectors and edge cases — the
+  out-of-range result now `None` — in U12).
+- **Blast carried by**: `tests/test_math_helpers.py:204-299` → [fold F08 M_TEST_UNIT]; A.U35.42's stand-in tests reach
+  the two kept catches too (M.SRC_CORE.130); SPEC G.2 derived-quantities entry (the Magnus domain and the no-clamp
+  sentence) → A.U12.10 with [fold F08 M_SPEC].
 - **Kind**: code, test
 
 ### M.SRC_CORE.129 Colour chain: sRGB literal note as a fact, unquoted return annotations
@@ -2363,12 +2518,13 @@ kept, written `(ArithmeticError, ValueError)`, and exercised by tests through a 
 - **From**: A.U10.45 (tuples alphabetical), A.U35.42 (1) (tests reach every catch; the catches stay), A.U35.41 (its
   `math_helpers.py` row: keep), A.U35.36 (the never-raise map covers this module; no raising call outside a catch at
   HEAD), A.U10.33 (module-level functions in D.15 order, OR96.a (2)).
-- **Site**: `src/math_helpers.py:60`, `:82`, `:97` (and `:115`, `:135` until U12 deletes them).
+- **Site**: `src/math_helpers.py:60`, `:82`, `:97`, `:115`, `:135` (the humidity pair stays, OR140.a (4)).
 - **Change**: `except (ArithmeticError, ValueError):` at every catch; U10 order of the module-level functions
   `abs_humidity`, `altitude_baro`, `cct_mccamy`, `chromaticity_xy`, `dew_point`, `ema_step`, `rel_humidity`, `rgb_to_hsb`,
-  `rgb_to_xyz`, `wet_bulb_temperature`, which U12 (M.SRC_CORE.127/.128) turns into the end-state order above.
-- **Resolved**: A.U35.42 lists `:60, :82, :97, :115, :135` "after A.U12.09/A.U12.10 remove" the helpers — A.U12.09 alone
-  removes them (A.U12.10 is the G.2 text); three catches remain.
+  `rgb_to_xyz`, `wet_bulb_temperature`, which U12 (M.SRC_CORE.127) turns into the end-state order above (`pressure_at_height` between `ema_step` and
+  `rel_humidity`).
+- **Resolved**: A.U35.42 lists `:60, :82, :97, :115, :135` "after A.U12.09/A.U12.10 remove" the helpers; A.U12.09 is
+  dropped (OR140.a (4), A-C review fold), so all five catches remain and the stand-in tests reach each.
 - **Unit**: U10 (A.U10.45, A.U10.33); the stand-in tests land in U35 (A.U35.42).
 - **Depends**: —
 - **Blast carried by**: `tests/test_math_helpers.py` stand-in tests → A.U35.42 (TEST_UNIT); SPEC E.5.1 row → A.U35.41
@@ -2534,7 +2690,8 @@ Added by gap pass G2 (2026-10-01):
     `_verify_counter` (M.SRC_CORE.081) — attributes with no reader outside the class (M_SRC_CORE GAP-G12's sweep, run on
     HEAD with an AST scan of `self.<public> =` and a text search of `src/` and `buildgen/`).
 16. `FRAMManager`'s `_was_up` is held as `initialized` (G5/R14's flag; one attribute for one meaning, M.SRC_CORE.092).
-17. `SensorReader` carries `initialized`, set in its `setup()`; its subclasses inherit it (M.SRC_CORE.036/.039).
+17. `SensorReader` carries `initialized`, set in its `setup()`; its subclasses inherit it (M.SRC_CORE.036/.039) —
+    withdrawn by the routine settlement "initialized-flags" (A-C review fold): no reader or `SystemService` flag.
 
 ## Ledger
 
@@ -2763,3 +2920,45 @@ Unit and Depends edits made by the A-C2 work order (`audit/order/WORK_ORDER.md`)
 | M.SRC_CORE.037 | Unit | appended: A-C2 step order: A.U10.R01's part lands in U13, not U10 (it needs A.U13.R01, which lands in U13). | dependency deferral (an edge ran from a later step) |
 | M.SRC_CORE.080 | Depends | `M.SRC_CORE.001, .027, .032, .034, M.SRC_CORE.115` → `M.SRC_CORE.001, .027, .032, M.SRC_CORE.115; M.SRC_CORE.034 [follows] (its U30 handler lines in this file come after)` | nothing in this change uses M.SRC_CORE.034 (U30) |
 | M.SRC_CORE.131 | Unit | was: the unit of M.SRC_CORE.116 → now: U35 (the unit of M.SRC_CORE.116, the change it amends; A-C2). | no Unit slot: "the unit of M.SRC_CORE.116" |
+
+## A-C review fold (2026-10-05)
+
+Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_merge.json` `outcome`, AC_NOTES 52).
+`[fold Fnn M_FILE]` tokens name a change another fold agent adds; the lead replaces them.
+
+| Fnn | M-ID(s) | action |
+|---|---|---|
+| F01 | M.SRC_CORE.043, .042, .049 (and the section end state) | amended |
+| F02 | M.SRC_CORE.133 | added |
+| F02 | M.SRC_CORE.030 | amended |
+| F03 | M.SRC_CORE.043, .049, .015, .008, .042, .011 | amended |
+| F04 | — | none in this file |
+| F05 | — | none in this file |
+| F06 | — | none in this file |
+| F07 | — | none in this file |
+| F08 | M.SRC_CORE.128 (A.U12.09 dropped; rewritten as keep-and-gate), .125, .127, .130 | amended |
+| F09 | — | none in this file |
+| F10 | — | none in this file |
+| F11 | M.SRC_CORE.037, .080, .082, .084, .085, .088, .087, .090, .016, .048 (A.U3.03/.04 dropped; A.U3.05/.09 own halves kept) | amended |
+| F12 | — | none in this file |
+| F13 | — | none in this file |
+| F14 | — | none in this file |
+| F15 | M.SRC_CORE.011, .038, .040, .041 | amended |
+| F16 | M.SRC_CORE.043 (Blast pointer: A.U35.38/.39 dropped) | amended |
+| F17 | — | none in this file |
+| F18 | — | none in this file |
+| F19 | — | none in this file |
+| F20 | — | none in this file |
+| F21 | — | none in this file (no permanent text here carries one of the 68 decisions' tags) |
+| F22 | — | none in this file |
+| F23 | — | none in this file |
+| F24 | — | none in this file |
+| F25 | — | none in this file |
+| F26 | — | none in this file |
+| F27 | M.SRC_CORE.134 | added |
+| F28 | M.SRC_CORE.036, .039, .040, .008, .017 ("Agent decisions" 17 withdrawn) | amended |
+| F29 | — | none in this file |
+| F30 | — | none in this file |
+| F31 | — | none in this file |
+| F32 | — | none in this file |
+| F33 | — | none in this file (M.SRC_CORE.084/.088 already give `False` for both copies BUSY, as the corrected D-T27 line reads) |
