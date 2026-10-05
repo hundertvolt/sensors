@@ -2197,20 +2197,33 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Kind**: test
 
 ## tests_scripts/test_one_entry_per_event.py
-### M.TSC.111 No two persisted log entries for one event on one path
-- **From**: A.U3.11 dropped (OR140.a (7): every layer that meets a fault keeps its own persisted entry, as today; the
-  pair scan enforced the dropped one-entry rule, A-C review fold).
-- **Site**: new `tests_scripts/test_one_entry_per_event.py`.
-- **Change**: AST scan of every function in `src/*.py` and every generated module: two persisted `err_s`/`wrn_s` calls on
-  one straight-line path with no `return` between fail unless allow-listed with both events named and why they differ;
-  the list is the U3 tree's pairs with A.U3.11's reasons (ISL `_recover_brownout()`, `_check_divergence()`; UART
-  `_resync()`; `_get_dict_cfg()`; `_set_dict_cfg()`; `set_write_protected()`; `ConfigManager.setup()` (two); SGP40
-  `_read_sgp()`; WEBSERVER `_serve()`), each keyed by function name and catalog names (not numbers), re-derived at
-  each later landing that renames a function; `_close_writer()` is not listed; bite: a planted second `err_s`.
-- **Resolved**: —
-- **Unit**: — (no step; dropped by OR140.a (7))
-- **Depends**: A.U3.03-A.U3.09 (SRC).
-- **Blast carried by**: cross-function pairs → their L1 tests (A.U3.03-.09, A.U3.14; TEST_UNIT).
+### M.TSC.111 One occurrence is persisted as a fault or as a warning, never both
+- **From**: A.U3.11, narrowed (lead ruling on the A-C review fold, 2026-10-05): OR140.a (7) drops "one entry per fault"
+  (A.U3.04 and its carriers: every layer that meets a fault keeps its own persisted entry, as today), so the scan keeps
+  only the surviving literal part of the owner's rule, "either it's a fault or a warning, but never both at a time …
+  should be globally checked and applied" (owner, 2026-09-26, OR56); same-kind pairs and cross-layer entries are
+  allowed.
+- **Site**: new `tests_scripts/test_fault_or_warning_never_both.py` (renamed from A.U3.11's
+  `test_one_entry_per_event.py`: the file no longer checks one entry per event).
+- **Change**: AST scan of every function in `src/*.py` and every generated device module (built into `tmp_path` over
+  `DEVICE_NAMES`): a persisted `err_s` and a persisted `wrn_s` reachable one after the other on one straight-line path of
+  the same function, with no `return` between, fail unless allow-listed with both events named and why they are two
+  occurrences; two `err_s` or two `wrn_s` on one path pass (same kind), and an entry in another function or layer is
+  never paired (cross-layer entries allowed). The allow-list holds only the mixed pairs whose reasons still hold in the
+  tree U3 leaves: ISL `_recover_brownout()` and `_check_divergence()` (the event, then a failed re-apply), UART
+  `_resync()` (the drain bound and an unintelligible link are separate conditions), `set_write_protected()` (the
+  warning, then the failed write), `ConfigManager.setup()` (a read warning, then a failed write) — each keyed by
+  function name and catalog names, not numbers, and re-derived at each later landing that renames or removes one (a
+  listed pair that no longer occurs fails, so the list stays exact); A.U3.11's same-kind entries (`_get_dict_cfg()`,
+  `_set_dict_cfg()`, SGP40 `_read_sgp()`, WEBSERVER `_serve()`'s two warnings, `ConfigManager.setup()`'s warning
+  chain) leave the list, the scan no longer flagging them. Bites (synthetic `tmp_path` copies): a planted `wrn_s` then
+  `err_s` for one occurrence fails naming the function; a planted second `err_s` after an `err_s` passes.
+- **Resolved**: A.U3.11's pair scan enforced the dropped one-entry rule; the lead's ruling keeps it for the
+  fault-or-warning half only, the half OR140.a (7) does not touch.
+- **Unit**: U3
+- **Depends**: A.U3.06, A.U3.08 (kept; SRC) — the scan reads the tree U3 leaves.
+- **Blast carried by**: SPEC C.7 names the check and its rule (fault or warning, never both; one entry per layer) →
+  [fold F11 M_SPEC].
 - **Kind**: test
 
 ## tests_scripts/test_readiness_gates.py

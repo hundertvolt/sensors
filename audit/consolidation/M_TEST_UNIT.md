@@ -4420,7 +4420,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
 
 ### M.TEST_UNIT.202 Connection lifecycle: every drop logged once, split timeouts, released stream
 - **From**: A.U19.08 (ceiling refusals logged; peer-reset entries; seven-refusals L1), A.U2.19 (49 vs 50; new L1), A.U3.11
-  (new L1: one W52), A.U24.41 (`:1590-1597`, `:1606-1611`), A.U14.03 (`:1656-1665` holds, `:1657-1658` pointer), A.SDEP.13
+  narrowed (lead ruling 2026-10-05: its L0 scan flags only an error and a warning persisted for one occurrence in one
+  function; its L1 "one W52" half rested on the dropped one-entry-per-fault reading, OR140.a (7), so W53 stays persisted
+  after a W52, M.SRC_NET.126; A-C review fold), A.U24.41 (`:1590-1597`, `:1606-1611`), A.U14.03 (`:1656-1665` holds, `:1657-1658` pointer), A.SDEP.13
   (read: `:1648-1660` path re-checked at the pin), A.U19.06 (new L1s: closed stream on HEAD, raising and timed-out
   writes; `Cache-Control`), A.U3.12 (reclaim repeats spend one slot), A.U3.01; OR137.a (1)-(3) (`get_dropped_count()` is
   the 24-hour window's sum, cleared by `ResetErrors`, each drop still traced once; A-C review fold).
@@ -4438,13 +4440,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
   driven from the test: two refusals, then 23 h later still 2, 24 h later 0, a new refusal 1 — the window is the
   primitive's, M.TEST_UNIT.343); `test_reset_errors_clears_the_dropped_count` (three refusals, then the service's
   `ResetErrors` path: `get_dropped_count() == 0`, the next refusal 1); `test_an_outer_cap_timeout_logs_the_request_cap_code` (a Slowloris-paced request tripping only
-  the outer cap → one `code("W", "HTTP_REQUEST_CAP")`); `test_a_close_that_raises_and_whose_wait_fails_adds_one_w52`;
+  the outer cap → one `code("W", "HTTP_REQUEST_CAP")`); `test_a_close_that_raises_and_whose_wait_fails_keeps_both_warnings` (`code("W",
+  "HTTP_CLOSE_RAISED")` then `code("W", "HTTP_WAIT_CLOSED")`, two slots, `ErrCount` +2 — two failures of one call, not an
+  error and a warning for one occurrence, so the narrowed pair scan has nothing to flag);
   `test_repeated_reclaims_spend_one_slot` (five per-call reclaims: `ErrCount` 5, one slot);
   `test_a_head_request_closes_the_opened_static_stream`, `test_a_failed_or_timed_out_static_body_write_closes_the_stream`
   (a stub mount whose file object records `close()`), `test_a_static_get_answers_cache_control_no_cache`.
 - **Resolved**: —
 - **Unit**: U19 (stages U2, U3, U14, U24).
-- **Depends**: M.SRC_NET.124, .126, .127, .129; [fold F02 M_SRC_NET] (the drop path counting into the window, its reset);
+- **Depends**: M.SRC_NET.124, .126 (both warnings persisted, as the fold amends it), .127, .129; [fold F02 M_SRC_NET] (the drop path counting into the window, its reset);
   M.TEST_UNIT.343.
 - **Blast carried by**: twin concurrency scenarios → A.U19.08 (TWIN).
 - **Kind**: test
@@ -6721,7 +6725,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   A.S0930.32 (the escalation-vs-preflight and command-during-escalation-log interleavings), A.U22.01 (read: a task ending
   persists exactly one entry — M.TEST_UNIT.308); OR136.a (1) (the rebuild writes each deleted file once with its
   defaults), OR138.a (2) (the reset deletes every schema-backed file whatever its readable state; a failed delete is
-  logged and answers "Failed"), OR140.a (12) (no SCD30 write while a sequence runs) — A-C review fold.
+  logged and shows as reset reason 9 at the next boot — lead ruling 2026-10-05), OR140.a (12) (no SCD30 write while a sequence runs) — A-C review fold.
 - **Site**: new section after the reboot tests.
 - **Change**: as A.S0930.21 lists: (a) `test_reset_to_defaults_closes_flushes_quiesces_stops_deletes_then_reboots_with_
   code_7`, one of the stores built over an unreadable file (`OSError(5)` at its `setup()`: `writable is False`, the config
@@ -6729,9 +6733,10 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `test_an_erased_chip_boots_like_a_new_one`, `test_an_all_zero_block_never_validates_even_with_an_idle_status`; (d) the
   refusals (reset armed, no store, no storage, chip uninitialised, write-protected 0x8C, `create_task` raising, the other
   command under way, the same one), each answering `False` with nothing changed and the supervisor still feeding; (e) the
-  step errors, each continuing to code 9 without hanging; a store whose delete fails twice logs its line and the command
-  reports "Failed" for it (OR138.a (2)) — where that answer surfaces (the command result or the code 9 the next boot
-  reports) is M.SRC_CORE.011's as the fold amends it, the assertion following it. A.S0930.25: the fake's `cut_after_bytes` knob and a test-local
+  step errors, each continuing to code 9 without hanging; a store whose delete fails twice: the command was already
+  answered "Valid" at acceptance, the sequence logs the delete's line, deletes the other stores, records reset reason 9
+  (command incomplete) and reboots; a rebuild over the same state reads reason 9 — no "Failed" appears anywhere for it
+  (OR138.a (2) as the lead ruled, 2026-10-05). A.S0930.25: the fake's `cut_after_bytes` knob and a test-local
   `PowerCut(BaseException)`: (1) structural — after pass 1 every allocated block's status bytes are 0x00 and no pass-2
   byte precedes the last pass-1 status write; (2) enumerated cut points (each status byte of pass 1; first, middle and
   last byte of each overlapping pass-2 unit): a rebuild restores each ring exactly or blank, logging only {status bytes
@@ -6748,7 +6753,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   M.TEST_UNIT.259, the command-level cases here. It also lists `tests/test_asy_fram_manager.py`: case (3) runs here
   through the command sequence with the gated fake chip, so that file gains nothing (A-C3 S-18).
 - **Unit**: U11 (config reset), U16 (erase); stage U20 (A-C review fold): the unreadable/damaged-store deletion and the
-  failed-delete answer, with the delete path (OR138.a (2)); the power-cut rebuild's defaults write lands in U11 with OR136.a.
+  failed delete's reason 9, with the delete path (OR138.a (2)); the power-cut rebuild's defaults write lands in U11 with OR136.a.
   A-C2 step order: A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
 - **Depends**: M.SRC_CORE.011, .041, .042, .083 (as the fold amends them for OR136.a/OR138.a); [fold F03 M_SRC_CORE]
   (the config-fault state and the never-reading delete); TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25,

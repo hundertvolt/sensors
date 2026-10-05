@@ -1845,8 +1845,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **From**: A.U11.37 (logging form, `:1635-1637`), A.U18.39 (mask-string PUT rule, "U36 places it" in C.4), A.U15.43
   (reader tasks return `None`), A.U15.40 (4) (heading), A.U10.44 (starter/coroutine names), A.U10.R01 (driver skeleton:
   recovery hooks), A.U3.03 dropped (OR140.a (7)), A.U3.06 (one entry per supervised task end — one event at one
-  layer, kept), A.U2.22 Blast (`:1656` "`errno=10`"), A.U5.06 Blast (C.4 has no `:259-262`; nothing) (A-C review fold:
-  A.U3.03 stated no text here; nothing to revert).
+  layer, kept), A.U3.11 narrowed (the mixed-kind scan C.7 names), A.U2.22 Blast (`:1656` "`errno=10`"), A.U5.06 Blast
+  (C.4 has no `:259-262`; nothing) (A-C review fold: A.U3.03 stated no text here; (5) states the per-layer and
+  mixed-kind rules, lead ruling).
 - **Site**: `SPECIFICATION.md:1633-1667` (C.4, C.4.1).
 - **Change**: (1) C.4 `:1635-1637` → "**Contract: never raises.** Every public method returns a sentinel on failure.
   Every layer-2 call is wrapped in its own `try/except Exception`, logged via `await self.pr.err_s("Message:", e,
@@ -1863,11 +1864,14 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `_recover_device() -> bool` (never raises; persists its own failure) — the participant rung of the recovery ladder
   (C.7); only a chip failure calls `_init_failed()`." (4) "**A restart is not free.**" paragraph: "`system_service.py`'s
   `_TASK_FAIL_INCREMENT` (100) against a `_TASK_FAIL_MAX` of 300" → the landed constant names with their Part N IDs; the
-  sentence "One bounded bus fault is one restart" gains "and one SYSTEM entry (one entry per supervised task end)".
+  sentence "One bounded bus fault is one restart" gains "and one SYSTEM entry (one entry per supervised task end)". (5)
+  (A-C review fold, lead ruling) After the skeleton: "A failed read persists the driver's read code and
+  `_error_check()`'s streak entry — each layer that meets the fault keeps its own entry (owner, 2026-10-02) — and
+  neither persists one occurrence as both an error and a warning (C.7, checked by its scan)."
 - **Resolved**: A.U11.37's form and A.U2.04's `_ERR_<NAME>` idiom are one sentence (A.U11.37 Depends A.U2.04). A.U18.39
   says "U36 places it": C.4 is the Home its register names; placed in U18 with the code (the rule is current at U18),
   since nothing in U36 moves C.4 (agent decision).
-- **Unit**: Stage 1 U2 (codes); Stage 2 U3 ((4) entry); Stage 3 U10 ((2) names, (3) ladder hooks — A.U10.R01); Stage 4
+- **Unit**: Stage 1 U2 (codes); Stage 2 U3 ((4) entry; (5), with C.7's paragraph and the narrowed scan); Stage 3 U10 ((2) names, (3) ladder hooks — A.U10.R01); Stage 4
   U11 ((1) form); Stage 5 U15 ((2) `None`, heading); U18 ((1) PUT rule).
   A-C2 step order: A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: A.U2.04, A.U3.06, A.U10.44, A.U10.R01, A.U11.37, A.U15.40, A.U15.43, A.U18.39, M.SPEC.156.
@@ -1921,8 +1925,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **From**: A.U0.17 (`:1711-1712` owner ruling), A.U15.17 Blast (special slot gains in-range meanings), A.U15.42
   (`FiltCoeff` two meanings), A.U36.538 (scope rule), A.U35.43 (3) (`:1722-1725`), A.U11.17 (no change), A.U11.29 +
   M_SRC_CORE GAP-G13 (typed getters; `checked_int()`/`checked_float()`/`checked_numeric()`, private coercion), A.U11.33
-  (script guard; golden stored-config fixture), A.U20.12 (generated schemas linted), A.U3.05 dropped (OR140.a (7): the
-  caller keeps its own persisted entry), A.U11.21 (floats in stored form), A.U10.39 (`_cfg_schema` private), A.U10.29
+  (script guard; golden stored-config fixture), A.U20.12 (generated schemas linted), A.U3.05's caller half dropped
+  (OR140.a (7): the caller keeps its own persisted entry; its `ConfigManager` half — the converter failure and the
+  non-bool stored value persisted — stays), A.U11.21 (floats in stored form), A.U10.39 (`_cfg_schema` private), A.U10.29
   Blast (C.5 const pointer is U14's: the `const()`-wrapped-tuple sentence stays) (A-C review fold).
 - **Site**: `SPECIFICATION.md:1708-1740` (C.5, C.5.1).
 - **Change**: (1) `:1710-1711` → "`special` is a single sentinel value (an "unset" value outside the normal range, e.g.
@@ -2054,7 +2059,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (the recovery ladder), M_SRC_SENS GAP-15 (pre-sync `TS` excluded), A.U0.19 H1.02
   (`:1894-1897` DNSSRV), A.U18.36 (WIFI observation sites), A.U18.15 (UDP users check `disconnect()`), A.U18.09
   (resolver bounds), A.U13.16 + A.U10.22 (teardown returns `bool`), A.U30.19 + M_SRC_CORE GAP-G8 (`report_if_fatal()`
-  in `asy_print_log`), A.U3.11 dropped (OR140.a (7): the pair scan and its allow-list carried the one-entry rule),
+  in `asy_print_log`), A.U3.11 narrowed (lead ruling on OR140.a (7): the scan checks only the mixed-kind rule — an error
+  and a warning for one occurrence in one log — its allow-list keeping only reasons that still hold),
   A.U35.37 (normal situations log nothing), A.U6.26 (no C.7 text), A.U14.19 (nothing); OR140.a (7) (every layer that
   meets a fault keeps its own persisted entry, as today) (A-C review fold).
 - **Site**: `SPECIFICATION.md:1816-1900` (C.7).
@@ -2087,10 +2093,13 @@ Conventions every merged change below applies (stated once, not repeated per cha
   as its last sentence, the idiom "codes are `_ERR_<NAME>`/`_WRN_<NAME>` `const()`s passed by keyword". (7) New paragraph
   after it (A.U3.10's, its detecting-layer clause replaced by the owner's ruling, A-C review fold): "**Every layer that
   meets a fault keeps its own persisted entry** (owner, 2026-10-02: a layer reacting to a fault below it may meet
-  following errors beyond the original one, so the history shows how far the fault reached — a trace of it). Within one
-  layer, one occurrence persists one entry, an error or a warning, never both (owner, 2026-09-26: 'Either it's a fault
-  or a warning, but never both at a time'); a condition a layer detects from that failure (a give-up, a task end, a
-  drain bound) is its own later event. An expected condition prints only: a normal situation never logs a code, and a
+  following errors beyond the original one, so the history shows how far the fault reached — a trace of it); entries of
+  one kind from several layers, and a layer's reaction to a fault (a give-up, a task end, a drain bound), are allowed.
+  **In one log, one occurrence is never persisted as both an error and a warning** (owner, 2026-09-26: 'Either it's a
+  fault or a warning, but never both at a time. That is common sense and should be globally checked and applied.'): an
+  L0 scan over `src/` and the generated modules flags an `err_s` and a `wrn_s` persisted for the same occurrence in one
+  function, its allow-list naming each remaining pair with a reason that still holds (`tests_scripts/`, the file as
+  landed). An expected condition prints only: a normal situation never logs a code, and a
   test of one asserts no entry (owner, 2026-09-12, `8a45060`: 'no error/warning should ever be logged for expected
   startup jitter on any boot, on any module'). A failed config read is persisted by `ConfigManager` and by the caller
   that meets it (C.5)." (8) `_error_check()` paragraph (`:1885-1890`) → "`_error_check(results,
@@ -2119,8 +2128,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U16.01's "read and save the log first … then clear" and U36 adds "the one save primitive" pointer once A.U26.22's
   primitive exists — one sentence. (b) A.U3.10 places "one event, one entry" in C.7 and A.U35.37's rule (G5/R21) is the
   same family — one paragraph (agent decision). (b.1) OR140.a (7) (owner, 2026-10-02) drops the detecting-layer rule
-  ("one entry per fault") and its pair scan: the paragraph states the per-layer rule; the never-both rule within one
-  layer (OR56 (1)) stays, with A.U3.06/A.U3.08's same-layer pairs (A-C review fold). (c) A.U2.22 removes the per-module dynamic `wrnno` text that A.U2.08 also
+  ("one entry per fault"): the paragraph states the per-layer rule; the owner's literal 2026-09-26 rule (one occurrence
+  never both an error and a warning in one log, globally checked) stays with A.U3.11's scan narrowed to it, and with
+  A.U3.06/A.U3.08; A.U3.03/.04/.05 (caller half)/.07/.09 are dropped (lead ruling, A-C review fold). (c) A.U2.22 removes the per-module dynamic `wrnno` text that A.U2.08 also
   removes — one deletion. (d) The boot-window history (`:1840-1846`) contradicts A.U10.10's end state (every store set up
   before the server answers) — replaced by A.U25.65's statement of the end-state behaviour (agent decision).
 - **Unit**: Stage 1 U0 ((9)); Stage 2 U2 ((6), numbers); Stage 3 U3 ((7) first half; (8)'s failed-cycle clause states
@@ -2129,9 +2139,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   Stage 7 U16 ((1) pitfall, FRAM escalation, unreadable chunk); Stage 8 U18 ((10) UDP, (11) WIFI/resolver); Stage 9 U30
   ((11) `report_if_fatal()`); Stage 10 U35/U36 ((7) normal situations, (1) save primitive).
   A-C2 step order: A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: A.U2.22, A.U3.10 (its kept half), A.U5.01, A.U10.10, A.U10.11, A.U10.R01, A.U11.13, A.U11.16,
+- **Depends**: A.U2.22, A.U3.10 (its kept half), A.U3.11 (narrowed), A.U5.01, A.U10.10, A.U10.11, A.U10.R01, A.U11.13, A.U11.16,
   A.U11.31, A.U13.16, A.U16.01, A.U16.06, A.U16.17, A.U18.09, A.U18.15, A.U18.36, A.U19.14, A.U26.22, A.U30.19,
-  A.U35.37, M.SRC_CORE.034, M.SRC_SENS.083.
+  A.U35.37, M.SRC_CORE.034, M.SRC_SENS.083; the narrowed mixed-kind scan (M_TSC, as the fold amends A.U3.11's carrier).
 - **Blast carried by**: CLAUDE.md FRAM rule → A.U26.22/A.U2.08 (DOCS); `digital_twin/README.md:503-507` → A.U25.65 (TWIN).
 - **Kind**: doc
 
@@ -2256,7 +2266,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
 
 ### M.SPEC.062 C.7.4: the radio's string bounds and shapes
 - **From**: A.U14.37 (first sentence: raise types, cyw43 citations), A.U6.29 (host-label rule), A.U6.30 (country shape),
-  A.U18.37 (GET shows the radio value in use), A.U18.38 (no change), A.U3.07 (`errno 17` number), A.U2.14 (codes),
+  A.U18.37 (GET shows the radio value in use), A.U18.38 (no change), A.U3.07 dropped (lead ruling on OR140.a (7); its
+  `errno 17` clause is gone from (4) anyway, A-C review fold), A.U2.14 (codes),
   A.U26.20 (test only), A.U6.28 Blast (H.5 cross-reference, M.SPEC.117), A.C.14 (unknown country code on silicon,
   phase C).
 - **Site**: `SPECIFICATION.md:2013-2027` (C.7.4).
