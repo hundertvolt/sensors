@@ -3502,7 +3502,8 @@ it; an unflipped fact keeps the text given here.
   exceptions read the `stall.sync_wait` row); OR141.a (4) (the UART receive ring absorbs a flash write's
   interrupts-off stretch: A.U31.01's `con.uart_fifo` crossing and A.U31 open point 2's accepted degradation are
   superseded), OR136.a (1) (the boot write of an absent file is a flash program), OR140.a (2) (the L4 console-starvation
-  test runs only behind the persistence-write flag) (A-C review fold).
+  test runs only behind the persistence-write flag) (A-C review fold); AC_NOTES 55 (lead ruling, 2026-10-05: the link
+  timeout default moves into `asy_uart_comm`'s `DEFAULT_LIMITS`).
 - **Site**: `SPECIFICATION.md:3660-3667`; the table between `<!-- timing-budget:begin -->`/`<!-- timing-budget:end -->`.
 - **Change**: the principle paragraph stays; the retired-lock sentence gains "(agent, 2026-07-28)" (A.U0.40 L62); then
   A.U31.01 (1)-(3) verbatim — the lead paragraph, with A.U31.02's clause "the code-derived rows are recomputed by
@@ -3520,7 +3521,10 @@ it; an unflipped fact keeps the text given here.
   degradation, the receive-overrun fault class of J.7)" → "consumers `con.uart_rx_ring` (not crossed: the DMA ring
   receives with interrupts off, so no frame is lost, owner, 2026-10-05; proved on silicon without a flash write by the
   interrupts-off sweep device script)"; (iii) `stall.console`'s guard gains "and the L4 starvation test, run only
-  behind the persistence-write flag (it spends 2 flash writes, debug level 0 and back to 5; owner, 2026-10-02)".
+  behind the persistence-write flag (it spends 2 flash writes, debug level 0 and back to 5; owner, 2026-10-02)". One
+  more (AC_NOTES 55, lead ruling, 2026-10-05): `con.uart_reply`'s source cell `asy_uart_link_driver.py:49` →
+  "`asy_uart_comm.py` `_DEFAULT_TIMEOUT_MS`" — the link's timeout default lives in `DEFAULT_LIMITS` from U17, before
+  this table lands.
 - **Resolved**: (a) A.U8.19's "F.3 gains one sentence pointing to both rows" and A.U31.01's rows `stall.sync_wait`/
   `stall.uart_call` name the same rows — one sentence after the table. (b) `hold.recovery_rung` ("each SCL wait bounded by
   the bus timeout and yielding every millisecond") matches A.U13.R01's runtime path; the boot clear runs synchronously
@@ -3532,7 +3536,7 @@ it; an unflipped fact keeps the text given here.
   fold's three rows — the ring lands in U13, the absent-file write in U11, the gated console test's gate in U26, all
   earlier); Stage 4 phase C (measured cells; the interrupts-off sweep's result, C).
 - **Depends**: A.U8.01, A.U8.19, A.U13.R01, A.U16.07, A.U17.27, A.U18.34, A.U31.01-A.U31.08, A.S0930.24, A.S0930.28,
-  A.C.10, M.SPEC.156, M.SPEC.136 (J.6's ring floor); M.SRC_NET.221 (the ring), M.HW_DEV.159 (the
+  A.C.10, M.SPEC.156, M.SPEC.136 (J.6's ring floor); M.SRC_NET.220 (`_DEFAULT_TIMEOUT_MS`), M.SRC_NET.221 (the ring), M.HW_DEV.159 (the
   interrupts-off sweep device script), M.HW_BENCH.082 (the gated console test, as the fold amends it).
 - **Blast carried by**: Part N `fram.block_hold_budget_us` → M.SPEC.156; A.7/C.8/C.9.1/F.8.2/I.2/J.6 one-clause pointers to
   their rows → M.SPEC.020, M.SPEC.064, M.SPEC.067, M.SPEC.108, M.SPEC.126, M.SPEC.136; `tests_hardware/README.md` owed-row
@@ -4762,7 +4766,8 @@ protocol: each is spec text (the Class A/B entries are their code actions').
 - **From**: A.U17.03 (`(CHUNKS − 1) × payload_size`; its pending owner question answered by OR143.a), A.U36.548
   (`:5633-5635`), M_DOCS gap 1 (c) (BACKLOG's peer-sized-allocation finding; M.DOCS.065), A.U30.02 (6) (I.2's UART row
   points here), C7 (`RegionBuffer`); OR143.a (1)-(5) (chunked receive assembly, the receive cap, the ring allocated in
-  `setup()`), OR141.a (4) (d) (the ring held for life, copied from by index) (A-C review fold).
+  `setup()`), OR141.a (4) (d) (the ring held for life, copied from by index) (A-C review fold); AC_NOTES 55 (lead
+  ruling, 2026-10-05: the two limits are `TransferLimits` fields).
 - **Site**: `SPECIFICATION.md:5627-5664`.
 - **Change**: (1) `:5633-5635` → A.U36.548's "This module chunks the memory for SET in both directions (J.8); a responder's
   GET answer is still returned as one buffer." (2) `:5640` `LockableBuffer(…)` → `RegionBuffer(…)`. (3) `:5650-5652` →
@@ -4774,8 +4779,9 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   instance's `max_transfer_bytes` is refused before anything is allocated, through the rejection J.4 already has (the
   withheld ACK), and logged once; a train the caller gave no destination for (`uart_get()` with `exp_size=None`, or a
   `set_callback` answering *don't care*) is assembled in pieces of at most `chunk_bytes`, held in G.2's piece primitive;
-  a caller-supplied destination is filled in place as before. Both are constructor arguments with reasoned defaults, as
-  `WebserverService`'s `chunk_bytes` is, and `max_transfer_bytes` is declared in the link's device TOML beside the
+  a caller-supplied destination is filled in place as before. Both are fields of the one `TransferLimits` the
+  constructor takes, beside `payload_size` and `timeout` (J.9), with reasoned defaults, as `WebserverService`'s
+  `chunk_bytes` is a `ServingLimits` field, and `max_transfer_bytes` is declared in the link's device TOML beside the
   receive ring's size (J.6). `readline_until_complete()` takes the same cap (C.3.2). A caller that declares its size
   caps it — the form to prefer in a new responder (agent, 2026-09-11)." (4) The "**A failed allocation degrades …**"
   bullet keeps its rule for the module's other allocations and gains: "The receive allocations above are bounded before
@@ -4802,19 +4808,25 @@ protocol: each is spec text (the Class A/B entries are their code actions').
 ### M.SPEC.139 J.9: the module contract
 - **From**: A.U0.44 L14 (`:5668`), A.U0.48 (comment; J.9 unchanged beyond L14), A.U17.01 (entry-point check order), A.U5.12
   (one responder-callbacks object), A.U11.35 (`:5687-5688`), A.U2.20/A.U2.23 (`:5675` code alignment), A.U10.R01 (the
-  ladder lives in `_error_check()`, which this module does not use).
+  ladder lives in `_error_check()`, which this module does not use); AC_NOTES 55 (lead ruling, 2026-10-05: one
+  `TransferLimits` constructor argument).
 - **Site**: `SPECIFICATION.md:5666-5697`.
 - **Change**: (1) `:5668` "(owner-delegated decision, 2026-09-11, resolved against precedent)" → "(agent, 2026-09-11: a
   choice the owner delegated to the promotion, 'delegated to this scope, resolved against precedent')". (2) `:5675-5676`
   "`errno`/`wrnno` still align to `base_classes.py`'s reservation regardless of the base class (C.7.1)" → "its codes are
   the error catalog's, like every module's (C.7.1)". (3) After "`None` means failure …", A.U17.01's sentence. (4) A
   constructor sentence: "A responder takes its callbacks as one `ResponderCallbacks(get, set, message)` object; an
-  initiator passes none." (A.U5.12). (5) `:5687-5688` "C.6's `make_dict()` repr-parsing landmine does not apply: this
+  initiator passes none." (A.U5.12); from U17 it continues (AC_NOTES 55): "Its four limits travel as one
+  `TransferLimits(payload_size, timeout, chunk_bytes, max_transfer_bytes)`, defaulting to the module's `DEFAULT_LIMITS`
+  (48, 1000 and the two receive defaults, J.8), so the constructor reads `UARTComm(uart, role, limits, callbacks, name,
+  log, logger)`, and `UARTLinkDriver` forwards the same object whole. Grouping them moves no byte on the wire:
+  `payload_size` and `timeout` stay agreed out of band (J.6)." (5) `:5687-5688` "C.6's `make_dict()` repr-parsing landmine does not apply: this
   namedtuple is never serialized." → "this namedtuple is never serialized.".
 - **Resolved**: — (no conflict among the constituents)
-- **Unit**: Stage 1 U0 ((1)); Stage 2 U2 ((2)); Stage 3 U5 ((4)); Stage 4 U11 ((5)); Stage 5 U17 ((3)).
+- **Unit**: Stage 1 U0 ((1)); Stage 2 U2 ((2)); Stage 3 U5 ((4)); Stage 4 U11 ((5)); Stage 5 U17 ((3); (4)'s
+  `TransferLimits` sentence, with M.SRC_NET.220).
   A-C2 step order: A.U10.R01's part lands in U13, not U11 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: A.U0.44, A.U2.23, A.U5.12, A.U11.35, A.U17.01.
+- **Depends**: A.U0.44, A.U2.23, A.U5.12, A.U11.35, A.U17.01; M.SRC_NET.220 (`TransferLimits`, U17 stage).
 - **Blast carried by**: the exerciser's plain-class comment → A.U0.48 (SRC_NET); C.6 → M.SPEC.057.
 - **Kind**: doc
 
@@ -6739,6 +6751,7 @@ C9 (above Part A) fixes the review-answer tag form.
 | R54 | M.SPEC.061 (C.7.3: an unreadable file never overwritten; a damaged one — unparseable, non-object, refused value — repaired and listed; a missing or unknown key not listed), M.SPEC.021 (A.8 `ConfigFaults` wording), the F03/F01 note below | amended |
 | R54 | M.SPEC.136 ((7) the floor from one config flush's hold at the peer's stop-and-wait rate; the refusal by `UART_RXBUF` (78), no new errno; `dev`'s 8,192 ring for the bench), .137 (L1 row: no retained growth against an ambient control, the floor-holds-a-flush case; L2 stall is the floor's hold; L3 over-bound window from the 8,192 ring), .138 ((5) reception retains nothing against an ambient control), .156 (rows `uart.flash_hold_max_ms`, `dev.uart_rx_ring = 8192`) | amended |
 | R54 | M.SPEC.097 (the `con.uart_rx_ring` row: sized for one config flush's hold, AC_NOTES 54 (6)) | amended |
+| R55 | M.SPEC.139 ((4) gains, at U17, the `TransferLimits(payload_size, timeout, chunk_bytes, max_transfer_bytes)` sentence: `DEFAULT_LIMITS`, the seven-parameter constructor, the link driver forwarding it whole, no wire change), M.SPEC.138 ((3): the two receive limits are `TransferLimits` fields beside `payload_size`/`timeout`), M.SPEC.097 (`con.uart_reply`'s source cell names `asy_uart_comm.py` `_DEFAULT_TIMEOUT_MS`) | amended |
 
 **F21 map** — where this file writes each answered decision's tag (C9). "explicit": the tag is written in the change;
 "C9": the tag sits in an action's text the change quotes and takes the C9 form at landing; "—": this file writes no tag

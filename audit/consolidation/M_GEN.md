@@ -733,6 +733,9 @@ change lists its stages; the end state is the last stage's.
   A.U0.52 (docstring actor tags), A.U2.23/A.U17.21 (docstring names refusals by kind, no errno), A.U20.17, A.U8.06/A.U31.01 (read: floors and their table rows; comments do not change the AST).
 - **Site**: `buildgen/validate.py:245-310` (`_uart_bus_value`, `_check_uart_link_buses`, `_check_bus_tables`).
 - **Change**: `_uart_bus_value()` reads every default from source (no `poll_idle_ms` special case, its comment goes);
+  from U17 (AC_NOTES 55: the link driver no longer has `payload_size`/`timeout` parameters) `_check_uart_link_buses()`
+  reads the two link defaults with `module_int_const(src_dir, "asy_uart_comm.py", "_DEFAULT_PAYLOAD_SIZE")` and
+  `"_DEFAULT_TIMEOUT_MS"` (M.SRC_NET.220) instead of the link driver's `__init__` defaults;
   `_check_uart_link_buses()` docstring: "Refuses the timeout, rxbuf and poll-rate values the protocol would refuse at
   boot - a config mismatch out of runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent,
   2026-09-24). Generated code wires no framing (adds 0); the CRC adds the width of the link's crc mode." (≤ 3 lines);
@@ -745,10 +748,13 @@ change lists its stages; the end state is the last stage's.
 - **Resolved**: A.U0.52 (U0) and A.U17.21 (U17) both rewrite the `:256-258` docstring — merged into the one text
   above (A.U0.52's actor tags, A.U17.21's refusal names, A.S0930.01's CRC sentence).
 - **Unit**: U31 (latest: A.U31.08). Stages: U13 (special case removal co-lands with A.U13.17's source default change),
-  U17 (A.U17.21 with the source constants), U20 (ranges, CRC, `poll_idle` range, errors).
-- **Depends**: M.GEN.002, A.U17.21/A.U13.17 (SRC_UART source constants), M.GEN.022.
+  U17 (A.U17.21 with the source constants; the two link defaults read from `asy_uart_comm` with M.SRC_NET.220), U20
+  (ranges, CRC, `poll_idle` range, errors).
+- **Depends**: M.GEN.002, A.U17.21/A.U13.17 (SRC_UART source constants), M.GEN.022; M.SRC_NET.220 (U17:
+  `_DEFAULT_PAYLOAD_SIZE`/`_DEFAULT_TIMEOUT_MS`).
 - **Blast carried by**: `tests_scripts/test_buildgen_validate.py:1290-1299` defaults comment → A.U13.17 (TST); SPEC
-  L.3 bus bounds → A.U31.08/A.U20.34 Docs (SPEC); F.3 table rows → A.U31.01 (SPEC).
+  L.3 bus bounds → A.U31.08/A.U20.34 Docs (SPEC); F.3 table rows → A.U31.01 (SPEC); the timeout-ceiling source-copy
+  case edits `asy_uart_comm`'s `_DEFAULT_TIMEOUT_MS` from U17 → M.TSC.057.
 - **Kind**: code
 
 ### M.GEN.028 Instance field checks: crc, irq_pull_up, trigger_s, name_ext
@@ -825,7 +831,8 @@ change lists its stages; the end state is the last stage's.
 - **From**: OR143.a (2) ("the cap and the DMA ring size … declared together in the bus/instance TOML and checked
   together by buildgen"), OR141.a (4) (e) (the ring derived and refused like `rxbuf`) (A-C review fold); register
   G6/R21, G6/R57; AC_NOTES 54 (6), (7) (lead rulings, 2026-10-05: the floor from one config flush; `dev` states
-  `rx_ring` explicitly, sized for the bench; one `TransferLimits` forwarded).
+  `rx_ring` explicitly, sized for the bench; one `TransferLimits` forwarded); AC_NOTES 55 (lead ruling, 2026-10-05:
+  `TransferLimits(payload_size, timeout, chunk_bytes, max_transfer_bytes)`).
 - **Site**: `buildgen/validate.py` (the allowed bus/instance field tables, `_check_uart_link_buses()`),
   `buildgen/codegen.py` (the `[bus.uart*]` construction line, `_build_args_uart_link`), `devices/dev.toml`
   (`[bus.uart0]`, `[bus.uart1]` and the two `uart_link` instances).
@@ -840,9 +847,11 @@ change lists its stages; the end state is the last stage's.
   today's floors (`rule="bus.uart-rx-ring"`); `max_transfer_bytes` at least one payload and at most the protocol's largest train,
   `(_CHUNKS_MAX - 1) × payload_size` (`rule="instance.uart-transfer-cap"`). The two stay separate values (stop-and-wait:
   the ring never holds a whole transfer). Generated code passes `rx_ring=` to the bus's `UART(...)` (M.GEN.005's bus line)
-  and one `limits=TransferLimits(<chunk_bytes>, <max_transfer_bytes>)` to `UARTLinkDriver(...)` (M.GEN.012's renderer;
-  `TransferLimits` added to the emitted `asy_uart_comm` import, M.SRC_NET.213 forwarding it whole), `<chunk_bytes>` the
-  constructor default read from `asy_uart_comm`'s source (`_DEFAULT_CHUNK_BYTES`; not a TOML key). `devices/dev.toml`
+  and one `limits=TransferLimits(<payload_size>, <timeout>, <chunk_bytes>, <max_transfer_bytes>)` to `UARTLinkDriver(...)`
+  (M.GEN.012's renderer; `TransferLimits` added to the emitted `asy_uart_comm` import, M.SRC_NET.213 forwarding it
+  whole), `<max_transfer_bytes>` the TOML's and the other three the defaults read from `asy_uart_comm`'s source —
+  `_DEFAULT_PAYLOAD_SIZE`, `_DEFAULT_TIMEOUT_MS` (the values `_check_uart_link_buses()` already checks the link
+  against, M.GEN.027; neither is a TOML key at HEAD or after) and `_DEFAULT_CHUNK_BYTES` (not a TOML key). `devices/dev.toml`
   declares both for its two links, each preceded by its tag: `rx_ring = 8192` (`# @tunable dev.uart_rx_ring = 8192`) on
   `[bus.uart0]` and `[bus.uart1]`, with the comment (≤ 3 lines) "# Sized for the bench's continuous-sender windows: 400
   ms of interrupts off at 115200 baud is / # 4,608 B, rounded up to a power of two; far above the protocol's own floor
@@ -858,7 +867,8 @@ change lists its stages; the end state is the last stage's.
   default). AC_NOTES 54 (6): `dev` states `rx_ring` explicitly and sizes it for the bench (115200 baud is 11,520 B/s, so
   400 ms is 4,608 B → 8,192), the build still checking it against the protocol floor; its two rings and their
   alignment padding count in Part I's ring row (M.SPEC.126), `dev` being the bench rig. (7): the driver takes the limits
-  as one object, so the renderer emits one keyword.
+  as one object, so the renderer emits one keyword; AC_NOTES 55: that object carries `payload_size` and `timeout` too,
+  so all four fields are rendered, the generated line naming the values the build checked.
 - **Unit**: U20 (after U13's `rx_ring` parameter and U17's floor and cap exist in `src/`).
 - **Depends**: M.GEN.025, M.GEN.027, M.GEN.005, M.GEN.012, M.GEN.053, M.SRC_NET.220, M.SRC_NET.221, M.SRC_NET.222;
   M.TSC.057 (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
@@ -2020,3 +2030,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F33 | — | none in this file |
 | R54 | M.GEN.008 (`ConfigFaults` comment: damaged = unparseable, non-object, refused value, repaired and listed), M.GEN.014 (field description: a damaged file is repaired at boot) | amended |
 | R54 | M.GEN.066 (floor read with `_FLASH_HOLD_MAX_MS` from source; `dev` states `rx_ring = 8192` for the bench's 400 ms continuous-sender window; the generated `limits=TransferLimits(…)`) | amended |
+| R55 | M.GEN.066 (the generated `limits=TransferLimits(<payload_size>, <timeout>, <chunk_bytes>, <max_transfer_bytes>)`: the cap from the TOML, the other three the source defaults), M.GEN.027 (U17 stage: `_check_uart_link_buses()` reads `_DEFAULT_PAYLOAD_SIZE`/`_DEFAULT_TIMEOUT_MS` from `asy_uart_comm` once the link driver drops the two parameters) | amended |

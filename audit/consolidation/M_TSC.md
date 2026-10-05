@@ -1079,7 +1079,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   absent `crc` is `"none"`), A.U17.21 (`:1255-1287` hold); A.S0930.01's `test_uart_crc_modes_match_crc_checks` with
   SRC_CORE GAP-G10's names (`asy_crc_checks`, `CRCPass`; gap pass G3 — the test had no carrier); OR141.a (4) (e),
   OR143.a (2) (A-C review fold: the ring size and receive cap rows); AC_NOTES 54 (6) (lead ruling, 2026-10-05: the
-  floor from one config flush's hold; `dev`'s 8,192 ring).
+  floor from one config flush's hold; `dev`'s 8,192 ring); AC_NOTES 55 (lead ruling, 2026-10-05: the link defaults
+  live in `asy_uart_comm`'s `DEFAULT_LIMITS`).
 - **Site**: `tests_scripts/test_buildgen_validate.py:1236-1384`, new rows.
 - **Change**: `crc = "crc8"`, `16`, `"CRC16"`, `["crc16"]` each refused naming the legal set with `(field, instance) ==
   ("crc", label)`; a `none`/`crc16` pair refused naming both labels; `crc16`/`crc16` builds; a CRC pair at
@@ -1087,7 +1088,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `test_uart_link_responder_with_no_initiator_is_rejected` (0/1) and `test_uart_link_pair_on_one_bus_is_rejected`
   (both labels, "point-to-point", `rule="bus.uart-shared"`); uart1 at 9600 against uart0 at 115200 refused naming both
   buses, equal rates built; `poll_wait_ms` 9 builds, 10 and 0 refused with `(field, instance) == ("poll_wait_ms",
-  "uart_link_init")`; a `tmp_path` `src/` copy with `UartLinkExerciser`'s `timeout` default 89,478,486 refused naming
+  "uart_link_init")`; a `tmp_path` `src/` copy whose link `timeout` default — `asy_uart_comm`'s `_DEFAULT_TIMEOUT_MS`,
+  where the build reads it once the link driver's own parameter goes (U17, M.GEN.027) — is 89,478,486 refused naming
   the ceiling, 89,478,485 built; `:1290-1299` comment "rxbuf 256, poll_wait_ms 2, poll_idle_ms 50", its refusal case
   `rxbuf = 52`; `:1301-1310` → `test_an_unstated_poll_idle_ms_is_read_from_the_driver_source`: a `tmp_path` `src/` copy
   whose `asy_uart_driver.UART` default reads `poll_idle_ms: int = 975` builds (2 × 2 + 975 + 21 = 1000) and `976` is
@@ -1112,7 +1114,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   M_GEN's check).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.01 in U20.
 - **Depends**: M.GEN.024, M.GEN.027, M.GEN.029; M.SRC_CORE.115 (module and class names); A.U13.17/A.U17.20 driver
-  constants (SRC_UART).
+  constants (SRC_UART); M.SRC_NET.220 (`_DEFAULT_TIMEOUT_MS`, U17).
 - **Blast carried by**: twin CRC boot → M.TSC.085; UART changelog entries → A.U13.17/A.S0930.01 (SRC_UART).
 - **Kind**: test
 
@@ -2933,7 +2935,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Site**: new `tests_scripts/test_timing_budget.py`.
 - **Change**: parses F.3's table between its markers and recomputes from `src/` (`module_int_const()`/`init_int_default()`,
   no import) and `DEVICE_NAMES`' TOMLs: `hold.scd30_command`, `hold.scd30_snapshot`, `hold.i2c_probe`,
-  `stall.i2c_transfer` (largest I2C `timeout`, ≤ its Part N bound), `con.uart_reply`, `con.led_frame`,
+  `stall.i2c_transfer` (largest I2C `timeout`, ≤ its Part N bound), `con.uart_reply` (the link `timeout` read from
+  `asy_uart_comm`'s `_DEFAULT_TIMEOUT_MS`, where `DEFAULT_LIMITS` takes it from U17), `con.led_frame`,
   `feed.supervisor`'s terms (`_TASK_CHECK_TIME` × 1000 and ⌈(`_TASK_FAIL_MAX` + 1) / `_TASK_FAIL_INCREMENT`⌉), and
   `_RESET_DELAY × 1000 < 8000`; each equals the row's Value; a value ≤ its consumer's tolerance unless the row says
   "crossed"; every Part N ID exists (A.U8.02's reader); one bite. Constants read from `asy_system_service.py`.
@@ -4971,3 +4974,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F33 | — | none in this file |
 | R54 | M.TSC.111 (persisting-wrapper resolution, so UART `_resync()`'s `self._err()` pair is seen; U15 and U16 stages for the allow-list edits) | amended |
 | R54 | M.TSC.057 (the ring floor row: one config flush's hold read from source as `_FLASH_HOLD_MAX_MS`, the peer's re-initiations `4 × timeout` apart; `dev`'s 8,192 built) | amended |
+| R55 | M.TSC.057 (the timeout-ceiling source-copy case edits `asy_uart_comm`'s `_DEFAULT_TIMEOUT_MS`, where the build reads the link default from U17), M.TSC.144 (`con.uart_reply` recomputed from `_DEFAULT_TIMEOUT_MS`) | amended |

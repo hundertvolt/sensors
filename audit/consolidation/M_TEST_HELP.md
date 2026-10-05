@@ -612,6 +612,33 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   (`tests/test_asy_uart_link_driver.py`), M.TWIN.158 (`tests/test_digital_twin_uart_link.py`).
 - **Kind**: test
 
+### M.TEST_HELP.071 The harness builds one `TransferLimits` from keyword overrides
+- **From**: AC_NOTES 55 (lead ruling, 2026-10-05: `UARTComm` takes `payload_size`, `timeout`, `chunk_bytes` and
+  `max_transfer_bytes` as one `TransferLimits`; every construction passes one).
+- **Site**: `tests/_uart_comm_harness.py` (new function after `copied_out()`; `Pair.__init__`'s two `UART_Comm(…)`
+  constructions, `:71-82`).
+- **Change**: `from asy_uart_comm import DEFAULT_LIMITS, TransferLimits` joins the harness's imports; new `def
+  transfer_limits(payload_size: int = PAYLOAD_SIZE, timeout: int = TIMEOUT_MS, chunk_bytes: int =
+  DEFAULT_LIMITS.chunk_bytes, max_transfer_bytes: int = DEFAULT_LIMITS.max_transfer_bytes) -> TransferLimits: return
+  TransferLimits(payload_size, timeout, chunk_bytes, max_transfer_bytes)`, comment (≤ 3 lines) "# UARTComm takes its
+  limits as one TransferLimits: a test names only the fields it changes, the rest / # being this harness's frame and
+  timeout and the module's receive defaults.". `Pair.__init__` keeps its `payload_size`/`timeout` keywords (its callers
+  and `build_pair()`'s unchanged) and gains `limits: "TransferLimits | None" = None`: both ends get `limits=limits if
+  limits is not None else transfer_limits(payload_size=payload_size, timeout=timeout)` in place of the two keywords —
+  a test that needs other receive limits (a small cap, a small `chunk_bytes`) passes one `transfer_limits(…)`, and
+  then sets the frame and timeout through it, not through the two keywords.
+- **Resolved**: one helper in the harness every UART test file already imports, so no test restates the module's
+  default receive limits; `Pair`'s two keywords stay because roughly sixty `build_pair(…)`/`Pair(…)` sites pass them
+  (M.TEST_UNIT.153) and grouping them would touch every one for no behaviour change. M.TEST_HELP.023's U24 keyword list
+  (the `UARTComm` keywords beyond those `Pair` sets) counts `limits` among those `Pair` sets.
+- **Unit**: U17.
+- **Depends**: M.SRC_NET.220 (`TransferLimits`, `DEFAULT_LIMITS`, U17).
+- **Blast carried by**: the direct constructions, each with a U17 stage → M.TEST_UNIT.154 (`tests/test_asy_uart_comm.py`'s
+  `make_comm()` and direct `UARTComm(…)` calls), M.TEST_UNIT.317 (`tests/test_uart_comm_hazard.py`'s direct
+  constructions), M.TEST_UNIT.178 (`tests/test_asy_uart_link_driver.py`'s local `Pair`), M.TEST_UNIT.345 (the cap and
+  chunk cases' own limits); the twin files build through `Pair` (M.TWIN.154/.156) and the generated module — no change.
+- **Kind**: test
+
 ## tests/_uart_link_contract.py
 
 ### M.TEST_HELP.025 Link contract reads readiness by mask, checks clamped readline
@@ -2051,3 +2078,4 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F33 | — | none in this file |
 | R54 | M.TEST_HELP.040 (scenario 9: the boot repairs the corrupt file, still listed), M.TEST_HELP.041 (a missing or unknown key alone is never listed) | amended |
 | R54 | M.TEST_HELP.070 (new: `copied_out()`, the copy-out helper every test comparing a module-allocated UART result uses; U17) | added |
+| R55 | M.TEST_HELP.071 (new: `transfer_limits()`, one `TransferLimits` from keyword overrides over the harness's frame/timeout and the module's receive defaults; `Pair` keeps its two keywords and gains `limits=`; U17) | added |

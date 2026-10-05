@@ -352,7 +352,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
 - **Kind**: doc
 
 ### M.DOCS.020 A constants table the check reads
-- **From**: A.U17.11 (1); OR143.a (1)-(2), OR141.a (4) (the constants the fold adds) (A-C review fold)
+- **From**: A.U17.11 (1); OR143.a (1)-(2), OR141.a (4) (the constants the fold adds) (A-C review fold); AC_NOTES 55
+  (lead ruling, 2026-10-05: the two named defaults of `DEFAULT_LIMITS`)
 - **Site**: new section "## Constants the check reads" after "## How to use this file"
 - **Change**: one sentence "Every integer `const()` of `src/asy_uart_comm.py` except the log codes, with its value, its
   class and the entry that last changed it; `tests_scripts/test_uart_changelog.py` fails when this table and the module
@@ -368,7 +369,9 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   `const()` the receive chunking, the receive cap or the ring floor adds to the module (OR143.a, OR141.a (4)) joins the
   table in its landing commit: a default or bound that decides which train is accepted (the `max_transfer_bytes`
   default) is Class A, a memory-only one (the `chunk_bytes` default, a ring-floor term) Class B; `Last entry` names the
-  row that introduced it (M.DOCS.022 A15, M.DOCS.024 B65-B69).
+  row that introduced it (M.DOCS.022 A15, M.DOCS.024 B65-B70). `_DEFAULT_PAYLOAD_SIZE` (48) and `_DEFAULT_TIMEOUT_MS`
+  (1000), which name the constructor's former signature defaults when `DEFAULT_LIMITS` groups them (AC_NOTES 55), are
+  Class A (a frame size and a recovery timing), `Last entry` B70.
 - **Resolved**: —
 - **Unit**: U17 (after A.U17.20's two constants; every constant-changing action — A.U2.20, A.U3.02, A.U10.29, A.U17.20 —
   lands at or before U17)
@@ -416,8 +419,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   `4 × timeout`) could transmit while the responder slept and fail again | That the C responder does not back off after a
   declined or aborted command beyond the initiator's retry window | applied-python |" and (A-C review fold) "| A15 |
   Refuse, before anything is allocated, a train whose declared size — its `CHUNKS`, or the size the local caller
-  expects — exceeds the receiver's `max_transfer_bytes` (a constructor argument with a default, declared per link in the
-  device TOML): the ACK is withheld, as for any rejected frame, and the refusal is logged once | A peer could declare up
+  expects — exceeds the receiver's `max_transfer_bytes` (a field of the constructor's `TransferLimits` with a default,
+  declared per link in the device TOML): the ACK is withheld, as for any rejected frame, and the refusal is logged once | A peer could declare up
   to 64,770 bytes at `payload_size = 255` and the receiver allocated it, so a large or hostile transmission could flood
   the heap (owner, 2026-10-05) | That the C sender never declares more than the receiver's cap, and whether the C
   receiver refuses the same way. A receiver-only tightening: a conforming peer within the cap is unaffected |
@@ -454,7 +457,7 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
 - **Kind**: doc
 
 ### M.DOCS.024 New Class B rows B33-B64, in landing order
-- **From**: GAPS_G2 H-6 (the attributes G2 made private, into B39); A.U2.26 (+A.U2.20), A.U3.13 (+A.U3.02, A.U3.08; gap M_SRC_NET 6: `_note_valid_frame()`), A.U5.12 (+A.U5.02),
+- **From**: AC_NOTES 55 (lead ruling, 2026-10-05: the `TransferLimits` grouping, B70, "no C impact"); GAPS_G2 H-6 (the attributes G2 made private, into B39); A.U2.26 (+A.U2.20), A.U3.13 (+A.U3.02, A.U3.08; gap M_SRC_NET 6: `_note_valid_frame()`), A.U5.12 (+A.U5.02),
   A.U10.04, A.U10.18, A.U10.29, A.U10.35 (+`set_callback`, M_SRC_NET gap 6), A.U10.37 + A.U10.38, A.U10.44 + A.U32.06,
   A.U10.45, A.U11.31, A.U12.02, A.U12.03, A.U12.16, A.U13.12, A.U13.13, A.U13.14, A.U13.17, A.U13.18, A.U16.05, A.U17.01,
   A.U17.06, A.U17.10, A.U17.14, A.U17.20, A.U17.22, A.U17.26, A.U17.28, A.S0930.07, A.U24.67, A.U30.19, A.U35.44, A.U17.30
@@ -547,8 +550,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
     (`report_if_fatal()`) | No wire change".
   - **B64** (U35): "`CRCBase._crc()` takes the polynomial its caller has already checked instead of re-testing pass mode,
     and `add()`/`add_into()` no longer wrap `pack_into` in an unreachable `ValueError` catch | No emitted byte changes".
-  - (A-C review fold) Five rows, numbered at landing in landing order with the rows above (B65/B66 after B51, B67/B68
-    after B60, B69 after B61), each "no C impact":
+  - (A-C review fold) Six rows, numbered at landing in landing order with the rows above (B65/B66 after B51, B67/B68
+    and B70 after B60, B69 after B61), each "no C impact":
   - **B65** (U13): "Each link receives through a DMA ring: after every init the driver clears the UART's RX and
     RX-timeout interrupt masks and enables its RX DMA request; a DMA channel paced by that request fills a
     power-of-two ring held for the program's life, a chained channel reloads its count, and reads copy from the ring by
@@ -562,11 +565,16 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
     unacknowledged frame plus one per re-initiation its timeout, drain and hold-off allow), rounded up to a power of
     two — with the code a too-small `rxbuf` had, and resyncs on a lap like any receive overrun | A local refusal and
     the existing recovery; no byte, acceptance rule or timing on the wire changes".
-  - **B68** (U17): "A train with no caller destination is assembled in pieces of at most `chunk_bytes` (a constructor
-    argument with a reasoned default) instead of one peer-sized allocation, and the caught `MemoryError` at those
+  - **B68** (U17): "A train with no caller destination is assembled in pieces of at most `chunk_bytes` (a `TransferLimits`
+    field with a reasoned default) instead of one peer-sized allocation, and the caught `MemoryError` at those
     allocations goes | Memory only: the bytes acknowledged and delivered are identical".
   - **B69** (U20): "Each `uart_link` end declares its receive-ring size and `max_transfer_bytes` in the device TOML, and
     the build checks the two together | Wiring only; the cap's refusal is A15".
+  - **B70** (U17; AC_NOTES 55, lead ruling, 2026-10-05): "Constructor: `payload_size`, `timeout`, `chunk_bytes` and
+    `max_transfer_bytes` travel as one `TransferLimits` (`limits`, defaulting to the module's `DEFAULT_LIMITS`: 48,
+    1000 and the two receive defaults); `UARTLinkDriver` takes and forwards the same object, its own `payload_size`/
+    `timeout` parameters gone | Python API only, no C impact: the values and their defaults are unchanged and stay
+    agreed out of band".
 - **Resolved**: A.U32.06's own row ("`start_listen`, `start_exercise`") and A.U10.44's are one row with the U10 names
   (M.SRC_NET.170, M_SRC_NET gap 6). A.U10.35's row adds `set_callback` (M.SRC_NET.155 makes it private; gap 6). A.U3.13's row
   adds the synchronous `_note_valid_frame()` (M.SRC_NET.164; gap 6 — no constituent carried it). A.U10.37/A.U10.38's two
@@ -580,7 +588,7 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   A.U17.21/A.U20.18 (build-side refusal, no module change), A.U35.47/A.U0.49/A.U8.06 (comments only), A.U35.48 (no UART
   path changed by its merge).
 - **Unit**: per row as listed (U2 … U35); the merged change is complete at U35.
-- **Depends**: each row's code change (M.SRC_NET.150-.216, M.SRC_CORE.115-.122; for B65-B69 M.SRC_NET.221, M.SRC_NET.222,
+- **Depends**: each row's code change (M.SRC_NET.150-.216, M.SRC_CORE.115-.122; for B65-B70 M.SRC_NET.221, M.SRC_NET.222,
   M.SRC_NET.202, M.SRC_NET.220, M.GEN.066); M.DOCS.019 (Status column from U17)
 - **Blast carried by**: order and status → M.TSC.152; A.U37.04 (4)'s close check (every commit touching
   `src/asy_uart_comm.py` has its row) → audit record
@@ -1670,7 +1678,7 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
 - **Depends**: —
 - **Blast carried by**: SPEC J.8 and I.2's UART row no longer cite an owner question (M.SPEC.138, M.SPEC.126, as the
   fold amends them); BACKLOG's UART-findings sub-bullet (M.DOCS.065); CLAUDE.md decision-records rule (4) (M.DOCS.091);
-  `UART_C_PORT_CHANGELOG.md` rows for the chunking and the cap (M.DOCS.022 A15, M.DOCS.024 B65-B69)
+  `UART_C_PORT_CHANGELOG.md` rows for the chunking and the cap (M.DOCS.022 A15, M.DOCS.024 B65-B70)
 - **Kind**: doc
 
 ## CLAUDE.md
@@ -3041,6 +3049,7 @@ file's (M_HW_BENCH, M_TWIN): their F01/F04/F13/F16/F20 wording is those agents'.
 | F33 | — | none in this file |
 | R54 | M.DOCS.026 (Config Faults item: unreadable never overwritten, damaged repaired and listed), M.DOCS.082 (write list gains the damaged-file repair; the never-overwritten sentence narrowed to unreadable files) | amended |
 | R54 | M.DOCS.024 (B67: the floor from one config flush's hold at the peer's stop-and-wait rate; the `rxbuf` refusal code kept) | amended |
+| R55 | M.DOCS.024 (new Class B row B70, U17: the four limits as one `TransferLimits`, the link driver forwarding it, "no C impact"; B68's `chunk_bytes` a `TransferLimits` field; six fold rows), M.DOCS.020 (`_DEFAULT_PAYLOAD_SIZE`/`_DEFAULT_TIMEOUT_MS` Class A, last entry B70), M.DOCS.022 (A15's `max_transfer_bytes` a `TransferLimits` field) | amended |
 
 **F21 map** — where this file writes each answered decision's tag. "explicit": written in the change; "conv.": the tag
 sits in an action's text the change quotes and takes the convention's form at landing; "—": no tag written here.

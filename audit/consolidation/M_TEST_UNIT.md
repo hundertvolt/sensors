@@ -3500,9 +3500,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (`:57, 82, 108, 145, 156, 160, 168, 177, 183`). `logger=own.pr` (`:207`) stays. `pair.responder.get_callback =
   reentrant` → `pair.responder._get_callback = reentrant`; `pair.responder.message_callback is None` →
   `._message_callback is None`; `pair.responder.get_callback = None` → `._get_callback = None`.
+  U17 stage (AC_NOTES 55, lead ruling, 2026-10-05: the four limits are one `TransferLimits`): `make_comm()` maps its
+  `payload_size`/`timeout` keywords (and a test's `chunk_bytes`/`max_transfer_bytes`) into one
+  `limits=transfer_limits(…)` (M.TEST_HELP.071), so its callers are unchanged; every direct `UARTComm(…,
+  payload_size=p, timeout=t, …)` — `:110-111`, `:123-124`, `:148`, `:158`, `:162`, `:170`, `:180`, `:185` and the BSEC
+  demonstration's `:2165` — → `UARTComm(…, limits=transfer_limits(payload_size=p, timeout=t), …)`. The readers of
+  `_payload_size`/`_timeout` (`:96`, `:1414`, `:2173`) are unchanged: `__init__` unpacks the fields.
 - **Resolved**: —
-- **Unit**: U5 (stages U10 names, U13 idle rate).
-- **Depends**: M.SRC_NET.154, .155.
+- **Unit**: U5 (stages U10 names, U13 idle rate, U17 one `TransferLimits`).
+- **Depends**: M.SRC_NET.154, .155; M.SRC_NET.220, M.TEST_HELP.071 (U17 stage).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3748,7 +3754,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   correctly, hammering with repeated maximum-size and over-cap trains), FOLD_BRIEF F25/F27 (U17) — A-C review fold;
   AC_NOTES 54 (3) (a module-allocated result compared through the copy-out helper), (4) (an awaited path's
   "allocates nothing" is no retained growth against an ambient control), (6) (the ring floor from one config flush),
-  (7) (`copy_into()` refuses a smaller destination) — lead rulings, 2026-10-05.
+  (7) (`copy_into()` refuses a smaller destination) — lead rulings, 2026-10-05; AC_NOTES 55 (lead ruling, 2026-10-05:
+  the receive limits are `TransferLimits` fields).
 - **Site**: new sections in `tests/test_asy_uart_comm.py`; the file's existing tests that read a module-allocated
   result (g); the piece primitive's cases in the test file of the module that holds it (decided with the product
   change, M.SRC_CORE.134).
@@ -3788,15 +3795,18 @@ session lock names, and the fake's rp2 probe/scan semantics.
   M.SRC_NET.220) and becomes `test_an_answer_that_exactly_fills_its_train_arrives_intact` (`copied_out(answer) ==
   payload`). Return and parameter annotations naming such a result `bytearray | None` (`:1103`, `:1155`, `:1193`,
   `:1519`, `:1543`, `:1724`) → `PieceBuffer | None`. `len()` and `is None` checks (`:1062-1064`, `:2142-2143`) stay.
-  The BSEC demonstration's lines are M.TEST_UNIT.167's U17 stage. Tunables tagged per the file's convention.
+  The BSEC demonstration's lines are M.TEST_UNIT.167's U17 stage. Tunables tagged per the file's convention. Every
+  instance these cases build with a non-default `chunk_bytes` or `max_transfer_bytes` takes them through one
+  `transfer_limits(chunk_bytes=…, max_transfer_bytes=…)` (M.TEST_HELP.071; `make_comm(…)` or `Pair(limits=…)`), the
+  constructor having no separate keyword for either (AC_NOTES 55).
 - **Resolved**: the four starved-destination tests (`:1825-1910`) retire with the caught-`MemoryError` sites (M.TEST_UNIT
   .164); their goal — a peer-sized allocation never lands unguarded mid-transfer — is met by refusing before allocation
   and capping each piece, which (b)-(d) prove.
 - **Unit**: U17; stage U24: `src_const()` and the shared pair harness replace the file's local mirror and runner (as
   M.TEST_UNIT.153's harness stage does).
 - **Depends**: M.SRC_NET.222 (the ring floor and lap handling in `asy_uart_comm.py`), M.SRC_NET.220, M.SRC_CORE.134
-  (`chunk_bytes`, `max_transfer_bytes`, the piece primitive); M.TEST_UNIT.344; M.TEST_HELP.070 (`copied_out()`, U17);
-  M.TEST_HELP.023, .044 (U24 stage).
+  (`chunk_bytes`, `max_transfer_bytes`, the piece primitive); M.TEST_UNIT.344; M.TEST_HELP.070 (`copied_out()`, U17),
+  M.TEST_HELP.071 (`transfer_limits()`, U17); M.TEST_HELP.023, .044 (U24 stage).
 - **Blast carried by**: the C-port changelog rows (Class A refusal, "no C impact" ring) → M.SRC_NET.220, M.SRC_NET.222; the concurrent-load and bench maximum-size transfers → M.TWIN.171, C.
 - **Kind**: test
 
@@ -4039,11 +4049,14 @@ session lock names, and the fake's rp2 probe/scan semantics.
   U17 stage (AC_NOTES 54 (3)): the banner and echo answers (`:195`, `:216`) arrive as `PieceBuffer`s and are compared
   through `copied_out()` (M.TEST_HELP.070, imported from `_uart_comm_harness`): `copied_out(answer) ==
   b"dev-uart-crossover"`, `copied_out(answer) == b"hello"`; the echo test thereby also covers the responder answering
-  from its stored `PieceBuffer` (M.SRC_NET.213).
+  from its stored `PieceBuffer` (M.SRC_NET.213). The same stage (AC_NOTES 55): the link driver takes one `limits`
+  (M.SRC_NET.213), so the local `Pair` keeps its `payload_size`/`timeout` keywords and passes each `UARTLinkDriver(…)`
+  `limits=transfer_limits(payload_size=payload_size, timeout=timeout)` (M.TEST_HELP.071, imported from
+  `_uart_comm_harness`) in place of the two keywords (`:46-47`).
 - **Resolved**: A.U8C.19 imports `_LISTENER_DRAIN_S`/`_RUN_LIMIT_S`; M.TEST_HELP.024 published them without the
   underscore (D5 there), so this file imports the public names (GAP-T1).
-- **Unit**: U24 (stages U8C, U10, U13, U17 copy-out; A.S0930.03 in U24).
-- **Depends**: M.TEST_HELP.023, .024, .043; M.SRC_NET.211, .213; M.TEST_HELP.070 (U17 stage).
+- **Unit**: U24 (stages U8C, U10, U13, U17 copy-out and `limits`; A.S0930.03 in U24).
+- **Depends**: M.TEST_HELP.023, .024, .043; M.SRC_NET.211, .213; M.TEST_HELP.070, M.TEST_HELP.071 (U17 stage).
 - **Blast carried by**: Part N rows → A.U8.01 (SPEC).
 - **Kind**: test
 
@@ -4098,12 +4111,13 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **From**: A.U17.07 (`:143-245` hold; new L1).
 - **Site**: new test after `:245`.
 - **Change**: `test_a_refused_construction_ends_every_task_for_both_roles`: for each role, an exerciser built with
-  `payload_size=0` on a `LinkPoller` bus (as `Pair` builds it) — `setup()` returns `False`, `initialized is False`, every
+  `limits=transfer_limits(payload_size=0)` (the link driver's one `TransferLimits`, AC_NOTES 55; M.TEST_HELP.071) on a
+  `LinkPoller` bus (as `Pair` builds it) — `setup()` returns `False`, `initialized is False`, every
   task its starters return is done within 200 ms (`run(…, RUN_LIMIT_S)` around a bounded wait), and its history holds
   `code("E", "UART_PAYLOAD_SIZE")` and no `code("E", "NOT_INIT")`.
 - **Resolved**: —
 - **Unit**: U17.
-- **Depends**: M.SRC_NET.214, .215.
+- **Depends**: M.SRC_NET.214, .215; M.SRC_NET.213 (`limits`), M.TEST_HELP.071.
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -7043,9 +7057,15 @@ session lock names, and the fake's rp2 probe/scan semantics.
   Part J.6)".
   The reset-peer check creates each attempt's listener inside `one()` (no task created at synchronous scope, no
   default-argument binding), `one() -> "bytearray | None"`.
+  U17 stage (AC_NOTES 55, lead ruling, 2026-10-05): the four direct constructions pass one `TransferLimits` —
+  `_mismatched_responder()`, the lost-ACK responder and `reborn` `limits=transfer_limits(payload_size=…,
+  timeout=pair.responder._timeout)`, the construction-refusal check's `UARTComm(too_small, ROLE_INITIATOR,
+  limits=transfer_limits(payload_size=255, timeout=_TIMEOUT_MS), name="UART_TINY")` (M.TEST_HELP.071, imported with
+  the harness names) — in place of the two keywords; `hazard_pair()` builds through `Pair`, unchanged.
 - **Resolved**: —
-- **Unit**: U5 (stages U13 idle rate, U2 code, U17 ring floor, U36 label).
-- **Depends**: M.SRC_NET.154, .155, .156; M.SRC_NET (driver `poll_idle_ms = 50`, A.U13.17).
+- **Unit**: U5 (stages U13 idle rate, U2 code, U17 ring floor and `limits`, U36 label).
+- **Depends**: M.SRC_NET.154, .155, .156; M.SRC_NET (driver `poll_idle_ms = 50`, A.U13.17); M.SRC_NET.220,
+  M.TEST_HELP.071 (U17 stage).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -8433,3 +8453,4 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | R54 | M.TEST_UNIT.253 (damaged files rewritten once and still faulted; missing/unknown key repaired, not faulted; Resolved settled), .309 (`get_config_faults()` cases), .343 (plain calls to the window counter), .332 (U19 stage: `uptime_s=`/`static=` by keyword) | amended |
 | R54 | M.TEST_UNIT.345 ((c) refusal: no destination built and no retained growth against an ambient control; (e) `copy_into()` returns `False` into a smaller destination; (f) the floor holds a config flush, below it refused by `UART_RXBUF`; (g) the file's module-allocated results compared through `copied_out()`), .344 (`test_a_read_retains_nothing`: collect-bracketed, against an ambient control awaiting a no-op coroutine as often), .167, .315, .178 (U17 copy-out stages) | amended |
 | R54 | M.TEST_UNIT.155 (the floor test renamed `test_the_ring_floor_covers_a_config_flush`: one config flush's hold, the peer's re-initiations `4 × timeout` apart; refused by `UART_RXBUF`) | amended |
+| R55 | M.TEST_UNIT.154 (U17 stage: `make_comm()` and every direct `UARTComm(…)` pass one `limits=transfer_limits(…)`), .178 (U17: the local `Pair` passes each `UARTLinkDriver` one `limits=`), .182 (the refused exerciser built with `limits=transfer_limits(payload_size=0)`), .317 (U17 stage: the four direct constructions pass one `TransferLimits`), .345 (non-default `chunk_bytes`/`max_transfer_bytes` through `transfer_limits()`) | amended |

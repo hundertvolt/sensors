@@ -676,6 +676,10 @@ for _k, _d in _S05.items():
 BASELINE = ["A.U0.02", "A.U0.03", "A.U0.04", "A.U0.06"]
 # Change-level cycles settled at step level as one co-landing commit (M-file ledger notes record each).
 COLAND = [("M.TWIN.019", "M.TWIN.033"), ("M.DOCS.008", "M.DOCS.011")]
+# AC_NOTES 55: `limits` replaces payload_size/timeout in one U17 commit with every caller it breaks.
+COLAND += [("M.SRC_NET.220", x) for x in ("M.SRC_NET.155", "M.SRC_NET.213", "M.TEST_HELP.071", "M.TEST_UNIT.154",
+           "M.TEST_UNIT.178", "M.TEST_UNIT.317", "M.HW_DEV.046", "M.HW_DEV.047", "M.HW_DEV.050", "M.HW_DEV.051",
+           "M.GEN.027")]
 # Changes that create nothing (their Unit slot reads "none", A-C2; "— (no step)", AC3_R R-03): no step.
 NOSTEP = {"M.TSC.183", "M.TSC.225", "M.SRC_CORE.108"}
 # Changes whose Unit slot lands every row with its own action ("per row as listed", "each adding action's own unit").
@@ -1245,6 +1249,11 @@ def render_md(wo, R):
       "lands and the probe co-land in U13; the chunking and the transfer cap land in U17; the tick-offset build option "
       "lands in U27. Eight U2 renumbering parts that now name a U3 log-split action are deferred into U3 with it "
       "(M.SRC_NET.047/.050/.086, M.SRC_SENS.035/.043/.044/.063/.074).")
+    w("- The post-fold end-state check (AC_NOTES 54-55) settled: the capped readline assembles pieces and logs 93 "
+      "through the caller (U17); config faults list unreadable, unparseable, non-object and refused-value files, a "
+      "missing or unknown key being a repair only; piece results compared through a copy-out helper; the ring floor "
+      "covers one config flush and dev declares 8,192; `TransferLimits` carries the wire parameters, so `UARTComm` "
+      "keeps seven parameters, and that change co-lands in U17 with every caller it breaks (one commit, section 7).")
     w("")
     w("## 4. Test schedule (LEAD/R34, OR134.a)")
     w("")

@@ -2487,21 +2487,27 @@ annotation-only change carries none, per its constituent. No merged change here 
   M.SRC_NET.156 and the transfer paths); the rest (`initialized`, `_busy`, `_in_resync`, `_holdoff_*`, `_valid_frames`,
   `_blind_resyncs`, `_drain_bound_hit`, `_cancel_unacked_seen`, `_init_errno`, the re-check comment, backoff fields,
   construction print) unchanged. 8 parameters (A.U5.17 `max-args = 8`), ending `…, log, logger` (A.U5.18's tail probe;
-  `logger` recorded by A.U5.12). Fold stage U17 (A-C review): the receive limits `chunk_bytes`/`max_transfer_bytes` join
-  the signature as M.SRC_NET.220 states.
+  `logger` recorded by A.U5.12). Fold stage U17 (A-C review; AC_NOTES 55, lead ruling, 2026-10-05): `payload_size` and
+  `timeout` leave the signature for one `limits: TransferLimits = DEFAULT_LIMITS` in their place, the receive limits
+  `chunk_bytes`/`max_transfer_bytes` its other two fields — `(uart, role, limits, callbacks, name, log, logger)`, seven
+  parameters — made in M.SRC_NET.220's commit, as `.220` states; `__init__` unpacks the four fields into `self._payload_size`, `self._timeout`,
+  `self._chunk_bytes`, `self._max_transfer_bytes`, so every reader above keeps reading the same attributes. From U5 to
+  U17 the eight-parameter signature above stands.
 - **Resolved**: A.U5.12 unpacks into "the existing attributes `get_callback`/`set_callback`/`message_callback`" (U5);
   A.U10.35 (U10) privatises two of them from S09's list, which omits `set_callback` only because no test reads it (grep:
   no reader outside the module) — G10/R07 "private by default" and D.10 (one shape within a class) make all three
   private (agent, adherence finding; OR2.c list).
 - **Unit**: U17 (A.U17.13's `_discarded_seen`). Staged: U3 (episode state out), U5 (signature, unpack), U10 (class name,
-  private names, unquoting), U17 (`_discarded_seen`).
+  private names, unquoting), U17 (`_discarded_seen`; `limits` replaces `payload_size`/`timeout`, with M.SRC_NET.220).
 - **Depends**: M.SRC_NET.154, A.U5.01 (`LogConfig`), A.U3.01 (the central newest-entry rule that replaces the episode
   state)
 - **Blast carried by**: `UARTLinkDriver` construction → M.SRC_NET.213; tests (`tests/_uart_comm_harness.py:71-80`, 12
   `UART_Comm(` calls, 88 callback keywords, `make_comm()`, `test_uart_comm_hazard.py:789, 808, 1115, 1171`, readers of
   `get_callback`/`message_callback`/`frame_size`/`set_callback`) → A.U5.12, A.U10.35 (TEST_UNIT, TEST_HELP); UART device
   scripts → A.U5.12 (HW_DEV); SPEC J.9 constructor contract → A.U5.12 (SPEC); UART changelog Class B (constructor
-  objects; names; private attributes incl. `set_callback` — see Gaps) → A.U5.12, A.U10.38, A.U10.35 (DOCS)
+  objects; names; private attributes incl. `set_callback` — see Gaps) → A.U5.12, A.U10.38, A.U10.35 (DOCS); the U17
+  `limits` form at every construction, buildgen's source read of the two defaults and the B70 changelog row → M.SRC_NET.220
+  (its Blast)
 - **Kind**: code
 
 ### M.SRC_NET.156 Construction checks: codec size, timeout ceiling, poll range
@@ -2836,19 +2842,35 @@ annotation-only change carries none, per its constituent. No merged change here 
 
 ### M.SRC_NET.220 Receive limits: trains without a caller's buffer arrive in pieces; an oversize train is refused
 - **From**: OR143.a (1)-(4) (A-C review fold); register G6/R21; AC_NOTES 54 (3), (7) (lead rulings, 2026-10-05: the
-  `PieceBuffer` result compared in tests through a copy-out helper; one `TransferLimits` forwarded by the link driver).
+  `PieceBuffer` result compared in tests through a copy-out helper; one `TransferLimits` forwarded by the link driver);
+  AC_NOTES 55 (lead ruling, 2026-10-05: `payload_size` and `timeout` join `TransferLimits`; a module `DEFAULT_LIMITS`;
+  `UARTComm` takes seven parameters).
 - **Site**: `src/asy_uart_comm.py` — the constants block, `UARTComm.__init__()`, `_dest_size()`, `_get_unlocked()`,
   `_accept_set()`, `uart_get()`, `_recv_train()`.
 - **Change**: constants `_DEFAULT_CHUNK_BYTES = const(256)` with `# @tunable uart.chunk_bytes = 256` ("# the
   webserver's piece size (Part I.3): the largest receive allocation") and `_DEFAULT_MAX_TRANSFER_BYTES = const(<v>)`
   with `# @tunable uart.max_transfer_bytes = <v>` (the default's value and basis — Part I's heap budget and the largest
   train the dev link exercises — decided at execution, recorded with the tag). Constructor: `chunk_bytes` and
-  `max_transfer_bytes` with those defaults (OR143.a (1)-(2)); with them the signature passes `max-args = 8`, a ceiling
-  that only goes down (A.U5.17), so they travel as one `TransferLimits(chunk_bytes, max_transfer_bytes)` namedtuple (the
-  `ServingLimits` precedent, which carries the webserver's `chunk_bytes`) — how that ninth parameter fits (folding
-  `payload_size`/`timeout` into the same object, or a reasoned per-file exemption as `asy_uart_driver.py` has) is decided
-  at execution, with its reason recorded; refused at construction like the other limits when `chunk_bytes < 1` or
-  `max_transfer_bytes < payload_size` (`_ERR_BAD_ARG`). Cap: a train whose declared size — `(CHUNKS - 1) × payload_size`
+  `max_transfer_bytes` with those defaults (OR143.a (1)-(2)). Added beside M.SRC_NET.155's eight parameters they would
+  pass `max-args = 8`, a ceiling that only goes down (A.U5.17), and a per-file PLR0913 exemption is kept for signatures
+  mirroring an external API (M.TOOL.029), so `payload_size` and `timeout` join them in one module-level namedtuple (the
+  `ServingLimits` precedent, which carries the webserver's `chunk_bytes`): `TransferLimits = namedtuple("TransferLimits",
+  ("payload_size", "timeout", "chunk_bytes", "max_transfer_bytes"))`; new constants `_DEFAULT_PAYLOAD_SIZE = const(48)`
+  and `_DEFAULT_TIMEOUT_MS = const(1000)` (HEAD's signature defaults, untagged: agreed out of band with the peer, not
+  tunables); `DEFAULT_LIMITS = TransferLimits(_DEFAULT_PAYLOAD_SIZE, _DEFAULT_TIMEOUT_MS, _DEFAULT_CHUNK_BYTES,
+  _DEFAULT_MAX_TRANSFER_BYTES)`, public (the link driver, the generated module and the tests import both names), with
+  the comment "# One link's limits: payload_size and timeout are agreed out of band with the peer (Part J.6); / #
+  chunk_bytes and max_transfer_bytes bound what a receive may allocate (Part J.8).". This stage replaces the
+  `payload_size`/`timeout` pair of M.SRC_NET.155's signature: `def __init__(self, uart: "UART | None", role: str,
+  limits: TransferLimits = DEFAULT_LIMITS, callbacks: ResponderCallbacks | None = None, name: str = _NAME, log:
+  "LogConfig" = DEFAULT_LOG, logger: PrintLogHistory | None = None) -> None:` — seven parameters; should no other
+  signature in scope still take eight, the `max-args` ceiling drops to the new measured maximum in the same commit
+  (M.TOOL.029's rule). `__init__` unpacks by field — `self._payload_size = limits.payload_size`, `self._timeout =
+  limits.timeout`, `self._chunk_bytes = limits.chunk_bytes`, `self._max_transfer_bytes = limits.max_transfer_bytes` —
+  so every reader of `_payload_size`/`_timeout` (`_validate_config()`, the frame size, the deadlines) is unchanged and
+  a field of the wrong type is still refused by its own check, never raised. Grouping changes no byte on the wire
+  (Python-internal; Class B row B70, "no C impact", M.DOCS.024). Refused at construction like the other limits when
+  `chunk_bytes < 1` or `max_transfer_bytes < payload_size` (`_ERR_BAD_ARG`). Cap: a train whose declared size — `(CHUNKS - 1) × payload_size`
   from the first frame, or a caller's `exp_size` — exceeds `max_transfer_bytes` is refused before anything is allocated,
   through J's existing rejection (the ACK withheld), and logged once (`err_s(…, errno=_ERR_UART_TRANSFER_CAP)`), so a
   large or hostile transmission cannot flood the heap; `uart_get()`/`uart_set*()` refuse an `exp_size`/total over the cap
@@ -2868,15 +2890,31 @@ annotation-only change carries none, per its constituent. No merged change here 
   the ring never holds a whole transfer) and are declared and checked together (M.GEN.066). The `PieceBuffer` result
   changes what `uart_get()`, a `set_callback`'s `ListenResult` and `_message_callback()` receive; the link driver's two
   consumers follow (M.SRC_NET.213/.214). Refusing an oversize train tightens receiver validation only: a Class A
-  changelog entry ("must be mirrored in C"), the kind CLAUDE.md prefers.
+  changelog entry ("must be mirrored in C"), the kind CLAUDE.md prefers. AC_NOTES 55 settles the ninth parameter: the
+  two wire parameters join the receive limits in `TransferLimits` rather than taking an exemption; they stay fixed by
+  out-of-band agreement (CLAUDE.md), so grouping them is Python-internal. Before U17 the eight-parameter signature
+  (M.SRC_NET.155's U5 form) stands; U17 is the one stage that replaces `payload_size`/`timeout` with `limits`, and this
+  change's commit makes it. Dropping the two keywords breaks every caller still passing them, so the edits that move an
+  existing caller to `limits` land in the same commit: the link driver's forwarding (M.SRC_NET.213), the harness's
+  `transfer_limits()` and `Pair` (M.TEST_HELP.071), the existing direct constructions in the tests (M.TEST_UNIT.154,
+  .178, .317) and device scripts (M.HW_DEV.046, .047, .050, .051), and the build's default read (M.GEN.027); new tests
+  that use `transfer_limits()` (M.TEST_UNIT.182, .345) follow it.
 - **Unit**: U17.
 - **Depends**: M.SRC_CORE.134 (`PieceBuffer`, U17), M.SRC_NET.153 (93), M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167,
   M.SRC_NET.168; M.TEST_UNIT.345 (L1: no receive allocation over `chunk_bytes` by largest-block measurement, the
   refusal before any allocation, a maximum-size train assembled correctly; hammering: repeated maximum-size and
-  over-cap trains — in U17) ; the harness builds `UARTComm` with the default limits (holds).
+  over-cap trains — in U17).
 - **Blast carried by**: the link driver's consumers (one `TransferLimits` forwarded; the echo and the banner check
   through copy-out) → M.SRC_NET.213/.214; the generated `UARTLinkDriver(…)` passes one `limits=TransferLimits(…)` built
-  from the device TOML's `max_transfer_bytes` and the source default `chunk_bytes` → M.GEN.066 (U20); every test that
+  from the source defaults `payload_size`/`timeout`/`chunk_bytes` and the device TOML's `max_transfer_bytes` → M.GEN.066
+  (U20); the build's link checks read the `payload_size`/`timeout` defaults from `_DEFAULT_PAYLOAD_SIZE`/
+  `_DEFAULT_TIMEOUT_MS` once the link driver no longer has them → M.GEN.027 (U17 stage), its timeout-ceiling case →
+  M.TSC.057; every construction that passed `payload_size=`/`timeout=` passes one `TransferLimits` from U17 — the
+  harness's `transfer_limits()` → M.TEST_HELP.071 (U17), its users M.TEST_UNIT.154, M.TEST_UNIT.178, M.TEST_UNIT.317,
+  M.TEST_UNIT.345 (U17 stages; the twin builds through the harness's `Pair` and the generated module, no direct
+  construction), the device scripts → M.HW_DEV.046, M.HW_DEV.047, M.HW_DEV.050, M.HW_DEV.051 (U17 stages); SPEC J.9's
+  constructor sentence → M.SPEC.139, F.3's `con.uart_reply` source → M.SPEC.097, M.TSC.144; the constants table
+  rows for the two new defaults → M.DOCS.020; every test that
   compares a module-allocated result (`PieceBuffer`, no `__eq__`) with bytes reads it through the copy-out helper
   `copied_out()` → M.TEST_HELP.070 (U17), with a U17 stage in each test change: M.TEST_UNIT.345 (g)
   (`tests/test_asy_uart_comm.py`), M.TEST_UNIT.167 (its BSEC demonstration), M.TEST_UNIT.315
@@ -2886,7 +2924,7 @@ annotation-only change carries none, per its constituent. No merged change here 
   (`uart_link_under_concurrent_system_load.py`), each with a U17 stage; the concurrent-load test (trains alongside the webserver
   hammer, both GC stages, zero MemoryError) → M.TWIN.171 (U25); a bench maximum-size transfer over the crossover
   jumper → M.HW_DEV.045, M.HW_DEV.046 (C); SPEC J.6/J.8, Part I's heap budget (both limits count in it) and Part G (the piece
-  primitive) → M.SPEC.136, M.SPEC.138, M.SPEC.126, M.SPEC.111; the UART changelog Class A entry → M.DOCS.022; BACKLOG question removed →
+  primitive) → M.SPEC.136, M.SPEC.138, M.SPEC.126, M.SPEC.111; the UART changelog Class A entry → M.DOCS.022, the grouping's Class B row (B70) → M.DOCS.024; BACKLOG question removed →
   M.DOCS.067.
 - **Kind**: code
 
@@ -3311,7 +3349,8 @@ except A.U24.67's banner and the renames).
   adherence additions: `transfers` → `_transfers` (G10/R07, read outside only by tests; D.10 with its pair) and
   `self.initialized` (A.U10.22's readiness rule; kept: the exercise loop reads it); OR143.a (1)-(2) (the receive limits
   forwarded; A-C review fold); AC_NOTES 54 (3), (7) (lead rulings, 2026-10-05: the echo through copy-out; one
-  `TransferLimits` forwarded)
+  `TransferLimits` forwarded); AC_NOTES 55 (lead ruling, 2026-10-05: `payload_size`/`timeout` are `TransferLimits`
+  fields, so the wrapper's own two go)
 - **Site**: `src/asy_uart_link_driver.py:43-83`
 - **Change**: `class UARTLinkDriver:` / `def __init__(self, uart: "UART | None", role: str, payload_size: int = 48, timeout:
   int = 1000, name_ext: str = "", log: "LogConfig" = DEFAULT_LOG, logger: "PrintLogHistory | None" = None) -> None:`;
@@ -3321,11 +3360,13 @@ except A.U24.67's banner and the renames).
   ResponderCallbacks(self._get_callback, self._set_callback, self._message_callback) if role == ROLE_RESPONDER else None`;
   `self._comm = UARTComm(uart, role, payload_size=payload_size, timeout=timeout, callbacks=callbacks, name=resolved_name,
   log=log, logger=logger)`; `name`/`pr` as today; `self._last_echo` as today; `self._transfers = 0`, `self._failures = 0`;
-  `self.initialized = False`. Fold stage U17 (OR143.a; AC_NOTES 54 (7)): the constructor takes one more parameter,
-  `limits: "TransferLimits"` — M.SRC_NET.220's namedtuple, defaulting to the module's default limits as `.220` lands
-  them — and forwards it unchanged (`UARTComm(…, limits=limits)`), never its two fields as separate parameters: eight
-  parameters besides `self` (ruff does not count `self`), within `max-args = 8`; should `.220` fold `payload_size`/
-  `timeout` into the same object, the wrapper takes them through it too and drops its own two. `_message_callback(self,
+  `self.initialized = False`. Fold stage U17 (OR143.a; AC_NOTES 54 (7), 55): `payload_size` and `timeout` leave the
+  signature for one `limits: "TransferLimits" = DEFAULT_LIMITS` in their place (M.SRC_NET.220's namedtuple and default;
+  `DEFAULT_LIMITS` joins M.SRC_NET.211's runtime `asy_uart_comm` import, `TransferLimits` its `TYPE_CHECKING` block) — `def __init__(self, uart: "UART | None", role: str, limits: "TransferLimits" =
+  DEFAULT_LIMITS, name_ext: str = "", log: "LogConfig" = DEFAULT_LOG, logger: "PrintLogHistory | None" = None) ->
+  None:`, six parameters besides `self` (ruff does not count `self`), down from seven — and forwards it unchanged
+  (`self._comm = UARTComm(uart, role, limits=limits, callbacks=callbacks, name=resolved_name, log=log,
+  logger=logger)`), never its fields as separate parameters. `_message_callback(self,
   cmd_id: int, cmd: int, payload: "PieceBuffer | None")` keeps the SET's `PieceBuffer` as the echo (no copy at
   receipt), and `_get_callback()` answers from it by one copy-out (AC_NOTES 54 (3)): `echo = bytearray(len(stored))`,
   `stored.copy_into(echo)`, `return True, echo` — bounded by the received train's size, itself at most
@@ -3337,14 +3378,15 @@ except A.U24.67's banner and the renames).
   only by `tests/test_asy_uart_link_driver.py` (grep at HEAD) — made private together (agent, adherence; OR2.c list). A.U10.22's
   L0 check requires every class with `async def setup` to set `initialized`; the wrapper had none (agent; OR2.c list).
   AC_NOTES 54 (3) settles the echo's open choice as copy-out (the stream form withdrawn); (7) the one forwarded
-  `TransferLimits`.
+  `TransferLimits`; AC_NOTES 55 its four fields, so the wrapper's own `payload_size`/`timeout` go at U17 (from U5 to
+  U17 the seven-parameter form above stands).
 - **Unit**: U17 (A.U17.18). Staged: U5 (signature, callbacks), U10 (class name, private names, flag).
 - **Depends**: M.SRC_NET.154, M.SRC_NET.155, M.SRC_NET.211; M.SRC_NET.220 (`TransferLimits`, the `PieceBuffer` result,
   U17); M.SRC_CORE.134 (`copy_into()`, U17)
 - **Blast carried by**: twin `_wire_uart_crossover()` reads the generated buses, `buildgen/twin_wiring.py` plan shape →
   A.U17.18 (TWIN, GEN); generated construction `(…, log=…)` → A.U5.03 (GEN), its `limits=TransferLimits(…)` →
   M.GEN.066; tests (`transfers`/`failures` readers, constructor calls) → A.U5.02, A.U10.35 (TEST_UNIT, see Gaps for
-  `_transfers`); the echo test's copy-out comparison → M.TEST_UNIT.178 (U17 stage); `digital_twin/README.md:288-297`,
+  `_transfers`); the echo test's copy-out comparison and the local `Pair`'s one `limits=` → M.TEST_UNIT.178 (U17 stage); `digital_twin/README.md:288-297`,
   `validate.py:542-544` comment → A.U17.18 (TWIN, GEN); UART changelog Class B names → A.U10.38 (DOCS)
 - **Kind**: code
 
@@ -3919,3 +3961,4 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | F33 | — | none in this file |
 | R54 | M.SRC_NET.127, .129 (the window counter called without `await`), .162 (the unintelligible-link code is E89, as .153 and the catalog number it), .119 (Blast and Depends name M.TEST_UNIT.332's U19 `uptime_s=` stage) | amended |
 | R54 | M.SRC_NET.220 (Blast: the test carriers of the copy-out helper with their U17 stages; the generated `limits=TransferLimits(…)`), .222 (floor from one config flush, `_FLASH_HOLD_MAX_MS`, the peer's re-initiations under stop-and-wait; `_ERR_UART_RXBUF` kept; dev's 8,192 ring), .221 (Depends: no retained growth against an ambient control), .213 (one forwarded `TransferLimits` within `max-args = 8`; the echo answered by one copy-out), .214 (the banner compared by copy-out into a scratch allocated once) | amended |
+| R55 | M.SRC_NET.220 (`TransferLimits(payload_size, timeout, chunk_bytes, max_transfer_bytes)`, `_DEFAULT_PAYLOAD_SIZE`/`_DEFAULT_TIMEOUT_MS`, public `DEFAULT_LIMITS`; `UARTComm(uart, role, limits, callbacks, name, log, logger)`, seven parameters, fields unpacked in `__init__`; U17 is the one stage that replaces `payload_size`/`timeout`; Blast names every construction's U17 carrier), .155 (U17 stage: `limits` replaces the pair; U5-U17 eight-parameter form stands), .213 (U17: `(uart, role, limits, name_ext, log, logger)`, six parameters, `limits` forwarded whole; its own `payload_size`/`timeout` go) | amended |

@@ -57,12 +57,12 @@
     "rev": 2
    }
   },
-  "changes": 1908,
-  "steps": 6569,
-  "edges": 74932,
+  "changes": 1909,
+  "steps": 6571,
+  "edges": 74949,
   "edge_kinds": {
    "action": 60760,
-   "dep-M": 8311,
+   "dep-M": 8328,
    "dep-A": 3020,
    "blast": 5737,
    "sweep": 445
@@ -611,6 +611,23 @@
      "M.SRC_CORE.106",
      "M.TEST_HELP.036",
      "M.TSC.049"
+    ]
+   },
+   {
+    "unit": "U17",
+    "steps": [
+     "M.GEN.027",
+     "M.HW_DEV.046",
+     "M.HW_DEV.047",
+     "M.HW_DEV.050",
+     "M.HW_DEV.051",
+     "M.SRC_NET.155",
+     "M.SRC_NET.213",
+     "M.SRC_NET.220",
+     "M.TEST_HELP.071",
+     "M.TEST_UNIT.154",
+     "M.TEST_UNIT.178",
+     "M.TEST_UNIT.317"
     ]
    },
    {
@@ -1304,7 +1321,7 @@
   ],
   "in_unit_edges_dropped_to_break_cycles": {
    "blast": 248,
-   "dep-M": 738,
+   "dep-M": 740,
    "dep-A": 151
   },
   "no_step_changes": [
@@ -15172,10 +15189,10 @@
   },
   {
    "unit": "U17",
-   "steps": 107,
+   "steps": 109,
    "actions": 36,
-   "explicit_steps": 92,
-   "implicit_steps": 15,
+   "explicit_steps": 96,
+   "implicit_steps": 13,
    "order": [
     [
      "M.DOCS.021"
@@ -15187,22 +15204,13 @@
      "M.DOCS.065"
     ],
     [
-     "M.GEN.027"
-    ],
-    [
      "M.GEN.043"
     ],
     [
      "M.GEN.029"
     ],
     [
-     "M.HW_DEV.047"
-    ],
-    [
      "M.SCR.061"
-    ],
-    [
-     "M.SPEC.147"
     ],
     [
      "M.SRC_CORE.122"
@@ -15226,28 +15234,13 @@
      "M.SRC_NET.153"
     ],
     [
-     "M.SRC_NET.155"
-    ],
-    [
-     "M.SRC_NET.156"
-    ],
-    [
      "M.SRC_NET.159"
     ],
     [
      "M.SPEC.134"
     ],
     [
-     "M.SRC_NET.160"
-    ],
-    [
      "M.SRC_NET.167"
-    ],
-    [
-     "M.SPEC.139"
-    ],
-    [
-     "M.SRC_NET.170"
     ],
     [
      "M.SRC_NET.191"
@@ -15286,22 +15279,48 @@
      "M.SRC_NET.216"
     ],
     [
-     "M.SRC_NET.220"
+     "M.SRC_SENS.021"
     ],
     [
-     "M.HW_DEV.051"
+     "M.SRC_SENS.023"
+    ],
+    [
+     "M.TEST_HELP.070"
+    ],
+    [
+     "M.GEN.027",
+     "M.HW_DEV.046",
+     "M.HW_DEV.047",
+     "M.HW_DEV.050",
+     "M.HW_DEV.051",
+     "M.SRC_NET.155",
+     "M.SRC_NET.213",
+     "M.SRC_NET.220",
+     "M.TEST_HELP.071",
+     "M.TEST_UNIT.154",
+     "M.TEST_UNIT.178",
+     "M.TEST_UNIT.317"
     ],
     [
      "M.HW_DEV.048"
     ],
     [
-     "M.HW_DEV.050"
-    ],
-    [
      "M.SPEC.111"
     ],
     [
-     "M.SRC_NET.213"
+     "M.SPEC.139"
+    ],
+    [
+     "M.SPEC.147"
+    ],
+    [
+     "M.SRC_NET.156"
+    ],
+    [
+     "M.SRC_NET.160"
+    ],
+    [
+     "M.SRC_NET.170"
     ],
     [
      "M.SRC_NET.215"
@@ -15319,16 +15338,7 @@
      "M.PROC.017"
     ],
     [
-     "M.SRC_SENS.021"
-    ],
-    [
-     "M.SRC_SENS.023"
-    ],
-    [
      "M.TEST_HELP.064"
-    ],
-    [
-     "M.TEST_HELP.070"
     ],
     [
      "M.TEST_UNIT.078"
@@ -15364,9 +15374,6 @@
      "M.TEST_UNIT.176"
     ],
     [
-     "M.TEST_UNIT.178"
-    ],
-    [
      "M.TEST_UNIT.180"
     ],
     [
@@ -15397,9 +15404,6 @@
      "M.TEST_UNIT.315"
     ],
     [
-     "M.TEST_UNIT.317"
-    ],
-    [
      "M.TEST_UNIT.319"
     ],
     [
@@ -15427,6 +15431,9 @@
      "M.TEST_UNIT.345"
     ],
     [
+     "M.SPEC.137"
+    ],
+    [
      "M.TOOL.033"
     ],
     [
@@ -15439,13 +15446,7 @@
      "M.GEN.066"
     ],
     [
-     "M.HW_DEV.046"
-    ],
-    [
      "M.SPEC.136"
-    ],
-    [
-     "M.SPEC.137"
     ],
     [
      "M.SPEC.138"
@@ -75063,9 +75064,9 @@
     "A.U17.33"
    ],
    "landing": {
-    "A.U17.33": "own unit (implicit step: code/test site, blast closed in its unit)"
+    "A.U17.33": "own unit, named in the Unit slot"
    },
-   "named_in_unit_slot": false
+   "named_in_unit_slot": true
   },
   {
    "change": "M.HW_DEV.048",
@@ -75089,9 +75090,9 @@
     "A.U17.05"
    ],
    "landing": {
-    "A.U17.05": "own unit (implicit step: code/test site, blast closed in its unit)"
+    "A.U17.05": "own unit, named in the Unit slot"
    },
-   "named_in_unit_slot": false
+   "named_in_unit_slot": true
   },
   {
    "change": "M.HW_DEV.051",
@@ -75760,6 +75761,15 @@
    "named_in_unit_slot": true
   },
   {
+   "change": "M.TEST_HELP.071",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_HELP.md",
+   "title": "The harness builds one `TransferLimits` from keyword overrides",
+   "carries": [],
+   "landing": {},
+   "named_in_unit_slot": true
+  },
+  {
    "change": "M.TEST_UNIT.078",
    "unit": "U17",
    "file": "audit/consolidation/M_TEST_UNIT.md",
@@ -75770,6 +75780,15 @@
    "landing": {
     "A.U17.27": "own unit, named in the Unit slot"
    },
+   "named_in_unit_slot": true
+  },
+  {
+   "change": "M.TEST_UNIT.154",
+   "unit": "U17",
+   "file": "audit/consolidation/M_TEST_UNIT.md",
+   "title": "Construction passes one callbacks object; callback attributes private",
+   "carries": [],
+   "landing": {},
    "named_in_unit_slot": true
   },
   {

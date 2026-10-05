@@ -694,17 +694,18 @@ changes cite.
   `:132` holds), A.U8C.91 (`:29, :32, :33` mirrors → `BENCH`; `JOIN_STEP_MS`, `JOIN_BUDGET_MS` tags; `:83` →
   `_shared/watchdog.py`), A.U26.68; OR143.a (1), (2), (4) (A-C review fold: a maximum-size transfer over the crossover
   jumper, and an over-cap train refused); AC_NOTES 54 (3) (lead ruling, 2026-10-05: a module-allocated result read
-  through copy-out).
+  through copy-out); AC_NOTES 55 (lead ruling, 2026-10-05: every construction passes one `TransferLimits`).
 - **Site**: `tests_hardware/device_scripts/uart_crossover_exchange.py:1-142`.
 - **Change**: docstring `:1-3` drops the literal pins ("…across the bench board's UART crossover jumper…"); comment
   `:4-6` "never through sensortask_dev's full task graph" → "never through the generated device module's task graph".
   `uart0`/`uart1` from `BENCH["bus"]["uart0"]`/`["uart1"]` (id, tx, rx, baudrate, rxbuf, txbuf, poll_wait_ms,
   poll_idle_ms), `crc=CRC16()` when `BENCH["CRC_MODE"] == "crc16"` (else the default `CRCPass`); the `POLL_*`, `BUF_BYTES`,
-  `BAUDRATE` constants and the comment `:30-31` go. `UARTComm(uart0, ROLE_INITIATOR, payload_size=…, timeout=…,
-  name="UART_INIT")`, the responder with `callbacks=_Callbacks()` (get/set). `_settled` included from
+  `BAUDRATE` constants and the comment `:30-31` go. `UARTComm(uart0, ROLE_INITIATOR, limits=limits,
+  name="UART_INIT")`, the responder with `limits=limits` and `callbacks=_Callbacks()` (get/set). `_settled` included from
   `_shared/settle.py`; `JOIN_STEP_MS`/`JOIN_BUDGET_MS` become `_JOIN_STEP_MS`/`_JOIN_BUDGET_MS` with their tags. Both
-  instances take `max_transfer_bytes` and the ring size from `BENCH` (the TOML, M.GEN.066) and keep the constructor's
-  default `chunk_bytes` (not a TOML key); after
+  instances share one `limits = TransferLimits(<payload_size>, <timeout>, DEFAULT_LIMITS.chunk_bytes,
+  <max_transfer_bytes>)` — the frame and timeout as the script takes them, `max_transfer_bytes` from `BENCH` (the TOML,
+  M.GEN.066), `chunk_bytes` the module default (not a TOML key) — and their buses the ring size from `BENCH`; after
   the exchange, a maximum-size train: `uart_set()` of `max_transfer_bytes` bytes (a per-run pattern) to a responder
   whose set callback gives no destination, so it is assembled in pieces of at most `chunk_bytes`
   (M.SRC_NET.220), read back through a `uart_get(exp_size=None)` of the same size and compared byte for byte piece by
@@ -717,12 +718,17 @@ changes cite.
   U17 stage (AC_NOTES 54 (3)), on the HEAD text: the banner answer is a `PieceBuffer` (no buffer protocol, no
   `__eq__`; the board cannot import `tests/`), so `:112` `bytes(answer) != _BANNER` → `len(answer) != len(_BANNER) or
   not answer.copy_into(scratch) or scratch != _BANNER`, `scratch = bytearray(len(_BANNER))` allocated once before the
-  exchange; the failure message keeps `{answer!r}` only for `None`, else reports the copied bytes.
+  exchange; the failure message keeps `{answer!r}` only for `None`, else reports the copied bytes. The same stage
+  (AC_NOTES 55): the constructor takes one `TransferLimits`, so the two constructions' `payload_size=PAYLOAD_SIZE,
+  timeout=TIMEOUT_MS` become `limits=limits`, `limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS,
+  DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)` built once (`DEFAULT_LIMITS`, `TransferLimits`
+  imported from `asy_uart_comm`; the board cannot import `tests/`'s `transfer_limits()`).
 - **Resolved**: —
-- **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U17 the copy-out on the HEAD text;
-  U26 writes the end form, after U17's chunking and receive cap).
-- **Depends**: M.HW_DEV.001-.004; M.SRC_NET.220 (`chunk_bytes`, `max_transfer_bytes`, the `PieceBuffer` result, U17),
-  M.SRC_CORE.134 (`copy_into()`, `pieces()`, U17), M.GEN.066 (the cap and ring size in the device TOML, U20).
+- **Unit**: U26 (the A.U5.12/A.U10.38 call shapes land in U5/U10 on the HEAD text; U17 the copy-out and the one
+  `TransferLimits` on the HEAD text; U26 writes the end form, after U17's chunking and receive cap).
+- **Depends**: M.HW_DEV.001-.004; M.SRC_NET.220 (`TransferLimits`, `DEFAULT_LIMITS`, `chunk_bytes`,
+  `max_transfer_bytes`, the `PieceBuffer` result, U17), M.SRC_CORE.134 (`copy_into()`, `pieces()`, U17), M.GEN.066 (the
+  cap and ring size in the device TOML, U20).
 - **Blast carried by**: UART changelog Class B entries for the API rename/constructor → A.U5.12/A.U10.38 (DOCS); twin
   record → M.HW_DEV.010; host assertions → M.HW_DEV.045 (9); the TOML keys reach `BENCH` → M.HW_BENCH.041.
 - **Kind**: test
@@ -732,7 +738,8 @@ changes cite.
 ### M.HW_DEV.047 Recovery: silence and baud desync, both timed against the resync bound
 - **From**: A.U26.33, A.U26.86/A.U36.028 (the injector comment takes the one wording), A.S0930.05, A.U26.44, A.U5.12,
   A.U10.38, A.U26.76, A.U26.78 (`_settled`), A.U17.33/A.U17.25 (blast: stays the L3 silence/desync rung), A.U8C.92,
-  A.U26.68; OR141.a (4) (b) (A-C review fold: the injector's re-init re-applies the DMA receive set-up).
+  A.U26.68; OR141.a (4) (b) (A-C review fold: the injector's re-init re-applies the DMA receive set-up); AC_NOTES 55
+  (lead ruling, 2026-10-05: one `TransferLimits` per construction).
 - **Site**: `tests_hardware/device_scripts/uart_crossover_recovery.py:1-159`.
 - **Change**: docstring `:2` "within the specified window" → "within the protocol's resync bound (timed)"; comment
   `:4-6` → "The UART fault catalog is mock-only (no injection hardware will be bought, owner, 2026-09-22); this injector
@@ -747,10 +754,14 @@ changes cite.
   (extra: `_DRAIN_BOUND_MULT`, `_RESYNC_NUM/_RESYNC_DEN` × timeout plus one timeout, read host-side by `ast`). Facts:
   `crc_mode`, `silence_failed`, `silence_recovery_ms`, `desync_failed`, `desync_logged`, `desync_recovery_ms`,
   `resync_bound_ms`, `mismatch_failed`, `mismatch_logged`; `done()`.
+  U17 stage (AC_NOTES 55, lead ruling, 2026-10-05: the constructor takes one `TransferLimits`), on the HEAD text:
+  `_build()`'s initiator passes `limits=TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes,
+  DEFAULT_LIMITS.max_transfer_bytes)` and its responder the same with `payload_size_b` first (the mismatch case keeps
+  its own frame size), in place of the two keywords; `DEFAULT_LIMITS`, `TransferLimits` imported from `asy_uart_comm`.
 - **Resolved**: —
-- **Unit**: U26.
+- **Unit**: U26 (U17: one `TransferLimits` per construction, on the HEAD text).
   A-C2 step order: A.U17.25's part lands in U25, not U17 (it follows A.U17.25's own change, which lands in U25).
-- **Depends**: M.HW_DEV.001-.004; A.S0930.01.
+- **Depends**: M.HW_DEV.001-.004; A.S0930.01; M.SRC_NET.220 (`TransferLimits`, U17 stage).
 - **Blast carried by**: the host bound check → M.HW_DEV.045; SPEC J.7 "baud desync: L3" → A.U26.33 (SPEC).
 - **Kind**: test, hardware (Round: R1 [H37])
 
@@ -807,7 +818,7 @@ changes cite.
 ### M.HW_DEV.050 Idle poll rate: the pair stated explicitly from `BENCH`
 - **From**: A.U13.17 (blast: passes both rates explicitly), A.U17.05/A.U30.16 (`:52` pre-window collect allowed),
   A.U5.12, A.U10.38, A.U26.44, A.U8C.94, A.U8C2.40, A.U26.68, AD-1 (`:64`, `:78`; superseded by convention B4, A-C
-  review fold).
+  review fold); AC_NOTES 55 (lead ruling, 2026-10-05: the default `limits`).
 - **Site**: `tests_hardware/device_scripts/uart_idle_poll_rate.py:1-109`.
 - **Change**: the bus from `BENCH["bus"]["uart1"]`, `poll_wait_ms`/`poll_idle_ms` from `BENCH`, passed explicitly in
   both arms (fast arm: idle = wait); `UARTComm(…, callbacks=_Callbacks())`. Constants: `_SAMPLE_MS`, `_MIN_RATIO`,
@@ -817,9 +828,12 @@ changes cite.
   until the cancelled task reports done, deadline `_CANCEL_SETTLE_MS` (`l3.uart_idle_poll_rate_cancel_settle_ms`), both
   re-sized as deadlines at execution. Facts `fast_rounds` (a, b), `idle_rounds` (a, b), `sample_ms`,
   `expected_idle_rounds`, `min_ratio`; the ratio and band checks move host-side; `done()`.
+  U17 stage (AC_NOTES 55, lead ruling, 2026-10-05: the constructor takes one `TransferLimits`), on the HEAD text: the
+  construction's `payload_size=48, timeout=1000` go — they are `DEFAULT_LIMITS`' values, so the default `limits`
+  stands.
 - **Resolved**: —
-- **Unit**: U26.
-- **Depends**: M.HW_DEV.001-.004.
+- **Unit**: U26 (U17: the two keywords go, on the HEAD text).
+- **Depends**: M.HW_DEV.001-.004; M.SRC_NET.220 (`DEFAULT_LIMITS`, U17 stage).
 - **Blast carried by**: host assertions → M.HW_DEV.045.
 - **Kind**: test, hardware (Round: R1 [H37])
 
@@ -830,7 +844,8 @@ changes cite.
   `_main` baseline rows), A.U1.25 (`:141` comment), A.U26.44 (pins), A.U26.24 (no raw FRAM write: no region needed),
   A.U5.12, A.U10.38 (`FRAMManager`, `UARTComm`), A.U10.44 (`_listen_loop` already the end name), A.U8C.95, A.U8C2.41,
   A.U26.68, A.U26.47 (3) (a churn `MemoryError` is a failure and the run ends FAIL; A-C3 S-10); AC_NOTES 54 (3) (lead
-  ruling, 2026-10-05: a module-allocated result read through copy-out).
+  ruling, 2026-10-05: a module-allocated result read through copy-out); AC_NOTES 55 (lead ruling, 2026-10-05: one
+  `TransferLimits` per construction).
 - **Site**: `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py:1-232`.
 - **Change**: (1) The responder keeps the last `_CMD_ECHO` SET payload (a script-local message callback in its callbacks
   object) and answers an `_CMD_ECHO` GET with it; the initiator loop alternates the banner GET with a multi-chunk
@@ -852,11 +867,13 @@ changes cite.
   work label, G9/R12), keeping its reason in ≤ 3 lines.
   U17 stage (AC_NOTES 54 (3)), on the HEAD text: `:178` `bytes(answer) == _BANNER` → `len(answer) == len(_BANNER) and
   answer.copy_into(scratch) and scratch == _BANNER`, `scratch = bytearray(len(_BANNER))` allocated once before the
-  loop.
+  loop. The same stage (AC_NOTES 55): the two constructions' `payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS` become
+  `limits=limits`, `limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes,
+  DEFAULT_LIMITS.max_transfer_bytes)` built once (imported from `asy_uart_comm`); the U26 form keeps that one object.
 - **Resolved**: A.U26.87 and A.S0930.05 edit the same script: the echo SET runs in both modes.
-- **Unit**: U26 (A.U17.05's line and the copy-out land in U17 on the HEAD text).
+- **Unit**: U26 (A.U17.05's line, the copy-out and the one `TransferLimits` land in U17 on the HEAD text).
 - **Depends**: M.HW_DEV.001-.005; U17's lock check (N.27) recorded either way; M.SRC_NET.220 (the `PieceBuffer`
-  result), M.SRC_CORE.134 (`copy_into()`), both U17.
+  result, `TransferLimits`), M.SRC_CORE.134 (`copy_into()`), both U17.
 - **Blast carried by**: README `:1265-1269` → A.U26.87 (3) (HW_BENCH); host assertions → M.HW_DEV.045.
 - **Kind**: test, hardware (Round: R1 [H37])
 
@@ -3006,3 +3023,4 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F33 | — | none in this file |
 | R54 | M.HW_DEV.009 (Resolved: the boot repair rewrites a damaged production file, which stays listed) | amended |
 | R54 | M.HW_DEV.159, .160 (`dev`'s ring 8,192 B stated: 400 ms at 115200 baud is 4,608 B, the ring fills in about 711 ms, over-bound window 800 ms; the bench ring is the sweep's, not the protocol floor), .046, .051 (U17 stages: the banner answer copied out inline through `copy_into()`; the end-form echo and maximum-size train read through `copy_into()`/`pieces()`), .053 (echo answer compared by `copy_into()`) | amended |
+| R55 | M.HW_DEV.046, .051 (U17 stage: both constructions share one `TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)`; .046's U26 end form takes the cap from `BENCH` in that object), .047 (new U17 stage: `_build()`'s two constructions, the responder's with `payload_size_b`), .050 (new U17 stage: `payload_size=48, timeout=1000` go, the default `limits` standing) | amended |
