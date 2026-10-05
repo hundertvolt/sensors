@@ -1049,7 +1049,7 @@ def m_file_notes():
 
 ROUND_NAMES = {"R0": "bench host, no board", "R1": "first contact and the default run", "R2": "operator round (owner at the bench)",
                "R3": "gated wear run", "R4": "reflash rows (`flash_cycle`)", "R5": "soak durations",
-               "R6": "12.4-day rollover", "R7": "release proof"}
+               "R6": "tick-offset rollover", "R7": "release proof"}
 
 
 def render_md(wo, R):
@@ -1277,13 +1277,13 @@ def render_md(wo, R):
       "inventory rows (C.md H08-H83) exercise that unit's actions; a unit's changes are proven on silicon only there. "
       "Grouped into as few owner-approved sessions as the rounds' own dependencies allow:")
     w("")
-    w("1. **Session 1 — R0, R1, R2, R3, R5, R4** in one conversation: R0 needs no board; R1's clean default run is the "
-      "same-image, same-conversation precondition of R2 (owner at the bench), R3 (gated wear) and R5 (soak); R4's reflash "
-      "rows change the image, so they run last and restore the standard image (A.C.01 (7), A.C.06). Each round's findings "
-      "pass A-C as a delta (A.C.10); a fixed image re-runs the affected rows inside the same conversation.")
-    w("2. **Session 2 — R6**, the 12.4-day rollover on the release-candidate image after R5, the board touched by nothing "
-      "else (A.C.08); it may run as session 1's tail if the owner keeps that conversation open (then two sessions in all).")
-    w("3. **Session 3 — R7**, the release proof, only after every phase-C delta is applied and one re-verification pass is "
+    w("1. **Session 1 — R0, R1, R2, R3, R5, R6, R4** in one conversation: R0 needs no board; R1's clean default run is "
+      "the same-image, same-conversation precondition of R2 (owner at the bench), R3 (gated wear) and R5 (soak); R6 "
+      "flashes the tick-offset test image after R5 and polls for about two hours across the wrap (one flash cycle, "
+      "OR139.a); R4's reflash rows change the image, so they run last and restore the standard image (A.C.01 (7), "
+      "A.C.06). Each round's findings pass A-C as a delta (A.C.10); a fixed image re-runs the affected rows inside the "
+      "same conversation.")
+    w("2. **Session 2 — R7**, the release proof, only after every phase-C delta is applied and one re-verification pass is "
       "green (A.C.09, A.C.11).")
     w("")
     w("A hardware row that needs the owner's push access to `hundertvolt/datasheets` is not one of these: that is an owner "
@@ -1294,7 +1294,7 @@ def render_md(wo, R):
     w("- **Push access to the private `hundertvolt/datasheets` repository before U28** (AC_NOTES 37; M.PROC.018, A.U28.35 "
       "the move, and M.DOCS' U34/U36 sections that describe it). Without it the move and its two doc sections are not "
       "executed; the rest of the order is unaffected.")
-    w("- **Three hardware go-aheads** (section 5), R2 with the owner at the bench.")
+    w("- **Two hardware go-aheads** (section 5), R2 with the owner at the bench.")
     w("- No ordering question is open: every finding above was settled by an action's own text, a register or owner row, "
       "or a merge's stated Unit choice. Two placements the owner may notice in the review: the six driver renumberings "
       "land in U3 with the log-split they depend on (B1 keeps U2 for the catalog itself), and the system-command code "

@@ -370,19 +370,20 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
 - **Depends**: A.C.03; A.U15.20, A.U26.35, A.U26.41, A.U26.84.
 - **Kind**: hardware
 
-### A.C.08 Round R6: the 12.4-day rollover run
+### A.C.08 Round R6: the tick-offset rollover run
 - **Why**: G1/R23 "the run is scheduled in Phase C once that method exists" (owner, 2026-09-26, OR33.a (1); "(owner,
-  2026-09-22) adapt now, measure later"); A.U26.36 ("a 13-day bench window, owner go-ahead").
-- **Site**: `tests_hardware/bench/…::test_…rollover…` (A.U26.36's bench test) with `--allow-multi-day-rollover`; round
-  record `audit/c/R6.md`.
-- **Change**: on the release candidate image, after R5, the board touched by nothing else for the window (no other
-  round runs meanwhile): A.C.01 (2)'s switch armed across the session-start fixtures (the stale-credential scan may take
-  the AP slave down, A.U26.38) and disarmed once the hourly REST polls begin (they change no network state); the test
-  runs until `SysUptime` passes `2**30 / 1000 + 3600` s. If a later delta changes tick-handling code (grep `ticks_` in the
-  delta), the owner decides whether R6 is repeated; the record names the image it proved. The runner runs detached on
-  the bench Pi (under `timeout` of the window plus margin); if the conversation that started it ends, nothing further is
-  sent to the board or the bench network until a new conversation's go-ahead names R6, which then reads the runner's log
-  and verdict.
+  2026-09-22) adapt now, measure later"); OR139/OR139.a (owner, 2026-10-01): option 1, a test build with a starting
+  offset, one extra flash, about two hours instead of 12.4 days, also crossing the 49.7-day 32-bit wrap.
+- **Site**: the rollover runner (M.SCR.074) and A.U26.36's bench test with `--allow-multi-day-rollover`; round record
+  `audit/c/R6.md`.
+- **Change**: in session 1 after R5 and before R4: the runner flashes the dev test image that differs from the release
+  candidate only by the tick-offset override (`mp_hal_ticks_ms()` = time since boot + 2**32 ms − 15 min, so
+  `time.ticks_ms()` and the 32-bit millisecond count wrap about 15 minutes after boot; the build info names the
+  override), then polls for about two hours with the same health verdicts; A.C.01 (2)'s switch is armed across the
+  session-start fixtures and disarmed once the REST polls begin (they change no network state). One flash cycle, in the
+  round's flash budget; R4 then flashes its own images and restores the standard image. If a later delta changes
+  tick-handling code (grep `ticks_` in the delta), the owner decides whether R6 is repeated; the record names the image
+  it proved. The driven-clock proofs of L1/L2 stay.
 - **Blast**: callers — · generated — · js — · tests A.U26.36 · twin the driven-time proofs are L1/L2 (LEAD/R04) · docs
   BACKLOG's G6 row removed (A.C.10) · toml — · uart —. Wear: none.
 - **Depends**: A.C.07; A.U26.29, A.U26.36, A.U26.74.
@@ -753,7 +754,7 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H60 | firmware pin moved: flash, bench, mid-soak on the new pin; F.5 on-target confirmations; `sys.implementation` | A.SDEP.08 (6), A.SDEP.25, A.SDEP.07 (a re-vendored freezefs changes the frozen website on silicon: the served site checked in the same runs); OR129.a (5) | L3/L4 | R1, R5 (on the pin the tree carries) | co-land (only if the pin moved) |
 | H61 | spoofing tests; the off-subnet attempt | A.U26.56; G8/R40, OR77/OR79 | L4 | R1 | co-land + own verdict |
 | H62 | role reversal, destructive stage last; `_PHASE_DEACTIVATED` cleared by `machine.reset()` | A.U26.39; G1/R28 | L4 `persistence_write` | R3 | co-land |
-| H63 | rollover over ~12.4 days | A.U26.36; G1/R23 | L4 `multi_day_rollover` | R6 | co-land |
+| H63 | rollover across the tick and 32-bit wraps on the tick-offset test image (~2 h) | A.U26.36; G1/R23; OR139.a | L4 `multi_day_rollover`, `flash_cycle` (1 flash) | R6 | co-land |
 | H64 | 6 h soak (S4), liveness, failure rate | A.U26.35; G1/R22 | L4 `soak_duration` long | R5 | co-land |
 | H65 | bench facts: I2C scan per bus (MPRLS on i2c0?), FRAM RDID, rig geometry, DHCP keying, BME688, host OS and stale packages | A.U26.46, A.U26.42, A.U1.04; G1/R40 | L3, manual, host | R0, R1, R2 | own record |
 | H66 | Safari/mobile pass; captive-portal webview | G7/R32; A.U26.42 (4) | manual | R2 | own step |
@@ -768,11 +769,11 @@ proof (A.C.09); "every" = every round (A.C.01).
 | H75 | F17 (BACKLOG item 44): no unexplained reset across the rounds | G1/R02, G4/R63 | — | R7 | own (A.C.09) |
 | H76 | UART `wrnno` 11 against a real babbling peer (BACKLOG R13 + N3) | BACKLOG owed row | — | none | stays owed: "needs hardware the bench does not have" (owner, 2026-09-25) |
 | H77 | FRAM CS level at power-up on each board | G5/R29 State (and G3/R16 before wave 2) | — | none | withdrawn by the lead (AC_NOTES 11, 23): hold time met by boot timing, a documented datasheet fact; register fix 1 |
-| H78 | SGP40 wrnno 35 (today `W13`) spends one slot per NTP outage: UDP 123 blocked past `SGPWaitTimeNTP`, one entry per outage, `ErrCount` rising per backup (zero wear) | BACKLOG `:362-364` 'Not yet confirmed on silicon' (1); A.U2.13 | L4 (bench `iptables` fault, switch armed) | R1 | own step |
+| H78 | SGP40 wrnno 35 (today `W13`) spends one slot per NTP outage: UDP 123 blocked past `SGPWaitTimeNTP`, one entry per outage, `ErrCount` rising per backup (zero wear) | BACKLOG `:362-364` 'Not yet confirmed on silicon' (1); A.U2.13 | L4 (bench `iptables` fault, switch armed) | none | dropped (owner, 2026-10-05, OR141.a (5)): the twin's local NTP responder covers it in automated tests |
 | H79 | worst-case read duration per driver for `stagger.min_read_separation_ms` | A.U10.13 | L3/L4 | R1 | own record |
 | H80 | LED ramp wall time under bench API load for `_MAX_SIGNAL_S` | A.U9.04 | L4 | R1 | own record |
 | H81 | recovery-ladder thresholds (participant 2nd, bus clear 3rd, controller 4th failure; FRAM probe 2nd; three identification attempts) confirmed from the rung tests | SUPP_recovery closing note (`:923-925`) | L3 | R1 | own record |
-| H82 | `stations` query without the 100 ms settle keeps the right count (local-only image, reverted at once) | A.U18.43, A.SDEP.17 (W42) | L4, `flash_cycle` (2 flashes) | R4 | own step |
+| H82 | `stations` query without the 100 ms settle keeps the right count (local-only image, reverted at once) | A.U18.43, A.SDEP.17 (W42) | L4, `flash_cycle` (2 flashes) | none | dropped (owner, 2026-10-05, OR141.a (5)): the 100 ms settle stays; two flashes for a harmless wait are not spent |
 | H83 | loaded free-heap floor from `MemFree` under the bench load | A.U30.09 | L4 | R1 | own record |
 
 ## Ledger
