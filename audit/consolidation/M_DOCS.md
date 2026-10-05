@@ -1903,7 +1903,7 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Depends**: —
 - **Blast carried by**: SPEC term table (A.U36.512 (1), SPEC); SPEC A.3, B.11, E.6.6, L.1 (M.SPEC.007, M.SPEC.035,
   M.SPEC.083, M.SPEC.144: their pointers name "CLAUDE.md's `dev` rule"); README flashing rule and Devices table
-  (M.DOCS.048, M.DOCS.045); `tests_hardware/README.md`'s WoZi wording → M.HW_BENCH (fold F20)
+  (M.DOCS.048, M.DOCS.045); `tests_hardware/README.md`'s WoZi wording → M.HW_BENCH.104, M.HW_BENCH.125
 - **Kind**: rule
 
 ### M.DOCS.079 The legacy rule names `legacy/` and what it may be used for

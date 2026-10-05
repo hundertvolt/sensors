@@ -516,7 +516,7 @@ actions only where they name a product line.
 - **Unit**: U18 (A.U10.26's structure lands in U10 with the 20 ms `wait_time_ms` passed through — staged: U10 writes
   `_poll()`/`wait_for_ms` with `wait_time_ms` kept, U18 removes the parameter and splits the rate); the owed measurement
   of the 100 ms idle rate (the loop share at idle, OR141.a (5), A-C review fold) lands where its tiers run: the twin
-  M.TWIN.144 (fold F26) (U25) and the bench M.PROC.038 (C)
+  M.TWIN.144 (U25) and the bench M.PROC.038 (C)
 - **Depends**: M.SRC_NET.026, M.SRC_NET.027
 - **Blast carried by**: callers `sendto()`/`write()`/`recvfrom()` pass no rate (M.SRC_NET.030); `asy_captive_dns`
   listens with no deadline (M.SRC_NET.007); tests (renamed deadline-rate test, dropped `wait_time_ms` arguments,
@@ -851,8 +851,7 @@ actions only where they name a product line.
 - **Unit**: U18 (A.U14.26 is U14: staged — U14 writes the except tuple and comment; U18 the code names and message)
 - **Depends**: M.SRC_NET.047
 - **Blast carried by**: tests (`gmtime` overflow test removed, `_NTP_MAX_PLAUSIBLE_UNIX_TIME < 2**32` structural test,
-  `MemoryError("simulated allocation failure")` injection returning `None` and logging 20, not 69 → [fold F29
-  M_TEST_UNIT], the `:1073-1074` comment) → A.U14.26
+  `MemoryError("simulated allocation failure")` injection returning `None` and logging 20, not 69 → M.TEST_UNIT.104, the `:1073-1074` comment) → A.U14.26
   (tests cluster); catalog 69 text unchanged → M.GEN.034
 - **Kind**: code
 
@@ -1678,7 +1677,7 @@ actions only where they name a product line.
 - **Depends**: M.SRC_NET.077, M.SRC_NET.079, M.SRC_NET.092, M.SRC_NET.102, A.U10.R01
 - **Blast carried by**: tests (tick re-arm cases, `max_module_error` failed re-arms end the loop, deactivated pattern,
   give-up expects errno 2 and the WIFI give-up code once M.TEST_UNIT.218, the deactivated pattern silent with
-  `LEDWifiOn` off and shown once it is turned on M.TEST_UNIT.213 (fold F19), streak tests re-derived for the recovery rung) → A.U18.24, A.U18.30, A.U3.07, A.U18.R01
+  `LEDWifiOn` off and shown once it is turned on M.TEST_UNIT.213, streak tests re-derived for the recovery rung) → A.U18.24, A.U18.30, A.U3.07, A.U18.R01
   (tests); `_RUN_PHASE_ALLOWED` gains `WifiService._connect_loop`/`_ledflash` "the deactivated-state LED pattern" →
   A.U30.03 (tests, its "earlier units' new sites join" clause); SPEC C.9 / A.4 → A.U18.24, A.U18.30 (docs)
 - **Kind**: code
@@ -2026,8 +2025,8 @@ added, unmodified upstream stubs, A.U8.23).
   only `SystemService` holds.
 - **Unit**: U19 (staged: U5 objects/`log`, U10 cap/setup, U19 the window and `uptime_s` with M.SRC_CORE.133, U31 ms
   attributes)
-- **Depends**: M.SRC_NET.112, M.SRC_NET.124, A.U10.01, M.SRC_CORE.133 (U19); M.TEST_UNIT.343, M.TEST_UNIT.202 (fold F02) (`_make_service()`
-  passes `uptime_s`; the window's L1 cases at the drop sites) and M.TSC.112 (fold F28) (A.U10.22's scope) co-land
+- **Depends**: M.SRC_NET.112, M.SRC_NET.124, A.U10.01, M.SRC_CORE.133 (U19); M.TEST_UNIT.202 (`_make_service()`
+  passes `uptime_s`; the window's L1 cases at the drop sites) and M.TSC.112 (A.U10.22's scope) co-land
 - **Blast carried by**: generated `_emit_webserver()` builds the three objects from TOML values and `src/` constants →
   A.U5.04/A.U5.05 (GEN), with `uptime_s=sysfunct.get_uptime` → M.GEN.009 (U19 stage); `_make_service()` test helper builds the objects (153 call sites unchanged) → A.U5.04 (tests);
   route-table equality test → A.U19.20 (tests); tests reading `_per_call_timeout_s`/`_outer_cap_s` → `_ms` → A.U31.18
@@ -2124,7 +2123,7 @@ added, unmodified upstream stubs, A.U8.23).
   by A.U19.02's)
 - **Blast carried by**: generated `_notification_led_callback(r, g, b, t)` and the removal of `_FIELD_LED_*` → A.U19.02
   (GEN); js mock `dispatchLightCmdLed()` "Failed" → "Invalid", members → A.U19.02/A.U10.40/U23 (WEB), the busy `descr`
-  mirrored → M.WEB.041 (U23 stage); the descr's L1 case → M.TEST_UNIT.080 (fold F09); tests (seven
+  mirrored → M.WEB.041 (U23 stage); the descr's L1 case → M.TEST_UNIT.080; tests (seven
   scenarios "Failed" → "Invalid", fake callback signatures, new malformed cases, pause list/dict cases) → A.U19.02,
   A.U19.03 (tests); `src/config_manager.py:124-127` comment names this dispatcher → M.SRC_CORE.047 (its two-line comment above
   `checked_int()`; M_GEN gap 4, U19 A-C note 5); SPEC H.6/A.8 → A.U19.02 (docs)
@@ -2210,7 +2209,7 @@ added, unmodified upstream stubs, A.U8.23).
 - **Unit**: U31 (A.U31.18 latest; U2 codes, U30 fatal report — staged)
 - **Depends**: M.SRC_NET.112
 - **Blast carried by**: the L0 pair scan narrows to an error and a warning for one occurrence in one function (A.U3.11 as
-  narrowed, OR140.a (7)) → M.TSC.111 (fold F11); its L1 "exactly one W52" test goes → M.TEST_UNIT.202; persisted-warning tests read the entry →
+  narrowed, OR140.a (7)) → M.TSC.111; its L1 "exactly one W52" test goes → M.TEST_UNIT.202; persisted-warning tests read the entry →
   A.U24.41 (tests)
 - **Kind**: code
 
@@ -2253,7 +2252,7 @@ added, unmodified upstream stubs, A.U8.23).
   → A.U19.10 (GEN); tests (ceiling refusals now logged — tests asserting no log invert; peer-reset entries; W49/W50;
   seven-refusals counter case; preconnect EOF no entry) → A.U19.08, A.U2.19 (tests); `tests_hardware` benign-code lists gain
   60/48 → A.U19.08 (HW); twin concurrency scenario `HTTPDropped` rises → A.U19.08/A.U19.10 (TWIN), and every twin or bench assertion that
-  reads `HTTPDropped` as a monotonic total follows the 24-hour window → M.HW_BENCH.081 (fold F02); SPEC H.7 drop/accept
+  reads `HTTPDropped` as a monotonic total follows the 24-hour window → M.HW_BENCH.081; SPEC H.7 drop/accept
   sentences with register fix 2's heap clause, A.5 ladder sentence → A.U19.08 (docs); catalog rows → U19 A-C note 3
   (catalog)
 - **Kind**: code
@@ -2704,7 +2703,7 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Unit**: U35. Staged: U2 (names), U3 (sync call).
 - **Depends**: M.SRC_NET.153, M.SRC_NET.164
 - **Blast carried by**: SPEC E.5.1 → A.U35.41; SPEC J.8 → A.U17.03 (SPEC); BACKLOG owner question 1 is removed: the
-  two sites are chunked and capped (OR143.a, M.SRC_NET.220) → M.DOCS.067, M.DOCS.022, M.DOCS.024, M.DOCS.019, M.DOCS.020, M.DOCS.065, M.DOCS.064 (fold F27) (M.DOCS.067 entry 1)
+  two sites are chunked and capped (OR143.a, M.SRC_NET.220) → M.DOCS.067 (M.DOCS.067 entry 1)
 - **Kind**: code
 
 ### M.SRC_NET.167 Initiator entry points: gate first, then argument checks
@@ -2751,7 +2750,7 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Resolved**: —
 - **Unit**: U35. Staged: U2, U3, U10.
 - **Depends**: M.SRC_NET.151, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.163, M.SRC_NET.164
-- **Blast carried by**: SPEC E.5.1 → A.U35.41; BACKLOG owner question 1 (both allocation sites) removed → M.DOCS.067, M.DOCS.022, M.DOCS.024, M.DOCS.019, M.DOCS.020, M.DOCS.065, M.DOCS.064 (fold F27)
+- **Blast carried by**: SPEC E.5.1 → A.U35.41; BACKLOG owner question 1 (both allocation sites) removed → M.DOCS.067
 - **Kind**: code
 
 ### M.SRC_NET.169 `setup()`: the discard baseline, no episode reset
@@ -2867,15 +2866,15 @@ annotation-only change carries none, per its constituent. No merged change here 
   changelog entry ("must be mirrored in C"), the kind CLAUDE.md prefers.
 - **Unit**: U17.
 - **Depends**: M.SRC_CORE.134 (`PieceBuffer`, U17), M.SRC_NET.153 (93), M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167,
-  M.SRC_NET.168; M.TEST_UNIT.344, M.TEST_UNIT.345, M.TEST_UNIT.164 (fold F27) (L1: no receive allocation over `chunk_bytes` by largest-block measurement, the
+  M.SRC_NET.168; M.TEST_UNIT.345 (L1: no receive allocation over `chunk_bytes` by largest-block measurement, the
   refusal before any allocation, a maximum-size train assembled correctly; hammering: repeated maximum-size and
   over-cap trains — in U17) ; the harness builds `UARTComm` with the default limits (holds).
 - **Blast carried by**: the link driver's consumers → M.SRC_NET.213/.214; the generated `UARTLinkDriver(…)` passes
   `max_transfer_bytes` from the device TOML → M.GEN.066 (U20); the concurrent-load test (trains alongside the webserver
-  hammer, both GC stages, zero MemoryError) → M.TWIN.171 (fold F27) (U25); a bench maximum-size transfer over the crossover
-  jumper → M.HW_DEV.045, M.HW_DEV.046 (fold F27) (C); SPEC J.6/J.8, Part I's heap budget (both limits count in it) and Part G (the piece
-  primitive) → M.SPEC.138, M.SPEC.136, M.SPEC.050, M.SPEC.111, M.SPEC.126, M.SPEC.137, M.SPEC.146, M.SPEC.149, M.SPEC.156 (fold F27); the UART changelog Class A entry → M.DOCS.067, M.DOCS.022, M.DOCS.024, M.DOCS.019, M.DOCS.020, M.DOCS.065, M.DOCS.064 (fold F27); BACKLOG question removed →
-  M.DOCS.067, M.DOCS.022, M.DOCS.024, M.DOCS.019, M.DOCS.020, M.DOCS.065, M.DOCS.064 (fold F27).
+  hammer, both GC stages, zero MemoryError) → M.TWIN.171 (U25); a bench maximum-size transfer over the crossover
+  jumper → M.HW_DEV.045, M.HW_DEV.046 (C); SPEC J.6/J.8, Part I's heap budget (both limits count in it) and Part G (the piece
+  primitive) → M.SPEC.136, M.SPEC.138, M.SPEC.126, M.SPEC.111; the UART changelog Class A entry → M.DOCS.022; BACKLOG question removed →
+  M.DOCS.067.
 - **Kind**: code
 
 ### M.SRC_NET.222 The DMA ring's size floor; a lap is the receive overrun; the link's `setup()` allocates the ring
@@ -2896,12 +2895,11 @@ annotation-only change carries none, per its constituent. No merged change here 
   link's `setup()`. No wire change: the UART changelog entry is Class B ("no C impact", Python-internal).
 - **Unit**: U17. Staged: U13 (`setup()` calls `setup_rx_ring()` and a lap fails the frame, with M.SRC_NET.221 — without
   it the link receives nothing once the FIFO path is gone).
-- **Depends**: M.SRC_NET.156 (`_validate_config()`), M.SRC_NET.162, M.SRC_NET.169, M.SRC_NET.221; M.TEST_UNIT.344, M.TEST_UNIT.345, M.TEST_UNIT.155, M.TEST_UNIT.169, M.TEST_UNIT.175, M.TEST_UNIT.176, M.TEST_UNIT.317 (fold F25)
+- **Depends**: M.SRC_NET.156 (`_validate_config()`), M.SRC_NET.162, M.SRC_NET.169, M.SRC_NET.221; M.TEST_UNIT.155, M.TEST_UNIT.345
   (the floor's derivation and refusal, a lap → resync; U17).
 - **Blast carried by**: the build checks the declared ring against the same floor → M.GEN.066 (U20); the twin's flash-write
   stall and the concurrent-load test (both dev links, the webserver hammer, FRAM writes and config PUTs, both GC stages,
-  zero MemoryError) → M.TWIN.169, M.TWIN.170, M.TWIN.171, M.TWIN.064, M.TWIN.130 (fold F25) (U25); SPEC J.6/J.7 → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25); changelog "no C impact" → [fold F25
-  M_DOCS].
+  zero MemoryError) → M.TWIN.170, M.TWIN.171 (U25); SPEC J.6/J.7 → M.SPEC.136, M.SPEC.137; changelog "no C impact" → M.DOCS.024.
 - **Kind**: code
 
 ## src/asy_uart_driver.py
@@ -3121,7 +3119,7 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
   gets the same receive cap and stops growing.
 - **Unit**: U17 (F.5.8 written until U36). Staged: U13 (the clamp; the readline cap, OR143.a (2), and its reads from the
   ring land in U13 with M.SRC_NET.221).
-- **Depends**: M.SRC_NET.221 (U13); M.TEST_UNIT.344, M.TEST_UNIT.345, M.TEST_UNIT.164 (fold F27) (the cap, the discard, no growth; U13)
+- **Depends**: M.SRC_NET.221 (U13); M.TEST_UNIT.344 (the cap, the discard, no growth; U13)
 - **Blast carried by**: fakes `readline(self, size=-1)` → A.U13.12 (TEST_HELP, TWIN); contract check → A.U13.12
   (TEST_HELP); L3 readline leg → A.U13.12/U26 (HW_DEV); UART changelog Class B (corrects B25) → A.U13.12 (DOCS)
 - **Kind**: code
@@ -3211,10 +3209,10 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
   U13.
 - **Blast carried by**: the readline cap → M.SRC_NET.202; the ring floor, the lap as overrun and the `setup()` call →
   M.SRC_NET.222; the bus construction passes `rx_ring` and the build checks it → M.GEN.066; SPEC J.6/J.7, F.5.8/F.5.9 (the
-  receive path) and I (the ring's heap entry) → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25); the UART changelog row "no C impact" (Python-internal)
-  → M.DOCS.024, M.DOCS.020, M.DOCS.084, M.DOCS.076, M.DOCS.064 (fold F25); the boot contiguity test asserts where the ring lands and the heap before/after on the twin →
+  receive path) and I (the ring's heap entry) → M.SPEC.136, M.SPEC.137, M.SPEC.108, M.SPEC.126; the UART changelog row "no C impact" (Python-internal)
+  → M.DOCS.024; the boot contiguity test asserts where the ring lands and the heap before/after on the twin →
   M.TSC.230, M.TWIN.169; the bench interrupts-off sweep, soft reset during traffic, heap before/after and
-  the one-time run of the old path → M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25); `devices/dev.toml`'s `rxbuf` comment → M.GEN.053.
+  the one-time run of the old path → M.HW_DEV.159, M.HW_DEV.160, M.PROC.049; `devices/dev.toml`'s `rxbuf` comment → M.GEN.053.
 - **Kind**: code
 
 ## src/asy_uart_link_driver.py

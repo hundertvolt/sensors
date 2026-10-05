@@ -418,7 +418,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Unit**: U10 (no edit)
 - **Depends**: —
 - **Blast carried by**: A.U10.47's convention check must exempt this file from the D.15 order rule, as it exempts its
-  casing → GAP-3 (TSC) with M.TSC.064 (fold F24); D.15 and the naming Part name the exception → M.SPEC.047, M.SPEC.075, M.SPEC.098, M.SPEC.002 (fold F24)
+  casing → GAP-3 (TSC) with M.TSC.064; D.15 and the naming Part name the exception → M.SPEC.075, M.SPEC.047
 - **Kind**: rule
 
 ## src/asy_neopixel_driver.py
@@ -542,7 +542,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: A.U10.21's `PrintLogHistory*.setup()` return (SRC_CORE)
 - **Blast carried by**: generated batch `await neopixel.setup()` and `needs_setup` → A.U10.10 (GEN); tests
   `tests/test_asy_neopixel_driver.py:453-464` → A.U10.10 (TEST_UNIT); tests and the L0 check reading the flag →
-  M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.293 (fold F28), M.TSC.112 (fold F28) (A.U10.22's scope)
+  M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.293, M.TSC.112 (A.U10.22's scope)
 - **Kind**: code
 
 ### M.SRC_SENS.025 Overlay task, starters and fan-in methods

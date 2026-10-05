@@ -500,7 +500,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   the paragraph whole).
   A-C2 step order: A.U9.09's part lands in U10, not U9 (it follows A.U9.09's own change, which lands in U10).
 - **Depends**: A.U5.06, A.U9.01-A.U9.09, A.U9.11, A.U22.01, M.SPEC.008; the refusal's retry wording as the LED
-  command handler lands it M.SRC_NET.122 (fold F09).
+  command handler lands it M.SRC_NET.122 [follows].
 - **Blast carried by**: DEVICE_REFERENCE "Neopixel LED" bullets → A.U9.01/A.U9.03 (DOCS); `src/asy_notification_
   service.py:68-70` → A.U9.11 (SRC_SENS); `src/asy_webserver_service.py:550, :100` comments → A.U9.09 (SRC_NET).
 - **Kind**: doc
@@ -846,7 +846,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   in).
 - **Depends**: A.U11.05/.06/.10/.11, A.U20.02-.07, A.U5.02-.11, A.U10.07/.10/.12, A.U16.17/.R03, A.U31.03, A.U36.003,
   M.SPEC.156 (the rows cited), M.SPEC.008; M.SRC_CORE.043 (absent-file write, as the fold amends it);
-  M.GEN.008, M.GEN.014 (fold F03) (`ConfigFaults` in the generated `/status` block); M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the ring in the link's `setup()`).
+  M.GEN.008, M.GEN.014 (`ConfigFaults` in the generated `/status` block); M.SRC_NET.222 (the ring in the link's `setup()`).
 - **Blast carried by**: CLAUDE.md FRAM rule pointer → A.U36.002 (DOCS); code/test comments citing A.7 → A.U36.004
   (SRC/TEST clusters); `buildgen/codegen.py` docstrings naming A.7 → A.U20.15 (GEN); `tests_hardware/README.md:1395`
   → A.U36.004 (8) (HW_BENCH).
@@ -991,10 +991,10 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20); A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.33's part lands in U20, not U11 (it follows A.S0930.33's own change, which lands in U20).
 - **Depends**: A.U19.20, A.U10.40, A.U11.01-.08, A.U19.10, A.U32.06, A.U23.22, A.S0930.* , A.U30.19, A.U6.27,
   M.SPEC.056, M.SPEC.103; M.SPEC.111 (the window counter's G.2 entry); M.SRC_CORE.043/.047 (absent-file write, fault
-  state, as the fold amends them); M.SRC_CORE.133, M.SRC_CORE.030 (fold F02) (the window counter), M.SRC_NET.119, M.SRC_NET.127, M.SRC_NET.129 (fold F02) (the webserver's
-  drop path and `get_dropped_count()`), M.GEN.008, M.GEN.014 (fold F03) (`ConfigFaults` in the generated `/status` block and its
-  catalog description), M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the delete that never reads), M.WEB.004, M.WEB.006, M.WEB.021, M.WEB.053, M.WEB.054, M.WEB.062, M.WEB.063 (fold F07) (the confirm dialogs),
-  M.TEST_UNIT.306 (fold F15) and M.TWIN.104 (fold F15) (the watertight proof).
+  state, as the fold amends them); M.SRC_CORE.133 (the window counter), M.SRC_NET.127, M.SRC_NET.129 (the webserver's
+  drop path and `get_dropped_count()`), M.GEN.008, M.GEN.014 (`ConfigFaults` in the generated `/status` block and its
+  catalog description), M.SRC_CORE.042 (the delete that never reads), M.WEB.021 (the confirm dialogs),
+  M.TEST_UNIT.306 and M.TWIN.104 (the watertight proof).
 - **Blast carried by**: `buildgen/error_catalog.json` `status` section → A.U6.27/A.U2.01 (GEN); the marker test →
   A.U36.537 (TSC); `js/render.js:132-135` comment → A.U23.13 (WEB); DEVICE_REFERENCE key names → A.U10.40 (DOCS).
 - **Kind**: doc
@@ -1060,7 +1060,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Unit**: U37 (A.U37.06 is the latest; its sentence lands when BACKLOG's bullet is deleted); the U0/U36 edits fold
   in (C8). Fold stage U25: (4), after the responder, the client tests on it and the clock-jump twin file land (all U25).
 - **Depends**: M.SPEC.107, M.SPEC.142, A.U25.01 (the fidelity table exists); M.TWIN.167 (the responder and the
-  log check's NTP-synced expectation), M.TEST_UNIT.342 (fold F16) (the NTP-client tests on it), M.TWIN.146 (fold F31) (the
+  log check's NTP-synced expectation), M.TEST_UNIT.342 (the NTP-client tests on it), M.TWIN.146 (the
   clock-jump twin file).
 - **Blast carried by**: BACKLOG `:848-859` deletion → A.U37.06 (DOCS).
 - **Kind**: doc
@@ -1584,11 +1584,11 @@ Conventions every merged change below applies (stated once, not repeated per cha
   the clause "the build information names it" unless the code writing that name lands in U21 too); Stage 2 U27 (that
   clause, with the build information that names the override, where M.SCR produces it); Stage 3 U36 (renumbered B.14.4
   with M.SPEC.042 (2), every citer repointed).
-- **Depends**: M.TOOL.080, M.TOOL.042, M.TOOL.055 (fold F04) (the override, anchor check and release-build refusal in
-  `toolchain/micropython_overrides.py`), M.SCR.074, M.SCR.065, M.SCR.066, M.SCR.067, M.SCR.032 (fold F04) (the build information names the override; the rollover
+- **Depends**: M.TOOL.080 (the override, anchor check and release-build refusal in
+  `toolchain/micropython_overrides.py`), M.SCR.067, M.SCR.074 (the build information names the override; the rollover
   runner, M.SCR.074), M.SPEC.042 (subsection numbering).
 - **Blast carried by**: E.6's rollover sentence → M.SPEC.082; F.1's tick paragraph pointer → M.SPEC.092;
-  `tests_hardware/README.md` rollover round → M.HW_BENCH (the fold's F04 amendment); BACKLOG chroot list (an override
+  `tests_hardware/README.md` rollover round → M.HW_BENCH.126; BACKLOG chroot list (an override
   change touches the toolchain leg) → M.DOCS.066; README test recipe and command-line reference → M.DOCS.049/.052.
 - **Kind**: doc
 
@@ -1841,8 +1841,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Unit**: Stage 1 U0 ((1)); Stage 2 U12/U13/U17 ((3), (2)); Stage 2b U13 ((6), (7), with the DMA receive path and
   the readline cap, their unit and twin fakes and tests); U36 (label, if still present; (5), before BACKLOG's entry
   leaves at U37).
-- **Depends**: A.U12.03, A.U13.18, A.U17.13, A.U17.28, M.DOCS.065; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the DMA receive path in
-  `asy_uart_driver.py`), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the `readline_until_complete()` cap).
+- **Depends**: A.U12.03, A.U13.18, A.U17.13, A.U17.28, M.DOCS.065; M.SRC_NET.221 (the DMA receive path in
+  `asy_uart_driver.py`), M.SRC_NET.202 (the `readline_until_complete()` cap).
 - **Blast carried by**: UART changelog entries → A.U17.* (SCR/DOCS per UCL rule).
 - **Kind**: doc
 
@@ -2264,7 +2264,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   Stage 4 U20 ((1)'s `ConfigFaults` clause and (2)'s delete item, with the generated `/status` block and the
   system-command delete path); phase C ((4) pointer once F.2 has the result).
 - **Depends**: A.U11.19, A.U11.20, A.U11.28, A.C.17, M.SPEC.096; M.SRC_CORE.043/.047 (as the fold amends them);
-  M.GEN.008, M.GEN.014 (fold F03) (`ConfigFaults` in `/status`), M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the unread delete; a failed one logged, reset reason 9).
+  M.GEN.008, M.GEN.014 (`ConfigFaults` in `/status`), M.SRC_CORE.042, M.SRC_CORE.011 (the unread delete; a failed one logged, reset reason 9).
 - **Blast carried by**: CLAUDE.md flash-write rule → A.U36.034 (DOCS, M.DOCS.082, as the fold amends it); CLAUDE.md
   wear rule's fresh-filesystem prerequisite → M.DOCS.086; A.8's `ConfigFaults` and reset text → M.SPEC.021; A.7's
   setup-batch sentence → M.SPEC.020.
@@ -2809,7 +2809,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   polls, M.HW_DEV; the twin runners' polls land in U25 before it); Stage 4 U35 ((4) bite list, driven time); Stage 5
   U36 ((2) A.U36.016, labels; (3)).
 - **Depends**: A.U7.07, A.U24.03, A.U24.04, A.U24.07, A.U24.08, A.U24.65, A.U24.75, A.U24.76, A.U25.46, A.U26.15,
-  A.U35.03, A.U35.10, A.U36.016, A.U36.017, M.TEST_HELP.033; M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.081, M.HW_DEV.089, M.HW_DEV.139, M.HW_DEV.141, M.HW_DEV.144, M.HW_DEV.145 (fold F32) (the device scripts' bounded polls).
+  A.U35.03, A.U35.10, A.U36.016, A.U36.017, M.TEST_HELP.033; M.HW_DEV.048, M.HW_DEV.050, M.HW_DEV.081, M.HW_DEV.089, M.HW_DEV.139, M.HW_DEV.141 (the device scripts' bounded polls).
 - **Blast carried by**: CLAUDE.md working-agreement bullet → A.U36.017 (2) (DOCS); README test recipes → A.U24.65 (DOCS).
 - **Kind**: doc
 
@@ -2986,7 +2986,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Depends**: A.U7.01, A.U7.14, A.U7.18, A.U7.24, A.U7.25, A.U25.01, A.U26.31, A.U26.44, A.U27.19, A.U36.007, A.U36.009,
   M.SPEC.162, M.SCR.074 (the runner, as the fold amends it).
 - **Blast carried by**: README hardware table → A.U7.01/A.U36.008 (DOCS); `tests_hardware/README.md` → A.U7.18/A.U26.* (HW);
-  the rollover round in `tests_hardware/README.md` → M.HW_BENCH (fold F04).
+  the rollover round in `tests_hardware/README.md` → M.HW_BENCH.126.
 - **Kind**: doc
 
 ### M.SPEC.083 E.6.6: the one level-containment exception list
@@ -3247,7 +3247,7 @@ it; an unflipped fact keeps the text given here.
   ((3)); Stage 4 U20 (A.U20.03 sentence); Stage 5 U25 (A.U25.42 (b); A.U25.58's proof name); Stage 6 U26 (none
   left: GAP-B4's exec is S102's, not the list's); Stage 7 U36 (A.U36.036 paragraph); Stage 8 U37 ("pending list" goes).
 - **Depends**: A.U0.07, A.U10.30 (its check only, narrowed to `__import__`/`importlib`; the rewrite dropped), A.U14.10, A.U20.03, A.U25.42, A.U25.58
-  (M.TSC.093), A.U28.33, A.U36.036, A.U37.02, M.HW_BENCH.038, M.HW_BENCH.091; M.TSC.098, M.TSC.099, M.TSC.055, M.TSC.185 (fold F23) (the per-image check
+  (M.TSC.093), A.U28.33, A.U36.036, A.U37.02, M.HW_BENCH.038, M.HW_BENCH.091; M.TSC.098 (the per-image check
   failing on an unlisted `__import__`/`importlib` site).
 - **Blast carried by**: A.9/E.3 `.frozen` pointers → M.SPEC.022/M.SPEC.078; `.gitignore` parenthesis → A.U36.036 (4)
   (M.PROC.019 (6), PROC — `.gitignore` is PROC's, gap pass G1); `pyproject.toml` PLC0415 entries → A.U37.02 (TOOL); the check's exception set → GAP-B4 (TSC); README
@@ -3529,7 +3529,7 @@ it; an unflipped fact keeps the text given here.
   fold's three rows — the ring lands in U13, the absent-file write in U11, the gated console test's gate in U26, all
   earlier); Stage 4 phase C (measured cells; the interrupts-off sweep's result, C).
 - **Depends**: A.U8.01, A.U8.19, A.U13.R01, A.U16.07, A.U17.27, A.U18.34, A.U31.01-A.U31.08, A.S0930.24, A.S0930.28,
-  A.C.10, M.SPEC.156, M.SPEC.136 (J.6's ring floor); M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the ring), M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25) (the
+  A.C.10, M.SPEC.156, M.SPEC.136 (J.6's ring floor); M.SRC_NET.221 (the ring), M.HW_DEV.159 (the
   interrupts-off sweep device script), M.HW_BENCH.082 (the gated console test, as the fold amends it).
 - **Blast carried by**: Part N `fram.block_hold_budget_us` → M.SPEC.156; A.7/C.8/C.9.1/F.8.2/I.2/J.6 one-clause pointers to
   their rows → M.SPEC.020, M.SPEC.064, M.SPEC.067, M.SPEC.108, M.SPEC.126, M.SPEC.136; `tests_hardware/README.md` owed-row
@@ -3822,8 +3822,8 @@ it; an unflipped fact keeps the text given here.
   move with every citer, M.SPEC.003; (2)(d), (3)(a)-(b)).
   A-C2 step order: A.U14.R01's part lands in U18, not U14 (it needs A.U18.R01, which lands in U18).
 - **Depends**: M.SPEC.003, A.U0.25, A.U0.33, A.U0.44, A.U8.06, A.U8.11, A.U13.12, A.U13.13, A.U13.17, A.U13.19, A.U14.31,
-  A.U14.R01, A.U16.07, A.U18.05, A.U20.18, A.U26.59, A.U36.512, A.U36.544; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the DMA receive path),
-  M.TEST_HELP.069, M.TEST_HELP.025, M.TEST_HELP.028 (fold F25) and M.TWIN.169, M.TWIN.170, M.TWIN.171, M.TWIN.064, M.TWIN.130 (fold F25) (the time-driven DMA and UART register fakes), M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25) (the
+  A.U14.R01, A.U16.07, A.U18.05, A.U20.18, A.U26.59, A.U36.512, A.U36.544; M.SRC_NET.221 (the DMA receive path),
+  M.TEST_HELP.069 and M.TWIN.169 (the time-driven DMA and UART register fakes), M.HW_DEV.160 (the
   soft reset during traffic on the bench); M.SPEC.156 (`udp.poll_idle_ms`'s owed measurement).
 - **Blast carried by**: every F.5.7-F.5.9 citer outside SPEC → A.U36.532 (4) (M.SPEC.003); `devices/dev.toml:39-40`
   comment and J.6 sentences → A.U13.17 (GEN, M.SPEC.136); the raw script's README lines → A.U26.59 (HW_DEV).
@@ -3981,7 +3981,7 @@ it; an unflipped fact keeps the text given here.
 - **Depends**: A.U4.01, A.U5.01, A.U5.04, A.U10.01, A.U10.02, A.U10.05, A.U10.06, A.U10.08, A.U10.R01, A.U12.10,
   A.U12.17, A.U12.18, A.U13.01, A.U13.06, A.U13.11, A.U13.R01, A.U15.40, A.U17.22, A.U18.05, A.U18.08, A.U18.13, A.U19.11,
   A.U19.16, A.U23.25, A.U30.07, A.U30.19, A.U35.30, A.S0930.30, M.SRC_CORE.034, M.SRC_CORE.047, M.SRC_SENS.045;
-  M.SRC_CORE.133, M.SRC_CORE.030 (fold F02) (the window counter), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the piece primitive and its use), M.SRC_CORE.125/.128
+  M.SRC_CORE.133 (the window counter), M.SRC_CORE.134, M.SRC_NET.220 (the piece primitive and its use), M.SRC_CORE.125/.128
   (their removal of the humidity helpers dropped by the fold).
 - **Blast carried by**: I.2's scratch paragraph → M.SPEC.126; C.2/C.3/C.7/C.9 pointers → M.SPEC.047, .048, .058, .066;
   BACKLOG's I2C-scratch and bus-asymmetry entries → A.U13.01/A.U13.06 (DOCS); the twin `COUNTER_CAP` comment → A.U25.23
@@ -4037,7 +4037,7 @@ U36 change that owns its paragraph below.
 - **Unit**: Stage 1 U0 (A.U0.29 tags); Stage 2 U1 ((3) path); Stage 3 U36 ((1)-(3) rest; the history clause after U23
   lands it); Stage 4 phase C (evidence note).
 - **Depends**: A.U0.29, A.U1.02, A.U6.18-A.U6.26, A.U19.10, A.U23.22, A.U23.43, A.U23.44, A.U23.48, A.U32.06, A.U36.500,
-  A.U36.501, A.U36.510, A.C.04; M.WEB.025, M.WEB.030, M.WEB.031, M.WEB.059, M.WEB.064 (fold F17) (history entries per subpage, deep links), M.WEB.012, M.WEB.045, M.WEB.058 (fold F03) (the
+  A.U36.501, A.U36.510, A.C.04; M.WEB.025, M.WEB.030 (history entries per subpage, deep links), M.WEB.012 (the
   `ConfigFaults` row).
 - **Blast carried by**: `eslint.config.js` `ecmaVersion: 2022` → A.U36.501 (2) (WEB); H.5.1's generator-owned paragraph
   pointer → M.SPEC.118.
@@ -4117,7 +4117,7 @@ U36 change that owns its paragraph below.
   rows after U23 lands their behaviour).
 - **Depends**: A.U0.25, A.U6.17, A.U6.18, A.U8.04, A.U8.18, A.U11.31, A.U19.14, A.U23.01-A.U23.06, A.U23.10, A.U23.14-
   A.U23.17, A.U23.21, A.U23.26, A.U23.28, A.U23.29, A.U23.40, A.U23.45, A.U23.49, A.U25.12, A.U32.06, A.U36.503-A.U36.507,
-  A.U36.510, A.S0930.30, M.WEB.041; M.WEB.004, M.WEB.006, M.WEB.021, M.WEB.053, M.WEB.054, M.WEB.062, M.WEB.063 (fold F07), M.WEB.025, M.WEB.030, M.WEB.031, M.WEB.059, M.WEB.064 (fold F17), M.WEB.004, M.WEB.006, M.WEB.012, M.WEB.015, M.WEB.020, M.WEB.053, M.WEB.054, M.WEB.058 (fold F18) (the three behaviours the
+  A.U36.510, A.S0930.30, M.WEB.041; M.WEB.021, M.WEB.025, M.WEB.012 (the three behaviours the
   fold rows state).
 - **Blast carried by**: `js/poll-manager.js` header pointer → A.U36.503 (4) (WEB); `js/render.js`/`html/style.css` comments
   → A.U23.45 (WEB); `js/templates.js`/`html/style.css` history comments → A.U36.507 (1)-(2) (WEB); Part N
@@ -4167,7 +4167,7 @@ U36 change that owns its paragraph below.
 - **Unit**: Stage 1 U0 ((4)); Stage 2 U15 ((5)); Stage 3 U20 ((3), (6) catalog); Stage 3b U23 ((4)'s fold sentence, with
   the tag field, the generator's default and the renderer); Stage 4 U36 ((1), (2), (6) pointer, (7)).
 - **Depends**: A.U0.16, A.U6.01, A.U15.17, A.U20.25, A.U20.30, A.U36.500, A.U36.514, A.U36.515, M.SPEC.003;
-  M.GEN.017, M.GEN.018 (fold F18) (the tag field and the generated `decimals`), M.WEB.004, M.WEB.006, M.WEB.012, M.WEB.015, M.WEB.020, M.WEB.053, M.WEB.054, M.WEB.058 (fold F18) (the renderer).
+  M.GEN.017, M.GEN.018 (the tag field and the generated `decimals`), M.WEB.012, M.WEB.020 (the renderer).
 - **Blast carried by**: L.4 bullet → A.U36.515 (4) (M.SPEC.147); L.6.4 rows → A.U36.514 (M.SPEC.149); `web_tag.py`
   comments → A.U36.514 (6) (GEN).
 - **Kind**: doc
@@ -4195,7 +4195,7 @@ U36 change that owns its paragraph below.
   clauses — the clickable codes land in U23, the retry wording with the LED handler before it).
 - **Depends**: A.U9.03, A.U19.02, A.U20.38, A.U23.11-A.U23.13, A.U23.18-A.U23.20, A.U6.25, A.U6.27, A.U11.26, A.U15.12,
   A.U36.504, A.U36.508, A.S0930.30; A.U23.20 (2) (already makes `ResetReason` clickable, M.WEB);
-  M.SRC_NET.122 (fold F09).
+  M.SRC_NET.122.
 - **Blast carried by**: `asy_wifi_service.py:168-169` comment → A.U6.25 (SRC_NET); A.8's `lightCmdLED` row → M.SPEC.021;
   `DEVICE_REFERENCE.md` → A.U9.03 (DOCS).
 - **Kind**: rule, doc
@@ -4408,8 +4408,8 @@ U36 change that owns its paragraph below.
   catalog, after U10-U28 and A.U30.04-.08, A.U30.21; the UART rows after the ring (U13), the cap and chunking (U13/U17)
   and the twin's measurement (U25), and the window counter's row (U19)); Stage 5 phase C (the dev figure of the ring row).
 - **Depends**: A.U0.12, A.U0.39, A.U12.01, A.U13.01, A.U13.02, A.U16.05, A.U17.03, A.U18.02, A.U18.03, A.U18.16, A.U30.02,
-  A.U30.03, A.U30.07, A.U30.11, A.U30.21, M.SRC_CORE.091; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the ring, the cap
-  and the chunking), M.TWIN.169, M.TWIN.170, M.TWIN.171, M.TWIN.064, M.TWIN.130 (fold F25) (the twin's before/after heap measurement), M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25) (the dev
+  A.U30.03, A.U30.07, A.U30.11, A.U30.21, M.SRC_CORE.091; M.SRC_NET.221, M.SRC_NET.220, M.SRC_NET.202 (the ring, the cap
+  and the chunking), M.SRC_CORE.133 (the window counter's row), M.TSC.230, M.TEST_HELP.028 (the twin's before/after heap measurement), M.HW_DEV.159, M.HW_DEV.160 (the dev
   measurement).
 - **Blast carried by**: BACKLOG `:925-935` placement item and the owner-question list → A.U30.02 (9)/A.U0.12 (DOCS); G.2 rows
   citing I.2 → M.SPEC.111; `tests_scripts/test_memory_catalog.py` → A.U30.03 (TSC).
@@ -4523,8 +4523,8 @@ U36 change that owns its paragraph below.
 - **Unit**: Stage 1 U0 ((5)); Stage 2 U11/U20 ((1), with the codegen change, one commit); Stage 3 U25 ((3) and its fold
   sentence, with the contiguity assertion on the ring — the ring lands in U13, earlier); Stage 4 U27 ((2) checker);
   Stage 5 U30 ((2) scopes, (4)).
-- **Depends**: A.U0.43, A.U11.10, A.U20.06, A.U25.61, A.U27.21, A.U30.10, A.U30.17, A.U36.546; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the
-  ring in `setup()`), M.TSC.230 (fold F25) (the boot contiguity test's assertion on the ring).
+- **Depends**: A.U0.43, A.U11.10, A.U20.06, A.U25.61, A.U27.21, A.U30.10, A.U30.17, A.U36.546; M.SRC_NET.222 (the
+  ring in `setup()`), M.TSC.230 (the boot contiguity test's assertion on the ring).
 - **Blast carried by**: CLAUDE.md memory rule's (f.1) sentence and the 80/12 figure → M.DOCS.089 (DOCS); A.7 step 16 →
   M.SPEC.020; `scripts/lint.sh` messages → A.U11.10/A.U27.21 (SCR).
 - **Kind**: rule, doc
@@ -4672,8 +4672,8 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   TOML sentence, with the keys and the build check); Stage 6 U36 ((1), (3) defaults, (5)) — A.S0930.08 is part of the
   2026-09-30 set landing with the CRC-mode wiring.
 - **Depends**: A.U0.37, A.U2.23, A.U3.08, A.U8.06, A.U13.17, A.U17.13, A.U17.15, A.U17.20, A.S0930.01, A.S0930.08, M.SPEC.003;
-  M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the ring in `asy_uart_driver.py`, its floor and refusal in `asy_uart_comm.py`),
-  M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (`max_transfer_bytes`), M.GEN.066, M.GEN.034 (fold F27) (the TOML keys and their joint build check).
+  M.SRC_NET.221, M.SRC_NET.222 (the ring in `asy_uart_driver.py`, its floor and refusal in `asy_uart_comm.py`),
+  M.SRC_NET.220 (`max_transfer_bytes`), M.GEN.066 (the TOML keys and their joint build check).
 - **Blast carried by**: changelog B26 → A.U17.15 (UART); `devices/dev.toml:39-40` comment → A.U13.17 (GEN); C.7.2 build
   refusals → M.SPEC.060.
 - **Kind**: rule, doc
@@ -4732,10 +4732,10 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   rows land with U17's tests.
   A-C2 step order: A.U17.25's part lands in U25, not U24 (it follows A.U17.25's own change, which lands in U25).
 - **Depends**: A.U1.18, A.U8C.43, A.U8C2.15, A.U17.25, A.U24.15, A.U26.33, A.U26.82, A.U26.87, A.U35.06, A.U36.040, A.U36.539,
-  A.S0930.03, A.S0930.04, A.S0930.08, A.SDEP.16, M.SPEC.107, M.TWIN.156; M.TEST_HELP.069, M.TEST_HELP.025, M.TEST_HELP.028 (fold F25), M.TWIN.169, M.TWIN.170, M.TWIN.171, M.TWIN.064, M.TWIN.130 (fold F25) (the
-  DMA/UART register fakes), M.TEST_UNIT.344, M.TEST_UNIT.345, M.TEST_UNIT.155, M.TEST_UNIT.169, M.TEST_UNIT.175, M.TEST_UNIT.176, M.TEST_UNIT.317 (fold F25) (L1 and hammering), M.TWIN.169, M.TWIN.170, M.TWIN.171, M.TWIN.064, M.TWIN.130 (fold F25) (the flash-write stall and the
-  concurrent-load test), M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25) (the interrupts-off sweep), M.TEST_UNIT.344, M.TEST_UNIT.345, M.TEST_UNIT.164 (fold F27) (the chunking and cap
-  tests), M.HW_BENCH.041, M.HW_BENCH.115 (fold F27) (the bench maximum-size transfer).
+  A.S0930.03, A.S0930.04, A.S0930.08, A.SDEP.16, M.SPEC.107, M.TWIN.156; M.TEST_HELP.069, M.TWIN.169 (the
+  DMA/UART register fakes), M.TEST_UNIT.344, M.TEST_UNIT.345 (L1 and hammering), M.TWIN.170, M.TWIN.171 (the flash-write stall and the
+  concurrent-load test), M.HW_DEV.159, M.HW_DEV.160 (the interrupts-off sweep), M.TEST_UNIT.344, M.TEST_UNIT.345 (the chunking and cap
+  tests), M.HW_DEV.045, M.HW_DEV.046 (the bench maximum-size transfer).
 - **Blast carried by**: CLAUDE.md hazard rule's UART clause → M.DOCS.085; CLAUDE.md hang bullet → M.DOCS.099; BACKLOG's
   UART-fakes entry → M.DOCS.065; E.6.6 exception rows for the L4 "—" cells → M.SPEC.083.
 - **Kind**: rule, doc
@@ -4772,8 +4772,8 @@ protocol: each is spec text (the Class A/B entries are their code actions').
 - **Unit**: Stage 1 U17 ((3) with `chunk_bytes`, `max_transfer_bytes` and the piece primitive; (4)); Stage 1b U13 ((5),
   with the ring; the readline cap's clause of (3) lands in U17 after U13's cap); Stage 1c U20 ((3)'s TOML clause, with the
   keys and the build check); Stage 2 U30/U10 ((2) name); Stage 3 U36 ((1), the advice clause).
-- **Depends**: A.U17.03, A.U36.548; M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (`chunk_bytes`, `max_transfer_bytes`, the piece primitive's
-  use, the readline cap), M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the ring), M.GEN.066, M.GEN.034 (fold F27) (the TOML key and its check), M.SPEC.111
+- **Depends**: A.U17.03, A.U36.548; M.SRC_NET.220, M.SRC_NET.202 (`chunk_bytes`, `max_transfer_bytes`, the piece primitive's
+  use, the readline cap), M.SRC_NET.221 (the ring), M.GEN.066 (the TOML key and its check), M.SPEC.111
   (item 18), M.SPEC.136 ((7)-(8)).
 - **Blast carried by**: BACKLOG owner question naming both allocation sites → removed (M.DOCS.067, as the fold amends
   it); the streaming-GET BACKLOG item → A.U36.548 (DOCS); `UART_C_PORT_CHANGELOG.md` rows for the refusal (Class A) and
@@ -4949,7 +4949,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   the ring-size and `max_transfer_bytes` rows with their keys and joint check); Stage 5 U26/U29/U31 (rows `bench`, A.11
   pointer, `timeout` bound); Stage 6 U36 ((1), `:6131`; `crc` row with A.S0930.01).
 - **Depends**: A.U5.07, A.U10.43, A.U20.19, A.U20.29, A.U20.34, A.U20.35, A.U26.01, A.U29.03, A.U31.08, A.S0930.01;
-  M.GEN.066, M.GEN.034 (fold F27) (the two TOML keys and their joint check).
+  M.GEN.066 (the two TOML keys and their joint check).
 - **Blast carried by**: `devices/*.toml` banners → A.U20.29 (GEN); the table's test → A.U20.35 (TSC).
 - **Kind**: rule, doc
 
@@ -5047,7 +5047,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   Stage 7 U36 ((3) opening and web rows, `decimals` among the keys as U23 leaves them, `crc` with the 2026-09-30 set).
 - **Depends**: A.U0.29, A.U0.33, A.U0.39, A.U5.03, A.U5.07, A.U5.11, A.U8.03, A.U15.16, A.U20.01, A.U20.09, A.U20.17,
   A.U20.18, A.U20.20, A.U20.21, A.U20.24, A.U20.25, A.U20.34, A.U33.03, A.U36.514, A.S0930.01, M.DOCS.092;
-  M.GEN.066, M.GEN.034 (fold F27) (the ring/cap check), M.GEN.017, M.GEN.018 (fold F18) (`decimals` for every numeric field).
+  M.GEN.066 (the ring/cap check), M.GEN.017, M.GEN.018 (`decimals` for every numeric field).
 - **Blast carried by**: the tag-family comments in `buildgen/` and `src/` → A.U36.514 (6) (GEN, SRC_*); BACKLOG `:638-658` →
   A.U33.03 (DOCS); `test_buildgen_web_tag.py` table check → A.U36.514 (TSC).
 - **Kind**: rule, doc
@@ -5257,8 +5257,8 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   whose action changes the row (U17, U18, U24-U26, U31, U35); (2) with the action that creates the literal; (7) at U28's CI run.
 - **Depends**: A.U8.01-A.U8.24, A.U8C.*, A.U8C2.*, A.U10.07, A.U28.36, A.U31.01, A.U31.03, M.HW_BENCH.067/.075/.082,
   M.HW_BENCH.014, M.HW_DEV.004/.048/.049/.068/.117/.140, M.TEST_HELP.028, M.SCR.040/.054/.063, M.TEST_UNIT.090/.091, M.TOOL.016/.041/.046, M.TWIN.132/.144/.146/.158,
-  M.WEB (gap 7), M.SRC_SENS.002/.008/.021; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27), M.GEN.066, M.GEN.034 (fold F27),
-  M.SRC_CORE.133, M.SRC_CORE.030 (fold F02), M.TOOL.080, M.TOOL.042, M.TOOL.055 (fold F04), M.HW_DEV.159, M.HW_DEV.045, M.HW_DEV.160, M.HW_DEV.047, M.HW_DEV.048 (fold F25) (the tags of the fold's new tunables).
+  M.WEB (gap 7), M.SRC_SENS.002/.008/.021; M.SRC_NET.221, M.SRC_NET.220, M.GEN.066,
+  M.SRC_CORE.133, M.TOOL.080, M.HW_DEV.160 (the tags of the fold's new tunables).
 - **Blast carried by**: the tags themselves → their tagging actions (each tier's cluster); the register check → M.SPEC.155.
 - **Kind**: doc
 

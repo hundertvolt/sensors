@@ -507,7 +507,7 @@ an independent cited copy. U10 renames reaching this file: `BMP3xx_Reader` → `
 - **Unit**: U15 (stages U2 numbers, U5 constructor, U10 setup/ladder/TS, U24 builder).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.043, M.SRC_SENS.044, M.SRC_SENS.047, M.SRC_CORE.037, M.SRC_CORE.040 (as the fold reverts
-  A.U3.03/A.U3.05); A.U2.03; M.GEN.034 (fold F11) (catalog names for the restored reader and streak codes).
+  A.U3.03/A.U3.05); A.U2.03; M.GEN.034 (catalog names for the restored reader and streak codes).
 - **Blast carried by**: four tiers of the mid-operation reset → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.R03, L1), A.U13.R02/A.U15.R03 (TWIN, HW_DEV); catalog W11/W14/W15 rows → A.U2.01 (GEN).
 - **Kind**: test
@@ -934,7 +934,7 @@ timestamped writes on `utc_now()`, the erase trio, the chip-watch task. **Code m
 FRAM_CRC_FAILED (48), 46 → FRAM_DATA_CRC (49), 63/64 → FRAM_VERIFY (50), 73 → FRAM_COPIES_DIFFER (51), 83 → INIT
 (10), 85/87 → CALLBACK (14), 26/47/58 → UNEXPECTED (23), 48/60/70/81/84 → BAD_ARG (21), w60/w70/w80 → `code("W",
 "FRAM_PAUSED")` (25); 10/11/18/19/20/30/32/33/35/37/39/50/51(HEAD)/57/61/62/71/72/80 stay persisted entries of the
-layer that logs them at HEAD, each asserted by the catalog name the fold gives it back (M.GEN.034 (fold F11); A.U2.09's
+layer that logs them at HEAD, each asserted by the catalog name the fold gives it back (M.GEN.034; A.U2.09's
 "not allocated (a print after U3)" row no longer applies to them); 82/86/88 retire with their handlers.
 
 ### M.TEST_UNIT.039 Harness, builders, folded constants, names
@@ -1012,7 +1012,7 @@ layer that logs them at HEAD, each asserted by the catalog name the fold gives i
   helper called per byte (`asy_fram_manager.py:244`), so an `ast` count of call sites is not the transfer count — the
   L1 form is taken (M.HW_DEV.060/.063 named TSC; gap pass G3).
 - **Unit**: U16 (stages U2 numbers; the seam-count test with A.U26.43 in U26).
-- **Depends**: M.SRC_CORE.082, .084, .085, .088, .090 (as the fold reverts A.U3.04's split); A.U2.03; M.GEN.034 (fold F11)
+- **Depends**: M.SRC_CORE.082, .084, .085, .088, .090 (as the fold reverts A.U3.04's split); A.U2.03; M.GEN.034
   (catalog names for the per-layer codes A.U2.09 left unallocated).
 - **Blast carried by**: SPEC A.4 FRAM error flow keeps its per-layer entries (A.U3.04's text dropped, SPEC); L2 double
   read → A.U16.09 (TWIN).
@@ -1082,7 +1082,7 @@ layer that logs them at HEAD, each asserted by the catalog name the fold gives i
   the operation and logs its own entry."
 - **Resolved**: —
 - **Unit**: U16 (stages U2, U8C tag, U13 bus-down, U24 tag text).
-- **Depends**: M.SRC_CORE.082-.085, .104 (as the fold reverts A.U3.04's split); M.GEN.034 (fold F11) (catalog names for
+- **Depends**: M.SRC_CORE.082-.085, .104 (as the fold reverts A.U3.04's split); M.GEN.034 (catalog names for
   the per-layer codes).
 - **Blast carried by**: Part N row → A.U8.01 (SPEC).
 - **Kind**: test
@@ -1118,7 +1118,7 @@ layer that logs them at HEAD, each asserted by the catalog name the fold gives i
 - **Resolved**: the per-byte numbers they pinned are retired by A.U2.09 (one code per condition); the planned print-only
   split (A.U3.04, read from OR56.a (1)) is dropped by OR140.a (7), so the entries stay.
 - **Unit**: U16.
-- **Depends**: M.SRC_CORE.084, .085 (as the fold reverts A.U3.04's split); M.GEN.034 (fold F11) (catalog names for the
+- **Depends**: M.SRC_CORE.084, .085 (as the fold reverts A.U3.04's split); M.GEN.034 (catalog names for the
   status-byte read/write and clear codes).
 - **Blast carried by**: —
 - **Kind**: test
@@ -1408,7 +1408,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U15 (stages U2 numbers, U10 ladder).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.074, M.SRC_CORE.037 (as the fold reverts A.U3.05); M.GEN.034 (fold F11) (the restored code's name).
+- **Depends**: M.SRC_SENS.074, M.SRC_CORE.037 (as the fold reverts A.U3.05); M.GEN.034 (the restored code's name).
 - **Blast carried by**: SPEC M.1.2 restart table → A.U15.34 (SPEC).
 - **Kind**: test
 
@@ -1454,7 +1454,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   the two new cycles pin.
 - **Unit**: U15 (stages U10 ladder/`_read_loop`/`TS`).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037 (as the fold reverts A.U3.03); M.GEN.034 (fold F11) (the
+- **Depends**: M.SRC_SENS.075, .076, .083, M.SRC_CORE.032, .037 (as the fold reverts A.U3.03); M.GEN.034 (the
   streak's catalog entry).
 - **Blast carried by**: the mid-operation re-apply case → M.TEST_UNIT.238 (L1) and M.TWIN.102 (L2); twin Run 5c holds →
   A.U15.R04 (SCR).
@@ -2084,7 +2084,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U3 (stages U2 codes, U22 attribute removal).
 - **Depends**: M.SRC_SENS.034, .035 (as the fold reverts A.U3.05); M.SRC_CORE (`_get_values()` → CONTRACT on a
-  `KeyError`); M.GEN.034 (fold F11) (the restored NOTIFY code's name).
+  `KeyError`); M.GEN.034 (the restored NOTIFY code's name).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -2193,7 +2193,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U8C2.02's `next_sleep_min_s = 59.0` follows A.U31.14's millisecond return: the constant and its row ID
   take the ms unit (A.U10.43's suffix rule) — agent decision, OR2.c list.
 - **Unit**: U31 (stages U3 slot rule, U8 tags, U10 sync).
-- **Depends**: M.SRC_SENS.034, .037 (as the fold reverts A.U3.05); M.SRC_CORE.032; M.GEN.034 (fold F11) (the restored
+- **Depends**: M.SRC_SENS.034, .037 (as the fold reverts A.U3.05); M.SRC_CORE.032; M.GEN.034 (the restored
   NOTIFY code's name).
 - **Blast carried by**: Part N row ID `l1.asy_notification_service_next_sleep_min_ms` → GAP (SPEC, see "Gaps").
 - **Kind**: test
@@ -2697,7 +2697,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   with it.
 - **Unit**: U3 (stages U2 codes, U5 constructor, U18 removal and keys).
 - **Depends**: M.SRC_NET.046-.050 (.050 as the fold reverts A.U3.05); M.SRC_CORE (`_get_values()` codes, newest-entry
-  rule); M.GEN.034 (fold F11) (the restored NTP code's name).
+  rule); M.GEN.034 (the restored NTP code's name).
 - **Blast carried by**: `pyproject.toml` B905 entry → A.U28.28 (TOOL).
 - **Kind**: test
 
@@ -2936,7 +2936,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U15 (stages U10 ladder/`TS`/names).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_SENS.054, .055, .090; M.SRC_CORE.037 (as the fold reverts A.U3.03); SRC_CORE
-  `SensorReader._republish()` (A.U15.12); M.GEN.034 (fold F11) (the streak's catalog entry).
+  `SensorReader._republish()` (A.U15.12); M.GEN.034 (the streak's catalog entry).
 - **Blast carried by**: the mid-operation reset across siblings → M.TEST_UNIT in `test_bus_hazard_multi_device.py`
   (A.U15.R01) and A.U15.R01 (TWIN, HW_DEV); notification `ErrCount`s → M.TEST_UNIT in the two SCD30 notification files.
 - **Kind**: test
@@ -3111,7 +3111,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U15 (stages U2, U10).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03); M.SRC_SENS.065, .069; M.GEN.034 (fold F11) (the streak's
+- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03); M.SRC_SENS.065, .069; M.GEN.034 (the streak's
   catalog entry).
 - **Blast carried by**: twin/L3 heater-off tiers → A.U15.R02 (TWIN, HW_DEV); hazard sweep → M.TEST_UNIT for
   `tests/_bus_hazard_catalog.py` is TEST_HELP's (A.U15.R02).
@@ -3161,7 +3161,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `_reset_algo_applied` `False`, the next valid cycle applies the reset).
 - **Resolved**: —
 - **Unit**: U15 (stages U5, U30).
-- **Depends**: M.SRC_SENS.062, .064, .067 (as the fold reverts A.U3.09); M.GEN.034 (fold F11) (the restored SGP40 code's name).
+- **Depends**: M.SRC_SENS.062, .064, .067 (as the fold reverts A.U3.09); M.GEN.034 (the restored SGP40 code's name).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3183,7 +3183,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U16 (stages U2, U3 slot rule, U15).
   A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
-- **Depends**: M.SRC_SENS.063 (as the fold reverts A.U3.09); FRAM manager return shape (M.SRC_CORE, A.U16.18); M.GEN.034 (fold F11)
+- **Depends**: M.SRC_SENS.063 (as the fold reverts A.U3.09); FRAM manager return shape (M.SRC_CORE, A.U16.18); M.GEN.034
   (the restored SGP40 codes' names).
 - **Blast carried by**: —
 - **Kind**: test
@@ -3227,7 +3227,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U16 (stages U2, U3, U10, U11, U15, U30).
   A-C2 step order: A.U2.13's part lands in U3, not U2 (it follows A.U2.13's own change, which lands in U3).
 - **Depends**: M.SRC_SENS.063 (with the gap's condition; as the fold reverts A.U3.09); M.SRC_CORE.032;
-  M.TEST_HELP.057; M.GEN.034 (fold F11) (the restored SGP40 code's name).
+  M.TEST_HELP.057; M.GEN.034 (the restored SGP40 code's name).
 - **Blast carried by**: L2 twin backup cases → A.U15.17 (TWIN).
 - **Kind**: test
 
@@ -3301,7 +3301,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U15 (stage U10).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_SENS.063, .065 (as the fold reverts A.U3.05); M.SRC_CORE.037; M.GEN.034 (fold F11) (the restored SGP40 code's
+- **Depends**: M.SRC_SENS.063, .065 (as the fold reverts A.U3.05); M.SRC_CORE.037; M.GEN.034 (the restored SGP40 code's
   name).
 - **Blast carried by**: —
 - **Kind**: test
@@ -3527,7 +3527,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   with no CRC and with CRC16).
 - **Resolved**: —
 - **Unit**: U17 (the ring-floor cases with OR141.a (4)'s U17 part).
-- **Depends**: M.SRC_NET.152, .153, .156; M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the ring-size floor in `asy_uart_comm.py`).
+- **Depends**: M.SRC_NET.152, .153, .156; M.SRC_NET.222 (the ring-size floor in `asy_uart_comm.py`).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3689,7 +3689,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   are one code, W56: one slot, every refusal counted (C.7.1)."
 - **Resolved**: —
 - **Unit**: U3 (stage U2 numbers, U10 names; stage U17: the four starved-destination tests go with OR143.a's chunking).
-- **Depends**: M.SRC_NET.153, .158, .162, .163; M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the chunked assembly, from U17).
+- **Depends**: M.SRC_NET.153, .158, .162, .163; M.SRC_NET.220 (the chunked assembly, from U17).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3742,7 +3742,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `chunk_bytes` by a largest-block measurement, refusal before any allocation, a maximum-size train assembled
   correctly, hammering with repeated maximum-size and over-cap trains), FOLD_BRIEF F25/F27 (U17) — A-C review fold.
 - **Site**: new sections in `tests/test_asy_uart_comm.py`; the piece primitive's cases in the test file of the module
-  that holds it (decided with the product change, M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27)).
+  that holds it (decided with the product change, M.SRC_CORE.134).
 - **Change**: (a) Lap: `test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs` (a pair whose responder's consumer
   is held past the ring bound while the initiator streams: the overrun is logged by its catalog code once, J.7's
   resync runs, the next transaction completes; no lapped byte is delivered to a callback). (b) Chunking:
@@ -3769,10 +3769,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   and capping each piece, which (b)-(d) prove.
 - **Unit**: U17; stage U24: `src_const()` and the shared pair harness replace the file's local mirror and runner (as
   M.TEST_UNIT.153's harness stage does).
-- **Depends**: M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the ring floor and lap handling in `asy_uart_comm.py`), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27)
+- **Depends**: M.SRC_NET.222 (the ring floor and lap handling in `asy_uart_comm.py`), M.SRC_NET.220, M.SRC_CORE.134
   (`chunk_bytes`, `max_transfer_bytes`, the piece primitive); M.TEST_UNIT.344; M.TEST_HELP.023, .044 (U24 stage).
-- **Blast carried by**: the C-port changelog rows (Class A refusal, "no C impact" ring) → M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27), [fold F25
-  M_SRC_NET]; the concurrent-load and bench maximum-size transfers → M.TWIN.171, C.
+- **Blast carried by**: the C-port changelog rows (Class A refusal, "no C impact" ring) → M.SRC_NET.220, M.SRC_NET.222; the concurrent-load and bench maximum-size transfers → M.TWIN.171, C.
 - **Kind**: test
 
 ## tests/test_asy_uart_driver.py
@@ -3897,7 +3896,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   request exists to clamp); the cap's cases are M.TEST_UNIT.344 (d).
 - **Resolved**: —
 - **Unit**: U13.
-- **Depends**: M.SRC_NET.202 (as the fold reworks it for the ring); M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25); M.TEST_HELP.069.
+- **Depends**: M.SRC_NET.202 (as the fold reworks it for the ring); M.SRC_NET.221; M.TEST_HELP.069.
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -3978,7 +3977,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U13 (with the driver's receive path and the fakes; the readline cap is OR143.a's U13 part); stage U24: the
   shared `run()` and `FixedRandom` replace the file-local forms (M.TEST_UNIT.168's harness stage).
-- **Depends**: M.SRC_NET.221, M.SRC_NET.222, M.SRC_NET.192, M.SRC_NET.199, M.SRC_NET.169 (fold F25) (the DMA receive path), M.SRC_NET.220, M.SRC_NET.153, M.SRC_NET.155, M.SRC_NET.166, M.SRC_NET.167, M.SRC_NET.168, M.SRC_NET.202, M.SRC_NET.213, M.SRC_NET.214 (fold F27) (the readline cap); M.TEST_HELP.069;
+- **Depends**: M.SRC_NET.221 (the DMA receive path), M.SRC_NET.202 (the readline cap); M.TEST_HELP.069;
   M.TEST_HELP.043, .059 (U24 stage).
 - **Blast carried by**: the comm-level ring floor and lap → M.TEST_UNIT.345; L2 → M.TWIN.130, .171; bench → C.
 - **Kind**: test
@@ -4451,7 +4450,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (a stub mount whose file object records `close()`), `test_a_static_get_answers_cache_control_no_cache`.
 - **Resolved**: —
 - **Unit**: U19 (stages U2, U3, U14, U24).
-- **Depends**: M.SRC_NET.124, .126 (both warnings persisted, as the fold amends it), .127, .129; M.SRC_NET.119, M.SRC_NET.127, M.SRC_NET.129 (fold F02) (the drop path counting into the window, its reset);
+- **Depends**: M.SRC_NET.124, .126 (both warnings persisted, as the fold amends it), .127, .129; M.SRC_NET.127, M.SRC_NET.129 (the drop path counting into the window, its reset);
   M.TEST_UNIT.343.
 - **Blast carried by**: twin concurrency scenarios → A.U19.08 (TWIN).
 - **Kind**: test
@@ -4795,7 +4794,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U18 (stage U10).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_NET.084, .100, .102 (as the fold reverts A.U3.05/A.U3.07); M.SRC_CORE.037; M.GEN.034 (fold F11) (the restored WIFI
+- **Depends**: M.SRC_NET.084, .100, .102 (as the fold reverts A.U3.05/A.U3.07); M.SRC_CORE.037; M.GEN.034 (the restored WIFI
   codes' names).
 - **Blast carried by**: —
 - **Kind**: test
@@ -4942,7 +4941,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `True`).
 - **Site**: `tests/test_base_classes.py:472-740`; new tests.
 - **Change**: the tests that use the streak entry to persist (`:474, 638, 647, 658, 668, 690, 706, 718, 739`) keep it,
-  asserted by its catalog name instead of the number 1 (the name the fold gives the streak code back, M.GEN.034 (fold F11)).
+  asserted by its catalog name instead of the number 1 (the name the fold gives the streak code back, M.GEN.034).
   `test_sensorreader_reset_error_counter_clears_history` asserts `run(reader.reset_error_counter()) is True`. New
   `test_a_failing_cycle_keeps_the_drivers_and_the_streaks_entries` (a failing cycle: the driver's own entry, then the
   streak's, under the newest-entry rule; the give-up adds `code("E", "GIVE_UP")`);
@@ -4953,7 +4952,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: —
 - **Unit**: U10 (stages U2, U11).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
-- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03); M.GEN.034 (fold F11) (the streak's catalog entry).
+- **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03); M.GEN.034 (the streak's catalog entry).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -5040,8 +5039,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
   unchanged across adds, reads, hour changes and `reset()`).
 - **Resolved**: —
 - **Unit**: U19 (the primitive lands with its first user, OR137.a).
-- **Depends**: M.SRC_CORE.133, M.SRC_CORE.030 (fold F02) (the primitive in `base_classes.py`); M.SRC_CORE.031 (`COUNTER_CAP`).
-- **Blast carried by**: SPEC Part G catalog entry → M.SPEC.021, M.SPEC.111, M.SPEC.121, M.SPEC.126, M.SPEC.113 (fold F02); the webserver's use → M.TEST_UNIT.202.
+- **Depends**: M.SRC_CORE.133 (the primitive in `base_classes.py`); M.SRC_CORE.031 (`COUNTER_CAP`).
+- **Blast carried by**: SPEC Part G catalog entry → M.SPEC.111; the webserver's use → M.TEST_UNIT.202.
 - **Kind**: test
 
 ## tests/test_bus_hazard_generated.py
@@ -5504,7 +5503,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   stage of the fault state): a file that is unparseable (`:929` corrupt JSON), not an object, or invalid (a value outside
   its field) reports the store's config fault after `setup()`, and still reports it after the boot repair rewrote the
   file; an absent file, a valid file and a directory path report none (the directory is `CFG_PATH_IS_DIR`'s refusal,
-  not a file that existed) — the fault accessor is M.SRC_CORE's (M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03)).
+  not a file that existed) — the fault accessor is M.SRC_CORE's (M.SRC_CORE.043, M.SRC_CORE.049).
 - **Resolved**: A.U11.19's "a missing file writes nothing" (OR71.a (2)'s first-boot clause) is superseded by OR136.a
   (most recent owner decision wins): the HEAD expectations of `:838`, `:1074-1116`, `:1200`, `:1347`, `:1449` and `:2395`
   return, `:838` gaining the write count; A.U11.19's surviving halves stay — the unreadable file (M.TEST_UNIT.254), the
@@ -5512,7 +5511,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   field certainly; a missing or unknown key per M.SRC_CORE's definition) is decided with the product change, the rows
   following it.
 - **Unit**: U11 (stages U2 codes, U14 comment; the version stamp with the pin move, U0/U37).
-- **Depends**: M.SRC_CORE.043 (as the fold amends it, OR136.a); M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the config-fault state);
+- **Depends**: M.SRC_CORE.043 (as the fold amends it, OR136.a); M.SRC_CORE.043, M.SRC_CORE.049 (the config-fault state);
   M.TEST_HELP.062 (`WriteCountingOpen`).
 - **Blast carried by**: `tests/test_base_classes.py:1013-1016, 1449-1452` → M.TEST_UNIT.229, .230 (this file's base
   counterpart, merged there: no persisted entry for an absent file, a command-only schema writes no file — both hold
@@ -5532,7 +5531,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   An `ENOENT` from the same stand-in is no fault: the absent-file path of M.TEST_UNIT.253 runs (one defaults write).
 - **Resolved**: —
 - **Unit**: U11.
-- **Depends**: M.SRC_CORE.043; M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the config-fault state).
+- **Depends**: M.SRC_CORE.043; M.SRC_CORE.043, M.SRC_CORE.049 (the config-fault state).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -5652,7 +5651,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   store's two await points inside the write path, so the gates sit there.
 - **Unit**: U11 (A.S0930 cases land with A.S0930.16, the reset unit); stage U20 (A-C review fold): the unreadable/damaged-
   file deletion test, with the never-reading delete path (OR138.a (2)).
-- **Depends**: M.SRC_CORE.041, .042; M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03) (the delete path that never reads).
+- **Depends**: M.SRC_CORE.041, .042; M.SRC_CORE.042 (the delete path that never reads).
 - **Blast carried by**: twin/L3/L4 reset legs → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
 - **Kind**: test
 
@@ -5901,7 +5900,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   decision wins); the no-clamp rule is A.U12.10's G.2 wording ("returns `None` outside the domain … nothing clamps"),
   which the kept helpers now follow.
 - **Unit**: U12.
-- **Depends**: M.SRC_CORE.127; M.SRC_CORE.128, M.SRC_CORE.125, M.SRC_CORE.127, M.SRC_CORE.130 (fold F08) (the humidity helpers kept, `rel_humidity()` without its clamp).
+- **Depends**: M.SRC_CORE.127; M.SRC_CORE.128 (the humidity helpers kept, `rel_humidity()` without its clamp).
 - **Blast carried by**: `tests/test_asy_bmp3xx_driver.py:1388` comment → M.TEST_UNIT.007-.024 (bmp section, A.U12.08).
 - **Kind**: test
 
@@ -5930,7 +5929,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U35.42 lists five catches; A.U12.09's removal of two of them is dropped (OR140.a (4), A-C review fold),
   so all five stay (M.SRC_CORE.130 as the fold amends it).
 - **Unit**: U35.
-- **Depends**: M.SRC_CORE.130; M.SRC_CORE.128, M.SRC_CORE.125, M.SRC_CORE.127, M.SRC_CORE.130 (fold F08) (the two humidity helpers kept with their catches).
+- **Depends**: M.SRC_CORE.130; M.SRC_CORE.128 (the two humidity helpers kept with their catches).
 - **Blast carried by**: SPEC E.5.1 row → A.U35.41 (SPEC).
 - **Kind**: test
 
@@ -6065,7 +6064,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U3 (stage U2 codes).
   A-C2 step order: A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: M.SRC_CORE.037 (as the fold reverts A.U3.03: the streak entry per failing cycle); M.SRC_SENS (SCD30 read
-  error); M.GEN.034 (fold F11) (the streak's catalog entry).
+  error); M.GEN.034 (the streak's catalog entry).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -6758,7 +6757,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Unit**: U11 (config reset), U16 (erase); stage U20 (A-C review fold): the unreadable/damaged-store deletion and the
   failed delete's reason 9, with the delete path (OR138.a (2)); the power-cut rebuild's defaults write lands in U11 with OR136.a.
   A-C2 step order: A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20).
-- **Depends**: M.SRC_CORE.011, .041, .042, .083 (as the fold amends them for OR136.a/OR138.a); M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.015, M.SRC_CORE.008, M.SRC_CORE.042, M.SRC_CORE.011 (fold F03)
+- **Depends**: M.SRC_CORE.011, .041, .042, .083 (as the fold amends them for OR136.a/OR138.a); M.SRC_CORE.043, M.SRC_CORE.049, M.SRC_CORE.042
   (the config-fault state and the never-reading delete); TEST_HELP fake `cut_after_bytes`, `size=` (A.S0930.25,
   A.U24.22); M.TEST_HELP.062 (`WriteCountingOpen`).
 - **Blast carried by**: L2-L4 → A.S0930.27-.29 (TWIN, HW_DEV, HW_BENCH).
@@ -6824,7 +6823,9 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `feed_watchdog()` no longer feeds); A.U30.19 (the fatal flag set → one pass calls `_reboot()` with code 20, no feed
   after it); A.U32.06 (`get_last_task_end()`: `None` before, `{"Task": "X", "Uptime": <fake uptime>}` after, a starter
   raising at start sets nothing, two tasks of one module differ); A.U11.10 (`run_setups()` awaits in order, feeds once
-  after each, collects N + 1 times with the feed first, a raising setup propagates and nothing after it runs); A.S0930.24
+  after each, collects N + 1 times with the feed first, a raising setup propagates and nothing after it runs;
+  `get_config_faults()` after the batch names each faulted store's module once, in list order, omits a store that
+  repaired a missing key, and keeps its list after a later repair write — A-C review fold); A.S0930.24
   (a)-(e) and A.S0930.36 (a)-(e) as listed there (takeover leaves direct/supervisor/`run_setups()` feeds unchanged; the
   healthy count `2 + stores + chunks + tasks + (…) + 1` with the gap bounds from `_TASK_CHECK_TIME` read from source; one
   hang test per step S1-S6, 1 s pumped with `feed_count` frozen; the S6 arm failure; a refused command never stops the
@@ -8344,6 +8345,7 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | F02 | M.TEST_UNIT.343 | added |
 | F02 | M.TEST_UNIT.202 | amended |
 | F03 | M.TEST_UNIT.253, .254, .259, .306 | amended |
+| F03 | M.TEST_UNIT.309 (`get_config_faults()` after `run_setups()`) | amended |
 | F03 | M.TEST_UNIT.306 (lead ruling 2026-10-05: a failed delete shows as reset reason 9 at the next boot, never "Failed") | amended |
 | F04 | — | none in this file |
 | F05 | — | none in this file |

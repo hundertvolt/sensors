@@ -451,7 +451,7 @@ change lists its stages; the end state is the last stage's.
   (SRC_CORE preflight).
 - **Blast carried by**: `js/mock-server.js` dispatch/SystemCmd handlers and `tests_js/` → A.S0930.20 (5), A.U6.17
   (WEB/TST), the `confirm` flag read by the page → M.WEB.021 and validated → M.WEB.006, its Python shape mirror →
-  M.TSC.040 (fold F07); `tests_scripts/test_buildgen_definitions.py` option/label pins → A.S0930.20, A.U20.27 (TST); SPEC H.4/H.5
+  M.TSC.040; `tests_scripts/test_buildgen_definitions.py` option/label pins → A.S0930.20, A.U20.27 (TST); SPEC H.4/H.5
   → A.U6.24/A.U6.25 Docs (SPEC).
 - **Kind**: code
 
@@ -846,10 +846,10 @@ change lists its stages; the end state is the last stage's.
   default).
 - **Unit**: U20 (after U13's `rx_ring` parameter and U17's floor and cap exist in `src/`).
 - **Depends**: M.GEN.025, M.GEN.027, M.GEN.005, M.GEN.012, M.GEN.053, M.SRC_NET.220, M.SRC_NET.221, M.SRC_NET.222;
-  M.TSC.057 (fold F27) (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
-  source; `tests_scripts/test_device_tomls.py`: dev declares both; U20).
-- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25); Part N rows `dev.uart_rx_ring`,
-  `dev.uart_max_transfer_bytes` → M.SPEC.138, M.SPEC.136, M.SPEC.050, M.SPEC.111, M.SPEC.126, M.SPEC.137, M.SPEC.146, M.SPEC.149, M.SPEC.156 (fold F27); the twin wiring reads the generated construction (TWIN, unchanged
+  M.TSC.057 (`tests_scripts/test_buildgen_validate.py`: the pair accepted, each refusal, the floor read from
+  source, the shipped devices built; U20).
+- **Blast carried by**: SPEC L.3 (bus and instance keys) and J.6 → M.SPEC.146, M.SPEC.136; Part N rows `dev.uart_rx_ring`,
+  `dev.uart_max_transfer_bytes` → M.SPEC.156; the twin wiring reads the generated construction (TWIN, unchanged
   rule).
 - **Kind**: code
 

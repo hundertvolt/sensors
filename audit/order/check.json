@@ -12,10 +12,10 @@
  },
  "changes": 1907,
  "steps": 6561,
- "edges": 75622,
+ "edges": 74894,
  "edge_kinds": {
   "action": 60760,
-  "dep-M": 9038,
+  "dep-M": 8272,
   "dep-A": 3020,
   "blast": 5737,
   "sweep": 445
@@ -1257,7 +1257,7 @@
  ],
  "in_unit_edges_dropped_to_break_cycles": {
   "blast": 248,
-  "dep-M": 760,
+  "dep-M": 735,
   "dep-A": 151
  },
  "no_step_changes": [

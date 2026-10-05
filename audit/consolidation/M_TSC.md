@@ -558,7 +558,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   dir was created; a `--no-autostart` build stages into its own `-noautostart` work dir (M.SCR.065); (g)
   `--tick-offset-test` (OR139.a, A-C review fold): `st.build_firmware` (stubbed) receives `tick_offset_test=True`, the
   default output ends `-tickoffset.uf2`, the work dir carries `-tickoffset`, the staged generated module's build info
-  names the override (M.GEN.019, M.GEN.009 (fold F04)), and with the fake `tick_offset_in_build()` true the record's `overrides`
+  names the override (M.GEN.019, M.GEN.009), and with the fake `tick_offset_in_build()` true the record's `overrides`
   holds `"tick_offset_test"`; a default build passes `tick_offset_test=False` and its record never names it.
 - **Resolved**: —
 - **Unit**: U27 (U26 record; S0930 rows land with their U26/U27 owners).
@@ -673,11 +673,14 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Change**: `_shape_problems()` gains semver + supported major, section-not-an-object, `pollIntervalMs` and
   `defaultPollIntervalMs` numbers with `0 < v <= 2**31 - 1` (read from `js/definitions.js`'s `MAX_POLL_INTERVAL_MS`
   by the mirror test, not re-typed here — the bound is a module constant `_MAX_POLL_INTERVAL_MS = 2**31 - 1` pinned by
-  `test_definitions_js_mirrors.py`), the path/decimals field hints, and an errcount group's `codes` object; new
+  `test_definitions_js_mirrors.py`), the path/decimals field hints, an errcount group's `codes` object, `confirm` a
+  boolean on an `enum` or `toggle` field and a top-level `defaultDecimals` an integer `0..MAX_DECIMALS` (the U23 stage,
+  with M.WEB.006); new
   `test_shape_corpus_agrees` parametrised over `definitions_shape_cases.json`: `(problems == []) == case["valid"]`;
   `:173-174` keeps every device's output passing.
 - **Resolved**: —
-- **Unit**: U23 (stage U6: the corpus and the HEAD rejections; U2: codes object).
+- **Unit**: U23 (stage U6: the corpus and the HEAD rejections; U2: codes object; the `confirm` and `defaultDecimals`
+  checks with M.WEB.006's U23 stage, A-C review fold).
   A-C2 step order: A.U2.21's part lands in U6, not U2 (it follows A.U2.21's own change, which lands in U6).
 - **Depends**: M.TSC.017, A.U23.09 (WEB).
 - **Blast carried by**: JS side → A.U6.16/A.U23.09 (WEB); the constant pin → M.TSC.072.
@@ -707,11 +710,11 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (`HotspotPW` included: A.U18.38 publishes it, the exception goes); (k) the `SystemCmd` options are exactly `_SYSTEM_CMDS` (`ast`, `src/asy_webserver_service.py`)
   in order, labels "Reset to defaults" and "Erase FRAM" (the browser confirmation the website asks before each system
   command and before clearing the error history, OR140.a (3), is asserted where M_WEB places it: a confirmation text the
-  definitions carry is checked present on every `SystemCmd` option and on `ResetErrors` here, M.WEB.004, M.WEB.006, M.WEB.021, M.WEB.053, M.WEB.054, M.WEB.062, M.WEB.063 (fold F07)); (l)
+  definitions carry is checked present on every `SystemCmd` option and on `ResetErrors` here, M.WEB.004, M.WEB.021); (l)
   SCD30's errcount and readiness rows match its catalog entries (the three FRC readiness keys, A.U15.12); (m) every
   displayed number field whose value can carry a fraction (a float schema field, a float measurement value) has a
   `decimals` hint from 0 to 3, equal to the value its `@web` tag or schema declares as buildgen carries it
-  (M.GEN.017, M.GEN.018 (fold F18)); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
+  (M.GEN.017); the API values themselves stay unrounded (OR140.a (16)). Key names follow A.U10.40.
 - **Resolved**: A.U2.21's edit of the golden files falls away with A.U6.04 (its test compares with the catalog only).
 - **Unit**: U23 (each property in its owner's unit: U2 (a), U6 (c)-(f), (i), (j at U18), U15 (l), U23 (b), (g), (h),
   (m), S0930 (k) with U10; (k)'s confirmation check in U23).
@@ -1095,9 +1098,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
   buildgen checks together (OR141.a (4) (e), OR143.a (2), A-C review fold): a ring size that is not a power of two, one
   below its derived floor (the larger of today's floors and the peer's stop-and-wait bytes during the longest
   synchronous flash write, rounded up to a power of two) and one above 32,768 each refused naming the floor or the
-  limit with `(field, instance)`; a `max_transfer_bytes` or `chunk_bytes` outside its range refused; the edges and the
+  limit with `(field, instance)`; a `max_transfer_bytes` outside its range refused (`chunk_bytes` is no TOML key); the edges and the
   shipped devices built; an unstated value read from the driver source like `poll_idle_ms`. Rule names, keys and the
-  floor's inputs follow M_GEN's check (M.GEN.066, M.GEN.034 (fold F27)).
+  floor's inputs follow M_GEN's check (M.GEN.066).
 - **Resolved**: A.S0930.01 writes the agreement test against HEAD's `src/crc_checks.py` and `CRC_Pass`; it lands after
   U10's rename (A.U10.37/A.U10.38, M.SRC_CORE.115), so it reads the end-state module and class (SRC_CORE GAP-G10; the
   table itself says `CRCPass`, M.GEN.024 as amended in gap pass G1). A.U13.17's replacement (poll 464/465) fails
@@ -1631,7 +1634,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   lands and the heap cost is measured).
 - **Site**: `tests_scripts/test_digital_twin_boot_contiguity.py` (new test).
 - **Change**: for every `DEVICE_NAMES` device whose wiring declares a `uart_link`, the boot probe reports each link's
-  ring address and size after the setup batch (M.TEST_HELP.069, M.TEST_HELP.025, M.TEST_HELP.028 (fold F25)); the test asserts every ring lies below the
+  ring address and size after the setup batch (M.TEST_HELP.028); the test asserts every ring lies below the
   probe's high band (`_HIGH_BAND`), among the survivors the placement reset keeps low (SPECIFICATION.md I.4(f.1)), and
   that no ring is allocated outside a setup unit (its address is fixed once the batch ends: a second probe after the
   task start reports the same address); the rings' net heap cost and the largest free block before and after the batch
@@ -1640,8 +1643,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Resolved**: —
 - **Unit**: U13 (lands with the ring and the twin's DMA fake).
 - **Depends**: M.SRC_NET.221, M.SRC_NET.222 (the ring allocated in `setup()`, U13), M.TWIN.169 (the twin's DMA fake
-  holds a real ring buffer, U13), M.TEST_HELP.069 (the probe reports the rings).
-- **Blast carried by**: SPEC I's ring heap entry → M.SPEC.050, M.SPEC.108, M.SPEC.136, M.SPEC.137, M.SPEC.138, M.SPEC.126, M.SPEC.130, M.SPEC.097, M.SPEC.020, M.SPEC.156 (fold F25).
+  holds a real ring buffer, U13), M.TEST_HELP.028 (its U13 stage: the probe prints the `rings` lines).
+- **Blast carried by**: SPEC I's ring heap entry → M.SPEC.126.
 - **Kind**: test
 
 ## tests_scripts/test_digital_twin_ci_suite_ceiling.py
@@ -1969,7 +1972,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
   the owner's list is mirrored as written.
 - **Unit**: U26 (stage U10: the per-image zero and the named list, OR142.a's U10 placement; U26 for the device-script
   side, whose rendered static import holds no site, M.HW_DEV.001).
-- **Depends**: M.SPEC.089, M.SPEC.145, M.SPEC.087 (fold F23) (F.1's named list and the two platform sites), M.TWIN.054, M.HW_DEV.001.
+- **Depends**: M.SPEC.089 (F.1's named list and the two platform sites), M.TWIN.054, M.HW_DEV.001.
 - **Blast carried by**: SPEC F.1 list → A.U10.30/GAP-B4 (SPEC).
 - **Kind**: test
 
@@ -2227,7 +2230,7 @@ where a test pins an SCR product, the constituent action is cited and the depend
 - **Unit**: U3
 - **Depends**: A.U3.06, A.U3.08 (kept; SRC) — the scan reads the tree U3 leaves.
 - **Blast carried by**: SPEC C.7 names the check and its rule (fault or warning, never both; one entry per layer) →
-  M.SPEC.058, M.SPEC.051, M.SPEC.010, M.SPEC.054, M.SPEC.059, M.SPEC.062, M.SPEC.101 (fold F11).
+  M.SPEC.058.
 - **Kind**: test
 
 ## tests_scripts/test_readiness_gates.py
@@ -4941,7 +4944,7 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F19 | — | none in this file |
 | F20 | — | none in this file (OR78.a's literal removals already carry the device names here) |
 | F21 | M.TSC.065 | tag (comment-cap-long-lines: "(agent, 2026-09-30; owner-reviewed, 2026-10-02)") |
-| F22 | — | none in this file (M.TSC.056 already accepts and refuses both keys; confirmed) |
+| F22 | M.TSC.039 | amended (the `_shape_problems()` mirror checks `confirm` and `defaultDecimals` as `validateDefinitions()` does; M.TSC.056's buildgen-side checks already cover both keys) |
 | F23 | M.TSC.098, M.TSC.099, M.TSC.055, M.TSC.185 | amended (per-image zero; OR142.a's named list; the importlib rewrite in test_buildgen_validate.py dropped; device scripts hold no dynamic import) |
 | F24 | M.TSC.064 | amended (voc_algorithm.py the one named naming and D.15 exception) |
 | F25 | M.TSC.230 | added (the ring lands with the boot survivors, U13) |
