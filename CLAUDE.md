@@ -863,9 +863,9 @@ information):
   project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub**
   — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
   class has no zero-argument constructor overload (every overload requires a positional `id: int`
-  first argument), so an `src`-only run raises 12 `call-overload` errors across `system_service.py`
-  (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2), `asy_sgp40_driver.py`,
-  `asy_scd30_driver.py` and `asy_bmp3xx_driver.py` that never surface in the actual, documented
+  first argument), so an `src`-only run raises 13 `call-overload` errors (stubs `1.29.0.post1`, re-checked
+  2026-10-06) across `system_service.py` (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2),
+  `asy_sgp40_driver.py`, `asy_scd30_driver.py`, `asy_bmp3xx_driver.py` and `asy_isl29125_driver.py` that never surface in the actual, documented
   `mypy src tests` invocation. Bare `Timer()` allocate-now/`init()`-later **is** valid runtime
   usage, so this one is a genuine **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
   package**, not a bug in any promoted driver, and `tests/machine.py`'s fake models it correctly.

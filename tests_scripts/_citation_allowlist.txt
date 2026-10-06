@@ -1,6 +1,5 @@
 # path<TAB>token: citations that did not resolve when the check landed. Only shrinks: fix the citing
 # text, then rerun `uv run python tests_scripts/test_citations.py --regenerate`.
-.gitignore	digital_twin/run_wozi_integration.py
 BACKLOG.md	HARDWARE_TEST_HANDOVER.md
 BACKLOG.md	HARDWARE_TEST_PLAN.md
 BACKLOG.md	REAL_HARDWARE_TEST_QUEUE.md

@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 AUDIT = ROOT / "audit"
-PATH_RE = re.compile(r"`((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.(?:py|md|js|mjs|ts|toml|ini|yml|yaml|json|sh|html|css|txt|cfg|lock))(?::[0-9][0-9,\- ]*)?`")
+PATH_RE = re.compile(r"`((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.(?:py|md|js|mjs|ts|toml|ini|yml|yaml|json|sh|html|css|txt|cfg|lock)|\.gitignore|\.nvmrc)(?::[0-9][0-9,:\- ]*)?`")
 
 
 def blocks(path, prefix):
@@ -134,6 +134,7 @@ def main():
         for i, lane in enumerate(lanes(unit["order"], files)):
             fs = sorted({f for g in lane for c in g for f in files[c]})
             print(f"lane {i}: {sum(len(g) for g in lane)} steps, files: {', '.join(fs)}")
+        print("Every lane gets an owner, '(no file)' included: its steps are procedural or name no parsable site.")
         return
     order = unit["order"]
     pos = {tuple(g): n for n, g in enumerate(order, 1)}
