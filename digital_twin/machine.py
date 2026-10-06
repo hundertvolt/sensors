@@ -299,9 +299,9 @@ _current_fram_chip: "Any | None" = None
 
 
 def configure_fram_state_path(path: "str | None") -> None:
-    # Called once, before build_system() constructs spi0, by whatever entry point Step 5 writes -
-    # src/ itself never calls this (zero twin-awareness anywhere in src/, per this step's own
-    # finish criteria). None (the default) means "in-memory only, no persistence".
+    # Called once, before build_system() constructs spi0, by the twin's entry points (launch.py, run_generic_integration.py) -
+    # src/ never calls this: zero twin-awareness in src/ (owner, 2026-09-26: 'zero artifacts specifically added for testing').
+    # None (the default) means "in-memory only, no persistence".
     global _fram_state_path
     _fram_state_path = path
 

@@ -646,8 +646,8 @@ class UART_Comm:
         err = self._validate(self._rx.get_buf(), CMD_ACK, 1, 1, uid)
         if err:
             if err == _ERR_WRONG_KIND:
-                # The peer initiated while this side was mid-transaction. Out of contract - there
-                # is no arbitration - so it is logged as the peer's violation, not as noise.
+                # The peer initiated while this side was mid-transaction. Out of contract (owner, 2026-09-11) -
+                # there is no arbitration - so it is logged as the peer's violation, not as noise.
                 await self._fault(device, _ERR_PEER_INITIATED, "a data frame arrived where an ACK was due")
             else:
                 await self._fault(device, err, "invalid ACK for frame", cur_chunk)
@@ -833,8 +833,8 @@ class UART_Comm:
             self._busy = False
 
     async def uart_set_stream(self, set_id: int, total_size: int, pull: "_PullCallback | None") -> bool:
-        # A declared total is required up front, because CHUNKS has to be in chunk 1. A
-        # genuinely unknown length is out of scope for this protocol, by design.
+        # A declared total is required up front: every frame carries the train's CHUNKS, chunk 1
+        # included (Part J.3), so a genuinely unknown length cannot be sent.
         if not await self._gate(ROLE_INITIATOR):
             return False
         bus = self.uart

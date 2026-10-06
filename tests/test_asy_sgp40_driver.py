@@ -126,7 +126,7 @@ def make_sgp() -> SGP40_I2C:
 
 
 # ---------------------------------------------------------------------------
-# initialize() - serial number / self-test gates (feature-set check intentionally removed)
+# initialize() - serial number / self-test gates (feature-set check removed: not in datasheet Table 8; owner-confirmed, 2026-07-21)
 # ---------------------------------------------------------------------------
 
 

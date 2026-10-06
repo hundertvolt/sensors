@@ -1,9 +1,9 @@
 """Generic system-housekeeping service shared by every sensortask-*.py device: uptime, boot signature, reboot/reboot-to-bootloader, the staggered driver-startup sequence, the task supervisor loop, and a persisted system-settings store (config_SYSTEM.cfg).
 Every method returns a well-defined value, never raises.
 """
-# A live debug-level change is pushed through a registry of other loggers' own set_level() methods
-# (set_level_setters(), filled once at boot), never a shared mutable value. The real reset
-# reboot_system()/reboot_bootloader() take after _RESET_DELAY is the intent, not a failure.
+# A live debug-level change is pushed through a registry of other loggers' own set_level() methods (set_level_setters(),
+# filled once at boot), not a shared mutable value (owner, 2026-08-11, paraphrase: SharedLevel was reverted for breaking encapsulation).
+# The real reset reboot_system()/reboot_bootloader() take after _RESET_DELAY is the intent, not a failure.
 
 import asyncio
 import gc
@@ -89,7 +89,7 @@ class SystemService:
         self.sequencer_timer = Timer()
         self.ntp_is_synced = asy_ntp_callback
         self.start_time_set = False
-        # None until status_counter() resolves it - a later change to this value signals a reboot happened.
+        # None until status_counter() resolves it (owner, 2026-07-18) - a later change to this value signals a reboot happened.
         self.boot_signature = LockedCounter(init_value=None, max_val=0xFFFFFFFF)
         self.watchdog = watchdog
         # Set when _reboot()'s reset_timer can't be armed, so the supervisor loop stops feeding the
@@ -130,7 +130,8 @@ class SystemService:
             self._force_watchdog_starve = True
 
     async def _ntp_boot_signature(self) -> int | None:
-        # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
+        # None if not synced yet or the sync/mktime computation itself failed - a failing NTP callback counts as not synced
+        # (owner, 2026-07-18); the caller falls back to random after _NTP_WAIT_TIME.
         try:
             synced = await self.ntp_is_synced()
         except Exception as e:  # caller-supplied callback, typed as any Callable - guarded broadly

@@ -1049,9 +1049,8 @@ def test_d_reset_on_one_module_never_affects_another() -> None:
     run(b.pr.err_s("y", errno=2))
     _service, app = _make_service(error_sources=[a, b])
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
-    # Both reset together by this global action (decision: ResetErrors resets every module, not
-    # scoped per-module) - the isolation property under test is that resetting doesn't cross-wire
-    # one module's history into another's.
+    # Both reset together by this global action (owner, 2026-09-26: global only, permanently) -
+    # the isolation property under test is that resetting doesn't cross-wire one module's history into another's.
     assert a.pr.history == []
     assert b.pr.history == []
     assert a.pr.reset_calls == 1
@@ -1066,7 +1065,7 @@ def test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim() -> No
     log = run(service.get_error_counter())
     entry = next(iter(log.values()))
     assert entry["ErrCount"] >= 1
-    assert "W" in entry["ErrType"]  # a warning, not an error - decision 8's explicit distinction
+    assert "W" in entry["ErrType"]  # a warning, not an error - the owner's warning-not-error rule (SPEC A.8)
 
 
 def test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> None:
@@ -2730,8 +2729,8 @@ def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
     return b"".join(chunks)
 
 
-# -- I.2: hammer /measurements and /sensors specifically - the project owner's own named top
-# candidate, since sensor-module configuration varies per device and its final size is not
+# -- I.2: hammer /measurements and /sensors specifically - the owner's named top
+# candidate (owner, 2026-09-07), since sensor-module configuration varies per device and its final size is not
 # foreseeable - at the real registered-module count found on real hardware (17, H.3's own scale).
 
 

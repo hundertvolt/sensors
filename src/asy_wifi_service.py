@@ -47,9 +47,9 @@ _VAL_PW = const((("PW", "str", "", 8, 63, ""),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
 _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = network.hostname()'s real cap
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
-# Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the hardcoded "12345678": a
-# known, accepted-risk credential (CLAUDE.md's hard rules), made per-device configurable rather
-# than removed or rotated. Masked like _VAL_PW.
+# Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the hardcoded "12345678": accepted
+# permanently as a known limitation (owner, 2026-09-26; CLAUDE.md), made per-device configurable.
+# Masked like _VAL_PW.
 _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 
 # @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true
@@ -165,8 +165,8 @@ class AsyConnTime(SensorReaderConfig):
         self.hotspot_time = 60000 * hotspot_time_min  # convert to ms
         self.conn_fail_to_hotspot = conn_fail_to_hotspot
         self.wifi_uptime = LockedCounter(max_val=0xFFFFFFFF)
-        # DNSServer gets its own independent "DNSSRV"-named logger, not this class's own self.pr -
-        # its history is expected to fold into a separate combined "Networking" REST endpoint later.
+        # DNSServer gets its own independent "DNSSRV"-named logger, not this class's own self.pr (owner, 2026-08-07) -
+        # its history is shown with the networking data (owner, 2026-09-26).
         self.dns_server = DNSServer(fram=fram, history_length=history_length, debug=debug)
         self.dns_server_task: asyncio.Task[None] | None = None
         self.reconn_wifi = False
@@ -790,7 +790,7 @@ class AsyConnTime(SensorReaderConfig):
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(status=True) to init LED
 
     async def set_wifi_led(self, *, status: bool) -> bool:
-        # Uniform setter return contract (project-wide decision): always True here - pure attribute
+        # Uniform setter return contract (owner, 2026-09-26): always True here - pure attribute
         # assignment plus _led_off()'s own already-defensive degrade-on-raise, nothing to reject.
         if status:  # try to turn on
             if self.led is None:  # LED is actually off

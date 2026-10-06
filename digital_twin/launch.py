@@ -1,5 +1,5 @@
 """Standalone, `src/`-free CLI launcher/demo for the digital twin (`micropython digital_twin/launch.py [options]`) — brings up the same bus/peripheral wiring `sensortask_wozi.build_system()` uses and periodically drives one real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding.
-`--fault DEVICE:OP[:TIMES]` exposes each chip fake's existing `FaultInjector` API. `parse_args()` is hand-rolled (the vendored `argparse` lacks `action="append"`/`choices=`). See `digital_twin/README.md`'s "What's here" section."""
+`--fault DEVICE:OP[:TIMES]` exposes each chip fake's existing `FaultInjector` API (owner, 2026-08-12: chosen over a probabilistic flaky mode). `parse_args()` is hand-rolled (the vendored `argparse` lacks `action="append"`/`choices=`). See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
 import errno

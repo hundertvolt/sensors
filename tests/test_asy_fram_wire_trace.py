@@ -1,5 +1,5 @@
 """Golden wire traces for the FRAM path: every SPI.init(), every CS edge and every transfer's bytes, recorded from the real src/ chain against tests/_fram_chip_fake.py's chip.
-A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the owner's approved restructure was held to (HEAP_FRAGMENTATION_MEASUREMENTS.md archive 3B)."""
+A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the 2026-09-18 heap restructure was held to (agent, 2026-09-18; HEAP_FRAGMENTATION_MEASUREMENTS.md archive 3B)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).

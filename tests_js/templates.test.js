@@ -397,8 +397,8 @@ describe("buildErrcountGroup", () => {
 
     it("renders each entry's raw errno, colored by type via data-err-type only - never the type itself as text", () => {
         // Real backend shape (src/print_log.py's get_log()): no per-entry timestamp exists, and
-        // "type" is never meant to be shown as text - only to color "num" (project owner,
-        // session 2 follow-up). html/style.css's .history-entry[data-err-type] rules pick the color.
+        // "type" is never meant to be shown as text - only to color "num" (owner,
+        // 2026-08-21, `9fd2a28`). html/style.css's .history-entry[data-err-type] rules pick the color.
         const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "BMP3XX", label: "BMP388" }] };
         const errcount = {
             BMP3XX: {

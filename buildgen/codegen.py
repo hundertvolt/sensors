@@ -499,9 +499,9 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
 
 
 def _emit_flush_pending_configs(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
-    # A commanded reboot must not drop a still-staged write: the accepted residual risk is power
-    # loss between response and write (Part F.2), not a software reboot 4 seconds later. Reached
-    # by getattr rather than a fan-in method every other module class would have to stub out.
+    # A commanded reboot must not drop a still-staged write: the accepted residual risk (owner,
+    # 2026-09-26) is power loss between response and write (Part F.2), not a software reboot 4
+    # seconds later. Reached by getattr rather than a fan-in method every other module class would have to stub out.
     modules = _module_names(construction_order, ctx)
     lines.append("async def _flush_pending_configs() -> None:")
     for name in modules:

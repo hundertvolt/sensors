@@ -4,7 +4,7 @@ Every public function/method returns a documented "invalid" sentinel, never rais
 """
 # `__init__` only stashes constructor args (cheap, synchronous); the file is read once, in
 # `async def setup()`, into `self._cache`, and every later `get_*`/`write_config` works on `_cache`
-# directly - CLAUDE.md has the cache-vs-external-corruption trade-off this implies.
+# directly - SPECIFICATION.md A.4 has the cache-vs-external-corruption trade-off this implies.
 
 import asyncio
 import json
@@ -128,7 +128,7 @@ def coerce_numeric(check_val: "CfgValue", scalar_type: type) -> "tuple[bool, int
     if type(check_val) is scalar_type:
         return True, check_val
     if scalar_type is float and type(check_val) is int:
-        # No exact-round-trip check on this direction, unlike float->int below: an accepted gap. A
+        # No exact-round-trip check on this direction, unlike float->int below: an accepted gap (owner, 2026-08-24). A
         # value large enough to lose precision (past 2**24 on the real single-precision build,
         # Part A.8) is already outside every schema field's own bounds - the largest today is 5000.0.
         return True, float(check_val)

@@ -65,9 +65,9 @@ class _DefaultSignalSink:
     async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
         return False
 
-# Own schema, "Led" prefix dropped (matches asy_wifi_service.py/asy_sgp40_driver.py's own field
-# naming convention - see CLAUDE.md's "Current architecture" note on this deliberate wire-format
-# change). Ranges/defaults mirror the legacy REST handler's own already-validated bounds.
+# Own schema; config keys carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`): the new API is the
+# only reference (owner, 2026-09-26), SPECIFICATION.md A.4. Ranges and defaults mirror legacy's
+# REST bounds.
 _VAL_ON_H = const((("OnH", "int", 10, 0, 23, None),))
 _VAL_ON_M = const((("OnM", "int", 0, 0, 59, None),))
 _VAL_OFF_H = const((("OffH", "int", 18, 0, 23, None),))

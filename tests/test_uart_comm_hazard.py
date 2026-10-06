@@ -45,8 +45,8 @@ _CUR = 4
 _POS = 5
 
 
-# Standing rule (project owner, 2026-09-12): every check runs both with and without a CRC - the
-# deployed link is CRC_Pass, but a CRC changes which corruptions are detectable at all
+# Every check runs both with and without a CRC (agent, 2026-09-12) - the dev wiring selects
+# CRC_Pass, but a CRC changes which corruptions are detectable at all
 # (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRC_Base carries state.
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))
 
@@ -702,7 +702,7 @@ def _check_a_frame_delivered_in_two_fragments_still_assembles(crc: "CrcMaker") -
 
 
 # ---------------------------------------------------------------------------
-# The integrity envelope. The deployed link runs CRC_Pass, so structural field validation is the
+# The integrity envelope. The dev wiring selects CRC_Pass, so structural field validation is the
 # *only* check (SPECIFICATION.md Part J). These pin exactly where that boundary falls: "corruption
 # is handled" is true of the header and false of the payload.
 # ---------------------------------------------------------------------------
@@ -740,7 +740,7 @@ def _check_the_probed_payload_offset_lands_on_a_frames_payload_start(crc: "CrcMa
 def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "CrcMaker") -> None:
     # The other half of the same boundary, and the uncomfortable one: with no CRC configured, a bit flip in
     # the payload passes every structural check and reaches the caller as good data. A documented property
-    # of the deployed configuration, pinned so enabling a CRC is visibly what changes it.
+    # of the dev configuration, pinned so enabling a CRC is visibly what changes it.
     offset = _answer_payload_offset(crc=crc)
     # The sustained budget, not this tier's 1x: a transaction that times out returns None here too,
     # which would read as "the corruption was caught" and quietly retire the claim below.
