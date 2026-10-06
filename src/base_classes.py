@@ -189,6 +189,12 @@ class SensorReader:
         self._datalock = asyncio.Lock()
         self.max_module_error = max_module_error
         self._err_cnt_internal = 0
+        # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
+        # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).
+        self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
+        # Per-field live read-back for _recover_failed_push's fallback chain (optional, unlike
+        # _push_callbacks); a field with no entry skips to the next rung (see SPECIFICATION.md C.5.2).
+        self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
     async def _get_meas_data(self) -> "NamedTuple":
         async with self._datalock:
@@ -226,101 +232,22 @@ class SensorReader:
 
         return ret
 
-    async def _set_meas_data(self, data: "NamedTuple") -> None:
-        async with self._datalock:
-            self._datastruct = data
-
-    async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
-        # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
-        # _error_check() bullet for the full contract.
-        if any(res is None for res in results) and condition:
-            self._err_cnt_internal += 1
-            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
-            if self._err_cnt_internal > self.max_module_error:
-                await self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
-                return False  # breaking the loop triggers a task reset
-        elif self._err_cnt_internal > 0:
-            self._err_cnt_internal -= 1
-            self.pr.err("Error counter back to", self._err_cnt_internal)
-        return True
-
-    def get_error_sources(self) -> "list[Any]":
-        # N-to-1 fan-in primitive (Part C.14/G.2): every module the generated
-        # _collect_error_sources() reaches implements this structurally, no shared base required, so
-        # the aggregator holds a collected list rather than a hand-enumerated one.
-        return [self]
-
-    def get_loggers(self) -> "list[PrintLogHistory]":
-        # Same fan-in shape as get_error_sources(), for a system-wide debug-level registry instead
-        # (SPECIFICATION.md Part C.14) - one entry per logger this module itself owns.
-        return [self.pr]
-
-    async def reset_error_counter(self) -> None:
-        # Resets both counters this file tracks, not just pr's persisted history/err_count -
-        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
-        # decision relies on, and must not survive a reset the caller expects to be total.
-        self._err_cnt_internal = 0
-        await self.pr.reset()
-
-
-def _checked_write_results(results: "WriteValidity") -> "WriteValidity":
-    # Lives out here so the raise isn't inside _set_dict_cfg's own try block: an overriding
-    # _set_mgr_cfg could return a malformed shape, which has to surface as that try's logged failure.
-    if not isinstance(results, dict):
-        raise TypeError("_set_mgr_cfg returned a non-dict result")
-    return results
-
-
-class SensorReaderConfig(SensorReader):
-    def __init__(
-        self,
-        init_data: "NamedTuple",
-        max_module_error: int,
-        name: str,
-        default_vals: "ConfigSchema",
-        name_ext: str = "",
-        cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
-    ) -> None:
-        super().__init__(init_data, max_module_error, fram, history_length, debug, name=name, name_ext=name_ext)
-        self.cfg_schema = default_vals
-        # self.name - already instance_name(name, name_ext) from super().__init__() - threads the
-        # per-instance extension into both the on-flash filename and this ConfigManager's own
-        # "CFGMGR_<name>" logger (Part C.14). Never the raw `name`, which is the type's base name.
-        self.cfgmgr = ConfigManager(
-            cfg_path + "config_" + self.name + ".cfg",
-            default_vals,
-            self.name,
-            fram=fram,
-        )
-        # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
-        # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).
-        self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
-        # Per-field live read-back for _recover_failed_push's fallback chain below (optional, unlike
-        # _push_callbacks); a field with no entry skips to the next rung (see SPECIFICATION.md C.5.2).
-        self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
-
-    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
-        self.pr.evt("Reading config via cfgmgr.")
-        return await self.cfgmgr.get_dict(cfg)
-
     async def _set_mgr_cfg(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
+        self, _data: "dict[str, int | float | str | bool | None]", _cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
-        # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
-        # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
-        self.pr.evt("Writing config via cfgmgr.")
-        return await self.cfgmgr.write_config(data, cfg_vals)
+        # No store: nothing persists, so _set_dict_cfg() answers every requested key "Failed".
+        return False, {}
 
     async def _set_dict_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg (Part C.5.2): persist first, then push only the changed
-        # fields. Pre-write values are snapshotted for _recover_failed_push, filtered to persisted
-        # keys - an unfiltered fetch logged a spurious RECOVERY_READ_RAISED for every command-only field write.
-        persisted_keys = [key for key, field in schema_dict(cfg_vals).items() if key in data and check_cfg_get_default(field)[0]]
+        # Setter mirror of _get_dict_cfg (Part C.5.2): persist first, then push only the changed fields.
+        # The pre-write snapshot covers only what _recover_failed_push can use: a persisted key with a
+        # push callback, so a store without push callbacks (SCD30's chip) pays no second read.
+        persisted_keys = [
+            key for key, field in schema_dict(cfg_vals).items()
+            if key in data and key in self._push_callbacks and check_cfg_get_default(field)[0]
+        ]
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
             old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
         except Exception as e:
@@ -410,6 +337,88 @@ class SensorReaderConfig(SensorReader):
             await self._set_mgr_cfg({key: recovered}, cfg_vals)
         except Exception as e:
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
+
+    async def _set_meas_data(self, data: "NamedTuple") -> None:
+        async with self._datalock:
+            self._datastruct = data
+
+    async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
+        # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
+        # _error_check() bullet for the full contract.
+        if any(res is None for res in results) and condition:
+            self._err_cnt_internal += 1
+            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
+            if self._err_cnt_internal > self.max_module_error:
+                await self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
+                return False  # breaking the loop triggers a task reset
+        elif self._err_cnt_internal > 0:
+            self._err_cnt_internal -= 1
+            self.pr.err("Error counter back to", self._err_cnt_internal)
+        return True
+
+    def get_error_sources(self) -> "list[Any]":
+        # N-to-1 fan-in primitive (Part C.14/G.2): every module the generated
+        # _collect_error_sources() reaches implements this structurally, no shared base required, so
+        # the aggregator holds a collected list rather than a hand-enumerated one.
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        # Same fan-in shape as get_error_sources(), for a system-wide debug-level registry instead
+        # (SPECIFICATION.md Part C.14) - one entry per logger this module itself owns.
+        return [self.pr]
+
+    async def reset_error_counter(self) -> None:
+        # Resets both counters this file tracks, not just pr's persisted history/err_count -
+        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
+        # decision relies on, and must not survive a reset the caller expects to be total.
+        self._err_cnt_internal = 0
+        await self.pr.reset()
+
+
+def _checked_write_results(results: "WriteValidity") -> "WriteValidity":
+    # Lives out here so the raise isn't inside _set_dict_cfg's own try block: an overriding
+    # _set_mgr_cfg could return a malformed shape, which has to surface as that try's logged failure.
+    if not isinstance(results, dict):
+        raise TypeError("_set_mgr_cfg returned a non-dict result")
+    return results
+
+
+class SensorReaderConfig(SensorReader):
+    def __init__(
+        self,
+        init_data: "NamedTuple",
+        max_module_error: int,
+        name: str,
+        default_vals: "ConfigSchema",
+        name_ext: str = "",
+        cfg_path: str = "",
+        fram: "AsyFramManager | None" = None,
+        history_length: int = 10,
+        debug: int | None = None,
+    ) -> None:
+        super().__init__(init_data, max_module_error, fram, history_length, debug, name=name, name_ext=name_ext)
+        self.cfg_schema = default_vals
+        # self.name - already instance_name(name, name_ext) from super().__init__() - threads the
+        # per-instance extension into both the on-flash filename and this ConfigManager's own
+        # "CFGMGR_<name>" logger (Part C.14). Never the raw `name`, which is the type's base name.
+        self.cfgmgr = ConfigManager(
+            cfg_path + "config_" + self.name + ".cfg",
+            default_vals,
+            self.name,
+            fram=fram,
+        )
+
+    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
+        self.pr.evt("Reading config via cfgmgr.")
+        return await self.cfgmgr.get_dict(cfg)
+
+    async def _set_mgr_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
+    ) -> "tuple[bool, WriteValidity]":
+        # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
+        # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
+        self.pr.evt("Writing config via cfgmgr.")
+        return await self.cfgmgr.write_config(data, cfg_vals)
 
     def get_error_sources(self) -> "list[Any]":
         # Extends SensorReader.get_error_sources() with this class's own nested error-logging

@@ -230,6 +230,48 @@ if TYPE_CHECKING:
     WriteValidity = dict[str, Literal["Invalid", "Unchanged", "Valid", "Failed"]]
 
 
+def compare_before_write(
+    data: object,
+    cfg_vals: "ConfigSchema",
+    current: "dict[str, CfgValue]",
+    *,
+    always: "tuple[str, ...]" = (),
+    resolution: "dict[str, Callable[[CfgValue], CfgValue]] | None" = None,
+) -> "tuple[dict[str, CfgValue], WriteValidity] | None":
+    # The shared compare-before-write primitive (SPECIFICATION.md Part G.2): per key of data, in its order,
+    # the outcome and, for a "Valid" key, the coerced value to write. Logs nothing; the caller writes and
+    # logs. None for a non-dict data; an `always` key is a command, never compared and never "Unchanged".
+    if type(data) is not dict:
+        return None
+    fields = schema_dict(cfg_vals)
+    write: dict[str, CfgValue] = {}
+    results: WriteValidity = {}
+    for key, value in data.items():
+        field = fields.get(key)
+        if field is None:
+            results[key] = "Invalid"
+            continue
+        is_error, coerced = type_or_range_error(value, field)
+        if is_error:
+            results[key] = "Invalid"
+            continue
+        if key in always:
+            write[key] = coerced
+            results[key] = "Valid"
+            continue
+        if key not in current:
+            results[key] = "Failed"
+            continue
+        res = None if resolution is None else resolution.get(key)
+        stored = current[key]
+        if (coerced != stored) if res is None else (res(coerced) != res(stored)):
+            write[key] = coerced
+            results[key] = "Valid"
+        else:
+            results[key] = "Unchanged"
+    return write, results
+
+
 class ConfigManager:
     def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str, fram: "AsyFramManager | None" = None) -> None:
         # Inherits its owning module's FRAM durability (CLAUDE.md's implicit-FRAM-wiring rule),
@@ -327,56 +369,44 @@ class ConfigManager:
             return False, {}
         async with self.config_lock:
             try:
+                fields = schema_dict(cfg_vals)
+                # Special-alone keys are commands, not stored values: the primitive never compares them.
+                always = tuple(key for key, field in fields.items() if not check_cfg_get_default(field)[0])
+                outcome = compare_before_write(data, cfg_vals, self._current(), always=always)
+                if outcome is None:
+                    await self.pr.err_s(self.config_file, "- write data is not an object", errno=_ERR_BAD_ARG)
+                    return False, {}
+                write, dict_results = outcome
+                for key in dict_results:
+                    field = fields.get(key)
+                    if field is not None and check_cfg_get_default(field)[1] is None:
+                        await self.pr.err_s(self.config_file, "- Default Key", key, "Error or None, no data written!", errno=_ERR_CFG_BAD_DEFAULT)
+                        return False, {}
+                for key, result in dict_results.items():
+                    if result == "Invalid":
+                        if key not in fields:
+                            await self.pr.err_s(self.config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
+                        else:
+                            await self.pr.err_s(self.config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
+                    elif result == "Failed":
+                        await self.pr.err_s(self.config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
+                    elif key in always:
+                        del write[key]  # "Valid", nothing staged: the push stage dispatches it
+                        self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
+                if not write:
+                    self.pr.evt(self.config_file, "- No new / unchanged config data.")
+                    return True, dict_results
                 # Built off _current(), not raw _cache: a second write_config() can enter here before
                 # an earlier one's _flush_staged() has run, and basing new_cache on the staged
                 # snapshot is what keeps a rapid pair of writes additive rather than clobbering.
-                new_cache = dict(self._current())  # working copy - only staged/committed after validation
-                changed = False
-                defaults = schema_dict(cfg_vals)
-                dict_results: WriteValidity = {}
-                for key, value in data.items():
-                    if key not in defaults:
-                        await self.pr.err_s(self.config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
-                        dict_results[key] = "Invalid"
-                        continue
-                    use_value, default_val = check_cfg_get_default(defaults[key])
-                    if default_val is None:
-                        await self.pr.err_s(self.config_file, "- Default Key", key, "Error or None, no data written!", errno=_ERR_CFG_BAD_DEFAULT)
-                        return False, {}
-                    # Sentinel values are validated against their own definition (check_special bypass);
-                    # non-sentinel values still go through the ordinary range check.
-                    is_error, coerced_value = type_or_range_error(value, defaults[key])
-                    if is_error:
-                        await self.pr.err_s(self.config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
-                        dict_results[key] = "Invalid"
-                        continue
-                    # coerced_value (not the caller's raw one) is the shape stored below - e.g. int->float
-                    if not use_value:
-                        dict_results[key] = "Valid"
-                        self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
-                        continue  # not used for storage
-                    if key not in new_cache:
-                        dict_results[key] = "Failed"
-                        await self.pr.err_s(self.config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
-                        continue
-                    if new_cache[key] != coerced_value:
-                        new_cache[key] = coerced_value
-                        dict_results[key] = "Valid"
-                        changed = True
-                    else:
-                        dict_results[key] = "Unchanged"
-                if not changed:
-                    self.pr.evt(self.config_file, "- No new / unchanged config data.")
-                    return True, dict_results
+                new_cache = dict(self._current())
+                new_cache.update(write)
                 # Staged, not yet on flash - get_dict()/_get_values() consult this first (read-your-
                 # write), and _cache stays "what's actually on disk" until _flush_staged() commits it.
                 self._staged = new_cache
                 self._pending_flush = asyncio.create_task(self._flush_staged(new_cache))
                 self.pr.evt(self.config_file, "- Config data staged, flash write scheduled.")
-            except AttributeError as e:  # a non-dict `data` param (.items()) - a refused argument
-                await self.pr.err_s(self.config_file, "- Error validating config data:", e, errno=_ERR_BAD_ARG)
-                return False, {}
-            except MemoryError as e:  # dict()/the validation loop exhausting the heap - no file I/O
+            except MemoryError as e:  # the compare or dict() exhausting the heap - no file I/O
                 # happens in this method anymore (see _flush_staged), so OSError/ValueError no longer apply.
                 await self.pr.err_s(self.config_file, "- Error validating config data:", e, errno=_ERR_ALLOC)
                 return False, {}

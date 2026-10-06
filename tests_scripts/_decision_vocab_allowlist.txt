@@ -532,7 +532,6 @@ tests_hardware/README.md	# Add --allow-flash-cycle to also run the one deliberat
 tests_hardware/README.md	# need their own deliberate, dedicated invocation, one of three named tiers (sho
 tests_hardware/README.md	**Deliberately not `fram.allocated_size <= fram.size`** - `AsyFramManager.get_ch
 tests_hardware/README.md	**Do not rely on this test skipping cleanly if you deliberately want to skip sta
-tests_hardware/README.md	**Standing design, project owner's own choice** (broadened from SCD30-only to al
 tests_hardware/README.md	**Standing policy from this pass on, applied everywhere it's practical**: reset
 tests_hardware/README.md	**What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and t
 tests_hardware/README.md	- **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` rea

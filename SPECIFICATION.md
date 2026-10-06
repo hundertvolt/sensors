@@ -239,13 +239,13 @@ features as today's deployed units, not a feature change.
   test_real_device_constructs_watchdog_exactly_once`, parametrized over all 6 real devices.
 - **SCD30's `AmbPres`** is stored in the sensor's own NVM as a one-time-set value, not a
   continuously-updated live input — hence a static config value even on wozi (which has a live
-  BMP388); `set_ambient_pressure` uses `force=True` since resending the same value is also SCD30's
-  documented command to resume continuous measurement. Confirmed deliberate by the project owner.
+  BMP388); a PUT sends `AmbPres` even when unchanged (`compare_before_write()`'s `always`), since
+  resending the same value is also SCD30's documented command to resume continuous measurement. Confirmed deliberate by the project owner.
 - **SCD30's `ForceCalRef`** recalibration is manual: ventilate until indoor CO2 matches outdoor
   ambient, then set `ForceCalRef` to that value via REST. No automation planned.
-- **SCD30's `TempOffs`** has real 0.01°C resolution: `set_temperature_offset()` sends
-  `int(offset * 100)` — a genuine truncation, unique to this field; more than two decimals is
-  silently truncated by the chip, not rejected.
+- **SCD30's `TempOffs`** has real 0.01°C resolution: `set_temperature_offset()` sends the nearest
+  tick, `int(offset * 100 + 0.5)` (in float32, truncation lands one tick low on 130 of the 2001
+  two-decimal inputs from 0.00 to 20.00); more than two decimals is rounded, not rejected, and a PUT compares in ticks.
 - **SGP40's VOC index** is deviation-from-learned-baseline, not absolute concentration (confirmed
   against `voc_algorithm.py`'s Sensirion port): (1) 45 sampling intervals must elapse before the
   index moves off 0; (2) under any constant raw input the index converges toward 100 ("clean air") —
@@ -617,7 +617,7 @@ settings.
   already `{name: {...}}`, so indexing doubled it into `{"SCD30": {"SCD30": {...}}}`.
 - **PUT shapes** — sparse JSON, no `cmd` envelope: present fields apply, omitted stay untouched,
   unknown fields ignored. `/measurements` — no PUT. `/sensors` — per-sensor field subsets; SCD30
-  dispatches through its own non-persisting setter (no `cfgmgr`, NVM-backed). `/networking` — WiFi
+  takes the same `SensorReader` write path, its store being the chip's own NVM (no `cfgmgr`, C.4.3). `/networking` — WiFi
   fields fire `reconnect_wifi()`, NTP fields fire `ntp_force_sync()`, `LedWifiOn` fires nothing —
   one `SettingsGroup` per subset keeps these independent. `/system` — settings +
   `"SystemCmd": "reboot"|"bootloader"|"mempause"` (enum-validated; `mempause` duration fixed 300s).
@@ -636,9 +636,9 @@ exception shapes. `js/mock-server.js` mirrors the equivalent policy.
 
 **GET copy-safety**: `get_dict_data()`/`ConfigManager.get_dict()`/`PrintLogHistory.get_log()` all
 build a fresh dict/list per call with no `await` mid-construction, so cooperative scheduling makes
-each snapshot atomic. **One open exception**: `SCD30_Reader.get_dict_cfg()` and three of
-`BMP3xx_Reader.get_dict_cfg()`'s fields are live hardware-readback fields whose callback awaits mid-
-construction, so a concurrent write can mix pre/post-write values across fields (BACKLOG.md).
+each snapshot atomic. SCD30's six chip fields come from one locked `get_config_snapshot()` batch. **One open exception**:
+three of `BMP3xx_Reader.get_dict_cfg()`'s fields are live hardware-readback fields whose callback
+awaits mid-construction, so a concurrent write can mix pre/post-write values across fields (BACKLOG.md).
 
 Connection hardening (per-call/outer-cap timeouts, reject-when-full, no bespoke restart mechanism)
 and `Connection: close` live in `WebserverService`/`_TimeoutStreamProxy` — see that module's own
@@ -1700,12 +1700,14 @@ shim code and allocates nothing on this hot path). `typing.cast()` still applies
 
 ### C.4.3 `SensorReader` vs. `SensorReaderConfig`
 
-Pick based on where config values live: **`SensorReaderConfig`** (BMP3xx, SGP40) when values need
-a locally-cached, file-backed schema (software-only knobs, or sensor settings that reset on
-power-cycle). **Plain `SensorReader`** (SCD30) when every value lives in the sensor's own NVM —
-`get_dict_cfg()`'s `callback` does all the work, no `ConfigManager` exists (A.4's `AmbPres` note).
-Mixing within one sensor is fine: use `SensorReaderConfig` once any field needs local storage, omit
-NVM-only fields from the schema and read/write them straight from the sensor.
+Pick by where config values live. The write orchestration (validate, stage, push, recover) lives on
+`SensorReader`, with the store behind two extension points (`_get_mgr_cfg()`/`_set_mgr_cfg()`);
+**`SensorReaderConfig`** (BMP3xx, SGP40) adds the file-backed `ConfigManager` store, for
+software-only knobs or sensor settings that reset on power-cycle. **Plain `SensorReader`** (SCD30)
+keeps its store in the chip: its six keys live in the sensor's own NVM, are read back from a fresh
+chip snapshot and are written through `compare_before_write()` (G.2), so only a changed value is
+written, `AmbPres`/`ForceCalRef` always (A.4's `AmbPres` note); no `ConfigManager` exists. A field
+with a live chip readback is read through `get_dict_cfg()`'s `callback`.
 
 **A `SensorReaderConfig` subclass whose field set isn't fixed at class-definition time needs a
 different construction shape.** `NotificationCoordinator` defers `super().__init__()` until an
@@ -1718,7 +1720,7 @@ flag) — not just the two staging methods.
 
 `_get_dict_cfg(name, cfg_vals, callback=None)` merges stored values with an optional callback's
 live readback. Only pass `callback=` for a field with a real, independent live-sensor source of
-truth (BMP3xx: 3 of 8 fields; SGP40: none; SCD30: all fields). **Second legitimate reason**:
+truth (BMP3xx: 3 of 8 fields; SGP40: none; SCD30: none, its chip snapshot is its store, C.4.3). **Second legitimate reason**:
 sanitizing a sensitive value before it's ever returned — `asy_wifi_service.py`'s `callback=
 self._mask_pw` unconditionally overwrites the persisted `PW` with a fixed mask.
 
@@ -1762,17 +1764,20 @@ sync `get_cfg_schema()` (no I/O, deliberately not `async`) and as a public attri
 
 ### C.5.2 Setter dispatch (`_set_mgr_cfg`/`_set_dict_cfg`, `base_classes.py`)
 
-`_set_mgr_cfg(data, cfg_vals) -> (bool, WriteValidity)` (`SensorReaderConfig`-only extension point;
-SCD30 keeps hand-rolled setters) delegates to `cfgmgr.write_config(...)`. `_set_dict_cfg(data,
-cfg_vals) -> WriteValidity` validates and stages first, then pushes live only fields that both
-changed (`"Valid"`, not `"Unchanged"`) and have a registered push callback; every field reports
-independently including unrecognized keys; a whole-operation validation failure (an invalid
-`ConfigManager`, or an internal error raised out of `write_config()`/`_set_mgr_cfg()` itself, never
-a later flash-write failure - see below) marks every requested key `"Failed"`. **Since WP5**
-(SPECIFICATION.md Part F.2), the actual flash write is deferred to an independent task, so
-`"persisted"` here really means "validated and staged" - a genuine disk write failure surfaces only
-later, as a logged errno 33 (`CFG_FILE_WRITE`) on `cfgmgr.pr`, never back through this return
-value or the caller's own response; `_set_dict_cfg()` therefore has no way to observe it and none is expected to. **A push
+`_set_mgr_cfg(data, cfg_vals) -> (bool, WriteValidity)` is `SensorReader`'s store extension point
+(a file through `ConfigManager.write_config(...)`, or a chip, A.4's SCD30; the plain default has no
+store and answers `(False, {})`, so every requested key is `"Failed"`); every store write goes
+through `compare_before_write()` (G.2), so an unchanged value is `"Unchanged"` and spends no write.
+`_set_dict_cfg(data, cfg_vals) -> WriteValidity` validates and stages first, then pushes live only
+fields that both changed (`"Valid"`, not `"Unchanged"`) and have a registered push callback; every
+field reports independently including unrecognized keys; a whole-operation validation failure (an
+invalid `ConfigManager`, or an internal error raised out of `write_config()`/`_set_mgr_cfg()`
+itself, never a later flash-write failure - see below) marks every requested key `"Failed"`.
+**Since WP5** (SPECIFICATION.md Part F.2), the actual flash write is deferred to an independent
+task, so `"persisted"` here really means "validated and staged" - a genuine disk write failure
+surfaces only later, as a logged errno 33 (`CFG_FILE_WRITE`) on `cfgmgr.pr`, never back through this
+return value or the caller's own response; `_set_dict_cfg()` therefore has no way to observe it and
+none is expected to. **A push
 callback always receives the coerced, persisted value, not the caller's
 raw one** — a type-checking callback would otherwise wrongly reject a coercible value like `45.0`
 for an int field. `self._push_callbacks` is a plain `{field: async_fn}` dict populated per subclass
@@ -1792,8 +1797,7 @@ re-fires every request. **Consequence**: `get_dict_cfg()` must keep its own narr
 list (excluding the special-alone field), since `ConfigManager.get_dict()` is all-or-nothing and
 would `KeyError` on it. **A push callback's return means "push succeeded/failed"** — a setter whose
 own return means something else (`reset_voc()`'s `False` = no-op, not failed) needs its wrapper to
-report success unconditionally once the type check passes (SCD30's `ContMeas`, inverted, is the
-other instance).
+report success unconditionally once the type check passes.
 
 #### C.5.2.2 Failed-push recovery chain (replaces legacy's `set_sensor_value` fallback)
 
@@ -2194,6 +2198,9 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   AND-gated on top of the global one — never an independent flag standing in for it, and never
   substitutable for it (passing only the extra-write flag still deselects the test). One flag
   decides whether any real SCD30 write happens at all; the second only ever narrows that further.
+  A `PUT /sensors` to SCD30 spends one NVM write per field whose value changed, one per
+  `AmbPres`/`ForceCalRef` sent and one per `ContMeas=false`, none for an identical
+  TempOffs/MeasInt/Altitude/SelfCal.
   Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count
   offset sweep (a yield count means nothing against a real preemptible interpreter and real bus
   timing) — a deliberately varied set of real elapsed-time delays is the honest, tier-appropriate
@@ -2208,9 +2215,10 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   the real HTTP/REST stack instead of the bare driver (a `PUT`/`GET` pair reaching the same real I2C
   write/read the flash-tier script drives directly). Two allowed, structural exception shapes — both
   must be recorded explicitly as such, never left as a silent asymmetry between the tiers:
-  1. **No REST-layer path exists to the write at all** — e.g. SCD30 registers zero `_push_callbacks`
-     (`asy_scd30_driver.py`), so no `PUT /sensors` field can ever reach either its write-vs-siblings
-     or its same-device write-vs-own-read hazard.
+  1. **No REST-layer path exists to the write at all** — SCD30 is not one: `PUT /sensors` reaches
+     SCD30's NVM through its chip store (`_set_mgr_cfg()`, compare-before-write), so a bench
+     counterpart of its write hazards is added behind `persistence_write` or its wear reason is
+     listed (E.6.6 item 2).
   2. **The hazard's own trigger is only reachable at driver setup/task-restart, never on a live,
      already-running system** — e.g. SGP40's real general-call broadcast only fires from
      `SGP40_I2C._reset()`, itself only called from `initialize()` at setup time; the one REST field
@@ -2997,6 +3005,11 @@ the abstract. This caught a real gap during `print_log.py`'s review: `_write()`/
 buffer methods *before* their `try:` block started — fixed by widening both to cover the whole
 body.
 
+The fakes count every filesystem write and every SCD30 NVM write, so a test asserts the writes it
+spends: `tests/_write_counters.py`'s `WriteCountingOpen` (a module's `open`) and
+`scd30_nvm_writes()` (the NVM-writing command frames sent to address 0x61 on a fake bus), and the
+twin chip's `Scd30Chip.nvm_writes`.
+
 **The allocator is the one other mocking surface (agent, 2026-09-13, `a1bf976`)**, on the same
 no-real-class-equivalent reasoning: the Unix-port test heap (`scripts/test.sh`'s own `-X heapsize`,
 a generous multiple of the 2MB default) cannot be starved at a chosen moment, so
@@ -3261,11 +3274,12 @@ them, not in tension with them:
    exemplary/base variant" entry). Only `dev`'s own real wiring/behavior can ever be checked for a
    missing real-hardware counterpart under this rule.
 2. **A behavior with no real API/hardware surface to reach it at all** cannot get a real-hardware
-   test for that specific path — e.g. SCD30 has zero REST-pushable fields (`asy_scd30_driver.py`
-   registers no `_push_callbacks`), so no bench-tier `PUT` can ever reach its own NVM write (C.8's
-   own SCD30/bench note). Document the structural absence explicitly, the way C.8 now does, rather
-   than leaving it as a silent, unexplained gap — a documented structural exception is compliant
-   with this rule; a silently missing test is not.
+   test for that specific path. SCD30's NVM write is not one: `PUT /sensors` reaches SCD30's NVM
+   through its chip store (`_set_mgr_cfg()`, compare-before-write); a bench counterpart spends real
+   NVM wear, so it is added behind `persistence_write` or its wear reason is listed. Document the
+   structural absence explicitly, the way C.8 now does, rather than leaving it as a silent,
+   unexplained gap — a documented structural exception is compliant with this rule; a silently
+   missing test is not.
 3. **A behavior only a human can verify** (a visual/instrument check, genuine power loss, a
    calibrated-reference accuracy claim) gets `tests_hardware/manual/` coverage instead of an
    automated one — `manual` is a different *execution mode* of the same real-hardware tier (E.6's
@@ -4373,6 +4387,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   no branching of its own. Only ever called from a one-time or bounded-loop context, never a place
   that could keep feeding a genuinely hung system forever - that constraint lives with the caller,
   not the method itself.
+- **Compare-before-write** — `config_manager.py`'s `compare_before_write()`: every setter that
+  writes persistent memory.
 
 ## G.3 Re-validating the existing project against this Part
 

@@ -353,6 +353,14 @@ default to in-memory-only for both FRAM/SCD30 (`--fram-state-path`/`--scd30-stat
 explicitly) — `scripts/_digital_twin_ci_suite.py` is the one caller that supplies real, fixed on-disk
 paths, for its own persistence-across-a-real-reboot checks.
 
+The firmware compares a `PUT /sensors` against a fresh chip snapshot and writes only what changed
+(compare-before-write, SPECIFICATION.md Part G.2): an identical TempOffs/MeasInt/Altitude/SelfCal
+spends no NVM write, `AmbPres`/`ForceCalRef` always do. `Scd30Chip.nvm_writes` counts every
+NVM-writing command `handle_writeto()` receives (0x0010, 0x4600, 0x5102, 0x5204, 0x5306, 0x5403 and
+the stop command 0x0104; Interface Description 1.4.1-1.4.3, 1.4.6-1.4.8), the same frames
+`tests/_write_counters.py`'s `scd30_nvm_writes()` counts on a fake bus. It is a test surface, not
+chip behaviour: a twin test asserts the writes a PUT spends.
+
 **Known limitation: single-chip globals.** `machine.py`'s `_current_scd30_chip`/`flush_scd30()`
 (and the equivalent FRAM pair) each track exactly one chip instance. A device wired with more than
 one SCD30 (both mandatory synthetic fixtures) only ever persists the *last-wired* instance's NVM

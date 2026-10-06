@@ -2,8 +2,8 @@
 parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.7.0) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
 """
 # Covers a real AsyConnTime for the setter path, a real AsyNtpClient for both getter and setter, a real
-# BMP3xx_Reader/SGP40_Reader for the schema-driven sensor setters, and a real SCD30_Reader for the one
-# sensor whose REST surface is hand-rolled per field instead of schema-driven.
+# BMP3xx_Reader/SGP40_Reader for the schema-driven sensor setters, and a real SCD30_Reader whose config
+# store is the chip itself.
 #
 # Only test-local Microdot apps are constructed here, independent of src/asy_webserver_service.py: any of
 # its wiring that must be exercised is reimplemented locally, never imported, to keep this file's scope
@@ -13,6 +13,7 @@ import asyncio
 import errno as errno_mod
 import json
 import os
+import struct
 import sys
 from collections import namedtuple
 
@@ -35,6 +36,7 @@ from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_wifi_service import AsyConnTime
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -42,7 +44,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -686,55 +688,10 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end to end for SCD30's bespoke per-field REST wiring. Unlike every other sensor,
-# SCD30_Reader has no ConfigManager or local-cache surface at all, its parameters living on the sensor's own
-# NVM, so its _set_dict_cfg() drives each field through a hand-rolled (key, field, setter) dispatch dict.
-#
-# That dispatch is reimplemented locally below rather than imported, the same convention
-# _wifi_field_schema() follows; only the three fields this file exercises are mirrored, not all seven.
-#
-# Every SCD30 setter already returns bool and never raises (SPECIFICATION.md Part C), so the Valid/Failed
-# mapping is a plain bool check - the try/except is defense in depth against a future change to that
-# contract, exactly as in the real file.
+# Real Microdot end to end for SCD30, whose config store is the chip itself: the route hands the body to the
+# real SCD30_Reader._set_dict_cfg(), which compares against a chip snapshot and writes only what changed, in
+# a fixed order. Each snapshot is six register replies queued on the fake bus before the request.
 # ---------------------------------------------------------------------------
-
-_FIELD_SCD_MEAS_INT: "cm.FieldSchema" = ("MeasInt", "int", 2, 2, 1800, None)
-# special=0 matches SCD30's own documented AmbPres=0 "disable compensation" bypass value.
-_FIELD_SCD_AMB_PRES: "cm.FieldSchema" = ("AmbPres", "int", 0, 700, 1400, 0)
-_FIELD_SCD_FORCE_CAL_REF: "cm.FieldSchema" = ("ForceCalRef", "int", 400, 400, 2000, None)
-
-
-def _scd_set_fields(
-    reader: SCD30_Reader,
-) -> "tuple[tuple[str, cm.FieldSchema, Callable[[Any], Coroutine[Any, Any, bool]]], ...]":
-    # Bound per reader instance (the real generated module builds this once against its one
-    # module-level scd30); iterated in a fixed order, which the one-shot bus fault below relies on.
-    return (
-        ("MeasInt", _FIELD_SCD_MEAS_INT, reader.set_measurement_interval),
-        ("AmbPres", _FIELD_SCD_AMB_PRES, reader.set_ambient_pressure),
-        ("ForceCalRef", _FIELD_SCD_FORCE_CAL_REF, reader.set_forced_recalibration_reference),
-    )
-
-
-async def _scd_apply_field(
-    reader: SCD30_Reader,
-    data: "dict[str, Any]",
-    key: str,
-    field: "cm.FieldSchema",
-    setter: "Callable[[Any], Coroutine[Any, Any, bool]]",
-) -> "str | None":
-    if key not in data:
-        return None  # not requested - omitted keys are left alone (project-wide convention)
-    value = data[key]
-    is_error, value = cm.type_or_range_error(value, field)
-    if is_error:
-        return "Invalid"
-    try:
-        applied = await setter(value)
-    except Exception as e:  # setter is caller-supplied; its runtime behavior isn't statically known
-        await reader.pr.err_s("Error setting", key, "on SCD30:", e, errno=code("E", "CHIP_SET"))
-        applied = False
-    return "Valid" if applied else "Failed"
 
 
 async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
@@ -743,14 +700,7 @@ async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "ar._Reques
         return err
     assert data is not None
     fields = {k: v for k, v in data.items() if k != "cmd"}
-    # Nothing here is persisted anywhere (the values live on the sensor), so there's no config file
-    # to correct after a failed setter either - just validate, call, report.
-    results: dict[str, Any] = {}
-    for key, field, setter in _scd_set_fields(reader):
-        status = await _scd_apply_field(reader, fields, key, field, setter)
-        if status is not None:
-            results[key] = status
-    return ar.make_response(0, result=results)
+    return ar.make_response(0, result=await reader._set_dict_cfg(fields, reader.get_cfg_schema()))
 
 
 def _scd_app(reader: SCD30_Reader) -> Microdot:
@@ -765,25 +715,35 @@ def _scd_app(reader: SCD30_Reader) -> Microdot:
 
 def make_scd_reader() -> SCD30_Reader:
     # Same construction as test_asy_scd30_driver.py's own make_reader(): a real SCD30_Reader over
-    # the real asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin. No cfg_path -
-    # SCD30_Reader has no ConfigManager of its own at all, which is the whole point of this section.
+    # the real asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin.
     return SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_sec=3, max_module_error=5)
 
 
+def _queue_scd_snapshot(reader: SCD30_Reader) -> None:
+    # One config snapshot (word + CRC-8 each, Interface Description 1.1.3): TempOffs 0, MeasInt 2,
+    # AmbPres 0, Altitude 0, ForceCalRef 400, SelfCal 0 - the chip's own power-up values.
+    real_i2c = reader.scd.i2c_scd30.i2c_device.i2c._i2c
+    assert real_i2c is not None
+    for value in (0, 2, 0, 0, 400, 0):
+        payload = struct.pack(">H", value)
+        crc = run(CRC8().add(bytearray(payload)))
+        assert crc is not None
+        real_i2c.read_queue.append(payload + bytes([crc[-1]]))
+
+
 def _scd_writes(reader: SCD30_Reader) -> "list[bytes]":
-    # The raw command frames that actually reached the bus, in order. Same fake-I2C access as
-    # test_asy_scd30_driver.py's own reader_fake_i2c(), narrowed the way _nak_i2c_address does.
+    # The command frames that changed a setting (5-byte argument frames and the bare stop), in bus order;
+    # the snapshot's own 2-byte register-address writes are left out.
     from machine import I2C as _FakeI2C
 
     real_i2c = reader.scd.i2c_scd30.i2c_device.i2c._i2c
     assert isinstance(real_i2c, _FakeI2C)
-    return [entry[2] for entry in real_i2c.log if entry[0] == "writeto"]
+    return [entry[2] for entry in real_i2c.log if entry[0] == "writeto" and (len(entry[2]) == 5 or entry[2] == b"\x01\x04")]
 
 
 def _fault_next_i2c_write(reader: SCD30_Reader, exc: Exception) -> None:
-    # One-shot: fails only the *next* writeto() on this bus, so exactly one field of a multi-field
-    # request faults while the rest still go through (tests/machine.py's inject_fault is a FIFO of
-    # one exception per matching call, unlike _nak_i2c_address's permanent per-address NAK).
+    # One-shot: fails only the *next* writeto() on this bus (tests/machine.py's inject_fault is a FIFO
+    # of one exception per matching call, unlike _nak_i2c_address's permanent per-address NAK).
     from machine import I2C as _FakeI2C
 
     real_i2c = reader.scd.i2c_scd30.i2c_device.i2c._i2c
@@ -791,18 +751,41 @@ def _fault_next_i2c_write(reader: SCD30_Reader, exc: Exception) -> None:
     real_i2c.inject_fault("writeto", exc)
 
 
-def test_real_microdot_scd30_per_field_setter_end_to_end_applies_every_field() -> None:
+def test_real_microdot_scd30_put_writes_each_field_through_the_real_driver() -> None:
+    # One request per field: "Valid" and that field's own command word on the bus (Interface Description 1.4).
+    cases: tuple[tuple[str, cm.CfgValue, bytes], ...] = (
+        ("TempOffs", 4.5, b"\x54\x03"),
+        ("MeasInt", 10, b"\x46\x00"),
+        ("AmbPres", 1013, b"\x00\x10"),
+        ("Altitude", 200, b"\x51\x02"),
+        ("ForceCalRef", 500, b"\x52\x04"),
+        ("SelfCal", True, b"\x53\x06"),
+        ("ContMeas", False, b"\x01\x04"),
+    )
+    for key, value, word in cases:
+        reader = make_scd_reader()
+        _queue_scd_snapshot(reader)
+        app = _scd_app(reader)
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", key: value})))
+        assert res.status_code == 200
+        assert json.loads(res.body)["result"] == {key: "Valid"}, key
+        writes = _scd_writes(reader)
+        assert len(writes) == 1, key
+        assert writes[0][:2] == word, key
+
+
+def test_real_microdot_scd30_put_applies_several_fields_in_the_fixed_order() -> None:
     reader = make_scd_reader()
+    _queue_scd_snapshot(reader)
     app = _scd_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "MeasInt": 10, "AmbPres": 1013, "ForceCalRef": 500})
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "ForceCalRef": 500, "AmbPres": 1013, "MeasInt": 10})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
     body = json.loads(res.body)
     assert body["res"] == "OK"
     assert body["result"] == {"MeasInt": "Valid", "AmbPres": "Valid", "ForceCalRef": "Valid"}
-    # "Valid" alone would only prove the setter returned True - these confirm the real command frames
-    # reached the real bus, in the loop's own field order, each carrying its own value. The trailing CRC
-    # byte is already covered byte for byte against the Interface Description in test_asy_scd30_driver.py.
+    # The real command frames reached the bus in the driver's fixed order, each carrying its own value;
+    # the CRC byte is covered byte for byte against the Interface Description in test_asy_scd30_driver.py.
     writes = _scd_writes(reader)
     assert len(writes) == 3
     assert writes[0][:4] == b"\x46\x00\x00\x0a"  # 0x4600 set measurement interval = 10 s
@@ -810,22 +793,21 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_applies_every_field() -
     assert writes[2][:4] == b"\x52\x04\x01\xf4"  # 0x5204 forced recalibration reference = 500 ppm
 
 
-def test_real_microdot_scd30_per_field_setter_end_to_end_omitted_fields_are_left_alone() -> None:
-    # The per-field loop walks all of its fields on every request; only the ones actually present in
-    # the body may appear in the result envelope or touch the bus.
+def test_real_microdot_scd30_put_of_the_ambpres_bypass_value_is_sent() -> None:
+    # AmbPres 0 is the documented "compensation off" special value: valid, and sent even though it
+    # equals the stored 0 (the command also starts continuous measurement).
     reader = make_scd_reader()
+    _queue_scd_snapshot(reader)
     app = _scd_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "AmbPres": 0})  # 0 = the documented bypass value
-    res = run(app.dispatch_request(req))
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "AmbPres": 0})))
     assert res.status_code == 200
     assert json.loads(res.body)["result"] == {"AmbPres": "Valid"}
-    writes = _scd_writes(reader)
-    assert len(writes) == 1
-    assert writes[0][:4] == b"\x00\x10\x00\x00"
+    assert _scd_writes(reader) == [b"\x00\x10\x00\x00\x81"]
 
 
-def test_real_microdot_scd30_per_field_setter_end_to_end_out_of_range_field_never_reaches_the_bus() -> None:
+def test_real_microdot_scd30_put_out_of_range_field_never_reaches_the_bus() -> None:
     reader = make_scd_reader()
+    _queue_scd_snapshot(reader)
     app = _scd_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "MeasInt": 1, "ForceCalRef": 500})  # MeasInt min is 2
     res = run(app.dispatch_request(req))
@@ -837,14 +819,16 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_out_of_range_field_neve
     assert writes[0][:4] == b"\x52\x04\x01\xf4"
 
 
-def test_real_microdot_scd30_per_field_setter_end_to_end_bus_fault_surfaces_as_failed_not_500() -> None:
-    # SCD30's counterpart to the BMP3xx bus-fault test above, through the hand-rolled per-field loop instead
-    # of handle_set_cmd(): a bus fault on one field must surface as that field's own "Failed" inside a
-    # normal 200 envelope, while every other field in the same request still applies.
-    #
-    # The fault is one-shot, so it lands on MeasInt, the loop's first field, and leaves AmbPres' write
-    # untouched.
+def test_real_microdot_scd30_put_bus_fault_surfaces_as_failed_not_500() -> None:
+    # A faulted chip write must surface as that field's own "Failed" inside a normal 200 envelope while
+    # the other field still applies. The snapshot is stubbed so the one-shot fault lands on the first
+    # write, MeasInt (first in the fixed order), and leaves AmbPres' write untouched.
     reader = make_scd_reader()
+
+    async def stored() -> "tuple[float, int, int, int, int, bool]":
+        return 0.0, 2, 0, 0, 400, False
+
+    reader.scd.get_config_snapshot = stored  # type: ignore[method-assign]
     _fault_next_i2c_write(reader, OSError(errno_mod.EIO, "no ACK on write"))
     app = _scd_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "MeasInt": 10, "AmbPres": 1013})
@@ -856,8 +840,7 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_bus_fault_surfaces_as_f
     writes = _scd_writes(reader)
     assert len(writes) == 1  # the faulted write never made it into the bus log at all
     assert writes[0][:4] == b"\x00\x10\x03\xf5"
-    # The fault is real and counted, on SCD30's own error log (CHIP_SET, its set_measurement_interval
-    # wrapper's code) - not swallowed silently just because the response says 200.
+    # The fault is real and counted on SCD30's own error log (CHIP_SET), not swallowed behind the 200.
     log = run(reader.get_error_counter())
     err_nums = log["SCD30"]["ErrNum"]
     assert isinstance(err_nums, list)

@@ -179,7 +179,7 @@ def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
 
 
 # ---------------------------------------------------------------------------
-# handle_set_cmd - orchestrates SensorReaderConfig._set_dict_cfg + post-write hook + envelope,
+# handle_set_cmd - orchestrates SensorReader._set_dict_cfg + post-write hook + envelope,
 # with its own try/except as defense-in-depth on top of Microdot's own blanket per-request catch
 # (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
 # ---------------------------------------------------------------------------

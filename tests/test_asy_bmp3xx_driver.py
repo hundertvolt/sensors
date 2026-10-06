@@ -5,6 +5,7 @@ import struct
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
+from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
 
@@ -2050,27 +2051,16 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
 
     i2c = make_i2c()
     reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
-    run(reader.cfgmgr.setup())
+    run(reader.setup())
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
-    writes = [0]
-    real_open = open
-
-    def counting_open(path: str, mode: str = "r") -> object:
-        if "w" in mode:
-            writes[0] += 1
-        return real_open(path, mode)
-
-    config_manager.open = counting_open  # type: ignore[attr-defined]
-    try:
+    with WriteCountingOpen(config_manager) as counter:
         assert run(reader._init_bmp()) is True
         for _ in range(20):
             assert run(reader._init_bmp()) is True  # every would-be restart succeeds as well
-    finally:
-        del config_manager.open  # type: ignore[attr-defined]
-    assert writes[0] == 0
+    assert counter.writes == 0
     assert run(reader.bmp.get_pressure_oversampling()) == 1  # the schema default reached the chip
     assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")

@@ -4,6 +4,7 @@ import os
 
 from _error_codes import code
 from _tmp_scratch import TmpScratch
+from _write_counters import WriteCountingOpen
 
 import config_manager as cm
 
@@ -1594,6 +1595,61 @@ def test_get_typed_values_none_keys_returns_empty_list_not_uncaught() -> None:
 
 
 # ---------------------------------------------------------------------------
+# compare_before_write() - the shared primitive every persistent-memory setter goes through: per key the
+# outcome and the coerced value to write; it logs nothing and writes nothing itself.
+# ---------------------------------------------------------------------------
+
+
+def _tenths(value: "cm.CfgValue") -> "cm.CfgValue":
+    assert isinstance(value, float)
+    return round(value * 10)
+
+
+def test_compare_before_write_outcome_rows() -> None:
+    schema = _SCHEMA + _VAL_FLOAT_SPECIAL
+    current: dict[str, cm.CfgValue] = {"Count": 5, "Offset": 1.5, "Name": "abc"}
+    rows: list[tuple[str, object, str, bool, object]] = [  # key, value, outcome, written, value written
+        ("Ghost", 1, "Invalid", False, None),  # unknown key
+        ("Count", "7", "Invalid", False, None),  # type error
+        ("Count", 11, "Invalid", False, None),  # range error
+        ("Count", [7], "Invalid", False, None),  # a list value
+        ("Name", {"a": 1}, "Invalid", False, None),  # a dict value
+        ("Special", 99, "Valid", True, 99),  # always key: never compared
+        ("Enabled", False, "Failed", False, None),  # valid, but missing from current
+        ("Offset", 1.54, "Unchanged", False, None),  # equal at resolution (tenths)
+        ("Offset", 1.66, "Valid", True, 1.66),  # different at resolution
+        ("Count", 5, "Unchanged", False, None),  # equal without a resolution
+        ("Name", "xyz", "Valid", True, "xyz"),  # different without a resolution
+        ("FloatSpecial", 99, "Valid", True, 99.0),  # int for a float field, coerced
+        ("Offset", 2, "Valid", True, 2.0),  # int for a float field, coerced before the compare
+    ]
+    for key, value, outcome, written, stored in rows:
+        result = cm.compare_before_write({key: value}, schema, current, always=("Special", "FloatSpecial"), resolution={"Offset": _tenths})
+        assert result is not None
+        write, results = result
+        assert results == {key: outcome}, (key, value)
+        assert (key in write) is written, (key, value)
+        if written:
+            assert write[key] == stored and type(write[key]) is type(stored), (key, value, write)
+    assert current == {"Count": 5, "Offset": 1.5, "Name": "abc"}  # the store's view is never touched
+
+
+def test_compare_before_write_answers_every_key_of_a_multi_key_body() -> None:
+    data = {"Name": "xyz", "Ghost": 1, "Count": 5, "Offset": 2.5}
+    result = cm.compare_before_write(data, _SCHEMA, {"Count": 5, "Offset": 1.5, "Name": "abc"})
+    assert result is not None
+    write, results = result
+    assert results == {"Name": "Valid", "Ghost": "Invalid", "Count": "Unchanged", "Offset": "Valid"}
+    assert write == {"Name": "xyz", "Offset": 2.5}
+
+
+def test_compare_before_write_refuses_a_non_object() -> None:
+    for data in (None, 5, "abc", ["Count", 1], ("Count", 1)):
+        assert cm.compare_before_write(data, _SCHEMA, {"Count": 5}) is None, data
+    assert cm.compare_before_write({}, _SCHEMA, {"Count": 5}) == ({}, {})
+
+
+# ---------------------------------------------------------------------------
 # write_config
 # ---------------------------------------------------------------------------
 
@@ -1615,6 +1671,20 @@ def test_write_config_unchanged_value() -> None:
         ok, results = run(mgr.write_config({"Count": 5}, _VAL_INT))
         assert ok is True
         assert results == {"Count": "Unchanged"}
+    finally:
+        _remove(path)
+
+
+def test_an_unchanged_put_schedules_no_flush() -> None:
+    mgr, path = _make("unchangednoflush.cfg")
+    try:
+        with WriteCountingOpen(cm) as fake:
+            assert run(mgr.write_config({"Count": 5, "Offset": 1.5, "Special": 99}, _SCHEMA)) == (
+                True, {"Count": "Unchanged", "Offset": "Unchanged", "Special": "Valid"},
+            )
+            assert mgr._pending_flush is None and mgr._staged is None
+            run(mgr.flush_pending())
+        assert (fake.writes, fake.reads) == (0, 0)
     finally:
         _remove(path)
 
@@ -1821,14 +1891,17 @@ def test_write_config_wrong_type_value_for_ordinary_bool_field_marked_invalid() 
 
 
 def test_write_config_non_dict_data_returns_false_not_uncaught() -> None:
-    # data.items() raises AttributeError for anything that isn't dict-like - must come back as the
-    # ordinary "write failed" (False, {}) sentinel, not propagate.
+    # compare_before_write() answers None for anything that isn't a dict, and write_config() turns that
+    # into the ordinary "write failed" (False, {}) sentinel with one BAD_ARG entry per call.
     mgr, path = _make("nondictdata.cfg")
     try:
         for bad_data in (None, 5, 12.5, "abc", ["Count", 1]):
+            before = mgr.pr.err_count
             ok, results = run(mgr.write_config(bad_data, _VAL_INT))  # type: ignore[arg-type]
             assert (ok, results) == (False, {})
+            assert mgr.pr.err_count - before == 1
             assert _last_errno(mgr) == code("E", "BAD_ARG")
+        assert mgr._pending_flush is None
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched by any of the above
     finally:
         _remove(path)
@@ -2338,34 +2411,6 @@ def test_configmanager_setup_memoryerror_from_json_dump_runs_on_defaults_unpersi
 # retries a write - so no failure, however persistent, can loop writes into the flash filesystem.
 # ---------------------------------------------------------------------------
 
-_real_open = open
-
-
-class _WriteCountingOpen:
-    # Replaces config_manager's own `open` (module globals shadow builtins), counting every open for
-    # writing - the only way this module reaches the flash - and optionally failing each one.
-    def __init__(self, *, fail_writes: bool = False, error: "BaseException | None" = None) -> None:
-        self.writes = 0
-        self.reads = 0
-        self.fail_writes = fail_writes
-        self.error = OSError(28, "ENOSPC") if error is None else error
-
-    def __call__(self, path: str, mode: str = "r") -> object:
-        if "w" in mode:
-            self.writes += 1
-            if self.fail_writes:
-                raise self.error
-        else:
-            self.reads += 1
-        return _real_open(path, mode)
-
-    def __enter__(self) -> "_WriteCountingOpen":
-        cm.open = self  # type: ignore[attr-defined]
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        del cm.open  # type: ignore[attr-defined]
-
 
 def _log_entry(mgr: "cm.ConfigManager") -> "tuple[int, list[int]]":
     # (count, codes) of the persisted ERRORS only - a missing file's CFG_FILE_UNREADABLE warning is routine.
@@ -2379,7 +2424,7 @@ def _log_entry(mgr: "cm.ConfigManager") -> "tuple[int, list[int]]":
 def test_setup_write_failure_attempts_exactly_one_write_and_serves_the_validated_config() -> None:
     path = _tmp_path("c73_setup_once.cfg")
     _remove(path)
-    with _WriteCountingOpen(fail_writes=True) as fake:
+    with WriteCountingOpen(cm, fail_writes=True) as fake:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
         run(mgr.setup())
     assert fake.writes == 1
@@ -2395,10 +2440,10 @@ def test_setup_write_failure_keeps_the_valid_keys_of_a_partly_bad_file() -> None
     # The repair is computed before the write, so a failing write still runs on the repaired values:
     # the file's good keys, the default for its bad one.
     path = _tmp_path("c73_partial.cfg")
-    with _real_open(path, "w") as f:
+    with open(path, "w") as f:
         f.write('{"Count": 7, "Offset": "not-a-float", "Name": "xy", "Enabled": false}')
     try:
-        with _WriteCountingOpen(fail_writes=True) as fake:
+        with WriteCountingOpen(cm, fail_writes=True) as fake:
             mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
             run(mgr.setup())
         assert fake.writes == 1
@@ -2412,7 +2457,7 @@ def test_setup_with_a_valid_file_writes_nothing_at_all() -> None:
     _remove(path)
     run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())  # creates it
     try:
-        with _WriteCountingOpen(fail_writes=True) as fake:
+        with WriteCountingOpen(cm, fail_writes=True) as fake:
             mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
             run(mgr.setup())
         assert (fake.writes, fake.reads) == (0, 1)
@@ -2425,7 +2470,7 @@ def test_setup_write_failure_for_each_error_class_is_logged_never_raised() -> No
     for error in (OSError(28, "ENOSPC"), OSError(5, "EIO"), MemoryError("simulated heap exhaustion"), TypeError("simulated bad path")):
         path = _tmp_path("c73_errclass.cfg")
         _remove(path)
-        with _WriteCountingOpen(fail_writes=True, error=error) as fake:
+        with WriteCountingOpen(cm, fail_writes=True, error=error) as fake:
             mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
             run(mgr.setup())
         assert (fake.writes, mgr.valid, _log_entry(mgr)) == (1, True, (1, [code("E", "CFG_FILE_WRITE")])), error
@@ -2436,7 +2481,7 @@ def test_no_read_path_ever_writes_after_a_failed_setup_write() -> None:
     # times, where a refused config used to end the reader's task and reboot into the same write.
     path = _tmp_path("c73_reads.cfg")
     _remove(path)
-    with _WriteCountingOpen(fail_writes=True) as fake:
+    with WriteCountingOpen(cm, fail_writes=True) as fake:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
         run(mgr.setup())
         for _ in range(250):
@@ -2455,7 +2500,7 @@ def test_writes_follow_accepted_changes_only_never_failures() -> None:
     _remove(path)
     mgr, path = _make("c73_puts.cfg", cfg_vals=_VAL_INT)
     try:
-        with _WriteCountingOpen(fail_writes=True) as fake:
+        with WriteCountingOpen(cm, fail_writes=True) as fake:
             for value, want in ((8, "Valid"), (8, "Unchanged"), (8, "Unchanged"), (99, "Invalid"), (9, "Valid")):
                 ok, results = run(mgr.write_config({"Count": value}, _VAL_INT))
                 run(mgr.flush_pending())
@@ -2474,7 +2519,7 @@ def test_writes_follow_accepted_changes_only_never_failures() -> None:
 def test_many_failed_flushes_still_write_once_per_change() -> None:
     mgr, path = _make("c73_many.cfg", cfg_vals=_VAL_INT)
     try:
-        with _WriteCountingOpen(fail_writes=True) as fake:
+        with WriteCountingOpen(cm, fail_writes=True) as fake:
             for value in (1, 2, 3, 4, 5, 6):
                 run(mgr.write_config({"Count": value}, _VAL_INT))
                 run(mgr.flush_pending())
@@ -2491,19 +2536,22 @@ def test_self_heals_a_failed_setup_write_on_the_next_accepted_change() -> None:
     path = _tmp_path("c73_heal.cfg")
     _remove(path)
     try:
-        with _WriteCountingOpen(fail_writes=True):
+        with WriteCountingOpen(cm, fail_writes=True):
             mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
             run(mgr.setup())
-        with _WriteCountingOpen() as fake:
+        with WriteCountingOpen(cm) as fake:
             assert run(mgr.write_config({"Count": 3}, _VAL_INT)) == (True, {"Count": "Valid"})
             run(mgr.flush_pending())
             assert fake.writes == 1
-        with _real_open(path) as f:
+        with open(path) as f:
             assert json.load(f) == {"Count": 3, "Offset": 1.5, "Name": "abc", "Enabled": True}
-        with _WriteCountingOpen() as fake:
+        with WriteCountingOpen(cm) as fake:
             again = cm.ConfigManager(path, _SCHEMA, "TEST")
             run(again.setup())
             assert fake.writes == 0
+            assert run(again.write_config({"Count": 3}, _VAL_INT)) == (True, {"Count": "Unchanged"})
+            run(again.flush_pending())
+            assert fake.writes == 0  # the same value after the reboot is compared, not written again
         assert run(again.get_int_values(_VAL_INT)) == [3]
     finally:
         _remove(path)
@@ -2513,13 +2561,13 @@ def test_self_heals_a_failed_setup_write_on_the_next_boot_with_one_write() -> No
     path = _tmp_path("c73_reboot.cfg")
     _remove(path)
     try:
-        with _WriteCountingOpen(fail_writes=True):
+        with WriteCountingOpen(cm, fail_writes=True):
             run(cm.ConfigManager(path, _VAL_INT, "TEST").setup())
-        with _WriteCountingOpen() as fake:
+        with WriteCountingOpen(cm) as fake:
             mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
             run(mgr.setup())
             assert fake.writes == 1  # the next boot's one repair write
-        with _real_open(path) as f:
+        with open(path) as f:
             assert json.load(f) == {"Count": 5}
     finally:
         _remove(path)
@@ -2528,15 +2576,15 @@ def test_self_heals_a_failed_setup_write_on_the_next_boot_with_one_write() -> No
 def test_self_heals_a_failed_flush_on_the_next_accepted_change() -> None:
     mgr, path = _make("c73_flushheal.cfg", cfg_vals=_VAL_INT)
     try:
-        with _WriteCountingOpen(fail_writes=True):
+        with WriteCountingOpen(cm, fail_writes=True):
             run(mgr.write_config({"Count": 7}, _VAL_INT))
             run(mgr.flush_pending())
         assert run(mgr.get_int_values(_VAL_INT)) == [7]  # still in effect while unpersisted
-        with _WriteCountingOpen() as fake:
+        with WriteCountingOpen(cm) as fake:
             run(mgr.write_config({"Count": 8}, _VAL_INT))
             run(mgr.flush_pending())
             assert fake.writes == 1
-        with _real_open(path) as f:
+        with open(path) as f:
             assert json.load(f) == {"Count": 8}
     finally:
         _remove(path)
@@ -2546,7 +2594,7 @@ def test_the_only_flash_writes_in_config_manager_are_the_two_known_sites() -> No
     # Structural half of the write-loop guarantee: exactly setup()'s and _flush_staged()'s opens
     # for writing, and nothing in the module that could re-run one on its own - no timer, no sleep,
     # no loop that waits. A new write site or retry mechanism has to come through here.
-    with _real_open(cm.__file__) as f:
+    with open(cm.__file__) as f:
         source = f.read()
     assert source.count('open(self.config_file, "w")') == 2
     assert source.count('"w"') == 2
@@ -2554,6 +2602,10 @@ def test_the_only_flash_writes_in_config_manager_are_the_two_known_sites() -> No
     for forbidden in ("Timer", "sleep", "while "):
         assert not any(forbidden in line for line in code), forbidden
     assert source.count("create_task(") == 1  # write_config()'s one deferred flush per accepted change
+    start = source.index("def compare_before_write(")
+    body = [line.split("#")[0] for line in source[start : source.index("\nclass ", start)].split("\n")]
+    for forbidden in ("Timer", "sleep", "while ", '"w"', "open(", "create_task(", "await ", "self.pr"):
+        assert not any(forbidden in line for line in body), forbidden  # the primitive neither writes nor logs
 
 
 if __name__ == "__main__":

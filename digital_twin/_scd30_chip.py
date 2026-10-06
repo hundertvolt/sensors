@@ -38,6 +38,15 @@ _CMD_SET_TEMPERATURE_OFFSET = 0x5403
 _CMD_SET_ALTITUDE_COMPENSATION = 0x5102
 _CMD_SOFT_RESET = 0xD304
 _CMD_READ_FIRMWARE_VERSION = 0xD100
+# The argument commands whose value the chip keeps in NVM (Interface Description 1.4.1, 1.4.3, 1.4.6-1.4.8).
+_NVM_ARG_COMMANDS = (
+    _CMD_CONTINUOUS_MEASUREMENT,
+    _CMD_SET_MEASUREMENT_INTERVAL,
+    _CMD_SET_ALTITUDE_COMPENSATION,
+    _CMD_SET_FORCED_RECALIBRATION_FACTOR,
+    _CMD_AUTOMATIC_SELF_CALIBRATION,
+    _CMD_SET_TEMPERATURE_OFFSET,
+)
 
 _FIRMWARE_VERSION = 0x0342  # plausible fixed value (major.minor as two nibble-pairs) - never checked by the driver
 
@@ -93,6 +102,8 @@ class Scd30Chip:
         self._rdy_pin = rdy_pin
         self.fault = FaultInjector()
         self.corrupt_next_measurement = False
+        # Test surface, not chip behaviour: one count per NVM-writing command frame the fake applies.
+        self.nvm_writes = 0
         self._timer: Timer | None = None
         self.state_path = state_path
         self._load_state()  # may override the *_s/_ambient_pressure/_altitude/_temp_offset_raw/
@@ -170,13 +181,15 @@ class Scd30Chip:
         if len(data) == 2:
             self._last_cmd = (data[0] << 8) | data[1]
             if self._last_cmd == _CMD_STOP_CONTINUOUS_MEASUREMENT:
-                pass  # nothing to model - readback for this command doesn't exist
+                self.nvm_writes += 1  # the measurement status is kept in NVM (Interface Description 1.4.1-1.4.2)
             elif self._last_cmd == _CMD_SOFT_RESET:
                 pass  # no persistent chip-side state modeled that a reset would need to clear
             return
         if len(data) == 5:
             cmd = (data[0] << 8) | data[1]
             arg = (data[2] << 8) | data[3]
+            if cmd in _NVM_ARG_COMMANDS:
+                self.nvm_writes += 1
             if cmd == _CMD_SET_MEASUREMENT_INTERVAL:
                 self._measurement_interval_s = arg
                 if self._timer is not None:

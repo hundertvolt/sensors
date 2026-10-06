@@ -9,6 +9,7 @@ import asyncio
 import struct
 
 from _error_codes import code
+from _write_counters import scd30_nvm_writes
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
+    from config_manager import CfgValue, WriteValidity
     from print_log import ErrorLog
 
 
@@ -71,6 +73,17 @@ def register_frame(value: int) -> bytes:
     # read reply (Interface Description 1.2, Table 1).
     payload = struct.pack(">H", value)
     return payload + bytes([crc8_byte(payload)])
+
+
+def _queue_snapshot(i2c: FakeI2C, temp_offset: int = 0, interval: int = 2, pressure: int = 0, altitude: int = 0, frc: int = 400, asc: int = 0) -> None:
+    # The six register replies get_config_snapshot() reads, in its order; temp_offset is the raw tick word.
+    for value in (temp_offset, interval, pressure, altitude, frc, asc):
+        i2c.read_queue.append(register_frame(value))
+
+
+def _arg_words(i2c: FakeI2C) -> "list[int]":
+    # The command word of every 5-byte (command + argument) frame on the bus log, in order.
+    return [(entry[2][0] << 8) | entry[2][1] for entry in i2c.log if entry[0] == "writeto" and len(entry[2]) == 5]
 
 
 def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
@@ -209,6 +222,13 @@ def test_temperature_offset_matches_datasheet_example() -> None:
     scd, i2c = make_scd()
     run(scd.set_temperature_offset(5.0))
     assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x54, 0x03, 0x01, 0xF4, 0x33]), True)
+
+
+def test_temperature_offset_rounds_to_the_nearest_tick() -> None:
+    # 0.29 * 100 is 28.999999999999996 in double: truncation sends 28, the nearest tick is 29.
+    scd, i2c = make_scd()
+    run(scd.set_temperature_offset(0.29))
+    assert i2c.log[-1][2][:4] == bytes([0x54, 0x03, 0x00, 29])
 
 
 def test_altitude_matches_datasheet_example() -> None:
@@ -954,7 +974,7 @@ def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
     #
     # Never caught by any prior test, since nothing exercised _set_dict_cfg's ContMeas branch specifically.
     reader = make_reader()
-    reader_fake_i2c(reader)
+    _queue_snapshot(reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"ContMeas": True}, reader.get_cfg_schema()))
     assert result == {"ContMeas": "Valid"}
 
@@ -962,37 +982,48 @@ def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
 def test_set_dict_cfg_reports_contmeas_false_as_valid_when_the_real_stop_succeeds() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
+    _queue_snapshot(i2c)
     result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
     assert result == {"ContMeas": "Valid"}
     assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x01, 0x04]), True)
 
 
 def test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault() -> None:
+    # The NAK fails the snapshot first: the body is refused whole, nothing is sent.
     reader = make_reader()
-    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
-    result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    i2c = reader_fake_i2c(reader)
+    i2c.nak_addresses.add(_ADDR)
+
+    async def scenario() -> "tuple[WriteValidity, ErrorLog]":
+        result = await reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema())
+        return result, await reader.get_error_counter()
+
+    result, log = run(scenario())
     assert result == {"ContMeas": "Failed"}
+    assert scd30_nvm_writes(i2c) == {}
+    assert log["SCD30"]["ErrCount"] == 1
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
 
 
 def test_set_dict_cfg_reports_contmeas_non_bool_as_invalid() -> None:
     reader = make_reader()
-    reader_fake_i2c(reader)
+    _queue_snapshot(reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"ContMeas": "yes"}, reader.get_cfg_schema()))
     assert result == {"ContMeas": "Invalid"}
 
 
 # ---------------------------------------------------------------------------
-# _set_dict_cfg - the schema-driven int/float dispatch loop, distinct from the ContMeas special-case tests
-# above: this is the branch calling config_manager.py's type_or_range_error() (coercion included,
-# SPECIFICATION.md Part A.8) before dispatching to each field's own real setter.
+# _set_dict_cfg through SCD30's chip store: snapshot, compare, validate, write in a fixed order (SPECIFICATION.md C.4.3).
 # ---------------------------------------------------------------------------
 
 
 def test_set_dict_cfg_dispatches_a_valid_value_to_the_real_setter_and_reports_valid() -> None:
     reader = make_reader()
-    reader_fake_i2c(reader)
+    i2c = reader_fake_i2c(reader)
+    _queue_snapshot(i2c)
     result = run(reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema()))
     assert result == {"TempOffs": "Valid"}
+    assert scd30_nvm_writes(i2c) == {0x5403: 1}
 
 
 def test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_before_dispatch() -> None:
@@ -1008,6 +1039,7 @@ def test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_be
         return True
 
     reader.set_temperature_offset = spy  # type: ignore[method-assign]
+    _queue_snapshot(reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"TempOffs": 5}, reader.get_cfg_schema()))
     assert result == {"TempOffs": "Valid"}
     assert received == [5.0]
@@ -1026,6 +1058,7 @@ def test_set_dict_cfg_integral_float_value_for_the_int_typed_measint_field_is_co
         return True
 
     reader.set_measurement_interval = spy  # type: ignore[method-assign]
+    _queue_snapshot(reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"MeasInt": 10.0}, reader.get_cfg_schema()))
     assert result == {"MeasInt": "Valid"}
     assert received == [10]
@@ -1042,6 +1075,7 @@ def test_set_dict_cfg_fractional_value_for_an_int_typed_field_rejected_before_di
         return True
 
     reader.set_measurement_interval = spy  # type: ignore[method-assign]
+    _queue_snapshot(reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"MeasInt": 10.5}, reader.get_cfg_schema()))
     assert result == {"MeasInt": "Invalid"}
     assert received == []  # never dispatched - rejected before the setter is ever called
@@ -1049,39 +1083,137 @@ def test_set_dict_cfg_fractional_value_for_an_int_typed_field_rejected_before_di
 
 def test_set_dict_cfg_out_of_range_value_rejected_before_dispatch() -> None:
     reader = make_reader()
-    reader_fake_i2c(reader)
-    result = run(reader._set_dict_cfg({"TempOffs": 9999.0}, reader.get_cfg_schema()))
+    i2c = reader_fake_i2c(reader)
+    _queue_snapshot(i2c)
+
+    async def scenario() -> "tuple[WriteValidity, ErrorLog]":
+        result = await reader._set_dict_cfg({"TempOffs": 9999.0}, reader.get_cfg_schema())
+        return result, await reader.get_error_counter()
+
+    result, log = run(scenario())
     assert result == {"TempOffs": "Invalid"}
+    assert scd30_nvm_writes(i2c) == {}
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "BAD_ARG")
 
 
 def test_set_dict_cfg_wrong_type_value_rejected_before_dispatch() -> None:
     reader = make_reader()
-    reader_fake_i2c(reader)
+    _queue_snapshot(reader_fake_i2c(reader))
     result = run(reader._set_dict_cfg({"TempOffs": "not a number"}, reader.get_cfg_schema()))
     assert result == {"TempOffs": "Invalid"}
 
 
 def test_set_dict_cfg_unknown_key_reported_invalid_without_dispatch() -> None:
+    # A body with no chip key reads no snapshot: the bus stays silent.
     reader = make_reader()
-    reader_fake_i2c(reader)
+    i2c = reader_fake_i2c(reader)
     result = run(reader._set_dict_cfg({"NoSuchField": 5}, reader.get_cfg_schema()))
     assert result == {"NoSuchField": "Invalid"}
+    assert len(i2c.log) == 0
 
 
 def test_set_dict_cfg_setter_reports_failed_on_bus_fault() -> None:
+    # The snapshot answers (stubbed); the bus then NAKs, so the write itself fails.
     reader = make_reader()
+
+    async def stored() -> "tuple[float, int, int, int, int, bool]":
+        return 0.0, 2, 0, 0, 400, False
+
+    reader.scd.get_config_snapshot = stored  # type: ignore[method-assign]
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
-    result = run(reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema()))
+
+    async def scenario() -> "tuple[WriteValidity, ErrorLog]":
+        result = await reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema())
+        return result, await reader.get_error_counter()
+
+    result, log = run(scenario())
     assert result == {"TempOffs": "Failed"}
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_SET")
 
 
 def test_set_dict_cfg_multiple_fields_in_one_call_including_ambpres_special_sentinel() -> None:
     # Exercises several dispatch fields together (not just TempOffs in isolation), including
     # AmbPres's own special-value sentinel (0 - deactivate ambient pressure compensation).
     reader = make_reader()
-    reader_fake_i2c(reader)
+    i2c = reader_fake_i2c(reader)
+    _queue_snapshot(i2c)
     result = run(reader._set_dict_cfg({"TempOffs": 5, "AmbPres": 0, "SelfCal": True}, reader.get_cfg_schema()))
     assert result == {"TempOffs": "Valid", "AmbPres": "Valid", "SelfCal": "Valid"}
+    assert _arg_words(i2c) == [0x5403, 0x0010, 0x5306]  # _APPLY_ORDER: TempOffs, AmbPres, SelfCal
+
+
+def test_a_repeated_put_of_a_stored_chip_value_is_unchanged_and_writes_nothing() -> None:
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    body: dict[str, CfgValue] = {"TempOffs": 4.5, "MeasInt": 10, "Altitude": 200, "SelfCal": True}
+    _queue_snapshot(i2c)
+    first = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
+    assert first == dict.fromkeys(body, "Valid")
+    written = scd30_nvm_writes(i2c)
+    _queue_snapshot(i2c, temp_offset=450, interval=10, altitude=200, asc=1)  # the chip now holds the body
+    second = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
+    assert second == dict.fromkeys(body, "Unchanged")
+    assert scd30_nvm_writes(i2c) == written
+
+
+def test_ambpres_and_forcecalref_always_write() -> None:
+    # Both are commands to the chip, not compared: an equal value is sent once more and answers "Valid".
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    body: dict[str, CfgValue] = {"AmbPres": 1000, "ForceCalRef": 450}
+    for attempt in (1, 2):
+        _queue_snapshot(i2c, pressure=1000, frc=450)
+        assert run(reader._set_dict_cfg(body, reader.get_cfg_schema())) == {"AmbPres": "Valid", "ForceCalRef": "Valid"}
+        assert scd30_nvm_writes(i2c) == {0x0010: attempt, 0x5204: attempt}
+
+
+def test_a_reversed_body_writes_in_the_fixed_order() -> None:
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    _queue_snapshot(i2c)
+    body: dict[str, CfgValue] = {"SelfCal": True, "ForceCalRef": 450, "Altitude": 200, "AmbPres": 1000, "MeasInt": 10, "TempOffs": 4.5}
+    result = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
+    assert result == dict.fromkeys(body, "Valid")
+    assert _arg_words(i2c) == [0x5403, 0x4600, 0x0010, 0x5102, 0x5204, 0x5306]
+
+
+def test_ambpres_with_contmeas_false_ends_stopped_in_either_key_order() -> None:
+    # AmbPres (0x0010) starts continuous measurement; the stop (0x0104) is sent after it either way.
+    bodies: list[dict[str, CfgValue]] = [{"AmbPres": 1000, "ContMeas": False}, {"ContMeas": False, "AmbPres": 1000}]
+    for body in bodies:
+        reader = make_reader()
+        i2c = reader_fake_i2c(reader)
+        _queue_snapshot(i2c)
+        assert run(reader._set_dict_cfg(body, reader.get_cfg_schema())) == {"AmbPres": "Valid", "ContMeas": "Valid"}
+        commands = [entry[2][:2] for entry in i2c.log if entry[0] == "writeto" and (len(entry[2]) == 5 or entry[2] == b"\x01\x04")]
+        assert commands == [b"\x00\x10", b"\x01\x04"]
+
+
+def test_a_failing_snapshot_fails_every_key_and_writes_nothing() -> None:
+    # Nothing queued: the first register reply reads as zeros with a wrong CRC, so the snapshot fails on a live bus.
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    body: dict[str, CfgValue] = {"TempOffs": 4.5, "MeasInt": 10, "AmbPres": 1000, "ContMeas": False, "NoSuchField": 1}
+
+    async def scenario() -> "tuple[WriteValidity, ErrorLog]":
+        result = await reader._set_dict_cfg(body, reader.get_cfg_schema())
+        return result, await reader.get_error_counter()
+
+    result, log = run(scenario())
+    assert result == dict.fromkeys(body, "Failed")
+    assert scd30_nvm_writes(i2c) == {}
+    assert _arg_words(i2c) == []
+    assert log["SCD30"]["ErrCount"] == 1
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
+
+
+def test_tempoffset_compares_at_tick_resolution() -> None:
+    # 12.345 rounds to tick 1235, the chip's stored word: equal at the chip's resolution.
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    _queue_snapshot(i2c, temp_offset=1235)
+    assert run(reader._set_dict_cfg({"TempOffs": 12.345}, reader.get_cfg_schema())) == {"TempOffs": "Unchanged"}
+    assert scd30_nvm_writes(i2c) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1110,12 +1242,7 @@ def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
 
 
 def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
-    # Regression test from baseline verification: SCD30_Reader is a plain SensorReader, unlike every other
-    # reader here, so it never inherited get_cfg_schema() - though _put_sensors() calls that uniformly for
-    # every registered sensor, as this file's own _set_dict_cfg() docstring documented.
-    #
-    # Missing it meant a real PUT /sensors touching SCD30 crashed with a 500, never caught because
-    # test_asy_webserver_service.py's _put_sensors tests use a fake module that already defines it.
+    # _put_sensors() calls get_cfg_schema() on every sensor; SCD30's covers its six chip keys.
     reader = make_reader()
     names = cm.schema_names(reader.get_cfg_schema())
     assert set(names) == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"}
@@ -1124,7 +1251,14 @@ def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
 def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
-    result = run(reader.get_dict_cfg())
+
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], ErrorLog]":
+        result = await reader.get_dict_cfg()
+        return result, await reader.get_error_counter()
+
+    result, log = run(scenario())
+    assert log["SCD30"]["ErrCount"] == 1
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
     fields = result["SCD30"]
     assert fields == {
         "TempOffs": None,
@@ -1134,6 +1268,20 @@ def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> N
         "ForceCalRef": None,
         "SelfCal": None,
     }
+
+
+def test_get_dict_cfg_after_a_failing_snapshot_shows_none_and_one_entry() -> None:
+    # A CRC-failing snapshot on a live bus (nothing queued), beside the NAK case above.
+    reader = make_reader()
+
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], ErrorLog]":
+        result = await reader.get_dict_cfg()
+        return result, await reader.get_error_counter()
+
+    result, log = run(scenario())
+    assert result == {"SCD30": {"TempOffs": None, "MeasInt": None, "AmbPres": None, "Altitude": None, "ForceCalRef": None, "SelfCal": None}}
+    assert log["SCD30"]["ErrCount"] == 1
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
 
 
 def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> None:

@@ -1150,16 +1150,57 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SensorReaderConfig - generic setter dispatch (_set_mgr_cfg / _set_dict_cfg), mirroring the getters' "base-
-# class-owned orchestration, per-field push via a callback" shape. Only on SensorReaderConfig, not the plain
-# SensorReader base: a generic write needs a real ConfigManager to validate and persist against.
-#
-# Persist-first, then push (owner, 2026-09-26): a value only reaches hardware once it is safely on flash, so
-# whatever made it onto the device is still there after an unplanned reset.
-#
-# Push fires only for an actual change ("Valid"), never for "Unchanged" - there are no generic force-resend
-# semantics, SCD30's AmbPres being the only case that needed them and not using this path.
+# The write orchestration lives on SensorReader; SensorReaderConfig adds the file store (SCD30's AmbPres uses
+# this path as an always key). Persist first, then push (owner, 2026-09-26), so whatever reached the hardware is
+# still stored after an unplanned reset; push fires only for an actual change ("Valid"), never for "Unchanged".
 # ---------------------------------------------------------------------------
+
+
+def test_a_plain_sensorreader_answers_every_key_failed() -> None:
+    # The default store is none: _set_mgr_cfg() persists nothing, so nothing is pushed either.
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
+    pushed: list[int | float | str | bool | None] = []
+
+    async def push(value: "int | float | str | bool | None") -> bool:
+        pushed.append(value)
+        return True
+
+    reader._push_callbacks["SampleInterv"] = push
+    assert run(reader._set_mgr_cfg({"SampleInterv": 42}, _VAL_SI)) == (False, {})
+    results = run(reader._set_dict_cfg({"SampleInterv": 42, "Ghost": 1}, _VAL_SI))
+    assert results == {"SampleInterv": "Failed", "Ghost": "Failed"}
+    assert pushed == []
+    assert reader.pr.err_count == 0  # no store is not a fault of the request
+
+
+def test_a_key_without_a_push_callback_triggers_no_pre_write_read() -> None:
+    # The pre-write snapshot serves only _recover_failed_push(), which runs only for a pushed key: a store
+    # without push callbacks (SCD30's chip) pays no second read, and a pushed key still gets its snapshot.
+    class CountingReader(SensorReaderConfig):
+        reads: "list[list[str]]"
+
+        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+            self.reads.append(cfg)
+            return await super()._get_mgr_cfg(cfg)
+
+    combined = _VAL_SI + _VAL_BOOL
+    path_prefix = _SHARED_CFG_DIR
+    _remove(path_prefix + "config_nosnapshot.cfg")
+    try:
+        reader = CountingReader(Meas(20.0, 50), 3, "nosnapshot", combined, cfg_path=path_prefix)
+        reader.reads = []
+        run(reader.cfgmgr.setup())
+        assert run(reader._set_dict_cfg({"SampleInterv": 42, "SelfCal": True}, combined)) == {"SampleInterv": "Valid", "SelfCal": "Valid"}
+        assert reader.reads == []
+
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
+            return True
+
+        reader._push_callbacks["SelfCal"] = push_ok
+        assert run(reader._set_dict_cfg({"SampleInterv": 43, "SelfCal": False}, combined)) == {"SampleInterv": "Valid", "SelfCal": "Valid"}
+        assert reader.reads == [["SelfCal"]]
+    finally:
+        _remove(path_prefix + "config_nosnapshot.cfg")
 
 
 def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
@@ -1859,6 +1900,8 @@ def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> 
         run(reader2.cfgmgr.setup())
         assert reader1._push_callbacks == {}
         assert reader1._push_callbacks is not reader2._push_callbacks
+        plain = SensorReader(Meas(20.0, 50), max_module_error=3)  # the dicts live on the base class
+        assert (plain._push_callbacks, plain._get_callbacks) == ({}, {})
 
         async def push(_value: "int | float | str | bool | None") -> bool:
             return True

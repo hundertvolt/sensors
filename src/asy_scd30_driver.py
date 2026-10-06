@@ -20,7 +20,7 @@ import math_helpers
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C, I2CDevice
 from base_classes import Lockable, SensorReader
-from config_manager import make_dict, name_cfg, schema_dict, type_or_range_error
+from config_manager import compare_before_write, make_dict, name_cfg
 from crc_checks import CRC8
 
 try:
@@ -32,10 +32,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
         return val
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable
     from typing import Any, TypeVar
 
-    from config_manager import ConfigSchema
+    from config_manager import CfgValue, ConfigSchema, WriteValidity
     from print_log import ErrorLog
 
     T = TypeVar("T")  # narrows a struct.unpack() result for the cast() shim above
@@ -46,6 +46,7 @@ _ERR_INIT = const(10)
 _ERR_READ = const(11)
 _ERR_CHIP_GET = const(12)
 _ERR_CHIP_SET = const(13)
+_ERR_BAD_ARG = const(21)
 
 _SCD30_DEFAULT_ADDR = const(0x61)
 _CMD_CONTINUOUS_MEASUREMENT = const(0x0010)
@@ -89,6 +90,15 @@ _FORCED_RECAL_MAX = const(2000)
 # check_from() return on success (total written / payload length respectively).
 _WORD_BYTES = const(2)
 _WORD_CRC_BYTES = const(3)
+# The order a PUT's chip writes are applied in, whatever the body's key order.
+_APPLY_ORDER = const(("TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))
+
+
+def _temp_offset_ticks(offset: float) -> int:
+    # Nearest 0.01 degC tick, not truncation: in float32 130 of the 2001 two-decimal inputs land one tick low when truncated (0.00-20.00; offset is validated >= 0 first).
+    return int(offset * 100 + 0.5)
+
+
 # Deliberately no _VAL_* entry for "ContMeas": the SCD30 cannot report whether continuous
 # measurement is running, and these params live on the sensor rather than in a local cache. The
 # freestanding @web tag below supplies what a real _VAL_* tuple would otherwise let buildgen infer.
@@ -121,6 +131,18 @@ if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp
 
 
+def _snapshot_dict(snap: "tuple[float, int, int, int, int, bool]") -> "dict[str, CfgValue]":
+    # The six chip-stored settings by name, from one get_config_snapshot() tuple.
+    return {
+        name_cfg(_VAL_TO): snap[0],
+        name_cfg(_VAL_MI): snap[1],
+        name_cfg(_VAL_AP): snap[2],
+        name_cfg(_VAL_ALT): snap[3],
+        name_cfg(_VAL_CAL): snap[4],
+        name_cfg(_VAL_SC): snap[5],
+    }
+
+
 class SCD30_Reader(SensorReader):
     def __init__(
         self,
@@ -150,19 +172,68 @@ class SCD30_Reader(SensorReader):
         self.read_event = asyncio.ThreadSafeFlag()
         self.scd_timer_triggers = 0
 
-    async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        # Single batched read (get_config_snapshot()), not six independent get_*() calls - closes a
-        # torn-read window: a concurrent config write landing between two of the six separately-locked
-        # reads used to be able to mix pre-/post-write values.
-        temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal = await self.scd.get_config_snapshot()
-        return {
-            name_cfg(_VAL_TO): temp_offset,
-            name_cfg(_VAL_MI): measurement_interval,
-            name_cfg(_VAL_AP): ambient_pressure,
-            name_cfg(_VAL_ALT): altitude,
-            name_cfg(_VAL_CAL): frc,
-            name_cfg(_VAL_SC): self_cal,
-        }  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
+    async def _config_snapshot(self) -> "dict[str, CfgValue] | None":
+        # One batched read (get_config_snapshot()), not six separately-locked get_*() calls, so a
+        # concurrent write never mixes pre- and post-write values; a failure logs CHIP_GET and is None.
+        try:
+            snap = await self.scd.get_config_snapshot()
+        except Exception as e:
+            await self.pr.err_s("Error reading the config snapshot:", e, errno=_ERR_CHIP_GET)
+            return None
+        return _snapshot_dict(snap)
+
+    async def _get_mgr_cfg(self, cfg: list[str]) -> "dict[str, CfgValue] | None":
+        # The chip is this module's config store (SPECIFICATION.md C.4.3).
+        current = await self._config_snapshot()
+        if current is None:
+            return None
+        return {key: current[key] for key in cfg if key in current}
+
+    async def _set_mgr_cfg(self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
+        # Compare-before-write against a fresh chip snapshot, writes in _APPLY_ORDER, ContMeas last. "a PUT whose
+        # get_config_snapshot() fails is refused as a whole, nothing written, the response reports the failure,
+        # as legacy" (owner, 2026-09-29).
+        rest = dict(data)
+        has_cont_meas = "ContMeas" in rest
+        cont_meas = rest.pop("ContMeas", None)
+        current: dict[str, CfgValue] = {}
+        if has_cont_meas or any(key in rest for key in _APPLY_ORDER):  # a body with no chip key reads no snapshot
+            snapshot = await self._config_snapshot()
+            if snapshot is None:
+                return False, {}
+            current = snapshot
+        # TempOffs compares in chip ticks; the primitive applies the rounding only to a value the schema validated as a float.
+        resolution = {"TempOffs": _temp_offset_ticks}
+        outcome = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]
+        if outcome is None:
+            return False, {}
+        write, results = outcome
+        for key, result in results.items():
+            if result == "Invalid":
+                await self.pr.err_s("Invalid value for", key, errno=_ERR_BAD_ARG)
+        setters = (
+            self.set_temperature_offset,
+            self.set_measurement_interval,
+            self.set_ambient_pressure,
+            self.set_altitude,
+            self.set_forced_recalibration_reference,
+            self.set_self_calibration_enabled,
+        )
+        for key, setter in zip(_APPLY_ORDER, setters):  # noqa: B905 - MicroPython zip() rejects strict=
+            # write[key] is the value the schema validated and coerced for exactly this key's setter.
+            if key in write and not await setter(write[key]):  # type: ignore[arg-type]
+                results[key] = "Failed"
+        if has_cont_meas:
+            # ContMeas is a command, not a stored value: True keeps the chip running (nothing to send),
+            # False stops it - after the writes, so an AmbPres in the same body cannot restart it.
+            if type(cont_meas) is not bool:
+                results["ContMeas"] = "Invalid"
+                await self.pr.err_s("Invalid value for ContMeas", errno=_ERR_BAD_ARG)
+            elif cont_meas:
+                results["ContMeas"] = "Valid"
+            else:
+                results["ContMeas"] = "Valid" if await self.stop_continuous_measurement(value=False) else "Failed"
+        return True, results
 
     async def _init_scd(self) -> bool:
         # Continuous measurement is never started here: the first ambient-pressure PUT starts it, and
@@ -248,60 +319,13 @@ class SCD30_Reader(SensorReader):
         return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        return await self._get_dict_cfg(
-            self.name,
-            _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
-            callback=self._read_sensor_dict,
-        )
+        return await self._get_dict_cfg(self.name, _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC)
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # SCD30_Reader is a plain SensorReader with no local cfgmgr, so it does not inherit
         # SensorReaderConfig.get_cfg_schema() - but _put_sensors() calls that uniformly on every
         # registered sensor, and without this every PUT /sensors touching SCD30 raised a 500.
         return _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC
-
-    async def _set_dict_cfg(
-        self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema",
-    ) -> dict[str, str]:
-        # Schema-driven setter mirroring SensorReaderConfig._set_dict_cfg()'s validate-then-dispatch
-        # shape, but with no persistence step: each validated field calls straight through to its own
-        # setter, a real I2C write, because these params live on the sensor.
-
-        # ContMeas has no _VAL_* entry, so it is dispatched here directly rather than through the
-        # schema loop - which keeps asy_webserver_service.py sensor-agnostic, always just calling
-        # module._set_dict_cfg(fields, module.get_cfg_schema()).
-        dispatch: dict[str, Callable[[Any], Coroutine[Any, Any, bool]]] = {
-            name_cfg(_VAL_TO): self.set_temperature_offset,
-            name_cfg(_VAL_MI): self.set_measurement_interval,
-            name_cfg(_VAL_AP): self.set_ambient_pressure,
-            name_cfg(_VAL_ALT): self.set_altitude,
-            name_cfg(_VAL_CAL): self.set_forced_recalibration_reference,
-            name_cfg(_VAL_SC): self.set_self_calibration_enabled,
-        }
-        schema_by_name = schema_dict(cfg_vals)
-        results: dict[str, str] = {}
-        for key, value in data.items():
-            if key == "ContMeas":
-                if isinstance(value, bool):
-                    # stop_continuous_measurement(value=True) is a pure no-op whose contract returns
-                    # False meaning "nothing to do", not "failed" - only a real stop (value=False) can
-                    # fail. Normalized here, before the generic "Valid"/"Failed" mapping sees it.
-                    applied = await self.stop_continuous_measurement(value=value)
-                    results[key] = "Valid" if (applied or value) else "Failed"
-                else:
-                    results[key] = "Invalid"
-                continue
-            field = schema_by_name.get(key)
-            setter = dispatch.get(key)
-            if field is None or setter is None:
-                results[key] = "Invalid"
-                continue
-            is_error, coerced_value = type_or_range_error(value, field)
-            if is_error:
-                results[key] = "Invalid"
-                continue
-            results[key] = "Valid" if await setter(coerced_value) else "Failed"
-        return results
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -568,12 +592,12 @@ class SCD30_I2C:
 
     async def set_temperature_offset(self, offset: float) -> None:
         # NVM-persisted - survives reset() and power cycles. NaN rejected explicitly first - see
-        # set_ambient_pressure()'s comment.
+        # set_ambient_pressure()'s comment. Sent as the nearest tick (_temp_offset_ticks()).
         if offset != offset:  # NaN is the only value unequal to itself
             raise ValueError("temperature_offset must not be NaN")
         if offset < 0 or offset > _TEMP_OFFSET_MAX:
             raise ValueError("temperature_offset must be from 0 to 655.35 degrees Celsius")
-        await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
+        await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, _temp_offset_ticks(offset))
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> None:
         if reference_value < _FORCED_RECAL_MIN or reference_value > _FORCED_RECAL_MAX:

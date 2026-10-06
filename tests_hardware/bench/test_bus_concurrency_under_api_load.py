@@ -471,9 +471,9 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
     reset_all_error_logs(dut_ip)
 
 
-# SCD30's two write hazards have no bench-tier counterpart, and that is Part C.8's structural
-# exception 1 rather than a gap, because the driver registers no push callback at all - so no PUT
-# can reach its NVM write. The flash tier's gated scripts are their only real-hardware coverage.
+# PUT /sensors reaches SCD30's NVM through its chip store (_set_mgr_cfg(), compare-before-write); a
+# bench counterpart spends real NVM wear, so it is added behind persistence_write or its wear reason
+# is listed. Today the flash tier's gated scripts are the only real-hardware coverage of that write.
 
 
 # ---------------------------------------------------------------------------

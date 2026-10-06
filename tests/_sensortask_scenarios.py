@@ -4,6 +4,7 @@ Not a test file - register_for_device() is the export; SPECIFICATION.md Part E.2
 
 import asyncio
 import json
+import struct
 import sys
 
 # Same convention as tests/test_asy_webserver_service.py: scripts/test.sh's MICROPYPATH excludes
@@ -22,6 +23,7 @@ from _tmp_scratch import TmpScratch
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
+from crc_checks import CRC8
 from print_log import PrintLog, PrintLogHistoryStore
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
@@ -894,15 +896,30 @@ def _scenario_sensors_put_sgp40(device: str) -> None:
     assert run(module.sgp40.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
 
 
+def _queue_scd30_snapshot(fake_i2c: "Any", interval: int) -> None:
+    # The six register replies of one SCD30 config snapshot (word + CRC-8 each), queued for its address
+    # only: TempOffs 0, MeasInt `interval`, AmbPres 0, Altitude 0, ForceCalRef 400, SelfCal 0.
+    for value in (0, interval, 0, 0, 400, 0):
+        payload = struct.pack(">H", value)
+        crc = run(CRC8().add(bytearray(payload)))
+        assert crc is not None
+        fake_i2c.read_queue_by_address.setdefault(0x61, []).append(payload + bytes([crc[-1]]))
+
+
 @_register("webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver")
 def _scenario_sensors_put_scd30(device: str) -> None:
-    # SCD30_Reader is the only sensors=-registered module that is a plain SensorReader rather than
-    # a SensorReaderConfig subclass (its params live on the sensor), so it never inherited
-    # get_cfg_schema() - which _put_sensors() calls uniformly, crashing with a real 500 before.
+    # SCD30's chip is its config store: the PUT compares against a chip snapshot, writes the
+    # interval command, and the next GET reads the chip again (each snapshot answered by the fake bus).
     module = build(device)
+    fake_i2c = module.scd30.scd.i2c_scd30.i2c_device.i2c._i2c
+    _queue_scd30_snapshot(fake_i2c, 2)
     res = _dispatch(module, "PUT", "/sensors", {"SCD30": {"MeasInt": 4}})
     body = json.loads(res.body)
     assert body["result"] == {"SCD30": {"MeasInt": "Valid"}}
+    assert ("writeto", 0x61, bytes([0x46, 0x00, 0x00, 0x04, 0x45]), True) in list(fake_i2c.log)
+    _queue_scd30_snapshot(fake_i2c, 4)
+    res = _dispatch(module, "GET", "/sensors")
+    assert json.loads(status_body(res))["SCD30"]["MeasInt"] == 4
 
 
 @_register("webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not")

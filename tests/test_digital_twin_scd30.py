@@ -1,6 +1,7 @@
 """Deterministic unit tests for digital_twin/_scd30_chip.py's own transaction-response logic - matches the raw word-register commands src/asy_scd30_driver.py's SCD30_I2C sends.
 Real-time RDY-pin scheduling is exercised only via the synchronous _produce_new_reading() hook here; the real-time-firing check itself lives in test_digital_twin_machine.py."""
 
+import asyncio
 import json
 import os
 import struct
@@ -12,13 +13,22 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
+    from typing import Any, TypeVar
+
+    from config_manager import CfgValue
+
+    T = TypeVar("T")
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
+import machine
 from _crc8 import crc8, word
 from _scd30_chip import Scd30Chip
 from _tmp_scratch import TmpScratch
+
+import asy_i2c_driver
+from asy_scd30_driver import SCD30_Reader
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -27,6 +37,10 @@ _scratch = TmpScratch("digital_twin_scd30")
 
 def _tmp_path(name: str) -> str:
     return _scratch.path(name)
+
+
+def run(coro: "Coroutine[Any, Any, T]") -> "T":
+    return asyncio.run(coro)
 
 
 class _FixedRandom:
@@ -287,6 +301,41 @@ def test_auto_refresh_true_starts_a_real_timer_and_setting_interval_re_arms_it()
     assert chip._timer.period == 10 * 1000
     assert chip._timer is not first_timer  # re-armed, not just mutated in place
     chip._timer.deinit()  # don't leave a live background task running past this test
+
+
+def test_nvm_writes_counts_each_accepted_nvm_command_and_nothing_else() -> None:
+    # The six NVM-writing argument commands and the bare stop (Interface Description 1.4.1-1.4.3,
+    # 1.4.6-1.4.8); register reads, data-ready, read-out, firmware version and soft reset write none.
+    chip = Scd30Chip(auto_refresh=False)
+    assert chip.nvm_writes == 0
+    for reg_hi, reg_lo, arg in ((0x00, 0x10, 1013), (0x46, 0x00, 5), (0x51, 0x02, 250), (0x52, 0x04, 900), (0x53, 0x06, 1), (0x54, 0x03, 150)):
+        _get(chip, reg_hi, reg_lo)  # the register read of the same word is not a write
+        before = chip.nvm_writes
+        _set(chip, reg_hi, reg_lo, arg)
+        assert chip.nvm_writes == before + 1
+    chip.handle_writeto(bytes([0x01, 0x04]))  # stop continuous measurement: its status lives in NVM
+    assert chip.nvm_writes == 7
+    for reg_hi, reg_lo in ((0x02, 0x02), (0x03, 0x00), (0xD1, 0x00), (0xD3, 0x04)):
+        _get(chip, reg_hi, reg_lo)
+    assert chip.nvm_writes == 7
+
+
+def test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands() -> None:
+    # The real SCD30_Reader over the twin's bus, driven through _set_dict_cfg() (the config-apply path
+    # the PUT route calls): the second identical body writes NVM only for AmbPres and ForceCalRef.
+    machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
+    machine.Pin.reset_registry()
+    reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8)
+    chip = reader.scd.i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    assert chip._timer is not None
+    chip._timer.deinit()
+    chip._timer = None  # no measurements needed, and the interval write must not re-arm one
+    body: dict[str, CfgValue] = {"TempOffs": 1.5, "MeasInt": 10, "AmbPres": 1000, "Altitude": 200, "ForceCalRef": 450, "SelfCal": True}
+    assert run(reader._set_dict_cfg(body, reader.get_cfg_schema())) == dict.fromkeys(body, "Valid")
+    assert chip.nvm_writes == 6
+    second = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
+    assert second == {"TempOffs": "Unchanged", "MeasInt": "Unchanged", "AmbPres": "Valid", "Altitude": "Unchanged", "ForceCalRef": "Valid", "SelfCal": "Unchanged"}
+    assert chip.nvm_writes == 8
 
 
 def test_fault_injection_on_writeto_and_readfrom_into() -> None:

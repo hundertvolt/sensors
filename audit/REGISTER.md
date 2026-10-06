@@ -25,7 +25,7 @@ lease and resumption procedure.
 | U1 | legacy move to `legacy/` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U1_close.md` |
 | U2 | error-number catalog | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U2_close.md` |
 | U3 | central log-repeat rule, one entry per event | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U3_close.md` |
-| U4 | compare-before-write primitive, SCD30 onto it | not started | — |
+| U4 | compare-before-write primitive, SCD30 onto it | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U4_close.md` |
 | U5 | config objects and `max-args` | not started | — |
 | U6 | one-source website definitions | not started | — |
 | U7 | tier ladder and runner summary block | not started | — |
@@ -146,6 +146,13 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U3 | NOTIFY's W46/W47 stay declared and live, and SGP40's W34 keeps `SGP_BACKUP_TOO_OLD`, until U5 and U15 | `register()`/`finalize()` exist until U5; the rename is A.U15.17's |
 | U3 | NTP's `cettime()` handler stays until U18, logging E16 `CLOCK` | its removal is U18's register fix |
 | U3 | The twin suite's counting (A.U25.36 (4)) lands now, not at U25: Run 5 and the settle helper count failure events, Run 5c's SGP40 check counts its own link only, Run 5b compares the restored ring with Run 5's; cross-reboot loss checks keep counting E slots | under the central rule three identical failures hold one slot, so the slot-counting checks failed on every device; a boot-time warning that folds would make a cross-process failure count read one high; the rest of A.U25.36 stays U25 |
+| U4 | A SCD30 PUT body with no chip key and no `ContMeas` reads no chip snapshot | A.U4.04 (1) reads it unconditionally; skipping it for a body that writes nothing spends no bus time and keeps an unknown-key-only body "Invalid", as M.SRC_SENS.053 already does for an FRC-only body |
+| U4 | SCD30's `_set_mgr_cfg()` carries two `# type: ignore[arg-type]`: the `resolution` map's callable and the mixed setter tuple | M.SRC_CORE.047 types `resolution` as `Callable[[CfgValue], CfgValue]` while M.SRC_SENS.050 gives `_temp_offset_ticks(offset: float) -> int`; both merged texts cannot hold under mypy, so the ignore with its reason stays until one contract changes |
+| U4 | `buildgen/schema_ast.py` reads a 6-tuple as a field schema only when its second item is one of the four type names | any tuple of six strings (SCD30's `_APPLY_ORDER`) was taken as a schema and broke the web-tag build; no step named this, the fix is one predicate with a test seen failing first |
+| U4 | SPEC A.4 (`AmbPres` resend, `TempOffs` rounding), A.8 (PUT shapes, GET copy-safety) and C.4.4 (callback list) state the SCD30 chip-store path now, not at U15/U19 | the texts named mechanisms U4 removes (`force=True`, truncation, the SCD30 callback); minimal current-state edits, the full rewrites stay with their units |
+| U4 | Lane texts pulled A.U4.07's SCD30 correction into SPEC C.8, E.6.6 item 2 and two README "Tenth pass" bullets before U7 | the new REST-half sentence would otherwise contradict the old "zero `_push_callbacks`" claim beside it |
+| U4 | The SCD30 setter-failure tests stub `get_config_snapshot()` so the write, not the snapshot, is what fails | a bus NAK now fails the snapshot first, which another test covers on its own |
+| U4 | The JS never-"Unchanged" comment leaves `ContMeas` out | `ContMeas` sits in a group with no dispatch field, so a resubmit omits it and it never reaches the backend |
 
 ## Parked deltas (OR2.c, OR106.a)
 

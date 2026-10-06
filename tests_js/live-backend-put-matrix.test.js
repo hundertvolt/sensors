@@ -78,9 +78,9 @@ if (boot.skipped) {
          * captions self-refresh in place, so a remount is the only proof for toggle/enum).
          * @param {unknown} value
          * @param {"Valid" | "ValidOrUnchanged"} expectedStatus "ValidOrUnchanged" tolerates either
-         * outcome for a resubmit case - the real backend's "Unchanged" detection doesn't reliably
-         * fire (SPECIFICATION.md Part H.7), matching tests_js/live-backend.test.js's own established
-         * tolerance for this scenario.
+         * outcome for a resubmit case - a stored field answers "Unchanged", while one carried out on
+         * every send (SCD30's AmbPres and ForceCalRef, a dispatch field) answers "Valid"
+         * (SPECIFICATION.md Part H.7).
          */
         async function applyAndExpectRendered(value, expectedStatus) {
             // Caption and remount both come from a real GET round trip, so both need
@@ -182,9 +182,9 @@ if (boot.skipped) {
             const step = wholeRange ? 1 : 0.5;
             const specialMagnitudes = new Set((field.specialValues ?? []).map((s) => s.value));
 
-            // Rounded to 2 decimal places: SCD30's TempOffs has a real 0.01° hardware truncation
-            // (SPECIFICATION.md, near the ForceCalRef/AmbPres notes) that an unrounded mid value
-            // would silently fail against; harmless for every other field.
+            // Rounded to 2 decimal places: SCD30's TempOffs is stored in 0.01° ticks, rounding to the
+            // nearest 0.01 (SPECIFICATION.md, near the ForceCalRef/AmbPres notes), which an unrounded mid
+            // value would silently fail against; harmless for every other field.
             const validValues = [min, mid, max]
                 .map((v) => (wholeRange ? Math.round(v) : Math.round(v * 100) / 100))
                 .filter((v) => v !== currentValue);

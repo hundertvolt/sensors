@@ -109,6 +109,12 @@ def test_extract_field_schemas_wrong_shaped_tuple_is_not_a_field_schema(tmp_path
     assert fields == {}
 
 
+def test_extract_field_schemas_six_string_tuple_is_not_a_field_schema(tmp_path: Path) -> None:
+    # A plain tuple of six names (a key order, say) is no schema: the second item must be a type.
+    fields = _extract(tmp_path, '_ORDER = const(("TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))\n')
+    assert fields == {}
+
+
 def test_extract_field_schemas_config_schema_of_one_with_malformed_inner_tuple_is_skipped(tmp_path: Path) -> None:
     fields = _extract(tmp_path, '_VAL_BAD = const((("X", "int", 1, None, None),))\n')
     assert fields == {}

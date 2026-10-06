@@ -922,9 +922,9 @@ additions from that:
   call, confirmed `"Valid"` (proof the real I2C write succeeded), then read back via a second real
   REST call and restored to their original values in a `finally` block (this mutates the bench
   board's real persisted config). SGP40's `SGPResetVOC` command-only field is pushed the same way.
-  **SCD30 has no live-push config fields at all** (confirmed directly: zero `_push_callbacks`
-  registrations in `asy_scd30_driver.py`) - there is nothing to add real-push-parity coverage for on
-  that sensor, not a gap.
+  SCD30 registers no `_push_callbacks`, but `PUT /sensors` reaches SCD30's NVM through its chip
+  store (`_set_mgr_cfg()`, compare-before-write); a bench counterpart spends real NVM wear, so it is
+  added behind `persistence_write` or its wear reason is listed.
 
 **Still not automated even after this pass** (flagged honestly, not silently left implicit):
 real-hardware numerical-accuracy validation against a calibrated reference for any sensor (needs a
@@ -1304,14 +1304,13 @@ settings, concurrent with `GET /sensors` hammering, with the board's original `R
 in a `finally` block - the same push/restore duty `test_sensor_config_push_over_real_hardware.py`'s
 own BMP3xx test already owes for a shared bench rig).
 
-**SCD30 has no bench-tier (or any REST-layer) counterpart, and this is structural, not a scope gap**:
-`asy_scd30_driver.py` registers zero `_push_callbacks` (already noted by
-`test_sensor_config_push_over_real_hardware.py`'s own comment) - there is no `PUT /sensors` field
-that could ever reach SCD30's own NVM write at all. The flash tier's own
-`bus_concurrency_scd30_write_vs_siblings.py` (gated behind both `--allow-persistence-writes` and
-`--allow-scd30-extra-write` - see the Eleventh pass below) is therefore the only real-hardware
-coverage this specific hazard can ever have, by construction of `src/` itself - recorded here
-rather than left as a silent asymmetry between the two tiers.
+**SCD30's write-vs-siblings hazard has no bench-tier counterpart yet**: `PUT /sensors` reaches
+SCD30's NVM through its chip store (`_set_mgr_cfg()`, compare-before-write); a bench counterpart
+spends real NVM wear, so it is added behind `persistence_write` or its wear reason is listed. Until
+then the flash tier's own `bus_concurrency_scd30_write_vs_siblings.py` (gated behind both
+`--allow-persistence-writes` and `--allow-scd30-extra-write` - see the Eleventh pass below) is its
+only real-hardware coverage - recorded here rather than left as a silent asymmetry between the two
+tiers.
 
 Same honesty note as the Seventh pass: none of this pass's changes have been run against real
 hardware either (no go-ahead at the time) - `ruff`/`mypy` clean, structurally consistent with
@@ -1347,9 +1346,10 @@ genuine, surprising miscoverage plus two closeable gaps:
   `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load` - alternates
   `PressOvers` between both real valid settings concurrently with this same sensor's own GET reads,
   restoring the original value afterward.
-- **SCD30's own same-device write-vs-own-read** has the identical structural absence as its
-  write-vs-siblings hazard (zero `_push_callbacks`) - recorded as the same exception, not a second
-  one, right next to the existing note.
+- **SCD30's own same-device write-vs-own-read** has no bench-tier counterpart yet either, for the
+  same reason as its write-vs-siblings hazard: `PUT /sensors` reaches SCD30's NVM through its chip
+  store, so a bench counterpart spends real NVM wear and is added behind `persistence_write` or its
+  wear reason is listed.
 
 Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
 against real silicon when written.
@@ -1370,10 +1370,9 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   wrapper at all** - written during the ISL29125 promotion (PR #83) but never wired into
   `test_sensor_accuracy.py`, so it never actually ran as part of this suite. Closed:
   `test_isl29125_real_reading_is_within_datasheet_plausible_bounds`.
-- **ISL29125's entire real REST config-push surface had zero bench-tier coverage** - unlike SCD30
-  (explicitly excluded, zero `_push_callbacks`), ISL29125 has four hardware-backed, read-back-able
-  fields (`Resolution`/`Range`/`IrCompOffset`/`IrCompAdjust`) with no exclusion comment, suggesting
-  oversight rather than a decision. Closed:
+- **ISL29125's entire real REST config-push surface had zero bench-tier coverage** - ISL29125
+  has four hardware-backed, read-back-able fields (`Resolution`/`Range`/`IrCompOffset`/
+  `IrCompAdjust`) with no exclusion comment, suggesting oversight rather than a decision. Closed:
   `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback` in
   `test_sensor_config_push_over_real_hardware.py` - also pushes `RangeAuto: False` alongside `Range`,
   since under real auto-ranging (the driver's own default) the chip's own range bit is the state
@@ -1414,8 +1413,9 @@ a gap):**
   scope/logic-analyzer in the bench rig's own automated toolchain.
 - **Neopixel/WS2812 signal timing** - already a documented structural exception (Known assumptions
   entry above); reconfirmed still accurate, not re-litigated.
-- **SCD30's real IRQ-pin edge and same-device write-vs-own-read** - already-documented structural
-  exceptions (zero `_push_callbacks`); reconfirmed, not re-litigated.
+- **SCD30's real IRQ-pin edge** - an already-documented structural exception; reconfirmed, not
+  re-litigated. Its same-device write-vs-own-read is none: `PUT /sensors` reaches SCD30's NVM
+  through its chip store (Eighth pass).
 
 **Named, not fixed this pass** (real, credible findings from the domain sweeps below, each requiring
 either a dedicated real-hardware session to get right or a project-owner decision this pass
@@ -1477,15 +1477,17 @@ Same honesty note as every real-hardware addition in this file: the new/changed 
 
 ## Persistence-write gating: one global flag plus an AND-gated extra flag
 
-**Standing design, project owner's own choice** (broadened from SCD30-only to all persistence,
-2026-09-17): every real write to a **limited-endurance** store is gated by two flags/markers,
-deliberately not one, in a strict hierarchy —
+**Standing design (owner, 2026-09-16, `98dc1b2`/`4f1c802`)** (broadened from SCD30-only to all
+persistence, 2026-09-17): every real write to a **limited-endurance** store is gated by two
+flags/markers, deliberately not one, in a strict hierarchy —
 - `--allow-persistence-writes`/`@pytest.mark.persistence_write` is the single **global** permission:
   without it, no test spending a real limited-endurance write runs at all. That covers the routine
   per-session SCD30 write `scd30_continuous_measurement_triggered` makes for the flash-tier
   bus-hazard group (7 tests, directly or transitively), the two flash-tier reboot tests that write
   real config through `ConfigManager.write_config()`, and every bench-tier test issuing a
-  config-persisting PUT.
+  config-persisting PUT. A `PUT /sensors` to SCD30 spends one NVM write per field whose value
+  changed, one per `AmbPres`/`ForceCalRef` sent and one per `ContMeas=false`, none for an identical
+  TempOffs/MeasInt/Altitude/SelfCal.
 - `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write` is a **narrower** opt-in, carried
   ALONGSIDE `@pytest.mark.persistence_write` (never in place of it) on the one test that spends a second
   write beyond the routine one. It is AND-gated with the global flag in code, not just by

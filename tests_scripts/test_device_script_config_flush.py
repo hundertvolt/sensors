@@ -130,8 +130,16 @@ def test_each_allowlisted_script_still_meets_the_reason_it_was_allowlisted() -> 
 def test_the_cfgmgr_delegation_this_guard_assumes_is_still_what_src_does() -> None:
     # The `.cfgmgr` hop above is only correct while _set_mgr_cfg persists through that attribute. If
     # it is ever renamed, every _set_dict_cfg() target this guard derives is wrong, so pin it here.
+    # SensorReader's default store writes nothing; SensorReaderConfig's is the one persisting override.
     tree = ast.parse((REPO_ROOT / "src" / "base_classes.py").read_text(encoding="utf-8"))
-    bodies = [node for node in ast.walk(tree) if isinstance(node, ast.AsyncFunctionDef) and node.name == "_set_mgr_cfg"]
-    assert len(bodies) == 1, f"expected exactly one _set_mgr_cfg in src/base_classes.py, found {len(bodies)}"
-    targets = {_dotted(node.func.value) for node in ast.walk(bodies[0]) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == _WRITES_DIRECTLY}
+    by_class = {cls.name: [n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "_set_mgr_cfg"] for cls in tree.body if isinstance(cls, ast.ClassDef)}
+    owners = sorted(name for name, bodies in by_class.items() if bodies)
+    assert owners == ["SensorReader", "SensorReaderConfig"], f"_set_mgr_cfg is defined on {owners}, not SensorReader (no store) and SensorReaderConfig (cfgmgr)"
+    assert all(len(bodies) <= 1 for bodies in by_class.values()), "a class defines _set_mgr_cfg more than once"
+
+    def _write_targets(body: ast.AsyncFunctionDef) -> set[str | None]:
+        return {_dotted(node.func.value) for node in ast.walk(body) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == _WRITES_DIRECTLY}
+
+    assert _write_targets(by_class["SensorReader"][0]) == set(), "SensorReader's default _set_mgr_cfg writes config - it has no store"
+    targets = _write_targets(by_class["SensorReaderConfig"][0])
     assert targets == {"self.cfgmgr"}, f"_set_mgr_cfg persists through {targets or 'no write_config() call at all'}, not self.cfgmgr - this guard's _set_dict_cfg target is now wrong"

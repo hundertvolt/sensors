@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 # has to take effect on real hardware for this test to mean anything.
 _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 
-# SCD30 has no live-push config fields at all (asy_scd30_driver.py registers no _push_callbacks) -
-# nothing to add a real-push-parity test for on that sensor.
+# PUT /sensors reaches SCD30's NVM through its chip store (_set_mgr_cfg(), compare-before-write); a
+# bench counterpart spends real NVM wear, so it is added behind persistence_write or its wear reason is listed.
 
 # ISL29125 is dev-only. Of its ten config fields only these four are hardware-backed with a real
 # get-back path (_get_callbacks); the rest are software knobs or command-only. Values chosen away
