@@ -15,6 +15,8 @@ from soak_tiers import SOAK_TIER_SECONDS
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30",)
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 

@@ -13,23 +13,25 @@ import pytest
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link", "machine_uart")
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
-# Both scripts import asy_uart_comm, which a dev firmware carries: dev.toml's two `uart_link`
-# instances pull it in transitively through asy_uart_link_driver.py. The guard below is not an
-# expected skip - it only names the cause if some future build genuinely lacks the module.
+# Every script imports asy_uart_comm, which the bench device's TOML `uart_link` instances pull in
+# transitively through asy_uart_link_driver.py. A build lacking the module fails the test below,
+# never skips it: the guard only names the cause.
 _MISSING_MODULE_RE = re.compile(r"ImportError: no module named 'asy_uart_comm'")
 
 
-def _run_or_skip(board: Board, script: str, timeout_s: float) -> str:
+def _run_or_fail(board: Board, script: str, timeout_s: float) -> str:
     try:
         return board.run_isolated(DEVICE_SCRIPTS / script, timeout_s=timeout_s)
     except Exception as e:  # HardwareTestFailureError carries the device-side traceback in its text
         if _MISSING_MODULE_RE.search(str(e)):
-            pytest.skip(
+            pytest.fail(
                 "this firmware does not contain asy_uart_comm - a dev build normally pulls it in "
-                "via devices/dev.toml's uart_link instances, so check how this firmware was built",
+                "via the bench device's TOML uart_link instances, so check how this firmware was built",
             )
         raise
 
@@ -44,14 +46,14 @@ def test_get_and_set_and_a_multi_chunk_train_cross_the_jumper(board: Board) -> N
     # One Python instance as initiator and one as responder interoperating perfectly is a required,
     # tested property of this protocol, not an incidental one - and the jumper is where it is
     # physically true rather than modelled.
-    output = _run_or_skip(board, "uart_crossover_exchange.py", timeout_s=120.0)
+    output = _run_or_fail(board, "uart_crossover_exchange.py", timeout_s=120.0)
     _assert_pass(output, "UART crossover GET/SET/multi-chunk exchange")
 
 
 def test_one_sided_silence_recovers_and_a_parameter_mismatch_fails_loudly(board: Board) -> None:
     # The two failure classes that matter on real hardware: the one the design recovers from, and
     # the one it deliberately cannot - which must therefore be diagnosed rather than absorbed.
-    output = _run_or_skip(board, "uart_crossover_recovery.py", timeout_s=180.0)
+    output = _run_or_fail(board, "uart_crossover_recovery.py", timeout_s=180.0)
     _assert_pass(output, "UART crossover recovery and mismatch detection")
 
 
@@ -59,21 +61,21 @@ def test_a_clamped_read_never_holds_the_cpu_for_a_frame_still_arriving(board: Bo
     # SPECIFICATION.md Part F.5.8, asserted rather than merely measured. POLLIN fires on the first
     # byte, so asking the peripheral for a whole frame blocks the event loop for its remaining wire
     # time - the one hazard on this path that only real timing shows.
-    output = _run_or_skip(board, "uart_read_never_blocks_the_loop.py", timeout_s=120.0)
+    output = _run_or_fail(board, "uart_read_never_blocks_the_loop.py", timeout_s=120.0)
     _assert_pass(output, "UART clamped-read CPU hold")
 
 
 def test_the_shipped_driver_never_holds_the_loop_for_a_frame_still_arriving(board: Board) -> None:
     # The same F.5.8 invariant through asy_uart_driver itself, which the raw-UART test above never
     # calls: the driver's own UART calls are timed, with an unclamped read of the frame as the control.
-    output = _run_or_skip(board, "uart_driver_read_never_blocks_the_loop.py", timeout_s=120.0)
+    output = _run_or_fail(board, "uart_driver_read_never_blocks_the_loop.py", timeout_s=120.0)
     _assert_pass(output, "UART shipped-driver loop hold")
 
 
 def test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate(board: Board) -> None:
     # SPECIFICATION.md Part F.5.9. Counted, never timed: a poll-round count is a property of the
     # code, while throughput on this board moves with heap state (Part E.7).
-    output = _run_or_skip(board, "uart_idle_poll_rate.py", timeout_s=180.0)
+    output = _run_or_fail(board, "uart_idle_poll_rate.py", timeout_s=180.0)
     _assert_pass(output, "UART idle poll rate")
 
 
@@ -81,5 +83,5 @@ def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: 
     # The realistic worst case for a stop-and-wait link sharing one core: both I2C devices, the
     # FRAM's SPI bus and heavy allocation churn all running against it. Asserts in both directions
     # - the link must keep progressing, and it must not have done so by starving anything else.
-    output = _run_or_skip(board, "uart_link_under_concurrent_system_load.py", timeout_s=180.0)
+    output = _run_or_fail(board, "uart_link_under_concurrent_system_load.py", timeout_s=180.0)
     _assert_pass(output, "UART link under concurrent system load")

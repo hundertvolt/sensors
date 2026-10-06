@@ -45,7 +45,7 @@ class TestVerifyUnixKbdIntrAnchor:
     def test_passes_against_the_real_pinned_source(self, overrides: ModuleType, micropython_dir: Path) -> None:
         common_header = micropython_dir / "ports" / "unix" / "variants" / "mpconfigvariant_common.h"
         if not common_header.is_file():
-            pytest.skip(f"no real toolchain checkout at {micropython_dir} - build it first (scripts/test.sh does)")
+            pytest.fail(f"no real toolchain checkout at {micropython_dir} - build it with `uv run toolchain/setup_toolchain.py setup` (scripts/test.sh does)")
         result = overrides.verify_unix_kbd_intr_anchor(micropython_dir)
         assert result == common_header
 
@@ -347,7 +347,7 @@ _EVERY_LWIP_ANCHOR = (
 class TestVerifyLwipConnectionCountsAnchor:
     def test_passes_against_the_real_pinned_source(self, overrides: ModuleType, micropython_dir: Path) -> None:
         if not (micropython_dir / "lib" / "lwip" / "src" / "include" / "lwip" / "opt.h").is_file():
-            pytest.skip(f"no real toolchain checkout with lwIP submodules at {micropython_dir} - build it first (scripts/test.sh does)")
+            pytest.fail(f"no real toolchain checkout with lwIP submodules at {micropython_dir} - build it with `uv run toolchain/setup_toolchain.py setup` (scripts/test.sh does)")
         overrides.verify_lwip_connection_counts_anchor(micropython_dir, _REAL_BOARD)
 
     def test_raises_when_the_tree_is_missing_entirely(self, overrides: ModuleType, tmp_path: Path) -> None:

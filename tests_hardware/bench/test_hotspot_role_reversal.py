@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
     from bench_control import BenchBridge
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "ci_suite._run_6_configure_ssid", "ci_suite._run_7_wifi_hotspot_dns")
+
 pytestmark = pytest.mark.role_reversal
 
 

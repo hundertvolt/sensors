@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "ci_suite._run_1_baseline")
+
 CO2_MIN_PPM, CO2_MAX_PPM = 400, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 SCD30_TEMP_MIN_C, SCD30_TEMP_MAX_C = -40.0, 70.0

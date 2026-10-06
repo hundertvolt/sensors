@@ -36,7 +36,6 @@ HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` 
 README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
 README.md	# deliberate, dedicated invocation, one of three named tiers (see tests_hardware
 README.md	Every field type is checked strictly against its schema — a JSON integer for a `
-README.md	Everything permanent each one settled was migrated first: the five-backend model
 README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
 README.md	Set the log level to `all` (5) via the real API, then reboot to see a full start
 README.md	`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WI
@@ -103,7 +102,6 @@ SPECIFICATION.md	The final chunk's acknowledgement is deliberately deferred unti
 SPECIFICATION.md	The generated `sensortask_wozi.py` constructs `scd30` before `sgp40` for exactly
 SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove (layered coverage
 SPECIFICATION.md	The widened gate still costs nothing: measured over a full 85-file run at `gc.th
-SPECIFICATION.md	This does **not** override four already-established, deliberate exceptions — the
 SPECIFICATION.md	W1-W4 pass on the real `dev` board over real WiFi: the boundary is exact (2047 -
 SPECIFICATION.md	Without this, a `ResetErrors` landing in the boot window was silently undone: ev
 SPECIFICATION.md	`SensorReaderConfig.__init__` captures `default_vals` as `self.cfg_schema`, expo
@@ -116,7 +114,6 @@ SPECIFICATION.md	`js/mock-server.js` is deliberately never staged at all — its
 SPECIFICATION.md	`run_project_dependency_install()` (`uv sync`/`npm ci`) runs with `env=None` (in
 SPECIFICATION.md	`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception
 SPECIFICATION.md	`wozi` deliberately does not, since it is never physically flashed and would oth
-SPECIFICATION.md	`wozi`/`arzi`/ `klkizi`/`grkizi`/`schlafzi` have no real board to flash at all,
 SPECIFICATION.md	a JSON float is accepted for an int field only with no fractional part (`5.0`→`5
 SPECIFICATION.md	a periodic timer self-heals next tick, a dropped one-shot never fires again.
 SPECIFICATION.md	a real device may never be named that way.
@@ -203,8 +200,6 @@ scripts/_digital_twin_ci_suite.py	Counter and slot count are therefore different
 scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
 scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
 scripts/_digital_twin_ci_suite.py	The one registered error source deliberately not FRAM-backed: AsyFramManager bui
-scripts/_require_clean_hardware_run.sh	Shared helper for run_flash_hardware_suite.sh/run_bench_hardware_suite.sh: runs
-scripts/_require_clean_hardware_run.sh	deliberately not -e: the verdict comes from pytest's own output, not its exit co
 scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
 scripts/build_website.sh	Part H.7 owns why bundling and inlining exist at all, and why keep-alive is deli
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
@@ -213,12 +208,9 @@ scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- del
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
-scripts/run_bench_hardware_suite.sh	Goes through _require_clean_hardware_run.sh, because a plain exit code cannot se
 scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
-scripts/run_flash_hardware_suite.sh	Goes through _require_clean_hardware_run.sh, because a plain exit code cannot se
 scripts/test.sh	A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
-scripts/test.sh	Truncated per attempt: only the attempt that decided this file's verdict is sear
 src/asy_bmp3xx_driver.py	A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionErro
 src/asy_bmp3xx_driver.py	PressOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not cont
 src/asy_fram_driver.py	The three guards get_values()/set_values() share, in the same bit set so one sta
@@ -533,7 +525,6 @@ tests_hardware/README.md	- **Real socket-limit degradation** (`test_connections_
 tests_hardware/README.md	- **UART's sharpest invariant (`asy_uart_driver.py`/`asy_uart_comm.py` may never
 tests_hardware/README.md	- **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve =
 tests_hardware/README.md	- **`tests_hardware/manual/`'s files are deliberately named away from the `test_
-tests_hardware/README.md	- The opt-in gates that skip per test (`--allow-flash-cycle`, `--soak-tier`, `--
 tests_hardware/README.md	A **dispatch-only** PUT is deliberately outside the gate, because it is never pe
 tests_hardware/README.md	At `DebugLevel=0` (this project's own production-quiet default — see DEVICE_REFE
 tests_hardware/README.md	Deliberately a stability/sanity check, not a numerical-accuracy claim against a
@@ -543,9 +534,7 @@ tests_hardware/README.md	One case (`test_abrupt_disconnect_ mid_response_does_no
 tests_hardware/README.md	Residue is the accepted outcome;
 tests_hardware/README.md	SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberat
 tests_hardware/README.md	That is the deliberate cost of the owner's rule, not an oversight — gating them
-tests_hardware/README.md	The helper therefore inspects pytest's own output (which is also why it runs wit
 tests_hardware/README.md	The practical consequence for a bench session: a responder notices the first byt
-tests_hardware/README.md	These wrappers exist to run against real, attached hardware, so that ambiguity m
 tests_hardware/README.md	They are also the suite's longest pair at roughly ten minutes combined, so optin
 tests_hardware/README.md	`bus_concurrency_isl29125_write_vs_siblings.py` now cycles through a deliberatel
 tests_hardware/README.md	`fram_error_log_reset_race_verify.py` is the one deliberate exception — it exist
@@ -628,10 +617,8 @@ tests_js/_live_matrix_command.js	@param {{ sectionKey: string, groupKey: string,
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-tests_js/_live_matrix_command.js	no-op by design, per the comment above
 tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-tests_js/_live_twin_command.js	no-op by design, per the comment above
 tests_js/definitions-mockdata-coverage.test.js	Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that func
 tests_js/live-backend-put-matrix.test.js	Fills+applies `value` expecting real rejection, then confirms the render never m
 tests_js/live-backend-put-matrix.test.js	wholeRange (cosmetic probe-value shape) and isFloat (the real accept/reject-frac
@@ -688,14 +675,12 @@ tests_scripts/test_lint_sh.py	tests/ and digital_twin/ carry ~157 of these delib
 tests_scripts/test_measurement_field_tuple_agreement.py	It stays deliberately: mypy's namedtuple plugin infers field names only from a l
 tests_scripts/test_memory_error_gate_agreement.py	A deliberate injection reads "simulated allocation failure" for exactly this rea
 tests_scripts/test_memory_error_gate_agreement.py	The other half of a substring gate: what the suite's own deliberate failures are
-tests_scripts/test_memory_error_gate_agreement.py	This keeps all four agreeing, and the suite's own deliberate injections clear of
 tests_scripts/test_persistence_write_marker_completeness.py	Pinned by name so a NEW one has to be triaged deliberately: a helper is reached
 tests_scripts/test_persistence_write_marker_completeness.py	Raw `socket` is deliberately out of scope: this tier uses it for DNS probes and
 tests_scripts/test_request_body_cap_headroom.py	Deliberately an upper bound rather than the field's own min/max: a client may se
 tests_scripts/test_request_body_cap_headroom.py	Pinned so each step is deliberate, the same way the persistence-write guard pins
 tests_scripts/test_request_body_cap_headroom.py	The measured maximum per device, pinned so that growth is deliberate and visible
 tests_scripts/test_request_timeout_ceiling.py	A constant turned into a string/None keeps the name alive while making every com
-tests_scripts/test_require_clean_hardware_run_sh.py	persistence_write/scd30_extra_write are deliberately absent: they DESELECT rathe
 tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
 tests_scripts/test_test_sh.py	That wording is deliberately not the interpreter's, so the widened pattern still
 tests_scripts/test_test_sh.py	`set -e` plus a failing command substitution would kill the run before it printe

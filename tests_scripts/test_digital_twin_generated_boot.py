@@ -9,17 +9,23 @@ import json
 import os
 import socket
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from _devices import DEVICE_NAMES
 from _devices import device_toml as device_toml_path
+from _script_loader import load_script_module
 
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
@@ -52,6 +58,10 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 # one suite that would actually BOOT that deliberately malformed fixture.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
+
+# The allocation-failure markers every gate shares, from the hardware tier's harness
+# (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
+_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(_REPO_ROOT / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
 
 
 @pytest.fixture
@@ -92,7 +102,7 @@ def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its own captured output")
+            raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its output in the failures below")
         try:
             status, _ = _http_get(port, "/system", timeout=1.0)
             if status == _HTTP_OK:
@@ -168,6 +178,48 @@ def _system_path_failures(definitions: dict[str, Any], system_body: object) -> l
     return [f"System page paths GET /system does not resolve: {unresolved}"] if unresolved else []
 
 
+def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
+    """The finished twin's own verdict: its exit status, and every output line holding an
+    allocation-failure marker (SPECIFICATION.md Part I.4(e)), quoted - a clean exit included."""
+    failures = [f"subprocess exited with code {returncode}:\n{output}"] if returncode not in (0, None) else []
+    marked = [line for line in output.splitlines() if any(marker in line for marker in _MEMORY_ERROR_MARKERS)]
+    if marked:
+        failures.append("allocation-failure marker in the twin's output:\n" + "\n".join(marked))
+    return failures
+
+
+def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: Callable[[subprocess.Popen[str]], list[str]], shutdown_timeout_s: float = _SHUTDOWN_TIMEOUT_S) -> tuple[list[str], str]:
+    """Runs `session` against the spawned twin, then its exit and output verdicts; returns the
+    failures and the twin's whole merged output."""
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # Drained while the twin runs: a pipe read only after exit blocks a child past 64 KiB of output.
+    lines: list[str] = []
+    reader = threading.Thread(target=lambda: lines.extend(proc.stdout or ()), daemon=True)
+    reader.start()
+    failures: list[str] = []
+    try:
+        failures.extend(session(proc))
+    except (OSError, RuntimeError, ValueError, http.client.HTTPException) as exc:
+        failures.append(f"twin session aborted: {type(exc).__name__}: {exc}")
+    finally:
+        try:
+            proc.wait(timeout=shutdown_timeout_s)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+            failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
+        reader.join(timeout=shutdown_timeout_s)
+        if reader.is_alive():
+            failures.append("the twin's output never reached end of file after its exit - the output below is incomplete")
+        output = "".join(lines)
+        failures.extend(_twin_output_failures(proc.returncode, output))
+    return failures, output
+
+
 def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
     """Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
     real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
@@ -198,10 +250,10 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         "--duration", str(_TWIN_DURATION_S),
     ]
     definitions = generate_definitions(generated.model, src_dir)
-    proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    failures: list[str] = []
-    try:
+
+    def smoke(proc: subprocess.Popen[str]) -> list[str]:
         _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
+        failures: list[str] = []
         for path in _SMOKE_ENDPOINTS:
             status, body = _http_get(port, path)
             if status != _HTTP_OK:
@@ -215,21 +267,45 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
                 failures.extend(_status_field_parity_failures(definitions, body))
             elif path == "/system":
                 failures.extend(_system_path_failures(definitions, body))
-    finally:
-        try:
-            proc.wait(timeout=_SHUTDOWN_TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-            failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
-        output = proc.stdout.read() if proc.stdout else ""
-        if proc.returncode not in (0, None):
-            failures.append(f"subprocess exited with code {proc.returncode}:\n{output}")
+        return failures
+
+    failures, _ = _run_twin(cmd, repo_root, env, smoke)
     return failures
+
+
+def test_an_allocation_failure_in_a_clean_exiting_twin_is_a_failure() -> None:
+    # The degrade-and-pass case: src/ logs str(e), so a caught allocation failure reads "memory
+    # allocation failed" in a twin that still serves every request and exits 0.
+    output = "serving\n[E] WEBSERVER: memory allocation failed, allocating 2048 bytes\nshutdown complete\n"
+    failures = _twin_output_failures(0, output)
+    assert len(failures) == 1, failures
+    assert "memory allocation failed, allocating 2048 bytes" in failures[0]
+    assert _twin_output_failures(0, "serving\nshutdown complete\n") == []
+    assert _twin_output_failures(1, "Traceback\n")[0].startswith("subprocess exited with code 1")
+
+
+def test_a_twin_printing_more_than_a_pipe_buffer_is_drained_while_it_runs(tmp_path: Path) -> None:
+    # 128 KiB of boot chatter fills a 64 KiB pipe: read only after exit, the child blocks on its
+    # write and is then reported as hung, its real output never scanned.
+    child = "import sys\nfor i in range(2048):\n    sys.stdout.write(f'{i:05d} ' + 'x' * 57 + '\\n')\nprint('last line of a long boot')\n"
+    failures, output = _run_twin([sys.executable, "-c", child], tmp_path, dict(os.environ), lambda _proc: [], shutdown_timeout_s=10)
+    assert failures == []
+    assert len(output) > 128 * 1024
+    assert output.endswith("last line of a long boot\n")
+
+
+def test_a_twin_that_dies_before_serving_keeps_its_output(tmp_path: Path) -> None:
+    # The boot crash is the evidence: an aborted session must still report the child's own output.
+    child = "print('boot banner'); print('Traceback: planted boot crash'); raise SystemExit(3)"
+
+    def session(proc: subprocess.Popen[str]) -> list[str]:
+        _wait_until_serving(proc, _free_port(), 10)
+        return []
+
+    failures, output = _run_twin([sys.executable, "-c", child], tmp_path, dict(os.environ), session)
+    assert "planted boot crash" in output
+    assert any(f.startswith("twin session aborted: RuntimeError: digital twin subprocess exited early with code 3") for f in failures), failures
+    assert any(f.startswith("subprocess exited with code 3:") and "planted boot crash" in f for f in failures), failures
 
 
 @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)

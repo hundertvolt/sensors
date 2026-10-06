@@ -175,6 +175,17 @@ def test_parse_args_rejects_a_flag_missing_its_value() -> None:
         pass
 
 
+def test_parse_args_help_exits_zero_before_parsing_anything_else() -> None:
+    # --help answers before any other flag is read, so a typo next to it cannot turn the usage
+    # request into a ValueError, and nothing after parse_args() (the chip fakes, the WDT) runs.
+    for argv in (["--help"], ["-h"], ["--seed", "not-a-number", "--help"]):
+        try:
+            parse_args(argv)
+            raise AssertionError(f"expected SystemExit(0) for {argv}")
+        except SystemExit as e:
+            assert e.args == (0,), f"{argv}: --help must exit 0, got {e.args}"
+
+
 def test_parse_args_combines_every_flag_together() -> None:
     config = parse_args(
         [

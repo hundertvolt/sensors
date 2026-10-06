@@ -25,6 +25,19 @@
 # browser-reachable, escalation watchable). No --soak flag: the HTTP+memory-trend soak check is
 # host-side, scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md "Driver/DUT process separation").
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/run_unix_port_integration.sh [--device <name>] [flags forwarded to the twin]
+Launches digital_twin/run_generic_integration.py for one device (default: wozi) under the real Unix
+port; with no further flags it serves on localhost:8080 until stopped. Every flag but --device goes
+to run_generic_integration.py (its own --help lists them).
+
+Environment:
+  PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1           skip the system-package step of a toolchain build (default: 0)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export, which has the account.

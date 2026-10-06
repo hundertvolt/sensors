@@ -84,8 +84,9 @@ def _bench_module() -> ModuleType:
     return bench
 
 
-def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    # The config-write arms' ceiling-vs-reset discriminator: a gated run prints these, so the count must be exact.
+def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The config-write arms' ceiling-vs-reset discriminator reaches the run record as a test note: a
+    # print is dropped by capture on a passing test, so the count must survive there, exact.
     bench = _bench_module()
     outcomes: list[BaseException | None] = [ConnectionResetError(errno.ECONNRESET, "reset"), ConnectionResetError(errno.ECONNRESET, "reset"), None]
 
@@ -97,24 +98,45 @@ def test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears
 
     monkeypatch.setattr(http_client, "fetch", fake_fetch)
     monkeypatch.setattr(bench.time, "sleep", lambda _s: None)
-    bench._report_ceiling_retries("clear")
+    notes: list[str] = []
+    bench._take_ceiling_retries()
     assert bench.fetch("dut", 80, "GET", "/sensors").status_code == 200
-    bench._report_ceiling_retries("arm")
-    bench._report_ceiling_retries("again")
-    lines = capsys.readouterr().out.splitlines()
-    assert "CEILING_RETRIES arm: {'GET /sensors': 2}" in lines
-    assert "CEILING_RETRIES again: none" in lines
+    bench._report_ceiling_retries(notes.append, "arm")
+    bench._report_ceiling_retries(notes.append, "again")
+    assert notes == ["CEILING_RETRIES arm: {'GET /sensors': 2}", "CEILING_RETRIES again: none"]
 
 
-def test_the_bench_retry_wrapper_never_counts_a_real_failure(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_bench_retry_wrapper_never_counts_a_real_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     bench = _bench_module()
 
     def fake_fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
         raise TimeoutError("timed out")
 
     monkeypatch.setattr(http_client, "fetch", fake_fetch)
-    bench._report_ceiling_retries("clear")
+    notes: list[str] = []
+    bench._take_ceiling_retries()
     with pytest.raises(TimeoutError):
         bench.fetch("dut", 80, "PUT", "/sensors", {"x": 1})
-    bench._report_ceiling_retries("arm")
-    assert "CEILING_RETRIES arm: none" in capsys.readouterr().out.splitlines()
+    bench._report_ceiling_retries(notes.append, "arm")
+    assert notes == ["CEILING_RETRIES arm: none"]
+
+
+def test_every_bench_test_in_the_module_notes_its_ceiling_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Any test's GET workers retry through fetch(), not only the two config-write arms: an autouse
+    # fixture notes what is left at the end of every test, so no retried refusal is lost on a pass.
+    bench = _bench_module()
+    fixture = bench._ceiling_retries_noted
+    assert getattr(fixture, "_fixture_function_marker", None) is not None or hasattr(fixture, "_pytestfixturefunction"), "_ceiling_retries_noted must be a pytest fixture"
+    notes: list[str] = []
+    gen = bench._noted_ceiling_retries(notes.append)
+    next(gen)
+    with bench._ceiling_retries_lock:
+        bench._ceiling_retries["GET /status"] = 1
+    with pytest.raises(StopIteration):
+        next(gen)
+    assert notes == ["CEILING_RETRIES rest of the test: {'GET /status': 1}"]
+    gen = bench._noted_ceiling_retries(notes.append)
+    next(gen)
+    with pytest.raises(StopIteration):
+        next(gen)
+    assert len(notes) == 1, "a test with no retried refusal adds no note"

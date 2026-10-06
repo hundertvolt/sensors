@@ -9,6 +9,8 @@ from pathlib import Path
 
 from harness import Board, HardwareTestFailureError, wait_until
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_10_watchdog_hang_backstop",)
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 _ARMED_BANNER = "WDT armed, starving now"  # printed by device_scripts/watchdog_starvation_reset.py
 

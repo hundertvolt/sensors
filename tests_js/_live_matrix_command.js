@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 // below - see SPECIFICATION.md Part H.8.1 for why this is a DOM-free module, not a
 // js/templates.js import.
 import { formatFieldValue } from "../js/field-format.js";
+import { drainChildOutput } from "./_memory_markers.js";
+import { twinStartFailure } from "./_twin_start_failure.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
@@ -20,6 +22,8 @@ const HOST = "127.0.0.1";
 const PORT = 19482;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
+/** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
+const spawnErrors = new WeakMap();
 const APPLY_STATUS_TIMEOUT_MS = 5000;
 // Generous bound for pollForText() - see SPECIFICATION.md Part H.8.1 ("Testing an async DOM refresh").
 const CAPTION_POLL_TIMEOUT_MS = 3000;
@@ -31,10 +35,17 @@ function sleep(ms) {
     });
 }
 
-/** @param {number} timeoutMs */
-async function waitUntilServing(timeoutMs) {
+/**
+ * @param {import("node:child_process").ChildProcess} proc
+ * @param {number} timeoutMs
+ */
+async function waitUntilServing(proc, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+        const failure = twinStartFailure({ spawnError: spawnErrors.get(proc) ?? null, exitCode: proc.exitCode, signalCode: proc.signalCode });
+        if (failure !== null) {
+            throw new Error(failure);
+        }
         try {
             // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
             const res = await fetch(`http://${HOST}:${PORT}/`);
@@ -79,14 +90,13 @@ function spawnTwin(device) {
         {
             cwd: REPO_ROOT,
             env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
-            // Same reasoning as tests_js/_live_twin_command.js's own stdio choice - see that
-            // file's own comment.
-            stdio: ["ignore", "ignore", "pipe"],
+            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
+            stdio: ["ignore", "pipe", "pipe"],
         },
     );
-    // See tests_js/_live_twin_command.js's own identical comment: an unhandled 'error' event would
-    // otherwise crash the whole Vitest process, skipping this file's own cleanup entirely.
-    proc.on("error", () => { /* no-op by design, per the comment above */ });
+    // See tests_js/_live_twin_command.js's own identical comment: the listener keeps the error for
+    // waitUntilServing() to name, instead of crashing the whole Vitest process.
+    proc.on("error", (err) => { spawnErrors.set(proc, err); });
     return proc;
 }
 
@@ -119,7 +129,8 @@ async function stopTwin(proc) {
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let twinProc = null;
-let twinStderr = "";
+/** @type {ReturnType<typeof drainChildOutput> | null} */
+let twinOutput = null;
 /** @type {import("playwright").Page | null} */
 let livePage = null;
 
@@ -152,13 +163,11 @@ export async function startLiveMatrix({ context }, device) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     twinProc = spawnTwin(device);
-    twinStderr = "";
-    twinProc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
-        twinStderr += chunk.toString();
-    });
+    const output = drainChildOutput(twinProc);
+    twinOutput = output;
 
     try {
-        await waitUntilServing(READY_TIMEOUT_MS);
+        await waitUntilServing(twinProc, READY_TIMEOUT_MS);
         livePage = await context.newPage();
         await livePage.goto(`http://${HOST}:${PORT}/`);
         await livePage.waitForSelector("[data-section-key]");
@@ -176,8 +185,12 @@ export async function startLiveMatrix({ context }, device) {
             // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
             twinProc = null;
         }
+        twinOutput = null;
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`startLiveMatrix failed for ${device}: ${message}\n--- twin stderr ---\n${twinStderr}`, { cause: err });
+        await output.closed(SHUTDOWN_TIMEOUT_MS);
+        const marked = output.markerLines();
+        const markers = marked.length > 0 ? `\n--- the twin also logged an allocation failure ---\n${marked.join("\n")}` : "";
+        throw new Error(`startLiveMatrix failed for ${device}: ${message}${markers}\n--- twin output ---\n${output.text()}`, { cause: err });
     }
 }
 
@@ -194,6 +207,20 @@ export async function stopLiveMatrix() {
         await stopTwin(twinProc);
         // eslint-disable-next-line require-atomic-updates -- see comment above
         twinProc = null;
+    }
+    const output = twinOutput;
+    twinOutput = null;
+    // The run's memory gate (SPECIFICATION.md Part I.4(e)): read once the twin has stopped and its
+    // streams have closed, so the whole matrix fails on a marker even when every field applied.
+    if (output !== null) {
+        const drained = await output.closed(SHUTDOWN_TIMEOUT_MS);
+        const marked = output.markerLines();
+        if (marked.length > 0) {
+            throw new Error(`the live-matrix twin logged an allocation failure:\n${marked.join("\n")}`);
+        }
+        if (!drained) {
+            throw new Error(`the live-matrix twin's output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete`);
+        }
     }
 }
 

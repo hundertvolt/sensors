@@ -425,13 +425,18 @@ def test_a_clean_run_log_records_no_failure(ci_suite: ModuleType, tmp_path: Path
     assert _memory_error_verdict(ci_suite, tmp_path, "OK: served\nOK: clean shutdown\n") == []
 
 
-def test_a_missing_log_is_not_reported_as_a_memory_error(ci_suite: ModuleType, tmp_path: Path) -> None:
-    # _read_log() returns "" for a log that was never written; a run that died before opening one
-    # fails on its own checks, and must not be blamed on an allocation it never made.
+@pytest.mark.parametrize("make", ["missing", "unreadable"])
+def test_a_missing_or_unreadable_log_fails_the_check_and_names_the_path(ci_suite: ModuleType, tmp_path: Path, make: str) -> None:
+    # Fails closed: a log the check cannot read is a run it cannot vouch for, never a clean one.
+    log = tmp_path / "absent.log"
+    if make == "unreadable":
+        log.mkdir()  # reading a directory raises, as any unreadable log does
     saved = list(ci_suite._FAILURES)
     ci_suite._FAILURES.clear()
     try:
-        ci_suite._check_no_memory_error_in_log(tmp_path / "absent.log", "Run 1")
-        assert ci_suite._FAILURES == []
+        ci_suite._check_no_memory_error_in_log(log, "Run 1")
+        failures = list(ci_suite._FAILURES)
     finally:
         ci_suite._FAILURES[:] = saved
+    assert len(failures) == 1, failures
+    assert "Run 1" in failures[0] and str(log) in failures[0], failures

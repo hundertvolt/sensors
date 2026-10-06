@@ -2,6 +2,8 @@
 single global permission for any limited-endurance write (SCD30 NVM and the RP2040 flash filesystem
 alike), --allow-scd30-extra-write only narrows further. Real --collect-only run, no hardware."""
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,13 +14,14 @@ _EXTRA_TEST = "test_scd30_config_write_does_not_disturb_concurrent_sibling_reads
 _NON_SCD30_TEST = "test_bmp3xx_same_device_read_write_concurrency"
 
 
-def _collect(repo_root: Path, *extra_args: str, target: str = _TARGET) -> str:
+def _collect(repo_root: Path, *extra_args: str, target: str = _TARGET, env: "dict[str, str] | None" = None) -> str:
     result = subprocess.run(
         [sys.executable, "-m", "pytest", target, "--collect-only", "-q", *extra_args],
         cwd=repo_root,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     assert result.returncode == 0, f"collection itself failed:\n{result.stdout}\n{result.stderr}"
     return result.stdout
@@ -90,3 +93,40 @@ def test_the_flash_tier_gates_its_config_writing_reboot_tests_too(repo_root: Pat
     for name in ("test_config_value_survives_a_genuine_hard_reset", "test_boot_import_mechanism_actually_boots_the_real_system"):
         assert name not in gated, f"{name} writes real config to flash and must be deselected without --allow-persistence-writes"
         assert name in ungated, f"{name} must run once --allow-persistence-writes is passed"
+
+
+# Reads each deselected item's user_properties at the moment the conftest hands it to pytest, so the
+# property is checked here and the run record that carries it is checked on its own.
+_DESELECTION_PROBE = """
+import json
+
+def pytest_deselected(items):
+    for item in items:
+        print("DESELECTED_BY " + json.dumps([item.nodeid, [list(p) for p in item.user_properties if p[0] == "deselected_by"]]))
+"""
+
+
+def _deselected_by(repo_root: Path, tmp_path: Path, *extra_args: str) -> "dict[str, list[str]]":
+    (tmp_path / "_deselection_probe.py").write_text(_DESELECTION_PROBE)
+    env = dict(os.environ, PYTHONPATH=f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
+    output = _collect(repo_root, "-p", "_deselection_probe", "-s", *extra_args, target=_TARGET, env=env)
+    found: dict[str, list[str]] = {}
+    for line in output.splitlines():
+        if line.startswith("DESELECTED_BY "):
+            nodeid, props = json.loads(line[len("DESELECTED_BY ") :])
+            found[nodeid.rsplit("::", 1)[-1]] = [flag for _, flag in props]
+    return found
+
+
+def test_every_wear_gate_deselection_carries_the_flag_that_would_select_it(repo_root: Path, tmp_path: Path) -> None:
+    # The run record tells a wear-gate deselection apart from a runner's -m exclusion only through
+    # this tag: an untagged one would read as "runner selection" and its advice would name no flag.
+    tags = _deselected_by(repo_root, tmp_path)
+    assert len(tags) == 7, f"expected the 7 persistence_write deselections, probe saw {sorted(tags)}"
+    # One tag each, the global flag first: without it no flag of this gate selects anything.
+    assert all(flags == ["--allow-persistence-writes"] for flags in tags.values()), tags
+
+
+def test_the_extra_write_deselection_names_its_own_flag_once_the_global_one_is_given(repo_root: Path, tmp_path: Path) -> None:
+    tags = _deselected_by(repo_root, tmp_path, "--allow-persistence-writes")
+    assert tags == {_EXTRA_TEST: ["--allow-scd30-extra-write"]}, tags

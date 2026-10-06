@@ -16,6 +16,8 @@ from soak_tiers import SOAK_TIER_SECONDS
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_11_soak")
+
 # The FRAM-backed modules (Part A.7); WIFI/NTP/every CFGMGR_* logger are RAM-only. Read these
 # before clearing state on any unexpected error. ISL29125 is dev-only, and every lookup below is
 # .get()-guarded, so listing it costs nothing on a variant that does not carry it.

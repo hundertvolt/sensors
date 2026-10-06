@@ -11,7 +11,11 @@ from error_log_helpers import assert_module_error_log_contains, assert_no_task_e
 from harness import Board, wait_until
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from bench_control import BenchBridge
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network_neopixel", "ci_suite._run_9_ntp_unreachable")
 
 # ---------------------------------------------------------------------------
 # Item 7 - real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED
@@ -19,7 +23,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
     # dut_ip (session-scoped) already proves a real STA connection was reached once this session -
     # this test's own value is confirming it happens again, cleanly, from a cold boot.
     #
@@ -39,7 +43,7 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
         attempts.append(joined)
         if established:
             if attempt:
-                print("RESULT NOTE: STA connect needed a second cold boot - one association was missed")
+                result_note("STA connect needed a second cold boot - one association was missed", recovery=True)
             break
     assert "Permanently no WLAN connection" not in attempts[-1], f"DUT fell back to hotspot mode instead of establishing a real STA connection, on {len(attempts)} consecutive cold boots:\n{attempts[-1]}"
     assert "WLAN connection established" in attempts[-1], f"no 'WLAN connection established' log line observed after {len(attempts)} cold boots:\n{attempts[-1]}"

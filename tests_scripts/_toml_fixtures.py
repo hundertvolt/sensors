@@ -65,6 +65,11 @@ def _dump_scalar(v: object) -> str:
         return "true" if v else "false"
     if isinstance(v, str):
         return json.dumps(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(_dump_scalar(x) for x in v) + "]"
+    if isinstance(v, dict):
+        # An inline table, for a value a negative-path test plants where a scalar belongs.
+        return ("{ " + ", ".join(f"{k} = {_dump_scalar(x)}" for k, x in v.items()) + " }") if v else "{}"
     return str(v)
 
 

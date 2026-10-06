@@ -14,6 +14,8 @@ import pytest
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30", "sgp40", "bmp3xx", "isl29125", "isl29125_autorange")
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 

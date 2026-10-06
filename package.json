@@ -25,7 +25,7 @@
     "test:unit": "vitest run --exclude \"**/node_modules/**\" --exclude \"tests_js/live-backend-put-matrix.test.js\"",
     "pretest:put-matrix": "npm run build:site",
     "test:put-matrix": "vitest run tests_js/live-backend-put-matrix.test.js",
-    "pretest:coverage": "npm run build:site",
+    "pretest:coverage": "npm run build:site && uv run scripts/_archive_evidence.py --runner npm_coverage htmlcov_js",
     "test:coverage": "vitest run --coverage --exclude \"**/node_modules/**\" --exclude \"tests_js/live-backend-put-matrix.test.js\"",
     "lint:html": "html-validate \"html/**/*.html\"",
     "lint:css": "stylelint \"html/**/*.css\"",

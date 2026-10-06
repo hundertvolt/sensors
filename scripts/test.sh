@@ -22,16 +22,43 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # trip under UTC. Not a production bug; CLAUDE.md's "Local test runs pin $TZ" has the account.
 export TZ=UTC
 
-# Ahead of every sweep below, not after them: these two checks are pure argument validation, and
+usage() {
+    cat <<'EOF'
+Usage: scripts/test.sh [--coverage]
+Runs tests/ under the MicroPython Unix port, one process per file, plus the backgrounded
+tests_scripts/ pytest tier, and ends with the summary block (SPECIFICATION.md E.10).
+
+Options:
+  --coverage    run under build-settrace and render the coverage reports
+  -h, --help    print this help and exit
+
+Environment:
+  PICO_TOOLCHAIN_DIR        toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1                skip the system-package step of a toolchain build (default: 0)
+  PER_FILE_TIMEOUT_S        per-file timeout, a positive integer of seconds (default: 240)
+  TESTS_SCRIPTS_TIMEOUT_S   tests_scripts/ timeout, a positive integer of seconds (default: 1200)
+  TEST_PARALLELISM          test files run at once (default: detected from core count and speed)
+  GC_THRESHOLD              gc.threshold() for every test file, e.g. 32768 (default: unset, the reactive -1)
+
+Exit codes: 0 every test passed; 1 a test failed or an allocation failure was seen; 2 a usage or
+setting error; 3 (--coverage only) every test passed and only a coverage report failed to render.
+EOF
+}
+
+# Ahead of every sweep below, not after them: these checks are pure argument validation, and
 # a rejected invocation must leave the live tree exactly as it found it. tests_scripts/ runs a
 # nested test.sh to prove the rejection, concurrently with 85 files holding tests/_tmp scratch.
 coverage=0
 for arg in "$@"; do
     case "$arg" in
         --coverage) coverage=1 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
         *)
-            echo "Unknown argument: $arg (only --coverage is supported)" >&2
-            exit 1
+            echo "error: unknown argument $arg (scripts/test.sh --help)" >&2
+            exit 2
             ;;
     esac
 done
@@ -45,20 +72,44 @@ if [ -n "${GC_THRESHOLD:-}" ]; then
     # actual mistake nowhere in the rolled-up summary.
     if [[ ! "$GC_THRESHOLD" =~ ^-?[0-9]+$ ]]; then
         echo "error: GC_THRESHOLD must be an integer - 32768 is what the firmware ships, -1 the reactive default - not '$GC_THRESHOLD'" >&2
-        exit 1
+        exit 2
     fi
     # Range as well as shape, on the FIRMWARE's 32-bit word rather than this 64-bit host's: a value
     # above it can match no shippable setting, and one past the host's own word raises OverflowError
     # inside the runner instead, once per file. Length first, so bash's own arithmetic can't overflow.
     if [ "${#GC_THRESHOLD}" -gt 11 ] || [ "$GC_THRESHOLD" -gt 2147483647 ] || [ "$GC_THRESHOLD" -lt -2147483648 ]; then
         echo "error: GC_THRESHOLD=$GC_THRESHOLD is outside the rp2040's own 32-bit machine word - any negative value means the reactive default (-1 by convention, see py/modgc.c) and the firmware ships 32768" >&2
-        exit 1
+        exit 2
     fi
     if [ "$coverage" = "1" ]; then
         # Said out loud rather than silently dropped: --coverage has its own runner, and a run that
         # ignores an explicitly set threshold must not look like one that honored it.
         echo "== note: --coverage uses its own runner, so GC_THRESHOLD=$GC_THRESHOLD is ignored for this run" >&2
     fi
+fi
+
+# Both timeouts are checked here, before any sweep: 0 would disable `timeout` altogether (coreutils),
+# turning the standing hang backstop off without a word.
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
+_require_seconds() {
+    if [[ ! "$2" =~ ^[1-9][0-9]{0,5}$ ]]; then
+        echo "error: $1 must be a positive integer number of seconds, not '$2'" >&2
+        exit 2
+    fi
+}
+_require_seconds PER_FILE_TIMEOUT_S "$per_file_timeout_s"
+_require_seconds TESTS_SCRIPTS_TIMEOUT_S "$tests_scripts_timeout_s"
+# Empty means autodetect; 0, negative or a non-integer would leave the dispatch loop dispatching nothing.
+if [ -n "${TEST_PARALLELISM:-}" ] && [[ ! "$TEST_PARALLELISM" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: TEST_PARALLELISM must be a positive integer, not '$TEST_PARALLELISM'" >&2
+    exit 2
+fi
+
+# The previous coverage reports are evidence too: moved into build/archive/test_sh_coverage/ (the
+# newest three runs kept), never overwritten in place.
+if [ "$coverage" = "1" ]; then
+    uv run scripts/_archive_evidence.py --runner test_sh_coverage htmlcov htmlcov_digital_twin coverage.xml coverage_digital_twin.xml coverage_summary.md coverage_summary_digital_twin.md
 fi
 
 # One bounded sweep of the whole tests/_tmp tree before any test file runs, not a per-file one -
@@ -194,9 +245,8 @@ else
     read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
     echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
 fi
-# Clamped to >= 1: the dispatch loop blocks while running jobs >= max_parallel, so 0 or negative (a
-# plausible "turn parallelism off" guess - 1 is what does that) spins `wait -n` forever without
-# dispatching anything. A hang is what this script's standing backstops exist to rule out.
+# Clamped to >= 1 as a backstop behind the validation above: the dispatch loop blocks while running
+# jobs >= max_parallel, so 0 or negative would spin `wait -n` forever without dispatching anything.
 if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     echo "== TEST_PARALLELISM=${TEST_PARALLELISM:-} is not a positive integer - falling back to 1 (sequential)" >&2
     max_parallel=1
@@ -235,7 +285,6 @@ uv run scripts/_generate_sensortask_modules.py
 
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 tests_scripts_status_file="$(mktemp)"
-tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
 # Pre-declared empty and the trap armed HERE, before the background job exists: bash does not kill
 # background jobs when the parent exits, and every step between here and the mktemp calls below can
 # abort under `set -e`, leaving an orphaned pytest to re-open Part E.1's zz_test_ glob hazard.
@@ -245,6 +294,7 @@ tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
 raw_dir=""
 results_dir=""
 tests_scripts_pid=""
+evidence_archived=0
 tests_scripts_inner_pidfile="$(mktemp)"
 # shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
 _cleanup() {
@@ -258,11 +308,25 @@ _cleanup() {
         fi
         kill "$tests_scripts_pid" 2>/dev/null || true
     fi
+    # A run that ended before its own archive step (an abort under `set -e`) moves every log it has
+    # into build/archive/test_sh/ first; if even that fails, the results dir is kept and named.
+    if [ -n "$results_dir" ] && [ -d "$results_dir" ] && [ "${evidence_archived:-0}" = "0" ]; then
+        if uv run scripts/_archive_evidence.py --runner test_sh "$results_dir" >&2; then
+            evidence_archived=1
+        else
+            echo "== the per-file logs could not be archived - kept in $results_dir" >&2
+            results_dir=""
+        fi
+    fi
     rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
 }
 trap _cleanup EXIT
+# Created before the pytest job, which writes its run record into it. One shared results_dir
+# regardless of --coverage: each parallel job writes its own status here, since a background subshell
+# cannot mutate a bash array the parent would see.
+results_dir="$(mktemp -d)"
 (
-    timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q &
+    PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
     inner_pid=$!
     echo "$inner_pid" >"$tests_scripts_inner_pidfile"
     if wait "$inner_pid"; then
@@ -300,18 +364,13 @@ scripts/build_website.sh wozi
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
 fi
-# One shared results_dir regardless of --coverage: each parallel job writes its own PASS/FAIL here,
-# since a background subshell cannot mutate a bash array the parent would see.
-#
 # Both dirs are cleaned by the single EXIT trap armed with the pytest job above - bash replaces an
 # EXIT handler rather than stacking, so every cleanup has to live in that one trap.
-results_dir="$(mktemp -d)"
 
-failed=0
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a
-# measured floor, never raised as a fix (SPECIFICATION.md E.3.1).
-per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+# measured floor, never raised as a fix (SPECIFICATION.md E.3.1). The timeout is validated above.
+#
 # Per-file overrides for anything that outgrows the default - deliberately empty since the
 # per-device splits, and deliberately not solved by raising everyone's default, which would make a
 # genuine future hang 2-3x slower to detect. Measured figures: Part E.3.1.
@@ -322,19 +381,27 @@ max_attempts=3
 # allocation failure is a design defect, not a passing result. The twin tier already asserts this
 # on its own logs (_digital_twin_ci_suite.py); this is the same check for the tier (e)/(f) run in.
 _flag_memory_errors() {
-    local tag="$1" log_file="$2"
+    local tag="$1" log_file="$2" rc=0
     # Both spellings, because src/'s degrade handlers log str(e) and not the class: a real caught
     # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
     # "MemoryError" in it, so the class name alone only ever sees an UNCAUGHT traceback.
     local pattern="MemoryError|memory allocation failed"
-    if grep -qE "$pattern" "$log_file" 2>/dev/null; then
-        grep -m5 -E "$pattern" "$log_file" >"$results_dir/$tag.memerr"
+    # Fails closed: a log it cannot read, or a grep error (exit 2+), is no verdict - never "clean".
+    if [ ! -r "$log_file" ]; then
+        echo "memory gate: per-file log $log_file missing or unreadable - no verdict" >"$results_dir/$tag.noverdict"
+        return 0
+    fi
+    grep -qE "$pattern" "$log_file" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        grep -m5 -E "$pattern" "$log_file" >"$results_dir/$tag.memerr" || echo "memory gate: a marker matched in $log_file but its lines could not be copied" >"$results_dir/$tag.memerr"
+    elif [ "$rc" -ge 2 ]; then
+        echo "memory gate: grep exited $rc reading $log_file - no verdict" >"$results_dir/$tag.noverdict"
     fi
 }
 
-# Runs one test file's timeout+retry loop and writes PASS/FAIL to status_file. Never returns
-# nonzero itself - failure travels through the status file - so backgrounding it and reaping with
-# `wait`/`wait -n` can never trip this script's own `set -e`.
+# Runs one test file's timeout+retry loop and writes PASS, RETRIED-PASS <k>/<n> or FAIL to
+# status_file. Never returns nonzero itself - failure travels through the status file - so
+# backgrounding it and reaping with `wait`/`wait -n` can never trip this script's own `set -e`.
 run_test_file() {
     local test_file="$1"
     local status_file="$2"
@@ -359,10 +426,11 @@ run_test_file() {
         cmd=("$test_file")
     fi
     file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
+    # Truncated once per job: the memory gate reads every attempt's output, a timed-out one included (CLAUDE.md memory rule).
+    : >"$log_file"
     for attempt in $(seq 1 "$max_attempts"); do
-        # Truncated per attempt: only the attempt that decided this file's verdict is searched for
-        # a MemoryError, so a timed-out earlier attempt's partial output cannot fail a passing file.
-        : >"$log_file"
+        # Each attempt opens with this line, so the summary reads its counts and skips from the deciding one.
+        echo "[$tag] == attempt $attempt/$max_attempts" >>"$log_file"
         # 2>&1 | sed, not two streams: these run concurrently, so per-line tagging is what keeps
         # a multi-file log readable. `set -o pipefail` makes the pipeline's status the interpreter's
         # own, so sed can never mask a real 124/1 from the command it pipes.
@@ -373,7 +441,12 @@ run_test_file() {
         fi
         if [ "$ec" -eq 0 ]; then
             _flag_memory_errors "$tag" "$log_file"
-            echo "PASS" >"$status_file"
+            # A pass that needed a retry is reported apart, a root-cause item (E.3.1), never a plain PASS.
+            if [ "$attempt" -eq 1 ]; then
+                echo "PASS" >"$status_file"
+            else
+                echo "RETRIED-PASS $attempt/$max_attempts" >"$status_file"
+            fi
             return 0
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
             echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
@@ -442,23 +515,73 @@ done
 wait || true
 tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
 
-# The backgrounded tests_scripts/ job is reaped by the same unqualified `wait` above. Its status
-# file is written in both branches, so a missing or empty read here is a bug rather than a
-# legitimate "still running" - never treated as PASS by omission.
-tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null)"
-if [ "$tests_scripts_result" != "PASS" ]; then
-    tests_scripts_result="FAIL"
-fi
+# ---------------------------------------------------------------------------------------------
+# The verdict: every job's status, log and run record read into the SPECIFICATION.md E.10 summary
+# block, the last thing printed. Each job's own output above stays the place to read a failure.
+# ---------------------------------------------------------------------------------------------
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_summary_block.sh
+summary_unit files
 
+_join_reasons() {
+    local out="$1" reason
+    shift
+    for reason in "$@"; do
+        out+="; $reason"
+    done
+    printf '%s' "$out"
+}
+
+_level_verdict() {
+    if [ "$1" -ne 0 ]; then
+        printf 'FAIL'
+    elif [ "$2" -gt 0 ]; then
+        printf 'PASS (retried %s)' "$2"
+    else
+        printf 'PASS'
+    fi
+}
+
+failed=0
 failed_files=()
 memory_error_files=()
-passed_count=0
+evidence_files=()
+tests_passed=0
+tests_failed=0
+tests_skipped=0
+declare -A level_failed=([L1]=0 [L2]=0) level_retried=([L1]=0 [L2]=0)
 for test_file in "${test_files[@]}"; do
     tag="$(basename "$test_file" .py)"
-    status_file="$results_dir/$tag.status"
-    if [ "$(cat "$status_file" 2>/dev/null)" = "PASS" ]; then
-        passed_count=$((passed_count + 1))
+    level="L1"
+    if [[ "$tag" == test_digital_twin_* ]]; then
+        level="L2"
+    fi
+    status="$(cat "$results_dir/$tag.status" 2>/dev/null || true)"
+    log_file="$results_dir/$tag.log"
+    # The deciding attempt's lines: everything after the log's last attempt line, the whole log without one.
+    deciding="$(awk -v m="[$tag] == attempt " 'index($0, m) == 1 { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$log_file" 2>/dev/null || true)"
+    # Its microtest closing line; a log without one crashed or was killed.
+    count_line="$(printf '%s\n' "$deciding" | grep -E "^\[$tag\] [0-9]+/[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped" | tail -n 1 || true)"
+    reasons=()
+    if [[ "$count_line" =~ ([0-9]+)/([0-9]+)\ passed,\ ([0-9]+)\ failed,\ ([0-9]+)\ skipped ]]; then
+        tests_passed=$((tests_passed + BASH_REMATCH[1]))
+        tests_failed=$((tests_failed + BASH_REMATCH[3]))
+        tests_skipped=$((tests_skipped + BASH_REMATCH[4]))
+        file_failed_tests="${BASH_REMATCH[3]} of ${BASH_REMATCH[2]} tests failed"
     else
+        file_failed_tests="failed"
+        reasons+=("no test count (crashed or killed)")
+    fi
+    # A missing or empty status is a missing verdict, never a pass by omission.
+    case "$status" in
+        PASS | "RETRIED-PASS "*) ;;
+        FAIL) reasons=("$file_failed_tests" ${reasons[@]+"${reasons[@]}"}) ;;
+        *) reasons=("no verdict" ${reasons[@]+"${reasons[@]}"}) ;;
+    esac
+    if [ -s "$results_dir/$tag.noverdict" ]; then
+        reasons+=("no verdict (per-file log missing or unreadable)")
+    fi
+    if [ "${#reasons[@]}" -gt 0 ]; then
         failed=1
         failed_files+=("$test_file")
     fi
@@ -467,8 +590,80 @@ for test_file in "${test_files[@]}"; do
     if [ -s "$results_dir/$tag.memerr" ]; then
         failed=1
         memory_error_files+=("$test_file")
+        reasons+=("MemoryError seen")
+    fi
+    # A failed file that also needed a retry keeps that fact in its reason rather than losing it.
+    if [ "${#reasons[@]}" -gt 0 ] && [[ "$status" == "RETRIED-PASS "* ]]; then
+        reasons+=("passed on attempt ${status#RETRIED-PASS }")
+    fi
+    if [ "${#reasons[@]}" -gt 0 ]; then
+        level_failed[$level]=1
+        evidence_files+=("$log_file" "$results_dir/$tag.memerr" "$results_dir/$tag.noverdict")
+        summary_add failed "$test_file" "$(_join_reasons "${reasons[@]}")"
+    elif [ "$status" != "PASS" ]; then
+        level_retried[$level]=$((level_retried[$level] + 1))
+        evidence_files+=("$log_file")
+        summary_add retried "$test_file" "${status#RETRIED-PASS }"
+        echo "root-cause item: $tag needed attempt ${status#RETRIED-PASS } - record it as a root-cause item"
+    else
+        summary_add passed "$test_file"
+    fi
+    # Each microtest SKIP line of the deciding attempt is named with its reason, not only counted.
+    while IFS= read -r skip_line; do
+        if [[ "$skip_line" =~ ^\[$tag\]\ SKIP\ ([^:]+):\ ?(.*)$ ]]; then
+            summary_add skipped "$test_file::${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        fi
+    done < <(printf '%s\n' "$deciding" | grep -F "[$tag] SKIP " || true)
+done
+
+# The backgrounded tests_scripts/ job is reaped by the same unqualified `wait` above. Its status
+# file is written in both branches, and its run record (scripts/_pytest_run_record.py) carries the
+# counts: a missing or unreadable either one is no verdict, never a PASS by omission.
+tests_scripts_record="$results_dir/tests_scripts.json"
+tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null || true)"
+l0_reasons=()
+if [ "$tests_scripts_result" != "PASS" ]; then
+    l0_reasons+=("pytest exited nonzero or timed out")
+fi
+# Its failed, skipped, deselected and recovered tests are named here, each with its reason, since the
+# block counts files: a skip is counted and named, never only a dot in pytest's -q line.
+l0_recovered=0
+for kind in failed skipped deselected recovered; do
+    listing="$(uv run scripts/_summary_block.py --from-run-record "$tests_scripts_record" --list "$kind" 2>/dev/null)" || listing=""
+    if [ -n "$listing" ]; then
+        echo "tests_scripts/ $kind:"
+        printf '%s\n' "$listing" | sed -e 's/\t/: /' -e 's/^/  - /'
+        [ "$kind" != "recovered" ] || l0_recovered="$(printf '%s\n' "$listing" | wc -l)"
     fi
 done
+l0_counts="$(uv run scripts/_summary_block.py --from-run-record "$tests_scripts_record" --counts-only 2>/dev/null)" || l0_counts=""
+if [[ "$l0_counts" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
+    summary_counts_line "tests_scripts tests" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" 0 "$l0_recovered" 0
+    if [ "${BASH_REMATCH[2]}" -ne 0 ]; then
+        l0_reasons+=("${BASH_REMATCH[2]} failed (listed above)")
+    fi
+else
+    l0_reasons+=("no verdict (run record missing or unreadable)")
+fi
+# Its result and session notes go into the block's Notes: list.
+while IFS=$'\t' read -r note_name note_text; do
+    summary_note "$note_name" "$note_text"
+done < <(uv run scripts/_summary_block.py --from-run-record "$tests_scripts_record" --list notes 2>/dev/null || true)
+if [ "${#l0_reasons[@]}" -gt 0 ]; then
+    tests_scripts_result="FAIL"
+    failed=1
+    evidence_files+=("$tests_scripts_record")
+    summary_add failed "tests_scripts/ (pytest)" "$(_join_reasons "${l0_reasons[@]}")"
+fi
+summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" 0 0 0 0
+summary_levels "L0 $([ "$tests_scripts_result" = "PASS" ] && printf 'PASS' || printf 'FAIL') · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)"
+if [ "$coverage" = "1" ]; then
+    summary_gc_stage "coverage run (settrace)"
+elif [ -n "${GC_THRESHOLD:-}" ]; then
+    summary_gc_stage "$GC_THRESHOLD"
+else
+    summary_gc_stage "-1 (reactive default)"
+fi
 
 # Both `|| coverage_render_failed=1` rather than bare: under `set -e` a renderer failure would
 # abort here with ITS exit code, which the caller cannot tell from a failed test. Coverage is a
@@ -481,20 +676,6 @@ if [ "$coverage" = "1" ]; then
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
 fi
 
-# One rolled-up summary at the very end - each test_*.py file and tests_scripts/ already print
-# their own pass/fail as they run, but nothing aggregated that across the whole suite before this;
-# a failure earlier in a long run was otherwise easy to miss without scrolling back through the log.
-total_files=$((passed_count + ${#failed_files[@]}))
-echo ""
-echo "== Test summary =="
-echo "tests_scripts/ (CPython/pytest): $tests_scripts_result"
-echo "tests/test_*.py (MicroPython Unix port): $passed_count/$total_files files passed"
-if [ "${#failed_files[@]}" -gt 0 ]; then
-    echo "Failed files:"
-    for f in "${failed_files[@]}"; do
-        echo "  - $f"
-    done
-fi
 if [ "${#memory_error_files[@]}" -gt 0 ]; then
     echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
     for f in "${memory_error_files[@]}"; do
@@ -537,21 +718,31 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
         echo "::error title=and $annotations_withheld more::$annotations_withheld further failing-file annotation(s) withheld at GitHub's 10-per-step cap - the step log's summary names every file"
     fi
 fi
-if [ "$tests_scripts_result" = "FAIL" ]; then
-    failed=1
-fi
-if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 0 ]; then
-    echo "Result: ALL PASSED"
-elif [ "$failed" -eq 0 ]; then
-    echo "Result: TESTS PASSED, COVERAGE RENDERING FAILED"
-else
-    echo "Result: FAILED"
-fi
 
 # Three outcomes, three codes, because the caller acts differently on each: 1 = a test failed,
 # 3 = every test passed and only the report could not be rendered, 0 = both fine. CI gates on 1
 # and tolerates 3 (SPECIFICATION.md Part E.5.3); a test failure is never advisory.
-if [ "$failed" -eq 0 ] && [ "$coverage_render_failed" -eq 1 ]; then
-    exit 3
+exit_code=0
+if [ "$failed" -ne 0 ]; then
+    exit_code=1
+elif [ "$coverage_render_failed" -ne 0 ]; then
+    exit_code=3
 fi
-exit "$failed"
+
+# The deciding logs of every failed, no-verdict, allocation-flagged and retried file, plus the
+# block itself, move into build/archive/test_sh/<ts>/ (newest three kept); a green run keeps the
+# block only. Archived before the block is printed, so nothing follows it on stdout.
+#
+# summary_print returns the code it printed (a failed item never leaves with 0 or 3); exit with it.
+summary_status=0
+summary_text="$(summary_print "scripts/test.sh" "$exit_code")" || summary_status=$?
+printf '%s\n' "$summary_text" >"$results_dir/summary.txt"
+if evidence_dir="$(uv run scripts/_archive_evidence.py --runner test_sh ${evidence_files[@]+"${evidence_files[@]}"} "$results_dir/summary.txt")"; then
+    evidence_archived=1
+    echo "== Evidence archived in $evidence_dir"
+else
+    echo "== the evidence could not be archived - kept in $results_dir" >&2
+    results_dir=""
+fi
+printf '%s\n' "$summary_text"
+exit "$summary_status"

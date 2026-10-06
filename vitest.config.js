@@ -28,6 +28,8 @@ const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChr
 export default defineConfig({
     test: {
         include: ["tests_js/**/*.test.js"],
+        // Every run ends with the runner summary block (SPECIFICATION.md E.10), after vitest's own report.
+        reporters: ["default", "./tests_js/_summary_reporter.js"],
         // Backstop, not a fix for a known hang (CLAUDE.md "Code quality tooling": hanging tests
         // are never allowed); covers the longest explicit wait (5000ms, render.test.js) with margin.
         testTimeout: 20000,

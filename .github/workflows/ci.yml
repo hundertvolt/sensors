@@ -234,13 +234,16 @@ jobs:
         # Quoted heredocs (not `echo '...'`) so the literal markdown backticks need no quoting
         # gymnastics, and one grouped redirect instead of four - both flagged by actionlint's
         # embedded shellcheck (SC2016/SC2129).
+        #
+        # The table runs from Vitest's coverage header (matched without its colored "%") up to the
+        # summary block the run ends with.
         run: |
           {
             cat <<'MD_FENCE_OPEN'
           ### JS coverage (`js/`)
           ```
           MD_FENCE_OPEN
-            tail -n 15 coverage-output.txt
+            awk '/Coverage report from/{p=1} /^== Summary: npm test ==/{p=0} p' coverage-output.txt
             cat <<'MD_FENCE_CLOSE'
           ```
           MD_FENCE_CLOSE

@@ -2,6 +2,7 @@
 failure mode is silent: a drifted pattern stops matching and the gate goes green on a real
 violation. Each block is extracted from the live script and run against a fabricated tree."""
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -112,3 +113,53 @@ def test_the_live_tree_satisfies_all_three_guards(repo_root: Path, tmp_path: Pat
     for needle in (_METHOD_ASSIGN, _SRC_COLLECT, _BUILDGEN_COLLECT):
         result = _run_guard(repo_root, repo_root, needle, script_home=tmp_path)
         assert result.returncode == 0, f"the live tree violates lint.sh's {needle!r} guard: {result.stdout}{result.stderr}"
+
+
+# --- the command line and the summary block (SPECIFICATION.md E.10) ---------------------------------
+
+_CHECKS = ("ruff", "shellcheck", "actionlint", "zizmor", "method-assign guard", "gc.collect sites")
+
+
+def _run_lint(repo_root: Path, tmp_path: Path, *args: str, failing_tool: str | None = None) -> subprocess.CompletedProcess[str]:
+    """scripts/lint.sh with its four external tools stubbed on PATH (one may fail); the grep guards
+    run for real against the live tree, which the test above holds clean."""
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir(exist_ok=True)
+    for tool in ("ruff", "shellcheck", "actionlint", "zizmor"):
+        (stub_bin / tool).write_text(f"#!/bin/sh\nexit {1 if tool == failing_tool else 0}\n")
+        (stub_bin / tool).chmod(0o755)
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    return subprocess.run(["/bin/bash", str(repo_root / "scripts" / "lint.sh"), *args], env=env, capture_output=True, text=True, check=False, timeout=120)
+
+
+def test_help_prints_the_usage_and_exits_0(repo_root: Path, tmp_path: Path) -> None:
+    for flag in ("-h", "--help"):
+        result = _run_lint(repo_root, tmp_path, flag, failing_tool="ruff")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.startswith("Usage: scripts/lint.sh - no arguments"), result.stdout
+        assert "== Summary" not in result.stdout, "--help runs no check"
+
+
+def test_any_other_argument_is_a_usage_error(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_lint(repo_root, tmp_path, "src/")
+    assert result.returncode == 2
+    assert "Usage: scripts/lint.sh" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_clean_run_ends_with_the_block_counting_every_check(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_lint(repo_root, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    block = result.stdout[result.stdout.index("== Summary: scripts/lint.sh ==") :]
+    assert f"\nCounts (checks): passed {len(_CHECKS)} · failed 0 ·" in block
+    assert block.endswith("Result: PASS\nExit code: 0\n")
+
+
+@pytest.mark.parametrize("tool", ["ruff", "shellcheck", "actionlint", "zizmor"])
+def test_a_failing_check_is_named_in_the_block_and_fails_the_run(repo_root: Path, tmp_path: Path, tool: str) -> None:
+    result = _run_lint(repo_root, tmp_path, failing_tool=tool)
+    assert result.returncode == 1
+    block = result.stdout[result.stdout.index("== Summary: scripts/lint.sh ==") :]
+    assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
+    assert f"Failed:\n  - {tool}\n" in block
+    assert block.endswith("Result: FAIL\nExit code: 1\n")

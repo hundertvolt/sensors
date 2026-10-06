@@ -11,6 +11,15 @@
 #   <device>     names a devices/<device>.toml; its definitions are generated from it (Part H.5).
 #   output_path  forwarded to build_frozen_html.sh (default: frozen_modules/frozen_html.py).
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/build_website.sh <device> [output_path]
+Builds one device's website into a frozen module.
+  <device>     names a devices/<device>.toml
+  output_path  the frozen module written (default: frozen_modules/frozen_html.py)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 device="${1:?Usage: scripts/build_website.sh <device> [output_path]}"

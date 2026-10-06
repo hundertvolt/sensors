@@ -26,7 +26,11 @@ from harness import HELD_PAD_LINE, HELD_REQUEST_LINE, Board, HardwareTestFailure
 from rogue_udp_responder import RogueUdpResponder
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from bench_control import BenchBridge
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_8_wifi_persistence_and_configure_ntp", "ci_suite._run_11b_full_ceiling_concurrency")
 
 # ---------------------------------------------------------------------------
 # WiFi outage or flap inside an already-established STA connection. Per
@@ -35,7 +39,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
     reset_all_error_logs(dut_ip)
     bench.ap_down()
     try:
@@ -59,14 +63,17 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
             poll_interval_s=5.0,
             description="DUT to re-establish its real STA connection after the bridge AP comes back up",
         )
-        print(f"RESULT NOTE: recovered gracefully in {time.monotonic() - recovery_started:.1f}s (bench.ap_up() to first reachable /status)")
+        result_note(f"recovered gracefully in {time.monotonic() - recovery_started:.1f}s (bench.ap_up() to first reachable /status)")
     except TimeoutError:
         recovered_via_hard_reset = True
         graceful_wait_s = time.monotonic() - recovery_started
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
+        result_note(
+            f"recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s; skipped: _assert_wifi_log_has_only_benign_outage_warnings",
+            recovery=True,
+        )
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
     assert_no_task_ended(dut_ip, "real WiFi outage")  # holds on the hard_reset() path too: FRAM keeps SYSTEM
@@ -74,7 +81,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
         _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
 
 
-def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
     reset_all_error_logs(dut_ip)
     for _cycle in range(3):
         bench.ap_down()
@@ -97,14 +104,17 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
             poll_interval_s=5.0,
             description="DUT to re-establish its real STA connection after repeated AP flapping",
         )
-        print(f"RESULT NOTE: recovered gracefully in {time.monotonic() - recovery_started:.1f}s (last bench.ap_up() to first reachable /status)")
+        result_note(f"recovered gracefully in {time.monotonic() - recovery_started:.1f}s (last bench.ap_up() to first reachable /status)")
     except TimeoutError:
         recovered_via_hard_reset = True
         graceful_wait_s = time.monotonic() - recovery_started
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
+        result_note(
+            f"recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s; skipped: _assert_wifi_log_has_only_benign_outage_warnings",
+            recovery=True,
+        )
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
     assert_no_task_ended(dut_ip, "repeated real WiFi flapping")
@@ -843,7 +853,7 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str) -> None:
+def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, result_note: Callable[..., None]) -> None:
     """The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
     bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
     connections x 2048 now, connections x 16384 while the band was open."""
@@ -903,7 +913,7 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     )
     assert_module_error_log_empty(dut_ip, "WEBSERVER")
     assert_no_task_ended(dut_ip, "client misbehaviour")
-    print(f"RESULT NOTE: {len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
+    result_note(f"{len(answered)} answered, {len(refused)} refused at the connection ceiling, 0 answered wrongly")
 
 
 def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -> None:

@@ -130,7 +130,23 @@ def _pop_value(remaining: "list[str]", flag: str) -> str:
     return remaining.pop(0)
 
 
+_USAGE = """Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0"""
+
+
 def parse_args(argv: "list[str]") -> "LaunchConfig":
+    # --help is answered before any other argument is read, so nothing else in the file runs.
+    if "-h" in argv or "--help" in argv:
+        print(_USAGE)
+        sys.exit(0)
     remaining = list(argv)
     seed: int | None = None
     fram_state_path: str | None = None

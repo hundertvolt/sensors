@@ -285,9 +285,9 @@ information):
   deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
   `scd30_extra_write` AND-gated on top for a *second* SCD30 NVM write beyond the routine
   per-session one, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
-  `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, a gated run is
-  invisible to `scripts/_require_clean_hardware_run.sh`'s own skip check, which is why its verdict
-  names the deselected count: "clean" there means "everything that ran, passed", not "everything
+  `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, the hardware verdict
+  (`scripts/_hardware_verdict.py`, reading the run record) lists every deselected test with the gate
+  flag that deselected it: "clean" there means "everything that ran, passed", not "everything
   ran". **The gate covers the write a test OWNS, not one it is merely reached through** (owner's
   clarification, 2026-09-18): a persisting write that *is* the thing under test is optional and
   belongs behind the marker, while one that is a shared **prerequisite** — a fixture forcing a mode
@@ -357,15 +357,16 @@ information):
   halves are machine-checked, not left to whoever reads the log**: the twin tier checks each run's
   log (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own
   output and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
-  about. Don't relax that to "only on a failing file". **There are FOUR such gates — the unit tier,
-  the twin tier and the flash/bench real-hardware soak gates — and all four match `MemoryError` OR
-  `memory allocation failed`, the second being the half that matters** — `src/` logs `str(e)`, not
+  about. Don't relax that to "only on a failing file". **Every memory gate — the unit tier, the twin
+  tier, the `tests_scripts` twin boots, the JS live twins and cross-browser smoke, and the flash and
+  bench real-hardware gates — matches `MemoryError` OR `memory allocation failed`, the second being
+  the half that matters** — `src/` logs `str(e)`, not
   the class, so a real caught-and-degraded allocation failure never contains the word
   "MemoryError" at all (SPECIFICATION.md Part I.4(e) has the full account and the `py/runtime.c`
   citation). Matching the class name alone catches only crashes, which is the case the bar is
   *not* about; don't narrow any gate back to it. The hardware pair reads one shared
-  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, and
-  `tests_scripts/test_memory_error_gate_agreement.py` keeps all four agreeing — and keeps the
+  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS` (the JS gates `tests_js/_memory_markers.js`), and
+  `tests_scripts/test_memory_error_gate_agreement.py` keeps them all agreeing — and keeps the
   suite's own deliberate injections worded clear of what they grep for, since a message borrowing
   the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
@@ -683,7 +684,7 @@ information):
   asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
   file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test
   function in that file, so this only ever surfaced as the *whole process* hanging at exit after the
-  last test's own "N/N passed" line printed — not a per-test symptom, and easy to mistake for an
+  closing "P/T passed, F failed, S skipped" line printed — not a per-test symptom, and easy to mistake for an
   unrelated infra issue. Fixed in `tests/microtest.py`: `run()` now always calls `sys.exit()`
   (0 on an all-pass run, 1 on any failure) instead of only exiting on failure — this forces the
   process down immediately regardless of what's still parked in the task/IO queue, rather than
@@ -710,7 +711,7 @@ information):
   scope, never from inside a coroutine** - build the fixture at the top of the test, then pass it
   into the one coroutine `run()` drives. Audited across `tests/`, `digital_twin/` and `src/`: no
   other call site does this. Don't re-diagnose a test file that segfaults partway through with no
-  `N/N passed` line as a memory bug in the code under test.
+  closing `P/T passed` line as a memory bug in the code under test.
 - **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
   `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
   `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 from _devices import DEVICE_NAMES
+from _script_loader import load_script_module
 
 # Same import route tests_scripts/test_heap_map_parser.py uses for the same file: the repo has no
 # packages by design, so importing it as `tests_hardware.heap_map` would make mypy see one source
@@ -80,6 +81,10 @@ _ARM_REACH_RATIO_MIN = 4.0
 # much survives (MEASUREMENTS archive 7A.1's finding, which reproduces here at 0.05%). 1% is 19x that.
 _RETENTION_TOLERANCE = 0.01
 
+# The allocation-failure markers every gate shares, from the hardware tier's harness
+# (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
+_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
+
 _COUNTER_LINE = re.compile(r"^(?:LISTS|COUNTS) (.*)$", re.MULTILINE)
 
 
@@ -99,14 +104,27 @@ def _parse_counters(stdout: str) -> dict[str, int]:
     return found
 
 
+def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+    """One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+    (SPECIFICATION.md Part I.4(e)), and every map the bounds read."""
+    tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+    assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+    assert "RESULT: PASS" in completed.stdout, f"the probe never reached its own PASS line for {device}/{arm}:\n{tail}"
+    marked = [line for line in f"{completed.stdout}\n{completed.stderr}".splitlines() if any(marker in line for marker in _MEMORY_ERROR_MARKERS)]
+    assert not marked, f"the probe for {device}/{arm} logged an allocation failure:\n" + "\n".join(marked)
+    maps = parse_labelled(completed.stdout)
+    missing = [label for label in _REQUIRED_MAPS if label not in maps]
+    assert not missing, f"no usable map captured for {missing} on {device}/{arm} - the measurement would be vacuous:\n{tail}"
+    return _ProbeRun(maps, _parse_counters(completed.stdout))
+
+
 @pytest.fixture(scope="session")
 def generated_src(repo_root: Path) -> Path:
     # The probe imports `sensortask_<device>` and reads its wiring plan from here; scripts/test.sh
-    # generates both before any tier runs. Skipped rather than failed when absent, the same way
-    # conftest.py's own micropython_bin fixture treats an unbuilt interpreter.
+    # generates both before any tier runs. Failed, never skipped, when absent: a skip reads as a pass.
     path = repo_root / "build" / "generated_src"
     if not path.is_dir():
-        pytest.skip(f"no generated device modules at {path} - scripts/test.sh generates them before the suites run")
+        pytest.fail(f"no generated device modules at {path} - scripts/test.sh generates them before the suites run")
     return path
 
 
@@ -119,7 +137,7 @@ def boot_probe(
 ) -> Callable[[str, str], _ProbeRun]:
     """Runs tests/_boot_contiguity_probe.py once per (device, arm) and caches the result: several
     assertions over one boot rather than one boot each."""
-    assert generated_src.is_dir()  # the skip above already ran; this keeps the dependency explicit
+    assert generated_src.is_dir()  # the fixture above already failed if not; this keeps the dependency explicit
     cache: dict[tuple[str, str], _ProbeRun] = {}
 
     def run(device: str, arm: str) -> _ProbeRun:
@@ -136,13 +154,7 @@ def boot_probe(
             timeout=_PROBE_TIMEOUT_S,
             check=False,
         )
-        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
-        assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
-        assert "RESULT: PASS" in completed.stdout, f"the probe never reached its own PASS line for {device}/{arm}:\n{tail}"
-        maps = parse_labelled(completed.stdout)
-        missing = [label for label in _REQUIRED_MAPS if label not in maps]
-        assert not missing, f"no usable map captured for {missing} on {device}/{arm} - the measurement would be vacuous:\n{tail}"
-        cache[key] = _ProbeRun(maps, _parse_counters(completed.stdout))
+        cache[key] = _checked_probe_run(device, arm, completed)
         return cache[key]
 
     return run
@@ -275,6 +287,24 @@ def test_the_control_arm_devices_are_real_devices() -> None:
     # A name that stopped being a device would still parametrize, and the probe would then fail on
     # a missing generated module - a confusing import error in place of "this list is stale".
     assert set(_CONTROL_DEVICES) <= set(DEVICE_NAMES), f"{sorted(set(_CONTROL_DEVICES) - set(DEVICE_NAMES))} is no longer a real device - update the control arm with it"
+
+
+def test_a_missing_generated_tree_fails_rather_than_skipping(repo_root: Path, tmp_path: Path) -> None:
+    # A skip reads as a pass: every placement bound above would report green while measuring nothing.
+    this_file = load_script_module(repo_root / "tests_scripts" / "test_digital_twin_boot_contiguity.py", "_boot_contiguity_tests_under_test")
+    with pytest.raises(BaseException) as caught:  # BaseException: an escaping skip would skip this test too
+        this_file.generated_src.__wrapped__(tmp_path)
+    assert isinstance(caught.value, pytest.fail.Exception), f"a missing generated tree must fail, not {type(caught.value).__name__}: {caught.value}"
+    assert "scripts/test.sh" in str(caught.value)
+
+
+def test_a_probe_that_logged_an_allocation_failure_fails_even_when_it_passed() -> None:
+    # The degrade-and-pass case the memory gates exist for: src/ logs str(e), so a caught failure
+    # reads "memory allocation failed" on a run that still exits 0 and prints its own PASS line.
+    planted = "boot ok\n[E] SYSTEM: memory allocation failed, allocating 512 bytes\nRESULT: PASS\n"
+    completed = subprocess.CompletedProcess(["probe"], 0, stdout=planted, stderr="")
+    with pytest.raises(AssertionError, match="memory allocation failed, allocating 512 bytes"):
+        _checked_probe_run("wozi", _ARM_LIVE, completed)
 
 
 def test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite(repo_root: Path) -> None:

@@ -14,6 +14,8 @@ from error_log_helpers import assert_module_error_log_empty, reset_all_error_log
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
+
 # Different from every driver default (PressOvers=1, TempOvers=1, FiltCoeff=0) and all real
 # allowed discrete settings (_OSR_SETTINGS, _IIR_SETTINGS in asy_bmp3xx_driver.py): a real change
 # has to take effect on real hardware for this test to mean anything.

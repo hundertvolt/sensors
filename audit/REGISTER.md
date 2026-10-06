@@ -28,7 +28,7 @@ lease and resumption procedure.
 | U4 | compare-before-write primitive, SCD30 onto it | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U4_close.md` |
 | U5 | config objects and `max-args` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U5_close.md` |
 | U6 | one-source website definitions | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U6_close.md`; evidence `audit/artefacts/evidence/U6_close/`, `U5_neopixel_wakeup_latency/` |
-| U7 | tier ladder and runner summary block | not started | — |
+| U7 | tier ladder and runner summary block | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U7_close.md`; evidence `audit/artefacts/evidence/U7_close/` |
 | U8 | `@tunable` scheme | not started | — |
 | U8C | `@tunable` classification of tests | not started | — |
 | U8C2 | search gaps of the test-tier classification | not started | — |
@@ -191,6 +191,26 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U6 | Each SGP40's maintenance status is published under its own instance name now (U20's adapter-per-instance part, with the definitions keyed the same way) | the U6 parity check found a two-SGP40 device's adapter reading an unassigned `sgp40`; U20 keeps the rest (instance variables throughout, the L.2 function list, the name-resolution test) |
 | U6 | The boot-contiguity high band is 32 KiB, not 128 KiB | at 128 KiB the suppressed arm's count sat at its own reach edge (33 at U5 against 32 allowed, 10 at U6); 32 KiB is twice the live reach, zero live on all six devices, 703 and 1,510 suppressed; the live check only gets stricter |
 | U6 | The live PUT matrix skips the enum option already shown, visibly | U5 filtered it out at registration; the resubmit probe covers that case and knows whether the card round-trips |
+| U7 | A failed or vacuous item raises a passing exit code (0, 3 or 4) to 1, in the block and the process status alike | the block once printed `Result: FAIL` with `Exit code: 0`; 3 and 4 are tolerated codes, so a failure carried by either would read as acceptable |
+| U7 | An invalid `TEST_PARALLELISM` exits 2 now | SPEC E.3 states it at U7 and no code step carried it; it fell back to 1 with a warning |
+| U7 | Every attempt's per-file log is kept (appended), Run 11 runs once and a missing twin log fails the memory gate: the end states of three later steps, pulled forward | each was a way a failure vanished behind a passing retry or an absent log, which this unit exists to close |
+| U7 | The summary block gains a `Notes:` list after `Recovery passes:`; per-test microtest skips are listed under `Skipped:` with their reasons | E.10's layout had no place for a passing test's note, and microtest skip reasons sat only in the per-file log |
+| U7 | L0's per-test skips, failures and deselections print just before `scripts/test.sh`'s block, with their own `Counts (tests_scripts tests)` line | the main Counts line counts files |
+| U7 | E.6.6 rows `bus-fault-injection` (owner, 2026-09-22), `scd30-writer-under-api-load` and `flash-only-bus-checks` (agent); the `ci_suite.*` scenarios mapped to existing hardware counterparts | the containment check needs a row or a counterpart for every scenario; the SCD30 row lists a gap until its bench write arm exists |
+| U7 | E.6.6's column header reads `Decision`; `uart-fault-catalog` takes the later owner wording; three rows carry agent-dated decisions from their commits | a header cannot carry an actor tag; the 2026-09-22 answer overtakes the older "until injection hardware exists" |
+| U7 | E.1's archive sentence states that a failed run's logs are archived before scratch is deleted and the path is printed | the code moves logs out of scratch the run deletes, where a copy ends the same; the merged sentence said "copied, never only moved" |
+| U7 | Each hardware runner archives under its own sanitised name, the bench runner's flash step as `run_bench_hardware_suite_flash_step`, so keep-3 counts per step; caller test paths reach only the bench step and replace its default | one bench run took two of the three `hardware` slots and pruned an earlier run's flash evidence |
+| U7 | The bench API-load test notes every retried ceiling refusal in the run record (an autouse fixture plus the two config-write arms) | the retries were printed, and capture drops a print on a passing test |
+| U7 | The JS output drain scans every line before trimming and waits for both streams; the vitest reporter files hook, module and unhandled errors | a marker older than the kept tail, or output still in the pipe, was never scanned |
+| U7 | `test_tool_help` accepts argparse's lower-case `usage:` | `setup_toolchain.py` is not edited by U7 |
+| U7 | `scripts/_hardware_verdict.py` propagates pytest's own nonzero exit unchanged and its Result line names it (`FAIL (pytest exited N)`) | M.SCR.005; E.10's meaning of 2 and 4 would otherwise mislabel pytest's interrupt and usage codes |
+| U7 | The bash summary guard is `(return 0 2>/dev/null) \|\| …` | the merged form returns from the sourced file before any function is defined |
+| U7 | Each attempt writes `[<tag>] == attempt k/n` to the per-file log; counts and skips come from the deciding attempt | appending every attempt would otherwise count a retried file's tests twice |
+| U7 | A test's several recovery notes join into one recovered item; a recovery note on a test that did not pass becomes a note; a session note without a source is named `session` | each closed a way a note was dropped |
+| U7 | `scripts/test.sh`'s files line counts each listed skipped microtest under `skipped` | the skipped list is per test; E.10 states it |
+| U7 | E.6.6's SCD30 sentence names the interim row instead of "is no row" | the containment check needs a row for a test with no counterpart; the row lists the gap until the bench write arm lands |
+| U7 | `build_device_websites.sh` answers `--help`, refuses an unknown option and more than one argument | it built into a directory named after the option; not in the step's tool list |
+| U7 | The live commands name a twin's spawn error or early exit through `tests_js/_twin_start_failure.js` | the spawn error was swallowed and an early exit waited out the 20 s timeout with no cause |
 
 ## Parked deltas (OR2.c, OR106.a)
 

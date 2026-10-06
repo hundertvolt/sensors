@@ -240,10 +240,11 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
 ## Running
 
 ```bash
-# Automated, flash tier only (real USB board, no network):
+# Automated, flash tier (L3; real USB board, no network) - runs L0-L2 first:
 scripts/run_flash_hardware_suite.sh
 
-# Automated, flash + bench tier (real USB board + real WiFi bridge):
+# Automated, bench tier (L4; real USB board + real WiFi bridge) - runs L0-L2, then L3 as its own
+# clean step, then tests_hardware/bench/:
 scripts/run_bench_hardware_suite.sh
 
 # Soak tests (long_soak marker) are NEVER bundled into either suite runner above - they always
@@ -284,40 +285,47 @@ scripts/run_manual_hardware_tests.sh --only <name>   # run just one
 scripts/run_manual_hardware_tests.sh                 # run all of them, in sequence
 ```
 
-Both automated scripts are plain `uv run pytest` wrappers - any pytest flag works (`-k <substring>`,
+Both automated runners first run L0-L2 (`scripts/_run_lower_levels.sh`: `scripts/test.sh` at both
+GC stages, `npm test`, and `scripts/run_digital_twin_ci.sh` for every device), stopping at the first
+failure before the board is touched; `--skip-lower-levels` is for debugging only and is never
+reported clean (`NOT CLEAN`, exit 4). The soak runner runs no lower level: it sits on top of a clean
+bench run. Otherwise they are pytest wrappers - any pytest flag works (`-k <substring>`,
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
-**Why both wrappers go through `scripts/_require_clean_hardware_run.sh` rather than trusting
-pytest's exit code.** That clean-skip design is what makes a run against genuinely *unreachable*
-hardware look identical at the exit-code level to a real clean run: pytest exits 0 for an
-all-skipped run exactly as it does for an all-passed one. These wrappers exist to run against real,
-attached hardware, so that ambiguity must never pass silently - every expected test has to show
-PASSED, not quietly skip. The helper therefore inspects pytest's own output (which is also why it
-runs without `set -e`) and fails on any skip beyond three deliberate classes:
+**Why the runners judge a run from its run record rather than trusting pytest's exit code.** That
+clean-skip design is what makes a run against genuinely *unreachable* hardware look identical at the
+exit-code level to a real clean run: pytest exits 0 for an all-skipped run exactly as it does for an
+all-passed one. These runners exist to run against real, attached hardware, so that ambiguity must
+not pass silently. `scripts/_require_clean_hardware_run.sh` therefore runs pytest with the
+run-record plugin (SPECIFICATION.md E.10) and hands the record to `scripts/_hardware_verdict.py`;
+the verdict reads the run record: a skip passes only as its gate's own skip with the flag absent
+(`--allow-flash-cycle`, `--soak-tier`, `--allow-multi-day-rollover-wait`, `--allow-neopixel-sweep`)
+or as the one permanent skip (SPECIFICATION.md E.6.6 `off-subnet-spoof`); a deselection is reported
+with its flag and counted; a `-m` exclusion is reported as runner selection; a recovery pass is
+counted apart. Zero passed tests fail the run, a nonzero pytest exit is passed on unchanged, and a
+`--collect-only` run reads `NOT A RUN (collection only)`. The pytest log and the record land in
+`build/archive/<runner>/<UTC>/` (the runner's name lowercased, every other character `_`), each
+runner's newest three kept; the bench runner's flash step archives as
+`run_bench_hardware_suite_flash_step`. A bench runner's test paths go to its bench step only.
 
-- `KNOWN_PERMANENT_SKIPS`, one documented, permanent entry at a time - never a way to silence a
-  real skip.
-- The opt-in gates that skip per test (`--allow-flash-cycle`, `--soak-tier`,
-  `--allow-multi-day-rollover-wait`, `--allow-neopixel-sweep`), each accepted *only* when its own
-  flag is absent from that invocation. Pass the flag and still get a skip, and it fails.
-- The gates that deselect at collection time instead (`--allow-persistence-writes`,
-  `--allow-scd30-extra-write`), which no check in that script can see at all - hence the deselected
-  count in its verdict, described under "Read the deselected count in the verdict" below.
+A test reports what it measured through the `result_note` fixture (`recovery=True` for a pass that
+needed a recovery) and a session-scoped fixture through `record_session_note()`
+(`tests_hardware/conftest.py`): both reach the run record and the summary block, which pytest's
+captured output of a passing test never would.
 
-The soak markers are a non-case for the whitelist: both general wrappers pass
-`-m "not long_soak and not multi_day_rollover"`, so those tests are deselected rather than skipped.
-The entry matters only for a direct invocation that omits that exclusion, such as
-`scripts/run_bench_soak_tests.sh`'s own `-m long_soak` selection - where `--soak-tier` *is*
-expected, making those tests "must pass" rather than "may skip".
+The soak markers never reach the verdict as skips in a suite run: both general runners pass
+`-m "not long_soak and not multi_day_rollover"`, so those tests are deselected as runner selection.
+Under `scripts/run_bench_soak_tests.sh`'s own `-m long_soak` selection `--soak-tier` *is* set,
+making those tests "must pass" rather than "may skip".
 
 ## The NeoPixel sweep rig
 
 Two flash-tier tests are gated on physical geometry rather than on wear or wall clock -
 `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` and
-`test_isl29125_survives_recombined_realistic_lighting_scenarios`, both behind `--allow-neopixel-sweep`
-and both whitelisted in `scripts/_require_clean_hardware_run.sh` so an expected skip does not read as
-a failure. What the rig needs:
+`test_isl29125_survives_recombined_realistic_lighting_scenarios`, both behind `--allow-neopixel-sweep`,
+whose skip the verdict accepts while the flag is absent, so an expected skip does not read as a
+failure. What the rig needs:
 
 - The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
   close enough that full-brightness white crosses the 375 lx range's top into the 10000 lx range.
@@ -1332,9 +1340,9 @@ genuine, surprising miscoverage plus two closeable gaps:
   from `initialize()`, itself only ever invoked internally at driver setup/task-supervisor restart -
   never through any `_push_callbacks`/REST field. There is currently no way to force this hazard on a
   live, already-running system via REST at all - a bench test would need a real reboot mid-load,
-  which would confound the very load being measured. Documented as a structural exception (module
-  docstring, `test_bus_concurrency_under_api_load.py`) rather than left implied by the
-  superficially-similar-looking worker.
+  which would confound the very load being measured. Listed as SPECIFICATION.md E.6.6 row
+  `sgp40-general-call` (and in `test_bus_concurrency_under_api_load.py`'s module docstring) rather
+  than left implied by the superficially-similar-looking worker.
 - **SGP40 was never schema-sanity-checked in any bench GET worker at all** - `_schema_sanity_findings()`
   checked SCD30/BMP3xx/ISL29125's own config fields but no SGP40 field, so a torn/corrupted VOC
   reading under bench load would have gone completely undetected. Closed: checks `SGP40.VOC` against
@@ -1380,8 +1388,8 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   readback of a pushed `Range` needs auto-ranging off first.
 - **FRAM's write-protect gate (`get_write_protected()`/`set_write_protected()`) had real flash-tier
   coverage with its own bench-vs-flash split never written down anywhere**, unlike storage-pause
-  gating's own explicitly-documented split. Confirmed structural (E.6.6 exception 2: neither method
-  has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
+  gating's own explicitly-documented split. Confirmed structural (E.6.6 row `fram-write-protect-no-rest`:
+  neither method has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
 - **`SystemService.start_and_check_tasks()`'s own real restart-a-dead-task mechanism had no
   real-hardware test at all** - the exact recovery rung CLAUDE.md's memory-safety-discipline rule
   leans on ("trust `system_service.py`'s task supervisor to restart a task that still dies"), proven
@@ -1403,18 +1411,8 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   `test_sensor_config_push_over_real_hardware.py` - proves the real `auto_led_override()` background
   task actually decrements the pushed value to 0 on real hardware, not just that the PUT stuck.
 
-**Confirmed structural exceptions (no fix possible, recorded so the absence reads as a decision, not
-a gap):**
-
-- **`PUT /notification`'s `lightCmdLED` field has no bench-tier equivalent, and currently cannot** -
-  it drives the Neopixel directly, and WS2812 has no read protocol at all (the same reason its own
-  timing check is manual-only - see the Known assumptions entry above). Not fixable without a real
-  scope/logic-analyzer in the bench rig's own automated toolchain.
-- **Neopixel/WS2812 signal timing** - already a documented structural exception (Known assumptions
-  entry above); reconfirmed still accurate, not re-litigated.
-- **SCD30's real IRQ-pin edge** - an already-documented structural exception; reconfirmed, not
-  re-litigated. Its same-device write-vs-own-read is none: `PUT /sensors` reaches SCD30's NVM
-  through its chip store (Eighth pass).
+**Exceptions this pass confirmed** are rows of SPECIFICATION.md E.6.6: `ws2812-no-readback`
+(`lightCmdLED` and the WS2812 timing) and `scd30-rdy-irq-vs-fallback` (the SCD30 IRQ-pin edge).
 
 **Named, not fixed this pass** (real, credible findings from the domain sweeps below, each requiring
 either a dedicated real-hardware session to get right or a project-owner decision this pass
@@ -1435,16 +1433,8 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
   for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
   already has `_CMD_ECHO`/`_set_callback` wired for exactly this. **Scratched (owner, 2026-09-25)**:
   wiring a periodic SET into the live loop changes `src/` for the test alone, which `src/` never gets.
-- **The mock-tier UART hazard catalog (~20 fault-injection scenarios: corruption, drop, truncate,
-  duplicate, receive-overrun, lost-final-ACK, peer-reset-mid-transaction, and more) has only two
-  real-hardware equivalents (silence, baud desync).** Plausibly a genuine E.6.6 structural exception
-  (no MITM device sits on the crossover jumper to corrupt/drop/duplicate real bytes) but - unlike the
-  SCD30/FRAM-write-protect precedents above - this was never actually written down as one anywhere,
-  and a hand-built corrupt frame via a second raw `machine.UART` write (the same technique the mock
-  tier's own `raw_frame()` helper uses in-process) is at least plausible. **Answered 2026-09-22
-  (owner): it is a structural exception, for now.** Fault-injection hardware will come one day but
-  is not available, so the catalog stays mock-only and is recorded as Part E.6.6's fourth
-  exception rather than improvised with a second raw UART. Revisit when that hardware exists.
+- **The mock-tier UART hazard catalog (~20 fault-injection scenarios) has only two real-hardware
+  equivalents (silence, baud desync)**: SPECIFICATION.md E.6.6 row `uart-fault-catalog`.
 - **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.**
   The technique to exhaust a real alarm pool already exists on real hardware
   (`fram_pause_unpause_and_gating.py`), so a flash-tier script is straightforward in principle - it
@@ -1529,24 +1519,25 @@ run that reaches the hotspot module, plus `_recover_stale_dut_credentials()`'s S
 where the DUT cannot rejoin the bench AP. That is the deliberate cost of the owner's rule, not an
 oversight — gating them would deselect the dozen-odd tests they exist to enable.
 
-**Read the deselected count in the verdict.** Because the gate deselects at collection time rather
-than skipping per test, a gated run is invisible to every check in
-`scripts/_require_clean_hardware_run.sh` — so that script now names the count in its own OK line
-(13 of the bench tier's 73 tests, 9 of the flash tier's 51, as of this writing - measured by real
-`--collect-only` runs, not estimated). "Clean" there means
-"everything that ran, passed", not "everything ran".
+**Read the deselections in the verdict.** Because the gate deselects at collection time rather than
+skipping per test, each deselected test carries a `deselected_by` property naming its flag, and the
+run record's report lists it under `Deselected:` with that flag, counted and named as not covered
+by this run; the advice line names only the flags of the wear-gate deselections present. "Clean"
+there means "everything that ran, passed", not "everything ran".
 
 **Mechanism:**
 
 - `tests_hardware/conftest.py`'s `pytest_collection_modifyitems()` is the single deselection point:
   it deselects every `persistence_write`-marked item when `--allow-persistence-writes` is absent, and every
   additionally `scd30_extra_write`-marked item when `--allow-scd30-extra-write` is absent. No test
-  checks either flag inline. This matters beyond style: `scripts/_require_clean_hardware_run.sh`
-  fails a run on any *unexpected* `SKIPPED` test, and has no allowance for either SCD30 flag the way
-  it does for `--allow-flash-cycle`/`--soak-tier`/`--allow-multi-day-rollover-wait` — a plain
-  `scripts/run_flash_hardware_suite.sh` invocation (no extra flags) needs the SCD30 tests to
-  disappear from the run cleanly. Collection-time deselection reports as `N deselected` in pytest's
-  own summary line, never a per-test `SKIPPED`, so that script's grep never needs an entry for it.
+  checks either flag inline. This matters beyond style: the verdict (`scripts/_hardware_verdict.py`)
+  fails a run on any unexpected skip and accepts a skip only from a per-test gate whose flag is
+  absent (`--allow-flash-cycle`/`--soak-tier`/`--allow-multi-day-rollover-wait`/
+  `--allow-neopixel-sweep`), so a plain `scripts/run_flash_hardware_suite.sh` invocation needs the
+  SCD30 tests out of the run as deselections. Each one is tagged
+  `("deselected_by", "--allow-persistence-writes")` or `("deselected_by", "--allow-scd30-extra-write")`
+  in its `user_properties` before pytest's deselection hook, so the run record tells a wear-gate
+  deselection from a runner's `-m` exclusion.
 - Every test that depends on `scd30_continuous_measurement_triggered`, directly or transitively,
   carries `@pytest.mark.persistence_write` — the 6 routine-group tests, plus two ISL29125-named tests
   (`test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`,

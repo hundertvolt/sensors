@@ -900,7 +900,7 @@ no-op, and CLAUDE.md says not to simplify that one away.
 **The coverage rerun is its own job**, `unit-tests-coverage`, for the same reason `web-coverage` is
 separate from `web-unit-tests`: `timeout-minutes` gates a whole job, not its real step, so a slow
 instrumented rerun can kill a test step that already passed. Measured on run `34755468619`
-(2026-09-13): the plain suite reported `60/60 files passed / ALL PASSED`, the `--coverage` rerun
+(2026-09-13): the plain suite had passed, 60 of 60 files, the `--coverage` rerun
 then ran 13m24s longer, and the 30-minute cap cancelled the job — skipping `digital-twin-e2e` too,
 on a tree with nothing wrong with it. Its coverage report gates nothing and its test result does
 (E.5.3), so it gets its own budget either way.
@@ -2234,23 +2234,9 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   multi-offset sweep is structurally impossible under that budget, not a design choice to skip it.
   Every other real write the sweep exercises (BMP3xx's/ISL29125's own config registers, both
   volatile per their datasheets) has no such budget and runs fully unrestricted on real hardware too.
-- **Flash-tier bus-hazard coverage is always a subset of bench-tier coverage, never the other half**
-  — whatever gets added to `tests_hardware/flash/test_bus_concurrency.py` gets a bench-tier
-  counterpart in `tests_hardware/bench/test_bus_concurrency_under_api_load.py` too, driven through
-  the real HTTP/REST stack instead of the bare driver (a `PUT`/`GET` pair reaching the same real I2C
-  write/read the flash-tier script drives directly). Two allowed, structural exception shapes — both
-  must be recorded explicitly as such, never left as a silent asymmetry between the tiers:
-  1. **No REST-layer path exists to the write at all** — SCD30 is not one: `PUT /sensors` reaches
-     SCD30's NVM through its chip store (`_set_mgr_cfg()`, compare-before-write), so a bench
-     counterpart of its write hazards is added behind `persistence_write` or its wear reason is
-     listed (E.6.6 item 2).
-  2. **The hazard's own trigger is only reachable at driver setup/task-restart, never on a live,
-     already-running system** — e.g. SGP40's real general-call broadcast only fires from
-     `SGP40_I2C._reset()`, itself only called from `initialize()` at setup time; the one REST field
-     that superficially resembles a trigger (`SGPResetVOC`) calls a software-only
-     `vocalgorithm_reset()` instead and never reaches it. A bench test cannot force this hazard
-     without a real reboot mid-load, which would confound the very load under test — confirmed by
-     reading the real call chain, not assumed from the field's name.
+- **Flash-tier bus-hazard coverage is always a subset of bench-tier coverage** — whatever gets added
+  to `tests_hardware/flash/test_bus_concurrency.py` gets a bench-tier counterpart driven through the
+  HTTP stack; every exception is a row of E.6.6's one list.
 - **`test_bus_hazard_multi_device.py` is the permanent home** for generic hazard shapes (owner,
   2026-09-15, `24d74a5`) — each test in it takes its own necessity verdict; it holds genuinely
   generic, driver-agnostic hazard shapes (item 1 above), run unconditionally alongside the generated
@@ -2840,13 +2826,14 @@ the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`, `build_w
 like `scripts/_digital_twin_ci_suite.py`, `tests_hardware/`'s pytest-level marker gating, the
 error catalog against every logging call, and cross-file invariants that can only be checked by
 reading real source text (`scripts/test.sh`'s own step ordering; the `outer_cap_s` ceiling's
-mirrors, Part H.4).
+mirrors, Part H.4). A host test whose build or toolchain input is missing fails, never skips.
 
 `scripts/test.sh` runs both suites. **It launches pytest first but does not wait for it** — the
 pytest tier is backgrounded so its single-process runtime overlaps the whole MicroPython loop
-instead of serializing in front of it, and both are reaped by one `wait` at the end (it counts
-against the same `TEST_PARALLELISM` budget as any test file, and carries its own `timeout` for the
-standing "hanging tests are never allowed" rule). One ordering constraint follows from that
+instead of serializing in front of it, and reports its counts through a run record that
+`scripts/test.sh` reads into its summary block (E.10); both are reaped by one `wait` at the end (it
+counts against the same `TEST_PARALLELISM` budget as any test file, and carries its own `timeout`
+for the standing "hanging tests are never allowed" rule). One ordering constraint follows from that
 concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before** the
 background launch, because one `tests_scripts/` test necessarily writes a throwaway
 `devices/zz_test_*.toml` into the live tree.
@@ -2883,11 +2870,18 @@ file (a segfault, E.3) left behind. A real `rm -rf` rather than a MicroPython `o
 whose cost grows with the entry count — the very `MemoryError` that design replaced. Both sweeps
 no-op on CI, which starts from a fresh checkout.
 
+**Evidence archive**: every runner — `scripts/test.sh`, the hardware runners — moves its logs and
+reports under `build/archive/<runner>/<UTC>/` (`scripts/_archive_evidence.py`) and keeps the last
+three per runner; a failed run's logs are archived before the run deletes its scratch, and the run
+prints the archive's path.
+
 ## E.2 Test framework
 
-`microtest.py` is a minimal collector/runner (find every `test_*` function, call it, report
-PASS/FAIL, exit non-zero on failure) — not CPython's `unittest`, unavailable on the Unix port's
-"standard" build. Plain `assert`.
+`microtest.py` is a minimal collector/runner — not CPython's `unittest`, unavailable on the Unix
+port's standard build. It calls every `test_*` function and reports PASS, FAIL or SKIP
+(`microtest.Skip(reason)`, counted and listed), closing with `<P>/<T> passed, <F> failed, <S>
+skipped`; a file that collects nothing fails, and any failure exits non-zero (a skip is not one).
+Plain `assert`.
 
 ## E.2.1 Per-device scenario libraries: one process per device
 
@@ -2961,7 +2955,11 @@ Annotations are served by the checks API, while runner logs come from a storage 
 environments (a cloud session among them) cannot reach. `tests_scripts/test_test_sh.py` pins it,
 including that a missing log can never abort the summary the annotation is part of. **Never write
 the verdict to `$GITHUB_STEP_SUMMARY`**: job summaries are in no API, and a nested `scripts/test.sh`
-would append to its parent's.
+would append to its parent's. The annotations come first; the run ends with the summary block of
+E.10, per level.
+
+A usage or setting error — an unknown option, an invalid `GC_THRESHOLD`, `PER_FILE_TIMEOUT_S`,
+`TESTS_SCRIPTS_TIMEOUT_S` or `TEST_PARALLELISM` — exits 2 before the run touches the live tree (E.10).
 
 ### E.3.1 The Unix-port test heap, and the two timeouts around each file
 
@@ -2992,9 +2990,12 @@ recorded here because it is never raised as a fix (agent, 2026-09-17; no per-fil
 for the "hanging tests are never allowed" rule, not the fix for any specific hang — the CI hang it
 was written during was really `test_asy_uart_driver.py` using a real `select.poll()` against a fake
 UART, and an isolation run with the timeout and `stdbuf` reverted passed 8/8 (CLAUDE.md's known-hang
-note). Two retries absorb transient contention; a third consecutive timeout on one file is a real
-failure. `stdbuf -oL -eL` forces line buffering, since MicroPython block-buffers 4096 bytes whenever
-stdout is not a tty.
+note). Two retries absorb transient contention; a pass after a retry is reported as `RETRIED-PASS`,
+a root-cause item, never as a plain pass; a third consecutive timeout on one file is a real failure.
+`PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S` and `TEST_PARALLELISM` are validated as positive
+integers before any sweep (exit 2 otherwise, E.10). Every attempt's output stays in the file's log,
+so the memory gate reads a timed-out attempt too. `stdbuf -oL -eL` forces line buffering, since MicroPython
+block-buffers 4096 bytes whenever stdout is not a tty.
 
 The 240s default came from 180s when the real-socket webserver-concurrency scenarios grew ~35s past
 comfort. **Per-file overrides exist but the table is empty**: the per-device splits brought the two
@@ -3016,8 +3017,8 @@ GC_THRESHOLD=32768 scripts/test.sh
 own body executes, and propagates its exit code unchanged — so the (f) stage fails a file exactly
 where the plain run would. The value is validated once in `scripts/test.sh` rather than 85 times
 inside the runner: a non-integer, or anything outside the rp2040's own 32-bit machine word, is
-rejected before the run touches the live tree. `--coverage` has its own runner and says so out loud
-when both are given, rather than silently ignoring the threshold.
+rejected before the run touches the live tree (exit 2). `--coverage` has its own runner and says so
+out loud when both are given, rather than silently ignoring the threshold.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
@@ -3058,20 +3059,21 @@ writing the reachable case.
 scripts/test.sh --coverage
 ```
 
-Reports `src/` line coverage only. No threshold enforced anywhere — CI reports numbers, never
-gates. `coverage.py` only runs under CPython while `src/` only runs under the Unix port, so
-collection and reporting are two stages: `tests/_coverage_runner.py` runs *inside* MicroPython via
-`sys.settrace`, recording every executed line under `src/` and dumping JSON;
-`scripts/_render_coverage.py` (CPython) merges the dumps, feeds them into `coverage.py` via
-`CoverageData.add_lines()`, and renders HTML/XML/markdown. Produces (gitignored, at repo root):
-`htmlcov/index.html`, `coverage.xml`, `coverage_summary.md`. Locally nothing opens automatically. On
-GitHub: `coverage_summary.md` appends to the run's Job Summary; `htmlcov/` uploads as a downloadable
-artifact; `coverage.xml` uploads to Codecov, but that account-linking hasn't been done, so it
-currently no-ops silently. Runs in its own `unit-tests-coverage` CI job (Session 8's
-closing-consistency-pass PR split it out of `unit-tests` proper) — this pass re-runs the whole
-real-interpreter suite a second time under `sys.settrace`, so keeping it off `unit-tests`' own
-critical path means `digital-twin-e2e`/`firmware-build-verify` (which only need `unit-tests`' own
-toolchain-cache population, never this job's report) no longer wait on it.
+Reports `src/` line coverage only. No threshold enforced anywhere — CI reports numbers, never gates.
+`coverage.py` only runs under CPython while `src/` only runs under the Unix port, so collection and
+reporting are two stages: `tests/_coverage_runner.py` runs *inside* MicroPython via `sys.settrace`,
+recording every executed line under `src/` and dumping JSON; `scripts/_render_coverage.py` (CPython)
+merges the dumps, feeds them into `coverage.py` via `CoverageData.add_lines()`, and renders
+HTML/XML/markdown. Produces (gitignored, at repo root): `htmlcov/index.html`, `coverage.xml`,
+`coverage_summary.md`; a `--coverage` run first moves the previous run's coverage outputs into the
+evidence archive (E.1). Locally nothing opens automatically. On GitHub: `coverage_summary.md`
+appends to the run's Job Summary; `htmlcov/` uploads as a downloadable artifact; `coverage.xml`
+uploads to Codecov, but that account-linking hasn't been done, so it currently no-ops silently. Runs
+in its own `unit-tests-coverage` CI job (Session 8's closing-consistency-pass PR split it out of
+`unit-tests` proper) — this pass re-runs the whole real-interpreter suite a second time under
+`sys.settrace`, so keeping it off `unit-tests`' own critical path means
+`digital-twin-e2e`/`firmware-build-verify` (which only need `unit-tests`' own toolchain-cache
+population, never this job's report) no longer wait on it.
 
 ### E.5.1 Reading the numbers: three systematic false-negative patterns, not missed test cases
 
@@ -3187,8 +3189,8 @@ The fix separates the two signals rather than making the whole rerun gating, whi
 
 Both `_render_coverage.py` invocations are `|| coverage_render_failed=1`-guarded for this: under
 `set -euo pipefail` a bare call would abort the script with the *renderer's* exit code, which a
-caller cannot tell from a failed test. The summary line says which happened
-(`Result: TESTS PASSED, COVERAGE RENDERING FAILED`), and the owner's decision of 2026-09-22 chose
+caller cannot tell from a failed test. The summary block says which happened
+(`Result: PASS (coverage report not rendered)`, E.10), and the owner's decision of 2026-09-22 chose
 this split over the alternative of running one settrace-built file in a gating lane.
 
 ## E.6 Shared behaviors and the real-hardware test tier
@@ -3199,30 +3201,39 @@ self-wrapped" — regression coverage for A.8's `.update()` bug); every other RE
 scanned was either too structurally different or too trivial to be worth sharing (E.6.5) — further
 sharing is not forced onto genuinely backend-specific coverage (agent, 2026-09-04, `8080538`).
 
-**`tests_hardware/`** — a top-level tier for tests needing real RP2040 hardware over `mpremote`
-(flash tier) and/or a real WiFi bridge (bench tier, a strict superset of flash), under CPython/
-pytest orchestrating `mpremote`/`nmcli`/`iptables`. `tests_hardware/manual/` (never collected by
+**`tests_hardware/`** — the levels needing real RP2040 hardware over `mpremote` (L3 flash) and/or a
+real WiFi bridge (L4 bench, a strict superset of L3), under CPython/pytest orchestrating
+`mpremote`/`nmcli`/`iptables`. `tests_hardware/manual/` (never collected by
 pytest) holds tests needing a human's hands, kept structurally apart so an automated pass never
 silently stalls waiting on one.
 
 **Real-hardware execution is standing practice**, on the bench Pi4, always under the project
-owner's go-ahead given directly in the running session (CLAUDE.md). Both tiers run clean end to end
-on real hardware; the earlier WiFi-reconnection flakiness this section used to flag is root-caused
-and mitigated (`tests_hardware/README.md`'s "Known assumptions and open findings").
+owner's go-ahead given directly in the running session (CLAUDE.md). L3 and L4 run end to end on
+the bench (`tests_hardware/README.md`'s "Known assumptions and open findings").
 `tests_hardware/` and `tests_scripts/` are both in lint/type-check scope: `scripts/lint.sh` runs
 ruff over `tests_hardware/` in full, and `host_typecheck.ini`'s CPython pass covers it —
 `device_scripts/` excluded there, being real MicroPython code the main `[tool.mypy]` pass checks
 instead. See CLAUDE.md's eight scopes.
 
-### E.6.1 The five-backend model
+### E.6.1 The level ladder (L0-L4)
 
-| | **mock** | **twin** | **flash** | **bench** | **manual** |
-|---|---|---|---|---|---|
-| Executes on | Unix-port, `tests/machine.py` fakes | Unix-port, `digital_twin/` fakes (real asyncio graph) | real RP2040, USB serial | real RP2040, USB + real WiFi bridge | rides on flash or bench |
-| Fault injection | synthetic, in-process | synthetic, higher-fidelity, same interface shape | none | real (bridge host: AP down/up, `iptables`, station kick) | a human closes the loop |
-| Proves | raw bus byte/frame correctness, schema boundaries, NAK/CRC error paths | realistic stateful/concurrent/timing/persistence behavior of the whole system | real timing, WDT reset, Timer/IRQ, flash/littlefs persistence, BOOTSEL | real lwIP/WiFi transport, real fault-injected scenarios | unplug/replug, genuine power loss, a real second device joining a hotspot |
+| Level | Tests | Runs on | Fault injection | Proves | Command | GC stages |
+|---|---|---|---|---|---|---|
+| **L0 host** | `tests_scripts/` (pytest, CPython) and `tests_js/` (vitest, `npm test`) | everywhere | — | the host build chain, `buildgen/`, the website, cross-file invariants (E.1, H.8) | `scripts/test.sh` (its pytest tier), `npm test` | — |
+| **L1 unit** | `tests/test_*.py` except `tests/test_digital_twin_*.py` | everywhere: Unix port, `tests/machine.py` fakes | synthetic, in-process | raw bus byte/frame correctness, schema boundaries, NAK/CRC error paths | `scripts/test.sh` | `-1`, then `GC_THRESHOLD=32768` on a second `scripts/test.sh` run |
+| **L2 twin** | `tests/test_digital_twin_*.py` (run by `scripts/test.sh`) and `scripts/run_digital_twin_ci.sh <device>` for every device of `devices/*.toml` | sandbox and CI: Unix port, `digital_twin/` fakes (real asyncio graph) | synthetic, higher-fidelity, same interface shape | realistic stateful/concurrent/timing/persistence behavior of the whole system | `scripts/test.sh`, `scripts/run_digital_twin_ci.sh <device>` | the `tests/test_digital_twin_*.py` part as L1; `run_digital_twin_ci.sh` runs both stages itself |
+| **L3 flash** | `tests_hardware/flash/` (+ `device_scripts/`) | L2 plus a real RP2040 on USB serial | none | real timing, WDT reset, Timer/IRQ, flash/littlefs persistence, BOOTSEL | `scripts/run_flash_hardware_suite.sh` | the two-image release proof (below) |
+| **L4 bench** | `tests_hardware/bench/` | L3 plus the host's real WiFi bridge | real (bridge host: AP down/up, `iptables`, station kick) | real lwIP/WiFi transport, real fault-injected scenarios | `scripts/run_bench_hardware_suite.sh` | the two-image release proof (below) |
 
-`bench` ⊇ `flash` (same board, same one-time flash). `manual` is an execution *mode*, not a tier.
+L3 and L4 prove both GC stages through the two-image release proof: once, in the final hardware
+phase, a `dev` image built without the threshold runs the full flash and bench levels first, then the
+normal image (owner, 2026-09-26).
+
+**Containment holds in both senses (owner, 2026-09-26)**: (a) execution — each hardware runner runs
+every lower level first (`scripts/_run_lower_levels.sh`); (b) scenarios — L3 ∪ L4 ⊇ L2 and L4 ⊇ L3
+(`tests_scripts/test_level_containment.py`). `manual` is an execution mode of L3/L4, not a level: it
+rides on a flash or bench board and a human closes the loop (unplug/replug, genuine power loss, a
+real second device joining a hotspot).
 
 **Credential rotation is deliberately not a bench capability** (owner decision, 2026-09-22). The
 harness carried a real `nmcli`-driven `BenchBridge.rotate_ap_password()` with zero call sites, so
@@ -3239,14 +3250,14 @@ The general pattern behind `_shared_rest_roundtrip.py`: pull only backend-agnost
 shared layer of plain functions taking a small explicit capability object (a `driver_factory()`, an
 `http_client`, a `reboot()` callable, a `raise_on(...)` fault-injection callable) rather than a raw
 driver. Each backend supplies just that narrow adapter, never a reimplementation — mock constructs
-in-process; twin drives via `digital_twin/_http_client.py`; flash/bench isolated-driver uses one
-generic `mpremote run`-backed mechanism; flash/bench live-system uses a real HTTP client mirroring
+in-process; twin drives via `digital_twin/_http_client.py`; L3/L4 isolated-driver uses one
+generic `mpremote run`-backed mechanism; L3/L4 live-system uses a real HTTP client mirroring
 the twin's interface closely enough to run the same shared test body by swapping the client object;
 bench fault-injection is the real equivalent of the twin's synthetic surface (`flash` has no
-adapter here, correctly — no bridge to control). What stays out: mock's raw byte/frame assertions,
-twin's persistence/IRQ/random-walk behavior, real-hardware-only electrical/timing checks.
-Documentation discipline (each shared function's docstring states applicable/N/A backends), not an
-automated check.
+adapter here, correctly — no bridge to control). What stays out: L1's raw byte/frame assertions and
+real-hardware-only electrical/timing checks; a twin scenario without an L3/L4 counterpart is a row of
+E.6.6. Each L3/L4 module names the twin scenarios it covers (`COVERS_TWIN_SCENARIOS`), checked by
+`tests_scripts/test_level_containment.py`.
 
 ### E.6.3 Real-hardware harness: honoring "no extra flash cycles"
 
@@ -3260,7 +3271,9 @@ about *flashing* only). **One load-bearing exception**: a trailing soft reset on
 (e.g. the already-running `main.py`'s own WiFi task); only a genuine `hard_reset()` reliably
 resumes the live system.
 
-### E.6.4 Hotspot role-reversal (bench, single-radio)
+A hardware run's verdict reads its run record (E.10), never a grep of its output.
+
+### E.6.4 Hotspot role-reversal (L4, single-radio)
 
 The RP2040's own hotspot/AP mode is untestable in the digital twin (no AP-mode DHCP/second-radio
 model). `tests_hardware/bench/test_hotspot_role_reversal.py` closes this on real hardware: the
@@ -3272,56 +3285,51 @@ so a failed real-credential PUT lands in `_PHASE_DEACTIVATED` (a terminal state,
 falling back to hotspot — hence the fixture's real `hard_reset()` fallback if the reachability wait
 times out. The hotspot's SSID/password are fully deterministic, needing no scan/discovery.
 
-### E.6.5 Mock vs. digital-twin: overlap scan
+### E.6.5 L1 vs. L2: overlap scan
 
-Six subsystem pairs scanned in full: BMP3xx, SGP40, FRAM (166 mock vs. 18 twin tests), Neopixel/
+Six subsystem pairs scanned in full: BMP3xx, SGP40, FRAM (166 L1 vs. 18 L2 tests), Neopixel/
 WiFi, Webserver, Sensortask each found complementary, with only small pockets of intentional or
 low-value duplication — one real cluster (Sensortask: 4 near-identical "same REST round-trip, once
 direct, once over real HTTP" pairs) is the cluster `_shared_rest_roundtrip.py` targets.
 Consolidation should target that specific shape, not force uniformity onto pairs already correctly
 complementary (agent, 2026-09-04). **This complementary relationship is about which *aspect* of a
-behavior each backend proves (E.6.1's own table) — it does not exempt real-hardware-facing behavior
+behavior each level proves (E.6.1's own table) — it does not exempt real-hardware-facing behavior
 from needing a real-hardware check at all; see E.6.6.**
 
-### E.6.6 Real-hardware parity requirement
+### E.6.6 Level-containment exceptions
 
-**Standing rule (project owner's direction): every mock/digital-twin test that exercises
-real-hardware-facing behavior needs a real-hardware equivalent, wherever technically possible** —
-a real bus transaction shape, real timing, a real fault-injection scenario, a real REST endpoint
-that reaches real hardware state, and so on. This generalizes what SPECIFICATION.md Part C.8's own
-bus-hazard promotion checklist already requires for that one domain (mock → twin → flash → bench,
-with flash ⊆ bench per E.6.1) to the whole test suite — C.8 is an instance of this rule, not a
-special case of it. A gap here is a real gap to close, the same way a missing bus-hazard tier is,
-not a documentation nicety.
+**Standing rule (owner, 2026-09-26): every L1/L2 test that exercises real-hardware-facing behavior
+needs an L3/L4 counterpart, wherever technically possible** — a real bus transaction shape, real
+timing, a real fault-injection scenario, a real REST endpoint that reaches real hardware state, and
+so on. It is E.6.1's containment in the scenario sense (L3 ∪ L4 ⊇ L2, L4 ⊇ L3); C.8 is an instance
+of this rule — its bus-hazard checklist applied to one domain — not a special case of it. A gap here
+is a real gap to close, not a documentation nicety.
 
-This does **not** override four already-established, deliberate exceptions — the rule is scoped by
-them, not in tension with them:
+Every exception is one row of this table, read by `tests_scripts/test_level_containment.py`; a row
+keeps its actor and date. SCD30's NVM write has a REST path: `PUT /sensors` reaches it through its
+chip store (`_set_mgr_cfg()`, compare-before-write), so a bench counterpart spends real NVM wear and is
+added behind `persistence_write`; until it exists, row `scd30-writer-under-api-load` lists the gap.
 
-1. **Only `dev` is ever physically bench-tested** (CLAUDE.md's own hard rule). `wozi`/`arzi`/
-   `klkizi`/`grkizi`/`schlafzi` have no real board to flash at all, so real-hardware parity for
-   anything specific to one of them is structurally impossible, not a gap to chase — their own
-   correctness is established entirely through mock/twin, by design (CLAUDE.md's "WoZi is the
-   exemplary/base variant" entry). Only `dev`'s own real wiring/behavior can ever be checked for a
-   missing real-hardware counterpart under this rule.
-2. **A behavior with no real API/hardware surface to reach it at all** cannot get a real-hardware
-   test for that specific path. SCD30's NVM write is not one: `PUT /sensors` reaches SCD30's NVM
-   through its chip store (`_set_mgr_cfg()`, compare-before-write); a bench counterpart spends real
-   NVM wear, so it is added behind `persistence_write` or its wear reason is listed. Document the
-   structural absence explicitly, the way C.8 now does, rather than leaving it as a silent,
-   unexplained gap — a documented structural exception is compliant with this rule; a silently
-   missing test is not.
-3. **A behavior only a human can verify** (a visual/instrument check, genuine power loss, a
-   calibrated-reference accuracy claim) gets `tests_hardware/manual/` coverage instead of an
-   automated one — `manual` is a different *execution mode* of the same real-hardware tier (E.6's
-   own "`manual` is an execution mode, not a tier"), not a waiver from this rule.
-4. **The UART fault-injection catalog stays mock-only until injection hardware exists** (owner
-   decision, 2026-09-22). `tests/`'s ~20 scenarios — corrupted byte, truncated frame, duplicate,
-   receive overrun, lost final ACK, peer reset mid-transaction — have only two real-hardware
-   equivalents (silence, baud desync), because nothing sits on `dev`'s crossover jumper to corrupt,
-   drop or duplicate real bytes. The alternative considered and declined was hand-building a corrupt
-   frame from a second raw `machine.UART`: the owner's answer is that fault-injection hardware will
-   come one day but is not available, so this is a class-2 exception for now rather than a gap to
-   close by improvisation. Revisit when that hardware exists.
+| ID | Scenario/behaviour | Missing level(s) | Reason | Decision | Reviewed at close |
+|---|---|---|---|---|---|
+| `dev-only-bench` | every device's real-hardware behaviour except `dev`'s | L3, L4 | only `dev` has a bench board; every other device is built and tested alike and proven at L0-L2 (no device but `dev` has a role of its own, owner, 2026-10-02; CLAUDE.md's `dev` rule) | (owner, 2026-09-03) | — |
+| `sgp40-general-call` | the SGP40 general-call reset (`SGP40_I2C._reset()`) under live API load | L4 | it fires at every SGP40 task start and restart, never from a REST field (`SGPResetVOC` reaches only the software `vocalgorithm_reset()`); a bench test cannot force it without a reboot mid-load, which would confound the load under test; its hazard tests stay at every other level | (owner, 2026-09-26) | — |
+| `uart-fault-catalog` | the ~20 injected UART faults (corrupted byte, truncated frame, duplicate, receive overrun, lost final ACK, peer reset mid-transaction) | L3, L4 | no injection hardware will be bought, and a second raw `machine.UART` is never used as a stand-in; on silicon the flash level covers silence and a baud mismatch (`uart_crossover_recovery.py`) | (owner, 2026-09-22) | — |
+| `ws2812-no-readback` | `lightCmdLED` and the WS2812 signal timing | automated L3, L4 (manual mode only) | the WS2812 has no read protocol, so only a human judges its output | (agent, 2026-09-15, `278cf60`) | — |
+| `human-only` | visual, power-loss and reference-meter checks | automated L3, L4 (manual mode only) | only a human can close the loop; they run in manual mode, an execution mode of L3/L4 | (agent, 2026-09-15, `c1b7e27`) | — |
+| `twin-instrument` | `test_digital_twin_generic_wiring` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
+| `twin-instrument` | `test_digital_twin_http_client` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
+| `twin-instrument` | `test_digital_twin_launch` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
+| `twin-instrument` | `test_digital_twin_machine` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
+| `twin-instrument` | `test_digital_twin_run_generic_integration` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
+| `twin-instrument` | `test_digital_twin_unix_port_gc_unwedge` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
+| `off-subnet-spoof` | `test_spoofed_off_subnet_source_address_is_ignored` (`bench/test_hotspot_role_reversal.py`), the one permanent L4 skip | L4 | a real rogue-NTP spoof needs an off-subnet host the bench lacks; the skip stays only if a real-bench attempt shows unreasonable effort or covers nothing an L1-L3 test cannot | (owner, 2026-09-28) | — |
+| `scd30-rdy-irq-vs-fallback` | the SCD30 RDY-pin IRQ path against its polling fallback | L3, L4 | software cannot tell the two apart on real hardware | (owner, 2026-09-25) | — |
+| `scd30-non-finite-words` | an SCD30 measurement word that decodes non-finite | L3, L4 | the real SCD30 cannot be made to emit one | (owner, 2026-09-25) | — |
+| `fram-write-protect-no-rest` | `get_write_protected()`/`set_write_protected()` | L4 | no REST route reaches them; L3 only (`flash/test_fram_storage.py`) | (agent, 2026-09-15, `278cf60`) | — |
+| `bus-fault-injection` | `ci_suite._run_3_sustained_bus_fault_matrix` and `ci_suite._run_4_bus_fault_persistence_sweep`: synthetic bus faults | L3, L4 | they need a programmable fault-injection rig, and none will be bought; a genuinely wedged bus stays a manual check | (owner, 2026-09-22) | — |
+| `scd30-writer-under-api-load` | the SCD30 config write against its siblings' reads under API load | L4 | its bench counterpart spends real SCD30 NVM wear and is added behind `persistence_write`; until then this row lists the gap | (agent, 2026-10-06) | — |
+| `flash-only-bus-checks` | the ISL29125 interrupt edge against its fallback, the live-bus address sweep, FRAM same-device read/write, the FRAM CS-pin hijack and hard-reset race, `deinit()` and the bus singletons | L4 | driver- and pin-level behaviour that no REST route reaches, so a bench test can neither drive nor observe it through the API | (agent, 2026-10-06) | — |
 
 **Out of scope entirely**: a test with no hardware-facing behavior to verify in the first place
 (`math_helpers` formulas, config-schema validation, pure JSON/string handling, buildgen's own
@@ -3513,16 +3521,74 @@ quarter_size)`, assuming a trend's standard error shrinks with independent-sampl
 `quarter_size` grows. It doesn't — consecutive 25ms `gc.mem_free()` samples are heavily
 autocorrelated (the same reactive-GC-paced heap barely moves between two adjacent readings), so the
 formula was tightening fastest exactly where real per-run noise needed it loosest. `_mem_trend()`
-(`scripts/_digital_twin_ci_suite.py`) now derives the tolerance from each attempt's own observed
+(`scripts/_digital_twin_ci_suite.py`) now derives the tolerance from each run's own observed
 noise — each quarter's own internal spread, never the early-vs-late difference itself, so a genuine
 leak's own decline can't inflate the very tolerance meant to catch it — instead of a historical
-constant extrapolated through a scaling law real sampling never matched. `_run_11_soak()` also
-retries once — a second fully independent clean boot — before failing on the trend check
-specifically, the same standard E.8's "a guard is only established by removing what it guards and
-watching it fail" already sets: a real leak reproduces past tolerance on both independent boots,
-transient noise essentially never does. Never retries an HTTP/watchdog/shutdown failure — those
-aren't this measurement's own known noise source, and finding one still ends the run immediately,
-same as before.
+constant extrapolated through a scaling law real sampling never matched. `_run_11_soak()` makes one boot
+and decides on its trend check: a retry or a longer timeout never counts as a race fix (owner,
+2026-09-26), so a trend past tolerance fails the run, and an HTTP, watchdog or shutdown failure ends
+it at once.
+
+## E.10 The runner summary block
+
+Every runner ends with the same block (owner, 2026-09-25) — `scripts/test.sh`, `scripts/lint.sh`,
+`scripts/typecheck.sh`, the twin CI suite (`scripts/_digital_twin_ci_suite.py`), `npm test`, the
+hardware runners and the manual runner. It is printed last on stdout, nothing after it:
+
+```
+== Summary: <runner> ==
+Commit: <git rev-parse --short HEAD>[ (uncommitted changes)]
+Levels: <L0 PASS · L1 PASS · …>
+GC stage: <-1 (reactive default) | 32768 | both>
+Counts (<unit>): passed P · failed F · skipped S · deselected D · retried R · recovered V · vacuous Z
+Failed: <one "  - name: reason" line each, or "none">
+Skipped: <"  - name: reason" each, or "none">
+Deselected: <"  - name: by <runner selection | wear gate --flag>" each, or "none">
+Passed only on retry: <"  - name (attempt k/n)" each, or "none">
+Recovery passes: <"  - name: note" each, or "none">
+Notes: <"  - name: text" each, or "none">
+Checked nothing: <"  - name" each, or "none">
+Result: PASS | FAIL | NOT CLEAN (<reason>)
+Exit code: <n>
+```
+
+- `Levels:` lists every level a runner spans with its verdict (E.6.1), else reads `Levels: <Ln>`;
+  `GC stage:` appears only for a runner that runs MicroPython. `Commit:` reads `unknown` outside a
+  work tree.
+- `<unit>` names what is counted: files, tests, checks, runs or manual steps. `scripts/test.sh` adds
+  a second `Counts (tests):` line, summed from each file's microtest closing line (E.2).
+- Retried and recovered passes are counted apart from `passed`, never inside it. A missing or empty
+  per-item verdict counts as failed ("no verdict"). `vacuous` counts items that ran and checked
+  nothing; any one makes the result FAIL and raises a passing exit status (0, 3 or 4) to 1.
+- `Notes:` lists every note a test or session left (the run record below), never counted and never
+  changing the result. `scripts/test.sh` lists each skipped microtest under `Skipped:` as
+  `<file>::<test>: <reason>`, so its files line's `skipped` counts those tests.
+- `Result:` reads `PASS` only when the exit status is 0 and nothing failed or checked nothing;
+  `FAIL` for exit 1; `USAGE ERROR` for 2; `PASS (coverage report not rendered)` for 3; `NOT CLEAN
+  (<reason>)` for 4 (a hardware runner with `--skip-lower-levels` reads `NOT CLEAN (lower levels
+  skipped: L0 L1 L2)`); a hardware `--collect-only` reads `NOT A RUN (collection only)` with exit 0.
+  `Exit code:` equals the process's real exit status.
+
+**Exit codes**: 0 — every item passed; 1 — an item failed or an allocation-failure marker was seen;
+2 — a usage or setting error (an unknown option, a missing or invalid argument or environment
+value), in every runner, `scripts/test.sh` included, with no exception (owner,
+2026-10-01); 3 — `scripts/test.sh --coverage` only: every test passed and only the coverage rendering
+failed (`Result: PASS (coverage report not rendered)`, E.5.3); 4 — NOT CLEAN, a run that cannot be
+read as clean. A usage error prints the usage line on stderr.
+
+**Emitters**: `scripts/_summary_block.sh` and `scripts/_summary_block.py` print byte-identical
+layouts (checked); `tests_js/_summary_reporter.js` prints the same for `npm test`; the backgrounded
+pytest tier and every hardware run write a run record the summary reads. A gate's verdict is its exit
+status or this block, never a truncated view of its output (`| tail`, `| head`).
+
+**The run record** is one JSON file per pytest run, written by the plugin
+`scripts/_pytest_run_record.py` (`-p _pytest_run_record --run-record=PATH`): every test's outcome
+(passed, failed, skipped, error), phase, skip reason, marker names and `user_properties`; collection
+skips and errors; every deselected test with what deselected it (`by`: the wear-gate flag from its
+`deselected_by` property, else `runner selection`); the options, the effective `-m`, whether the run
+was `--collect-only`, and the session notes. On the hardware levels, the `result_note` fixture
+(`recovery=True` for a pass that needed a recovery) and `record_session_note()` put notes into it,
+so a passing test's note and a recovery pass reach the block rather than pytest's captured output.
 
 # Part F — Platform Target & MicroPython Runtime Facts
 
@@ -4908,7 +4974,8 @@ Mirrors Python's role split: **ESLint** (flat config, beyond `eslint:recommended
 can't share one `tsc` program's ambient globals, H.8.1) for mypy; **Vitest in real-browser mode**
 (`@vitest/browser-playwright`, real Chromium, deliberately not jsdom — same "real engine over a
 shim" principle as E.1; `testTimeout: 20000` mirrors "hanging tests never allowed") for the
-real-interpreter test principle; **`@vitest/coverage-v8`** (report-only, no threshold, writing
+real-interpreter test principle — `npm test` ends with the runner summary block (E.10);
+**`@vitest/coverage-v8`** (report-only, no threshold, writing
 to `htmlcov_js/` rather than its default `coverage/`, which Python imports as a namespace package
 and which therefore shadowed the real `coverage` distribution `scripts/_render_coverage.py` needs;
 `exclude: ["**/*.json"]` because the provider re-parses every file V8 reported as JavaScript, so
@@ -5232,10 +5299,11 @@ the same claim as "it didn't happen."
 `scripts/_digital_twin_ci_suite.py` checks every run's log, and `scripts/test.sh` (added
 2026-09-22, having been the gap) searches each test file's own captured output and fails the run,
 naming the file and the offending lines. The gate is checked on a passing file too, since a file
-that degraded gracefully and went green is the whole silent case.
+that degraded gracefully and went green is the whole silent case. In the unit tier a missing or
+unreadable per-file log fails the gate ("no verdict") rather than reading as clean.
 
-**All four gates match two spellings, and the second one is the load-bearing half.** `src/`'s degrade
-handlers log the exception, not its class — `self.pr.err("Could not start timer:", e)` reaches
+**Every memory gate matches two spellings, and the second one is the load-bearing half.** `src/`'s
+degrade handlers log the exception, not its class — `self.pr.err("Could not start timer:", e)` reaches
 `print()`, which renders `str(e)`, and the interpreter's own `MemoryError` message is
 `"memory allocation failed, allocating N bytes"` (or `", heap is locked"`; both raised from
 `py/runtime.c:1692/1696`, and there is no third wording in the pinned source). The class name
@@ -5243,14 +5311,17 @@ therefore appears **only** in an *uncaught* traceback. Searching for `MemoryErro
 all four gates did until 2026-09-22 — thus saw exactly the crash case and missed every
 caught-and-logged one, i.e. precisely the silent degrade this stage is named for; the twin tier had
 carried that blind spot since the check was written, and the unit tier inherited it on the day it
-was added. There are **four** such gates, not two, and three of them were blind: the unit tier
-(`scripts/test.sh`), the twin tier (`scripts/_digital_twin_ci_suite.py`) and the two real-hardware
-soak/hammer gates (`tests_hardware/flash/test_memory_stress.py`,
-`tests_hardware/bench/test_memory_stress_bench.py`, which also matched `"Traceback"` and so caught
-a crash but not a degrade). All four now match `MemoryError` *or* `memory allocation failed`,
-through one shared `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS` for the hardware pair; their
-agreement is pinned by `tests_scripts/test_memory_error_gate_agreement.py`, which also fails a new
-hardware-tier assertion written with the bare class name. Don't narrow any of them back
+was added. The gates are the unit tier (`scripts/test.sh`), the twin tier
+(`scripts/_digital_twin_ci_suite.py`), the `tests_scripts` twin boots
+(`test_digital_twin_generated_boot.py`, `test_digital_twin_boot_contiguity.py`), the two
+real-hardware soak/hammer gates (`tests_hardware/flash/test_memory_stress.py`,
+`tests_hardware/bench/test_memory_stress_bench.py`, which also matched `"Traceback"` and so caught a
+crash but not a degrade), and the JS live twins and the cross-browser smoke. Every one matches
+`MemoryError` *or* `memory allocation failed` — the hardware pair and the twin boots through one
+shared `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, the JS gates through
+`tests_js/_memory_markers.js`; their agreement is pinned by
+`tests_scripts/test_memory_error_gate_agreement.py`, which also fails a new hardware-tier assertion
+written with the bare class name. Don't narrow any of them back
 to it. **The board prints that text too**, which is what the hardware half of the gate rests on:
 `m_malloc_fail()` carries its message unconditionally, and rp2 resolves to
 `MICROPY_ERROR_REPORTING_NORMAL` (through `MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES`) — of the four

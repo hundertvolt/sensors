@@ -18,6 +18,18 @@
 # subprocess over plain HTTP - which drives run_generic_integration.py through $device's own
 # generated module and propagates its exit code straight through.
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/run_digital_twin_ci.sh [device]
+Runs scripts/_digital_twin_ci_suite.py for one devices/<device>.toml at both GC stages (default
+device: wozi) and exits with its result.
+
+Environment:
+  PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1           skip the system-package step of a toolchain build (default: 0)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 device="${1:-wozi}"

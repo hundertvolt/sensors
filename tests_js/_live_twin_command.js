@@ -7,6 +7,8 @@ import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { drainChildOutput } from "./_memory_markers.js";
+import { twinStartFailure } from "./_twin_start_failure.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
@@ -18,6 +20,8 @@ const HOST = "127.0.0.1";
 const PORT = 19481;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
+/** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
+const spawnErrors = new WeakMap();
 
 /** @param {number} ms */
 function sleep(ms) {
@@ -26,10 +30,17 @@ function sleep(ms) {
     });
 }
 
-/** @param {number} timeoutMs */
-async function waitUntilServing(timeoutMs) {
+/**
+ * @param {import("node:child_process").ChildProcess} proc
+ * @param {number} timeoutMs
+ */
+async function waitUntilServing(proc, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+        const failure = twinStartFailure({ spawnError: spawnErrors.get(proc) ?? null, exitCode: proc.exitCode, signalCode: proc.signalCode });
+        if (failure !== null) {
+            throw new Error(failure);
+        }
         try {
             // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
             const res = await fetch(`http://${HOST}:${PORT}/`);
@@ -75,16 +86,13 @@ function spawnTwin(device) {
         {
             cwd: REPO_ROOT,
             env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
-            // stdout ignored rather than piped: an unconsumed pipe keeps Node's event loop alive
-            // and can block the child once its buffer fills, hanging vitest at exit. stderr is
-            // piped and drained below, only to surface in a failure's error message.
-            stdio: ["ignore", "ignore", "pipe"],
+            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
+            stdio: ["ignore", "pipe", "pipe"],
         },
     );
-    // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process
-    // synchronously, skipping this file's try/finally entirely. A no-op listener suffices -
-    // waitUntilServing()/goto() already surface a spawn failure through their own timeouts.
-    proc.on("error", () => { /* no-op by design, per the comment above */ });
+    // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process, skipping this
+    // file's try/finally: the listener keeps the error for waitUntilServing() to name.
+    proc.on("error", (err) => { spawnErrors.set(proc, err); });
     return proc;
 }
 
@@ -116,6 +124,30 @@ async function stopTwin(proc) {
         ]);
     } finally {
         clearTimeout(killTimer);
+    }
+}
+
+/**
+ * The command's verdict once its twin has stopped: an allocation-failure marker anywhere in the twin's
+ * output fails it (SPECIFICATION.md Part I.4(e)), quoting the lines, even when the check itself passed.
+ * @param {string} what the command, for the message
+ * @param {ReturnType<typeof drainChildOutput>} output
+ * @param {unknown} failure what the check itself threw, or null
+ * @param {boolean} drained whether both output streams closed, so the scan saw everything
+ */
+function twinVerdict(what, output, failure, drained) {
+    const marked = output.markerLines();
+    const checkFailed = failure === null ? "" : `\n(the check itself also failed: ${failure instanceof Error ? failure.message : String(failure)})`;
+    const cause = failure === null ? undefined : { cause: failure };
+    if (marked.length > 0) {
+        throw new Error(`${what}: the twin logged an allocation failure:\n${marked.join("\n")}${checkFailed}`, cause);
+    }
+    if (!drained) {
+        throw new Error(`${what}: the twin's output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete${checkFailed}`, cause);
+    }
+    if (failure !== null) {
+        const message = failure instanceof Error ? failure.message : String(failure);
+        throw new Error(`${what} failed: ${message}\n--- twin output ---\n${output.text()}`, cause);
     }
 }
 
@@ -158,14 +190,15 @@ export async function runLiveBackendSmoke({ context }, device) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     const proc = spawnTwin(device);
-    let stderr = "";
-    proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
-        stderr += chunk.toString();
-    });
+    const output = drainChildOutput(proc);
 
     let livePage;
+    /** @type {{skipped: false, titleHasSensorStation: boolean, deviceName: string, debugLevelApplyStatus: string | null} | undefined} */
+    let checked;
+    /** @type {unknown} */
+    let failure = null;
     try {
-        await waitUntilServing(READY_TIMEOUT_MS);
+        await waitUntilServing(proc, READY_TIMEOUT_MS);
 
         livePage = await context.newPage();
         const consoleMessages = [];
@@ -206,10 +239,9 @@ export async function runLiveBackendSmoke({ context }, device) {
             }
         }
 
-        return { skipped: false, titleHasSensorStation, deviceName, debugLevelApplyStatus };
+        checked = { skipped: false, titleHasSensorStation, deviceName, debugLevelApplyStatus };
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`live-backend smoke check failed for ${device}: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+        failure = err;
     } finally {
         if (livePage) {
             livePage.removeAllListeners();
@@ -217,6 +249,11 @@ export async function runLiveBackendSmoke({ context }, device) {
         }
         await stopTwin(proc);
     }
+    twinVerdict(`live-backend smoke check for ${device}`, output, failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
+    if (checked === undefined) {
+        throw new Error(`live-backend smoke check for ${device} ended with no result`);
+    }
+    return checked;
 }
 
 /**
@@ -239,30 +276,34 @@ export async function runLiveBackendConcurrentTabs({ context }, device) {
     // serialises its REST calls, so a tab holds one slot, two while a finished one is still releasing.
     const tabs = Math.max(1, Math.floor(configuredMaxConnections(device) / 2));
     const proc = spawnTwin(device);
-    let stderr = "";
-    proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
-        stderr += chunk.toString();
-    });
+    const output = drainChildOutput(proc);
 
     /** @type {import("playwright").Page[]} */
     const pages = [];
+    /** @type {string[] | undefined} */
+    let deviceNames;
+    /** @type {unknown} */
+    let failure = null;
     try {
-        await waitUntilServing(READY_TIMEOUT_MS);
+        await waitUntilServing(proc, READY_TIMEOUT_MS);
         for (let i = 0; i < tabs; i += 1) {
             // eslint-disable-next-line no-await-in-loop -- pages are CREATED sequentially and NAVIGATED together below; that is what makes the loads concurrent rather than the setup
             pages.push(await context.newPage());
         }
-        const results = await Promise.all(pages.map(async (page) => {
+        deviceNames = await Promise.all(pages.map(async (page) => {
             await page.goto(`http://${HOST}:${PORT}/`);
             await page.waitForSelector('[data-section-key="system"]', { timeout: 20000 });
             return (await page.locator("#device-name").textContent())?.trim() ?? "";
         }));
-        return { skipped: false, tabs, loaded: results.length, deviceNames: results };
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`live-backend concurrent-tab check failed for ${device}: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+        failure = err;
     } finally {
         await Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ })));
         await stopTwin(proc);
     }
+    twinVerdict(`live-backend concurrent-tab check for ${device}`, output, failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
+    if (deviceNames === undefined) {
+        throw new Error(`live-backend concurrent-tab check for ${device} ended with no result`);
+    }
+    return { skipped: false, tabs, loaded: deviceNames.length, deviceNames };
 }

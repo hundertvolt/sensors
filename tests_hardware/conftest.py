@@ -19,7 +19,7 @@ from harness import Board, HardwareTestFailureError, wait_until
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -114,9 +114,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Central deselection point for every real limited-endurance persistence write. AND-gates
-    scd30_extra_write on top of persistence_write: the global flag alone decides whether any such
-    write happens, and --allow-scd30-extra-write only narrows further, for SCD30's second write."""
+    # The wear gates deselect rather than skip, so a run reports its deselected count; each item is
+    # tagged with the flag that would select it, which tells it apart from a runner's -m exclusion.
+    # --allow-persistence-writes alone decides whether any write happens; the SCD30 flag narrows.
     allow_writes = config.getoption("--allow-persistence-writes")
     allow_extra_write = config.getoption("--allow-scd30-extra-write")
     kept: list[pytest.Item] = []
@@ -124,13 +124,43 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
         lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
-        if lacks_write_permission or lacks_extra_write_permission:
+        if lacks_write_permission:
+            item.user_properties.append(("deselected_by", "--allow-persistence-writes"))
+            deselected.append(item)
+        elif lacks_extra_write_permission:
+            item.user_properties.append(("deselected_by", "--allow-scd30-extra-write"))
             deselected.append(item)
         else:
             kept.append(item)
     if deselected:
         items[:] = kept
         config.hook.pytest_deselected(items=deselected)
+
+
+@pytest.fixture
+def result_note(request: pytest.FixtureRequest) -> Callable[..., None]:
+    # A note on the test's own report, which the run record keeps for a passing test too (a print
+    # is dropped by capture). recovery=True marks a pass that needed a recovery step.
+    def _note(text: str, *, recovery: bool = False) -> None:
+        request.node.user_properties.append(("recovery" if recovery else "result_note", text))
+
+    return _note
+
+
+def record_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str) -> None:
+    # For session-scoped fixtures, which have no test report: the run-record plugin keeps the note
+    # under session_notes. Without it the note is printed past output capture, never dropped.
+    plugin = config.pluginmanager.get_plugin("_pytest_run_record")
+    if plugin is not None:
+        plugin.add_session_note(config, text, recovery=recovery, source=source)
+        return
+    line = f"{'RECOVERY' if recovery else 'NOTE'} ({source}): {text}"
+    capture = config.pluginmanager.get_plugin("capturemanager")
+    if capture is None:
+        print(line)
+        return
+    with capture.global_and_fixture_disabled():
+        print(line)
 
 
 @pytest.fixture(scope="session")

@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, devices } from "playwright";
+import { drainChildOutput } from "../tests_js/_memory_markers.js";
 import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
 
 /** @typedef {import("./_cross_browser_probe.mjs").Probe} Probe */
@@ -37,6 +37,18 @@ const GECKODRIVER_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff",
 const WEBKIT_DRIVER_BIN = "/usr/bin/WebKitWebDriver";
 const EDGE_BIN = "/usr/bin/microsoft-edge-stable";
 const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium"; // same dev-sandbox path vitest.config.js already special-cases
+
+const USAGE = `Usage: node scripts/cross_browser_smoke.mjs [-h | --help]
+Boots the twin of every device of devices/*.toml in turn and drives its site through every installed
+engine (WebKitGTK, Firefox, Edge, Playwright's Chromium) at two viewports (SPECIFICATION.md H.7).
+Environment:
+  PICO_TOOLCHAIN_DIR           the MicroPython toolchain (default: ~/pico-toolchain)
+  CROSS_BROWSER_TOOLCHAIN_DIR  Firefox and geckodriver (default: ~/cross-browser-toolchain)
+Exit codes: 0 every check passed; 1 a check failed, a twin logged an allocation failure, or nothing ran; 2 a usage error.`;
+
+// Loaded only after the arguments are read, so --help answers on a checkout with no node_modules.
+/** @type {typeof import("playwright")} */
+let playwright;
 
 const WEBKIT_DRIVER_PORT = 4444;
 const GECKODRIVER_PORT = 4445;
@@ -133,7 +145,8 @@ function spawnTwin(device) {
                 "--scd30-state-path",
                 "",
             ],
-            { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH: micropythonPath(device), TZ: "UTC" }, stdio: ["ignore", "ignore", "pipe"] },
+            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
+            { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH: micropythonPath(device), TZ: "UTC" }, stdio: ["ignore", "pipe", "pipe"] },
         ),
         `${device} twin`,
     );
@@ -443,8 +456,8 @@ async function runChromiumFamily(which, device, viewport, probe, probeValue) {
     }
     let browser;
     try {
-        browser = await chromium.launch(executablePath ? { executablePath } : {});
-        const context = await browser.newContext(viewport === "mobile" ? { ...devices["iPhone 15"] } : {});
+        browser = await playwright.chromium.launch(executablePath ? { executablePath } : {});
+        const context = await browser.newContext(viewport === "mobile" ? { ...playwright.devices["iPhone 15"] } : {});
         const page = await context.newPage();
         await page.goto(TWIN_URL);
         await page.waitForSelector("h1", { timeout: 10000 });
@@ -498,10 +511,7 @@ for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
 async function smokeDevice(device, probe, engines, counter, results) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
     const twin = spawnTwin(device);
-    let twinStderr = "";
-    twin.stderr?.on("data", (chunk) => {
-        twinStderr += chunk.toString();
-    });
+    const output = drainChildOutput(twin);
     let failed = false;
     try {
         await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
@@ -529,12 +539,31 @@ async function smokeDevice(device, probe, engines, counter, results) {
     } finally {
         await stopProcess(twin);
     }
+    // The memory gate (SPECIFICATION.md Part I.4(e)): a marker fails the device even when every check passed.
+    const drained = await output.closed(SHUTDOWN_TIMEOUT_MS);
+    const marked = output.markerLines();
+    if (marked.length > 0 || !drained) {
+        failed = true;
+        const detail = marked.length > 0 ? `logged an allocation failure:\n${marked.join("\n")}` : `output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete`;
+        results.push({ label: `${device} twin`, ok: false, detail });
+        console.error(`FAIL ${device} twin: ${detail}`);
+    }
     if (failed) {
-        console.error(`\n--- ${device} twin stderr ---\n${twinStderr}`);
+        console.error(`\n--- ${device} twin output ---\n${output.text()}`);
     }
 }
 
 async function main() {
+    const args = process.argv.slice(2);
+    if (args.includes("-h") || args.includes("--help")) {
+        console.log(USAGE);
+        process.exit(0);
+    }
+    if (args.length > 0) {
+        console.error(`error: unknown argument ${JSON.stringify(args[0])}\n${USAGE}`);
+        process.exit(2);
+    }
+    playwright = await import("playwright");
     if (!existsSync(MICROPYTHON_BIN)) {
         console.error(`MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first.`);
         process.exit(1);

@@ -405,7 +405,7 @@ def test_the_test_rig_binary_reports_itself_as_the_settrace_free_variant(repo_ro
 def test_the_coverage_binary_reports_itself_as_the_settrace_variant(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
     settrace_bin = micropython_bin.parent.parent / "build-settrace" / "micropython"
     if not settrace_bin.is_file():
-        pytest.skip(f"the --coverage variant is not built at {settrace_bin} - setup_toolchain.py setup builds both")
+        pytest.fail(f"the --coverage variant is not built at {settrace_bin} - setup_toolchain.py setup builds both")
     assert _variant_of(repo_root, tmp_path, settrace_bin) == "settrace"
 
 
@@ -453,7 +453,7 @@ def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_ro
         timeout=60,
         check=False,
     )
-    assert completed.returncode == 1, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
+    assert completed.returncode == 2, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
     assert "GC_THRESHOLD must be an integer" in completed.stderr
 
 
@@ -471,7 +471,7 @@ def test_an_out_of_range_gc_threshold_is_rejected_too(repo_root: Path, value: st
         timeout=60,
         check=False,
     )
-    assert completed.returncode == 1, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
+    assert completed.returncode == 2, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
     assert "outside the rp2040's own 32-bit machine word" in completed.stderr
 
 
@@ -495,7 +495,7 @@ def test_the_first_value_past_each_edge_is_rejected_on_range_alone(repo_root: Pa
     # HOST would accept either - its own machine word is 64-bit and gc.threshold() raises
     # OverflowError only near 2^63 (measured) - so the bound asserted here is the rp2040's.
     completed = _gc_threshold_check(repo_root, tmp_path, value)
-    assert completed.returncode == 1, f"GC_THRESHOLD={value} must be rejected on range: {completed.stdout!r} {completed.stderr!r}"
+    assert completed.returncode == 2, f"GC_THRESHOLD={value} must be rejected on range: {completed.stdout!r} {completed.stderr!r}"
     assert "outside the rp2040's own 32-bit machine word" in completed.stderr
 
 
@@ -516,42 +516,81 @@ def test_argument_validation_happens_before_anything_in_the_live_tree_is_touched
     text = _test_sh_text(repo_root)
     validate_at = text.find('if [ -n "${GC_THRESHOLD:-}"')
     args_at = text.find("coverage=0")
-    assert validate_at != -1 and args_at != -1, "scripts/test.sh no longer parses arguments or validates GC_THRESHOLD - update this test with it"
+    timeouts_at = text.find("_require_seconds TESTS_SCRIPTS_TIMEOUT_S")
+    parallelism_at = text.find("error: TEST_PARALLELISM must be a positive integer")
+    assert validate_at != -1 and args_at != -1 and timeouts_at != -1 and parallelism_at != -1, "scripts/test.sh no longer parses arguments or validates GC_THRESHOLD, the timeouts and TEST_PARALLELISM - update this test with it"
     for sweep in ("rm -rf tests/_tmp", _SWEEP_LINE):
         sweep_at = text.find(sweep)
         assert sweep_at != -1, f"scripts/test.sh no longer sweeps via {sweep!r}"
         assert args_at < sweep_at, f"argument parsing must reject an unknown flag before {sweep!r} mutates the live tree"
         assert validate_at < sweep_at, f"GC_THRESHOLD validation must run before {sweep!r} mutates the live tree"
+        assert timeouts_at < sweep_at, f"the timeout validation must run before {sweep!r} mutates the live tree"
+        assert parallelism_at < sweep_at, f"the TEST_PARALLELISM validation must run before {sweep!r} mutates the live tree"
 
 
-def test_a_rejected_invocation_leaves_the_live_tree_untouched(repo_root: Path, tmp_path: Path) -> None:
-    # The same invariant end to end rather than by source order, on a scratch key of this test's
-    # own so a concurrent file's dir is never the thing under test. Sentinels, not the real sweep
-    # targets: what is asserted is that a rejected run reaches neither sweep.
-    scratch = repo_root / "tests" / "_tmp" / "zz_test_sh_reject_sentinel"
+def _nested_run_with_sentinels(repo_root: Path, tmp_path: Path, args: list[str], env: dict[str, str], key: str) -> tuple["subprocess.CompletedProcess[str]", bool, bool]:
+    """Runs a nested scripts/test.sh with sentinels in both sweep targets, on a scratch key of the
+    caller's own; returns the run and whether each sentinel survived."""
+    scratch = repo_root / "tests" / "_tmp" / f"zz_test_sh_{key}_sentinel"
     scratch.mkdir(parents=True, exist_ok=True)
     sentinel = scratch / "in_use.txt"
     sentinel.write_text("held by a concurrently running test file\n")
-    fixture = repo_root / "devices" / "zz_test_reject_sentinel.toml"
+    fixture = repo_root / "devices" / f"zz_test_{key}_sentinel.toml"
     fixture.write_text("# swept by scripts/test.sh's reserved-namespace sweep\n")
     try:
         completed = subprocess.run(
-            ["/bin/bash", str(repo_root / "scripts" / "test.sh")],
+            ["/bin/bash", str(repo_root / "scripts" / "test.sh"), *args],
             capture_output=True,
             text=True,
-            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "GC_THRESHOLD": "32k"},
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), **env},
             cwd=repo_root,
             timeout=60,
             check=False,
         )
-        assert completed.returncode == 1, f"expected a rejection, got {completed.returncode}"
-        assert sentinel.is_file(), "a rejected run wiped tests/_tmp, which concurrently running test files are using for scratch"
-        assert fixture.is_file(), "a rejected run swept devices/zz_test_*.toml, which it never got far enough to need"
+        return completed, sentinel.is_file(), fixture.is_file()
     finally:
-        # ignore_errors, because the failure this test reports IS the tree being gone: a strict
+        # ignore_errors, because the failure a caller reports IS the tree being gone: a strict
         # teardown would raise FileNotFoundError and bury the assertion that explains why.
         fixture.unlink(missing_ok=True)
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    ("args", "env", "message"),
+    [
+        ([], {"GC_THRESHOLD": "32k"}, "GC_THRESHOLD must be an integer"),
+        (["--bogus"], {}, "error: unknown argument --bogus (scripts/test.sh --help)"),
+        ([], {"PER_FILE_TIMEOUT_S": "0"}, "error: PER_FILE_TIMEOUT_S must be a positive integer number of seconds, not '0'"),
+        ([], {"PER_FILE_TIMEOUT_S": "-5"}, "PER_FILE_TIMEOUT_S must be a positive integer number of seconds"),
+        ([], {"PER_FILE_TIMEOUT_S": "abc"}, "PER_FILE_TIMEOUT_S must be a positive integer number of seconds"),
+        ([], {"TESTS_SCRIPTS_TIMEOUT_S": "0"}, "error: TESTS_SCRIPTS_TIMEOUT_S must be a positive integer number of seconds, not '0'"),
+        ([], {"TEST_PARALLELISM": "0"}, "error: TEST_PARALLELISM must be a positive integer, not '0'"),
+        ([], {"TEST_PARALLELISM": "-1"}, "error: TEST_PARALLELISM must be a positive integer, not '-1'"),
+        ([], {"TEST_PARALLELISM": "abc"}, "error: TEST_PARALLELISM must be a positive integer, not 'abc'"),
+        ([], {"TEST_PARALLELISM": "1.5"}, "error: TEST_PARALLELISM must be a positive integer, not '1.5'"),
+    ],
+)
+def test_a_rejected_invocation_exits_2_and_leaves_the_live_tree_untouched(repo_root: Path, tmp_path: Path, args: list[str], env: dict[str, str], message: str) -> None:
+    # The same invariant end to end rather than by source order. Exit 2 for every usage or setting
+    # error (SPECIFICATION.md E.10); 0 for a timeout would silently switch `timeout` off.
+    key = re.sub(r"[^a-z0-9]+", "_", " ".join([*args, *(f"{k} {v}" for k, v in env.items())]).lower()).strip("_")
+    completed, scratch_kept, fixture_kept = _nested_run_with_sentinels(repo_root, tmp_path, args, env, f"reject_{key}")
+    assert completed.returncode == 2, f"expected a rejection, got {completed.returncode}: {completed.stderr[-2000:]}"
+    assert message in completed.stderr
+    assert scratch_kept, "a rejected run wiped tests/_tmp, which concurrently running test files are using for scratch"
+    assert fixture_kept, "a rejected run swept devices/zz_test_*.toml, which it never got far enough to need"
+
+
+def test_help_prints_every_option_and_variable_and_touches_nothing(repo_root: Path, tmp_path: Path) -> None:
+    completed, scratch_kept, fixture_kept = _nested_run_with_sentinels(repo_root, tmp_path, ["--help"], {}, "help")
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.startswith("Usage: scripts/test.sh")
+    for name, default in (("--coverage", ""), ("PICO_TOOLCHAIN_DIR", "~/pico-toolchain"), ("SKIP_APT", "0"), ("PER_FILE_TIMEOUT_S", "240"), ("TESTS_SCRIPTS_TIMEOUT_S", "1200"), ("TEST_PARALLELISM", "detected"), ("GC_THRESHOLD", "unset")):
+        line = next((line for line in completed.stdout.splitlines() if name in line), None)
+        assert line is not None, f"--help does not name {name}"
+        assert default in line, f"--help gives no default for {name}: {line!r}"
+    assert scratch_kept, "--help swept tests/_tmp"
+    assert fixture_kept, "--help swept devices/zz_test_*.toml"
 
 
 # ---------------------------------------------------------------------------
@@ -561,19 +600,46 @@ def test_a_rejected_invocation_leaves_the_live_tree_untouched(repo_root: Path, t
 # ---------------------------------------------------------------------------
 
 
-def _flag(repo_root: Path, tmp_path: Path, output: str) -> str:
-    """Runs scripts/test.sh's own _flag_memory_errors() over one file's captured output."""
+def _flag_markers(repo_root: Path, tmp_path: Path, output: str | None, path_prefix: Path | None = None) -> tuple[str, str]:
+    """Runs scripts/test.sh's own _flag_memory_errors() over one file's captured output (None: no log
+    at all) with only results_dir set; returns its .memerr and .noverdict markers' text."""
     body = re.search(r"^_flag_memory_errors\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _flag_memory_errors() - update this test with it"
     results = tmp_path / "results"
     results.mkdir(exist_ok=True)
     log = tmp_path / "case.log"
-    log.write_text(output)
+    if output is not None:
+        log.write_text(output)
     script = tmp_path / "flag.sh"
     script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{body.group(0)}\n_flag_memory_errors case "{log}"\n')
-    subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True)
-    marker = results / "case.memerr"
-    return marker.read_text() if marker.exists() else ""
+    path = f"{path_prefix}:{os.environ['PATH']}" if path_prefix else os.environ["PATH"]
+    subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, env={**os.environ, "PATH": path})
+    memerr, noverdict = results / "case.memerr", results / "case.noverdict"
+    return (memerr.read_text() if memerr.exists() else "", noverdict.read_text() if noverdict.exists() else "")
+
+
+def _flag(repo_root: Path, tmp_path: Path, output: str) -> str:
+    memerr, noverdict = _flag_markers(repo_root, tmp_path, output)
+    assert noverdict == "", noverdict
+    return memerr
+
+
+def test_a_missing_log_is_no_verdict_rather_than_clean(repo_root: Path, tmp_path: Path) -> None:
+    # The gate fails closed: a log it cannot read is a file it cannot vouch for.
+    memerr, noverdict = _flag_markers(repo_root, tmp_path, None)
+    assert memerr == ""
+    assert "missing or unreadable - no verdict" in noverdict
+
+
+def test_a_grep_error_is_no_verdict_rather_than_clean(repo_root: Path, tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    grep = stub_bin / "grep"
+    grep.write_text("#!/bin/sh\nexit 2\n")
+    grep.chmod(0o755)
+    memerr, noverdict = _flag_markers(repo_root, tmp_path, "[test_x] 3/3 passed, 0 failed, 0 skipped\n", stub_bin)
+    assert memerr == ""
+    assert "grep exited 2" in noverdict
 
 
 def test_a_caught_and_logged_memory_error_is_flagged(repo_root: Path, tmp_path: Path) -> None:
@@ -758,58 +824,274 @@ def test_an_all_green_run_under_actions_prints_no_annotation_at_all(repo_root: P
     assert _run_annotation_block(repo_root, tmp_path, failed=0, memory=0, pytest_failed=False) == []
 
 
-# --- --coverage's three exit codes (SPECIFICATION.md Part E.5.3) -----------------------------------
+# --- the summary block and the exit codes (SPECIFICATION.md E.10, E.5.3) ----------------------------
 
 
-def _verdict_block(repo_root: Path) -> str:
-    """scripts/test.sh's closing verdict-and-exit block, source text only. Extracted rather than
-    reimplemented: the point of these tests is that the real script maps the three outcomes onto
-    three codes, so a rewrite of this logic has to keep doing it."""
+def _verdict_tail(repo_root: Path) -> str:
+    """scripts/test.sh from its summary-block source line to the end: the collector, the renders,
+    the annotations, the archive and the exit. Extracted rather than reimplemented, so a rewrite of
+    the logic has to keep mapping the outcomes onto the block and the codes."""
     text = _test_sh_text(repo_root)
-    start = text.index('if [ "$tests_scripts_result" = "FAIL" ]; then')
-    return text[start:].rstrip("\n")
+    return text[text.index("source scripts/_summary_block.sh") :].rstrip("\n")
 
 
-def _verdict_exit_code(repo_root: Path, tmp_path: Path, *, failed: int, pytest_result: str, render_failed: int) -> tuple[int, str]:
-    script = tmp_path / "verdict.sh"
+def _fake_repo(repo_root: Path, tmp_path: Path) -> Path:
+    """A stand-in repo root holding the helpers the tail calls, so its archive lands under tmp_path."""
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    for name in ("_summary_block.sh", "_summary_block.py", "_archive_evidence.py"):
+        shutil.copy(repo_root / "scripts" / name, root / "scripts" / name)
+    return root
+
+
+_GREEN_RECORD = '{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": false, "session_notes": [], "exitstatus": 0}'
+
+
+def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None, str | None, str | None]], *, pytest_status: str = "PASS", record: str | None = _GREEN_RECORD, coverage: int = 0, render_fails: bool = False, extra: dict[str, str] | None = None) -> tuple[int, str, Path]:
+    """Runs the verdict tail over a fixture results dir: jobs maps a test file to its (status, log,
+    memerr) contents, None meaning that file is absent; extra plants further result files."""
+    root = _fake_repo(repo_root, tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    for test_file, (status, log, memerr) in jobs.items():
+        tag = Path(test_file).stem
+        for suffix, content in (("status", status), ("log", log), ("memerr", memerr)):
+            if content is not None:
+                (results / f"{tag}.{suffix}").write_text(content)
+    for name, content in (extra or {}).items():
+        (results / name).write_text(content)
+    status_file = tmp_path / "pytest.status"
+    status_file.write_text(pytest_status + "\n")
+    if record is not None:
+        (results / "tests_scripts.json").write_text(record)
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    # The renderer is the only `uv run` the tail makes that the fixture stands in for.
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nif [ "$2" = "scripts/_render_coverage.py" ]; then exit {1 if render_fails else 0}; fi\nexec {shutil.which("uv")} "$@"\n')
+    (stub_bin / "uv").chmod(0o755)
+    files = " ".join(jobs)
+    script = tmp_path / "tail.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'failed={failed}\ntests_scripts_result="{pytest_result}"\ncoverage_render_failed={render_failed}\n'
-        f"{_verdict_block(repo_root)}\n",
+        f'test_files=({files})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
+        f'tests_scripts_status_file="{status_file}"\nevidence_archived=0\n'
+        f"{_verdict_tail(repo_root)}\n",
     )
-    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=30)
-    return done.returncode, done.stdout
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}", "GIT_CEILING_DIRECTORIES": str(tmp_path)}
+    for name in ("GITHUB_ACTIONS", "GC_THRESHOLD"):
+        env.pop(name, None)
+    done = subprocess.run(["/bin/bash", str(script)], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=120)
+    return done.returncode, done.stdout, root
 
 
-def test_a_clean_run_still_exits_zero_and_says_so(repo_root: Path, tmp_path: Path) -> None:
-    code, out = _verdict_exit_code(repo_root, tmp_path, failed=0, pytest_result="PASS", render_failed=0)
-    assert code == 0
-    assert "ALL PASSED" in out
+def _block(out: str) -> str:
+    return out[out.index("== Summary: scripts/test.sh ==") :]
 
 
-def test_a_failed_test_under_the_settrace_build_is_not_advisory(repo_root: Path, tmp_path: Path) -> None:
-    # The defect this exists for: unit-tests-coverage is the only job that runs build-settrace, and
-    # while its whole run was continue-on-error a failure there was invisible. One really was.
-    code, out = _verdict_exit_code(repo_root, tmp_path, failed=1, pytest_result="PASS", render_failed=0)
-    assert code == 1, "a test failure must keep exiting 1, whatever the coverage report did"
-    assert "FAILED" in out
+def _passing(tag: str, count: str = "3/3 passed, 0 failed, 0 skipped") -> tuple[str, str, None]:
+    return ("PASS\n", f"[{tag}] PASS test_a\n[{tag}] {count}\n", None)
+
+
+def test_a_retried_a_crashed_and_an_allocation_flagged_file_render_the_block(repo_root: Path, tmp_path: Path) -> None:
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {
+        "tests/test_ok.py": _passing("test_ok", "4/5 passed, 0 failed, 1 skipped"),
+        "tests/test_retried.py": ("RETRIED-PASS 2/3\n", "[test_retried] 2/2 passed, 0 failed, 0 skipped\n", None),
+        "tests/test_crashed.py": ("FAIL\n", "[test_crashed] PASS test_a\n[test_crashed] Segmentation fault\n", None),
+        "tests/test_digital_twin_mem.py": ("PASS\n", "[test_digital_twin_mem] 1/1 passed, 0 failed, 0 skipped\n", "[test_digital_twin_mem] memory allocation failed\n"),
+    }
+    code, out, root = _run_tail(repo_root, tmp_path, jobs)
+    assert code == 1, out
+    block = _block(out)
+    assert block.endswith("Result: FAIL\nExit code: 1\n"), block
+    assert "\nCounts (files): passed 1 · failed 2 · skipped 0 · deselected 0 · retried 1 · recovered 0 · vacuous 0\n" in block
+    assert "\nCounts (tests): passed 7 · failed 0 · skipped 1 · deselected 0 · retried 0 · recovered 0 · vacuous 0\n" in block
+    assert "\nCounts (tests_scripts tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0\n" in block
+    assert "  - tests/test_crashed.py: failed; no test count (crashed or killed)\n" in block
+    assert "  - tests/test_digital_twin_mem.py: MemoryError seen\n" in block
+    assert "Passed only on retry:\n  - tests/test_retried.py (attempt 2/3)\n" in block
+    assert "Levels: L0 PASS · L1 FAIL · L2 FAIL (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)\n" in block
+    assert "GC stage: -1 (reactive default)\n" in block
+    assert "root-cause item: test_retried needed attempt 2/3 - record it as a root-cause item" in out[: out.index(block)]
+    runs = list((root / "build" / "archive" / "test_sh").iterdir())
+    assert len(runs) == 1
+    archived = sorted(p.name for p in runs[0].iterdir())
+    assert archived == ["summary.txt", "test_crashed.log", "test_digital_twin_mem.log", "test_digital_twin_mem.memerr", "test_retried.log"], archived
+    assert (runs[0] / "summary.txt").read_text() == block
+
+
+def test_a_green_run_passes_and_archives_the_block_only(repo_root: Path, tmp_path: Path) -> None:
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")})
+    assert code == 0, out
+    assert _block(out).endswith("Result: PASS\nExit code: 0\n")
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert [p.name for p in run.iterdir()] == ["summary.txt"]
+
+
+@pytest.mark.parametrize(
+    ("status", "log", "reason"),
+    [
+        (None, "[test_x] 1/1 passed, 0 failed, 0 skipped\n", "no verdict"),
+        ("", "[test_x] 1/1 passed, 0 failed, 0 skipped\n", "no verdict"),
+        ("PASS\n", None, "no test count (crashed or killed)"),
+        ("FAIL\n", "[test_x] 1/3 passed, 2 failed, 0 skipped\n", "2 of 3 tests failed"),
+    ],
+)
+def test_a_missing_verdict_or_count_is_a_failure(repo_root: Path, tmp_path: Path, status: str | None, log: str | None, reason: str) -> None:
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": (status, log, None)})
+    assert code == 1, out
+    assert f"  - tests/test_x.py: {reason}" in _block(out)
+
+
+def test_a_no_verdict_marker_from_the_memory_gate_fails_the_file(repo_root: Path, tmp_path: Path) -> None:
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": _passing("test_x")}, extra={"test_x.noverdict": "memory gate: grep exited 2\n"})
+    assert code == 1, out
+    assert "  - tests/test_x.py: no verdict (per-file log missing or unreadable)" in _block(out)
+
+
+@pytest.mark.parametrize(
+    ("pytest_status", "record", "reason"),
+    [
+        ("FAIL", _GREEN_RECORD, "pytest exited nonzero or timed out"),
+        ("PASS", None, "1 failed (listed above)"),
+        ("PASS", "{garbled", "1 failed (listed above)"),
+    ],
+)
+def test_the_pytest_tier_fails_on_its_exit_or_a_missing_record(repo_root: Path, tmp_path: Path, pytest_status: str, record: str | None, reason: str) -> None:
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, pytest_status=pytest_status, record=record)
+    assert code == 1, out
+    block = _block(out)
+    assert "Levels: L0 FAIL · L1 PASS" in block
+    assert f"  - tests_scripts/ (pytest): {reason}" in block
+    if record != _GREEN_RECORD:
+        assert "tests_scripts.json: no verdict (run record missing or unreadable)\n" in out[: out.index(block)]
+
+
+def test_the_pytest_tiers_skips_and_deselections_are_named_with_their_reasons(repo_root: Path, tmp_path: Path) -> None:
+    record = _GREEN_RECORD.replace('"collection": []', '"collection": [{"nodeid": "tests_scripts/test_b.py", "outcome": "skipped", "reason": "needs a toolchain"}]')
+    record = record.replace('"deselected": []', '"deselected": [{"nodeid": "tests_scripts/test_c.py::test_c", "by": "runner selection", "markers": []}]')
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, record=record)
+    assert code == 0, out
+    before = out[: out.index("== Summary: scripts/test.sh ==")]
+    assert "tests_scripts/ skipped:\n  - tests_scripts/test_b.py: needs a toolchain\n" in before
+    assert "tests_scripts/ deselected:\n  - tests_scripts/test_c.py::test_c: runner selection\n" in before
+    assert "\nCounts (tests_scripts tests): passed 1 · failed 0 · skipped 1 · deselected 1 ·" in _block(out)
+
+
+def test_the_pytest_tiers_notes_reach_the_block_and_its_recoveries_are_named_and_counted(repo_root: Path, tmp_path: Path) -> None:
+    record = _GREEN_RECORD.replace('"user_properties": []', '"user_properties": [["result_note", "3 answered, 1 refused"]]')
+    recovered = '{"nodeid": "tests_scripts/test_r.py::test_r", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": [["recovery", "rebuilt the toolchain"]]}'
+    record = record.replace('"tests": [', f'"tests": [{recovered}, ')
+    record = record.replace('"session_notes": []', '"session_notes": [{"text": "bench idle", "recovery": false, "source": "bench"}]')
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, record=record)
+    assert code == 0, out
+    block = _block(out)
+    assert "\nNotes:\n  - tests_scripts/test_a.py::test_a: 3 answered, 1 refused\n  - session (bench): bench idle\nChecked nothing: none\n" in block, block
+    assert "tests_scripts/ recovered:\n  - tests_scripts/test_r.py::test_r: rebuilt the toolchain\n" in out[: out.index(block)]
+    assert "\nCounts (tests_scripts tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 1 · vacuous 0\n" in block
 
 
 def test_a_renderer_failure_alone_exits_three_rather_than_one(repo_root: Path, tmp_path: Path) -> None:
-    code, out = _verdict_exit_code(repo_root, tmp_path, failed=0, pytest_result="PASS", render_failed=1)
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails=True)
     assert code == 3, "tests passing with only the report broken must be distinguishable from a test failure"
-    assert "TESTS PASSED, COVERAGE RENDERING FAILED" in out
+    block = _block(out)
+    assert block.endswith("Result: PASS (coverage report not rendered)\nExit code: 3\n")
+    assert "GC stage: coverage run (settrace)\n" in block
 
 
 def test_a_test_failure_outranks_a_renderer_failure(repo_root: Path, tmp_path: Path) -> None:
     # Both broken: the caller must hear about the test, since that is the one that gates.
-    code, _ = _verdict_exit_code(repo_root, tmp_path, failed=1, pytest_result="PASS", render_failed=1)
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", None, None)}, coverage=1, render_fails=True)
     assert code == 1
+    assert _block(out).endswith("Result: FAIL\nExit code: 1\n")
 
 
-def test_the_pytest_tier_still_reaches_the_exit_status(repo_root: Path, tmp_path: Path) -> None:
-    code, _ = _verdict_exit_code(repo_root, tmp_path, failed=0, pytest_result="FAIL", render_failed=0)
-    assert code == 1
+def test_nothing_follows_the_block_on_stdout(repo_root: Path, tmp_path: Path) -> None:
+    _, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")})
+    assert out.endswith("Exit code: 0\n")
+    assert out.count("== Summary: scripts/test.sh ==") == 1
+
+
+def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str) -> Path:
+    """Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose
+    first call runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir."""
+    text = _test_sh_text(repo_root)
+    bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_flag_memory_errors", "run_test_file")]
+    assert all(bodies), "scripts/test.sh no longer defines _flag_memory_errors() and run_test_file()"
+    calls = tmp_path / "calls"
+    stub = tmp_path / "micropython"
+    stub.write_text(f'#!/usr/bin/env bash\necho x >>"{calls}"\nif [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt}\nelse\n{later_attempts}\nfi\n')
+    stub.chmod(0o755)
+    results = tmp_path / "results"
+    results.mkdir()
+    script = tmp_path / "run.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{stub}"\nper_file_timeout_s=1\nmax_attempts=3\n'
+        "declare -A per_file_timeout_overrides_s=()\n"
+        + "\n".join(b.group(0) for b in bodies if b)
+        + f'\nrun_test_file tests/test_x.py "{results}/test_x.status"\n',
+    )
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return results
+
+
+def _job_files(results: Path) -> tuple[str | None, str | None, str | None]:
+    """The (status, log, memerr) a run_test_file() job left, in _run_tail()'s jobs form."""
+    return tuple(  # type: ignore[return-value]
+        (results / f"test_x.{suffix}").read_text() if (results / f"test_x.{suffix}").exists() else None for suffix in ("status", "log", "memerr")
+    )
+
+
+def test_a_pass_after_a_timeout_is_retried_pass_not_pass(repo_root: Path, tmp_path: Path) -> None:
+    # A stub interpreter that hangs on its first call and passes on its second: the retry backstop
+    # stays, and the file is reported as RETRIED-PASS 2/3 - a root-cause item, never a plain PASS.
+    results = _run_file_job(repo_root, tmp_path, "sleep 30", 'echo "1/1 passed, 0 failed, 0 skipped"')
+    assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/3\n"
+
+
+def test_an_allocation_failure_in_a_timed_out_attempt_fails_the_file_its_retry_passes(repo_root: Path, tmp_path: Path) -> None:
+    # Every attempt's output stays in the job log, so the memory gate reads the timed-out attempt
+    # too: its caught allocation failure fails the file instead of vanishing into RETRIED-PASS.
+    first = 'echo "BMP3XX Could not start timer: memory allocation failed, allocating 2048 bytes"\nsleep 30'
+    results = _run_file_job(repo_root, tmp_path, first, 'echo "1/1 passed, 0 failed, 0 skipped"')
+    assert "memory allocation failed" in (results / "test_x.memerr").read_text()
+    code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_x.py": _job_files(results)})
+    block = _block(out)
+    assert code == 1, out
+    assert "Failed:\n  - tests/test_x.py: MemoryError seen; passed on attempt 2/3\n" in block, block
+    assert "Passed only on retry: none\n" in block
+
+
+def test_a_skipped_test_is_named_in_the_block_with_its_reason_once(repo_root: Path, tmp_path: Path) -> None:
+    # microtest's per-test SKIP line reaches the block as a Skipped: item, not only the per-file log;
+    # a timed-out attempt that printed it too must not list it twice.
+    skip = 'echo "SKIP test_y: needs a board"'
+    results = _run_file_job(repo_root, tmp_path, f"{skip}\nsleep 30", f'{skip}\necho "1/2 passed, 0 failed, 1 skipped"')
+    code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_x.py": _job_files(results)})
+    block = _block(out)
+    assert "Skipped:\n  - tests/test_x.py::test_y: needs a board\nDeselected:" in block, block
+    assert "\nCounts (tests): passed 1 · failed 0 · skipped 1 ·" in block
+    assert code == 0, out
+
+
+def test_an_aborted_run_archives_its_logs_before_the_trap_removes_scratch(repo_root: Path, tmp_path: Path) -> None:
+    root = _fake_repo(repo_root, tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "test_x.log").write_text("[test_x] boom\n")
+    script = tmp_path / "abort.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'raw_dir=""\nresults_dir="{results}"\ntests_scripts_status_file="{tmp_path}/status"\n'
+        f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{tmp_path}/pid"\nevidence_archived=0\n'
+        f"{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\nfalse\n",
+    )
+    done = subprocess.run(["/bin/bash", str(script)], cwd=root, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode != 0
+    assert not results.exists(), "scratch must still be removed"
+    (run,) = (root / "build" / "archive" / "test_sh").iterdir()
+    assert (run / "results" / "test_x.log").read_text() == "[test_x] boom\n"
 
 
 def test_both_renderer_calls_tolerate_their_own_failure(repo_root: Path) -> None:

@@ -16,6 +16,8 @@ from harness import Board, configured_max_connections, wait_until
 if TYPE_CHECKING:
     from bench_control import BenchBridge
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+
 # ---------------------------------------------------------------------------
 # Real SystemService._reboot() sequencing: storage_pause()-then-wait genuinely completes before
 # the real reset fires, WDT isn't starved mid-sequence, on real timing.

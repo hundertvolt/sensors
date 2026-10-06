@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # The sitting's own load shape - both streaming endpoints, the page, and the rest - plus the script
 # every page load fetches next, the largest static file the device serves.

@@ -5,8 +5,13 @@ file in a --coverage run reported as a pass, and the raw dump is what the report
 import json
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from _script_loader import load_script_module
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _RUNNER = "tests/_coverage_runner.py"
 
@@ -24,8 +29,33 @@ def settrace_bin(micropython_bin: Path) -> Path:
     # raises AttributeError, which is exactly what --coverage's own separate binary exists for.
     path = micropython_bin.parent.parent / "build-settrace" / "micropython"
     if not path.is_file():
-        pytest.skip(f"the --coverage variant is not built at {path} - setup_toolchain.py setup builds both")
+        pytest.fail(f"the --coverage variant is not built at {path} - setup_toolchain.py setup builds both")
     return path
+
+
+def _outcome_of(fixture: "Callable[[Path], Path]", argument: Path) -> BaseException:
+    # Caught as BaseException: a pytest.skip() escaping here would otherwise skip this very test,
+    # turning the check for "never a skip" into one more silent skip.
+    with pytest.raises(BaseException) as caught:
+        fixture(argument)
+    return caught.value
+
+
+def test_a_missing_unix_port_fails_rather_than_skipping(repo_root: Path, tmp_path: Path) -> None:
+    # A skip reads as a pass in every summary, so a suite run against an unbuilt toolchain would
+    # report green while checking nothing: the missing interpreter is a failure naming its build step.
+    conftest = load_script_module(repo_root / "tests_scripts" / "conftest.py", "_tests_scripts_conftest_under_test")
+    outcome = _outcome_of(conftest.micropython_bin.__wrapped__, tmp_path / "micropython")
+    assert isinstance(outcome, pytest.fail.Exception), f"a missing Unix port must fail, not {type(outcome).__name__}: {outcome}"
+    assert "setup_toolchain.py setup" in str(outcome)
+
+
+def test_a_missing_coverage_build_fails_rather_than_skipping(repo_root: Path, tmp_path: Path) -> None:
+    this_file = load_script_module(repo_root / "tests_scripts" / "test_coverage_runner.py", "_coverage_runner_tests_under_test")
+    rig = tmp_path / "ports" / "unix" / "build-standard" / "micropython"
+    outcome = _outcome_of(this_file.settrace_bin.__wrapped__, rig)
+    assert isinstance(outcome, pytest.fail.Exception), f"a missing --coverage build must fail, not {type(outcome).__name__}: {outcome}"
+    assert "setup_toolchain.py setup builds both" in str(outcome)
 
 
 def _run(repo_root: Path, micropython_bin: Path, probe: Path, out: Path) -> "subprocess.CompletedProcess[str]":

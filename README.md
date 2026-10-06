@@ -132,44 +132,55 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
                             # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
+uv run pytest tests_scripts # the pytest tier alone - needs the toolchain built first
+                            # (scripts/test.sh or toolchain/setup_toolchain.py setup)
 ```
 
-`test.sh` takes no positional arguments (only the `--coverage` flag above); six environment
-variables tune it: `PICO_TOOLCHAIN_DIR` (where to find/build the toolchain, default
-`~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if the Unix port needs building and
-they're already present), `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
-default 240), `TEST_PARALLELISM` (how many test files run at once — by default autodetected, not a
-flat multiple of the core count: `test.sh` times a fixed loop in the very Unix-port interpreter the
-tests run under and picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup
-CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a slow
-host (the bench Pi4 probes at ~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than
-CPU-bound, so oversubscribing a fast host is close to free; set `TEST_PARALLELISM=1` for strictly
-sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
-(whole-suite timeout for the backgrounded `tests_scripts/` pytest job, default 1200 — roughly 5x its
-real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
-that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
-scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
-a value that is not an integer, or falls outside the rp2040's own 32-bit machine word, is rejected up
-front before the run touches anything, rather than failing inside the runner once per test file;
-see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
-what). Every `tests/test_*.py` file runs as
-its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
-goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
-several files' output interleaves when they run concurrently; **the run ends with one rolled-up
-summary** (`tests_scripts/`'s own pass/fail, the
-MicroPython file count, every failed file named by path, and any file whose output contained a
-`MemoryError` or the interpreter's own `memory allocation failed` wording — caught-and-logged
-counts, and fails the run, even if that file's own tests passed; both spellings are matched because
-`src/` logs the exception's message and not its class, so a real degrade never says "MemoryError")
-so a failure earlier in a long run doesn't require scrolling back through the log:
+`test.sh` takes no positional arguments (only the `--coverage` flag above, and `--help`); an unknown
+argument, or an invalid `PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S`, `TEST_PARALLELISM` or `GC_THRESHOLD`, exits 2
+before the run touches anything. Six environment variables tune it: `PICO_TOOLCHAIN_DIR` (where to
+find/build the toolchain, default `~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if
+the Unix port needs building and they're already present), `PER_FILE_TIMEOUT_S` (per-test-file
+timeout before a retry, a positive integer of seconds, default 240), `TEST_PARALLELISM` (how many
+test files run at once — by default autodetected, not a flat multiple of the core count: `test.sh`
+times a fixed loop in the very Unix-port interpreter the tests run under and picks 4x usable cores
+at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup CPU quota when one is set, because core
+*count* alone cannot tell a fast x86 runner from a slow host (the bench Pi4 probes at ~139 ms: 4x,
+16 jobs, green). The suite is sleep-bound rather than CPU-bound, so oversubscribing a fast host is
+close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
+(whole-suite timeout for the backgrounded `tests_scripts/` pytest job, a positive integer of
+seconds, default 1200 — roughly 5x its real runtime, so it only fires on a genuine hang), and
+`GC_THRESHOLD` (run the MicroPython tier with that `gc.threshold()` set instead of the interpreter's
+own reactive default — `GC_THRESHOLD=32768 scripts/test.sh` is the value the firmware's boot entry
+ships, and the suite has to pass both ways; a value that is not an integer, or falls outside the
+rp2040's own 32-bit machine word, is rejected up front before the run touches anything, rather than
+failing inside the runner once per test file; see "Memory-safety discipline" in CLAUDE.md for why
+both runs are required and which one proves what). Every `tests/test_*.py` file runs as its own
+interpreter process and prints its `PASS`/`FAIL`/`SKIP` lines and its count, each prefixed with the
+file's name in brackets (e.g. `[test_sensortask_dev]`), since several files' output interleaves when
+they run concurrently; a file collecting no test fails. The run ends with the summary block every
+runner prints (SPECIFICATION.md E.10): units, levels, the GC stage, counts, the failures named, and
+any file whose output contained a `MemoryError` or `memory allocation failed` — which fails the run
+even when its tests passed (`src/` logs the message, not the class):
 
 ```
-== Test summary ==
-tests_scripts/ (CPython/pytest): PASS
-tests/test_*.py (MicroPython Unix port): 41/42 files passed
-Failed files:
-  - tests/test_asy_scd30_driver.py
-Result: FAILED
+== Summary: scripts/test.sh ==
+Commit: 1a2b3c4
+Levels: L0 PASS · L1 FAIL · L2 PASS
+GC stage: -1 (reactive default)
+Counts (files): passed <n> · failed 1 · skipped 0 · deselected 0 · retried 1 · recovered 0 · vacuous 0
+Counts (tests): passed <n> · failed 1 · skipped <s> · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests/test_asy_scd30_driver.py: FAIL
+Skipped: none
+Deselected: none
+Passed only on retry:
+  - tests/test_uart_comm_hazard.py (attempt 2/3)
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
@@ -375,11 +386,14 @@ know (safety facts, known assumptions/findings); this section only covers how to
 | manual | Same as flash/bench, plus a human present | `scripts/run_manual_hardware_tests.sh` |
 
 ```sh
-# Flash tier: real USB board, no network
+# Flash tier (L3): runs L0-L2 first, then tests_hardware/flash/ on a real USB board, no network
 scripts/run_flash_hardware_suite.sh
 
-# Bench tier: flash tier + real WiFi bridge (strict superset)
+# Bench tier (L4): runs L0-L2, then L3 as its own clean step, then tests_hardware/bench/ (WiFi bridge)
 scripts/run_bench_hardware_suite.sh
+
+# --skip-lower-levels is for debugging only: the run is never reported clean (NOT CLEAN, exit 4)
+scripts/run_flash_hardware_suite.sh --skip-lower-levels
 
 # Either wrapper passes through any extra pytest args
 scripts/run_bench_hardware_suite.sh -k test_hotspot_role_reversal   # only tests matching a substring
@@ -412,15 +426,9 @@ scripts/run_manual_hardware_tests.sh                 # run all of them, in seque
 uv run pytest tests_hardware --collect-only
 ```
 
-Every automated invocation above (flash/bench/soak) already ends with a clear pass/fail summary,
-not just an exit code: `-v` per-test output, then either `OK: real-hardware suite run clean - no
-unexpected skips, no failures.` or a `FAILED: ...` line naming what went wrong (an unexpected skip
-lists which test, a real failure shows pytest's own summary above it) — see
-`scripts/_require_clean_hardware_run.sh`, the shared wrapper both `run_flash_hardware_suite.sh` and
-`run_bench_hardware_suite.sh` call through to; a plain skip (hardware unreachable) is treated as a
-failure here, not a silent pass, since `tests_hardware/`'s own fixtures skip identically whether
-hardware is genuinely absent or just became unreachable mid-run. The manual runner prints its own
-equivalent summary at the end (`All N manual test(s) passed.` or `N/M manual test(s) failed: ...`).
+Every runner, the manual one included, ends with the summary block (SPECIFICATION.md E.10), its
+verdict read from the run record: a test skipped for an unreachable board is not clean, and a
+deselected gate is named, not hidden.
 
 ## Digital twin (hardware simulator)
 
@@ -520,9 +528,8 @@ scripts/run_digital_twin_ci.sh          # wozi (default)
 scripts/run_digital_twin_ci.sh dev      # or any other real device variant
 ```
 
-Ends with its own clear summary: `== digital-twin CI suite PASSED: every check succeeded` or
-`== digital-twin CI suite FAILED: N check(s) failed`, listing each failed check by name. Logs from
-every subprocess run land in `digital_twin_ci_logs/`. This is what `.github/workflows/ci.yml` runs
+It ends with the summary block (SPECIFICATION.md E.10). Logs from every subprocess run land in
+`digital_twin_ci_logs/`. This is what `.github/workflows/ci.yml` runs
 on every push/PR — see `digital_twin/README.md`'s "Automated CI suite" section for the full
 reference.
 
@@ -754,7 +761,7 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware
 planning/handoff docs, all now deleted (2026-09-04) once real-hardware execution was genuinely
 complete and verified (both `tests_hardware/` tiers running clean end to end on the bench Pi4).
-Everything permanent each one settled was migrated first: the five-backend model table, the
+Everything permanent in each one was migrated first: the test-tier table (now the level ladder), the
 shared-behavior-catalog/capability-adapter design, the no-extra-flash-cycles harness's two execution
 modes, the hotspot role-reversal deep-dive's verified driver-behavior facts, and the mock/twin
 overlap scan now live in `SPECIFICATION.md` Part E.6; the "a session needs the project owner's

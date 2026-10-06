@@ -14,7 +14,11 @@ from error_log_helpers import assert_module_error_log_empty, assert_no_task_ende
 from harness import Board, configured_max_connections, wait_until
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from bench_control import BenchBridge
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("bus_hazard_concurrency",)
 
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
@@ -27,16 +31,34 @@ _GET_WORKERS = max(2, configured_max_connections() - 3)
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
 # Ceiling refusals fetch() retried, by "METHOD path": a connection reset under a config write shares
-# their signature, so the two config-write arms print these and a gated run tells the two apart.
+# their signature, so the two config-write arms note these and a gated run tells the two apart.
 _ceiling_retries: dict[str, int] = {}
 _ceiling_retries_lock = threading.Lock()
 
 
-def _report_ceiling_retries(arm: str) -> None:
+def _take_ceiling_retries() -> dict[str, int]:
     with _ceiling_retries_lock:
         counts = dict(_ceiling_retries)
         _ceiling_retries.clear()
-    print(f"CEILING_RETRIES {arm}: {counts or 'none'}")
+    return counts
+
+
+def _report_ceiling_retries(note: Callable[[str], None], arm: str) -> None:
+    note(f"CEILING_RETRIES {arm}: {_take_ceiling_retries() or 'none'}")
+
+
+def _noted_ceiling_retries(note: Callable[[str], None]) -> Iterator[None]:
+    _take_ceiling_retries()
+    yield
+    counts = _take_ceiling_retries()
+    if counts:
+        note(f"CEILING_RETRIES rest of the test: {counts}")
+
+
+@pytest.fixture(autouse=True)
+def _ceiling_retries_noted(result_note: Callable[..., None]) -> Iterator[None]:
+    # Every test's retried refusals reach the run record, not a print capture drops on a pass.
+    yield from _noted_ceiling_retries(result_note)
 
 
 def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 15.0) -> http_client.HttpResponse:
@@ -308,7 +330,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
 # ---------------------------------------------------------------------------
 
 
-def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
     reset_all_error_logs(dut_ip)
 
     corruption: list[str] = []
@@ -376,7 +398,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset()")
-        print("RESULT NOTE: recovered via a fallback hard_reset() after the flapping+bus-load compound")
+        result_note("recovered via a fallback hard_reset() after the flapping+bus-load compound; skipped: error-log-empty checks for SCD30, BMP3XX, SGP40, ISL29125, FRAM", recovery=True)
 
     if not recovered_via_hard_reset:
         for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
@@ -396,9 +418,8 @@ _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle her
 
 
 @pytest.mark.persistence_write
-def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str) -> None:
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str, result_note: Callable[..., None]) -> None:
     reset_all_error_logs(dut_ip)
-    _report_ceiling_retries("before isl29125 arm")  # clears whatever an earlier test left
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original_resolution = get_before.json()["ISL29125"]["Resolution"]
@@ -458,7 +479,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
         # on the original value, which makes this restore a no-op. Accepting only "Valid" would fail
         # the fixture's own cleanup and mask whatever the body was actually reporting.
         assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") in ("Valid", "Unchanged"), f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
-        _report_ceiling_retries("isl29125 config-write arm")
+        _report_ceiling_retries(result_note, "isl29125 config-write arm")
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
@@ -486,9 +507,8 @@ _BMP3XX_OVERSAMPLING_SETTINGS = (1, 2)  # cycled - both real, valid settings (as
 
 
 @pytest.mark.persistence_write
-def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str) -> None:
+def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str, result_note: Callable[..., None]) -> None:
     reset_all_error_logs(dut_ip)
-    _report_ceiling_retries("before bmp3xx arm")
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original_press_overs = get_before.json()["BMP3XX"]["PressOvers"]
@@ -545,7 +565,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
         restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
         # "Unchanged" is a success here for the same reason the ISL29125 restore above accepts it.
         assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
-        _report_ceiling_retries("bmp3xx config-write arm")
+        _report_ceiling_retries(result_note, "bmp3xx config-write arm")
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,

@@ -13,6 +13,8 @@ from harness import wait_until
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("fram", "construction", "ci_suite._run_5b_error_log_restore_is_all_or_nothing", "ci_suite._run_5c_storage_paused_shutdown_never_loses_the_error_log")
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
@@ -78,7 +80,7 @@ def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(boar
 # read and can be cleared again. Reads being gated too is intended (Part A.4's FRAM entry) and is
 # asserted identically at the mock and twin tiers.
 #
-# Flash-only, no bench counterpart, structurally (E.6.6 exception 2): get_write_protected()/
+# Flash-only, no bench counterpart (E.6.6 row `fram-write-protect-no-rest`): get_write_protected()/
 # set_write_protected() have no REST route at all - no PUT/GET a bench test could drive to reach it.
 # ---------------------------------------------------------------------------
 

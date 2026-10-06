@@ -17,6 +17,8 @@ from harness import wait_until
 if TYPE_CHECKING:
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link",)
+
 _UART_MODULES = ("UART_init", "UART_resp")  # asy_uart_link_driver.UartLinkExerciser's own
 # name_ext="init"/"resp" -> instance_name() resolution (buildgen/definitions.py's errcount catalog)
 # GET only: every worker below hits a read-only endpoint, so nothing here can persist to flash in a
@@ -37,7 +39,7 @@ def _link_counters(dut_ip: str) -> dict[str, int]:
     sensors: dict[str, Any] = json.loads(res.body).get("sensors", {})
     link: dict[str, int] | None = sensors.get("UARTLINK")
     if link is None:
-        pytest.skip(
+        pytest.fail(
             "this firmware exposes no UARTLINK maintenance entry - the dev link exerciser is what "
             "makes a live transfer observable (SPECIFICATION.md Part A.7 step 13b)",
         )
@@ -45,14 +47,14 @@ def _link_counters(dut_ip: str) -> dict[str, int]:
 
 
 def _require_uart_modules(dut_ip: str) -> None:
-    # The link exists only in a firmware carrying asy_uart_comm, which devices/dev.toml's two
+    # The link exists only in a firmware carrying asy_uart_comm, which the bench device's TOML
     # `driver = "uart_link"` instances pull in through buildgen's dependency-driven module
-    # selection. Absent entries are therefore a build to check, not a protocol failure.
+    # selection. Absent entries fail the test, naming the build to check.
     present = get_errcount(dut_ip)
     missing = [name for name in _UART_MODULES if name not in present]
     if missing:
-        pytest.skip(
-            f"this firmware exposes no {', '.join(missing)} error source - check devices/dev.toml "
+        pytest.fail(
+            f"this firmware exposes no {', '.join(missing)} error source - check the bench device's TOML "
             "still declares its uart_link instances and this build actually used it",
         )
 

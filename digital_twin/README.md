@@ -417,7 +417,7 @@ test phase runs.
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
 process), through a sequence of real subprocess runs (14: runs 1-11 plus 5b/5c, sub-runs of run 5, and
 11b; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
-device-dependent - 17 for `wozi`, 18 for `dev`, one more if run 11's soak retries) on a fixed port (`18080`, distinct from
+device-dependent - 17 for `wozi`, 18 for `dev`) on a fixed port (`18080`, distinct from
 the manual entry point's `8080` default, so both can run side by side without colliding). **The
 whole 14-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
 once at `--gc-threshold -1` (MicroPython's own real reactive-only default) and once at `32768` (the

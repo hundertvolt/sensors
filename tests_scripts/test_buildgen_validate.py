@@ -10,6 +10,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+import tomllib
 from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
@@ -129,7 +130,6 @@ def test_toml_document_not_parsing_to_a_table_at_the_top_level_is_rejected(tmp_p
     # load_device()'s isinstance guard is unreachable through any real file: tomllib.load()
     # always returns a dict, the grammar requiring the document root to be a table. Reached by
     # monkeypatching the one thing the real code trusts, rather than leaving the guard untested.
-    import tomllib
 
     # Patches the real, single cached tomllib module object every importer (buildgen.model
     # included) shares - never `buildgen.model.tomllib`, which mypy's host_typecheck.ini
@@ -1249,14 +1249,25 @@ def test_a_setter_wiring_mode_is_refused_as_unknown(tmp_path: Path, src_dir: Pat
         build_model(path, staged)
 
 
-@pytest.mark.parametrize("value", [5, True, ["neopixel"], {"target": "neopixel"}])
-def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir: Path, value: object) -> None:
+@pytest.mark.parametrize("value", [5, 2.5, True, "x", ["neopixel"], [True, "a b"], [], {"target": "neopixel", "on": False}, {}, {"inner": {"n": [1]}}])
+def test_the_fixture_writer_writes_every_planted_value_exactly(tmp_path: Path, value: object) -> None:
+    # A value the writer garbles fails as a TOML syntax error, never as the refusal a test plants it for.
+
     doc = base_doc()
     doc["device"]["wiring"]["led_target"] = value
-    if isinstance(value, dict):
-        pytest.skip("an inline table can't be produced by this fixture writer")
+    assert tomllib.loads(write_doc(tmp_path, "dev", doc).read_text())["device"]["wiring"]["led_target"] == value
+
+
+@pytest.mark.parametrize("value", [5, True, ["neopixel"], {"target": "neopixel"}, {}])
+def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir: Path, value: object) -> None:
+
+    doc = base_doc()
+    doc["device"]["wiring"]["led_target"] = value
+    path = write_doc(tmp_path, "dev", doc)
+    # The refusal must come from the wrong value itself, so the file has to carry it exactly.
+    assert tomllib.loads(path.read_text())["device"]["wiring"]["led_target"] == value
     with pytest.raises(BuildError, match="must be a string instance reference"):
-        _build(tmp_path, src_dir, doc)
+        build_model(path, src_dir)
 
 
 def test_driver_declaring_requires_tags_but_sitting_on_no_bus(tmp_path: Path, src_dir: Path) -> None:
@@ -1790,7 +1801,6 @@ def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
     # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
     # each one says what its ceiling is rather than inheriting a default nobody reads; the ceiling
     # value itself is the agent's sweep result (agent, 2026-09-22).
-    import tomllib
 
     for toml_path in sorted((repo_root / "devices").glob("*.toml")):
         if toml_path.name.startswith("zz_test_"):

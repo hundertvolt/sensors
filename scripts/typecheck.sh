@@ -11,7 +11,31 @@
 # stub version below is derived from it rather than pinned again (derive_firmware_version()).
 # Requires python3 >= 3.11 for tomllib, as setup_toolchain.py already does.
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    echo "Usage: scripts/typecheck.sh [PATH ...] - extra paths narrow the main pass for a local run; the twin and host passes always run"
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_summary_block.sh
+summary_unit checks
+
+# Every exit prints the summary block: a step that aborts the run (set -e) is named by its stage.
+stage=""
+# shellcheck disable=SC2329  # invoked indirectly, by the `trap _finish EXIT` below
+_finish() {
+    local code=$?
+    if [ "$code" -ne 0 ] && [ -n "$stage" ]; then
+        summary_add failed "$stage" "exited $code"
+    fi
+    summary_print "scripts/typecheck.sh" "$code" || code=$?
+    exit "$code"
+}
+trap _finish EXIT
+_stage_passed() {
+    summary_add passed "$stage"
+    stage=""
+}
 
 derive_firmware_version() {
     python3 <<'PYEOF'
@@ -61,9 +85,12 @@ print(match.group(1))
 PYEOF
 }
 
+stage="firmware version"
 firmware_version="$(derive_firmware_version)"
 stub_package="micropython-rp2-rpi_pico_w-stubs==${firmware_version}.*"
+_stage_passed
 
+stage="stub install"
 if ! uv pip install --quiet --target typings "$stub_package"; then
     cat >&2 <<EOF
 error: couldn't install $stub_package.
@@ -79,6 +106,7 @@ automatic fallback.
 EOF
     exit 1
 fi
+_stage_passed
 
 # Two verified regressions in micropython-stdlib-stubs 1.29.0.post1/.post2, repaired at the stub
 # tree rather than papered over with `type: ignore` in our own code, which is correct on the real
@@ -87,6 +115,7 @@ fi
 # Each repair is conditional on the defect still being present AND on its target file sitting where
 # it expects, so a fixed upstream or a restructured tree makes it a silent no-op rather than a
 # failure. The NotImplemented substitution is line-ending agnostic: that stub ships CRLF.
+stage="stub repairs"
 asyncio_futures="typings/stdlib/asyncio/futures.pyi"
 if [ -d "typings/stdlib/asyncio" ] && [ ! -e "$asyncio_futures" ]; then
     printf '%s\n' 'from _asyncio import _Future as Future' > "$asyncio_futures"
@@ -95,18 +124,31 @@ builtins_stub="typings/stdlib/builtins.pyi"
 if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "$builtins_stub"; then
     sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
 fi
+_stage_passed
 
 # heap_headroom_after_full_system_build.py is the main pass's sole static `import sensortask_dev`,
 # and no hand-written copy exists in src/ any more (Part L.2) - so build/generated_src/, this pass's
 # own mypy_path entry, has to be populated first, exactly as scripts/test.sh needs it too.
+stage="module generation"
 echo "== Generating buildgen device modules into build/generated_src/ (for import resolution)"
 uv run scripts/_generate_sensortask_modules.py
+_stage_passed
+
+# The three passes always all run; each is recorded as its own check.
+_record_pass() {
+    if [ "$2" -eq 0 ]; then
+        summary_add passed "$1" "$3"
+    else
+        summary_add failed "$1" "$3"
+    fi
+}
 
 # Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
 # CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
 # what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).
 main_status=0
 mypy "$@" || main_status=$?
+_record_pass "main pass" "$main_status" "pyproject.toml [tool.mypy]"
 
 # A SEPARATE invocation, always run regardless of "$@": mypy resolves each bare `machine`/`network`/
 # `neopixel` name to one file per run, so the twin's own fakes and the real board stubs can never
@@ -119,6 +161,7 @@ mypy --config-file digital_twin/typecheck.ini digital_twin tests/test_digital_tw
 if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
+_record_pass "twin pass" "$twin_status" "digital_twin/typecheck.ini"
 
 # The host-CPython scopes need a THIRD invocation for the twin's reason again: the main pass
 # replaces mypy's typeshed with the MicroPython stubs, which carry no `ast`/`pathlib`/`tomllib`, so
@@ -128,7 +171,9 @@ mypy --config-file host_typecheck.ini || host_status=$?
 if [ "$host_status" -ne 0 ]; then
     echo "error: host_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
+_record_pass "host pass" "$host_status" "host_typecheck.ini"
 
 if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$host_status" -ne 0 ]; then
     exit 1
 fi
+exit 0

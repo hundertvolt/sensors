@@ -68,7 +68,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   up, but several real tier-parity gaps did, most now closed. **Named follow-ons still open, tracked
   in that section, not repeated here**: a real-hardware test for `_reboot()`'s alarm-pool-exhaustion
   fallback. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
-  exception until injection hardware exists (2026-09-22, Part E.6.6's fourth item); the
+  exception until injection hardware exists (2026-09-22, SPECIFICATION.md E.6.6 row
+  `uart-fault-catalog`); the
   shipped-driver F.5.8 test exists (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test
   are scratched, each needing a `src/` change for the test alone (owner, 2026-09-25). Re-running
   this sweep against other domains (it did not touch e.g. sensortask/system_service integration
@@ -177,7 +178,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    (owner, 2026-09-22, `d0bfbca`: no hardware will be bought for this): both candidates stay
    `[MANUAL]`.** Not "planned for later" any more, which is how
    this read from 2026-09-11 until the question was put again. One qualifier, from the same
-   sitting's answer about the UART fault catalog (SPECIFICATION.md Part E.6.6's fourth exception):
+   sitting's answer about the UART fault catalog (SPECIFICATION.md E.6.6 row `uart-fault-catalog`):
    fault-injection hardware may arrive one day for that work, and if it does, the GPIO half below
    is worth re-opening then — as a new entry, not by treating this one as still pending. A programmable GPIO fault-injection
    harness (upgrades the "genuinely wedged I2C bus → watchdog backstop" test) and a dedicated
@@ -606,6 +607,15 @@ gates, traps).
   `ci.yml`'s web filter gains `src/`, `buildgen/` and `devices/`, and the cross-browser job builds
   through `npm run build:site`. Shell and host Python with no new dependency; a chroot's
   `scripts/test.sh` leg runs the generator as before, and `env --tier generic` installs nothing new.
+  **2026-10-06, the runner summary block and the level ladder**: `scripts/test.sh`, `lint.sh` and
+  `typecheck.sh` end with the SPECIFICATION.md E.10 block (new `scripts/_summary_block.sh` and
+  `scripts/_summary_block.py`); `test.sh` reports a retried pass as `RETRIED-PASS`, validates
+  `PER_FILE_TIMEOUT_S`/`TESTS_SCRIPTS_TIMEOUT_S` up front, exits 2 on a usage or setting error,
+  runs its pytest tier with the run-record plugin `scripts/_pytest_run_record.py` and archives its
+  evidence through `scripts/_archive_evidence.py` under `build/archive/`; the hardware runners run
+  the lower levels first (`scripts/_run_lower_levels.sh`) and judge through
+  `scripts/_hardware_verdict.py`. Bash and stdlib host Python with no new dependency: the chroot's
+  `scripts/test.sh` leg exercises the block and the archive, and nothing new is installed.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

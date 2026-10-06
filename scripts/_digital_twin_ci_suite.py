@@ -26,6 +26,7 @@ from typing import Any
 
 # The repo root is appended, so tests/ resolves as a namespace package and no tests/ fake shadows a host module.
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+from scripts._summary_block import Summary
 from tests._error_codes import code
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -134,7 +135,7 @@ _SOAK_CYCLES = 20
 # 25ms is dense enough that even a fast pass yields plenty of samples for a quarter split, and
 # one gc.collect()+print() per interval costs nothing measurable.
 _MEM_SAMPLE_INTERVAL_MS = 25
-# The tolerance is grounded in each attempt's own observed noise rather than a historical
+# The tolerance is grounded in each run's own observed noise rather than a historical
 # constant scaled by a law that does not hold here - consecutive 25ms gc.mem_free() samples are
 # heavily autocorrelated. digital_twin/README.md has the measurement and what it replaced.
 _MEM_TREND_TOLERANCE_SD_MULTIPLIER = 3.0
@@ -145,6 +146,10 @@ _DNS_QUERY_ID = 0x1234
 _DNS_RESPONSE_HEADER_LEN = 4
 
 _FAILURES: list[str] = []
+# Every check also lands in the SPECIFICATION.md E.10 summary block main() prints, named with its
+# pass label; a pass that recorded no check at all is counted as having checked nothing.
+_SUMMARY = Summary("scripts/_digital_twin_ci_suite.py", unit="checks")
+_CHECKS_PER_PASS: dict[str, int] = {}
 
 
 @dataclass(frozen=True)
@@ -171,9 +176,15 @@ class RunContext:
 _CURRENT_PASS_LABEL = ""
 
 
+def _record(kind: str, full_msg: str) -> None:
+    _SUMMARY.add(kind, full_msg)
+    _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
+
+
 def _fail(msg: str) -> None:
     full_msg = f"{_CURRENT_PASS_LABEL}{msg}"
     _FAILURES.append(full_msg)
+    _record("failed", full_msg)
     print(f"FAIL: {full_msg}", file=sys.stderr)
 
 
@@ -181,6 +192,7 @@ def _check(*, condition: bool, msg: str) -> None:
     if not condition:
         _fail(msg)
     else:
+        _record("passed", f"{_CURRENT_PASS_LABEL}{msg}")
         print(f"OK: {_CURRENT_PASS_LABEL}{msg}")
 
 
@@ -195,7 +207,11 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     # Part I.4(e): zero MemoryErrors, caught-and-logged included, a caught allocation failure
     # being a design defect rather than a passing result. Checked on every run's log, not only
     # the soak's, since src/'s catch-and-degrade handlers can log one during any run.
-    log_text = _read_log(log_path)
+    try:
+        log_text = log_path.read_text(errors="replace")
+    except OSError as exc:  # fails closed: a log it cannot read is no verdict, never a clean one
+        _fail(f"{run_label}: log {log_path} missing or unreadable, no memory verdict ({exc!r})")
+        return
     _check(
         condition=not any(marker in log_text for marker in _MEMORY_ERROR_MARKERS),
         msg=f"{run_label}: log contains zero MemoryErrors (caught-and-logged counts as a failure too)",
@@ -1138,9 +1154,8 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 
 @dataclass
-class _SoakAttempt:
-    """One independent boot's worth of Run 11 raw results - http_failures/wdt/shutdown_ec are
-    never retried on (see _run_11_soak() below), only trend_result's own tolerance check is."""
+class _SoakRun:
+    """One boot's Run 11 raw results."""
 
     http_failures: list[str]
     wdt_count: int | None
@@ -1149,7 +1164,7 @@ class _SoakAttempt:
     trend_result: tuple[float, float, int, float, float] | None
 
 
-def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) -> _SoakAttempt:
+def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
     # ---- Run 11: a fresh clean boot for the soak check, driven entirely from THIS process like
     # Runs 1-10 ("Driver/DUT process separation") - warmup and cycle requests go over real HTTP,
     # never through the twin's own client.
@@ -1172,22 +1187,22 @@ def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) ->
                     # A real soak run must record a genuine allocation/transport failure as one
                     # more failure, never let it abort the whole run before every other endpoint
                     # and cycle has had its own chance to run.
-                    http_failures.append(f"{attempt_label} warmup: GET {path} -> {e!r}")
+                    http_failures.append(f"warmup: GET {path} -> {e!r}")
         cycles_start = time.time()
         for cycle in range(_SOAK_CYCLES):
             for path in _SOAK_ENDPOINTS:
                 try:
                     status, _ = _http("GET", path)
                 except (OSError, http.client.HTTPException) as e:
-                    http_failures.append(f"{attempt_label} cycle {cycle}: GET {path} -> {e!r}")
+                    http_failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
                     continue
                 if status != _HTTP_OK:
-                    http_failures.append(f"{attempt_label} cycle {cycle}: GET {path} -> {status}")
+                    http_failures.append(f"cycle {cycle}: GET {path} -> {status}")
         cycles_end = time.time()
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
-        http_failures.append(f"{attempt_label}: {exc!r}")
+        http_failures.append(repr(exc))
     finally:
-        ec = _shutdown(proc, f"Run 11 ({attempt_label})")
+        ec = _shutdown(proc, "Run 11")
 
     wdt_count = _would_have_triggered_count(_read_log(log_path))
     samples: list[int] = []
@@ -1197,65 +1212,30 @@ def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) ->
         samples = [free for ts, free in _parse_mem_samples(log_text) if cycles_start <= ts <= cycles_end]
         if len(samples) // 4 >= 1:
             trend_result = _mem_trend(samples)
-    return _SoakAttempt(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result)
-
-
-def _report_soak_attempt(attempt: _SoakAttempt, label: str) -> bool:
-    """Reports one attempt except the trend-vs-tolerance verdict, which the caller owns because it
-    is the only thing _run_11_soak() may retry past. False means it must NOT retry: an HTTP,
-    watchdog or shutdown failure is never the environment noise that retry absorbs (Part E.7/E.8)."""
-    for failure in attempt.http_failures:
-        print(f"FAIL: Run 11: {failure}")
-    total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)
-    _check(condition=not attempt.http_failures, msg=f"Run 11 ({label}): {total_requests} soak requests across every endpoint produced zero HTTP failures ({len(attempt.http_failures)} found)")
-    _check(condition=attempt.wdt_count == 0, msg=f"Run 11 ({label}): watchdog never starved across the soak (would_have_triggered_count={attempt.wdt_count!r})")
-    _check(condition=attempt.shutdown_ec == 0, msg=f"Run 11 ({label}): clean shutdown (exit code {attempt.shutdown_ec})")
-    _check(condition=len(attempt.samples) // 4 >= 1, msg=f"Run 11 ({label}): enough MEM_SAMPLE lines in the cycles window to compute a memory trend ({len(attempt.samples)} samples)")
-    return not attempt.http_failures and attempt.wdt_count == 0 and attempt.shutdown_ec == 0 and attempt.trend_result is not None
+    return _SoakRun(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result)
 
 
 def _run_11_soak(ctx: RunContext) -> None:
-    # Defense in depth on top of the self-calibrated tolerance, not a substitute: a live
-    # reactive-GC-paced heap sampled on a timer and correlated by timestamp stays noisy even
-    # when correctly calibrated.
-
-    # One retry, a second fully independent boot, separates a residual bad draw from a real leak:
-    # a transient reading essentially never repeats past tolerance twice, an unbounded leak
-    # reliably does. Never retries an HTTP, watchdog or shutdown failure - not this noise source.
-    attempt1 = _run_11_soak_attempt(ctx, ctx.logs_dir / "run11_soak.log", "attempt 1")
-    clean1 = _report_soak_attempt(attempt1, "attempt 1")
-    if not clean1 or attempt1.trend_result is None:
-        return  # a real HTTP/watchdog/shutdown/sample-count failure - already reported, no retry
-    trend1, tolerance1, quarter1, early1, late1 = attempt1.trend_result
+    # One boot, one verdict: a second boot never covers this one's failing trend (owner, 2026-09-26:
+    # 'A retry or a longer timeout never counts as a race fix'). The self-calibrated tolerance is
+    # what separates a leak from a noisy reactive-GC heap sampled on a timer.
+    run = _run_11_soak_boot(ctx, ctx.logs_dir / "run11_soak.log")
+    for failure in run.http_failures:
+        print(f"FAIL: Run 11: {failure}")
+    total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)
+    _check(condition=not run.http_failures, msg=f"Run 11: {total_requests} soak requests across every endpoint produced zero HTTP failures ({len(run.http_failures)} found)")
+    _check(condition=run.wdt_count == 0, msg=f"Run 11: watchdog never starved across the soak (would_have_triggered_count={run.wdt_count!r})")
+    _check(condition=run.shutdown_ec == 0, msg=f"Run 11: clean shutdown (exit code {run.shutdown_ec})")
+    _check(condition=len(run.samples) // 4 >= 1, msg=f"Run 11: enough MEM_SAMPLE lines in the cycles window to compute a memory trend ({len(run.samples)} samples)")
+    if run.trend_result is None:
+        return  # too few samples - the check above already failed it
+    trend, tolerance, quarter, early, late = run.trend_result
     print(
-        f"Run 11 (attempt 1) memory trend: min={min(attempt1.samples)} max={max(attempt1.samples)} "
-        f"early_avg={early1:.0f} late_avg={late1:.0f} trend={trend1:.0f} tolerance={tolerance1:.0f} "
-        f"quarter_size={quarter1} samples={len(attempt1.samples)}",
+        f"Run 11 memory trend: min={min(run.samples)} max={max(run.samples)} "
+        f"early_avg={early:.0f} late_avg={late:.0f} trend={trend:.0f} tolerance={tolerance:.0f} "
+        f"quarter_size={quarter} samples={len(run.samples)}",
     )
-    if trend1 <= tolerance1:
-        _check(condition=True, msg=f"Run 11: gc.mem_free() trend ({trend1:.0f} bytes decline) within the {tolerance1:.0f}-byte tolerance (quarter_size={quarter1})")
-        return
-
-    print(f"Run 11: attempt 1's memory trend ({trend1:.0f} bytes) exceeded its {tolerance1:.0f}-byte tolerance - retrying once with a fresh, independent boot before failing (Part E.7/E.8's documented per-runner noise vs. a genuine leak)")
-    attempt2 = _run_11_soak_attempt(ctx, ctx.logs_dir / "run11_soak_retry.log", "attempt 2 (retry)")
-    clean2 = _report_soak_attempt(attempt2, "attempt 2 (retry)")
-    if not clean2 or attempt2.trend_result is None:
-        return  # a real HTTP/watchdog/shutdown/sample-count failure on the retry - already reported
-    trend2, tolerance2, quarter2, early2, late2 = attempt2.trend_result
-    print(
-        f"Run 11 (attempt 2 (retry)) memory trend: min={min(attempt2.samples)} max={max(attempt2.samples)} "
-        f"early_avg={early2:.0f} late_avg={late2:.0f} trend={trend2:.0f} tolerance={tolerance2:.0f} "
-        f"quarter_size={quarter2} samples={len(attempt2.samples)}",
-    )
-    _check(
-        condition=trend2 <= tolerance2,
-        msg=(
-            f"Run 11: gc.mem_free() trend within tolerance on a fresh independent boot after attempt 1's own "
-            f"{trend1:.0f}-byte reading exceeded its {tolerance1:.0f}-byte tolerance (attempt 2: {trend2:.0f} bytes "
-            f"decline, {tolerance2:.0f}-byte tolerance, quarter_size={quarter2}) - a real leak reproduces on both "
-            f"independent boots, this one didn't"
-        ),
-    )
+    _check(condition=trend <= tolerance, msg=f"Run 11: gc.mem_free() trend ({trend:.0f} bytes decline) within the {tolerance:.0f}-byte tolerance (quarter_size={quarter})")
 
 
 def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | None:
@@ -1270,7 +1250,7 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
     early_avg = sum(early) / len(early)
     late_avg = sum(late) / len(late)
     trend = early_avg - late_avg  # positive: memory declined between quarters
-    # Tolerance is this attempt's own noise level, not a historical constant. Each quarter's
+    # Tolerance is this run's own noise level, not a historical constant. Each quarter's
     # INTERNAL spread stands in for the trend's true standard error - never the early-vs-late
     # difference, which a genuine leak inflates, loosening the tolerance just when it must hold.
     quarter_noise = max(statistics.pstdev(early), statistics.pstdev(late)) if quarter > 1 else 0.0
@@ -1284,22 +1264,30 @@ def run_suite(ctx: RunContext) -> None:
     # main() prints one combined report naming every failure from either pass.
     global _CURRENT_PASS_LABEL
     _CURRENT_PASS_LABEL = f"[gc.threshold={ctx.gc_threshold}] "
+    _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = 0
     ctx.logs_dir.mkdir(parents=True, exist_ok=True)
 
-    _run_1_baseline(ctx)
-    _run_2_reboot_settings_persistence(ctx)
-    _run_3_sustained_bus_fault_matrix(ctx)
-    _run_4_bus_fault_persistence_sweep(ctx)
-    run5_entry = _run_5_recovery_after_bounded_fault(ctx)
-    _run_5b_error_log_restore_is_all_or_nothing(ctx, run5_entry)
-    _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx)
-    _run_6_configure_ssid(ctx)
-    _run_7_wifi_hotspot_dns(ctx)
-    _run_8_wifi_persistence_and_configure_ntp(ctx)
-    _run_9_ntp_unreachable(ctx)
-    _run_10_watchdog_hang_backstop(ctx)
-    _run_11_soak(ctx)
-    _run_11b_full_ceiling_concurrency(ctx)
+    # An exception that ends a pass early is recorded in the block before it propagates.
+    try:
+        _run_1_baseline(ctx)
+        _run_2_reboot_settings_persistence(ctx)
+        _run_3_sustained_bus_fault_matrix(ctx)
+        _run_4_bus_fault_persistence_sweep(ctx)
+        run5_entry = _run_5_recovery_after_bounded_fault(ctx)
+        _run_5b_error_log_restore_is_all_or_nothing(ctx, run5_entry)
+        _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx)
+        _run_6_configure_ssid(ctx)
+        _run_7_wifi_hotspot_dns(ctx)
+        _run_8_wifi_persistence_and_configure_ntp(ctx)
+        _run_9_ntp_unreachable(ctx)
+        _run_10_watchdog_hang_backstop(ctx)
+        _run_11_soak(ctx)
+        _run_11b_full_ceiling_concurrency(ctx)
+    except BaseException as exc:
+        _SUMMARY.add("failed", f"{_CURRENT_PASS_LABEL}suite aborted: {type(exc).__name__}: {exc}")
+        raise
+    if _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] == 0:
+        _SUMMARY.add("vacuous", f"pass {_CURRENT_PASS_LABEL.strip()}")
 
 
 def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
@@ -1316,20 +1304,30 @@ def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
 
 
 def main() -> int:
+    global _SUMMARY
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--micropython-bin", required=True, help="path to the built MicroPython Unix-port binary")
     parser.add_argument("--device", default="wozi", help="which devices/<device>.toml-generated module to drive this suite against (default: wozi)")
     parser.add_argument("--logs-dir", default=str(REPO_ROOT / "digital_twin_ci_logs"), help="directory to write per-run subprocess logs into")
     args = parser.parse_args()
 
+    # The block is printed on every exit, an exception's included; its code is the one returned.
+    _SUMMARY = Summary("scripts/_digital_twin_ci_suite.py", unit="checks", levels=f"L2 ({args.device})", gc_stage="both")
+    exit_code = 1
+    try:
+        exit_code = _run_both_passes(args)
+    finally:
+        exit_code = _SUMMARY.print(exit_code)
+    return exit_code
+
+
+def _run_both_passes(args: argparse.Namespace) -> int:
     module = f"sensortask_{args.device}"
     wiring_plan_path = GENERATED_SRC_DIR / f"{module}_wiring_plan.json"
     if not wiring_plan_path.exists():
-        print(
-            f"error: {wiring_plan_path} not found - run scripts/_generate_sensortask_modules.py "
-            f"first (scripts/run_digital_twin_ci.sh already does this)",
-            file=sys.stderr,
-        )
+        hint = "run scripts/_generate_sensortask_modules.py first (scripts/run_digital_twin_ci.sh already does this)"
+        print(f"error: {wiring_plan_path} not found - {hint}", file=sys.stderr)
+        _SUMMARY.add("failed", f"wiring plan {wiring_plan_path} missing", hint)
         return 1
     plan = json.loads(wiring_plan_path.read_text())
 
@@ -1355,13 +1353,7 @@ def main() -> int:
         run_suite(ctx)
 
     print()
-    if _FAILURES:
-        print(f"== digital-twin CI suite FAILED ({args.device}): {len(_FAILURES)} check(s) failed")
-        for msg in _FAILURES:
-            print(f"  - {msg}")
-        return 1
-    print(f"== digital-twin CI suite PASSED ({args.device}): every check succeeded at both gc.threshold(-1) and gc.threshold(32768)")
-    return 0
+    return 1 if _FAILURES or _SUMMARY.failed else 0
 
 
 if __name__ == "__main__":

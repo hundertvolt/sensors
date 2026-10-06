@@ -10,6 +10,8 @@ import time
 import pytest
 from harness import REPO_ROOT, Board, HardwareTestFailureError, wait_until
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
+
 # ---------------------------------------------------------------------------
 # Item 23 - scripts/mpremote_connect.sh connection-stability baseline. Cheap, run first: every
 # other test in this tier assumes basic mpremote connectivity already works.
