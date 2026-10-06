@@ -101,6 +101,13 @@ reconnect during calibration, a PUT before setup has finished).
   re-run over a dirty tree, an offline run.
 
 A finding records its mode next to its class. A mode with no finding is still named in the unit's record as checked.
+
+**Two passes, crossed.** The by-site pass walks the changed files class by class; the by-mode pass walks each mode as
+one scenario end to end across every module it touches (what the boot path does when FRAM is blank, from `setup()`
+through the first REST answer). Either one alone misses what lies between sites. A brief extended while a pass runs
+covers only what was read after the change: the earlier part is re-read, never counted as covered. The mode list
+itself was checked once against an independent derivation made without sight of it (2026-10-06); any mode found
+later is added here and swept across the units already closed.
 Sleep modes (`lightsleep`/`deepsleep`) are not used by `src/` today (grep, 2026-10-06); a change that adds one adds
 the mode.
 
