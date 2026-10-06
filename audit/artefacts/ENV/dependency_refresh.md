@@ -54,6 +54,18 @@ https://pypi.org/pypi/<pkg>/json`, `npm view <pkg> version` / `npm outdated`, `h
 - (e) No pin moved. M.PROC.011's issue states, read 2026-10-06: micropython#9455 open, #9505 open, #19704 open,
   #18797 closed (milestone 1.28.0, PRs #18801/#18805) — already inside the `v1.29.0` pin.
 
+## Gates (M.PROC.009)
+
+Each family commit's full gate ran on its own worktree with every port-binding suite in its own network namespace
+(U0 (5a)) and the toolchain rows under the shared toolchain lock; logs under the gate worktrees, summaries below.
+
+| family | commit | result |
+|---|---|---|
+| (a) | `9f32315` (merged) | green. First run: `firmware_build_verify` and `toolchain_test` rc 1 from the unlocked baseline firmware build sharing `mpy-cross/build`; both pass on a quiet re-run (logs archived under `audit/archive/20261006T072405Z/`); the toolchain lock was added. |
+| (b) | `b10a3f1` | green. `L1_test_sh_gc_default` rc 1 once (`_hammer_faulted`'s retention bound under host contention, finding X01); 10/10 isolated repeats and the quiet re-run pass. |
+| (c) | `3c37346` | green, all 19 rows rc 0 (pytest 319 s, npm test 571 s, unit tier 334/375 s, coverage 497 s, firmware 247 s, twins 748-898 s). |
+| (d) | `e0e9b0c` | green, all 19 rows rc 0 (firmware 495 s while queued on the toolchain lock). |
+
 ## Workarounds (W01-W45)
 
 With the MicroPython pin unchanged, every check "at the new pin" (W01-W06, W10-W28, W37-W42, W44, W45) has nothing new
@@ -65,7 +77,7 @@ to read: each stays as it is. The checks with a moved dependency:
 | W29, W30, W43 | Microdot `v2.7.0` | `Response.write()`, `dispatch_request()`/`handle_request()` and the 1,024 B `send_file` default unchanged; all three stay |
 | W32 | actionlint | still 1.7.12 (actionlint-py 1.7.12.25 repackages it); `self-repository` stays disabled |
 | W33 | `uv sync` retry | stays (guards any third-party outage) |
-| W34 | `@vitest/coverage-v8` 5.0.3 | trial removal of the JSON exclude runs with the family (b) gate |
+| W34 | `@vitest/coverage-v8` 5.0.3 | trial on the family (b) tree with `exclude: ["**/*.json"]` removed: 574/574 pass but rolldown logs 28 `Failed to parse ….json?import` errors; the exclude stays (M.TSC.167's deletion does not fire) |
 | W35 | cross-browser channels | unchanged reasons; stays |
 | W36 | Vitest browser navigation | vitest#7875 closed; Vitest 5.0.3's browser `page` (`@vitest/browser/context.d.ts`) has no navigation method; the Commands-API route stays |
 
