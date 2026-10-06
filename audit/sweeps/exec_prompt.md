@@ -36,7 +36,9 @@ rules, pillars and specifications are binding and applied as written, never chan
    detection left to chance, a swallowed failure, a window that loses time or data, a fault without self-healing, a fault
    one side detects and the other never learns of) in every file you touch. Where your step owns the site, close it
    (detect, count, fail visibly, recover) with a test that plants the fault; otherwise list it under "Findings" with its
-   class.
+   class and mode. Check every operating mode the code takes part in, not only plain operation: boot, the reset
+   countdown, flash and FRAM writes, network loss and reconnect, calibration, recovery, reconfiguration, load (the mode
+   list in that file).
 
 ## Finish
 Commit everything in your worktree in one commit (or one per co-landing group if the packet marks groups), message

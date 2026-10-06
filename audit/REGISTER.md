@@ -87,7 +87,9 @@ Applied from the first executing agent on:
   timing failure under contention stays unconfirmed until reproduced alone. A retry is never a fix (OR37.a (2)).
 - Worktrees and scratch branches go when their unit closes.
 - Every unit closes only after the silent-failure scan (`audit/sweeps/silent_failure_scan.md`, OR147) has run over its
-  changes and swept each class it found project-wide; the result is in the unit's record.
+  changes and swept each class it found project-wide, in every operating mode the changes take part in (boot, reset
+  countdown, flash and FRAM writes, network, calibration, recovery, reconfiguration, load; OR148); the result is in the
+  unit's record.
 
 ## Unreachable sources (OR4.a)
 

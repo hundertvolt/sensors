@@ -1,4 +1,4 @@
-# Silent-failure scan (OR147)
+# Silent-failure scan (OR147, OR148)
 
 Run after every unit's implementation, before its close, and once project-wide at the start of phase B. Prompted by
 the UART case (OR146): `machine.UART` ignores the hardware overrun bit, so lost bytes reached the protocol undetected
@@ -34,6 +34,32 @@ unless the CRC happened to catch them. The scan looks for every such place, not 
 7. **Asymmetric reporting**: a fault one side of an interface detects but the other side (the peer, the REST client,
    the website, the supervisor) never learns of.
 
+## Operating modes (OR148)
+
+Every class is checked in each mode below and at each transition into and out of it, not only in plain operation. A
+mode entered rarely is exactly where a fault hides, so each one is read as a scenario: what runs, what is suspended,
+what can be lost, who would notice, and how the device returns to normal.
+
+- **Boot**: the one-time `setup()` batches and their watchdog feeding, a driver absent or failing at setup, the UART
+  boot drain, reset-cause reading, FRAM logs not yet loaded, the first reading before a sensor's warm-up.
+- **Reset countdown**: `system_service`'s `_RESET_DELAY` window and its `Timer`, a failed arm and the stop-feed path,
+  requests, PUTs and FRAM or flash writes arriving or in flight during it, reboot to bootloader, `ResetErrors`.
+- **Flash writes**: config persistence through littlefs (XIP stall, interrupts off: what UART, DMA, soft `Timer`,
+  cyw43 and lwIP lose in that window), a write cut by a reset or the watchdog and what the next boot does with the
+  file, a full filesystem.
+- **FRAM writes**: a chunk write cut part-way, a failed write, the allocator at its end.
+- **Network**: STA connect and reconnect, link loss, the hotspot and captive-DNS mode, NTP before the first sync and
+  the time step when it lands, `ticks_ms()` and multi-day rollover.
+- **Sensor modes**: warm-up, calibration runs (ISL29125, SCD30 forced and automatic), recovery and re-initialisation
+  after a fault, a sensor that returns after being absent.
+- **Supervision**: a task restart, the task-failure ceiling and its reboot, the watchdog near expiry, the heap near
+  full.
+- **Runtime reconfiguration**: a PUT changing configuration while a read, write or calibration is in progress.
+- **UART link**: idle, peer reset mid-frame, both `dev` instances active at once.
+- **Load and shutdown**: REST hammering and bus contention; the twin's SIGINT shutdown.
+
+A finding records its mode next to its class. A mode with no finding is still named in the unit's record as checked.
+
 ## Procedure and output
 
 - Every finding: `file:line`, class, the failure, what the layer below does (cited at the pinned tag or datasheet),
@@ -43,4 +69,4 @@ unless the CRC happened to catch them. The scan looks for every such place, not 
 - Not covered or partly covered: fixed in the current unit when a step there owns the site; otherwise parked in
   `audit/REGISTER.md` as an A-C delta for the unit that owns the site, with the conservative fix (detect, count, fail
   visibly, recover) as the proposal. Nothing is dropped as "unlikely".
-- The unit's record states the scan ran, over which files and classes, and its result (including "none found").
+- The unit's record states the scan ran, over which files, classes and modes, and its result (including "none found").
