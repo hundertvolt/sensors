@@ -65,9 +65,9 @@ changes**. If it does, that is worth reporting. The `AutoRange*` settings tune w
 happens (how full the reading gets before going up, how empty before coming down, how long to
 settle, and a minimum dwell time so it cannot chatter) — the defaults are fine for ordinary use.
 There used to be a fourth, controlling how long a light change must persist before the chip itself
-reacts. It is gone from the settings on purpose: it only worked while it stayed shorter than the
-measurement interval, and raising it past that silently handed every range decision to the unit's
-slower software re-check. The unit now works it out from the measurement interval and the ADC
+reacts. It is gone from the settings (owner, 2026-09-13): it only worked while it stayed shorter
+than the measurement interval, and raising it past that silently handed every range decision to the
+unit's slower software re-check. The unit now works it out from the measurement interval and the ADC
 resolution — always the most transient rejection that still lets the chip react first — so there is
 nothing left to get wrong. A side effect worth knowing: changing the measurement interval now also
 reconfigures the sensor, where before it only retimed the software.
@@ -97,5 +97,5 @@ Measured Gain Ratio staying blank means no usable pair was obtained — most oft
 bright or too dark for both ranges at once, or it is not holding still. Move the light and run it
 again.
 
-The sensor is wired on `dev` only (I2C1, IRQ on GPIO6) — `wozi` carries no colour sensor and never
-will (CLAUDE.md).
+The sensor is wired on `dev` only (I2C1, IRQ on GPIO6) — `wozi` carries no colour sensor; a
+device's TOML decides its sensors.

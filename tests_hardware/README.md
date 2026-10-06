@@ -291,8 +291,8 @@ that file's archived record ("archive §7R" below).
 **Fix the question and the pass criterion before measuring.**
 - **Stable** = zero true failures **and** zero device lines matching `MEMORY_ERROR_MARKERS`,
   caught-and-logged ones included. A reset before any response at the ceiling is a refusal and
-  expected (`http_client.is_ceiling_close()`, owner's rule); everything else — a short body, a
-  4xx/5xx, a timeout — is a failure.
+  expected (`http_client.is_ceiling_close()`; owner, 2026-09-23, `84f3d57`/`399e2f0`); everything
+  else — a short body, a 4xx/5xx, a timeout — is a failure.
 - **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
   free heap (archive §7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
   hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a
@@ -530,9 +530,9 @@ a live question:
   second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
   DUT has necessarily already been in hotspot mode since stage 0 (`hotspot_started_once == True`),
   so a failed real credential PUT (5 failed STA attempts) leads to `_PHASE_DEACTIVATED` - a terminal
-  state only a real power-cycle clears (SPECIFICATION.md Part A.4's own documented, deliberate
-  safety feature) - NOT a graceful fall-back to hotspot the way an *earlier* failure in the scenario
-  would. `test_hotspot_role_reversal.py`'s `joined_hotspot` fixture already recovers from this via a
+  state only a real power-cycle clears (SPECIFICATION.md Part A.4; owner, 2026-07-13, `368fa83`) -
+  NOT a graceful fall-back to hotspot the way an *earlier* failure in the scenario would.
+  `test_hotspot_role_reversal.py`'s `joined_hotspot` fixture already recovers from this via a
   `board.hard_reset()` fallback in its own teardown, but a first real run hitting this path is worth
   recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
   surprised by it.
@@ -622,8 +622,9 @@ a live question:
     no-clean-802.11-deauth way a hard reset does, so it's mechanically the identical hazard - `kick_
     all_stations()` before the post-flash reconnect attempt, every time, not just around
     `hard_reset()` calls already inside the test harness itself.
-- **A second, distinct, real WiFi mechanism - a well-documented upstream characteristic, not
-  something to fix in `src/` without a project-owner decision.** Found while confirming the fix
+- **A second, distinct, real WiFi mechanism - a well-documented upstream characteristic, kept as
+  is: the owner judged an independent reachability probe not worth its complexity (owner,
+  2026-09-04, `655e4f9`).** Found while confirming the fix
   above at scale: `bench/test_network_resilience.py`'s `ap_down()`/`ap_up()`-based outage/flap
   tests can still fail even with a clean AP-side station table, because the CYW43 firmware/lwIP
   stack can silently mask a real link disruption from `wlan.isconnected()`/`wlan.status()`
@@ -633,12 +634,11 @@ a live question:
   not project-specific, via `micropython/micropython#9455`/`#9505`/`#18797` and independent field
   reports. `asy_wifi_service.py`'s own `_wlan_isconnected_or_false()` is a bare pass-through to
   `wlan.isconnected()` with no independent reachability check, so `_on_sta_disconnected()`'s retry
-  logic structurally cannot fire if the firmware never reports the disconnect. Whether to add an
-  independent reachability check is a real architectural question for the project owner, not
-  decided here. Mitigated at the test level only: both tests now recover via a real `hard_reset()`
-  if the graceful wait times out (the one thing confirmed to reliably clear this), but still fail
-  loudly afterward so the real limitation stays visible rather than being silently papered over -
-  confirmed working as designed (a failure recovers the board cleanly for whatever test runs next).
+  logic structurally cannot fire if the firmware never reports the disconnect. Mitigated at the test
+  level only: both tests now recover via a real `hard_reset()` if the graceful wait times out (the
+  one thing confirmed to reliably clear this), but still fail loudly afterward so the real
+  limitation stays visible rather than being silently papered over - confirmed working as designed
+  (a failure recovers the board cleanly for whatever test runs next).
 - **Lesson from a since-fixed test bug, worth keeping as standing practice**:
   `test_garbage_ssid_via_rest_config_is_handled_gracefully`'s own final "did the DUT reconnect"
   check spent many hours looking like unexplained hardware flakiness (escalating retry budgets,
@@ -825,16 +825,15 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   not overridden anywhere in `sensortask_wozi.py`) - the exact mechanism the code's own comment says
   bounds "a Slowloris-paced client no single per-call timeout alone would catch".
 
-**Deliberately not covered, and why**: DHCP flakiness/slowness/rubbish responses. The DUT's DHCP
-*client* behavior lives
-entirely inside MicroPython's own lwIP stack, not this project's own code (no DHCP-handling code
-anywhere in `src/`) - the same "outside this project's own code, a different backstop applies"
-bucket CLAUDE.md already places I2C-bus-wedge recovery in. Unlike `ap_down()`/`ap_up()` (fully
-reversible via `nmcli` in seconds) or the UDP-port redirects above (a plain iptables rule, trivially
-removed), the bench bridge's own DHCP server is NetworkManager's managed `dnsmasq` instance with no
-exposed per-request delay/corruption knob - a custom rogue DHCP responder risks leaving the DUT
-without any valid lease at all, in a way nothing in this tier could then recover from short of
-physical intervention.
+**A documented known limitation (owner, 2026-09-26)**: DHCP flakiness/slowness/rubbish responses.
+The DUT's DHCP *client* behavior lives entirely inside MicroPython's own lwIP stack, not this
+project's own code (no DHCP-handling code anywhere in `src/`) - the same "outside this project's own
+code, a different backstop applies" bucket CLAUDE.md already places I2C-bus-wedge recovery in.
+Unlike `ap_down()`/`ap_up()` (fully reversible via `nmcli` in seconds) or the UDP-port redirects
+above (a plain iptables rule, trivially removed), the bench bridge's own DHCP server is
+NetworkManager's managed `dnsmasq` instance with no exposed per-request delay/corruption knob - a
+custom rogue DHCP responder risks leaving the DUT without any valid lease at all, in a way nothing
+in this tier could then recover from short of physical intervention.
 
 **Every bench test that injects a network fault also calls `assert_no_task_ended()`** before its
 closing reset: a task ending under a routine fault (and the reboot three of those cost) lands in the
@@ -1408,10 +1407,11 @@ run for every real device) uses the same shape, and
 `tests/test_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
 is the negative case proving it can actually fail.
 
-**mpremote-only by design (owner's own decision)**: no new `/status` field - this is a one-time,
-build-deterministic build-validity fact (`AsyFramManager` is a bump-pointer allocator with no
-deallocation, so "does everything fit" is fully decided once construction finishes, and stays true
-for that build's entire life), not live operational state a client needs to query.
+**mpremote-only by design (owner, 2026-09-16: 'we do not even add errno/wrnno for the out of FRAM
+memory … Handle via mpremote.')**: no new `/status` field - this is a one-time, build-deterministic
+build-validity fact (`AsyFramManager` is a bump-pointer allocator with no deallocation, so "does
+everything fit" is fully decided once construction finishes, and stays true for that build's entire
+life), not live operational state a client needs to query.
 
 **Extended by WP3**: `_CANDIDATE_MODULE_NAMES` now also checks `uart_link_init`/`uart_link_resp` -
 `dev.toml`'s only two `uart_link` instances, both wired with `fram_target = "fram"` - so this same

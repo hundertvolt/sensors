@@ -29,20 +29,21 @@ information):
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
-- **Whenever the pinned MicroPython version changes (and periodically otherwise), re-check every
-  MicroPython-facing code construct against the current pinned version's own source, the current
-  rp2 port documentation, and MicroPython developer-forum/issue-tracker findings** — not just "is
-  this still correct," but specifically "is there now a newer/better/more-complete way to do this
-  that a stale construct is missing out on." Examples of the kind of thing this is meant to catch:
-  a newly widened set of types accepted by `micropython.const()`, or real `asyncio`-level
-  timeout/cancellation support being added to something that previously had none (e.g.
-  `socket.getaddrinfo()` — see SPECIFICATION.md Part F.2 for its current
-  can't-be-timeout-wrapped status, which is exactly the kind of fact a version bump could change
-  and silently invalidate). This is a standing practice, not a one-time pass — repeat it every time
-  `toolchain/versions.toml`'s MicroPython `ref` moves. **Last run: 1.28.0 → 1.29.0, 2026-09-10;
-  results in SPECIFICATION.md Part F.5** — including what it found (`I2C`/`SPI` `deinit()` are
-  no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads) and what it ruled out
-  (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s status is unchanged).
+- **Whenever the owner moves the pinned MicroPython version (owner, 2026-09-26: the pin moves only on
+  the owner's call), and periodically otherwise, re-check every MicroPython-facing code construct
+  against the current pinned version's own source, the current rp2 port documentation, and
+  MicroPython developer-forum/issue-tracker findings** — not just "is this still correct," but
+  specifically "is there now a newer/better/more-complete way to do this that a stale construct is
+  missing out on." Examples of the kind of thing this is meant to catch: a newly widened set of
+  types accepted by `micropython.const()`, or real `asyncio`-level timeout/cancellation support
+  being added to something that previously had none (e.g. `socket.getaddrinfo()` — see
+  SPECIFICATION.md Part F.2 for its current can't-be-timeout-wrapped status, which is exactly the
+  kind of fact a version bump could change and silently invalidate). This is a standing practice,
+  not a one-time pass — repeat it every time `toolchain/versions.toml`'s MicroPython `ref` moves.
+  **Last run: 1.28.0 → 1.29.0, 2026-09-10; results in SPECIFICATION.md Part F.5** — including what
+  it found (`I2C`/`SPI` `deinit()` are no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte
+  SPI reads) and what it ruled out (`extmod/asyncio/` byte-identical between the tags, so
+  `getaddrinfo()`'s status is unchanged).
   This same pass also covers `toolchain/micropython_overrides.py`'s own anchor checks (SPECIFICATION.md
   Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
   but re-reading the real mechanism behind each anchor (not just whether the literal string still
@@ -85,10 +86,9 @@ information):
   logging, and — for anything website-facing — the `src/`↔`js/` cross-language mirror obligation):
   before writing any new function/module, check Part G's catalog first for an existing primitive to
   reuse or model on, and re-run Part G.3's grep-for-the-shape check across the codebase as part of
-  this same scan, not as a separate pass. **If the scan surfaces a discrepancy — one file diverging
-  from another, or from a guideline — do not silently fix it.** Report it and discuss how to resolve
-  it before changing anything, the same "flag, don't silently change" treatment Part D.1 already
-  gives formula/behavior discrepancies, applied here to cross-file consistency instead.
+  this same scan, not as a separate pass. A consistency discrepancy (naming, ordering, signatures,
+  uniform behaviour) is fixed directly and logged (owner, 2026-09-25: 'Change, don't flag, if not
+  according.'); a formula or behaviour discrepancy follows Part D.1's flag-first path.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today, yet the import
   machinery says it should not: traced through the pinned source at 1.28 and re-verified at 1.29.0,
@@ -108,61 +108,68 @@ information):
   target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
   verified byte-identical to it on 2026-10-06), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
-  edits, no restyling, ever — any behavior change needed is handled by wrapping/calling it from our
-  own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
-  copied flat into one directory and frozen together for the refactored firmware build, which is why
-  they live at the same directory depth in the repo.
+  edits, no restyling, ever (owner, 2026-09-25) — any behavior change needed is handled by
+  wrapping/calling it from our own code (see "Microdot / REST layer" below), never by touching this
+  file. `src/` and `ext/` are copied flat into one directory and frozen together for the refactored
+  firmware build, which is why they live at the same directory depth in the repo.
 - **The UART message protocol (`src/asy_uart_comm.py`, promoted) has a second
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
   timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
   itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
-  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source is in the repo since
-  2026-09-13, `arduino/libraries/Async_UART_Comm/`, but reconciling it is outside this project's
-  scope, owner, 2026-09-24), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
+  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source
+  is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`, and reconciling it is
+  post-audit only (owner, 2026-09-25: 'the C port stays out of scope, anything there is post-audit
+  only')), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
   impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
-  the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
-  owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
-  implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against that C source whenever it is reconciled. **It is, however,
+  the former keeps a mixed-version pair working, the latter is a coordinated flag-day, which the
+  Python side may lead (owner, 2026-09-11, `6a2d43e`, paraphrase); until the C reconciliation the
+  wire format is not touched (owner, 2026-09-25: 'the UART wire format is not touched'). **The C
+  side's conformance is expected but unverified** — it mirrors the Python implementation's intended
+  behavior, but may not share every known flaw and may have its own, so every Class A entry must be
+  re-verified against that C source whenever it is reconciled. **It is, however,
   prototypical — exactly like this repo's legacy Python — with no device in the field running it**
   (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to
   record, not a deployment risk to weigh. Real hardware running the C side exists and can be
   connected to the dev board, making the promoted module testable against the genuine second
   implementation rather than only against itself over the bench crossover jumper. **The protocol's
-  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
-  decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
-  is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two
-  further standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
-  of scope and constrains nothing), and it is **strictly initiator/responder, never a symmetric
-  peer** — there is no collision arbitration, so simultaneous initiation is out of contract.
-  **`dev` carries two instances across its permanent crossover jumper and `wozi` carries none** —
-  wozi is never physically flashed, so wiring it there would add an untestable peripheral. The
-  protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py` as `const()`
-  values; a change to any of them is Class A by definition. **Construction is buildgen-driven, like
-  every other driver**: `devices/dev.toml` declares the two instances as `driver = "uart_link"`
-  (`role = "initiator"`/`"responder"`, one on each of `[bus.uart0]`/`[bus.uart1]`) — `src/
-  asy_uart_link_driver.py`'s `UartLinkExerciser` wraps one role's `UART_Comm` plus the bench-only
-  banner/echo application logic and transfer/failure counters (none of which belong in the
-  standalone protocol module itself); resolved via `buildgen/driver_registry.py`'s `_OVERRIDES`
-  table like `fram`/`neopixel`/`notification`, since it isn't a `SensorReader`/`SensorReaderConfig`
-  subclass either — but unlike those three it is not a singleton (`SINGLETON_SERVICE_DRIVERS`
-  excludes it), since a device wires exactly one initiator + one responder.
-- **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
-  object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
-  bugs.
+  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — no version
+  or capability negotiation, now or at the C reconciliation (owner, 2026-09-11; reconciliation
+  clause confirmed 2026-09-26), so a mismatched pair is diagnosed (it looks like a dead link that
+  nonetheless carries bytes), never negotiated. Two further standing facts: the module is
+  **standalone/self-contained** (its BME688/BSEC first use case is out of scope and constrains
+  nothing) (owner, 2026-08-20, `b6cb852`; 2026-09-11, `32b136f`), and it is **strictly
+  initiator/responder, never a symmetric peer** — there is no collision arbitration, so simultaneous
+  initiation is out of contract. **`dev` carries two instances across its permanent crossover
+  jumper** (owner, 2026-09-11, UART promotion 'Target variant. dev, two instances') **and `wozi`
+  carries none** — wozi is never flashed, so the peripheral would be untestable there (agent,
+  2026-09-11). The protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py`
+  as `const()` values; a change to any of them is Class A by definition. **Construction is
+  buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
+  `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
+  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UartLinkExerciser` wraps one
+  role's `UART_Comm` plus the bench-only banner/echo application logic and transfer/failure counters
+  (none of which belong in the standalone protocol module itself); resolved via
+  `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
+  isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
+  singleton (`SINGLETON_SERVICE_DRIVERS` excludes it), since a device wires exactly one initiator +
+  one responder.
+- **`dev` meets every device's bar**: its generated config is held to the same standard as every
+  device's; a quirk is a defect (owner, 2026-09-26).
 - **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
   it is never physically flashed or bench-tested; only the dev board is, and only ever will be.**
-  WoZi's own correctness is established entirely through the mock/twin/unit-test suite (`tests/`),
-  which stays the source of truth for it and is unaffected by any real-hardware work. The dev bench
-  exists solely to physically validate the underlying shared mechanisms (I2C/SPI/WiFi/webserver/
-  etc.) that wozi's own code also uses — **a passing dev-bench result is treated as valid for wozi
-  too**, provided the code actually under test is genuinely dev-native (dev's own correct pins/
-  config via its own entry point), never wozi's own hardcoded build forced onto dev hardware. That
-  specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
-  bench) produced two false "bugs" once — it
-  isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
+  (owner, 2026-09-03, `a19691c`) WoZi's own correctness is established entirely through the
+  mock/twin/unit-test suite (`tests/`), which stays the source of truth for it and is unaffected by
+  any real-hardware work. The dev bench exists solely to physically validate the underlying shared
+  mechanisms (I2C/SPI/WiFi/webserver/etc.) that wozi's own code also uses — **a passing dev-bench
+  result is treated as valid for wozi too**, provided the code actually under test is genuinely
+  dev-native (dev's own correct pins/config via its own entry point), never wozi's own hardcoded
+  build forced onto dev hardware. That mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded
+  pins — flashed onto the dev bench) is an invalid test by construction (owner, 2026-09-03,
+  `5730e72`, paraphrase) — it tests nothing, and must not be repeated; dev's own firmware covers the
+  shared SCD30/SGP40 bus (owner, 2026-09-26: 'dev is different hardware, wozi cannot run on it and
+  never will').
 - **The legacy tree is reference-only, forever — it never gets work of any kind** (project owner,
   2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*: to check
   what the deployed system actually does, and how a driver behaved in the field. Nothing in this
@@ -181,39 +188,40 @@ information):
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
   stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
   password, present in both `python/CommonDrivers/async_connect.py` (deployed, pre-refactor) and
-  `src/asy_wifi_service.py` (promoted) — accepted risk (only exploitable by someone in physical
-  WiFi range of a unit that's already lost its real WiFi), not something to "fix" by
-  rotating/removing without the project owner's direction. `improved-quality/async_connect.py`
-  itself was removed once its functionality was fully promoted to `src/asy_wifi_service.py`/
-  `asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo referenced it anymore.
-- **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the accepted backstop, not a
-  software fix to chase** — settled, don't re-propose an I2C-level timeout mechanism; full
-  reasoning (including why `socket.getaddrinfo()` belongs in this same bucket, and which calls
-  genuinely *can* be timeout-wrapped) is in SPECIFICATION.md Part F.2.
+  `src/asy_wifi_service.py` (promoted) — accepted permanently as a known limitation under the
+  trusted-home-LAN threat model (owner, 2026-09-26; first accepted 'for now', owner 2026-07-13,
+  `b64857d`). `improved-quality/async_connect.py` itself was removed once its functionality was
+  fully promoted to `src/asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` — no import
+  in the repo referenced it anymore.
+- **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop** — the current
+  state, backstopped, until a genuine non-blocking alternative reliably exists (owner, 2026-07-24;
+  BACKLOG deferred goal); which calls can be timeout-wrapped is in SPECIFICATION.md Part F.2.
 - **The same backstop applies to a WiFi link stuck in a CYW43-firmware-level `isconnected()` false
-  positive — a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature, not
-  a fallback to fix away.** Confirmed inherently safe: every real flash write is reachable only
+  positive — a power cycle/`hard_reset()` stays the recovery, because the owner judged an
+  independent reachability probe not worth its complexity (owner, 2026-09-04, `655e4f9`, paraphrase;
+  confirmed 2026-09-26).** Confirmed inherently safe: every real flash write is reachable only
   through the REST PUT path, so a device whose API is unreachable structurally cannot have a write
-  in flight. Settled, don't propose an independent reachability-probe mechanism; full reasoning and
-  real bench-hardware timing data are in SPECIFICATION.md Part F.2 (BACKLOG.md keeps only a closed
-  pointer, open question 6).
+  in flight. Full reasoning and real bench-hardware timing data are in SPECIFICATION.md Part F.2
+  (BACKLOG.md keeps only a closed pointer, open question 6).
 - **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical internal
-  `MemoryError` as a blanket policy** — see SPECIFICATION.md Part F.2 for the full rule and its
-  narrow exception.
-- **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution) —
-  unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see
-  above). Full note: SPECIFICATION.md Part F.4.
+  `MemoryError` as a blanket policy** — worth closing only where a real graceful-degradation
+  alternative exists (owner, 2026-09-25: 'if the function has a true alternative flow for graceful
+  degradation on expectable memory errors, this indeed shall be implemented'); see
+  SPECIFICATION.md Part F.2 for the full rule and its narrow exception.
+- **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution)
+  (owner, 2026-07-13, `b64857d`) — unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`,
+  which stay hands-off/vendored (see above). Full note: SPECIFICATION.md Part F.4.
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
-- **Boot latency is not a metric to optimise for its own sake** (WP6, owner-established
-  requirement). These devices run for months between reboots, and a short period of API
-  unavailability right after one is normal for any networked device — a multi-second one-time delay
-  at boot is not itself a problem. What *is* a problem is approaching the hardware watchdog's own
-  timeout while the one-time boot `setup()` batch runs, which is what `SystemService.feed_watchdog()`
-  exists to prevent (SPECIFICATION.md Part A.7/G.2). Don't "fix" a slow boot by trimming that batch,
-  reordering it for speed, or otherwise treating its wall-clock cost as a defect — the accepted
-  target is "does not starve the watchdog," not "boots fast."
+- **Boot latency is not a metric to optimise for its own sake** (owner, 2026-09-16, the owner's
+  background as migrated by `abe4009f`, paraphrase). These devices run for months between reboots,
+  and a short period of API unavailability right after one is normal for any networked device — a
+  multi-second one-time delay at boot is not itself a problem. What *is* a problem is approaching
+  the hardware watchdog's own timeout while the one-time boot `setup()` batch runs, which is what
+  `SystemService.feed_watchdog()` exists to prevent (SPECIFICATION.md Part A.7/G.2). Don't "fix" a
+  slow boot by trimming that batch, reordering it for speed, or otherwise treating its wall-clock
+  cost as a defect — the accepted target is "does not starve the watchdog," not "boots fast."
 - **`asy_uart_driver.py` and `asy_uart_comm.py` may never block the asyncio loop — not even in a
   wait state.** They may time out and handle it; they may not wait synchronously (project owner,
   2026-09-11). This is sharper than F.3's general principle and is easy to violate by accident:
@@ -224,16 +232,19 @@ information):
   real yield between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no
   `await` and the block simply moves into a Python loop. The yield lives in `ready()` itself, which
   every read loop goes through, so the invariant is one guarantee in one place rather than a
-  per-call-site obligation. **The mirror-image failure is just as forbidden**: `ready()` polls, so a
-  listener waiting on traffic that may never come must not idle at the transaction rate — an
-  instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
-  account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
-  why this must **not** be generalised to `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals
-  expose no partial-read API to clamp to (that case stays F.2's watchdog backstop).
-- **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
-  apply to it — never forget this** (project owner's explicit, standing direction): same-device
-  read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an
-  address/command sweep, in `tests/test_bus_hazard_multi_device.py` (mock), `tests/
+  per-call-site obligation. **The mirror-image failure is just as forbidden** (agent, 2026-09-11,
+  extending the owner's rule): `ready()` polls, so a listener waiting on traffic that may never come
+  must not idle at the transaction rate — an instance takes a second, slower `poll_idle_ms` for a
+  wait with no deadline (Part F.5.9). Full account and the measured before/after: SPECIFICATION.md
+  Parts F.5.8 and F.5.9 — F.5.8 also states why this must **not** be generalised to
+  `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals expose no partial-read API to clamp to
+  (that case stays F.2's watchdog backstop).
+- **A new device on a shared resource — an I2C/SPI bus and every other shared resource (locks, FRAM,
+  the config file, sockets, the heap) — gets hazard test coverage across all four test tiers that
+  apply to it — never forget this** (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this';
+  every shared resource, owner, 2026-09-26): same-device read-vs-write concurrency, cross-device
+  interleaving if it shares a bus in either variant, and an address/command sweep, in
+  `tests/test_bus_hazard_multi_device.py` (mock), `tests/
   test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
   test_bus_concurrency.py` + `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py`
   (real hardware, dev bench — that script is what the flash-tier sweep actually runs; the old
@@ -243,10 +254,11 @@ information):
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
   rule, right after its general-call hazard finding.
 - **No test may inflict avoidable wear on real hardware — the host's own SSD included, not just the
-  target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). On the *target*
-  this is already institutionalized and stays that way: every operation that spends a
-  limited-endurance write cycle is a default-off, explicitly-opted-into marker with a tracked budget
-  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `persistence_write`
+  target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). FRAM writes are
+  not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the *target* this is already
+  institutionalized and stays that way: every operation that spends a limited-endurance write cycle
+  is a default-off, explicitly-opted-into marker with a tracked budget — `flash_cycle` ("counts
+  against the 'no extra flash cycles' constraint"), `persistence_write`
   (`--allow-persistence-writes`) for any real write to a limited-endurance store — the SCD30's own
   on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
   writes through `config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
@@ -278,7 +290,7 @@ information):
   exactly that regression). When a test seems to need brute-force scale, that is the signal to find
   the invariant instead.
 - **A session needs the project owner's go-ahead, given directly in that session's own
-  conversation, before running anything against real hardware** (any `mpremote` command, `nmcli`/
+  conversation (owner, 2026-09-25), before running anything against real hardware** (any `mpremote` command, `nmcli`/
   `iw`/`iptables` call, `picotool`, or `tests_hardware/`'s own suite runners) — a go-ahead given to
   a different session, or to an earlier session that already ended, does not carry over; if there's
   any doubt whether the current conversation actually has it, ask first rather than assume. Once
@@ -290,16 +302,17 @@ information):
   this rule is just the standing gate for whether to start at all.
 - **A destructive test of the bench host's own network/access config (tearing down `br0`/its
   slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
-  the host) must keep a recovery dead-man's-switch continuously armed for the entire risk window —
-  never touch live network state with none armed.** Confirmed the hard way (2026-09-04): a one-shot
-  timer consumed by an earlier dry run gave zero protection to the real run that followed, costing
-  the bench Pi4's own SSH access. Full incident account, the recovery script, and the validated
-  arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
+  the host) must keep a recovery dead-man's-switch continuously armed (owner, 2026-09-26) for the
+  entire risk window — never touch live network state with none armed.** Confirmed the hard way
+  (2026-09-04): a one-shot timer consumed by an earlier dry run gave zero protection to the real run
+  that followed, costing the bench Pi4's own SSH access. Full incident account, the recovery script,
+  and the validated arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
 - **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
   NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
-  creation.** A synthesized bridge MAC can drift across the bridge's own lifetime, silently
-  orphaning the router's static DHCP reservation. Full incident account and the fix (both in
-  `ensure_bench_bridge()` and `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
+  creation.** (agent, 2026-09-04, `28c5d8e`: MAC drift observed on the bench) A synthesized bridge
+  MAC can drift across the bridge's own lifetime, silently orphaning the router's static DHCP
+  reservation. Full incident account and the fix (both in `ensure_bench_bridge()` and
+  `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
 - **Memory-safety discipline: design for zero `MemoryError`s first, catch→degrade→restart→watchdog
   as a last-resort backstop, `gc`-default-first, always applied — not only once something has
   already broken.** Any new function/module that holds, builds, or grows an allocation whose size
@@ -314,14 +327,16 @@ information):
   dies (already confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not
   nested under `OSError`); let the hardware watchdog be the final backstop once restarts alone
   aren't keeping up. **Standing rule, every test, not only new stress/hammer ones, digital-twin runs
-  and real hardware alike**: the whole suite must pass with `gc.threshold(-1)` (MicroPython's own
-  real default) and with zero `MemoryError`s — caught-and-logged included — and with no
-  `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
-  test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both halves are
-  machine-checked, not left to whoever reads the log**: the twin tier checks each run's log
-  (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own output
-  and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
+  and real hardware alike (owner, 2026-09-26: 'The firmware must be rock solid without the
+  threshold, and the threshold is finally applied to move it even further into the stable region,
+  but must be tested and verified by itself.')**: the whole suite must pass with `gc.threshold(-1)`
+  (MicroPython's own real default) and with zero `MemoryError`s — caught-and-logged included — and
+  with no `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or
+  the test's own setup propping the result up, *before* it's ever run again with the project's
+  chosen `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both
+  halves are machine-checked, not left to whoever reads the log**: the twin tier checks each run's
+  log (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own
+  output and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
   about. Don't relax that to "only on a failing file". **There are FOUR such gates — the unit tier,
   the twin tier and the flash/bench real-hardware soak gates — and all four match `MemoryError` OR
   `memory allocation failed`, the second being the half that matters** — `src/` logs `str(e)`, not
@@ -369,31 +384,31 @@ information):
   reboot exactly like the module's own history already did; `dev`-only, its two `uart_link`
   instances (`UART_init`/`UART_resp`) joined under WP3, once `devices/dev.toml` wired
   `fram_target = "fram"` onto each — `wozi` has no UART instances, so this addition is `dev`-only)
-  BEFORE issuing
-  any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** This is the one piece
-  of real
-  diagnostic evidence a reboot itself doesn't erase, and clearing it is irreversible — confirmed the
-  hard way (2026-09-08): a single real `WDT_RESET` was investigated down to "GC ruled out, cause
-  otherwise undetermined" and closed as a singular, not-systematically-reproducible event without
-  ever checking whether a FRAM-backed module had logged something right before it — by the time
-  this was thought of, ordinary bench cleanup (`ResetErrors`, run several times since as routine
-  hygiene) had already overwritten every FRAM-backed log's history, permanently losing whatever
-  evidence might have existed. The same check applies inside the digital twin
-  (`digital_twin/_fram_chip.py` models the same chunked FRAM layout) — check before clearing there
-  too, not just on real hardware. **One caveat, found the hard way (2026-09-11): this rule assumes
-  a board that has been running normally.** An isolated-driver device script builds its own
-  `AsyFramManager` over the same chip, and the allocator is deterministic, so its first chunk *is*
-  production's first chunk — a flash/bench-tier run overwrites the real error logs, and a script
-  leaving a well-formed chunk behind fabricates a plausible-looking one (a seeded `errno=5` read
-  back as SYSTEM's `"Task N ended with exception"`, chased down as if real). Before treating a
-  FRAM-backed log as evidence, check what has been run against that board;
-  `tests_hardware/README.md` has the full mechanism.
+  BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,
+  2026-09-25 and 2026-09-26) This is the one piece of real diagnostic evidence a reboot itself
+  doesn't erase, and clearing it is irreversible — confirmed the hard way (2026-09-08): a single
+  real `WDT_RESET` was investigated down to "GC ruled out, cause otherwise undetermined" and closed
+  as a singular, not-systematically-reproducible event without ever checking whether a FRAM-backed
+  module had logged something right before it — by the time this was thought of, ordinary bench
+  cleanup (`ResetErrors`, run several times since as routine hygiene) had already overwritten every
+  FRAM-backed log's history, permanently losing whatever evidence might have existed. The same
+  check applies inside the digital twin (`digital_twin/_fram_chip.py` models the same chunked FRAM
+  layout) — check before clearing there too, not just on real hardware. **One caveat, found the hard
+  way (2026-09-11): this rule assumes a board that has been running normally.** An isolated-driver
+  device script builds its own `AsyFramManager` over the same chip, and the allocator is
+  deterministic, so its first chunk *is* production's first chunk — a flash/bench-tier run
+  overwrites the real error logs, and a script leaving a well-formed chunk behind fabricates a
+  plausible-looking one (a seeded `errno=5` read back as SYSTEM's `"Task N ended with exception"`,
+  chased down as if real). Before treating a FRAM-backed log as evidence, check what has been run
+  against that board; `tests_hardware/README.md` has the full mechanism.
 
 ## Working agreements
 
 - Long-term goal: fully understand the current (production) system in detail, then check what's
-  already been addressed/promoted well into `src/`. The refactor should end up
-  with the *same top-level features*, just more consistent/stable — not a feature change.
+  already been addressed/promoted well into `src/`. The refactor should end up with the *same
+  top-level features* (owner, 2026-07-13; restated 2026-09-25: 'My expectation is that the current
+  features remains across the changes done here'), just more consistent/stable — not a feature
+  change.
 - When a fact in this file or BACKLOG.md turns out to be stale (version drift, changed upstream
   API, etc.), update the doc in the same session rather than silently working around the
   discrepancy.
@@ -405,6 +420,21 @@ information):
   value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
   "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
   maintenance whenever an item resolves, not a one-off cleanup.
+- **Decision records (owner, 2026-09-26: the five prevention rules, answered '4. yes')**: (1) every
+  decision statement names actor and date, "(owner, YYYY-MM-DD)" or "(agent, YYYY-MM-DD)"; decision
+  vocabulary without an actor is not written; (2) an owner decision quotes the owner's words and the
+  question, in the commit message and the doc; a paraphrase is marked "paraphrase"; an agent
+  recommendation stays the agent's even when accepted; (3) compaction, migration, proofreading and
+  comment-cap edits never change actor, qualifier ("for now", "until …"), scope or foreclosure — the
+  commit says "no meaning change" or names the change; (4) an owner question is asked in session or
+  entered in BACKLOG.md's one owner-question list with its date, numbered, a decision in at most 10
+  words, then its options each with its consequence, describing effects per device and bus;
+  "flagged for the owner", "owner's call" and "revisit" appear nowhere else, and nothing cites a
+  temporary plan by section or number; (5) `tests_scripts/test_decision_vocabulary.py` and
+  `tests_scripts/test_citations.py` fail on actorless decision vocabulary and on citations to
+  missing files, headings or numbered decisions (existing text allow-listed until rewritten; the
+  list only shrinks). No owner trace never means the owner did not decide; the most recent owner
+  decision wins (owner, 2026-09-26: 'in case of changes by myself take my most recent decision').
 - **Every module gets exactly one header comment block — module/function/class `"""..."""`
   docstrings in Python, the equivalent leading `/** ... */`/`//` block in JS — capped at 3 lines,
   prefer fewer: a concise header, not an essay. This applies to all code in the repo, not just
@@ -437,27 +467,26 @@ information):
   at zero for Python and shell in all eight scopes; JS (JSDoc `@param`/`@returns` continuation lines
   not being commentary), CSS and the config files stay review-enforced (a titled `# ---- X ----`
   banner counts as a prose line; only a bare rule is punctuation).
-- Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
-  over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
-  intent wasn't obvious from reading it alone.
 - When changing a sensor driver's behavior, verify against the legacy driver's own actually-proven
   field behavior, not just judged correct against internal code-review logic in isolation.
-- **Step-session workflow, standing practice for any substantial unit of refactor/audit work**
-  (originated during the `improved-quality/` → `src/` wiring effort's five-plus-one step sessions,
-  still the expected shape for a comparable future unit of work — a new driver promotion, a new
-  audit pass, etc.): (1) refine the task's own scope into a detailed list — goals, doc links, and
-  the criteria that make the branch/session done — doing real research first (datasheets, current
-  MicroPython/Microdot docs, legacy driver code) rather than restating a one-line ask; (2) ask up to
-  10 top-level clarifying questions (what needs deciding, the realistic options, the consequences of
-  each), resolving as much as possible from project context/internal docs/legacy code first, but
-  raising a genuinely blocking or architecturally significant decision at any point, not only in
-  this round; (3) write the full set of unit tests first (TDD) against the criteria the refined
-  scope settled on; (4) write the implementation against those tests, refining until every test
-  passes and the result is lean, not just "technically satisfies the tests"; (5) add unit tests for
-  the resulting functional code, maximizing coverage; (6) stop and report back to the project owner
-  before doing anything more — merging, starting the next unit of work, or any scope beyond what was
-  just built is not the session's own call. A session can come back with a blocking question at any
-  point in this sequence, not only at the end.
+- **Workflow for substantial work** (owner, 2026-09-26: 'superseded by the workflow description
+  recorded in this session earlier, but quite close to option a'; paraphrase of the workflow
+  recorded 2026-09-25/26): research and cross-check first — code, docs, datasheets, external
+  sources, harvest (owner, 2026-09-25: 'cross-check them … very important with external sources like
+  repos, documentation, datasheets'); owner questions only at requirement recording and in a
+  consolidation run, never during execution (owner, 2026-09-25: 'at the recording of the
+  requirements … or at the pre-work consolidation and extension run'); tests first, then the
+  implementation, then coverage tests; a 'pause' is a self-set sync point — commit, push, the full
+  local suite at both GC stages, CI green watched through event hooks only, a status note — not a
+  wait for the owner (owner, 2026-09-25; owner, 2026-09-26: 'stop timed checks. Do hooks only.'); no
+  owner stop-points inside a unit, the report comes at its end (owner, 2026-09-26); an unforeseen
+  decision during execution is never asked: take the more conservative, more easily reversible
+  option grounded in sources, and log it as decided on the owner's behalf for review; hardware and
+  out-of-scope items are parked (owner, 2026-09-25); an apparent contradiction with an owner
+  requirement is a fine-tuning question, not a conflict (owner, 2026-09-25: 'they surely are not.
+  Such cases always mean that there is a topic to be fine tuned'); a CI failure is a flake only if
+  the provider confirms an outage and one re-run with no code change passes (owner, 2026-09-25: 'Do
+  not ignore any test or run failures').
 
 ## Code quality tooling
 
@@ -491,8 +520,9 @@ information):
   Always invoked `--offline`, which skips the two audits needing the GitHub API, so it behaves
   identically in CI, on a dev box, and in the clean-chroot recipe below. **`self-repository` is
   deliberately `disable: true`** — it wants `uses: $/.github/...` (GitHub's July-2026 syntax) and
-  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
-  when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
+  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied (agent,
+  2026-09-10, `bfaf4c6`): re-enable when actionlint accepts `uses: $/…` (checked at each actionlint
+  pin bump). **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
 - **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
   device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`,
@@ -500,7 +530,10 @@ information):
   `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
   `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
   is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
-  (see that file's own docstring). `buildgen/` follows the same split as `digital_twin/`: ruff
+  (see that file's own docstring). A new file in a scope joins ruff and mypy (and, if
+  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22), and so does
+  every new generator, validator or host module (owner, 2026-09-10, `fc6afbe`: 'add all build
+  scripts to the full CI'). `buildgen/` follows the same split as `digital_twin/`: ruff
   checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
   it's genuinely CPython-target host tooling — it parses TOML via the real stdlib `tomllib` and
   walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
@@ -543,8 +576,8 @@ information):
   Part E.1 has the current account, including the `devices/*.toml` ordering constraint that
   concurrency creates). `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
   the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
-  **is** linted and type-checked (project owner's direction: "add all build scripts to the full
-  CI"), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
+  **is** linted and type-checked (owner, 2026-09-10, `fc6afbe`: 'add all build scripts to the full
+  CI'), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
   one: all of it is genuinely CPython-target host tooling needing mypy's real bundled typeshed, not
   the MicroPython-stub-replaced one `custom_typeshed_dir` installs for `src/` (`tomllib` alone
   doesn't exist in that stub subset). Same "two resolution universes can't coexist in one run"
@@ -592,20 +625,21 @@ information):
   `uv sync` with three attempts **before** `scripts/test.sh`, which then finds the environment
   current and rebuilds nothing. Same reasoning as the `if: !cancelled()` edge below — a lint tool's
   problem must not erase the answer the tests give — applied to the dependency build rather than to
-  the job graph. Don't "simplify" the retry away; and if a test lane ever goes red with no test
-  named in the summary, read the `uv`/build output before the test output.
+  the job graph. Don't "simplify" the retry away (owner, 2026-09-26); and if a test lane ever goes
+  red with no test named in the summary, read the `uv`/build output before the test output.
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
   hang is fixed. **The `needs:` edge is for SEQUENCING only — `unit-tests` and
   `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they still run when the job they
-  follow fails.** `needs:` alone also implies success-gating, which was never chosen here (that
-  job's own comment says the sequencing "isn't required" for the hang) and is actively harmful: a
-  red `lint-and-typecheck` silently SKIPS every Python test lane. That is not hypothetical — it is
-  why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had never once run on the branch
-  that introduced `select = ["ALL"]`, and it concealed that for the branch's whole life. Keep the
-  sequencing; never restore the gating. `digital-twin-e2e` is the deliberate exception — its
-  `needs: unit-tests` comment states fail-fast as the actual intent, so it stays gated.
+  follow fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also implies success-gating, which
+  was never chosen here (that job's own comment says the sequencing "isn't required" for the hang)
+  and is actively harmful: a red `lint-and-typecheck` silently SKIPS every Python test lane. That is
+  not hypothetical — it is why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had
+  never once run on the branch that introduced `select = ["ALL"]`, and it concealed that for the
+  branch's whole life. Keep the sequencing; never restore the gating. `digital-twin-e2e` is the
+  exception — its `needs: unit-tests` comment states fail-fast as the actual intent, so it stays
+  gated.
 - **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
   non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
   readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
@@ -700,8 +734,8 @@ information):
   today's 16M once that file was split per device — root-caused, not overridden);
   SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here.
   Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
-  flag is still in place — and don't raise it as the fix, which that history is a standing example
-  against.
+  flag is still in place — and don't raise it as a fix (agent, 2026-09-17); a per-file heap
+  override hiding a symptom is never used (owner, 2026-09-17, `1e2c001`, paraphrase).
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
   **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose
@@ -725,7 +759,7 @@ information):
   (`_free_port()` binds port 0), and the one fixed port a booted twin also wants - captive DNS on
   53 - is `SO_REUSEADDR` and degrades to "not connected" after its retries rather than failing the
   boot (`asy_udp_socket.py`), so the two tiers overlap safely.
-- **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
+- **`ruff format` is not used anywhere** (agent, 2026-07-13) — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
   rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
@@ -733,11 +767,12 @@ information):
   choice is exactly why ruff is pinned: an unpinned upgrade would hard-fail CI on a rule nobody
   chose.
 - **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
-  — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
-  before they're fixed (test-driven-development framing, confirmed directly).
+  — the project owner wants ruff to flag existing bare excepts (owner, 2026-07-13) as a tracked
+  to-do, not silence them before they're fixed (test-driven-development framing, confirmed
+  directly).
 - **Union type annotations: always PEP 604 `X | Y` (and `X | None`), never `typing.Union[...]`.**
-  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.29.0 target by
-  testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
+  Confirmed safe at runtime on 1.26 and on the refactor's 1.29.0 target (the legacy units run
+  1.24.1; not tested there) by testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
   annotation works with no import needed) — MicroPython parses but never evaluates annotation
   expressions at all, so this isn't even a runtime-support question, just a style one. `typing.Union`
   needs `from typing import Union`, which isn't guarded by `TYPE_CHECKING` in every file that still
@@ -764,8 +799,8 @@ information):
   decorators make every handler they wrap "untyped" no matter how well the handler itself is
   annotated. Does **not** disable the `assignment` error code — the old `improved-quality/mypy.ini`
   did, though that was never a deliberate choice.
-- **`method-assign` stays globally enabled, and `src/` must never suppress it** (project owner's
-  direction). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
+- **`method-assign` stays globally enabled, and `src/` must never suppress it** (owner,
+  2026-09-10). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
   mocking mechanism, MicroPython having no `unittest.mock` — and each of those ~157 sites carries
   its own inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
   exemption, deliberately: a scope-wide override would stop marking the individual real sites.
@@ -866,9 +901,10 @@ unchanged; only the "before pushing, always" framing is.
 For any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
 anything else touching the dev-tooling/build-environment setup, the verification is end-to-end inside a
 genuinely clean chroot — not just in whatever sandbox a session happens to be running in.
-**Two targets, both required**: Ubuntu 24.04 "noble" (GCC 13.x, the OS the project's docs target)
-and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The trixie target" below
-for why one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+**Two targets, both required** (owner, 2026-09-11): Ubuntu 24.04 "noble" (GCC 13.x, the OS the
+project's docs target) and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The
+trixie target" below for why one is not enough. A session sandbox typically already has Python
+3.11+, `uv`, build tools, etc.
 pre-installed, which can mask real gaps. **This already caught a real bug once**: a
 `requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
 3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
@@ -1038,8 +1074,8 @@ what a passing run must show and Part B.7 ("Evidence this actually works") for w
   (owner decision, 2026-09-18); don't rely solely on the sandbox's own successful run either way.
 - **The project owner has explicitly authorized creating pull requests proactively, at any time,
   without asking first** — this is a standing exception to any general "don't open a PR unless the
-  user explicitly asks" caution an operator/harness prompt might otherwise apply. Confirmed
-  directly by the project owner; don't re-ask in future sessions.
+  user explicitly asks" caution an operator/harness prompt might otherwise apply (owner,
+  2026-07-13, `dddaafa`); don't re-ask.
 - **Always create a pull request with a meaningful description** when finishing work on a branch —
   summarize what changed and why, not just a file list.
 - **Automatically subscribe to the pull request's activity** (review comments, CI results) right

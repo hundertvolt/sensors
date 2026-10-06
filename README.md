@@ -7,10 +7,12 @@ data to an external FRAM chip, and persists configuration to a JSON file on the 
 filesystem. Code ships as frozen bytecode compiled into the MicroPython firmware, not loaded from
 the device filesystem at runtime.
 
-**5 units are currently deployed**: `arzi`, `wozi`, and three physically-identical-to-arzi units
-sharing the `neu` build (same sensors, different GPIO wiring). `dev` is a bench/test rig only — the
-one physically-flashed/bench-tested `src/`-based variant, never deployed in the field (see
-CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
+**Five legacy units are in service**, all the owner's own and within reach at any time (owner,
+2026-09-26: 'I build all sensors and still own all of them - full access anytime'): `arzi`, `wozi`
+and three arzi-identical units sharing the `neu` build (same sensors, different GPIO wiring), running
+the legacy firmware on MicroPython 1.24.1. Each moves to the refactor only by the owner's own
+reflash. `dev` is the bench rig — the only unit a session flashes and bench-tests; no session ever
+flashes `wozi` (owner, 2026-09-03, CLAUDE.md).
 
 | Config | Sensors | FRAM | Watchdog | HTML source |
 |---|---|---|---|---|
@@ -608,10 +610,9 @@ curl -s -X PUT -H "Content-Type: application/json" \
   http://127.0.0.1:8080/sensors
 ```
 
-Every field type is checked strictly against its schema — a JSON integer where a `"float"` field is
-declared (e.g. `60` instead of `60.0`) is correctly rejected as `"Invalid"`, not a bug; send a real
-decimal point for float-typed fields (`WarnHum`/`TempOffs`/`Interv`/`FlashDur`, ...). Read each
-endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
+Every field type is checked strictly against its schema — a JSON integer for a `"float"` field is
+accepted and coerced (`config_manager.py:163-164`); a float for an `"int"` field only without a
+fractional part. Read each endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
 and boot once more without wiping `digital_twin/config/` (nor `digital_twin/scd30_state.json`, this
 entry point's own default persisted path) to confirm it survived the restart — including SCD30's
 own NVM-backed fields (`MeasInt`, `TempOffs`, ...), which `digital_twin/_scd30_chip.py` persists the
@@ -695,7 +696,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
-  reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
+  reconciled - post-audit only (owner, 2026-09-25) - then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
 - **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
   whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area
@@ -731,9 +732,7 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,
   how to swap it in for a Unix-port run, FRAM/SCD30 persistence, running its own tests, and how to
   add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` Part C.11
-  point 9). Folding it into `SPECIFICATION.md`, the way `src/README.md`/`tests/README.md` were, is
-  an open option. See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the
-  architecture.
+  point 9). See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
 **`tests_hardware/README.md`** (permanent, kept current):
 

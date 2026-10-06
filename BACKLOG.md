@@ -49,7 +49,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
   on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
   delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
-- **FRAM's `verify_present()`/`set_write_protected()` stay in `src/` — SETTLED, do not re-raise.**
+- **FRAM's `verify_present()`/`set_write_protected()` stay in `src/` (owner, 2026-09-26: 'So they
+  remain as they are.'; decided earlier more than once).**
   They have zero callers in `src/` today and that is fine: "zero callers now, maybe callers
   tomorrow" is the whole point, and both are bus-hazard-tested across all four tiers and confirmed
   correct under real fault injection (CLAUDE.md's bus-hazard hard rule). The project owner has
@@ -61,43 +62,41 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   transactions and `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
   mid-transaction, which can't be interrupted regardless; see CLAUDE.md's "wedged I2C bus" hard
-  rule for why that case is different and already decided, and why `socket.getaddrinfo()` turned
-  out to belong in the *can't* bucket instead and is gone from this codebase entirely now). Each
+  rule for why that case is different). Each
   remaining call currently uses its own bespoke approach rather than one consistent mechanism
   applied everywhere.
-- **The task-supervisor error-budget counter** is behaviorally correct and intentional as designed,
-  but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
-  the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
-  half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
-  promotion, see `SPECIFICATION.md` Part A.4.)
+- **The task-supervisor error-budget counter** is behaviorally correct and intentional (owner,
+  2026-07-13, `368fa83`; its decay still intended, owner, 2026-09-26), but flagged by the owner as
+  implementable more efficiently — worth a cleaner implementation in the refactor without changing
+  observed behavior. (Neopixel warning-flash sequencing was the other half of this item - resolved
+  by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py` promotion, see
+  `SPECIFICATION.md` Part A.4.)
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
-  `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
-  structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely
-  done; (3) bus/sensor error-recovery robustness items above, which build on that structure — the
-  standardized timeout/cancellation mechanism is the next one of these to pick up. mypy/ruff/stubs/
-  Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
-  `src/` bar, and that's now standing practice for every new file, not a one-off.
+  `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this.
 
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
-  (project owner, 2026-09-15) has now run once, beyond bus-hazard's own corner** — UART,
-  WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push were all
-  swept, real call chains traced end-to-end rather than grep-counted. Full account, including what
-  was fixed, what's a confirmed structural exception, and what's named-but-not-fixed (needing either
-  a dedicated real-hardware session or a project-owner design decision): `tests_hardware/README.md`'s
-  "Tenth pass". No second instance of the SGP40-shaped bug (a real hardware trigger silently
-  substituted with a software-only one) turned up, but several real tier-parity gaps did, most now
-  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a
-  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback. Settled: the mock tier's
-  ~20-scenario UART fault-injection catalog is a structural exception until injection hardware
-  exists (2026-09-22, Part E.6.6's fourth item); the shipped-driver F.5.8 test exists
-  (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test are scratched, each needing a
-  `src/` change for the test alone (owner, 2026-09-25). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
-  integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
+  (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
+  terms of order now, it's only highly important to be applied.') has now run once, beyond
+  bus-hazard's own corner** — UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and
+  webserver/notification/config-push were all swept, real call chains traced end-to-end rather than
+  grep-counted. Full account, including what was fixed, what's a confirmed structural exception, and
+  what's named-but-not-fixed (needing either a dedicated real-hardware session or a project-owner
+  design decision): `tests_hardware/README.md`'s "Tenth pass". No second instance of the
+  SGP40-shaped bug (a real hardware trigger silently substituted with a software-only one) turned
+  up, but several real tier-parity gaps did, most now closed. **Named follow-ons still open, tracked
+  in that section, not repeated here**: a real-hardware test for `_reboot()`'s alarm-pool-exhaustion
+  fallback. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
+  exception until injection hardware exists (2026-09-22, Part E.6.6's fourth item); the
+  shipped-driver F.5.8 test exists (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test
+  are scratched, each needing a `src/` change for the test alone (owner, 2026-09-25). Re-running
+  this sweep against other domains (it did not touch e.g. sensortask/system_service integration
+  beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
 
-- **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
-  isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed,
+- **ISL29125's chip configuration divergence under concurrent API load (found by `679c2b0`'s
+  isolation work (agent, 2026-09-15); the owner rated that work's two defects 'HIGH IMPORTANCE and
+  must-fix' (owner, 2026-09-15, `679c2b0`, paraphrase)) — fixed,
   unit-tested and confirmed on silicon; only the `Overrange` half below still owes a run.** Root cause, traced through
   the real code: `ISL29125_I2C.configure()` mutated the in-memory shadow fields
   `encode_shadow()`/`matches_shadow()` read (`self._mode`, `self._range_fs`, `self._resolution`,
@@ -154,9 +153,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
-   values. **Decided: not patched on the current codebase** — accepted (reconfigure via web UI
-   after a key-adding update). The refactor's per-sensor config model avoids this failure mode
-   structurally, not by patching the current global-JSON codebase.
+   values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
+   from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
+   fixture (owner, 2026-09-26).
 3. MicroPython version target vs. upstream drift — deployed units run 1.26; the refactor now pins
    **1.29.0**, the newest stable. **Decided**: deployed code stays pinned to 1.26 until a deliberate
    reflash campaign; the refactor is where the version target moves forward. The full 1.28→1.29
@@ -164,10 +163,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch with no patches. Earlier
    1.27→1.28 rp2-port changes were RP2350-specific, not RP2040-breaking. Re-run F.1's standing
    re-check whenever the pin moves again.
-4. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? **Decided
-   by the project owner: no** — a write is fast enough not to matter, and it never happens on its
-   own/automatically anyway (only ever triggered by a real user interaction via the REST layer),
-   which also matters separately for not wearing out the flash with unnecessary writes. No
+4. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? **No**
+   (owner, 2026-08-11, `acc4993`): the deferred flush (owner, 2026-09-16, `9ac59cf`) stages a write
+   and flushes it later, so a write no longer holds a live request (SPECIFICATION.md F.2); and a
+   write never happens on its own (only ever triggered by a real user interaction via the REST
+   layer), which also matters separately for not wearing out the flash with unnecessary writes. No
    coordination mechanism needed. **Note**: `get_long_block_lock()` itself was already removed
    entirely before this was decided (see CLAUDE.md's "Long-blocking operations" hard rule) — this
    decision doesn't resurrect it.
@@ -189,17 +189,17 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    home. Kept here as a closed stub, at its original number, only because several `tests/`/
    `tests_hardware/` code comments still cite it as "BACKLOG.md open question 6" - don't renumber
    this item while those references exist.
-8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
-   SETTLED 2026-09-22 (owner): no hardware will be bought for this, so the rig stays as it is and
-   both candidates are permanently `[MANUAL]`.** Not "planned for later" any more, which is how
+8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]`
+   (owner, 2026-09-22, `d0bfbca`: no hardware will be bought for this): both candidates stay
+   `[MANUAL]`.** Not "planned for later" any more, which is how
    this read from 2026-09-11 until the question was put again. One qualifier, from the same
    sitting's answer about the UART fault catalog (SPECIFICATION.md Part E.6.6's fourth exception):
    fault-injection hardware may arrive one day for that work, and if it does, the GPIO half below
    is worth re-opening then — as a new entry, not by treating this one as still pending. A programmable GPIO fault-injection
    harness (upgrades the "genuinely wedged I2C bus → watchdog backstop" test) and a dedicated
    second WiFi test client (upgrades the real end-to-end hotspot session; today's host has one
-   adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — don't re-propose
-   building it, and don't substitute a software-only stand-in claiming the same coverage. Migrated
+   adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — and no
+   software-only stand-in claims the same coverage (agent, 2026-09-22). Migrated
    from the deleted `HARDWARE_TEST_PLAN.md`; surrounding architecture in SPECIFICATION.md Part E.6.
 9. **WiFi-reconnect flakiness across the bench suite - root-caused and fixed at the root.** Kept
    as a stub because three `tests_hardware/` files cite this number. What looked like several
@@ -275,8 +275,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     2026-09-17 figures, but the curve **does not flatten**: it climbs ~3.5s per reader, so three
     readers already reach 88-98% of the ceiling and four exceed it. The "~6 more chunks under load"
     headroom derived from the single 3-reader point no longer holds — under load there is none.
-    At four readers the board is saturated outright (F18, "Real-hardware work still owed": ceiling starvation of the `PUT`,
-    WEBSERVER `W2` reclaims, UART link `E20`/`E22`/`W10`). Nothing asserts elapsed time anywhere: both client timeouts
+    At four readers the board is saturated outright (F18; the owner's decision on such clients is in
+    SPECIFICATION.md H.7: ceiling starvation of the `PUT`, WEBSERVER `W2` reclaims, UART link
+    `E20`/`E22`/`W10`). Nothing asserts elapsed time anywhere: both client timeouts
     are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
     mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
     and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
@@ -322,8 +323,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     at the current design**: three readers already land at 13.2-14.7s against a 15s server abort, so
     any budget that never false-positives sits at or above the point where the server gives up
     first (R4 on 2026-09-25 measured 12.1-14.6s at three readers again, the worst 0.4s from the
-    abort). Setting the bench budget waits on item 24's design fix (batched or concurrent reset) —
-    the owner's decision. Then add the bench analogue of the twin's own budget check to
+    abort). The owner chose the concurrent reset (owner, 2026-09-26); the bench budget is set once
+    it lands. Then add the bench analogue of the twin's own budget check to
     `tests_hardware/error_log_helpers.py`.
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
@@ -345,20 +346,22 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 ## Real-hardware work still owed
 
 Folded in from the retired `REAL_HARDWARE_TEST_QUEUE.md` and `HARDWARE_TEST_HANDOVER.md` after the
-2026-09-24/25 sitting; row IDs (T4, F18, ...) are kept because commits and the whole-project audit
+2026-09-24/25 sitting; row IDs (T4, S4, ...) are kept because commits and the whole-project audit
 plan (on its own branch) cite them. **Nothing here authorizes anything**: CLAUDE.md's go-ahead gate
 applies, and `tests_hardware/README.md` is the reference for how any of it runs (flags, wear
 gates, traps).
 
-- **How a sitting runs — the owner's standing answers (2026-09-22).** D1: spend flash/NVM writes,
-  but only after a clean default run, so a gated failure is the gated test's own. D2: the
-  NeoPixel-aimed-at-ISL29125 light rig is in place. D3, confirmed every sitting: always a `dev`
-  build of the tree under test, never `wozi`. Order: read and save `errcount` before anything
-  writes (CLAUDE.md), build and flash, confirm `/system`'s `build.buildDate`, flash tier, bench
-  tier, then the gated run (`scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`),
-  reading each verdict's deselected count, not only "clean". **Board state at the fold**: `dev`
-  image `buildDate 2026-09-25T12:54:13Z` (tree `851e816`), `max_connections = 6`, `DebugLevel` 5;
-  its last runs were two clean default bench tiers and one clean gated run (2026-09-25).
+- **How a sitting runs.** D1 and D2 are the owner's standing answers (owner, 2026-09-22, `00f3eac`,
+  paraphrase — the commit records no owner words): D1, spend flash/NVM writes, but only after a
+  clean default run, so a gated failure is the gated test's own; D2, the NeoPixel-aimed-at-ISL29125
+  light rig is in place. D3 — always a `dev` build of the tree under test, never `wozi` — is
+  CLAUDE.md's WoZi hard rule; confirming it at each sitting, and the order below, are the run sheet
+  (agent, 2026-09-22): read and save `errcount` before anything writes (CLAUDE.md), build and flash,
+  confirm `/system`'s `build.buildDate`, flash tier, bench tier, then the gated run
+  (`scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`), reading each verdict's
+  deselected count, not only "clean". **Board state at the fold**: `dev` image
+  `buildDate 2026-09-25T12:54:13Z` (tree `851e816`), `max_connections = 6`, `DebugLevel` 5; its last
+  runs were two clean default bench tiers and one clean gated run (2026-09-25).
 - **Not yet confirmed on silicon.** (1) SGP40 `W13` spends one slot per NTP outage (`83c9920`, on
   the board's image): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged a
   `W13`. Zero-wear check: block UDP 123 longer than that, expect one `W13` with `ErrCount` rising
@@ -378,18 +381,10 @@ gates, traps).
   (SPECIFICATION.md C.7.1). N3 also owes a check that `UART_C_PORT_CHANGELOG.md` records the
   reclassification (receiver-side only, no emitted bytes change). Low urgency: the mock tier covers
   the logic.
-- **F18 — owner decision: zero-think-time readers saturate the board.** Four host threads
-  re-requesting `/status` the moment each answer lands: median 4.8 s per `/status`; a
-  `PUT /status {"ResetErrors": true}` refused at the connection ceiling 20 times in a row (readers
-  retake every freed slot; admission has no fairness), then no answer within 30 s; WEBSERVER `W2`
-  ×20 (the designed reclaim) and `UART_init`/`UART_resp` `E20`/`E22`/`W10`, which start already at
-  three readers (R4). No reboot, no task ended, no `MemoryError`. Open: are such clients inside the
-  contract (the web UI polls, it does not hammer)? If yes, admission needs fairness so a writer
-  cannot starve; and is the bench-only UART exerciser degrading under that load acceptable?
-- **T4 — owner decisions on the FRAM per-command hold.** Measured 2026-09-25 (SPECIFICATION.md
-  F.5.8): a 1-byte write holds the loop 2.8-3.4 ms without yielding (~0.6-0.7 ms per CS command).
-  Open: yield between the CS commands of one write (~3 ms → under 1 ms), or keep it; and whether
-  A6's timing script, below, becomes a committed device script. **This is its only copy.** Run it
+- **T4 — the FRAM per-block hold stays** (owner, 2026-09-26: 'Probably better to keep';
+  SPECIFICATION.md F.5.8). Measured 2026-09-25: a 1-byte write holds the loop 2.8-3.4 ms without
+  yielding (~0.6-0.7 ms per CS command). The command-envelope timing script below is its only copy,
+  until it becomes a committed device script or is deleted. Run it
   with `scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)"` then
   `scripts/mpremote_connect.sh run <file>`; it writes at the top of the address space and never
   calls `get_chunk()`, so production's error logs are safe:
@@ -447,18 +442,6 @@ gates, traps).
 
   asyncio.run(_main())
   ```
-- **W3 — owner judgement: the 256 B response cap costs +17 % on `/status`.** Like for like on one
-  tree (2026-09-25, 20 idle samples each): `/status` (6.86 KB) median 1.29 s at 256 B pieces
-  against 1.10 s at 1,024 B; single-piece routes (`/networking`, `/measurements`) unchanged at
-  ~0.28 s. Accept it as the price of SPECIFICATION.md I.3's bound, or not.
-- **T1 — owner to close: the in-suite heap placement figure.** Flash tier, `test_memory_stress.py`
-  at the script's own `gc.threshold(-1)`: `largest_block` 122,016 B at baseline → **84,112 B after
-  `build_system()`**, free 97,280 B, `retained` 0, the control and production-threshold arms
-  identical; map: highest new block at 55 %, none in the top 32 KB. The figure it was written to be
-  compared with (archive §7D.3, 20,592 → 28,864 B) is no longer in the tree and looks like a
-  different suite position. Close T1 on this figure, or name the position to compare at. Small
-  follow-up either way: the board prints `GC_THRESHOLD=`, but the test does not echo it. The
-  §M3.8 threshold race is confirmed (`-1` at 0.8 s after a reset, `32768` at 38 s).
 - **Give ad-hoc bench scripts one helper that kicks the AP's stations and then resets.** Every
   hotspot fallback of the 2026-09-25 sitting was a reset without `kick_all_stations()` *immediately*
   before it; kicking 50 s early does not help, since the board re-associates in between.
@@ -466,25 +449,25 @@ gates, traps).
   item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
   G6, a rollover method that leaves the board running (item 12, adapt now, measure later by
   decision); H1, the owner's two-chroot run (the chroot entry below); F17, item 44's anomalies.
-  Excluded on purpose: G10, the UART protocol against its C implementation (`arduino/` is out of
-  scope), and the two unbought bench-rig capabilities (item 8).
+  Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
+  the two unbought bench-rig capabilities (item 8).
 
 ## Deferred / explicitly out-of-scope work
 
-- **A transient SPI RX overrun is not retried - SETTLED, owner, 2026-09-24.** MicroPython 1.29's
+- **A transient SPI RX overrun is not retried (owner, 2026-09-24).** MicroPython 1.29's
   `OSError(EIO)` on 32+ byte rp2 SPI reads (SPECIFICATION.md Part F.5.2) is absorbed by the FRAM
   layer's dual copy: `_read_chunk()` logs errno 47 and `_read()` falls back to block 1 and repairs
-  block 0, so a retry inside the chunk loop would buy little. Don't re-propose it.
-- **`FiltCoeff` keeps its two meanings - SETTLED, owner, 2026-09-24.** BMP3xx's IIR register index
-  and the ISL29125's EMA coefficient share the name, namespaced per sensor on `/sensors`; renaming
-  either is a stored-config migration on deployed units for a cosmetic gain.
-- **`arduino/` is out of this project's scope - SETTLED, owner, 2026-09-24.** That covers the UART
-  protocol's C implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and
-  the BME688/BSEC material with its licensing. Nothing here tracks work on it; don't re-raise.
-- **`NTP_Host` keeps its 1024-character bound — SETTLED, owner, 2026-09-21: "keep it". Do not
-  re-raise.** Fielded behaviour wins over the 4x over-permissiveness, exactly as the "same
-  features, not a feature change" agreement implies, and `max_content_length` keeps its 1.56x
-  margin rather than the 3.79x a tightening would have bought. The analysis below is kept because
+  block 0, so a retry inside the chunk loop would buy little.
+- **`FiltCoeff` keeps its two meanings, namespaced per sensor** (owner, 2026-09-26). BMP3xx's IIR
+  register index and the ISL29125's EMA coefficient share the name, namespaced per sensor on
+  `/sensors`.
+- **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
+  out of scope, anything there is post-audit only'). That covers the UART protocol's C
+  implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
+  BME688/BSEC material with its licensing. Nothing here tracks work on it.
+- **`NTP_Host`'s 1024-character bound is re-decided when the REST API's key names are harmonised to
+  one scheme before the release, together with the other string bounds** (owner, 2026-09-26;
+  earlier 'keep it', owner 2026-09-21, `6acc9c0`). The analysis below is kept because
   it is what the decision was made on, and because it names the four files a future change would
   have to touch together.
   **Original framing:** `NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening
@@ -610,6 +593,9 @@ gates, traps).
   **Partial evidence, not a leg**: a session sandbox (GCC 13.3, not a `--variant=minbase` chroot)
   ran `env --tier generic` and then `uv run toolchain/setup_toolchain.py` from an empty toolchain
   directory on 2026-09-24 — all eight verification checks passed and the lwIP readback was clean.
+  **2026-10-06, comments only, no build impact**: decision tags in the comments of `pyproject.toml`,
+  `.github/workflows/ci.yml`, `.github/zizmor.yml`, `scripts/lint.sh` and `scripts/test.sh`; no
+  setting, pin or step changed, so nothing here moves either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
@@ -631,10 +617,10 @@ gates, traps).
   that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
   the sandbox's egress policy rejected outright (confirmed directly, not a transient failure), with
   no alternate Debian mirror to fall back to. The change itself is a pure ruff/pylint lint-rule
-  threshold with no compiler-version sensitivity, so the residual risk is judged low, not zero — a
-  from-scratch trixie leg (or a run on the bench Pi4, which already runs trixie/GCC 14.2) should
-  still confirm it whenever one is next convenient. The change itself is the `build_info=` parameter
-  SPECIFICATION.md Part L.7 describes.
+  threshold with no compiler-version sensitivity, so the residual risk was judged low, not zero
+  (agent, 2026-09-12) — a from-scratch trixie leg (or a run on the bench Pi4, which already runs
+  trixie/GCC 14.2) should still confirm it whenever one is next convenient. The change itself is the
+  `build_info=` parameter SPECIFICATION.md Part L.7 describes.
 - **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
   separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
   from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,
@@ -652,8 +638,8 @@ gates, traps).
   **Owner decision, 2026-09-18: it stays hand-maintained, and this is no longer an open question.**
   The drivers are an integral part of this repo, not third-party definitions arriving from outside,
   so one table edit per new driver is an acceptable cost — and the small half above already turns
-  forgetting it into a named error rather than a confusing one. Kept only to record that the
-  alternative was considered and declined; don't re-propose it.
+  forgetting it into a named error rather than a confusing one. Kept to record that the alternative
+  was considered and declined (owner, 2026-09-18).
   **Same answer for `buildgen/definitions.py`'s cross-cutting `status`/`errcount` sections** (owner,
   2026-09-24): they stay a hand-maintained catalog beside the `@web`-derived per-driver sections.
 - **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
@@ -695,14 +681,8 @@ gates, traps).
   *duration* — a fake cannot tell a caller how many milliseconds of event loop an over-ask would
   have cost, only how many bytes it was over by. Only the bench tier measures the milliseconds, and
   F.5.8's table is that measurement.
-- **Four UART-audit findings reviewed and deliberately left as they are** (audit pass over the
-  promotion, 2026-09-11 - every other finding from that pass was fixed and tested):
-  - **A responder's `set_callback` returning `None` ("don't care") lets the *peer* size a heap
-    allocation.** `_accept_set()` allocates `(CHUNKS - 1) x payload_size` from the peer-declared
-    `CHUNKS`, i.e. up to ~64 kB at `payload_size = 255`. It is caught (`MemoryError`/`OverflowError`
-    → logged, resync, no partial delivery) and so sits correctly on CLAUDE.md's
-    catch→degrade→restart→watchdog ladder, but a callback that *declares* its expected size caps it
-    instead of trusting the peer - worth preferring in any new responder.
+- **Four UART-audit findings reviewed and left as they are** (agent, 2026-09-11):
+  - **The peer-sized `_accept_set()` allocation is to be chunked and capped** (owner, 2026-10-05).
   - **`asy_uart_driver.UART.deinit()`/`init()` do not respect the session lock.** Calling either
     while a read is in flight would leave the in-flight code holding a reference to a deinit'd
     peripheral. No caller does: `UART_Comm` never deinits, and the one place that does
@@ -737,8 +717,9 @@ gates, traps).
   `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
   Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
   regression.
-- **Additional checker candidates, measured and mostly declined.** Evaluated against the real tree
-  rather than by reputation, when shellcheck/actionlint/zizmor were added:
+- **Additional checker candidates, measured and mostly declined** (agent, 2026-09-10; a dead-code
+  tool is run once, owner 2026-09-26). Evaluated against the real tree rather than by reputation,
+  when shellcheck/actionlint/zizmor were added:
   - **`zizmor`** (GitHub Actions security) - **adopted.** All 50 findings fixed, not suppressed:
     `excessive-permissions` (workflow-level `permissions: {}` + per-job `contents: read`),
     `artipacked` (`persist-credentials: false` on every checkout), and `unpinned-uses` (SHA-pinned
@@ -842,19 +823,20 @@ gates, traps).
   what makes the protocol's self-compatibility property physically testable. What stays
   deliberately absent is any *sensor* behind that link: no BME688/BSEC coprocessor, and no such
   wiring in any other variant. Not a legacy deployed feature, so adding one would be a scope
-  addition beyond feature-parity rather than a postponed fix — owner-confirmed this stays as-is.
-  The protocol module is standalone by design: its BME688/BSEC first use case is explicitly out of
-  scope and was **not** part of the promotion.
-- **Owner requirement for the final wiring stage — fulfilled; held here only until the owner's
-  audit of the whole refactor closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
-  Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
-  unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking boundary
-  SPECIFICATION.md Part E.4/`tests/machine.py` already establish for unit tests — fake
-  `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so the
-  whole wired-together sensortask can be exercised as close to the real target as possible without
-  physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
-  requirement calls for (see `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh`
-  runs the whole wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
+  addition beyond feature-parity rather than a postponed fix — this stays as-is (owner, 2026-08-20,
+  `b6cb852`). The protocol module is standalone by design (owner, 2026-09-11, `32b136f`): its
+  BME688/BSEC first use case is explicitly out of scope and was **not** part of the promotion.
+- **Owner requirement for the final wiring stage (owner, 2026-08-08, `7f498c1`, paraphrase) —
+  fulfilled; held here only until the owner's audit of the whole refactor closes.** Every
+  `sensortask-*.py` built as part of the real rewrite needs a full Unix-port equivalent, runnable on
+  a local computer, with whatever hardware is physically unavailable there mocked at the lowest
+  level of bus data exchange (i.e. the same mocking boundary SPECIFICATION.md Part
+  E.4/`tests/machine.py` already establish for unit tests — fake `machine.I2C`/`machine.SPI`/etc.
+  byte-level transactions, not higher-level driver stand-ins) so the whole wired-together sensortask
+  can be exercised as close to the real target as possible without physical hardware. **Fulfilled**:
+  `digital_twin/` is the lowest-level-mocking module this requirement calls for (see
+  `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh` runs the whole
+  wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
   that audit closes.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
@@ -862,8 +844,6 @@ gates, traps).
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
   end-to-end yet (`sensortask-wozi.py` itself predates the per-sensor-config model — see "Refactor
   targets not yet done" above).
-- **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
-  bench rig only, not bugs to fix.
 - **`js/nav.js`'s `initNav()` registers a `document`-level `keydown` listener with no matching
   removal** — harmless today (called exactly once per real page load), but a latent leak if it's
   ever called more than once without a full page reload (e.g. a future hot-reload path, or a test
@@ -932,3 +912,24 @@ gates, traps).
   not a known gap, and no measurement points at one. Worth a pass if a future session has the budget;
   SPECIFICATION.md Part I.1's prior-art note explains why the `__init__`/`setup()` split is the
   structural answer wherever such a case is found.
+- **SystemService's settings store grows with device-wide settings** — the timezone offsets
+  (`GMTOffset`/`DSTOffset`) now held by `AsyNtpClient`'s config, future rsyslog settings;
+  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/system_service.py:59, :101`).
+  Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
+  this is meant to grow into a general, module-independent system-settings store', paraphrase).
+- **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
+  one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
+  permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by
+  the hardware watchdog (SPECIFICATION.md F.2): a `machine.I2C` transfer on a wedged bus; a single
+  `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`, v1.29.0; the
+  multi-transfer FRAM transaction around it can be timeout-wrapped, SPECIFICATION.md F.2).
+  `socket.getaddrinfo()` is not called from `src/` (`asy_dns_client.py` resolves over its own
+  non-blocking UDP client). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
+  target').
+- **Resize the rp2 littlefs reservation** — only once flash space is actually short (owner,
+  2026-09-26); trigger: the firmware image-size report; mechanism SPECIFICATION.md B.14.3.
+
+## Owner questions
+
+Questions for the project owner, each dated, in the owner's format; nothing else in the repo parks a
+question.

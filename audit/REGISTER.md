@@ -99,6 +99,9 @@ Findings during execution that need a change outside the work order; each passes
 
 | unit | finding | state |
 |---|---|---|
+| U15 | SCD30 temperature offset truncated (`src/asy_scd30_driver.py` `int(offset * 100)`): one tick = 0.01 °C (Interface Description §1.4.7), so 4,585 of 65,536 float32 inputs write one tick low and read back 0.01 K under the PUT value. Upstream Adafruit `3eb3b52` uses `round()`. Legacy deployed driver also truncates, so this is a D.1 flag (behaviour vs field behaviour). Found by the refresh, family (g). | parked; A-C delta before U15 |
+| U18 | NTP accepts 44-47-byte replies (`src/asy_ntp_client.py`, no length check; `tests/test_asy_ntp_client.py` pins `_truncated(44)` as accepted). The NTP header is a fixed 48 bytes; upstream micropython-lib `9ec1830` rejects shorter replies. Receiver-side tightening. Found by the refresh, family (g). | parked; A-C delta before U18 |
+| U18 | NTP accepts a zero transmit timestamp: raw 0 maps through the era step to 2036-02-07, inside the 2025-2100 plausibility window, so a malformed reply with stratum ≠ 0 sets the RTC to 2036. Upstream micropython-lib `5139530` rejects it. Receiver-side tightening. Found by the refresh, family (g). | parked; A-C delta before U18 |
 
 ## Findings
 
