@@ -418,8 +418,8 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Watchdog escalation - a short, real, fully-supervised run (owner decision 7: automated assertion
-# *and* manually observable - the manual side lives in digital_twin/run_generic_integration.py
+# Watchdog escalation - a short, real, fully-supervised run (owner, 2026-08-13: an automated assertion
+# *and* a manually observable run - the manual side lives in digital_twin/run_generic_integration.py
 # (--module sensortask_wozi --wiring-plan ... --device wozi), this is the automated side).
 #
 # Deliberately does NOT drive this through main()/start_and_check_tasks(). MicroPython's globals() does not

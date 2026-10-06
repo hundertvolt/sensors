@@ -498,7 +498,7 @@ class _DeadFramChip(FakeMB85RS64V):
 
 @_register("build_system_never_insists_on_fram_hardware_being_available")
 def _scenario_fram_never_required(device: str) -> None:
-    # Owner requirement: no module may insist on FRAM availability - every FRAM-backed error log
+    # Owner requirement (owner, 2026-08-11): no module may insist on FRAM availability - every FRAM-backed error log
     # must keep working in plain RAM, and SGP40 must keep running without backup/restore. Exercises
     # the whole construction chain with a dead chip, not one driver in isolation.
     asy_spi_driver._SPI = _DeadFramChip  # type: ignore[misc]
@@ -688,7 +688,7 @@ def _scenario_notify_cfgmgr_exists(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Debug level - persisted on sysfunct, pushed live to every logger's own set_level() through a
-# registry collected once at boot (owner requirement: system-wide, but no shared mutable value).
+# registry collected once at boot (owner, 2026-08-11: system-wide, no shared mutable value).
 # See SPECIFICATION.md Part A.7's "Debug-level registry" and _collect_level_setters().
 # ---------------------------------------------------------------------------
 
@@ -964,7 +964,7 @@ def _scenario_system_put_reboot(device: str) -> None:
 @_register("webserver_system_put_reboot_flushes_a_still_pending_config_write_first")
 def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
     # A commanded reboot must not drop a still-staged write (the generated _flush_pending_configs(),
-    # config_manager.py's flush_pending()) - unlike the accepted power-loss residual risk (Part F.2),
+    # config_manager.py's flush_pending()) - unlike the accepted power-loss residual risk (owner, 2026-09-26; Part F.2),
     # this path can wait the flush out. One PUT with a settings change plus SystemCmd=reboot.
     module = build(device)
     assert module.sysfunct is not None

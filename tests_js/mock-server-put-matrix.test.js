@@ -1,7 +1,7 @@
 /**
  * PUT-behavior matrix over every real writable field in both shipped devices' definitions.json,
- * against js/mock-server.js's real fetch interception - six categories per field (valid, special,
- * omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
+ * against js/mock-server.js's real fetch interception - six categories per field (owner, 2026-08-24)
+ * (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
  */
 import { describe, expect, it } from "vitest";
 import wozi from "../html/definitions/wozi.json";

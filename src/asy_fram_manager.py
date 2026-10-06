@@ -645,7 +645,7 @@ class AsyFramManager:
     def get_chunk(
         self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8,
     ) -> AsyFramChunk | None:
-        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc
+        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (owner, 2026-07-18: reject generally at the top)
             self.pr.err("Zero-size chunk requested, rejected!")
             return None
         crc = CRC_Pass() if crc is None else crc
@@ -687,7 +687,7 @@ class AsyFramManager:
         verify: int = 0,
         check_length: int = 8,
     ) -> AsyFramTimestampedChunk | None:
-        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc
+        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc (owner, 2026-07-18: reject generally at the top)
             self.pr.err("Zero-size chunk requested, rejected!")
             return None
         crc = CRC_Pass() if crc is None else crc
@@ -724,6 +724,7 @@ class AsyFramManager:
         return chunk
 
     def set_pause(self, *, value: bool) -> None:
+        # Finish all ongoing ops, reject new ones (owner, 2026-07-18)
         self.pr.evt("Storage pause set to", value)
         self._pause = value
 

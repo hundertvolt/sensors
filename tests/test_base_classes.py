@@ -1129,7 +1129,7 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
 # class-owned orchestration, per-field push via a callback" shape. Only on SensorReaderConfig, not the plain
 # SensorReader base: a generic write needs a real ConfigManager to validate and persist against.
 #
-# Persist-first, then push (project decision): a value only reaches hardware once it is safely on flash, so
+# Persist-first, then push (owner, 2026-09-26): a value only reaches hardware once it is safely on flash, so
 # whatever made it onto the device is still there after an unplanned reset.
 #
 # Push fires only for an actual change ("Valid"), never for "Unchanged" - there are no generic force-resend
@@ -1661,7 +1661,7 @@ def test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed() -> None:
 
 
 def test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_request() -> None:
-    # Final project decision: an unrecognized key is just another per-field "Invalid" outcome
+    # (owner, 2026-09-26): an unrecognized key is just another per-field "Invalid" outcome
     # (matching ConfigManager.write_config's own existing per-key tolerance) - it does not
     # invalidate the rest of a multi-field request.
     path_prefix = _SHARED_CFG_DIR
@@ -1822,7 +1822,7 @@ def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
 
 
 def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> None:
-    # Registered once per instance at construction time (project decision), never shared/leaked
+    # Registered once per instance at construction time (agent, 2026-08-03), never shared/leaked
     # across two separate instances of the same class.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_percallback1.cfg")

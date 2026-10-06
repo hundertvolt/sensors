@@ -284,7 +284,7 @@ def test_fram_given_uses_fram_backed_logging() -> None:
 
 # ---------------------------------------------------------------------------
 # get_dict_cfg / get_data / get_dict_data / get_error_counter - the base-class getter quartet
-# (SPECIFICATION.md Part C.4.2). Setters are explicitly out of scope (see BACKLOG.md).
+# (SPECIFICATION.md Part C.4.2).
 # ---------------------------------------------------------------------------
 
 

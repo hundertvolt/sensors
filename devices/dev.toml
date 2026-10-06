@@ -150,8 +150,7 @@ field = "Hum"
 # Each end gets its own fram_target chunk, so a fault on one end stays attributable (WP3; only the
 # link's own error history is made durable, Part J.1).
 #
-# wozi never gets a UART instance: it is never flashed, so the peripheral would be untestable
-# (CLAUDE.md).
+# Only dev has UART links: the crossover jumper they exercise is on the bench (owner, 2026-10-02).
 
 [[instance]]
 driver = "uart_link"

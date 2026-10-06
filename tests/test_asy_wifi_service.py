@@ -646,7 +646,7 @@ def test_led_toggle_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> N
 
 
 def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
-    # Project-wide decision: every setter returns bool (True = applied), not None. set_wifi_led
+    # (owner, 2026-09-26): every setter returns bool (True = applied), not None. set_wifi_led
     # can't actually fail (pure attribute assignment plus _led_off()'s own already-defensive
     # degrade-on-raise), so it's always True - but the contract itself must hold everywhere.
     client = make_client(ext_led=FakeLED())
@@ -1788,7 +1788,7 @@ def test_run_sta_mode_stays_benign_across_many_cycles_when_isconnected_is_perman
 
     # Drives the real method across many cycles and proves the steady state stays fully benign: no
     # exception, no hw_op_failed, no connection_failures climb, _conn_phase stays ESTABLISHED -
-    # CLAUDE.md's "physical intervention as the accepted backstop" pattern, not a hang or crash.
+    # CLAUDE.md's power-cycle recovery (owner, 2026-09-04), not a hang or crash.
     client = make_client(conn_fail_to_hotspot=2)
     client._conn_phase = _PHASE_STA_ESTABLISHED
     _wlan(client)._connected = True

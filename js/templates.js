@@ -290,7 +290,7 @@ export function buildErrcountGroup(group, errcount) {
         row.append(name, count);
 
         // Always rendered, never independently hidden - a shown row's history is meant to be
-        // visible right away, not gated behind a second click (project owner, session 2 follow-up).
+        // visible right away, not gated behind a second click (owner, 2026-08-21).
         const list = document.createElement("ul");
         list.className = "history-list";
         const history = entry.history ?? [];
@@ -301,7 +301,7 @@ export function buildErrcountGroup(group, errcount) {
             list.appendChild(empty);
         } else {
             // No pagination or truncation - realistic history depth is well under
-            // 20 entries (project owner, session 2), so the whole array just renders.
+            // 20 entries (owner, 2026-08-21), so the whole array just renders.
             for (const item of history) {
                 const li = document.createElement("li");
                 li.className = "history-entry";

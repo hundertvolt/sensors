@@ -263,7 +263,7 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
             card.dataset.applyStatus = "failed";
             // The request never got far enough for a per-field breakdown, so every submitted
             // field shows the same "internal or communication error" individually, not just the
-            // card border - legacy only console.error'd here, and this is a deliberate change.
+            // card border - legacy only console.error'd here; this departs from it (agent, 2026-08-22).
             for (const key of Object.keys(groupBody)) {
                 const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
                 if (fieldEl instanceof HTMLElement) {

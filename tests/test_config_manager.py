@@ -352,7 +352,7 @@ def test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accep
     # 52 on this Unix-port double-precision one) while MicroPython's int is arbitrary-precision on both, so
     # beyond that float(int) silently rounds.
     #
-    # Documented, accepted risk: no registered float field's bounds go near this range, and this build
+    # Accepted risk (owner, 2026-08-24): no registered float field's bounds go near this range, and this build
     # cannot reproduce the real single-precision threshold - so this proves only the double-precision
     # boundary.
     exact = 2**53

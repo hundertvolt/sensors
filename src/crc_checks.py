@@ -5,7 +5,7 @@ documented CRC-8), CRC16 (CRC-16/CCITT-FALSE), CRC32 (CRC-32/MPEG-2), plus CRC_P
 # returns None/False on invalid input rather than raising, except add()/check(), which allocate and
 # let MemoryError propagate. run_inc()/check_inc() hold per-instance state - never share one.
 
-# Zero-padding limitation inherent to this CRC class: a register at 0 stays 0 through further 0x00
+# Zero-padding limitation inherent to this CRC class (CRC linearity; agent, 2026-07-15): a register at 0 stays 0 through further 0x00
 # bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's
 # true end - callers must supply an accurate length.
 

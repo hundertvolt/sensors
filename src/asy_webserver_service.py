@@ -110,7 +110,7 @@ _DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pi
 # under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
-    # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
+    # the five shaped statuses SPECIFICATION.md A.5 names.
     (400, "Bad request"),
     (404, "Not found"),
     (405, "Method not allowed"),
@@ -120,8 +120,8 @@ _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for
 
 
 def _index_by_name(items: "Iterable[_ModuleLike]") -> "dict[str, _ModuleLike]":
-    # Last-registration-wins, by construction - decision 6 (see SPECIFICATION.md Part A.8): the
-    # simplest per-item loop already behaves this way, deliberately no dedup/guard code on top.
+    # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
+    # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
     result: dict[str, _ModuleLike] = {}
     for item in items:
         result[item.name] = item
@@ -384,7 +384,7 @@ class WebserverService:
         app.after_request(_mark_connection_close)
         app.after_error_request(_mark_connection_close)  # after_request alone misses every
         # error-response path (400/404/405/413/500) - dispatch_request() only runs after_request
-        # handlers on its happy path (see SPECIFICATION.md Part A.8, decision 7).
+        # handlers on its happy path (SPECIFICATION.md Part A.8).
         for status_code, descr in _ERROR_SHAPES:
             app.errorhandler(status_code)(_shaped_error_handler(status_code, descr))
         # Catch-all for logging/FRAM-history only - Microdot's own error_response() fallthrough
@@ -695,7 +695,7 @@ class WebserverService:
         # of those stub classes satisfies the one real Stream surface _TimeoutStreamProxy forwards.
         current = await self._open_conns.increment()
         if current > self._max_connections:
-            # Reject-when-full (decision 3): accepted by asyncio, then closed with no response ever
+            # Reject-when-full (owner, 2026-08-12; SPEC A.8): accepted by asyncio, then closed with no response ever
             # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
             await self._open_conns.decrement()
             await self._close_writer(writer)

@@ -155,8 +155,8 @@ class SGP40_Reader(SensorReaderConfig):
         )
         self.sgp = SGP40_I2C(i2c)
         # SGPResetVOC is command-only (see _VAL_RESET above) - registered the same way as every
-        # other module's real live-push field (project decision - constant at runtime, no per-call
-        # plumbing needed), just never persisted.
+        # other module's real live-push field (agent, 2026-08-04: constant at runtime, no per-call
+        # plumbing), just never persisted.
         self._push_callbacks[name_cfg(_VAL_RESET)] = self._push_reset_voc
         self.read_event = asyncio.ThreadSafeFlag()
         self.trigger_timer = Timer()
@@ -188,8 +188,9 @@ class SGP40_Reader(SensorReaderConfig):
         self.last_backup: int | None = None
         self.restored_from: int | None = None
         self.reset = False
-        # Two independent sub-parts of a pending reset, tracked separately since they can complete
-        # on different cycles (see reset_voc()/_read_sgp()). Both start "done".
+        # Two independent sub-parts of a pending reset, tracked separately since they can complete on different cycles
+        # (see reset_voc()/_read_sgp()); both start done. Never drop a reset, never redo the whole thing, never give up
+        # retrying (owner, 2026-07-22, `90ced2b`, 'verbatim in spirit').
         self._reset_fram_cleared = True
         self._reset_algo_applied = True
 
@@ -505,7 +506,7 @@ class SGP40_Reader(SensorReaderConfig):
         return await self.pr.get_log()
 
     async def reset_voc(self, *, flag: bool) -> bool:
-        # Uniform setter return contract (project-wide decision): True = applied, False = no-op.
+        # Uniform setter return contract (owner, 2026-09-26): True = applied, False = no-op.
         # flag=False deliberately does nothing (see test_reset_voc_false_is_a_no_op's own contract
         # note) - only flag=True actually triggers a reset.
         if flag:
@@ -595,7 +596,7 @@ class SGP40_I2C:
     @staticmethod
     def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
         # Temperature-to-ticks, datasheet Table 10: 25C->0x6666, -45C->0x0000, 130C->0xFFFF.
-        # Rounds to nearest (matching _relative_humidity_to_ticks below) rather than truncating.
+        # Rounds to nearest (matching _relative_humidity_to_ticks below) rather than truncating (owner, 2026-07-22, paraphrase).
         temp_ticks = int(((temperature + 45) * 65535) / 175 + 0.5) & 0xFFFF
         buf[0] = (temp_ticks >> 8) & 0xFF  # most significant byte
         buf[1] = temp_ticks & 0xFF  # least significant byte
@@ -667,8 +668,8 @@ class SGP40_I2C:
         await self.initialize()
 
     async def initialize(self) -> None:
-        # Only the serial-number read and self-test (datasheet Table 8) gate success - the
-        # feature-set check the legacy driver had isn't datasheet-documented.
+        # Only the serial-number read and self-test (datasheet Table 8) gate success - the legacy
+        # feature-set check (0x202F) is not in the datasheet's Table 8, so it is removed (owner, 2026-07-21).
         async with self.i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x36
             self._command_buffer[1] = 0x82
