@@ -1,13 +1,13 @@
-"""Plan validators V1 (file ownership), V3 (path:line anchors in bounds) and V4 (IDs) for PROJECT_AUDIT_PLAN.md.
-
-Usage: validate_plan.py [--anchor-sha SHA]  (default 4dc80ef, the planning baseline). Exit 1 on any failure.
-"""
+"""Plan validators V1 (file ownership), V3 (path:line anchors in bounds; a quoted fragment right after an anchor
+found in lines lo-5..hi+5, harvest_check.check()'s rule) and V4 (IDs) for PROJECT_AUDIT_PLAN.md.
+Usage: validate_plan.py [--anchor-sha SHA]  (default 4dc80ef, the planning baseline). Exit 1 on any failure."""
 
 import argparse
 import re
 import subprocess
 import sys
 
+from harvest_check import check
 from owner_of import classify
 
 PLAN = "PROJECT_AUDIT_PLAN.md"
@@ -16,6 +16,9 @@ EXT = r"py|md|sh|toml|js|mjs|json|yml|yaml|ini|txt|css|html|cfg"
 REF_RE = re.compile(r"([\w./-]+\.(?:" + EXT + r")):(\d+)((?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)")
 CONT_RE = re.compile(r"`:(\d+)((?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)`")
 UPSTREAM = ("py/", "extmod/", "ports/", "shared/", "lib/", "drivers/", "src/freezeFS.py")
+# A quote of the anchored text follows it directly: `a.py:12` "x", `a.py:12`'s "x", a.py:12, "x", a.py:12 ("x"),
+# `a.py:12` says/reads/writes/credits "x". Anything else in between (`): "`, `). "`, "carries") detaches it.
+QUOTE_RE = re.compile(r"`?(?:'s)?\s*(?:,\s*|\(|(?:says|reads|states|writes|credits)\s+)?\"([^\"]{12,})\"")
 
 
 def git(*args):
@@ -40,12 +43,12 @@ def numbers(first, rest):
     return out
 
 
-def v3(sha):
+def resolver(sha):
+    """A plan/doc path name -> its tracked path at sha (exact, else a unique basename, src/ preferred), or None."""
     tracked = set(git("ls-tree", "-r", "--name-only", sha).stdout.split("\n"))
     by_base = {}
     for t in tracked:
         by_base.setdefault(t.rsplit("/", 1)[-1], []).append(t)
-    sizes, bad, skipped, checked = {}, [], set(), 0
 
     def resolve(p):
         if p in tracked:
@@ -56,6 +59,12 @@ def v3(sha):
         src = [c for c in cands if c.startswith("src/")]
         return (src or (cands if len(cands) == 1 else []) or [None])[0]
 
+    return resolve
+
+
+def v3(sha):
+    resolve = resolver(sha)
+    sizes, bad, skipped, checked, quoted = {}, [], set(), 0, 0
     for block in re.split(r"\n(?=\s*- |\s*\n|\|)", open(PLAN).read()):
         last = None
         for m in re.finditer(REF_RE.pattern + "|" + CONT_RE.pattern, block):
@@ -75,7 +84,16 @@ def v3(sha):
                 checked += 1
                 if not 1 <= n <= sizes[last]:
                     bad.append(f"{last}:{n} beyond {sizes[last]} lines")
-    return bad, checked, sorted(skipped)
+            q = QUOTE_RE.match(block, m.end())
+            if q:  # content check: harvest_check.check() normalises, picks the fragment and searches lo-5..hi+5
+                quoted += 1
+                frag = " ".join(q.group(1).split())
+                status, at = check(sha, {"text": f'{last}:{first}{rest} — "{frag}"'})
+                if status == "moved":
+                    bad.append(f'{last}:{first}{rest} "{frag[:60]}" moved to :{at}')
+                elif status != "ok":
+                    bad.append(f'{last}:{first}{rest} "{frag[:60]}" {status}')
+    return bad, checked, sorted(skipped), quoted
 
 
 def v4():
@@ -94,10 +112,13 @@ if __name__ == "__main__":
     ap.add_argument("--anchor-sha", default="4dc80ef")
     sha = ap.parse_args().anchor_sha
     b1 = v1()
-    b3, n3, skip = v3(sha)
+    b3, n3, skip, q3 = v3(sha)
     b4, n4 = v4()
     print(f"V1 ownership: {len(b1)} problems")
-    print(f"V3 anchors at {sha}: {n3} line refs checked, {len(b3)} out of bounds; unresolved names (upstream/other): {', '.join(skip)}")
+    oob = sum(" beyond " in b for b in b3)
+    moved = sum(" moved to :" in b for b in b3)
+    print(f"V3 anchors at {sha}: {n3} line refs checked, {oob} out of bounds; {q3} quoted fragments checked, {moved} moved, "
+          f"{len(b3) - oob - moved} not found; unresolved names (upstream/other): {', '.join(skip)}")
     print(f"V4 IDs: {n4} defined, {len(b4)} problems")
     for line in b1 + b3 + b4:
         print("  " + line)
