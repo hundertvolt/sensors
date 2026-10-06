@@ -1,8 +1,8 @@
 """Bench-only UART crossover-link exerciser: wraps one role's `UART_Comm` over an already-built
 `asy_uart_driver.UART` bus, plus the banner/echo application logic and transfer/failure counters
 that have no home in the standalone protocol module itself. See SPECIFICATION.md Part J.7/A.7."""
-# Never a SensorReader/SensorReaderConfig subclass (mirrors UART_Comm's own owner-confirmed
-# standalone status, SPECIFICATION.md Part J.1) - resolved via buildgen.driver_registry._OVERRIDES.
+# Not a SensorReader/SensorReaderConfig subclass, like UART_Comm (agent, 2026-09-11; Part J.9) -
+# resolved via buildgen.driver_registry._OVERRIDES.
 
 import asyncio
 
@@ -132,7 +132,7 @@ class UartLinkExerciser:
 
     def get_task_starters(self) -> "list[Callable[[], _asyncio.Task[Any]]]":
         # The role decides the task set, as in UART_Comm's own get_task_starters(): both ends
-        # initiating has no arbitration in this protocol (Part J.2). The initiating half is this
+        # initiating has no arbitration in this protocol (Part J.2; owner, 2026-09-11). The initiating half is this
         # class's job instead - UART_Comm cannot know what a caller wants to ask its peer.
         starters = self._comm.get_task_starters()
         if self.role == ROLE_INITIATOR:

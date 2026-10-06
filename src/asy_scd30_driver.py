@@ -159,8 +159,8 @@ class SCD30_Reader(SensorReader):
         }  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
 
     async def _init_scd(self) -> bool:
-        # Continuous measurement isn't (re)started here - it's NVM-persisted and provisioned
-        # externally via set_ambient_pressure (see CLAUDE.md).
+        # Continuous measurement is never started here: the first ambient-pressure PUT starts it, and
+        # the chip keeps it across power cycles (SPECIFICATION.md A.4; owner, 2026-09-26).
         await self.pr.setup()
         self._err_cnt_internal = 0
         try:

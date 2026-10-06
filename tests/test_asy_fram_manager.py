@@ -85,9 +85,8 @@ def test_get_chunk_sequential_allocation_offsets_match_bump_pointer_math() -> No
 
 
 def test_allocation_order_not_chunk_size_determines_offsets() -> None:
-    # The static-allocation invariant this whole file depends on: whichever get_chunk()/
-    # get_timestamped_chunk() call happens first claims the lower offset regardless of size, which
-    # is why call order must stay identical across firmware versions for stored data to decode.
+    # Whichever get_chunk()/get_timestamped_chunk() call happens first claims the lower offset regardless of
+    # size, which is why call order must be fixed within one build.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     small_first = manager.get_chunk(2)

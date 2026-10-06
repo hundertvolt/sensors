@@ -87,15 +87,15 @@ _FULL_SCALE_COUNTS = const(65535)  # p3: "Full Scale ADC Code, ADC 16 bits"
 _CYCLE_MS_16BIT = const(303)  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, 101 x 2**-4
 
-# Device/maths constants, deliberately NOT config fields - requirement 1 (SPECIFICATION.md Part
-# M.1.1) governs preferences, and none of these is one (M.1.3's own classification note).
+# Device/maths constants, not config fields (agent, 2026-09-14) - requirement 1 (SPECIFICATION.md
+# Part M.1.1) governs preferences, and none of these is one.
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
 _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-count additive error
 # moves a channel ratio by more than ~8%, and chromaticity noise grows far faster than hue noise.
 _GAIN_RATIO_NOMINAL = const(26.666666666666668)  # 10000/375 - the ratio a fresh unit starts from
 _GAIN_RATIO_MIN = const(20.0)  # a plausibility gate around nominal, applied where an untrusted
 _GAIN_RATIO_MAX = const(34.0)  # value enters (on load and on learn), never in the hot path
-# Calibration is a bounded, user-started run, never a background schedule: the driver only ever
+# Calibration is a bounded, user-started run, never a background schedule (owner, 2026-09-13): the driver only ever
 # READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5).
 _CAL_WINDOW_MS = const(120000)  # hard stop on a run that never converges - ~100 attempts at 16 bit
 _CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readable before it clears
@@ -567,8 +567,8 @@ class ISL29125_Reader(SensorReaderConfig):
     # -- auto-range --------------------------------------------------------
 
     def _evaluate_range(self, counts: "tuple[int, int, int]", *, saturated: bool) -> int | None:
-        # Decides on the PEAK of all three channels in both directions: the hardware path is
-        # green-only because INTSEL has one channel, but the output is a colour triple. Peak-up with
+        # Decides on the PEAK of all three channels in both directions (owner, 2026-09-12): hardware
+        # is green-only (one INTSEL channel), but the output is a colour triple. Peak-up with
         # green-down oscillates - a red-dominant scene switches up, then back once the dwell ends.
         if not self._range_auto:
             return None

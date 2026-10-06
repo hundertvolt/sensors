@@ -127,7 +127,7 @@ class FRAM_SPI(Lockable):
     async def __aenter__(self) -> "Self":
         # Driver lock then bus, both for one whole block operation, so the chunk layer's byte-level
         # commands run synchronously under a lock it already holds - a second SPI device then waits
-        # ~25 CS rather than ~5 (SPECIFICATION.md C.8 records the owner's choice of that trade).
+        # ~25 CS rather than ~5 (owner, 2026-09-18; SPECIFICATION.md C.8).
         await super().__aenter__()
         try:
             await self._bus_lock.acquire()

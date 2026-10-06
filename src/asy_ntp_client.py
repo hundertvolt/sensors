@@ -112,7 +112,7 @@ class AsyNtpClient(SensorReaderConfig):
     ) -> None:
         super().__init__(
             NTP(Synced=False, LastSyncAge=None, TS=None),
-            0,  # no failure streak: an unreachable server is routine here, never a restart (Part C.7.2)
+            0,  # no failure streak: an unreachable server is routine here, never a restart (owner, 2026-09-24; Part C.7.2)
             _NAME,
             _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST,
             cfg_path=cfg_path,

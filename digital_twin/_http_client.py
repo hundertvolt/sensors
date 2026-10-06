@@ -1,4 +1,4 @@
-"""Minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()` — no HTTP client library is frozen into the pinned MicroPython Unix-port build, so the twin's integration run hand-rolls one instead.
+"""Minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`: real HTTP over real sockets (owner, 2026-08-13) — no HTTP client library is frozen into the pinned MicroPython Unix-port build, so the twin's integration run hand-rolls one instead.
 Every response it sees carries `Connection: close`, so no keep-alive support is needed. See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio

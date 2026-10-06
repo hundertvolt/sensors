@@ -1,6 +1,6 @@
 /*
  * Design tokens + layout for the sensors website (SPECIFICATION.md Part H).
- * Light palette on :root; dark only redefines tokens under prefers-color-scheme, no manual toggle.
+ * Light palette on :root; dark only redefines tokens under prefers-color-scheme, no manual toggle (owner, 2026-08-21).
  * Legacy .container > .group > .card nesting kept as the mental model, modernized - Part H.3.
  */
 

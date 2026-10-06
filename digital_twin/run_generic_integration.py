@@ -299,7 +299,7 @@ _WIRE_LOG_CLEAR_INTERVAL_MS = 5000
 
 
 async def _wire_log_clearer(link: "Any") -> None:
-    # UARTLink.wire_log is unbounded by design, and nothing in this process ever reads it, so
+    # UARTLink.wire_log is unbounded (agent, 2026-09-14) and nothing in this process reads it, so
     # left alone it grows for as long as the link carries traffic - which is what made Run 11's
     # trend check fail for `dev` and not `wozi`. README.md's own section has the account.
     while True:

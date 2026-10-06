@@ -452,9 +452,8 @@ def test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_sto
 
 
 def test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no_measurement_read() -> None:
-    # Matches the legacy driver's own proven behavior: a not-ready read_measurement() call must
-    # neither raise nor clear the cache - it just leaves whatever was last read in place. Reverted
-    # from an earlier "clear to None" version per project-owner direction; see BACKLOG.md.
+    # Matches the legacy driver's proven behaviour: a not-ready read neither raises nor clears the cache (owner, 2026-07-22,
+    # `110f3db`; SPECIFICATION.md A.4).
     scd, i2c = make_scd()
     scd._co2, scd._temperature, scd._relative_humidity = 1.0, 2.0, 3.0
     i2c.read_queue.append(register_frame(0))

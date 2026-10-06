@@ -109,8 +109,8 @@ def test_make_response_result_none_defaults_to_empty_dict() -> None:
 
 
 def test_make_response_result_can_carry_partial_failures_under_an_overall_ok() -> None:
-    # Final project decision: per-field failures don't demote the overall response - the request
-    # was validly processed, individual field outcomes live in "result".
+    # (owner, 2026-09-26): per-field failures don't demote the overall response - res not OK
+    # would mean the request itself was broken; individual field outcomes live in "result".
     resp = ar.make_response(0, result={"A": "Valid", "B": "Invalid", "C": "Failed"})
     assert resp["res"] == "OK"
     assert resp["code"] == 0
@@ -180,7 +180,7 @@ def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
 # ---------------------------------------------------------------------------
 # handle_set_cmd - orchestrates SensorReaderConfig._set_dict_cfg + post-write hook + envelope,
 # with its own try/except as defense-in-depth on top of Microdot's own blanket per-request catch
-# (project decision, based on prior field experience with Microdot behaving unexpectedly).
+# (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
 # ---------------------------------------------------------------------------
 
 

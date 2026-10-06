@@ -847,7 +847,7 @@ def test_get_timer_starters_starter_arms_the_uptime_timer() -> None:
 
 def test_start_uptime_timer_logs_and_continues_when_it_cannot_be_armed() -> None:
     # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed against
-    # ports/rp2/machine_timer.c) - owner-confirmed design: unlike reboot_system()'s reset_timer guard, this
+    # ports/rp2/machine_timer.c) - owner-confirmed design (2026-07-18, `1df8bc4`): unlike reboot_system()'s reset_timer guard, this
     # degrades gracefully rather than forcing a reboot, everything else working fine without uptime.
     svc = make_service()
     with _RaiseOnArm():

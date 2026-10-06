@@ -701,7 +701,7 @@ def test_a_stale_ack_uid_is_rejected() -> None:
 
 
 def test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success() -> None:
-    # J.9: the two-generals case, folded into failure by decision. There is no
+    # J.9: the two-generals case, folded into failure (owner, 2026-09-11, `b131169`). There is no
     # retransmission to hang a third state on and a caller could not act differently anyway.
     def remember(cmd_id: int) -> "tuple[bool, int | None]":
         return True, None
@@ -2157,7 +2157,7 @@ def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
 
 def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
     # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's
-    # 27-byte whole-frame floor but not its 80-byte per-poll floor. Kept rather than relaxed, a
+    # 27-byte whole-frame floor but not its 80-byte per-poll floor. Kept rather than relaxed (agent, 2026-09-13), a
     # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
     def deployed(rxbuf: int) -> UART_Comm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())

@@ -190,7 +190,7 @@ def test_mocked_request_unrecognized_cmd_is_rejected_before_dispatch() -> None:
 
 
 def test_mocked_request_unknown_field_key_reported_individually_not_whole_request() -> None:
-    # Final project decision: an unrecognized field key (as opposed to an unrecognized *command*)
+    # (owner, 2026-09-26): an unrecognized field key (as opposed to an unrecognized *command*)
     # is just another per-field "Invalid" outcome, not a whole-request rejection.
     client = make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "Hostname": "NewHost", "Bogus": 1})
