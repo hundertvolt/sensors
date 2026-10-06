@@ -503,8 +503,9 @@ jobs:
       # swallows what did render. The instrumented rerun measures src/ and digital_twin/ from one
       # run.
       #
-      # This step is NOT advisory: build-settrace is the only interpreter no other job runs. Exit 1
-      # (a test failed) goes red; exit 3 (only the report failed) stays advisory (Part E.5.3).
+      # This step is NOT advisory (owner, 2026-09-22): build-settrace is the only interpreter no
+      # other job runs. Exit 1 (a test failed) goes red; exit 3 (only the report failed) stays
+      # advisory (Part E.5.3).
       - name: Run unit tests with coverage (the test result gates, the report does not)
         run: |
           status=0

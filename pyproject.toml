@@ -162,11 +162,11 @@ ignore = [
     # spelling works there.
     "PLR0124",
 
-    # ---- Documented accepted risk, decided by the project owner ----
+    # ---- Accepted by the owner: trusted home LAN (owner, 2026-09-26) ----
     # The webserver binds 0.0.0.0 deliberately.
     "S104",
     # S105/S106 stay ON globally: CLAUDE.md's no-credentials rule needs them to catch a NEW one. The
-    # three known, accepted sites are exempted per file below.
+    # three known sites, accepted permanently (owner, 2026-09-26), are exempted per file below.
 
     # ---- Identifiers deliberately mirror the datasheet / reference algorithm ----
     # Part D.1/C.2: BMP3xx's T1/P1..P11 as printed in BST-BMP388-DS001 9.2/9.3, the VOC algorithm's
@@ -211,8 +211,9 @@ max-branches = 20
 max-statements = 80
 max-returns = 12
 
-# Per-file exemptions live HERE, centrally and with a reason, never as scattered `# noqa` (owner's
-# direction: enable the strict rule, don't paper over it). Each is a property of what the file IS.
+# Per-file exemptions live HERE, centrally and with a reason, rather than as `# noqa` comments
+# scattered inline (owner, 2026-09-10: enable the strict rule, do not paper it over inline). Each is
+# a property of what the file IS.
 [tool.ruff.lint.per-file-ignores]
 # Test code asserts, reaches into privates under test, imports lazily after sys.path setup (Part
 # E.3), and asserts literal expected values.
@@ -230,9 +231,9 @@ max-returns = 12
 # api_response.py calls a reader's `_set_dict_cfg` across objects by design: Part C.5.2 publishes
 # that setter-dispatch contract by name.
 "src/api_response.py" = ["SLF001"]
-# S106 below marks one of the three KNOWN, accepted hardcoded-credential sites (CLAUDE.md: the
-# hotspot fallback password, not to be rotated without the owner); exempted per file so S105/S106
-# still catch a new one anywhere else.
+# S106 below marks one of the three sites of the hotspot fallback password, accepted permanently
+# (owner, 2026-09-26; CLAUDE.md); exempted per file so S105/S106 still catch a new one anywhere
+# else.
 #
 # The machine fakes mirror MicroPython's own constructors, whose parameter really is `id` upstream,
 # and I2C writeto()/readfrom_into()'s positional-only `stop` (extmod/machine_i2c.c rejects kwargs):
@@ -335,15 +336,15 @@ max-returns = 12
 # S112: injected packet loss makes individual request failures the fault itself; the assertions are
 # about torn reads, and logging each would drown the finding.
 "tests_hardware/bench/test_bus_concurrency_under_api_load.py" = ["S112"]
-# S105/S106: tests that join the DUT's hotspot must know its accepted fallback password (see
-# asy_wifi_service.py above) - copies of an accepted risk, exempted per file.
+# S105/S106: tests that join the DUT's hotspot must know its fallback password, accepted permanently
+# (owner, 2026-09-26; see asy_wifi_service.py above) - copies of an accepted risk, exempted per file.
 "tests_hardware/conftest.py" = ["S105"]
 "tests_hardware/bench/test_hotspot_role_reversal.py" = ["S105"]
 "tests_hardware/bench/test_network_resilience.py" = ["S105"]
 "tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py" = ["S106"]
-# S105: same "copy of an accepted risk, not a new credential" reasoning as the tests_hardware/
-# entries above, for buildgen's own [device].hotspot_password minimum-length boundary test - it
-# has to assert against the real WPA2 8-character floor literal, not a placeholder.
+# S105: same "copy of a risk accepted permanently (owner, 2026-09-26), not a new credential"
+# reasoning as the tests_hardware/ entries above, for buildgen's [device].hotspot_password
+# minimum-length boundary test - it asserts against the real WPA2 8-character floor literal.
 "tests_scripts/test_buildgen_validate.py" = ["S105"]
 # RUF007: device_scripts/ is MicroPython firmware-target code uploaded to the board and run there
 # (see tests_hardware/README.md) - `itertools` does not exist in the rp2 port at all, so

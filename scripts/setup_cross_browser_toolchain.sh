@@ -36,7 +36,7 @@ else
 fi
 
 # --- Firefox + geckodriver: conda-forge via a standalone micromamba binary ---
-# Deliberately unpinned, unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
+# Unpinned (agent, 2026-08-26), unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
 # CROSS_BROWSER_DIR below to force a fresh pull.
 CROSS_BROWSER_DIR="${CROSS_BROWSER_TOOLCHAIN_DIR:-$HOME/cross-browser-toolchain}"
 FIREFOX_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/firefox"

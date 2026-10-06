@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every non-type lint pass in one place: ruff over the eight scopes CLAUDE.md's "Code quality
 # tooling" lists, shellcheck over scripts/, actionlint + zizmor over the workflows. All stay fully
-# clean. Lint only - `ruff format` is deliberately unused (pyproject.toml's [tool.ruff]).
+# clean. Lint only - `ruff format` is unused (agent, 2026-07-13; pyproject.toml's [tool.ruff]).
 #
 # Assumes `uv sync` has been run and its venv is active: every tool here installs from
 # pyproject.toml's [dependency-groups].
@@ -26,8 +26,8 @@ actionlint || status=1
 zizmor --offline .github/ || status=1
 
 # mypy cannot express this rule, because it only ever sees a suppression that is already written:
-# tests/ and digital_twin/ legitimately monkeypatch methods, shipped src/ never may. Owner's
-# direction, full reasoning in CLAUDE.md's "Code quality tooling".
+# tests/ and digital_twin/ legitimately monkeypatch methods, shipped src/ never may (owner,
+# 2026-09-10), full reasoning in CLAUDE.md's "Code quality tooling".
 if grep -rn "type: ignore\[[^]]*method-assign" src/; then
     echo "error: src/ must never suppress method-assign - reassigning a method on shipped firmware code is the defect, not the type error." >&2
     status=1

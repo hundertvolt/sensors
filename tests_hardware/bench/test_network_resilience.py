@@ -1,6 +1,6 @@
-"""Bench-tier tests for real WiFi outage/flap, NTP/DNS servers answering garbage (BACKLOG.md question
-#5), the webserver's admission ceiling on silicon, malformed REST requests and slowloris/abrupt
-disconnects. DHCP-client flakiness is deliberately out of scope (see BACKLOG.md)."""
+"""Bench-tier tests for real WiFi outage/flap (owner's audit question, 2026-09-01), NTP/DNS servers
+answering garbage (BACKLOG.md question #5), the admission ceiling, malformed requests, slowloris.
+DHCP-client faults are a documented known limitation (owner, 2026-09-26; tests_hardware/README.md)."""
 
 from __future__ import annotations
 
@@ -416,9 +416,9 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
 
 # ---------------------------------------------------------------------------
-# A config-level NTP fault rather than a network-level one: PUT a garbage NTP_Host on a live
-# link, watch the DNS failure degrade cleanly, restore, confirm recovery. Starting already-synced
-# is the point - it reaches _handle_ntp_sync_failure()'s ntp_issynced() branch, which nothing did.
+# A config-level NTP fault rather than a network-level one (owner's suggestion, 2026-09-02): PUT a
+# garbage NTP_Host on a live link, watch the DNS failure degrade cleanly, restore, confirm recovery.
+# Starting synced reaches _handle_ntp_sync_failure()'s ntp_issynced() branch, which nothing else does.
 # ---------------------------------------------------------------------------
 
 # RFC 2606 reserves .invalid specifically so it can never resolve to a real address - a genuine,

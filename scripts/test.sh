@@ -310,7 +310,7 @@ results_dir="$(mktemp -d)"
 failed=0
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a
-# measured floor that must never be RAISED as a fix - SPECIFICATION.md Part E.3.1 has the history.
+# measured floor, never raised as a fix (SPECIFICATION.md E.3.1).
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # Per-file overrides for anything that outgrows the default - deliberately empty since the
 # per-device splits, and deliberately not solved by raising everyone's default, which would make a

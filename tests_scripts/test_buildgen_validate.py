@@ -1727,7 +1727,8 @@ def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Pa
 
 def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
     # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
-    # each one says what its ceiling is rather than inheriting a default nobody reads.
+    # each one says what its ceiling is rather than inheriting a default nobody reads; the ceiling
+    # value itself is the agent's sweep result (agent, 2026-09-22).
     import tomllib
 
     for toml_path in sorted((repo_root / "devices").glob("*.toml")):

@@ -4,9 +4,9 @@
 # deliberate classes below. Why an exit code cannot do this: tests_hardware/README.md.
 set -uo pipefail  # deliberately not -e: the verdict comes from pytest's own output, not its exit code
 
-# The one permanent skip: off-subnet source-address spoofing on the bench host is unconfirmed (that
-# test's own skip reason has it). Add a name here only for an equally deliberate, documented,
-# permanent skip - never to silence a real one.
+# The one permanent skip (owner, 2026-09-26; attempted on the bench first): off-subnet source-address
+# spoofing on the bench host is unconfirmed (that test's own skip reason has it). Add a name here
+# only for an equally deliberate, documented, permanent skip - never to silence a real one.
 KNOWN_PERMANENT_SKIPS=("test_spoofed_off_subnet_source_address_is_ignored")
 
 # The opt-in gates (tests_hardware/conftest.py's pytest_addoption()) are an EXPECTED skip only while

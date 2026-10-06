@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs ONLY @pytest.mark.long_soak tests against a real board + WiFi bridge, at one named duration
-# tier - a deliberate, dedicated invocation (owner's direction, 2026-09-04) that the two general
+# Runs ONLY @pytest.mark.long_soak tests at one named duration tier - an opt-in on top of the bench
+# tier (owner, 2026-09-26), a dedicated invocation (owner's direction, 2026-09-04) the two general
 # suite runners never bundle. Tier durations: tests_hardware/conftest.py's SOAK_TIER_SECONDS.
 #
 # Usage: scripts/run_bench_soak_tests.sh --tier {short,mid,long} [extra pytest args]

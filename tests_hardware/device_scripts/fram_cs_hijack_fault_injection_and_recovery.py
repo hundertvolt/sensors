@@ -122,8 +122,8 @@ async def _main() -> None:
         async with fram:
             write_readback = bytearray(16)
             write_readback_ok = await fram.get_values(write_readback, addr_start=_WRITE_RACE_ADDR)
-        # Hard requirement: the hijacked write must never have reached the chip. CS was proven
-        # deasserted before its payload transfer, so a landed write would be a real finding.
+        # Hard requirement (owner, 2026-09-04): the hijacked write must never have reached the chip.
+        # CS was proven deasserted before its payload transfer, so a landed write would be a real finding.
         if not write_readback_ok or bytes(write_readback) != _ORIGINAL_PATTERN:
             failures.append(
                 f"write hijack: expected original data {_ORIGINAL_PATTERN.hex()} untouched (write_raised={write_raised!r}), "
@@ -158,8 +158,8 @@ async def _main() -> None:
             hijack.remove()
         if not hijack.injected_with_cs_asserted:
             failures.append("read hijack: CS was never observed asserted at the payload transfer - nothing was injected, so nothing was tested")
-        # Hard requirement: a hijacked read must never return the real, correct data - a
-        # "sensible" result would mean the deassertion did not take effect. Not asserted against a
+        # Hard requirement (owner, 2026-09-04): a hijacked read must never return the real, correct
+        # data - a "sensible" result would mean the deassertion did not take effect. Not asserted against a
         # specific wrong value (a different unit could float differently on a deselected MISO).
         elif read_raised is None and bytes(hijacked_read_buf) == _READ_SEED_PATTERN:
             failures.append(f"read hijack: got back the real seeded data {_READ_SEED_PATTERN.hex()} with no exception - the read completed although CS was deasserted first")

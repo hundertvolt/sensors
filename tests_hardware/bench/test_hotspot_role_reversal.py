@@ -422,7 +422,7 @@ def test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown(joined
 
 
 def test_post_condition_sta_connected_state_inferred_from_reachability(joined_hotspot: str, dut_ip: str) -> None:
-    # /networking's GET carries no _conn_phase-equivalent field, and adding one would be a src/
-    # change to put to the owner rather than make unasked. The proxy: dut_ip being reachable at
-    # all means STA mode, since nothing else routes bridge-network traffic there.
+    # /networking's GET carries no _conn_phase-equivalent field, and none is added (owner, 2026-09-26:
+    # 'It seems to be unreachable by definition.'): a reachable board on the bridge network is
+    # STA-connected by definition, since nothing else routes bridge-network traffic there.
     assert dut_ip, "dut_ip fixture produced an empty address - can't infer STA-connected state from it"
