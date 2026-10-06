@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from buildgen.defaults import default_class_name
 from buildgen.errors import BuildError
-from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, resolve_instance_key
+from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec, TomlDoc, instance_label, resolve_instance_key
 from buildgen.validate import module_float_const, module_int_const, module_str_const, ntp_backoff
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 from buildgen.wiring import WiringField
@@ -432,7 +432,13 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_log_arg(model, ctx), dev, ctx.src_dir)
+    maintenance_entries = [f'("{name}", _sgp_maintenance_status_{var})' for name, var in _sgp40_status_vars(construction_order, ctx)]
+    if uart_initiator_var is not None:
+        # Only the initiator side owns real transfer/failure counts (it's the only one that ever
+        # initiates a transfer - SPECIFICATION.md Part J.1's "the protocol carries no application
+        # semantics" means the responder side has nothing of its own to report here).
+        maintenance_entries.append(f'("{MAINTENANCE_NAMES["uart_link"]}", {uart_initiator_var}.get_link_status)')
+    _emit_webserver(lines, have, sensor_vars, maintenance_entries, _device_log_arg(model, ctx), dev, ctx.src_dir)
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("")
@@ -515,6 +521,16 @@ def _emit_flush_pending_configs(lines: "list[str]", construction_order: "list[st
     lines.append("")
 
 
+def _sgp40_status_vars(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> "list[tuple[str, str]]":
+    # One maintenance status source per SGP40, in construction order, keyed by its REST identity
+    # (resolved_name, SPECIFICATION.md Part C.14) - "SGP40" for the default instance.
+    specs = [ctx.model.instances[n] for n in construction_order if isinstance(n, tuple) and ctx.model.instances[n].driver == "sgp40"]
+    for spec in specs:
+        if spec.resolved_name is None:
+            raise BuildError(ctx.model.device, "internal: resolved_name unresolved before code generation", instance=spec.label)
+    return [(str(spec.resolved_name), ctx.instance_var(spec.key)) for spec in specs]
+
+
 def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     lines.append('def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":')
     lines.append("    if t is None:")
@@ -561,10 +577,10 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append("    await notification.set_override_led(payload)")
         lines.append("    return True")
         lines.append("")
-    if "sgp40" in have:
-        lines.append('async def _sgp_maintenance_status() -> "dict[str, Any]":')
-        lines.append("    assert sgp40 is not None")
-        lines.append("    backup_ts, restore_ts = await sgp40.get_mem_status()")
+    for _name, var in _sgp40_status_vars(construction_order, ctx):
+        lines.append(f'async def _sgp_maintenance_status_{var}() -> "dict[str, Any]":')
+        lines.append(f"    assert {var} is not None")
+        lines.append(f"    backup_ts, restore_ts = await {var}.get_mem_status()")
         lines.append('    return {"BackupTS": backup_ts, "RestoreTS": restore_ts}')
         lines.append("")
     lines.append('async def _networking_status() -> "dict[str, Any]":')
@@ -581,12 +597,13 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.append("")
     lines.append('async def _system_status() -> "dict[str, Any]":')
     lines.append("    assert sysfunct is not None and ntp is not None")
-    lines.append("    local_time = await ntp.cettime()")
+    # UtcTime waits for the first NTP sync as LocalTime does: rp2's RTC starts at its reset epoch.
+    lines.extend(("    local_time = await ntp.cettime()", "    utc = time.gmtime() if await ntp.ntp_issynced() else None"))
     lines.append("    return {")
     lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(),')
     if "fram" in have:
         lines.append('        "MemPaused": fram.get_pause(),')
-    lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UtcTime": _gmtimestruct_to_dict(time.gmtime()),')
+    lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UtcTime": _gmtimestruct_to_dict(utc),')
     lines.append("    }")
     lines.append("")
     if "notification" in have:
@@ -597,7 +614,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", log_arg: str, dev: "TomlDoc", src_dir: Path) -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", maintenance_entries: "list[str]", log_arg: str, dev: "TomlDoc", src_dir: Path) -> None:
     # The three config objects, every field passed: a [device] value where the TOML states one,
     # else the shipped default read out of asy_webserver_service.py's own _DEFAULT_* constants.
     ws = "asy_webserver_service.py"
@@ -628,14 +645,6 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     if "notification" in have:
         status_sources.append('"notification": _notification_status')
     lines.append("            status_sources={" + ", ".join(status_sources) + "},")
-    maintenance_entries = []
-    if "sgp40" in have:
-        maintenance_entries.append('("SGP40", _sgp_maintenance_status)')
-    if uart_initiator_var is not None:
-        # Only the initiator side owns real transfer/failure counts (it's the only one that ever
-        # initiates a transfer - SPECIFICATION.md Part J.1's "the protocol carries no application
-        # semantics" means the responder side has nothing of its own to report here).
-        maintenance_entries.append(f'("UARTLINK", {uart_initiator_var}.get_link_status)')
     comma = "," if len(maintenance_entries) == 1 else ""
     lines.append(f"            maintenance_sensors=({', '.join(maintenance_entries)}{comma}),")
     lines.append("            error_sources=_collect_error_sources(),")

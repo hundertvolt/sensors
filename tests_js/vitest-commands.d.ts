@@ -25,15 +25,16 @@ export {};
 
 declare module "vitest/browser" {
     interface BrowserCommands {
-        runLiveBackendSmoke: () => Promise<
+        runLiveBackendSmoke: (device: string) => Promise<
             | { skipped: true; reason: string }
             | { skipped: false; titleHasSensorStation: boolean; deviceName: string; debugLevelApplyStatus: string | null }
         >;
-        runLiveBackendConcurrentTabs: () => Promise<
+        runLiveBackendConcurrentTabs: (device: string) => Promise<
             | { skipped: true; reason: string }
             | { skipped: false; tabs: number; loaded: number; deviceNames: string[] }
         >;
-        startLiveMatrix: () => Promise<{ skipped: true; reason: string } | { skipped: false; shard: string }>;
+        getLiveMatrixConfig: () => Promise<{ skipped: boolean; reason: string | null; shard: string }>;
+        startLiveMatrix: (device: string) => Promise<void>;
         stopLiveMatrix: () => Promise<void>;
         getRealCurrentValues: (paths: string[]) => Promise<Record<string, unknown>>;
         applyField: (args: {

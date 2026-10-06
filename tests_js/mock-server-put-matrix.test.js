@@ -1,29 +1,29 @@
 /**
- * PUT-behavior matrix over every real writable field in both shipped devices' definitions.json,
- * against js/mock-server.js's real fetch interception - six categories per field (owner, 2026-08-24)
- * (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
+ * PUT-behaviour matrix over every real writable field of every device's generated definitions
+ * (deduplicated by derivation), against js/mock-server.js's fetch interception - six categories per field
+ * (owner, 2026-08-24) (valid, special, omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
  */
 import { describe, expect, it } from "vitest";
-import wozi from "../html/definitions/wozi.json";
-import dev from "../html/definitions/dev.json";
-import woziData from "../mockdata/wozi.json";
-import devData from "../mockdata/dev.json";
-import { installMockFetch } from "../js/mock-server.js";
-import { collectPutFieldCases, shardPutFieldCases } from "./_put_field_cases.js";
+import samples from "../mockdata/samples.json";
+import { neverUnchanged } from "../js/definitions.js";
+import { composeMockData, installMockFetch } from "../js/mock-server.js";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { collectPutFieldCases, dedupePutFieldCases, shardPutFieldCases, validStringValue } from "./_put_field_cases.js";
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
+/** @typedef {import("../js/definitions.js").MockSamples} MockSamples */
+/** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 /** @typedef {import("./_put_field_cases.js").PutFieldCase & {data: MockDeviceData}} PutFieldCase */
 
-// Shared driver field sets are identical between devices, so only wozi's copy runs. This
-// matches none of dev's real groups today - they differ only in I2C bus pairing, which the JSON
-// does not encode - and stays for a future dev-unique sensor (owner, 2026-09-08).
-const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
-
-// GET never reflects what this matrix's resubmit-and-readback categories assume (Part H.4's
-// mock-server-quirks note). Excluded here only, not through the shared DISPATCH_ONLY_KEYS, since
-// live-backend-put-matrix.test.js consumes that list and does cover these fields for real.
-const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLCalibrate", "PW"]);
+/**
+ * @param {string} device
+ * @returns {{defs: SiteDefinitions, data: MockDeviceData}}
+ */
+function deviceUnderTest(device) {
+    const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+    return { defs, data: composeMockData(defs, /** @type {MockSamples} */ (samples)) };
+}
 
 /**
  * @param {string} device
@@ -32,15 +32,16 @@ const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetV
  * @returns {PutFieldCase[]}
  */
 function collectMockPutFieldCases(device, defs, data) {
+    // A masked field's GET answers the mask, never the stored value the readback categories expect.
     return collectPutFieldCases(device, defs, data)
-        .filter((c) => !GET_READBACK_QUIRK_FIELDS.has(c.field.key))
+        .filter((c) => c.field.mask !== true)
         .map((c) => ({ ...c, data }));
 }
 
-const CASES = [
-    ...collectMockPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), /** @type {MockDeviceData} */ (woziData)),
-    ...collectMockPutFieldCases("dev", /** @type {SiteDefinitions} */ (dev), /** @type {MockDeviceData} */ (devData)).filter((c) => DEV_UNIQUE_GROUPS.has(c.groupKey)),
-];
+const CASES = dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
+    const { defs, data } = deviceUnderTest(device);
+    return collectMockPutFieldCases(device, defs, data);
+}));
 
 /**
  * Sends one raw PUT body as exact JSON text, so a test controls a number's literal int/float
@@ -188,7 +189,7 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
         }
 
         if (isFloat) {
-            it("accepts a bare-integer literal for this float-typed field: Valid, coerced (config_manager.py's coerce_numeric(), SPECIFICATION.md Part A.8 - int -> float is a blanket accept)", async () => {
+            it("accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept)", async () => {
                 // A whole number in [min, max], distinct from the current value - which would
                 // legitimately resubmit as Unchanged - and from any declared special, which is
                 // simply outside this test's intent. The three rounded candidates always find one.
@@ -200,7 +201,7 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
                 expect(currentValueIn(getBody, testCase)).toBe(wrongShapeBase);
             });
         } else {
-            it("rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (config_manager.py's coerce_numeric() policy, SPECIFICATION.md Part A.8)", async () => {
+            it("rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8)", async () => {
                 // Math.round() guarantees a genuine whole number to start from, regardless of
                 // whether (max - min) happens to be odd (which would otherwise leave `mid` itself
                 // already fractional).
@@ -221,10 +222,10 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
         // Lengths, not strings - see live-backend-put-matrix.test.js's own note. This copy never
         // wedged a run only because it has no failure-screenshot path; the oversized test name is
         // identical, so it is fixed alongside rather than left as the next one to bite.
-        it.each(validLengths.filter((len) => "x".repeat(len) !== currentValue))(
+        it.each(validLengths.filter((len) => validStringValue(field, len) !== currentValue))(
             "accepts a %s-char string (a valid value distributed across the length range): Valid, and it gets persisted",
             async (len) => {
-                const value = "x".repeat(len);
+                const value = validStringValue(field, len);
                 const { status, getBody } = await putAndGet(testCase, literalOf(value));
                 expect(status).toBe("Valid");
                 expect(currentValueIn(getBody, testCase)).toBe(value);
@@ -290,7 +291,10 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
 // live-backend-put-matrix.test.js). A shard split that drops or doubles a case would silently shrink
 // that matrix, so the partition itself is proven here rather than trusted.
 describe("shardPutFieldCases", () => {
-    const cases = collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), /** @type {MockDeviceData} */ (woziData));
+    const [firstDevice] = DEVICE_IDS;
+    const device = /** @type {string} */ (firstDevice);
+    const { defs, data } = deviceUnderTest(device);
+    const cases = collectPutFieldCases(device, defs, data);
 
     it("returns every case when no shard is requested", () => {
         expect(shardPutFieldCases(cases, undefined)).toEqual(cases);
@@ -306,5 +310,61 @@ describe("shardPutFieldCases", () => {
 
     it.each(["0/3", "4/3", "3", "a/b", "1/0"])("rejects the malformed shard spec %s", (spec) => {
         expect(() => shardPutFieldCases(cases, spec)).toThrow(/shard spec/);
+    });
+});
+
+/**
+ * One valid value for a never-"Unchanged" field: a number's minimum, a toggle's true, an enum's first option.
+ * @param {FieldDef} field
+ * @returns {unknown}
+ */
+function validActionValue(field) {
+    if (field.kind === "toggle") {
+        return true;
+    }
+    if (field.kind === "enum") {
+        return field.options?.[0]?.value;
+    }
+    return field.min;
+}
+
+// The never-"Unchanged" class (neverUnchanged()): an action is re-run and an always-executed field
+// re-applied on every send, so a repeated identical value answers Valid both times. The composite
+// LED command keeps its own tests; /status's ResetErrors answers no per-field result here.
+const NEVER_UNCHANGED_CASES = dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
+    const { defs, data } = deviceUnderTest(device);
+    return defs.sections
+        .filter((section) => section.key !== "status" && section.rest.put !== undefined)
+        .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])
+            .filter((field) => neverUnchanged(field) && field.kind !== "composite")
+            .map((field) => ({ device, defs, data, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))));
+}));
+
+describe.each(NEVER_UNCHANGED_CASES)("PUT $device $sectionKey/$groupKey/$field.key (never Unchanged)", (testCase) => {
+    it("two identical valid sends both answer Valid", async () => {
+        const literal = JSON.stringify(validActionValue(testCase.field));
+        const first = await putAndGet(testCase, literal);
+        const second = await putAndGet(testCase, literal);
+        expect([first.status, second.status]).toEqual(["Valid", "Valid"]);
+    });
+});
+
+describe("dedupePutFieldCases", () => {
+    const [firstDevice] = DEVICE_IDS;
+    const device = /** @type {string} */ (firstDevice);
+    const { defs, data } = deviceUnderTest(device);
+    const [first] = collectPutFieldCases(device, defs, data);
+
+    it("keeps a field differing in any attribute and drops an identical one from a later device", () => {
+        const base = /** @type {import("./_put_field_cases.js").PutFieldCase} */ (first);
+        const identical = { ...base, device: "later-device" };
+        const changed = { ...base, device: "later-device", field: { ...base.field, label: `${base.field.label} (changed)` } };
+        expect(dedupePutFieldCases([base, identical, changed])).toEqual([base, changed]);
+    });
+
+    it("treats an instance's key as its driver's, so a second instance of one driver is deduplicated too", () => {
+        const base = /** @type {import("./_put_field_cases.js").PutFieldCase} */ (first);
+        const instance = { ...base, groupKey: `${base.groupKey}_second` };
+        expect(dedupePutFieldCases([base, instance])).toEqual([base]);
     });
 });

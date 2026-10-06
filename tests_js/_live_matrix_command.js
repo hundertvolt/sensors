@@ -14,10 +14,6 @@ import { formatFieldValue } from "../js/field-format.js";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-// build/generated_src first: no static src/sensortask_wozi.py exists any more
-// (SPECIFICATION.md Part L.2) - package.json's own "pretest"/
-// "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
-const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Clear of every fixed port this repo binds - see tests_js/_live_twin_command.js's own PORT comment;
 // this harness's twin runs alongside that file's (19481) in one `npm test` run.
@@ -54,17 +50,23 @@ async function waitUntilServing(timeoutMs) {
     throw new Error(`digital twin never started serving on ${HOST}:${PORT} within ${timeoutMs}ms`);
 }
 
-function spawnTwin() {
+/**
+ * The same launch as tests_js/_live_twin_command.js's spawnTwin(): the device's generated module
+ * from build/generated_src and its own site from build/generated_html/<device>.
+ * @param {string} device
+ */
+function spawnTwin(device) {
+    const micropypath = `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
     const proc = spawn(
         MICROPYTHON_BIN,
         [
             "digital_twin/run_generic_integration.py",
             "--module",
-            "sensortask_wozi",
+            `sensortask_${device}`,
             "--wiring-plan",
-            path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+            path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
             "--device",
-            "wozi",
+            device,
             "--host",
             HOST,
             "--port",
@@ -76,7 +78,7 @@ function spawnTwin() {
         ],
         {
             cwd: REPO_ROOT,
-            env: { ...process.env, MICROPYPATH, TZ: "UTC" },
+            env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
             // Same reasoning as tests_js/_live_twin_command.js's own stdio choice - see that
             // file's own comment.
             stdio: ["ignore", "ignore", "pipe"],
@@ -122,20 +124,34 @@ let twinStderr = "";
 let livePage = null;
 
 /**
- * Boots the twin and opens/navigates one real page, once for the whole test file. Every later
- * command in this module operates against that same twin/page until stopLiveMatrix() tears it down.
- * @param {{context: import("playwright").BrowserContext}} ctx
+ * The matrix's run settings, read without booting a twin: whether the interpreter is built, and
+ * which shard $PUT_MATRIX_SHARD selects. It travels back through the Commands API because the test
+ * runs in the browser, where process.env does not exist (SPECIFICATION.md Part H.7).
+ * @returns {{skipped: boolean, reason: string | null, shard: string}}
  */
-export async function startLiveMatrix({ context }) {
+export function getLiveMatrixConfig() {
     if (!existsSync(MICROPYTHON_BIN)) {
         return {
             skipped: true,
             reason: `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`,
+            shard: "",
         };
     }
+    return { skipped: false, reason: null, shard: process.env.PUT_MATRIX_SHARD ?? "" };
+}
+
+/**
+ * Boots `device`'s twin and opens/navigates one real page. Every later command in this module
+ * operates against that same twin/page until stopLiveMatrix() tears it down, so devices run one
+ * after another on PORT.
+ * @param {{context: import("playwright").BrowserContext}} ctx
+ * @param {string} device a devices/<device>.toml stem
+ * @returns {Promise<void>}
+ */
+export async function startLiveMatrix({ context }, device) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
-    twinProc = spawnTwin();
+    twinProc = spawnTwin(device);
     twinStderr = "";
     twinProc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
         twinStderr += chunk.toString();
@@ -146,10 +162,6 @@ export async function startLiveMatrix({ context }) {
         livePage = await context.newPage();
         await livePage.goto(`http://${HOST}:${PORT}/`);
         await livePage.waitForSelector("[data-section-key]");
-        // $PUT_MATRIX_SHARD travels back through the Commands API rather than a Vite `define`:
-        // the test runs in the browser, where process.env does not exist, and every build-time
-        // route was worse - see this function's own callers and SPECIFICATION.md Part H.7.
-        return { skipped: false, shard: process.env.PUT_MATRIX_SHARD ?? "" };
     } catch (err) {
         // A failure here means the test file's top-level startLiveMatrix() threw before its
         // afterAll(stopLiveMatrix) was ever registered. Without tearing down right here, a slow
@@ -165,7 +177,7 @@ export async function startLiveMatrix({ context }) {
             twinProc = null;
         }
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`startLiveMatrix failed: ${message}\n--- twin stderr ---\n${twinStderr}`, { cause: err });
+        throw new Error(`startLiveMatrix failed for ${device}: ${message}\n--- twin stderr ---\n${twinStderr}`, { cause: err });
     }
 }
 

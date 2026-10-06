@@ -194,7 +194,7 @@ if TYPE_CHECKING:
 # @web RangeAct section=measurements submitGroup=self kind=readonly label="Active Range" unit="lx" decimals=0 description="The full-scale range this sample was taken on, which under automatic ranging is not always the one currently programmed."
 # @web Overrange section=measurements submitGroup=self kind=readonly label="Overrange" description="True whenever the current reading is saturated with nothing left to mitigate it: on Fixed range, the configured range itself; under Automatic Range, only once already on the highest range with nowhere further to switch. Not an error - a transient, harmless, always-current status."
 # @web GainMeas section=measurements submitGroup=self kind=readonly label="Measured Gain Ratio" decimals=3 description="A candidate measured by the last calibration run, held for ten minutes and then cleared. Blank unless a run produced one. Nothing applies it - copy it into Range Gain Ratio if you want it used."
-# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s" decimals=0
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch decimals=0
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
 # FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an

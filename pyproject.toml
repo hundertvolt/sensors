@@ -56,7 +56,7 @@ line-length = 320
 select = ["ALL"]
 
 # "×" is real content: bmp3xx's `# @web ... special:N="×N"` tags carry it into
-# html/definitions/*.json's oversampling labels, which RUF003 would flag as an "x" look-alike.
+# generated definitions.json's oversampling labels, which RUF003 would flag as an "x" look-alike.
 allowed-confusables = ["×"]
 
 ignore = [
@@ -208,7 +208,7 @@ max-complexity = 20
 [tool.ruff.lint.pylint]
 max-args = 8
 max-branches = 20
-max-statements = 79
+max-statements = 78
 max-returns = 11
 
 # Per-file exemptions live HERE, centrally and with a reason, rather than as `# noqa` comments

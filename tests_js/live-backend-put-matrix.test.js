@@ -1,24 +1,23 @@
 /**
- * Field-by-field PUT matrix, driven end to end through a real browser against a real digital twin
- * (generalizes tests_js/live-backend.test.js's single-field proof to every writable wozi.json field).
- * See SPECIFICATION.md Part H.7.
+ * Field-by-field PUT matrix through a real browser against a real twin, for every writable field of
+ * every device's generated definitions (SPECIFICATION.md Part H.7).
  */
 import { commands } from "vitest/browser";
-import { afterAll, describe, expect, it } from "vitest";
-import wozi from "../html/definitions/wozi.json";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { neverUnchanged } from "../js/definitions.js";
 import { formatFieldValue } from "../js/field-format.js";
-import { collectPutFieldCases, shardPutFieldCases } from "./_put_field_cases.js";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { collectPutFieldCases, dedupePutFieldCases, shardPutFieldCases, validStringValue } from "./_put_field_cases.js";
 
 /** @typedef {import("./_put_field_cases.js").PutFieldCase} PutFieldCase */
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
+/** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
-const REAL_PATHS = /** @type {const} */ (["/sensors", "/networking", "/system", "/notification"]);
-
-// Three documented backend quirks where a field's GET readback never reflects what was just
-// applied; Part H.7 has the full account. ContMeas remounts as `true`, its FieldDef
-// defaultValue and the safe state legacy used, not a bare toggle's Boolean(undefined).
-/** @type {Record<string, unknown>} */
-const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: true, SGPResetVOC: false };
+// Cases come from the definitions alone; each case reads its current value from the live twin.
+const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
+    measurements: {}, sensorsConfig: {}, networkingConfig: {}, systemConfig: {}, notificationConfig: {},
+    status: { networking: {}, system: {}, sensors: {}, notification: {}, errcount: {} },
+});
 
 // Generous per-case ceiling: one real nav-drawer click, one real fill/select/toggle, one real
 // Apply click, a data-apply-status poll, and (for most cases) a second real remount+read - all
@@ -40,37 +39,76 @@ function groupHasDispatchField(defs, sectionKey, groupKey) {
     return group !== undefined && "fields" in group && group.fields.some((f) => f.dispatch === true);
 }
 
-const boot = await commands.startLiveMatrix();
-
-/** @type {PutFieldCase[]} */
-let CASES = [];
-if (!boot.skipped) {
-    const real = await commands.getRealCurrentValues([...REAL_PATHS]);
-    const data = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
-        sensorsConfig: real["/sensors"],
-        networkingConfig: real["/networking"],
-        systemConfig: real["/system"],
-        notificationConfig: real["/notification"],
-    });
-    // Sharded in CI only, via $PUT_MATRIX_SHARD relayed by startLiveMatrix(): this one file is
-    // 567s of the web tier's 578s, so parallel shards are what keep it clear of its own budget.
-    // Unset locally, so `npm test` and `npm run test:put-matrix` still run every case.
-    CASES = shardPutFieldCases(collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), data), boot.shard);
+/**
+ * The value the real UI starts from for `testCase`: its live GET value, else the field's own
+ * defaultValue (resolveFieldValue()'s fallback, Part H.5).
+ * @param {PutFieldCase} testCase
+ * @returns {Promise<unknown>}
+ */
+async function readCurrentValue({ sectionKey, groupKey, field, putPath }) {
+    const real = await commands.getRealCurrentValues([putPath]);
+    const body = /** @type {Record<string, unknown>} */ (real[putPath] ?? {});
+    const scoped = sectionKey === "sensors" ? /** @type {Record<string, unknown> | undefined} */ (body[groupKey]) : body;
+    const value = scoped?.[field.key];
+    return value === undefined ? field.defaultValue : value;
 }
 
-afterAll(async () => {
-    await commands.stopLiveMatrix();
-});
+/**
+ * The value a never-"Unchanged" field is sent with: a toggle in the state its card does not
+ * already show (so the Apply carries it), an enum's first option, a number's minimum.
+ * @param {FieldDef} field
+ * @returns {unknown}
+ */
+function actionValue(field) {
+    if (field.kind === "toggle") {
+        return field.dispatch === true ? true : !field.defaultValue;
+    }
+    if (field.kind === "enum") {
+        return field.options?.[0]?.value;
+    }
+    return field.min;
+}
 
-if (boot.skipped) {
-    it.skip(`live-backend PUT matrix (skipped: ${boot.reason})`, () => { /* never runs: a skipped placeholder needs no body */ });
-} else {
-    describe.each(CASES)("live PUT $sectionKey/$groupKey/$field.key ($field.kind)", (testCase) => {
+const config = await commands.getLiveMatrixConfig();
+// Sharded in CI only, via $PUT_MATRIX_SHARD relayed by getLiveMatrixConfig(): this one file is
+// most of the web tier's wall clock, so parallel shards keep it clear of its own budget. Unset
+// locally, so `npm test` and `npm run test:put-matrix` still run every case.
+const CASES = config.skipped
+    ? []
+    : shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => collectPutFieldCases(device, /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)), NO_DATA))), config.shard);
+// The never-"Unchanged" class of the sensors and notification sections (a system command would
+// restart the twin; the composite LED command keeps its own tests): two identical sends, both Valid.
+const NEVER_UNCHANGED_CASES = config.skipped
+    ? []
+    : shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
+        const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        return defs.sections
+            .filter((section) => section.key === "sensors" || section.key === "notification")
+            .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])
+                .filter((field) => neverUnchanged(field) && field.kind !== "composite")
+                .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))));
+    })), config.shard);
+const devicesWithCases = [...new Set([...CASES, ...NEVER_UNCHANGED_CASES].map((testCase) => testCase.device))];
+
+if (config.skipped) {
+    it.skip(`live-backend PUT matrix (skipped: ${config.reason})`, () => { /* never runs: a skipped placeholder needs no body */ });
+}
+
+describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
+    beforeAll(async () => {
+        await commands.startLiveMatrix(device);
+    });
+    afterAll(async () => {
+        await commands.stopLiveMatrix();
+    });
+
+    describe.each(CASES.filter((testCase) => testCase.device === device))("live PUT $sectionKey/$groupKey/$field.key ($field.kind)", (testCase) => {
         const { sectionKey, groupKey, field } = testCase;
-        // The same fallback resolveFieldValue() applies: a field with no GET readback may still
-        // declare a schema-level defaultValue as its baseline (Part H.5). Resolved once here so
-        // every probe below reasons about the value the real UI sees, not the raw GET one.
-        let currentValue = testCase.currentValue === undefined ? field.defaultValue : testCase.currentValue;
+        /** @type {unknown} */
+        let currentValue;
+        beforeAll(async () => {
+            currentValue = await readCurrentValue(testCase);
+        });
 
         /**
          * Fills+applies `value` through the real UI, then confirms it rendered correctly both
@@ -83,10 +121,9 @@ if (boot.skipped) {
          * (SPECIFICATION.md Part H.7).
          */
         async function applyAndExpectRendered(value, expectedStatus) {
-            // Caption and remount both come from a real GET round trip, so both need
-            // ALWAYS_REMOUNTS_AS's override for the three quirky fields (Part H.7). A toggle or
-            // enum's same-view state is local to the click, so raw `value` is right there.
-            const expectedRemountValue = field.key in ALWAYS_REMOUNTS_AS ? ALWAYS_REMOUNTS_AS[field.key] : value;
+            // Every field here reads back what was applied: the never-"Unchanged" ones, whose GET
+            // may not (Part H.7), leave the generic cases for their own category below.
+            const expectedRemountValue = value;
 
             const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value, expectRenderedValue: expectedRemountValue });
             if (expectedStatus === "ValidOrUnchanged") {
@@ -134,8 +171,9 @@ if (boot.skipped) {
         // Nor does a masked field: PW reads back as the fixed "********" overlay, never the
         // stored credential, so resubmitting it is not a no-op probe but a new password the
         // backend would persist - overwriting the twin's real Wi-Fi credential mid-run.
-        const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "") && field.mask !== true;
-        if (resubmittable) {
+        // A case with no resubmit gesture (above) skips visibly once its current value is read.
+        const hasNoResubmitGesture = () => currentValue === undefined || (field.kind === "string" && currentValue === "");
+        if (field.mask !== true) {
             // A non-dispatch toggle or enum resubmitted unchanged is sparse-omitted, so no round
             // trip fires unless a dispatch sibling keeps the shared card's body non-empty.
             // number/string are unaffected: applyAndExpectRendered() always fills a real value.
@@ -147,7 +185,8 @@ if (boot.skipped) {
             if (willRoundTrip) {
                 it(
                     "resubmitting the field's own current value renders correctly (Valid or Unchanged)",
-                    async () => {
+                    async (ctx) => {
+                        ctx.skip(hasNoResubmitGesture(), "no current value to resubmit");
                         await applyAndExpectRendered(currentValue, "ValidOrUnchanged");
                     },
                     CASE_TIMEOUT_MS,
@@ -155,7 +194,8 @@ if (boot.skipped) {
             } else {
                 it(
                     "resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip)",
-                    async () => {
+                    async (ctx) => {
+                        ctx.skip(hasNoResubmitGesture(), "no current value to resubmit");
                         const result = await commands.applyUnchangedFieldExpectNothingToSubmit({
                             sectionKey,
                             groupKey,
@@ -185,9 +225,7 @@ if (boot.skipped) {
             // Rounded to 2 decimal places: SCD30's TempOffs is stored in 0.01° ticks, rounding to the
             // nearest 0.01 (SPECIFICATION.md, near the ForceCalRef/AmbPres notes), which an unrounded mid
             // value would silently fail against; harmless for every other field.
-            const validValues = [min, mid, max]
-                .map((v) => (wholeRange ? Math.round(v) : Math.round(v * 100) / 100))
-                .filter((v) => v !== currentValue);
+            const validValues = [...new Set([min, mid, max].map((v) => (wholeRange ? Math.round(v) : Math.round(v * 100) / 100)))];
 
             /**
              * @param {number} start
@@ -226,7 +264,7 @@ if (boot.skipped) {
             }
 
             it.each(validValues)("accepts %s (a valid value distributed across the range), rendered correctly", async (value) => {
-                await applyAndExpectRendered(value, "Valid");
+                await applyAndExpectRendered(value, value === currentValue ? "ValidOrUnchanged" : "Valid");
             });
 
             // Declared outside the loop so the per-case body never closes over the loop itself:
@@ -271,31 +309,48 @@ if (boot.skipped) {
             // Parametrised over LENGTHS, not the generated strings: `%s` goes into the test
             // name, from which vitest derives a screenshot filename - and NTP_Host's maxLength
             // 1024 made that ENAMETOOLONG, wedging a run until the job's own cap killed it.
-            it.each(validLengths.filter((len) => "x".repeat(len) !== currentValue))(
+            it.each(validLengths)(
                 "accepts a %s-char string (a valid value distributed across the length range), rendered correctly",
                 async (len) => {
-                    await applyAndExpectRendered("x".repeat(len), "Valid");
+                    const value = validStringValue(field, len);
+                    await applyAndExpectRendered(value, value === currentValue ? "ValidOrUnchanged" : "Valid");
                 },
                 CASE_TIMEOUT_MS,
             );
         }
 
         if (field.kind === "toggle") {
-            const opposite = !currentValue;
             it(
                 "flipping to the opposite state renders Valid with the new state actually shown",
                 async () => {
-                    await applyAndExpectRendered(opposite, "Valid");
+                    await applyAndExpectRendered(!currentValue, "Valid");
                 },
                 CASE_TIMEOUT_MS,
             );
         }
 
         if (field.kind === "enum") {
-            const options = (field.options ?? []).filter((o) => o.value !== currentValue);
-            it.each(options.map((o) => o.value))("selecting option %s renders Valid with that option actually shown selected", async (value) => {
+            // Selecting the option already shown is the resubmit case, whose own probe above knows
+            // whether the card round-trips at all; here it would wait for an answer that never comes.
+            it.for((field.options ?? []).map((o) => o.value))("selecting option %s renders Valid with that option actually shown selected", async (value, ctx) => {
+                ctx.skip(value === currentValue, "the current option: the resubmit probe covers it");
                 await applyAndExpectRendered(value, "Valid");
             });
         }
     });
-}
+
+    describe.each(NEVER_UNCHANGED_CASES.filter((testCase) => testCase.device === device))("live PUT $sectionKey/$groupKey/$field.key (never Unchanged)", (testCase) => {
+        const { sectionKey, groupKey, field } = testCase;
+        it(
+            "two identical valid sends both answer Valid",
+            async () => {
+                const value = actionValue(field);
+                const args = { sectionKey, groupKey, fieldKey: field.key, field, value, expectRenderedValue: value };
+                const first = await commands.applyField(args);
+                const second = await commands.applyField(args);
+                expect([first.applyStatus, second.applyStatus]).toEqual(["valid", "valid"]);
+            },
+            CASE_TIMEOUT_MS,
+        );
+    });
+});

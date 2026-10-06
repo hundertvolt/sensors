@@ -634,7 +634,8 @@ settings.
   without re-flashing to check); `/notification` → `OnH, OnM, OffH, OffM, FlashBri, Interv, FlashDur,
   AutoOn, WarnCO2, WarnVOC, WarnHum`; `/status` → live-only, sub-structured
   `networking`/`system`/`sensors`/`notification`/`errcount` (one entry per module plus per
-  `ConfigManager` — `CFGMGR_<name>`).
+  `ConfigManager` — `CFGMGR_<name>`); `sensors` keys are `<source>_<field>`, one source per SGP40
+  under its instance name (`SGP40`, `SGP40_<ext>`, Part C.14) and `UARTLINK` for dev's initiator.
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
   already `{name: {...}}`, so indexing doubled it into `{"SCD30": {"SCD30": {...}}}`.
@@ -686,9 +687,10 @@ generated
 `sensortask_<device>.py` does a module-level `import frozen_html`, mounting `/html` as a side
 effect; `WebserverService(..., static=StaticSite(mount="/html", ...))` registers the static route pair.
 
-There is no placeholder site: `scripts/test.sh`, `npm test`'s `pretest` hook and the twin runners
-all build the real website (`scripts/build_website.sh`, Part H) into `frozen_modules/frozen_html.py`
-- wozi's for the unit and web tiers, the booted device's for the twin runners. The retired
+There is no placeholder site: `scripts/test.sh` and the twin runners build the real website
+(`scripts/build_website.sh`, Part H) into `frozen_modules/frozen_html.py` - wozi's for the unit
+tier, the booted device's for the twin runners - and `npm test`'s `pretest` hook builds every
+device's into `build/generated_html/<device>/frozen_html.py` for the web tier. The retired
 `html_stub/` (removed 2026-09-24, owner's rule that the real site is the most biting test) left one
 case the real site has no file for, the binary `application/octet-stream` fallback, which Section G
 of `tests/test_asy_webserver_service.py` now pins on its synthetic fixture beside the generic
@@ -2083,10 +2085,13 @@ radio's own limits are UTF-8 bytes, checked in the pinned `extmod/modnetwork.c` 
 `WLAN.connect()` raises `EINVAL` on a key over 64 bytes and copies an SSID over 32 bytes past its
 36-byte buffer unchecked. So a schema-valid `"ÄT"` or a 32-character SSID with umlauts used to raise
 on every connect, set `hw_op_failed` and end the task after `max_module_error` cycles (`GIVE_UP` and `WLAN_GIVE_UP`) —
-a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` now bounds SSID, PW,
-Country, Hostname and HotspotPW in bytes at both ends: a PUT over the bound is refused as `"Invalid"`
-(`BAD_ARG`, errno 21, `_set_mgr_cfg()`), and a value already stored that way runs on its default
-(`STORED_DEFAULT`, `wrnno` 10) rather than reaching the radio. Only the max needs bytes — a value is never fewer bytes than
+a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` bounds SSID, PW,
+Country, Hostname and HotspotPW in bytes at both ends, and checks two shapes: `Hostname` is a host
+label — ASCII letters, digits and `-`, not starting or ending with `-` (RFC 1123), at PUT, use and
+build; `Country` is two uppercase letters (ISO 3166-1 alpha-2) at PUT and use (agent, 2026-09-28).
+A PUT outside a bound or shape is refused as `"Invalid"` (`BAD_ARG`, errno 21, `_set_mgr_cfg()`),
+and a value already stored that way runs on its default (`STORED_DEFAULT`, `wrnno` 10) rather than
+reaching the radio. Only the max needs bytes — a value is never fewer bytes than
 characters — and a character-bound violation stays the schema's own refusal. **Confirmed on
 silicon (2026-09-25)**: an 18 × `ä` hostname (36 bytes) was refused `"Invalid"` with `BAD_ARG` and
 the hostname left unchanged.
@@ -2411,9 +2416,9 @@ tuple, not `NamedTuple` (internal, not the public model, C.6).
    SPI sensor sharing an already-occupied SPI bus id with the FRAM chip is **not** automatically
    supported by the twin's single-device-per-bus-id wiring. Do this the same session as promotion —
    a driver with no twin counterpart silently regresses the Unix-port integration run's coverage
-   (A.10). **Also update `html/definitions/<device>.json`** for every device the driver's fields
-   should appear on (H.5) — the website comes entirely from that file, so a driver with no
-   definitions-file entry stays invisible indefinitely. Same session, not deferred.
+   (A.10). **Also tag every field the website should show** (`# @web`/`# @web-group`, K.4) —
+   every device's definitions are generated from those tags alone (H.5), so a driver with no tags
+   stays invisible on the page indefinitely. Same session, not deferred.
 
 ### C.11.1 Keeping a chip fake honest — the conformance probe
 
@@ -2941,7 +2946,9 @@ Any test file that imports a `sensortask_<device>.py` module directly (`tests/_s
 same) needs one more
 prerequisite first, since no such module is ever committed to `src/` any more (SPECIFICATION.md Part L's
 Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
-`build/generated_src/` directory, and `build/generated_src` prepended to `MICROPYPATH` (ahead of
+`build/generated_src/` directory — it writes every device's modules and definitions there, the
+definitions with an `index.json` manifest under `build/generated_src/definitions/` (H.5) —
+and `build/generated_src` prepended to `MICROPYPATH` (ahead of
 `src`) so the generated module resolves before anything else. `scripts/test.sh`/`scripts/
 typecheck.sh` already do both automatically; running one such file directly, as the invocation above
 does for `test_math_helpers.py`, needs them done by hand first or the import fails with
@@ -4393,8 +4400,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
   emits byte-for-byte what the driver emitted before the concept existed, which is what makes this
   reusable by a future framed protocol rather than specific to this one.
 - **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
-  simulates** — `js/mock-server.js` must match the real `src/` endpoint field for field, bound for
-  bound; a `src/`-side policy change and its `js/` mirror are one change, not two.
+  simulates**; a `src/`-side policy change and its `js/` mirror are one change, not two. The
+  mirrored pairs, each with its check: `js/mock-server.js` against the real `src/` endpoints, field
+  for field, bound for bound; the website's copies of generator bounds (`js/definitions.js`'s
+  `SUPPORTED_SCHEMA_MAJOR` and `MAX_DECIMALS`, and the shape rules of `validateDefinitions()`)
+  against `buildgen/`, pinned by `tests_scripts/test_definitions_js_mirrors.py` and the shape corpus
+  `tests_scripts/definitions_shape_cases.json`, which the Python shape check and the JS validator
+  both read.
 - **Per-instance naming** — `config_manager.py`'s `instance_name()`, never a hand-rolled
   string-concatenation/f-string. See Part C.14.1.
 - **Cross-instance wiring declaration** — a `_WIRING: "WiringSchema"` tuple next to a driver's
@@ -4454,40 +4466,46 @@ REST shape from the start — not a reskin.
 
 ```
 html/               Hand-written HTML skeleton(s) + CSS
-html/definitions/    Per-device definitions.json (H.5) - shipped, frozen by build_website.sh
 js/                  Hand-written ES module JS source (poll-manager, mock backend, definitions
                      loader/validator, generic renderer, templates, nav)
 tests_js/            JS unit tests (Vitest)
-mockdata/            Prototype-only mock backend fixtures - NOT shipped
+mockdata/            samples.json: driver-keyed samples the mock composes per device - never shipped
+build/generated_src/definitions/
+                     every device's generated definitions.json plus index.json (H.5) - read by
+                     the JS tests and the preview
 ```
 
 `package.json` mirrors `pyproject.toml`'s role (dev-tooling only, shipped code stays hand-written).
-`npm run preview` serves the repo root — `localhost:8000/html/index.html?device=wozi` against
-`js/mock-server.js`'s fake backend.
+`npm run preview` generates every device's definitions, then serves the repo root —
+`localhost:8000/html/index.html` for the manifest's first device (`?device=<name>` picks another)
+— against `js/mock-server.js`'s fake backend.
 
-**JS modules**: `app.js` (prototype-only: mock fetch, `?device=` switch), `main.js` (real
+**JS modules**: `app.js` (prototype-only: the device manifest, the mock install), `main.js` (real
 production entry — no mock, staged as `app.js` in the real build), `definitions.js` (loader +
 validator, no DOM), `field-format.js` (pure formatting, split so Node-context tests can reuse it
 without DOM types, H.8.1), `render.js` (controller, delegates DOM to `templates.js`),
 `templates.js` (DOM/markup layer, H.3), `nav.js` (drawer wiring), `poll-manager.js`
 (single-flight queue + shared fetch-timeout), `mock-server.js` (prototype-only fake backend
-answering the six REST paths, A.8).
+answering the six REST paths, A.8, from data composed out of `mockdata/samples.json`).
 
-**`scripts/build_website.sh <device>`** stages one device's real site: `index.html` (with
+**`scripts/build_website.sh <device>`** generates the device's definitions from
+`devices/<device>.toml` (H.5) and stages its real site: `index.html` (with
 `style.css` and `definitions.json` inlined, H.7), the production `js/` modules concatenated into
 one `js/app.js` bundle, `main.js` renamed `app.js`. Staging the production entry under the name
 `app.js` means `index.html`'s import path never needs a build-time rewrite. `js/mock-server.js` is
 deliberately never staged at all — its `fetch` patching has no business near production. That same
 path also stays identical under `npm run preview`, which serves the repo layout where `js/app.js` is
 the prototype-only entry file. Cross-checked against `html/`/`js/`'s real contents by
-`tests_scripts/test_build_website_sh.py`.
+`tests_scripts/test_build_website_sh.py`. `scripts/build_device_websites.sh` builds every device's
+site into `build/generated_html/<device>/`.
 
 **Splitting a module**: the bundler strips local `import` lines but never `export` lines — two
-production files exporting the same name would collide once concatenated; a split-out module
+production files declaring the same top-level name, exported or not, would collide once
+concatenated, so every top-level name is unique across the production modules; a split-out module
 (`field-format.js`) must never be *re-exported*. Concatenation order is fixed so every file follows
 the local files it imports from, which matters only for the handful of top-level `const`s
-(`DEFAULT_TIMEOUT_MS`/`pollManager`, `SUPPORTED_SCHEMA_MAJOR`) since function and class
-declarations hoist anyway; `scripts/build_website.sh` re-checks that mechanically on every build. **`index.html`'s inline bootstrap `<script
+(`DEFAULT_TIMEOUT_MS`/`pollManager`, `SUPPORTED_SCHEMA_MAJOR`, `MAX_DECIMALS`) since function and
+class declarations hoist anyway; `scripts/build_website.sh` re-checks that mechanically on every build. **`index.html`'s inline bootstrap `<script
 type="module">`** can't be extracted (must keep importing the literal, never-rewritten path).
 `eslint-plugin-html` still lints it in place; `tsc`'s JSDoc checking doesn't cover inline scripts
 (agent, 2026-08-26: it is a thin bootstrap).
@@ -4547,41 +4565,37 @@ separately from the generic sparse-PUT path, covered explicitly by `tests_js/moc
 
 ## H.5 Definitions JSON schema
 
-One JSON file per device (`html/definitions/<device>.json`). `js/definitions.js` documents the
-shape via JSDoc and strictly validates it at load time. **Top level**:
-`{schemaVersion, websiteVersion, device, landingSection, defaultPollIntervalMs, sections[]}`.
-`websiteVersion` (SPECIFICATION.md Part L.7, `buildgen.version.WEBSITE_VERSION`) is this
-project's own product/build version — build provenance only, not validated or rendered anywhere in
-the UI, and a genuinely different concept from `schemaVersion` (that field's own wire-format-shape
-concern, unaffected by this addition — never conflate the two). **`section`** mirrors
-one REST endpoint (`key`, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"`, `groups[]`).
-**`group`** is normally a `FieldGroup`; Status's error section is `ErrcountGroup`
-(`kind: "errcount"`, `modules[]`). **`FieldDef`**: a `kind`
-(`readonly|number|string|enum|toggle|composite`) plus kind-specific metadata (`min`/`max`, `mask`,
-`options`, `specialValues`, `subFields`, `onLabel`/`offLabel`, `float`, `dispatch`,
-`defaultValue`). `dispatch: true` marks a repeatable command field that must re-submit even when
+Every device's `definitions.json` is generated at build time from the `@web`/`@web-group` tags
+(H.5.1) — never hand-written or committed; adding a driver field needs only its tag (owner,
+2026-09-26). `scripts/build_website.sh <device>` generates it into the staged site, and
+`scripts/_generate_sensortask_modules.py` writes every device's copy and an `index.json` manifest
+into `build/generated_src/definitions/`, which the JS tests and `npm run preview` read.
+`js/definitions.js` documents the shape via JSDoc and strictly validates it at load time. **Top
+level**: `{schemaVersion, websiteVersion, device, landingSection, defaultPollIntervalMs,
+sections[]}`. `websiteVersion` (SPECIFICATION.md Part L.7, `buildgen.version.WEBSITE_VERSION`) is
+the bundle's own build provenance, never validated; the page shows the device's own versions from
+`GET /system` (L.7). It is a genuinely different concept from `schemaVersion` (that field's own
+wire-format-shape concern) — never conflate the two. **`section`** mirrors one REST endpoint
+(`key`, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"`, `groups[]`). **`group`** is a
+`FieldGroup` or an `ErrcountGroup` (`kind: "errcount"`, `modules[]`, `codes` — the error catalog's
+descriptions, H.6); the DNS server's errcount group sits in the Networking section, every other
+module's in Status. **`FieldDef`**: a `kind` (`readonly|number|string|enum|toggle|composite`) plus
+kind-specific metadata (`min`/`max`, `mask`, `options`, `specialValues`, `subFields`,
+`onLabel`/`offLabel`, `float`, `decimals`, `path`, `byteLength` (a byte-bounded radio string,
+C.7.4), `shape` (a host label or a country code, C.7.4), `format` (`epoch`/`gmtimestruct`, readonly
+only), `codes` (a readonly code's descriptions), `dispatch`, `alwaysExecuted`, `defaultValue`).
+`dispatch: true` marks a repeatable command field that must re-submit even when
 unchanged — **and it is only consulted for `kind: "toggle"` and `kind: "enum"`** (`js/render.js`'s
 `collectGroupBody()`, the two sites that compare a control against `resolveFieldValue()`). Every
 other kind is already sparse-omitted on a different test — a `number`/`string` only when its input
-is blank, a `composite` only when no sub-input is filled — so the flag would be inert on one. That
-is why the shipped `wozi.json`/`dev.json` carry it on `SystemCmd` (enum), `ResetErrors` and
-`SGPResetVOC` (toggles) but **not** on `PauseTime` (number) or `lightCmdLED` (composite), which are
-just as dispatch-only behaviourally (H.6) and need no marking to behave that way. An earlier version
-of this paragraph said the flag marks "H.6's list minus `ContMeas`", which read as a claim that all
-five carry it; the JSON was right and the wording was wrong (resolved 2026-09-18 by
-reading the one consumer, `js/render.js`). `defaultValue` marks a field's safe synthetic baseline when GET
+is blank, a `composite` only when no sub-input is filled — so the flag would be inert on one. The
+generator still sets `dispatch` on every webserver action field (`SystemCmd`, `PauseTime`,
+`lightCmdLED`, `ResetErrors`) and on every tag carrying `dispatch=true`, and `alwaysExecuted` from
+the tags (`AmbPres`, `ForceCalRef`, `ContMeas`), so both never-"Unchanged" classes (H.6) are
+readable from the definitions alone. `defaultValue` marks a field's safe synthetic baseline when GET
 never reports a real value — `ContMeas`'s `defaultValue` is `true` since `false` ("Off") actually
 stops measurement, not a no-op (matching the legacy synthetic reference), not the toggle's naive
-`false` default. See `wozi.json`/`dev.json` for worked examples — nearly identical field content
-(same three drivers); only `device.id`/`displayName` and I2C bus pairing differ, which the
-definitions files don't encode since a sensor's schema is driver-defined, not bus-defined.
-**Autogeneration**: `buildgen/definitions.py` generates this correctly for all six real devices
-today (H.5.1), and is wired into the real build chain as of SPECIFICATION.md Part L.4:
-`scripts/build_website.sh` falls back to generating a device's `definitions.json` on the fly
-whenever no hand-written `html/definitions/<device>.json` exists. `wozi`/`dev` keep their existing
-hand-written files unchanged (`tests_js/` reads those exact files as fixtures); the other four real
-devices (`arzi`/`klkizi`/`grkizi`/`schlafzi`), which never had a hand-written file, get one
-generated this way — see H.5.1's own "Not yet built" note for what's still open.
+`false` default.
 
 ## H.5.1 Definitions-file autogeneration
 
@@ -4609,8 +4623,9 @@ syntax, unlike `@wiring`'s bracketed-continuation-line allowance — a `@web` ta
 needs it).
 
 **The served page is checked against this generator on real hardware.**
-`tests_hardware/website_identity.py` runs `build_model()` + `generate_definitions()`
-for the device under test, pulls the errcount group's module keys out of the result, and asserts the
+`tests_hardware/website_identity.py` runs `buildgen.definitions.definitions_for_toml()` (the
+model, its construction order, then `generate_definitions()`) for the device under test, pulls every
+errcount group's module keys out of the result, and asserts the
 page the DUT actually serves names every one of them, identifies itself as that device
 (`"id": "dev"`), and names no other device's id. `tests_hardware/bench/test_rest_endpoints_over_sta.py`
 (bridge network) and `test_hotspot_role_reversal.py` (hotspot link) both use it: a
@@ -4641,9 +4656,9 @@ sibling hint — a display-precision override, `js/field-format.js`'s `formatFie
 place in the whole stack that rounds an emitted value (no driver in `src/` rounds anything), so
 without it a declared precision is an aspiration; bounded 0–100 (`Number#toFixed()`'s own
 `RangeError` ceiling), checked at generation time in `buildgen/web_tag.py` and again in
-`js/definitions.js`'s `validateFieldHints()` since a hand-edited `mockdata/*.json`-adjacent file
-never goes through the generator. Unlike `path`, `decimals` applies to any numeric field regardless
-of `kind` — `GainRatio` (an ordinary flat `sensors` field) carries one too.
+`js/definitions.js`'s `validateFieldHints()`, the two bounds pinned equal by
+`tests_scripts/test_definitions_js_mirrors.py` (G.2). Unlike `path`, `decimals` applies to any
+numeric field regardless of `kind` — `GainRatio` (an ordinary flat `sensors` field) carries one too.
 
 A schema-declared sentinel special value must have a matching tag `special:<value>="<meaning>"` or
 the build fails loud; a tag's own `special:` entries also survive independently of whatever the
@@ -4660,16 +4675,13 @@ live-readonly field lists); and the `warn_co2`/`warn_voc`/`warn_hum` UI metadata
 these three TOML wiring keys — kept in sync by cross-reference/comment, not import, since the two
 need different shapes for the same keys).
 
-**Correctness proof**: `generate_definitions()` run against `devices/wozi.toml`/`dev.toml`
-reproduces the existing hand-written `wozi.json`/`dev.json` exactly (order-insensitive); all six
-real devices pass a `validateDefinitions()`-equivalent shape check written directly in Python
-(`tests_scripts/test_buildgen_definitions.py`); the mandatory `novel_combo.toml`/
-`multi_instance.toml` synthetic fixtures generate successfully, proving per-instance
-`resolved_name`-keying genuinely generalizes beyond the two real devices that happen to need it.
-**Not yet built**: retiring the two hand-written `wozi.json`/`dev.json` files in favor of generating
-them too — the wiring into `scripts/build_website.sh`/CI, and generating one for the four real
-devices that never had one, are both done as of Session 6 (see the "Autogeneration" paragraph
-above; BACKLOG.md).
+**Correctness proof**: for every device, each tagged field lands exactly once in its group with its
+label and unit, checked against the tags independently of the generator
+(`tests_scripts/test_buildgen_definitions.py`); every device's output passes the Python shape check
+and `js/definitions.js`'s validator, which agree over one shared case corpus
+(`tests_scripts/definitions_shape_cases.json`); the mandatory `novel_combo.toml`/
+`multi_instance.toml` fixtures generate, proving per-instance `resolved_name` keying beyond the real
+devices.
 
 ## H.6 Errcount (Status section) and dispatch-only field conventions
 
@@ -4695,16 +4707,19 @@ never silently dropped — while the overall envelope still reports success.
 
 ## H.7 Digital twin integration
 
-The website joins `digital_twin/` under A.10's generalized rule. CI/local test hooks build the real
-production `wozi` website automatically (`package.json`'s `pretest` hooks), so a plain `npm test`
-always exercises the real site. **Build-chain integration proof, two layers**:
+The website joins `digital_twin/` under A.10's generalized rule. `package.json`'s `pretest` hooks
+build every device's real website (`npm run build:site`: the definitions, then
+`scripts/build_device_websites.sh`), so a plain `npm test` always exercises the real sites.
+**Build-chain integration proof, two layers**:
 `tests/test_website_build_integration.py` proves the staged site mounts/serves correctly on its
 own; `tests/test_digital_twin_real_website_integration.py` closes the gap by pre-registering
 `sys.modules["frozen_html"]` to the real build before `import sensortask_wozi`, booting the real
-object graph against the twin's buses, and driving real HTTP. **Live-backend browser test**:
-`tests_js/live-backend.test.js` drives the real website's JS in a real Chromium browser against a
-real, live-booted twin subprocess; `live-backend-put-matrix.test.js` extends this to every real
-writable field in `wozi.json`.
+object graph against the twin's buses, and driving real HTTP. **Live-backend browser tests**, for
+every device of `devices/*.toml`, one twin at a time: `tests_js/live-backend.test.js` drives the
+real website's JS in a real Chromium browser against a real, live-booted twin subprocess of that
+device, serving its own site from `build/generated_html/<device>/`;
+`live-backend-put-matrix.test.js` extends this to every writable field of every device's generated
+definitions, a field whose definition an earlier device already covered running once.
 
 ### The connection ceiling (`max_connections`, `backlog`, lwIP pcbs)
 
@@ -4851,14 +4866,18 @@ and the pytest tier that pins them: `tests_hardware/README.md`, "Holding a ceili
 ### Cross-browser coverage
 
 Vitest's browser mode only automates Chromium-family browsers via Playwright.
-`scripts/cross_browser_smoke.mjs` closes this gap: boots the real twin and drives the real website
+`scripts/cross_browser_smoke.mjs` closes this gap: boots the real twin of every device of
+`devices/*.toml`, one at a time, and drives that device's real website
 through **WebKitGTK** (real WebKit), **real Firefox** (`geckodriver` via `micromamba`, since
 Ubuntu's `firefox` apt package is a snap-only stub), and **real Microsoft Edge** — plus Playwright's
-own Chromium. Each engine, desktop and mobile viewport: nav → drawer → Sensors → edit a field →
-Apply → confirm the backend validated it and the UI reflects it (polling for both
-`data-apply-status` and the current-value caption together, since the caption refreshes via a
-separate, slightly later GET). Deliberately narrow scope (not a second exhaustive PUT matrix — each
-real WebDriver round trip costs seconds), and single-session: concurrency is covered by
+own Chromium. Each engine, desktop and mobile viewport: nav → drawer → the probe field's
+section → edit it → Apply → confirm the backend validated it and the UI reflects it (polling for
+both `data-apply-status` and the current-value caption together, since the caption refreshes via a
+separate, slightly later GET). The probe is picked per device from its generated definitions (the
+first integer field with a finite range of at least 64 in a submit group), each check sends a value
+no other check of that device sent, and a device without such a field fails the run. Deliberately
+narrow scope (not a second exhaustive PUT matrix — each real WebDriver round trip costs seconds),
+and single-session: concurrency is covered by
 `tests_js/live-backend.test.js`'s `runLiveBackendConcurrentTabs` (`max_connections // 2` parallel
 Chromium tabs against one twin, so the ceiling is never exceeded; every tab must load).
 `scripts/setup_cross_browser_toolchain.sh` installs the
@@ -4896,6 +4915,11 @@ and which therefore shadowed the real `coverage` distribution `scripts/_render_c
 the JSON the site fetches at runtime threw a rolldown parse stack per run before being dropped
 anyway - `tests_scripts/test_js_coverage_excludes_json.py` keeps every JSON out of that set)
 for `--coverage`; **html-validate** for `html/`, **Stylelint** for CSS.
+Vitest reads every device's generated definitions from `build/generated_src/definitions/` through
+one loader, `tests_js/_generated_definitions.js`, which fails at import when that tree is missing or
+its device set differs from `devices/*.toml`; per device it runs the validator and the renderer over
+every section, and the mock PUT matrix over data composed from `mockdata/samples.json`
+(deduplicated by definition, as the live one).
 
 **ESLint's rule set is curated, not `eslint:all`** (its own docs advise against that switch, which
 enables mutually contradictory style rules): `BUG_CATCHING_RULES` in `eslint.config.js` is every
@@ -4919,7 +4943,8 @@ below each, none at it, through ESLint's Node API in a Commands API module,
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
 conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file
 with its own trigger-level filter (which can leave a PR stuck on a required check that never
-fires). Web CI runs only against `html/`, `js/`, `tests_js/`, `scripts/*.mjs`, `mockdata/`, and its
+fires). Web CI runs only against `html/`, `js/`, `tests_js/`, `scripts/`, `mockdata/`, the
+definitions' sources (`src/`, `buildgen/`, `devices/`), and its
 own config files — `eslint.config.js`/`vitest.config.js` are not just trigger paths but are
 themselves linted (their own `files` block in `eslint.config.js`, Node globals, the same
 `BUG_CATCHING_RULES` as `scripts/**/*.mjs`), so the linter is not held to a weaker standard than
@@ -5982,7 +6007,7 @@ draft instance added), not by inspection alone.
 
 ## K.4 `@web`/`@web-group` tags — the website comes from these, never hand-edited JSON
 
-`html/definitions/<device>.json` is generated at build time from every tagged `src/` file (Part
+Every device's `definitions.json` is generated at build time from every tagged `src/` file (Part
 H.5.1); it is never hand-maintained. Add `# @web-group`/`# @web <Field> ...` tags for
 every field the website should show, in both the `measurements` and `sensors` sections as
 applicable — `src/asy_bmp3xx_driver.py` (simple) and `src/asy_isl29125_driver.py` (uses `special:`
@@ -6096,11 +6121,11 @@ so it does not need the wiring half at all.
 
 ## K.8 Regenerate and spot-check generated artifacts
 
-`html/definitions/<device>.json` regenerates from K.4's tags automatically — actually regenerate it
-and read the diff; a stale `mockdata/<device>.json` (a hand-written website-prototype fixture that
-can predate the real driver, carrying placeholder field names that no longer match the real schema)
-is a real, found-twice gap (PR #83's own ISL29125 fix) worth checking for explicitly, not just
-assumed fine because nothing failed.
+Run `npm run build:site` and read the generated definitions of every device carrying the driver
+(`build/generated_src/definitions/<device>.json`): each new field in its group, with its label, unit
+and range. Add the driver's sample to `mockdata/samples.json` (keyed by the driver's logger name) so
+the prototype and the mock tests render it; the composer throws naming the group when a sample is
+missing.
 
 ## K.9 Documentation
 
@@ -6169,8 +6194,8 @@ Check off per promotion; note explicitly (not silently) anywhere a step didn't a
       real source (the only host-side copy there is; see K.7)
 - [ ] `device_scripts/bus_topology_autodetect_and_hazard_sweep.py`'s `KNOWN_ADDRESSES` — the
       on-target table, which cannot import host code, so it needs the new address added by hand
-- [ ] `html/definitions/*.json` regenerated and spot-checked; `mockdata/*.json` checked for stale
-      placeholder fields
+- [ ] generated definitions read for every device carrying the driver; `mockdata/samples.json` has
+      its sample
 - [ ] SPECIFICATION.md Part C (+ C.7.1/C.8 if applicable), `DEVICE_REFERENCE.md`,
       `digital_twin/README.md`, `THIRD_PARTY_LICENSES.md` if applicable, BACKLOG.md only for
       genuinely open questions
@@ -6218,7 +6243,9 @@ can most easily break without any test naming them:
    from one and humidity from the other, `BMP3xx` at the alternate address, `Notification` wired to
    only one `warn_*` signal) and `multi_instance.toml` (2× scd30 + 2× sgp40 at once, a
    cross-driver-type value reference, an explicit `{default = true, ...}` constant). Both run the
-   full pipeline, including a real digital-twin boot.
+   full pipeline, including a real digital-twin boot. No device name appears outside `devices/` —
+   `tests_scripts/test_no_variant_literals.py` enforces it, over a list of files not yet cleaned
+   that only shrinks.
 
 Real hardware flashing is outside this build scheme's scope (agent, 2026-09-09); the watchdog stays
 fixed — hardcoded 8000 ms, uniform, never per-device (owner, 2026-08-11: 'must be hardcoded so no
@@ -6476,7 +6503,9 @@ module set. There is no separate `boot_entry/` directory: the generic boot entry
   fixed, generator-owned catalog (`buildgen.codegen._KNOWN_SIGNALS`). Every real device uses
   identical values, and the schema has no per-device override for them today.
 - **Error catalog**: `buildgen/error_catalog.json`, host-side data never frozen into the firmware -
-  every code's number, owner, name and meaning (C.7.1).
+  every code's number, owner, name and meaning (C.7.1). A buildgen input with one consumer,
+  `buildgen/definitions.py`, which inlines the code descriptions into every device's definitions
+  (H.5).
 - **Website `definitions.json`**: `buildgen.definitions.generate_definitions(model, src_dir)` takes
   an already-validated `DeviceModel`, scans each relevant instance's and mandatory-infra file's
   `# @web`/`# @web-group` tags (`buildgen/web_tag.py`) and assembles the full
@@ -6775,8 +6804,8 @@ version also appears independently as a top-level `websiteVersion` key in `defin
 provenance for the bundle currently rendering, as distinct from the device's own last-built
 firmware. Never conflate the two.
 
-Neither version nor the build date is rendered in the UI — the Status page's design intent is
-*live* device state, and neither version fact has a live-data question to answer.
+The System page's "Build" card shows `GET /system`'s `build` entry — firmware version, website
+version and build date (owner, 2026-09-26).
 
 **Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_VERSION`,
 `current_build_date()`) — deliberately not a device TOML field (a per-build fact, not a per-device

@@ -92,7 +92,9 @@ _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields ab
 # @web-group section=measurements submitGroup=self label="SGP40 — VOC Index"
 # @web VOC section=measurements submitGroup=self kind=readonly label="VOC Index"
 # @web Raw section=measurements submitGroup=self kind=readonly label="VOC Raw" unit="ticks"
-# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch
+# @web BackupTS section=status submitGroup=maintenance kind=readonly format=epoch label="SGP40 Last Backup" special:null="None since boot" special:0="No timestamp"
+# @web RestoreTS section=status submitGroup=maintenance kind=readonly format=epoch label="SGP40 Restore Timestamp" special:null="None since boot" special:0="No timestamp"
 
 # Live cross-instance dependencies (SPECIFICATION.md Parts C.14 and L.4): the optional FRAM store (its
 # logger's and, through backup=, the VOC backup's), and two per-value compensation references (Part

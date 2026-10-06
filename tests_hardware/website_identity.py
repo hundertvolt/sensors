@@ -12,8 +12,7 @@ from typing import TYPE_CHECKING
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))  # buildgen lives at the repo root, which pytest does not put on sys.path itself
 
-from buildgen.definitions import generate_definitions  # noqa: E402  (the sys.path line above is what makes this importable)
-from buildgen.validate import build_model  # noqa: E402  (same)
+from buildgen.definitions import definitions_for_toml  # noqa: E402  (the sys.path line above is what makes this importable)
 
 if TYPE_CHECKING:
     from http_client import HttpResponse
@@ -31,13 +30,13 @@ def decoded_body(res: HttpResponse) -> str:
 
 
 def _errcount_keys(device: str) -> list[str]:
-    model = build_model(DEVICES_DIR / f"{device}.toml", SRC_DIR)
-    definitions = generate_definitions(model, SRC_DIR)
-    for section in definitions["sections"]:
-        for group in section.get("groups", []):
-            if group.get("kind") == "errcount":
-                return [module["key"] for module in group["modules"]]
-    raise AssertionError(f"buildgen produced no errcount group for {device!r} - the definitions shape has changed")
+    # Every errcount group, not only the Status page's: a module's history may sit on another page
+    # (the captive DNS server's on Networking), and the page must carry each one wherever it is.
+    definitions = definitions_for_toml(DEVICES_DIR / f"{device}.toml", SRC_DIR)
+    keys = [module["key"] for section in definitions["sections"] for group in section.get("groups", []) if group.get("kind") == "errcount" for module in group["modules"]]
+    if not keys:
+        raise AssertionError(f"buildgen produced no errcount group for {device!r} - the definitions shape has changed")
+    return keys
 
 
 def foreign_device_ids(device: str) -> list[str]:

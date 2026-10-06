@@ -96,6 +96,12 @@ def _bus_kind(bus_name: str, device: str) -> str:
     return kind
 
 
+def _host_label_ok(label: str) -> bool:
+    # RFC 1123 SS2.1 host label, re-stated from src/asy_wifi_service.py's own check (buildgen never
+    # imports src/): letters, digits and '-', never at either end. DHCP and mDNS announce it as is.
+    return bool(label) and label[0] != "-" and label[-1] != "-" and all(ch.isascii() and (ch.isalnum() or ch == "-") for ch in label)
+
+
 def _check_device_table(model: DeviceModel) -> None:
     # These three are validated here AND wired into generated code since 2026-09-18: codegen
     # passes hostname/hotspot_password to AsyConnTime, which uses them as the defaults of the two
@@ -124,6 +130,8 @@ def _check_device_table(model: DeviceModel) -> None:
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
+    if not _host_label_ok(dev["hostname"]):
+        raise BuildError(model.device, f"[device].hostname {dev['hostname']!r} is not a host label (letters, digits, '-'; not starting or ending with '-'), so [device].name may use only those characters", field="hostname")
     # network.hostname()'s cap, mirrored from _VAL_HOST's upper bound. Now that the value really
     # is injected, an over-long one would be dropped back to "SensorNode" by _with_default() and
     # the device would quietly not answer to its own name. In practice a cap on [device].name.

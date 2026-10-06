@@ -1,6 +1,6 @@
 """Tests scripts/_generate_sensortask_modules.py (SPECIFICATION.md Part E.3's build/generated_src/
-pre-generation step) - both its real-device happy path (module source + wiring-plan JSON) and its
-BuildError-reporting failure path."""
+pre-generation step) - both its real-device happy path (module source, wiring-plan JSON, definitions
+and their manifest) and its BuildError-reporting failure path."""
 
 import json
 from pathlib import Path
@@ -10,6 +10,7 @@ import pytest
 from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
+from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
@@ -44,6 +45,9 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
         actual_plan = json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text())
         assert actual_plan.pop("instances") == sorted({spec.driver for spec in expected.model.instances.values()})
         assert actual_plan == expected_plan
+        written = json.loads((out_dir / "definitions" / f"{device}.json").read_text())
+        assert written == definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")
+    assert json.loads((out_dir / "definitions" / "index.json").read_text()) == {"devices": sorted(DEVICE_NAMES)}
 
 
 def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_sensortask_modules: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

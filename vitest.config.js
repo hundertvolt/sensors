@@ -6,6 +6,7 @@ import { runLiveBackendConcurrentTabs, runLiveBackendSmoke } from "./tests_js/_l
 import {
     applyField,
     applyUnchangedFieldExpectNothingToSubmit,
+    getLiveMatrixConfig,
     getRealCurrentValues,
     remountAndReadField,
     startLiveMatrix,
@@ -36,8 +37,8 @@ export default defineConfig({
             // web-coverage run turned scripts/typecheck.sh red. htmlcov_js/ matches htmlcov*/.
             reportsDirectory: "htmlcov_js",
             // The v8 provider re-parses every file V8 reported coverage for as JavaScript, so the
-            // JSON the site fetches at runtime (html/definitions/, mockdata/) threw a rolldown
-            // parse stack per file before being dropped anyway - same report, without the noise.
+            // JSON the site fetches at runtime (the generated definitions and mockdata/) threw a
+            // rolldown parse stack per file before being dropped anyway - same report, without the noise.
             exclude: ["**/*.json"],
         },
         browser: {
@@ -50,6 +51,7 @@ export default defineConfig({
             commands: {
                 runLiveBackendSmoke,
                 runLiveBackendConcurrentTabs,
+                getLiveMatrixConfig,
                 startLiveMatrix,
                 stopLiveMatrix,
                 getRealCurrentValues,

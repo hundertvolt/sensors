@@ -1,13 +1,12 @@
 /**
- * Every readonly field a shipped definitions.json names must resolve against that device's own
- * mockdata.json, using the site's own resolvers rather than a second implementation of them.
+ * Every readonly field a device's generated definitions name must resolve against that device's
+ * composed mock data, through the site's own resolver.
  */
 import { describe, expect, it } from "vitest";
-import wozi from "../html/definitions/wozi.json";
-import dev from "../html/definitions/dev.json";
-import woziData from "../mockdata/wozi.json";
-import devData from "../mockdata/dev.json";
+import samples from "../mockdata/samples.json";
 import { resolveFieldValue } from "../js/definitions.js";
+import { composeMockData } from "../js/mock-server.js";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
@@ -70,8 +69,7 @@ function unrenderableReadonlyFields(defs, data) {
         for (const group of section.groups) {
             const values = groupValuesFrom(section, group, sectionData);
             for (const field of group.fields ?? []) {
-                // Only readonly fields: a writable one legitimately falls back to defaultValue, and
-                // a command-only trigger is never echoed in a GET at all.
+                // Only readonly fields: a command-only trigger is never echoed in a GET.
                 if (field.kind !== "readonly") {
                     continue;
                 }
@@ -93,15 +91,11 @@ function unrenderableReadonlyFields(defs, data) {
 }
 
 describe("definitions and mockdata agree", () => {
-    // The gap this catches happened twice in one branch, in both directions: UARTLINK_* reached
-    // dev's definitions with no mockdata behind them, and GainMeas reached both while the real
-    // device body never carried it. Each rendered as a blank row, not as a defect.
-    it("every readonly field dev's definitions name resolves in dev's mockdata", () => {
-        expect(unrenderableReadonlyFields(dev, devData)).toEqual([]);
-    });
-
-    it("every readonly field wozi's definitions name resolves in wozi's mockdata", () => {
-        expect(unrenderableReadonlyFields(wozi, woziData)).toEqual([]);
+    // A blank row is not a defect the renderer reports, so an unresolvable readonly field fails here.
+    it.each(DEVICE_IDS)("every readonly field %s's definitions name resolves in its composed mock data", (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const data = composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples));
+        expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
     });
 
     // Guards the check itself: a resolver that silently returned a value for everything would make

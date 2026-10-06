@@ -846,11 +846,8 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
 4. Update this file's "What's here" list (the bus-wiring bullet above) to mention the new chip, and
    consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
    from it too.
-5. **Update `html/definitions/<device>.json`** for every device the new driver's fields should
-   appear on (`SPECIFICATION.md` Part H.5/H.7, Part C.11 point 9) — the website has no
-   other place a new sensor's fields get wired in, so skipping this step leaves the driver fully
-   working (real chip fake, real REST endpoint, twin-tested) but permanently invisible on the
-   website until someone remembers to come back and add it by hand.
+5. The new driver's website fields come from its `@web` tags alone (`SPECIFICATION.md` Part H.5/K.4) —
+   nothing to edit here or in any definitions file.
 
 **A new SPI sensor is not automatically supported yet if it would share an already-occupied SPI bus
 id with the FRAM chip.** `_wire_spi_device()`/`machine.SPI` currently wire **one fixed device per

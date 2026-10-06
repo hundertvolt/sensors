@@ -27,8 +27,7 @@ def fixtures_dir(repo_root: Path) -> Path:
 @pytest.fixture
 def digital_twin_machine(repo_root: Path) -> Any:
     # digital_twin/machine.py has no MicroPython-only import at module scope (only individual method
-    # bodies do), so plain `import machine` under this suite's own CPython/pytest process works -
-    # the same cross-check approach test_buildgen_definitions.py uses against html/definitions/*.json.
+    # bodies do), so plain `import machine` under this suite's own CPython/pytest process works.
     digital_twin_dir = str(repo_root / "digital_twin")
     inserted = digital_twin_dir not in sys.path
     if inserted:

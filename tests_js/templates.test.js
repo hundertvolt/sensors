@@ -38,8 +38,7 @@ describe("formatFieldValue", () => {
     });
 
     it("formats a gmtimestruct field from its real structured shape, not a pre-formatted string", () => {
-        // Real shape (src/sensortask_wozi.py's _gmtimestruct_to_dict()): {year, month, mday, hour,
-        // minute, second, weekday} - never a string, unlike what the mock fixtures used to fake.
+        // Real shape: the generated module's _gmtimestruct_to_dict() (buildgen/codegen.py).
         const field = { key: "UtcTime", label: "UTC Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("gmtimestruct") };
         const value = { year: 2025, month: 8, mday: 2, hour: 8, minute: 4, second: 3, weekday: 6 };
         expect(formatFieldValue(field, value)).toBe("2025-08-02 08:04:03");
@@ -139,8 +138,23 @@ describe("buildField", () => {
     });
 
     it("shows a length hint for an editable string field", () => {
-        const el = mount(buildField({ key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 }, "wozi", true));
+        const el = mount(buildField({ key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 }, "fixture-host", true));
         expect(hintText(el)).toContain("Length: 1 to 63 characters");
+    });
+
+    it("adds the UTF-8 byte bound to the length hint of a byte-bounded string", () => {
+        const el = mount(buildField({ key: "SSID", label: "Wi-Fi SSID", kind: "string", minLength: 0, maxLength: 32, byteLength: true }, "", true));
+        expect(hintText(el)).toContain("Length: 0 to 32 characters, at most 32 bytes (UTF-8)");
+    });
+
+    it("names a host label's character set in its hint", () => {
+        const el = mount(buildField({ key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 32, shape: "hostLabel" }, "fixture-host", true));
+        expect(hintText(el)).toContain("letters, digits and '-' only");
+    });
+
+    it("adds neither cue to a string with no byte bound and no shape", () => {
+        const el = mount(buildField({ key: "NTP_Host", label: "NTP Server", kind: "string", minLength: 3, maxLength: 64 }, "pool.ntp.org", true));
+        expect(hintText(el)).toBe("Length: 3 to 64 characters");
     });
 
     it("shows each special value's meaning in the description", () => {
@@ -475,7 +489,7 @@ describe("buildNavDrawer", () => {
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defs = {
             schemaVersion: "1.0.0",
-            device: { id: "wozi", displayName: "wozi" },
+            device: { id: "fixture-device", displayName: "Fixture Device" },
             landingSection: "measurements",
             defaultPollIntervalMs: 3000,
             sections: [
@@ -486,7 +500,7 @@ describe("buildNavDrawer", () => {
 
         buildNavDrawer(defs, drawerEl);
 
-        expect(mustQuery(drawerEl, ".nav-drawer-heading").textContent).toBe("wozi");
+        expect(mustQuery(drawerEl, ".nav-drawer-heading").textContent).toBe("Fixture Device");
         const links = /** @type {NodeListOf<HTMLElement>} */ (drawerEl.querySelectorAll("[data-section-key]"));
         expect(links).toHaveLength(2);
         const [firstLink] = links;

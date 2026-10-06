@@ -64,10 +64,10 @@ _BATCH_MEDIAN_DEPTH_MIN = 300 * 1024  # worst live 452,832 (1.47x); best suppres
 _BOOT_REACH_MAX = 64 * 1024  # live 16,352 on every device (4.0x); best suppressed 141,632 (2.16x over)
 _BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 356,576 (1.36x); best suppressed 108,352 (2.42x under)
 
-# How many blocks newly allocated by the whole sequence may sit more than this far above the seam.
-# Measured zero on every device with the collects live and 98+ without, so the slack is for one
-# future large allocation that genuinely cannot fit a low hole, not for a drift in placement.
-_HIGH_BAND = 128 * 1024
+# How many new blocks may sit more than this far above the seam: twice the live reach, zero live on every
+# device, 703 (wozi) and 1,510 (dev) suppressed. A band near the suppressed reach counts only its edge; the
+# slack is for one future large allocation that genuinely cannot fit a low hole, not for a drift in placement.
+_HIGH_BAND = 32 * 1024
 _HIGH_BAND_BLOCKS_MAX = 32
 
 # How much deeper the live arm must place than the suppressed one. A ratio between the two arms of

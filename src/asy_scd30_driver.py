@@ -71,9 +71,9 @@ _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 # @web-group section=sensors submitGroup=self label="SCD30 — CO2, Temperature, Humidity" submit=true
 # @web TempOffs section=sensors submitGroup=self label="Temperature Offset" unit="K"
 # @web MeasInt section=sensors submitGroup=self label="Measurement Interval" unit="s"
-# @web AmbPres section=sensors submitGroup=self label="Ambient Pressure (starts continuous measurement)" unit="hPa" special:0="Compensation off / use Altitude"
+# @web AmbPres section=sensors submitGroup=self label="Ambient Pressure (starts continuous measurement)" unit="hPa" special:0="Compensation off / use Altitude" alwaysExecuted=true
 # @web Altitude section=sensors submitGroup=self label="Altitude above sea level" unit="m" description="Only used if Ambient Pressure is 0."
-# @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm"
+# @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm" alwaysExecuted=true
 # @web SelfCal section=sensors submitGroup=self label="Automatic Self-Calibration"
 
 # Same datasheet limits the _VAL_* schema entries above carry, named for the driver's own argument
@@ -102,7 +102,7 @@ def _temp_offset_ticks(offset: float) -> int:
 # Deliberately no _VAL_* entry for "ContMeas": the SCD30 cannot report whether continuous
 # measurement is running, and these params live on the sensor rather than in a local cache. The
 # freestanding @web tag below supplies what a real _VAL_* tuple would otherwise let buildgen infer.
-# @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." defaultValue=true
+# @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." defaultValue=true alwaysExecuted=true
 
 _NAME = const("SCD30")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
@@ -116,7 +116,7 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in 
 # @web Hum section=measurements submitGroup=self kind=readonly label="Relative Humidity" unit="%"
 # @web WetBulb section=measurements submitGroup=self kind=readonly label="Wet Bulb Temperature" unit="°C"
 # @web DewPoint section=measurements submitGroup=self kind=readonly label="Dew Point" unit="°C"
-# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch
 
 # Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but
 # reaches 150ms once a day for internal calibration, past rp2's own 50ms I2C default. Enforced as a

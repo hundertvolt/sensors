@@ -1,0 +1,29 @@
+=================================== FAILURES ===================================
+_____ test_each_ruff_ceiling_sits_at_its_measured_maximum[max-statements] ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6')
+ceiling = _Ceiling(rule='PLR0915', section='pylint', option='max-statements')
+
+    @pytest.mark.parametrize("ceiling", _CEILINGS, ids=[c.option for c in _CEILINGS])
+    def test_each_ruff_ceiling_sits_at_its_measured_maximum(repo_root: Path, ceiling: _Ceiling) -> None:
+        problem = _ceiling_problem(repo_root, ceiling, _configured(repo_root, ceiling))
+>       assert problem is None, problem
+E       AssertionError: max-statements = 79 sits above the measured maximum: lower it (nothing reaches 79)
+E       assert 'max-statements = 79 sits above the measured maximum: lower it (nothing reaches 79)' is None
+
+tests_scripts/test_lint_ceilings.py:200: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_hardware/bench/test_bus_concurrency_under_api_load.py:229: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_hardware/bench/test_bus_concurrency_under_api_load.py:398: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u6/tests_hardware/bench/test_bus_concurrency_under_api_load.py:488: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================

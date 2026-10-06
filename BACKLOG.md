@@ -118,7 +118,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `sample_range == _RANGE_HIGH_LUX`). Covered by three new/updated tests in
   `tests/test_asy_isl29125_driver.py`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py`
   updated to check the field directly instead of the retired saturation warning (also pending
-  real-hardware re-run). `html/definitions/dev.json`/`mockdata/dev.json` updated with the new field.
+  real-hardware re-run). The field reaches the website from its `@web` tag, and
+  `mockdata/samples.json`'s ISL29125 sample carries it.
 
 1. `legacy/firmware/modules/_boot.py`'s `import sensortask.py` (literal `.py`) - **mechanism
    answered; the file is never changed regardless.** Kept only because CLAUDE.md's own hard rule and
@@ -473,8 +474,8 @@ gates, traps).
   1,132 B / 1.8x figures were the NTP group alone, not the whole route).
   `tests_scripts/test_request_body_cap_headroom.py` derives all of this, so a change here is
   re-measured rather than re-estimated.
-  **Not a one-token change**: `html/definitions/{dev,wozi}.json` carry the bound as
-  `"maxLength": 1024` and are generated *and committed*, so they need regenerating,
+  **Not a one-token change**: every device's generated definitions carry the bound as
+  `"maxLength": 1024` (regenerated from the schema on every build, nothing to edit there),
   `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim, and
   `tests/test_asy_webserver_service.py`'s
   `test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece` mirrors the number
@@ -589,7 +590,7 @@ gates, traps).
   added); `ci.yml` action pins (setup-node v7, paths-filter v4.0.3) and the cross-browser cache key.
   The MicroPython ref did not move, so the installer leg is not owed by this entry; both legs owe the
   new Node major and the refreshed Python tools.
-  **2026-10-06, Lint config only**: `pyproject.toml` `max-args` 24 → 8, `max-statements` 80 → 79
+  **2026-10-06, Lint config only**: `pyproject.toml` `max-args` 24 → 8, `max-statements` 80 → 78
   and `max-returns` 12 → 11 (each ceiling at its measured maximum, pinned by the new
   `tests_scripts/test_lint_ceilings.py`), PLR0913 per-file ignores for `src/asy_uart_driver.py`,
   `src/asy_isl29125_driver.py`, `tests/machine.py`, `digital_twin/machine.py`; `eslint.config.js`
@@ -597,6 +598,14 @@ gates, traps).
   Node-context Commands API module, `tests_js/_lint_command.js` (registered in `vitest.config.js`,
   `tests_js/vitest-commands.d.ts`, `tsconfig.json`/`tsconfig.node.json`) — no build impact and no
   new dependency; the lint leg and the web tier run them with what is already installed.
+  **2026-10-06, website definitions from one source**: `scripts/build_website.sh` always generates
+  the device's definitions from `devices/<device>.toml`; the new `scripts/build_device_websites.sh`
+  builds every device's site; `scripts/_generate_sensortask_modules.py` also writes every device's
+  definitions and an `index.json` manifest into `build/generated_src/definitions/`; `package.json`
+  gains `build:definitions` and `prepreview`, and `build:site` builds every device's site;
+  `ci.yml`'s web filter gains `src/`, `buildgen/` and `devices/`, and the cross-browser job builds
+  through `npm run build:site`. Shell and host Python with no new dependency; a chroot's
+  `scripts/test.sh` leg runs the generator as before, and `env --tier generic` installs nothing new.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
@@ -788,27 +797,6 @@ gates, traps).
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
     a substitute for the full 6h window this item was always about
     (S4).
-- **Website definitions-file autogeneration — done (SPECIFICATION.md Part L.4).** The
-  `@web`/`@web-group` comment-tag family and `buildgen/definitions.py`'s generator now exist,
-  resolving every open question this entry used to track (anchoring a non-driver-schema value like
-  `lightCmdLED`, `@web-group`'s relationship to `SettingsGroup(...)` wiring, the formal grammar's
-  scope) — see SPECIFICATION.md Part L.4 for the resolutions and
-  `tests_scripts/test_buildgen_web_tag.py`/`test_buildgen_definitions.py` for the test coverage.
-  Generating `html/definitions/<device>.json` for real was Session 6's own job; that session
-  closed two of its three parts — `arzi`/`klkizi`/`grkizi`/`schlafzi` (the four devices that never
-  had a hand-written file) now get one generated on the fly by `scripts/build_website.sh`'s own
-  fallback, and this is wired into CI's 6-device `firmware-build-verify` matrix. **Still open**:
-  retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi,dev}.json` in favor of generated
-  output — deliberately deferred, since `tests_js/live-backend-put-matrix.test.js`/
-  `mock-server-put-matrix.test.js` read those two files directly as fixtures and switching them
-  over needs a `tests_js/` fixture audit nobody has done yet. **The same wozi/dev-only scope shows up in the browser prototype too**: `js/
-  app.js`'s `KNOWN_DEVICES = ["wozi", "dev"]` (its `?device=` switch, prototype-only per that file's
-  own docstring — real firmware ships exactly one device's `definitions.json`, never branches on a
-  query param) is a real, literal device-name list living outside `devices/*.toml`, but it isn't an
-  independent gap: it exists because `mockdata/`/`html/definitions/` only carry fixtures for those
-  two devices, the same limitation this entry already tracks. Extending it to all 6 needs generating
-  `mockdata/<device>.json` fixtures for the other four first, not just a `KNOWN_DEVICES` edit — found
-  by SPECIFICATION.md Part L.1, flagged here rather than fixed piecemeal.
 - **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
   Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and

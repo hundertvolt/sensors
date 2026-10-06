@@ -1,19 +1,48 @@
 /**
- * Prototype entry point. The `?device=` switch below is prototype-only (real firmware ships
- * exactly one device's definitions.json, never branches on a query param) - see
- * SPECIFICATION.md Part H.2 for why, and Part A.9 for the real build.
+ * Prototype entry point: picks a device from the build's definitions manifest (`?device=` overrides
+ * it) and installs the mock backend; real firmware ships one device's definitions.json and never
+ * branches on a query param (SPECIFICATION.md Part H.2; the real build: Part A.9).
  */
 
 import { loadDefinitions } from "./definitions.js";
-import { installMockFetch } from "./mock-server.js";
+import { composeMockData, installMockFetch } from "./mock-server.js";
 import { initNav } from "./nav.js";
 import { fetchWithTimeout } from "./poll-manager.js";
 import { renderSection } from "./render.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 
-const DEFAULT_DEVICE = "wozi";
-const KNOWN_DEVICES = ["wozi", "dev"];
+const DEFINITIONS_DIR = "../build/generated_src/definitions";
+
+/**
+ * Fetches and parses one JSON file, throwing a worded error for a non-ok status or a torn body.
+ * @param {string} path
+ * @returns {Promise<unknown>}
+ */
+async function fetchJson(path) {
+    const response = await fetchWithTimeout(path);
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+    try {
+        return await response.json();
+    } catch (error) {
+        throw new Error("response was not valid JSON (likely a corrupted or truncated transmission)", { cause: error });
+    }
+}
+
+/**
+ * The manifest's sorted device ids, or an error when it is no non-empty string array.
+ * @returns {Promise<string[]>}
+ */
+async function fetchDeviceList() {
+    const manifest = /** @type {{devices?: unknown} | null} */ (await fetchJson(`${DEFINITIONS_DIR}/index.json`));
+    const devices = manifest?.devices;
+    if (!Array.isArray(devices) || devices.length === 0 || !devices.every((id) => typeof id === "string")) {
+        throw new Error("index.json does not list any device");
+    }
+    return /** @type {string[]} */ (devices);
+}
 
 /**
  * @param {{
@@ -24,14 +53,23 @@ const KNOWN_DEVICES = ["wozi", "dev"];
  */
 export async function startApp(elements) {
     const { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl } = elements;
-    const params = new URLSearchParams(window.location.search);
-    const requestedDevice = params.get("device") ?? DEFAULT_DEVICE;
-    const device = KNOWN_DEVICES.includes(requestedDevice) ? requestedDevice : DEFAULT_DEVICE;
+    /** @type {string[]} */
+    let devices;
+    try {
+        devices = await fetchDeviceList();
+    } catch (error) {
+        errorBannerEl.textContent = `Could not load the device list: ${String(error)}`;
+        errorBannerEl.classList.remove("hidden");
+        return;
+    }
+    // The manifest is sorted, so its first device is the default; an unknown ?device= falls back to it.
+    const requestedDevice = new URLSearchParams(window.location.search).get("device");
+    const device = requestedDevice !== null && devices.includes(requestedDevice) ? requestedDevice : /** @type {string} */ (devices[0]);
 
     /** @type {SiteDefinitions} */
     let defs;
     try {
-        defs = await loadDefinitions(`definitions/${device}.json`);
+        defs = await loadDefinitions(`${DEFINITIONS_DIR}/${device}.json`);
     } catch (error) {
         errorBannerEl.textContent = `Could not load definitions for "${device}": ${String(error)}`;
         errorBannerEl.classList.remove("hidden");
@@ -43,15 +81,8 @@ export async function startApp(elements) {
     /** @type {import("./definitions.js").MockDeviceData} */
     let mockData;
     try {
-        const mockDataResponse = await fetchWithTimeout(`../mockdata/${device}.json`);
-        if (!mockDataResponse.ok) {
-            throw new Error(`HTTP ${mockDataResponse.status}`);
-        }
-        try {
-            mockData = await mockDataResponse.json();
-        } catch (error) {
-            throw new Error("response was not valid JSON (likely a corrupted or truncated transmission)", { cause: error });
-        }
+        const samples = /** @type {import("./definitions.js").MockSamples} */ (await fetchJson("../mockdata/samples.json"));
+        mockData = composeMockData(defs, samples);
     } catch (error) {
         errorBannerEl.textContent = `Could not load mock fixture data for "${device}": ${String(error)}`;
         errorBannerEl.classList.remove("hidden");

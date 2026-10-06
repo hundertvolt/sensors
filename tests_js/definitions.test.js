@@ -1,13 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-// These tests run in a real browser (Playwright + Chromium), so the shipped definitions are
-// imported as modules - node:fs is not reachable here. Same import shape the PUT matrix uses.
-import woziDefs from "../html/definitions/wozi.json";
-import devDefs from "../html/definitions/dev.json";
+// Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run: no node:fs).
+import { GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 import { loadDefinitions, resolveFieldValue, SUPPORTED_SCHEMA_MAJOR, validateDefinitions } from "../js/definitions.js";
 
 const MINIMAL_VALID = {
     schemaVersion: "1.0.0",
-    device: { id: "wozi", displayName: "wozi" },
+    device: { id: "fixture-device", displayName: "Fixture Device" },
     landingSection: "measurements",
     defaultPollIntervalMs: 3000,
     sections: [
@@ -202,14 +200,8 @@ describe("validateDefinitions", () => {
         }
     });
 
-    // Nothing anywhere ran this validator against the shipped dev definitions before: the PUT
-    // matrix imports that file raw, and this suite only ever loaded wozi's. A malformed dev
-    // definitions file therefore shipped and failed in a browser instead of here.
-    it.each([
-        ["wozi", woziDefs],
-        ["dev", devDefs],
-    ])("accepts the shipped %s definitions file", (_device, shipped) => {
-        expect(validateDefinitions(shipped)).toEqual([]);
+    it.each([...GENERATED_DEFINITIONS])("accepts the generated %s definitions", (_device, generated) => {
+        expect(validateDefinitions(generated)).toEqual([]);
     });
 });
 
@@ -261,8 +253,8 @@ describe("loadDefinitions", () => {
 
     it("returns the parsed definitions on a valid fetch", async () => {
         window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(MINIMAL_VALID), { status: 200 })));
-        const defs = await loadDefinitions("definitions/wozi.json");
-        expect(defs.device.id).toBe("wozi");
+        const defs = await loadDefinitions("definitions/fixture-device.json");
+        expect(defs.device.id).toBe("fixture-device");
     });
 
     it("throws on a non-ok HTTP response", async () => {

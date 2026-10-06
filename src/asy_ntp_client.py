@@ -95,7 +95,7 @@ _VAL_NIH = const((("NTP_Interv_H", "int", 12, 1, 24, None),))
 _VAL_GMT = const((("GMTOffset", "int", 3600, -43200, 43200, None),))
 _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 
-# @web-group section=networking submitGroup=ntp label="NTP Time Sync" submit=true
+# @web-group section=networking submitGroup=ntp label="NTP Time Sync" submit=true submitLabel="Apply & Resync"
 # @web NTP_Host section=networking submitGroup=ntp label="NTP Server Address"
 # @web NTP_Offset_S section=networking submitGroup=ntp label="NTP Offset" unit="s" description="Added to Unix time; affects system time and all timestamps."
 # @web NTP_Interv_H section=networking submitGroup=ntp label="NTP Sync Interval" unit="h"

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import select
 import socket
@@ -9,6 +10,7 @@ from _tmp_scratch import TmpScratch
 from machine import Timer
 
 import asy_wifi_service
+import print_log as print_log_module
 from asy_udp_socket import AsyUDPSocket
 from asy_wifi_service import WIFI, AsyConnTime, WifiConfig
 from print_log import LogConfig
@@ -2874,16 +2876,16 @@ def test_a_default_is_only_substituted_into_a_bounded_string_field() -> None:
 
 # ---------------------------------------------------------------------------
 # SPECIFICATION.md C.7.4: the radio bounds SSID/PW/Country/Hostname/HotspotPW in UTF-8 BYTES, where
-# the schema counts characters - refused at write, and a stored one runs on its default, never
-# reaching the radio as a "hardware" failure that feeds the give-up streak.
+# the schema counts characters, and Hostname/Country by shape - refused at write, and a stored one
+# runs on its default, never reaching the radio as a "hardware" failure that feeds the give-up streak.
 # ---------------------------------------------------------------------------
 
 # (field, largest accepted, smallest refused) - each pair within the schema's character bound.
+# No Hostname row: a host label is ASCII, so its byte bound equals its character bound.
 _BYTE_BOUNDS = (
     ("SSID", "ä" * 16, "ä" * 16 + "x"),  # 32 bytes / 33 bytes, both <= 32 characters
     ("PW", "ä" * 31 + "x", "ä" * 32),  # 63 / 64 bytes
     ("Country", "AT", "ÄT"),  # 2 / 3 bytes, both 2 characters
-    ("Hostname", "ä" * 16, "ä" * 17),  # 32 / 34 bytes
     ("HotspotPW", "ä" * 31 + "x", "ä" * 32),
 )
 
@@ -2906,14 +2908,16 @@ def test_radio_bytes_ok_passes_through_everything_the_schema_check_owns() -> Non
     import asy_wifi_service
 
     field = ("Hostname", "str", "SensorNode", 1, 32, None)
-    ok = asy_wifi_service._radio_bytes_ok
+    ok = asy_wifi_service._radio_value_ok
     assert ok(field, 12) is True  # not a str: the schema's type check refuses it
     assert ok(field, "") is True  # under the character min: the schema's refusal, not a byte one
     assert ok(field, "x" * 40) is True  # over the character max: likewise
     assert ok(("PW", "str", "", 8, 63, ""), "") is True  # the special bypass value
     assert ok(("X", "str", None, None, None, None), "ä" * 99) is True  # no int bounds to apply
-    assert ok(field, "ä" * 16) is True  # exactly 32 bytes
-    assert ok(field, "ä" * 17) is False  # 34 bytes inside 17 characters
+    ssid = ("SSID", "str", "", 0, 32, None)  # no shape of its own, so only the byte bound applies
+    assert ok(ssid, "ä" * 16) is True  # exactly 32 bytes
+    assert ok(ssid, "ä" * 17) is False  # 34 bytes inside 17 characters
+    assert ok(field, "ä" * 17) is False
 
 
 def test_an_unknown_key_beside_a_refused_radio_field_is_still_the_schemas_to_judge() -> None:
@@ -3030,6 +3034,69 @@ def test_a_stored_over_long_hotspot_value_starts_the_hotspot_on_the_default() ->
     run(client._start_hotspot())
     assert client.hw_op_failed is False
     assert (network.country(), network.hostname()) == ("DE", "SensorNode")
+
+
+class _PrintRecorder:
+    # Local stand-in for a shared print recorder: shadows print() inside print_log only, so every
+    # console line a logger emits is captured with its arguments; restore() removes the shadow.
+    def __init__(self) -> None:
+        self.lines: list[tuple[object, ...]] = []
+        print_log_module.print = self  # type: ignore[attr-defined]
+
+    def __call__(self, *args: object, **_kwargs: object) -> None:
+        self.lines.append(args)
+
+    def restore(self) -> None:
+        del print_log_module.print  # type: ignore[attr-defined]
+
+
+def _radio_shape_cases() -> "dict[str, dict[str, list[str]]]":
+    # One corpus, three judges: this product check, buildgen's and the mock's (SPECIFICATION.md G.2).
+    with open("tests/_radio_shape_cases.json") as f:
+        cases: dict[str, dict[str, list[str]]] = json.load(f)
+    return cases
+
+
+def _judge_shape_case(field: str, value: str, *, accepted: bool) -> None:
+    client = make_client()
+    client.pr.set_level(2)  # errors and warnings reach print(), so the refusal's text is checked too
+    run(client.pr.setup())
+    before = run(client.cfgmgr.get_dict([field]))
+    recorder = _PrintRecorder()
+    try:
+        result = run(client._set_dict_cfg({field: value}, client.get_cfg_schema()))
+    finally:
+        recorder.restore()
+    run(client.cfgmgr.flush_pending())
+    if accepted:
+        assert result[field] in ("Valid", "Unchanged"), (field, value, result)  # "Unchanged": equals the default
+        assert run(client.cfgmgr.get_dict([field])) == {field: value}, (field, value)
+        return
+    assert result == {field: "Invalid"}, (field, value)
+    assert run(client.cfgmgr.get_dict([field])) == before, (field, value)  # nothing stored
+    low, high = next((f[3], f[4]) for f in client.get_cfg_schema() if f[0] == field)
+    assert isinstance(low, int) and isinstance(high, int), field
+    if not low <= len(value) <= high:
+        return  # the schema's own character-bound refusal, not the radio check's (tested above)
+    assert recorder.lines == [("WIFI", "Refusing", field, "- outside the radio's accepted form")], (field, value)
+    stored = _client_with_stored({field: value})
+    run(stored.pr.setup())
+    _no_poll(stored)
+    run(stored._attempt_sta_connect())
+    default = next(f[2] for f in stored.get_cfg_schema() if f[0] == field)
+    assert (network.hostname() if field == "Hostname" else network.country()) == default, (field, value)
+    log = run(stored.get_error_counter())["WIFI"]
+    assert _used_slots(run(stored.get_error_counter())) == [code("W", "STORED_DEFAULT")] and log["ErrCount"] == 1, (field, value)
+
+
+def test_every_host_label_and_country_case_is_judged_as_the_corpus_says() -> None:
+    cases = _radio_shape_cases()
+    for shape, field in (("hostLabel", "Hostname"), ("countryCode", "Country")):
+        assert cases[shape]["accept"] and cases[shape]["reject"], shape
+        for value in cases[shape]["accept"]:
+            _judge_shape_case(field, value, accepted=True)
+        for value in cases[shape]["reject"]:
+            _judge_shape_case(field, value, accepted=False)
 
 
 def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:

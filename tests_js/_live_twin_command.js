@@ -11,10 +11,6 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-// build/generated_src first: no static src/sensortask_wozi.py exists any more
-// (SPECIFICATION.md Part L.2) - package.json's own "pretest"/
-// "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
-const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
 // full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
@@ -49,17 +45,24 @@ async function waitUntilServing(timeoutMs) {
     throw new Error(`digital twin never started serving on ${HOST}:${PORT} within ${timeoutMs}ms`);
 }
 
-function spawnTwin() {
+/**
+ * build/generated_src first: sensortask_<device>.py exists only there (SPECIFICATION.md Part L.2),
+ * generated with the device's own site (build/generated_html/<device>) by package.json's "pretest"
+ * hooks, so a twin never serves another device's site.
+ * @param {string} device
+ */
+function spawnTwin(device) {
+    const micropypath = `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
     const proc = spawn(
         MICROPYTHON_BIN,
         [
             "digital_twin/run_generic_integration.py",
             "--module",
-            "sensortask_wozi",
+            `sensortask_${device}`,
             "--wiring-plan",
-            path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+            path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
             "--device",
-            "wozi",
+            device,
             "--host",
             HOST,
             "--port",
@@ -71,7 +74,7 @@ function spawnTwin() {
         ],
         {
             cwd: REPO_ROOT,
-            env: { ...process.env, MICROPYPATH, TZ: "UTC" },
+            env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
             // stdout ignored rather than piped: an unconsumed pipe keeps Node's event loop alive
             // and can block the child once its buffer fills, hanging vitest at exit. stderr is
             // piped and drained below, only to surface in a failure's error message.
@@ -122,11 +125,11 @@ const CEILING_SCRIPT = "import sys; from pathlib import Path; from buildgen.vali
 
 /**
  * The admission ceiling `devices/<device>.toml` builds, as buildgen itself resolves it.
- * @param {string} [device]
+ * @param {string} device
  * @param {string} [devicesDir] - the TOML directory, overridable for tests
  * @returns {number}
  */
-export function configuredMaxConnections(device = "wozi", devicesDir = path.join(REPO_ROOT, "devices")) {
+export function configuredMaxConnections(device, devicesDir = path.join(REPO_ROOT, "devices")) {
     const tomlPath = path.join(devicesDir, `${device}.toml`);
     const out = execFileSync("uv", ["run", "--quiet", "python", "-c", CEILING_SCRIPT, tomlPath, path.join(REPO_ROOT, "src")], { cwd: REPO_ROOT, encoding: "utf8" });
     const ceiling = Number(out.trim());
@@ -138,9 +141,10 @@ export function configuredMaxConnections(device = "wozi", devicesDir = path.join
 
 /**
  * @param {{context: import("playwright").BrowserContext}} ctx
+ * @param {string} device a devices/<device>.toml stem, booted from its own generated module and site
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, titleHasSensorStation: boolean, deviceName: string, debugLevelApplyStatus: string | null}>}
  */
-export async function runLiveBackendSmoke({ context }) {
+export async function runLiveBackendSmoke({ context }, device) {
     if (!existsSync(MICROPYTHON_BIN)) {
         return {
             skipped: true,
@@ -153,7 +157,7 @@ export async function runLiveBackendSmoke({ context }) {
     // to a fixed path by default (run_generic_integration.py exposes no --cfg-path flag).
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
-    const proc = spawnTwin();
+    const proc = spawnTwin(device);
     let stderr = "";
     proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
         stderr += chunk.toString();
@@ -205,7 +209,7 @@ export async function runLiveBackendSmoke({ context }) {
         return { skipped: false, titleHasSensorStation, deviceName, debugLevelApplyStatus };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`live-backend smoke check failed: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+        throw new Error(`live-backend smoke check failed for ${device}: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
     } finally {
         if (livePage) {
             livePage.removeAllListeners();
@@ -219,9 +223,10 @@ export async function runLiveBackendSmoke({ context }) {
  * Parallel real-browser tabs against one live twin: the tier exercising the connection ceiling from
  * a real browser rather than a socket loop. Every tab navigates at once (SPECIFICATION.md Part H.7).
  * @param {{context: import("playwright").BrowserContext}} ctx
+ * @param {string} device a devices/<device>.toml stem; its own ceiling sizes the tab count
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loaded: number, deviceNames: string[]}>}
  */
-export async function runLiveBackendConcurrentTabs({ context }) {
+export async function runLiveBackendConcurrentTabs({ context }, device) {
     if (!existsSync(MICROPYTHON_BIN)) {
         return {
             skipped: true,
@@ -232,8 +237,8 @@ export async function runLiveBackendConcurrentTabs({ context }) {
 
     // Half the ceiling, so it is never exceeded: a tab fetches index.html then app.js and poll-manager
     // serialises its REST calls, so a tab holds one slot, two while a finished one is still releasing.
-    const tabs = Math.max(1, Math.floor(configuredMaxConnections() / 2));
-    const proc = spawnTwin();
+    const tabs = Math.max(1, Math.floor(configuredMaxConnections(device) / 2));
+    const proc = spawnTwin(device);
     let stderr = "";
     proc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
         stderr += chunk.toString();
@@ -255,7 +260,7 @@ export async function runLiveBackendConcurrentTabs({ context }) {
         return { skipped: false, tabs, loaded: results.length, deviceNames: results };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`live-backend concurrent-tab check failed: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
+        throw new Error(`live-backend concurrent-tab check failed for ${device}: ${message}\n--- twin stderr ---\n${stderr}`, { cause: err });
     } finally {
         await Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ })));
         await stopTwin(proc);

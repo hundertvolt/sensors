@@ -366,6 +366,15 @@ export function renderSection(defs, section, mainEl) {
                 const statusNotification = /** @type {Record<string, unknown>} */ (statusBody?.notification ?? {});
                 data.PauseTime = statusNotification.PauseTime;
             }
+            if (section.key !== "status" && section.groups.some((group) => "kind" in group && group.kind === "errcount")) {
+                // An errcount group on another page (the captive DNS history on Networking) reads
+                // GET /status's errcount, the one place the API publishes every module's history.
+                const statusResponse = await pollManager.request("/status");
+                if (!statusResponse.ok || statusResponse.body === null) {
+                    throw new Error(describeGetFailure(statusResponse, "/status"));
+                }
+                data.errcount = /** @type {Record<string, unknown>} */ (statusResponse.body).errcount;
+            }
             errorBanner.classList.add("hidden");
             paint(data);
         } catch (error) {

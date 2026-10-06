@@ -14,8 +14,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from _devices import DEVICE_NAMES
 
-from buildgen.definitions import generate_definitions
-from buildgen.validate import build_model
+from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -96,8 +95,7 @@ def _largest_put_body(section: "Mapping[str, Any]") -> int:
 
 
 def _put_sections(repo_root: Path, device: str) -> "list[tuple[str, int]]":
-    model = build_model(repo_root / "devices" / f"{device}.toml", repo_root / "src")
-    definitions = generate_definitions(model, repo_root / "src")
+    definitions = definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")
     sections = definitions["sections"]
     assert isinstance(sections, list)
     return [(s["rest"]["put"], _largest_put_body(s)) for s in sections if "put" in s.get("rest", {}) and _largest_put_body(s)]

@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 # sub-table sliced out of it) - str keys, arbitrarily nested str/int/float/bool/list/dict values.
 TomlDoc = dict[str, Any]
 
+# The /status maintenance block's key for a driver publishing one per device (an SGP40 publishes one per
+# instance, under its resolved_name), read by the definitions generator and codegen alike so they cannot drift.
+MAINTENANCE_NAMES = {"uart_link": "UARTLINK"}
+
 
 def instance_key(inst: "TomlDoc") -> tuple[str, str]:
     # The TOML's own driver/name_ext identity, never instance_name()/_NAME - a separate naming

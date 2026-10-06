@@ -1,0 +1,10 @@
+{
+    "hostLabel": {
+        "accept": ["SensorNode", "SensorStation7", "a", "a-b", "A1-b2"],
+        "reject": ["", "-a", "a-", "a b", "a.b", "a_b", "a\u0000b", "ä"]
+    },
+    "countryCode": {
+        "accept": ["DE", "XX"],
+        "reject": ["de", "D1", "ZZZ", "Z", "D\u0000", "DÉ"]
+    }
+}

@@ -4,7 +4,6 @@ BACKLOG.md	HARDWARE_TEST_HANDOVER.md
 BACKLOG.md	HARDWARE_TEST_PLAN.md
 BACKLOG.md	REAL_HARDWARE_TEST_QUEUE.md
 BACKLOG.md	Session 2
-BACKLOG.md	Session 6
 BACKLOG.md	WP1
 BACKLOG.md	WP2
 BACKLOG.md	WP3
@@ -105,12 +104,10 @@ devices/dev.toml	WP3
 digital_twin/README.md	WP1
 digital_twin/machine.py	Step 5
 digital_twin/machine.py	Step 5
-js/field-format.js	src/sensortask_wozi.py
 js/mock-server.js	src/sensortask_wozi.py
 scripts/_digital_twin_ci_suite.py	WP1
 scripts/_digital_twin_ci_suite.py	WP1
 scripts/_digital_twin_ci_suite.py	WP2
-scripts/cross_browser_smoke.mjs	src/sensortask_wozi.py
 scripts/run_digital_twin_ci.sh	digital_twin/*.json
 scripts/run_digital_twin_ci.sh	src/sensortask_*.py
 scripts/run_unix_port_integration.sh	src/sensortask_*.py
@@ -145,9 +142,6 @@ tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	mea
 tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	measure A
 tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py	measure B
 tests_hardware/flash/test_fram_storage.py	Topic 6
-tests_js/_live_matrix_command.js	src/sensortask_wozi.py
-tests_js/_live_twin_command.js	src/sensortask_wozi.py
-tests_js/templates.test.js	src/sensortask_wozi.py
 tests_scripts/conftest.py	devices/zz_test_*.toml
 tests_scripts/test_build_firmware.py	devices/no-such-device.toml
 tests_scripts/test_build_website_sh.py	js/app.js.gz

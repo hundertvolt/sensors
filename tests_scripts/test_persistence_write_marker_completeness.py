@@ -8,18 +8,17 @@ silently. The sibling gating test proves the flag WORKS; this proves nothing esc
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
+from _devices import DEVICE_NAMES, device_toml
+
+from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-# The four route-level dispatch-only fields (asy_webserver_service.py's own PUT handlers act on them
-# and never hand them to ConfigManager) - the rest are derived from the real @web schema tags below,
-# so a driver that stops declaring dispatch=true is caught rather than assumed.
-_ROUTE_DISPATCH_FIELDS = frozenset({"SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"})
 
 # Tests whose only persisting-looking PUT provably writes nothing, with the reason each is exempt.
 # config_manager.py's write_config() short-circuits on `if not changed` BEFORE staging anything, so
@@ -53,13 +52,27 @@ def _tests_hardware_modules(repo_root: Path) -> list[Path]:
     return sorted(p for p in base.rglob("*.py") if "device_scripts" not in p.parts)
 
 
+@cache
+def _flagged_fields(repo_root: Path, flag: str) -> frozenset[str]:
+    """Every field key carrying `flag: true` in any device's generated definitions, the one source the
+    website, the mock and this gate all read the two never-"Unchanged" classes from."""
+    found = set()
+    for device in DEVICE_NAMES:
+        definitions = definitions_for_toml(device_toml(device), repo_root / "src")
+        found |= {f["key"] for s in definitions["sections"] for g in s["groups"] for f in g.get("fields", []) if f.get(flag) is True}
+    return frozenset(found)
+
+
 def _dispatch_only_fields(repo_root: Path) -> frozenset[str]:
-    """Every field a PUT can carry that persists nothing - route-level plus `dispatch=true` schema tags."""
-    tagged = set()
-    for src in sorted((repo_root / "src").glob("*.py")):
-        tagged |= set(re.findall(r"^# @web (\w+) .*\bdispatch=true\b", src.read_text(), re.MULTILINE))
-    assert tagged, "no `dispatch=true` @web tags found in src/ - the derivation broke, and every dispatch-only PUT would now look like a flash write"
-    return frozenset(_ROUTE_DISPATCH_FIELDS | tagged)
+    """Every field a PUT can carry that persists nothing: the definitions' `dispatch` fields."""
+    dispatch_only = _flagged_fields(repo_root, "dispatch")
+    assert dispatch_only, "no `dispatch` field in any device's definitions - the derivation broke, and every dispatch-only PUT would now look like a flash write"
+    return dispatch_only
+
+
+def _always_executed_fields(repo_root: Path) -> frozenset[str]:
+    """The fields the chip takes on every PUT (`alwaysExecuted`): each one writes the chip's own store."""
+    return _flagged_fields(repo_root, "alwaysExecuted")
 
 
 def _leaf_keys(node: ast.expr) -> set[str]:
@@ -318,13 +331,13 @@ def test_the_set_of_persisting_helpers_is_exactly_the_triaged_one(repo_root: Pat
     assert helpers == _KNOWN_PERSISTING_HELPERS, f"the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.\n  added: {sorted(helpers - _KNOWN_PERSISTING_HELPERS)}\n  gone: {sorted(_KNOWN_PERSISTING_HELPERS - helpers)}"
 
 
-def test_the_dispatch_only_derivation_still_finds_the_real_schema_tags(repo_root: Path) -> None:
-    # If the @web parse silently returned nothing useful, every dispatch-only PUT would read as a
+def test_the_derived_classes_still_hold_every_known_action_and_chip_field(repo_root: Path) -> None:
+    # If the derivation silently returned nothing useful, every dispatch-only PUT would read as a
     # flash write and the guard above would fail noisily - but the reverse (a field wrongly counted
     # as dispatch-only) fails SILENTLY, which is the direction that actually spends wear.
     dispatch_only = _dispatch_only_fields(repo_root)
-    assert {"SGPResetVOC", "ISLCalibrate"} <= dispatch_only, "the dispatch=true schema tags are no longer being picked up"
-    assert dispatch_only >= _ROUTE_DISPATCH_FIELDS
+    assert {"SGPResetVOC", "ISLCalibrate", "SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"} <= dispatch_only
+    assert {"AmbPres", "ForceCalRef", "ContMeas"} <= _always_executed_fields(repo_root)
     for persisting in ("PressOvers", "Resolution", "BackupPeriod", "SSID", "NTP_Host", "WarnCO2"):
         assert persisting not in dispatch_only, f"{persisting} is a real persisted config field and must never be treated as dispatch-only"
 

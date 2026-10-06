@@ -11,7 +11,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 from _devices import DEVICE_NAMES
@@ -20,9 +20,6 @@ from _devices import device_toml as device_toml_path
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
-
-if TYPE_CHECKING:
-    from buildgen.model import DeviceModel
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
@@ -106,21 +103,22 @@ def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float
     raise TimeoutError(f"generated device never started serving on {_HOST}:{port} within {timeout_s}s")
 
 
-def _website_errcount_keys(model: DeviceModel, src_dir: Path) -> set[str]:
-    """The errcount rows js/templates.js will render for this device, from the real generator."""
-    groups = [g for section in generate_definitions(model, src_dir)["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
-    assert len(groups) == 1, f"expected exactly one errcount group for {model.device}, got {len(groups)}"
-    return {row["key"] for row in groups[0]["modules"]}
+def _website_errcount_keys(definitions: dict[str, Any]) -> set[str]:
+    """The errcount rows js/templates.js will render for this device: the union over every errcount
+    group, wherever the definitions place one (the captive DNS history sits on Networking)."""
+    groups = [g for section in definitions["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
+    assert groups, f"no errcount group in {definitions['device']['id']}'s definitions"
+    return {row["key"] for g in groups for row in g["modules"]}
 
 
-def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: object) -> list[str]:
+def _errcount_parity_failures(definitions: dict[str, Any], status_body: object) -> list[str]:
     """Compares the error sources GET /status really publishes against the website's own catalog.
     The API derives itself from the live object graph; buildgen/definitions.py's catalog is
     hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6."""
     if not isinstance(status_body, dict) or not isinstance(status_body.get("errcount"), dict):
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
-    displayed = _website_errcount_keys(model, src_dir)
+    displayed = _website_errcount_keys(definitions)
     # No exemptions: _errcount_group() derives its rows per logger instance (fixed
     # 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
     missing = published - displayed
@@ -131,6 +129,43 @@ def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: ob
     if extra:
         failures.append(f"website errcount rows with no published source (each renders a permanent 0): {sorted(extra)}")
     return failures
+
+
+def _resolves(body: object, path: list[str]) -> bool:
+    """Whether a readonly field's `path` resolves in a GET body; a null leaf is a published value."""
+    for step in path:
+        if not isinstance(body, dict) or step not in body:
+            return False
+        body = body[step]
+    return True
+
+
+def _readonly_fields(definitions: dict[str, Any], section_key: str) -> list[tuple[str, dict[str, Any]]]:
+    section = next(s for s in definitions["sections"] if s["key"] == section_key)
+    return [(g["key"], f) for g in section["groups"] if g.get("kind") != "errcount" for f in g.get("fields", []) if f.get("kind") == "readonly"]
+
+
+def _status_field_parity_failures(definitions: dict[str, Any], status_body: object) -> list[str]:
+    """Every readonly field the Status page names must be in GET /status - the page's catalog of these
+    rows is hand-kept, so a key it names but the device never publishes renders blank, silently."""
+    if not isinstance(status_body, dict):
+        return ["GET /status carried no object, so no field parity claim would mean anything"]
+    missing = []
+    for group_key, field in _readonly_fields(definitions, "status"):
+        source = status_body.get(group_key)
+        if group_key == "sensors" and isinstance(source, dict):
+            # Maintenance data is per sensor; the page flattens it to <SENSOR>_<field> as js/render.js does.
+            source = {f"{sensor}_{key}": value for sensor, values in source.items() if isinstance(values, dict) for key, value in values.items()}
+        found = _resolves(source, field["path"]) if "path" in field else isinstance(source, dict) and field["key"] in source
+        if not found:
+            missing.append(f"{group_key}.{field['key']}")
+    return [f"Status page fields GET /status does not publish (each renders blank): {missing}"] if missing else []
+
+
+def _system_path_failures(definitions: dict[str, Any], system_body: object) -> list[str]:
+    """Every readonly System field reads GET /system through its `path` (the build information)."""
+    unresolved = [f"{group_key}.{field['key']}" for group_key, field in _readonly_fields(definitions, "system") if "path" in field and not _resolves(system_body, field["path"])]
+    return [f"System page paths GET /system does not resolve: {unresolved}"] if unresolved else []
 
 
 def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
@@ -162,6 +197,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         "--port", str(port),
         "--duration", str(_TWIN_DURATION_S),
     ]
+    definitions = generate_definitions(generated.model, src_dir)
     proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     failures: list[str] = []
     try:
@@ -173,9 +209,12 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
             elif not isinstance(body, dict):
                 failures.append(f"GET {path} -> non-JSON-object body {body!r}")
             elif path == "/status":
-                # Rides the body this loop already fetched - the parity check costs no extra boot,
-                # and inherits this test's own generic device/fixture coverage for free.
-                failures.extend(_errcount_parity_failures(generated.model, src_dir, body))
+                # Rides the body this loop already fetched - the parity checks cost no extra boot,
+                # and inherit this test's own generic device/fixture coverage for free.
+                failures.extend(_errcount_parity_failures(definitions, body))
+                failures.extend(_status_field_parity_failures(definitions, body))
+            elif path == "/system":
+                failures.extend(_system_path_failures(definitions, body))
     finally:
         try:
             proc.wait(timeout=_SHUTDOWN_TIMEOUT_S)

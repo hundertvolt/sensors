@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import radioShapes from "../tests/_radio_shape_cases.json";
 import { installMockFetch } from "../js/mock-server.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
@@ -20,15 +21,19 @@ const DEFS = {
                     submit: true,
                     fields: [
                         { key: "MeasInt", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
-                        { key: "ContMeas", label: "Continuous Measurement", kind: "toggle" },
-                        { key: "ForceCalRef", label: "Forced Calibration Reference", kind: "number", min: 400, max: 2000 },
+                        {
+                            key: "AmbPres", label: "Ambient Pressure", kind: "number", min: 700, max: 1400, alwaysExecuted: true,
+                            specialValues: [{ value: 0, meaning: "Compensation off / use Altitude" }],
+                        },
+                        { key: "ContMeas", label: "Continuous Measurement", kind: "toggle", alwaysExecuted: true },
+                        { key: "ForceCalRef", label: "Forced Calibration Reference", kind: "number", min: 400, max: 2000, alwaysExecuted: true },
                     ],
                 },
                 {
                     key: "SGP40",
                     label: "SGP40",
                     submit: true,
-                    fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle" }],
+                    fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle", dispatch: true }],
                 },
                 {
                     key: "ISL29125",
@@ -36,7 +41,7 @@ const DEFS = {
                     submit: true,
                     fields: [
                         { key: "IrCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
-                        { key: "ISLCalibrate", label: "Calibrate Gain Ratio", kind: "toggle" },
+                        { key: "ISLCalibrate", label: "Calibrate Gain Ratio", kind: "toggle", dispatch: true },
                     ],
                 },
             ],
@@ -52,7 +57,9 @@ const DEFS = {
                     label: "Identity",
                     submit: true,
                     fields: [
-                        { key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 },
+                        { key: "SSID", label: "Wi-Fi SSID", kind: "string", minLength: 0, maxLength: 32, byteLength: true },
+                        { key: "Country", label: "Country", kind: "string", minLength: 2, maxLength: 2, byteLength: true, shape: "countryCode" },
+                        { key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63, byteLength: true, shape: "hostLabel" },
                         { key: "PW", label: "Wi-Fi Password", kind: "string", minLength: 8, maxLength: 63, mask: true },
                     ],
                 },
@@ -68,7 +75,7 @@ const DEFS = {
                     key: "resetErrors",
                     label: "Reset Errors",
                     submit: true,
-                    fields: [{ key: "ResetErrors", label: "Confirm", kind: "toggle" }],
+                    fields: [{ key: "ResetErrors", label: "Confirm", kind: "toggle", dispatch: true }],
                 },
             ],
         },
@@ -94,6 +101,7 @@ const DEFS = {
                             key: "SystemCmd",
                             label: "Command",
                             kind: "enum",
+                            dispatch: true,
                             options: [
                                 { value: "reboot", label: "Reboot" },
                                 { value: "bootloader", label: "Reboot into bootloader" },
@@ -110,7 +118,7 @@ const DEFS = {
             rest: { get: "/notification", put: "/notification" },
             pollGroup: "settings",
             groups: [
-                { key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600 }] },
+                { key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600, dispatch: true }] },
                 {
                     key: "flash",
                     label: "Manual Flash Command",
@@ -120,6 +128,7 @@ const DEFS = {
                             key: "lightCmdLED",
                             label: "LED Flash",
                             kind: "composite",
+                            dispatch: true,
                             subFields: [
                                 { key: "r", label: "Red", kind: "number", min: 0, max: 255 },
                                 { key: "g", label: "Green", kind: "number", min: 0, max: 255 },
@@ -139,8 +148,8 @@ const DATA = {
         SCD30: { CO2: 600, TS: 1000, Model: "SCD30" },
         ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
     },
-    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IrCompAdjust: 40 } },
-    networkingConfig: { Hostname: "wozi", PW: "hunter2hunter2" },
+    sensorsConfig: { SCD30: { MeasInt: 5, AmbPres: 1013, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IrCompAdjust: 40 } },
+    networkingConfig: { Hostname: "fixture-host", PW: "hunter2hunter2" },
     systemConfig: {},
     notificationConfig: {},
     status: {
@@ -219,6 +228,41 @@ describe("installMockFetch", () => {
         const ok = await fetch("/networking", { method: "PUT", body: JSON.stringify({ Hostname: "new-name" }) });
         expect((await ok.json()).result.Hostname).toBe("Valid");
         expect((await (await fetch("/networking")).json()).Hostname).toBe("new-name");
+    });
+
+    // One shared corpus with src/ and buildgen/: three implementations of each string shape, one list.
+    /** @type {Record<string, {accept: string[], reject: string[]}>} */
+    const SHAPES = radioShapes;
+    const NETWORKING_FIELDS = DEFS.sections.flatMap((section) => (section.key === "networking" ? section.groups : []))
+        .flatMap((group) => ("fields" in group ? group.fields : []));
+    /** @type {[string, string, string, string][]} */
+    const SHAPE_CASES = Object.entries(SHAPES).flatMap(([shape, { accept, reject }]) => {
+        const field = NETWORKING_FIELDS.find((f) => f.shape === shape);
+        if (field === undefined) {
+            return [];
+        }
+        return [
+            ...accept.map((value) => /** @type {[string, string, string, string]} */ ([shape, field.key, value, "Valid"])),
+            ...reject.map((value) => /** @type {[string, string, string, string]} */ ([shape, field.key, value, "Invalid"])),
+        ];
+    });
+
+    it("finds a fixture field for every shape the shared corpus names", () => {
+        expect(new Set(SHAPE_CASES.map(([shape]) => shape))).toEqual(new Set(Object.keys(SHAPES)));
+    });
+
+    it.each(SHAPE_CASES)("answers a %s field (%s) PUT of %j with %s, as the server's shape check does", async (_shape, key, value, expected) => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const response = await fetch("/networking", { method: "PUT", body: JSON.stringify({ [key]: value }) });
+        expect((await response.json()).result[key]).toBe(expected);
+    });
+
+    it("bounds a byte-bounded string in UTF-8 bytes, not characters", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const tooLong = await fetch("/networking", { method: "PUT", body: JSON.stringify({ SSID: "é".repeat(32) }) });
+        expect((await tooLong.json()).result.SSID).toBe("Invalid"); // 32 characters, 64 bytes
+        const fits = await fetch("/networking", { method: "PUT", body: JSON.stringify({ SSID: "é".repeat(16) }) });
+        expect((await fits.json()).result.SSID).toBe("Valid"); // 16 characters, 32 bytes
     });
 
     it("validates PUT /system's SystemCmd against the fixed real command set", async () => {
@@ -331,6 +375,20 @@ describe("installMockFetch", () => {
         // direct hardware write is re-run every request, with no stored value to compare against.
         const resubmit = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 400 } }) });
         expect((await resubmit.json()).result.SCD30.ForceCalRef).toBe("Valid");
+    });
+
+    it("runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied", async () => {
+        // An always-executed field: the chip takes it on every PUT, so even the stored value is re-sent.
+        uninstall = installMockFetch(DEFS, DATA);
+        for (const value of [1013, 1013, 950]) {
+            // eslint-disable-next-line no-await-in-loop -- each PUT must follow the last one's store
+            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { AmbPres: value } }) });
+            // eslint-disable-next-line no-await-in-loop -- same reasoning as above
+            expect((await res.json()).result.SCD30.AmbPres).toBe("Valid");
+        }
+        expect((await (await fetch("/sensors")).json()).SCD30.AmbPres).toBe(950);
+        const outOfRange = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { AmbPres: 600 } }) });
+        expect((await outOfRange.json()).result.SCD30.AmbPres).toBe("Invalid");
     });
 
     it("dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all", async () => {

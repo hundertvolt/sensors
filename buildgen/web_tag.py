@@ -24,12 +24,18 @@ _KV_RE = re.compile(r'(?P<key>special:[^\s="]+|[A-Za-z][A-Za-z0-9]*)=(?:"(?P<qva
 _FIELD_KNOWN_KEYS = frozenset({
     "section", "submitGroup", "label", "unit", "description", "kind",
     "onLabel", "offLabel", "mask", "dispatch", "defaultValue", "path", "decimals",
+    "alwaysExecuted", "format", "codes", "bytes", "shape",
 })
 _GROUP_KNOWN_KEYS = frozenset({"section", "submitGroup", "label", "submit", "submitLabel"})
 _VALID_KINDS = frozenset({"readonly", "number", "string", "enum", "toggle"})
+# The values each enumerated key takes; format and codes describe a readonly value, bytes and shape a
+# string one (a string's kind is inferred from its schema, so the generator checks that half).
+_FORMATS = frozenset({"epoch", "gmtimestruct"})
+_SHAPES = frozenset({"hostLabel", "countryCode"})
+_READONLY_ONLY_KEYS = ("format", "codes")
+_STRING_ONLY_KEYS = ("bytes", "shape")
 # js/definitions.js's own validateFieldHints() ceiling (Number#toFixed()'s real RangeError
-# boundary) - kept in step by hand, the same "no shared constant across languages" situation every
-# other cross-language bound in this stack (schema mins/maxes) already has.
+# boundary) - pinned by `tests_scripts/test_definitions_js_mirrors.py`.
 _MAX_DECIMALS = 100
 _BOOL_VALUES = {"true": True, "false": False}
 SELF_GROUP = "self"
@@ -58,6 +64,11 @@ class WebFieldTag:
     special: "tuple[tuple[str, str], ...]" = ()
     path: "tuple[str, ...] | None" = None
     decimals: "int | None" = None
+    always_executed: bool = False
+    format: "str | None" = None
+    codes: "str | None" = None  # a status table's name in buildgen/error_catalog.json, inlined by the generator
+    byte_length: bool = False
+    shape: "str | None" = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +168,24 @@ class TagSite:
     tag_name: str
 
 
+def _check_value_keys(plain: "dict[str, str]", kind: "str | None", site: TagSite) -> None:
+    # Each key's allowed kind and value set; a bool key's value is checked where it is coerced.
+    where = f"{site.path}:{site.lineno}: @web tag for {site.field!r}"
+    for key in _READONLY_ONLY_KEYS:
+        if key in plain and kind != "readonly":
+            raise BuildError(site.device, f"{where} has {key}= but is not kind=readonly: {site.raw!r}", instance=site.instance_label, field=site.field)
+    for key in _STRING_ONLY_KEYS:
+        if key in plain and kind not in (None, "string"):
+            raise BuildError(site.device, f"{where} has {key}= but is not a string field: {site.raw!r}", instance=site.instance_label, field=site.field)
+    if "format" in plain and plain["format"] not in _FORMATS:
+        raise BuildError(site.device, f"{where} has format={plain['format']!r}, expected one of {sorted(_FORMATS)}: {site.raw!r}", instance=site.instance_label, field=site.field)
+    if "shape" in plain and plain["shape"] not in _SHAPES:
+        raise BuildError(site.device, f"{where} has shape={plain['shape']!r}, expected one of {sorted(_SHAPES)}: {site.raw!r}", instance=site.instance_label, field=site.field)
+    if plain.get("alwaysExecuted") == "true" and plain.get("dispatch") == "true":
+        # A dispatch field persists nothing; an always-executed one writes the chip's own store.
+        raise BuildError(site.device, f"{where} has both alwaysExecuted=true and dispatch=true, which exclude each other: {site.raw!r}", instance=site.instance_label, field=site.field)
+
+
 def _check_known_and_required(plain: "dict[str, str]", known_keys: "frozenset[str]", required: "frozenset[str]", site: TagSite) -> None:
     unknown = set(plain) - known_keys
     if unknown:
@@ -193,6 +222,7 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
             # Mirrors js/definitions.js's own validateFieldHints() rule: a PUT body is always flat,
             # so a path on a writable field would render one value and submit a different one.
             raise BuildError(device, f"{path}:{tok.lineno}: @web tag for {field_name!r} has path= but is not kind=readonly: {text!r}", instance=instance_label, field=field_name)
+        _check_value_keys(plain, kind, site)
         tags.append(WebFieldTag(
             field_name=field_name,
             section=plain["section"],
@@ -210,6 +240,11 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
             special=special,
             path=_coerce_path(plain["path"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field_name=field_name) if "path" in plain else None,
             decimals=_coerce_decimals(plain["decimals"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field_name=field_name) if "decimals" in plain else None,
+            always_executed=_coerce_bool(plain["alwaysExecuted"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="alwaysExecuted") if "alwaysExecuted" in plain else False,
+            format=plain.get("format"),
+            codes=plain.get("codes"),
+            byte_length=_coerce_bool(plain["bytes"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="bytes") if "bytes" in plain else False,
+            shape=plain.get("shape"),
         ))
     check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS_WEB)
     _check_no_duplicate_fields(tags, path, device, instance_label)

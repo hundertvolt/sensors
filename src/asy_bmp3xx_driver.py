@@ -114,7 +114,7 @@ _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's 
 # @web Pres section=measurements submitGroup=self kind=readonly label="Pressure" unit="hPa"
 # @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
 # @web SLPres section=measurements submitGroup=self kind=readonly label="Sea Level Pressure" unit="hPa"
-# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
 # FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an

@@ -3,6 +3,7 @@ own test, driven by a deliberately malformed fixture built from _toml_fixtures.b
 just incidentally exercised by the six real device TOMLs happening to be valid."""
 
 import importlib.util
+import json
 import shutil
 from pathlib import Path
 from types import ModuleType
@@ -19,6 +20,10 @@ if TYPE_CHECKING:
     from _toml_fixtures import TomlDoc
 
     from buildgen.model import DeviceModel
+
+
+# The shared host-label corpus src/, the mock and this check all read (tests/_radio_shape_cases.json).
+_RADIO_SHAPES = json.loads((Path(__file__).resolve().parent.parent / "tests" / "_radio_shape_cases.json").read_text())
 
 
 @pytest.fixture
@@ -165,6 +170,39 @@ def test_hostname_longer_than_the_network_cap_is_rejected(tmp_path: Path, src_di
     doc["device"]["hostname"] = "SensorStation" + doc["device"]["name"]
     with pytest.raises(BuildError, match="caps at 32"):
         _build(tmp_path, src_dir, doc)
+
+
+def _host_label_names(kind: str) -> "list[str]":
+    # A name reaches the hostname behind "SensorStation": a leading '-' is no longer at the label's
+    # start, and an empty name fails its own check first, so only the other corpus values apply.
+    return [v for v in _RADIO_SHAPES["hostLabel"][kind] if v and not v.startswith("-")]
+
+
+@pytest.mark.parametrize("name", _host_label_names("reject"))
+def test_a_name_making_the_hostname_no_host_label_is_rejected(tmp_path: Path, src_dir: Path, name: str) -> None:
+    # DHCP and mDNS announce the hostname as is, so the build refuses one that is not an RFC 1123 label.
+    doc = base_doc()
+    doc["device"]["name"] = name
+    doc["device"]["hostname"] = "SensorStation" + name
+    with pytest.raises(BuildError, match="is not a host label"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("name", ["Two Words", "Dotted.Name"])
+def test_a_name_with_a_space_or_a_dot_is_rejected(tmp_path: Path, src_dir: Path, name: str) -> None:
+    doc = base_doc()
+    doc["device"]["name"] = name
+    doc["device"]["hostname"] = "SensorStation" + name
+    with pytest.raises(BuildError, match="is not a host label"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("name", _host_label_names("accept"))
+def test_a_name_keeping_the_hostname_a_host_label_builds(tmp_path: Path, src_dir: Path, name: str) -> None:
+    doc = base_doc()
+    doc["device"]["name"] = name
+    doc["device"]["hostname"] = "SensorStation" + name
+    _build(tmp_path, src_dir, doc)  # no raise
 
 
 @pytest.mark.parametrize("bad_name", [5, ""])

@@ -24,8 +24,8 @@ export function formatFieldValue(field, value) {
         return match ? match.label : String(value);
     }
     if (field.format === "gmtimestruct") {
-        // Real shape: src/sensortask_wozi.py's _gmtimestruct_to_dict() - {year, month, mday, hour,
-        // minute, second, weekday} (weekday unused here), never a pre-formatted string.
+        // Real shape: the generated sensortask_<device> module's _gmtimestruct_to_dict() - {year, month,
+        // mday, hour, minute, second, weekday, yearday} (the last two unused here), never a pre-formatted string.
         const t = /** @type {{year: number, month: number, mday: number, hour: number, minute: number, second: number}} */ (value);
         const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
         return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;

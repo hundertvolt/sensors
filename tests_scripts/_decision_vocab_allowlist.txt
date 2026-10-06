@@ -1,7 +1,6 @@
 # path<TAB>sentence prefix: actorless decision vocabulary present when the check landed. Only shrinks:
 # the sentence, then rerun `uv run python tests_scripts/test_decision_vocabulary.py --regenerate`.
 BACKLOG.md	**Note**: `get_long_block_lock()` itself was already removed entirely before thi
-BACKLOG.md	**Still open**: retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi
 BACKLOG.md	- **A digital-twin soak's wall clock is set by GC timing, so it must never be bi
 BACKLOG.md	- **The UART fakes still do not *wait* the way a real read does, deliberately.**
 BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol

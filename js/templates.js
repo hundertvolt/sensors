@@ -25,9 +25,14 @@ function buildFieldDescription(field) {
         parts.push(`Valid values: ${field.min ?? "–∞"} to ${field.max ?? "∞"}${field.unit ? ` ${field.unit}` : ""}`);
     }
     if (field.kind === "string" && (field.minLength !== undefined || field.maxLength !== undefined)) {
-        parts.push(`Length: ${field.minLength ?? 0} to ${field.maxLength ?? "∞"} characters`);
+        const bytes = field.byteLength && field.maxLength !== undefined ? `, at most ${field.maxLength} bytes (UTF-8)` : "";
+        parts.push(`Length: ${field.minLength ?? 0} to ${field.maxLength ?? "∞"} characters${bytes}`);
     }
-    for (const special of field.specialValues ?? []) {
+    if (field.shape === "hostLabel") {
+        parts.push("letters, digits and '-' only");
+    }
+    // Specials in the hint for a number field only: a readonly field's specials name values it shows.
+    for (const special of field.kind === "number" ? (field.specialValues ?? []) : []) {
         parts.push(`${special.value} = ${special.meaning}`);
     }
     if (field.description) {

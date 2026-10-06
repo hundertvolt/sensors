@@ -4,6 +4,8 @@
  * twin's real server per SPECIFICATION.md Part H.7 - everything outside this file targets the real API.
  */
 
+import { neverUnchanged } from "./definitions.js";
+
 const REST_PATHS = /** @type {const} */ ([
     "/measurements",
     "/sensors",
@@ -16,10 +18,40 @@ const REST_PATHS = /** @type {const} */ ([
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
-// The /sensors fields with documented hardware quirks (Part H.4): each is a hardware dispatch
-// re-run on every submit, never compared against a stored value. Modelled apart from the generic
-// store-and-echo path, which would wrongly report "Unchanged" and echo the raw PUT back.
-const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLCalibrate"]);
+/**
+ * One rule per string shape, the same as src/asy_wifi_service.py's _host_label_ok()/_country_ok().
+ * @type {Record<string, (value: string) => boolean>}
+ */
+const STRING_SHAPE_OK = {
+    hostLabel: (value) => /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(value),
+    countryCode: (value) => /^[A-Z]{2}$/.test(value),
+};
+
+/**
+ * A string value the server accepts: a schema special, else within the character bounds, the
+ * UTF-8 byte bound (`byteLength`) and the field's shape.
+ * @param {import("./definitions.js").FieldDef} field
+ * @param {string} value
+ * @returns {boolean}
+ */
+function stringValueOk(field, value) {
+    if ((field.specialValues ?? []).some((special) => special.value === value)) {
+        return true;
+    }
+    const minLength = field.minLength ?? 0;
+    const maxLength = field.maxLength ?? Infinity;
+    if (value.length < minLength || value.length > maxLength) {
+        return false;
+    }
+    if (field.byteLength && new TextEncoder().encode(value).length > maxLength) {
+        return false;
+    }
+    if (field.shape === undefined) {
+        return true;
+    }
+    const shapeOk = STRING_SHAPE_OK[field.shape];
+    return shapeOk !== undefined && shapeOk(value); // a shape this mock does not know refuses, never passes
+}
 
 /**
  * @param {import("./definitions.js").FieldDef} field
@@ -55,10 +87,7 @@ function coerceAndValidate(field, rawValue) {
         if (typeof rawValue !== "string") {
             return { valid: false, value: rawValue };
         }
-        const value = rawValue;
-        const minLength = field.minLength ?? 0;
-        const maxLength = field.maxLength ?? Infinity;
-        return { valid: value.length >= minLength && value.length <= maxLength, value };
+        return { valid: stringValueOk(field, rawValue), value: rawValue };
     }
     if (field.kind === "enum") {
         // Compare as-sent, not string-coerced: an enum's real value can be numeric (e.g. BMP3XX's
@@ -215,22 +244,24 @@ function dispatchLightCmdLed(rawValue) {
 }
 
 /**
- * Validates+dispatches one SENSOR_QUIRK_FIELDS PUT value: "Valid"/"Invalid" only (no real I2C bus
- * to fail), never written to storedConfig so a later GET falls through to
- * applySensorQuirksForGet()'s own override/omission instead of echoing the raw PUT.
- * @param {import("./definitions.js").FieldDef | undefined} field
+ * One never-"Unchanged" /sensors PUT value (neverUnchanged()): "Valid"/"Invalid" only, no real I2C
+ * bus to fail. An always-executed field is also stored (AmbPres reads back what was applied); a
+ * dispatch field never is, so a later GET cannot echo a command back as a setting.
+ * @param {import("./definitions.js").FieldDef} field
  * @param {unknown} rawValue
- * @returns {string | undefined}
+ * @param {Record<string, unknown>} storedConfig
+ * @returns {string}
  */
-function dispatchSensorQuirkField(field, rawValue) {
-    if (field === undefined) {
-        return undefined;
+function dispatchSensorQuirkField(field, rawValue, storedConfig) {
+    const { valid, value } = coerceAndValidate(field, rawValue);
+    if (valid && field.alwaysExecuted === true) {
+        storedConfig[field.key] = value;
     }
-    return coerceAndValidate(field, rawValue).valid ? "Valid" : "Invalid";
+    return valid ? "Valid" : "Invalid";
 }
 
 /**
- * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior: `ForceCalRef` always reports 400
+ * Applies the real GET-readback quirks: `ForceCalRef` always reports 400
  * (SCD30's volatile register), and the three command-only triggers are omitted entirely as the
  * real schema omits them - echoing one back would make it look like a stored setting.
  * @param {Record<string, Record<string, unknown>>} sensorsConfig
@@ -316,6 +347,129 @@ function jitterInPlace(group) {
  */
 
 /**
+ * The sample name a group or module key takes: the longest name it equals or extends with `_`
+ * (`SCD30_primary` takes `SCD30`; `CFGMGR_SCD30_primary` takes `CFGMGR_SCD30`, the longer name).
+ * @param {string[]} names
+ * @param {string} key
+ * @returns {string | undefined}
+ */
+function sampleNameFor(names, key) {
+    const matching = names.filter((name) => key === name || key.startsWith(`${name}_`));
+    return matching.sort((a, b) => b.length - a.length)[0];
+}
+
+/**
+ * Copies from `source` only what `fields` name; a `path` field copies its top-level parent.
+ * @param {Record<string, unknown>} source
+ * @param {import("./definitions.js").FieldDef[]} fields
+ * @param {Record<string, unknown>} dest
+ */
+function copyNamedFields(source, fields, dest) {
+    for (const field of fields) {
+        const top = field.path?.[0] ?? field.key;
+        if (top in source) {
+            dest[top] = structuredClone(source[top]);
+        }
+    }
+}
+
+/**
+ * The maintenance group's `<SAMPLE>_<field>` keys, filled from `status.sensors.<SAMPLE>.<field>`.
+ * @param {Record<string, Record<string, unknown>>} samples
+ * @param {import("./definitions.js").FieldDef[]} fields
+ * @param {string} where
+ * @returns {Record<string, Record<string, unknown>>}
+ */
+function composeMaintenance(samples, fields, where) {
+    /** @type {Record<string, Record<string, unknown>>} */
+    const bySample = {};
+    for (const field of fields) {
+        const name = sampleNameFor(Object.keys(samples), field.key);
+        const source = name === undefined ? undefined : samples[name];
+        if (name === undefined || source === undefined) {
+            throw new Error(`mock samples: no sample for group "${where}"`);
+        }
+        const leaf = field.key.slice(name.length + 1);
+        bySample[name] ??= {};
+        if (leaf in source) {
+            bySample[name][leaf] = structuredClone(source[leaf]);
+        }
+    }
+    return bySample;
+}
+
+/**
+ * Builds one device's mock data: each group takes the sample of the driver whose logger name its
+ * key equals or prefixes with `_`, filtered to the group's fields.
+ * @param {import("./definitions.js").SiteDefinitions} defs
+ * @param {import("./definitions.js").MockSamples} samples
+ * @returns {import("./definitions.js").MockDeviceData}
+ */
+export function composeMockData(defs, samples) {
+    /** @type {import("./definitions.js").MockDeviceData} */
+    const data = {
+        measurements: {}, sensorsConfig: {}, networkingConfig: {}, systemConfig: {}, notificationConfig: {},
+        status: { networking: {}, system: {}, sensors: {}, notification: {}, errcount: {} },
+    };
+    for (const section of defs.sections) {
+        for (const group of section.groups) {
+            const where = `${section.key}/${group.key}`;
+            if (!("fields" in group)) {
+                for (const module of group.modules) {
+                    const name = sampleNameFor(Object.keys(samples.errcount), module.key);
+                    data.status.errcount[module.key] = structuredClone((name === undefined ? undefined : samples.errcount[name]) ?? { counter: 0, history: [] });
+                }
+                continue;
+            }
+            composeGroup(data, samples, section.key, group, where);
+        }
+    }
+    return data;
+}
+
+/**
+ * One field group's share of the composed data (see composeMockData()). A dispatch field is a
+ * command, never part of a GET body, so it is never copied.
+ * @param {import("./definitions.js").MockDeviceData} data
+ * @param {import("./definitions.js").MockSamples} samples
+ * @param {string} sectionKey
+ * @param {import("./definitions.js").FieldGroup} group
+ * @param {string} where
+ */
+function composeGroup(data, samples, sectionKey, group, where) {
+    const fields = group.fields.filter((field) => field.dispatch !== true);
+    if (sectionKey === "measurements" || sectionKey === "sensors") {
+        const pool = sectionKey === "measurements" ? samples.measurements : samples.sensorsConfig;
+        const name = sampleNameFor(Object.keys(pool), group.key);
+        const source = name === undefined ? undefined : pool[name];
+        if (source === undefined) {
+            throw new Error(`mock samples: no sample for group "${where}"`);
+        }
+        const dest = sectionKey === "measurements" ? data.measurements : data.sensorsConfig;
+        dest[group.key] = {};
+        copyNamedFields(source, group.fields, /** @type {Record<string, unknown>} */ (dest[group.key]));
+        return;
+    }
+    if (sectionKey === "networking" || sectionKey === "system" || sectionKey === "notification") {
+        copyNamedFields(samples[`${sectionKey}Config`], fields, data[`${sectionKey}Config`]);
+        return;
+    }
+    if (fields.length === 0) {
+        return; // a command-only group, e.g. the error reset: no GET data of its own
+    }
+    if (group.key === "sensors") {
+        data.status.sensors = composeMaintenance(samples.status.sensors, fields, where);
+        return;
+    }
+    const statusKey = /** @type {"networking" | "system" | "notification"} */ (group.key);
+    const source = samples.status[statusKey];
+    if (source === undefined) {
+        throw new Error(`mock samples: no sample for group "${where}"`);
+    }
+    copyNamedFields(source, fields, data.status[statusKey]);
+}
+
+/**
  * Installs the mock fetch and returns an uninstall function. Only REST_PATHS are intercepted -
  * everything else passes through to the real fetch(). `controls`
  * lets a test inject one failure, exercising error-handling against more than a raw fetch stub.
@@ -386,19 +540,20 @@ export function installMockFetch(defs, initialData, controls) {
                     continue;
                 }
                 state.sensorsConfig[sensorKey] ??= {};
+                const stored = state.sensorsConfig[sensorKey];
                 const rawFields = /** @type {Record<string, unknown>} */ (fields);
-                // SENSOR_QUIRK_FIELDS are excluded before the generic sparse-PUT path below, same
-                // shape as SystemCmd/PauseTime/lightCmdLED's own exclusion further down - none of
-                // them are real persisted settings, so none should reach state.sensorsConfig.
-                const persistableFields = Object.fromEntries(Object.entries(rawFields).filter(([key]) => !SENSOR_QUIRK_FIELDS.has(key)));
-                const sensorResults = applySparsePut(persistableFields, sensorDefs, state.sensorsConfig[sensorKey]);
-                for (const quirkKey of SENSOR_QUIRK_FIELDS) {
-                    if (!(quirkKey in rawFields)) {
-                        continue;
-                    }
-                    const status = dispatchSensorQuirkField(sensorDefs.get(quirkKey), rawFields[quirkKey]);
-                    if (status !== undefined) {
-                        sensorResults[quirkKey] = status;
+                // The never-"Unchanged" fields (from the definitions' flags) leave the generic
+                // compare-and-store path, which would answer "Unchanged" for a repeated value.
+                const isQuirk = (/** @type {string} */ key) => {
+                    const field = sensorDefs.get(key);
+                    return field !== undefined && neverUnchanged(field);
+                };
+                const persistableFields = Object.fromEntries(Object.entries(rawFields).filter(([key]) => !isQuirk(key)));
+                const sensorResults = applySparsePut(persistableFields, sensorDefs, stored);
+                for (const [quirkKey, rawValue] of Object.entries(rawFields)) {
+                    const field = sensorDefs.get(quirkKey);
+                    if (field !== undefined && neverUnchanged(field)) {
+                        sensorResults[quirkKey] = dispatchSensorQuirkField(field, rawValue, stored);
                     }
                 }
                 results[sensorKey] = sensorResults;

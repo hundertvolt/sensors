@@ -1138,6 +1138,23 @@ def _scenario_status_get(device: str) -> None:
     assert len(body["errcount"]) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
 
 
+@_register("webserver_status_publishes_utc_time_only_after_the_first_ntp_sync")
+def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
+    # rp2's RTC starts at its reset epoch (ports/rp2/main.c), a plausible-looking wrong date, so
+    # UtcTime is gated on ntp_issynced() exactly as LocalTime is.
+    module = build(device)
+    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    assert system["UtcTime"] is None and system["LocalTime"] is None
+
+    async def synced() -> bool:
+        return True
+
+    module.ntp.ntp_issynced = synced
+    utc = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["UtcTime"]
+    assert isinstance(utc, dict), utc
+    assert set(utc.keys()) == {"year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"}
+
+
 @_register("webserver_system_get_reports_the_real_build_info")
 def _scenario_system_get_build_info(device: str) -> None:
     # SPECIFICATION.md Part L.7: every generated device embeds FIRMWARE_VERSION/WEBSITE_VERSION

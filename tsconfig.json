@@ -4,6 +4,9 @@
         "module": "ES2022",
         "moduleResolution": "bundler",
         "lib": ["ES2022", "DOM"],
+        // import.meta.glob (tests_js/_generated_definitions.js) and ?raw imports need Vite's client types;
+        // naming them also keeps Node's ambient types out of this browser-context pass.
+        "types": ["vite/client"],
         "allowJs": true,
         "checkJs": true,
         "noEmit": true,

@@ -142,6 +142,94 @@ def test_parse_web_tags_negative_decimals_rejected(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# The value keys: alwaysExecuted, format, special:null, codes, bytes, shape - each taken with the
+# value and kind it allows, refused otherwise (SPECIFICATION.md Part H.5.1).
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_tags_always_executed_is_a_flag(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=true\n')
+    assert tag.always_executed is True
+    (plain,) = _parse(tmp_path, '# @web X section=sensors submitGroup=self label="L"\n')
+    assert plain.always_executed is False
+
+
+def test_parse_web_tags_non_bool_always_executed_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=yes\n', "must be true or false")
+
+
+def test_parse_web_tags_always_executed_with_dispatch_rejected(tmp_path: Path) -> None:
+    # A dispatch field persists nothing; an always-executed one writes the chip's own store each time.
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=true dispatch=true\n', "exclude each other")
+
+
+@pytest.mark.parametrize("value", ["epoch", "gmtimestruct"])
+def test_parse_web_tags_format_on_a_readonly_field(tmp_path: Path, value: str) -> None:
+    (tag,) = _parse(tmp_path, f'# @web X section=measurements submitGroup=self kind=readonly label="L" format={value}\n')
+    assert tag.format == value
+
+
+@pytest.mark.parametrize(
+    ("source", "match"),
+    [
+        ('# @web X section=measurements submitGroup=self kind=readonly label="L" format=iso\n', "expected one of"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" format=epoch\n', "not kind=readonly"),
+        ('# @web X section=sensors submitGroup=self label="L" format=epoch\n', "not kind=readonly"),
+    ],
+)
+def test_parse_web_tags_format_rejected_off_its_value_set_or_kind(tmp_path: Path, source: str, match: str) -> None:
+    _parse_expecting(tmp_path, source, match)
+
+
+def test_parse_web_tags_special_null_is_kept_as_a_special(tmp_path: Path) -> None:
+    # The value-free special ("nothing yet"): the generator emits it as a JSON null.
+    (tag,) = _parse(tmp_path, '# @web X section=status submitGroup=maintenance kind=readonly label="L" special:null="None since boot" special:0="No timestamp"\n')
+    assert dict(tag.special) == {"null": "None since boot", "0": "No timestamp"}
+
+
+def test_parse_web_tags_codes_names_a_table_on_a_readonly_field(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=status submitGroup=system kind=readonly label="L" codes=ResetReason\n')
+    assert tag.codes == "ResetReason"
+
+
+def test_parse_web_tags_codes_on_a_writable_field_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" codes=ResetReason\n', "not kind=readonly")
+
+
+def test_parse_web_tags_bytes_is_a_flag(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=networking submitGroup=identity label="L" bytes=true\n')
+    assert tag.byte_length is True
+
+
+@pytest.mark.parametrize(
+    ("source", "match"),
+    [
+        ('# @web X section=networking submitGroup=identity label="L" bytes=yes\n', "must be true or false"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" bytes=true\n', "not a string field"),
+    ],
+)
+def test_parse_web_tags_bytes_rejected_off_a_bool_or_a_string(tmp_path: Path, source: str, match: str) -> None:
+    _parse_expecting(tmp_path, source, match)
+
+
+@pytest.mark.parametrize("value", ["hostLabel", "countryCode"])
+def test_parse_web_tags_shape_on_a_string_field(tmp_path: Path, value: str) -> None:
+    (tag,) = _parse(tmp_path, f'# @web X section=networking submitGroup=identity label="L" shape={value}\n')
+    assert tag.shape == value
+
+
+@pytest.mark.parametrize(
+    ("source", "match"),
+    [
+        ('# @web X section=networking submitGroup=identity label="L" shape=email\n', "expected one of"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" shape=hostLabel\n', "not a string field"),
+    ],
+)
+def test_parse_web_tags_shape_rejected_off_its_value_set_or_a_string(tmp_path: Path, source: str, match: str) -> None:
+    _parse_expecting(tmp_path, source, match)
+
+
+# ---------------------------------------------------------------------------
 # D2/D3 dropped-piece grammar failures: a malformed key=value payload must fail loud via
 # _WebGrammarError -> "malformed @web tag", the same "dropped piece" direction
 # test_buildgen_requires_tag.py already walks for @requires (trailing junk, a dropped value).
@@ -485,6 +573,32 @@ def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> No
     assert dict(by_name["BackupMaxAge"].special) == {"0": "Use all found backups"}
     assert dict(by_name["WaitTimeNTP"].special) == {"0": "Never wait for NTP sync"}
     assert by_name["SGPResetVOC"].dispatch is True
+
+
+def test_parse_web_tags_real_scd30_always_executed_fields(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    assert {t.field_name for t in tags if t.always_executed} == {"AmbPres", "ForceCalRef", "ContMeas"}
+
+
+def test_parse_web_tags_real_timestamps_are_epochs(src_dir: Path) -> None:
+    for driver in ("asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py"):
+        ts = next(t for t in parse_web_tags(src_dir / driver, "dev", "x") if t.field_name == "TS")
+        assert (ts.format, ts.unit) == ("epoch", None), driver
+
+
+def test_parse_web_tags_real_sgp40_backup_timestamps_on_the_status_page(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    status = {t.field_name: t for t in tags if t.section == "status"}
+    assert set(status) == {"BackupTS", "RestoreTS"}
+    for tag in status.values():
+        assert (tag.submit_group, tag.kind, tag.format) == ("maintenance", "readonly", "epoch")
+        assert dict(tag.special) == {"null": "None since boot", "0": "No timestamp"}
+
+
+def test_parse_web_tags_real_wifi_byte_bounds_and_shapes(src_dir: Path) -> None:
+    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")}
+    assert {name for name, t in tags.items() if t.byte_length} == {"SSID", "PW", "Country", "Hostname"}
+    assert {name: t.shape for name, t in tags.items() if t.shape is not None} == {"Hostname": "hostLabel", "Country": "countryCode"}
 
 
 def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:

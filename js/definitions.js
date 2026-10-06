@@ -4,17 +4,21 @@
  * skipping unknown fields (Part H.4's "Definitions validation").
  *
  * @typedef {{value: string|number, label: string}} EnumOption
- * @typedef {{value: number, meaning: string}} SpecialValue
+ * @typedef {{value: number|string|null, meaning: string}} SpecialValue
  * @typedef {{
  *   key: string, label: string, unit?: string, kind: "readonly"|"number"|"string"|"enum"|"toggle"|"composite",
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct", float?: boolean, dispatch?: boolean, defaultValue?: unknown,
- *   path?: string[], decimals?: number,
+ *   format?: "gmtimestruct"|"epoch", float?: boolean, dispatch?: boolean, alwaysExecuted?: boolean,
+ *   defaultValue?: unknown, path?: string[], decimals?: number, byteLength?: boolean,
+ *   shape?: "hostLabel"|"countryCode", codes?: Record<string, string>,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
- * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
+ * @typedef {{
+ *   key: string, label: string, kind: "errcount", modules: {key: string, label: string}[],
+ *   codes?: {E: Record<string, string>, W: Record<string, string>},
+ * }} ErrcountGroup
  * @typedef {{
  *   key: string, label: string, description?: string,
  *   rest: {get: string, put?: string},
@@ -37,6 +41,18 @@
  *     errcount: Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>,
  *   },
  * }} MockDeviceData
+ * @typedef {{
+ *   measurements: Record<string, Record<string, unknown>>,
+ *   sensorsConfig: Record<string, Record<string, unknown>>,
+ *   networkingConfig: Record<string, unknown>,
+ *   systemConfig: Record<string, unknown>,
+ *   notificationConfig: Record<string, unknown>,
+ *   status: {
+ *     networking: Record<string, unknown>, system: Record<string, unknown>,
+ *     sensors: Record<string, Record<string, unknown>>, notification: Record<string, unknown>,
+ *   },
+ *   errcount: Record<string, {counter: number, history: {num: number, type: "N"|"E"|"W"}[]}>,
+ * }} MockSamples
  */
 
 import { fetchWithTimeout } from "./poll-manager.js";
@@ -48,15 +64,30 @@ import { fetchWithTimeout } from "./poll-manager.js";
 // errcount history shape matches print_log.py/asy_webserver_service.py exactly: no per-entry
 // timestamp exists; "type" ("N"/"E"/"W") only colors "num" (a raw errno), never shown as text.
 
-// dispatch?: true marks a toggle/enum field the backend always re-runs fresh, never compares
-// against a stored value (SPECIFICATION.md Part H.6's dispatch-only list) - collectGroupBody()
-// must always resubmit it, unlike an ordinary sparse-omitted-when-unchanged persisted field.
+// dispatch?: true and alwaysExecuted?: true mark the two never-"Unchanged" classes
+// (SPECIFICATION.md Part H.4); neverUnchanged() below reads them - never a key list.
 
 // defaultValue is a field's safe synthetic baseline for when GET never reports a real value (a
 // command with no persisted state, e.g. SCD30's ContMeas) - see resolveFieldValue() below.
 
 /** The only schema major version this build of the renderer understands. */
 export const SUPPORTED_SCHEMA_MAJOR = 1;
+
+// Number#toFixed's own ceiling: a larger value would throw a RangeError in the card.
+const MAX_DECIMALS = 100;
+
+// The enumerated hint values the generator emits (buildgen/web_tag.py's _FORMATS and _SHAPES).
+const FIELD_FORMATS = new Set(["gmtimestruct", "epoch"]);
+const STRING_SHAPES = new Set(["hostLabel", "countryCode"]);
+
+/**
+ * True for the two classes the server never answers "Unchanged" (SPECIFICATION.md Part H.4).
+ * @param {FieldDef} field
+ * @returns {boolean}
+ */
+export function neverUnchanged(field) {
+    return field.dispatch === true || field.alwaysExecuted === true;
+}
 
 // websiteVersion is build provenance only (SPECIFICATION.md Part L.7), distinct from
 // schemaVersion's wire-format concern above. Nothing renders it - you always have exactly the
@@ -166,9 +197,7 @@ export function validateDefinitions(data) {
                 problems.push(`${gWhere} is missing key/label`);
             }
             if (g.kind === "errcount") {
-                if (!Array.isArray(g.modules)) {
-                    problems.push(`${gWhere}.modules must be an array for an errcount group`);
-                }
+                problems.push(...validateErrcountGroup(g, gWhere));
                 continue;
             }
             if (!Array.isArray(g.fields)) {
@@ -187,9 +216,55 @@ export function validateDefinitions(data) {
 }
 
 /**
- * Validates the two display-only hints a nested, precision-declared readonly field carries.
- * Accepting them needed no validator change at all, but this file's contract is to fail loudly
- * rather than in the browser, so a malformed `path`/`decimals` has to surface here.
+ * @param {unknown} value
+ * @returns {boolean} true for a plain object whose every value is a string.
+ */
+function isStringMap(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every((v) => typeof v === "string");
+}
+
+/**
+ * An errcount group's module list and, when present, its code-description block.
+ * @param {Record<string, unknown>} g
+ * @param {string} where
+ * @returns {string[]}
+ */
+function validateErrcountGroup(g, where) {
+    /** @type {string[]} */
+    const problems = [];
+    if (!Array.isArray(g.modules)) {
+        problems.push(`${where}.modules must be an array for an errcount group`);
+    }
+    if (g.codes !== undefined) {
+        const codes = /** @type {Record<string, unknown> | null} */ (typeof g.codes === "object" ? g.codes : null);
+        if (codes === null || Array.isArray(codes) || !isStringMap(codes.E) || !isStringMap(codes.W)) {
+            problems.push(`${where}.codes must map E and W to code descriptions`);
+        }
+    }
+    return problems;
+}
+
+/**
+ * The value-kind hints a string field carries: a byte bound and a shape, each only on a string.
+ * @param {Record<string, unknown>} f
+ * @param {string} where
+ * @returns {string[]}
+ */
+function validateStringHints(f, where) {
+    /** @type {string[]} */
+    const problems = [];
+    if (f.byteLength !== undefined && (typeof f.byteLength !== "boolean" || f.kind !== "string")) {
+        problems.push(`${where}.byteLength must be a boolean on a string field when present`);
+    }
+    if (f.shape !== undefined && (typeof f.shape !== "string" || !STRING_SHAPES.has(f.shape) || f.kind !== "string")) {
+        problems.push(`${where}.shape must be one of ${[...STRING_SHAPES].join(", ")} on a string field when present`);
+    }
+    return problems;
+}
+
+/**
+ * Validates the display and value hints a field carries. This file's contract is to fail loudly
+ * rather than in the browser, so a malformed hint has to surface here, naming where it sits.
  * @param {unknown} field
  * @param {string} where
  * @returns {string[]}
@@ -210,11 +285,19 @@ function validateFieldHints(field, where) {
             problems.push(`${where}.path is only valid on a readonly field, not kind "${String(f.kind)}"`);
         }
     }
-    // 100 is Number#toFixed's own ceiling, above which it throws a RangeError - so a larger
-    // value would pass here and then break the card it is on, which is what this exists to stop.
-    if (f.decimals !== undefined && (typeof f.decimals !== "number" || !Number.isInteger(f.decimals) || f.decimals < 0 || f.decimals > 100)) {
-        problems.push(`${where}.decimals must be an integer from 0 to 100 when present`);
+    if (f.decimals !== undefined && (typeof f.decimals !== "number" || !Number.isInteger(f.decimals) || f.decimals < 0 || f.decimals > MAX_DECIMALS)) {
+        problems.push(`${where}.decimals must be an integer from 0 to ${MAX_DECIMALS} when present`);
     }
+    if (f.format !== undefined && (typeof f.format !== "string" || !FIELD_FORMATS.has(f.format) || f.kind !== "readonly")) {
+        problems.push(`${where}.format must be one of ${[...FIELD_FORMATS].join(", ")} on a readonly field when present`);
+    }
+    if (f.codes !== undefined && !isStringMap(f.codes)) {
+        problems.push(`${where}.codes must map each code to its description when present`);
+    }
+    if (f.alwaysExecuted !== undefined && typeof f.alwaysExecuted !== "boolean") {
+        problems.push(`${where}.alwaysExecuted must be a boolean when present`);
+    }
+    problems.push(...validateStringHints(f, where));
     return problems;
 }
 

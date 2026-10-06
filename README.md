@@ -225,27 +225,30 @@ npm run preview        # serves the repo root locally (python3 -m http.server 80
 ```
 
 `web-cross-browser-smoke`'s check (real WebKit/Firefox/Edge, not just Vitest's own Playwright/Chromium)
-needs the MicroPython Unix port and the real website built first, then its own one-time browser install:
+needs the MicroPython Unix port and every device's real website built first, then its own one-time
+browser install:
 
 ```sh
 uv run toolchain/setup_toolchain.py        # one-time - builds the MicroPython Unix port (see above)
-scripts/build_website.sh wozi              # build the real website into frozen_modules/frozen_html.py
+npm run build:site                         # every device's real website, into build/generated_html/<device>/
 scripts/setup_cross_browser_toolchain.sh   # one-time - installs real WebKit/Firefox/Edge
 node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile
 ```
 
-`npm run preview`, then open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`),
-opens the locally-viewable prototype — the real `html/`+`js/`
-tree against a fake in-browser backend (`js/mock-server.js`, `mockdata/*.json`), driven by one of
-two worked-example `html/definitions/*.json` files. The `?device=` switch is a prototype-only
-convenience (see `js/app.js`'s own docstring) — real firmware always serves exactly one
-definitions.json, never branches on a query param.
+`npm run preview` (it generates every device's definitions first), then open
+`http://localhost:8000/html/index.html` — the real `html/`+`js/` tree against a fake in-browser
+backend (`js/mock-server.js`, data composed from `mockdata/samples.json`), for the first device of
+the generated manifest; `?device=<name>` picks another device of `devices/*.toml`. The `?device=`
+switch is a prototype-only convenience (see `js/app.js`'s own docstring) — real firmware always
+serves exactly one definitions.json, never branches on a query param.
 
 All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
 `web-unit-tests` jobs, plus `web-put-matrix` for the live PUT matrix, which is sharded three ways
 because that one file is the web tier's whole wall clock), gated by a `dorny/paths-filter` job so
-they only run when this push changed `html/`, `js/`, `tests_js/`, or their own tooling configs — alongside, not replacing, the Python
-jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
+they only run when this push changed the website (`html/`, `js/`, `tests_js/`, `mockdata/`), the
+sources its definitions are generated from (`src/`, `buildgen/`, `devices/`), or their own
+tooling — alongside, not replacing, the Python jobs above, which keep gating on Python paths
+exactly as before. Config lives at the repo root
 (`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
 `.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
 browser mode needs an actual Chromium install — CI installs its own via `playwright install`; see
@@ -255,10 +258,10 @@ locally.
 A separate CI job, `web-cross-browser-smoke`, drives the real site through real WebKit, real
 Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium) — one field
 edit+apply per engine, at both a desktop and a mobile-sized viewport, against a real booted digital
-twin. Vitest's browser mode can't reach any of these itself (it's wired to a single Playwright
-provider, which can only automate Chromium-family browsers), so this runs as a standalone script,
-`scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see `SPECIFICATION.md` Part
-H.7's "Cross-browser coverage" for the full account of why and how.
+twin of every device in turn. Vitest's browser mode can't reach any of these itself (it's wired to
+a single Playwright provider, which can only automate Chromium-family browsers), so this runs as a
+standalone script, `scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see
+`SPECIFICATION.md` Part H.7's "Cross-browser coverage" for the full account of why and how.
 
 ## Building real firmware
 
@@ -275,9 +278,9 @@ uv run scripts/build_firmware.py wozi --jobs 8                          # overri
 uv run scripts/build_firmware.py wozi --toolchain-dir /path             # toolchain installed somewhere other than $PICO_TOOLCHAIN_DIR/~/pico-toolchain
 ```
 
-`<device>` (positional, required) must match an `html/definitions/<device>.json` file (`wozi` and
-`dev` today — `dev` is the bench-only variant, never built for field deployment, but a real
-`src/`-assembled one all the same). This script only builds `build/firmware-<device>.uf2`; it never
+`<device>` (positional, required) must match a `devices/<device>.toml` file (`dev` is the
+bench-only variant, never built for field deployment, but a real `src/`-assembled one all the
+same). This script only builds `build/firmware-<device>.uf2`; it never
 flashes or touches real hardware — see "Flashing a real board" below for that step. Under the hood
 it also stages and freezes the real website for that one device, runnable on its own for just that
 step:

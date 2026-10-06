@@ -46,6 +46,9 @@ jobs:
               - 'tests_js/**'
               - 'mockdata/**'
               - 'scripts/**'
+              - 'src/**'
+              - 'buildgen/**'
+              - 'devices/**'
               - 'package.json'
               - 'package-lock.json'
               - 'eslint.config.js'
@@ -127,7 +130,7 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-      # npm's pretest hook builds the real wozi website first. Everything but the live PUT matrix,
+      # npm's pretest hook builds every device's website first. Everything but the live PUT matrix,
       # which is its own sharded job below (B.10.1).
       - name: Run unit tests (Vitest, real-browser mode)
         run: npm run test:unit
@@ -288,14 +291,13 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      - name: Build MicroPython Unix port (if not cached) and the real wozi website
+      - name: Build MicroPython Unix port (if not cached) and every device's website
         run: |
           bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-          scripts/build_website.sh wozi
-          uv run scripts/_generate_sensortask_modules.py
+          npm run build:site
       # Firefox+geckodriver from conda-forge (~106 MB, nothing to key on) cached under a fixed key -
       # bump the suffix to force a refresh. WebKit and Edge reinstall every run (B.10.1).
       - name: Cache Firefox + geckodriver (conda-forge)

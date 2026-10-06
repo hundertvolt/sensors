@@ -15,7 +15,7 @@ from micropython import const
 
 from base_classes import LockedCounter, SensorReaderConfig
 from captive_dns import DNSServer
-from config_manager import make_dict, schema_dict
+from config_manager import make_dict, name_cfg, schema_dict
 from print_log import DEFAULT_LOG, LogConfig
 
 try:
@@ -61,7 +61,8 @@ _VAL_SSID = const((("SSID", "str", "", 0, 32, None),))
 # PW: real passphrase length is WPA2-PSK's 8-63 *when used* - special="" bypasses that for an
 # intentionally open/unsecured network.
 _VAL_PW = const((("PW", "str", "", 8, 63, ""),))
-_VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
+_VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))  # ISO 3166-1 alpha-2, checked by _country_ok()
+_COUNTRY_CODE_LEN = const(2)  # alpha-2: the shape _country_ok() checks, inside _VAL_CTRY's own 2..2
 _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = network.hostname()'s real cap
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 # Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the hardcoded "12345678": accepted
@@ -69,11 +70,11 @@ _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 # Masked like _VAL_PW.
 _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 
-# @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true
-# @web SSID section=networking submitGroup=identity label="Wi-Fi SSID"
-# @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true
-# @web Country section=networking submitGroup=identity label="Country" description="Two-letter ISO 3166 country code."
-# @web Hostname section=networking submitGroup=identity label="Hostname"
+# @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true submitLabel="Apply & Reconnect"
+# @web SSID section=networking submitGroup=identity label="Wi-Fi SSID" bytes=true
+# @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true bytes=true
+# @web Country section=networking submitGroup=identity label="Country" bytes=true shape=countryCode description="Two uppercase letters (ISO 3166-1 alpha-2), e.g. DE."
+# @web Hostname section=networking submitGroup=identity label="Hostname" bytes=true shape=hostLabel
 
 # @web-group section=networking submitGroup=wifiLed label="Wi-Fi Status LED" submit=true
 # @web LedWifiOn section=networking submitGroup=wifiLed label="Wi-Fi Status LED"
@@ -90,13 +91,32 @@ _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's o
 _RADIO_FIELDS = const(("SSID", "PW", "Country", "Hostname", "HotspotPW"))
 
 
-def _radio_bytes_ok(field: "FieldSchema", value: object) -> bool:
-    # Only the max needs bytes (a value is never fewer bytes than characters), and only once the
-    # schema's own character bounds hold - anything else stays the schema check's refusal.
+def _host_label_ok(label: str) -> bool:
+    # RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length.
+    if not label or label[0] == "-" or label[-1] == "-":
+        return False
+    return all("0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in label)
+
+
+def _country_ok(value: str) -> bool:
+    # ISO 3166-1 alpha-2 in the cyw43 table's uppercase (cyw43_country.h:49)
+    return len(value) == _COUNTRY_CODE_LEN and all("A" <= ch <= "Z" for ch in value)
+
+
+def _radio_value_ok(field: "FieldSchema", value: object) -> bool:
+    # Three checks once the schema's own character bounds hold (anything else stays its refusal): the
+    # UTF-8 byte count within the max (never fewer bytes than characters), Hostname a host label, and
+    # Country an uppercase alpha-2 pair.
     low, high = field[3], field[4]
     if type(value) is not str or value == field[5] or type(low) is not int or type(high) is not int or not low <= len(value) <= high:
         return True
-    return len(value.encode()) <= high
+    if len(value.encode()) > high:
+        return False
+    if field[0] == name_cfg(_VAL_HOST):
+        return _host_label_ok(value)
+    if field[0] == name_cfg(_VAL_CTRY):
+        return _country_ok(value)
+    return True
 
 
 def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...]", value: "str | None") -> "tuple[tuple[str, str, str, int, int, str | None], ...]":
@@ -109,7 +129,7 @@ def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...
     if value is None:
         return schema
     name, kind, _default, low, high, special = schema[0]
-    if kind != "str" or not (low <= len(value) <= high):
+    if kind != "str" or not (low <= len(value) <= high) or not _radio_value_ok(schema[0], value):
         return schema  # a non-str field would be substituted unchecked - keep the built-in default
     return ((name, kind, value, low, high, special),)
 
@@ -700,12 +720,12 @@ class AsyConnTime(SensorReaderConfig):
     async def _set_mgr_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
-        # Refuses a radio value outside its byte bounds before it is stored (C.7.4); the rest of the
+        # Refuses a radio value outside its byte bound or shape before it is stored (C.7.4); the rest of the
         # request goes through ConfigManager as usual.
         fields = schema_dict(cfg_vals)
-        refused = [k for k, v in data.items() if k in _RADIO_FIELDS and k in fields and not _radio_bytes_ok(fields[k], v)]
+        refused = [k for k, v in data.items() if k in _RADIO_FIELDS and k in fields and not _radio_value_ok(fields[k], v)]
         for key in refused:
-            await self.pr.err_s("Refusing", key, "- over the radio's byte bound", errno=_ERR_BAD_ARG)
+            await self.pr.err_s("Refusing", key, "- outside the radio's accepted form", errno=_ERR_BAD_ARG)
         ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
         for key in refused:
             results[key] = "Invalid"
@@ -718,10 +738,10 @@ class AsyConnTime(SensorReaderConfig):
         safe = []
         for field, value in zip(schema, values):  # noqa: B905 - MicroPython zip() rejects strict=
             live = fields.get(field[0], field)
-            if _radio_bytes_ok(live, value):
+            if _radio_value_ok(live, value):
                 safe.append(value)
             else:
-                await self.pr.wrn_s("Stored", field[0], "is over the radio's byte bound, using its default", wrnno=_WRN_STORED_DEFAULT)
+                await self.pr.wrn_s("Stored", field[0], "is outside the radio's accepted form, using its default", wrnno=_WRN_STORED_DEFAULT)
                 safe.append(str(live[2]))  # every radio field's default is a str
         return safe
 

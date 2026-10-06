@@ -379,6 +379,25 @@ describe("renderSection", () => {
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
     });
 
+    it("renders an errcount group outside the Status section from GET /status's errcount", async () => {
+        /** @type {import("../js/definitions.js").Section} */
+        const section = {
+            key: "networking",
+            label: "Networking",
+            rest: { get: "/networking", put: "/networking" },
+            pollGroup: "settings",
+            groups: [{ key: "dnsErrors", label: "Captive DNS Error History", kind: "errcount", modules: [{ key: "SCD30", label: "SCD30" }] }],
+        };
+        const defs = { ...DEFS, sections: [...DEFS.sections, section] };
+        uninstall = installMockFetch(defs, DATA);
+        const main = mount();
+        stop = renderSection(defs, section, main);
+        await waitFor(() => main.querySelector(".errcount-rollup") !== null);
+
+        mustQuery(main, ".action-button").click(); // "Show flagged"
+        expect(mustQuery(mustQuery(main, ".errcount-row"), ".errcount-row-count").textContent).toBe("2");
+    });
+
     it("preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild", async () => {
         // Both real definitions files declare "status" as pollGroup "live" and this fixture's
         // DEFS deliberately does not, so exercising the poll-rebuild path needs a local variant -

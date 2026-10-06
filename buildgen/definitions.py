@@ -3,19 +3,23 @@
 (`buildgen.web_tag`; design rationale: Part H.5.1). CLI at the bottom: manual use + `build_website.sh`."""
 
 import argparse
+import functools
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
 from buildgen.errors import BuildError
-from buildgen.model import DeviceModel, InstanceSpec
+from buildgen.graph import build_construction_order
+from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec
 from buildgen.schema_ast import FieldSchema, extract_field_schemas
 from buildgen.validate import build_model
 from buildgen.version import WEBSITE_VERSION
 from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, parse_web_group_tags, parse_web_tags
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# The one code catalog (SPECIFICATION.md C.7.1): errno/wrnno texts and the status-code tables.
+_CATALOG_PATH = Path(__file__).resolve().parent / "error_catalog.json"
 
 # SCHEMA_VERSION is this file's wire-format shape version - can js/definitions.js understand what
 # it was served. WEBSITE_VERSION is the product/build version, a different concept entirely;
@@ -50,8 +54,8 @@ _WARN_SIGNAL_WEB_CATALOG: "dict[str, dict[str, Any]]" = {
 }
 
 # Dispatch-only webserver-level fields: no per-device variation and no single owning driver file
-# (Part H.5.1). Each mirrors its own source in asy_webserver_service.py - lightCmdLED's bounds
-# from _dispatch_notification_led(), SystemCmd from _SYSTEM_CMDS, PauseTime from its field.
+# (Part H.5.1), each flagged dispatch so the never-"Unchanged" class reads from definitions alone.
+# Sources in asy_webserver_service.py: _dispatch_notification_led(), _SYSTEM_CMDS, PauseTime's field.
 _SYSTEM_COMMAND_GROUP: "dict[str, Any]" = {
     "key": "command", "label": "System Command", "submit": True,
     "fields": [{"key": "SystemCmd", "label": "Command", "kind": "enum", "dispatch": True, "options": [
@@ -62,7 +66,7 @@ _SYSTEM_COMMAND_GROUP: "dict[str, Any]" = {
 }
 _NOTIFICATION_FLASH_GROUP: "dict[str, Any]" = {
     "key": "flash", "label": "Manual Flash Command", "submit": True, "submitLabel": "Flash LED",
-    "fields": [{"key": "lightCmdLED", "label": "LED Flash", "kind": "composite", "subFields": [
+    "fields": [{"key": "lightCmdLED", "label": "LED Flash", "kind": "composite", "dispatch": True, "subFields": [
         {"key": "r", "label": "Red", "kind": "number", "min": 0, "max": 255},
         {"key": "g", "label": "Green", "kind": "number", "min": 0, "max": 255},
         {"key": "b", "label": "Blue", "kind": "number", "min": 0, "max": 255},
@@ -73,7 +77,7 @@ _NOTIFICATION_PAUSE_GROUP: "dict[str, Any]" = {
     "key": "pause", "label": "Pause Notifications", "submit": True,
     "fields": [{
         "key": "PauseTime", "label": "Pause Time", "unit": "s", "kind": "number", "min": 0, "max": 3600,
-        "description": "Temporarily suppress automatic LED notifications. Current value is live (from Status).",
+        "description": "Temporarily suppress automatic LED notifications. Current value is live (from Status).", "dispatch": True,
     }],
 }
 _RESET_ERRORS_GROUP: "dict[str, Any]" = {
@@ -82,6 +86,16 @@ _RESET_ERRORS_GROUP: "dict[str, Any]" = {
         "key": "ResetErrors", "label": "Confirm Reset", "kind": "toggle", "onLabel": "Yes, reset", "offLabel": "No",
         "description": "Resets every module's error counter and history in one call. Absent/No is a no-op.", "dispatch": True,
     }],
+}
+
+# GET /system's nested "build" entry (codegen's build_info), shown read-only through each field's path.
+_BUILD_GROUP: "dict[str, Any]" = {
+    "key": "build", "label": "Build",
+    "fields": [
+        {"key": "firmwareVersion", "label": "Firmware Version", "kind": "readonly", "path": ["build", "firmwareVersion"]},
+        {"key": "websiteVersion", "label": "Website Version", "kind": "readonly", "path": ["build", "websiteVersion"]},
+        {"key": "buildDate", "label": "Build Date", "kind": "readonly", "path": ["build", "buildDate"]},
+    ],
 }
 
 # Errcount module catalog (H.6): {have-key: (label, has_cfgmgr_companion)}. A have-key is an
@@ -119,6 +133,26 @@ _CFGMGR_LABEL: "dict[str, str]" = {
 }
 
 
+@functools.cache
+def _load_catalog() -> "dict[str, Any]":
+    # Read once per process; every caller only reads it.
+    catalog: dict[str, Any] = json.loads(_CATALOG_PATH.read_text())
+    return catalog
+
+
+def _status_codes(table: str, device: str, field: str) -> "dict[str, str]":
+    # A readonly field's codes=<table>, inlined as {"<n>": "<text>"} from the catalog's status section.
+    tables: dict[str, dict[str, dict[str, str]]] = _load_catalog().get("status", {})
+    if table not in tables:
+        raise BuildError(device, f"codes={table!r} names no status table in {_CATALOG_PATH.name} (tables: {sorted(tables)})", field=field)
+    return {num: row["text"] for num, row in tables[table].items()}
+
+
+def _errcount_codes(catalog: "dict[str, Any]") -> "dict[str, dict[str, str]]":
+    # Every non-retired errno/wrnno: numbers are global, so one table serves every errcount row.
+    return {kind: {num: row["text"] for num, row in catalog["codes"][kind].items() if not row.get("retired")} for kind in ("E", "W")}
+
+
 class _DriverTags:
     """Parsed `@web`/`@web-group` tags plus real `ConfigSchema` literals for one source file,
     cached so a file scanned by more than one instance (two SCD30s, or WiFi/NTP/System, which are
@@ -136,11 +170,25 @@ def _load_driver_tags(cache: "dict[Path, _DriverTags]", path: Path, device: str,
     return cache[path]
 
 
-def _coerce_special_value(raw: str, field_type: "str | None") -> "int | float | str":
+def _coerce_special_value(raw: str, field_type: "str | None") -> "int | float | str | None":
+    if raw == "null":
+        return None  # the one value-free special: "nothing yet", e.g. no backup since boot
     if field_type == "float":
         return float(raw)
     if field_type == "int":
         return int(raw)
+    return raw
+
+
+def _coerce_readonly_special(raw: str) -> "int | float | str | None":
+    # A readonly field has no schema type: its special reads as null, an int, a float or a string.
+    if raw == "null":
+        return None
+    for convert in (int, float):
+        try:
+            return convert(raw)
+        except ValueError:
+            continue
     return raw
 
 
@@ -170,7 +218,17 @@ def _string_field(tag: WebFieldTag, min_v: object, max_v: object) -> "dict[str, 
         out["maxLength"] = max_v
     if tag.mask:
         out["mask"] = True
+    if tag.byte_length:
+        out["byteLength"] = True
+    if tag.shape is not None:
+        out["shape"] = tag.shape
     return out
+
+
+def _check_string_keys(tag: WebFieldTag, kind: str, device: str, path: Path) -> None:
+    # web_tag checks bytes=/shape= against an explicit kind=; an inferred kind is known only here.
+    if kind != "string" and (tag.byte_length or tag.shape is not None):
+        raise BuildError(device, f"{path}: @web tag for {tag.field_name!r} has bytes= or shape= but its kind is {kind!r}, not string", field=tag.field_name)
 
 
 def _enum_field(tag: WebFieldTag, special: object, device: str, path: Path) -> "dict[str, Any]":
@@ -221,6 +279,7 @@ def _build_field_def(tag: WebFieldTag, schema: "FieldSchema | None", device: str
     field_type = raw_type if isinstance(raw_type, str) else None
     kind = _infer_kind(tag, field_type, special, device, path)
     out["kind"] = kind
+    _check_string_keys(tag, kind, device, path)
 
     if kind == "toggle":
         out.update(_toggle_field(tag))
@@ -230,17 +289,26 @@ def _build_field_def(tag: WebFieldTag, schema: "FieldSchema | None", device: str
         out.update(_enum_field(tag, special, device, path))
     elif kind == "number":
         out.update(_number_field(tag, field_type, min_v, max_v, special, device, path))
+    elif kind == "readonly" and tag.special:
+        # A readonly value's documented specials (e.g. SGP40's BackupTS: null and 0), shown as text.
+        out["specialValues"] = [{"value": _coerce_readonly_special(raw), "meaning": meaning} for raw, meaning in tag.special]
 
     if tag.description:
         out["description"] = tag.description
     if tag.dispatch:
         out["dispatch"] = True
+    if tag.always_executed:
+        out["alwaysExecuted"] = True
     if tag.default_value is not None:
         out["defaultValue"] = tag.default_value
     if tag.path is not None:
         out["path"] = list(tag.path)
     if tag.decimals is not None:
         out["decimals"] = tag.decimals
+    if tag.format is not None:
+        out["format"] = tag.format
+    if tag.codes is not None:
+        out["codes"] = _status_codes(tag.codes, device, tag.field_name)
     return out
 
 
@@ -295,11 +363,14 @@ def _mandatory_group(section: str, submit_group: str, key: str, tags_list: "list
 
 
 def _sensor_instance_specs(model: DeviceModel) -> "list[InstanceSpec]":
+    # Cards follow the construction order (buildgen.graph); a model that skipped the graph fails here
+    # rather than falling back to TOML order, so the CLI and the build can never disagree.
     order = {node: i for i, node in enumerate(model.construction_order)}
-    return sorted(
-        (spec for spec in model.instances.values() if spec.driver in _SENSOR_DRIVERS),
-        key=lambda spec: order.get(spec.key, spec.order_index),
-    )
+    specs = [spec for spec in model.instances.values() if spec.driver in _SENSOR_DRIVERS]
+    for spec in specs:
+        if spec.key not in order:
+            raise BuildError(model.device, "internal: construction order unresolved before definitions generation", instance=spec.label)
+    return sorted(specs, key=lambda spec: order[spec.key])
 
 
 def _notification_spec(model: DeviceModel) -> "InstanceSpec | None":
@@ -335,10 +406,13 @@ def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTa
     wifi_tags = _load_driver_tags(cache, wifi_path, device, "wifi")
     ntp_tags = _load_driver_tags(cache, ntp_path, device, "ntp")
     section = dict(_SECTION_SKELETON[2])
+    dns_label = next(label for key, label, _has_cfgmgr in _ERRCOUNT_CATALOG if key == "dns")
     section["groups"] = [
         _mandatory_group("networking", "identity", "identity", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "wifiLed", "wifiLed", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "ntp", "ntp", [(ntp_tags, ntp_path)], device),
+        # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
+        _errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _ERRCOUNT_NAME["dns"], "label": dns_label}], _load_catalog()),
     ]
     return section
 
@@ -352,6 +426,7 @@ def _system_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]"
     section["groups"] = [
         _mandatory_group("system", "settings", "settings", [(system_tags, system_path), (ntp_tags, ntp_path)], device),
         dict(_SYSTEM_COMMAND_GROUP),
+        dict(_BUILD_GROUP),
     ]
     return section
 
@@ -360,7 +435,12 @@ def _suffixed(label: str, name_ext: str) -> str:
     return label if not name_ext else f"{label} ({_NAME_EXT_LABEL.get(name_ext, name_ext)})"
 
 
-def _errcount_group(model: DeviceModel) -> "dict[str, Any]":
+def _errcount_shell(key: str, label: str, modules: "list[dict[str, str]]", catalog: "dict[str, Any]") -> "dict[str, Any]":
+    # Every errcount group carries the same code-description block, so no two groups can differ.
+    return {"key": key, "label": label, "kind": "errcount", "modules": modules, "codes": _errcount_codes(catalog)}
+
+
+def _errcount_group(model: DeviceModel, catalog: "dict[str, Any]") -> "dict[str, Any]":
     # Keyed per logger INSTANCE, as the API publishes them: scd30_primary publishes
     # SCD30_primary and CFGMGR_SCD30_primary and needs a row under each. A kind-keyed catalog
     # drifts silently both ways - a missing source vanishes, a stale row renders a permanent 0.
@@ -368,11 +448,11 @@ def _errcount_group(model: DeviceModel) -> "dict[str, Any]":
     by_driver: dict[str, list[InstanceSpec]] = {}
     for spec in model.instances.values():
         by_driver.setdefault(spec.driver, []).append(spec)
+    # Catalog order is display order, each row keyed by resolved_name; the webserver's row is the
+    # group's last entry (a UART row lands between notification and it), and dns is on Networking.
     for key, label, has_cfgmgr in _ERRCOUNT_CATALOG:
-        if key == "webserver":
-            continue  # always the very last entry - see below, matching every hand-written
-            # definitions.json's own fixed ordering (UART's rows land between notification and it,
-            # never after it).
+        if key in ("webserver", "dns"):
+            continue
         if key in _MANDATORY_ERRCOUNT_KEYS:
             # wifi/dns/ntp/system are mandatory infrastructure, never [[instance]] - one logger each,
             # with a fixed name no device can vary.
@@ -387,10 +467,30 @@ def _errcount_group(model: DeviceModel) -> "dict[str, Any]":
                 modules.append({"key": f"CFGMGR_{name}", "label": _suffixed(_CFGMGR_LABEL[key], spec.name_ext)})
     webserver_label = next(label for key, label, _has_cfgmgr in _ERRCOUNT_CATALOG if key == "webserver")
     modules.append({"key": _ERRCOUNT_NAME["webserver"], "label": webserver_label})
-    return {"key": "errcount", "label": "Error Counts & History", "kind": "errcount", "modules": modules}
+    return _errcount_shell("errcount", "Error Counts & History", modules, catalog)
 
 
-def _status_section(model: DeviceModel, have: "set[str]") -> "dict[str, Any]":
+def _sgp40_maintenance_fields(model: DeviceModel, cache: "dict[Path, _DriverTags]") -> "list[dict[str, Any]]":
+    # Built from the SGP40 driver's own section=status tags, one set per instance in construction
+    # order; keyed as GET /status flattens them (<resolved_name>_<field>), labelled like its card.
+    out: list[dict[str, Any]] = []
+    for spec in (s for s in _sensor_instance_specs(model) if s.driver == "sgp40"):
+        if spec.driver_info is None:
+            raise BuildError(model.device, "internal: driver_info unresolved before definitions generation", instance=spec.label)
+        path = spec.driver_info.source_path
+        tags = _load_driver_tags(cache, path, model.device, spec.label)
+        fields = _fields_for(tags, "status", "maintenance", model.device, path)
+        if not fields:
+            raise BuildError(model.device, f"{path}: no @web section=status submitGroup=maintenance tag found", instance=spec.label)
+        for field in fields:
+            field["key"] = f"{_resolved_key(spec, model.device)}_{field['key']}"
+            if spec.name_ext:
+                field["label"] = f"{field['label']} ({spec.name_ext})"
+        out += fields
+    return out
+
+
+def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _DriverTags]") -> "dict[str, Any]":
     section = dict(_SECTION_SKELETON[4])
     networking_fields = [
         {"key": "Mode", "label": "Wi-Fi Mode", "kind": "readonly"},
@@ -404,7 +504,7 @@ def _status_section(model: DeviceModel, have: "set[str]") -> "dict[str, Any]":
         {"key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly"},
         {"key": "NtpSynced", "label": "NTP Synced", "kind": "readonly"},
         {"key": "NtpLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
-        {"key": "NtpLastSync", "label": "NTP Last Sync Time", "unit": "s", "kind": "readonly", "description": "Unix timestamp of the last successful sync."},
+        {"key": "NtpLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
     ]
     system_fields = [
         {"key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly"},
@@ -428,18 +528,16 @@ def _status_section(model: DeviceModel, have: "set[str]") -> "dict[str, Any]":
     # maintenance_sensors= tuple) - never a per-driver group of its own, both here and there.
     maintenance_fields: list[dict[str, Any]] = []
     if "sgp40" in have:
-        maintenance_fields += [
-            {"key": "SGP40_BackupTS", "label": "SGP40 Last Backup", "kind": "readonly"},
-            {"key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly"},
-        ]
+        maintenance_fields += _sgp40_maintenance_fields(model, cache)
     if "uart_link" in have:
+        uart = MAINTENANCE_NAMES["uart_link"]
         maintenance_fields += [
             {
-                "key": "UARTLINK_Transfers", "label": "UART Link Transfers", "kind": "readonly",
+                "key": f"{uart}_Transfers", "label": "UART Link Transfers", "kind": "readonly",
                 "description": "Completed transfers across this bench rig's UART0<->UART1 crossover jumper since boot. Bench-only - a deployed unit has no such link.",
             },
             {
-                "key": "UARTLINK_Failures", "label": "UART Link Failures", "kind": "readonly",
+                "key": f"{uart}_Failures", "label": "UART Link Failures", "kind": "readonly",
                 "description": "Transfers that did not complete across the crossover jumper since boot.",
             },
         ]
@@ -448,10 +546,10 @@ def _status_section(model: DeviceModel, have: "set[str]") -> "dict[str, Any]":
     if "notification" in have:
         groups.append({"key": "notification", "label": "Notification Status", "fields": [
             {"key": "Triggered", "label": "Currently Triggered", "kind": "readonly"},
-            {"key": "TS", "label": "Last Trigger Timestamp", "kind": "readonly"},
+            {"key": "TS", "label": "Last Trigger Timestamp", "kind": "readonly", "format": "epoch"},
             {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
         ]})
-    groups.append(_errcount_group(model))
+    groups.append(_errcount_group(model, _load_catalog()))
     groups.append(dict(_RESET_ERRORS_GROUP))
     section["groups"] = groups
     return section
@@ -467,10 +565,9 @@ def _notification_section(model: DeviceModel, cache: "dict[Path, _DriverTags]", 
     tags = _load_driver_tags(cache, path, model.device, spec.label)
     # Literal "autoConfig" key, not spec.resolved_name: NotificationCoordinator is a singleton
     # service (driver_registry.SERVICE_DRIVERS), so there is no multi-instance disambiguation need
-    # the way scd30/sgp40/bmp3xx have - matches the hand-written definitions files' own key.
+    # the way scd30/sgp40/bmp3xx have.
     auto_group = _mandatory_group("notification", "autoConfig", "autoConfig", [(tags, path)], model.device)
-    # Preserve the fixed catalog's own declaration order (matches the hand-written definitions
-    # files) rather than the TOML's own [instance.wiring] key order.
+    # Catalog order is display order, never the TOML's own [instance.wiring] key order.
     warn_fields = [dict(_WARN_SIGNAL_WEB_CATALOG[key]) for key in _WARN_SIGNAL_WEB_CATALOG if key in spec.wiring]
     auto_group["fields"] = auto_group["fields"] + warn_fields
 
@@ -496,7 +593,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
         sensors,
         _networking_section(src_dir, model.device, cache),
         _system_section(src_dir, model.device, cache),
-        _status_section(model, have),
+        _status_section(model, have, cache),
     ]
     notification = _notification_section(model, cache, have)
     if notification is not None:
@@ -512,6 +609,14 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
     }
 
 
+def definitions_for_toml(toml_path: Path, src_dir: Path) -> "dict[str, Any]":
+    """The one entry point from a device TOML to its definitions: validated model, construction
+    order (`buildgen.graph`), then `generate_definitions()` - every caller gets the build's order."""
+    model = build_model(toml_path, src_dir)
+    build_construction_order(model)
+    return generate_definitions(model, src_dir)
+
+
 def main(argv: "list[str] | None" = None) -> int:
     parser = argparse.ArgumentParser(description="Generate a device's website definitions.json from its device TOML.")
     parser.add_argument("device_toml", type=Path)
@@ -520,8 +625,7 @@ def main(argv: "list[str] | None" = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        model = build_model(args.device_toml, args.src_dir)
-        definitions = generate_definitions(model, args.src_dir)
+        definitions = definitions_for_toml(args.device_toml, args.src_dir)
     except BuildError as e:
         print(f"buildgen: {e}", file=sys.stderr)
         return 1

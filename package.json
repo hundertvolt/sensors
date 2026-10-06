@@ -17,7 +17,8 @@
   "scripts": {
     "lint": "eslint js tests_js scripts html eslint.config.js vitest.config.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "build:site": "scripts/build_website.sh wozi && uv run scripts/_generate_sensortask_modules.py",
+    "build:definitions": "uv run scripts/_generate_sensortask_modules.py",
+    "build:site": "npm run build:definitions && scripts/build_device_websites.sh",
     "pretest": "npm run build:site",
     "test": "vitest run",
     "pretest:unit": "npm run build:site",
@@ -28,6 +29,7 @@
     "test:coverage": "vitest run --coverage --exclude \"**/node_modules/**\" --exclude \"tests_js/live-backend-put-matrix.test.js\"",
     "lint:html": "html-validate \"html/**/*.html\"",
     "lint:css": "stylelint \"html/**/*.css\"",
+    "prepreview": "npm run build:definitions",
     "preview": "python3 -m http.server 8000"
   },
   "devDependencies": {

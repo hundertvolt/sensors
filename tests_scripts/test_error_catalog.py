@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 _REPO = Path(__file__).resolve().parent.parent
 _CATALOG_PATH = _REPO / "buildgen" / "error_catalog.json"
-_MOCKDATA = ("mockdata/dev.json", "mockdata/wozi.json")
+_MOCK_SAMPLES = "mockdata/samples.json"
 _TEST_SCOPES = ("tests", "tests_hardware", "tests_scripts", "digital_twin", "scripts")
 
 _METHOD_KIND = {"err_s": "E", "wrn_s": "W"}
@@ -606,9 +606,10 @@ def _history_problems(catalog: "dict[str, Any]", source: str, errcount: "dict[st
 
 
 def test_mock_histories_hold_only_their_loggers_catalog_codes() -> None:
-    problems = []
-    for path in _MOCKDATA:
-        problems += _history_problems(_catalog(), path, json.loads((_REPO / path).read_text())["status"]["errcount"])
+    # The one driver-keyed sample table every device's mock data is composed from (js/mock-server.js).
+    errcount = json.loads((_REPO / _MOCK_SAMPLES).read_text())["errcount"]
+    assert errcount, f"{_MOCK_SAMPLES} carries no errcount samples - the check would hold nothing"
+    problems = _history_problems(_catalog(), _MOCK_SAMPLES, errcount)
     assert not problems, "\n".join(problems)
 
 

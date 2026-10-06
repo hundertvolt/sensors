@@ -27,7 +27,7 @@ lease and resumption procedure.
 | U3 | central log-repeat rule, one entry per event | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U3_close.md` |
 | U4 | compare-before-write primitive, SCD30 onto it | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U4_close.md` |
 | U5 | config objects and `max-args` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U5_close.md` |
-| U6 | one-source website definitions | not started | — |
+| U6 | one-source website definitions | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U6_close.md`; evidence `audit/artefacts/evidence/U6_close/`, `U5_neopixel_wakeup_latency/` |
 | U7 | tier ladder and runner summary block | not started | — |
 | U8 | `@tunable` scheme | not started | — |
 | U8C | `@tunable` classification of tests | not started | — |
@@ -171,6 +171,26 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U5 | The DebugLevel device scripts stay until U26 | the flash-tier runner still runs both; their calls are valid under the new signature |
 | U5 | SPEC A.5, A.7, C.14, L.2, L.6.6 and README follow the config objects now, not at U20 | they described constructor arguments U5 removes; minimal current-state edits |
 | U5 | `src/asy_uart_driver.py`'s per-file ignore lists PLR0917 beside PLR0913, same reason | ruff derives `max-positional-args` from `max-args`, so the step's exempt `UART.__init__`/`init()` hit the positional twin; the exempt set is unchanged |
+| U6 | The Status page's `MemFree` and `ResetReason` rows and the Networking DNS fallback field land with their keys (U20, U18), not now | a row whose key `/status` does not publish breaks the status parity check; the same rule M.GEN.014 applies to `ConfigFaults` |
+| U6 | An unresolved construction order raises `BuildError("internal: …")`; `BuildInternalError` comes later | the class does not exist at U6; the message already names the internal fault |
+| U6 | `js/render.js` fetches `/status` for an errcount group shown on another page | moving DNSSRV to Networking would otherwise show its history as zero until U23's renderer; a small early piece of M.WEB.020, with its test |
+| U6 | The field hint lists special values for number fields only | the new SGP40 `null`/`0` specials would otherwise add hint text the Status page never showed; early part of M.WEB.014's U23 text |
+| U6 | The host-label check compares characters, not `ord()` codes | ruff's PLR2004 flags the integer compares; same result, still without `re` |
+| U6 | The mock refuses an unknown `shape` instead of passing it | fail closed; the silent-failure scan's class 4 |
+| U6 | The live PUT matrix reads each field's current value when the case starts; a case with no resubmit gesture is skipped visibly | the probes register before any twin boots |
+| U6 | The Python shape mirror and the shared corpus also cover the validator's new U6 rejections | both validators read one corpus, so the mirror has to agree on every case |
+| U6 | `test_no_variant_literals.py` does not scan itself | its homonym list must spell the device names |
+| U6 | The generated-boot parity counts a published `null` as published | a value not yet known (NTP unsynced, no SGP40 backup since boot) is published as `null`; only a missing key fails |
+| U6 | `js/mock-server.js`'s legacy-bounds comment keeps its old wording and its not-yet-cleaned entry until U23 | M.WEB.040's Resolved line drops the comment edit: U23 deletes the site |
+| U6 | codegen folds two emitted lines into one `extend()` | the `UtcTime` gate pushed `_emit_callbacks()` past `max-statements = 79`; the generated text is unchanged |
+| U6 | The cross-browser smoke records a twin that fails to boot as that device's FAIL and continues; a missing site or definitions file fails before any twin boots; a missing engine's SKIP prints once | one device's failure no longer hides the others'; the end-state engine flag is U28 |
+| U6 | The smoke checks every WebDriver command's reply (`webDriverFailure()`, `wdCommand()`) | navigation and window resize ignored the driver's status, so a failed desktop resize went unnoticed; new silent-failure finding |
+| U6 | The wifi corpus test checks refusal text only for in-bounds rejects and allows `"Unchanged"` for an accepted default | the schema refuses the out-of-bounds rows first; U4's compare-before-write answers a value equal to the default |
+| U6 | SPEC A.9, C.11, H.5, H.5.1, H.7, H.8, K.4, K.8, K.11, README's firmware argument and two BACKLOG entries take U36's wording now, cut to what is true at U6; `digital_twin/README.md`'s new-sensor step too | the hand-written definitions files are deleted at U6, so the old text cited missing files |
+| U6 | SPEC C.7.4 names `asy_wifi_service.py`, not the class; L.1's criterion 2 says the variant-literal check runs over a list that only shrinks | the class rename is U10; the not-yet-cleaned list exists until the cleanup finishes |
+| U6 | Each SGP40's maintenance status is published under its own instance name now (U20's adapter-per-instance part, with the definitions keyed the same way) | the U6 parity check found a two-SGP40 device's adapter reading an unassigned `sgp40`; U20 keeps the rest (instance variables throughout, the L.2 function list, the name-resolution test) |
+| U6 | The boot-contiguity high band is 32 KiB, not 128 KiB | at 128 KiB the suppressed arm's count sat at its own reach edge (33 at U5 against 32 allowed, 10 at U6); 32 KiB is twice the live reach, zero live on all six devices, 703 and 1,510 suppressed; the live check only gets stricter |
+| U6 | The live PUT matrix skips the enum option already shown, visibly | U5 filtered it out at registration; the resubmit probe covers that case and knows whether the card round-trips |
 
 ## Parked deltas (OR2.c, OR106.a)
 

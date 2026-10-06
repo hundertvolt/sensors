@@ -375,7 +375,9 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
     # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
     get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
-    year_before = get_before.json()["system"]["UtcTime"]["year"]
+    utc_before = get_before.json()["system"]["UtcTime"]
+    assert utc_before is not None, "GET /status's UtcTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
+    year_before = utc_before["year"]
     assert 2020 < year_before < 2049, f"DUT's own UtcTime is already outside a sane pre-test range, can't use it as this test's own signal: {year_before}"
 
     reset_all_error_logs(dut_ip)
@@ -402,7 +404,8 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
         time.sleep(3.0)  # generous relative to _parse_ntp_reply()'s own synchronous RTC().datetime() write, if it were ever reached
         get_after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
         assert get_after.status_code == 200, f"GET /status failed: {get_after.status_code} {get_after.body!r}"
-        year_after = get_after.json()["system"]["UtcTime"]["year"]
+        utc = get_after.json()["system"]["UtcTime"]
+        year_after = None if utc is None else utc["year"]  # None = not synced, which is still not 2050
         assert year_after != 2050, f"the DUT's RTC was set to this test's own spoofed reply's injected date (2050-01-01) - AsyUDPSocket accepted a reply from an unexpected source on a connected socket:\n{get_after.body!r}"
         assert_no_task_ended(dut_ip, "a spoofed NTP reply")
     finally:
