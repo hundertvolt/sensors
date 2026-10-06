@@ -679,6 +679,7 @@ changes cite.
 - **Resolved**: the bench proves the interrupts-off case without writing flash, and the one real write stays optional
   behind `--allow-persistence-write` (owner, 2026-10-05, OR141.a (4) (g)). The one-time run of the old
   interrupt-driven receive path is a round step, not a test here (no permanent control arm, OR21.a (2)): M.PROC.049.
+  (A-C review fold, OR146, owner requirement 2026-10-06) One more window for M.SRC_NET.221 (6): RXDMAE cleared under `machine.disable_irq()` until UARTRSR OE sets, then the initiator's transaction fails and the next one succeeds.
 - **Unit**: U26 (written; the twin run first, M.HW_DEV.010); executed in phase C.
 - **Depends**: M.HW_DEV.159, M.HW_DEV.045, M.HW_BENCH.012, M.HW_BENCH.041 (the ring size in `bench_facts`),
   M.SRC_NET.221, M.SRC_NET.222 (the DMA receive ring, U13).

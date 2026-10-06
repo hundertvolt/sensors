@@ -1246,6 +1246,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   fidelity table). Lands on HEAD's twin UART in U13; M.TWIN.028's U25 rewrite of `class UART` carries the register block
   forward.
 - **Resolved**: —
+  (A-C review fold, OR146, owner requirement 2026-10-06) The register model's OE drives M.SRC_NET.221 (6): across a modelled interrupts-off window longer than the ring bound, and with RXDMAE cleared so the FIFO overruns, the initiator's transaction fails and the next succeeds.
 - **Unit**: U13 (with the driver's DMA receive path, so dev's twin boots from that unit on).
 - **Depends**: M.TWIN.027 (the link's delivery, its U25 shape later); M.SRC_NET.221 (the driver's receive path).
 - **Blast carried by**: the fake's own L2 cases and the shared contract's DMA checks → M.TWIN.130, M.TEST_HELP.025; the

@@ -4016,6 +4016,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   allocated during the call is at most `chunk_bytes`, by largest-free-block measurement — no growth by concatenation). Tunables tagged per the
   file's convention (U8's N.1 rule).
 - **Resolved**: —
+  (A-C review fold, OR146, owner requirement 2026-10-06) Adds M.SRC_NET.221 (6)'s cases: a planted UARTRSR OE and a planted lap, each with and without CRC, each failing the receiving side's frame and the initiator's transaction, the next transaction succeeding; an OE left before `setup_rx_ring()` is cleared there and not reported.
 - **Unit**: U13 (with the driver's receive path and the fakes); stage U17: (d), with the readline cap; stage U24: the
   shared `run()` and `FixedRandom` replace the file-local forms (M.TEST_UNIT.168's harness stage).
 - **Depends**: M.SRC_NET.221 (the DMA receive path), M.SRC_NET.202 (the readline cap); M.TEST_HELP.069;
