@@ -59,7 +59,8 @@ src/                     Fully-reviewed/tested refactor code, freely editable (P
                           Part's own build/ entry below). improved-quality/ (former WIP staging) has
                           been fully retired and deleted.
 ext/                     Vendored third-party code, hands-off (CLAUDE.md)
-  microdot.py               Microdot v2.6.2, unmodified (A.5)
+  microdot.py               Microdot v2.7.0, unmodified (A.5)
+  typings/microdot/         upstream v2.7.0 type stubs for it, unmodified (A.5)
   freezefs/                 freezefs 2.4, unmodified - the website's gzip+freeze pipeline (A.9)
 devices/                 One TOML file per device variant (SPECIFICATION.md Part L) - the single source
                           of truth for that device's hardware/wiring facts; buildgen/ turns each one
@@ -286,11 +287,13 @@ features as today's deployed units, not a feature change.
 
 ## A.5 Microdot / REST layer
 
-`ext/microdot.py` is vendored, unmodified upstream Microdot (pinned `v2.6.2` — no edits/cleanup;
-CLAUDE.md's Hard rules are authoritative; MIT text at `ext/LICENSE-microdot`). Facts below confirmed
-against its actual source, not docs/memory. Upstream v2.7.0 (checked 2026-09-23) changes only f-strings, a
-`QUERY` decorator and `Vary` merging: the same 1,024 B `send_file` reads, per-header writes and
-`Request` attribute table, so a bump would move none of Part H.7's serving walls.
+`ext/microdot.py` is vendored, unmodified upstream Microdot (pinned `v2.7.0` — no edits/cleanup;
+CLAUDE.md's Hard rules are authoritative; MIT text at `ext/LICENSE-microdot`; upstream's own type stubs for it
+sit unmodified in `ext/typings/microdot/`). Facts below confirmed against its actual source, not docs/memory.
+`v2.7.0` changed, against the earlier `v2.6.2`, only f-strings (compiled by `mpy-cross` like any other
+source), a `QUERY` route decorator and a `Vary` header merge that only the session and CSRF extensions trigger
+(this repo uses neither): the same 1,024 B `send_file` reads, per-header writes and `Request` attribute table,
+so the move shifted none of Part H.7's serving walls.
 
 - **Every exception raised by our own code inside a route handler — including a before/after-request
   hook, and `MemoryError` — is already caught by Microdot itself, per request, and can never crash
@@ -331,7 +334,7 @@ against its actual source, not docs/memory. Upstream v2.7.0 (checked 2026-09-23)
   popup instead of a silent 404, while `captive_dns.py` answers every domain with the AP's IP.
 - Deployed `python/CommonDrivers/microdot.py` already implements essentially the same protective
   architecture, predating `ext/microdot.py`'s vendoring — one drift: its `HTTPException` branch
-  invokes a status-code handler directly rather than through v2.6.2's async-safe `invoke_handler()`
+  invokes a status-code handler directly rather than through v2.7.0's async-safe `invoke_handler()`
   wrapper — irrelevant today since neither app registers handlers there.
 
 ## A.6 Datasheets
@@ -5191,10 +5194,10 @@ attacker-reachable contiguous allocation.
   (up to `max_content_length`) is left unread and reached through `request.stream` instead. This
   project did **not** set it, so it stayed at Microdot's 16 KB default.
 
-**The ordering makes the gap live** [SRC]: `handle_request()` calls `Request.create()` (`:1400`),
-which reads the body at `:426`, and only then `dispatch_request()` (`:1410`), whose 413 check is at
-`:1443`. A body between the two limits is therefore read into one contiguous allocation and
-immediately thrown away. Verified against the vendored v2.6.2 and against upstream `main`, which
+**The ordering makes the gap live** [SRC]: `handle_request()` calls `Request.create()` (`:1418`),
+which reads the body at `:426`, and only then `dispatch_request()` (`:1428`), whose 413 check is at
+`:1461`. A body between the two limits is therefore read into one contiguous allocation and
+immediately thrown away. Verified against the vendored v2.7.0 and against upstream `main`, which
 carries the same defaults and the same ordering — this is not fixed by a version bump, and
 `ext/microdot.py` is never edited (Part A.5's vendoring rule), so the fix is ours to apply from
 outside.
