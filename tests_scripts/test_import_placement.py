@@ -1,6 +1,6 @@
 """Imports run once, at module load, and every import is static (SPECIFICATION.md F.1): no import inside a
 function body and no dynamic load anywhere in the eight lint scopes, outside _NAMED_EXCEPTIONS and the
-_PENDING list, which only shrinks; `uv run python tests_scripts/test_import_placement.py --regenerate`."""
+_PENDING list, which only shrinks; `uv run python tests_scripts/test_import_placement.py --regenerate` prunes it."""
 
 import ast
 import re
@@ -8,7 +8,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from _repo_scan import REPO_ROOT, repo_files
+import pytest
+from _repo_scan import REPO_ROOT, exit_on_new, repo_files
 
 SCOPES = ("src/", "buildgen/", "digital_twin/", "tests/", "tests_scripts/", "tests_hardware/", "scripts/", "toolchain/")
 # tests/_tmp/ is scratch; this file's own fixtures are the patterns themselves.
@@ -350,12 +351,28 @@ def test_module_level_and_type_checking_imports_pass() -> None:
     assert sites_in_source("ok.py", source) == []
 
 
-def _regenerate() -> None:
-    this = Path(__file__)
-    body = "".join(f'    ("{path}", "{qualname}", "{name}"),\n' for path, qualname, name in sorted(collect_sites().elements()))
+def test_regenerate_keeps_only_pending_sites_still_present_and_refuses_new_ones(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    copy = tmp_path / "test_import_placement.py"
+    copy.write_text(Path(__file__).read_text(encoding="utf-8"), encoding="utf-8")
+    kept, gone, new = ("src/a.py", "f", "os"), ("src/b.py", "g", "re"), ("src/x.py", "f", "json")
+    this = sys.modules[__name__]
+    monkeypatch.setattr(this, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(this, "_PENDING", (kept, kept, gone))
+    monkeypatch.setattr(this, "collect_sites", lambda: Counter([kept, new]))
+    with pytest.raises(SystemExit, match=r"src/x\.py"):
+        _regenerate(copy)
+    pending = re.search(r"(?m)^_PENDING: tuple\[Site, \.\.\.\] = \(\n((?:.*\n)*?)\)\n", copy.read_text(encoding="utf-8"))
+    assert pending is not None
+    assert pending.group(1) == f'    ("{kept[0]}", "{kept[1]}", "{kept[2]}"),\n'
+
+
+def _regenerate(this: Path = Path(__file__)) -> None:
+    """Keeps the _PENDING sites still present (the list only shrinks) and exits 1 naming any new one."""
+    current, previous = collect_sites(), Counter(_PENDING)
+    body = "".join(f'    ("{path}", "{qualname}", "{name}"),\n' for path, qualname, name in sorted((previous & current).elements()))
     text = re.sub(r"(?m)^(_PENDING: tuple\[Site, \.\.\.\] = \(\n)(?:.*\n)*?(\)\n)", lambda m: m.group(1) + body + m.group(2), this.read_text(encoding="utf-8"), count=1)
     this.write_text(text, encoding="utf-8")
-    print(f"wrote _PENDING in {this.relative_to(REPO_ROOT)}")
+    exit_on_new(f"_PENDING in {this.relative_to(REPO_ROOT)}", sorted(s for s in (current - previous).elements() if s not in _NAMED_EXCEPTIONS))
 
 
 if __name__ == "__main__":

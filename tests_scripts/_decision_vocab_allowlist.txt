@@ -219,6 +219,9 @@ scripts/_require_clean_hardware_run.sh	deliberately not -e: the verdict comes fr
 scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
 scripts/build_website.sh	Part H.7 owns why bundling and inlining exist at all, and why keep-alive is deli
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
 scripts/lint.sh	scripts/ only, deliberately NOT the four legacy build-*.sh at the repo root: tho
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
@@ -300,6 +303,7 @@ tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch,
 tests/test_asy_fram_driver.py	The other deliberately-allowed path: if the underlying bus is deinitialized out
 tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
 tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_fram_manager.py	...and is refused anyway, deliberately
 tests/test_asy_fram_manager.py	A READ fault deliberately - machine.SPI's fake makes write() non-injectable on p
 tests/test_asy_fram_manager.py	Asserting on ErrType rather than ErrCount is deliberate: ErrCount counts "W" ent
@@ -335,6 +339,7 @@ tests/test_asy_isl29125_driver.py	type(value) is not int, deliberately NOT isins
 tests/test_asy_isl29125_driver.py	type: ignore[arg-type] # 375.0 is deliberately the wrong type
 tests/test_asy_isl29125_driver.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_notification_service.py	An int is always accepted and coerced for a float field (Part A.8) - a blanket a
 tests/test_asy_notification_service.py	An integral float is accepted and coerced (Part A.8);
 tests/test_asy_notification_service.py	exactly _MAX_OVERRIDE_TIME - accepted, not clamped further
@@ -344,6 +349,8 @@ tests/test_asy_notification_service.py	integral float accepted for an int field,
 tests/test_asy_notification_service.py	must never raise, for any of the above
 tests/test_asy_notification_service.py	registered deliberately out of that order
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_notification_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_ntp_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
@@ -351,12 +358,14 @@ tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successf
 tests/test_asy_ntp_client.py	exactly enough bytes - accepted
 tests/test_asy_ntp_client.py	one must never suppress the other's slot.
 tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
+tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_scd30_driver.py	An invalid argument must never reach _send_command at all (no partial/garbage I2
 tests/test_asy_scd30_driver.py	start_timer() is synchronous, so it logs via the plain, non-counting pr.err() ra
 tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/asy_scd30_driver.py on why they
 tests/test_asy_scd30_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_sgp40_driver.py	from system_service.py's own _timer_sequencer() - it must degrade instead of rai
 tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
+tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_spi_driver.py	Bypasses `async with device:` deliberately: __aenter__ would call configure(), w
 tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
@@ -411,7 +420,33 @@ tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be acce
 tests/test_asy_wifi_service.py	_wlan(client) is typed against the real network.WLAN stub (pyproject.toml's test
 tests/test_asy_wifi_service.py	noqa: S106 - deliberately too short, which is the point of the test
 tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
 tests/test_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
@@ -490,6 +525,8 @@ tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes 
 tests/test_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
 tests/test_system_service.py	no real exception occurred - errno=5 must never fire
 tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_system_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_ticks_rollover.py	Re-derives the exact accepted/rejected boundary independently of the bisection a
 tests/test_ticks_rollover.py	largest accepted delta is in (lo, hi)
@@ -547,6 +584,7 @@ tests_hardware/bench/test_network_resilience.py	ONE character over _VAL_NH's own
 tests_hardware/bench/test_network_resilience.py	This opens several times max_connections' worth of connections, so most are refu
 tests_hardware/bench/test_network_resilience.py	_VAL_NH bounds string length (3-1024) and nothing else, so a syntactically garba
 tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
+tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
 tests_hardware/bench/test_network_resilience.py	the one deliberately-provoked failed attempt above did legitimately log somethin
 tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	Invariant 1: a calibration run measures a CANDIDATE ratio and must never become
 tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	PauseTime is dispatch-only, so GET /notification has nothing to read back - but
@@ -584,6 +622,7 @@ tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Responsiveness, NOT
 tests_hardware/device_scripts/isl29125_mechanism_envelope.py	The applied ratio is config now and only a user PUT changes it, so this asserts
 tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Two settled holds have no such confound.
 tests_hardware/device_scripts/isl29125_real_irq_edge.py	deliberately long: only a real interrupt can beat it
+tests_hardware/device_scripts/isl29125_real_irq_edge.py	deliberately long: only a real interrupt can beat it
 tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py	An IR-compensation-only change: a 2-byte burst at 0x02, which deliberately does
 tests_hardware/device_scripts/scd30_plausibility_read.py	Let the sensor's own post-reset response-time settle (see module docstring) befo
 tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py	Deliberately discarded - see _SETTLE_S.
@@ -610,7 +649,10 @@ tests_hardware/harness.py	resolve_board_device()'s ambiguous-hardware raise is t
 tests_hardware/manual/runner.py	Deliberately no `if __name__ == "__main__":` block here - running this file dire
 tests_js/_live_matrix_command.js	@param {{ sectionKey: string, groupKey: string, fieldKey: string, field: import(
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_matrix_command.js	no-op by design, per the comment above
+tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_twin_command.js	no-op by design, per the comment above
 tests_js/definitions-mockdata-coverage.test.js	Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that func

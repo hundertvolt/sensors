@@ -8,16 +8,31 @@ BACKLOG.md	Session 6
 BACKLOG.md	WP1
 BACKLOG.md	WP2
 BACKLOG.md	WP3
+BACKLOG.md	improved-quality/sensortask-wozi.py
+CLAUDE.md	WP1
 CLAUDE.md	WP1
 CLAUDE.md	WP2
+CLAUDE.md	WP2
 CLAUDE.md	WP3
+CLAUDE.md	improved-quality/
+CLAUDE.md	improved-quality/
+CLAUDE.md	improved-quality/
+CLAUDE.md	improved-quality/async_connect.py
+CLAUDE.md	improved-quality/microdot.py
+CLAUDE.md	improved-quality/microdot.py
+CLAUDE.md	improved-quality/mypy.ini
+CLAUDE.md	improved-quality/pycheck.sh
 CLAUDE.md	src/sensortask_wozi.py
 CLAUDE.md	tests_hardware/bus_topology.py
 HEAP_FRAGMENTATION_MEASUREMENTS.md	tests_hardware/combined_load_sweep.py
 README.md	AUDIT_PLAN.md
+README.md	AUDIT_PLAN.md
 README.md	BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
 README.md	BUILD_CHAIN_PLAN.md
 README.md	DEV_HARDWARE_BASELINE_PLAN.md
+README.md	DRIVER_SPEC.md
+README.md	DRIVER_SPEC.md
+README.md	DRIVER_SPEC.md
 README.md	DRIVER_SPEC.md
 README.md	FINAL_WIRING_PLAN.md
 README.md	HARDWARE_TEST_PLAN.md
@@ -27,23 +42,62 @@ README.md	UART_PROMOTION_REQUIREMENTS.md
 README.md	WEBSITE_PLAN.md
 README.md	WIRING_CONTRACT.md
 README.md	src/README.md
+README.md	src/README.md
+README.md	src/README.md
+README.md	src/README.md
+README.md	tests/README.md
+README.md	tests/README.md
+README.md	tests/README.md
 README.md	tests/README.md
 README.md	tmp_hardware_test_candidates.md
 README.md	toolchain/README.md
+README.md	toolchain/README.md
+README.md	toolchain/README.md
+README.md	toolchain/README.md
+SPECIFICATION.md	Session 3
+SPECIFICATION.md	Session 3
 SPECIFICATION.md	Session 3
 SPECIFICATION.md	Session 8
 SPECIFICATION.md	Topic 11
 SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP3
+SPECIFICATION.md	WP3
 SPECIFICATION.md	WP3
 SPECIFICATION.md	WP5
+SPECIFICATION.md	WP5
+SPECIFICATION.md	WP5
+SPECIFICATION.md	WP6
+SPECIFICATION.md	WP6
 SPECIFICATION.md	WP6
 SPECIFICATION.md	WP7
+SPECIFICATION.md	WP7
+SPECIFICATION.md	WP8
+SPECIFICATION.md	WP8
+SPECIFICATION.md	WP8
+SPECIFICATION.md	WP8
 SPECIFICATION.md	WP8
 SPECIFICATION.md	devices/zz_test_*.toml
+SPECIFICATION.md	devices/zz_test_*.toml
 SPECIFICATION.md	digital_twin/run_dev_integration.py
+SPECIFICATION.md	improved-quality/
 SPECIFICATION.md	measure B
 SPECIFICATION.md	src/sensortask_*.py
+SPECIFICATION.md	src/sensortask_*.py
 SPECIFICATION.md	src/sensortask_dev.py
+SPECIFICATION.md	src/sensortask_wozi.py
 SPECIFICATION.md	src/sensortask_wozi.py
 SPECIFICATION.md	tests/test_digital_twin_run_dev_integration.py
 SPECIFICATION.md	tests_hardware/bus_topology.py
@@ -55,8 +109,10 @@ buildgen/generate.py	Session 6
 devices/dev.toml	WP3
 digital_twin/README.md	WP1
 digital_twin/machine.py	Step 5
+digital_twin/machine.py	Step 5
 js/field-format.js	src/sensortask_wozi.py
 js/mock-server.js	src/sensortask_wozi.py
+scripts/_digital_twin_ci_suite.py	WP1
 scripts/_digital_twin_ci_suite.py	WP1
 scripts/_digital_twin_ci_suite.py	WP2
 scripts/cross_browser_smoke.mjs	src/sensortask_wozi.py
@@ -64,7 +120,11 @@ scripts/run_digital_twin_ci.sh	digital_twin/*.json
 scripts/run_digital_twin_ci.sh	src/sensortask_*.py
 scripts/run_unix_port_integration.sh	src/sensortask_*.py
 scripts/test.sh	devices/zz_test_*.toml
+src/api_response.py	improved-quality/api_helpers.py
+src/asy_neopixel_driver.py	improved-quality/neopixel_signal.py
+src/asy_notification_service.py	improved-quality/neopixel_signal.py
 src/asy_webserver_service.py	Step 7
+tests/_digital_twin_construction_scenarios.py	WP1
 tests/_digital_twin_construction_scenarios.py	WP1
 tests/_digital_twin_construction_scenarios.py	decision 10
 tests/test_base_classes.py	Topic 6
@@ -81,6 +141,7 @@ tests/test_setter_microdot_integration.py	WP5
 tests/test_system_service.py	WP6
 tests_hardware/README.md	DEV_HARDWARE_BASELINE_PLAN.md
 tests_hardware/README.md	Topic 6
+tests_hardware/README.md	WP3
 tests_hardware/README.md	WP3
 tests_hardware/README.md	tests_hardware/bus_topology.py
 tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	Topic 6

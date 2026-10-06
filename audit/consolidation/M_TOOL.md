@@ -857,8 +857,18 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
 - **Change**: comment `:416-417` kept; `testpaths = ["tests_scripts"]`; "# A misspelled or renamed marker fails collection
   instead of running ungated (the wear and soak gates, tests_hardware/conftest.py)." / `addopts = ["--strict-markers"]`;
   "# The repo root, for tests_scripts/'s buildgen and scripts/ imports." / `pythonpath = ["."]`.
+  (1) (A-C fold, silent-failure scan SF-U0-08, 2026-10-06) Stage U26, with the `addopts` line. A.U26.74 (1)'s "safe for
+  `tests_scripts`: it uses only built-in marks" does not hold: `test_http_client_ceiling_close.py` imports
+  `tests_hardware/bench/test_bus_concurrency_under_api_load.py` (`persistence_write`) and
+  `test_request_timeout_ceiling.py` imports `tests_hardware/bench/test_heap_under_connection_ceiling.py`
+  (`over_provisioned_image`); with `--strict-markers` alone that run fails 2 tests and errors 5 (measured 2026-10-06),
+  and today it only prints 3 `PytestUnknownMarkWarning`s. The marker table (name, help text) moves from
+  `tests_hardware/conftest.py`'s `pytest_configure` into a new `tests_hardware/markers.py` (`MARKERS`, a tuple of
+  pairs); `tests_hardware/conftest.py` registers it as today, `tests_scripts/conftest.py`'s own `pytest_configure`
+  registers the same table, and A.U26.74 (4)'s marker test reads it. Proven by the landing run: `uv run pytest
+  tests_scripts` passes under `--strict-markers` with no unknown-mark warning.
 - **Resolved**: —
-- **Unit**: U27. Stage U26: `addopts` (A.U26.74).
+- **Unit**: U27. Stage U26: `addopts` (A.U26.74), part (1).
 - **Depends**: —
 - **Blast carried by**: `tests_scripts/conftest.py:18` insert goes → A.U27.37 (TSC); marker registration and flag renames
   → A.U26.74 (HW_BENCH, TSC); BACKLOG chroot "pytest pythonpath = ['.']" → A.U27.37 (DOCS), `addopts` line → Gaps.

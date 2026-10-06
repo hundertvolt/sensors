@@ -7,6 +7,13 @@
   "engines": {
     "node": ">=24 <25"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=24 <25",
+      "onFail": "error"
+    }
+  },
   "scripts": {
     "lint": "eslint js tests_js scripts html eslint.config.js vitest.config.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",

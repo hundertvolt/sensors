@@ -1,14 +1,19 @@
 """Every citation in the living text resolves (CLAUDE.md's decision-records rule 5): repo paths, SPEC
 headings, BACKLOG items, no label of a deleted plan. Existing misses sit in _citation_allowlist.txt,
-which only shrinks; `uv run python tests_scripts/test_citations.py --regenerate` rebuilds it."""
+which only shrinks; `uv run python tests_scripts/test_citations.py --regenerate` prunes it."""
 
 import re
+import shutil
+import subprocess
 import sys
+import warnings
+from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+import _repo_scan
 import pytest
-from _repo_scan import REPO_ROOT, git_ignored, git_lines, git_succeeds, is_plain, is_shared_excluded, prose_blocks, read_allowlist, read_text, repo_files, write_allowlist
+from _repo_scan import REPO_ROOT, exit_on_new, git_ignored, git_lines, git_succeeds, is_plain, is_shared_excluded, prose_blocks, read_allowlist, read_text, regenerate_allowlist, repo_files
 
 ALLOWLIST = Path(__file__).resolve().parent / "_citation_allowlist.txt"
 _ALLOWLIST_HEADER = (
@@ -23,6 +28,9 @@ _SELF = frozenset({"tests_scripts/test_citations.py", "tests_scripts/_citation_a
 _PATH_TOKEN = re.compile(r"(?<![\w/$~@.:\\-])((?:\./)?\.?[A-Za-z0-9_][\w.\-]*/[^\s`'\"()\[\],;:|=]*)")
 _MD_NAME = re.compile(r"(?<![\w/$~@.:\\-])([A-Za-z0-9_][\w.\-]*\.md)\b")
 _UPSTREAM_ROOTS = frozenset({"py", "ports", "extmod", "lib", "shared", "tools", "docs", "drivers"})
+# Top-level directories since deleted: a citation into one is checked (and misses) instead of being
+# passed over as not a repo path. A directory joins here in the commit that deletes it.
+_RETIRED_TOPS = frozenset({"improved-quality"})
 _PLACEHOLDER = re.compile(r"[<>{}$\\^+|…]|\.\.\.")
 _GLOB = re.compile(r"[*?]")
 # A file name with a hyphenated suffix glued on ("machine.py-backed") cites the file before it.
@@ -85,10 +93,15 @@ def _known_paths(files: list[str]) -> set[str]:
     return known
 
 
+def _top_entries(files: list[str]) -> set[str]:
+    return {p.split("/", 1)[0] for p in files} | _RETIRED_TOPS
+
+
 def _datasheets_checked() -> bool:
+    """A skip warns rather than prints: pytest shows a warning summary even under -q, never a passing test's output."""
     status = git_lines("submodule", "status", "datasheets")
     if status and status[0].startswith("-"):
-        print("notice: datasheets/ submodule not initialised - paths under it are not checked")
+        warnings.warn("datasheets/ submodule not initialised - paths under it are not checked", stacklevel=2)
         return False
     return True
 
@@ -160,7 +173,7 @@ def _archive_state() -> str:
     if git_succeeds("merge-base", "--is-ancestor", _ARCHIVE_COMMIT, "HEAD"):
         return "ok"
     if git_lines("rev-parse", "--is-shallow-repository") == ["true"]:
-        print(f"notice: shallow clone without {_ARCHIVE_COMMIT} - 'archive §N' citations are not checked")
+        warnings.warn(f"shallow clone without {_ARCHIVE_COMMIT} - 'archive §N' citations are not checked", stacklevel=2)
         return "shallow"
     return "missing"
 
@@ -173,14 +186,24 @@ def _prose_lines(path: str, text: str) -> list[str]:
     return [line for block in prose_blocks(path, text) for line in block.lines]
 
 
-def _file_findings(path: str, lines: list[str], ctx: _Context) -> set[str]:
-    found: set[str] = set()
+def _token_misses(path: str, token: str, ctx: _Context) -> set[str]:
+    """A token under a directory beside the citing file resolves relative to it, else from the root;
+    it misses only when every reading misses, and is then reported as the first reading."""
+    first, here = token.split("/", 1)[0], path.rpartition("/")[0]
+    readings = []
+    if here and f"{here}/{first}" in ctx.known - ctx.files:
+        readings.append(_path_misses(f"{here}/{token}", ctx))
+    if first in ctx.top and first not in _UPSTREAM_ROOTS and (first != "datasheets" or ctx.datasheets):
+        readings.append(_path_misses(token, ctx))
+    return readings[0] if readings and all(readings) else set()
+
+
+def _file_findings(path: str, lines: list[str], ctx: _Context) -> Counter[str]:
+    """Each occurrence counts, so one allow-list line covers one occurrence."""
+    found: Counter[str] = Counter()
     text = "\n".join(lines)
     for match in _PATH_TOKEN.finditer(text):
-        token = _clean_path(match.group(1))
-        first = token.split("/", 1)[0]
-        if first in ctx.top and first not in _UPSTREAM_ROOTS and (first != "datasheets" or ctx.datasheets):
-            found.update(_path_misses(token, ctx))
+        found.update(_token_misses(path, _clean_path(match.group(1)), ctx))
     found.update(m.group(1) for m in _MD_NAME.finditer(text) if m.group(1) not in ctx.md_names)
     for match in _SPEC_PART.finditer(text):
         found.update(f"Part {ident}" for ident in [match.group(1), *_SPEC_PART_TAIL.findall(match.group(2))] if ident not in ctx.spec)
@@ -197,12 +220,12 @@ def _file_findings(path: str, lines: list[str], ctx: _Context) -> set[str]:
     return found
 
 
-def collect_findings() -> set[tuple[str, str]]:
+def collect_findings() -> Counter[tuple[str, str]]:
     files = repo_files()
     scanned = {path: text for path in _scanned_files() if (text := read_text(path)) is not None}
     ctx = _Context(
         files=set(files),
-        top={p.split("/", 1)[0] for p in files},
+        top=_top_entries(files),
         known=_known_paths(files),
         md_names={Path(p).name for p in files if p.endswith(".md")},
         spec=_spec_ids(),
@@ -211,23 +234,23 @@ def collect_findings() -> set[tuple[str, str]]:
         datasheets=_datasheets_checked(),
         archive=_archive_state(),
     )
-    findings = {(path, token) for path, text in scanned.items() for token in _file_findings(path, _prose_lines(path, text), ctx)}
+    findings = Counter({(path, token): n for path, text in scanned.items() for token, n in _file_findings(path, _prose_lines(path, text), ctx).items()})
     ignored = git_ignored({token for _, token in findings if "/" in token or token.endswith(".md")})
-    return {(path, token) for path, token in findings if token not in ignored}
+    return Counter({key: n for key, n in findings.items() if key[1] not in ignored})
 
 
 @pytest.fixture(scope="module")
-def findings() -> set[tuple[str, str]]:
+def findings() -> Counter[tuple[str, str]]:
     return collect_findings()
 
 
-def test_every_citation_resolves_or_is_allow_listed(findings: set[tuple[str, str]]) -> None:
-    new = sorted(findings - read_allowlist(ALLOWLIST))
+def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+    new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
     assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
 
 
-def test_the_allowlist_only_shrinks(findings: set[tuple[str, str]]) -> None:
-    stale = sorted(read_allowlist(ALLOWLIST) - findings)
+def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+    stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
     assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{t}" for p, t in stale)
 
 
@@ -246,14 +269,14 @@ _FIXTURE_CTX = _Context(
 
 def test_each_kind_of_miss_is_caught() -> None:
     text = "See src/gone.py, src/real.py, GONE_PLAN.md, Part A.1, Part B.2, SPEC A.9, BACKLOG item 7, BACKLOG #1, WP3, OR12, archive §4."
-    assert _file_findings("x.md", [text, "U26 and V07 but not `E21`, E21, D65 or B10"], _FIXTURE_CTX) == {
+    assert _file_findings("x.md", [text, "U26 and V07 but not `E21`, E21, D65 or B10"], _FIXTURE_CTX) == Counter([
         "src/gone.py", "GONE_PLAN.md", "Part B.2", "SPEC A.9", "BACKLOG item 7", "WP3", "OR12", "archive §4", "U26", "V07",
-    }
+    ])
 
 
 def test_a_label_the_file_itself_opens_is_defined() -> None:
     lines = ["## Step 1: build", "Then Step 1 again, and Step 2."]
-    assert _file_findings("y.md", lines, replace(_FIXTURE_CTX, archive="ok")) == {"Step 2"}
+    assert _file_findings("y.md", lines, replace(_FIXTURE_CTX, archive="ok")) == Counter(["Step 2"])
 
 
 def test_paths_resolve_through_placeholders_globs_and_alternations() -> None:
@@ -269,12 +292,95 @@ def test_paths_resolve_through_placeholders_globs_and_alternations() -> None:
 
 def test_code_files_are_read_by_their_comments_only() -> None:
     source = 'PATH = "src/gone.py"  # cites src/also_gone.py\n'
-    assert _file_findings("z.py", _prose_lines("z.py", source), _FIXTURE_CTX) == {"src/also_gone.py"}
+    assert _file_findings("z.py", _prose_lines("z.py", source), _FIXTURE_CTX) == Counter(["src/also_gone.py"])
+
+
+def test_a_skipped_check_warns_so_a_quiet_run_still_shows_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    def lines(*args: str) -> list[str]:
+        return ["true"] if args[0] == "rev-parse" else ["-0123456 datasheets"]
+
+    this = sys.modules[__name__]
+    monkeypatch.setattr(this, "git_succeeds", lambda *_: False)
+    monkeypatch.setattr(this, "git_lines", lines)
+    with pytest.warns(UserWarning, match="archive"):
+        assert _archive_state() == "shallow"
+    with pytest.warns(UserWarning, match="datasheets"):
+        assert not _datasheets_checked()
+
+
+def test_a_file_that_is_not_utf8_raises_rather_than_reading_as_no_prose(tmp_path: Path) -> None:
+    (tmp_path / "latin1.md").write_bytes("caf\xe9 cites src/gone.py\n".encode("latin-1"))
+    (tmp_path / "blob.bin").write_bytes(b"\x00\x01")
+    with pytest.raises(UnicodeDecodeError):
+        read_text(str(tmp_path / "latin1.md"))
+    assert read_text(str(tmp_path / "blob.bin")) is None
+
+
+def test_an_unlisted_file_type_raises_rather_than_reading_as_no_prose() -> None:
+    for path in ("tools/probe.jsonc", "scripts/no_suffix", "src/stub.pyi"):
+        with pytest.raises(ValueError, match="no prose reader"):
+            prose_blocks(path, "# cites src/gone.py\n")
+    assert prose_blocks("package.json", "{}") == prose_blocks(".nvmrc", "24\n") == prose_blocks("ext/LICENSE-x", "MIT") == []
+
+
+def test_every_scanned_text_file_has_a_prose_reader_or_is_listed_prose_free() -> None:
+    for path in repo_files():
+        if not is_shared_excluded(path) and read_text(path) is not None:
+            prose_blocks(path, "")
+
+
+def test_citations_into_a_retired_top_level_directory_are_checked() -> None:
+    ctx = replace(_FIXTURE_CTX, top=_top_entries(sorted(_FIXTURE_CTX.files)))
+    assert _file_findings("x.md", ["Moved out of improved-quality/old.py into src/real.py."], ctx) == Counter({"improved-quality/old.py": 1})
+
+
+def test_a_path_under_a_directory_beside_the_citing_file_resolves_relative_to_it() -> None:
+    files = ["SPECIFICATION.md", "hw/README.md", "hw/flash/t.py", "hw/src/x.py", "src/real.py"]
+    ctx = replace(_FIXTURE_CTX, files=set(files), top=_top_entries(files), known=_known_paths(files))
+    lines = ["flash/t.py, flash/gone.py, src/x.py, src/real.py, src/none.py"]
+    assert _file_findings("hw/README.md", lines, ctx) == Counter({"hw/flash/gone.py": 1, "hw/src/none.py": 1})
+    assert _file_findings("README.md", lines, ctx) == Counter({"src/x.py": 1, "src/none.py": 1})
+
+
+def test_each_occurrence_counts_and_one_allow_list_line_covers_one(tmp_path: Path) -> None:
+    assert _file_findings("x.md", ["See WP3, src/gone.py and WP3 again"], _FIXTURE_CTX) == Counter({"WP3": 2, "src/gone.py": 1})
+    listed = tmp_path / "allow.txt"
+    listed.write_text("# header\nx.md\tWP3\n", encoding="utf-8")
+    assert Counter({("x.md", "WP3"): 2}) - read_allowlist(listed) == Counter({("x.md", "WP3"): 1})
+
+
+def test_regenerate_only_shrinks_and_names_what_it_did_not_add(tmp_path: Path) -> None:
+    listed, header = tmp_path / "allow.txt", ("h",)
+    first = Counter([("a.md", "X"), ("a.md", "X"), ("b.md", "Y")])
+    assert regenerate_allowlist(listed, header, first) == []
+    assert read_allowlist(listed) == first
+    assert regenerate_allowlist(listed, header, Counter([("a.md", "X"), ("c.md", "Z"), ("c.md", "Z")])) == [("c.md", "Z"), ("c.md", "Z")]
+    assert read_allowlist(listed) == Counter([("a.md", "X")])
+    before = listed.read_bytes()
+    assert regenerate_allowlist(listed, header, Counter([("a.md", "X")])) == []
+    assert listed.read_bytes() == before
+    with pytest.raises(SystemExit, match=r"c\.md"):
+        exit_on_new("allow.txt", [("c.md", "Z")])
+
+
+def test_a_listing_without_specification_md_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    git = shutil.which("git") or "git"
+    subprocess.run([git, "init", "-q", str(tmp_path)], check=True)
+    copy = tmp_path / "copy"
+    copy.mkdir()
+    (copy / "SPECIFICATION.md").write_text("# an untracked copy nested in another repository\n")
+    monkeypatch.setattr(_repo_scan, "REPO_ROOT", copy)
+    with pytest.raises(RuntimeError, match=r"SPECIFICATION\.md"):
+        repo_files()
+    (copy / "other.txt").write_text("tracked by the outer repository\n")
+    subprocess.run([git, "-C", str(tmp_path), "add", "copy/other.txt"], check=True)
+    with pytest.raises(RuntimeError, match=r"SPECIFICATION\.md"):
+        repo_files()
 
 
 def _regenerate() -> None:
-    write_allowlist(ALLOWLIST, _ALLOWLIST_HEADER, collect_findings())
-    print(f"wrote {ALLOWLIST.relative_to(REPO_ROOT)}")
+    new = regenerate_allowlist(ALLOWLIST, _ALLOWLIST_HEADER, collect_findings())
+    exit_on_new(str(ALLOWLIST.relative_to(REPO_ROOT)), new)
 
 
 if __name__ == "__main__":

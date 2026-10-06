@@ -8,7 +8,10 @@ import io
 import re
 import shutil
 import subprocess
+import sys
 import tokenize
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +28,10 @@ SHARED_EXCLUDED_FILES = frozenset({"PROJECT_AUDIT_PLAN.md", "uv.lock", "package-
 _HASH_SUFFIXES = frozenset({".sh", ".toml", ".yml", ".yaml", ".ini", ".cfg", ".mk", ".gitignore"})
 _SLASH_SUFFIXES = frozenset({".js", ".mjs", ".cjs", ".ts", ".css"})
 _PLAIN_SUFFIXES = frozenset({".md", ".txt"})
+# Types with no comment syntax to read (tsconfig*.json aside); any other unread type raises in
+# prose_blocks(), so a new one cannot drop out of the checks unseen.
+_NO_PROSE_SUFFIXES = frozenset({".json", ".nvmrc"})
+_NO_PROSE_NAMES = ("LICENSE*",)
 _TRAILING_HASH = re.compile(r"\s#(?:\s|$)")
 _RULE_LINE = re.compile(r"^\s*[-=~*#]{4,}\s*$")
 
@@ -56,8 +63,14 @@ def git_ignored(paths: set[str]) -> set[str]:
 
 
 def repo_files() -> list[str]:
+    """The tracked files; a listing without SPECIFICATION.md (a copy nested untracked in another
+    repository lists nothing) raises, since every check would otherwise pass on an empty scan."""
     listed = subprocess.run([_GIT, "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True, check=True).stdout
-    return sorted({p for p in listed.decode().split("\0") if p and (REPO_ROOT / p).is_file()})
+    files = sorted({p for p in listed.decode().split("\0") if p and (REPO_ROOT / p).is_file()})
+    if "SPECIFICATION.md" not in files:
+        msg = f"git ls-files in {REPO_ROOT} lists no SPECIFICATION.md - not this repository's own checkout"
+        raise RuntimeError(msg)
+    return files
 
 
 def is_shared_excluded(path: str) -> bool:
@@ -67,14 +80,16 @@ def is_shared_excluded(path: str) -> bool:
 
 
 def read_text(path: str) -> str | None:
-    """The file's text, or None for a binary or non-UTF-8 file (neither carries prose to check)."""
+    """The file's text, or None for a binary file (a NUL byte). A text file that is not UTF-8 raises,
+    as import placement's own read does, rather than reading as a file with no prose."""
     raw = (REPO_ROOT / path).read_bytes()
     if b"\0" in raw[:8192]:
         return None
     try:
         return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
+    except UnicodeDecodeError as exc:
+        exc.add_note(f"while reading {path}")
+        raise
 
 
 def _suffix(path: str) -> str:
@@ -216,19 +231,38 @@ def prose_blocks(path: str, text: str) -> list[Block]:
         return _slash_blocks(path, text)
     if suffix == ".html":
         return _html_blocks(path, text)
-    return []
+    if suffix in _NO_PROSE_SUFFIXES or any(fnmatch.fnmatch(Path(path).name, glob) for glob in _NO_PROSE_NAMES):
+        return []
+    msg = f"{path}: no prose reader for this file type - add one to _repo_scan.py, or list the type as prose-free there"
+    raise ValueError(msg)
 
 
-def read_allowlist(path: Path) -> set[tuple[str, str]]:
-    entries = set()
+def read_allowlist(path: Path) -> Counter[tuple[str, str]]:
+    """One line covers one occurrence: a miss repeated in a file is listed as often as it occurs."""
+    entries: Counter[tuple[str, str]] = Counter()
     for line in path.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#"):
             file_path, _, token = line.partition("\t")
-            entries.add((file_path, token))
+            entries[(file_path, token)] += 1
     return entries
 
 
-def write_allowlist(path: Path, header: tuple[str, ...], entries: set[tuple[str, str]]) -> None:
+def write_allowlist(path: Path, header: tuple[str, ...], entries: Counter[tuple[str, str]]) -> None:
     """Sorted and newline-terminated, so a rerun over an unchanged tree rewrites the same bytes."""
-    lines = [f"# {line}" for line in header] + [f"{file_path}\t{token}" for file_path, token in sorted(entries)]
+    lines = [f"# {line}" for line in header] + [f"{file_path}\t{token}" for file_path, token in sorted(entries.elements())]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def regenerate_allowlist(path: Path, header: tuple[str, ...], current: Counter[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Writes previous & current, so the list only shrinks, and returns the new findings it left out;
+    with no list yet (a check's own landing) it writes the whole current set."""
+    previous = read_allowlist(path) if path.exists() else current
+    write_allowlist(path, header, previous & current)
+    return sorted((current - previous).elements())
+
+
+def exit_on_new(written: str, new: Sequence[tuple[str, ...]]) -> None:
+    """A --regenerate's last step: exit 1 naming each finding it refused to list."""
+    print(f"wrote {written}")
+    if new:
+        sys.exit("not listed - the list only shrinks; fix these in the text:\n" + "\n".join("  " + "\t".join(entry) for entry in new))

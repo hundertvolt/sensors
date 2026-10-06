@@ -124,6 +124,8 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U26 | SF-M4-10: a power-off FRAM CS residual sentence in SPEC C.3.1 and a manual oscilloscope-only bench step | an earlier drop of a CS scope item covered power-on only; if it extends to power-off, M.SPEC.049 (5), M.HW_BENCH.101 (6) and the R2 row of M.DOCS.064 (f) go together |
 | U26 | SF-A open point (SCD30 NVM write cut by power loss): the manual bench step spends up to 21 SCD30 NVM writes, behind `confirm()` in a manual script | the owner can decline it at the step; nothing runs before Phase C |
 | post-audit | SF-B16: no wire change for declined-vs-lost on the UART; recorded for C reconciliation | the wire format is frozen (owner, 2026-09-25) |
+| U26 | SF-U0-08: the hardware marker table moves to a new `tests_hardware/markers.py`, registered by both conftests | the owner rule keeps registration and reasons in `tests_hardware/`; one table cannot drift; reversible |
+| U0 | The citation and vocabulary allow-lists grew once (108 → 169 and 691 → 733 lines) when the checks began counting each occurrence and reading citations into `improved-quality/` (SF-U0-03, SF-U0-04): existing text only, no new text; every later regenerate only prunes | rewriting that text in U0 would pull later units' doc edits forward; the lists still only shrink from here |
 
 ## Parked deltas (OR2.c, OR106.a)
 
@@ -199,6 +201,7 @@ Findings during execution that need a change outside the work order; each passes
 | Phase C (hardware), U16 | SF-M4-10 (agent, low): the FRAM datasheet requires CS > 0.8·VDD during power-on and power-off; every RP2040 reset lets CS fall. One scope check on the bench. Full entry: `audit/sweeps/scan_runs/20261006_bymode_M4_host_pairs.md`. | folded (M.SPEC.049 (5); M.HW_BENCH.101 (6); M.HW_BENCH.131 (1)) |
 | U26, U33 | SF-M4-11 (agent, low): after 511 unread host bytes Ctrl-C no longer reaches the autostart image, which looks like a board fault on the bench. A README line. Full entry: `audit/sweeps/scan_runs/20261006_bymode_M4_host_pairs.md`. | folded (M.HW_BENCH.127 (1)) |
 | U24 | SF-U0-07 (b) (agent): `tests_scripts/test_live_twin_ceiling_parser.py` runs its JS on whatever Node is on `PATH`; CI's test.sh jobs have no setup-node, so the runner image's Node runs it, not the `.nvmrc` one. Minimal fix: assert the major, and give the three jobs the pinned Node. Full entry: `audit/sweeps/scan_runs/20261006_U0_close.md`. | folded (M.TSC.169 (1); M.TOOL.013 (1)) |
+| U26 | SF-U0-08 (agent): A.U26.74 (1) turns on `--strict-markers` on the claim that `tests_scripts` uses only built-in marks, but two of its files import bench modules carrying `persistence_write` and `over_provisioned_image`; the step as written fails 2 tests and errors 5 (measured 2026-10-06), and today the run prints 3 unknown-mark warnings. Minimal fix: one marker table both conftests register. Full entry: `audit/sweeps/scan_runs/20261006_U0_close.md`. | folded (M.TOOL.034 (1)) |
 
 ## Findings
 
