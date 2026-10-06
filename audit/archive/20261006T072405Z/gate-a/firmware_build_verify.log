@@ -1,0 +1,127 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/gate-a
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collected 20 items / 14 deselected / 6 selected
+
+tests_scripts/test_build_firmware.py .....F                              [100%]
+
+=================================== FAILURES ===================================
+_____________ test_real_firmware_build_produces_a_valid_uf2[wozi] ______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/gate-a')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-22/test_real_firmware_build_produ5')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    @pytest.mark.skipif(
+        os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
+        reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
+        "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
+    )
+    def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Path, device: str) -> None:
+        # The end-to-end proof Part B.11 asked for: a real firmware.uf2 from the same script and
+        # manifest a device build uses, not just the staging logic above. Needs the toolchain already
+        # installed, which test.sh and the unit-tests job both provision first.
+    
+        # Parametrized over all six real devices, each with its own boot entry that must compile and
+        # freeze cleanly. CI runs them as a per-device matrix; locally `-k` selects one.
+        output = tmp_path / f"firmware-{device}.uf2"
+        result = _run_cli(repo_root, [device, "--output", str(output)])
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: 
+E         == Building the real website for device='wozi'
+E         Writing Python file /tmp/tmpyg538eog/stage/frozen_html.py.
+E         Appended folder /tmp/tmp.dvhmnDjDfS as /.
+E         Appended file   /tmp/tmp.dvhmnDjDfS/index.html.gz (7175 bytes) as /index.html.gz
+E         Appended folder /tmp/tmp.dvhmnDjDfS/js as /js
+E         Appended file   /tmp/tmp.dvhmnDjDfS/js/app.js.gz (16292 bytes) as /js/app.js.gz
+E         Sum of file sizes 23467 bytes, 2 files 2 folders
+E         On import the file system will be mounted at /html.
+E         /tmp/tmpyg538eog/stage/frozen_html.py written successfully.
+E         Wrote /tmp/tmpyg538eog/stage/frozen_html.py (mounts at /html on import)
+E         
+E         == Cleaning /root/pico-toolchain/micropython/mpy-cross/build before rebuilding
+E         
+E         == Building mpy-cross
+E         $ make -j4   (cwd=/root/pico-toolchain/micropython/mpy-cross)
+E         Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+E         mkdir -p build/genhdr
+E         mkdir -p build/
+E         mkdir -p build/py/
+E         mkdir -p build/shared/runtime/
+E         GEN build/genhdr/mpversion.h
+E         GEN build/genhdr/qstr.i.last
+E         GEN build/genhdr/qstr.split
+E         GEN build/genhdr/moduledefs.split
+E         GEN build/genhdr/root_pointers.split
+E         GEN build/genhdr/moduledefs.collected
+E         GEN build/genhdr/root_pointers.collected
+E         GEN build/genhdr/qstrdefs.collected.h
+E         Module registrations updated
+E         GEN build/genhdr/moduledefs.h
+E         QSTR updated
+E         Root pointer registrations updated
+E         GEN build/genhdr/qstrdefs.generated.h
+E         GEN build/genhdr/root_pointers.h
+E         CC ../py/mpstate.c
+E         CC ../py/nlr.c
+E         CC ../py/nlrx86.c
+E         CC ../py/nlrx64.c
+E         CC ../py/nlrthumb.c
+E         CC ../py/nlraarch64.c
+E         CC ../py/nlrmips.c
+E         CC ../py/nlrpowerpc.c
+E         cp: cannot stat 'build/py/nlrthumb.d': No such file or directory
+E         /bin/sh: 1: cannot open build/py/nlrthumb.d: No such file
+E         cp: cannot stat 'build/py/nlraarch64.d': No such file or directory
+E         /bin/sh: 1: cannot open build/py/nlraarch64.d: No such file
+E         CC ../py/nlrxtensa.c
+E         In file included from ../py/nlrmips.c:27:
+E         ../py/mpstate.h:218:14: fatal error: genhdr/root_pointers.h: No such file or directory
+E           218 |     #include "genhdr/root_pointers.h"
+E               |              ^~~~~~~~~~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         CC ../py/nlrrv32.c
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/nlrmips.o] Error 1
+E         make: *** Waiting for unfinished jobs....
+E         In file included from ../py/obj.h:33,
+E                          from ../py/mpstate.h:35,
+E                          from ../py/nlrpowerpc.c:27:
+E         ../py/qstr.h:43:14: fatal error: genhdr/qstrdefs.generated.h: No such file or directory
+E            43 |     #include "genhdr/qstrdefs.generated.h"
+E               |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         In file included from ../py/obj.h:33,
+E                          from ../py/mpstate.h:35,
+E                          from ../py/nlrxtensa.c:27:
+E         ../py/qstr.h:43:14: fatal error: genhdr/qstrdefs.generated.h: No such file or directory
+E            43 |     #include "genhdr/qstrdefs.generated.h"
+E               |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/nlrpowerpc.o] Error 1
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/nlrxtensa.o] Error 1
+E         In file included from ../py/obj.h:33,
+E                          from ../py/mpstate.h:35,
+E                          from ../py/nlrrv32.c:27:
+E         ../py/qstr.h:43:14: fatal error: genhdr/qstrdefs.generated.h: No such file or directory
+E            43 |     #include "genhdr/qstrdefs.generated.h"
+E               |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E         compilation terminated.
+E         -e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+E         make: *** [../py/mkrules.mk:113: build/py/nlrrv32.o] Error 1
+E         
+E         
+E         FAILED: command failed (exit 2): make -j4
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/gate-a/.venv/...e: *** [../py/mkrules.mk:113: build/py/nlrrv32.o] Error 1\n\n', stderr='\nFAILED: command failed (exit 2): make -j4\n').returncode
+
+tests_scripts/test_build_firmware.py:211: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi]
+============ 1 failed, 5 passed, 14 deselected in 231.33s (0:03:51) ============

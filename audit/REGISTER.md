@@ -74,7 +74,11 @@ Applied from the first executing agent on:
   `flock /tmp/sensors-audit-ports.lock` until U0 proves network-namespace isolation (M.PROC.003 (5a)); firmware builds
   under `flock /tmp/sensors-audit-toolchain.lock`. Isolation proven 2026-10-06 (U0 record (5a)): from then on each
   port-binding command runs in its own network namespace (`unshare -n`, `lo` up) instead of taking the ports lock, and
-  parallel twin runs each get their own worktree, since the twin keeps its state in the tree. A private toolchain copy (with its own `setcap`) only when the shared
+  parallel twin runs each get their own worktree, since the twin keeps its state in the tree.
+- Every firmware build cleans the shared `mpy-cross/build`, so builds and `setup_toolchain.py test` run under the toolchain
+  lock; `test` also rebuilds the shared `build-standard` Unix port, so it runs only while no suite or twin is running (learned 2026-10-06:
+  the baseline harness, started before the lock existed, built unlocked over a gate's build and broke both; both re-ran
+  alone and passed). A private toolchain copy (with its own `setcap`) only when the shared
   one is locked longer than the agent can wait, never by default.
 - Before a rerun, the twin's FRAM log is read; `digital_twin/fram_state.json`, `digital_twin/scd30_state.json`,
   `digital_twin_ci_logs/`, `htmlcov*/`, `coverage*.xml` and failed-run output move to `audit/archive/<UTC timestamp>/`
@@ -112,4 +116,4 @@ Findings during execution that need a change outside the work order; each passes
 
 | ID | title | area | severity | status |
 |---|---|---|---|---|
-| X01 | `tests/test_uart_comm_hazard.py` `_hammer_faulted` (`:1077`): the per-failure retention bound (< 16 B) failed once in family (b)'s gate at `-1` (704 B over 30 failures = 23.5 B) on a 4-core host carrying two gates, twelve twins and the baseline; the test and everything it imports are byte-identical to the baseline; 10/10 repeats under the same load pass. Unconfirmed: re-run alone before the gate counts; the bound's load sensitivity goes to U30's restructure of this measurement (`M.TEST_UNIT`, `_hammer_faulted.hammer`) | tests | low | open |
+| X01 | `tests/test_uart_comm_hazard.py` `_hammer_faulted` (`:1077`): the per-failure retention bound (< 16 B) failed once in family (b)'s gate at `-1` (704 B over 30 failures = 23.5 B) on a 4-core host carrying two gates, twelve twins and the baseline; the test and everything it imports are byte-identical to the baseline; 10/10 repeats under the same load pass, and the gate's `-1` row re-run alone passes (87/87). Not reproduced alone; the bound's load sensitivity goes to U30's restructure of this measurement (`M.TEST_UNIT`, `_hammer_faulted.hammer`) | tests | low | open |
