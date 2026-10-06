@@ -2,9 +2,9 @@
 environment setup) in isolation: the pure-Python detection/idempotency/argument-parsing logic,
 mocked against fake /sys trees and a fake run() - never real hardware, sudo, or network."""
 
-# dev_legacy/README.md defines what "flash" and "bench" mean and holds the manual nmcli recipe
-# this automates. End-to-end behavior - USB detection, the bridge and AP working - is proven on
-# the real bench unit instead, the same real-thing-not-stubs split Part E.1 draws.
+# README.md's tier table defines 'flash' and 'bench'; tests_hardware/README.md holds the manual nmcli
+# recipe this automates. End-to-end behavior - USB detection, the bridge and AP working - is proven
+# on the real bench unit instead, the same real-thing-not-stubs split Part E.1 draws.
 
 import os
 import subprocess

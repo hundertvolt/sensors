@@ -40,7 +40,7 @@ dev = [
 # installs them into typings/ (CLAUDE.md).
 
 # Lint/type scope is the eight directories CLAUDE.md's "Code quality tooling" lists; the legacy tree
-# (python/, modules/) is never in scope. tests_hardware/device_scripts/ joined after a driver
+# (legacy/) is never in scope. tests_hardware/device_scripts/ joined after a driver
 # signature change broke two unchecked scripts for a day.
 
 [tool.ruff]

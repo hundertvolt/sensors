@@ -20,9 +20,7 @@ _GIT = shutil.which("git") or "git"
 
 # The legacy tree is reference-only (CLAUDE.md legacy rule) and stays out of every check. The audit
 # working set is excluded until its close deletes it; arduino/ and ext/ are not this project's text.
-LEGACY_PREFIXES = ("python/", "modules/", "html_raw/", "dev_legacy/")
-LEGACY_ROOT_GLOBS = ("build-*.sh", "update_and_install.txt")
-SHARED_EXCLUDED_PREFIXES = (*LEGACY_PREFIXES, "arduino/", "ext/", "audit/", "datasheets/", "node_modules/")
+SHARED_EXCLUDED_PREFIXES = ("legacy/", "arduino/", "ext/", "audit/", "datasheets/", "node_modules/")
 SHARED_EXCLUDED_FILES = frozenset({"PROJECT_AUDIT_PLAN.md", "uv.lock", "package-lock.json"})
 
 _HASH_SUFFIXES = frozenset({".sh", ".toml", ".yml", ".yaml", ".ini", ".cfg", ".mk", ".gitignore"})
@@ -74,9 +72,7 @@ def repo_files() -> list[str]:
 
 
 def is_shared_excluded(path: str) -> bool:
-    if path in SHARED_EXCLUDED_FILES or path.startswith(SHARED_EXCLUDED_PREFIXES):
-        return True
-    return "/" not in path and any(fnmatch.fnmatch(path, glob) for glob in LEGACY_ROOT_GLOBS)
+    return path in SHARED_EXCLUDED_FILES or path.startswith(SHARED_EXCLUDED_PREFIXES)
 
 
 def read_text(path: str) -> str | None:

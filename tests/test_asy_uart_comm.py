@@ -2034,11 +2034,11 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
         assert pair.initiator._holdoff_active is True, kind
 
 # ===========================================================================
-# Conformance with the legacy BSEC use case (dev_legacy/asy_bsec_driver.py)
+# Conformance with the legacy BSEC use case (legacy/dev_drivers/asy_bsec_driver.py)
 # ===========================================================================
 # A demonstration, deliberately not a constraint - the module is standalone and this use case
 # constrains nothing about its design (SPECIFICATION.md Part J.1). Sizes and command ids are the
-# ones dev_legacy/sensortask-dev.py actually deployed.
+# ones legacy/dev_drivers/sensortask-dev.py actually deployed.
 
 _BSEC_GET_MEASUREMENTS = 0x20
 _BSEC_GET_STATE = 0x21
@@ -2135,9 +2135,9 @@ def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
 
 
 def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
-    # dev_legacy/ext_uart.py, the exploratory script found on the board, exercised two shapes the BSEC
-    # driver does not: a GET declaring an expected size of exactly zero - an answer that must be empty, a
-    # different claim from "don't care" - and a SET whose payload is an empty bytearray rather than None.
+    # legacy/dev_drivers/ext_uart.py, the exploratory script found on the board, exercised two shapes
+    # the BSEC driver does not: a GET declaring an expected size of exactly zero - an answer that must be
+    # empty, a different claim from "don't care" - and a SET whose payload is an empty bytearray, not None.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(0)))
     empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)), limit=20)
     assert empty is not None and len(empty) == 0, empty  # empty, not None (J.9)

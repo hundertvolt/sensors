@@ -175,9 +175,9 @@ function dispatchRangedAction(rawValue, min, max, dest, destKey) {
     return "Valid";
 }
 
-// Legacy's own led_cmd() bounds (modules/sensortask-wozi.py), now enforced server-side too
-// (src/sensortask_wozi.py's _notification_led_callback(), synthetic FieldSchema records) instead
-// of silently clamping/flooring - see this function's own docstring below.
+// Legacy's own led_cmd() bounds (the legacy firmware's sensortask module, legacy/firmware/modules/),
+// now enforced server-side too (src/sensortask_wozi.py's _notification_led_callback(), synthetic
+// FieldSchema records) instead of silently clamping/flooring - see this function's docstring below.
 const LIGHT_CMD_LED_RGB_MIN = 0;
 const LIGHT_CMD_LED_RGB_MAX = 255;
 const LIGHT_CMD_LED_T_MIN = 0.5;

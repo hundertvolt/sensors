@@ -339,8 +339,8 @@ jobs:
         run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 
   shellcheck:
-    # Its own stage so the tool has its own check run. scripts/ only: the legacy build-*.sh are out
-    # of scope forever (CLAUDE.md).
+    # Its own stage so the tool has its own check run. scripts/ only: the legacy tree is never in
+    # scope (CLAUDE.md).
     permissions:
       contents: read
     runs-on: ubuntu-latest

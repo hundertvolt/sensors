@@ -1,5 +1,5 @@
 # arzi.toml - distinct wiring from the "neu" family (klkizi/grkizi/schlafzi), no bmp3xx.
-# Wiring sourced from modules/sensortask-arzi.py (legacy, read-only reference).
+# Wiring sourced from legacy/firmware/modules/sensortask-arzi.py (legacy, read-only reference).
 
 [device]
 name = "Arzi"

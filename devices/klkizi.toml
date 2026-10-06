@@ -1,6 +1,6 @@
 # klkizi.toml - one of three "ArZi neu" units (own file for expected future hardware divergence
 # from grkizi/schlafzi), no bmp3xx.
-# Wiring sourced from modules/sensortask-neu.py (legacy, read-only reference).
+# Wiring sourced from legacy/firmware/modules/sensortask-neu.py (legacy, read-only reference).
 
 [device]
 name = "Klkizi"

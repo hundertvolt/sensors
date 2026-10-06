@@ -16,8 +16,8 @@ away.
   `ext/microdot.py`, pinned `v2.7.0` — verified byte-identical to that tag, with upstream's type stubs
   `ext/typings/microdot/` copied unmodified from the same tag; a legacy copy of a
   much older, untagged snapshot between `v2.0.1` and `v2.1.0` also ships as
-  `python/CommonDrivers/microdot.py`) — © 2019 Miguel Grinberg, MIT. License text:
-  `ext/LICENSE-microdot`. See `CLAUDE.md`/`SPECIFICATION.md` Part A.5 for this project's
+  `legacy/firmware/python/CommonDrivers/microdot.py`) — © 2019 Miguel Grinberg, MIT. License
+  text: `ext/LICENSE-microdot`. See `CLAUDE.md`/`SPECIFICATION.md` Part A.5 for this project's
   hands-off vendoring policy for this file.
 - **freezefs** ([`bixb922/freezefs`](https://github.com/bixb922/freezefs), `ext/freezefs/`) — ©
   2022 bixb922, MIT. License text: `ext/freezefs/LICENSE`. Upstream publishes no release tags, so
@@ -35,9 +35,9 @@ applies to the one non-Adafruit file below. The following `src/` files are deriv
 - `src/asy_isl29125_driver.py` — restructured for asyncio/buildgen from
   [`jposada202020/MicroPython_ISL29125`](https://github.com/jposada202020/MicroPython_ISL29125)
   (archived/deprecated December 2024), © 2023 Jose D. Montoya, MIT. Not the same file as the
-  pre-refactor `python/IndividualDrivers/asy_isl29125_driver.py` listed under "Shipped but not
-  promoted" below - that copy is separate, legacy, out-of-scope code (CLAUDE.md's "reference-only,
-  forever" rule) and carries its own identical attribution already.
+  pre-refactor `legacy/firmware/python/IndividualDrivers/asy_isl29125_driver.py` listed under
+  "Shipped but not promoted" below - that copy is separate, legacy, out-of-scope code (CLAUDE.md's
+  "reference-only, forever" rule) and carries its own identical attribution already.
 - `src/asy_scd30_driver.py` — from Adafruit's
   [`Adafruit_CircuitPython_SCD30`](https://github.com/adafruit/Adafruit_CircuitPython_SCD30),
   © 2020 Bryan Siepert for Adafruit Industries, MIT.
@@ -105,7 +105,7 @@ rather than a restructure, so that it stays diffable against its reference:
   BSD-3-Clause is noted here for completeness of the full provenance chain, not because this
   project owes it a separate notice.
 
-## Shipped but not promoted (`python/IndividualDrivers/`, pre-refactor, dev-rig-only sensors)
+## Shipped but not promoted (`legacy/firmware/python/IndividualDrivers/`, pre-refactor, dev-rig-only sensors)
 
 These still carry their own correct SPDX/MIT headers in place and need no change:
 
@@ -116,9 +116,9 @@ These still carry their own correct SPDX/MIT headers in place and need no change
   [`Adafruit_CircuitPython_SHTC3`](https://github.com/adafruit/Adafruit_CircuitPython_SHTC3),
   © 2017 Scott Shawcroft / © 2020 Bryan Siepert for Adafruit Industries, MIT.
 
-`python/IndividualDrivers/asy_isl29125_driver.py` used to be listed here too. It is still in the
-tree, still carrying its own correct header, and still reference-only — but the promoted
-`src/asy_isl29125_driver.py` is now the one that ships, so its entry moved up to
+`legacy/firmware/python/IndividualDrivers/asy_isl29125_driver.py` used to be listed here too. It
+is still in the tree, still carrying its own correct header, and still reference-only — but the
+promoted `src/asy_isl29125_driver.py` is now the one that ships, so its entry moved up to
 "Restructured/rewritten" above rather than being duplicated in both places.
 
 ## Apache License 2.0 (derived, kept as a separate license within this MIT repo)
@@ -126,10 +126,10 @@ tree, still carrying its own correct header, and still reference-only — but th
 Per `SPECIFICATION.md` Part F.4, this project's own MIT license does not override the terms
 attached to code derived from an Apache-2.0 project - the derived portion stays under Apache-2.0.
 
-- `src/captive_dns.py`'s `DNSQuery` class (and its pre-refactor `python/CommonDrivers/`
-  ancestor) - the packet parsing/building logic (variable names `tipo`/`ini`/`lon`, the exact
-  `\x81\x80` header/`\xC0\x0C` pointer/`0x3C` TTL byte layout, and matching inline comments) is a
-  near-verbatim derivative of
+- `src/captive_dns.py`'s `DNSQuery` class (and its pre-refactor
+  `legacy/firmware/python/CommonDrivers/` ancestor) - the packet parsing/building logic (variable
+  names `tipo`/`ini`/`lon`, the exact `\x81\x80` header/`\xC0\x0C` pointer/`0x3C` TTL byte
+  layout, and matching inline comments) is a near-verbatim derivative of
   [`p-doyle/Micropython-DNSServer-Captive-Portal`](https://github.com/p-doyle/Micropython-DNSServer-Captive-Portal)'s
   `main.py`, licensed Apache License 2.0. That upstream repo's own `LICENSE` file ships the
   Apache-2.0 boilerplate with the copyright-holder line unfilled; "p-doyle" (the GitHub account
@@ -164,11 +164,11 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   rp2/cyw43 `AP_IF` path via a live upstream report,
   [`micropython/micropython#17401`](https://github.com/micropython/micropython/issues/17401) (AP-mode
   DHCP server ignoring a custom `ifconfig()` subnet). This project has no DHCP server of its own
-  anywhere in `src/`, `python/`, `modules/`, or `digital_twin/` - confirmed by
-  exhaustive search (protocol bytes, ports, opcodes, class names) and by a full history scan, including
-  for the specific "single fixed IP to one client" shape the project owner remembered possibly having
-  built at some point (no match found in this repo's history either). Also checked and ruled out on
-  this basis:
+  anywhere in `src/`, `legacy/firmware/python/`, `legacy/firmware/modules/`, or `digital_twin/` -
+  confirmed by exhaustive search (protocol bytes, ports, opcodes, class names) and by a full
+  history scan, including for the specific "single fixed IP to one client" shape the project owner
+  remembered possibly having built at some point (no match found in this repo's history either).
+  Also checked and ruled out on this basis:
   [`urg/micropython-captive-dhcp-server`](https://github.com/urg/micropython-captive-dhcp-server)
   (MIT, also on PyPI as `micropython-captive-dhcp-server`) - nothing in this repo to compare it
   against.
@@ -186,12 +186,13 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   - `asy_udp_client.py`'s `AsyUDPClient` class — a `select.poll()`-based async UDP wrapper with a
     lazy `_connect()`, a `ready(mask, timeout_ms)` poll-and-wait helper, and a combined
     send-then-receive-with-retries method — is structurally close to this project's own
-    `AsyUDPSocket` (`src/asy_udp_socket.py`, `python/CommonDrivers/asy_udp_socket.py`): the same
-    overall shape (lazy connect, a `ready()`/poll gate, a paired write+read convenience method,
-    explicit `disconnect()` teardown), though method names differ (`send`/`receive` vs.
-    `write`/`recvfrom`, `send_and_receive` vs. `write_and_recvfrom`) and this project's version is
-    materially more built out (locking, retries, context-manager support, input validation,
-    `mode="server"` support karfas's client-only class doesn't have).
+    `AsyUDPSocket` (`src/asy_udp_socket.py`,
+    `legacy/firmware/python/CommonDrivers/asy_udp_socket.py`): the same overall shape (lazy
+    connect, a `ready()`/poll gate, a paired write+read convenience method, explicit
+    `disconnect()` teardown), though method names differ (`send`/`receive` vs. `write`/`recvfrom`,
+    `send_and_receive` vs. `write_and_recvfrom`) and this project's version is materially more
+    built out (locking, retries, context-manager support, input validation, `mode="server"`
+    support karfas's client-only class doesn't have).
   - `karfas/upy-simple-app` carries no `LICENSE` file, license badge, `README.md`, or header
     comment in either file - confirmed directly. On its own, that would mean no permission granted
     under default copyright law (unlike the permissively-licensed Apache-2.0 `captive_dns.py` case

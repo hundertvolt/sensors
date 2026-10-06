@@ -14,14 +14,14 @@ if one you need isn't there rather than falling back to web search/training memo
 
 ## Platform target
 
-**The concrete facts** — MicroPython 1.26/RP2040 specifics, what the audit of the `v1.29.0` pin found (Part F.5),
-the WDT 8388ms cap, RP2040 hardware specs, the soft-Timer-callback-drop gotcha, the `[x] * n`
-segfault range, `Timer.init()`'s `OSError(ENOMEM)` case, the
-`MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation — **live in
-`SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime Facts).** Read Part F before
-any platform-facing code work; don't rely on memory of it, and don't re-derive these from training
-memory or general Python knowledge — they were confirmed against real MicroPython source, not
-assumed.
+**The concrete facts** — MicroPython 1.29.0/RP2040 specifics (the legacy units run 1.24.1), what the
+audit of the `v1.29.0` pin found (Part F.5), the WDT 8388ms cap, RP2040 hardware specs, the
+soft-Timer-callback-drop gotcha, the `[x] * n` segfault range, `Timer.init()`'s `OSError(ENOMEM)`
+case, the `MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation —
+**live in `SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime Facts).** Read Part F
+before any platform-facing code work; don't rely on memory of it, and don't re-derive these from
+training memory or general Python knowledge — they were confirmed against real MicroPython source,
+not assumed.
 
 Three standing AI-session practices (not facts, kept here since they're instructions, not
 information):
@@ -74,8 +74,9 @@ information):
   owner exception" rule no longer has anything to apply to; the one precedent it set (the
   `ConfigManager`/`LockedValue` wrong-module-import fix) stays as a precedent for any future
   severity-justified exception to a similar "don't touch this WIP/vendored code" rule elsewhere in
-  this file (see the `python/CommonDrivers/microdot.py`/`ext/microdot.py` vendoring rule and the
-  `modules/_boot.py` rule below), not something that needs a live `improved-quality/` to reapply.
+  this file (see the `legacy/firmware/python/CommonDrivers/microdot.py`/`ext/microdot.py` vendoring
+  rule and the `legacy/firmware/modules/_boot.py` rule below), not something that needs a live
+  `improved-quality/` to reapply.
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
   passing (see "Code quality tooling" below and SPECIFICATION.md Part E). **SPECIFICATION.md Part D
@@ -99,22 +100,23 @@ information):
   this same scan, not as a separate pass. A consistency discrepancy (naming, ordering, signatures,
   uniform behaviour) is fixed directly and logged (owner, 2026-09-25: 'Change, don't flag, if not
   according.'); a formula or behaviour discrepancy follows Part D.1's flag-first path.
-- **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
-  statement) without testing on real hardware first. It works reliably today, yet the import
-  machinery says it should not: traced through the pinned source at 1.28 and re-verified at 1.29.0,
-  a plain `import sensortask` is unambiguously the correct form and the dotted one should raise,
-  because it requires "sensortask" to resolve as a package (BACKLOG.md #1 has the trace). **That
-  does not make the file safe to change** — the trace is against 1.28/1.29, while these units run
-  1.26, whose own import machinery was never separately verified and never will be (the legacy tree
-  gets no work, below). So the *mechanism* is answered and the *rule* stands unchanged: changing it
-  blind risks breaking every deployed unit's autostart, and extrapolating from a different version's
-  source is exactly the blind change this rule exists to prevent.
-- **`python/CommonDrivers/microdot.py` is vendored third-party code.** Don't restyle or "clean
-  up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
-  routine editing. It is upstream commit `482ab6d` (#251), byte-identical to it: an untagged snapshot
-  four commits after `v2.0.6`, before `v2.0.7` — unmodified, just old (agent, 2026-09-30, compared against
-  the upstream repository). Bringing the *deployed* tree forward is a reflash-campaign decision, not a
-  drive-by edit (BACKLOG.md). **`ext/microdot.py` is the same policy applied to the refactor
+- **Do not "fix" `legacy/firmware/modules/_boot.py`'s `import sensortask.py`** (literal `.py` in
+  the import statement) without testing on real hardware first. It works reliably today, yet the
+  import machinery says it should not: traced through the pinned source at 1.28 and re-verified at
+  1.29.0, a plain `import sensortask` is unambiguously the correct form and the dotted one should
+  raise, because it requires "sensortask" to resolve as a package (BACKLOG.md #1 has the trace).
+  **That does not make the file safe to change** — the trace is against 1.28/1.29, while the legacy
+  units run 1.24.1, whose import machinery was never separately verified. So the *mechanism* is
+  answered and the *rule* stands unchanged: changing it blind risks breaking every deployed unit's
+  autostart, and extrapolating from a different version's source is exactly the blind change this
+  rule exists to prevent. The dev bench never flashes the legacy build, so any such test runs on one
+  of the owner's own legacy units, as the owner's operation (owner, 2026-09-26).
+- **`legacy/firmware/python/CommonDrivers/microdot.py` is vendored third-party code.** Part of
+  the reference-only legacy tree: never edited (legacy rule below). It is upstream commit `482ab6d`
+  (#251), byte-identical to it: an untagged snapshot four commits after `v2.0.6`, before `v2.0.7` —
+  unmodified, just old (agent, 2026-09-30, compared against the upstream repository). A legacy unit
+  moves forward only by the owner's reflash with fresh setup, following the reflash runbook, never
+  by editing this copy. **`ext/microdot.py` is the same policy applied to the refactor
   target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
   verified byte-identical to it on 2026-10-06), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
@@ -180,29 +182,36 @@ information):
   `5730e72`, paraphrase) — it tests nothing, and must not be repeated; dev's own firmware covers the
   shared SCD30/SGP40 bus (owner, 2026-09-26: 'dev is different hardware, wozi cannot run on it and
   never will').
-- **The legacy tree is reference-only, forever — it never gets work of any kind** (project owner,
-  2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*: to check
-  what the deployed system actually does, and how a driver behaved in the field. Nothing in this
-  repo's quality apparatus is ever extended to them — no lint/typecheck scope, no CI build stage,
-  no shellcheck cleanup, no tests, no refactor. A finding *about* legacy code is worth recording
+- **The legacy tree is reference-only, forever — it never gets work of any kind** (owner,
+  2026-09-11). `legacy/firmware/` (the legacy units' firmware tree: `legacy/firmware/python/`,
+  `legacy/firmware/modules/`, `legacy/firmware/html_raw/`, the four `legacy/firmware/build-*.sh`,
+  `legacy/firmware/update_and_install.txt`) and `legacy/dev_drivers/` (the dev unit's 2026-08-27
+  snapshot), described in `legacy/README.md`, exist to be *read*: what the owner's legacy units
+  (MicroPython 1.24.1) actually do, and how a driver behaved in the field. Nothing in this repo's
+  quality apparatus is ever extended to them — no lint/typecheck scope, no CI build stage, no
+  shellcheck cleanup, no tests, no refactor. The one change it ever got is its byte-identical move
+  into `legacy/` (owner, 2026-09-25). It may run in a scratch directory as a published-value
+  reference, nothing committed (owner, 2026-09-26). A finding *about* legacy code is worth recording
   only when it explains current behavior; it is never a to-do. Don't propose closing any of these
-  gaps — the gap is the decision. `modules/_boot.py`'s `import sensortask.py` (above) is this same
-  rule applied to one specific file, not an exception to it.
+  gaps — the gap is the decision. `legacy/firmware/modules/_boot.py`'s `import sensortask.py`
+  (above) is this same rule applied to one specific file, not an exception to it.
+  `tests_scripts/test_legacy_paths.py` fails on any current file naming a pre-move path.
   **On tests specifically**, since that half predates the rest: the agreed plan is to understand
   the current system first, confirm what is already promoted into `src/`, and write tests as part
   of that refactor. This does **not** contradict SPECIFICATION.md Part E's testing requirements —
   those describe what the *refactored* code must eventually have, and `src/math_helpers.py` +
   `tests/test_math_helpers.py` were the first instance of exactly that. The rule is "never test
-  the old `python/`/`modules/` code", not "defer all tests".
+  the legacy code (`legacy/`)", not "defer all tests".
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
   stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
-  password, present in both `python/CommonDrivers/async_connect.py` (deployed, pre-refactor) and
-  `src/asy_wifi_service.py` (promoted) — accepted permanently as a known limitation under the
-  trusted-home-LAN threat model (owner, 2026-09-26; first accepted 'for now', owner 2026-07-13,
-  `b64857d`). `improved-quality/async_connect.py` itself was removed once its functionality was
-  fully promoted to `src/asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` — no import
-  in the repo referenced it anymore.
+  password, present in both `legacy/firmware/python/CommonDrivers/async_connect.py` (deployed,
+  pre-refactor) and `src/asy_wifi_service.py` (promoted) — accepted permanently as a known
+  limitation under the trusted-home-LAN threat model (owner, 2026-09-26; first accepted 'for now',
+  owner 2026-07-13, `b64857d`). `improved-quality/async_connect.py` itself was removed once its
+  functionality was fully promoted to
+  `src/asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo
+  referenced it anymore.
 - **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop** — the current
   state, backstopped, until a genuine non-blocking alternative reliably exists (owner, 2026-07-24;
   BACKLOG deferred goal); which calls can be timeout-wrapped is in SPECIFICATION.md Part F.2.
@@ -219,8 +228,9 @@ information):
   degradation on expectable memory errors, this indeed shall be implemented'); see
   SPECIFICATION.md Part F.2 for the full rule and its narrow exception.
 - **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution)
-  (owner, 2026-07-13, `b64857d`) — unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`,
-  which stay hands-off/vendored (see above). Full note: SPECIFICATION.md Part F.4.
+  (owner, 2026-07-13, `b64857d`) — unlike `legacy/firmware/python/CommonDrivers/microdot.py`/
+  `ext/microdot.py`, which stay hands-off/vendored (see above). Full note: SPECIFICATION.md
+  Part F.4.
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
@@ -322,7 +332,7 @@ information):
   creation.** (agent, 2026-09-04, `28c5d8e`: MAC drift observed on the bench) A synthesized bridge
   MAC can drift across the bridge's own lifetime, silently orphaning the router's static DHCP
   reservation. Full incident account and the fix (both in `ensure_bench_bridge()` and
-  `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
+  `tests_hardware/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
 - **Memory-safety discipline: design for zero `MemoryError`s first, catch→degrade→restart→watchdog
   as a last-resort backstop, `gc`-default-first, always applied — not only once something has
   already broken.** Any new function/module that holds, builds, or grows an allocation whose size
@@ -547,12 +557,11 @@ information):
   checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
   it's genuinely CPython-target host tooling — it parses TOML via the real stdlib `tomllib` and
   walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
-  names like `machine`/`neopixel` aren't available under plain CPython there). The pre-refactor
-  deployed codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a
-  separate future decision, not assumed by this setup. All eight are expected to stay fully clean — every
-  scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
-  there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
-  was deleted (see "Hard rules" above). `digital_twin/`'s own
+  names like `machine`/`neopixel` aren't available under plain CPython there). The legacy tree
+  (`legacy/`) is never in any lint, type or CI scope (legacy rule above). All eight are expected to
+  stay fully clean — every scope in this setup is fully-reviewed, freely-editable code (see "Hard
+  rules" above), not WIP; there's no tracked-debt scope left to compare `digital_twin/` against
+  since `improved-quality/` was deleted (see "Hard rules" above). `digital_twin/`'s own
   type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
   `scripts/typecheck.sh` regardless of its own args — as is `host_typecheck.ini`'s
   build-chain pass) rather than folded into the main
@@ -790,9 +799,9 @@ information):
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
   (part of the enabled `UP` selection) flags every `Union[...]` as a finding. `src/` and `tests/`
   are already 100% `|`-style with zero `Union[...]` occurrences. The
-  `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
-  config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
-  "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
+  `Union[...]` usages that do exist today are confined to the legacy tree (`legacy/`;
+  reference-only, never linted) — leave those alone under the usual out-of-scope-editing hard
+  rule; don't drive-by "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
 - **mypy runs full `--strict`, minus exactly one flag.** All three configs set `strict = true`
   (spelled that way, not as the individual flags, so a deliberate mypy version bump surfaces any
   newly added strict check as a finding to decide on), plus `no_implicit_optional`/`warn_unreachable`

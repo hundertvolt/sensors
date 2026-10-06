@@ -51,8 +51,8 @@ def test_a_single_source_dir_builds_every_file_under_the_html_mount(repo_root: P
 
 def test_html_src_dirs_recursive_multi_dir_merge_preserves_nested_subdirectories(repo_root: Path, tmp_path: Path) -> None:
     # Two independent source dirs, each contributing its own subtree - mirrors how
-    # scripts/build_website.sh stages html/{index.html,style.css,definitions.json} alongside a
-    # nested js/ subdirectory, and how the old html_raw/general + html_raw/<device> split worked.
+    # scripts/build_website.sh stages html/{index.html,style.css,definitions.json} alongside a nested
+    # js/ subdirectory, and how the legacy site's legacy/firmware/html_raw/{general,<device>} split worked.
     dir_a = tmp_path / "src_a"
     dir_b = tmp_path / "src_b"
     (dir_a / "sub").mkdir(parents=True)

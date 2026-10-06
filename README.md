@@ -16,10 +16,10 @@ flashes `wozi` (owner, 2026-09-03, CLAUDE.md).
 
 | Config | Sensors | FRAM | Watchdog | HTML source |
 |---|---|---|---|---|
-| arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
-| neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
-| wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
-| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux, dev-only) — the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
+| arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `legacy/firmware/html_raw/arzi` |
+| neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `legacy/firmware/html_raw/arzi` (reused) |
+| wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `legacy/firmware/html_raw/wozi` |
+| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux, dev-only) — the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `legacy/firmware/html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 
@@ -72,9 +72,9 @@ Every tier needs only itself run once on a given host — `flash`/`bench` call s
 the tier(s) below rather than needing them run separately first. apt packages, `dialout` group
 membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via
 `sudo`. `bench` is idempotent: re-running it against an already-configured bridge reports the
-existing AP's SSID rather than recreating (and re-randomizing) it — see `dev_legacy/README.md`'s
-WiFi/NTP/DNS section for the manual `nmcli` recipe this automates, including the Pico W
-`cyw43439`-specific WPA2/PMF tuning it applies.
+existing AP's SSID rather than recreating (and re-randomizing) it — see
+`tests_hardware/README.md`'s 'Host network' section for the manual `nmcli` recipe this automates,
+including the Pico W `cyw43439`-specific WPA2/PMF tuning it applies.
 
 Full `env` flag reference (in addition to `setup`'s `--micropython-ref`/`--latest`/`--clean`/
 `--toolchain-dir`/`--jobs` above, all of which `env` also accepts):
@@ -107,16 +107,14 @@ Once a bridge exists, re-running `env --tier bench` (with or without these flags
 or re-randomizes it — it only reports the existing SSID and self-heals two specific drift cases
 (a non-pinned AP channel, an unpinned/drifted bridge MAC — the latter only flagged, never
 auto-repaired, since fixing it live can cycle the interface the session itself depends on; see
-SPECIFICATION.md Part B.13). To force a genuinely new bridge/credentials, remove the existing
-bridge and both its slave connections first (`sudo nmcli connection delete br0-wifi-ap br0-eth0
-br0`) before re-running — mind that this briefly drops the bridge's own network connectivity, so
-never run it over a connection that depends on the bridge staying up.
+SPECIFICATION.md Part B.13). To force a new bridge, follow the delete-and-recreate recipe in
+`tests_hardware/README.md`'s 'Host network' section (dead-man's switch first).
 
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
-`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
-pre-refactor codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
+`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the legacy tree,
+`legacy/`, is never covered) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
 runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
 different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
@@ -331,8 +329,8 @@ recipes are exercised as real, automated/manual tests, not just prose here —
 ## Real hardware access (mpremote)
 
 `mpremote` (dev dependency, installed by `uv sync`) talks to a real RP2040/Pico W over its USB
-serial port for flash-free iteration: `exec`/`run`/`ls`/`cat` execute or read against the device
-without writing flash, unlike `cp`/`rm`/`mkdir`/`rmdir`, which do. `scripts/mpremote_connect.sh`
+serial port. What each `mpremote` operation writes to the board, and what it stops:
+`tests_hardware/README.md` 'What each tool writes to the board'. `scripts/mpremote_connect.sh`
 wraps `uv run mpremote connect <device>` with a default device path of `/dev/ttyACM0`, overridable
 via `MPREMOTE_DEVICE`:
 
@@ -351,11 +349,9 @@ USB-vendor-ID auto-detection of which `/dev/ttyACM*` is the board (still pass it
 is a genuinely different tier from the mocked `tests/` suite (which
 runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
 `SPECIFICATION.md` Part E) and from `scripts/build_firmware.py` (which builds a `.uf2` but never
-flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against a physical
-bench unit — full workflow, including a frozen-firmware full-system bring-up and a bridged-AP
-WiFi/NTP/DNS integration setup — is documented as its own single source of truth in
-`dev_legacy/README.md` (see "Further reading" below); `dev_legacy/`'s own sessions are exploratory/
-ad hoc bring-up logs, distinct from **`tests_hardware/`**, the newer structured, repeatable
+flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against the
+physical bench unit is documented in `tests_hardware/README.md` (bench wiring, host network, tool
+writes, by-hand workflow). **`tests_hardware/`** itself is the structured, repeatable
 `pytest`-based automated test tier (plus a separate manual-test runner) built against this same
 `mpremote`/bench-bridge access — see `tests_hardware/README.md` for the full reference (prerequisites,
 env vars, safety facts, known assumptions) and the essential commands below for how to run it.
@@ -739,22 +735,17 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 - **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
   prerequisites, environment variables, how to run each tier, the safety facts (the
   `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
-  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the ISL29125
-  bench-rig facts and the numbered audit passes that found this tier's own gaps. CLAUDE.md's
+  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the dev
+  bench's wiring, chips, host-network recipe and dated state, the ISL29125 bench-rig facts and the
+  numbered audit passes that found this tier's own gaps. CLAUDE.md's
   real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
   BACKLOG.md's "Real-hardware work still owed" says *what* is owed, this file says *how*.
 
-**`dev_legacy/README.md`** (permanent, kept current):
+**`legacy/README.md`** (permanent):
 
-- **`dev_legacy/README.md`** — the single source of truth for the physical "dev" RP2040 bench
-  unit: wiring, chip identities, confirmed-working status (per peripheral and for the full
-  assembled system), current bench state, the `mpremote` workflow for testing `src/` drivers
-  against it (see "Real hardware access (mpremote)" above), building/flashing a frozen firmware for
-  a full-system bring-up, and the bridged-AP setup for real WiFi/NTP/DNS integration testing — see
-  that file itself for specifics, not restated here. Also holds, in its own clearly-marked final
-  section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from 2026-08-27
-  (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
-  itself reviewed, promoted, or covered by lint/type/test config.
+- **`legacy/README.md`** — the legacy tree's own description: `legacy/firmware/` (what the owner's
+  legacy units run, MicroPython 1.24.1) and `legacy/dev_drivers/` (the dev unit's 2026-08-27
+  snapshot); reference-only (CLAUDE.md).
 
 `HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware

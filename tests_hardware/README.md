@@ -36,7 +36,9 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
    `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/manual_toolchain.py`),
    rebuild picotool on the bench host itself (or confirm the apt-packaged `picotool` there already
    has USB support - check for the same warning line) rather than assuming a sandbox-cached build
-   works.
+   works. A `picotool` reporting "Requires version X, you have version Y" is a stale system-wide
+   install shadowing the toolchain's own build: rerun `uv run toolchain/setup_toolchain.py setup`
+   rather than working around it.
 4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
    `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
    this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
@@ -48,6 +50,168 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
    `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`; run that once, record the
    distance here, and the automated pair becomes meaningful. They are also the suite's longest pair
    at roughly ten minutes combined, so opting in is a deliberate choice about wall clock as well.
+
+## The dev bench
+
+The one board a session flashes and tests (CLAUDE.md): its wiring and chips, its dated state, the
+bench host's network, what each tool writes to it, and how to test a driver on it by hand. Every bus
+pin, bus parameter, UART pair and peripheral GPIO is `devices/dev.toml`'s; this section holds only
+what that file cannot.
+
+### Wiring and chips
+
+Wiring verified on the board by the owner, as recorded by the agent (2026-08-28, `7f6bdaa`,
+paraphrase), unless a line says otherwise:
+
+- **FRAM** is an **MB85RS2MTA**, 256 KB (`max_size` in `devices/dev.toml`); its CS, GP5, is
+  physical pin 7.
+- **BMP3xx** is physically a **BMP384**, at 0x77.
+- **NeoPixel**: GP18 is physical pin 24.
+- **ISL29125 INT** is GP6, physical pin 9, and pulled up on this board, which is why
+  `devices/dev.toml` sets `irq_pull_up = false` (owner, 2026-09-12, `7be762f`, paraphrase). The
+  breakout itself carries R4 = 10 kΩ from `!INT` to 3V3, per SparkFun's schematic (agent,
+  2026-09-12, `7890e2b`).
+- **UART crossover jumper**, permanent and bench-only: GP0 (pin 1) ↔ GP9 (pin 12) and GP1 (pin 2)
+  ↔ GP8 (pin 11), a TX↔RX crossover between the board's own UART0 and UART1, so two `UART_Comm`
+  instances talk to each other on one board (confirmed by the owner on the board, as recorded by the
+  agent, 2026-08-28, `7f6bdaa`). The UART pairs themselves are `devices/dev.toml`'s `[bus.uart0]`
+  and `[bus.uart1]`.
+- **Attached, not driven by the `dev` firmware**: an MPRLS on I2C0 with its reset on GP10; its EOC
+  pin is open - GP7 in `legacy/dev_drivers/sensortask-dev.py`, GP9 in
+  `legacy/firmware/modules/sensortask-dev.py` - until a bench check reads it. A BME688 (BSEC) on
+  UART0, GP16/GP17 at 115200 baud, was recorded on 2026-08-28; whether it is still attached is open
+  until the same check. No SHTC3 is fitted, though some legacy code wires one.
+
+Silicon observations on this bench (agent, 2026-08-28):
+
+- After `stop_continuous_measurement()` the SCD30 completes one more reading about 1 s later before
+  it goes idle; a test polling data-ready right after the stop sees that reading.
+- The SGP40's VOC index reads 0 through cycle 46 and real values from cycle 47, the VOC algorithm's
+  initial blackout.
+- A full-range MB85RS2MTA write/read-back across every power-of-two address boundary passed
+  (SPECIFICATION.md Part C.3.1).
+
+### Bench state (dated)
+
+What was last read from the board and its host, each line with its date; none of it is current until
+re-read.
+
+- SCD30 NVM: temperature offset 1.5 °C, altitude and ambient-pressure compensation 0 (recorded
+  2026-08-28). The NVM survives a power cycle and a reflash.
+- Bench host: `br0`, `br0-eth0` and `br0-wifi-ap` live, `dialout` membership restored, hostname
+  `raspberrypi` (recorded 2026-09-04).
+- The router's DHCP reservation was keyed to a MAC the bridge no longer presents (recorded
+  2026-09-04); the owner confirms the re-keying at the first round.
+
+**Never `cp` a script meant to run onto the board's filesystem; mount it.** Upstream's frozen
+`_boot.py` mounts the filesystem and returns, then `ports/rp2/main.c` runs `boot.py` and
+`main.py`, each the frozen module when one exists and otherwise the filesystem file
+(`shared/runtime/pyexec.c`'s `pyexec_file_if_exists()`, v1.29.0). The `dev` image freezes its
+entry as `main.py`, so a filesystem `boot.py` runs before it at every boot, and a filesystem
+`main.py` runs under any image without a frozen one, with nothing showing why. One `exec` of
+`os.listdir('/')` confirms the filesystem holds neither - a one-shot check, never a poll ("Known
+assumptions and open findings" says why).
+
+### Host network: the `br0` bridge and its AP
+
+The board reaches a real network through the bench host, a Raspberry Pi 4: NetworkManager bridges
+the host's uplink with a WiFi AP the host serves, so the board joins the LAN and internet path the
+host has and `asy_wifi_service.py`'s own connect state machine runs against a real AP. The bridge is
+persistent host state: it survives a host reboot, and `nmcli connection show` lists it.
+`uv run toolchain/setup_toolchain.py env --tier bench` builds it through `ensure_bench_bridge()`;
+the manual recipe below is the same sequence, for a host where interface detection is ambiguous or a
+bridge has to be rebuilt by hand.
+
+**Arm the dead-man's switch first.** Every step below that can cut the host's connection - creating
+or modifying the bridge, enslaving the uplink, cycling the AP, deleting the bridge, and the MAC
+remedy `env --tier bench` prints - runs with SPECIFICATION.md Part B.13's recovery switch armed:
+its recovery script recreated fresh in the session scratchpad and never committed, armed per step
+or once around a sequence whose timing was measured, the outcome polled, then disarmed, following
+B.13's arm/verify/disarm steps rather than a copy of them here (CLAUDE.md's hard rule).
+
+```sh
+sudo modprobe br_netfilter
+sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+echo br_netfilter | sudo tee /etc/modules-load.d/sensors-bench-br-netfilter.conf
+echo net.bridge.bridge-nf-call-iptables=1 | sudo tee /etc/sysctl.d/99-sensors-bench-br-netfilter.conf
+
+sudo nmcli connection add type bridge ifname br0 con-name br0
+sudo nmcli connection modify br0 bridge.mac-address <eth0's real MAC, from `ip link show eth0`>
+sudo nmcli connection add type ethernet ifname eth0 master br0 con-name br0-eth0 slave-type bridge
+sudo nmcli connection add type wifi ifname wlan0 con-name br0-wifi-ap ssid <ssid> \
+    802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 \
+    master br0 slave-type bridge
+sudo nmcli connection modify br0-wifi-ap wifi-sec.key-mgmt wpa-psk wifi-sec.psk <password> \
+    wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.pmf disable
+sudo nmcli connection up br0-eth0; sudo nmcli connection up br0-wifi-ap
+```
+
+`eth0` and `wlan0` stand for the uplink and the WiFi adapter (`--uplink-iface`/`--wifi-iface` name
+others); the three connection names are the ones `ensure_bench_bridge()` looks for. Why each setting
+is there:
+
+- `bridge.mac-address` is pinned to the uplink's real hardware MAC before the bridge first comes up:
+  a synthesized bridge MAC can drift and orphan the router's DHCP reservation (agent, 2026-09-04,
+  `28c5d8e`; SPECIFICATION.md Part B.13).
+- The AP runs at 2.4 GHz (`band bg`) on channel 6: left on auto, NetworkManager picked channel 13,
+  which the board's CYW43439 did not associate with reliably (`ensure_bench_bridge()`'s own note).
+- WPA2-PSK with AES only: `proto rsn`, `pairwise ccmp`, `group ccmp`, and `pmf disable`. Against a
+  PMF-enabled or mixed configuration the CYW43439's handshake fails with no error anywhere - `iw
+  event` shows `new station` and then `del station` (observed on this bench, 2026-08-28).
+  `bridge.stp` stays at its default.
+- `br_netfilter` with `bridge-nf-call-iptables=1` makes iptables see bridged traffic; without it
+  `bench_control.py`'s fault injection is a silent no-op (SPECIFICATION.md Part B.13).
+
+Credentials: a new bridge gets random ones (`generate_bench_ap_credentials()`), an existing one
+keeps its own, and real ones are never committed (CLAUDE.md). An existing bridge is reported, not
+recreated; its MAC is compared with the uplink's, and a mismatch is only reported with the manual
+remedy, never repaired live. The comparison reads `nmcli --escape no`, since plain `nmcli -g`
+escapes every `:` in a MAC; SPECIFICATION.md Part B.13 says why a live repair is out.
+
+To force a new bridge (new credentials, another adapter), delete the bridge and both its slave
+connections with the switch armed, then rerun `env --tier bench` or the recipe above. The host's
+connection through the bridge drops until the uplink is back, which is what the switch covers:
+
+```sh
+sudo nmcli connection delete br0-wifi-ap br0-eth0 br0
+```
+
+### What each tool writes to the board
+
+| Operation | Flash write | What it does to the running firmware |
+|---|---|---|
+| `mpremote` `exec`, `run`, `mount`, `ls`, `cat` | none | enters the raw REPL with Ctrl-C, which stops the running `main.py` (`tools/mpremote/mpremote/transport_serial.py`'s `enter_raw_repl()`, v1.29.0) |
+| `mpremote` `reset` | none | an `exec` of `machine.reset()` (the shortcut table in `tools/mpremote/mpremote/main.py`, v1.29.0): the firmware restarts |
+| `mpremote` `cp`, `rm`, `mkdir`, `rmdir` | the flash filesystem | stops `main.py` like the row above, then writes |
+| a script under `mpremote run` that persists config | the flash filesystem | `_set_dict_cfg()` → `ConfigManager.write_config()` → `flush_pending()` writes the config file like any test's write, counted against `persistence_write` |
+| `picotool load` | a flash cycle | replaces the image; only as a `flash_cycle`-gated test (`--allow-flash-cycle`) or as a round's planned prerequisite write |
+
+### Testing a driver by hand over mpremote
+
+One driver, or a partial closure, at a time, against the `dev` image already on the board
+(Prerequisites item 2):
+
+- **Mount, never copy.** `scripts/mpremote_connect.sh mount <dir> run <script>.py` makes `<dir>`
+  importable with no flash write. A mounted module shadows the frozen one of the same name, since
+  `sys.path` lists the current directory before `.frozen` (`py/runtime.c`, v1.29.0).
+- **Heavy closures need `.mpy`.** Importing over a mount compiles from source on the board, so a
+  heavy closure (`asy_fram_manager.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py` with
+  `voc_algorithm.py`) can raise `MemoryError` mid-import even with about 200 KB free. Precompile it
+  with the pinned `mpy-cross` (`$PICO_TOOLCHAIN_DIR/micropython/mpy-cross/build/mpy-cross`) into a
+  scratch directory and mount that; its `mpy` version must match the board's `sys.implementation`.
+- **Inline `const()` values.** A `micropython.const()` name is compiled away at its definition site
+  and cannot be imported from another module (SPECIFICATION.md Part E.5.1); write the literal.
+- **Prime a reader's config in RAM.** `cfgmgr.setup()` reads the config file and can write it back
+  (creating or repairing it). Set the cache from the schema instead, as
+  `tests_hardware/device_scripts/bmp3xx_plausibility_read.py` does: `reader.cfgmgr.valid = True;
+  reader.cfgmgr._cache = {f[0]: f[2] for f in reader.cfg_schema if f[2] is not None}`. A later
+  `_set_dict_cfg()` still writes unless its persist is diverted (the "Restore or side-step every
+  piece of shared state you touch" habit in "Writing a new device script: four habits").
+- **Exercise persisted settings through the protocol-layer driver** (the `*_I2C`/`*_SPI` class,
+  SPECIFICATION.md Part C.3), not the `*_Reader`, whose `cfgmgr` writes the config file.
+- **A simulated restart takes a fresh `AsyFramManager`.** It is a bump allocator (SPECIFICATION.md
+  Part A.4): a fresh manager per restart lands each chunk back at the same base address, while a
+  second reader on one manager gets a second, non-overlapping chunk.
 
 ## Environment variables
 
@@ -485,7 +649,7 @@ a live question:
   outcome; the caveat above is how a reader avoids misreading it.
   `fram_error_log_reset_race_verify.py` is the one deliberate exception — it exists to read what
   the raced reset left behind, so a baseline wipe would erase the thing under test.
-- ~~Does `mpremote`'s implicit soft-reset re-execute `modules/_boot.py`/`boot.py`/`main.py`?~~ —
+- ~~Does `mpremote`'s implicit soft-reset re-execute the frozen `_boot.py`/`boot.py`/`main.py`?~~ —
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
   do, regardless of `soft_reset_after`. See `harness.Board.run_isolated()`'s own docstring for the

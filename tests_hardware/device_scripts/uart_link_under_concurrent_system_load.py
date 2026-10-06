@@ -138,7 +138,7 @@ async def _main() -> None:
     await initiator.setup()
     await responder.setup()
 
-    # dev_legacy/README.md's wiring: i2c0 (13, 12), i2c1 (15, 14), SPI0 (2, 3, 4) with FRAM CS=5.
+    # the bench device TOML's wiring: i2c0 (13, 12), i2c1 (15, 14), SPI0 (2, 3, 4) with FRAM CS=5.
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
     fram = AsyFramManager(spi0, 5, max_size=0x40000)

@@ -7,8 +7,9 @@
 # HTML_SRC_DIRS is required (scripts/build_website.sh sets it): a space-separated list merged
 # recursively into one build tree. Output is a gitignored build artifact, never committed.
 #
-# ext/freezefs is vendored and unmodified. Don't copy build-wozi.sh's literal invocation: that
-# legacy pipeline predates freezefs 2.4's current CLI (its "-s" flag is gone).
+# ext/freezefs is vendored and unmodified. Don't copy the legacy build scripts'
+# (legacy/firmware/build-*.sh) literal invocation: that legacy pipeline predates freezefs 2.4's
+# current CLI (its "-s" flag is gone).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

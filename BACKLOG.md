@@ -71,9 +71,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   observed behavior. (Neopixel warning-flash sequencing was the other half of this item - resolved
   by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py` promotion, see
   `SPECIFICATION.md` Part A.4.)
-- **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
-  `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this.
-
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
   (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
   terms of order now, it's only highly important to be applied.') has now run once, beyond
@@ -138,16 +135,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   updated to check the field directly instead of the retired `W12` log entry (also pending
   real-hardware re-run). `html/definitions/dev.json`/`mockdata/dev.json` updated with the new field.
 
-1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) - **mechanism answered; the file is
-   never changed regardless.** Kept only because CLAUDE.md's own hard rule and
+1. `legacy/firmware/modules/_boot.py`'s `import sensortask.py` (literal `.py`) - **mechanism
+   answered; the file is never changed regardless.** Kept only because CLAUDE.md's own hard rule and
    `tests_hardware/flash/test_reboot_persistence.py` cite this number. Traced through the pinned
    source at 1.28 and re-verified at 1.29.0 (`tools/mpy-tool.py`'s frozen-name generation,
    `py/frozenmod.c`'s exact-match lookup, `py/builtinimport.c`'s `stat_module()`/
    `process_import_at_level()`): a plain `import sensortask` is unambiguously the correct form, and
    the dotted one *should* raise, because it needs "sensortask" to resolve as a package. Why it
-   nonetheless works on the deployed 1.26 firmware was never verified against that version's own
-   import machinery and never will be - the legacy tree is reference-only forever, so no session
-   tests it. Nothing to do on the refactor side either:
+   nonetheless works on the legacy units' 1.24.1 firmware was never verified against that version's
+   own import machinery; a test would run on one of the owner's legacy units as the owner's
+   operation, never on the dev bench (owner, 2026-09-26). Nothing to do on the refactor side either:
    `buildgen.codegen.generate_boot_entry_source()` already emits the correct
    `from sensortask_wozi import main`.
 2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
@@ -156,9 +153,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    values. No legacy config migration: legacy units get fresh setup at reflash (owner, 2026-09-26);
    from the release on, a renamed key or file needs a migration, pinned by a golden stored-config
    fixture (owner, 2026-09-26).
-3. MicroPython version target vs. upstream drift — deployed units run 1.26; the refactor now pins
-   **1.29.0**, the newest stable. **Decided**: deployed code stays pinned to 1.26 until a deliberate
-   reflash campaign; the refactor is where the version target moves forward. The full 1.28→1.29
+3. MicroPython version target vs. upstream drift — the owner's legacy units run 1.24.1 (owner,
+   2026-09-26); the refactor pins 1.29.0. A legacy unit moves to the refactor only by the owner's
+   reflash with fresh setup, following the reflash runbook; no config migration code is written
+   (owner, 2026-09-26). The refactor is where the version target moves forward. The full 1.28→1.29
    audit is in SPECIFICATION.md Part F.5 (two real findings, several free wins, the rest ruled out);
    the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch with no patches. Earlier
    1.27→1.28 rp2-port changes were RP2350-specific, not RP2040-breaking. Re-run F.1's standing
@@ -473,7 +471,7 @@ gates, traps).
   **Original framing:** `NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening
   it to DNS's real 253 was the owner's call. `src/asy_ntp_client.py`'s `_VAL_NH` declares `("NTP_Host", "str",
   "pool.ntp.org", 3, 1024, None)`, and the comment above it says the bounds mirror the fielded
-  pre-refactor REST handler — confirmed: `modules/sensortask-*.py` does
+  pre-refactor REST handler — confirmed: `legacy/firmware/modules/sensortask-*.py` does
   `update_valid_json(req_json, "NTP_Host", "str", res, 3, 1024, debug=debug)` on every deployed
   device. A DNS name cannot exceed **253** characters in presentation format (255 octets on the
   wire, minus the length and root bytes), so 1024 is ~4x over-permissive — but changing it is a
@@ -859,14 +857,6 @@ gates, traps).
   entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
   entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
   is small: extracting a shared helper is a minor simplification, not a correctness fix.
-- **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
-  SPECIFICATION.md Part B/README.md's "Toolchain setup"). `build-*.sh`'s hardcoded path/`py-include`
-  dependency is now fixed too (see "Refactor targets not yet done" above).
-  `update_and_install.txt` re-verified against current upstream docs — structurally still accurate,
-  but missing the pico-sdk 2.0.0+ picotool major.minor version-matching requirement (already applies
-  today) and the full apt package list. An official one-shot alternative exists
-  ([`raspberrypi/pico-setup`](https://github.com/raspberrypi/pico-setup)'s `pico_setup.sh`), worth
-  considering as a base.
 - **`asy_wifi_service.py`'s locking-contract inconsistency and 60s-retry priority-inversion cost** —
   see SPECIFICATION.md Part C.8 for the full account. Still not picked up: a rename to make
   `network_available()`'s already-held-lock contract visible in its own name (e.g.

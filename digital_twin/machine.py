@@ -479,9 +479,9 @@ class _LinkDirection:
 
 
 def attach_crossover_jumper(fake_a: "UART", fake_b: "UART") -> "tuple[UARTLink, LinkPoller, LinkPoller]":
-    # Models the dev bench's permanent GP0<->GP9 / GP1<->GP8 jumper (dev_legacy/README.md): the
-    # twin's dev graph builds both ends but joins neither. The returned pollers are bounded, a real
-    # select.poll() never re-evaluating a Python object's ioctl() (CLAUDE.md's known CI hang).
+    # Models the dev bench's permanent GP0<->GP9 / GP1<->GP8 jumper (tests_hardware/README.md 'The dev
+    # bench'): the twin's dev graph builds both ends but joins neither. The returned pollers are bounded,
+    # a real select.poll() never re-evaluating a Python object's ioctl() (CLAUDE.md's known CI hang).
     return UARTLink(fake_a, fake_b), LinkPoller(fake_a), LinkPoller(fake_b)
 
 

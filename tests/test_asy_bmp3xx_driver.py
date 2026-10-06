@@ -897,8 +897,8 @@ def test_reader_set_trigger_secs_accepts_boundary_values() -> None:
 
 
 def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
-    # Bound is 1-3600 seconds, matching the deployed production validation for this exact field
-    # (modules/sensortask-wozi.py's BMPSampleInterv bounds, mirrored across every other sensor).
+    # Bound is 1-3600 seconds, the deployed validation of this field (BMPSampleInterv in the legacy
+    # firmware's sensortask module, legacy/firmware/modules/; mirrored across every other sensor).
     # Below/above/zero/negative are rejected like a bad type - logged (errno=21), never raises.
     reader = make_reader("out_of_range_trigger")
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first

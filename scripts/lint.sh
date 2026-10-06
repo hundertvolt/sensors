@@ -12,9 +12,8 @@ status=0
 
 ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts || status=1
 
-# scripts/ only, deliberately NOT the four legacy build-*.sh at the repo root: those belong to the
-# same pre-refactor generation as python//modules/ and are out of lint scope by the same standing
-# decision (they carry 28 findings of their own, including no shebang at all - see BACKLOG.md).
+# scripts/ only: the legacy tree (legacy/, its legacy/firmware/build-*.sh included) is never in a
+# lint scope (CLAUDE.md legacy rule).
 shellcheck scripts/*.sh || status=1
 
 # Catches workflow expression/context typos that otherwise only surface as a broken CI run.

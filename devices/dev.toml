@@ -35,9 +35,9 @@ sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
 
-# The bench's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8, dev_legacy/README.md)
-# makes Part J.7's self-compatibility physically testable. Buffers and poll rates are sized from the
-# real 53-byte frame and this bench's poll rate, not the driver defaults (J.6).
+# The bench's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8) makes Part J.7's
+# self-compatibility testable (tests_hardware/README.md 'The dev bench'). Buffers and poll rates are
+# sized from the real 53-byte frame and this bench's poll rate, not the driver defaults (J.6).
 [bus.uart0]
 tx_pin = 0
 rx_pin = 1

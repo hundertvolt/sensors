@@ -1,6 +1,5 @@
 # path<TAB>sentence prefix: actorless decision vocabulary present when the check landed. Only shrinks:
 # the sentence, then rerun `uv run python tests_scripts/test_decision_vocabulary.py --regenerate`.
-BACKLOG.md	**Decided**: deployed code stays pinned to 1.26 until a deliberate reflash campa
 BACKLOG.md	**Note**: `get_long_block_lock()` itself was already removed entirely before thi
 BACKLOG.md	**Still open**: retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi
 BACKLOG.md	- **A digital-twin soak's wall clock is set by GC timing, so it must never be bi
@@ -13,10 +12,8 @@ BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answe
 BACKLOG.md	Recorded here per CLAUDE.md's flag-don't-silently-fix rule for cross-file API di
 BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
 BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no BME688/BSEC
-BACKLOG.md	Why it nonetheless works on the deployed 1.26 firmware was never verified agains
 BACKLOG.md	decided, with full upstream research citations, real bench-hardware recovery-tim
 BACKLOG.md	structurally incompatible.** It validates that every `root_packages` entry is a
-CLAUDE.md	**That does not make the file safe to change** — the trace is against 1.28/1.29,
 CLAUDE.md	**That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided an
 CLAUDE.md	- **A third party's momentary outage must never read as a red test result.** `sc
 CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
@@ -31,7 +28,6 @@ CLAUDE.md	`scripts/test.sh`'s own backgrounded `tests_scripts/` tier is a delibe
 CLAUDE.md	`tests/` and `digital_twin/` reassign methods to mock them — that IS the project
 CLAUDE.md	a *dispatch-only* PUT persists nothing and is deliberately outside the gate, and
 CLAUDE.md	catching `(OSError, MemoryError)` and degrading locally is a backstop for genuin
-CLAUDE.md	if you need to change its behavior, treat that as a deliberate fork decision, no
 CLAUDE.md	it never gates anything** — no threshold is enforced anywhere, by design (confir
 DEVICE_REFERENCE.md	**`0` disables this staleness check** — a restored backup is accepted no matter
 DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux scale to shift with
@@ -137,7 +133,6 @@ SPECIFICATION.md	int→float has a known, accepted gap (every int representable 
 SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.per
 SPECIFICATION.md	left as-is, but a new getter should pick a contract deliberately.
 SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
-SPECIFICATION.md	only legacy `html_raw/` isn't updated (accepted debt, H.1).
 SPECIFICATION.md	the exact boundary values *accepted*;
 SPECIFICATION.md	the excluded file holds two trivial fixtures, its real logic moved to `_script_l
 SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
@@ -223,7 +218,6 @@ scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- del
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
-scripts/lint.sh	scripts/ only, deliberately NOT the four legacy build-*.sh at the repo root: tho
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
 scripts/run_bench_hardware_suite.sh	Goes through _require_clean_hardware_run.sh, because a plain exit code cannot se
 scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every

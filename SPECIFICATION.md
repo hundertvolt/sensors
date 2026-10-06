@@ -39,20 +39,14 @@ arduino/                 The Arduino peer's side, imported 2026-09-13: the UART 
                           Post-audit only (owner, 2026-09-25: 'the C port stays out of scope,
                           anything there is post-audit only'): no lint, type check, test, licence
                           or secret review here (secret scan: owner, 2026-09-30)
-dev_legacy/              The dev bench unit's wiring/state reference, plus a 2026-08-27 snapshot of
-                          its on-device filesystem (reference only, in no lint/type/test scope)
-html_raw/               Legacy, still-deployed per-device HTML/CSS/JS - targets the pre-refactor
-  arzi/, dev/, wozi/,     REST shape, superseded by html/ for devices the refactor has reached (H.1)
-  general/
 html/, js/, tests_js/,  The real, refactored website - source, tests, prototype-only mock-backend
   mockdata/               fixtures (Part H)
-modules/                Auto-started entry points, one set copied into the firmware build per device
-  _boot.py                 mounts the flash filesystem, starts the sensor task
-  sensortask-{arzi,dev,neu,wozi}.py   per-device app (renamed sensortask.py at build time)
-python/
-  CommonDrivers/          shared across all device configs
-  IndividualDrivers/      only copied in if a device config needs them
-  Manifest/manifest.py    MicroPython freeze manifest
+legacy/                  Reference-only legacy tree (CLAUDE.md; legacy/README.md)
+  firmware/                 the legacy units' firmware (MicroPython 1.24.1), the old root layout
+                            unchanged: legacy/firmware/python/, legacy/firmware/modules/,
+                            legacy/firmware/html_raw/, the four legacy/firmware/build-*.sh,
+                            legacy/firmware/update_and_install.txt
+  dev_drivers/              the dev unit's 2026-08-27 on-device snapshot
 src/                     Fully-reviewed/tested refactor code, freely editable (Part D). Includes
                           src/asy_webserver_service.py (A.8). No static src/sensortask_*.py entry
                           point any more (SPECIFICATION.md Part L.2) - every
@@ -82,13 +76,12 @@ SPECIFICATION.md         This file
 tests/                   Unit tests for src/, real MicroPython interpreter (Part E)
 tests_scripts/           pytest (CPython) tests for the host-side build chain and harnesses (Part E.1)
 tests_hardware/          Real-hardware tiers (flash, bench) and device scripts - owner go-ahead only
-                          (CLAUDE.md, tests_hardware/README.md)
+                          (CLAUDE.md, tests_hardware/README.md), and the dev bench's wiring and
+                          state
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
   versions.toml             single source of truth for the target MicroPython version (Part B)
   setup_toolchain.py        setup/test - builds RP2040 firmware and both Unix-port variants
   micropython_overrides.py  build overrides applied without editing the checkout (B.14)
-build-{arzi,dev,neu,wozi}.sh   per-device build scripts
-update_and_install.txt   Legacy manual toolchain recipe, superseded by toolchain/ (kept for reference)
 pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv)
 scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run_unix_port_integration.sh
 .github/workflows/       CI: one job per tool and test tier, on every push/PR (CLAUDE.md)
@@ -102,9 +95,10 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
   `DataManager`, an error counter, config callbacks). Full spec: Part C.
 - **Bus layer** — `asy_i2c_driver.py`/`asy_spi_driver.py` wrap `machine.I2C`/`machine.SPI` with an
   `asyncio.Lock` and an `async with device as dev:` pattern so multiple sensors share one bus.
-- **Config management** — deployed `python/`/`modules/` use `async_manager.ConfigManager`: one
-  ad hoc instance per device, flat JSON, self-heals corruption by overwriting the entire file with
-  hardcoded defaults (data-loss risk on firmware upgrades that add keys — BACKLOG.md).
+- **Config management** — the legacy firmware (`legacy/firmware/`) uses
+  `async_manager.ConfigManager`: one ad hoc instance per device, flat JSON, self-heals corruption
+  by overwriting the entire file with hardcoded defaults (data-loss risk on firmware upgrades that
+  add keys — BACKLOG.md).
   `src/config_manager.py`'s `ConfigManager` replaces it: every module owns its own schema
   (`ConfigSchema` tuple) and config file via a public `cfg_schema` attribute (C.5).
 - **REST API pipeline** — deployed `api_helpers.py` chains `cmd_pre_check → init_json_from_cfg →
@@ -133,9 +127,8 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
 
 Targets the latest *stable* MicroPython/pico-sdk/picotool/Microdot, expands error handling/fault
 recovery, adds unit tests/mypy/ruff/CI (ruff, mypy, shellcheck, actionlint and zizmor each as their own
-stage, plus unit-tests, digital-twin-e2e and a real `firmware.uf2` build; the still-uncovered path
-is the legacy `python/`+`build-*.sh` pipeline, BACKLOG.md). Files land in `src/` once reviewed
-against Part D.
+stage, plus unit-tests, digital-twin-e2e and a real `firmware.uf2` build). Files land in `src/` once
+reviewed against Part D.
 
 Originally prototyped as hand-written `src/sensortask_wozi.py` ("wozi", A.7) and
 `src/sensortask_dev.py` (dev bench, physically flashed, B.11/H.5) — not yet `arzi`/`neu`. That
@@ -150,24 +143,24 @@ features as today's deployed units, not a feature change.
 
 ## A.4 Architecture — deep reference
 
-- `python/CommonDrivers/api_helpers.py` — generic REST pipeline repeated by hand per endpoint, no
-  shared schema/route generation.
-- `python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot + NTP with manual CET/CEST DST
-  (`cettime()`); exposes `get_long_block_lock()`, a lock serializing `socket.getaddrinfo()` against
-  Neopixel animation. Deployed-only — `src/` splits this into `asy_wifi_service.py`/
-  `asy_ntp_client.py`/`asy_dns_client.py` and retires the lock (F.2).
-- `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`, `TimeCounterManager`,
-  `LockedValue`/`Flag`. `src/config_manager.py`/`src/base_classes.py`'s `LockedValue`/
-  `LockedCounter`/`LockedFlag` (snake_case, unlike the old camelCase) replace these. MicroPython's
-  flat frozen-module namespace means `import async_manager` silently resolves to whichever file
-  defines that name — always import by name from `config_manager`/`base_classes`, never
-  `async_manager`. Its config loads once at `__init__` into an in-memory cache; a read can't detect
-  on-disk corruption after that, and `write_config()` silently repairs an externally-corrupted file
-  from the cache (agent, 2026-07-16, `83c08ae`: this device is the file's only writer).
-  `src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception to "every module
-  owns a schema" (no schema at all; owner, 2026-08-05). A module whose caller needs `write_config()`
-  directly exposes the schema via a public `self.cfg_schema` attribute (`asy_wifi_service.py`/
-  `asy_ntp_client.py`).
+- `legacy/firmware/python/CommonDrivers/api_helpers.py` — generic REST pipeline repeated by hand
+  per endpoint, no shared schema/route generation.
+- `legacy/firmware/python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot + NTP with manual
+  CET/CEST DST (`cettime()`); exposes `get_long_block_lock()`, a lock serializing
+  `socket.getaddrinfo()` against Neopixel animation. Deployed-only — `src/` splits this into
+  `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` and retires the lock (F.2).
+- `legacy/firmware/python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
+  `TimeCounterManager`, `LockedValue`/`Flag`. `src/config_manager.py`/`src/base_classes.py`'s
+  `LockedValue`/`LockedCounter`/`LockedFlag` (snake_case, unlike the old camelCase) replace these.
+  MicroPython's flat frozen-module namespace means `import async_manager` silently resolves to
+  whichever file defines that name — always import by name from `config_manager`/`base_classes`,
+  never `async_manager`. Its config loads once at `__init__` into an in-memory cache; a read can't
+  detect on-disk corruption after that, and `write_config()` silently repairs an
+  externally-corrupted file from the cache (agent, 2026-07-16, `83c08ae`: this device is the file's
+  only writer). `src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception to
+  "every module owns a schema" (no schema at all; owner, 2026-08-05). A module whose caller needs
+  `write_config()` directly exposes the schema via a public `self.cfg_schema` attribute
+  (`asy_wifi_service.py`/`asy_ntp_client.py`).
 - `asy_fram_driver.py`/`asy_fram_manager.py` — raw SPI FRAM driver + chunk allocator with dual-copy
   redundancy (every real device — see the FRAM-storage bullet above). **The byte-level path is
   synchronous under a caller-held lock** (2026-09-18 restructure, wire-identical): `FRAM_SPI`
@@ -270,7 +263,8 @@ features as today's deployed units, not a feature change.
   `register()`/`finalize()` window are buffered and drained by `monitor_loop()`.
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
   trigger time. Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) —
-  a deliberate wire-format change; only legacy `html_raw/` isn't updated (accepted debt, H.1).
+  a deliberate wire-format change; only the legacy site, `legacy/firmware/html_raw/`, keeps the old
+  names: the legacy tree gets no work (owner, 2026-09-11; H.1).
 - Deployed task supervisor is a hand-rolled loop duplicated per device file; every generated
   `sensortask_<device>.py`'s `main()` instead calls `system_service.py`'s real
   `start_and_check_tasks()`/`start_timers()`.
@@ -311,10 +305,10 @@ so the move shifted none of Part H.7's serving walls.
   the server.** `dispatch_request()` wraps the whole handler chain in `except HTTPException` /
   `except Exception`. `HTTPException` (from `abort()`) resolves by numeric status code; any other
   exception resolves by exact class then MRO walk, so one `@app.errorhandler(Exception)` is a
-  catch-all for any subtype. Deployed `python/CommonDrivers/microdot.py` registers no handler at all
-  (Microdot's bare default response, safe but not our shape). `src/asy_webserver_service.py`
-  registers shaped-JSON handlers for 400/404/405/413/500 plus a catch-all persisting the exception
-  into `pr.err_s()`/FRAM history.
+  catch-all for any subtype. Deployed `legacy/firmware/python/CommonDrivers/microdot.py` registers
+  no handler at all (Microdot's bare default response, safe but not our shape).
+  `src/asy_webserver_service.py` registers shaped-JSON handlers for 400/404/405/413/500 plus a
+  catch-all persisting the exception into `pr.err_s()`/FRAM history.
 - **The one gap: exceptions raised while writing the response itself.** `Response.write()` only
   catches `OSError`, muting a short allow-list of expected socket errors — anything else propagates
   uncaught out of the per-connection handler. By then the response is already in flight, so there's
@@ -343,10 +337,11 @@ so the move shifted none of Part H.7's serving walls.
   The generated `sensortask_wozi.py` wires this to `AsyConnTime.is_hotspot_active()`. This is what makes phones'
   captive-portal probes (`generate_204`, `hotspot-detect.html`) trigger the OS "Sign in to network"
   popup instead of a silent 404, while `captive_dns.py` answers every domain with the AP's IP.
-- Deployed `python/CommonDrivers/microdot.py` already implements essentially the same protective
-  architecture, predating `ext/microdot.py`'s vendoring — one drift: its `HTTPException` branch
-  invokes a status-code handler directly rather than through the pinned tag's async-safe `invoke_handler()`
-  wrapper — irrelevant today since neither app registers handlers there.
+- Deployed `legacy/firmware/python/CommonDrivers/microdot.py` already implements essentially the
+  same protective architecture, predating `ext/microdot.py`'s vendoring — one drift: its
+  `HTTPException` branch invokes a status-code handler directly rather than through the pinned tag's
+  async-safe `invoke_handler()` wrapper — irrelevant today since neither app registers handlers
+  there.
 
 ## A.6 Datasheets
 
@@ -820,10 +815,10 @@ A completed run leaves no vanilla RP2 `firmware.uf2`; step 8's Unix port is the 
 
 ## B.7 Evidence this actually works
 
-Verified end-to-end in a clean `debootstrap` Ubuntu 24.04 chroot for both the deployed `v1.26.1`
-and latest stable; an in-place version update leaves no stale state; `test` alone completes in
-~30s offline; both `setup`/`test` were run against a deliberately hostile environment (poisoned
-`PATH`, garbage `CFLAGS`/`CMAKE_*`, non-English `LANG`) with zero poison surviving into the build.
+Verified end-to-end in a clean `debootstrap` Ubuntu 24.04 chroot for both `v1.26.1` and latest
+stable; an in-place version update leaves no stale state; `test` alone completes in ~30s offline;
+both `setup`/`test` were run against a deliberately hostile environment (poisoned `PATH`, garbage
+`CFLAGS`/`CMAKE_*`, non-English `LANG`) with zero poison surviving into the build.
 See CLAUDE.md's "Build-environment verification" for the re-check recipe.
 
 ### B.7.1 GCC ≥14 host: mbedtls array-bounds workaround
@@ -842,12 +837,11 @@ Mostly apt packages/git trees/`cmake` builds, not `.venv` territory. The install
 interpreter uses `uv run`'s ephemeral per-script environment — no `pyproject.toml`/`uv sync` step.
 Source trees/build artifacts live in `--toolchain-dir`, outside this repo.
 
-## B.9 Not yet covered
+## B.9 Coverage
 
-Proves the toolchain builds/cross-compiles/runs real Python. Does **not** yet wire up
-`build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` paths or the `py-include` symlink this project's
-builds expect (BACKLOG.md). The Unix port build itself is wired into the test suite; the remaining
-gap is the RP2040 firmware build.
+The RP2040 firmware build is covered for every device (B.11, CI `firmware-build-verify`) and the
+Unix port by the test suite (E.3). The legacy build (`legacy/firmware/build-*.sh`) is
+reference-only and never wired (CLAUDE.md).
 
 ## B.10 CI perspective
 
@@ -924,7 +918,7 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   **`actionlint`** (the workflow, the composite action and, through shellcheck, every `run:` block)
   and **`zizmor`** (`--offline`, skipping the two API audits so it behaves the same everywhere) are
   each their own stage so each tool has its own check run. shellcheck covers `scripts/` only: the
-  legacy `build-*.sh` are out of scope forever (CLAUDE.md), 28 findings included.
+  legacy `legacy/firmware/build-*.sh` are never in scope (CLAUDE.md).
 - **`unit-tests`** keeps `needs: lint-and-typecheck` purely for sequencing, the standing hang
   backstop, with `if: !cancelled()` so a red lint never skips the tests (CLAUDE.md). The per-file
   timeout in `scripts/test.sh` is the real hang defence; `timeout-minutes: 45` is for many files
@@ -958,11 +952,8 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
 Everything else derives automatically: matching pico-sdk/picotool (B.3), the mypy type stubs
 (`scripts/typecheck.sh`, failing clearly if no matching stub release exists yet), the Unix port.
 
-Each legacy `build-<device>.sh`: assembles `python/build/` → swaps `modules/_boot.py`/
-`sensortask-<device>.py` into upstream's `ports/rp2/modules/` → `make -C ports/rp2
-BOARD=RPI_PICO_W FROZEN_MANIFEST=<path>` → copies `firmware.uf2` → restores `_boot.py`. Still
-assumes `python/` is checked out as `py-include/python` alongside `micropython`, path not yet
-genericized (BACKLOG.md).
+The legacy build (`legacy/firmware/build-<device>.sh`) is described in `legacy/README.md`;
+reference-only.
 
 **The `src/`-based build (parallel pipeline)**: `scripts/build_firmware.py <device> [--output
 PATH]` assembles a real `firmware.uf2` from a `buildgen`-generated device entry module + `src/` +
@@ -996,8 +987,7 @@ strip.
 `tests_scripts/` (CPython/pytest) covers the build tooling fast and offline;
 `test_real_firmware_build_produces_a_valid_uf2` does the real end-to-end build (parametrized over
 `wozi`/`dev`), gated behind `RUN_SLOW_FIRMWARE_BUILD=1`, run in CI's `firmware-build-verify` job on
-every push/PR — closing the "no CI firmware-build stage" gap for this pipeline (legacy
-`build-*.sh` stays open, BACKLOG.md).
+every push/PR — this pipeline's CI firmware-build stage.
 
 **Production-readiness scope**: proves the build assembles and (via
 `tests/test_digital_twin_real_website_integration.py`, H.7) that the booted twin serves the real
@@ -1011,8 +1001,8 @@ necessary, not sufficient, for a real device to boot.
 
 `toolchain/setup_toolchain.py env --tier {generic,flash,bench}`, each a strict superset of the last:
 `generic` (Python/Node deps + the toolchain build), `flash` (+ real USB serial), `bench` (+ a real
-WiFi bridge/AP so a flashed board reaches genuine internet/NTP, automating `dev_legacy/README.md`'s
-manual `nmcli` recipe).
+WiFi bridge/AP so a flashed board reaches genuine internet/NTP, automating
+`tests_hardware/README.md`'s manual `nmcli` recipe).
 
 **USB device detection** reads `/sys/class/tty/<name>/device` for `idVendor=2e8a` across every
 `ttyACM*`/`ttyUSB*` entry (not `lsusb`/`udevadm`, not guaranteed present). Exactly one match
@@ -1055,7 +1045,7 @@ MAC — the router's static DHCP reservation gets orphaned if it was keyed to a 
 later changes. `ensure_bench_bridge()` now pins `bridge.mac-address` to the uplink's real hardware
 MAC before the bridge comes up on every fresh creation, and warns (never auto-repairs — cycling a
 live bridge's MAC risks the same incident) if an existing bridge's MAC doesn't match.
-`dev_legacy/README.md`'s manual recipe carries the identical fix.
+`tests_hardware/README.md`'s manual recipe carries the identical fix.
 
 **The recovery script, and the arm/verify/disarm pattern** — validated on a real successful run.
 Recreate this script fresh in a session's own scratchpad each time (not a committed file: the
@@ -1823,7 +1813,8 @@ that the request itself was broken, not invalid content').
 
 Two wire-format conventions: a field's wire name drops any redundant per-driver prefix
 (`"BackupPeriod"`, not `"SGPBackupPeriod"`); every bool field is native JSON `true`/`false`,
-replacing legacy's `"On"`/`"Off"` string dtype. Only legacy `html_raw/` isn't updated (H.1).
+replacing legacy's `"On"`/`"Off"` string dtype. Only legacy `legacy/firmware/html_raw/` isn't
+updated (H.1).
 
 **A module whose single schema spans more than one REST route must narrow `get_cfg_schema()`'s
 tuple per route** — `AsyConnTime` owns one schema but `/net/cmd`/`/led/cmd` each own only their own
@@ -3471,13 +3462,14 @@ same as before.
 
 ## F.1 Core platform facts
 
-Deployed units run **MicroPython 1.26** on **Pico W (RP2040)**; code ships as **frozen bytecode**,
-not loaded from a filesystem at runtime — CPython-only stdlib behavior cannot be assumed. The
-refactor pins **v1.29.0** (`toolchain/versions.toml`), which stays pinned to a chosen version that
-moves only on the owner's call (owner, 2026-09-26), and uses that version's features, not just
-reproducing 1.26-era behavior. F.5 catalogs what 1.29
-changed for this codebase. MicroPython 1.26 bundles pico-sdk 2.1.1;
-since pico-sdk 2.0.0, a standalone `picotool` must match its major.minor or the build fails.
+The owner's legacy units run **MicroPython 1.24.1** with the legacy firmware (`legacy/firmware/`)
+and stay on it until the owner reflashes one; no fact verified at the pin is extrapolated to 1.24.1.
+The refactor runs on **Pico W (RP2040)** from **frozen bytecode**, not loaded from a filesystem at
+runtime — CPython-only stdlib behaviour cannot be assumed. It pins **v1.29.0**
+(`toolchain/versions.toml`), which stays pinned to a chosen version that moves only on the owner's
+call (owner, 2026-09-26), and uses that version's features rather than reproducing legacy
+behaviour. F.5 records what the pin changed for this codebase. MicroPython 1.26 bundles pico-sdk
+2.1.1; since pico-sdk 2.0.0, a standalone `picotool` must match its major.minor or the build fails.
 `machine.WDT` hard-caps at **8388ms**; current code uses `WDT(timeout=8000)` (388ms margin) — don't
 casually increase without re-checking the cap. **USB (`mp_usbd_init()`) initializes only *after*
 the frozen `_boot.py` returns** — a `_boot.py` that blocks forever means USB never initializes on a
@@ -3544,8 +3536,8 @@ beyond either threshold silently rounds. `coerce_numeric()`'s int→float direct
 **`struct` format codes with no byte-order prefix use the host's own native sizes**, so `'L'` is
 4 bytes on rp2 and 8 on the 64-bit Unix-port test interpreter — the same line reads a different
 number of bytes in the two places. Pin any wire or on-chip layout with an explicit `"<"` prefix;
-`dev_legacy/asy_bsec_driver.py`'s bare `struct.unpack("bbbbL", res)` against a hardcoded size of 8 is
-the shape to avoid, and anything porting it forward has to fix that first.
+`legacy/dev_drivers/asy_bsec_driver.py`'s bare `struct.unpack("bbbbL", res)` against a hardcoded
+size of 8 is the shape to avoid, and anything porting it forward has to fix that first.
 
 **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a mismatch instead of raising**,
 unlike CPython — validate shape before packing if it matters. Still true on 1.29: the overflow
@@ -3727,8 +3719,8 @@ Everything here was read out of upstream source at the two tags, or measured on 
 **The pin is field-proven on the dev bench (2026-09-11).** Real `dev` firmware built from `src/` and
 flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` / `RPI_PICO_W`, with the
 flash tier (25 passed), bench tier (85 passed) and mid soak tier (4 passed) all clean against it.
-Deployed units stay on 1.26 regardless (BACKLOG open question 3). Of the three findings that wanted
-on-target confirmation beyond just running the suites, F.5.1's and F.5.3's are closed on real
+The legacy units stay on 1.24.1 until the owner reflashes one (F.1). Of the three findings that
+wanted on-target confirmation beyond just running the suites, F.5.1's and F.5.3's are closed on real
 silicon and F.5.2's is closed as far as the target allows — inducing a genuine RX overrun is not
 reachable from Python, so its *consequence* is pinned instead (`device_scripts/
 fram_busy_status_lockout.py`).
@@ -4298,7 +4290,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
   owns **one** contiguous allocation per logical record, sized once from configuration, and hands out
   `memoryview` slices of its regions (`get_buf()`, `get_data_buf()`, and a per-class accessor per
   further region) rather than returning freshly allocated copies. Three rules follow, and they are
-  what separates the `src/` implementations from their `python/` ancestors:
+  what separates the `src/` implementations from their `legacy/firmware/python/` ancestors:
   - **Every transfer method comes in pairs** — `write(data)`/`write_into(buf)` and
     `read()`/`read_into(buf)`: the convenience form allocates and copies, the `_into`/`_from` form
     takes a caller-owned buffer and neither allocates nor copies. `asy_fram_manager.py`'s
@@ -4384,10 +4376,10 @@ no external runtime deps; stable on major browsers, light/dark (automatic-only v
 `prefers-color-scheme`); modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode →
 mount on startup → served via Microdot as gzip-compressed HTML (A.9).
 
-**Predecessor**: `html_raw/{general,arzi,dev,wozi}` is the legacy, still-deployed site targeting
-the legacy REST shape (PUT-with-`cmd`-envelope, `Led`-prefixed fields) predating
-`asy_webserver_service.py` (A.8). This Part's website targets the refactored REST shape from the
-start — not a reskin.
+**Predecessor**: `legacy/firmware/html_raw/{general,arzi,dev,wozi}` is the legacy site the owner's
+legacy units serve, targeting the legacy REST shape (PUT-with-`cmd`-envelope, `Led`-prefixed
+fields) predating `asy_webserver_service.py` (A.8). This Part's website targets the refactored
+REST shape from the start — not a reskin.
 
 ## H.2 Folder structure and module map
 
@@ -5279,8 +5271,9 @@ numbers are at rest — don't compare them directly.
 
 The wire protocol and role model of `src/asy_uart_comm.py`, the point-to-point UART message
 transport. No vendor document or prior specification exists — this Part **is** the specification,
-reconstructed from the field-proven legacy implementation (`python/IndividualDrivers/asy_uart_comm.py`)
-and confirmed by the project owner (2026-09-11). Read it before changing anything about the protocol.
+reconstructed from the field-proven legacy implementation
+(`legacy/firmware/python/IndividualDrivers/asy_uart_comm.py`) and confirmed by the project owner
+(2026-09-11). Read it before changing anything about the protocol.
 
 **The module is promoted.** It sits above `asy_uart_driver.UART` the way `asy_fram_manager.py` sits
 above `asy_fram_driver.py`: a sync allocate-only constructor with a readiness gate, an injected
@@ -5428,13 +5421,13 @@ and expected sizes all belong to the caller. Its first use case (a BME688/BSEC c
 explicitly *not* part of its scope and does not constrain its design.
 
 **Not constraining it is not the same as not serving it**, and that was checked rather than assumed
-(2026-09-13). `dev_legacy/asy_bsec_driver.py`'s whole `BSEC_UART` control flow replays over the
-promoted module at the sizes `dev_legacy/sensortask-dev.py` actually deployed — 13 datafields, a
-221-byte BSEC state, `payload_size` 20, an 8-byte system status — covering all five shapes it used:
-a fixed-size GET decoded with `struct`, a don't-care GET for when the stored state size was unknown,
-a payload-less SET as a pure command, a small SET, and a 221-byte multi-chunk SET. Opcode and
-payload stay separate fields (an id in chunk 1, data from chunk 2), and what the legacy left
-implicit — that only one side ever initiates — is now the role gate. Two conformance tests in
+(2026-09-13). `legacy/dev_drivers/asy_bsec_driver.py`'s whole `BSEC_UART` control flow replays
+over the promoted module at the sizes `legacy/dev_drivers/sensortask-dev.py` actually deployed — 13
+datafields, a 221-byte BSEC state, `payload_size` 20, an 8-byte system status — covering all five
+shapes it used: a fixed-size GET decoded with `struct`, a don't-care GET for when the stored state
+size was unknown, a payload-less SET as a pure command, a small SET, and a 221-byte multi-chunk SET.
+Opcode and payload stay separate fields (an id in chunk 1, data from chunk 2), and what the legacy
+left implicit — that only one side ever initiates — is now the role gate. Two conformance tests in
 `tests/test_asy_uart_comm.py` pin it, each verified to fail when the capability is removed; they
 demonstrate rather than constrain, since any API able to express the flow passes them.
 **One deployed value has to change in a faithful port**: `rxbuf` 32 is refused (`errno` 15) against
@@ -5501,15 +5494,16 @@ Without a CRC, the only integrity checking left is this layer's own structural v
 chunk index, size bounds, ACK `UID` match).
 
 **The CRC algorithm and its byte order are part of the wire contract and must be specified, never
-inherited.** The field-proven legacy configuration — `python/IndividualDrivers/asy_uart.py`'s own
-`CRC16`, which is what the C peer mirrors — is an LSB-first/right-shifting variant over poly `0x1021`
-with init `0xFFFF`, appended in the platform's **native** byte order; that is *not* CRC-16/CCITT-FALSE,
-and it interoperates between the two peers only because both happen to be little-endian.
-`src/crc_checks.py`'s `CRC16` is a genuine MSB-first CRC-16/CCITT-FALSE appended big-endian. **The two
-are not wire-compatible** — verified directly: each is self-consistent (residue zero over payload+CRC)
-and each rejects the other's frames. Moving this module onto `src/`'s driver therefore changes the
-bytes on the wire, which is a coordinated flag-day rather than a receiver-strictness change
-(`UART_C_PORT_CHANGELOG.md` A7).
+inherited.** The field-proven legacy configuration —
+`legacy/firmware/python/IndividualDrivers/asy_uart.py`'s own `CRC16`, which is what the C peer
+mirrors — is an LSB-first/right-shifting variant over poly `0x1021` with init `0xFFFF`, appended
+in the platform's **native** byte order; that is *not* CRC-16/CCITT-FALSE, and it interoperates
+between the two peers only because both happen to be little-endian. `src/crc_checks.py`'s `CRC16` is
+a genuine MSB-first CRC-16/CCITT-FALSE appended big-endian. **The two are not wire-compatible** —
+verified directly: each is self-consistent (residue zero over payload+CRC) and each rejects the
+other's frames. Moving this module onto `src/`'s driver therefore changes the bytes on the wire,
+which is a coordinated flag-day rather than a receiver-strictness change (`UART_C_PORT_CHANGELOG.md`
+A7).
 
 | Offset | Field | Semantics |
 |---|---|---|
@@ -5680,12 +5674,12 @@ peer's budget covers this side's latency — and it is checkable locally, which 
 
 **Self-compatibility is a required, tested property**: one Python instance as initiator and one as
 responder must interoperate perfectly. The dev bench embodies this physically (the permanent
-UART0↔UART1 crossover jumper, `dev_legacy/README.md`), and it must also be reproducible without
-hardware, at **the `machine.UART` level — below `asy_uart_driver.py`** — in `tests/machine.py` (unit
-tier) and `digital_twin/machine.py` (twin tier, which has no `UART` at all today). The link is
-modelled per direction, with byte-stream fault injection: dropped/corrupted bytes, mid-frame
-truncation, injected noise, delayed delivery, stalled TX readiness, short writes, duplicated frames,
-receive-buffer overrun, and one-sided silence.
+UART0↔UART1 crossover jumper, `tests_hardware/README.md` 'The dev bench'), and it must also be
+reproducible without hardware, at **the `machine.UART` level — below `asy_uart_driver.py`** — in
+`tests/machine.py` (unit tier) and `digital_twin/machine.py` (twin tier, which has no `UART` at all
+today). The link is modelled per direction, with byte-stream fault injection: dropped/corrupted
+bytes, mid-frame truncation, injected noise, delayed delivery, stalled TX readiness, short writes,
+duplicated frames, receive-buffer overrun, and one-sided silence.
 
 Both models exist: `tests/machine.py`'s `UARTLink` (synchronous delivery, deterministic fault
 knobs) and `digital_twin/machine.py`'s (the same semantics plus real wire time derived from the

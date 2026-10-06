@@ -22,7 +22,7 @@ lease and resumption procedure.
 |---|---|---|---|
 | U0 | B0 ENV: baseline, apparatus, prevention rules, B0 doc pass | done 2026-10-06 | through `d6534c0`; record `audit/artefacts/ENV/u0_record.md` |
 | U0R | dependency refresh after the baseline | done 2026-10-06 | merges `9f32315`, `d2bb623`, `e8f5dc0`, `6ca1d7f`; record `audit/artefacts/ENV/dependency_refresh.md` |
-| U1 | legacy move to `legacy/` | not started | — |
+| U1 | legacy move to `legacy/` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U1_close.md` |
 | U2 | error-number catalog | not started | — |
 | U3 | central log-repeat rule, one entry per event | not started | — |
 | U4 | compare-before-write primitive, SCD30 onto it | not started | — |
@@ -126,6 +126,9 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | post-audit | SF-B16: no wire change for declined-vs-lost on the UART; recorded for C reconciliation | the wire format is frozen (owner, 2026-09-25) |
 | U26 | SF-U0-08: the hardware marker table moves to a new `tests_hardware/markers.py`, registered by both conftests | the owner rule keeps registration and reasons in `tests_hardware/`; one table cannot drift; reversible |
 | U0 | The citation and vocabulary allow-lists grew once (108 → 169 and 691 → 733 lines) when the checks began counting each occurrence and reading citations into `improved-quality/` (SF-U0-03, SF-U0-04): existing text only, no new text; every later regenerate only prunes | rewriting that text in U0 would pull later units' doc edits forward; the lists still only shrink from here |
+| U1 | BACKLOG's "Rough sequencing" bullet removed whole: after U0 its one clause (environment setup) was done, and deleting only the clause left an empty label | the merged end state removes the section anyway; reversible |
+| U1 | SPEC's sentence on the legacy site keeping the old `Led` names cites the legacy rule (owner, 2026-09-11) as its reason instead of "accepted debt" | the rule is why the legacy site gets no update; the vocabulary check needs an actor and the list only shrinks |
+| U1 | Three later-unit comments whose U1 stage was "dropped" (`buildgen/codegen.py`'s generated boot-entry docstring, `scripts/build_frozen_html.sh`, `js/mock-server.js`) got a minimal repath | U1's old-path check would fail on them until their units rewrite them |
 
 ## Parked deltas (OR2.c, OR106.a)
 

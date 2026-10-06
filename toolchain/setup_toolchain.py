@@ -447,8 +447,8 @@ def cross_compile_frozen_verify_test(mpy_cross_binary: Path, test_file: Path) ->
 
 
 def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> None:
-    """Mirrors this repo's manifest convention (python/Manifest/manifest.py): the port's own
-    manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves relative to this file, so
+    """Mirrors this repo's manifest convention (legacy/firmware/python/Manifest/manifest.py): the
+    port's own manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves relative to this file, so
     manifest_path is written as a sibling of that subdir - never inside it, never freezing itself."""
     manifest_path.write_text(
         f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n',
@@ -787,7 +787,7 @@ def detect_free_wifi_interface(exclude: str) -> str:
     return candidates[0]
 
 
-# Connection names match dev_legacy/README.md's manual nmcli recipe exactly, so a bridge/AP
+# Connection names match tests_hardware/README.md's manual nmcli recipe exactly, so a bridge/AP
 # created by that recipe by hand is recognized as "already configured" here too, and vice versa.
 BENCH_BRIDGE_CONN = "br0"
 BENCH_ETH_CONN = "br0-eth0"
@@ -805,8 +805,8 @@ def existing_bench_ap_ssid() -> str:
 
 
 def generate_bench_ap_credentials() -> tuple[str, str]:
-    """A fresh, random, test-only SSID/password - never a fixed default - per
-    dev_legacy/README.md's "generate a fresh test-only SSID/password per session" guidance."""
+    """A fresh, random, test-only SSID/password per bridge creation - never a fixed default, never a
+    committed one (CLAUDE.md credential rule; tests_hardware/README.md's recipe)."""
     ssid = f"sensors-bench-{secrets.token_hex(3)}"
     password = secrets.token_urlsafe(12)
     return ssid, password

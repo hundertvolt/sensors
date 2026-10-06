@@ -738,9 +738,9 @@ def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> 
 
 
 def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> None:
-    # Legacy's own pauseAutoLED rejects an out-of-range pauseTime as Invalid rather than clamping
-    # (modules/sensortask-wozi.py), but LockedCounter.set_value() would clamp silently - so this
-    # dispatcher must range-check server-side itself before ever calling the callback.
+    # Legacy's own pauseAutoLED rejects an out-of-range pauseTime as Invalid rather than clamping (the
+    # legacy firmware's sensortask module, legacy/firmware/modules/), but LockedCounter.set_value()
+    # would clamp silently - so this dispatcher must range-check server-side itself before the callback.
     pause_calls = []
 
     async def notification_pause(secs: int) -> bool:
