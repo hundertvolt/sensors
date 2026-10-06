@@ -3096,18 +3096,18 @@ Kinds: SETTLED 64, INVAR 114, MIRROR 62, LIMIT 118, RISK 67, ASSUME 190, PLATFOR
 - **HW.N775** OPENQ · `BACKLOG.md:329-343` — "recorded, not chased; each needs silicon" — #44: one
   silent reset in 1/9 peak-load boots (watchdog starvation first candidate); hotspot fallbacks (one
   explained as stale-AP-station); queue F17. · related: XCUT.T03, XCUT.S01 · [H15]
-- **HW.N776** TODO · `BACKLOG.md:720-727` — "the script still does not complete ... so it likely needs
+- **HW.N776** TODO · `BACKLOG.md:721-728` — "the script still does not complete ... so it likely needs
   run_isolated_expect_reset()" — `wifi_service_reconnect_repro.py` half-closed; queue §2A F1 (also its
   garbage-SSID incident). · related: HW.S09 · [H15]
   ⟨4dc80ef: F1 verified 2026-09-25 (6f7eef7); the script still needs a watchdog-feeding wrapper:
   BACKLOG.md "Two device-script loose ends" and tests_hardware/README.md:383-385⟩
-- **HW.N777** TODO · `BACKLOG.md:777-811` — "Still open: the real --tier long (6h) production-duration
+- **HW.N777** TODO · `BACKLOG.md:778-812` — "Still open: the real --tier long (6h) production-duration
   run itself" — Long real-HW memory soak never run (queue S4); 10-min `mid` passed 2026-09-08. ·
   related: HW.S14 · [H15]
-- **HW.N778** LIMIT · `BACKLOG.md:793-799` — "a real but coarser signal than an actual trend
+- **HW.N778** LIMIT · `BACKLOG.md:794-800` — "a real but coarser signal than an actual trend
   measurement" — Real-HW soak detects only a `MemoryError` traceback or a reboot. · related: HW.S14 ·
   [H15]
-- **HW.N779** LIMIT · `BACKLOG.md:916-918` — "CYW43-firmware-level faults such as wlan.connect() itself
+- **HW.N779** LIMIT · `BACKLOG.md:917-919` — "CYW43-firmware-level faults such as wlan.connect() itself
   raising are not network-path faults tc/iptables can express" — Covered only by the twin's `--fault wlan:`.
   · [H15]
 
@@ -3418,16 +3418,16 @@ Kinds: SETTLED 64, INVAR 114, MIRROR 62, LIMIT 118, RISK 67, ASSUME 190, PLATFOR
 - **HW.N858** DRIFT · `tests_hardware/README.md:1280-1286` — "alarm-pool-exhaustion fallback
   (`_force_watchdog_starve = True`) is mock-only" — Stale since G3 proved it on silicon (`79423dd`). ·
   covered-by: DOC.S24 · [D1]
-- **HW.N859** TODO · `BACKLOG.md:361-366` — "**Not yet confirmed on silicon.**" — SGP40 W13 per outage
+- **HW.N859** TODO · `BACKLOG.md:362-367` — "**Not yet confirmed on silicon.**" — SGP40 W13 per outage
   and the flash tier's closing hard_reset(). · covered-by: HW.S28 · [D1]
-- **HW.N860** TODO · `BACKLOG.md:388-392` — "**This is its only copy.**" — A6's timing script lives only
+- **HW.N860** TODO · `BACKLOG.md:389-393` — "**This is its only copy.**" — A6's timing script lives only
   inside BACKLOG, pending T4's decision. · covered-by: DOC.S27 · [D1]
-- **HW.N861** TODO · `BACKLOG.md:461-463` — "Give ad-hoc bench scripts one helper that kicks the AP's
+- **HW.N861** TODO · `BACKLOG.md:462-464` — "Give ad-hoc bench scripts one helper that kicks the AP's
   stations and then resets." — Every 2026-09-25 hotspot fallback was a reset without a kick immediately
   before it. · related: DOC.S29, HW.T12 · [D1]
-- **HW.N862** OPENQ · `BACKLOG.md:720-727` — "Fold that into the script, or keep the wrapper as the
+- **HW.N862** OPENQ · `BACKLOG.md:721-728` — "Fold that into the script, or keep the wrapper as the
   documented way." — Plus: should device scripts remove their stale config_HWTEST_*.cfg on exit? ·
   covered-by: HW.S09 · [D1]
-- **HW.N863** LIMIT · `BACKLOG.md:373-379` — "needs hardware the bench does not have" — R13 + N3 cannot
+- **HW.N863** LIMIT · `BACKLOG.md:374-380` — "needs hardware the bench does not have" — R13 + N3 cannot
   run on today's bench (owner, 2026-09-25); low urgency, mock tier covers the logic. · related: UART.T06
   · [D1]

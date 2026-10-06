@@ -1,7 +1,7 @@
 """Move `path:line` anchors in audit markdown from one commit to another, by the git diff between them.
 
-Usage: reanchor.py OLD NEW FILE... [--dry]. Lines in unchanged regions shift; a line inside a changed hunk
-or in a deleted file is reported (kept as is) for a manual look. Prints the report; exit 0.
+Usage: reanchor.py OLD NEW FILE... [--dry] [--only=PATH,...]. Lines in unchanged regions shift; a line inside a changed
+hunk or in a deleted file is reported (kept as is). Commit-qualified anchors (`sha^2`:path:N) never move. Exit 0.
 """
 
 import re
@@ -12,6 +12,7 @@ EXT = r"py|md|sh|toml|js|mjs|json|yml|yaml|ini|txt|css|html|cfg"
 REF = r"([\w./-]+\.(?:" + EXT + r")):(\d+(?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)"
 CONT = r"(?<=[\s(,`]):(\d+(?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)(?![\d:])"
 TOKEN = re.compile(REF + "|" + CONT)
+QUALIFIED = re.compile(r"`?[0-9a-f]{7,40}(?:\^\d)?`?:$")
 UPSTREAM = ("py/", "extmod/", "ports/", "shared/", "lib/", "drivers/", "src/freezeFS.py")
 
 
@@ -25,7 +26,7 @@ class Mapper:
         self.tracked = set(git("ls-tree", "-r", "--name-only", old).split("\n"))
         self.alive = set(git("ls-tree", "-r", "--name-only", new).split("\n"))
         self.changed = set(git("diff", "--name-only", old, new).split("\n")) - {""}
-        self.by_base, self.hunks = {}, {}
+        self.by_base, self.hunks, self.lengths = {}, {}, {}
         for t in self.tracked:
             self.by_base.setdefault(t.rsplit("/", 1)[-1], []).append(t)
 
@@ -38,8 +39,15 @@ class Mapper:
         src = [c for c in cands if c.startswith("src/")]
         return (src or (cands if len(cands) == 1 else []) or [None])[0]
 
+    def length(self, path):
+        if path not in self.lengths:
+            self.lengths[path] = git("show", f"{self.old}:{path}").count("\n")
+        return self.lengths[path]
+
     def map(self, path, n):
         """Return (new_n, problem or None)."""
+        if n > self.length(path):
+            return n, None  # beyond the file: a continuation token that names another file
         if path not in self.changed:
             return n, None
         if path not in self.alive:
@@ -87,6 +95,8 @@ def process(mapper, fname, dry):
             where = f"{fname}:{lineno + m.string[: m.start()].count(chr(10))}"
             if m.group(1):
                 last = mapper.resolve(m.group(1))
+                if QUALIFIED.search(m.string[max(0, m.start() - 48) : m.start()]) or (ONLY and last not in ONLY):
+                    last = None
                 if last is None:
                     return m.group(0)
                 return m.group(1) + ":" + rewrite_nums(mapper, last, m.group(2), where, report)
@@ -103,8 +113,11 @@ def process(mapper, fname, dry):
     return changed, report
 
 
+ONLY = set()
+
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--dry"]
+    ONLY.update(p for a in sys.argv if a.startswith("--only=") for p in a[7:].split(","))
+    args = [a for a in sys.argv[1:] if a != "--dry" and not a.startswith("--only=")]
     mp = Mapper(args[0], args[1])
     total = []
     for f in args[2:]:

@@ -1285,12 +1285,12 @@ Kinds: SETTLED 25, INVAR 50, MIRROR 21, LIMIT 150, RISK 4, ASSUME 75, PLATFORM 3
 
 - **TWIN.N347** ASSUME · `BACKLOG.md:288-291` — "not a predictor of real-hardware cost in either
   direction" — Twin `ResetErrors` timings are a harness baseline only. · related: TWIN.T06 · [H15]
-- **TWIN.N348** SETTLED · `BACKLOG.md:677-682` — "must never be bisected to a code change" — Twin soak
+- **TWIN.N348** SETTLED · `BACKLOG.md:678-683` — "must never be bisected to a code change" — Twin soak
   wall clock is GC-timing-driven; budget sits above the observed range. · related: TEST.T04 · [H15]
-- **TWIN.N349** ASSUME · `BACKLOG.md:800-803` — "the Unix port's allocator/heap behavior isn't
+- **TWIN.N349** ASSUME · `BACKLOG.md:801-804` — "the Unix port's allocator/heap behavior isn't
   guaranteed identical to rp2040's real one" — Twin "no leak" conclusion may not transfer. · related:
   TWIN.T06 · [H15]
-- **TWIN.N350** TODO · `BACKLOG.md:918-921` — "Still open: the NTP-outage-x-bus-load fault recombination
+- **TWIN.N350** TODO · `BACKLOG.md:919-922` — "Still open: the NTP-outage-x-bus-load fault recombination
   has no twin/mock-tier equivalent" — Adding bus load to twin Run 9 is the named extension; "not chased
   yet". · [H15]
 

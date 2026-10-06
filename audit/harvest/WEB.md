@@ -58,7 +58,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 - **WEB.N011** LIMIT · `SPECIFICATION.md:5913-5916` — "a hand-written website-prototype fixture that can
   predate the real driver, carrying placeholder field names" — Stated fidelity limit, "found-twice gap";
   checked only by manual K.8 and K.11 checklist steps (:5985). · covered-by: WEB.T15 · [H08 (also H13)]
-- **WEB.N012** LIMIT · `BACKLOG.md:829-832` — "`mockdata/`/`html/definitions/` only carry fixtures for
+- **WEB.N012** LIMIT · `BACKLOG.md:830-833` — "`mockdata/`/`html/definitions/` only carry fixtures for
   those two devices" — Only wozi and dev have fixtures; the other four devices have none. · covered-by:
   WEB.T12 · [H08]
 - **WEB.N013** DRIFT · `mockdata/dev.json:5-6, 13-14, 65-75` — "\"SHTC3\": { \"Temp\": 23.3" — dev
@@ -684,7 +684,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 - **WEB.N188** DRIFT · `html/definitions/wozi.json:1 (whole file)` — "wozi/dev keep their hand-written
   html/definitions/<device>.json" (scripts/build_website.sh:26) — provenance is stated three ways:
   hand-written (build_website.sh:26-27, SPECIFICATION.md:4417-4418), "generated at build time ... never
-  hand-maintained" (SPECIFICATION.md:5798-5799), "generated *and committed*" (BACKLOG.md:505-506) ·
+  hand-maintained" (SPECIFICATION.md:5798-5799), "generated *and committed*" (BACKLOG.md:506-507) ·
   covered-by: WEB.S13 · [H11] ⟨quote not matched at the anchor⟩
 - **WEB.N189** TODO · `html/definitions/wozi.json:1 (whole file)` — "retiring them is deferred work
   (SPECIFICATION.md Part L.4)" (scripts/build_website.sh:27) — retiring the hand-written wozi/dev files
@@ -692,7 +692,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   ⟨quote not matched at the anchor⟩
 - **WEB.N190** MIRROR · `html/definitions/wozi.json:60-130,147-168,184-186,311-346` — "\"min\": 2,
   \"max\": 1800" etc. — every hand-written min/max/float/maxLength must match src/ FieldSchema tuples
-  (e.g. NTP_Host maxLength 1024 — BACKLOG.md:505-507; SPECIFICATION.md:2339 "Also update
+  (e.g. NTP_Host maxLength 1024 — BACKLOG.md:506-508; SPECIFICATION.md:2339 "Also update
   html/definitions/<device>.json") · related: WEB.S13 · [H11] ⟨quote not matched at the anchor⟩
 - **WEB.N191** LIMIT · `html/definitions/wozi.json:72-75` — "\"key\": \"ContMeas\" ... \"defaultValue\":
   true" — ContMeas is dispatch-only server-side (mock SENSOR_QUIRK_FIELDS) but carries no `dispatch`
@@ -717,7 +717,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 
 - **WEB.N196** DRIFT · `html/definitions/dev.json:1 (whole file)` — 2-space indent and `—` escapes
   (Python `json.dump` style) — dev.json is formatted like generator output while wozi.json is
-  hand-formatted; consistent with BACKLOG.md:505-506's "generated *and committed*" and inconsistent with
+  hand-formatted; consistent with BACKLOG.md:506-507's "generated *and committed*" and inconsistent with
   "hand-written" (build_website.sh:26) (low) · covered-by: WEB.S13 · [H11] ⟨quote not matched at the
   anchor⟩
 - **WEB.N197** MIRROR · `html/definitions/dev.json:964-970` — "UARTLINK_Transfers ... Bench-only - a
@@ -1043,15 +1043,15 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
 - **WEB.N269** MIRROR · `BACKLOG.md:140` — "html/definitions/dev.json/mockdata/dev.json updated with the
   new field" — A new driver data field must be hand-mirrored into the committed dev definitions and the
   mock fixture. · related: WEB.S13, WEB.T05 · [H15]
-- **WEB.N270** TODO · `BACKLOG.md:821-832` — "Still open: retiring wozi/dev's own hand-written
+- **WEB.N270** TODO · `BACKLOG.md:822-833` — "Still open: retiring wozi/dev's own hand-written
   html/definitions/{wozi,dev}.json ... needs a tests_js/ fixture audit nobody has done yet" — Plus
   `KNOWN_DEVICES = ["wozi","dev"]` and no mockdata for the other four devices. · covered-by: WEB.S13,
   WEB.S22, WEB.T12 · [H15]
-- **WEB.N271** TODO · `BACKLOG.md:833-837` — "Manual cross-browser/cross-device spot check not yet done
+- **WEB.N271** TODO · `BACKLOG.md:834-838` — "Manual cross-browser/cross-device spot check not yet done
   — needs the project owner directly." — No real Safari / mobile pass. · related: WEB.T09 · [H15]
-- **WEB.N272** RISK · `BACKLOG.md:866-870` — "harmless today (called exactly once per real page load),
+- **WEB.N272** RISK · `BACKLOG.md:867-871` — "harmless today (called exactly once per real page load),
   but a latent leak" — `js/nav.js` `initNav()` keydown listener never removed. · [H15]
-- **WEB.N273** TODO · `BACKLOG.md:871-874` — "selectSection() is duplicated near-verbatim between
+- **WEB.N273** TODO · `BACKLOG.md:872-875` — "selectSection() is duplicated near-verbatim between
   js/app.js and js/main.js" — Low-priority duplicate (Part G.3). · covered-by: WEB.S18 · [H15]
 
 ## Commit messages (chronological)
@@ -1093,7 +1093,7 @@ Kinds: SETTLED 15, INVAR 25, MIRROR 73, LIMIT 89, RISK 4, ASSUME 35, PLATFORM 8,
   distinguish dispatch-only webserver fields from `dispatch=true` tag fields | - · [H17]
 - **WEB.N282** NOTE(FLAG) · `commit 8ff9591` — "js/app.js's prototype-only KNOWN_DEVICES list only
   covers wozi/dev"; tests_hardware/bus_topology.py dead code — Website fixture gap; dead code. · status:
-  KNOWN_DEVICES tracked: BACKLOG.md:826-831; bus_topology.py deleted (CLAUDE.md) | related: WEB.T* ·
+  KNOWN_DEVICES tracked: BACKLOG.md:827-832; bus_topology.py deleted (CLAUDE.md) | related: WEB.T* ·
   [H17]
 - **WEB.N283** NOTE(OWNER) · `commit 12a616a` — q4 keep nested RGB/HSB; q5 "leave mockdata's SHTC3/MPRLS
   placeholders alone"; q6 rounding in the renderer via decimals hint — Decisions. · tracked: SPEC H.5

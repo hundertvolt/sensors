@@ -2884,10 +2884,10 @@ Kinds: SETTLED 24, INVAR 125, MIRROR 96, LIMIT 195, RISK 9, ASSUME 105, PLATFORM
 - **TEST.N730** LIMIT · `BACKLOG.md:113-116` — "only ever proved wire-level atomicity, never this
   shadow-vs-chip timing race" — A named mock test covered less than it appeared to. · related: TEST.T01
   · [H15]
-- **TEST.N731** LIMIT · `BACKLOG.md:683-696` — "What remains genuinely unmodelled is the duration" —
+- **TEST.N731** LIMIT · `BACKLOG.md:684-697` — "What remains genuinely unmodelled is the duration" —
   UART fakes deliberately don't wait; count `would_have_blocked_bytes` (identical semantics held by
   `tests/_uart_link_contract.py`); only the bench measures ms. · related: BUS.T05, TEST.T05 · [H15]
-- **TEST.N732** MIRROR · `BACKLOG.md:903-905` — "Both test fakes gained readfrom_mem_into() delegating
+- **TEST.N732** MIRROR · `BACKLOG.md:904-906` — "Both test fakes gained readfrom_mem_into() delegating
   to their own readfrom_mem" — Fault injection depends on the fakes keeping this delegation. · related:
   TEST.T05 · [H15]
 

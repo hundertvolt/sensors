@@ -701,7 +701,7 @@ Kinds: SETTLED 20, INVAR 31, MIRROR 13, LIMIT 30, RISK 16, ASSUME 36, PLATFORM 7
   is invisible to FRAM forensics." — A real failure class leaves no persisted evidence. · related:
   XCUT.T24 · [H15]
   ⟨4dc80ef: BACKLOG 30 closed as not reproduced, item removed (R1, 79423dd)⟩
-- **REST.N173** ASSUME · `BACKLOG.md:499-503` — "Real traffic measures 232 B." — Dated body-size
+- **REST.N173** ASSUME · `BACKLOG.md:500-504` — "Real traffic measures 232 B." — Dated body-size
   figures; derived by `tests_scripts/test_request_body_cap_headroom.py`. · [H15]
 
 ## Archive `12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md` (5,553 lines) — only items still open/undecided/deferred/next-step there, with carry status in current docs

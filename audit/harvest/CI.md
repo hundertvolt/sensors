@@ -628,27 +628,27 @@ Kinds: SETTLED 40, INVAR 21, MIRROR 4, LIMIT 23, RISK 8, ASSUME 19, PLATFORM 8, 
   (owner-specified): `disallow_any_explicit` is off in all three configs; needs a typing strategy for
   test wrappers and a decision on variadic/opaque `src/` uses. Status: deferred. · related: ENV.T06 ·
   [H15]
-- **CI.N183** TODO · `BACKLOG.md:625-636` — "should still confirm it whenever one is next convenient" —
+- **CI.N183** TODO · `BACKLOG.md:626-637` — "should still confirm it whenever one is next convenient" —
   Session 7's `max-args` 21→22 got only the noble leg; trixie blocked by egress. Whether the 2026-09-12
   trixie leg already covers it is unstated; `max-args` is now 24 (`pyproject.toml:209`). (low) · [H15]
-- **CI.N184** SETTLED · `BACKLOG.md:739-776` — "Additional checker candidates, measured and mostly
+- **CI.N184** SETTLED · `BACKLOG.md:740-777` — "Additional checker candidates, measured and mostly
   declined." — zizmor adopted; import-linter (flat `src/`, false green), vulture,
   gitleaks/detect-secrets, codespell, markdownlint, yamllint, hadolint, taplo, pip-audit/npm audit
   rejected with reasons. · related: DOC.T14 · [H15]
-- **CI.N185** SUPPRESS · `BACKLOG.md:746-749` — "One audit is disabled with cause: self-repository ...
+- **CI.N185** SUPPRESS · `BACKLOG.md:747-750` — "One audit is disabled with cause: self-repository ...
   Revisit when actionlint learns it." — zizmor `self-repository` disabled (actionlint 1.7.12 rejects the
   syntax). Removal trigger stated. · related: DOC.T14 · [H15]
-- **CI.N186** DRIFT · `BACKLOG.md:769-770` — "Ruff's S105/S106 are live everywhere except the three
+- **CI.N186** DRIFT · `BACKLOG.md:770-771` — "Ruff's S105/S106 are live everywhere except the three
   known, individually-exempted sites" — More files are exempted than three. · covered-by: CI.S08 · [H15]
-- **CI.N187** TODO · `BACKLOG.md:534` — "pyproject.toml (+159)" — · [H15]
-- **CI.N188** TODO · `BACKLOG.md:534-536` — "package.json/vitest.config.js/eslint.config.js
+- **CI.N187** TODO · `BACKLOG.md:535` — "pyproject.toml (+159)" — · [H15]
+- **CI.N188** TODO · `BACKLOG.md:535-537` — "package.json/vitest.config.js/eslint.config.js
   (2026-09-19's PUT-matrix split" — · [H15]
-- **CI.N189** TODO · `BACKLOG.md:565-567` — "the tests/_coverage_runner.py = ['S102'] per-file-ignore is
+- **CI.N189** TODO · `BACKLOG.md:566-568` — "the tests/_coverage_runner.py = ['S102'] per-file-ignore is
   gone" — Suppression now inline at the one `exec()`. · [H15] ⟨quote not matched at the anchor⟩
-- **CI.N190** TODO · `BACKLOG.md:590-591` — "pyproject.toml's max-args 24 (backlog=, chunk_bytes=) and
+- **CI.N190** TODO · `BACKLOG.md:591-592` — "pyproject.toml's max-args 24 (backlog=, chunk_bytes=) and
   the S603 per-file ignore for toolchain/micropython_overrides.py" — Lint config only (an added
   suppression). · [H15]
-- **CI.N191** TODO · `BACKLOG.md:598-600` — "comments only: ... no setting, pin or step changed" —
+- **CI.N191** TODO · `BACKLOG.md:599-601` — "comments only: ... no setting, pin or step changed" —
   2026-09-24 comment-cap cut in `pyproject.toml`, `versions.toml`, `typecheck.sh`, `ci.yml`, composite
   action. · [H15]
 

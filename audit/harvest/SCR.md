@@ -790,27 +790,27 @@ Kinds: SETTLED 24, INVAR 41, MIRROR 12, LIMIT 48, RISK 8, ASSUME 25, PLATFORM 7,
 - **SCR.N201** MIRROR · `BACKLOG.md:279-282` — "the CI suite derives _RESET_ERRORS_TIMEOUT_S from a
   mirrored _SERVER_OUTER_CAP_S" — Hand-mirrored cap (`scripts/_digital_twin_ci_suite.py:111` "keep in
   sync"); enforced by `tests_scripts/test_request_timeout_ceiling.py`. · related: GEN.T06 · [H15]
-- **SCR.N202** WORKAROUND · `BACKLOG.md:729-738` — "construct a bare machine.Timer(), which is valid
+- **SCR.N202** WORKAROUND · `BACKLOG.md:730-739` — "construct a bare machine.Timer(), which is valid
   runtime usage the third-party board stub does not model" — Standalone mypy over `device_scripts/`
   reports 2 false findings; gates pass only because `tests/machine.py` wins resolution. Removal trigger:
   none stated. · covered-by: TEST.T19 · [H15]
-- **SCR.N203** TODO · `BACKLOG.md:520-523` — "scripts/test.sh (+520 lines - parallelism autodetection,
+- **SCR.N203** TODO · `BACKLOG.md:521-524` — "scripts/test.sh (+520 lines - parallelism autodetection,
   the backgrounded tests_scripts/ job and its timeout, the heap-size and port-base moves)" — Also
   `typecheck.sh`, `lint.sh`, `build_firmware.py`, `_require_clean_hardware_run.sh`,
   `run_digital_twin_ci.sh`, `run_unix_port_integration.sh`. · [H15]
-- **SCR.N204** TODO · `BACKLOG.md:524-526` — "scripts/_digital_twin_ci_suite.py (test orchestration only
+- **SCR.N204** TODO · `BACKLOG.md:525-527` — "scripts/_digital_twin_ci_suite.py (test orchestration only
   - no build step" — 2026-09-22 widened the `MemoryError` check. · [H15]
-- **SCR.N205** TODO · `BACKLOG.md:558-564` — "the MemoryError gate matches memory allocation failed as
+- **SCR.N205** TODO · `BACKLOG.md:559-565` — "the MemoryError gate matches memory allocation failed as
   well as the class name" — Plus argument/`GC_THRESHOLD` validation moved before the sweeps;
   out-of-range message text. · related: SCR.T01 · [H15]
-- **SCR.N206** TODO · `BACKLOG.md:568-570` — "the two _render_coverage.py calls are ||-guarded and the
+- **SCR.N206** TODO · `BACKLOG.md:569-571` — "the two _render_coverage.py calls are ||-guarded and the
   verdict block maps a renderer-only failure onto exit 3" — · related: SCR.T01 · [H15]
-- **SCR.N207** TODO · `BACKLOG.md:571-577` — "go through an apt_update() helper that tolerates their own
+- **SCR.N207** TODO · `BACKLOG.md:572-578` — "go through an apt_update() helper that tolerates their own
   failure" — `setup_cross_browser_toolchain.sh`; the chroot recipe never runs it. · related: CI.S06 ·
   [H15]
-- **SCR.N208** TODO · `BACKLOG.md:592-597` — "_digital_twin_ci_suite.py's Run 11b (full-ceiling burst
+- **SCR.N208** TODO · `BACKLOG.md:593-598` — "_digital_twin_ci_suite.py's Run 11b (full-ceiling burst
   per SPECIFICATION.md Part E.9" — Plus `test.sh` GitHub annotations. · related: SCR.T01 · [H15]
-- **SCR.N209** TODO · `BACKLOG.md:601-604` — "html_stub/ is retired, so build_frozen_html.sh now
+- **SCR.N209** TODO · `BACKLOG.md:602-605` — "html_stub/ is retired, so build_frozen_html.sh now
   requires HTML_SRC_DIRS" — `test.sh` builds the real wozi site; variant probe imports `asyncio`. ·
   [H15]
 

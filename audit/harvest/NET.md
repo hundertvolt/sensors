@@ -837,14 +837,14 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 31, PLATFORM 15
 - **NET.N234** SETTLED · `BACKLOG.md:293-300` — "an AP vanishing mid-association reads as a wrong
   password" — #29 spurious `W4` is cyw43 BADAUTH behaviour; the bench outage check accepts `W4` as
   benign beside `W5`. · [H15]
-- **NET.N235** SETTLED · `BACKLOG.md:483-488` — "NTP_Host keeps its 1024-character bound — SETTLED,
+- **NET.N235** SETTLED · `BACKLOG.md:484-489` — "NTP_Host keeps its 1024-character bound — SETTLED,
   owner, 2026-09-21: 'keep it'. Do not re-raise." — 4x over DNS's 253; sole reason the max PUT is 1,312
   B (margin 1.56x). · related: NET.S14 (plan §2.3 settled list) · [H15]
-- **NET.N236** MIRROR · `BACKLOG.md:505-510` — "html/definitions/{dev,wozi}.json carry the bound as
+- **NET.N236** MIRROR · `BACKLOG.md:506-511` — "html/definitions/{dev,wozi}.json carry the bound as
   'maxLength': 1024 and are generated and committed" — Bound mirrored in `_VAL_NH`
   (`src/asy_ntp_client.py`), two committed definitions, `tests/test_asy_ntp_client.py:53` (verified
   verbatim) and a webserver test; a change must touch all. · related: GEN.T15 · [H15]
-- **NET.N237** TODO · `BACKLOG.md:883-888` — "a rename to make network_available()'s already-held-lock
+- **NET.N237** TODO · `BACKLOG.md:884-889` — "a rename to make network_available()'s already-held-lock
   contract visible in its own name ... was considered but not done" — Lock contract is convention-only
   (`src/asy_wifi_service.py:780` "caller must already hold wifi_mode_lock"); `buildgen/codegen.py:413`
   passes `conn.network_available`. · related: NET.T02, XCUT.T06 · [H15]
@@ -928,7 +928,7 @@ Kinds: SETTLED 43, INVAR 31, MIRROR 7, LIMIT 50, RISK 18, ASSUME 31, PLATFORM 15
   label's length (≤63 octets ...) but not the *total* encoded QNAME length (≤255 octets" —
   `_build_query()` builds a spec-invalid query for a >255-octet name; degrades to a timeout/`None`.
   Still true at 2a88cc8 (src/asy_dns_client.py:40-51); reachable because NTP_Host keeps its 1024 bound ·
-  UNTRACKED | related: BACKLOG NTP_Host SETTLED entry (BACKLOG.md:489-506), commit-side NTP_Host items ·
+  UNTRACKED | related: BACKLOG NTP_Host SETTLED entry (BACKLOG.md:490-507), commit-side NTP_Host items ·
   [H17]
 - **NET.N256** NOTE(DEAD-CODE) · `https://github.com/hundertvolt/sensors/pull/50` —
   "`wlan_isconnected()` still has zero production callers. Whether to remove it or keep it as

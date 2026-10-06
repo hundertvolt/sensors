@@ -934,7 +934,7 @@ Kinds: SETTLED 48, INVAR 61, MIRROR 3, LIMIT 36, RISK 30, ASSUME 33, PLATFORM 2,
   ever triggered by a real user interaction via the REST layer)" — Premise of #4; plan seeds say
   `ConfigManager.setup()` rewrites/repairs files at boot on its own, so the premise may be false. ·
   related: CORE.S02, CORE.T12 · [H15]
-- **CORE.N242** OPENQ · `BACKLOG.md:510-512` — "Unchecked: whether a stored value outside a tightened
+- **CORE.N242** OPENQ · `BACKLOG.md:511-513` — "Unchecked: whether a stored value outside a tightened
   bound is rejected on the next write or silently falls back to the default" — Read-path handling of an
   out-of-bound stored value untraced. · related: CORE.T01 · [H15]
 

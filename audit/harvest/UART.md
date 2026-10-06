@@ -855,16 +855,16 @@ Kinds: SETTLED 72, INVAR 74, MIRROR 28, LIMIT 26, RISK 10, ASSUME 26, PLATFORM 8
   load" — Follow-on (b): the bench exerciser carries no periodic SET. · related: UART.T06 · [H15]
   ⟨4dc80ef: G1 scratched by the owner 2026-09-25 (230a8df); tests_hardware/README.md:1265-1269 now says
   so⟩
-- **UART.N226** SETTLED · `BACKLOG.md:480-482` — "arduino/ is out of this project's scope - SETTLED,
+- **UART.N226** SETTLED · `BACKLOG.md:481-483` — "arduino/ is out of this project's scope - SETTLED,
   owner, 2026-09-24." — Covers the UART C implementation's reconciliation and BME688/BSEC licensing. ·
   covered-by: LIC.T04 · [H15]
-- **UART.N227** RISK · `BACKLOG.md:699-704` — "lets the peer size a heap allocation ... up to ~64 kB at
+- **UART.N227** RISK · `BACKLOG.md:700-705` — "lets the peer size a heap allocation ... up to ~64 kB at
   payload_size = 255" — Responder whose `set_callback` returns `None`; caught and degraded; deliberately
   left. · covered-by: UART.T03, MEM.T03 · [H15]
-- **UART.N228** INVAR · `BACKLOG.md:711-716` — "UART_Comm.setup() called a second time while its own
+- **UART.N228** INVAR · `BACKLOG.md:712-717` — "UART_Comm.setup() called a second time while its own
   listen loop is running would deadlock" — Unreachable only because the supervisor re-calls starters,
   never `setup()`. · related: XCUT.T02 · [H15]
-- **UART.N229** SETTLED · `BACKLOG.md:838-846` — "owner-confirmed this stays as-is" — No sensor behind
+- **UART.N229** SETTLED · `BACKLOG.md:839-847` — "owner-confirmed this stays as-is" — No sensor behind
   the UART link; BME688/BSEC out of scope. · [H15]
 
 ## UART_C_PORT_CHANGELOG.md (128 lines; owning area UART). Every entry is pending C-side reconciliation, which is out of scope (owner 2026-09-24).

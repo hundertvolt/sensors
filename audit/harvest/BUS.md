@@ -479,15 +479,15 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
 
 ## BACKLOG.md
 
-- **BUS.N122** SETTLED · `BACKLOG.md:613-624` — "a known and deliberate asymmetry rather than an
+- **BUS.N122** SETTLED · `BACKLOG.md:614-625` — "a known and deliberate asymmetry rather than an
   inconsistency to tidy up" — `SPIDevice` has a sync session, `I2CDevice` none. · covered-by: BUS.T07 ·
   [H15]
-- **BUS.N123** INVAR · `BACKLOG.md:705-710` — "asy_uart_driver.UART.deinit()/init() do not respect the
+- **BUS.N123** INVAR · `BACKLOG.md:706-711` — "asy_uart_driver.UART.deinit()/init() do not respect the
   session lock" — Unguarded by design; "No caller does". · related: UART.T09 · [H15]
-- **BUS.N124** INVAR · `BACKLOG.md:896-899` — "every one of these methods fills and decodes with no
+- **BUS.N124** INVAR · `BACKLOG.md:897-900` — "every one of these methods fills and decodes with no
   await in between, and no Timer/Pin.irq callback in this codebase touches I2C" — Shared 32-byte I2C
   scratch is safe by convention only. · covered-by: BUS.T02 · [H15]
-- **BUS.N125** LIMIT · `BACKLOG.md:898-899` — "A read larger than the scratch ... falls back to
+- **BUS.N125** LIMIT · `BACKLOG.md:899-900` — "A read larger than the scratch ... falls back to
   allocating rather than refusing." — Unexercised fallback (no read > 32 B today). · [H15]
 
 ## HEAP_FRAGMENTATION_MEASUREMENTS.md (current, 393 lines; owning area HW)
@@ -541,7 +541,7 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
   F (struct.pack truncation) | related: BUS.T* · [H17]
 - **BUS.N138** NOTE(DEFER-NOTE) · `commit 715cd73` — BACKLOG readfrom_mem_into() item "worth doing
   before the ISL29125 is migrated; that migration happened without it" — Deferred bus API. · status:
-  done (BACKLOG.md:890 "done (owner decision, 2026-09-18)") | - · [H17]
+  done (BACKLOG.md:891 "done (owner decision, 2026-09-18)") | - · [H17]
 - **BUS.N139** NOTE(NOT-A-FIX) · `commit f6a182d` — "This is a churn, latency and hazard-surface fix,
   NOT a fix for the heap fragmentation ... Recorded so the next session does not read this commit as the
   remediation" — CS settle blocking 2us. · status: done | - · [H17]
@@ -550,9 +550,9 @@ Kinds: SETTLED 15, INVAR 43, MIRROR 2, LIMIT 26, RISK 4, ASSUME 16, PLATFORM 14,
   for a decision rather than fixed here" — I2C session bursts hold the event loop (no yield between
   sessions), unlike SPI after 04ef56a. Recorded only in HEAP_FRAGMENTATION_MEASUREMENTS.md, whose
   2026-09-24 condensation (17b4354) dropped it; it survives only in the git archive
-  (12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md:5227). BACKLOG.md:613-624 records the related
+  (12640c2:HEAP_FRAGMENTATION_MEASUREMENTS.md:5227). BACKLOG.md:614-625 records the related
   SPI-sync/I2C-async API asymmetry as deliberate, but not the missing between-session yield for an I2C
-  burst. · UNTRACKED (low; partly covered by BACKLOG.md:613) | related: BUS.T*, PERF.T* · [H17]
+  burst. · UNTRACKED (low; partly covered by BACKLOG.md:614) | related: BUS.T*, PERF.T* · [H17]
 - **BUS.N141** NOTE(FLAGGED-DELIBERATE) · `commit 9415902 / 88245b2` — "SPIDevice has a synchronous
   session, I2CDevice does not and has nothing equivalent to make synchronous" — API asymmetry. ·
-  tracked: BACKLOG.md:613-624 | related: BUS.T* · [H17]
+  tracked: BACKLOG.md:614-625 | related: BUS.T* · [H17]

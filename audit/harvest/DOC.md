@@ -1314,21 +1314,21 @@ Kinds: SETTLED 22, INVAR 19, MIRROR 5, LIMIT 13, RISK 1, ASSUME 9, PLATFORM 1, T
 - **DOC.N289** DRIFT · `BACKLOG.md:334-335` — "the supervisor loop is the only feed site
   (system_service.py's feed_watchdog())" — The generated setup batch also feeds per setup unit. ·
   covered-by: DOC.S20 · [H15]
-- **DOC.N290** DRIFT · `BACKLOG.md:727-727` — "whenever one is next scheduled
+- **DOC.N290** DRIFT · `BACKLOG.md:728-728` — "whenever one is next scheduled
   (REAL_HARDWARE_TEST_QUEUE.md R10)" — Queue row R10 deleted. · covered-by: DOC.S06 · [H15]
   ⟨4dc80ef: drift resolved: the R10 reference is gone (03f8bcf)⟩
-- **DOC.N291** TODO · `BACKLOG.md:847-858` — "held here only until the owner's audit of the whole
+- **DOC.N291** TODO · `BACKLOG.md:848-859` — "held here only until the owner's audit of the whole
   refactor closes" — Unix-port-equivalent requirement fulfilled; this entry's removal trigger is the
   audit itself. · [H15]
-- **DOC.N292** DRIFT · `BACKLOG.md:859-863` — "not fully wired end-to-end yet (sensortask-wozi.py itself
+- **DOC.N292** DRIFT · `BACKLOG.md:860-864` — "not fully wired end-to-end yet (sensortask-wozi.py itself
   predates the per-sensor-config model — see 'Refactor targets not yet done' above)" —
   `sensortask-wozi.py` is retired (buildgen-generated); no matching entry above; current status of the
   `_DEFAULT_CONFIG`/REST/HTML-form duplication is unclear. · related: GEN.T06 · [H15]
-- **DOC.N293** DRIFT · `BACKLOG.md:875-877` — "build-*.sh's hardcoded path/py-include dependency is now
+- **DOC.N293** DRIFT · `BACKLOG.md:876-878` — "build-*.sh's hardcoded path/py-include dependency is now
   fixed too (see 'Refactor targets not yet done' above)" — No such entry above; contradicts CLAUDE.md's
-  legacy rule; README has no "Toolchain setup" section (cited :876). · covered-by: DOC.S21, DOC.S07 ·
+  legacy rule; README has no "Toolchain setup" section (cited :877). · covered-by: DOC.S21, DOC.S07 ·
   [H15]
-- **DOC.N294** TODO · `BACKLOG.md:878-882` — "missing the pico-sdk 2.0.0+ picotool major.minor
+- **DOC.N294** TODO · `BACKLOG.md:879-883` — "missing the pico-sdk 2.0.0+ picotool major.minor
   version-matching requirement ... and the full apt package list" — `update_and_install.txt` known
   incomplete; `pico-setup` suggested as a base. · related: DOC.S15 · [H15]
 

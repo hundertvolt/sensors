@@ -266,7 +266,7 @@ Kinds: SETTLED 11, INVAR 17, MIRROR 10, LIMIT 15, RISK 5, ASSUME 8, PLATFORM 3, 
 
 ## BACKLOG.md
 
-- **ALGO.N072** INVAR · `BACKLOG.md:717-719` — "One Framing_COBS instance shared between two drivers
+- **ALGO.N072** INVAR · `BACKLOG.md:718-720` — "One Framing_COBS instance shared between two drivers
   would corrupt both" — Every construction site makes its own; the failure would be silent. · related:
   ALGO.T04 · [H15]
 

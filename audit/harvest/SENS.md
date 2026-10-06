@@ -1437,10 +1437,10 @@ Kinds: SETTLED 58, INVAR 54, MIRROR 17, LIMIT 72, RISK 15, ASSUME 57, PLATFORM 7
 - **SENS.N380** SETTLED · `BACKLOG.md:128-140` — "resolved differently, by design rather than by fixing
   a bug (project owner, 2026-09-15)" — `W12` retired; saturation is the live `Overrange` field;
   `isl29125_mechanism_envelope.py` updated but "also pending real-hardware re-run". · [H15]
-- **SENS.N381** SETTLED · `BACKLOG.md:477-479` — "FiltCoeff keeps its two meanings - SETTLED, owner,
+- **SENS.N381** SETTLED · `BACKLOG.md:478-480` — "FiltCoeff keeps its two meanings - SETTLED, owner,
   2026-09-24." — Same key on BMP3xx and ISL29125; renaming = stored-config migration. · related: WEB.S15
   · [H15]
-- **SENS.N382** RISK · `BACKLOG.md:909-912` — "safe today only because every setter is REST-triggered
+- **SENS.N382** RISK · `BACKLOG.md:910-913` — "safe today only because every setter is REST-triggered
   ... Don't add a periodic/high-frequency caller" — SCD30 NVM endurance unpublished. · covered-by:
   SENS.T07; related: PAR.S02 · [H15]
 

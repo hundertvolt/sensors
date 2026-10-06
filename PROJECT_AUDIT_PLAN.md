@@ -790,20 +790,22 @@ owner confirms); the rest go with the file (docs-current-state rule).
 ### 4.6 Execution environment (area `ENV`)
 
 Per-session topics (a fresh container repeats them): T01, T03, T04. Once-only topics commit their
-results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
+results to the register's header or `audit/artefacts/ENV/`: T02, T05-T11.
 
 - [ ] **ENV.T01** (per session) Build the toolchain (`uv run toolchain/setup_toolchain.py`; skip when
       `setup_toolchain.py test` passes); note sandbox egress limits (CLAUDE.md: `astral.sh`;
-      BACKLOG.md:630: `deb.debian.org`); build and verify **both** Unix-port variants
+      BACKLOG.md:631: `deb.debian.org`); build and verify **both** Unix-port variants
       (`hasattr(sys, "settrace")` False for `build-standard`, True for `build-settrace`) so no agent later
       triggers a rebuild.
 - [ ] **ENV.T02** (once) Baseline run of every tier listed in 1.2, serialized under the port lock (4.4);
-      record counts (files, tests, pass/fail), wall clock, coverage per `src/` file, lint/typecheck
-      finding counts (expected 0), npm results. `uv run pytest tests_hardware --collect-only` is board-free in the
+      record counts (files, tests, pass/fail), wall clock, host peak RAM, host SSD writes (`/proc/diskstats`)
+      and the environment record, coverage per `src/` file, lint/typecheck finding counts (expected 0), npm results. `uv run pytest tests_hardware --collect-only` is board-free in the
       sandbox; `HW.T14`'s confirmation is part of the go-ahead record.
-- [ ] **ENV.T03** (per session) Reference corpus: reuse `$PICO_TOOLCHAIN_DIR/micropython` (already at
-      `v1.29.0` with the rp2 submodules: `extmod/asyncio`, `ports/rp2`, `lib/lwip`, `lib/cyw43-driver`)
-      read-only; clone only Microdot `v2.6.2` into the scratchpad.
+- [ ] **ENV.T03** (per session) Reference corpus: reuse `$PICO_TOOLCHAIN_DIR/micropython` at the
+      pinned ref (`toolchain/versions.toml`) with the rp2 submodules (`lib/lwip`, `lib/cyw43-driver`, `lib/pico-sdk`,
+      `lib/micropython-lib`) read-only; Microdot at the vendored tag; after the dependency refresh the previous pins
+      (MicroPython `v1.29.0` with its submodules, Microdot `v2.6.2`) stay in the scratchpad read-only for the citation
+      re-check.
 - [ ] **ENV.T04** (per session) Re-extract datasheet text (`uv run --with pypdf --with cryptography
       audit/sweeps/extract_datasheets.py <scratchpad>`; several PDFs carry a permissions encryption that pypdf decrypts only with `cryptography`); list missing datasheets (seed `SENS.S20`).
 - [ ] **ENV.T05** (once) Apply 4.4's non-interference rules: lock files, worktree per executing agent,
@@ -823,6 +825,8 @@ results to the register's header or `audit/artefacts/ENV/`: T02, T05-T10.
       anchors in bounds, V4 ID uniqueness) and extend V3 from bounds to content where an anchor quotes
       text (planning found an in-bounds wrong anchor: BACKLOG.md:575 for :555 at `0615eba`) — the harvest
       already has that content check (`audit/sweeps/harvest_check.py`).
+- [ ] **ENV.T11** (once) Dependency refresh after T02 and before B1 (LEAD/R33): every external dependency
+      updated against the baseline, workarounds re-checked, the post-refresh baseline recorded; a short second check at B5.
 
 ### 4.7 State and resumption
 
@@ -2506,7 +2510,7 @@ Topics:
 - [ ] **HW.T10** Real-hardware entry hygiene (the queue and handover are folded into BACKLOG,
       `03f8bcf`): owner decisions filed as hardware work (F18, T4, W3, T1 — `DOC.S28`), retired row IDs
       still cited from permanent code as "queue <ID>" (`DOC.S06`), entries that state board state which
-      only holds until the next sitting (BACKLOG.md:352-360).
+      only holds until the next sitting (BACKLOG.md:353-361).
 - [ ] **HW.T11** Bench credentials consistency (owner, 2026-09-25: low risk, **consistency not
       security**): throwaway bench credentials are generated or read at run time (`bench.ap_password()`)
       and never persisted in files; harmonise every script to that convention.
@@ -2581,7 +2585,7 @@ Seeds:
   watchdog that production arms (`codegen.py:381`), so it is reset ~8 s in on a board running
   `main.py`, leaving `config_HWTEST_WIFI.cfg` (with the real WiFi password) behind. Confirmed and
   worked around on 2026-09-25 (`6f7eef7`): F1 passed only under an out-of-repo 4-line wrapper arming
-  `WDT(8000)` and feeding it from a 2 s `Timer` (`tests_hardware/README.md:383-385`); BACKLOG.md:720-727
+  `WDT(8000)` and feeding it from a 2 s `Timer` (`tests_hardware/README.md:383-385`); BACKLOG.md:721-728
   asks the owner to fold that in or keep the wrapper, and whether stale `config_HWTEST_*.cfg` files left
   on the board by earlier scripts should be removed on exit. See Appendix B for whether the script is
   still needed at all. ⟨pass 2, answered: scratch removed on every path (OR38.a (4)); keep-and-fold or retire by OR33.a; fold as chunked feeds — G1: R09; HR191⟩
@@ -2646,7 +2650,7 @@ Seeds:
   `POLL_WAIT_MS = 2` "mirrors sensortask_dev.py's own transaction rate" (a generated value, `HW.T08`);
   `reboot_fallback_starves_the_watchdog.py:24` loops to 64 "the real pool is small and fixed" while the
   measured pool is 16 (`79423dd`, commit message only — a platform fact for Part F, OR29).
-- **HW.S28** Two fixes are "not yet confirmed on silicon" (BACKLOG.md:361-366): SGP40 `W13`'s one slot
+- **HW.S28** Two fixes are "not yet confirmed on silicon" (BACKLOG.md:362-367): SGP40 `W13`'s one slot
   per outage needs NTP blocked past `SGPWaitTimeNTP` (default 30 backups, ~30 min, `asy_sgp40_driver.py:53`);
   the flash tier's closing `hard_reset()` needs a full flash-tier run. Both are logic already pinned by
   unit tests (`tests/test_asy_sgp40_driver.py:1068-1128`) or by the test itself (Appendix B). ⟨pass 2, overtaken: W13 half: OR35.b replaces the episode flag; hard_reset half: confirmed by Phase C's first full flash run — G1: R02⟩
@@ -3014,7 +3018,7 @@ Seeds:
 - **DOC.S07** Dangling doc pointers: README.md:652-653 and 783-784 point at SPECIFICATION front matter
   that has no such text; CLAUDE.md:647 ("`_timer_sequencer()` fix above") points at nothing and :893-894
   points at "Platform target" (`CLAUDE.md:15`), which no longer carries the `universe` fact;
-  BACKLOG.md:876 names a nonexistent README section.
+  BACKLOG.md:877 names a nonexistent README section.
 - **DOC.S08** Stale: "86/86" (CLAUDE.md:350) and "85"
   (SPECIFICATION.md:2926, also 3071-3072, 5033) vs 87 test files; CLAUDE.md:773 "~157" method-assign sites vs 209;
   CLAUDE.md:725 names a split test file; A.6 datasheet list omits isl29125; B.9 (821-826) says
@@ -3040,7 +3044,7 @@ Seeds:
   — triage "settled — no action" unless the premise is wrong, 2.3) ⟨pass 2, answered: changelog stays until the post-audit C reconciliation (OR5.a (1)(3), OR11.a) — G9: R24⟩
 - **DOC.S15** `update_and_install.txt` is missing from README's "single complete map";
   `dev_legacy/README.md`'s "single source of truth" status vs BACKLOG.md's board-state entry
-  (BACKLOG.md:352-360; OR32.a moves the bench content to its canonical homes). The queue/handover
+  (BACKLOG.md:353-361; OR32.a moves the bench content to its canonical homes). The queue/handover
   duplication of board state and running order ended with the fold (`03f8bcf`).
 - **DOC.S16** Undefined labels: WP1-WP8 (36 files at baseline); "measure A/B", "image E6′", "S3" defined
   only in the git archive; "S3" (a bench sitting) also collides with the S-row IDs (S3b, S4) that
@@ -3056,7 +3060,7 @@ Seeds:
   (`modules/sensortask-wozi.py:21`). ⟨pass 2, answered: refactor field names are right (OR58.a); address a reflashed unit — G9: R13, R06⟩
 - **DOC.S20** More sites of `PAR.S04`'s watchdog claim: BACKLOG.md:334-335 ("the only feed site") vs
   the per-setup-unit feed at `buildgen/codegen.py:465`.
-- **DOC.S21** `build-*.sh` status told three ways: BACKLOG.md:876-877 "now fixed too"; B.9
+- **DOC.S21** `build-*.sh` status told three ways: BACKLOG.md:877-878 "now fixed too"; B.9
   (SPECIFICATION.md:825-830) and A.3 (:133-134) "not covered"; CLAUDE.md "never gets work" — resolve
   toward CLAUDE.md's reference-only rule, never toward "covered". ⟨pass 2, answered: reference-only wins (V04, OR32); no "covered" framing — G9: R01⟩
 - **DOC.S22** SPECIFICATION.md cites symbols that don't exist: `_send_opcode()` (~1545; `src/asy_fram_driver.py`
@@ -3074,7 +3078,7 @@ Seeds:
 - **DOC.S26** SPECIFICATION.md:5296-5297 now sends F11's account to `HEAP_FRAGMENTATION_MEASUREMENTS.md`
   archive §7I-§7K, which exists only at `12640c2` (`DOC.S04`); confirm those sections hold it (the fold
   commit only repointed the reference).
-- **DOC.S27** BACKLOG.md:388-448 keeps A6's FRAM timing script as "its only copy" inside a markdown code
+- **DOC.S27** BACKLOG.md:389-449 keeps A6's FRAM timing script as "its only copy" inside a markdown code
   block: unlinted, untyped, never collected, outside the comment cap and every CI gate. T4's owner
   decision settles it — commit it as a device script under the normal gates, or drop it with the row. ⟨pass 2, answered: T4 settled (OR72.a (2)): row leaves; A6's script kept only on an OR33.a keep verdict (as a gated device script), else dropped — G9: R31, R34⟩
 - **DOC.S28** BACKLOG's "Real-hardware work still owed" mixes three kinds: silicon work (M1 + S3b, R13 +
@@ -3084,7 +3088,7 @@ Seeds:
 - **DOC.S29** One trap of the retired queue's §6 was not carried over: "a REST reboot issued by hand
   strands the DUT in hotspot mode" — kick the AP's stations, then `hard_reset()` (~40 s)
   (`git show 2a88cc8:REAL_HARDWARE_TEST_QUEUE.md`, lines 376-383). Nearest homes: `tests_hardware/README.md:394-395`
-  (fallback after a reset or flash) and BACKLOG.md:461-463 (kick-then-reset helper); OR14's "lost"
+  (fallback after a reset or flash) and BACKLOG.md:462-464 (kick-then-reset helper); OR14's "lost"
   outcome unless one of them is judged to carry it.
 
 Quality measure: cross-reference resolver clean for every ID family; contradiction list empty or
@@ -3254,7 +3258,7 @@ lower tier proves the same — a candidate only: OR33.a first traces the intent 
 bites; only what stays unreasonable is dropped), **do** (the audit resolves it), or **owner** (a decision only the owner can
 take; collected for the consolidation run, OR2.a). `HW.T20`/`TEST.T20` turn each into a register verdict.
 
-**B.1 Real-hardware work still owed (BACKLOG.md:345-469)**
+**B.1 Real-hardware work still owed (BACKLOG.md:345-470)**
 
 | Entry | Plan | Proposed | Why |
 |---|---|---|---|

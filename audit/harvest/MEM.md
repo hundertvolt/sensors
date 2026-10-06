@@ -661,7 +661,7 @@ Kinds: SETTLED 23, INVAR 32, MIRROR 2, LIMIT 20, RISK 9, ASSUME 39, PLATFORM 1, 
 
 ## BACKLOG.md
 
-- **MEM.N138** OPENQ · `BACKLOG.md:924-933` — "Part I.2's hotspot catalog has never been re-walked with
+- **MEM.N138** OPENQ · `BACKLOG.md:925-934` — "Part I.2's hotspot catalog has never been re-walked with
   a placement lens." — Run-phase long-lived allocation during churn: open question, no measurement
   points at one. · covered-by: MEM.T02 · [H15]
 

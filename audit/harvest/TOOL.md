@@ -484,7 +484,7 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
   post-build proof, and the CI cache key omits micropython_overrides.py. · covered-by: TOOL.S07 (related
   CI.S01) · [H14]
 - **TOOL.N126** INVAR · `CLAUDE.md:864-866` — "What a session owes instead is an entry in BACKLOG.md's
-  running list of build-environment changes" — Convention only (BACKLOG.md:514ff). · [H14]
+  running list of build-environment changes" — Convention only (BACKLOG.md:515ff). · [H14]
 - **TOOL.N127** INVAR · `CLAUDE.md:873-875` — "Two targets, both required: Ubuntu 24.04 \"noble\" (GCC
   13.x ...) and Debian trixie (GCC 14.x ...)" — Convention only. CI's `ubuntu-latest` never builds with
   GCC 14. · related: CI.T10 · [H14]
@@ -552,35 +552,35 @@ Kinds: SETTLED 19, INVAR 28, MIRROR 7, LIMIT 24, RISK 12, ASSUME 20, PLATFORM 18
 
 ## BACKLOG.md
 
-- **TOOL.N146** SETTLED · `BACKLOG.md:514-519` — "an owner-run periodic check, not a blocking per-push
+- **TOOL.N146** SETTLED · `BACKLOG.md:515-520` — "an owner-run periodic check, not a blocking per-push
   gate - settled (owner decision, 2026-09-18)" — Chroot legs last satisfied 2026-09-12; the running owed
   list (items [099]-[119] below). · related: plan §1.2 DoD (chroot-owed list) · [H15]
-- **TOOL.N147** TODO · `BACKLOG.md:519` — "The legs were last satisfied 2026-09-12. Changed since:" —
+- **TOOL.N147** TODO · `BACKLOG.md:520` — "The legs were last satisfied 2026-09-12. Changed since:" —
   List header. · [H15]
-- **TOOL.N148** TODO · `BACKLOG.md:527-533` — "build_unix_port() now builds TWO variants" —
+- **TOOL.N148** TODO · `BACKLOG.md:528-534` — "build_unix_port() now builds TWO variants" —
   `build-standard`/`build-settrace`; a reused chroot's old `build-standard` carries the flag — detected
   by `test.sh`'s variant probe. · related: TOOL.T05 · [H15]
-- **TOOL.N149** TODO · `BACKLOG.md:537-541` — "the new micropython_overrides.py (PR #90's
+- **TOOL.N149** TODO · `BACKLOG.md:538-542` — "the new micropython_overrides.py (PR #90's
   MICROPY_ASYNC_KBD_INTR=0 Unix-port build override" — Named "the part worth the owner's next manual
   run". · related: TOOL.T04, TOOL.S07 · [H15]
-- **TOOL.N150** TODO · `BACKLOG.md:542-557` — "lwip_connection_counts (Part B.14.2) generates an
+- **TOOL.N150** TODO · `BACKLOG.md:543-558` — "lwip_connection_counts (Part B.14.2) generates an
   out-of-tree board directory and passes BOARD_DIR= to make" — Changes the rp2 firmware build:
   post-build `-E` readback, `[lwip]` table read every build, ensemble validation vs 16 `init.c`
   `#error`s, sentinel. Installer leg only. · related: TOOL.T04, TOOL.T11 · [H15]
-- **TOOL.N151** TODO · `BACKLOG.md:579-583` — "versions.toml's [lwip] sized for max_connections = 6 (PCB
+- **TOOL.N151** TODO · `BACKLOG.md:580-584` — "versions.toml's [lwip] sized for max_connections = 6 (PCB
   9, SEG 48, MEM_SIZE 12000" — Readback via the CMake-recorded compiler with a 120 s timeout;
   `OverrideError` reported like `SetupError`. · related: TOOL.T04 · [H15]
-- **TOOL.N152** TODO · `BACKLOG.md:584-589` — "check_lwip_ensemble() restates all sixteen init.c checks,
+- **TOOL.N152** TODO · `BACKLOG.md:585-590` — "check_lwip_ensemble() restates all sixteen init.c checks,
   adds MEMP_NUM_TCP_PCB >= max_connections + SPARE_TCP_PCBS (3)" — Also public `validate_lwip_macros()`,
   `TCP_MSS` 0 refused; `build_firmware.py` passes `toolchain_dir=` so every device build applies the
   override. · related: GEN.T15 · [H15]
-- **TOOL.N153** TODO · `BACKLOG.md:605-608` — "env's uv sync is retried three times with a 10 s / 20 s
+- **TOOL.N153** TODO · `BACKLOG.md:606-609` — "env's uv sync is retried three times with a 10 s / 20 s
   pause (run_retried(), mirroring ci.yml's unit-tests)" — MIRROR `toolchain/setup_toolchain.py:124` ↔
   ci.yml retry. · related: CI.T12 · [H15]
-- **TOOL.N154** ASSUME · `BACKLOG.md:609-612` — "Partial evidence, not a leg: a session sandbox (GCC
+- **TOOL.N154** ASSUME · `BACKLOG.md:610-613` — "Partial evidence, not a leg: a session sandbox (GCC
   13.3, not a --variant=minbase chroot)" — 2026-09-24 installer run, "all eight verification checks
   passed". · [H15]
-- **TOOL.N155** DRIFT · `BACKLOG.md:519-612 vs `git log --since=2026-09-13` — (list omits files) — Build-env files changed since the legs but not itemised: `scripts/_generate_sensortask_modules.py` (2026-09-16/19), `scripts/cross_browser_smoke.mjs` (2026-09-18/19/24), `scripts/_render_coverage.py` (2026-09-19), `scripts/build_website.sh` and `run_{flash,bench,manual}_hardware*.sh`/`run_bench_soak_tests.sh` (2026-09-18, 2026-09-22 comment sweep `35ba8ac`), `.github/zizmor.yml` and the composite `action.yml` (2026-09-21/24). Many are comment-only; not investigated. (low) · [H15] ⟨quote not matched at the anchor⟩
+- **TOOL.N155** DRIFT · `BACKLOG.md:520-613 vs `git log --since=2026-09-13` — (list omits files) — Build-env files changed since the legs but not itemised: `scripts/_generate_sensortask_modules.py` (2026-09-16/19), `scripts/cross_browser_smoke.mjs` (2026-09-18/19/24), `scripts/_render_coverage.py` (2026-09-19), `scripts/build_website.sh` and `run_{flash,bench,manual}_hardware*.sh`/`run_bench_soak_tests.sh` (2026-09-18, 2026-09-22 comment sweep `35ba8ac`), `.github/zizmor.yml` and the composite `action.yml` (2026-09-21/24). Many are comment-only; not investigated. (low) · [H15] ⟨quote not matched at the anchor⟩
 
 ## HEAP_FRAGMENTATION_MEASUREMENTS.md (current, 393 lines; owning area HW)
 

@@ -1129,14 +1129,14 @@ Kinds: SETTLED 26, INVAR 63, MIRROR 51, LIMIT 54, RISK 7, ASSUME 45, PLATFORM 10
 
 ## BACKLOG.md
 
-- **GEN.N268** SETTLED · `BACKLOG.md:651-657` — "Owner decision, 2026-09-18: it stays hand-maintained
+- **GEN.N268** SETTLED · `BACKLOG.md:652-658` — "Owner decision, 2026-09-18: it stays hand-maintained
   ... don't re-propose it." — `buildspec.py` per-driver schema; same for `definitions.py`
   `status`/`errcount` sections (owner 2026-09-24). · covered-by: GEN.T06 · [H15]
-- **GEN.N269** INVAR · `BACKLOG.md:668-675` — "validate.py now refuses a hostname longer than
+- **GEN.N269** INVAR · `BACKLOG.md:669-676` — "validate.py now refuses a hostname longer than
   network.hostname()'s 32-character cap at build time" — Else ConfigManager answers `None` to every
   read; runtime `_with_default()` falls back. Silicon proof of substitution path still PARTIAL (queue
   N2). · related: GEN.T15, NET.T07 · [H15]
-- **GEN.N270** SETTLED · `BACKLOG.md:864-865` — "bench rig only, not bugs to fix" — `dev` config quirks.
+- **GEN.N270** SETTLED · `BACKLOG.md:865-866` — "bench rig only, not bugs to fix" — `dev` config quirks.
   · covered-by: plan §2.2 ("dev bench quirks" row) · [H15]
 
 ## Commit messages (chronological)

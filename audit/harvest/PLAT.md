@@ -1622,7 +1622,7 @@ Kinds: SETTLED 4, INVAR 5, LIMIT 2, RISK 2, ASSUME 7, PLATFORM 361, WORKAROUND 8
   survives the soft reset mpremote performs on raw-REPL entry" — #12: `ticks_ms` survives soft reset;
   `mpremote exec` stops `main.py` and the WDT hard-resets ~8 s later; `_WRAP_FLOOR_MS` guard added; "Do
   not re-investigate". · [H15]
-- **PLAT.N376** PLATFORM · `BACKLOG.md:900-902` — "machine.I2C.readfrom_mem_into() was verified against
+- **PLAT.N376** PLATFORM · `BACKLOG.md:901-903` — "machine.I2C.readfrom_mem_into() was verified against
   the pinned 1.29.0 source rather than from memory" — Version-specific (`extmod/machine_i2c.c`). · [H15]
 
 ## HEAP_FRAGMENTATION_MEASUREMENTS.md (current, 393 lines; owning area HW)

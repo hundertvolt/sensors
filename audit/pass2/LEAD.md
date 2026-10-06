@@ -67,7 +67,7 @@ merged (G6 gap 1 with G9 gap 4; G2 gap 2 kept apart from G6 gap 2).
 
 ### LEAD/R02 A hardware round starts and ends in a standard board state
 - **Req**: Every hardware round ends on the release `dev` image with `errcount` saved, `DebugLevel` 5, the SCD30 at its configured NVM values, FRAM write-protect clear and no scratch files, checked by harness fixtures at its end and at the next round's start, replacing a hand-kept board-state line.
-- **Sources**: G1 gap 2 · OR38.a (4), OR17.a (5) · BACKLOG.md:359-361, Appendix B.1 D1-D3 · RF312
+- **Sources**: G1 gap 2 · OR38.a (4), OR17.a (5) · BACKLOG.md:360-362, Appendix B.1 D1-D3 · RF312
 - **Rank**: agent — "(agent, 2026-09-27)"
 - **State**: work: test in U26 (fixtures); hardware in C; code in U26 — a timed-out `mpremote` call kills only the host process (`tests_hardware/harness.py:373-384`): the device script keeps running (several feed their own watchdog) until the next test's raw-REPL entry interrupts it mid-operation, config writes included; the harness interrupts and resets the board to the standard state before the next test (RF312)
 - **Home**: `tests_hardware/README.md`

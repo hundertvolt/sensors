@@ -729,10 +729,10 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
 - **STOR.N185** SETTLED · `BACKLOG.md:52-57` — "FRAM's verify_present()/set_write_protected() stay in
   src/ — SETTLED, do not re-raise." — Zero-caller FRAM APIs kept by repeated owner decision. ·
   covered-by: STOR.S05 · [H15]
-- **STOR.N186** SETTLED · `BACKLOG.md:473-476` — "A transient SPI RX overrun is not retried - SETTLED,
+- **STOR.N186** SETTLED · `BACKLOG.md:474-477` — "A transient SPI RX overrun is not retried - SETTLED,
   owner, 2026-09-24." — 1.29's `OSError(EIO)` on ≥32-byte rp2 SPI reads is absorbed by FRAM dual copy
   (errno 47, block-1 fallback). · related: PLAT.T03 · [H15]
-- **STOR.N187** ASSUME · `BACKLOG.md:474-476` — "is absorbed by the FRAM layer's dual copy" — Premise of
+- **STOR.N187** ASSUME · `BACKLOG.md:475-477` — "is absorbed by the FRAM layer's dual copy" — Premise of
   [052]; plan seeds say a transient read fault at logger `setup()` makes `_write()` overwrite the
   persisted ring. · related: CORE.S16, CORE.T11 · [H15]
 
@@ -825,7 +825,7 @@ Kinds: SETTLED 44, INVAR 35, MIRROR 8, LIMIT 30, RISK 19, ASSUME 23, PLATFORM 19
   chunk buffers. · tracked: SPEC I.2 (moved in 17b4354) | - · [H17]
 - **STOR.N209** NOTE(OWNER) · `commit 6acc9c0` — "§11 item 3 ... leave as is, do not defer the
   per-logger store setup"; "NTP_Host keeps its 1024-character bound"; "A.6's lever 3: closed" —
-  Decisions. · tracked: SPEC I.2, BACKLOG.md:483 | - · [H17]
+  Decisions. · tracked: SPEC I.2, BACKLOG.md:484 | - · [H17]
 - **STOR.N210** NOTE(ONLY-IN-TEMP-DOC) · `commit 21560a4 / HARDWARE_TEST_HANDOVER.md:172` — "FRAM E31 +
   W73 at the first boot after flashing: mpremote exec machine.bootloader() most likely landed mid-write
   ... entering BOOTSEL this way can cost one FRAM log entry" — Bootloader entry can tear a FRAM write. ·
