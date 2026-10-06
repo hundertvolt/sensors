@@ -293,7 +293,8 @@ or the guard is not a guard. Its bounds are twin bounds; none is ever copied to 
   build dir.
 
 **Both frozen twins are ad-hoc instruments, never a committed build variant or CI gate** (owner,
-2026-09-23). This section is their documentation.
+2026-09-23, `bbb2306`: 'no twin32 to be kept at all'; both twins, owner, 2026-09-29). This section is
+their documentation.
 
 ### M5.3 Ad-hoc harness shapes
 
@@ -358,8 +359,8 @@ graph (the script's own code costs heap production does not pay).
 
 ## M7. Remedy directions already ruled out
 
-Measured, not argued; don't re-spend time on them without a new mechanism. Evidence: archive §6,
-§6A, §7.
+Measured, not argued (agent, 2026-09-24, `17b4354`); each reopens with a new mechanism. Evidence:
+archive §6, §6A, §7.
 
 - **Cutting churn volume alone** — the outcome does not track volume; removing the *large*,
   collection-forcing allocations made it worse, and the required cut was out of reach.
