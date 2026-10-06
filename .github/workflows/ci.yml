@@ -302,7 +302,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/cross-browser-toolchain
-          key: cross-browser-firefox-v1-${{ runner.os }}
+          key: cross-browser-firefox-v2-${{ runner.os }}
       - name: Install WebKit, Edge, and Firefox+geckodriver
         run: scripts/setup_cross_browser_toolchain.sh
       - name: Run cross-browser smoke check

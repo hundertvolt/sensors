@@ -596,6 +596,12 @@ gates, traps).
   **2026-10-06, comments only, no build impact**: decision tags in the comments of `pyproject.toml`,
   `.github/workflows/ci.yml`, `.github/zizmor.yml`, `scripts/lint.sh` and `scripts/test.sh`; no
   setting, pin or step changed, so nothing here moves either leg.
+  **2026-10-06, dependency refresh**: `pyproject.toml`/`uv.lock` tool versions (mypy 2.4.0, ruff
+  0.16.10, actionlint-py 1.7.12.25); `package.json`/`package-lock.json`/`.nvmrc` (Node 22 → 24, every
+  npm devDependency at its newest, `@types/node` on the Node major, the eslint-comments plugin
+  added); `ci.yml` action pins (setup-node v7, paths-filter v4.0.3) and the cross-browser cache key.
+  The MicroPython ref did not move, so the installer leg is not owed by this entry; both legs owe the
+  new Node major and the refreshed Python tools.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
