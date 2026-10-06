@@ -112,9 +112,10 @@ attributed. The twin rows, where the post-refresh figures differed most, were re
 | twin | per-tree writes MB, refreshed / B0 | `wchar` MB | wall s |
 |---|---|---|---|
 | arzi | 2.4 / 2.5 | 5.5 / 5.5 | 714.4 / 713.9 |
-| dev | measuring | | |
+| dev | 15.5 / 15.7 | 25.9 / 25.9 | 867.3 / 867.0 |
 
-So the twins write about 2.5 MB per run on both trees; the 580 MB device-wide arzi reading was concurrent work.
+So the refresh changed no twin's writes (arzi about 2.5 MB a run, dev about 15.6 MB, on both trees); the 580 MB
+and 782 MB device-wide readings were concurrent work.
 
 **Images.** Every device's `.uf2` grows by 512 bytes and `.text`+`.rodata` by 176-184 bytes (arzi 2,145,792 /
 1,054,140; dev 2,238,464 / 1,100,460; grkizi and klkizi 2,145,792 / 1,054,140; schlafzi 2,145,792 / 1,054,156; wozi
