@@ -68,7 +68,18 @@ ANN401 per-file exemptions (25):
 
 ## Firmware images (`firmware.elf` per device, toolchain lock held across build and read)
 
-Pending: the six builds run under the toolchain lock; this section is filled when they finish.
+| device | `.uf2` bytes | `.text`+`.rodata` | `.data` | `.bss` | GC heap (`__GcHeapEnd - __GcHeapStart`) |
+|---|---|---|---|---|---|
+| arzi | 2,145,280 | 1,053,956 | 18,080 | 51,352 | 192,488 |
+| dev | 2,237,952 | 1,100,284 | 18,080 | 51,352 | 192,488 |
+| grkizi | 2,145,280 | 1,053,964 | 18,080 | 51,352 | 192,488 |
+| klkizi | 2,145,280 | 1,053,964 | 18,080 | 51,352 | 192,488 |
+| schlafzi | 2,145,280 | 1,053,972 | 18,080 | 51,352 | 192,488 |
+| wozi | 2,166,272 | 1,064,388 | 18,080 | 51,352 | 192,488 |
+
+Per-section figures from `arm-none-eabi-size -A`: `.data` is `AX` (it carries the RAM-resident functions), so the
+Berkeley summary counts it under text. RAM layout (`.data`, `.bss`, heap) is identical on every device; only the
+frozen code differs.
 
 ## Environment
 
