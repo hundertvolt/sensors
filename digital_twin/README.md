@@ -47,32 +47,33 @@ Kept completely separate so nothing here can accidentally affect the determinist
   sensor, each verified against its own datasheet in `datasheets/` for the raw transaction shape and
   sensible value ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal
   measurement-interval cadence, exercising the real driver's normal IRQ-driven path. `_scd30_chip.py`
-  also has explicit `save_state()`/on-construction load JSON persistence for its five NVM-backed
-  settings (see "SCD30 persistence" below) — the same `state_path` design `_fram_chip.py` uses,
-  applied to a handful of scalars instead of the whole memory image. `_isl29125_chip.py` is
-  **dev-only** (`wozi` does not carry this sensor) and is the one fake whose high range's full scale
-  is a deliberately non-nominal multiple of its low range's, so the driver's user-triggered
-  gain-ratio calibration (SPECIFICATION.md Part M.1.5) has something real to converge on instead of
-  the nominal constant it starts from. It also models the destructive `0x08` status read (which
-  clears `RGBTHF`, `CONVENF` and `BOUTF` and releases the INT line — `BOUTF` being read-to-clear
-  contradicts the datasheet and was measured on real silicon, see SPECIFICATION.md Part M.1.2),
-  `BOUTF` high at power-up but **not** after the `0x46` reset command (`simulate_brownout()` is the
-  seam for a supply event, which raises it again), the flat address pointer that walks the whole
-  `0x00`-`0x0E` map in one burst and then pads with zeros, reserved config bits reading back zero,
-  per-resolution clipping at `(1 << bits) - 1`, and `set_illumination(lux, tint=(r, g, b))` so a
-  scene can clip one channel while green stays mid-scale. Every one of those register-map behaviours
-  was measured against the real part — see SPECIFICATION.md Parts C.11.1, M.1.2 and M.1.4 for the
-  divergences those runs found, the subtlest being that the threshold **persistence counter**
-  restarts when `RGBTHF` is cleared, not on every status read, and a fake that reset it on every read
-  makes the interrupt unreachable at the driver's own default sampling rate. Its INT line is
-  **active-low** (`simulate_edge(0)` to assert), the opposite of `_scd30_chip.py`'s RDY.
+  also has explicit `save_state()`/on-construction load JSON persistence (owner, 2026-08-12) for its
+  five NVM-backed settings (see "SCD30 persistence" below) — the same `state_path` design
+  `_fram_chip.py` uses, applied to a handful of scalars instead of the whole memory image.
+  `_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is the one fake whose
+  high range's full scale is a deliberately non-nominal multiple of its low range's, so the driver's
+  user-triggered gain-ratio calibration (SPECIFICATION.md Part M.1.5) has something real to converge
+  on instead of the nominal constant it starts from. It also models the destructive `0x08` status
+  read (which clears `RGBTHF`, `CONVENF` and `BOUTF` and releases the INT line — `BOUTF` being
+  read-to-clear contradicts the datasheet and was measured on real silicon, see SPECIFICATION.md
+  Part M.1.2), `BOUTF` high at power-up but **not** after the `0x46` reset command
+  (`simulate_brownout()` is the seam for a supply event, which raises it again), the flat address
+  pointer that walks the whole `0x00`-`0x0E` map in one burst and then pads with zeros, reserved
+  config bits reading back zero, per-resolution clipping at `(1 << bits) - 1`, and
+  `set_illumination(lux, tint=(r, g, b))` so a scene can clip one channel while green stays
+  mid-scale. Every one of those register-map behaviours was measured against the real part — see
+  SPECIFICATION.md Parts C.11.1, M.1.2 and M.1.4 for the divergences those runs found, the subtlest
+  being that the threshold **persistence counter** restarts when `RGBTHF` is cleared, not on every
+  status read, and a fake that reset it on every read makes the interrupt unreachable at the
+  driver's own default sampling rate. Its INT line is **active-low** (`simulate_edge(0)` to assert),
+  the opposite of `_scd30_chip.py`'s RDY.
 - `_fram_chip.py` — the FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID), plus
-  explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence" below).
-  Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and dev's 256KB
-  MB85RS2MTA (`configure_i2c_wiring("dev")` selects it via `rdid_response=`/`size=`) - `machine.py`'s
-  `_wire_spi_device()` picking the wrong one regardless of wiring profile was a real bug (fixed
-  2026-09-04): dev's own `AsyFramManager.setup()` silently failed its device-ID check every twin
-  run, caught and swallowed by its own broad `except Exception`.
+  explicit `save_state()`/on-construction load JSON persistence (owner, 2026-08-12; see "FRAM
+  persistence" below). Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and
+  dev's 256KB MB85RS2MTA (`configure_i2c_wiring("dev")` selects it via `rdid_response=`/`size=`) -
+  `machine.py`'s `_wire_spi_device()` picking the wrong one regardless of wiring profile was a real
+  bug (fixed 2026-09-04): dev's own `AsyFramManager.setup()` silently failed its device-ID check
+  every twin run, caught and swallowed by its own broad `except Exception`.
 - `unix_port_poll_prewarm.py` — a workaround for a confirmed, real dangling-pointer bug in the
   pinned MicroPython Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
   for the full account; `extmod/modselect.c` took zero commits between `v1.28.0` and the current
@@ -299,9 +300,10 @@ wiring-plan-JSON-driven replacement for what `run_dev_integration.py` used to do
 ### FRAM persistence
 
 The FRAM twin reads back exactly what was written, including across process restarts, but only
-ever writes to disk on an **explicit** call — never automatically, to avoid unnecessary write
-cycles on an SSD-hosted state file. Any entry point that boots a real `sensortask_<device>` object
-graph against the twin (`digital_twin/run_generic_integration.py` is the real example) should:
+ever writes to disk on an **explicit** call — never automatically — the owner's 'don't do
+unnecessary write cycles' for an SSD-hosted state file (owner, 2026-08-12). Any entry point that
+boots a real `sensortask_<device>` object graph against the twin
+(`digital_twin/run_generic_integration.py` is the real example) should:
 
 ```python
 import asyncio
