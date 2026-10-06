@@ -9,5 +9,5 @@
 | (5) | baseline measurement (M.PROC.007) | running | `baseline.md` |
 | (5a) | port-isolation proof | pending | |
 | (6) | dependency refresh (M.PROC.008-.013) | pending | `dependency_refresh.md` |
-| (7) | history trace (M.PROC.006) | running | `history_trace.md` |
-| (8) | A.U0.01, A.U0.07-.60 code and doc actions; allow-lists built last | running (doc and SPEC/BACKLOG lanes) | |
+| (7) | history trace (M.PROC.006) | done 2026-10-06 | `history_trace.md`: 60 lines / 49 paragraphs from the three merges (A-L's quick count reproduced); the 78 of G9/R33 is reproduced only with `e5d2c43` included and both parents' additions (11 + 33 + 6 + 28), so S01:48 and G9/R33 misattribute it (register-text fix). Outcomes of the 49: stands 5, resolved/migrated 16, pruned 15, lost 8, drifted 5; the other 29 in an appendix. Every lost row has a register home: no A-C delta. Differences from the pre-filled outcomes: captive DNS debug shape (`639e992`) is pruned as history (own `DNSSRV` logger since `74cfa7f`), not live; Hostname ≤ 32's owner quote (`d725042`) is absent from G6/R28's text (register-text fix for U18); the `reconnects=0` closure (`8784c66`) rests on an unverified agent claim, re-checked in U18 against the corpus. |
+| (8) | A.U0.01, A.U0.07-.60 code and doc actions; allow-lists built last | running | docs lane merged (42 steps; deviations: README's runbook parenthesis omitted until the runbook exists, U32; the CRC why-cell keeps today's module names until U10's rename) |
