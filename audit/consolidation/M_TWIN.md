@@ -196,6 +196,11 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   sets `_osr`, `_config` to the reset constants and `_status = _STATUS_CMD_RDY` (the DS001 sentence cited:
   `ds001:1717-1718`). New `power_cycle()` — "twin-only test knob: a re-plugged chip powers up" — restores the
   construction state except the walk position: reset constants, `_status = _STATUS_CMD_RDY`, `_burst = bytes(6)`.
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, 2026-10-06) EVENT and ERR_REG: `_event` bit 0 set by
+  `power_cycle()` and by the 0xB6 soft reset, returned and cleared by a read of 0x10 (DS001 4.3.7, clear-on-read);
+  `handle_readfrom_mem()` reads 0x02-0x09 as one contiguous file (ERR_REG, STATUS, the six data bytes), so the 8-byte
+  burst at 0x02 decodes as the driver expects; twin-only knob `fatal_err` sets ERR_REG bit 0. Pins M.SRC_SENS.048 (1),
+  .043 (1); stage U15 (the driver's burst moves to 0x02 there).
 - **Resolved**: A.U25.73 cites the SGP40/SCD30 ranges only; this file's `:107` comment "Not datasheet-derived (the
   min/max above are)" is false (15-30 °C / 950-1050 hPa are room ranges, the part's range is 300-1250 hPa, -40-85 °C) —
   G7/R03's "a judgment-call value is labelled 'not datasheet-derived'" settles the wording; adherence fix, agent. A.U5.15
@@ -255,6 +260,16 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   `_WRITES_AT_MAX_KEYS = 2048` keys (an erase's 256-byte units plus every chunk's two block addresses fit); a write at a
   new address past the cap steps `writes_at_dropped` instead, so the bookkeeping never grows without bound
   (A.U25.22's rule). Per-logger attribution is the runner's (M.TWIN.050): the chip knows addresses, not owners.
+  (1) (A-C fold, silent-failure scan SF-B13, FRAM half, 2026-10-06) The owner's fallback stays (a file that cannot be
+  loaded gives the factory-fresh chip, owner, 2026-08-13); it is no longer silent and the save is atomic.
+  `_load_state()`: a missing file stays silent (a first launch); every other fallback — no `"memory_hex"` marker, a
+  missing, malformed or different `"size"`, or a file that ends before `self.size` bytes were read (today a partial
+  image is kept silently; now `self.memory[:] = bytes(self.size)` restores the blank chip in place, no reallocation) —
+  prints one line `print("FRAM state", self.state_path, "not loaded (<reason>): starting from a factory-fresh chip")`
+  (the reason a fixed word: `marker`, `size`, `truncated`; never the interpreter's memory wording, so the memory
+  gates stay quiet). `save_state()`: streams to `self.state_path + ".tmp"` exactly as today, then
+  `os.rename(tmp, self.state_path)` (POSIX `rename(2)`, atomic, through `extmod/vfs_posix.c:340-349`), so a twin killed
+  mid-save leaves the previous image whole. `import os` at module top. No new state.
 - **Resolved**: A.U25.32's Site cites `_fram_chip.py:285-322`, past the file's end (157 lines); the code it means is
   `_load_state()` `:57-94` (read at HEAD) — line fix, no substance change. A.U25.06's local `_fill` is M.TWIN.001's
   shared `fill_buffer()`.
@@ -271,6 +286,9 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   `_BUS_FAULT_OPS["fram"] = "write"` → `fram:silent` (A.U25.37, SCR cluster); `tests/test_fram_integration.py:3-5`
   comment (U16's, TEST_UNIT); fidelity rows (framing by pairing, rollover, refused faults, power loss granularity) →
   M.TWIN.059; Erase-FRAM L2 runs against rollover/`silent`/WREN-drop → M.TWIN.104, M.TWIN.051 (A.S0930.27)
+  (SF-B13: L2 a truncated, marker-less and other-size file each print one line and load blank, a missing file prints
+  nothing, a save leaves no `.tmp` and a pre-existing image survives a save interrupted before the rename; README "FRAM
+  persistence" names the line and the atomic save (DOCS) — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ## digital_twin/_isl29125_chip.py
@@ -385,6 +403,14 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   comment "# 'the most recently used reference … after repowering … 400 ppm' (Interface Description 1.4.6)"; the
   corruption flips word 1's CRC when `_corrupt_next` is set, then clears it. The class docstring's "regardless" claim
   and the `:193`, `:223` comments go (replaced as above).
+  (1) (A-C fold, silent-failure scan SF-B13, SCD30 half, 2026-10-06) The same as M.TWIN.011 (1): the owner's
+  factory-fresh fallback stays, a missing file stays silent, and every other fallback of `_load_state()` (malformed or
+  truncated JSON, a non-dict, a mistyped value) prints one line `print("SCD30 state", self.state_path, "not loaded
+  (<reason>): starting from factory-fresh settings")` (the reason a fixed word: `json`, `shape`, `type`);
+  `save_state()` dumps to `self.state_path + ".tmp"` and then `os.rename(tmp, self.state_path)` (atomic, POSIX
+  `rename(2)` through `extmod/vfs_posix.c:340-349`). `import os` at module top. No new state.
+  (1) (A-C fold, silent-failure scan SF-B10 = SF-A04, 2026-10-06) Twin-only knob `rdy_stuck_high`: the RDY pin stays
+  high while the data-ready command answers 0 (no new measurement). Pins M.SRC_SENS.055 (1); U25.
 - **Resolved**: A.U5.15's eight-parameter `Scd30Chip(random_source, co2, temp, hum, measurement_interval_s, rdy_pin, *,
   auto_refresh, state_path)` plus A.U25.12's `measuring` would be nine (over G6/R40's 8, outside A.U5.17/A.U5.18's exact
   exempt set); the two NVM defaults group into `SCD30Nvm` and `auto_refresh` gives way to A.U25.42's `timer_factory`, so
@@ -408,6 +434,8 @@ change") gets a ledger row "blast-only, holds" after the end state was checked a
   `SPECIFICATION.md:4385` FRC sentence → A.U25.12, SPEC cluster; BACKLOG rows (pressure persistence, wrong-CRC reaction)
   → A.U25.12 / A.C.15, DOCS; phase C: A.C.15's script runs through the twin first (A.U26.05) and a silicon "accepted"
   is an A.C.10 delta (PROC/HW)
+  (SF-B13: L2 a malformed, non-dict and mistyped file each print one line and load factory values, a missing file
+  prints nothing, a save leaves no `.tmp`; README "SCD30 persistence" (DOCS) — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ## digital_twin/_sgp40_chip.py
@@ -836,6 +864,13 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   both "twin-only test knob: a sensor pulled and re-seated on a running unit". `TEST_API = ("id", "scl", "sda", "freq",
   "timeout", "deinit_called", "devices", "log", "unplug", "plug")`. `_wire_i2c_devices(bus_id)` reads
   `_current_wiring_plan()["buses"].get(f"i2c{bus_id}", [])` (unchanged).
+  (1) (A-C fold, silent-failure scan SF-A01 and SF-A02, 2026-10-06) A chip declaring `REGISTER_ADDRSIZE` (BMP3XX,
+  ISL29125: 8) takes an address-prefixed `writeto(…, True)` as `handle_writeto_mem(register, payload)`, an address-only
+  `writeto(…, False)` as its pointer for the next `readfrom_into()` (answered by `handle_readfrom_mem(pointer, n)`), and
+  a zero-length write as the probe (`handle_writeto`); raw-command chips (SCD30, SGP40) are unchanged. Twin-only knob
+  `nack_after[address] = n`: the next write returns `n`, a no-stop one followed by the driver's STOP. The chips' fault
+  keys (`writeto_mem`, `readfrom_mem`) are unchanged, so the launch vocabulary holds. Pins M.SRC_SENS.012 (1), .011 (1),
+  (2); stage U13 (every twin boot reads registers this way from then on).
 - **Resolved**: A.U25.03 says the init runs "only when the construction passes more than the id"; the pinned source
   initialises also on the first construction (`if (n_args > 1 || n_kw > 0 || self->freq == 0)`,
   `ports/rp2/machine_i2c.c:105`, read in `mp/` v1.29.0), and the twin keeps `scl`/`sda` required (every product
@@ -1112,6 +1147,11 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   Header comment A.U25.08's (3 lines): "mem_backup(): rp2's two watchdog-scratch regions; they survive machine.reset()
   (carried to the next launch by the reset handler) and are cleared by power-on (v1.29.0 machine_mem_backup.c:36-40);
   the bootloader carry-over is an assumption (digital_twin/README.md fidelity table)."
+  (1) (A-C fold, silent-failure scan SF-A10, 2026-10-06) `machine.mem32` with the two reset registers as the unit fake
+  models them (M.TEST_HELP.011 (5)): `power_on()` sets REASON 0 and CHIP_RESET HAD_POR, `reset()` sets REASON FORCE, the
+  runner's watchdog-starve path sets REASON TIMER; `flush_mem_backup()` carries both values to the next launch beside
+  the regions (a simulated power loss clears them to the power-on pair). Both registers join the `mem32` object
+  M.TWIN.169 creates for the UART block. Pins M.SRC_CORE.006 (1); stage U13 (after M.SRC_NET.221 (6), with M.TWIN.169).
 - **Resolved**: —
 - **Unit**: U25 (stage U11: the block without the `_require_unconstructed` call lands in A.U11.05/.06/.07's commit —
   A.U11.05's Blast: every twin boot calls `mem_backup()`/`reset_cause()` from U11 on, so the twin needs them then; U25 adds
@@ -1245,6 +1285,8 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   (a soft reset in the twin is a process exit, so the finaliser is modelled for fidelity only and says so in the
   fidelity table). Lands on HEAD's twin UART in U13; M.TWIN.028's U25 rewrite of `class UART` carries the register block
   forward.
+  (1) (A-C fold, silent-failure scan SF-A06, 2026-10-06) UARTRSR FE and BE plantable beside OE (a BE also loading one
+  0x00 into the FIFO), cleared by a UARTECR write, as the unit model (M.TEST_HELP.069 (5)). Pins M.SRC_NET.221 (7); U13.
 - **Resolved**: —
   (A-C review fold, OR146, owner requirement 2026-10-06) The register model's OE drives M.SRC_NET.221 (6): across a modelled interrupts-off window longer than the ring bound, and with RXDMAE cleared so the FIFO overruns, the initiator's transaction fails and the next succeeds.
 - **Unit**: U13 (with the driver's DMA receive path, so dev's twin boots from that unit on).
@@ -1311,6 +1353,10 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   names). No explicit `Any` (A.U25.63, G8/R61): `_stations: list[tuple[bytes]]` (rp2's one-element MAC tuples),
   `config_calls` and `connect_calls` annotated `BoundedLog` (M.TWIN.001's class; their entries are `dict[str, object]`
   and `tuple[str | None, str | None]`), `status() -> int | list[tuple[bytes]]`; the `typing.Any` import goes.
+  (1) (A-C fold, silent-failure scan SF-B6, SF-M2-03, 2026-10-06) `raise_on["status"]` takes an optional parameter
+  filter (`("stations",)`), so the stations query can fail while the link status answers; `script_connect_outcomes()`
+  accepts 2 (joined, no IP: a DHCP server that never answers) and holds it for the whole poll. Pins M.SRC_NET.093 (1),
+  .089 (1); U25.
 - **Resolved**: A.U25.27 writes `raise_on[method] = (exc, times)` with one exception instance; G7/R16 ("faults …
   raise a fresh exception each time", OR21.a (1)) and A.U25.70's reason (a re-raised MicroPython instance grows its
   traceback — with `times=None` without bound, against OR110.a's no-growth rule) settle the stored form as a type and
@@ -1353,6 +1399,9 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   range(self.bpp))`; `write()` raises `raise_on_write` when set, else
   appends `bytes(self.buf)` ("# The real write() is one blocking bitstream call with no return value (machine.bitstream,
   micropython-lib neopixel.py write())"). `_buf` goes.
+  (1) (A-C fold, silent-failure scan SF-M3-09 (LED half), 2026-10-06) Twin-only knob `power_dip()`: the physical pixel
+  loses its latched colour; `displayed()` returns the last written frame, or black after a dip until the next `write()`.
+  Pins M.SRC_SENS.025 (1); U25.
 - **Resolved**: —
 - **Unit**: U25
 - **Depends**: M.TWIN.001; A.U9.06 (driver clamps before the store)
@@ -2217,6 +2266,10 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   consumes and deletes it" (the behaviour M.TWIN.032 writes; the text cites no change ID, A-C3 O-18). `:354-358` → "Only
   the last-wired SCD30 and FRAM instance persist — the fidelity table's Persistence row states the limit and the change
   that lifts it."
+  (1) (A-C fold, silent-failure scan SF-B13, 2026-10-06) "FRAM persistence" and "SCD30 persistence" each gain one
+  sentence: a missing state file starts the chip factory-fresh silently; any other file that cannot be loaded prints one
+  "… not loaded (<reason>): starting from …" line and starts factory-fresh; a save writes a `.tmp` and renames it, so a
+  killed twin leaves the previous image whole. Pins M.TWIN.011 (1), .013 (1); U25.
 - **Resolved**: A.U15.08 says the five-settings text is "U25's with the fidelity row"; A.U25.12 makes it six — the U25
   text wins (later, and it names the measuring status). A.U0.59's tag on `:354` is void (M.TWIN.059 Resolved).
 - **Unit**: U25 (stage U0: A.U0.29/A.U0.31 tags; U4: A.U4.04's SCD30 sentence)
@@ -2550,6 +2603,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `match=0x04` spares a read of 0x31 and hits the next 0x04 read, two raises of a `times=2` fault are distinct objects,
   `power_cycle()` restores OSR/CONFIG/status and keeps the walk position; `:229-257` use the class-plus-args form; the
   canonical trailer (A.U24.04).
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, 2026-10-06) New fake cases: EVENT reads 1 after `power_cycle()` and
+  after 0xB6, then 0 on the next read; an 8-byte read at 0x02 returns ERR_REG, STATUS and the data bytes; `fatal_err`
+  sets ERR_REG bit 0. Pins M.SRC_SENS.048 (1); stage U15.
 - **Resolved**: —
 - **Unit**: U25 (stage U24: `FixedRandom` import and A.U24.30's assertions)
 - **Depends**: M.TWIN.010; M.TEST_HELP.059 (`FixedRandom`)
@@ -2589,6 +2645,11 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   write lands; kept silent → the reset is armed within the restart budget — asserted at the armed point
   (`sysfunct._reset_armed`) before the reset Timer fires, then the Timer is deinit'ed and the supervisor task cancelled
   from outside, as A.S0930.38 does, so no `SimulatedRebootError` strands the in-process graph). The canonical trailer.
+  (1) (A-C fold, silent-failure scan SF-B13 (FRAM half), 2026-10-06) New cases: a truncated image, a file without
+  `"memory_hex"`, and one whose `"size"` differs each print one line with its reason word (`truncated`, `marker`,
+  `size`) and load blank (a truncated image no longer keeps its partial bytes); a missing file prints nothing; after
+  `save_state()` no `.tmp` exists; a save interrupted before the rename (the rename replaced by a raising double) leaves
+  the pre-existing image byte-identical. Pins M.TWIN.011 (1); U25.
 - **Resolved**: A.U16.R03 wants the twin's "`SimulatedResetError` path"; an in-process graph that raises it strands its
   tasks (A.U25.07), so the case asserts the armed reset and stops there (A.S0930.38's pattern); the full reset-and-relaunch
   is the CI suite's subprocess territory (A.U25.09) — settled by A.U25.07's rule.
@@ -2664,6 +2725,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   tunable deadline) the supervisor's restart count for that task, `plug(addr)`, poll for a fresh reading (the reader's
   published value changes or its `TS` advances); FRAM: `chip.silent = True` … `False`. Ends by cancelling every task it
   started (`_async_harness.cancel_all`). No HTTP. Registers both reset hooks.
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, 2026-10-06) The BMP3XX re-plug (the chip's `power_cycle()`) is also
+  recovered without a ladder step: the next read cycle persists one `code("W", "BMP_CHIP_RESET")` and the chip's
+  OSR/CONFIG read back the stored values. Pins M.SRC_SENS.043 (1); U25.
 - **Resolved**: —
 - **Unit**: U25
 - **Depends**: M.TWIN.010-014, M.TWIN.024
@@ -2735,6 +2799,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   scene counts reader cycles over 20 s of twin time (the twin Timer runs in real time: the test bounds it with a tunable
   `l2.` deadline and counts the reader's cycle counter, not HTTP); A.U15.R05's mute/re-arm (the chip's
   `configure_fault("isl29125:int_stuck_high", active=True)` then `False`). Trailer.
+  (1) (A-C fold, silent-failure scan SF-B11, 2026-10-06) New calibration cases: a `lux: Walk` whose step keeps every
+  reading unstable through the window → one `code("W", "ISL_CAL_TIMEOUT")`; a constant illumination converges with no
+  entry. Pins M.SRC_SENS.081 (1); stage U15.
 - **Resolved**: A.U15.36 phrases its L2 check "through `GET /measurements`"; G7/R19 and A.U25.46 put request driving
   host-side, and A.U25.60 (same file, same codes) reads "the reader's published data (in-process)" — the end state reads
   in-process; the GET form is the host harness's measurements scenario (A.U25.46).
@@ -2805,6 +2872,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   takes its pins from `wiring_plan(device_with(...))["pins"]`; the cases listed under From, each one test with an exact
   assertion; the tagged constants at module top; the `:162-163` comment; `:200-236` on the scratch path. The Timer, RTC,
   reset and mem-backup cases are M.TWIN.128 (same file, separate merged change for size).
+  (1) (A-C fold, silent-failure scan SF-A01 and SF-A02, 2026-10-06) New bus cases: an address-prefixed `writeto()`
+  reaches the chip's register handler; a no-stop address write then `readfrom_into()` reads that register; `nack_after`
+  returns the short count and records the STOP. Pins M.SRC_SENS.012 (1), .011 (2); stage U13.
 - **Resolved**: —
 - **Unit**: U25 (stages U8C/U8C2 tags, U24 scratch/contract/`FixedRandom`, U36 comment)
 - **Depends**: M.TWIN.020-036; `tests/_machine_contract.py` (M.TEST_HELP, A.U24.17)
@@ -2826,6 +2896,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
 - **Change**: the cases under From, one test each, using the tagged poll/bound constants of M.TWIN.126 and
   `_async_harness.run(coro, _RUN_BOUND_S)`; every test that drives a reset catches `machine.SimulatedRebootError` and
   calls `asyncio.new_event_loop()` before returning; `set_alarm_pool_free()` restored by `reset_test_state()`.
+  (1) (A-C fold, silent-failure scan SF-A10, 2026-10-06) New mem32 cases: the power-on pair after `power_on()`, FORCE
+  after `reset()`, TIMER after a watchdog starve, the values carried by `flush_mem_backup()` to the next launch and
+  cleared by a simulated power loss. Pins M.SRC_CORE.006 (1); U25.
 - **Resolved**: —
 - **Unit**: U25
 - **Depends**: M.TWIN.019, M.TWIN.030-035
@@ -2852,6 +2925,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   stall` (bytes in flight across a modelled flash write: the ring holds every byte afterwards, UARTRSR OE clear) and
   `test_a_set_mask_overflows_the_fifo_inside_a_flash_stall` (RXIM left set, the same stall: OE set, bytes past 32 lost).
   Trailer.
+  (1) (A-C fold, silent-failure scan SF-A06, 2026-10-06) New: a planted FE and a planted BE on the twin wire each fail
+  the frame as an overrun with the next transaction succeeding, as the L1 case (M.TEST_UNIT.344 (1)). Pins M.SRC_NET.221
+  (7); stage U13.
 - **Resolved**: —
 - **Unit**: U25 (stage U8C; stage U13: the contract's DMA checks and the finaliser case, with M.TWIN.169)
 - **Depends**: M.TWIN.027-029, M.TWIN.169, M.TWIN.170 (the two stall cases)
@@ -2912,6 +2988,10 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   configuration registers equal the shadow), A.U13.R02's ladder cases (a)/(b), A.U12.18's three-session measure,
   A.U25.57's pause cases; FRAM WP/pause cases per A.U16.19; tagged constants at module top; every reset-reachable
   case catches `SimulatedRebootError` and calls `asyncio.new_event_loop()`. The `:364` owner tag per A.U25.50.
+  (1) (A-C fold, silent-failure scan SF-A01, SF-A02, SF-B9 = SF-A05, SF-M3-04, SF-B1, 2026-10-06) The twin hazard tier
+  re-runs on the changed I2C call form (Stage U13: a register read is two transfers inside one session) and gains the two new
+  per-cycle transactions (Stage U15: the BMP3XX EVENT read on dev i2c0 and wozi i2c1, ISL29125's per-cycle CONFIG snapshot on
+  dev i2c1) in its interleavings and address sweep; its direct `get_chunk(`/`get_timestamped_chunk(` calls pass `owner=` (Stage U16). Pins M.SRC_SENS.012 (1), .011 (1), (2), .048 (1), .077 (1), M.SRC_CORE.091 (1).
 - **Resolved**: A.U25.48 (1) picks one device for the SGP40+BMP3XX pair; A.U36.015's Blast states "A-C amends A.U25.48 (1)
   to loop over every device whose TOML puts two or more bus occupants on one bus (`devices_with_shared_bus()`)" — settled
   by that text (V24). A.U25.51 and A.U24.36 edit `:107`, which A.U25.46 moves host-side — their content travels with the
@@ -3016,6 +3096,11 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   set mid-ramp so the signal task ends, then cleared; the supervisor restarts the task; the pixel's writes after the
   restart are black, then the overlay colour, and no frame of the old ramp colour follows; SYSTEM persisted exactly one
   task-end entry. Bounded by a condition wait on the pixel's writes, never a fixed sleep.
+  (1) (A-C fold, silent-failure scan SF-M3-09 (LED half), 2026-10-06) New: `power_dip()` blanks `displayed()` until the
+  next write (fake case); driver case (a `neopixel` device, in-process): overlay on, `power_dip()`, then the overlay
+  task's refresh wait advanced through the driven clock the L1 tier installs (M.TEST_HELP.065) — `displayed()` shows the
+  overlay colour again; if the in-process tier cannot drive that wait, the driver half rests on M.TEST_UNIT.079 (1) and
+  the decision is logged at execution. Pins M.SRC_SENS.025 (1); stage U25 for the fake case; the driver case Stage U35, with M.TEST_HELP.065 (the driven clock; until then M.TEST_UNIT.079 (1) carries the driver half).
 - **Resolved**: A.U35.14 removes the wall-clock waits `:149`, `:251` that A.U8C.29's row `l2.network_neopixel_never_connects_
   wait_s` tags — the later action wins and the row closes (C3, A.U8C.120's Dependant note with it).
 - **Unit**: U35 (stages: U8C tags, U25 the fake cases and the A.U22.01 case — its product half is U22's)
@@ -3140,6 +3225,12 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   cases (A.U4.04, A.U15.12) run in-process on `device_with("scd30")` with C4: the settings are applied through the
   module's own config-apply path the REST handler calls (no HTTP), the counter read from the chip, `FRCState` read from
   the reader's published data, the CO2 walk made constant by `chip.co2 = Walk(800.0, 800.0, 0.0)`; trailer.
+  (1) (A-C fold, silent-failure scan SF-B13 (SCD30 half), 2026-10-06) New cases: malformed JSON, a non-dict and a
+  mistyped value each print one line with its reason word (`json`, `shape`, `type`) and load factory values; a missing
+  file prints nothing; after `save_state()` no `.tmp` exists. Pins M.TWIN.013 (1); U25.
+  (2) (A-C fold, silent-failure scan SF-B10 = SF-A04, 2026-10-06) New driver-level case (in-process, an `scd30` device):
+  `rdy_stuck_high` set: after five read cycles the module's log holds one `code("W", "SCD_NOT_READY")`, after the knob
+  clears and new data arrives no further entry. Pins M.SRC_SENS.055 (1); U25.
 - **Resolved**: A.U4.04 ("through the real HTTP route") and A.U15.12 ("through `GET /measurements` … `PUT /sensors`")
   write in-DUT request driving; G7/R19 / A.U25.46 put request driving host-side, while the NVM counter and the walk knob
   are only reachable in-process — the cases run in-process through the same config-apply path the route calls, and the
@@ -3268,6 +3359,36 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `l2.sensortask_integration_dns_query_timeout_s`, `…_dns_query_poll_ms`, `…_override_poll_s`, `…_override_poll_tries`;
   `l2.twin_wdt_feed_interval_s` leaves this file (its row keeps `launch.py:41` and the bus-hazard site). Trailer canonical
   (A.U24.04).
+  (11) (A-C fold, silent-failure scan SF-M3-01, 2026-10-06)
+  `test_a_stopped_scd30_ends_its_alerts_and_sgp40_compensation` (driver-specific: `scd30`, `sgp40`, `notification`): CO2
+  above `WarnCO2`, then `ContMeas` off through the module's config-apply path and the twin wall clock stepped past
+  `_SAMPLE_MAX_AGE_S`: the next monitor cycle writes no alert frame and reports `State` 3, and SGP40's next read skips
+  (no measurement command). Pins M.SRC_SENS.035 (1), .064 (1).
+  (12) (A-C fold, silent-failure scan SF-B17, 2026-10-06) `test_a_boot_without_ntp_reports_no_local_time`
+  (driver-specific: `notification`): booted with no responder, the notification's status data reports `State` 2 and
+  `Triggered` false; after a sync, 0. Pins M.SRC_SENS.037 (1).
+  (13) (A-C fold, silent-failure scan SF-M3-05, 2026-10-06) `test_a_restarted_sgp40_task_keeps_its_live_voc_state`
+  (driver-specific: `sgp40`, `fram`): after fed cycles the SGP40 task is cancelled and the supervisor restarts it: no
+  restore from FRAM, the VOC state continues; (6)'s reboot restores as before. Pins M.SRC_SENS.063 (2).
+  (14) (A-C fold, silent-failure scan SF-B8, 2026-10-06) `test_a_failed_config_snapshot_is_the_unavailable_marker`
+  (driver-specific: each of `bmp3xx`, `scd30`, `isl29125` the device has): a chip-read fault on the snapshot's register
+  makes the module's `get_dict_cfg()` exactly `{<name>: {"error": "unavailable"}}`; the REST half is the host harness's.
+  Pins M.SRC_SENS.047 (1), .053 (1), .082 (1).
+  (15) (A-C fold, silent-failure scan SF-M2-01, 2026-10-06)
+  `test_a_factory_state_unit_returns_to_the_hotspot_after_every_window` (device-generic): no SSID, two hotspot windows
+  ended from outside (the service's hotspot timeout fired through the twin Timer, M.TWIN.030, or the window's configured
+  minimum): the AP comes back each time and the phase never reaches DEACTIVATED. Pins M.SRC_NET.088 (1).
+  (16) (A-C fold, silent-failure scan SF-M2-03, 2026-10-06)
+  `test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace` (device-generic): `script_connect_outcomes([2] * n)`
+  (M.TWIN.040 (1)): WIFI's log holds `code("W", "WLAN_NO_VERDICT")` (one slot) and, after the streak, `code("W",
+  "WLAN_TO_HOTSPOT")`. Pins M.SRC_NET.088 (2), .089 (1).
+  (17) (A-C fold, silent-failure scan SF-B6, 2026-10-06) In test 5's hotspot boot: the AP's `status("stations")` raising
+  (M.TWIN.040 (1)) leaves the hotspot timer as it was and persists one `code("W", "WLAN_STATIONS_UNKNOWN")`. Pins
+  M.SRC_NET.093 (1).
+  (18) (A-C fold, silent-failure scan SF-A08, 2026-10-06) Test 10 gains a burst: six DNS queries sent within one
+  `_POLL_IDLE_MS` are all answered, back to back (the listener's `ready()` rounds during the burst at most burst + 1),
+  printed as `MEASURE dnssrv.burst_answered=<n>/6`; the host socket queues more than lwIP's 4, so the drop beyond 4
+  shows only on the bench (M.PROC.038). Pins M.SRC_NET.007 (1).
 - **Resolved**: (a) A.U9.01 ("`OnH`/`OffH` PUT over HTTP … `/status` `notification.Triggered`"), A.U15.17 ("reports
   `RestoreTS` … in `/status`") and A.U18.R01 write in-DUT request driving or REST reads; G7/R19 and A.U25.46 put request
   driving host-side while the pixel frames, the WLAN construction count and `ntp._set_synced()` are reachable only
@@ -3440,6 +3561,14 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   in-process → the manager's `get_pause()` is false at once and one persisted entry names the failed arm. (5) pool 0 at
   boot, then 16: NTP's check timer and WiFi's uptime timer each show one `Timer.init` re-arm (the twin pool's free count
   drops by their alarms) and their counters advance again. Tunables per C3; trailer canonical.
+  (6) (A-C fold, silent-failure scan SF-B5 and SF-M1-06, 2026-10-06) (2) is inverted: with the uptime arm failing at
+  boot, `SysUptime` advances on the one-second fallback, `BootSignature` resolves, SYSTEM persists one `code("E",
+  "TIMER")`, and after `set_alarm_pool_free(16)` the next pass re-arms the tick timer. Pins M.SRC_CORE.013 (1); U25.
+  (7) (A-C fold, silent-failure scan SF-A11 and SF-B4, 2026-10-06) (4) is retired with its premise (the unpause arms no
+  timer): in its place, devices with FRAM, pool 0, `mempause` through the generated `SystemCmd` dispatch answers
+  "Valid", the manager's `get_pause()` is true, and the first uptime pass past the deadline unpauses it, the 300 s wait
+  driven if the in-process tier can drive SYSTEM's clock, else that half rests on M.TEST_UNIT.307 (1) and only "Valid"
+  and the pause are asserted here (decided at execution, logged). Pins M.SRC_CORE.012 (1); U25.
 - **Resolved**: A.U25.56 (3) as first written ("feeding stops … no `machine.reset()` call") would pass without the
   supervisor task, for the wrong reason; SUPP_owner_0930 section C's U25 bullet amends it to start the supervisor and
   assert at `_shutdown_task` done — the amended text is taken (owner, 2026-09-30, OR120). A.U15.41's L2 sentence names
@@ -3654,6 +3783,9 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   entry (the wait and a timestamped restore print only). (4) `"unsync"`, `"short"`, `"implausible"` each leave
   `Synced` false with the client's `NTP_UNSYNC_REPLY`, `NTP_MALFORMED`, `NTP_IMPLAUSIBLE` entry. Tunables tagged per C3
   (`l2.ntp_sync_wait_timeout_s`, row basis U8's N.1 rule). Registers `machine.reset_test_state`; trailer canonical.
+  (5) (A-C fold, silent-failure scan SF-M2-02, 2026-10-06) In the loss case, once `Synced` reads false: `cettime()`
+  still answers (the clock was set this boot), and on a device with a notification and a producer above its threshold
+  the alert keeps flashing. Pins M.SRC_NET.053 (1); U25.
 - **Resolved**: —
 - **Unit**: U25 (after M.TWIN.167 in the same unit).
 - **Depends**: M.TWIN.019, M.TWIN.053, M.TWIN.167; M.TEST_HELP.044, .055, .056; M.SRC_NET.046-.050 (the client's codes

@@ -40,7 +40,10 @@ rules, pillars and specifications are binding and applied as written, never chan
    countdown, flash and FRAM writes, network loss and reconnect, calibration, recovery, reconfiguration, load (the mode
    list in that file). Most of these need no fix or a minimal one: first check whether the code is already safe by
    construction; otherwise give it the simplest inherent way to handle the situation, never added machinery where a
-   return value, a bound or an ordering does it.
+   return value, a bound or an ordering does it. The packet's "Fold parts landing in this unit" section lists every
+   folded scan fix and test due here; apply each. A fold test that names a helper not yet landed (`src_const()` and
+   `record_prints()` at U24, the driven clock at U35) uses a local mirror of the HEAD form until that unit, which then
+   swaps the helper in, as M.TEST_UNIT.161 does.
 
 ## Finish
 Commit everything in your worktree in one commit (or one per co-landing group if the packet marks groups), message

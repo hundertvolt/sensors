@@ -395,6 +395,10 @@ changes cite.
   `facts["starter_calls"] >= 2` and `facts["restart_warnings"] == facts["starter_calls"] - 1` with every entry's wrnno
   equal to the catalog's restart code (`error_codes.code("W_TASK_RESTART")`, A.U2.03's host helper), the facts quoted in
   each message; `COVERS_TWIN_SCENARIOS` from `run_suite()`'s supervisor IDs read at execution.
+  (1) (A-C fold, silent-failure scan SF-M4-01 (a), 2026-10-06) The restart test runs the script with `level=0`
+  (M.HW_DEV.026 (1)) and also asserts that its output carries no `Task exception wasn't retrieved` line and no
+  `Traceback` (asyncio's default handler text, `extmod/asyncio/core.py` at the pin), quoting the output on failure: at
+  `DebugLevel` 0 a dying task prints nothing. L3, default-on, no wear; pins M.SRC_CORE.016 (1). Runs in phase C.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.HW_DEV.026, M.HW_DEV.011.
@@ -421,6 +425,12 @@ changes cite.
   dying and keeps feeding until the supervisor's budget reboots the board (100 per death, 300 budget), reporting each
   round as a fact before it (the host reads the reset as the outcome, code 5). The three-line comment `:56-58`
   becomes one line naming the budget constants by name, not value.
+  (1) (A-C fold, silent-failure scan SF-M4-01 (a), 2026-10-06) A `level` render extra (default 0) sets the in-RAM SYSTEM
+  logger's level, so the dying task's ends reach `_report_unretrieved()`'s level-gated line through the handler
+  `start_tasks()` installs, never asyncio's default traceback. A third mode, `hold_console`, is `escalate` that prints
+  one banner `HOLD_FROM_HERE` before the first death and nothing after it (its per-round facts skipped), for the bench
+  test M.HW_BENCH.083 (4), which reads its outcome from `/status` after the reset. No flash write. Pins
+  M.SRC_CORE.016 (1); phase C.
 - **Resolved**: A.U26.28 extends this script "by a mode" and A.U26.34 rewrites its oracle; one script, the mode an
   extra. A.U32.06's default `task_names=None` is settled required (GAP-G5): the script passes `["dying"]`.
 - **Unit**: U26.
@@ -676,6 +686,16 @@ changes cite.
   while the script's scratch `ConfigManager` flushes one changed value (one owned flash write: the flash driver's own
   interrupts-off window); every frame intact, `uartrsr_oe` False; the scratch file removed in `finally`. Every test
   reads its output through `harness.MEMORY_ERROR_MARKERS`.
+  (4) (A-C fold, silent-failure scan SF-A06, 2026-10-06) `test_a_break_mid_frame_fails_that_transaction_only(board,
+  crc_mode)` (default-on, no wear): the script with `STATE="break"`; asserts `break_frame_failed` and `next_frame_ok` in
+  both CRC modes and records `rsr_error_counted` through `result_note`. A 0 there (DMA reads leave UARTRSR's FE and BE
+  unset) is a phase-C delta against M.SRC_NET.221 (7) and C.3.2's sentence (the frame then fails only by CRC or length,
+  and without CRC it may not). Pins M.SRC_NET.221 (7).
+  (5) (A-C fold, silent-failure scan SF-A07, 2026-10-06) `@pytest.mark.persistence_write
+  test_link_transactions_during_config_writes_are_recorded(board, crc_mode)`: `STATE="config_write_link"`; asserts
+  `transactions_ok + transactions_failed == 5` and `wrong_payloads == 0` (a crossing fails visibly, never corrupts),
+  records the failures and `flush_ms` through `result_note`: they fill F.3's `con.uart_tx` row (M.SPEC.097 (iv)). Five
+  owned flash writes (budget row, M.HW_BENCH.130 (1)). Measures SF-A07 (no source part); phase C.
 - **Resolved**: the bench proves the interrupts-off case without writing flash, and the one real write stays optional
   behind `--allow-persistence-write` (owner, 2026-10-05, OR141.a (4) (g)). The one-time run of the old
   interrupt-driven receive path is a round step, not a test here (no permanent control arm, OR21.a (2)): M.PROC.049.
@@ -945,6 +965,15 @@ changes cite.
   writes a sentinel into a fresh buffer of the ring's size that must stay intact for 1 s while the sender streams
   (`ring_untouched`); `"config_write"` streams while a scratch `ConfigManager` flushes one changed value. Facts as a
   list per window; `done()`. Wear: none, except `"config_write"`'s one owned write.
+  (1) (A-C fold, silent-failure scan SF-A06 and SF-A07, 2026-10-06) Two more `STATE` extras over a real `UARTComm`
+  initiator/responder pair on the crossover pair: `"break"`, the sender's UART sends `sendbreak()` mid-frame between two
+  framed transactions (a line held low: FE and BE set, one 0x00 into the receiver's FIFO, RP2040 datasheet 4.2.8 Table
+  426); facts `break_frame_failed`, `next_frame_ok` and `rsr_error_counted` (the driver's overrun counter delta: 1 when
+  UARTRSR showed FE or BE after a DMA read, 0 when DMA reads leave it unset); no wear. `"config_write_link"`, the pair
+  exchanging frames longer than the 32-byte TX FIFO (53 B without CRC) while a scratch `ConfigManager` flushes one
+  changed value during each of 5 transactions; facts `transactions_ok`, `transactions_failed`, `wrong_payloads`
+  (expected 0) and `flush_ms` per write (`ticks_us`), one owned flash write per transaction, the scratch file removed in
+  `finally`. Phase C.
 - **Resolved**: the windows are the datasheet times of the longest single flash operations, which
   `ports/rp2/rp2_flash.c:170-174` (v1.29.0) runs with interrupts off (W25Q16JV tPP 0.4/3 ms, tSE 45/400 ms). The sender
   streams at line rate, which a stop-and-wait peer never does, so the ring these windows need is the bench's, not the
@@ -1181,6 +1210,14 @@ changes cite.
   `_PAUSE_S = 2` (`l3.fram_pause_unpause_and_gating_pause_s`), `_REARM_S = 6` (`…_rearm_s`), `_PAUSE_MARGIN_S = 1.5`,
   `_REARM_MARGIN_S = 0.5` (A.U8C2.29); the alarm-pool loop bound `64` names its source as in M.HW_DEV.032.
   (6) `failures` → `fact("failures", …)` bounded; the chunk zeroed in a `finally`.
+  (7) (A-C fold, silent-failure scan SF-A11 and SF-B4, 2026-10-06) The waiter task of (4) goes with M.SRC_CORE.012 (1):
+  the auto-unpause is the deadline SYSTEM's uptime pass tests, so the script arms the uptime tick and starts the uptime
+  counter (the one starter `get_task_starters()` returns) before step 6 and cancels it at the end; (1)'s docstring
+  clause "and a real machine.Timer auto-unpause fires" becomes "and the auto-unpause deadline is met on the real uptime
+  tick"; the step asserts `pause_permanent_storage(_PAUSE_S)` is `True`, writes refused until `_PAUSE_S`, and accepted
+  within `_PAUSE_S + _PAUSE_MARGIN_S` (one pass of lateness, 1 s, inside the 1.5 s margin). L3, no wear (FRAM only). The
+  call-shape edit lands on the HEAD script in U11, with the source part; the rest in the entry's U26 form. Pins
+  M.SRC_CORE.012 (1).
 - **Resolved**: A.U16.19 removes the only means the HEAD script uses to look at the chip while paused; reading after
   unpausing proves the same thing (the bytes the paused write would have changed), as A.U16.19's blast states.
 - **Unit**: U26 (U16/U10 call-shape edits land in their units on the HEAD text).
@@ -1348,6 +1385,10 @@ changes cite.
   per A.U8C.102 (`_LONG_SCRIPT_TIMEOUT_S = 120.0`, `_SCRIPT_TIMEOUT_S = 90.0`, `_SHORT_SCRIPT_TIMEOUT_S = 60.0`,
   `_RESET_SCRIPT_TIMEOUT_S = 30.0`, `_REACHABLE_TIMEOUT_S = 30.0`, `_REACHABLE_POLL_S = 1.0`); new tests reuse them or
   take a row sized from the twin run.
+  (9) (A-C fold, silent-failure scan SF-A01, SF-A02, SF-B9 and SF-M3-04, 2026-10-06) The sweep's host test asserts
+  M.HW_DEV.090 (1)'s facts: `write_eio == 0`, `por_after_setup is False` for every BMP3XX, `isl_divergences == 0`, each
+  quoted in its message. L3, default-on, no wear; the bench counterpart stays M.HW_BENCH.064 (1). Pins
+  M.SRC_SENS.011 (1)-(2), .012 (1), .048 (1), .077 (1); runs in phase C.
 - **Resolved**: A.U26.08 (1) keeps "asserts its RESULT line"; facts per A.U26.68 (later contract). A.S0930.28 (5) and
   A.S0930.39 (1) place one test each here as the flash tier of the four-tier rule; their scripts are new files below.
 - **Unit**: U26 (SUPP_owner_0930 tests with U26).
@@ -1534,6 +1575,14 @@ changes cite.
   read; facts `addresses` (per bus), `unknown_addresses`, `reserved_hits`, `self_hazard`, `recover_status`,
   `recover_sibling_errors`, `heater_off_ok`; constants `_BROADCAST_STEP_S`, `_RUN_BOUND_S`, `_SELF_READS`,
   `_BROADCASTS`; `arm()`; `done()`.
+  (1) (A-C fold, silent-failure scan SF-A01, SF-A02, SF-B9 and SF-M3-04, 2026-10-06) The four tiers re-run for the
+  changed I2C call forms and the new per-cycle transactions on silicon: every register write is now one `writeto()` of
+  address and payload and every register read a no-stop address write then `readfrom_into()`, the BMP3XX self-hazard
+  reads include `take_por_detected()` and the burst from ERR_REG, the ISL29125 reads include the per-cycle 3-byte
+  snapshot; new facts `write_eio` (EIOs raised by the drivers' register writes and reads over the sweep, expected 0 on a
+  healthy bus), `por_after_setup` (each BMP3XX's EVENT read after its `setup()`, expected False: `reset()` consumes the
+  flag its own soft reset raised) and `isl_divergences` (expected 0). No new write beyond the sweep's existing volatile
+  ones. Pins M.SRC_SENS.011 (1)-(2), .012 (1), .048 (1), .077 (1); phase C.
 - **Resolved**: —
 - **Unit**: U26.
 - **Depends**: M.SRC_SENS (A.U13.R02 `recover()`, A.U15.R02, A.U15.28), M.HW_DEV.001-.004.
@@ -2169,6 +2218,11 @@ changes cite.
   test_scd30_argument_reaction_is_recorded(board, scd30_measuring)`: runs `scd30_argument_reaction.py`, asserts
   `restored == "ok"` and the interval equals the `standard_state` snapshot, records the facts. `COVERS_TWIN_SCENARIOS`
   names the chip-model scenarios.
+  (1) (A-C fold, silent-failure scan SF-A open points: FRAM MISO, SCD30 pointer, 2026-10-06) The FRAM probe's
+  `miso_idle_byte` (M.HW_DEV.132 (1)) joins `PHYSICAL_KEYS` with its independent check "== 0x00": a 0xFF fails naming
+  the breakout's MISO pull-up, under which an absent or silent chip reads WEL set and only the stuck-WEL warning would
+  remain (the twin answers 0x00). `test_scd30_argument_reaction_is_recorded` also records the partial-pointer facts of
+  M.HW_DEV.156 (1) through `result_note` (no extra NVM write). L3; phase C.
 - **Resolved**: the conformance comparison keeps its `KEY=VALUE` protocol (the probe output is the comparison's input on
   both sides, a documented exception to the `FACT` form: `conformance.parse` reads both).
 - **Unit**: U26 (the A.C.15 test is phase-C instrumentation in U26 form).
@@ -2192,6 +2246,10 @@ changes cite.
   soft reset 0xB6 → CMD 0x7E and the datasheet start-up time, back to defaults); FRAM — RDID (MB85RS2MTA p.10), WEL
   set/clear, a write/read round trip in `_SCRATCH_REGIONS = ((0x3FD00, 0x100),)`. Every wait fed; volatile registers
   only (no NVM).
+  (1) (A-C fold, silent-failure scan SF-A open point: FRAM MISO pull-up, 2026-10-06) The FRAM probe gains
+  `miso_idle_byte`: one status-register-length transfer with CS held high (the chip deselected, driving nothing), so
+  MISO reads its idle level: 0x00 with the RP2040 pad's default pull-down (no board pull-up), 0xFF with a pull-up on the
+  breakout. No write. L3; phase C.
 - **Resolved**: the FRAM probe's region is chosen disjoint from M.HW_DEV.124 and the hold script (AD-8's rule).
 - **Unit**: U26 (BMP3xx keys added in phase-C prep, A.C.16).
 - **Depends**: M.HW_DEV.001/.004/.007.
@@ -2470,6 +2528,11 @@ changes cite.
   with one callee of that phase rebound to `time.sleep_ms(10000)` (no feed follows). (4) `reset_code_stack_exhausted.py`:
   builds the system, rebinds one supervised reader's read coroutine to recurse until the stack check raises, lets the
   supervisor escalate. Each prints a banner before the reset (AD-3); no flash write (FRAM only, scratch config).
+  (5) (A-C fold, silent-failure scan SF-A open point: mem_backup across a RUN-pin reset, 2026-10-06)
+  `reset_code_invalid_record.py` gains `STATE="valid_record_wait"`: it writes a valid record with reason 3 through
+  `write_reset_record()` (magic last), prints `PRESS_RUN_NOW`, then feeds and waits up to `_RUN_WAIT_S` (60 s) for the
+  operator's RUN-pin reset, with no reset of its own and no flash write; on timeout it reports `run_not_pressed` and
+  resets as script (1) does. For M.HW_BENCH.102 (7); phase C.
 - **Resolved**: —
 - **Unit**: phase C (written before R1, U26 form).
 - **Depends**: M.HW_DEV.009; M.SRC_CORE (A.U11.05-.07).
@@ -2503,6 +2566,15 @@ changes cite.
   reads back, times two data-ready periods; sends 0 with a correct CRC, reads back, times again; restores the original
   interval in `finally` if either changed it; facts `wrong_crc_accepted`, `zero_interval_accepted`, `restored`, each read
   value; fed throughout; `done()`. At most 3 SCD30 NVM writes.
+  (1) (A-C fold, silent-failure scan SF-A open point: SCD30 register pointer cut short, 2026-10-06) After the reads
+  above and before any write: one `writeto()` of only the interval command's first byte (0x46), then a 3-byte read;
+  facts `partial_pointer_crc_ok` and `partial_pointer_word` (whether the chip answers a CRC-valid word, and which), then
+  the full command and read restore the pointer (`pointer_restored`). No NVM write. Phase C.
+  (2) (A-C fold, silent-failure scan SF-A open point: SCD30 NVM write cut by power loss, 2026-10-06)
+  `STATE="interval_write_loop"`, for M.HW_BENCH.102 (6) only: alternates the measurement interval between the current
+  value and that value + 1 s, at most 20 writes, printing `WROTE <n> <value>` after each (the banner the operator
+  watches), fed throughout; restores the original in `finally` while power stays (up to 21 SCD30 NVM writes, stated by
+  the manual step before it runs). Phase C.
 - **Resolved**: —
 - **Unit**: phase C (U26 form).
 - **Depends**: M.HW_DEV.001/.002/.004.

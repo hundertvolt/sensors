@@ -560,6 +560,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
   default output ends `-tickoffset.uf2`, the work dir carries `-tickoffset`, the staged generated module's build info
   names the override (M.GEN.019, M.GEN.009), and with the fake `tick_offset_in_build()` true the record's `overrides`
   holds `"tick_offset_test"`; a default build passes `tick_offset_test=False` and its record never names it.
+  (1) (A-C fold, silent-failure scan SF-M4-07, 2026-10-06) (f) also pins the write order around `st.build_firmware`'s
+  stubbed result: the old record is unlinked before the image moves, the image is copied to `<name>.uf2.tmp` and
+  `os.replace`d onto `output` (no `.tmp` left), the record is written last; an `os.replace` raising leaves no record and
+  the previous image byte-identical. Pins M.SCR.067 (1); U27.
 - **Resolved**: —
 - **Unit**: U27 (U26 record; S0930 rows land with their U26/U27 owners).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.06 in U26.
@@ -811,6 +815,11 @@ where a test pins an SCR product, the constituent action is cited and the depend
   device-module import; the no-autostart variant has no `WDT(` outside its printed string and no `asyncio.run(`. The CLI
   tests assert `sensortask_<device>.py`, `sensortask_<device>_main.py` and `sensortask_<device>_main_noautostart.py`
   exist (not `<device>_boot.py`).
+  (1) (A-C fold, silent-failure scan SF-A14, 2026-10-06) The autostart entry's tail (AST): `try:` holding exactly
+  `asyncio.run(main(watchdog=watchdog))`; one `except KeyboardInterrupt:` whose body is
+  `write_reset_record(RR_INTERRUPTED)` then a bare `raise`; `finally:` holding `asyncio.new_event_loop()`; no other
+  handler; `from asy_system_service import RR_INTERRUPTED, write_reset_record` after the device-module import; the
+  no-autostart variant has neither. "Equal up to the watchdog lines and the tail" holds. Pins M.GEN.001 (1); U20.
 - **Resolved**: boot-entry name `sensortask_<device>_main.py` (M.GEN.019, GEN gap 1) over A.U24.54's `<device>_boot.py`.
 - **Unit**: U20 (U27 for the CLI exit idiom).
 - **Depends**: M.GEN.001, M.GEN.019.
@@ -1733,6 +1742,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `harness.MEMORY_ERROR_MARKERS` marker fails; the multi-instance fixture's `/status` carries `SGP40` and `SGP40_<ext>`;
   adherence fix (no history narrative): `:213-215` → "# Every real device's own TOML, generated fresh here: proof the
   generator's module runs for every device, not just ast.parse()s (SPECIFICATION.md Part L.4)." ("Session 3's" goes).
+  (1) (A-C fold, silent-failure scan SF-B3, SF-M1-07, SF-A10, 2026-10-06) The Status readonly-field parity covers
+  `ConfigUnpersisted` and `ResetBits` (present in each booted device's `/status` and in its definitions); no new check.
+  Pins M.GEN.008 (1), (2), M.GEN.014 (1), (2); stage U20.
 - **Resolved**: —
 - **Unit**: U35 (stages U6, U7, U20, U24; the NTP expectation after U25's responder).
 - **Depends**: M.GEN.014/.033, M.SCR.016 (`scripts/_twin_process.py`), M.HW_BENCH.016; M.TWIN.167 (the twin's
@@ -1778,6 +1790,12 @@ where a test pins an SCR product, the constituent action is cited and the depend
   with no two adjacent identical non-`N` entries and `counter` ≥ the non-`N` slots; (11)
   `test_every_marked_spec_table_equals_its_catalog_table`: each `<!-- catalog: status.<name> -->` table in
   SPECIFICATION.md lists exactly the catalog's codes, names and tones. Planted-violation bites per check (fixtures).
+  (11) (A-C fold, silent-failure scan SF-B12, SF-M1-03, SF-M1-01, SF-A14, SF-B2, SF-B6, SF-B7, SF-B9, SF-B10, SF-B11,
+  SF-B15, SF-M2-03, SF-M3-02, 2026-10-06) The checks cover the fold's new codes as they land, each needing its catalog
+  row and its `src/` constant together: `FRAM_FULL`, `LOG_RAM_ONLY`, `CONFIG_LOST`, ResetReason 21,
+  `NOTIFY_SIGNAL_DROPPED`, `WLAN_STATIONS_UNKNOWN`, `WLAN_STATUS_UNREADABLE`, `WLAN_TO_HOTSPOT`, `WLAN_DEACTIVATED`,
+  `WLAN_NO_VERDICT`, `DNS_REPLY_TRUNCATED`, `BMP_CHIP_RESET`, `SCD_NOT_READY`, `ISL_CAL_TIMEOUT`, `READ_RANGE`; no new
+  check. Pins M.GEN.034 (1).
 - **Resolved**: A.U2.25's check reads the retired `mockdata/{dev,wozi}.json` at U2; A.U6.06 moves the rule to
   `samples.json` — staged.
 - **Unit**: U36 (stages U2 checks (1)-(9) and the mockdata pass, U3 adjacency, U6 samples file).
@@ -1841,6 +1859,12 @@ where a test pins an SCR product, the constituent action is cited and the depend
   every generated `sensortask_<device>.py` (in memory, `DEVICE_NAMES`) every instance construction is a direct statement
   of `build_system()`'s body (never nested in `if`/`for`/`while`/`try`/`with`) and no other generated function constructs
   an instance. Modelled on the gc-site checker's attribution.
+  (1) (A-C fold, silent-failure scan SF-B1, 2026-10-06) Every `get_chunk(`/`get_timestamped_chunk(` call in `src/`
+  passes `owner=`; the owner names of every derived device (the construction part of each expected JSON, as
+  M.TEST_HELP.036 (1) reads it), unioned, give pairwise distinct, non-zero seeds for each seed width (1 and 2 bytes):
+  `_owner_seed()` is read from `src/asy_fram_manager.py` by `ast` and run under CPython with a stand-in CRC exposing
+  `length()`; bites: a synthetic call without `owner=` fails, and a planted name colliding with another's seed fails
+  naming both. Pins M.SRC_CORE.091 (1); U16.
 - **Resolved**: —
 - **Unit**: U16
 - **Depends**: M.GEN.005.
@@ -2016,6 +2040,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
   equal `_PAUSE_TIME_FIELD`'s, `lightCmdLED` sub-field names and bounds equal `_LIGHT_CMD_FIELDS` (all `ast` from
   `src/asy_webserver_service.py`); bites on temp copies: a planted mismatch, and a definitions dict with `"erasefram"`
   dropped.
+  (1) (A-C fold, silent-failure scan SF-B14, 2026-10-06) `ERR_COUNT_CAP` in `js/api-contract.js` equals `_MAX_CNT`'s
+  `const()` literal in `src/asy_print_log.py` (by `ast`); bite: a planted mismatch fails. Pins M.SRC_CORE.063 (2),
+  M.WEB.001 (1); U23.
 - **Resolved**: —
 - **Unit**: U23 (S0930 row with the command words).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.20 in U24.
@@ -2161,6 +2188,12 @@ where a test pins an SCR product, the constituent action is cited and the depend
   literal), a check that `tests_js/_twin_process.js` and `scripts/cross_browser_smoke.mjs` import it (the two
   `_live_*_command.js` modules reach it through `_twin_process.js`), and that `test_digital_twin_generated_boot.py` and
   `test_digital_twin_boot_contiguity.py` reference `MEMORY_ERROR_MARKERS`.
+  (1) (A-C fold, silent-failure scan SF-M4-01 (a), 2026-10-06) New `test_every_gated_tier_logs_errors`: for each
+  memory-gated tier the level its run boots at is read from its own source (the unit tier's `LogConfig` default in
+  `src/asy_print_log.py`; `scripts/_digital_twin_ci_suite.py`'s `_TEST_DEBUG_LEVEL` and any run it boots before its `PUT
+  /system`; the flash/bench harness's boot config) and asserted at or above `_LOG_ERR`, so an unretrieved task's "memory
+  allocation failed" reaches the gate through the handler's gated line; a tier found below it is raised in its launcher
+  (SCR/HW), never exempted here. Pins M.SRC_CORE.016 (1)'s execution-first check; stage U11.
 - **Resolved**: A.U7.23 names the two command modules as importers; M.WEB.082 moves the import into
   `_twin_process.js` (WEB gap 7) — the check follows the import's home.
 - **Unit**: U26 (stages U7, U14).
@@ -2232,6 +2265,12 @@ where a test pins an SCR product, the constituent action is cited and the depend
   manager's `_read()` (an invalid block, then a failed repair write of it) joins at the landing that first puts both
   entries in that one function (M.SRC_CORE.088, U16). Bites (synthetic `tmp_path` copies): a planted `wrn_s` then
   `err_s` for one occurrence fails naming the function; a planted second `err_s` after an `err_s` passes.
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, SF-M3-02, SF-B10, 2026-10-06) The fold's new persisted warnings in
+  functions that also persist an error are re-scanned at their landing: `_read_bmp()` joins the allow-list as "a chip
+  reset, then a failed re-apply or a rejected reading: separate occurrences" (U15), and `_read_scd()` likewise if the
+  scan pairs its not-ready warning with the range error; the other folded warnings (SystemService `setup()`, WiFi's
+  fallback, deactivation and poll paths, SGP40 `_init_sgp()`, ISL calibration) join only if the scan pairs them, each
+  with its reason. Pins M.SRC_SENS.043 (1), (2), .055 (1), (2); stage U15 (U11/U18 for the others).
 - **Resolved**: A.U3.11's pair scan enforced the dropped one-entry rule; the lead's ruling keeps it for the
   fault-or-warning half only, the half OR140.a (7) does not touch. Wrapper resolution and the U15/U16 stages: lead
   ruling 2026-10-05 (AC_NOTES 54 (5)) — without the first, UART `_resync()`'s listed pair would never be seen and the
@@ -2789,6 +2828,10 @@ where a test pins an SCR product, the constituent action is cited and the depend
   `scenarios[<device>]` job per derived device (first) with its `per_file_timeout_overrides_s[scenarios]` key and one job
   per `tests/lwip_host/test_*.py` on the lwIP binary (last), neither under `--coverage`; the trap kills recorded PIDs and
   copies failed logs to the archive before removing scratch.
+  (1) (A-C fold, silent-failure scan SF-M4-06, 2026-10-06) New: a stub interpreter whose first attempt prints a caught
+  allocation-failure line ("memory allocation failed") and times out, and whose retry passes: the file is reported
+  failed by the memory gate, not `RETRIED-PASS`; the job log holds both attempts' output (truncated once per job, never
+  between attempts); `_flag_memory_errors "$tag" "$log_file"` still occurs exactly twice. Pins M.SCR.040 (1); U27.
 - **Resolved**: —
 - **Unit**: U27 (stages U7, U8, U21, U24, U36 names).
   A-C2 step order: A.U24.65's part lands in U25, not U24 (it follows A.U24.65's own change, which lands in U25).
@@ -2991,6 +3034,9 @@ where a test pins an SCR product, the constituent action is cited and the depend
   relations: `wdt.timeout_ms` ≤ 8388, `system.reset_delay_s` × 1000 < `wdt.timeout_ms`, `system.task_check_s` × 1000 × 4
   ≤ `wdt.timeout_ms`, `web.connections_per_page_load` ≤ the largest shipped `max_connections`; negative cases on a tmp
   tree (untagged row, unlisted tag, mismatched literal, `@tunabel`, missing literal).
+  (1) (A-C fold, silent-failure scan SF-M3-09, SF-M3-01, 2026-10-06) The three new tags (`led.overlay_refresh_ms`,
+  `notify.sample_max_age_s`, `sgp40.comp_max_age_s`) need their Part N rows in the same landing (the SPEC carrier's); no
+  new check. Pins M.SRC_SENS.025 (1), .035 (1), .064 (1).
 - **Resolved**: the `:62-70` overlap with `test_request_timeout_ceiling.py` — both kept (M.TSC.121).
 - **Unit**: U8
 - **Depends**: A.U8.01 (SPEC Part N).

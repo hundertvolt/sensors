@@ -76,6 +76,11 @@ every B1 action (AC_NOTES 34-second).
   the value `"unavailable"` (`src/asy_webserver_service.py` `_write_guarded()`/`_write_errcount_entry()`); JSDoc `@param
   {unknown} value` / `@returns {boolean}`. No other export; `COUNTER_CAP` is not here (M.WEB.040: the mock is its only
   user and is never staged). The module imports nothing.
+  (1) (A-C fold, silent-failure scan SF-B14, 2026-10-06) One more export: `export const ERR_COUNT_CAP = 65535;` with
+  its `//` source comment (`src/asy_print_log.py`'s `_MAX_CNT`, the error counter's saturation value); its user is
+  M.WEB.016 (1), and `tests_scripts/test_js_api_mirrors.py` pins it like the others. The header's list reads "the four
+  PUT result words, the error-count cap, the degraded-source marker and the time-struct keys"; "No other export" above
+  counts it.
 - **Resolved**: A.U23.24 wrote the lowercase keys "renamed with A.U10.40 in the same change"; A.U10.40 is U10, earlier
   than U23, so the keys are born PascalCase.
 - **Unit**: U23.
@@ -85,6 +90,7 @@ every B1 action (AC_NOTES 34-second).
   (M.WEB.040); production bundle closure gains the module (A.U23.38, SCR — derived from imports); L0
   `tests_scripts/test_js_api_mirrors.py` (A.U23.25/.24/.26/.27, TSC); SPEC G.2 mirror catalog and H.2 module list
   (A.U23.25 Docs, A.U36.517 (3), SPEC); H.6.1 row 1 key casing (Gaps item 4, SPEC).
+  (SF-B14: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ## js/poll-manager.js
@@ -389,6 +395,14 @@ every B1 action (AC_NOTES 34-second).
   (`type="button"`, `data-clear-for = fieldId`) after the input; a field with
   `ignoredWhenSet` gets `p.field-warning` with `data-shown="false"` and text "Ignored: <display.siblingLabel> is set."
   after the caption. Every DOM element is created here only.
+  (1) (A-C fold, silent-failure scan SF-B8, 2026-10-06) (page half) A writable field whose group source is unavailable
+  says so: when `display.unavailable`, a number/string field's caption and input placeholder read "unavailable"
+  instead of `formatFieldValue()`'s "—", so a sensor setting the device could not read no longer looks unset; toggles
+  and enums keep their control and the card's `data-source-state="unavailable"` cue (M.WEB.020). Detection needs no
+  change: a `/sensors` group's source is `data[group.key]` (M.WEB.020's `groupValuesFrom()`), so a sensor entry the
+  server sends as the `{"error":"unavailable"}` marker in place of its field map (the firmware half of SF-B8,
+  M_SRC_CORE/M_SRC_SENS) is `isUnavailable()` there already; a marker sent beside the values instead would not match
+  M.WEB.001's exact-shape rule.
 - **Resolved**: A.U6.30 "hint mirrors it" is met by the tag description it rewrites ("Two uppercase letters (ISO 3166-1
   alpha-2), e.g. DE.", M.SRC_NET.073), which the hint already shows — no second text. GAP-12 (M_SRC_SENS): the owner
   question it suggests needs none — A.U23.14/A.U23.15 already settle a dispatch toggle as "Off, sent only when On" and
@@ -403,6 +417,7 @@ every B1 action (AC_NOTES 34-second).
   `.field-value.code-value` button reset and the muted `.code-number` are Gaps item 5).
 - **Blast carried by**: callers `buildFieldGroupCard()` (M.WEB.015); `tests_js/templates.test.js` (M.WEB.058) and
   `tests_js/accessibility.test.js` (M.WEB.080); SPEC H.3 hook list (A.U23.42 Docs, SPEC).
+  (SF-B8: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.WEB.015 Cards build once, update in place, and reset after Apply
@@ -426,6 +441,9 @@ every B1 action (AC_NOTES 34-second).
   (unset for an always-executed toggle given undefined) with its label and aria-pressed, selects the matching option or
   the placeholder."): input → `value = ""`; composite → every sub-input `""`; toggle → as its build would render
   `value`; select → the option whose value equals `value`, else the `""` placeholder option when present.
+  (1) (A-C fold, silent-failure scan SF-B8, 2026-10-06) (page half) `updateFieldGroupValues()` gives a writable
+  number/string field's caption and placeholder "unavailable" when `display.isUnavailable(field)`, as M.WEB.014 (1)
+  builds them, else `formatFieldValue(...)` as above.
 - **Resolved**: A.U23.08 names captions only; A.U23.15 clears accepted inputs, which reveals the placeholder — so the
   placeholder is refreshed with the caption, else it would show the pre-Apply value under a cleared input (agent
   decision D5).
@@ -434,6 +452,7 @@ every B1 action (AC_NOTES 34-second).
 - **Blast carried by**: caller `js/render.js` (M.WEB.020/.021); `tests_js/templates.test.js` (M.WEB.058);
   `tests_js/render.test.js` in-place refresh cases (M.WEB.054); SPEC H.3 contract names `resetControl` (A.U23.15 Docs,
   SPEC).
+  (SF-B8: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.WEB.016 Errcount card: one severity, no invented zero, clickable codes, update in place
@@ -461,6 +480,10 @@ every B1 action (AC_NOTES 34-second).
   texts, each row's count and `data-worst`, re-applies the list's current filter, and rebuilds a row's history items only
   when its `num`/`type` sequence differs from what is shown (closing that row's open description); buttons and the list
   element are never replaced, so focus stays.
+  (1) (A-C fold, silent-failure scan SF-B14, 2026-10-06) A saturated counter reads as such: the count text is ``
+  counter >= ERR_COUNT_CAP ? `${ERR_COUNT_CAP}+` : String(counter) `` (`ERR_COUNT_CAP` from `js/api-contract.js`,
+  M.WEB.001 (1)) in `buildErrcountGroup()` and `updateErrcountGroup()` alike, so a counter frozen at the firmware's
+  cap reads "65535+", not an exact count. The firmware is unchanged (K.28's bound kept). Stage U23.
 - **Resolved**: A.U0.28 (U0) tags `:304` "(owner, 2026-08-21)"; A.U36.507 (U36, same block, "one edit") rewrites it —
   A.U36.507's text stands with the tag inside it. A.U23.43 (6)'s pill border cue is dropped (AC_NOTES 26, owner-accepted
   OR126.a / AC_NOTES 37). An `N` pill stays a span: the catalog's `codes` block has only `E` and `W` tables (A.U2.21), so
@@ -471,6 +494,7 @@ every B1 action (AC_NOTES 34-second).
 - **Blast carried by**: callers `js/render.js` (M.WEB.020); `tests_js/templates.test.js:343-428` and new cases
   (M.WEB.058); `tests_js/render.test.js` errcount cases (M.WEB.054); SPEC H.6 "Errcount UX"/"History entry" (A.U23.11/.12/
   .20 Docs, A.U36.508, SPEC); H.4 "History depth" (A.U36.507, SPEC).
+  (SF-B14: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.WEB.017 The section banner starts hidden through its data attribute
@@ -638,6 +662,13 @@ every B1 action (AC_NOTES 34-second).
   `dataset.shown` to `"true"` exactly when the field's input is non-empty and the sibling's effective value — its typed
   input through `parseNumberInput()` when non-empty and a finite number, else `resolveFieldValue(sibling,
   baselines.get(card))` — is a non-zero number, else `"false"`.
+  (1) (A-C fold, silent-failure scan SF-M2-06, 2026-10-06) Apply reads the device's current values before it decides
+  what changed: the click handler sets `button.disabled = true`, runs `if (!isStopped()) await refreshAfterApply();`
+  (M.WEB.020's in-place refresh: it updates `baselines` and every readonly value, never a toggle or select the user
+  set), and only then computes `body = collectGroupBody(card, group, baselines.get(card))`; an empty body or a
+  declined confirmation re-enables the button (the "Nothing to submit" text as today); `send()` keeps its own disable
+  and enable. One comment line: "// Fresh baselines first: another client may have changed a value this page still
+  shows." One GET per Apply, no new state. Clear is unchanged (it sends `""` whatever the baseline). U23 stage.
 - **Resolved**: A.U0.53 (U0) relabels `:264-266`; A.U23.45 (U23, same lines) shortens it to one line ending "(SPECIFICATION.md
   Part H.4)" — the later text stands, its provenance moves to H.4's divergence row (A.U23.45). A.U24.48's `-- <reason>`
   makes the `:260-261` comment a duplicate, so the reason lives once, in the disable comment. GAP-G13's rename makes
@@ -650,6 +681,7 @@ every B1 action (AC_NOTES 34-second).
 - **Depends**: M.WEB.015, M.WEB.018, M.WEB.019, M.WEB.020; A.U24.48's plugin (M.WEB.070/.071).
 - **Blast carried by**: `tests_js/render.test.js` (M.WEB.054); live matrix commands read state after the refresh
   (M.WEB.061); SPEC H.4 "After Apply", "Known accepted gap", legacy-divergence row (A.U23.15/.17/.45 Docs, SPEC).
+  (SF-M2-06: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.WEB.022 One banner pair for every entry and section
@@ -984,6 +1016,12 @@ every B1 action (AC_NOTES 34-second).
   catalog code of that logger's owner (A.U2.01's table), no two adjacent identical non-`N` entries, `counter` ≥ the
   non-`N` slots, no SYSTEM warning. No value names a device (`Hostname` "SensorNode", not a variant). Every field of every
   device's generated definitions resolves (pinned by M.WEB.056).
+  (1) (A-C fold, silent-failure scan SF-B3, SF-M1-07, SF-A10, SF-B17, 2026-10-06) `status.system` gains
+  `ConfigUnpersisted` `[]` beside `ConfigFaults` and `ResetBits` 256 (HAD_POR, consistent with `ResetReason` 1) (U20);
+  the NOTIFY measurement sample gains `State` 0 where the generated definitions list NOTIFY's fields (U22); no
+  `CONFIG_LOST` entry in the samples (the "no SYSTEM warning" rule holds); ResetReason 21's label comes from the catalog
+  through the definitions, so no sample changes for it. M.WEB.056/.057 then prove every new field resolves. Pins
+  M.GEN.008 (1), (2), M.SRC_SENS.037 (1).
 - **Resolved**: A.U2.25 and A.U3.15 site the retired files (U2/U3 precede U6); their rules move to `samples.json`
   (A.U6.06 "A-C merges A.U2.25's edit of the retired files into samples.json"). A.U15.12's blast puts FRC fields in
   `mockdata/{dev,wozi}.json` (U15 > U6, after their deletion) — they land in `samples.json`. `CFGMGR_SCD30` gets a sample
@@ -1201,6 +1239,16 @@ every B1 action (AC_NOTES 34-second).
   so the server can refuse it."; `:864` names the section's status sub-request as M.WEB.020 names it (no `fetchOnce()`
   if that function is gone). Fold (A-C review): "Reset All Errors" asks "Reset All Errors?" before its PUT and
   sends nothing on cancel; a measurement float without `decimals` renders with the definitions' `defaultDecimals`.
+  (1) (A-C fold, silent-failure scan SF-M2-06, 2026-10-06) New Apply cases on the mock: the page loaded, then the
+  device's value of a toggle and of a dropdown changed by another client; setting each back to the page's stale baseline
+  and pressing Apply issues exactly one GET of the section before the PUT, and the PUT body carries both fields (they
+  now differ from the refreshed baseline); the button is disabled from the click through the refresh; a form equal to
+  the refreshed values shows "Nothing to submit" and re-enables the button, as does a declined confirmation; a stopped
+  page sends no GET; Clear sends `""` with no GET. Pins M.WEB.021 (1); stage U23.
+  (2) (A-C fold, silent-failure scan SF-B8 (page half), 2026-10-06) New render case: a `/sensors` refresh whose response
+  sends one module as the marker updates that card in place to the "unavailable" captions and cue while the other cards
+  keep their values; the next refresh with the map restores it. Pins M.WEB.015 (1) through M.WEB.020's in-place refresh;
+  stage U23.
 - **Resolved**: A.U23.14 says `:458-466` (second ResetErrors) holds and A.U23.15 (later in the same unit, and the
   behaviour it adds) turns it into "Nothing to submit" — A.U23.15's expectation stands. A.U23.05's "console.error once"
   case lands here (M.WEB.051's note). A.U36.544 (4) ":86 H.7 → H.4" applies to the comment A.U6.17 makes false (the mock
@@ -1314,6 +1362,16 @@ every B1 action (AC_NOTES 34-second).
   Part H.3: js/templates.js owns the hook)" (AC3_O O-10). Fold (A-C review): `ResetReason` renders as a code button whose click shows "<n>:
   <description>" (OR140.a (8)); a non-integer number renders through `defaultDecimals`, an integer unchanged, a field's
   own `decimals` wins; an array renders joined, an empty one "none" (`ConfigFaults`).
+  (1) (A-C fold, silent-failure scan SF-B14, 2026-10-06) New cases on `buildErrcountGroup()` and `updateErrcountGroup()`
+  alike: a counter of `ERR_COUNT_CAP` (imported from `js/api-contract.js`, never a literal) reads "65535+", one below it
+  reads "65534", and an update from the cap to a smaller counter (after a reset) drops the "+". Pins M.WEB.016 (1);
+  stage U23.
+  (2) (A-C fold, silent-failure scan SF-B8 (page half), 2026-10-06) New cases: a writable field group built with an
+  unavailable source (a `/sensors` entry sent as exactly `{"error":"unavailable"}`): every number/string field's caption
+  and input placeholder read "unavailable" (not "—"), toggles and enums keep their control, the card carries
+  `data-source-state="unavailable"`; `updateFieldGroupValues()` turns an available card's captions to "unavailable" when
+  its source becomes the marker and back to the formatted value when the map returns; an entry carrying the marker
+  beside field values is not unavailable (M.WEB.001's exact shape). Pins M.WEB.014 (1), .015 (1); stage U23.
 - **Resolved**: A.U0.28 (U0) writes `:399-400` "(owner, 2026-08-21, `9fd2a28`)"; A.U24.56 (U24) lists the same A28 site
   as "residue other units leave" with the text "(owner, 2026-08-21)" — A.U0.28 already carries it, so A.U24.56's A28
   bullet is void (its own scope is what other units leave) and A.U0.28's text stands.
@@ -1496,6 +1554,9 @@ every B1 action (AC_NOTES 34-second).
   (A.U7.20's helper) and returns the archive path. Fold (A-C review, OR140.a (3)): `applyField()` accepts the browser dialog of a field
   carrying `confirm` (Playwright's dialog handler, `accept()`), asserting its message, and fails on a dialog it did not
   expect.
+  (1) (A-C fold, silent-failure scan SF-M2-06, 2026-10-06) Re-checked at landing: any step of the live-matrix commands
+  that drives the page's Apply allows the one section GET Apply now issues before its PUT (a request count includes it);
+  expectations read after the refresh are unchanged. No other change. Pins M.WEB.021 (1); stage U23.
 - **Resolved**: as M.WEB.061 for the shared frame. A.U23.16 "remountAndReadField() returns "unset" for ContMeas" needs no
   code: the remounted toggle's `data-value` is `"unset"` (M.WEB.014).
 - **Unit**: U27. Stages: U6, U7, U8, U23 (A.U23.16/.32/.33), U24, U25, U36 (`:151` pointer — folded into this

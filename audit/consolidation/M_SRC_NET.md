@@ -193,6 +193,15 @@ actions only where they name a product line.
     (a second cancel propagates); `if not disconnect_ok:` comment `:150-152` names `UDPSocket` (≤ 3 lines) and `await
     self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)`;
     `self.pr.evt("DNS Server disconnected.")`. `CancelledError` then propagates out of `run()`.
+  (1) (A-C fold, silent-failure scan SF-A08, 2026-10-06) The lwIP receive queue: at most 4 datagrams wait per UDP
+  socket and a further one is freed in the lwIP callback with no counter or flag (`extmod/modlwip.c:299, 456-461`,
+  v1.29.0), so the drop cannot be counted from Python. The drain holds by construction and needs no code: after each
+  reply the loop calls `recvfrom()` again at once, and `UDPSocket._poll()` reads `ipoll(0)` before every sleep
+  (M.SRC_NET.028), so every queued datagram is read before the socket sleeps; the bound is 4 datagrams per
+  `_POLL_IDLE_MS` (100 ms, kept: owner, 2026-10-05, OR141.a (5)). One comment (2 lines) above the `recvfrom()` call:
+  "# lwIP queues at most 4 datagrams per UDP socket and drops the rest uncounted (extmod/modlwip.c:299, 456-461,
+  v1.29.0);" / "# every queued one is read before _poll() sleeps, so a burst loses only what exceeds 4 per idle poll."
+  The version stamp follows the pin current at execution (A.SDEP.08). Stage U18.
 - **Resolved**: A.U18.06 reads `self._udps.connected` from another module while A.U10.35 privatises
   `AsyUDPSocket.connected` — settled by G10/R07's own exception ("public only where another module needs it", the
   A.U10.35 C.2 text) and A.U18.06's Depends ("keeps `connected` public and meaningful"): `UDPSocket.connected` stays
@@ -206,6 +215,7 @@ actions only where they name a product line.
   A.U35.14 (driven wait), A.U35.48 (cancel sweep) (tests cluster); `tests_hardware/README.md:879, 893` → A.U18.06 /
   U26 wording (docs cluster); SPEC C.7.1 DNSSRV row → A.U2.22 (docs); SPEC C.8 cancellation line → A.U18.07;
   js mock DNSSRV rows → A.U2.21 (WEB cluster)
+  (SF-A08: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 - **Staging**: U18: every line above except the backoff unit (writes `recv_fail_backoff_s`/`asyncio.sleep(...)` with
   the `_S` float constants as at HEAD); U31: the ms conversion (A.U31.16) of `:94, :100, :124-127` and the constants of
@@ -353,6 +363,14 @@ actions only where they name a product line.
   teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)` (the "never raises" comment goes); the parse and its
   `except (IndexError, ValueError)` arm unchanged. A module-level `_WRN_SOCKET_TEARDOWN = const(12)` joins the constants
   (A.U2.04 idiom; shared code, U18 register fix 9).
+  (1) (A-C fold, silent-failure scan SF-B15, 2026-10-06) A cut reply is detected instead of parsed as "no usable
+  answer": the call receives one byte more than a DNS message may be, `write_and_recvfrom(query, DNS_UDP_MAX + 1,
+  timeout_ms=timeout_ms, tries=tries)`, and right after its `try`/`finally`, `if rsp is not None and len(rsp) >
+  DNS_UDP_MAX: await pr.wrn_s("DNS reply truncated, trying the next server:", server, wrnno=_WRN_DNS_REPLY_TRUNCATED)`
+  then `continue`; comment (1 line) "# A whole reply is at most DNS_UDP_MAX (RFC 1035 4.2.1, no EDNS sent); a fuller
+  buffer means lwIP cut it (modlwip.c:719-721)." A module-level `_WRN_DNS_REPLY_TRUNCATED` joins
+  `_WRN_SOCKET_TEARDOWN`, numbered at execution with the catalog as the numbering source (M.GEN.034). The parse is
+  unchanged.
 - **Resolved**: HEAD's `try: cli = AsyUDPSocket((server, port), …) except (ValueError, TypeError): continue  # malformed
   port` guards only a caller-supplied `port`; after A.U18.45 the port is the constant 53, `server` is a validated `str`
   and `mode` a literal, so no input reaches the arm (A.U18.12's constructor raises only for a non-`(str, int)` tuple or
@@ -366,6 +384,7 @@ actions only where they name a product line.
   `tests/_udp_port_redirect.py`, `_ResolvingAsyUDPSocket` removal, multi-server rewrites, teardown-failure test) →
   A.U18.10/A.U18.15/A.U18.45/A.U18.12 (tests cluster); `tests_hardware/bench/test_network_resilience.py:351-355`
   comment holds (A.U18.10); SPEC C.7 → A.U18.15 (docs)
+  (SF-B15: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.024 Module header and docstring state the resolver's contract
@@ -484,11 +503,18 @@ actions only where they name a product line.
   not self.connected: await self._disconnect_locked()` unchanged. Header comment `:74-75` unchanged.
   `_disconnect_locked()`: `self.sock` → `self._sock` throughout, both excepts `(MemoryError, OSError)`, comments
   unchanged.
+  (1) (A-C fold, silent-failure scan SF-A12, 2026-10-06) Stage U18. An allocation failure's text reaches the console:
+  `_connect()`'s arm becomes `except (MemoryError, OSError, TypeError) as e:` with `if isinstance(e, MemoryError):
+  print("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)` before its comment
+  line and backoff; `_disconnect_locked()`'s two arms take the same `as e:` and the same `print` line before `ok =
+  False`. Sentinels, backoff and G6/R34 ("`UDPSocket` I/O ... never raise") unchanged; same form as M.SRC_NET.028 (1)
+  and M.SRC_NET.030 (1).
 - **Resolved**: —
 - **Unit**: U31 (staged: U18 writes the one-attempt shape with `asyncio.sleep(_RETRY_BACKOFF_S)`; U31 converts)
 - **Depends**: M.SRC_NET.026
 - **Blast carried by**: tests (lock-wait bound one backoff, self-heal renamed, `DrivenTime` 500 ms advance) →
   A.U18.13, A.U35.14, A.U31.16 (tests cluster); twin shim wraps `_connect` unchanged (A.U18.13)
+  (SF-A12: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.028 `ready()`: one poll coroutine, deadline through `wait_for_ms`, idle rate without one
@@ -507,6 +533,10 @@ actions only where they name a product line.
   _POLL_IDLE_MS)` / `return await asyncio.wait_for_ms(self._poll(mask, _POLL_WAIT_MS), timeout_ms)` / `except
   asyncio.TimeoutError: return False` / `except (MemoryError, OSError, TypeError): return False`. `import time` goes if
   nothing else uses it (grep at execution: `ready()` was its only user).
+  (1) (A-C fold, silent-failure scan SF-A12, 2026-10-06) `ready()`'s `except (MemoryError, OSError, TypeError): return
+  False` becomes `except (MemoryError, OSError, TypeError) as e:` / `if isinstance(e, MemoryError): print("UDPSocket",
+  e)  # the class has no logger; the memory gates read this text (CLAUDE.md)` / `return False` (the form of
+  M.SRC_NET.027 (1); the `asyncio.TimeoutError` arm unchanged).
 - **Resolved**: A.U10.26 "`ready()` keeps its signature" vs A.U18.05 removing `wait_time_ms` — V.U18.05/V.U18.D rule for
   A.U18.05 (recorded in A.U18.05's Depends). A.U10.26 passes one `wait_time_ms` to `_poll()`; A.U18.05's Depends settles
   `_POLL_WAIT_MS` in the deadline branch and `_POLL_IDLE_MS` in the no-deadline branch. Soundness (agent, OR111.a (2)):
@@ -525,6 +555,7 @@ actions only where they name a product line.
   tests of A.U14.34 no longer have a `ticks_*` site in this file after A.U10.26 (tests cluster, A.U14.34's own list);
   SPEC F.2 mechanism, F.5.9 paragraph, Part C/G "one poller pattern", SPEC F POLLERR paragraph → A.U10.26, A.U18.05,
   A.U18.17 (docs); BACKLOG prioritised item removed → A.U10.26 (docs)
+  (SF-A12: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.029 `write_and_recvfrom()`: a failed send is not waited out; `tries` required
@@ -557,11 +588,18 @@ actions only where they name a product line.
   union; this AF_INET socket (_connect()) only returns a 2-tuple." / "# Remove the ignore once the stub narrows it
   (warn_unused_ignores then flags it)."; `# type: ignore[return-value]` on `:177` stays. The version text is the pin
   current at execution (if B0's refresh moved it, A.SDEP.08's re-stamp applies to these lines).
+  (1) (A-C fold, silent-failure scan SF-A12, 2026-10-06) The three I/O arms keep their tuple and trailing reason and
+  gain `as e:`, with `if isinstance(e, MemoryError): print("UDPSocket", e)  # the class has no logger; the memory
+  gates read this text (CLAUDE.md)` as their first line, before the sentinel: a heap failure in an NTP, DNS or
+  captive-DNS exchange then shows "memory allocation failed" on the console and to the four memory gates instead of
+  only "no reply". The sentinels and G6/R34 are unchanged (no propagation); same form in `_connect()`,
+  `_disconnect_locked()` (M.SRC_NET.027 (1)) and `ready()` (M.SRC_NET.028 (1)). Stage U18.
 - **Resolved**: —
 - **Unit**: U28 (A.U28.30 is the latest constituent; U18 writes the first two lines, U28 adds the trigger line)
 - **Depends**: M.SRC_NET.026
 - **Blast carried by**: SPEC F.5.5 suppression rule → A.U14.36 (docs); the suppression-form check → A.U28.30 (tests
   cluster); SPEC F POLLERR/truncation paragraph → A.U18.17 (docs)
+  (SF-A12: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.031 Remove the unused async context manager
@@ -842,6 +880,17 @@ actions only where they name a product line.
   errno=_ERR_ALLOC)` (the shared allocation code, Part F.1), then `except (IndexError, OSError, ValueError) as e:` with
   the comment "# malformed/truncated reply (MicroPython's struct raises plain ValueError, not struct.error) - treat like
   no response." and `await self.pr.err_s("Malformed NTP reply, treating as no response:", e, errno=_ERR_NTP_MALFORMED)`.
+  (1) (A-C fold, dependency refresh family (g), micropython-lib `9ec1830`, 2026-10-06) A reply shorter than the
+  48-byte NTP header is refused before it is read: first in the `try`, `if len(msg) < _NTP_PACKET_LEN: await
+  self.pr.err_s("Short NTP reply, treating as no response:", len(msg), errno=_ERR_NTP_MALFORMED)` and `return None`
+  (receiver-side tightening; HEAD accepts 44-47 bytes).
+  (2) (A-C fold, dependency refresh family (g), micropython-lib `5139530`, 2026-10-06) A zero transmit timestamp is
+  refused before the era step can carry it into the plausibility window (raw 0 maps to 2036-02-07): right after `raw_s
+  = ...`, `if raw_s == 0: await self.pr.err_s("NTP reply has no transmit timestamp, rejecting",
+  errno=_ERR_NTP_MALFORMED)` and `return None`, comment (1 line) "# A zero timestamp is unset (RFC 5905 6); the era
+  step below would read it as 2036." The stratum-0 half of that upstream fix is already present (the KoD branch). With
+  (1) in place, the arm's `IndexError`/`ValueError` members are re-checked for reachability at execution (G5/R54);
+  `OSError` (`RTC().datetime()`) stays.
 - **Resolved**: A.U14.26 asks A-C to check errno 69's text ("the reply is malformed", A.U2.01) once an allocation
   failure reaches the handler: settled by the routine settlement "ntp-malformed-text" (A-C review fold, replacing the
   agent reading that widened 69) — the allocation failure logs the shared errno 20 ALLOC, and 69 keeps meaning only "the
@@ -853,6 +902,7 @@ actions only where they name a product line.
 - **Blast carried by**: tests (`gmtime` overflow test removed, `_NTP_MAX_PLAUSIBLE_UNIX_TIME < 2**32` structural test,
   `MemoryError("simulated allocation failure")` injection returning `None` and logging 20, not 69 → M.TEST_UNIT.104, the `:1073-1074` comment) → A.U14.26
   (tests cluster); catalog 69 text unchanged → M.GEN.034
+  (refresh family (g): test in M_TEST_UNIT per phase 2; `tests/test_asy_ntp_client.py`'s `_truncated(44)` pin inverts)
 - **Kind**: code
 
 ### M.SRC_NET.050 `_run_ntp_sync_attempt()`: renamed callback, console config line, three-value config
@@ -921,6 +971,14 @@ actions only where they name a product line.
 - **Change**: the `try:`/`except (OverflowError, ValueError, OSError) as e:` and its `err_s(…, errno=19)` go; the body
   (year, the two switch instants, `now`, the three branches) runs unguarded; `if len(cet) == _GMTIME_FIELDS: return
   GMTimeStruct(*cet)` / `return None` unchanged; no comment about a 2037 limit remains (G4/R15).
+  (1) (A-C fold, silent-failure scan SF-M2-02, 2026-10-06) `cettime()` gates on the one-way clock-set state, not on
+  freshness: `if utc_now() is None: return None` in place of `if not await self.ntp_issynced(): return None`
+  (`utc_now` is already imported, M.SRC_NET.041; its validity is one-way, M.SRC_CORE.032), comment (2 lines) "# Gated
+  on the clock having been set this boot, not on Synced: the RTC keeps good time after a sync goes" / "# stale, so
+  local-time consumers (the alert window) keep running through a network loss (agent, 2026-10-06)." `Synced` stays the
+  freshness status on `/status` (M.SRC_NET.057 unchanged). The conservative option the row names, on the owner-review
+  list as a fine-tuning of the owner-reviewed staleness: it keeps HEAD's observable alert behaviour, where staleness
+  is unreachable.
 - **Resolved**: A.U14.26 (2) vs register fix 10 — the register fix (lead, later, ruling V.U18.R10, U18 ledger "G4/R15 …
   `cettime()`'s handler takes A.U10.06's rule, no catch") settles it; A.U2.15's 16 mapping for this site is superseded.
 - **Unit**: U18
@@ -930,6 +988,7 @@ actions only where they name a product line.
   converted → A.U14.26 as corrected by register fix 10 (tests cluster); the switch-date and RTC-step tests → A.U18.25,
   A.U18.26 (tests); callers (generated `LocalTime`, notification window) now see a propagating allocation failure, as
   the register fix intends → no product change; catalog row 16 → gap (catalog)
+  (SF-M2-02: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.054 Timer starters record their outcome; a failed arm is retried from the task
@@ -1231,6 +1290,14 @@ actions only where they name a product line.
   (A-C review fold): `_WRN_CFG_READ` (shared: HEAD's wrnno 1/2/3, the missing WLAN configuration) and
   `_ERR_WLAN_GIVE_UP` (WIFI band: HEAD's errno 17 give-up, which shared 17 `TIMER` no longer names) — numbered at
   execution, the catalog the numbering source (M.GEN.034).
+  (1) (A-C fold, silent-failure scan SF-B6, SF-B7, SF-M2-03, SF-M2-04, 2026-10-06) The code block gains five WIFI
+  warnings, numbered at execution with the catalog as the numbering source (M.GEN.034): `_WRN_WLAN_STATIONS_UNKNOWN`
+  (the stations query failed, M.SRC_NET.093 (1)), `_WRN_WLAN_STATUS_UNREADABLE` (the uptime loop's status read failed,
+  M.SRC_NET.101 (1)), `_WRN_WLAN_TO_HOTSPOT` (the STA-to-hotspot fallback) and `_WRN_WLAN_DEACTIVATED` (the permanent
+  deactivation) (M.SRC_NET.088 (2)), `_WRN_WLAN_NO_VERDICT` (a connect poll that ended without a verdict,
+  M.SRC_NET.089 (1)). The LED constants gain `_LED_HOTSPOT_CLIENT_ON_MS = const(1500)` and `_LED_HOTSPOT_CLIENT_OFF_MS
+  = const(1500)` (basis "a station on the hotspot: an even slow blink, unlike the hotspot, deactivated and steady-link
+  patterns (agent, 2026-10-06)"; M.SRC_NET.087 (1)). All land in Stage U18.
 - **Resolved**: (1) A.U8.10's `_LED_FLASH_ON_S`/`_OFF_S` (2.9/0.1) → A.U18.30's `_LED_HOTSPOT_*` → A.U31.15's `_MS`: each
   later action names the earlier as its Depends; the last stands, Part N rows renamed once. (2) `wifi_refresh_sec`: A.U8.10
   tags it at A.U5.09's `WifiConfig` constant, A.U5.09 groups it, A.U31.15 turns the loop sleep into
@@ -1249,6 +1316,7 @@ actions only where they name a product line.
   `tests/test_asy_wifi_service.py`, `tests/network.py:5` → A.U18.27 (tests); `pm=0xA11140` literals in tests/twin →
   A.U18.27 (tests/TWIN); SPEC F "CYW43 values this code names" list → A.U18.27 (docs); twin `_CONNECT_DELAY_S` Dependant
   row → A.U8.10 (TWIN/docs); catalog rows for WIFI (17 owner note, 36 text) → A.U2.01 + U18 register fix 9 (catalog)
+  (SF-B6, SF-B7, SF-M2-03, SF-M2-04: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.078 WifiService constructor: one config object, construction-time LED, private state
@@ -1282,6 +1350,9 @@ actions only where they name a product line.
   None`; `self._push_callbacks[name_cfg(_VAL_LED_WIFI_ON)] = self._push_wifi_led` with its comment (`LEDWifiOn`).
   `led_pin`, `self.led_pin`, `wifi_refresh_sec`, `hostname`/`hotspot_password` parameters and their "every test wants"
   comment are gone.
+  (1) (A-C fold, silent-failure scan SF-M2-04, 2026-10-06) One more attribute beside `self._ledflash`:
+  `self._led_pattern: tuple[int, int] | None = None` (the pattern the flash task runs; read only by
+  `_run_led_pattern()`, M.SRC_NET.087 (1)). Stage U18.
 - **Resolved**: A.U5.09 (`WifiConfig` with `wifi_refresh_sec`, `led_pin=None` kept) vs A.U18.40 — ruling V.U18.D (OR36.a
   (1) decides the members): `WifiConfig(hostname, hotspot_password, conn_fail_to_hotspot, hotspot_time_min)`, no
   `led_pin`, no refresh plumbing (A.U5.04's `_DEFAULT_WIFI_REFRESH_SEC` read goes). A.U18.42 keeps "the raw
@@ -1350,12 +1421,17 @@ actions only where they name a product line.
   stub types it (warn_unused_ignores then flags it)." and `return stations  # type: ignore[return-value]`. If
   A.SDEP.15 (U0) finds the refreshed stub already types `status("stations")`, the ignore and those two lines are not
   written (W11). Version stamps follow the pin current at execution (A.SDEP.08).
+  (1) (A-C fold, silent-failure scan SF-B6, 2026-10-06) `_get_hotspot_stations(self) -> "list[tuple[bytes]] | None"`:
+  the observation arm returns `None` (unknown) instead of `[]` (no client), its console line kept, and its comment
+  becomes "# A failed query is unknown, never 'no client': None leaves the hotspot timer as it is (the caller
+  persists it)." The `else:` arm unchanged. Stage U18.
 - **Resolved**: A.U18.43 (1) and A.U28.30 (4) both edit the `:244` suppression reason (A.U28.30: "A-C merges") — merged
   above (reason on the line above the suppression, the form A.U28.30's check accepts).
 - **Unit**: U31 (the `sleep_ms` form; staged: U10 `async with`, U18 comments, U28 the trigger line)
 - **Depends**: M.SRC_NET.077
 - **Blast carried by**: BACKLOG real-hardware row "stations query without the 100 ms settle" → A.U18.43 (docs); tests
   (`tests/test_asy_wifi_service.py:1833-1848` stations tests unchanged) → A.U18.43
+  (SF-B6: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.082 Mode switch: bool result, selected-interface record, named settles
@@ -1460,11 +1536,27 @@ actions only where they name a product line.
   then `if self._ledflash is None: self._ledflash = evtloop.create_task(self._flash_led(_LED_HOTSPOT_ON_MS,
   _LED_HOTSPOT_OFF_MS))`. `async def _hotspot_timeout_loop(self) -> None:` (was `_watch_hotspot_timeout()`), body with
   private names.
+  (1) (A-C fold, silent-failure scan SF-M2-04, 2026-10-06) A station on the hotspot gets its own LED pattern, so a
+  phone holding the AP no longer looks like a working home link (visibility only; the behaviour stays legacy's): new
+  private `def _run_led_pattern(self, on_ms: int, off_ms: int) -> None:` with one comment line "# One flash task;
+  asking for the pattern already running keeps its phase." and the body `if self._ledflash is not None and
+  self._led_pattern == (on_ms, off_ms): return` / `if self._ledflash is not None: self._ledflash.cancel()` /
+  `self._led_pattern = (on_ms, off_ms)` / `self._ledflash =
+  asyncio.get_event_loop().create_task(self._flash_led(on_ms, off_ms))` (the attribute is M.SRC_NET.078 (1): both
+  hotspot transitions must swap the running pattern, and the task does not carry which one it runs; a canceller
+  elsewhere that sets `_ledflash = None` needs no change, since the helper tests `_ledflash` first).
+  `_hotspot_client_connected()`: the cancel and `self._led_on()` above become
+  `self._run_led_pattern(_LED_HOTSPOT_CLIENT_ON_MS, _LED_HOTSPOT_CLIENT_OFF_MS)`; `_hotspot_client_absent()`: the `if
+  self._ledflash is None: ... create_task(...)` above becomes `self._run_led_pattern(_LED_HOTSPOT_ON_MS,
+  _LED_HOTSPOT_OFF_MS)`. The pattern obeys the Wi-Fi LED setting like every pattern (`_led_on()`/`_led_off()`,
+  M.SRC_NET.100). Whether a client may hold the AP indefinitely is not changed here (the owner question this row
+  names, BACKLOG owner-question list). Stage U18.
 - **Resolved**: —
 - **Unit**: U31 (staged: U10 name, U18 behaviour, U31 constants)
 - **Depends**: M.SRC_NET.077, M.SRC_NET.092
 - **Blast carried by**: tests (`:1363-1378` gain one errno-17 entry; flash-cancel test inverted) → A.U18.24, A.U18.31
   (tests)
+  (SF-M2-04: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.088 STA connect path: console config line, named codes, retry wait outside the lock
@@ -1483,12 +1575,30 @@ actions only where they name a product line.
   the attempt and `retry_due = await self._handle_sta_connection_result()`; after the block, `if retry_due: await
   asyncio.sleep(_STA_RETRY_AFTER_LOSS_S)`. `_deactivate_wlan_permanently()`: `await asyncio.sleep(_WLAN_DOWN_SETTLE_S)`,
   `errno=_ERR_WLAN_OFF`.
+  (1) (A-C fold, silent-failure scan SF-M2-01, 2026-10-06) `_attempt_sta_connect()`'s empty-SSID branch makes no STA
+  attempt and fakes no failure streak (this replaces the clause "`_connection_failures` on an empty SSID" above):
+  `self._connection_failures = 0`, `self._conn_phase = _PHASE_HOTSPOT`, `self.pr.evt("No SSID configured, hotspot
+  mode")`, `return`, with the comment (1 line) "# No SSID: nothing to attempt, so no failure streak - straight back to
+  the hotspot." An unconfigured unit (factory state, or after "Reset to defaults") then returns to the hotspot at the
+  end of every window whatever the hotspot-started latch says, and a Hostname, Country or HotspotPW PUT made from its
+  hotspot no longer deactivates the radio. On the owner-review list. Unchanged: the owner rule on a second real STA
+  failure streak (SPEC A.4, owner, 2026-07-13), so a configured SSID with the router down still ends DEACTIVATED, and
+  whether a non-credential identity PUT made in hotspot mode leaves the AP at all (the owner question this row names,
+  BACKLOG owner-question list).
+  (2) (A-C fold, silent-failure scan SF-M2-03, 2026-10-06) (with by-mode M4-05) The two owner-designed transitions
+  leave a persisted trace, behaviour unchanged (owner, 2026-07-13; the deactivated pattern owner, 2026-09-29):
+  `_register_sta_connection_failure()`'s `self.pr.one("Permanently no WLAN connection - activating hotspot!")` becomes
+  `await self.pr.wrn_s("Permanently no WLAN connection - activating hotspot!", wrnno=_WRN_WLAN_TO_HOTSPOT)`;
+  `_deactivate_wlan_permanently()`'s first line `self.pr.one(...)` becomes `await self.pr.wrn_s("Permanently no WLAN
+  connection, no connection to hotspot. Deactivating WLAN!", wrnno=_WRN_WLAN_DEACTIVATED)` (one entry per boot by
+  construction: the state is terminal). The WIFI FRAM log then says why a unit was offline when it is next reached.
 - **Resolved**: —
 - **Unit**: U18
 - **Depends**: M.SRC_NET.077, M.SRC_NET.096
 - **Blast carried by**: tests (retry test asserts the lock is released during the wait; getters return real values
   during it; codes) → A.U18.32, A.U2.14 (tests); SPEC C.8 priority-inversion sentence goes, lock-hold table → A.U18.32,
   A.U18.34 (docs)
+  (SF-M2-01, SF-M2-03: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.089 Connect-status poll: stops at `STAT_GOT_IP`, direct warnings, BADAUTH wording
@@ -1503,12 +1613,17 @@ actions only where they name a product line.
   `wrnno=_WRN_WLAN_NO_AP`; `CONNECT_FAIL` → `wrnno=_WRN_WLAN_CONNECT_FAILED`; `STAT_GOT_IP` → `self.pr.all("WLAN connection
   successful")` then `return`; else `wrnno=_WRN_WLAN_STATUS_UNKNOWN`; each warning branch returns as today; `await
   asyncio.sleep_ms(_STA_CONNECT_POLL_MS)`. `_episode_wrn()` deleted.
+  (1) (A-C fold, silent-failure scan SF-M2-03, 2026-10-06) The poll loop ends with `for ... else:` `await
+  self.pr.wrn_s("WLAN connect attempt ended without a verdict, last status:", status, wrnno=_WRN_WLAN_NO_VERDICT)`:
+  reached only when all `_STA_CONNECT_POLL_ITERS` polls stayed in IDLE, CONNECTING or `_STAT_JOINED_NO_IP` (every
+  verdict branch and `STAT_GOT_IP` return), e.g. a DHCP server that never answers. Stage U18.
 - **Resolved**: —
 - **Unit**: U31 (staged: U3 direct calls, U8 names, U18 behaviour/texts, U31 ms)
 - **Depends**: M.SRC_NET.077
 - **Blast carried by**: tests (one status call on success; renamed authentication test; episode tests rewritten to the
   central rule; the printed state line tests) → A.U18.32, A.U18.36, A.U3.02, A.U24.32 (tests); catalog 36 text → A.U2.01
   + U18 register fix 9 (catalog); twin/bench wrong-password assertions read the number → A.U18.36 (HW)
+  (SF-M2-03: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.091 One networking snapshot per second
@@ -1565,10 +1680,17 @@ actions only where they name a product line.
   self._locked_wlan_status()`; `if status == network.STAT_GOT_IP: await self._manage_hotspot_stations()` / `elif not
   self._ap_selected: await self._start_hotspot()` / `else: await self._bring_up_hotspot_ap(); await
   self._hotspot_client_absent()`. `_manage_hotspot_stations()` unchanged.
+  (1) (A-C fold, silent-failure scan SF-B6, 2026-10-06) `_manage_hotspot_stations()` treats an unknown station list as
+  unknown (this replaces "unchanged" above): `stations = await self._get_hotspot_stations()`; `if stations is None:
+  await self.pr.wrn_s("Hotspot stations unknown, hotspot timer left as it was", wrnno=_WRN_WLAN_STATIONS_UNKNOWN)` and
+  `return`, so neither `_hotspot_client_connected()` nor `_hotspot_client_absent()` runs: a running timer keeps
+  running and a stopped one stays stopped; otherwise as today. One `wrn_s` per failed query: the newest-entry rule
+  (M.SRC_CORE.063) keeps a run of them to one history slot and the count gives its length.
 - **Resolved**: —
 - **Unit**: U18
 - **Depends**: M.SRC_NET.086, M.SRC_NET.087
 - **Blast carried by**: tests (the new sibling case) → A.U18.28 (tests)
+  (SF-B6: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.094 Starters and starter lists follow one naming scheme
@@ -1693,11 +1815,20 @@ actions only where they name a product line.
   self._wlan_status_or_none() == network.STAT_GOT_IP` / `self._wifi_connected = connected` / `if not connected:
   self._wifi_uptime.restart(0)` / `await self._update_wifi_snapshot(connected=connected)`. `get_data()`'s comment
   `:682-683` names `_uptime_loop()`.
+  (1) (A-C fold, silent-failure scan SF-B7, 2026-10-06) An unreadable status is unknown, not disconnected: inside the
+  lock `status = self._wlan_status_or_none()`; `if status is None:` nothing changes (`_wifi_connected`, the uptime and
+  the published snapshot keep their last state), and after the `async with` block `await self.pr.wrn_s("WLAN status
+  unreadable, link state kept", wrnno=_WRN_WLAN_STATUS_UNREADABLE)` then `continue`; otherwise `connected = status ==
+  network.STAT_GOT_IP` and the rest as written. One comment line at the branch: "# Unreadable is not down: the last
+  link state and uptime stand; the warning count shows how long." One `wrn_s` per failed read (the newest-entry rule
+  keeps a run to one slot). `_wlan_isconnected_or_false()` in the STA path is unchanged: a failed read there leads to
+  a connect attempt, its own recovery.
 - **Resolved**: —
 - **Unit**: U18 (U10 stage: name, `TickSeconds`, `async with`)
 - **Depends**: M.SRC_NET.091, A.U10.02
 - **Blast carried by**: status catalog descriptions and DEVICE_REFERENCE "link up, hotspot included" → A.U18.35
   (GEN/docs); tests (driven ticks; `get_wifi_uptime()`) → A.U10.03 (tests); lock-hold tests → A.U18.34 (tests)
+  (SF-B7: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.102 The radio re-initialisation is WiFi's participant rung
@@ -1769,6 +1900,8 @@ added, unmodified upstream stubs, A.U8.23).
   cm`; `from asy_api_response import ResponseEnvelope, _RequestLike`; `from asy_base_classes import AsyncCallback, ErrorSource,
   JsonDict, JsonMapping, JsonValue, TaskStarter` (the aliases' one home, M.SRC_CORE.030, per A.U11.S02); `from asy_print_log import
   ErrorLog, PrintLogHistory`; no `Any`, no FRAM-manager import.
+  (1) (A-C fold, silent-failure scan SF-M4-01, 2026-10-06) `import microdot` (the module object, for M.SRC_NET.119
+  (1)'s rebinding) joins the runtime imports beside the `from microdot import ...` line, typed through the same stub.
 - **Resolved**: A.U8.23 and A.U20.14 (2) both remove the `microdot` import's ignore — one removal (A.U20.14 defers to
   A.U8.23). Gap pass G2: the per-kind validators replace `type_or_range_error` (M_SRC_CORE GAP-G13, M.SRC_NET.122);
   `report_if_fatal` is imported from its home `asy_print_log` (M.SRC_CORE.034; GAP-G8 — no import line carried it);
@@ -1971,6 +2104,12 @@ added, unmodified upstream stubs, A.U8.23).
   after B0's Microdot re-vendor: if the vendored tag writes the header block in one call, the `_head` coalescing and its
   branch in `awrite()` go (W29); if read-phase exceptions stop being swallowed, the read-timeout log moves per A.SDEP.18
   (W30) — otherwise both stay as above.
+  (1) (A-C fold, silent-failure scan SF-M2-05, 2026-10-06) `awrite()` records a reset during the response write as
+  reads do: its final `await self._bounded(self._stream.awrite(data))` sits in `try:` / `except OSError:
+  self._peer_gone[0] = True` and `raise`, with the comment (2 lines) "# Microdot mutes ECONNRESET/EPIPE from a
+  response write (ext/microdot.py:56-61, 689-703), so a client gone" / "# mid-response is recorded here; the early
+  return above then stops further writes." A write-phase `asyncio.TimeoutError` is not an `OSError` (Part F.1) and
+  keeps its path through `_bounded()`. Stage U19.
 - **Resolved**: A.U14.03 and A.U18.43 (4) both rewrite the `:256-258` comment (each: "A-C merges"): A.U18.43's text
   (defect, scope, removal trigger, as G6/R55 requires) with A.U14.03's wording "goes through a NULL pcb" and its
   "Part H.7.1" pointer, three lines. A.U2.19 adds a `timed_out` list and A.U19.07 a `head_refused` list, both "shared like
@@ -1982,6 +2121,7 @@ added, unmodified upstream stubs, A.U8.23).
   1.0, …)` → `1000` test, W49 tests → A.U19.07, A.U31.18, A.U2.19 (tests); L2 raw-socket `Content-Length: -1` case →
   A.U19.07 (TWIN); L4 negative/non-numeric `Content-Length` row → A.U19.07/U26 (HW); SPEC A.5 head bullet, I.6 sentence,
   F.1 `readexactly(-1)` fact → A.U19.07 (docs); `_RequestLike.sock` member (`asy_api_response.py`) → A.U19.06 (SRC_CORE)
+  (SF-M2-05: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.119 `WebserverService.__init__`: three config objects, one route loop, the 24-hour drop window
@@ -2016,6 +2156,15 @@ added, unmodified upstream stubs, A.U8.23).
   the `:396-398` comment, `site_routes = _StaticRoutes(static, self._chunk_bytes, self.pr)`,
   `app.get("/")(site_routes.get_index)`, `app.get("/<path:filename>")(site_routes.get)`. New `async def setup(self) ->
   bool: await self.pr.setup(); return True` (A.U10.21's one contract; gap pass G2; no `initialized`, see Resolved).
+  (1) (A-C fold, silent-failure scan SF-M4-01, 2026-10-06) (part (b) of the row; (a) is M_SRC_CORE's, (c)/(d) SPEC's)
+  Microdot's own exception prints go through the level-gated logger: in `__init__`, after `self.pr` is made,
+  `microdot.print_exception = self.pr.err`, comment (2 lines) "# ext/microdot.py prints an exception before our
+  errorhandler runs (three call sites at v2.7.0); the name is" / "# rebound here, never edited, so DebugLevel 0 keeps it off
+  a console no host may be reading (CLAUDE.md)." (`import microdot`: M.SRC_NET.110 (1)). If the stub
+  (ext/typings/microdot/) does not declare `print_exception`, the line carries `# type: ignore[attr-defined]` with its
+  reason on the line above (A.U28.30's form). On the owner-review list against the vendoring rule (a module attribute
+  rebound from our code; the file is not touched). Execution first confirms that the memory-gated tiers still see
+  "memory allocation failed" from a handler's `MemoryError` through the catch-all handler's own entry (M.SRC_NET.125).
 - **Resolved**: the routine settlement "initialized-flags" (lead, A-C review, OR36.a (1)) keeps the readiness flag only
   where product code reads it (the FRAM, SPI, UART and logging classes): nothing reads the webserver's (routes are
   registered at construction and the server starts only after the boot batch, A.U10.10's order), so gap pass G2's flag
@@ -2034,6 +2183,7 @@ added, unmodified upstream stubs, A.U8.23).
   (and `static=`) by keyword from U19 → M.TEST_UNIT.332 (U19 stage);
   route-table equality test → A.U19.20 (tests); tests reading `_per_call_timeout_s`/`_outer_cap_s` → `_ms` → A.U31.18
   (tests); SPEC A.5/A.8/H.7/I.3 constructor mentions, A.7 step 14, G.2 config-object entry → A.U5.04 (docs)
+  (SF-M4-01: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.120 Sensor and flat settings routes answer every key
@@ -2245,6 +2395,9 @@ added, unmodified upstream stubs, A.U8.23).
   head_refused[0]: await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")`; `finally:` `proxy_writer.release()`,
   then HEAD's nested `try: await self._close_writer(writer)` / `finally: await self._open_conns.decrement()` with its two
   comments. The `except EOFError` arm and its comment are gone.
+  (1) (A-C fold, silent-failure scan SF-M2-05, 2026-10-06) Stage U19, with M.SRC_NET.118 (1). The peer-reset trace reads "Connection reset by the peer
+  before or during its response" (the flag is now also set by a failed response write, M.SRC_NET.118 (1)); code and
+  placement unchanged.
 - **Resolved**: HEAD's `except asyncio.TimeoutError` logs one code for two conditions — A.U2.19 splits it by the
   `timed_out` flag (49 write-phase per-call, 50 outer cap); A.U19.08 does not touch that arm; both hold. The EOFError arm's
   W48 is re-homed to the peer-reset trace (U19 A-C note 3), so W48's meaning changes with its only site.
@@ -2258,6 +2411,7 @@ added, unmodified upstream stubs, A.U8.23).
   reads `HTTPDropped` as a monotonic total follows the 24-hour window → M.HW_BENCH.081; SPEC H.7 drop/accept
   sentences with register fix 2's heap clause, A.5 ladder sentence → A.U19.08 (docs); catalog rows → U19 A-C note 3
   (catalog)
+  (SF-M2-05: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.128 `_serve_loop()`: setup in the batch, a bounded start retry, the typed start call
@@ -2810,11 +2964,17 @@ annotation-only change carries none, per its constituent. No merged change here 
 - **Change**: `async def reset_error_counter(self) -> bool:` comment → "# Clears the history and the link diagnostic's
   state behind it (valid-frame count, blind-resync streak)."; body `self._valid_frames = 0` / `self._blind_resyncs = 0` /
   `return await self.pr.reset()`. `get_error_counter()` unchanged.
+  (1) (A-C fold, silent-failure scan SF-M3-07, 2026-10-06) `reset_error_counter()` leaves `_valid_frames` alone: the
+  `self._valid_frames = 0` line above is dropped and the comment becomes "# Clears the history and the blind-resync
+  streak; the valid-frame count is link evidence, not error" / "# history, so a reset never re-arms the
+  unintelligible-link diagnostic on a link that has worked." Body: `self._blind_resyncs = 0` / `return await
+  self.pr.reset()`. UART changelog: Class B (Python-internal, no wire change).
 - **Resolved**: —
 - **Unit**: U11. Staged: U3.
 - **Depends**: A.U11.31's `PrintLogHistory.reset() -> bool` (SRC_CORE)
 - **Blast carried by**: `UARTLinkDriver.reset_error_counter()` → M.SRC_NET.216; `/status` `ResetErrors` → M.SRC_NET.123;
   UART changelog Class B (return type) → A.U11.31 (DOCS)
+  (SF-M3-07: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_NET.172 Unquoted annotations (UART comm)
@@ -3267,6 +3427,17 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
   637-673`; `main.c:303`), proven on the bench. One comment (≤ 3 lines) at the ring: "# Receives through a DMA ring, so
   a flash write that holds interrupts off (a sector erase, up to 400 ms) loses no / # byte; machine.UART's own receive
   path is kept off the FIFO (owner, 2026-10-05)."
+  (6) (A-C review fold, owner requirement 2026-10-06, execution-time delta OR146) The owner: "if the ring buffer of the UART ever is filled / overflows, the sender must be aware that something went wrong. This must be always reliable, even if interrupts are disabled in all that time. It's more about detecting such conditions, the answer to the sender can be just the failed transmission as many other conditions already use." (6) Overrun detection is explicit, never left to the CRC (the link also runs without one): (a) the ring lap of (3), computed from the DMA counters, which advance with interrupts off, so a lap during any interrupts-off window is seen at the next read; (b) the hardware FIFO overrun, which the ring cannot see (bytes lost before the DMA, e.g. before `setup_rx_ring()`, after an `init()` whose RXDMAE did not take, or a stalled channel): the choke point reads UARTRSR (base + 0x004, RP2040 datasheet 4.2.8, Table 427) on every fill-level read, and a set OE bit (sticky until cleared through UARTECR) is cleared and handed to the caller as the same receive overrun as a lap. Either one fails the frame being assembled and discards everything unread (`_read_frame()` → resync, J.7, M.SRC_NET.222); the receiver never ACKs a frame that crossed an overrun, so the sender's transaction fails exactly as a missing ACK does today — no new wire element, no new error code on the wire. Each overrun is counted with the lap counter. `setup_rx_ring()` writes UARTECR once after the boot drain, so an OE left from before the link existed is not reported against its first transaction. Tests co-landing in U13: L1 (M.TEST_UNIT.344) a planted OE and a planted lap, each with and without CRC, each failing the receiving side's frame and the initiator's transaction, and the next transaction succeeding; twin (M.TWIN.169) the same across a modelled interrupts-off window longer than the ring bound; bench (M.HW_DEV.160, phase C) RXDMAE cleared under `machine.disable_irq()` until OE sets, then the initiator's transaction fails and the next succeeds. UART changelog: Class A, receiver-side tightening (a frame that lost bytes is never accepted), so a mixed-version pair keeps working; the C receiver mirrors it at reconciliation.
+  (7) (A-C fold, silent-failure scan SF-A06, 2026-10-06) The same UARTRSR read tests OE|FE|BE (bits 3, 0, 2; RP2040
+  datasheet 4.2.8, Table 427), not OE alone: a framing error or a break (a line held low, as at a peer reset
+  mid-frame; Table 426: a break loads one 0x00 character into the FIFO) is cleared through UARTECR and handed to the
+  caller as the same receive overrun as (6) (b) - the frame fails, everything unread is
+  discarded, no ACK, the next transaction proceeds - and is counted with the lap counter (a separate FE/BE count only
+  if the owner asks to tell them apart). PE stays out of the mask while the generated `UART(...)` configures no
+  parity; a parity setting added later adds it. One comment line at the mask: "# OE, FE and BE each mean a received
+  byte is not what was sent: each fails the frame (Table 427)." Tests co-landing in U13: L1 (M.TEST_UNIT.344) a
+  planted FE and a planted BE beside the OE case; the bench FE case (M.HW_DEV.160, phase C) also settles whether DMA
+  reads update UARTRSR as CPU reads do. UART changelog: Class A, receiver-side tightening, in (6)'s entry.
 - **Resolved**: OR141.a (4) (owner, 2026-10-05) answers the owner's note on `uart-flash-erase-overrun` ("either don't
   lose a frame in general (preferred) …"): a frame is no longer lost during a flash write; A.U31.01's
   `stall.flash_program` row and A.U31 open point 2 no longer cross the UART consumer (their carriers are SPEC's). The
@@ -3274,7 +3445,6 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
   are declared together in the device TOML (M.GEN.066). Decided at execution, each with its reason recorded: the
   register-access form (`machine.mem32` or `rp2.DMA`'s own control words), the default ring size, and the code a
   `False` from `setup_rx_ring()` logs (an existing UART band code or a new one).
-  (A-C review fold, owner requirement 2026-10-06, execution-time delta OR146) The owner: "if the ring buffer of the UART ever is filled / overflows, the sender must be aware that something went wrong. This must be always reliable, even if interrupts are disabled in all that time. It's more about detecting such conditions, the answer to the sender can be just the failed transmission as many other conditions already use." (6) Overrun detection is explicit, never left to the CRC (the link also runs without one): (a) the ring lap of (3), computed from the DMA counters, which advance with interrupts off, so a lap during any interrupts-off window is seen at the next read; (b) the hardware FIFO overrun, which the ring cannot see (bytes lost before the DMA, e.g. before `setup_rx_ring()`, after an `init()` whose RXDMAE did not take, or a stalled channel): the choke point reads UARTRSR (base + 0x004, RP2040 datasheet 4.2.8, Table 427) on every fill-level read, and a set OE bit (sticky until cleared through UARTECR) is cleared and handed to the caller as the same receive overrun as a lap. Either one fails the frame being assembled and discards everything unread (`_read_frame()` → resync, J.7, M.SRC_NET.222); the receiver never ACKs a frame that crossed an overrun, so the sender's transaction fails exactly as a missing ACK does today — no new wire element, no new error code on the wire. Each overrun is counted with the lap counter. `setup_rx_ring()` writes UARTECR once after the boot drain, so an OE left from before the link existed is not reported against its first transaction. Tests co-landing in U13: L1 (M.TEST_UNIT.344) a planted OE and a planted lap, each with and without CRC, each failing the receiving side's frame and the initiator's transaction, and the next transaction succeeding; twin (M.TWIN.169) the same across a modelled interrupts-off window longer than the ring bound; bench (M.HW_DEV.160, phase C) RXDMAE cleared under `machine.disable_irq()` until OE sets, then the initiator's transaction fails and the next succeeds. UART changelog: Class A, receiver-side tightening (a frame that lost bytes is never accepted), so a mixed-version pair keeps working; the C receiver mirrors it at reconciliation.
 - **Unit**: U13.
 - **Depends**: M.SRC_NET.192, M.SRC_NET.199 (the link's `setup()` call is M.SRC_NET.222's U13 stage, in the same unit);
   M.TEST_HELP.069 and M.TWIN.169 (a time-driven DMA and UART register model — in `tests/machine.py` or a
@@ -3290,6 +3460,7 @@ Class B line). Every new wait yields (`ready()`, `asyncio.sleep_ms()`), and ever
   → M.DOCS.024; the boot contiguity test asserts where the ring lands and the heap before/after on the twin →
   M.TSC.230, M.TWIN.169; the bench interrupts-off sweep, soft reset during traffic, heap before/after and
   the one-time run of the old path → M.HW_DEV.159, M.HW_DEV.160, M.PROC.049; `devices/dev.toml`'s `rxbuf` comment → M.GEN.053.
+  (SF-A06: test in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ## src/asy_uart_link_driver.py
