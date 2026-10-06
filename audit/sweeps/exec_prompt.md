@@ -38,7 +38,9 @@ rules, pillars and specifications are binding and applied as written, never chan
    (detect, count, fail visibly, recover) with a test that plants the fault; otherwise list it under "Findings" with its
    class and mode. Check every operating mode the code takes part in, not only plain operation: boot, the reset
    countdown, flash and FRAM writes, network loss and reconnect, calibration, recovery, reconfiguration, load (the mode
-   list in that file).
+   list in that file). Most of these need no fix or a minimal one: first check whether the code is already safe by
+   construction; otherwise give it the simplest inherent way to handle the situation, never added machinery where a
+   return value, a bound or an ordering does it.
 
 ## Finish
 Commit everything in your worktree in one commit (or one per co-landing group if the packet marks groups), message

@@ -117,6 +117,11 @@ the mode.
   what our code does, and the effect per device and bus.
 - Then check it against the work order: already covered by a merged change (name it), covered partly (name the gap),
   or not covered.
+- **Minimal first (OR149).** Before proposing a fix, check whether the site is already safe by construction (say why,
+  with the citation) and record "inherently safe" if so. Otherwise propose the smallest change that makes the code
+  handle the situation inherently: a different return value (`None` for "unknown" instead of `[]`), a seed, a bound,
+  a write-then-rename, testing a bool already returned. New state, flags, timers, tasks or protocol fields are
+  proposed only when no smaller change closes it, and the proposal says why the smaller one does not.
 - Not covered or partly covered: fixed in the current unit when a step there owns the site; otherwise parked in
   `audit/REGISTER.md` as an A-C delta for the unit that owns the site, with the conservative fix (detect, count, fail
   visibly, recover) as the proposal. Nothing is dropped as "unlikely".
