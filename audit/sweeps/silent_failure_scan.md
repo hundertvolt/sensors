@@ -40,13 +40,13 @@ Every class is checked in each mode below and at each transition into and out of
 mode entered rarely is exactly where a fault hides, so each one is read as a scenario: what runs, what is suspended,
 what can be lost, who would notice, and how the device returns to normal.
 
-The list is a floor, not a ceiling. Each unit re-derives the modes its changes take part in from five sources and adds
+The list is a floor, not a ceiling. Each unit re-derives the modes its changes take part in from these sources and adds
 what is missing here: (1) every state variable, flag or counter in the changed code that alters behaviour; (2) every
 REST command and config field that starts, stops or reconfigures something; (3) every reset and power path of the
 RP2040 (datasheet 2.12-2.13: power-on, brown-out, RUN pin, debug port, watchdog, software reset; `CHIP_RESET` bits)
 and of each peripheral chip, from its datasheet; (4) the device lifecycle, from first boot to months of uptime; (5) the
-environment (network, host, USB). Then (6) the pairs: two rare modes at once (a countdown during a flash write, a
-reconnect during calibration, a PUT before setup has finished).
+environment (network, host, USB, supply, and the physical conditions the sensors measure). Then (6) the pairs: two rare
+modes at once (a countdown during a flash write, a reconnect during calibration, a PUT before setup has finished).
 
 **Lifecycle and power**
 - **First boot and factory state**: empty filesystem, no config file, blank FRAM, FRAM absent (optional hardware).
@@ -55,6 +55,8 @@ reconnect during calibration, a PUT before setup has finished).
 - **Boot**: the one-time `setup()` batches and their watchdog feeding, a driver absent or failing at setup, the UART
   boot drain, the reset cause, FRAM logs not yet loaded, the first reading before warm-up, the API reachable before
   every driver is set up.
+- **Boot path files**: a stray `boot.py` or `main.py` on the filesystem, and `main()` returning or raising into the REPL
+  with the watchdog armed.
 - **Each kind of restart**: power-on, brown-out, watchdog, `machine.reset()`, RUN pin, and a soft reset (REPL `Ctrl-D`,
   `mpremote`), which restarts the interpreter but not every peripheral: a running DMA channel, PIO state machine,
   UART or timer from the previous run can still be active.
@@ -63,6 +65,9 @@ reconnect during calibration, a PUT before setup has finished).
   bound in SPECIFICATION.md Part C.7.3).
 - **Reset countdown**: `system_service`'s `_RESET_DELAY` window and its `Timer`, a failed arm and the stop-feed path,
   requests, PUTs and FRAM or flash writes arriving or in flight during it, `ResetErrors`.
+- **Upgrade from the legacy firmware** (old filesystem contents); a reflash whose FRAM size or pins differ from the
+  fitted chip; hardware-test scripts run against a deployed board's FRAM; two images with the same version string.
+- **No graceful shutdown**: power removal is the only stop; what a stop at any instant leaves behind.
 - **Long uptime**: `ticks_ms()` wrap, counters at their `max_val`, error logs full, heap fragmentation over weeks,
   sensor drift and self-calibration over months, multi-day rollover.
 
@@ -75,10 +80,18 @@ reconnect during calibration, a PUT before setup has finished).
 **Network and time**
 - **WiFi**: STA connect and reconnect, link loss, the `isconnected()` false positive, DHCP renewal and an IP change,
   router restart, the hotspot and captive-DNS mode.
-- **Time**: the RTC at its reset epoch before the first NTP sync, NTP never reachable, the time step when sync lands
+- **Time**: `ticks_diff()` valid only below 2^29 ms (about 6.2 days) and the 2^30 ms wrap: any stored tick deadline
+  older than that reads as the future. The RTC at its reset epoch before the first NTP sync, NTP never reachable, the
+  time step when sync lands
   (including backwards), DNS failure.
-- **REST clients**: hammering, several clients at once (two browsers editing the same value), a slow or half-open
+- **REST clients**: a client timing out on a PUT the device applied; a phone auto-joining the hotspot and holding it;
+  captive-portal probes; hammering, several clients at once (two browsers editing the same value), a slow or half-open
   client, malformed and oversized requests, socket exhaustion, a page left open while the device reboots.
+
+**Physical environment**
+- Condensing humidity (RH at or above 100 %), temperatures outside each sensor's range, light saturation and darkness,
+  stable conditions for days (no range switch), no fresh air for automatic self-calibration, supply-rail sag under
+  WiFi bursts, a sensor unplugged or replugged.
 
 **Peripherals**
 - **Sensor modes**: warm-up, measurement-interval and range changes, calibration runs (ISL29125, SCD30 forced and
@@ -89,16 +102,22 @@ reconnect during calibration, a PUT before setup has finished).
 - **Outputs**: NeoPixel and notification states across a reboot or fault.
 
 **Supervision and resources**
+- **Runtime limits**: the scheduler queue full (8 entries; soft `Timer` and IRQ callbacks dropped), the alarm pool
+  exhausted (`Timer.init()` `ENOMEM`), `ThreadSafeFlag` sets coalescing, synchronous calls that block the loop,
+  exception classes that are not `OSError` (`MemoryError`, `asyncio.TimeoutError`), `json.dumps()` emitting
+  `nan`/`inf`, `struct.pack()` truncating.
 - **Degraded running**: the device running for long periods with a sensor, FRAM, WiFi or NTP missing.
 - **Supervision**: a task restart, the task-failure ceiling and its reboot, the watchdog near expiry, the heap near
   full.
 - **Runtime reconfiguration**: a PUT changing configuration while a read, write or calibration is in progress.
 
 **Host side**
-- **Console**: USB attached with no reader (does logging output stall the loop?), `Ctrl-C` on the REPL raising
+- **Console**: the USB host's own faults (a Raspberry Pi 4's VL805 matches RP2040 erratum E15), USB attached with no
+  reader (does logging output stall the loop?), `Ctrl-C` on the REPL raising
   `KeyboardInterrupt` inside a running task.
 - **Twin and tooling**: the twin's SIGINT shutdown, a build or generator killed mid-way leaving partial outputs, a
-  re-run over a dirty tree, an offline run.
+  re-run over a dirty tree, an offline run, a stale generated module for a removed device,
+  an image built from uncommitted edits.
 
 A finding records its mode next to its class. A mode with no finding is still named in the unit's record as checked.
 
@@ -106,7 +125,9 @@ A finding records its mode next to its class. A mode with no finding is still na
 one scenario end to end across every module it touches (what the boot path does when FRAM is blank, from `setup()`
 through the first REST answer). Either one alone misses what lies between sites. A brief extended while a pass runs
 covers only what was read after the change: the earlier part is re-read, never counted as covered. The mode list
-itself was checked once against an independent derivation made without sight of it (2026-10-06); any mode found
+itself was checked once against an independent derivation made without sight of it (2026-10-06; its 381-entry
+inventory, `scan_runs/20261006_mode_inventory_blind.md`, is the detailed checklist behind the categories above); any
+mode found
 later is added here and swept across the units already closed.
 Sleep modes (`lightsleep`/`deepsleep`) are not used by `src/` today (grep, 2026-10-06); a change that adds one adds
 the mode.
