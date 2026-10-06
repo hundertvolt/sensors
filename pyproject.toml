@@ -18,8 +18,8 @@ dev = [
     # PINNED, like every tool here: select = ["ALL"] and a zero-findings gate turn an unpinned
     # upgrade's new rule into a hard CI failure nobody chose. Bump deliberately, re-running lint.sh
     # and typecheck.sh.
-    "mypy==2.3.1",
-    "ruff==0.16.6",
+    "mypy==2.4.0",
+    "ruff==0.16.10",
     "pytest",
     "mpremote",
     # Stubs for pyserial (tests_hardware/harness.py; host_typecheck.ini has none otherwise). Pinned
@@ -29,7 +29,7 @@ dev = [
     # every setup_toolchain.py env tier) installs them. actionlint-py downloads its binary at
     # install time, so a fully offline sync lacks it.
     "shellcheck-py==0.11.0.1",
-    "actionlint-py==1.7.12.24",
+    "actionlint-py==1.7.12.25",
     # zizmor audits the workflows themselves (token scope, credential persistence, pinning); policy
     # in .github/zizmor.yml, pinned like the rest.
     "zizmor==1.30.1",
