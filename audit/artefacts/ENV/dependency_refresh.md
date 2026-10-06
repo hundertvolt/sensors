@@ -67,3 +67,17 @@ to read: each stays as it is. The checks with a moved dependency:
 | W34 | `@vitest/coverage-v8` 5.0.3 | trial removal of the JSON exclude runs with the family (b) gate |
 | W35 | cross-browser channels | unchanged reasons; stays |
 | W36 | Vitest browser navigation | vitest#7875 closed; Vitest 5.0.3's browser `page` (`@vitest/browser/context.d.ts`) has no navigation method; the Commands-API route stays |
+
+## Family (g): derived-code upstreams (M.PROC.010)
+
+THIRD_PARTY records no upstream commit for any derived file, and each file's first commit here is the 2026-07-13
+import, so the whole history of every kept upstream file was read, not only the window since the import. Already
+present or not applicable: Adafruit BMP3XX (`05ba78b`; constants, coefficient table, formulas identical), Adafruit SGP40
+(`8bfcca6`; `a94d620`'s 500 ms measure delay is not a chip requirement, Table 8 gives 30 ms max), Adafruit FRAM
+(`eebbba5`; opcodes identical to the MB85RS2MTA table), Sensirion gas-index-algorithm (`2ef9f13`; every constant
+identical; algorithm 3.1's split gammas are a version upgrade, not a fix, and would change output and FRAM state),
+DFRobot VOCAlgorithm (`7fa498f`; whitespace only), p-doyle captive portal (`27cc627`; nothing since 2019). Archived or
+inspiration-only (jposada ISL29125, Sensirion embedded-sgp, aiodns, karfas): nothing to take. Three applicable fixes,
+parked as A-C deltas in the register: Adafruit SCD30 `3eb3b52` (temperature offset `round()`, U15), micropython-lib
+`9ec1830` (reject NTP replies under 48 bytes, U18) and `5139530` (reject a zero transmit timestamp, U18; its stratum-0
+half is already present).
