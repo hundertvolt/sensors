@@ -101,16 +101,12 @@ information):
   source is exactly the blind change this rule exists to prevent.
 - **`python/CommonDrivers/microdot.py` is vendored third-party code.** Don't restyle or "clean
   up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
-  routine editing. **It is not, however, current** — an earlier note here claimed it matched
-  current upstream exactly; re-checked against every upstream tag on 2026-09-10, it's an
-  *untagged snapshot between `v2.0.1` and `v2.1.0`* (it carries v2.1.0's `functools.partial`
-  dispatch, `max_age is not None`, `.gz` extension handling and the `URLPattern`
-  `segments`/`regex` rewrite, but not the rest), leaving it ~441 lines behind the `v2.6.2` that
-  `ext/microdot.py` pins. Unmodified relative to that snapshot, as far as can be told — no local
-  fork, just old. Bringing the *deployed* tree forward is a reflash-campaign decision, not a
+  routine editing. It is upstream commit `482ab6d` (#251), byte-identical to it: an untagged snapshot
+  four commits after `v2.0.6`, before `v2.0.7` — unmodified, just old (agent, 2026-09-30, compared against
+  the upstream repository). Bringing the *deployed* tree forward is a reflash-campaign decision, not a
   drive-by edit (BACKLOG.md). **`ext/microdot.py` is the same policy applied to the refactor
-  target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2` and
-  verified byte-identical to it on 2026-09-10), replacing the
+  target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
+  verified byte-identical to it on 2026-10-06), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
   edits, no restyling, ever (owner, 2026-09-25) — any behavior change needed is handled by
   wrapping/calling it from our own code (see "Microdot / REST layer" below), never by touching this
@@ -889,7 +885,7 @@ information):
   cases, and `warn_unused_ignores = true` would then fail the day the stubs are fixed.
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
-  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
+  (pinned to tag `v2.7.0`; see "Hard rules" above and "Microdot / REST layer" below).
 
 ## Build-environment verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 
@@ -1096,7 +1092,7 @@ Read Part A.4 for anything needing that level of detail — nothing below duplic
 ## Microdot / REST layer
 
 **Moved to `SPECIFICATION.md` Part A.5.** Covers what Microdot's own `ext/microdot.py` (vendored,
-v2.6.2, see "Hard rules" above for the vendoring policy) already guarantees per-request — the
+v2.7.0, see "Hard rules" above for the vendoring policy) already guarantees per-request — the
 blanket exception catch, its one real gap (exceptions during response writing), connection-task
 isolation, and the `errorhandler()` status-code-vs-exception-class distinction — versus what this
 project's own REST layer still has to add. Read Part A.5 before touching the REST/error-handling

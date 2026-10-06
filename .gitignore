@@ -57,7 +57,7 @@ __pycache__/
 # Dev-tooling venv (uv sync) and MicroPython stubs (scripts/typecheck.sh) - both reinstallable,
 # neither meant to be committed.
 .venv/
-typings/
+/typings/
 
 # scripts/test.sh --coverage output (see SPECIFICATION.md Part E.5) - regenerated every run, not meant to
 # be committed.

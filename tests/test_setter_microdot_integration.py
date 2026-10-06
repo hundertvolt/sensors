@@ -1,5 +1,5 @@
 """End-to-end integration tests for the setter generalization work: api_response.py's
-parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
+parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.7.0) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
 """
 # Covers a real AsyConnTime for the setter path, a real AsyNtpClient for both getter and setter, a real
 # BMP3xx_Reader/SGP40_Reader for the schema-driven sensor setters, and a real SCD30_Reader for the one
@@ -269,7 +269,7 @@ def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Real ext/microdot.py (v2.6.2) end to end - a real Microdot() app with a real @app.put route, dispatched
+# Real ext/microdot.py (v2.7.0) end to end - a real Microdot() app with a real @app.put route, dispatched
 # through the library's own dispatch_request() (routing, before/after hooks, exception handling, dict->JSON
 # coercion - see CLAUDE.md's "Microdot / REST layer"), with a real Request object.
 #
