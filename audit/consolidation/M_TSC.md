@@ -3406,6 +3406,11 @@ where a test pins an SCR product, the constituent action is cited and the depend
   A.U7.21.
 - **Site**: `tests_scripts/test_live_twin_ceiling_parser.py`.
 - **Change**: as listed; `_NODE_TIMEOUT_S = 120  # @tunable l0.live_twin_ceiling_parser_timeout_s = 120`.
+  (1) (A-C fold, silent-failure scan SF-U0-07 (b), 2026-10-06) `_js_ceiling()` runs the pinned Node or fails: after
+  `shutil.which("node")`, `node --version`'s major is compared with `.nvmrc`'s, and a mismatch fails with both values
+  ("node vX on PATH, .nvmrc pins Y - run toolchain/setup_toolchain.py env or put the pinned Node first"). A JS module
+  run on another major could pass here and differ in the browser tier. Lands with M.TOOL.013 (1), which gives CI's
+  test.sh jobs the pinned Node.
 - **Resolved**: A.U24.53 names the command modules; the per-run removal moved into `_twin_process.js` (M.WEB.082) — the
   check reads that file.
 - **Unit**: U24 (U5 reader; U8 tag).

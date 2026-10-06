@@ -302,6 +302,10 @@ the line holding the literal (A.U8.02 grammar); tag lines are exempt from the co
   (uv sync, restore cache)" with the comment "# Its first step is the retried uv sync, ahead of scripts/test.sh: `uv run`
   builds the whole dev group (CLAUDE.md)."; `needs: lint-and-typecheck`, `if: ${{ !cancelled() }}` and the job comments
   `:418-421` unchanged; `:423-424` per M.TOOL.019.
+  (1) (A-C fold, silent-failure scan SF-U0-07 (b), 2026-10-06) Stage U24, with M.TSC.169 (1): `unit-tests`,
+  `unit-tests-gc-threshold` and `unit-tests-coverage` (the three jobs running `scripts/test.sh`, whose pytest tier
+  runs JS) each gain `- uses: actions/setup-node@v7` with `node-version-file: .nvmrc` before the toolchain step, the
+  form the web jobs use; no cache input (no npm install in these jobs).
 - **Resolved**: —
 - **Unit**: U28.
 - **Depends**: M.TOOL.001.

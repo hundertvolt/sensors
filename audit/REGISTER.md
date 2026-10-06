@@ -12,7 +12,7 @@ lease and resumption procedure.
 | audit branch | `claude/whole-project-audit-plan` (PR https://github.com/hundertvolt/sensors/pull/107) |
 | go-ahead | OR145 (plan 3.2), 2026-10-06: implementation up to the first required real-hardware step |
 | planning baseline | `4dc80ef` |
-| audit baseline | `798e5a7` (`origin/main` at the go-ahead; already an ancestor of the audit branch, so anchors resolve at the branch head and only BACKLOG.md lines from :350 on move by +1) |
+| audit baseline | `798e5a7` (`origin/main` at the go-ahead; already an ancestor of the audit branch). Anchors cite `798e5a7` (BACKLOG.md from :350 on moved +1 at U0 (1)); from U0's own commits on, lines shift as units land, so every site is located by its quoted text (executing brief item 3), never by number alone |
 | current phase | B0 (unit U0) |
 | work order | `audit/order/WORK_ORDER.md` (1909 changes, 6571 steps, 0 violations) |
 
@@ -198,6 +198,7 @@ Findings during execution that need a change outside the work order; each passes
 | U31 | SF-M4-09 (agent, low): the timing budget (M.SPEC.097) has no row for a WLAN mode-switch stall against the `dev` UART reply deadline. Add the row. Full entry: `audit/sweeps/scan_runs/20261006_bymode_M4_host_pairs.md`. | folded (M.SPEC.097 (v); M.HW_BENCH.071 (1)) |
 | Phase C (hardware), U16 | SF-M4-10 (agent, low): the FRAM datasheet requires CS > 0.8·VDD during power-on and power-off; every RP2040 reset lets CS fall. One scope check on the bench. Full entry: `audit/sweeps/scan_runs/20261006_bymode_M4_host_pairs.md`. | folded (M.SPEC.049 (5); M.HW_BENCH.101 (6); M.HW_BENCH.131 (1)) |
 | U26, U33 | SF-M4-11 (agent, low): after 511 unread host bytes Ctrl-C no longer reaches the autostart image, which looks like a board fault on the bench. A README line. Full entry: `audit/sweeps/scan_runs/20261006_bymode_M4_host_pairs.md`. | folded (M.HW_BENCH.127 (1)) |
+| U24 | SF-U0-07 (b) (agent): `tests_scripts/test_live_twin_ceiling_parser.py` runs its JS on whatever Node is on `PATH`; CI's test.sh jobs have no setup-node, so the runner image's Node runs it, not the `.nvmrc` one. Minimal fix: assert the major, and give the three jobs the pinned Node. Full entry: `audit/sweeps/scan_runs/20261006_U0_close.md`. | folded (M.TSC.169 (1); M.TOOL.013 (1)) |
 
 ## Findings
 
