@@ -14,7 +14,7 @@ if one you need isn't there rather than falling back to web search/training memo
 
 ## Platform target
 
-**The concrete facts** — MicroPython 1.26/RP2040 specifics, what the 1.29 pin changed (Part F.5),
+**The concrete facts** — MicroPython 1.26/RP2040 specifics, what the audit of the `v1.29.0` pin found (Part F.5),
 the WDT 8388ms cap, RP2040 hardware specs, the soft-Timer-callback-drop gotcha, the `[x] * n`
 segfault range, `Timer.init()`'s `OSError(ENOMEM)` case, the
 `MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation — **live in

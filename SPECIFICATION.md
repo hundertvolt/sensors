@@ -299,8 +299,8 @@ features as today's deployed units, not a feature change.
 ## A.5 Microdot / REST layer
 
 `ext/microdot.py` is vendored, unmodified upstream Microdot (pinned `v2.7.0` — no edits/cleanup;
-CLAUDE.md's Hard rules are authoritative; MIT text at `ext/LICENSE-microdot`; upstream's own type stubs for it
-sit unmodified in `ext/typings/microdot/`). Facts below confirmed against its actual source, not docs/memory.
+CLAUDE.md's hard rules are authoritative; MIT text at `ext/LICENSE-microdot`; its type stubs in
+`ext/typings/microdot/`). Facts below are confirmed against that source, not docs or memory.
 `v2.7.0` changed, against the earlier `v2.6.2`, only f-strings (compiled by `mpy-cross` like any other
 source), a `QUERY` route decorator and a `Vary` header merge that only the session and CSRF extensions trigger
 (this repo uses neither): the same 1,024 B `send_file` reads, per-header writes and `Request` attribute table,
@@ -345,7 +345,7 @@ so the move shifted none of Part H.7's serving walls.
   popup instead of a silent 404, while `captive_dns.py` answers every domain with the AP's IP.
 - Deployed `python/CommonDrivers/microdot.py` already implements essentially the same protective
   architecture, predating `ext/microdot.py`'s vendoring — one drift: its `HTTPException` branch
-  invokes a status-code handler directly rather than through v2.7.0's async-safe `invoke_handler()`
+  invokes a status-code handler directly rather than through the pinned tag's async-safe `invoke_handler()`
   wrapper — irrelevant today since neither app registers handlers there.
 
 ## A.6 Datasheets
