@@ -1284,6 +1284,8 @@ def render_md(wo, R):
     w("**Tooling units** (U0/U0R, U7, U21, U27, U28, U37 and any unit touching `pyproject.toml`, `scripts/`, "
       "`toolchain/versions.toml`) add their BACKLOG chroot-list entry (CLAUDE.md \"Build-environment verification\").")
     w("")
+    w("**Silent failures and operating modes (OR147-OR149).** Every step is written with `audit/sweeps/silent_failure_scan.md` in mind (its seven classes, in every operating mode and transition it lists, safe-by-construction first, then the smallest inherent change). Before the full gate, the unit runs that scan's two crossed passes over its changes and sweeps each class found project-wide; the result, with the modes checked, goes into the unit's record. A unit's packet (`step_packet.py`) carries its folded scan findings and is refused while a register row for the unit is still unfolded.")
+    w("")
     w("| unit | steps (named + implicit) | actions | co-landing groups | scoped test files | coverage run | hardware rounds that exercise it |")
     w("|---|---|---|---|---|---|---|")
     for u in units:

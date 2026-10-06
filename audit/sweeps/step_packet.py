@@ -1,5 +1,6 @@
 """Execution packets: for one unit, every step in work-order order with its merged change and carried action texts.
 Lanes group steps whose site files overlap (union-find), so disjoint lanes can be applied by separate agents.
+Every packet opens with the silent-failure scan and lists the unit's register deltas; it is refused while one is unfolded.
 Usage: step_packet.py <unit> [--outdir DIR] [--lanes]"""
 import argparse
 import json
@@ -45,6 +46,21 @@ def site_files(text):
     return sorted({p for p in PATH_RE.findall(seg) if not p.startswith("audit/")} or {"(no file)"})
 
 
+def register_deltas(unit):
+    """Rows of REGISTER.md's parked-delta table whose unit column names this unit, as (row, folded)."""
+    rows, inside = [], False
+    for line in (AUDIT / "REGISTER.md").read_text().splitlines():
+        if line.startswith("## "):
+            inside = line.startswith("## Parked deltas")
+            continue
+        if not inside or not line.startswith("| ") or line.startswith(("| unit |", "|---")):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if unit in re.findall(r"U\d+[A-Z]*\d*", cells[0]):
+            rows.append((line, cells[-1].startswith("folded")))
+    return rows
+
+
 def lanes(order, files):
     parent = {}
 
@@ -87,7 +103,14 @@ def main():
     if a.lane_set is not None:
         all_lanes = lanes(order, files)
         order = sorted((g for i in map(int, a.lane_set.split(",")) for g in all_lanes[i]), key=lambda g: pos[tuple(g)])
-    out, seen = [], []
+    deltas = register_deltas(a.unit)
+    open_rows = [r for r, folded in deltas if not folded]
+    if open_rows:
+        raise SystemExit(f"{a.unit}: {len(open_rows)} register delta(s) not yet folded through A-C:\n" + "\n".join(open_rows))
+    out, seen = ["# Standing checks (silent_failure_scan.md)\n", (AUDIT / "sweeps" / "silent_failure_scan.md").read_text()], []
+    if deltas:
+        out.append("\n# Register deltas for this unit (folded; their merged text is in the steps below)\n")
+        out += [r for r, _ in deltas]
     for group in order:
         n = pos[tuple(group)]
         if len(group) > 1:
