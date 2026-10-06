@@ -81,6 +81,54 @@ Per-section figures from `arm-none-eabi-size -A`: `.data` is `AX` (it carries th
 Berkeley summary counts it under text. RAM layout (`.data`, `.bss`, heap) is identical on every device; only the
 frozen code differs.
 
+## After the dependency refresh (M.PROC.012)
+
+Measured on the refreshed tree at `e0e9b0c` (gate (d), the last family commit) rather than on the audit head, so each
+delta belongs to the refresh alone; same commands, `NETNS=1`, toolchain rows under the toolchain lock. Node 24.21.0
+(`.nvmrc` 24) and npm 11.19.0 ran from `~/pico-toolchain/node`. Raw records: `scratchpad/b0/postrefresh/` (every row),
+`scratchpad/b0/postrefresh_q/` (rows re-measured), `scratchpad/b0/quiet_r2/` and `pair_*/` (repeats on both trees),
+`scratchpad/b0/treeio/` (per-tree writes). From B1 on, every unit compares against this column; B0 stays the pre-refresh
+reference.
+
+| row | result | wall s (post / B0) | delta and family |
+|---|---|---|---|
+| L0 `pytest tests_scripts` | 2135 passed, 7 skipped | 315.8 / 314.7 | none |
+| L0 `npm run lint`, `typecheck`, `lint:html`, `lint:css` | rc 0 | 1.5, 0.7, 0.5, 0.9 / 1.8, 0.9, 0.7, 1.1 | −0.2 to −0.3 s each, (b) (Node 24, npm tools) |
+| L0 `npm test` | 817 passed | 555.8, 548.9 / 553.1, 551.3 | none (spread ±4 s on both trees) |
+| L1 `test.sh` gc `-1` / `32768` | 87/87 files | 319.1 / 317.9; 323.0 / 328.5 | none |
+| L1 `test.sh --coverage` | 87/87 files | 369.8 / 358.7 | +11 s once; no family touches the Unix-port binaries or `src/`, not attributed |
+| L2 twins arzi, dev, grkizi, klkizi, schlafzi, wozi | passed at both GC stages | 715.0, 862.9, 713.3, 712.8, 713.7, 758.8 / 713.0, 864.5, 712.8, 715.4, 714.3, 764.9 | none (within ±6 s) |
+| L3/L4 `--collect-only` | 116/138 | 0.5 / 0.4 | none |
+| `lint.sh` | clean | 1.0 / 0.9 | none |
+| `typecheck.sh` | 167 + 48 + 131 files, no issues | 7.9 / 6.4 | +1.5 s, (a) (mypy 2.3.1 → 2.4.0) |
+| firmware build | 6 passed | 254.5 / 257.4 | none |
+| `setup_toolchain.py test` | rc 0 | 78.3, 75.2, 70.8 / 70.1, 70.9, 65.0, 67.5 | not a refresh delta: the build is identical on both trees (unchanged `toolchain/`, the one shared checkout and compiler, the same 1905-line log, `uv run` start-up 0.04 s on both); the spread follows host load |
+
+**Writes.** The `/proc/diskstats` column is device-wide, and during the post-refresh runs the U1 and U2 lanes were
+building and testing in their own worktrees: the same command on the same tree read 782 then 137 MB (dev twin), 389 then
+232 MB (`npm test`), and the B0 tree's own `npm test` repeat read 431 MB against B0's 258. That column is therefore not
+attributed. The twin rows, where the post-refresh figures differed most, were re-measured per process tree
+(`/proc/self/io` of a parent that reaps the whole run, so concurrent work does not count), on both trees side by side:
+| twin | per-tree writes MB, refreshed / B0 | `wchar` MB | wall s |
+|---|---|---|---|
+| arzi | 2.4 / 2.5 | 5.5 / 5.5 | 714.4 / 713.9 |
+| dev | measuring | | |
+
+So the twins write about 2.5 MB per run on both trees; the 580 MB device-wide arzi reading was concurrent work.
+
+**Images.** Every device's `.uf2` grows by 512 bytes and `.text`+`.rodata` by 176-184 bytes (arzi 2,145,792 /
+1,054,140; dev 2,238,464 / 1,100,460; grkizi and klkizi 2,145,792 / 1,054,140; schlafzi 2,145,792 / 1,054,156; wozi
+2,166,784 / 1,064,564). `.data`, `.bss` and the GC heap are unchanged. Family (d): Microdot v2.7.0 is the only frozen
+code the refresh changed.
+
+**Tools after the refresh.** ruff 0.16.10, mypy 2.4.0, pytest 9.1.1, zizmor 1.30.1, actionlint 1.7.12, shellcheck
+0.11.0, uv 0.8.17, Node v24.21.0, npm 11.19.0; MicroPython `v1.29.0` (unchanged).
+
+**Measurement note.** `toolchain_test` rebuilds the Unix-port binaries in the shared `~/pico-toolchain`, and the
+toolchain lock serialises only the builders: a twin or unit run started during it fails (`FileNotFoundError` on
+`build-standard/micropython`, then a fetch the twin runner cannot make inside its network namespace). Nothing that
+uses the binaries runs beside a toolchain row.
+
 ## Environment
 
 MicroPython `v1.29.0` (`~/pico-toolchain/micropython`); Unix-port probes: `build-standard` plain (no `sys.settrace`),

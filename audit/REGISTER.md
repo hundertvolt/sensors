@@ -13,15 +13,15 @@ lease and resumption procedure.
 | go-ahead | OR145 (plan 3.2), 2026-10-06: implementation up to the first required real-hardware step |
 | planning baseline | `4dc80ef` |
 | audit baseline | `798e5a7` (`origin/main` at the go-ahead; already an ancestor of the audit branch). Anchors cite `798e5a7` (BACKLOG.md from :350 on moved +1 at U0 (1)); from U0's own commits on, lines shift as units land, so every site is located by its quoted text (executing brief item 3), never by number alone |
-| current phase | B0 (unit U0) |
+| current phase | B1 (unit U1) |
 | work order | `audit/order/WORK_ORDER.md` (1909 changes, 6571 steps, 0 violations) |
 
 ## Unit table
 
 | unit | scope | state | commit |
 |---|---|---|---|
-| U0 | B0 ENV: baseline, apparatus, prevention rules, B0 doc pass | not started | — |
-| U0R | dependency refresh after the baseline | not started | — |
+| U0 | B0 ENV: baseline, apparatus, prevention rules, B0 doc pass | done 2026-10-06 | through `d6534c0`; record `audit/artefacts/ENV/u0_record.md` |
+| U0R | dependency refresh after the baseline | done 2026-10-06 | merges `9f32315`, `d2bb623`, `e8f5dc0`, `6ca1d7f`; record `audit/artefacts/ENV/dependency_refresh.md` |
 | U1 | legacy move to `legacy/` | not started | — |
 | U2 | error-number catalog | not started | — |
 | U3 | central log-repeat rule, one entry per event | not started | — |
