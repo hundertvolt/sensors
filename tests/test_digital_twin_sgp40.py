@@ -9,6 +9,7 @@ sys.path.insert(0, "digital_twin")
 
 from _crc8 import crc8, word
 from _sgp40_chip import Sgp40Chip
+from _twin_common import Walk
 
 
 class _FixedRandom:
@@ -91,7 +92,7 @@ def test_measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_ra
 
 
 def test_custom_range_is_honored() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[100, 0]), min_raw=50, max_raw=150)
+    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[100, 0]), raw=Walk(50, 150, 1000))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     reply = chip.handle_readfrom_into(3)
     assert reply == word(100)
@@ -103,21 +104,21 @@ def test_construction_draws_an_initial_value_within_range_without_a_measure_raw_
 
 
 def test_measure_raw_step_is_clamped_to_the_configured_max() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[33800, 1000]), max_raw=34000, raw_step=1000)
+    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[33800, 1000]), raw=Walk(26000, 34000, 1000))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     reply = chip.handle_readfrom_into(3)
-    assert reply == word(34000)  # 33800 + 1000 would be 34800 - clamped to max_raw
+    assert reply == word(34000)  # 33800 + 1000 would be 34800 - clamped to the walk's hi
 
 
 def test_measure_raw_step_is_clamped_to_the_configured_min() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[26300, -1000]), min_raw=26000, raw_step=1000)
+    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[26300, -1000]), raw=Walk(26000, 34000, 1000))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     reply = chip.handle_readfrom_into(3)
-    assert reply == word(26000)  # 26300 + -1000 would be 25300 - clamped to min_raw
+    assert reply == word(26000)  # 26300 + -1000 would be 25300 - clamped to the walk's lo
 
 
 def test_raw_step_is_configurable_via_the_constructor() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[30000, 50]), raw_step=50)
+    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[30000, 50]), raw=Walk(26000, 34000, 50))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")  # would violate the default 1000 bound - proves the override took
     reply = chip.handle_readfrom_into(3)
     assert reply == word(30050)

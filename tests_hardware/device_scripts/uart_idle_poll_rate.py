@@ -8,7 +8,7 @@ import gc
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UART_Comm
 
 BAUDRATE = 115200
 POLL_WAIT_MS = 2
@@ -57,7 +57,7 @@ async def _count_rounds(wdt: "machine.WDT", idle_ms: int) -> int:
     uart.poller = counter  # type: ignore[assignment]
     comm = UART_Comm(
         uart, ROLE_RESPONDER, payload_size=48, timeout=1000,
-        get_callback=get_callback, set_callback=set_callback, name="UART_IDLE",
+        callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_IDLE",
     )
     await comm.setup()
     listener = asyncio.create_task(comm.uart_listen())

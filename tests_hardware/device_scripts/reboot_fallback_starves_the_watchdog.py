@@ -18,7 +18,7 @@ async def _never_synced() -> bool:
 
 def main() -> None:
     wdt = machine.WDT(timeout=WATCHDOG_TIMEOUT_MS)
-    svc = SystemService(_never_synced, watchdog=wdt, fram=None, debug=None)
+    svc = SystemService(_never_synced, watchdog=wdt)
     timers = []
     try:
         for _ in range(64):  # the real pool is small and fixed (timer_alarm_pool_exhaustion.py)

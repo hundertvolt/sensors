@@ -6,7 +6,7 @@ from _error_codes import code
 
 from asy_udp_socket import AsyUDPSocket
 from captive_dns import DNSQuery, DNSServer, _ipv4_to_int
-from print_log import PrintLog, PrintLogHistory
+from print_log import LogConfig, PrintLog, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -281,7 +281,7 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
 
 
 def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
-    server = DNSServer(debug=PrintLog.level_info())
+    server = DNSServer(log=LogConfig(None, 10, PrintLog.level_info()))
     assert server.udps._addr == ("0.0.0.0", 53)
     assert server.udps._mode == "server"
     assert server.udps.sock is None  # lazy - no real bind attempted at construction
@@ -307,12 +307,17 @@ def test_dns_server_logger_is_named_dnssrv() -> None:
 
 
 def test_dns_server_debug_level_is_forwarded_to_the_logger() -> None:
-    server = DNSServer(debug=PrintLog.level_err())
+    server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
     assert server.pr.get_level() == PrintLog.level_err()
 
 
+def test_dns_server_history_length_comes_from_the_log_config() -> None:
+    server = DNSServer(log=LogConfig(None, 3, None))
+    assert len(server.pr.history) == 3
+
+
 def test_dns_server_debug_none_leaves_logger_at_off() -> None:
-    server = DNSServer(debug=None)
+    server = DNSServer(log=LogConfig(None, 10, None))
     assert server.pr.get_level() == PrintLog.level_off()
 
 
@@ -505,7 +510,7 @@ def test_run_rejects_invalid_server_ip_or_netmask_without_raising() -> None:
 
 
 def test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error() -> None:
-    server = DNSServer(debug=PrintLog.level_err())
+    server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
 
     async def scenario() -> None:
         await server.run("not-an-ip", "255.255.255.0")
@@ -561,7 +566,7 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
     fake.sendto_results = [None, None]
 
     async def scenario() -> None:
-        server = DNSServer(debug=PrintLog.level_warn())
+        server = DNSServer(log=LogConfig(None, 10, PrintLog.level_warn()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -579,7 +584,7 @@ def test_run_invalid_recvfrom_data_logs_a_persisted_warning() -> None:
     fake = _FakeUDPS([(None, None), (None, None)])
 
     async def scenario() -> None:
-        server = DNSServer(debug=PrintLog.level_warn())
+        server = DNSServer(log=LogConfig(None, 10, PrintLog.level_warn()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -950,7 +955,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     async def scenario() -> "tuple[list[tuple[bytes, tuple[str, int]]], int]":
         captive_dns_module.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
         try:
-            server = DNSServer(debug=PrintLog.level_err())
+            server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
             server.udps = fake  # type: ignore[assignment]
             t0 = time.ticks_ms()
             task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
@@ -984,7 +989,7 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
     fake = _RaisingDisconnectUDPS(RuntimeError("simulated disconnect failure"))
 
     async def scenario() -> None:
-        server = DNSServer(debug=PrintLog.level_err())
+        server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(20)
@@ -1090,7 +1095,7 @@ def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() 
     fake = _RaisingDisconnectUDPS(asyncio.CancelledError())
 
     async def scenario() -> None:
-        server = DNSServer(debug=PrintLog.level_err())
+        server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(20)
@@ -1109,7 +1114,7 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
     fake.disconnect_ok = False
 
     async def scenario() -> None:
-        server = DNSServer(debug=PrintLog.level_warn())
+        server = DNSServer(log=LogConfig(None, 10, PrintLog.level_warn()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(20)

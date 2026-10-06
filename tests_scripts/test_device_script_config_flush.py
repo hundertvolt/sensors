@@ -67,8 +67,8 @@ def _sites(tree: ast.Module) -> _Sites:
 
 def _writing_scripts() -> list[tuple[Path, ast.Module, _Sites]]:
     # Matching is file-scoped by source spelling, because a write can sit in a helper that takes the
-    # object as a parameter while the flush sits in _main (wifi_service_reconnect_repro.py does
-    # exactly that). So no call ORDER is asserted: across two functions there is no order to read.
+    # object as a parameter while the flush sits in _main. So no call ORDER is asserted: across two
+    # functions there is no order to read.
     found = []
     for path in sorted(DEVICE_SCRIPTS.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))

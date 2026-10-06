@@ -6,6 +6,7 @@ import sys
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 from _isl29125_chip import Isl29125Chip
+from _twin_common import Walk
 
 _ADDR_ID = 0x00
 _ADDR_CONFIG1 = 0x01
@@ -194,6 +195,14 @@ def test_counts_scale_linearly_with_illumination_on_the_low_range() -> None:
     green, red, blue = read_counts(chip)
     assert abs(green - 32768) <= 1
     assert green == red == blue  # a neutral tint weights all three the same
+
+
+def test_the_lux_walk_passed_at_construction_bounds_every_walked_reading() -> None:
+    # _FixedRandom answers 100.0 to every draw: the step overshoots, so the walk's own hi clamps it.
+    chip = make_chip(lux=Walk(50.0, 80.0, 10.0), dark_counts=0)
+    configure(chip, _MODE_RGB)
+    chip._produce_new_reading()
+    assert chip._lux == 80.0
 
 
 def test_the_high_range_uses_the_per_instance_ratio_not_the_nominal_one() -> None:

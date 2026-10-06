@@ -7,6 +7,7 @@ import gc
 import json
 import sys
 import time
+from collections import namedtuple
 
 try:
     from typing import TYPE_CHECKING
@@ -14,11 +15,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, NamedTuple
 
     import network
 
 import machine
+from _twin_common import Injections, StatePaths
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see digital_twin/README.md
@@ -38,6 +40,17 @@ _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status(
 # overrides it, since Part I.4(e) requires the whole suite to pass at -1 first.
 _GC_THRESHOLD_DEFAULT = 32768
 
+if TYPE_CHECKING:
+
+    class RunLimits(NamedTuple):
+        # How long the run serves (None: forever), its gc.threshold() and the optional heap sampler period.
+        duration: float | None
+        gc_threshold: int
+        mem_sample_interval_ms: int | None
+
+else:
+    RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms"))
+
 
 class RunConfig:
     def __init__(
@@ -47,31 +60,19 @@ class RunConfig:
         host: str = "localhost",
         port: int = 8080,
         device: "str | None" = None,
-        fram_state_path: "str | None" = None,
-        scd30_state_path: "str | None" = None,
-        seed: "int | None" = None,
-        faults: "list[tuple[str, str, int]] | None" = None,
-        hangs: "list[tuple[str, str, float, int]] | None" = None,
-        wifi_outcomes: "list[int] | None" = None,
+        state: "StatePaths | None" = None,
+        injections: "Injections | None" = None,
         *,
-        duration: "float | None" = None,
-        gc_threshold: int = _GC_THRESHOLD_DEFAULT,
-        mem_sample_interval_ms: "int | None" = None,
+        run: "RunLimits | None" = None,
     ) -> None:
         self.module = module
         self.wiring_plan_path = wiring_plan_path
         self.host = host
         self.port = port
         self.device = device if device is not None else module
-        self.fram_state_path = fram_state_path
-        self.scd30_state_path = scd30_state_path
-        self.seed = seed
-        self.faults = faults if faults is not None else []
-        self.hangs = hangs if hangs is not None else []
-        self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
-        self.duration = duration
-        self.gc_threshold = gc_threshold
-        self.mem_sample_interval_ms = mem_sample_interval_ms
+        self.state = state if state is not None else StatePaths(None, None)
+        self.injections = injections if injections is not None else Injections(None, [], [], [])
+        self.run = run if run is not None else RunLimits(None, _GC_THRESHOLD_DEFAULT, None)
 
     def __eq__(self, other: "object") -> bool:
         if not isinstance(other, RunConfig):
@@ -82,15 +83,9 @@ class RunConfig:
             and self.host == other.host
             and self.port == other.port
             and self.device == other.device
-            and self.fram_state_path == other.fram_state_path
-            and self.scd30_state_path == other.scd30_state_path
-            and self.seed == other.seed
-            and self.faults == other.faults
-            and self.hangs == other.hangs
-            and self.wifi_outcomes == other.wifi_outcomes
-            and self.duration == other.duration
-            and self.gc_threshold == other.gc_threshold
-            and self.mem_sample_interval_ms == other.mem_sample_interval_ms
+            and self.state == other.state
+            and self.injections == other.injections
+            and self.run == other.run
         )
 
     # Value equality without a matching hash: spell out what CPython already does implicitly for
@@ -101,10 +96,8 @@ class RunConfig:
     def __repr__(self) -> str:
         return (
             f"RunConfig(module={self.module!r}, wiring_plan_path={self.wiring_plan_path!r}, host={self.host!r}, "
-            f"port={self.port!r}, device={self.device!r}, fram_state_path={self.fram_state_path!r}, "
-            f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, duration={self.duration!r}, "
-            f"gc_threshold={self.gc_threshold!r}, mem_sample_interval_ms={self.mem_sample_interval_ms!r})"
+            f"port={self.port!r}, device={self.device!r}, state={self.state!r}, injections={self.injections!r}, "
+            f"run={self.run!r})"
         )
 
 
@@ -178,15 +171,9 @@ def parse_args(argv: "list[str]") -> RunConfig:
         host=host,
         port=port,
         device=device,
-        fram_state_path=fram_state_path,
-        scd30_state_path=scd30_state_path,
-        seed=seed,
-        faults=faults,
-        hangs=hangs,
-        wifi_outcomes=wifi_outcomes,
-        duration=duration,
-        gc_threshold=gc_threshold,
-        mem_sample_interval_ms=mem_sample_interval_ms,
+        state=StatePaths(fram_state_path, scd30_state_path),
+        injections=Injections(seed, faults, hangs, wifi_outcomes),
+        run=RunLimits(duration, gc_threshold, mem_sample_interval_ms),
     )
 
 
@@ -333,24 +320,25 @@ async def main(config: RunConfig) -> None:
     # Must also run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer,
     # asy_ntp_client.py's NTP fetch, asy_dns_client.py's own resolver).
     patch_asy_udp_socket_for_unix_port()
-    machine.configure_fram_state_path(config.fram_state_path)
-    machine.configure_scd30_state_path(config.scd30_state_path)
+    injections, run = config.injections, config.run
+    machine.configure_fram_state_path(config.state.fram)
+    machine.configure_scd30_state_path(config.state.scd30)
     with open(config.wiring_plan_path) as f:
         plan = json.load(f)
     machine.configure_wiring(plan)
-    if config.seed is not None:
+    if injections.seed is not None:
         import random
 
-        random.seed(config.seed)
+        random.seed(injections.seed)
 
     _ensure_dir(_CONFIG_DIR)
 
     print(
         f"digital_twin/run_generic_integration.py starting - device={config.device!r} module={config.module!r} "
-        f"host={config.host!r} port={config.port!r} fram_state_path={config.fram_state_path!r} "
-        f"scd30_state_path={config.scd30_state_path!r} seed={config.seed!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r} "
-        f"mem_sample_interval_ms={config.mem_sample_interval_ms!r}",
+        f"host={config.host!r} port={config.port!r} fram_state_path={config.state.fram!r} "
+        f"scd30_state_path={config.state.scd30!r} seed={injections.seed!r} "
+        f"duration={run.duration!r} faults={injections.faults!r} hangs={injections.hangs!r} wifi_outcomes={injections.wifi_outcomes!r} "
+        f"mem_sample_interval_ms={run.mem_sample_interval_ms!r}",
     )
 
     module = __import__(config.module)
@@ -359,8 +347,8 @@ async def main(config: RunConfig) -> None:
         module.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
     sampler_task = (
-        asyncio.get_event_loop().create_task(_mem_sampler(config.mem_sample_interval_ms))
-        if config.mem_sample_interval_ms is not None
+        asyncio.get_event_loop().create_task(_mem_sampler(run.mem_sample_interval_ms))
+        if run.mem_sample_interval_ms is not None
         else None
     )
     wire_log_clearer_task = None
@@ -372,19 +360,19 @@ async def main(config: RunConfig) -> None:
 
         assert module.conn is not None and module.watchdog is not None
         chips = _collect_chips(module, plan)
-        for device, op, times in config.faults:
+        for device, op, times in injections.faults:
             _apply_fault(device, op, times, chips, module.conn.wlan)
-        for device, op, seconds, times in config.hangs:
+        for device, op, seconds, times in injections.hangs:
             _apply_hang(device, op, seconds, times, chips)
-        if config.wifi_outcomes:
-            module.conn.wlan.script_connect_outcomes(config.wifi_outcomes)
+        if injections.wifi_outcomes:
+            module.conn.wlan.script_connect_outcomes(injections.wifi_outcomes)
 
-        if config.duration is None:
+        if run.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
             while True:
                 await asyncio.sleep(3600)
-        elif config.duration > 0:
-            await asyncio.sleep(config.duration)
+        elif run.duration > 0:
+            await asyncio.sleep(run.duration)
     finally:
         # Part F.6, defense in depth now that Part B.14.1 forces safe SIGINT delivery: an
         # interrupt inside gc_collect() can leave the heap locked, and this whole block
@@ -425,7 +413,7 @@ if __name__ == "__main__":
     # Immediately before asyncio.run(), where the real firmware boot entry also sets it, so an
     # ordinary twin run models production's configuration. --gc-threshold overrides it: the CI
     # suite runs the WHOLE suite at -1 and then at 32768, in that order (Part I.4(e)).
-    gc.threshold(_config.gc_threshold)
+    gc.threshold(_config.run.gc_threshold)
     try:
         asyncio.run(main(_config))
     except KeyboardInterrupt:

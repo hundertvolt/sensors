@@ -8,6 +8,7 @@ import asy_spi_driver
 from asy_fram_manager import AsyFramChunk, AsyFramChunkBuffer, AsyFramChunkTimestampedBuffer, AsyFramManager
 from asy_spi_driver import SPI
 from crc_checks import CRC8, CRC16, CRC32, CRC_Pass
+from print_log import LogConfig, PrintLogHistory
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py - see its own comment.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -46,7 +47,7 @@ def make_bus() -> SPI:
 
 def make_manager(max_size: int = 0x2000, history_length: int = 10) -> tuple[AsyFramManager, FakeMB85RS64V]:
     bus = make_bus()
-    manager = AsyFramManager(bus, 1, max_size=max_size, history_length=history_length)
+    manager = AsyFramManager(bus, 1, max_size=max_size, log=LogConfig(None, history_length, None))
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip
@@ -66,6 +67,37 @@ async def _not_synced() -> bool:
 
 async def _raising_callback() -> bool:
     raise RuntimeError("ntp callback exploded")
+
+
+# ---------------------------------------------------------------------------
+# Construction - the manager's own RAM-only log, and chunks bound to their manager
+# ---------------------------------------------------------------------------
+
+
+def test_the_manager_logs_ram_only_whatever_its_log_config_names() -> None:
+    # The one module that never logs into FRAM is the FRAM module itself: log.fram is ignored,
+    # its length and level are taken.
+    other, _chip = make_manager()
+    manager = AsyFramManager(make_bus(), 1, max_size=0x2000, log=LogConfig(other, 4, 2))
+    assert type(manager.pr) is PrintLogHistory
+    assert manager.pr.name == "FRAM"
+    assert len(manager.pr.history) == 4
+    assert manager.pr.get_level() == 2
+
+
+def test_a_chunk_takes_its_fram_logger_and_pause_from_its_manager() -> None:
+    manager, _chip = make_manager()
+    chunk = manager.get_chunk(4)
+    ts_chunk = manager.get_timestamped_chunk(4, _synced)
+    assert chunk is not None
+    assert ts_chunk is not None
+    for c in (chunk, ts_chunk):
+        assert c.fram is manager.fram
+        assert c.pr is manager.pr
+        assert run(c.get_pause()) is False
+    manager.set_pause(value=True)
+    assert run(chunk.get_pause()) is True
+    assert run(ts_chunk.get_pause()) is True
 
 
 # ---------------------------------------------------------------------------

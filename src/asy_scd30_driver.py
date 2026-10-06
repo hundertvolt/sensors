@@ -17,11 +17,11 @@ from machine import Pin, Timer
 from micropython import const
 
 import math_helpers
-from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C, I2CDevice
 from base_classes import Lockable, SensorReader
 from config_manager import compare_before_write, make_dict, name_cfg
 from crc_checks import CRC8
+from print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -125,7 +125,7 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in 
 # Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is
 # 100 kHz" - Sensirion recommends 50 kHz or less, which every device TOML uses today.
 # @requires bus.frequency<=100000
-# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp
@@ -151,18 +151,10 @@ class SCD30_Reader(SensorReader):
         trigger_sec: int = 3,
         max_module_error: int = 5,
         name_ext: str = "",
-        fram: AsyFramManager | None = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
-            SCD30(None, None, None, None, None, None),
-            max_module_error,
-            fram=fram,
-            history_length=history_length,
-            debug=debug,
-            name=_NAME,
-            name_ext=name_ext,
+            SCD30(None, None, None, None, None, None), _NAME, max_module_error=max_module_error, name_ext=name_ext, log=log,
         )
         self.scd = SCD30_I2C(i2c)
         self.irq_pin = Pin(irq_pin, mode=Pin.IN)

@@ -99,7 +99,7 @@ def _log_entries(counters: "ErrorLog") -> "tuple[list[tuple[str, int]], int]":
 
 
 def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
-    reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
+    reader = ISL29125_Reader(i2c1, 6, max_module_error=999)
     # Scratch filename: this script calls _set_dict_cfg, whose persist leg is a real write_config()
     # that would otherwise stamp the seeded cache over the PRODUCTION config_ISL29125.cfg. Same
     # convention as reboot_persist_write.py's config_HWTEST_REBOOT.cfg.
@@ -200,7 +200,7 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    pixel = NeopixelDriver(18, fram=None, debug=None)
+    pixel = NeopixelDriver(18)
     reader = _make_reader(i2c1)
     reader.start_timer()
     tasks = [pixel.start_asy_neopixel_led_overl(), pixel.start_asy_neopixel_signal(),
@@ -240,8 +240,10 @@ async def _main() -> None:
             task.cancel()
             try:
                 await task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception as e:  # a task that died on its own fails the run, never passes it
+                failures.append(f"background task died: {e!r}")
 
     for note in notes:
         print("  " + note)

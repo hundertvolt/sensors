@@ -18,7 +18,7 @@ _SETTLE_S = 45.0  # datasheet-bound response-time window (see docstring) plus ma
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=999, fram=None, debug=None)
+    reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=999)
     reader.start_timer()  # wires the real GPIO IRQ + the 500ms self-healing poll timer
     read_task = asyncio.create_task(reader.read_loop())
     init_irq_task = asyncio.create_task(reader.scd_init_irq())
@@ -42,11 +42,17 @@ async def _main() -> None:
 
     read_task.cancel()
     init_irq_task.cancel()
+    died: list[str] = []
     for task in (read_task, init_irq_task):
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # a task that died on its own fails the run, never passes it
+            died.append(repr(e))
+    if died:
+        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
+        return
 
     if data is None or data.CO2 is None:
         print("RESULT: FAIL no CO2 reading obtained within the wait window - sensor not responding or not wired to i2c1")

@@ -6,6 +6,7 @@ import struct
 
 from _crc8 import crc8, word
 from _fault_injection import FaultInjector
+from _twin_common import Walk
 
 try:
     from typing import TYPE_CHECKING
@@ -48,6 +49,10 @@ _NVM_ARG_COMMANDS = (
     _CMD_SET_TEMPERATURE_OFFSET,
 )
 
+_CO2_WALK_DEFAULT = Walk(400.0, 2000.0, 50.0)  # ppm
+_TEMP_WALK_DEFAULT = Walk(15.0, 30.0, 1.0)  # degC
+_HUM_WALK_DEFAULT = Walk(20.0, 70.0, 3.0)  # %RH
+
 _FIRMWARE_VERSION = 0x0342  # plausible fixed value (major.minor as two nibble-pairs) - never checked by the driver
 
 
@@ -64,15 +69,9 @@ class Scd30Chip:
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,
-        min_co2: float = 400.0,
-        max_co2: float = 2000.0,
-        min_temp: float = 15.0,
-        max_temp: float = 30.0,
-        min_hum: float = 20.0,
-        max_hum: float = 70.0,
-        co2_step: float = 50.0,
-        temp_step: float = 1.0,
-        hum_step: float = 3.0,
+        co2: Walk = _CO2_WALK_DEFAULT,
+        temp: Walk = _TEMP_WALK_DEFAULT,
+        hum: Walk = _HUM_WALK_DEFAULT,
         measurement_interval_s: int = 2,
         rdy_pin: "_RdyPin | None" = None,
         *,
@@ -84,13 +83,13 @@ class Scd30Chip:
 
             random_source = _random_module
         self._random = random_source
-        self._min_co2, self._max_co2 = min_co2, max_co2
-        self._min_temp, self._max_temp = min_temp, max_temp
-        self._min_hum, self._max_hum = min_hum, max_hum
-        # *_step: NOT datasheet-derived (the min/max above are) - a physical-plausibility judgment
-        # call bounding how far one reading can move from the last, so successive measurements walk
+        self._min_co2, self._max_co2 = co2.lo, co2.hi
+        self._min_temp, self._max_temp = temp.lo, temp.hi
+        self._min_hum, self._max_hum = hum.lo, hum.hi
+        # Each walk's step: NOT datasheet-derived (lo/hi are) - a physical-plausibility judgment call
+        # bounding how far one reading can move from the last, so successive measurements walk
         # instead of jumping independently around the whole configured range every time.
-        self._co2_step, self._temp_step, self._hum_step = co2_step, temp_step, hum_step
+        self._co2_step, self._temp_step, self._hum_step = co2.step, temp.step, hum.step
         self._measurement_interval_s = measurement_interval_s
         self._ambient_pressure = 0
         self._altitude = 0
@@ -110,7 +109,7 @@ class Scd30Chip:
         # _asc_enabled defaults just set above - never the co2/temp/hum draws below, which the
         # class docstring explains staying unpersisted.
 
-        # One uniform draw within [min,max] at construction; every later value steps from the
+        # One uniform draw within each walk's [lo,hi] at construction; every later value steps from the
         # last (see _produce_new_reading()).
         self._co2 = self._random.uniform(self._min_co2, self._max_co2)
         self._temp = self._random.uniform(self._min_temp, self._max_temp)

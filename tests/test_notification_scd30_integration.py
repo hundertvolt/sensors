@@ -19,6 +19,7 @@ from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_scd30_driver import SCD30_Reader
+from base_classes import ValueRef
 from crc_checks import CRC8
 
 try:
@@ -94,15 +95,13 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
 
 
 def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
-    # Direct (source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
+    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
     # backing both WarnCO2 and WarnHum in the real wiring (one sensor, two notification signals off
     # its own .CO2/.Hum fields) - mirrors src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    notify.register(signal)
-    notify.finalize()
+    signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    notify = NotificationCoordinator(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
     run(notify.cfgmgr.setup())
     return pixel, notify
 
@@ -113,10 +112,8 @@ def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notificat
     # avoids the two signals' ramps overlapping in the same pixel.pixel.writes trace.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnHum", scd_reader, "Hum", (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
-    notify.register(signal)
-    notify.finalize()
+    signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
+    notify = NotificationCoordinator(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
     run(notify.cfgmgr.setup())
     return pixel, notify
 

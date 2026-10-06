@@ -55,11 +55,20 @@ def test_leaves_compound_condition_untouched(strip_module: ModuleType) -> None:
     assert "Z = 1" in output
 
 
-def test_leaves_if_else_untouched(strip_module: ModuleType) -> None:
-    source = "if TYPE_CHECKING:\n    W = 1\nelse:\n    W = 2\n"
+def test_an_if_else_keeps_only_its_runtime_branch(strip_module: ModuleType) -> None:
+    # The import guard goes, so a kept `if TYPE_CHECKING:` would raise NameError at import on the board.
+    source = "try:\n    from typing import TYPE_CHECKING\nexcept ImportError:\n    TYPE_CHECKING = False\nif TYPE_CHECKING:\n    W = 1\nelse:\n    W = 2\n"
     output = strip_module.strip_type_checking_blocks(source)
-    assert "W = 1" in output
+    assert "W = 1" not in output
     assert "W = 2" in output
+    assert "TYPE_CHECKING" not in output
+
+
+def test_an_if_elif_keeps_the_elif_chain(strip_module: ModuleType) -> None:
+    output = strip_module.strip_type_checking_blocks("if TYPE_CHECKING:\n    W = 1\nelif X:\n    W = 2\nelse:\n    W = 3\n")
+    assert "W = 1" not in output
+    assert "if X:" in output
+    assert "W = 3" in output
 
 
 def test_leaves_unrelated_try_except_importerror_untouched(strip_module: ModuleType) -> None:
@@ -102,3 +111,5 @@ def test_real_src_files_round_trip_to_syntactically_valid_type_checking_free_out
         output = strip_module.strip_type_checking_blocks(src_file.read_text())
         assert "if TYPE_CHECKING:" not in output
         ast.parse(output)
+        if "from typing import TYPE_CHECKING" not in output:  # the guard went, so no name may still use it
+            assert "TYPE_CHECKING" not in output, f"{src_file.name}: stripped output still references TYPE_CHECKING"

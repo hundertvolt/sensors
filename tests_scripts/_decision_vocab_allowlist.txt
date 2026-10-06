@@ -135,7 +135,6 @@ SPECIFICATION.md	the exact boundary values *accepted*;
 SPECIFICATION.md	the excluded file holds two trivial fixtures, its real logic moved to `_script_l
 SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
 SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original reason (a 256 B C
-SPECIFICATION.md	webserver = WebserverService(app, sensors=(...), ..., static_mount="/html", is_h
 SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
 SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen
 UART_C_PORT_CHANGELOG.md	- **Class A — protocol-level, must be mirrored in C.** It alters the bytes emitt
@@ -145,7 +144,6 @@ UART_C_PORT_CHANGELOG.md	`_drain()` now flags the condition instead of logging i
 UART_C_PORT_CHANGELOG.md	`uart_get()`'s empty-payload contract is settled in the same round (`None` = fai
 UART_C_PORT_CHANGELOG.md	| B16 | `setup()` drains the receive path once before the readiness gate opens,
 UART_C_PORT_CHANGELOG.md	| B26 | **No change made** - recording an accepted limitation of the errno 32 di
-buildgen/codegen.py	fram= is the same optional per-instance _fram_kw() every other driver with a "#
 buildgen/driver_registry.py	`_NAME = const("SCD30")` (or a plain `_NAME = "SCD30"`) - the instance_name()/RE
 buildgen/requires_tag.py	"#+" so a "## @requires ..." section-style comment is accepted rather than repor
 buildgen/tag_comments.py	"label=" or "special:0=" - deliberately not anchored to a specific key name, sin
@@ -333,11 +331,9 @@ tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deli
 tests/test_asy_notification_service.py	An int is always accepted and coerced for a float field (Part A.8) - a blanket a
 tests/test_asy_notification_service.py	An integral float is accepted and coerced (Part A.8);
 tests/test_asy_notification_service.py	exactly _MAX_OVERRIDE_TIME - accepted, not clamped further
-tests/test_asy_notification_service.py	finalize() deliberately never called - every method below must degrade to its ow
 tests/test_asy_notification_service.py	int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
 tests/test_asy_notification_service.py	integral float accepted for an int field, coerced
 tests/test_asy_notification_service.py	must never raise, for any of the above
-tests/test_asy_notification_service.py	registered deliberately out of that order
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
@@ -406,7 +402,6 @@ tests/test_asy_wifi_service.py	Neither WLAN fake ever transitions _status to STA
 tests/test_asy_wifi_service.py	Proves the give-up decision is a genuine streak, not a monotonic lifetime counte
 tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be accepted, not rejected.
 tests/test_asy_wifi_service.py	_wlan(client) is typed against the real network.WLAN stub (pyproject.toml's test
-tests/test_asy_wifi_service.py	noqa: S106 - deliberately too short, which is the point of the test
 tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
@@ -618,7 +613,6 @@ tests_hardware/device_scripts/uart_idle_poll_rate.py	The ratio is what the findi
 tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py	The floor is deliberately far below the unloaded rate - this asserts the link ke
 tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py	Isolated-driver device script: the clamped read path must never hold the CPU for
 tests_hardware/device_scripts/watchdog_starvation_reset.py	Isolated-driver device script: deliberately starves the RP2040 hardware watchdog
-tests_hardware/device_scripts/wifi_service_reconnect_repro.py	Read the production file first, then divert: from here on config_WIFI.cfg is nev
 tests_hardware/flash/test_bus_concurrency.py	Deliberately does NOT depend on scd30_continuous_measurement_triggered - this sw
 tests_hardware/flash/test_bus_concurrency.py	The SCD30-as-writer half of the same gap, deliberately outside the routine group
 tests_hardware/flash/test_bus_electrical_timing.py	Deliberately its own separate marker/flag, never bundled with the long_soak/--so
@@ -666,7 +660,6 @@ tests_scripts/test_buildgen_definitions.py	Failure paths: a minimal DeviceModel 
 tests_scripts/test_buildgen_definitions.py	SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenanc
 tests_scripts/test_buildgen_definitions.py	asy_ntp_client.py deliberately never declares its own @web-group for section=sys
 tests_scripts/test_buildgen_generate.py	a warn_* key outside it must abort and name the catalog, never be silently dropp
-tests_scripts/test_buildgen_graph.py	"setter" wiring is a post-construction call and must never contribute a dependen
 tests_scripts/test_buildgen_requires_tag.py	"Present, or close to present, with typos" - a typo'd/malformed/misplaced @requi
 tests_scripts/test_buildgen_requires_tag.py	A driver gaining or losing one is a deliberate change that has to show up here t
 tests_scripts/test_buildgen_schema_ast.py	ContMeas is deliberately freestanding (no _VAL_* constant at all - see the drive
@@ -676,7 +669,6 @@ tests_scripts/test_buildgen_validate.py	Absent, WebserverService's own default a
 tests_scripts/test_buildgen_validate.py	Every abort condition gets its own test, driven by a deliberately malformed fixt
 tests_scripts/test_buildgen_validate.py	The partial state: FRAM present, some wirable instances declaring fram_target an
 tests_scripts/test_buildgen_validate.py	Top-level key, deliberately written before the [device] header so it isn't swall
-tests_scripts/test_buildgen_value_wiring.py	The three names are independent by design - nothing requires the TOML field and
 tests_scripts/test_buildgen_web_tag.py	Cross-family safety: a well-formed @web-group line must never be flagged while s
 tests_scripts/test_buildgen_web_tag.py	GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System
 tests_scripts/test_buildgen_wiring.py	Deleting a piece must never leave a line that silently parses as "no tag declare

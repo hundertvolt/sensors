@@ -186,12 +186,13 @@ def _all_loggers(module: "Any") -> "list[Any]":
         module.ntp.pr,
         module.ntp.cfgmgr.pr,
         module.fram.pr,
+        module.neopixel.pr,
         module.sysfunct.pr,
         module.sysfunct.cfgmgr.pr,
     ]
-    # scd30 before sgp40 before bmp3xx matches buildgen's topological construction order (sgp40
-    # depends on scd30 as its temperature/humidity source), the same relative order every device's
-    # TOML lists (Part L.3). setters[i] is paired with loggers[i] elsewhere, so this is load-bearing.
+    # The collector's order: conn and ntp first, then buildgen's construction order, where the
+    # NeoPixel precedes conn (passed as its ext_led) and scd30 precedes sgp40 (its compensation
+    # source). setters[i] is paired with loggers[i] elsewhere, so this is load-bearing.
     if _has(module, "scd30"):
         loggers.append(module.scd30.pr)
     if _has(module, "sgp40"):
@@ -200,7 +201,7 @@ def _all_loggers(module: "Any") -> "list[Any]":
         loggers += [module.bmp3xx.pr, module.bmp3xx.cfgmgr.pr]
     if _has(module, "isl29125"):
         loggers += [module.isl29125.pr, module.isl29125.cfgmgr.pr]
-    loggers += [module.neopixel.pr, module.notification.pr, module.notification.cfgmgr.pr]
+    loggers += [module.notification.pr, module.notification.cfgmgr.pr]
     if _has_uart_link(module):
         # No cfgmgr - UART_Comm has no config schema (its parameters are an out-of-band wire
         # contract, never runtime-writable, SPECIFICATION.md Part J.6), one entry per instance.
@@ -215,9 +216,10 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # each SensorReaderConfig-based module's own pr chunk are the two rules that shape it.
 
     # Built from the module's own reflected instance set, not a hardcoded per-device literal: every
-    # device's TOML lists its instances in this same relative order (Part L.3), so the fixed shape
-    # below stays correct for all 6.
-    calls = ["chunk", "chunk", "chunk"]  # AsyConnTime, its own CFGMGR_WIFI, its own DNSServer
+    # device's TOML lists its instances in this same relative order (Part L.3) and wires its
+    # NeoPixel as conn's ext_led, so the fixed shape below stays correct for all 6.
+    calls = ["chunk"]  # NeopixelDriver - built before conn, which takes it at construction; no cfgmgr
+    calls += ["chunk", "chunk", "chunk"]  # AsyConnTime, its own CFGMGR_WIFI, its own DNSServer
     calls += ["chunk", "chunk"]  # AsyNtpClient, its own CFGMGR_NTP
     calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
     if _has(module, "scd30"):
@@ -228,7 +230,6 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
         calls += ["chunk", "chunk"]  # BMP3xx_Reader, its own CFGMGR_BMP3XX
     if _has(module, "isl29125"):
         calls += ["chunk", "chunk"]  # ISL29125_Reader, its own CFGMGR_ISL29125
-    calls.append("chunk")  # NeopixelDriver - always present, no cfgmgr
     calls += ["chunk", "chunk"]  # NotificationCoordinator, its own CFGMGR_NOTIFY - always present
     if _has_uart_link(module):
         calls += ["chunk", "chunk"]  # UartLinkExerciser x2 (init, resp) - no cfgmgr, WP3
@@ -304,8 +305,8 @@ def _scenario_scd30_clock_stretch(device: str) -> None:
 
 @_register("build_system_wires_the_wifi_led_callback_after_both_exist")
 def _scenario_wifi_led_wiring(device: str) -> None:
-    # conn.set_ext_led(neopixel) - the one cross-wiring step that must run after both objects exist.
-    # Confirmed indirectly: AsyConnTime's own ext_led slot is set.
+    # The NeoPixel is constructed before conn and passed as its ext_led at construction. Confirmed
+    # indirectly: AsyConnTime's own ext_led slot is set.
     module = build(device)
     assert module.conn is not None
     assert module.conn.ext_led is module.neopixel
@@ -547,7 +548,7 @@ def _scenario_fram_never_required(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# setup() batch: grouped, fixed order, notification.setup() only after finalize().
+# setup() batch: grouped, fixed order, notification.setup() last.
 # ---------------------------------------------------------------------------
 
 
@@ -567,7 +568,6 @@ def _scenario_setup_batch_order(device: str) -> None:
     real_ntp_setup = AsyNtpClient.setup
     real_sgp_setup = SGP40_Reader.setup
     real_notify_setup = NotificationCoordinator.setup
-    real_notify_finalize = NotificationCoordinator.finalize
 
     # bmp3xx is only ever present on some devices - patched conditionally below, once the module's
     # own reflected shape is known, rather than unconditionally importing/patching a class the
@@ -605,10 +605,6 @@ def _scenario_setup_batch_order(device: str) -> None:
         assert real_bmp_setup is not None
         return await real_bmp_setup(self)
 
-    def _tracking_notify_finalize(self: "NotificationCoordinator") -> None:
-        calls.append("notify_finalize")
-        return real_notify_finalize(self)
-
     async def _tracking_notify_setup(self: "NotificationCoordinator") -> None:
         calls.append("notify_setup")
         return await real_notify_setup(self)
@@ -619,7 +615,6 @@ def _scenario_setup_batch_order(device: str) -> None:
     AsyNtpClient.setup = _tracking_ntp_setup  # type: ignore[method-assign]
     SGP40_Reader.setup = _tracking_sgp_setup  # type: ignore[method-assign]
     NotificationCoordinator.setup = _tracking_notify_setup  # type: ignore[method-assign]
-    NotificationCoordinator.finalize = _tracking_notify_finalize  # type: ignore[method-assign]
     if real_bmp_setup is not None:
         from asy_bmp3xx_driver import BMP3xx_Reader
 
@@ -633,16 +628,15 @@ def _scenario_setup_batch_order(device: str) -> None:
         AsyNtpClient.setup = real_ntp_setup  # type: ignore[method-assign]
         SGP40_Reader.setup = real_sgp_setup  # type: ignore[method-assign]
         NotificationCoordinator.setup = real_notify_setup  # type: ignore[method-assign]
-        NotificationCoordinator.finalize = real_notify_finalize  # type: ignore[method-assign]
         if real_bmp_setup is not None:
             from asy_bmp3xx_driver import BMP3xx_Reader
 
             BMP3xx_Reader.setup = real_bmp_setup  # type: ignore[method-assign]
 
-    # notify_finalize runs during synchronous construction; fram is first within the async setup()
-    # batch, because sysfunct's FRAM-backed cfgmgr.pr.setup() needs AsyFramManager initialized or it
-    # degrades instantly. conn/ntp are built earlier but placed after those two, conn before ntp.
-    expected = ["notify_finalize", "fram", "sysfunct", "conn", "ntp", "sgp"]
+    # fram is first within the async setup() batch, because sysfunct's FRAM-backed cfgmgr.pr.setup()
+    # needs AsyFramManager initialized or it degrades instantly. conn/ntp are built earlier but
+    # placed after those two, conn before ntp.
+    expected = ["fram", "sysfunct", "conn", "ntp", "sgp"]
     if _has(module, "bmp3xx"):
         expected.append("bmp")
     expected.append("notify_setup")
@@ -680,9 +674,8 @@ def _wiring_plan_driver_names(device: str) -> "frozenset[str]":
 
 @_register("notify_service_cfgmgr_exists_once_build_system_completes")
 def _scenario_notify_cfgmgr_exists(device: str) -> None:
-    # self.cfgmgr only comes into existence via finalize()'s delayed super().__init__() -
-    # asy_notification_service.py's own contract. If build_system() ever called notification's
-    # setup() before finalize(), this would be the observable symptom (AttributeError instead).
+    # The coordinator takes its signals at construction and builds its combined schema there, so its
+    # cfgmgr exists, and is valid once the setup() batch has run, with no post-construction step.
     module = build(device)
     assert module.notification is not None
     assert module.notification.cfgmgr.valid is True

@@ -62,6 +62,7 @@ declare module "vitest/browser" {
             toggleText: string | null;
             selectValue: string | null;
         }>;
+        probeLintRule: (args: { rule: string; value: number }) => Promise<number>;
     }
 }
 

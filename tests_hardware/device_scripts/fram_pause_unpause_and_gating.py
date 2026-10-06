@@ -169,7 +169,7 @@ async def _main() -> None:
     global wdt
     wdt = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram = AsyFramManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
@@ -179,7 +179,7 @@ async def _main() -> None:
         print("RESULT: FAIL get_chunk() returned None")
         return
 
-    sysfunct = SystemService(_ntp_never_synced, fram=fram, debug=None)
+    sysfunct = SystemService(_ntp_never_synced, storage=fram)
     await _check_gating(fram, chunk)
     await _check_auto_unpause_timers(fram, sysfunct, chunk)
     await _check_exhausted_alarm_pool(fram, sysfunct, chunk)

@@ -5,6 +5,7 @@ global-resource-collision class, and wiring-reference resolution. `build_model()
 import ast
 import importlib.util
 from pathlib import Path
+from typing import TypeVar
 
 import tomllib
 
@@ -75,6 +76,8 @@ _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW
 # [device.wiring] fields and the mandatory-infra consumers whose _WIRING they resolve against,
 # fixed ahead of time (Part L.3) unlike [instance.wiring]'s generic resolution. fram_target has
 # several consumers, and each one's own tag is checked so a missing declaration is caught here.
+_ConstT = TypeVar("_ConstT", int, float, str)
+
 _DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str, str], ...]]" = {
     "led_target": (("asy_wifi_service.py", "AsyConnTime", "conn"),),
     "fram_target": (
@@ -157,8 +160,9 @@ def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -
     raise BuildError("<src>", f"{class_name}.__init__ no longer has a readable int default for {name!r} in {path} - the per-device key and the shipped default have to agree", field=name)
 
 
-def module_int_const(src_dir: Path, filename: str, name: str) -> int:
-    """One module-level `NAME = const(<int>)` of a src/ file, by AST like init_int_default()."""
+def _module_const(src_dir: Path, filename: str, name: str, kind: "type[_ConstT]") -> "_ConstT":
+    # One module-level `NAME = const(<literal>)` (or a bare literal) of a src/ file, by AST: buildgen
+    # never imports src/. `kind` is the literal's type, matched exactly, so a bool never counts as an int.
     path = src_dir / filename
     try:
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -169,14 +173,29 @@ def module_int_const(src_dir: Path, filename: str, name: str) -> int:
             value = node.value
             if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and len(value.args) == 1:
                 value = value.args[0]
-            if isinstance(value, ast.Constant) and isinstance(value.value, int) and not isinstance(value.value, bool):
+            if isinstance(value, ast.Constant) and type(value.value) is kind and isinstance(value.value, kind):
                 return value.value
-    raise BuildError("<src>", f"{path} no longer has a readable int {name} - the build-time check mirroring it has to follow", field=name)
+    raise BuildError("<src>", f"{path} no longer has a readable {kind.__name__} {name} - the build-time check mirroring it has to follow", field=name)
+
+
+def module_int_const(src_dir: Path, filename: str, name: str) -> int:
+    """One module-level `NAME = const(<int>)` of a src/ file, by AST like init_int_default()."""
+    return _module_const(src_dir, filename, name, int)
+
+
+def module_float_const(src_dir: Path, filename: str, name: str) -> float:
+    """module_int_const()'s float sibling: `NAME = const(<float>)`."""
+    return _module_const(src_dir, filename, name, float)
+
+
+def module_str_const(src_dir: Path, filename: str, name: str) -> str:
+    """module_int_const()'s str sibling: `NAME = const("<str>")`."""
+    return _module_const(src_dir, filename, name, str)
 
 
 def webserver_init_default(src_dir: Path, name: str) -> int:
-    """One `WebserverService.__init__` keyword default - see init_int_default()."""
-    return init_int_default(src_dir, "asy_webserver_service.py", "WebserverService", name)
+    """One shipped ServingLimits default: asy_webserver_service.py's `_DEFAULT_<NAME>` constant."""
+    return module_int_const(src_dir, "asy_webserver_service.py", "_DEFAULT_" + name.upper())
 
 
 def device_max_connections(toml_path: Path, src_dir: Path) -> int:
@@ -228,14 +247,21 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
         raise BuildError(model.device, f"[device].backlog is {backlog}, above max_connections + 1 ({max_connections + 1}) - each extra queued arrival holds a pcb only to be refused", field="backlog")
 
 
+def ntp_backoff(dev: "TomlDoc", src_dir: Path) -> "tuple[int, int]":
+    """The effective (retry_s, retry_max_s) pair: [device]'s stated keys, else asy_ntp_client.py's
+    _DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S - what the generated NtpTiming carries."""
+    retry_s = dev["ntp_retry_s"] if "ntp_retry_s" in dev else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S")
+    retry_max_s = dev["ntp_retry_max_s"] if "ntp_retry_max_s" in dev else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S")
+    return retry_s, retry_max_s
+
+
 def _check_ntp_backoff(model: DeviceModel, src_dir: Path) -> None:
     """The unsynced NTP retry backoff (Part C.7.2), checked as the effective pair: AsyNtpClient
     would quietly clamp an interval below its check tick or a cap below the interval."""
     dev = model.doc["device"]
     if "ntp_retry_s" not in dev and "ntp_retry_max_s" not in dev:
         return  # the shipped defaults, pinned coherent by tests_scripts/test_buildgen_validate.py
-    retry_s = dev["ntp_retry_s"] if "ntp_retry_s" in dev else init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s")
-    retry_max_s = dev["ntp_retry_max_s"] if "ntp_retry_max_s" in dev else init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s")
+    retry_s, retry_max_s = ntp_backoff(dev, src_dir)
     if retry_s < _NTP_CHECK_TICK_S:
         raise BuildError(model.device, f"[device].ntp_retry_s is {retry_s} - NTP checks its sync state every {_NTP_CHECK_TICK_S}s, so no shorter retry interval exists", field="ntp_retry_s")
     if retry_max_s < retry_s:

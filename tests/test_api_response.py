@@ -188,7 +188,7 @@ def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
 def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[SensorReaderConfig, str]":
     path = _scratch.path("config_" + name + ".cfg")
     path_prefix = path.rsplit("/", 1)[0] + "/"
-    reader = SensorReaderConfig(Meas(20.0, 50), 3, name, cfg_vals, cfg_path=path_prefix)
+    reader = SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3, cfg_path=path_prefix)
     run(reader.cfgmgr.setup())
     return reader, path
 

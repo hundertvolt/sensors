@@ -258,11 +258,9 @@ features as today's deployed units, not a feature change.
   `asy_wifi_service.py`'s `LEDControl` Protocol) and `asy_notification_service.py`'s
   `NotificationSignal` (plain data holder) + `NotificationCoordinator(SensorReaderConfig)` (generic
   threshold signalling — owns sleep-window/interval/`AutoOn`/global `FlashBri`/`FlashDur`, one
-  combined `ConfigManager`/logger). **Staged registration, deferred construction**: `__init__()`
-  stashes args only; `register()` (sync) accepts `NotificationSignal`s in check-order; `finalize()`
-  (sync, once) builds the combined schema and is the point `self.pr`/`self.cfgmgr` come into
-  existence via a delayed `super().__init__()`. Rejections during the sync
-  `register()`/`finalize()` window are buffered and drained by `monitor_loop()`.
+  combined `ConfigManager`/logger). The notification signals are passed at construction
+  (`signals=`, C.14.3): the constructor validates each in check order, prints a refusal at once and
+  builds the combined schema, and `setup()` persists each refusal once.
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
   trigger time. Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) —
   a deliberate wire-format change; only the legacy site, `legacy/firmware/html_raw/`, keeps the old
@@ -380,83 +378,102 @@ generates the equivalent `sensortask_wozi.py`/boot entry at build time from `dev
 section stays the architectural reference for *why* that order is what it is; the generator is what
 actually emits it now.
 
-`build_system(*, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80) -> None` does pure
+`async build_system(*, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80) -> None` does pure
 construction (every object assigned to a module-level global) plus a `setup()` batch; `main()`
-calls `build_system()` then `start_timers()`/`start_and_check_tasks()`. Neither blocks at import
-time — the real entry point (the generated boot entry, `asyncio.run(main())`) is kept separate so
-importing the generated device module stays safe under tests.
+awaits `build_system()`, then `start_timers()`, `ntp.ntp_force_sync()` and
+`start_and_check_tasks()`. Neither blocks at import time — the real entry point (the generated boot
+entry, `asyncio.run(main())`) is kept separate so importing the generated device module stays safe
+under tests.
 
 **Why order matters**: `AsyFramManager` is a bump-pointer allocator — instantiation order is
 on-chip layout and must stay identical across firmware versions (A.4's determinism rule).
 
-**Construction order, top to bottom** (as of WP1/CLAUDE.md's implicit-FRAM-wiring rule: `fram` moved
-ahead of `conn`/`ntp`/`sysfunct`, and all three — plus `conn`'s own `DNSServer` and the webserver —
-now inherit it too, whenever `[device.wiring].fram_target` is set, which every real device's own
-TOML does today):
+**Construction order, top to bottom** (`buildgen.graph.build_construction_order()`: a producer is
+built before its consumers, and a node inherits the urgency of whatever waits on it, ties falling
+back to mandatory infra first, then TOML declaration order. With `[device.wiring].fram_target` and
+`led_target` both set, which every real device's own TOML does today, `conn` waits on `fram` and
+`neopixel`, so the order is `fram → neopixel → conn → ntp → sysfunct →` sensors, and every module
+after `fram` — `conn`'s own `DNSServer` and the webserver included — logs into it via `log=log_fram`
+under CLAUDE.md's implicit-FRAM-wiring rule):
 
 1. `watchdog = WDT(timeout=8000)` — hardcoded, no injection point.
-2. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 8) sets `timeout=200000`
+2. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 9) sets `timeout=200000`
    (200ms): SCD30 documents up to 150ms clock stretching/day, past rp2's 50ms default — without the
    override that expected stretch surfaces as a spurious `OSError`. `i2c1` (SGP40/BMP3xx) keeps the
    port default.
 3. `spi0 = asy_spi_driver.SPI(...)`.
-4. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own (Topic 11's rule:
-   every module gets optional FRAM logging except the FRAM module itself — logging a FRAM fault into
-   that same FRAM is pointless). Built here, before every mandatory-infra module below, specifically
-   so each can receive a real chunk rather than `fram=None` — `buildgen.graph.build_construction_order()`
-   adds an explicit dependency edge from each of `conn`/`ntp`/`sysfunct` onto `fram` whenever
-   `[device.wiring].fram_target` is set (a device with none keeps the pre-WP1 order: `conn`/`ntp`
-   first, `fram` wherever its own instance ordering puts it).
-5. `conn = AsyConnTime(..., fram=fram, ...)` — **FRAM chunk 1**; `SensorReaderConfig.__init__`
-   (which `AsyConnTime` goes through) builds its own `self.pr` chunk first, then its owned
-   `ConfigManager` — **chunk 2** (WP2/CLAUDE.md's implicit-FRAM-wiring rule: every
-   `SensorReaderConfig`'s own `cfgmgr` inherits the same `fram` its owner was given, its own
+4. `log_ram = LogConfig(None, DEFAULT_LOG.history_length, debug)`, then
+   `fram = AsyFramManager(spi0, 1, max_size=0x2000, log=log_ram)`, then
+   `log_fram = LogConfig(fram, DEFAULT_LOG.history_length, debug)` — `fram` has no chunk of its own
+   (Topic 11's rule: every module gets optional FRAM logging except the FRAM module itself — logging
+   a FRAM fault into that same FRAM is pointless). Every later module takes `log=log_fram`, whose
+   `fram` field makes `make_logger()` draw a `PrintLogHistoryStore` chunk (`print_log.py`). Built
+   here, before every mandatory-infra module below, specifically so each can receive a real chunk
+   rather than RAM-only logging — `buildgen.graph.build_construction_order()` adds an explicit
+   dependency edge from each of `conn`/`ntp`/`sysfunct` onto `fram` whenever
+   `[device.wiring].fram_target` is set (a device with none adds no such edge, and `fram` lands
+   wherever its own dependents and instance ordering put it).
+5. `neopixel = NeopixelDriver(15, log=log_fram)` — **FRAM chunk 1**; no on-flash config, no
+   `cfgmgr`. Ahead of `conn` because `[device.wiring].led_target` hands it to `conn` as `ext_led`
+   (step 6), so it inherits `conn`'s urgency.
+6. `conn = AsyConnTime(WifiConfig(hostname, hotspot_password, conn_fail_to_hotspot,
+   hotspot_time_min), ext_led=neopixel, ..., log=log_fram)` — **chunk 2**;
+   `SensorReaderConfig.__init__` (which `AsyConnTime` goes through) builds its own `self.pr` chunk
+   first, then its owned `ConfigManager` — **chunk 3** (WP2/CLAUDE.md's implicit-FRAM-wiring rule:
+   every `SensorReaderConfig`'s own `cfgmgr` inherits the same `log=` its owner was given, its own
    separate `"CFGMGR_<name>"`-named logger, never folded into the owner's own history). `conn` then
-   owns `DNSServer` internally (`captive_dns.py`), constructed with the same `fram=fram` —
-   **chunk 3**, its own separate `"DNSSRV"`-named logger.
-6. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available,
-   conn.get_dns_server_ip, ..., fram=fram, ...)` — bound methods off `conn` — **chunk 4**, its own
-   `cfgmgr` — **chunk 5**.
-7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **chunk 6**.
-   Not a `SensorReaderConfig` subclass (no measurement data), but embeds its own `ConfigManager`
-   directly the same way (`system_service.py`'s own comment) — **chunk 7**, same "own chunk, then
-   cfgmgr chunk" shape as every `SensorReaderConfig`-based module.
-8. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 8**; no
+   owns `DNSServer` internally (`captive_dns.py`), constructed with the same `log=` —
+   **chunk 4**, its own separate `"DNSSRV"`-named logger.
+7. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available,
+   conn.get_dns_server_ip, NtpTiming(...), ..., log=log_fram)` — bound methods off `conn` —
+   **chunk 5**, its own `cfgmgr` — **chunk 6**.
+8. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, storage=fram,
+   level_setters=_collect_level_setters, ..., log=log_fram)` — **chunk 7**. Not a
+   `SensorReaderConfig` subclass (no measurement data), but embeds its own `ConfigManager`
+   directly the same way (`system_service.py`'s own comment) — **chunk 8**, same "own chunk, then
+   cfgmgr chunk" shape as every `SensorReaderConfig`-based module. `storage=fram` gives it the
+   FRAM pause control; `level_setters` is a provider, not a list — `sysfunct.setup()` calls it once
+   (step 15), after every module exists.
+9. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., log=log_fram)` — **chunk 9**; no
    config schema (params live on-sensor, so no `cfgmgr`/chunk of its own). Constructed before
-   `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a direct reference to this already-built
-   object as its `temperature_source`/`humidity_source`, so the producer must exist first — a pure
-   Python name-resolution requirement, not a FRAM one (chunk order is random-access and doesn't
-   itself care), but the two facts are deliberately kept in the same relative order here for
-   readability. `wozi` is never physically flashed (CLAUDE.md), so reordering carries no
+   `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a direct `ValueRef(scd30, ...)` reference
+   to this already-built object as its `temperature`/`humidity`, so the producer must exist
+   first — a pure Python name-resolution requirement, not a FRAM one (chunk order is random-access
+   and doesn't itself care), but the two facts are deliberately kept in the same relative order
+   here for readability. `wozi` is never physically flashed (CLAUDE.md), so reordering carries no
    deployed-data-loss risk.
-9. `sgp40 = SGP40_Reader(i2c1, temperature_source=scd30, temperature_field="Temp",
-   humidity_source=scd30, humidity_field="Hum", fram_storage=fram,
-   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunk 9** (error log), then its own `cfgmgr` —
-   **chunk 10**, then the VOC backup (**timestamped chunk**, not part of this numbering).
-   `scd30` is passed directly as both value sources (C.14.3's generalized per-value
-   measurement wiring) — no wrapping callback; the two fields resolve independently, so a future
-   device could compensate temperature and humidity from two different sensors.
-10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 11**, own `cfgmgr` — **chunk 12**.
-    No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres` stays a static
-    config value even though `wozi` physically has a live BMP388 — A.4's own note), so
-    unconstrained by ordering-hazard #1. (`dev`-only `isl29125` follows the identical
+10. `sgp40 = SGP40_Reader(i2c1, temperature=ValueRef(scd30, 'Temp'), humidity=ValueRef(scd30,
+    'Hum'), backup=SgpBackup(fram, ntp.ntp_issynced), ..., log=log_fram)` — **chunk 10** (error
+    log), then its own `cfgmgr` — **chunk 11**, then the VOC backup its `__init__` draws from
+    `backup.store` (**timestamped chunk**, not part of this numbering).
+    `scd30` is referenced directly for both values (C.14.3's generalized per-value
+    measurement wiring) — a `ValueRef(source, field)`, no wrapping callback; the two resolve
+    independently, so a future device could compensate temperature and humidity from two different
+    sensors.
+11. `bmp3xx = BMP3xx_Reader(i2c1, address=0x77, ..., log=log_fram)` — **chunk 12**, own `cfgmgr`
+    — **chunk 13**. No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres`
+    stays a static config value even though `wozi` physically has a live BMP388 — A.4's own note),
+    so unconstrained by ordering-hazard #1. (`dev`-only `isl29125` follows the identical
     "own chunk, then cfgmgr chunk" shape, positioned here too when present.)
-11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 13**; no on-flash config, no `cfgmgr`.
-12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`
-    — **chunk 14**, own `cfgmgr` — **chunk 15**; staged `register()` ×3 (each a direct
-    `(source, field)` reference — `scd30`/`"CO2"`, `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then
-    `finalize()`.
-13. `conn.set_ext_led(neopixel)`.
+12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime,
+    signals=(NotificationSignal('WarnCO2', ValueRef(scd30, 'CO2'), _FIELD_WARN_CO2, (1, 0, 0)), ...),
+    ..., log=log_fram)` — **chunk 14**, own `cfgmgr` — **chunk 15**. Its three signals (each a
+    `ValueRef` — `scd30`/`"CO2"`, `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) are constructor
+    arguments, checked and appended to its schema before its own `cfgmgr` is built.
+13. Nothing completes a module after construction (Part C.4.3): `conn`'s LED, `sysfunct`'s
+    level-setter provider and `notification`'s signals are all constructor arguments above.
 13b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
-    `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — `dev.toml` wires
+    `asy_uart_link_driver.UartLinkExerciser(uart0, 'initiator', name_ext='init', log=log_fram)` and
+    its `'responder'`/`name_ext='resp'` twin on `uart1`, each wrapping one `UART_Comm(...)` across
+    the permanent crossover jumper (the two `asy_uart_driver.UART(...)` buses, `[bus.uart0]`/
+    `[bus.uart1]`, are built with the other buses, right after `spi0`) — `dev.toml` wires
     `fram_target = "fram"` on both instances (WP3 - was wrongly, deliberately excluded; `UART_Comm`
-    already supported `fram=`/`logger=` at the class level, only the buildgen wiring was missing),
+    takes the same `log=`/`logger=` as every other module, only the buildgen wiring was missing),
     so `uart_link_init` and `uart_link_resp` each draw their own chunk here, right after
     `notification`'s own `cfgmgr` chunk (step 12) and before the webserver's (step 14) — never
     shared between the two instances, so a fault on one end stays attributable to it. Neither is a
     `SensorReaderConfig`, so neither gets a `cfgmgr` chunk of its own — the same "no absolute
-    number, `dev`-only, positioned here when present" treatment step 10 already gives `isl29125`.
+    number, `dev`-only, positioned here when present" treatment step 11 already gives `isl29125`.
     Placed here, after every FRAM-allocating module and immediately before the webserver, because
     the webserver's own `error_sources=` list includes them. `wozi` has no such step, and no such
     chunks. The variant
@@ -468,18 +485,22 @@ TOML does today):
     module (not the generated file itself) because only application-level code knows what to ask a
     peer — the protocol itself carries no application semantics (Part J.1). See Part J for the
     wrapper module's exact shape and generated variable names.
-14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
-    is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port, fram=fram)` —
-    **chunk 16** (as of WP1 — previously deliberately RAM-only; now folds into the same
-    implicit-if-FRAM-present rule as every other mandatory-infra module); no on-flash config, no
-    `cfgmgr`. `static_mount="/html"` registers the static route pair last, so an exact-match API
-    route always wins.
-15. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
-16. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
-    notification`. One hard constraint: `notification.setup()` needs `finalize()` (step 12)
-    already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
-    local config); neither is `webserver.setup()` — its own `self.pr.setup()` runs lazily, the
-    first time its `_run()` task actually starts (see the boot-latency note below).
+14. `app = Microdot()`, then `webserver = WebserverService(app, routes=RouteSources(sensors=(...),
+    ..., error_sources=_collect_error_sources()), serving=ServingLimits(..., host=web_host,
+    port=web_port), static=StaticSite(mount="/html", index_file="index.html",
+    is_hotspot_active=conn.is_hotspot_active), log=log_fram)` — **chunk 16** (as of WP1, under the
+    same implicit-if-FRAM-present rule as every other mandatory-infra module); no on-flash config,
+    no `cfgmgr`. `static=` registers the static route pair last, so an exact-match API route always
+    wins.
+15. **`await x.setup()` batch**: `fram → sysfunct → conn → ntp → sgp40 → bmp3xx →
+    notification` (`dev` adds `isl29125` after `bmp3xx` and `uart_link_init → uart_link_resp`
+    after `notification`). `fram.setup()` comes first because `sysfunct.setup()` reaches its
+    `cfgmgr`'s FRAM-backed logger, which needs `AsyFramManager` initialized (`buildgen/codegen.py`'s
+    own comment). One hard constraint: `sysfunct.setup()` resolves its `level_setters` provider,
+    which reads every module including `webserver` (step 14), satisfied by batching at the end.
+    `scd30.setup()` isn't in this batch (no local config); neither is `webserver.setup()` — its own
+    `self.pr.setup()` runs lazily, the first time its `_run()` task actually starts (see the
+    boot-latency note below).
     **`sysfunct.feed_watchdog()` follows every single call in this batch** (WP6) — a one-time,
     boot-only, non-looping feed site, which is what makes it safe regardless of how many modules a
     device wires: it cannot degenerate into something that keeps feeding a genuinely hung system
@@ -487,11 +508,11 @@ TOML does today):
     `_force_watchdog_starve` latches (Part G.2), so this needs no per-device special-casing either.
 
 **Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 16
-`PrintLogHistoryStore` chunks plus 1 timestamped chunk): AsyConnTime → its own `CFGMGR_WIFI` →
-DNSServer → AsyNtpClient → its own `CFGMGR_NTP` → SystemService → its own `CFGMGR_SYSTEM` → SCD30
-(no `cfgmgr`) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup (timestamped) → BMP3xx
-→ its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own `CFGMGR_ISL29125`) → Neopixel (no
-`cfgmgr`) → NotificationCoordinator → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
+`PrintLogHistoryStore` chunks plus 1 timestamped chunk): Neopixel (no `cfgmgr`) → AsyConnTime →
+its own `CFGMGR_WIFI` → DNSServer → AsyNtpClient → its own `CFGMGR_NTP` → SystemService → its own
+`CFGMGR_SYSTEM` → SCD30 (no `cfgmgr`) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
+(timestamped) → BMP3xx → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own
+`CFGMGR_ISL29125`) → NotificationCoordinator → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
 `UART_resp`, WP3 — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
 Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
 `cfgmgr` (WP2), uses it; must stay in this relative order. `src/` has no earlier on-chip layout to
@@ -504,8 +525,8 @@ RAM-only the same way, unaffected by whether the device's `fram_target` is set a
 work)**: `conn`/`ntp`/`sysfunct`/`webserver`'s FRAM-backed loggers only draw their chunk at
 construction time (bump-pointer, instant); each one's *real* first chunk read/write happens later,
 inside its own `self.pr.setup()` call, sharing one process-wide `asyncio.Lock` (`FRAM_SPI`'s own,
-`asy_fram_driver.py`) with every other FRAM-wired module. `sysfunct → fram → conn → ntp → ...`'s own
-explicit setup batch (step 16) runs before any task starts, so those calls never contend with
+`asy_fram_driver.py`) with every other FRAM-wired module. `fram → sysfunct → conn → ntp → ...`'s own
+explicit setup batch (step 15) runs before any task starts, so those calls never contend with
 anything, including every `SensorReaderConfig`-based module's own `cfgmgr.setup()` (WP2) — it rides
 the same pre-task-start batch as its owner, not the contended window below. `webserver`'s own
 `self.pr.setup()` is different: it runs lazily inside `_run()`, `webserver`'s own task — and
@@ -569,15 +590,17 @@ C.14): generic, not hand-enumerated — every constructed module's own `get_erro
 through a uniform method, never by name" shape `_collect_task_starters()`/
 `_collect_timer_starters()` already used. `get_error_sources()` returns `[self]` plus any nested
 error-logging sub-object a module owns (a `SensorReaderConfig`'s own `.cfgmgr`, `AsyConnTime`'s own
-`.dns_server`); `get_loggers()` is the same shape for `PrintLogHistory` instances, feeding
-`SystemService.set_level_setters()`/`_apply_level()`'s registry (each wrapped in its own
-`try/except Exception`; calling `set_level()` at any time is safe — no interrupt handler touches
+`.dns_server`); `get_loggers()` is the same shape for `PrintLogHistory` instances, feeding the
+`level_setters` provider `SystemService` resolves in `setup()` and `_apply_level()`'s registry
+(each wrapped in its own `try/except Exception`; calling `set_level()` at any time is safe — no interrupt handler touches
 logging, `self.level` is a single atomic-store `int`).
 
 **Dependency graph**: `ntp` holds `conn`'s bound methods; `notification` holds direct references
-to `scd30`/`sgp40` (its registered `NotificationSignal`s' `source`) plus
-`neopixel.request_signal`/`ntp.cettime`; `conn` holds `neopixel`; `sgp40` holds `ntp.ntp_issynced`
-and direct references to `scd30` (its `temperature_source`/`humidity_source`, Part C.14.3).
+to `scd30`/`sgp40` (each `NotificationSignal`'s `value`, a `ValueRef`) plus
+`neopixel.request_signal`/`ntp.cettime`; `conn` holds `neopixel` (`ext_led`); `sysfunct` holds
+`fram`'s pause control (`storage=`) and the `_collect_level_setters` provider; `sgp40` holds `fram`
+and `ntp.ntp_issynced` (its `SgpBackup`) and direct references to `scd30` (its
+`temperature`/`humidity` `ValueRef`s, Part C.14.3).
 Since C.14.3's per-value measurement wiring resolves any producer purely by attribute name
 (`getattr(data, field_name)`), `asy_sgp40_driver.py` needs **no** static import of
 `asy_scd30_driver` at all — a real change from the mechanism's earlier, whole-object `comp_source`
@@ -661,7 +684,7 @@ can each contribute part of the tree — freezefs's archiver already walks neste
 static route already matches slashes, so a plain recursive copy is all the script needs. Every
 generated
 `sensortask_<device>.py` does a module-level `import frozen_html`, mounting `/html` as a side
-effect; `WebserverService(..., static_mount="/html")` registers the static route pair.
+effect; `WebserverService(..., static=StaticSite(mount="/html", ...))` registers the static route pair.
 
 There is no placeholder site: `scripts/test.sh`, `npm test`'s `pretest` hook and the twin runners
 all build the real website (`scripts/build_website.sh`, Part H) into `frozen_modules/frozen_html.py`
@@ -977,7 +1000,8 @@ for `dev`; not yet re-confirmed for `wozi` (never physically flashed).
 
 Every staged `.py` file is passed through `scripts/_strip_type_checking.py`'s
 `strip_type_checking_blocks()` — an AST transform dropping each bare `if TYPE_CHECKING:` block
-(with no `elif`/`else`) plus its `try/except ImportError` header, then `ast.unparse()`. `mpy-cross`
+(an `elif`/`else` branch, the runtime one, stays in its place) plus its `try/except ImportError`
+header, then `ast.unparse()`. `mpy-cross`
 doesn't dead-code-eliminate `if TYPE_CHECKING:` the way it does `if micropython.const(0):`, so
 guarded imports would otherwise survive into the `.mpy` bytecode as dead weight (~3.6KB measured).
 Only the *bare* form is matched; a handler doing real work outside `TYPE_CHECKING` keeps its guard.
@@ -1544,14 +1568,13 @@ One file per sensor. Within it:
           self.i2c_device = i2c_device
   ```
   Copy verbatim (swap `I2CDevice`/`SPIDevice`).
-- `<Sensor>_I2C`/`_SPI` (layer 2), `<Sensor>_Reader` (layer 3). `*_Reader` constructor order (match
-  exactly): bus handle, sensor-specific addressing/pins/callbacks/cross-instance wiring references
-  (`_WIRING`-declared parameters, C.14.2), `trigger_sec: int = <n>` (only if configurable — SGP40
-  isn't, C.11 item 6), `max_module_error: int = 5`, `name_ext: str = ""` (C.14.1), then (if
-  `SensorReaderConfig`) `cfg_path: str = ""`, FRAM param(s), `history_length: int = 10`,
-  `debug: int | None = None`. **`max_module_error` is a generic failure-streak threshold, not
-  I2C-specific** — `asy_wifi_service.py`/`asy_ntp_client.py` (no I2C) use it too via
-  `_error_check()` (C.7).
+- `<Sensor>_I2C`/`_SPI` (layer 2), `<Sensor>_Reader` (layer 3). A module constructor takes its own
+  parameters (bus handle, addressing/pins, cross-instance wiring references (`_WIRING`-declared
+  parameters, C.14.2), `trigger_sec` where configurable — SGP40's is not, C.11 item 6), then the
+  fixed tail `max_module_error=5`, `name_ext=""` (C.14.1), `cfg_path=""` (those it has) and one
+  `log: LogConfig = DEFAULT_LOG` (C.7) (agent, 2026-08-07; checked by a test). **`max_module_error`
+  is a generic failure-streak threshold, not I2C-specific** — `asy_wifi_service.py` uses it too
+  through `_error_check()` (C.7).
 
 ## C.3 Layer 2: `*_I2C`/`*_SPI` protocol class
 
@@ -1709,12 +1732,9 @@ chip snapshot and are written through `compare_before_write()` (G.2), so only a 
 written, `AmbPres`/`ForceCalRef` always (A.4's `AmbPres` note); no `ConfigManager` exists. A field
 with a live chip readback is read through `get_dict_cfg()`'s `callback`.
 
-**A `SensorReaderConfig` subclass whose field set isn't fixed at class-definition time needs a
-different construction shape.** `NotificationCoordinator` defers `super().__init__()` until an
-explicit `finalize()`, after `register()` calls assemble a combined schema at runtime — a
-legitimate variant; everything else in C.4-C.5 applies once `finalize()` has run. **Every method
-reachable before `finalize()` must guard against it explicitly** (a private `self._finalized: bool`
-flag) — not just the two staging methods.
+Every module's schema is fixed at construction: `NotificationCoordinator` takes its signals as
+constructor arguments, so no module completes itself after construction (no
+`register()`/`finalize()`).
 
 ### C.4.4 `get_dict_cfg()`'s `callback` parameter
 
@@ -1845,12 +1865,11 @@ if a new driver adds a list/nested-tuple field.
 ## C.7 Error handling & logging contract (`print_log.py`, `base_classes.py`)
 
 `self.pr` is `PrintLogHistory` (in-memory) or `PrintLogHistoryStore` (FRAM-backed), chosen
-automatically from the `fram` constructor argument. **Known pitfall**: a FRAM-backed history
-survives everything except an explicit reset, including a reflash — before treating a persisted
-`errcount`/history entry as evidence from *this* run, clear it first (`PUT /status
-{"ResetErrors": true}`). The same fram-vs-memory branch is available standalone as
-`make_logger(fram, history_length, debug, name)` for a non-`SensorReader` class
-(`system_service.py`'s `SystemService`).
+from the module's `log: LogConfig` (`fram`, `history_length`, `debug`); `make_logger(log, name)` is
+the same branch for a module that is not a `SensorReader` (`system_service.py`'s `SystemService`).
+**Known pitfall**: a FRAM-backed history survives everything except an explicit reset, including a
+reflash — before treating a persisted `errcount`/history entry as evidence from *this* run, clear
+it first (`PUT /status {"ResetErrors": true}`).
 
 **`reset()` writes unconditionally; `_store_err()` does not.** The asymmetry is deliberate.
 `_store_err()` refuses to touch FRAM before `setup()` has run — a half-filled ring written over a
@@ -2004,8 +2023,9 @@ restarted it about once a minute and rebooted the device about every four minute
 2026-09-24). The legacy client never gave up.
 
 - **NTP** (`asy_ntp_client.py`) keeps no failure streak (`max_module_error` is gone from its
-  constructor). While unsynced it retries on a backoff: `retry_s` (default 10 s) doubling per failed
-  attempt up to `retry_max_s` (default 600 s), both rounded up to the 10 s check tick; a successful
+  constructor). While unsynced it retries on a backoff: its `timing: NtpTiming`'s `retry_s`
+  (default `_DEFAULT_RETRY_S`, 10 s) doubling per failed attempt up to its `retry_max_s` (default
+  `_DEFAULT_RETRY_MAX_S`, 600 s), both rounded up to the 10 s check tick; a successful
   sync or a forced resync (`ntp_force_sync()`, e.g. a PUT of `NTP_Host`) resets it, and an attempt
   skipped for "network not up" leaves it alone. Per device through the optional `[device]` keys
   `ntp_retry_s`/`ntp_retry_max_s`, checked by buildgen as the effective pair (at least the tick;
@@ -2426,13 +2446,13 @@ never `ENODEV` (`SoftI2C`-specific).
 ## C.13 Readiness-gate scheme (sync `__init__` / async `setup()`)
 
 Project-wide pattern for a class whose construction needs an `await` but starts inside sync
-`__init__` (proven first by `FRAM_SPI`/`SPIDevice`; standard for `ConfigManager`,
-`NotificationCoordinator`'s staged variant). `__init__` only stashes args and sets a readiness gate
-to "not ready"; `async def setup()` does the deferred work and flips it. **Gate name/polarity is
-standardized**: `self.initialized: bool = False → True` — except where the meaning is genuinely
-different (`ConfigManager.valid` means "setup ran *and* produced trustworthy data," a real
-distinction). A `Type | None`-typed attribute is the complementary mechanism for a sub-resource
-that can independently fail *during* setup (`PrintLogHistoryStore.fram`) — both can coexist.
+`__init__` (proven first by `FRAM_SPI`/`SPIDevice`; standard for `ConfigManager`). `__init__` only
+stashes args and sets a readiness gate to "not ready"; `async def setup()` does the deferred work
+and flips it. **Gate name/polarity is standardized**: `self.initialized: bool = False → True` —
+except where the meaning is genuinely different (`ConfigManager.valid` means "setup ran *and*
+produced trustworthy data," a real distinction). A `Type | None`-typed attribute is the
+complementary mechanism for a sub-resource that can independently fail *during* setup
+(`PrintLogHistoryStore.fram`) — both can coexist.
 **The response to "called before `setup()` ran" must match the class's already-declared
 raise/never-raise contract** — verify per class, don't assume from the last example read (a
 "never raises" class returns its sentinel and logs, even `FRAM_SPI`; `SPIDevice.__aenter__`'s
@@ -2503,7 +2523,7 @@ that session's PR description) — purely additive, no existing driver's constru
 changed to make this possible:
 
 ```
-# @wiring <toml_field> <ProducerClass> <target> <required|optional> <kwarg|attr|setter>
+# @wiring <toml_field> <ProducerClass> <target> <required|optional> <kwarg|attr>
 ```
 
 **A comment, never a real Python value** — placed at module level beside the schema it describes.
@@ -2516,8 +2536,10 @@ five makes the tag fail the build loud rather than parse as "no tag here" (`tag_
 `target`/`mode` say how the resolved producer instance is actually handed to the consumer:
 
 - `mode="kwarg"`: the instance itself is passed as a constructor kwarg named `target` — e.g.
-  `asy_sgp40_driver.py`'s `# @wiring fram_target AsyFramManager fram_storage optional kwarg`, the
-  same shape on every other `fram_target`-wirable driver. (SGP40's own
+  `asy_wifi_service.py`'s `# @wiring led_target NeopixelDriver ext_led optional kwarg`, the WiFi
+  status LED passed at construction. `fram_target` takes the same mode with target `log` on every
+  FRAM-wirable module (`# @wiring fram_target AsyFramManager log optional kwarg`): the generator
+  passes the `LogConfig` it builds over that FRAM instance, one per FRAM store (L.4). (SGP40's own
   compensation-source dependency used to be a second wiring entry here, `comp_source` — see the
   generalized per-value mechanism below, which replaced it.)
 - `mode="attr"`: the instance's `target` attribute/bound method is passed instead of the instance
@@ -2527,10 +2549,6 @@ five makes the tag fail the build loud rather than parse as "no tag here" (`tag_
   SPECIFICATION.md Part L.2's "no getters, no callback functions in generated code" — the callback shape
   survives only as the one hand-written driver's own constructor parameter, never as
   generator-authored wiring.
-- `mode="setter"`: `<consumer>.<target>(<resolved producer>)` is called once, after both already
-  exist, instead of at construction time — `asy_wifi_service.py`'s
-  `# @wiring led_target NeopixelDriver set_ext_led optional setter`, matching `set_ext_led()`'s own
-  already-existing post-construction-call shape exactly.
 
 This reuses the existing comment-tag family (`@requires`, and the planned `@web`) rather than
 inventing new machinery; there is no separate "provides" registry — a constructed instance either is the
@@ -2542,8 +2560,8 @@ against `instance_name()`/`_NAME` — see C.14.1's own naming-space distinction)
 is ever an `[[instance]]` entry itself.
 
 **The constructor parameter itself is a direct reference to the producer's own instance** — passed
-positionally/by keyword with the same name as `_WIRING`'s field (e.g. `fram_target`'s
-`fram_storage` kwarg) — **not a getter or callback function.** The consumer reads the producer's
+positionally/by keyword with the same name as `_WIRING`'s field (e.g. `led_target`'s `ext_led`
+kwarg) — **not a getter or callback function.** The consumer reads the producer's
 own already-concurrency-safe `get_data()` (`SensorReader`'s existing `_datalock`-guarded namedtuple
 — C.4.2 — is itself the "locked state" value holder here; no new per-field `LockedValue` was
 introduced) directly, inline, wherever the value is needed. This eliminates a real category of
@@ -2552,9 +2570,9 @@ hand-written wrapper functions that used to exist purely to close over a produce
 gone, replaced first by a `_WIRING`-declared `comp_source: SCD30_Reader` parameter, and — once
 SPECIFICATION.md Part L.6.3 generalized per-value measurement wiring to every
 module consuming one scalar out of another's `get_data()` result — by the independent
-`temperature_source`/`temperature_field`/`humidity_source`/`humidity_field` parameters described in
-C.14.3 below, resolved via `getattr(data, field_name)` inside `_read_sgp()` rather than a
-whole-object reference fixed to one producer class.
+`temperature`/`humidity` value references (`ValueRef(source, field)`) described in C.14.3 below,
+resolved via `getattr(data, ref.field)` inside `_read_sgp()` rather than a whole-object reference
+fixed to one producer class.
 
 **A `_WIRING` reference is a narrow exception (agent, 2026-09-10, `e2bcf6f`) to "no `src/` driver
 module imports another by name"** (A.7's dependency-graph note): e.g. `asy_notification_service.py`
@@ -2571,14 +2589,14 @@ source's concrete type at all.
 
 **Ordering hazard #1 (object existence)**: since the consumer's constructor call references the
 producer's already-built Python object, the producer must be constructed first. The generated
-`sensortask_wozi.py` constructs `scd30` before `sgp40` for exactly this reason (A.7's construction order) —
-a real, deliberate reordering of wozi's FRAM chunk allocation order, safe only because wozi is never
-physically flashed (CLAUDE.md). `buildgen/graph.py` (Session 3) topologically sorts a device's
-whole instance list by `_WIRING` dependency (kwarg/attr modes only — a "setter"-mode reference is a
-post-construction call, so it never gates construction order) plus two fixed mandatory-infra edges
-and one conditional one (`sysfunct` needs its own `device.wiring.fram_target` instance, if set),
-and rejects a cycle as a build-time error; `_WIRING`'s shape (an explicit, introspectable 5-tuple)
-is what makes that sort possible.
+`sensortask_wozi.py` constructs `scd30` before `sgp40` for exactly this reason (A.7's construction
+order) — a real, deliberate reordering of wozi's FRAM chunk allocation order, safe only because wozi
+is never physically flashed (CLAUDE.md). `buildgen/graph.py` (Session 3) topologically sorts a
+device's whole instance list by `_WIRING` dependency plus the mandatory-infra edges (`ntp` after
+`conn`, `sysfunct` after `ntp`, all three after the device's `fram_target` instance if set): every
+`sgp40` and every `notification` instance depends on `ntp`; with `led_target` set, the order is fram
+→ neopixel → conn → ntp → sysfunct → sensors. It rejects a cycle as a build-time error; `_WIRING`'s
+shape (an explicit, introspectable 5-tuple) is what makes that sort possible.
 
 **Ordering hazard #2 (live data availability)**: independent async tasks mean a consumer's first
 read can happen before the producer's first real measurement completes. Every producer's measurement
@@ -2616,20 +2634,20 @@ This replaces `_collect_error_sources()`/`_collect_level_setters()`'s old hand-e
 already know which module owned what) with a plain loop calling `get_error_sources()`/
 `get_loggers()` uniformly on each top-level module — the same "every module discovered through a
 uniform method, never hand-copied" shape `_collect_task_starters()`/`_collect_timer_starters()`
-already used for task/timer starters. `NotificationCoordinator`'s own registered `NotificationSignal`
-fan-in (`source`/`field` direct references) is a related but separate mechanism from `_WIRING`
-(C.14.2): those are resolved at `register()` call time, already after every producer exists, so
-they need no `_WIRING` declaration of their own.
+already used for task/timer starters. `NotificationCoordinator`'s signals (`source`/`field` direct
+references) are constructor arguments, resolved after every producer exists, so they need no
+`_WIRING` declaration (C.14.2).
 
 **Generalized per-value measurement wiring (SPECIFICATION.md Part L.6.3,
 2026-09-10)**: `NotificationSignal`'s `(source, field)` shape — resolve one named attribute off
 another module's `get_data()` result, matched structurally rather than by a fixed producer class —
 isn't specific to notification signals. `asy_sgp40_driver.py`'s `SGP40_Reader.__init__` uses the
-same shape twice, independently, for its own compensation inputs: `temperature_source`/
-`temperature_field` and `humidity_source`/`humidity_field` (replacing the earlier `_WIRING`-declared,
-whole-object `comp_source: SCD30_Reader` parameter — see C.14.2's own note). `_read_sgp()` resolves
-each the same way `NotificationCoordinator._check_one()` already does:
-`getattr(await source.get_data(), field_name, None)`. The two fields may name the same producer
+same shape twice, independently, for its own compensation inputs, passed as value references
+(`temperature`, `humidity`: each a `ValueRef(source, field)`, `base_classes.py`), with its backup
+settings one group (`backup: SgpBackup(store, ntp_synced)`) — replacing the earlier
+`_WIRING`-declared, whole-object `comp_source: SCD30_Reader` parameter (C.14.2's own note).
+`_read_sgp()` resolves each the same way `NotificationCoordinator._check_one()` already does:
+`getattr(await ref.source.get_data(), ref.field, None)`. The two fields may name the same producer
 instance (the common case — every real `devices/*.toml` compensates both off one `SCD30_Reader`) or
 two different ones, entirely independently. `buildgen/`'s own `_VALUE_WIRING` driver declaration
 (parallel to `_WIRING`, parsed by `buildgen/value_wiring.py`) says which constructor kwargs a
@@ -2744,7 +2762,12 @@ convention), even where one member's shape looks locally unnecessary (`crc_check
 dispatch table can treat all four identically). Prefer forwarding through a shared base and
 relying on its invariants over hardcoding a special case. Check how comparable code elsewhere
 already expresses the same thing and match it — flag a questionable existing convention rather than
-silently diverging. An ongoing, project-wide check.
+silently diverging. An ongoing, project-wide check. Parameters that travel together are one config
+object (a namedtuple built by generated code, G.2) rather than a long list; ruff's ceilings
+(`max-args` 8 and the others) sit at the measured maximum and only go down, a signature mirroring an
+external API exempted per file, never by raising a limit (owner, 2026-09-26: "8 is fine"); checked
+by `tests_scripts/test_lint_ceilings.py`, and ESLint's four ceilings by
+`tests_js/lint-ceilings.test.js` (H.8).
 
 ## D.11 Readability / conciseness
 
@@ -4309,7 +4332,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Task-scoped mutable state shared across coroutines** — `base_classes.py`'s `Lockable`/
   `LockedCounter`/`LockedFlag`/`LockedValue`, never a bare module-level variable plus an ad hoc
   lock.
-- **Per-module logging/error-history** — `print_log.py`'s `make_logger()`/`PrintLog`/
+- **Per-module logging/error-history** — `print_log.py`'s `make_logger()` with one `LogConfig`
+  (`DEFAULT_LOG` for a module with no store of its own; one per FRAM store), `PrintLog`/
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter.
 - **The error-log envelope type** — `print_log.py`'s `ErrorLog` (`dict[str, ErrEntry]`, where
   `ErrEntry` is a `TypedDict` of `ErrCount: int`/`ErrNum: list[int]`/`ErrType: list[str]`), declared
@@ -4389,6 +4413,12 @@ backend-only or frontend-only validation/coercion policy change in this project.
   not the method itself.
 - **Compare-before-write** — `config_manager.py`'s `compare_before_write()`: every setter that
   writes persistent memory.
+- **Config objects** — parameters that travel together are one namedtuple built by generated code
+  (`LogConfig`, `ServingLimits`/`StaticSite`/`RouteSources`, `WifiConfig`, `NtpTiming`,
+  `ResponderCallbacks`, `ValueRef`, `SgpBackup`). One shape (agent, 2026-09-29): a runtime
+  `collections.namedtuple`, typed through a same-named `typing.NamedTuple` class under
+  `TYPE_CHECKING`, its defaults module `const()`s, every field passed (MicroPython's `namedtuple`
+  has no defaults and no `_replace`); host code uses a frozen dataclass (D.10).
 
 ## G.3 Re-validating the existing project against this Part
 
@@ -4789,12 +4819,12 @@ Measured on the dev bench, 2026-09-23. **Two timeouts bound how long any connect
 open, and every host-side instrument that holds connections stays inside both** — one that does not
 fails silently, not loudly.
 
-- A connection that is admitted and then says nothing is closed after `per_call_timeout_s` (5.0),
-  answering `HTTP/1.0 400 N/A`, not a bare FIN, and logs `wrnno` 49 (`HTTP_CALL_TIMEOUT`).
-  Measured: **5.12 / 5.14 / 5.16 s**.
-- A connection that keeps dripping bytes survives the per-call timeout but not the `outer_cap_s`
-  (15.0) around the whole request, and logs `wrnno` 50 (`HTTP_REQUEST_CAP`). Measured with a header
-  line every 2 s: **15.08 / 15.13 s**.
+- A connection that is admitted and then says nothing is closed after `ServingLimits`'
+  `per_call_timeout_s` (5.0), answering `HTTP/1.0 400 N/A`, not a bare FIN, and logs `wrnno` 49
+  (`HTTP_CALL_TIMEOUT`). Measured: **5.12 / 5.14 / 5.16 s**.
+- A connection that keeps dripping bytes survives the per-call timeout but not `ServingLimits`'
+  `outer_cap_s` (15.0) around the whole request, and logs `wrnno` 50 (`HTTP_REQUEST_CAP`). Measured
+  with a header line every 2 s: **15.08 / 15.13 s**.
   **No connection can be held longer than ~15 s on this firmware**, whatever the client does.
 - A slot is released in `_serve()`'s `finally`, after the writer close has been awaited, so it
   outlives the client's own close — and released even when that close's own warning raises
@@ -4876,9 +4906,12 @@ installed ESLint, with pure style-preference bans (`no-bitwise`, `no-plusplus`, 
 `js/poll-manager.js`'s "Poll failed:" is the poll loop's only failure diagnostic and is asserted
 by a test, as is a live-backend test's skip warning; `scripts/*.mjs` (a CLI, where console is the
 output) is exempt in its own block.
-Complexity ceilings (`complexity` 41, `max-depth` 4, `max-nested-callbacks` 4) sit at the measured
-maximum — `js/mock-server.js`'s route dispatcher at 41, `validateDefinitions` at 37 — so they gate
-regression, mirror `pyproject.toml`'s mccabe/pylint policy, and only ever ratchet down.
+Complexity ceilings (`complexity` 41, `max-depth` 4, `max-nested-callbacks` 4,
+`max-classes-per-file` 1) sit at the measured maximum — `js/mock-server.js`'s route dispatcher at
+41, `validateDefinitions` at 38 — so they gate regression, mirror `pyproject.toml`'s mccabe/pylint
+policy, and only ever ratchet down, pinned by `tests_js/lint-ceilings.test.js` (one finding one
+below each, none at it, through ESLint's Node API in a Commands API module,
+`tests_js/_lint_command.js`).
 `html/index.html`'s inline `<script type="module">` stays inline and is linted in place through
 `eslint-plugin-html`: `scripts/build_website.sh` relies on it importing the literal
 `../js/app.js`, which resolves both under `npm run preview` and in a device build.
@@ -5049,19 +5082,20 @@ Every GET route whose response grows with device configuration — `/status`, `/
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
 `_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` with an exact Content-Length. The
 writer concatenates adjacent JSON text fragments into pieces of at most `chunk_bytes` — one
-`WebserverService` constructor parameter, default **256**, that also sets the static-file read size
-below, so the two bounds cannot drift apart — without ever splitting a fragment, and `add_value()` writes a value the way
-`json.dumps()` would — dicts, lists and tuples walked, only keys and scalars dumped, with
-`json.dumps()`'s own `", "`/`": "` separators and its non-string-key rule (`True` → `"true"`). No
-value, however nested, is ever built as one string, so **the largest allocation on the path is one
-piece**. Its pending-fragment list is collapsed every `_MAX_PENDING_FRAGMENTS` (16), because a piece
-made of tiny fragments (`", "`, single digits) would otherwise need a list array as large as the
-piece. The bytes are **identical** to what the routes emitted before (the top level keeps its own
-`,`/`:`), pinned against MicroPython's own `json.dumps()` by `tests/test_asy_webserver_service.py`
-(route by route against the pre-fix firmware: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q.11).
-`/status` flushes at each top-level section, so each section starts a piece. **Why byte-budget
-batching, not one piece per fragment**: every piece is one write through a per-write
-`asyncio.wait_for()`, measured at +53% throughput cost when pushed to one per character (F.1).
+`ServingLimits` field, default **256** (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read
+size below, so the two bounds cannot drift apart — without ever splitting a fragment, and
+`add_value()` writes a value the way `json.dumps()` would — dicts, lists and tuples walked, only
+keys and scalars dumped, with `json.dumps()`'s own `", "`/`": "` separators and its non-string-key
+rule (`True` → `"true"`). No value, however nested, is ever built as one string, so **the largest
+allocation on the path is one piece**. Its pending-fragment list is collapsed every
+`_MAX_PENDING_FRAGMENTS` (16), because a piece made of tiny fragments (`", "`, single digits) would
+otherwise need a list array as large as the piece. The bytes are **identical** to what the routes
+emitted before (the top level keeps its own `,`/`:`), pinned against MicroPython's own
+`json.dumps()` by `tests/test_asy_webserver_service.py` (route by route against the pre-fix
+firmware: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q.11). `/status` flushes at each top-level
+section, so each section starts a piece. **Why byte-budget batching, not one piece per fragment**:
+every piece is one write through a per-write `asyncio.wait_for()`, measured at +53% throughput cost
+when pushed to one per character (F.1).
 **Nor one piece per section**: that scales with module count (17 on real hardware, ~4.9 KB for one
 section, almost the original whole-aggregate failure). At 256 B `dev`'s `/status` is 29 pieces (11
 at the old 1024 B); on silicon it takes 1.29 s against 1.10 s at 1024 B (+17 %, 2026-09-25) —
@@ -5820,7 +5854,8 @@ desync, and a link-state snapshot would be a new top-level feature the refactor 
 reimplemented (G.1) nor needed — its give-up exists so the supervisor can re-run an
 `_init_<sensor>()` and re-initialize hardware, and this module owns none. C.9's capped exponential
 backoff is the primitive that fits a link fault. Its codes are the error catalog's, like every
-module's (C.7.1).
+module's (C.7.1). A responder takes its callbacks as one `ResponderCallbacks(get, set, message)`
+object; an initiator passes none.
 
 **`None` means failure; an empty result means a genuinely empty payload.** The two must never
 collapse, at any of the four result shapes: `uart_get()` returns `None` or a right-sized buffer that
@@ -6217,15 +6252,15 @@ error ever can circumvent it').
   field supplies a source instance and what class it must be (L.6); the generator resolves each
   reference to the actual constructed Python object and passes it into the consumer's constructor,
   so an instance either is the expected class or it isn't, checked directly.
-- **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]`
-  field** — none stay hardcoded in `build_system()`. That covers
+- **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]` field**
+  — none stay hardcoded in `build_system()`. That covers
   `sgp40.temperature_source`/`.humidity_source` (per-value wiring, L.6),
   `notification.signal_sink`/`warn_co2`/`warn_voc`/`warn_hum`, `fram_target` on every driver or
-  service taking an optional `fram=`/`fram_storage=` argument, and `device.wiring.led_target` for
-  WiFi's `conn.set_ext_led(pixel)`. Each field is individually optional — absence disables that
-  specific link. **Excluded** are links between two mandatory-infrastructure modules (both
-  endpoints always exist unconditionally) and `WebserverService`'s
-  `sensors=`/`settings=`/`maintenance_sensors=`/`is_hotspot_active=` arguments, which enumerate
+  service taking a `log=` logging config (its FRAM store), and `device.wiring.led_target` for
+  the WiFi status LED, passed at construction. Each field is individually optional — absence
+  disables that specific link. **Excluded** are links between two mandatory-infrastructure modules
+  (both endpoints always exist unconditionally) and `WebserverService`'s `RouteSources`
+  `sensors=`/`settings=`/`maintenance_sensors=` and `StaticSite` `is_hotspot_active=`, which enumerate
   whichever instances the TOML already declares rather than naming one specific instance.
 - **No getters and no callback functions in generated code.** A consumer holds a direct reference
   to the producer's existing concurrency-safe value holder (Part G's "locked state" primitive) and
@@ -6395,11 +6430,11 @@ field = "Hum"
 
 **`_WIRING`'s shape** (a `# @wiring` comment tag, not a Python tuple — L.6):
 `(toml_field_name, required_driver_class, target, required, mode)`, where `mode`
-(`"kwarg"`/`"attr"`/`"setter"`) says how the resolved producer reaches the consumer. `signal_sink`
+(`"kwarg"`/`"attr"`) says how the resolved producer reaches the consumer. `signal_sink`
 uses `mode="attr"`: the generator resolves it to `pixel.request_signal` — the bound method
 `NotificationCoordinator.__init__`'s `request_signal_cb` parameter wants — not the `NeopixelDriver`
-instance itself. `led_target` uses `mode="setter"`: `conn.set_ext_led(pixel)` is emitted once, after
-both objects already exist.
+instance itself. `led_target` uses `mode="kwarg"`: the pixel is passed to `AsyConnTime(...)` as
+`ext_led=` at construction.
 
 **Wiring identity**: a wiring reference (`temperature_source`, `signal_sink`, `fram_target`,
 `led_target`, every `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's
@@ -6432,6 +6467,11 @@ module set. There is no separate `boot_entry/` directory: the generic boot entry
   per-bus address exclusivity, instance-name/instance-label collision, bus-id collision, and every
   wiring-reference and required-field check. Full coverage list in L.6; every failure is a
   `buildgen.errors.BuildError` naming the device, instance and field responsible.
+- **Construction**: the generated `build_system()` builds one `LogConfig` per FRAM store (`log_<fram
+  var>`) plus a FRAM-less `log_ram` (the FRAM manager's own), passes each module the `log=` of its
+  declared FRAM target (else `log_ram`), and hands `SystemService` its `level_setters=` as a
+  provider (`_collect_level_setters`) that its `setup()` resolves once; no setter call follows
+  construction.
 - **Notification signal catalog**: each signal's threshold default/range and flash colour is a
   fixed, generator-owned catalog (`buildgen.codegen._KNOWN_SIGNALS`). Every real device uses
   identical values, and the schema has no per-device override for them today.
@@ -6636,9 +6676,10 @@ independently resolvable to any instance exposing a `Temp`/`Hum`-named attribute
 `bmp3xx`) or defaulted via `_DefaultTemperatureSource`/`_DefaultHumiditySource` — both
 self-contained, with no cross-module import, so a device with `sgp40` but no `scd30` never pulls
 `asy_scd30_driver` into its frozen-module set just because of this. `SGP40_Reader.__init__` takes
-four parameters (`temperature_source`, `temperature_field`, `humidity_source`, `humidity_field`),
-each pair resolved independently in `_read_sgp()` via
-`getattr(await source.get_data(), field_name)`.
+two value references, `temperature` and `humidity`, each a `ValueRef(source, field)`
+(`base_classes.py`; the generator emits `temperature=ValueRef(<source var>, "<field>")`), resolved
+independently in `_read_sgp()` via `getattr(await ref.source.get_data(), ref.field)`; its FRAM
+backup settings travel as one group, `backup=SgpBackup(store, ntp_synced)`.
 
 Name-matching is the whole mechanism — there is no separate property or unit tag system. A producer
 naming the same physical quantity differently (`"Temperature"` instead of `"Temp"`) simply is not
@@ -6652,8 +6693,8 @@ aliases: ~3,576 bytes, about 2.6 % of `src/`'s frozen bytecode.
 
 | Tag | Grammar | Parser |
 |---|---|---|
-| `# @wiring` | `<toml_field> <ProducerClass> <target> <required\|optional> <kwarg\|attr\|setter>` | `buildgen/wiring.py` |
-| `# @value-wiring` | `<toml_field> <source_kwarg> <field_kwarg> <required\|optional>` | `buildgen/value_wiring.py` |
+| `# @wiring` | `<toml_field> <ProducerClass> <target> <required\|optional> <kwarg\|attr>` | `buildgen/wiring.py` |
+| `# @value-wiring` | `<toml_field> <kwarg> <required\|optional>` | `buildgen/value_wiring.py` |
 | `# @limits` | `<field> <min>..<max>` or `<field> in {a, b, ...}` (`*` on either side of a range = unchecked that side; `min == max` = exact value) | `buildgen/limits.py` |
 | `# @requires` | `bus.<field><op><value>` | `buildgen/requires_tag.py` |
 
@@ -6662,16 +6703,16 @@ or docstring is never mistaken for a real comment, and a near-miss or typo'd att
 name (wrong sigil, wrong operator, dropped piece, wrong location) fails the build loud rather than
 reading silently as "no tag here" — see `check_for_near_miss_tags()` and L.5's standing rule.
 
-Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s
-`# @requires bus.timeout>=200000`/`bus.frequency<=100000` and `bus.frequency<=400000` respectively
-(`bmp3xx` is deliberately untagged — its datasheet supports every I2C mode); every optional-instance
-driver's `fram_target` (`kwarg`, optional); `signal_sink` (`attr`, required, target
-`request_signal`); `led_target` (`setter` on `conn`, target `set_ext_led`);
-`asy_sgp40_driver.py`'s `temperature_source`/`humidity_source` (L.6.3); and
+Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s `# @requires
+bus.timeout>=200000`/`bus.frequency<=100000` and `bus.frequency<=400000` respectively (`bmp3xx` is
+deliberately untagged — its datasheet supports every I2C mode); every optional-instance driver's
+`fram_target` (`kwarg`, optional, target `log`); `signal_sink` (`attr`, required, target
+`request_signal`); `led_target` (`kwarg` on `conn`, target `ext_led`); `asy_sgp40_driver.py`'s
+`temperature_source`/`humidity_source` (L.6.3, kwargs `temperature`/`humidity`); and
 `asy_bmp3xx_driver.py`'s `_LIMITS` (`address in {0x76, 0x77}`, `trigger_sec 1..3600`) — the only
-driver with a real, datasheet-documented `_LIMITS` constraint today. Every other candidate field
-was checked directly against its own module and has no equivalent documented domain to draw from,
-so none was invented.
+driver with a real, datasheet-documented `_LIMITS` constraint today. Every other candidate field was
+checked directly against its own module and has no equivalent documented domain to draw from, so
+none was invented.
 
 ### L.6.5 Pico W GPIO and bus-pin legality
 
@@ -6791,7 +6832,7 @@ and this Part cite by number** — the numbering is load-bearing and must not be
     settle margin a constant (M.1.4), and the ratio is ordinary config (M.1.5). What remains settable
     is `AutoRangeThresh` and `AutoRangeDwell`.
 15. **Logging and error history follow the promoted-driver pattern in full** — a `PrintLog` per
-    module plus one per `ConfigManager`, FRAM-backed when a `fram=` is supplied, the
+    module plus one per `ConfigManager`, FRAM-backed when its `log=` names a FRAM store, the
     `_error_check()` leaky bucket, and its own range in C.7.1's table.
 16. **The driver is self-healing and never reports a stale value as fresh.** `BOUTF` set means the
     chip lost its configuration, so the whole shadow is re-applied and the cycle discarded; startup

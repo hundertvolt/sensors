@@ -6,7 +6,7 @@ import asyncio
 
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
-from print_log import make_logger
+from print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 5
 TEST_ERRNO = 42
@@ -16,12 +16,12 @@ LOG_NAME = "TEST"
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 
-    fram_a = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram_a = AsyFramManager(spi0, 5, max_size=0x40000)
     if not await fram_a.setup():
         print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
-    pr1 = make_logger(fram_a, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    pr1 = make_logger(LogConfig(fram_a, HISTORY_LENGTH, None), LOG_NAME)
     await pr1.setup()
     if not pr1.initialized:
         print("RESULT: FAIL pr1 failed to initialize against the real FRAM chunk")
@@ -32,12 +32,12 @@ async def _main() -> None:
 
     # Simulate a fresh boot: a brand new AsyFramManager Python object against the same real chip,
     # allocating its own chunk 0 at the same physical address pr1's did.
-    fram_b = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram_b = AsyFramManager(spi0, 5, max_size=0x40000)
     if not await fram_b.setup():
         print("RESULT: FAIL fram_b.setup() failed - real FRAM chip not responding on second probe")
         return
 
-    pr2 = make_logger(fram_b, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    pr2 = make_logger(LogConfig(fram_b, HISTORY_LENGTH, None), LOG_NAME)
     await pr2.setup()
     if not pr2.initialized:
         print("RESULT: FAIL pr2 (simulated fresh boot) failed to initialize - real FRAM read did not succeed")

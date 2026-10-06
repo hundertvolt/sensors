@@ -42,21 +42,16 @@ _EXPECTED_LARGEST = {
 
 
 def _cap_from_src(repo_root: Path) -> int:
-    """`WebserverService.__init__`'s own `max_content_length` default, read out of the source."""
+    """`ServingLimits`' shipped `max_content_length`: `_DEFAULT_MAX_CONTENT_LENGTH = const(<int>)`, read out of the source."""
     tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text())
-    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "WebserverService"):
-        for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
-            args = fn.args
-            for name, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
-                if name.arg == "max_content_length" and isinstance(default, ast.Constant):
-                    assert isinstance(default.value, int), f"max_content_length's default is {default.value!r}, not an int"
-                    return default.value
-            offset = len(args.args) - len(args.defaults)
-            for index, default in enumerate(args.defaults):
-                if args.args[offset + index].arg == "max_content_length" and isinstance(default, ast.Constant):
-                    assert isinstance(default.value, int), f"max_content_length's default is {default.value!r}, not an int"
-                    return default.value
-    raise AssertionError("max_content_length's default is no longer readable from WebserverService.__init__")
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_DEFAULT_MAX_CONTENT_LENGTH" for t in node.targets):
+            value = node.value
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and len(value.args) == 1:
+                value = value.args[0]
+            assert isinstance(value, ast.Constant) and isinstance(value.value, int), f"_DEFAULT_MAX_CONTENT_LENGTH is {ast.unparse(node.value)}, not an int literal"
+            return value.value
+    raise AssertionError("_DEFAULT_MAX_CONTENT_LENGTH is no longer readable from src/asy_webserver_service.py")
 
 
 def _field_bound(field: "Mapping[str, Any]") -> int:

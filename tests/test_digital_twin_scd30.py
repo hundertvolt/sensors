@@ -26,6 +26,7 @@ import machine
 from _crc8 import crc8, word
 from _scd30_chip import Scd30Chip
 from _tmp_scratch import TmpScratch
+from _twin_common import Walk
 
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_Reader
@@ -188,37 +189,35 @@ def test_produce_new_reading_step_delta_is_clamped_to_the_default_step_bound() -
     # ever passed the wrong (a, b) bound for a step draw (e.g. the full [min,max] range instead of
     # [-step,step]), this test's deliberately-tight scripted delta would fail that assertion.
     chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 50.0, 1.0, 3.0]))
-    chip._produce_new_reading()  # co2_step=50.0, temp_step=1.0, hum_step=3.0 (this chip's defaults)
+    chip._produce_new_reading()  # walk steps co2 50.0, temp 1.0, hum 3.0 (this chip's defaults)
 
 
 def test_produce_new_reading_step_is_clamped_to_the_configured_max() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
-        max_co2=2000.0,
-        co2_step=50.0,
+        co2=Walk(400.0, 2000.0, 50.0),
         random_source=_FixedRandom(uniform_values=[1980.0, 20.0, 50.0, 50.0, 0.0, 0.0]),
     )
     chip._produce_new_reading()
-    assert chip._co2 == 2000.0  # 1980.0 + 50.0 would be 2030.0 - clamped back to max_co2
+    assert chip._co2 == 2000.0  # 1980.0 + 50.0 would be 2030.0 - clamped back to the co2 walk's hi
 
 
 def test_produce_new_reading_step_is_clamped_to_the_configured_min() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
-        min_temp=15.0,
-        temp_step=1.0,
+        temp=Walk(15.0, 30.0, 1.0),
         random_source=_FixedRandom(uniform_values=[1000.0, 15.5, 50.0, 0.0, -1.0, 0.0]),
     )
     chip._produce_new_reading()
-    assert chip._temp == 15.0  # 15.5 + -1.0 would be 14.5 - clamped back to min_temp
+    assert chip._temp == 15.0  # 15.5 + -1.0 would be 14.5 - clamped back to the temp walk's lo
 
 
 def test_step_bounds_are_configurable_via_the_constructor() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
-        co2_step=5.0,
-        temp_step=0.1,
-        hum_step=0.5,
+        co2=Walk(400.0, 2000.0, 5.0),
+        temp=Walk(15.0, 30.0, 0.1),
+        hum=Walk(20.0, 70.0, 0.5),
         random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 5.0, 0.1, 0.5]),
     )
     chip._produce_new_reading()  # would violate the default 50.0/1.0/3.0 bounds - proves the override took

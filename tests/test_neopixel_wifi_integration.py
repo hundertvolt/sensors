@@ -6,7 +6,7 @@ import asyncio
 from _tmp_scratch import TmpScratch
 
 from asy_neopixel_driver import NeopixelDriver
-from asy_wifi_service import AsyConnTime
+from asy_wifi_service import AsyConnTime, WifiConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -43,12 +43,12 @@ async def _cancel(task: "asyncio.Task[None]") -> None:
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0, neopixel_freq=100)
-    conn = AsyConnTime(led_pin=None, ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    conn = AsyConnTime(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
 
     async def scenario() -> "tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]":
         overlay_task = pixel.start_asy_neopixel_led_overl()
         await asyncio.sleep(0)
-        await conn.set_wifi_led(status=True)  # led_pin is None -> self.led becomes self.ext_led (pixel)
+        await conn.set_wifi_led(status=True)  # self.led becomes self.ext_led (pixel)
         conn._led_on()
         await asyncio.sleep(0.05)
         on_write = pixel.pixel.writes[-1][0]
@@ -65,27 +65,6 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
     assert on_write == (50, 50, 50)  # default led_overl_bri
     assert off_write == (0, 0, 0)
     assert toggle_write == (50, 50, 50)  # toggled from off -> on
-
-
-def test_set_ext_led_swaps_in_a_real_driver_after_construction() -> None:
-    # set_ext_led() is asy_wifi_service.py's own post-construction hook (used when the real device
-    # wiring passes a driver in after both objects already exist) - proves the real class works
-    # through that path too, not just the constructor kwarg.
-    pixel = NeopixelDriver(0, neopixel_freq=100)
-    conn = AsyConnTime(led_pin=None, ext_led=None, cfg_path=_tmp_cfg_dir())
-    conn.set_ext_led(pixel)
-
-    async def scenario() -> "tuple[int, ...]":
-        overlay_task = pixel.start_asy_neopixel_led_overl()
-        await asyncio.sleep(0)
-        await conn.set_wifi_led(status=True)
-        conn._led_on()
-        await asyncio.sleep(0.05)
-        write = pixel.pixel.writes[-1][0]
-        await _cancel(overlay_task)
-        return write
-
-    assert run(scenario()) == (50, 50, 50)
 
 
 if __name__ == "__main__":

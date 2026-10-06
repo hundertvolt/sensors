@@ -19,6 +19,7 @@ import math_helpers
 from asy_i2c_driver import I2C, I2CDevice
 from base_classes import Lockable, LockedValue, SensorReaderConfig
 from config_manager import make_dict, name_cfg
+from print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -29,7 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
 
@@ -118,8 +118,8 @@ _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's 
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
 # FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
-# already-constructed instance, passed directly as this driver's own fram= kwarg.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# already-constructed instance, passed as log=.
+# @wiring fram_target AsyFramManager log optional kwarg
 
 # Driver-declared value domains (SPECIFICATION.md Part L.6.4), read by buildgen/limits.py from the
 # tags below - bounds kept in sync with _MIN/_MAX_TRIGGER_SECS by hand, since a comment cannot
@@ -139,20 +139,16 @@ class BMP3xx_Reader(SensorReaderConfig):
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
             BMP3XX(None, None, None, None),
-            max_module_error,
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
+            max_module_error=max_module_error,
             name_ext=name_ext,
             cfg_path=cfg_path,
-            fram=fram,
-            history_length=history_length,
-            debug=debug,
+            log=log,
         )
         self.bmp = BMP3XX_I2C(i2c, address=address)
         self.base_trigger_event = asyncio.ThreadSafeFlag()

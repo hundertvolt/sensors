@@ -17,9 +17,10 @@ import asy_sgp40_driver
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
-from asy_sgp40_driver import SGP40, SGP40_I2C, SGP40_Reader
+from asy_sgp40_driver import SGP40, SGP40_I2C, SGP40_Reader, SgpBackup
 from asy_spi_driver import SPI
-from print_log import PrintLogHistoryStore
+from base_classes import ValueRef
+from print_log import LogConfig, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -345,9 +346,8 @@ _CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
 
 
 class _FakeCompSource:
-    # Structural stand-in for temperature_source/humidity_source: SCD30_Reader (SPECIFICATION.md
-    # Part C.14, SPECIFICATION.md Part L.6.3's per-value generalization) - only
-    # get_data() is exercised, matching the real driver's own direct-reference read.
+    # Structural stand-in for a compensation producer (Part C.14, L.6.3): only get_data() is read,
+    # through each ValueRef's field.
     def __init__(self, temp: "float | None" = 25.0, hum: "float | None" = 50.0, *, raise_exc: bool = False) -> None:
         self._temp = temp
         self._hum = hum
@@ -363,10 +363,8 @@ def make_reader(**kwargs: "Any") -> SGP40_Reader:
     kwargs.setdefault("cfg_path", _SHARED_CFG_DIR)
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
         max_module_error=2,
         **kwargs,
     )
@@ -390,10 +388,8 @@ def test_init_sgp_resets_the_real_base_class_error_counter() -> None:
 def test_read_sgp_without_compensation_data_returns_all_none() -> None:
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(None, None),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(None, None),
-        humidity_field="Hum",
+        ValueRef(_FakeCompSource(None, None), "Temp"),
+        ValueRef(_FakeCompSource(None, None), "Hum"),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -414,10 +410,8 @@ def test_read_sgp_without_compensation_data_yet_logs_nothing() -> None:
     # (SOURCE) plus a "No compensation data available!" warning. Neither may fire here now.
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(None, None),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(None, None),
-        humidity_field="Hum",
+        ValueRef(_FakeCompSource(None, None), "Temp"),
+        ValueRef(_FakeCompSource(None, None), "Hum"),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -437,10 +431,8 @@ def test_read_sgp_with_one_of_two_compensation_fields_still_none_logs_nothing() 
     # measured, humidity not yet) must be just as silent as both being None.
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(25.0, None),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(25.0, None),
-        humidity_field="Hum",
+        ValueRef(_FakeCompSource(25.0, None), "Temp"),
+        ValueRef(_FakeCompSource(25.0, None), "Hum"),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -478,7 +470,7 @@ def test_store_sgp_persists_a_complete_result() -> None:
 
 
 def test_check_storage_without_fram_returns_no_buffer_and_resets_voc_timers() -> None:
-    reader = make_reader()  # no fram_storage -> ts_storage is None
+    reader = make_reader()  # no backup -> ts_storage is None
     reader.voc_init = 5
     reader.voc_write = 5
     buf, serialize, deserialize, cfg_values = run(reader._check_storage())
@@ -644,7 +636,7 @@ def test_set_dict_cfg_reset_voc_triggers_the_reset_and_is_never_persisted() -> N
     # generic _set_dict_cfg() path as any other field, but its special-alone shape (def=None,
     # special=True) means ConfigManager never stores it - write_config()'s "valid but not stored".
     cfg_dir = _sgp_cfg_dir("resetvoc_trigger")
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     results = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
     assert results == {"SGPResetVOC": "Valid"}
@@ -658,7 +650,7 @@ def test_set_dict_cfg_reset_voc_re_fires_every_time_not_just_on_change() -> None
     # no previous value to compare against, so write_config() always reports it "Valid" and the
     # same value twice re-triggers the push - the repeatable "reset now" semantic reset_voc() needs.
     cfg_dir = _sgp_cfg_dir("resetvoc_refire")
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     first = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
     reader.reset = False  # simulate the reset having already completed and cleared by read_loop()
@@ -673,7 +665,7 @@ def test_set_dict_cfg_reset_voc_false_reports_valid_not_failed() -> None:
     # legitimate no-op matching reset_voc(flag=False)'s contract and must surface as "Valid", not
     # "Failed" - without triggering the sensor read or leaving work for _recover_failed_push.
     cfg_dir = _sgp_cfg_dir("resetvoc_false")
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     results = run(reader._set_dict_cfg({"SGPResetVOC": False}, reader.get_cfg_schema()))
     assert results == {"SGPResetVOC": "Valid"}
@@ -697,12 +689,10 @@ def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(None, None),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(None, None),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(None, None), "Temp"),
+        ValueRef(_FakeCompSource(None, None), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -731,8 +721,8 @@ def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
     # Pause FRAM storage: if _read_sgp() incorrectly re-attempted the already-succeeded clear(), it
     # would now fail and leave self.reset stuck True forever - proving it does NOT touch FRAM again.
     manager.set_pause(value=True)
-    reader.temperature_source = _FakeCompSource()
-    reader.humidity_source = _FakeCompSource()
+    reader._temperature = ValueRef(_FakeCompSource(), "Temp")
+    reader._humidity = ValueRef(_FakeCompSource(), "Hum")
     fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, serialize=False, deserialize=False))
     manager.set_pause(value=False)
@@ -751,12 +741,10 @@ def test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded()
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -805,8 +793,8 @@ def test_read_sgp_nan_compensation_temperature_is_caught_not_propagated() -> Non
     # validated beyond "not None" - confirmed against the real interpreter that NaN raises
     # ValueError and Inf OverflowError. Structurally safe inside _read_sgp()'s try, but untested.
     reader = make_reader()
-    reader.temperature_source = _FakeCompSource(float("nan"), 50.0)
-    reader.humidity_source = _FakeCompSource(float("nan"), 50.0)
+    reader._temperature = ValueRef(_FakeCompSource(float("nan"), 50.0), "Temp")
+    reader._humidity = ValueRef(_FakeCompSource(float("nan"), 50.0), "Hum")
     run(reader.pr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     assert data == SGP40(None, None, None)
@@ -820,8 +808,8 @@ def test_read_sgp_nan_compensation_temperature_is_caught_not_propagated() -> Non
 
 def test_read_sgp_inf_compensation_humidity_is_caught_not_propagated() -> None:
     reader = make_reader()
-    reader.temperature_source = _FakeCompSource(25.0, float("inf"))
-    reader.humidity_source = _FakeCompSource(25.0, float("inf"))
+    reader._temperature = ValueRef(_FakeCompSource(25.0, float("inf")), "Temp")
+    reader._humidity = ValueRef(_FakeCompSource(25.0, float("inf")), "Hum")
     run(reader.pr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     assert data == SGP40(None, None, None)
@@ -838,8 +826,8 @@ def test_read_sgp_comp_source_get_data_raising_is_caught_not_propagated() -> Non
     # here get_data() itself raises. Each source is caller-supplied and only structurally typed
     # (Part C.14), so this can't be ruled out statically even though SCD30_Reader never raises.
     reader = make_reader()
-    reader.temperature_source = _FakeCompSource(raise_exc=True)
-    reader.humidity_source = _FakeCompSource(raise_exc=True)
+    reader._temperature = ValueRef(_FakeCompSource(raise_exc=True), "Temp")
+    reader._humidity = ValueRef(_FakeCompSource(raise_exc=True), "Hum")
     run(reader.pr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     assert data == SGP40(None, None, None)
@@ -871,8 +859,8 @@ def test_read_sgp_non_numeric_compensation_value_is_caught_not_propagated() -> N
     # existing second try/except (READ, "Read failed"), not escape _read_sgp() uncaught.
     reader = make_reader()
     bad_source = _FakeNonNumericCompSource()
-    reader.temperature_source = bad_source
-    reader.humidity_source = bad_source
+    reader._temperature = ValueRef(bad_source, "Temp")
+    reader._humidity = ValueRef(bad_source, "Hum")
     run(reader.pr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     assert data == SGP40(None, None, None)
@@ -892,12 +880,10 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -923,12 +909,10 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
 def _backup_rig(manager: AsyFramManager) -> "tuple[SGP40_Reader, FakeI2C]":
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -1000,12 +984,10 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
     async def scenario() -> tuple[bool, int | None]:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1019,12 +1001,10 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
         await manager2.setup()
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_not_synced,  # the *reader's* own current time is never NTP-synced
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_not_synced),
+            log=LogConfig(manager2, 10, None),  # the *reader's* own current time is never NTP-synced
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1054,12 +1034,10 @@ def test_run_backup_writes_without_timestamp_once_wait_time_ntp_budget_is_exhaus
     async def scenario() -> tuple[int | None, int]:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_not_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_not_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1104,12 +1082,10 @@ def _run_untimestamped_backups(plan: "list[bool | str]") -> tuple[int, int]:
     async def scenario() -> tuple[int, int]:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=ntp_cb,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, ntp_cb),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1172,12 +1148,10 @@ def test_a_timestamped_backup_on_the_require_ntp_branch_also_leaves_one_slot() -
     async def scenario() -> int:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=ntp_cb,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, ntp_cb),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1222,12 +1196,10 @@ def test_check_storage_backup_counter_wraps_before_it_could_overflow() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=cfg_dir,
     )
@@ -1250,12 +1222,10 @@ def test_init_sgp_sets_verify_to_the_documented_formula() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=cfg_dir,
     )
@@ -1278,12 +1248,10 @@ def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_sa
     async def scenario() -> tuple[bool, bool, int]:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1300,12 +1268,10 @@ def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_sa
         await manager2.setup()
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_synced),
+            log=LogConfig(manager2, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1387,7 +1353,7 @@ def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
     # test actually persists non-default values, and the shared path is only safe for tests that
     # never write, same reasoning as every other config-writing test in this file.
     cfg_dir = _sgp_cfg_dir("setdictzero")
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     results = run(reader._set_dict_cfg({"BackupPeriod": 30, "WaitTimeNTP": 60}, reader.get_cfg_schema()))
     assert results == {"BackupPeriod": "Valid", "WaitTimeNTP": "Valid"}
@@ -1412,7 +1378,7 @@ def test_get_dict_cfg_reports_schema_defaults_when_no_config_file_exists() -> No
     # 0-1440min default 1, BackupMaxAge 0-10080min default 7200, WaitTimeNTP 0-600s default 30.
     # The _VAL_* tuples are const()-folded and not importable, so these read back through cfgmgr.
     cfg_dir = _sgp_cfg_dir("defaults")
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
@@ -1421,7 +1387,7 @@ def test_get_dict_cfg_reports_schema_defaults_when_no_config_file_exists() -> No
 def test_get_dict_cfg_reports_all_valid_minimum_boundary_values() -> None:
     cfg_dir = _sgp_cfg_dir("minbound")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 0, "BackupMaxAge": 0, "WaitTimeNTP": 0})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 0, "BackupMaxAge": 0, "WaitTimeNTP": 0}
@@ -1430,7 +1396,7 @@ def test_get_dict_cfg_reports_all_valid_minimum_boundary_values() -> None:
 def test_get_dict_cfg_reports_all_valid_maximum_boundary_values() -> None:
     cfg_dir = _sgp_cfg_dir("maxbound")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 1440, "BackupMaxAge": 10080, "WaitTimeNTP": 600})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1440, "BackupMaxAge": 10080, "WaitTimeNTP": 600}
@@ -1439,7 +1405,7 @@ def test_get_dict_cfg_reports_all_valid_maximum_boundary_values() -> None:
 def test_get_dict_cfg_reports_a_typical_valid_custom_combination() -> None:
     cfg_dir = _sgp_cfg_dir("typical")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 120})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 120}
@@ -1448,7 +1414,7 @@ def test_get_dict_cfg_reports_a_typical_valid_custom_combination() -> None:
 def test_config_single_invalid_backup_period_defaults_only_that_field() -> None:
     cfg_dir = _sgp_cfg_dir("badbp")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 1441, "BackupMaxAge": 1440, "WaitTimeNTP": 120})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 120}  # only BP reverted
@@ -1457,7 +1423,7 @@ def test_config_single_invalid_backup_period_defaults_only_that_field() -> None:
 def test_config_single_invalid_backup_max_age_defaults_only_that_field() -> None:
     cfg_dir = _sgp_cfg_dir("badbmax")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 60, "BackupMaxAge": -1, "WaitTimeNTP": 120})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 60, "BackupMaxAge": 7200, "WaitTimeNTP": 120}
@@ -1466,7 +1432,7 @@ def test_config_single_invalid_backup_max_age_defaults_only_that_field() -> None
 def test_config_single_invalid_wait_time_ntp_defaults_only_that_field() -> None:
     cfg_dir = _sgp_cfg_dir("badwt")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 601})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
@@ -1475,7 +1441,7 @@ def test_config_single_invalid_wait_time_ntp_defaults_only_that_field() -> None:
 def test_config_two_invalid_fields_each_independently_defaulted() -> None:
     cfg_dir = _sgp_cfg_dir("badtwo")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": -5, "BackupMaxAge": 1440, "WaitTimeNTP": 99999})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
@@ -1484,7 +1450,7 @@ def test_config_two_invalid_fields_each_independently_defaulted() -> None:
 def test_config_all_three_fields_invalid_falls_back_to_full_defaults() -> None:
     cfg_dir = _sgp_cfg_dir("badall")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": -1, "BackupMaxAge": 999999, "WaitTimeNTP": -30})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
@@ -1497,7 +1463,7 @@ def test_config_all_three_fields_invalid_falls_back_to_full_defaults() -> None:
 def test_config_wrong_type_values_single_and_combined() -> None:
     cfg_dir = _sgp_cfg_dir("wrongtype")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": "sixty", "BackupMaxAge": 1440, "WaitTimeNTP": 12.5})
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
@@ -1506,7 +1472,7 @@ def test_config_wrong_type_values_single_and_combined() -> None:
 def test_config_missing_keys_use_defaults() -> None:
     cfg_dir = _sgp_cfg_dir("missing")
     _write_sgp_cfg(cfg_dir, {"BackupMaxAge": 1440})  # BackupPeriod, WaitTimeNTP both absent
-    reader = SGP40_Reader(make_i2c(), temperature_source=_FakeCompSource(), temperature_field="Temp", humidity_source=_FakeCompSource(), humidity_field="Hum", max_module_error=2, cfg_path=cfg_dir)
+    reader = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), max_module_error=2, cfg_path=cfg_dir)
     run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
@@ -1521,12 +1487,10 @@ def test_init_sgp_applies_custom_wait_time_ntp_from_valid_config() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=2,
         cfg_path=cfg_dir,
     )
@@ -1667,12 +1631,10 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
     async def scenario() -> tuple[SGP40, int]:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1691,12 +1653,10 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
         assert run_ok is True
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_synced),
+            log=LogConfig(manager2, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1747,12 +1707,10 @@ def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
     async def scenario() -> bool:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1772,12 +1730,10 @@ def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
         await manager2.setup()
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_synced),
+            log=LogConfig(manager2, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1798,12 +1754,10 @@ def test_fram_restore_finds_no_backup_on_a_never_written_chunk() -> None:
     async def scenario() -> bool:
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1828,12 +1782,10 @@ def test_fram_backup_without_ntp_sync_is_deferred_not_lost() -> None:
     async def scenario() -> tuple[bool, int]:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_not_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_not_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -1864,10 +1816,8 @@ def test_read_sgp_comp_callback_exception_is_caught_not_propagated() -> None:
     # every other caller-supplied callback in this codebase (e.g. asy_fram_manager.py's ntp_sync_callback).
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(raise_exc=True),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(raise_exc=True),
-        humidity_field="Hum",
+        ValueRef(_FakeCompSource(raise_exc=True), "Temp"),
+        ValueRef(_FakeCompSource(raise_exc=True), "Hum"),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -1959,17 +1909,29 @@ def test_reader_with_fram_storage_gets_a_fram_backed_print_log() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
+
+
+def test_the_log_config_and_the_backup_are_independent() -> None:
+    # The logger's FRAM store comes from log= alone, the VOC backup's from backup= alone.
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    backup_only = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), backup=SgpBackup(manager, _ntp_synced), cfg_path=_SHARED_CFG_DIR)
+    assert not isinstance(backup_only.pr, PrintLogHistoryStore)
+    assert backup_only.ts_storage is not None
+    log_only = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), cfg_path=_SHARED_CFG_DIR, log=LogConfig(manager, 4, 1))
+    assert isinstance(log_only.pr, PrintLogHistoryStore)
+    assert len(log_only.pr.history) == 4
+    assert log_only.pr.get_level() == 1
+    assert log_only.ts_storage is None
 
 
 def test_reader_survives_get_timestamped_chunk_raising_instead_of_returning_none() -> None:
@@ -1986,12 +1948,10 @@ def test_reader_survives_get_timestamped_chunk_raising_instead_of_returning_none
 
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -2007,12 +1967,10 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
     async def scenario() -> int:
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=2,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -2024,12 +1982,10 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
         assert await manager2.setup() is True
         reader2 = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_synced),
+            log=LogConfig(manager2, 10, None),
             max_module_error=2,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -2066,12 +2022,10 @@ def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -2096,12 +2050,10 @@ def test_init_sgp_caps_a_stale_out_of_schema_wait_time_ntp() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -2119,12 +2071,10 @@ def test_check_storage_fails_and_logs_when_config_data_unreadable() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -2155,12 +2105,10 @@ def test_run_restore_backup_without_timestamp_clears_voc_init_and_still_restores
     async def scenario() -> "tuple[bool, int, ErrorLog]":
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_not_synced,  # every write from here on lacks a timestamp
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_not_synced),
+            log=LogConfig(manager, 10, None),  # every write from here on lacks a timestamp
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -2175,12 +2123,10 @@ def test_run_restore_backup_without_timestamp_clears_voc_init_and_still_restores
         await manager2.setup()
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_synced),
+            log=LogConfig(manager2, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -2208,12 +2154,10 @@ def test_run_restore_valid_timestamp_but_unknown_age_waits_for_ntp() -> None:
     async def scenario() -> bool:
         writer = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager,
-            fram_ntp_callback=_ntp_synced,
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager, _ntp_synced),
+            log=LogConfig(manager, 10, None),
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -2227,12 +2171,10 @@ def test_run_restore_valid_timestamp_but_unknown_age_waits_for_ntp() -> None:
         await manager2.setup()
         reader = SGP40_Reader(
             make_i2c(),
-            temperature_source=_FakeCompSource(),
-            temperature_field="Temp",
-            humidity_source=_FakeCompSource(),
-            humidity_field="Hum",
-            fram_storage=manager2,
-            fram_ntp_callback=_ntp_not_synced,  # this reader's own clock isn't synced yet
+            ValueRef(_FakeCompSource(), "Temp"),
+            ValueRef(_FakeCompSource(), "Hum"),
+            backup=SgpBackup(manager2, _ntp_not_synced),
+            log=LogConfig(manager2, 10, None),  # this reader's own clock isn't synced yet
             max_module_error=5,
             cfg_path=_SHARED_CFG_DIR,
         )
@@ -2258,12 +2200,10 @@ def test_run_backup_updates_verify_when_backup_period_changes_after_init() -> No
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         max_module_error=5,
         cfg_path=_sgp_cfg_dir("verify_change"),  # fresh, isolated config file - this test writes to it
     )
@@ -2289,12 +2229,10 @@ def test_run_backup_resyncs_with_timestamp_once_ntp_available_again() -> None:
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,  # NTP is synced by the time _run_backup() actually writes
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),  # NTP is synced by the time _run_backup() actually writes
         max_module_error=5,
         cfg_path=_sgp_cfg_dir("resync_with_ts"),
     )
@@ -2321,7 +2259,7 @@ def test_run_backup_resyncs_with_timestamp_once_ntp_available_again() -> None:
 
 
 def test_read_sgp_reset_without_fram_storage_completes_immediately() -> None:
-    reader = make_reader()  # no fram_storage -> ts_storage is None
+    reader = make_reader()  # no backup -> ts_storage is None
     run(reader.reset_voc(flag=True))
     run(reader._read_sgp(None, serialize=False, deserialize=False))
     assert reader._reset_fram_cleared is True  # nothing to clear - vacuously satisfied
@@ -2331,10 +2269,8 @@ def test_read_sgp_reset_without_fram_storage_completes_immediately() -> None:
 def test_read_sgp_retries_deserialize_when_compensation_data_missing() -> None:
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(None, None),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(None, None),
-        humidity_field="Hum",
+        ValueRef(_FakeCompSource(None, None), "Temp"),
+        ValueRef(_FakeCompSource(None, None), "Hum"),
         max_module_error=2,
         cfg_path=_SHARED_CFG_DIR,
     )
@@ -2500,12 +2436,10 @@ def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     run(manager.setup())
     reader = SGP40_Reader(
         make_i2c(),
-        temperature_source=_FakeCompSource(),
-        temperature_field="Temp",
-        humidity_source=_FakeCompSource(),
-        humidity_field="Hum",
-        fram_storage=manager,
-        fram_ntp_callback=_ntp_synced,
+        ValueRef(_FakeCompSource(), "Temp"),
+        ValueRef(_FakeCompSource(), "Hum"),
+        backup=SgpBackup(manager, _ntp_synced),
+        log=LogConfig(manager, 10, None),
         cfg_path=_SHARED_CFG_DIR + "missing_dir/",
     )
     run(reader.cfgmgr.setup())

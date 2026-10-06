@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UART_Comm
 
 try:
     from typing import TYPE_CHECKING
@@ -81,8 +81,7 @@ def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.
         ROLE_RESPONDER,
         payload_size=payload_size_b,
         timeout=TIMEOUT_MS,
-        get_callback=get_callback,
-        set_callback=set_callback,
+        callbacks=ResponderCallbacks(get_callback, set_callback, None),
         name="UART_RESP",
     )
     return uart0, uart1, initiator, responder

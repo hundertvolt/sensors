@@ -561,7 +561,7 @@ open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the u
 methods) — like every config write, it takes effect immediately (the accepted value is pushed live
 the moment the request is validated) and is saved to disk shortly after, off the request's own
 critical path (`config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
-`system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
+`system_service.py`'s `level_setters` provider/`_apply_level()` registry pushes any accepted
 `DebugLevel` write straight out to every other already-constructed module's own
 `PrintLog.set_level()`, live, no reboot required (confirmed directly — a running twin's console
 starts emitting full per-cycle event traces the instant the PUT below lands). The reboot that

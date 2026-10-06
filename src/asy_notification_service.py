@@ -2,7 +2,7 @@
 holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
 Promoted from improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED implementation.
 """
-# Registration is staged: `register()` each signal, then `finalize()` once - see their own comments below.
+# Signals are passed at construction; a refused one is printed at once and persisted by setup().
 
 import asyncio
 import time
@@ -12,6 +12,7 @@ from micropython import const
 
 from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
+from print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     # only ever reach time.ticks_diff() - _next_sleep_secs()'s t0 is exactly such a value.
     from _mpy_shed.time_mp import _TicksMs
 
-    from asy_fram_manager import AsyFramManager
+    from base_classes import ValueRef
     from config_manager import ConfigSchema
     from print_log import ErrorLog
 
@@ -52,8 +53,6 @@ _ERR_CFG_READ = const(26)
 _WRN_CFG_READ = const(13)
 _WRN_NOTIFY_NAME_COLLISION = const(44)
 _WRN_NOTIFY_SCHEMA_SHAPE = const(45)
-_WRN_NOTIFY_LATE_REGISTER = const(46)
-_WRN_NOTIFY_FINALIZE_AGAIN = const(47)
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
@@ -62,7 +61,7 @@ _NAME = const("NOTIFY")
 # required, in "attr" mode - the resolved NeopixelDriver's own request_signal bound method is passed
 # as request_signal_cb, per Part L.2's "no getters in generated code" - plus the optional FRAM.
 # @wiring signal_sink NeopixelDriver request_signal required attr
-# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 
 class _DefaultSignalSink:
@@ -87,8 +86,8 @@ _VAL_INTERV = const((("Interv", "float", 300.0, 60.0, 3600.0, None),))
 _VAL_FLASH_DUR = const((("FlashDur", "float", 2.0, 0.5, 10.0, None),))
 _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 
-# WarnCO2/WarnVOC/WarnHum are registered per signal at runtime, not as _VAL_* constants here, so
-# their web metadata is generator-owned (buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the parallel
+# WarnCO2/WarnVOC/WarnHum come with each signal passed at construction, not as _VAL_* constants here,
+# so their web metadata is generator-owned (buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the parallel
 # of codegen._KNOWN_SIGNALS) - neither is a per-device fact this file could tag (Part L.5).
 
 # Literal submitGroup ("autoConfig"), not the "self" sentinel the sensors use: this is a singleton
@@ -106,8 +105,7 @@ _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 _VAL_INT_FIELDS = _VAL_ON_H + _VAL_ON_M + _VAL_OFF_H + _VAL_OFF_M + _VAL_FLASH_BRI
 _VAL_FLOAT_FIELDS = _VAL_INTERV + _VAL_FLASH_DUR
 _VAL_BOOL_FIELDS = _VAL_AUTO_ON
-# Own static schema fragment - stays const()-folded, unlike the full combined schema finalize()
-# assembles at runtime from however many signals registered.
+# Own static schema fragment; the constructor appends one field per kept signal to it.
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot in C.4.2's get_data() shape, like every other Reader:
@@ -121,19 +119,16 @@ class NotificationSignal:
     def __init__(
         self,
         name: str,
-        source: "_ValueSource",
-        field: str,
+        value: "ValueRef",
         field_schema: "ConfigSchema",
         color: "tuple[int, int, int]",
         *,
         above: bool = True,
     ) -> None:
         self.name = name
-        # A direct reference to the producer's own get_data() (Part C.14) plus the field to read off
-        # its namedtuple result - never a wrapping getter. This replaced the old get_value: Callable
-        # parameter as a category.
-        self.source = source
-        self.field = field
+        # A reference to the producer plus the field to read off its get_data() result (Part C.14):
+        # never a wrapping getter.
+        self.value = value
         self.field_schema = field_schema
         self.color = color  # per-channel weight (0/1), scaled by FlashBri at trigger time
         self.above = above
@@ -142,45 +137,54 @@ class NotificationSignal:
         self.triggered = False
 
 
+def _refusal(notif: NotificationSignal, taken: "set[str]") -> "tuple[str, int]":
+    # ("", 0) accepts the signal; otherwise the reason and its warning code.
+    key = name_cfg(notif.field_schema)
+    if key == "":
+        return "field_schema must have exactly one field, ignoring", _WRN_NOTIFY_SCHEMA_SHAPE
+    if key in taken:
+        return "field name '" + key + "' collides, ignoring", _WRN_NOTIFY_NAME_COLLISION
+    return "", 0
+
+
 class NotificationCoordinator(SensorReaderConfig):
     def __init__(
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
         local_time_callback: "Callable[[], Coroutine[Any, Any, _LocalTime | None]]",
+        signals: "tuple[NotificationSignal, ...]",
         cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
-        # Deferred: super().__init__() only runs inside finalize(), once every signal is
-        # registered - self.pr/self.cfgmgr/self.cfg_schema don't exist until then.
+        # Each signal is checked in order before the schema exists; a refused one is buffered and
+        # printed once the logger exists, then persisted by setup() (no logger before super()).
+        accepted: list[NotificationSignal] = []
+        self._pending_wrn: list[tuple[str, int]] = []
+        taken = set(schema_names(_VAL_OWN_SCHEMA))
+        combined: ConfigSchema = _VAL_OWN_SCHEMA
+        for notif in signals:
+            reason, wrnno = _refusal(notif, taken)
+            if reason:
+                self._pending_wrn.append((reason + ": " + notif.name, wrnno))
+            else:
+                accepted.append(notif)
+                taken.add(name_cfg(notif.field_schema))
+                combined = combined + notif.field_schema
+        self._registered = tuple(accepted)
+        super().__init__(
+            NOTIFY(Triggered=False, TS=None),
+            _NAME,
+            combined,
+            max_module_error=0,  # no failure streak: a restart re-reads nothing monitor_loop() doesn't (Part C.7.2)
+            cfg_path=cfg_path,
+            log=log,
+        )
+        for msg, _wrnno in self._pending_wrn:
+            self.pr.wrn(msg)
         self._request_signal_cb = request_signal_cb
         self._local_time_callback = local_time_callback
-        self._cfg_path = cfg_path
-        self._fram = fram
-        self._history_length = history_length
-        self._debug = debug
-        self._registered: list[NotificationSignal] = []
-        self._finalized = False
-        # Buffered: register()/finalize() are sync and self.pr may not exist yet, so rejections
-        # drain via monitor_loop() instead of calling the async self.pr.wrn_s() directly.
-        self._pending_wrn: list[tuple[str, int]] = []
         self.override_secs = LockedCounter(max_val=_MAX_OVERRIDE_TIME)
         self._auto_active = True
-
-    def _combined_schema(self) -> "ConfigSchema":
-        combined: ConfigSchema = _VAL_OWN_SCHEMA
-        for notif in self._registered:
-            combined = combined + notif.field_schema
-        return combined
-
-    def _reject_registration(self, name: str, reason: str, wrnno: int) -> None:
-        self._pending_wrn.append((reason + ": " + name, wrnno))
-
-    async def _flush_pending_registration_warnings(self) -> None:
-        while self._pending_wrn:
-            msg, wrnno = self._pending_wrn.pop(0)
-            await self.pr.wrn_s(msg, wrnno=wrnno)
 
     def _next_sleep_secs(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
         # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
@@ -206,9 +210,10 @@ class NotificationCoordinator(SensorReaderConfig):
         # never raises, but the specific field can legitimately be None (not yet measured, or the
         # producer's own error streak gave up) - a normal, expected input here, not exceptional.
         value: int | float | None
+        source: _ValueSource = notif.value.source  # the annotated local narrows the namedtuple field (C.4.2)
         try:
-            data = await notif.source.get_data()
-            value = getattr(data, notif.field, None)
+            data = await source.get_data()
+            value = getattr(data, notif.value.field, None)
         except Exception as e:
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             value = None
@@ -221,7 +226,7 @@ class NotificationCoordinator(SensorReaderConfig):
             await self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)
             notif.triggered = False
             return False
-        threshold = thresholds[0]  # exactly one field - register() rejects any other shape
+        threshold = thresholds[0]  # exactly one field - the constructor refuses any other shape
         # float(value): getattr()'s own return is untyped even after the None-check above (the
         # field name is dynamic, not a literal) - narrows to a real numeric comparison the same way
         # every removed value_callback() used to explicitly cast its own return.
@@ -256,24 +261,18 @@ class NotificationCoordinator(SensorReaderConfig):
 
     async def get_data(self) -> NOTIFY:
         # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
-        if not self._finalized:  # finalize() hasn't run yet - self._datastruct doesn't exist; caller-ordering
-            return NOTIFY(Triggered=False, TS=None)  # bug, defense-in-depth only
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS, name=self.name if self._finalized else _NAME)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        if not self._finalized:  # self.cfg_schema doesn't exist yet - same caller-ordering guard as get_data()
-            return {_NAME: {}}
-        # self.cfg_schema is already the full combined schema (own fields + every registered
-        # signal's field) - built once, inside finalize() - so this covers everything in one call.
+        # self.cfg_schema is the full combined schema (own fields + every kept signal's field),
+        # built once at construction, so this covers everything in one call.
         return await self._get_dict_cfg(self.name, self.cfg_schema)
 
     async def get_error_counter(self) -> "ErrorLog":
-        if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as get_data()
-            return {_NAME: {"ErrCount": 0, "ErrNum": [], "ErrType": []}}
         return await self.pr.get_log()
 
     async def get_override_led(self) -> int:
@@ -283,50 +282,14 @@ class NotificationCoordinator(SensorReaderConfig):
     async def set_override_led(self, secs: int) -> None:
         await self.override_secs.set_value(secs)  # LockedCounter clamps into [0, _MAX_OVERRIDE_TIME] itself
 
-    def register(self, notif: NotificationSignal) -> None:  # call once per signal, in check order, before finalize()
-        if self._finalized:
-            self._reject_registration(notif.name, "register() called after finalize(), ignoring", _WRN_NOTIFY_LATE_REGISTER)
-            return
-        key = name_cfg(notif.field_schema)
-        if key == "":
-            self._reject_registration(notif.name, "field_schema must have exactly one field, ignoring", _WRN_NOTIFY_SCHEMA_SHAPE)
-            return
-        existing = set(schema_names(_VAL_OWN_SCHEMA))
-        existing.update(name_cfg(n.field_schema) for n in self._registered)
-        if key in existing:
-            self._reject_registration(notif.name, "field name '" + key + "' collides, ignoring", _WRN_NOTIFY_NAME_COLLISION)
-            return
-        self._registered.append(notif)
-
-    def finalize(self) -> None:  # call exactly once, after all register() calls, before any task starter runs
-        if self._finalized:
-            self._reject_registration("(coordinator)", "finalize() called again, ignoring", _WRN_NOTIFY_FINALIZE_AGAIN)
-            return
-        super().__init__(
-            NOTIFY(Triggered=False, TS=None),
-            0,  # no failure streak: a restart re-reads nothing monitor_loop() doesn't (Part C.7.2)
-            _NAME,
-            self._combined_schema(),
-            cfg_path=self._cfg_path,
-            fram=self._fram,
-            history_length=self._history_length,
-            debug=self._debug,
-        )
-        self._finalized = True
-
-    async def setup(self) -> None:  # call after finalize(), before any task starter runs
-        if not self._finalized:  # self.cfgmgr doesn't exist yet - caller-ordering bug, defense-in-depth only
-            return
+    async def setup(self) -> None:  # call once, before any task starter runs
         await super().setup()
-
-    async def reset_error_counter(self) -> None:
-        if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as get_data()
-            return
-        await super().reset_error_counter()
+        await self.pr.setup()  # the refusals below persist through a set-up logger
+        while self._pending_wrn:
+            msg, wrnno = self._pending_wrn.pop(0)
+            await self.pr.wrn_s(msg, wrnno=wrnno)
 
     async def auto_led_override(self) -> None:
-        if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as monitor_loop()
-            return
         self._auto_active = True
         while True:
             secs = await self.override_secs.decrement()
@@ -340,15 +303,12 @@ class NotificationCoordinator(SensorReaderConfig):
             await asyncio.sleep(1)
 
     async def monitor_loop(self) -> None:
-        if not self._finalized:  # self.pr/self.cfgmgr don't exist yet - caller-ordering bug, defense-in-depth only
-            return
         await self.pr.setup()  # required for all logged warnings and errors
         # No self._auto_active = True here, unlike __init__/auto_led_override() which own it - this
         # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
         # an override set mid-run: two independently-restartable tasks over one unlocked flag.
         while True:
             t0 = time.ticks_ms()
-            await self._flush_pending_registration_warnings()
             cfg_int = await self.cfgmgr.get_int_values(_VAL_INT_FIELDS)
             cfg_float = await self.cfgmgr.get_float_values(_VAL_FLOAT_FIELDS)
             cfg_bool = await self.cfgmgr.get_bool_values(_VAL_BOOL_FIELDS)

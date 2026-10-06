@@ -589,6 +589,14 @@ gates, traps).
   added); `ci.yml` action pins (setup-node v7, paths-filter v4.0.3) and the cross-browser cache key.
   The MicroPython ref did not move, so the installer leg is not owed by this entry; both legs owe the
   new Node major and the refreshed Python tools.
+  **2026-10-06, Lint config only**: `pyproject.toml` `max-args` 24 → 8, `max-statements` 80 → 79
+  and `max-returns` 12 → 11 (each ceiling at its measured maximum, pinned by the new
+  `tests_scripts/test_lint_ceilings.py`), PLR0913 per-file ignores for `src/asy_uart_driver.py`,
+  `src/asy_isl29125_driver.py`, `tests/machine.py`, `digital_twin/machine.py`; `eslint.config.js`
+  `max-classes-per-file` 2 → 1, pinned by `tests_js/lint-ceilings.test.js` through a new
+  Node-context Commands API module, `tests_js/_lint_command.js` (registered in `vitest.config.js`,
+  `tests_js/vitest-commands.d.ts`, `tsconfig.json`/`tsconfig.node.json`) — no build impact and no
+  new dependency; the lint leg and the web tier run them with what is already installed.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
@@ -691,14 +699,10 @@ gates, traps).
   - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
-- **Two device-script loose ends from the 2026-09-25 sitting — owner's call.** (1)
-  `wifi_service_reconnect_repro.py` (row F1, verified that day) never feeds the watchdog, so on a
-  board running `main.py` it dies ~8 s in; it ran under a 4-line wrapper arming `WDT(8000)` and
-  feeding it from a 2 s `machine.Timer` (`tests_hardware/README.md`). Fold that into the script, or
-  keep the wrapper as the documented way. (2) Two stale scratch configs sit on the dev board's
-  flash, `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and `config_HWTEST_REBOOT.cfg`, left by earlier
-  device scripts; the DebugLevel backup could mislead a later restore. Should their scripts remove
-  them on exit, as the reconnect repro's own scratch file now is?
+- **A device-script loose end from the 2026-09-25 sitting — owner's call.** Two stale scratch
+  configs sit on the dev board's flash, `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and
+  `config_HWTEST_REBOOT.cfg`, left by earlier device scripts; the DebugLevel backup could mislead a
+  later restore. Should their scripts remove them on exit?
 
 - **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
   gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`

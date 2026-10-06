@@ -18,7 +18,8 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
 
 import config_manager as cm
-from asy_webserver_service import SettingsGroup, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+from print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -249,15 +250,30 @@ def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "di
     return f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n".encode() + body
 
 
-def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # Any: forwarded
-    # verbatim into WebserverService's own 22 differently-typed keyword parameters, which no single
-    # non-Any **kwargs element type can express before PEP 692's Unpack (3.11+).
+_ROUTE_FIELDS = ("sensors", "settings", "build_info", "system_cmd", "notification_led", "notification_pause", "status_sources", "maintenance_sensors", "error_sources")
+_ROUTE_DEFAULTS: "dict[str, Any]" = {"sensors": (), "maintenance_sensors": (), "error_sources": ()}  # the rest default to None
+
+
+def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # Any: one keyword per
+    # field of the three config objects, differently typed, which no single non-Any **kwargs
+    # element type can express before PEP 692's Unpack (3.11+).
     app = Microdot()
-    kwargs.setdefault("max_content_length", 2048)  # tracks the shipped default, so these tests exercise it
-    kwargs.setdefault("max_connections", 3)
-    kwargs.setdefault("per_call_timeout_s", 0.2)
-    kwargs.setdefault("outer_cap_s", 0.5)
-    service = WebserverService(app, **kwargs)
+    routes = RouteSources(*(kwargs.pop(f, _ROUTE_DEFAULTS.get(f)) for f in _ROUTE_FIELDS))
+    serving = ServingLimits(
+        kwargs.pop("max_content_length", 2048),  # tracks the shipped default, so these tests exercise it
+        kwargs.pop("chunk_bytes", 256),
+        kwargs.pop("max_connections", 3),
+        kwargs.pop("backlog", None),
+        kwargs.pop("per_call_timeout_s", 0.2),
+        kwargs.pop("outer_cap_s", 0.5),
+        kwargs.pop("host", "0.0.0.0"),  # the shipped default; a test that serves overrides it
+        kwargs.pop("port", 80),
+    )
+    mount, index, hotspot = kwargs.pop("static_mount", None), kwargs.pop("static_index", "index.html"), kwargs.pop("is_hotspot_active", None)
+    static = None if mount is None else StaticSite(mount, index, hotspot)
+    log = LogConfig(kwargs.pop("fram", None), kwargs.pop("history_length", 10), kwargs.pop("debug", None))
+    assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
+    service = WebserverService(app, routes, serving, static, log)
     return service, app
 
 
@@ -2011,6 +2027,23 @@ def test_g_static_routes_are_not_registered_at_all_when_static_mount_is_none() -
     _, app = _make_service()  # static_mount defaults to None
     res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
     assert res.status_code == 404  # no route matches "/" at all - not even attempted as a static file
+
+
+_API_ROUTES = [
+    (["GET"], "/measurements"), (["GET"], "/sensors"), (["PUT"], "/sensors"), (["GET"], "/networking"),
+    (["PUT"], "/networking"), (["GET"], "/system"), (["PUT"], "/system"), (["GET"], "/status"),
+    (["PUT"], "/status"), (["GET"], "/notification"), (["PUT"], "/notification"),
+]
+
+
+def test_the_three_config_objects_register_the_same_route_table() -> None:
+    # Built from RouteSources/ServingLimits/StaticSite, the service registers the eleven API routes in
+    # order, then the two static ones only when a StaticSite is given.
+    _, app = _make_service()
+    assert [(m, p.url_pattern) for m, p, _h, _x, _s in app.url_map] == _API_ROUTES
+    mount = _mount_static_fixture({"index.html": b"i"})
+    _, app = _make_service(static_mount=mount)
+    assert [(m, p.url_pattern) for m, p, _h, _x, _s in app.url_map] == _API_ROUTES + [(["GET"], "/"), (["GET"], "/<path:filename>")]
 
 
 def test_g_static_index_filename_is_configurable() -> None:

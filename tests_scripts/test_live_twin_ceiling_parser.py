@@ -46,6 +46,7 @@ def test_synthetic_tomls_resolve_as_buildgen_resolves_them(tmp_path: Path, label
     toml = tmp_path / f"{label}.toml"
     toml.write_bytes(text.encode())
     want = device_max_connections(toml, _SRC_DIR)
-    # None: the key is absent from [device], so the build falls back to WebserverService's default.
+    # None: the key is absent from [device], so the build falls back to ServingLimits' max_connections
+    # default, src/'s _DEFAULT_MAX_CONNECTIONS.
     assert want == (webserver_init_default(_SRC_DIR, "max_connections") if expected is None else expected)
     assert _js_ceiling(label, tmp_path) == want

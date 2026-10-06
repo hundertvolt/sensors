@@ -13,7 +13,7 @@ from asy_fram_driver import FRAM_SPI
 from asy_spi_driver import SPI
 from base_classes import LockableBuffer
 from crc_checks import CRC_Base, CRC_Pass
-from print_log import PrintLogHistory
+from print_log import DEFAULT_LOG, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
-    from print_log import ErrorLog
+    from print_log import ErrorLog, LogConfig
 
 _STATUS_UNINIT = const(0x00)
 _STATUS_IDLE = const(0x01)
@@ -65,19 +65,11 @@ class _AsyBaseFramChunk:
     # data chunk layout:
     # [...Data 0...][Status 0-1][Status 0-2][...Data 1...][Status 1-1][Status 1-2]
     def __init__(
-        self,
-        fram: FRAM_SPI,
-        base_addr: int,
-        size: int,
-        mempause: "Callable[[], bool]",
-        crc: CRC_Base,
-        logger: PrintLogHistory,
-        verify: int = 0,
-        check_length: int = 8,
+        self, manager: "AsyFramManager", base_addr: int, size: int, crc: CRC_Base, verify: int = 0, check_length: int = 8,
     ) -> None:
-        self.pr = logger
-        self._mempause = mempause
-        self.fram = fram
+        self.pr = manager.pr
+        self._mempause = manager.get_pause
+        self.fram = manager.fram
         self.size = size
         self._verify = verify
         self.verify_counter = 0
@@ -412,17 +404,9 @@ class AsyFramChunkBuffer(LockableBuffer):
 
 class AsyFramChunk(_AsyBaseFramChunk):
     def __init__(
-        self,
-        fram: FRAM_SPI,
-        base_addr: int,
-        size: int,
-        mempause: "Callable[[], bool]",
-        crc: CRC_Base,
-        logger: PrintLogHistory,
-        verify: int = 0,
-        check_length: int = 8,
+        self, manager: "AsyFramManager", base_addr: int, size: int, crc: CRC_Base, verify: int = 0, check_length: int = 8,
     ) -> None:
-        super().__init__(fram, base_addr, size, mempause, crc, logger, verify=verify, check_length=check_length)
+        super().__init__(manager, base_addr, size, crc, verify=verify, check_length=check_length)
 
     async def get_size(self) -> int:
         return self.size
@@ -486,26 +470,15 @@ class AsyFramChunkTimestampedBuffer(LockableBuffer):
 class AsyFramTimestampedChunk(_AsyBaseFramChunk):
     def __init__(
         self,
-        fram: FRAM_SPI,
+        manager: "AsyFramManager",
         base_addr: int,
         size: int,
-        mempause: "Callable[[], bool]",
         ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
         crc: CRC_Base,
-        logger: PrintLogHistory,
         verify: int = 0,
         check_length: int = 8,
     ) -> None:
-        super().__init__(
-            fram,
-            base_addr,
-            struct.calcsize(_TS_FMT) + size,
-            mempause,
-            crc,
-            logger,
-            verify=verify,
-            check_length=check_length,
-        )
+        super().__init__(manager, base_addr, struct.calcsize(_TS_FMT) + size, crc, verify=verify, check_length=check_length)
         self.ntp_sync_callback = ntp_sync_callback
 
     async def get_size(self) -> int:
@@ -622,9 +595,10 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
 class AsyFramManager:
     def __init__(
-        self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None,
+        self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, log: "LogConfig" = DEFAULT_LOG,
     ) -> None:
-        self.pr = PrintLogHistory(history_length, debug, name=_NAME)
+        # RAM-only: the one module that never logs into FRAM is the FRAM module itself (owner, SPECIFICATION.md C.7.1).
+        self.pr = PrintLogHistory(log.history_length, log.debug, name=_NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         self.size = max_size
@@ -666,16 +640,7 @@ class AsyFramManager:
         if (self.allocated_size + full_size) > self.size:
             self.pr.err("FRAM out of memory!")
             return None  # out of memory
-        chunk = AsyFramChunk(
-            self.fram,
-            self.allocated_size,
-            size,
-            self.get_pause,
-            crc,
-            verify=verify,
-            check_length=check_length,
-            logger=self.pr,
-        )
+        chunk = AsyFramChunk(self, self.allocated_size, size, crc, verify=verify, check_length=check_length)
         self.allocated_size += full_size
         self.pr.one(
             "Allocation successful, FRAM now has",
@@ -709,17 +674,7 @@ class AsyFramManager:
             self.pr.err("FRAM out of memory!")
             return None  # out of memory
 
-        chunk = AsyFramTimestampedChunk(
-            self.fram,
-            self.allocated_size,
-            size,
-            self.get_pause,
-            ntp_sync_callback,
-            crc,
-            verify=verify,
-            check_length=check_length,
-            logger=self.pr,
-        )
+        chunk = AsyFramTimestampedChunk(self, self.allocated_size, size, ntp_sync_callback, crc, verify=verify, check_length=check_length)
         self.allocated_size += full_size
         self.pr.one(
             "Allocation successful, FRAM now has",

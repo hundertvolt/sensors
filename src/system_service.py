@@ -1,8 +1,8 @@
 """Generic system-housekeeping service shared by every sensortask-*.py device: uptime, boot signature, reboot/reboot-to-bootloader, the staggered driver-startup sequence, the task supervisor loop, and a persisted system-settings store (config_SYSTEM.cfg).
 Every method returns a well-defined value, never raises.
 """
-# A live debug-level change is pushed through a registry of other loggers' own set_level() methods (set_level_setters(),
-# filled once at boot), not a shared mutable value (owner, 2026-08-11, paraphrase: SharedLevel was reverted for breaking encapsulation).
+# A live debug-level change is pushed through the other loggers' own set_level() methods (the level_setters provider,
+# resolved once in setup()), not a shared mutable value (owner, 2026-08-11, paraphrase: SharedLevel was reverted for breaking encapsulation).
 # The real reset reboot_system()/reboot_bootloader() take after _RESET_DELAY is the intent, not a failure.
 
 import asyncio
@@ -17,7 +17,7 @@ from micropython import const
 
 from base_classes import LockedCounter
 from config_manager import ConfigManager, schema_names
-from print_log import make_logger
+from print_log import DEFAULT_LOG, LogConfig, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -58,7 +58,7 @@ _NAME = const("SYSTEM")
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its FRAM
 # error-log target, resolved from [device.wiring].fram_target implicitly because this is mandatory
 # infra, never an [[instance]] entry (Part L.4).
-# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 # General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - Part C.5
 # has the setSGP/setBMP history this superseded. Adding a field is the same one-line _VAL_*-tuple
@@ -74,18 +74,16 @@ class SystemService:
         self,
         asy_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]]",
         watchdog: WDT | None = None,
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        storage: "AsyFramManager | None" = None,
+        level_setters: "Callable[[], list[Callable[[int], None]]] | None" = None,
         cfg_path: str = "",
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
-        # callback for starting and stopping permanent storage communication
-        self.storage_pause: _StoragePause | None = None
-        self.pr = make_logger(fram, history_length, debug, _NAME)
+        self.pr = make_logger(log, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
-        if fram is not None:
-            self.storage_pause = fram.set_pause
+        # callback for starting and stopping permanent storage communication
+        self.storage_pause: _StoragePause | None = storage.set_pause if storage is not None else None
         self.uptime = LockedCounter(max_val=0xFFFFFFFF)  # seconds of about 136 years(!!) perfectly fits into 32bit unsigned
         self.uptime_event = asyncio.ThreadSafeFlag()
         self.timers_running = asyncio.ThreadSafeFlag()
@@ -108,13 +106,12 @@ class SystemService:
         # data and no error-streak concept, both of which that base would drag in unused - just a
         # directly-embedded ConfigManager. cfg_schema stays public (Part C.5's convention).
         self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL
-        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME, fram=fram)
+        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME, log=log)
         # get_debug_level()'s own source of truth - starts at the schema default; setup()/
         # set_debug_level() keep it current from there.
         self._current_debug_level = 0
-        # Registry of every other logger's own set_level(), filled once at boot the way
-        # get_task_starters()/get_timer_starters() are, and called whenever the level changes. Empty
-        # until set, degrading gracefully then - like watchdog and fram, the other optionals here.
+        # Every logger's own set_level(), resolved once from the provider in setup() and called on every level change.
+        self._level_setters_provider = level_setters
         self._level_setters: list[Callable[[int], None]] = []
 
     def feed_watchdog(self) -> None:
@@ -292,8 +289,10 @@ class SystemService:
 
     async def setup(self) -> None:
         # Resolves the persisted system-settings store (Part C.13's sync-__init__/async-setup()
-        # pattern). Always updates _current_debug_level, then pushes it through every registered
-        # level setter so each logger reflects the persisted level rather than whatever it started at.
+        # pattern). Resolves the level-setter provider once, then updates _current_debug_level and pushes it
+        # through every setter so each logger reflects the persisted level rather than whatever it started at.
+        if self._level_setters_provider is not None:
+            self._level_setters = self._level_setters_provider()
         await self.cfgmgr.setup()
         level = await self.cfgmgr.get_int_values(self.cfg_schema)
         if level is None:
@@ -326,12 +325,6 @@ class SystemService:
                 self._current_debug_level = level[0]
                 await self._apply_level(level[0])
         return results
-
-    def set_level_setters(self, setters: "list[Callable[[int], None]]") -> None:
-        # Called once at boot, the same style as start_timers()/start_and_check_tasks() receiving
-        # their own collected lists - but stored rather than consumed, since a setter is called
-        # again on every future level change.
-        self._level_setters = list(setters)
 
     async def _apply_level(self, value: int) -> None:
         # Each call guarded individually, the same caller-supplied-callback defense

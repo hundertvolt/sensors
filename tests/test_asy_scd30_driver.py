@@ -18,6 +18,7 @@ import config_manager as cm
 from asy_i2c_driver import I2C
 from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
 from crc_checks import CRC8
+from print_log import LogConfig, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -141,6 +142,14 @@ class _RaiseOnArm:
 # (datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf) - hardcoded bytes from the PDF,
 # not this file's crc8_byte() helper, so a latent bug in that helper cannot mask a real mismatch.
 # ---------------------------------------------------------------------------
+
+
+def test_the_reader_logger_follows_its_log_config() -> None:
+    reader = SCD30_Reader(make_i2c(), irq_pin=5, log=LogConfig(None, 3, 2))
+    assert type(reader.pr) is PrintLogHistory
+    assert reader.pr.name == "SCD30"
+    assert len(reader.pr.history) == 3
+    assert reader.pr.get_level() == 2
 
 
 def test_stop_continuous_measurement_matches_datasheet_example() -> None:

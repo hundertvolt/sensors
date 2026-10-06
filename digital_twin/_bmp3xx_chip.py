@@ -4,6 +4,7 @@ Calibration block is hand-picked, not real-chip data; see `digital_twin/README.m
 import struct
 
 from _fault_injection import FaultInjector
+from _twin_common import Walk
 
 try:
     from typing import TYPE_CHECKING
@@ -34,6 +35,9 @@ _STATUS_CMD_RDY = 0x10
 _STATUS_DATA_READY = 0x60
 _CONTROL_FORCED_MODE = 0x13
 _CMD_SOFT_RESET = 0xB6
+
+_TEMP_WALK_DEFAULT = Walk(15.0, 30.0, 1.0)  # degC
+_PRESSURE_WALK_DEFAULT = Walk(950.0, 1050.0, 5.0)  # hPa
 
 # T1 T2 T3 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 raw values - see digital_twin/README.md's "Known
 # gaps" section for how these were chosen/verified.
@@ -90,23 +94,19 @@ class Bmp3xxChip:
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,
-        min_temp_c: float = 15.0,
-        max_temp_c: float = 30.0,
-        min_pressure_hpa: float = 950.0,
-        max_pressure_hpa: float = 1050.0,
-        temp_step_c: float = 1.0,
-        pressure_step_hpa: float = 5.0,
+        temp: Walk = _TEMP_WALK_DEFAULT,
+        pressure: Walk = _PRESSURE_WALK_DEFAULT,
     ) -> None:
         if random_source is None:
             import random as _random_module
 
             random_source = _random_module
         self._random = random_source
-        self._min_temp_c, self._max_temp_c = min_temp_c, max_temp_c
-        self._min_pressure_hpa, self._max_pressure_hpa = min_pressure_hpa, max_pressure_hpa
-        # Not datasheet-derived (the min/max above are) - see _scd30_chip.py's own *_step comment
+        self._min_temp_c, self._max_temp_c = temp.lo, temp.hi
+        self._min_pressure_hpa, self._max_pressure_hpa = pressure.lo, pressure.hi
+        # Not datasheet-derived (the walks' lo/hi are) - see _scd30_chip.py's own walk comment
         # for the same judgment-call framing, applied here to weather-scale pressure/temperature.
-        self._temp_step_c, self._pressure_step_hpa = temp_step_c, pressure_step_hpa
+        self._temp_step_c, self._pressure_step_hpa = temp.step, pressure.step
         self._status = _STATUS_CMD_RDY
         self._osr = 0
         self._config = 0

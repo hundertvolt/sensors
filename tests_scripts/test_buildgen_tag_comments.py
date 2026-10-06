@@ -366,7 +366,7 @@ def test_known_tag_names_mirrors_the_registry() -> None:
         # this module needs"). Sentence punctuation still rules a comment out immediately.
         ("# @wiring is what this module needs, more of it", "wiring", False),
         ("# wiring is what this module needs more of", "wiring", False),
-        ("# @value-wiring temperature_source temperature_source temperature_field required", "value-wiring", True),
+        ("# @value-wiring temperature_source temperature required", "value-wiring", True),
         ("# @limits trigger_sec 1..3600", "limits", True),
         ("# @limits address in {0x76, 0x77}", "limits", True),
         ("# @limits are checked elsewhere in this file", "limits", False),

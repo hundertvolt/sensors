@@ -16,7 +16,7 @@ import asy_uart_driver
 from asy_fram_manager import AsyFramManager
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UART_Comm
 
 BAUDRATE = 115200
 PAYLOAD_SIZE = 48
@@ -51,6 +51,7 @@ class Load:
     def __init__(self) -> None:
         self.i2c0_reads = 0
         self.i2c1_reads = 0
+        self.i2c_errors = 0  # counted and reported, never silently dropped
         self.spi_reads = 0
         self.churn_blocks = 0
         self.alloc_failures = 0
@@ -64,8 +65,8 @@ async def _sgp_load_loop(sgp: "SGP40_I2C", load: Load) -> None:
         try:
             await sgp.measure_raw()
             load.i2c1_reads += 1
-        except Exception:  # a device fault is a different tier's subject
-            pass
+        except Exception:  # a device fault is a different tier's subject; counted so it stays visible
+            load.i2c_errors += 1
         await asyncio.sleep_ms(5)
 
 
@@ -76,7 +77,7 @@ async def _scd_load_loop(scd: SCD30_I2C, load: Load) -> None:
             await scd.get_measurement_interval()
             load.i2c0_reads += 1
         except Exception:
-            pass
+            load.i2c_errors += 1
         await asyncio.sleep_ms(5)
 
 
@@ -133,7 +134,7 @@ async def _main() -> None:
     initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
     responder = UART_Comm(
         uart1, ROLE_RESPONDER, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS,
-        get_callback=get_callback, set_callback=set_callback, name="UART_RESP",
+        callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_RESP",
     )
     await initiator.setup()
     await responder.setup()
@@ -224,7 +225,7 @@ async def _main() -> None:
     else:
         print(
             f"RESULT: PASS {transfers} transfers (worst RTT {worst_rtt_ms}ms) while scd={load.i2c0_reads} "
-            f"sgp={load.i2c1_reads} spi={load.spi_reads} churn={load.churn_blocks} "
+            f"sgp={load.i2c1_reads} i2cerr={load.i2c_errors} spi={load.spi_reads} churn={load.churn_blocks} "
             f"allocfail={load.alloc_failures} heapgrowth={heap_growth}B",
         )
 

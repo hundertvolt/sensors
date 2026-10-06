@@ -21,8 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
-    from asy_fram_manager import AsyFramManager
-    from print_log import ErrorLog
+    from print_log import ErrorLog, LogConfig
 
     T = TypeVar("T", int, float, str)
 
@@ -49,7 +48,7 @@ if TYPE_CHECKING:
     # `# @wiring`/`# @value-wiring`/`# @limits` comment tags, so nothing the firmware reads becomes
     # frozen bytecode just to serve the generator (SPECIFICATION.md Parts L.5 and C.14.2).
 
-from print_log import PrintLogHistory, make_logger
+from print_log import DEFAULT_LOG, PrintLogHistory, make_logger
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and CFGMGR's band.
 _ERR_ALLOC = const(20)
@@ -273,13 +272,12 @@ def compare_before_write(
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str, fram: "AsyFramManager | None" = None) -> None:
-        # Inherits its owning module's FRAM durability (CLAUDE.md's implicit-FRAM-wiring rule),
-        # falling back to the same RAM-only PrintLogHistory whenever fram is None - so a caller that
-        # never passes it sees no change at all.
-        self.pr: PrintLogHistory = make_logger(fram, name="CFGMGR_" + name)
+    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str, log: "LogConfig" = DEFAULT_LOG) -> None:
         self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
+        # Inherits its owning module's logging config - FRAM-backed when the module is (the implicit FRAM-wiring
+        # rule, SPECIFICATION.md A.7) - so its failure history survives a reboot like the module's own.
+        self.pr: PrintLogHistory = make_logger(log, self.name)
         self.config_lock = asyncio.Lock()
         self.config_file = filename
         self.cfg_vals = cfg_vals

@@ -20,6 +20,7 @@ from asy_dns_client import resolve_ipv4
 from asy_udp_socket import AsyUDPSocket
 from base_classes import SensorReaderConfig
 from config_manager import make_dict
+from print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -28,9 +29,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
+    from typing import Any, NamedTuple
 
-    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and NTP's band.
@@ -48,10 +48,25 @@ _WRN_NTP_UNSYNC_REPLY = const(40)
 
 _NTP_ASYNC_INTERV = const(3)  # 3 times interval considered as out of sync
 _NTP_CHECK_INTERV = const(10)  # seconds to count for NTP status update
-_NTP_CONN_TIMEOUT = const(5000)  # 5s  to send request / receive an answer from NTP server
 _NTP_SYNC_RETRIES = const(3)  # try 3 times to connect to NTP server before stopping
 _NTP_RETRY_INTERV = const(15)  # wait 15 secs before retrying to sync
 _NTP_BACKOFF_MULT = const(2)  # unsynced retry interval doubles per failed attempt, up to its cap
+# unsynced retry: first interval and its cap; both round up to the 10 s check tick (Part C.7.2)
+_DEFAULT_RETRY_S = const(10)
+_DEFAULT_RETRY_MAX_S = const(600)
+
+# The client's timing, passed whole by the generated module: the resolver's DNS bounds, the fetch
+# timeout and the unsynced backoff (first interval, cap).
+if TYPE_CHECKING:
+    class NtpTiming(NamedTuple):
+        dns_timeout_ms: int
+        dns_tries: int
+        fetch_timeout_ms: int
+        retry_s: int
+        retry_max_s: int
+
+else:
+    NtpTiming = namedtuple("NtpTiming", ("dns_timeout_ms", "dns_tries", "fetch_timeout_ms", "retry_s", "retry_max_s"))
 
 _NTP_UDP_PORT = 123  # RFC 5905's standard port; not const()-wrapped so tests can redirect it to a
 # fake server's ephemeral port (binding real port 123 needs root).
@@ -94,7 +109,7 @@ _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 # This service's one optional live cross-instance dependency (Part C.14): its FRAM error-log target,
 # resolved from [device.wiring].fram_target implicitly because AsyNtpClient is mandatory infra,
 # never an [[instance]] entry - the same tag system_service and asy_wifi_service carry.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 _NAME = const("NTP")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
@@ -110,36 +125,26 @@ class AsyNtpClient(SensorReaderConfig):
         wifi_mode_lock: asyncio.Lock,
         network_available: "Callable[[], bool]",
         get_dns_server: "Callable[[], str | None]",
-        dns_timeout_ms: int = 500,  # forwarded to resolve_ipv4() - whichever module wires this up
-        # decides the real deployment value at construction time.
-        dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
-        ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s socket
-        # call - same reasoning as dns_timeout_ms.
-        retry_s: int = 10,  # unsynced: first retry interval, doubled per failed attempt up to
-        retry_max_s: int = 600,  # this cap; both round up to the 10s check tick (Part C.7.2)
+        timing: NtpTiming,
         cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
             NTP(Synced=False, LastSyncAge=None, TS=None),
-            0,  # no failure streak: an unreachable server is routine here, never a restart (owner, 2026-09-24; Part C.7.2)
             _NAME,
             _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST,
+            max_module_error=0,  # no failure streak: an unreachable server is routine here, never a restart (owner, 2026-09-24; Part C.7.2)
             cfg_path=cfg_path,
-            fram=fram,
-            history_length=history_length,
-            debug=debug,
+            log=log,
         )
         self.wifi_mode_lock = wifi_mode_lock  # shared with AsyConnTime - protects the WLAN state this class only reads
         self.network_available = network_available  # AsyConnTime.network_available - caller must hold wifi_mode_lock
         self.get_dns_server = get_dns_server  # AsyConnTime.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
-        self.dns_timeout_ms = dns_timeout_ms
-        self.dns_tries = dns_tries
-        self.ntp_fetch_timeout_ms = ntp_fetch_timeout_ms
-        self.retry_s = max(retry_s, _NTP_CHECK_INTERV)
-        self.retry_max_s = max(retry_max_s, self.retry_s)
+        self.dns_timeout_ms = timing.dns_timeout_ms
+        self.dns_tries = timing.dns_tries
+        self.ntp_fetch_timeout_ms = timing.fetch_timeout_ms
+        self.retry_s = max(timing.retry_s, _NTP_CHECK_INTERV)
+        self.retry_max_s = max(timing.retry_max_s, self.retry_s)
         self._retry_wait_s = self.retry_s  # current backoff step; reset by a sync or a forced resync
         self._unsynced_wait_s = 0  # seconds since the last unsynced attempt was triggered
         self.ntp_sec_count = 0

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 import machine
 import network
+from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, WDT, Pin
 from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 
@@ -116,24 +117,9 @@ def _parse_wifi_outcome(value: str) -> int:
 
 
 class LaunchConfig:
-    def __init__(
-        self,
-        seed: "int | None" = None,
-        fram_state_path: "str | None" = None,
-        scd30_state_path: "str | None" = None,
-        faults: "list[tuple[str, str, int]] | None" = None,
-        hangs: "list[tuple[str, str, float, int]] | None" = None,
-        wifi_outcomes: "list[int] | None" = None,
-        *,
-        no_wdt_feed: bool = False,
-        duration: "float | None" = None,
-    ) -> None:
-        self.seed = seed
-        self.fram_state_path = fram_state_path
-        self.scd30_state_path = scd30_state_path
-        self.faults = faults if faults is not None else []
-        self.hangs = hangs if hangs is not None else []
-        self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
+    def __init__(self, state: StatePaths, injections: Injections, *, no_wdt_feed: bool = False, duration: "float | None" = None) -> None:
+        self.state = state
+        self.injections = injections
         self.no_wdt_feed = no_wdt_feed
         self.duration = duration
 
@@ -177,12 +163,8 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
             raise ValueError(f"unrecognized argument: {arg!r}")
 
     return LaunchConfig(
-        seed=seed,
-        fram_state_path=fram_state_path,
-        scd30_state_path=scd30_state_path,
-        faults=faults,
-        hangs=hangs,
-        wifi_outcomes=wifi_outcomes,
+        StatePaths(fram_state_path, scd30_state_path),
+        Injections(seed, faults, hangs, wifi_outcomes),
         no_wdt_feed=no_wdt_feed,
         duration=duration,
     )
@@ -347,7 +329,8 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
 
 
 async def main(config: "LaunchConfig") -> "dict[str, Any]":
-    if config.seed is not None:
+    injections = config.injections
+    if injections.seed is not None:
         # MicroPython's `random` has no instantiable Random class, unlike CPython - but every
         # chip fake's random_source=None default already falls back to this same module-level
         # generator, so reseeding it here seeds every wired chip's walk at once.
@@ -356,14 +339,14 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
         # a distinct generator; this simpler case does not need it.
         import random as _random_module
 
-        _random_module.seed(config.seed)
-    machine.configure_fram_state_path(config.fram_state_path)
-    machine.configure_scd30_state_path(config.scd30_state_path)
+        _random_module.seed(injections.seed)
+    machine.configure_fram_state_path(config.state.fram)
+    machine.configure_scd30_state_path(config.state.scd30)
 
     print(
-        f"digital_twin/launch.py starting - seed={config.seed!r} fram_state_path={config.fram_state_path!r} "
-        f"scd30_state_path={config.scd30_state_path!r} no_wdt_feed={config.no_wdt_feed!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
+        f"digital_twin/launch.py starting - seed={injections.seed!r} fram_state_path={config.state.fram!r} "
+        f"scd30_state_path={config.state.scd30!r} no_wdt_feed={config.no_wdt_feed!r} "
+        f"duration={config.duration!r} faults={injections.faults!r} hangs={injections.hangs!r} wifi_outcomes={injections.wifi_outcomes!r}",
     )
 
     watchdog = WDT(timeout=8000)
@@ -373,13 +356,13 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     wlan = network.WLAN(network.STA_IF)
 
     chips = {"scd30": i2c0.devices[0x61], "sgp40": i2c1.devices[0x59], "bmp3xx": i2c1.devices[0x77], "fram": spi0.device}
-    for device, op, times in config.faults:
+    for device, op, times in injections.faults:
         _apply_fault(device, op, times, chips, wlan)
-    for device, op, seconds, times in config.hangs:
+    for device, op, seconds, times in injections.hangs:
         _apply_hang(device, op, seconds, times, chips)
 
-    if config.wifi_outcomes:
-        wlan.script_connect_outcomes(config.wifi_outcomes)
+    if injections.wifi_outcomes:
+        wlan.script_connect_outcomes(injections.wifi_outcomes)
 
     summary: dict[str, Any] = {"readings": 0, "wifi_status": None, "would_have_triggered_count": 0}
 

@@ -10,7 +10,9 @@ import machine
 import asy_i2c_driver
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
-from asy_sgp40_driver import SGP40_Reader
+from asy_sgp40_driver import SGP40_Reader, SgpBackup
+from base_classes import ValueRef
+from print_log import DEFAULT_LOG, LogConfig
 
 BACKUP_WAIT_S = 75.0  # 60s to the first natural BackupPeriod=1min trigger, plus margin
 RESTORE_WAIT_S = 10.0
@@ -45,8 +47,8 @@ async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float, wdt: mac
     task.cancel()
     try:
         await task
-    except (asyncio.CancelledError, Exception):
-        pass
+    except asyncio.CancelledError:
+        pass  # the cancel above; a read task that died on its own re-raises here and fails the run
 
 
 async def _main() -> None:
@@ -54,21 +56,18 @@ async def _main() -> None:
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 
-    fram_a = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram_a = AsyFramManager(spi0, 5, max_size=0x40000)
     if not await fram_a.setup():
         print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
     reader1 = SGP40_Reader(
         i2c1,
-        _FixedSource(25.0),
-        "value",
-        _FixedSource(50.0),
-        "value",
+        ValueRef(_FixedSource(25.0), "value"),
+        ValueRef(_FixedSource(50.0), "value"),
+        backup=SgpBackup(fram_a, _always_synced),
         max_module_error=999,
-        fram_storage=fram_a,
-        fram_ntp_callback=_always_synced,
-        debug=None,
+        log=LogConfig(fram_a, DEFAULT_LOG.history_length, None),
     )
     if reader1.ts_storage is None:
         print("RESULT: FAIL reader1.ts_storage allocation failed - no FRAM chunk to back up into")
@@ -89,21 +88,18 @@ async def _main() -> None:
     # Simulate a fresh boot: a brand new AsyFramManager Python object against the same real spi0
     # bus/chip, allocating its own chunk 0 at the same physical address reader1's did - see this
     # script's own module docstring for why this is a faithful reboot simulation.
-    fram_b = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram_b = AsyFramManager(spi0, 5, max_size=0x40000)
     if not await fram_b.setup():
         print("RESULT: FAIL fram_b.setup() failed - real FRAM chip not responding on second probe")
         return
 
     reader2 = SGP40_Reader(
         i2c1,
-        _FixedSource(25.0),
-        "value",
-        _FixedSource(50.0),
-        "value",
+        ValueRef(_FixedSource(25.0), "value"),
+        ValueRef(_FixedSource(50.0), "value"),
+        backup=SgpBackup(fram_b, _always_synced),
         max_module_error=999,
-        fram_storage=fram_b,
-        fram_ntp_callback=_always_synced,
-        debug=None,
+        log=LogConfig(fram_b, DEFAULT_LOG.history_length, None),
     )
     if reader2.ts_storage is None:
         print("RESULT: FAIL reader2.ts_storage allocation failed - no FRAM chunk to restore from")

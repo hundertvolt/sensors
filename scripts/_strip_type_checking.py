@@ -49,10 +49,13 @@ class _TypeCheckingStripper(ast.NodeTransformer):
     def __init__(self) -> None:
         self.removed_anything = False
 
-    def visit_If(self, node: ast.If) -> ast.If | None:
-        if not node.orelse and _is_bare_type_checking_test(node.test):
+    def visit_If(self, node: ast.If) -> ast.If | list[ast.stmt] | None:
+        if _is_bare_type_checking_test(node.test):
+            # TYPE_CHECKING is False at runtime: keep only the else/elif branch, stripped in turn.
             self.removed_anything = True
-            return None
+            branch = ast.Module(body=node.orelse, type_ignores=[])
+            self.generic_visit(branch)
+            return branch.body or None
         self.generic_visit(node)
         return node
 
@@ -65,8 +68,8 @@ class _TypeCheckingStripper(ast.NodeTransformer):
 
 
 def strip_type_checking_blocks(source: str) -> str:
-    """Returns `source` with every bare `if TYPE_CHECKING:` block (no `elif`/`else`) and its
-    try/except ImportError header removed, re-parsing the output to fail loudly on a bad
+    """Returns `source` with every bare `if TYPE_CHECKING:` block (an `elif`/`else` branch kept in
+    its place) and its try/except ImportError header removed, re-parsing the output to fail loudly on a bad
     transform. Source with no such blocks is returned byte-for-byte unchanged."""
     tree = ast.parse(source)
     stripper = _TypeCheckingStripper()

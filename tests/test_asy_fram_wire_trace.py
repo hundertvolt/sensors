@@ -149,7 +149,7 @@ async def _rig() -> "tuple[AsyFramManager, PrintLogHistoryStore, AsyFramTimestam
     # The production shape section 3B priced: one manager, a PrintLogHistoryStore allocated first
     # (SensorReader's own order) and a separate timestamped value chunk second.
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=0x2000, debug=None)
+    manager = AsyFramManager(bus, 1, max_size=0x2000)
     assert await manager.setup()
     logger = PrintLogHistoryStore(manager, 10, None, name="WT")
     chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32())

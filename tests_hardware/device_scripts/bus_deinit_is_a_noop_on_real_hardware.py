@@ -42,7 +42,7 @@ async def _main() -> None:
 
     # --- machine.SPI: the same no-op claim, proven against real FRAM traffic rather than a scan ---
     spi_wrapper = asy_spi_driver.SPI(SPI_PORT, SPI_SCK, SPI_MOSI, SPI_MISO)
-    fram = AsyFramManager(spi_wrapper, SPI_CS, max_size=0x40000, debug=None)
+    fram = AsyFramManager(spi_wrapper, SPI_CS, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding, cannot judge SPI deinit()")
         return

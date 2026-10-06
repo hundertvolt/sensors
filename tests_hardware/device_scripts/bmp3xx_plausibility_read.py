@@ -16,7 +16,7 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
-    reader = BMP3xx_Reader(i2c0, max_module_error=999, fram=None, debug=None)
+    reader = BMP3xx_Reader(i2c0, max_module_error=999)
     # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Derived from
     # the driver's own schema, so a new field can't leave this reading a default that no longer exists.
     reader.cfgmgr.valid = True
@@ -35,12 +35,18 @@ async def _main() -> None:
         wdt.feed()
         await asyncio.sleep(0.5)
 
+    died: list[str] = []
     for task in (trigger_task, read_task):
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # a task that died on its own fails the run, never passes it
+            died.append(repr(e))
+    if died:
+        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
+        return
 
     if data is None or data.Pres is None:
         print("RESULT: FAIL no pressure reading obtained within the wait window - sensor not responding or not wired to i2c0")

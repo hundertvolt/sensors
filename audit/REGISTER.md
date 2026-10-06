@@ -26,7 +26,7 @@ lease and resumption procedure.
 | U2 | error-number catalog | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U2_close.md` |
 | U3 | central log-repeat rule, one entry per event | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U3_close.md` |
 | U4 | compare-before-write primitive, SCD30 onto it | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U4_close.md` |
-| U5 | config objects and `max-args` | not started | — |
+| U5 | config objects and `max-args` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U5_close.md` |
 | U6 | one-source website definitions | not started | — |
 | U7 | tier ladder and runner summary block | not started | — |
 | U8 | `@tunable` scheme | not started | — |
@@ -153,6 +153,24 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U4 | Lane texts pulled A.U4.07's SCD30 correction into SPEC C.8, E.6.6 item 2 and two README "Tenth pass" bullets before U7 | the new REST-half sentence would otherwise contradict the old "zero `_push_callbacks`" claim beside it |
 | U4 | The SCD30 setter-failure tests stub `get_config_snapshot()` so the write, not the snapshot, is what fails | a bus NAK now fails the snapshot first, which another test covers on its own |
 | U4 | The JS never-"Unchanged" comment leaves `ContMeas` out | `ContMeas` sits in a group with no dispatch field, so a resubmit omits it and it never reaches the backend |
+| U5 | `WifiConfig` takes its end-state four fields now: `led_pin` and `wifi_refresh_sec` go, the loop sleeps `_WIFI_REFRESH_S = const(5)` | the step's Resolved ruling names the four-field shape; the LED is passed at construction, so the pin had no reader left; pulled forward from U18 |
+| U5 | `StaticSite`'s index field is `index_file`, not `index` | a namedtuple field named `index` shadows `tuple.index`, which mypy rejects; no ignore added |
+| U5 | The construction-order tie-break propagates urgency: a node takes the lowest priority of anything waiting on it, giving fram → neopixel → conn → ntp → sysfunct → sensors on every device | the stated order needs it; without it TOML order built sensors before the NeoPixel. Every device's FRAM chunk order changes (see the scan record) |
+| U5 | Codegen reads `module_str_const`/`module_float_const` and `ntp_backoff()` now, not at U20 | codegen must read `_DEFAULT_STATIC_INDEX` and the float serving defaults from src |
+| U5 | `src_dir` rides on codegen's `_Ctx`, and every config-object field is emitted explicitly (`maintenance_sensors=()`, `notification_led=None`, `ext_led=None`, `storage=None`) | keeps `max-args = 8`; MicroPython's `namedtuple` has no defaults, so a built object is complete in one step |
+| U5 | A refused notification signal prints at once (`self.pr.wrn()`, level-gated) and persists once in `setup()` | the step's "printed at once" read with the project's logger rather than a bare `print()` |
+| U5 | ISL29125's `address` parameter goes at U5, not U15; the reader builds `ISL29125_I2C(i2c)` on the fixed 0x44 | with it the reader has 9 parameters and is not on the exempt list for `max-args = 8` |
+| U5 | `test_fram_integration` keeps its old behaviour (`name=""`, `max_module_error=3`, `LogConfig(manager, 10, None)`) instead of the step's literal call | the literal omitted the required `name` and moved `3` from `max_module_error` into the history length |
+| U5 | The UART harness `Pair` takes `message_callback` for the responder only | the step's `ResponderCallbacks(get, set, None)` would drop a callback tests pass through `build_pair` |
+| U5 | Two `arg-type` ignores the steps keep are removed (neopixel reboot test, UART link test) | `LogConfig.fram` is the structural `_FramManager` Protocol, which the fakes satisfy; mypy reports the ignores unused |
+| U5 | `scripts/_strip_type_checking.py` replaces an `if TYPE_CHECKING:` that has an `else` with its runtime branch | the guard import is always removed, so the kept block raised `NameError` at import in frozen firmware; every config object uses that shape; no step named it |
+| U5 | Every device script and the twin stress repro fail the run when a background task died on its own; the UART load script counts and reports the I2C errors its load loops absorb | a crashed task or a bus error under load was swallowed with `except (CancelledError, Exception): pass`; the silent-failure sweep found nine sites |
+| U5 | The lint-ceiling test's four JS registrations (`vitest.config.js`, `vitest-commands.d.ts`, both tsconfigs) land now, for `_lint_command.js` only | the ceiling test never runs unregistered; the other registrations stay with their units |
+| U5 | ESLint `max-classes-per-file` is checked at 1 only as "no finding at 1" | ESLint accepts no value below 1 |
+| U5 | SPEC L.4 gains a "Construction" bullet; SPEC H.8's `validateDefinitions` figure is 38, not 37 | no construction sentence existed to rewrite; 38 is the measured value |
+| U5 | The DebugLevel device scripts stay until U26 | the flash-tier runner still runs both; their calls are valid under the new signature |
+| U5 | SPEC A.5, A.7, C.14, L.2, L.6.6 and README follow the config objects now, not at U20 | they described constructor arguments U5 removes; minimal current-state edits |
+| U5 | `src/asy_uart_driver.py`'s per-file ignore lists PLR0917 beside PLR0913, same reason | ruff derives `max-positional-args` from `max-args`, so the step's exempt `UART.__init__`/`init()` hit the positional twin; the exempt set is unchanged |
 
 ## Parked deltas (OR2.c, OR106.a)
 

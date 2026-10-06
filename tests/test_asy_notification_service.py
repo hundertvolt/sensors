@@ -5,6 +5,8 @@ from _tmp_scratch import TmpScratch
 
 import asy_notification_service
 from asy_notification_service import NotificationCoordinator, NotificationSignal
+from base_classes import ValueRef
+from print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -116,6 +118,7 @@ class _FastAsyncSleep:
 
 
 def make_coordinator(
+    signals: "tuple[NotificationSignal, ...]" = (),
     cfg_path: "str | None" = None,
     debug: "int | None" = None,
     local_time: "FakeClock | None" = None,
@@ -124,7 +127,7 @@ def make_coordinator(
     path = _tmp_cfg_dir() if cfg_path is None else cfg_path
     clock = local_time if local_time is not None else FakeClock()
     cb = signal_cb if signal_cb is not None else FakeSignalCb()
-    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=path, debug=debug)
+    coordinator = NotificationCoordinator(cb, clock.get, signals, cfg_path=path, log=LogConfig(None, 10, debug))
     return coordinator, clock, cb
 
 
@@ -133,7 +136,7 @@ def make_signal(
 ) -> "tuple[NotificationSignal, FakeValue]":
     fv = FakeValue(value, field=name)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
-    return NotificationSignal(name, fv, name, field_schema, color, above=above), fv
+    return NotificationSignal(name, ValueRef(fv, name), field_schema, color, above=above), fv
 
 
 async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
@@ -149,98 +152,101 @@ async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[
 
 
 # ---------------------------------------------------------------------------
-# Staged registration / finalize()
+# Signals at construction: validated in order, a refusal printed at once and persisted by setup()
 # ---------------------------------------------------------------------------
 
 
-def test_register_before_finalize_is_accepted_in_call_order() -> None:
-    coordinator, _clock, _cb = make_coordinator()
+def _newest_wrn(coordinator: NotificationCoordinator) -> "tuple[int, int]":
+    # (ErrCount, the newest ring slot's code) of the service's own log.
+    log = run(coordinator.get_error_counter())["NOTIFY"]
+    return log["ErrCount"], log["ErrNum"][-1]
+
+
+def test_signals_are_accepted_in_tuple_order() -> None:
     a, _ = make_signal("WarnCO2")
     b, _ = make_signal("WarnVOC")
-    coordinator.register(a)
-    coordinator.register(b)
-    assert coordinator._registered == [a, b]
+    coordinator, _clock, _cb = make_coordinator((a, b))
+    assert coordinator._registered == (a, b)
 
 
-def test_register_collision_against_another_registered_signal_is_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
+def test_a_signal_colliding_with_an_accepted_one_is_refused() -> None:
     a, _ = make_signal("WarnCO2")
     b, _ = make_signal("WarnCO2")  # same field name
-    coordinator.register(a)
-    coordinator.register(b)
-    assert coordinator._registered == [a]
+    coordinator, _clock, _cb = make_coordinator((a, b))
+    assert coordinator._registered == (a,)
+    run(coordinator.setup())
+    assert _newest_wrn(coordinator) == (1, code("W", "NOTIFY_NAME_COLLISION"))
 
 
-def test_register_collision_against_own_static_schema_is_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    bad, _ = make_signal("AutoOn")  # collides with the coordinator's own static field
-    coordinator.register(bad)
-    assert coordinator._registered == []
+def test_a_signal_colliding_with_the_own_schema_is_refused() -> None:
+    bad, _ = make_signal("AutoOn")  # collides with the service's own static field
+    coordinator, _clock, _cb = make_coordinator((bad,))
+    assert coordinator._registered == ()
+    run(coordinator.setup())
+    assert _newest_wrn(coordinator) == (1, code("W", "NOTIFY_NAME_COLLISION"))
 
 
-def test_register_field_schema_with_zero_fields_is_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1, field="Empty")
-    notif = NotificationSignal("Empty", fv, "Empty", (), (1, 0, 0))
-    coordinator.register(notif)
-    assert coordinator._registered == []
+def test_a_signal_schema_with_zero_fields_is_refused() -> None:
+    notif = NotificationSignal("Empty", ValueRef(FakeValue(1, field="Empty"), "Empty"), (), (1, 0, 0))
+    coordinator, _clock, _cb = make_coordinator((notif,))
+    assert coordinator._registered == ()
+    run(coordinator.setup())
+    assert _newest_wrn(coordinator) == (1, code("W", "NOTIFY_SCHEMA_SHAPE"))
 
 
-def test_register_field_schema_with_two_fields_is_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1, field="TwoFields")
+def test_a_signal_schema_with_two_fields_is_refused() -> None:
     schema = (("A", "int", 1, 0, 10, None), ("B", "int", 1, 0, 10, None))
-    notif = NotificationSignal("TwoFields", fv, "TwoFields", schema, (1, 0, 0))
-    coordinator.register(notif)
-    assert coordinator._registered == []
+    notif = NotificationSignal("TwoFields", ValueRef(FakeValue(1, field="TwoFields"), "TwoFields"), schema, (1, 0, 0))
+    coordinator, _clock, _cb = make_coordinator((notif,))
+    assert coordinator._registered == ()
+    run(coordinator.setup())
+    assert _newest_wrn(coordinator) == (1, code("W", "NOTIFY_SCHEMA_SHAPE"))
 
 
-def test_register_after_finalize_is_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    a, _ = make_signal("WarnCO2")
-    coordinator.register(a)
-    coordinator.finalize()
-    run(coordinator.cfgmgr.setup())
-    late, _ = make_signal("WarnVOC")
-    coordinator.register(late)
-    assert coordinator._registered == [a]
-
-
-def test_finalize_builds_the_exact_combined_schema() -> None:
-    coordinator, _clock, _cb = make_coordinator()
+def test_construction_builds_the_exact_combined_schema() -> None:
     a, _ = make_signal("WarnCO2")
     b, _ = make_signal("WarnVOC")
-    coordinator.register(a)
-    coordinator.register(b)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b))
     run(coordinator.cfgmgr.setup())
     names = [f[0] for f in coordinator.get_cfg_schema()]
     assert names == ["OnH", "OnM", "OffH", "OffM", "FlashBri", "Interv", "FlashDur", "AutoOn", "WarnCO2", "WarnVOC"]
     assert len(names) == len(set(names))  # no duplicates
 
 
-def test_finalize_called_twice_is_a_no_op_second_time() -> None:
-    coordinator, _clock, _cb = make_coordinator()
+def test_a_refused_signal_is_printed_at_once_and_persisted_once_by_setup() -> None:
     a, _ = make_signal("WarnCO2")
-    coordinator.register(a)
-    coordinator.finalize()
-    run(coordinator.cfgmgr.setup())
-    schema_before = coordinator.get_cfg_schema()
-    coordinator.finalize()
-    run(coordinator.cfgmgr.setup())
-    assert coordinator.get_cfg_schema() == schema_before
+    clash, _ = make_signal("WarnCO2")
+    coordinator, _clock, _cb = make_coordinator((a, clash))
+    assert len(coordinator._pending_wrn) == 1
+    assert run(coordinator.get_error_counter())["NOTIFY"]["ErrCount"] == 0
+    run(coordinator.setup())
+    assert coordinator._pending_wrn == []
+    assert _newest_wrn(coordinator) == (1, code("W", "NOTIFY_NAME_COLLISION"))
+    run(coordinator.setup())
+    assert _newest_wrn(coordinator)[0] == 1  # a second setup() adds none
+    cfg = run(coordinator.get_dict_cfg())["NOTIFY"]
+    assert cfg["WarnCO2"] == 1600  # answers its config at once, with the kept signal's field
+
+
+def test_the_two_refusal_reasons_keep_distinct_codes() -> None:
+    clash, _ = make_signal("AutoOn")
+    empty = NotificationSignal("Empty", ValueRef(FakeValue(1, field="Empty"), "Empty"), (), (1, 0, 0))
+    coordinator, _clock, _cb = make_coordinator((clash, empty))
+    assert [wrnno for _msg, wrnno in coordinator._pending_wrn] == [code("W", "NOTIFY_NAME_COLLISION"), code("W", "NOTIFY_SCHEMA_SHAPE")]
+    run(coordinator.setup())
+    log = run(coordinator.get_error_counter())["NOTIFY"]
+    assert log["ErrCount"] == 2
+    assert log["ErrNum"][-2:] == [code("W", "NOTIFY_NAME_COLLISION"), code("W", "NOTIFY_SCHEMA_SHAPE")]
 
 
 # ---------------------------------------------------------------------------
-# Combined config/persistence (single shared ConfigManager, post-finalize)
+# Combined config/persistence (single shared ConfigManager, built at construction)
 # ---------------------------------------------------------------------------
 
 
 def test_combined_fields_round_trip_through_get_and_set_dict_cfg() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     a, _ = make_signal("WarnCO2")
-    coordinator.register(a)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, dict[str, int | float | str | bool | None]]":
@@ -253,10 +259,8 @@ def test_combined_fields_round_trip_through_get_and_set_dict_cfg() -> None:
 
 
 def test_invalid_write_on_one_field_does_not_affect_others() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     a, _ = make_signal("WarnCO2")
-    coordinator.register(a)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, Any]":
@@ -290,10 +294,8 @@ _INT_FLOAT_FIELD_BOUNDS: "dict[str, tuple[int | float, int | float, str]]" = {
 
 
 def test_write_all_valid_fields_at_once_succeeds() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
     data: dict[str, int | float | str | bool | None] = {
         "OnH": 8,
@@ -315,10 +317,8 @@ def test_write_all_valid_fields_at_once_succeeds() -> None:
 
 
 def test_each_int_float_field_boundary_values_accepted() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def write_one(key: str, value: "int | float | str | bool | None") -> str:
@@ -337,10 +337,8 @@ def test_each_int_float_field_boundary_values_accepted() -> None:
 
 
 def test_each_int_float_field_just_outside_bounds_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def write_one(key: str, value: "int | float | str | bool | None") -> str:
@@ -358,10 +356,8 @@ def test_each_int_float_field_just_outside_bounds_rejected() -> None:
 
 
 def test_each_field_wrong_type_rejected() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def write_one(key: str, value: "int | float | str | bool | None") -> str:
@@ -382,8 +378,7 @@ def test_each_field_wrong_type_rejected() -> None:
 
 
 def test_auto_on_bool_both_values_valid() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[str, str]":
@@ -397,8 +392,7 @@ def test_auto_on_bool_both_values_valid() -> None:
 
 
 def test_unknown_field_key_reported_invalid_and_ignored() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, Any]":
@@ -409,13 +403,11 @@ def test_unknown_field_key_reported_invalid_and_ignored() -> None:
 
 
 def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
-    # A registered NotificationSignal's field goes through the same combined-schema path as the
+    # A signal's field goes through the same combined-schema path as the
     # coordinator's static fields above, proven with its real WarnCO2 bounds (0-3000). An integral float is
     # accepted and coerced (Part A.8); a fractional one is still rejected, like out-of-range.
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def write_one(value: "int | float | str | bool | None") -> str:
@@ -444,12 +436,10 @@ def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
     # A second registered signal with a float-typed field, WarnHum's real production shape, proving the
     # combined schema is not accidentally int-only. An int is always accepted and coerced for a float field
     # (Part A.8) - a blanket accept, every int being exactly representable as a float.
-    coordinator, _clock, _cb = make_coordinator()
     fv = FakeValue(50.0, field="WarnHum")
     field_schema = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
-    signal = NotificationSignal("WarnHum", fv, "WarnHum", field_schema, (0, 0, 1))
-    coordinator.register(signal)
-    coordinator.finalize()
+    signal = NotificationSignal("WarnHum", ValueRef(fv, "WarnHum"), field_schema, (0, 0, 1))
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def write_one(value: "int | float | str | bool | None") -> str:
@@ -473,10 +463,8 @@ def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
 
 
 def test_multiple_invalid_fields_in_one_write_each_reported_independently() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any]]":
@@ -512,10 +500,8 @@ def test_multiple_invalid_fields_in_one_write_each_reported_independently() -> N
 
 
 def test_all_fields_invalid_in_one_write_none_persist() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any], dict[str, Any]]":
@@ -563,10 +549,8 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
     path = _tmp_cfg_dir()
     cb1 = FakeSignalCb()
     clock1 = FakeClock()
-    coordinator1 = NotificationCoordinator(cb1, clock1.get, cfg_path=path, fram=fram)  # type: ignore[arg-type]
     a1, _ = make_signal("WarnCO2")
-    coordinator1.register(a1)
-    coordinator1.finalize()
+    coordinator1 = NotificationCoordinator(cb1, clock1.get, (a1,), cfg_path=path, log=LogConfig(fram, 10, None))
     run(coordinator1.cfgmgr.setup())
 
     async def scenario1() -> None:
@@ -577,10 +561,8 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 
     cb2 = FakeSignalCb()
     clock2 = FakeClock()
-    coordinator2 = NotificationCoordinator(cb2, clock2.get, cfg_path=path, fram=fram)  # type: ignore[arg-type]
     a2, _ = make_signal("WarnCO2")
-    coordinator2.register(a2)
-    coordinator2.finalize()
+    coordinator2 = NotificationCoordinator(cb2, clock2.get, (a2,), cfg_path=path, log=LogConfig(fram, 10, None))
     run(coordinator2.cfgmgr.setup())
 
     async def scenario2() -> None:
@@ -591,7 +573,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Combined logging (single shared pr, post-finalize)
+# Combined logging (single shared pr)
 # ---------------------------------------------------------------------------
 
 
@@ -601,9 +583,7 @@ def test_signal_value_failure_and_own_time_callback_failure_share_one_history() 
     clock = FakeClock()
     clock.raise_exc = RuntimeError("clock boom")
     cb = FakeSignalCb()
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -622,57 +602,11 @@ def test_signal_value_failure_and_own_time_callback_failure_share_one_history() 
     assert log["NOTIFY"]["ErrNum"][-2:] == [code("E", "SOURCE"), code("E", "CALLBACK")]
 
 
-def test_a_rejected_registration_surfaces_as_a_warning_with_its_own_wrnno() -> None:
-    # register() runs before the logger exists, so a rejection is queued and flushed by the
-    # monitor loop. Every rejection test above asserted only that _registered stayed empty - the
-    # queued warning, its number and the drain itself were never checked.
-    coordinator, _clock, _cb = make_coordinator()
-    bad, _ = make_signal("AutoOn")  # collides with the coordinator's own static field
-    coordinator.register(bad)
-    assert coordinator._pending_wrn, "a rejected registration queued no warning at all"
-    coordinator.finalize()  # cfgmgr is built here, the same order the generated boot list uses
-    run(coordinator.cfgmgr.setup())
-
-    async def scenario() -> "dict[str, Any]":
-        await coordinator.pr.setup()
-        await coordinator._flush_pending_registration_warnings()
-        return await coordinator.get_error_counter()
-
-    log = run(scenario())
-    assert coordinator._pending_wrn == [], "the queue was not drained, so every later cycle re-logs it"
-    collision = code("W", "NOTIFY_NAME_COLLISION")
-    assert log["NOTIFY"]["ErrNum"][-1] == collision, f"the field-collision rejection must report {collision}, got {log['NOTIFY']['ErrNum']}"
-    assert log["NOTIFY"]["ErrType"][-1] == "W"
-
-
-def test_every_rejection_reason_keeps_its_own_distinct_wrnno() -> None:
-    # Four rejection reasons, four catalog codes: they are what a /status read distinguishes them
-    # by, the message text being free-form. A shared code would make them indistinguishable.
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.register(make_signal("AutoOn")[0])  # NOTIFY_NAME_COLLISION: collides with a static field
-    coordinator.register(NotificationSignal("Empty", FakeValue(1, field="Empty"), "Empty", (), (1, 0, 0)))  # NOTIFY_SCHEMA_SHAPE
-    coordinator.finalize()
-    coordinator.register(make_signal("WarnCO2")[0])  # NOTIFY_LATE_REGISTER: after finalize()
-    coordinator.finalize()  # NOTIFY_FINALIZE_AGAIN
-    run(coordinator.cfgmgr.setup())
-
-    async def scenario() -> "dict[str, Any]":
-        await coordinator.pr.setup()
-        await coordinator._flush_pending_registration_warnings()
-        return await coordinator.get_error_counter()
-
-    numbers = run(scenario())["NOTIFY"]["ErrNum"]
-    expected = sorted(code("W", name) for name in ("NOTIFY_NAME_COLLISION", "NOTIFY_SCHEMA_SHAPE", "NOTIFY_LATE_REGISTER", "NOTIFY_FINALIZE_AGAIN"))
-    assert sorted(numbers[-4:]) == expected, f"the four rejection reasons no longer report distinctly: {numbers}"
-
-
 def test_check_one_degrades_when_the_threshold_config_cannot_be_read_logs_in_both_layers() -> None:
     # The branch a corrupt or unreadable store reaches: without it, `thresholds[0]` would raise
     # out of the monitor loop and the supervisor would restart the task in a loop.
     signal, _fv = make_signal("WarnCO2")
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
     coordinator.cfgmgr._cache.pop("WarnCO2")  # a missing key in the real store
 
@@ -700,10 +634,7 @@ def test_two_signals_failures_share_one_code_and_one_slot() -> None:
     b, fv_b = make_signal("WarnVOC")
     fv_a.raise_exc = RuntimeError("a boom")
     fv_b.raise_exc = RuntimeError("b boom")
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.register(a)
-    coordinator.register(b)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -728,10 +659,8 @@ def test_two_signals_failures_share_one_code_and_one_slot() -> None:
 
 
 def test_check_one_above_true_boundary_and_direction() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2", above=True, value=1600)  # default threshold is 1600
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def check(value: "int | float | None") -> bool:
@@ -748,10 +677,8 @@ def test_check_one_above_true_boundary_and_direction() -> None:
 
 
 def test_check_one_above_false_boundary_and_direction() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2", above=False, value=1600)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def check(value: "int | float | None") -> bool:
@@ -769,12 +696,9 @@ def test_check_one_above_false_boundary_and_direction() -> None:
 
 def test_check_one_nan_value_never_triggers() -> None:
     # NaN comparisons are always False on both sides - matches _check_one()'s own inline comment.
-    coordinator, _clock, _cb = make_coordinator()
     above_signal, _fv = make_signal("WarnCO2", above=True, value=float("nan"))
     below_signal, _fv2 = make_signal("WarnVOC", above=False, value=float("nan"))
-    coordinator.register(above_signal)
-    coordinator.register(below_signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((above_signal, below_signal))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool]":
@@ -786,12 +710,9 @@ def test_check_one_nan_value_never_triggers() -> None:
 
 
 def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     above_signal, _fv = make_signal("WarnCO2", above=True, value=float("inf"))
     below_signal, _fv2 = make_signal("WarnVOC", above=False, value=float("-inf"))
-    coordinator.register(above_signal)
-    coordinator.register(below_signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((above_signal, below_signal))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool]":
@@ -803,10 +724,8 @@ def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
 
 
 def test_check_one_none_value_is_not_triggered_no_crash() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2", value=None)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
@@ -819,11 +738,9 @@ def test_check_one_none_value_is_not_triggered_no_crash() -> None:
 
 
 def test_check_one_get_value_raises_is_caught_and_logged_and_treated_as_none() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2")
     fv.raise_exc = RuntimeError("sensor boom")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
@@ -840,11 +757,9 @@ def test_check_one_get_value_raises_is_caught_and_logged_and_treated_as_none() -
 
 def test_check_one_indefinite_logging_no_cap() -> None:
     # Confirmed by the project owner: no failure-escalation cap - every failing cycle logs to console and count; a repeat spends no slot.
-    coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2")
     fv.raise_exc = RuntimeError("boom")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -858,10 +773,8 @@ def test_check_one_indefinite_logging_no_cap() -> None:
 
 
 def test_check_one_last_value_and_triggered_reflect_most_recent_call_only() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2", value=2000)  # triggered
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -875,10 +788,8 @@ def test_check_one_last_value_and_triggered_reflect_most_recent_call_only() -> N
 
 
 def test_check_one_never_raises() -> None:
-    coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2")
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,))
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -899,13 +810,10 @@ def test_check_one_never_raises() -> None:
 def test_all_triggered_signals_fire_in_registration_order_sequentially() -> None:
     cb = FakeSignalCb()
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     a, _ = make_signal("WarnCO2", value=2000, color=(1, 0, 0))
     b, _ = make_signal("WarnVOC", value=2000, color=(0, 1, 0))
     c, _ = make_signal("WarnHum", value=2000, color=(0, 0, 1))
-    for s in (a, b, c):
-        coordinator.register(s)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b, c), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -923,12 +831,9 @@ def test_all_triggered_signals_fire_in_registration_order_sequentially() -> None
 def test_only_triggered_signals_call_request_signal_cb_others_skipped_no_gap() -> None:
     cb = FakeSignalCb()
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     a, _ = make_signal("WarnCO2", value=0, color=(1, 0, 0))  # not triggered
     b, _ = make_signal("WarnVOC", value=2000, color=(0, 1, 0))  # triggered
-    coordinator.register(a)
-    coordinator.register(b)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -947,13 +852,10 @@ def test_settle_sleep_happens_only_after_a_triggered_flash() -> None:
     # settle sleep at all, not just "eventually still only one call recorded."
     cb = FakeSignalCb()
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     a, _ = make_signal("WarnCO2", value=0, color=(1, 0, 0))  # not triggered
     b, _ = make_signal("WarnVOC", value=0, color=(0, 1, 0))  # not triggered
     c, _ = make_signal("WarnHum", value=2000, color=(0, 0, 1))  # triggered
-    for s in (a, b, c):
-        coordinator.register(s)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b, c), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -966,18 +868,14 @@ def test_settle_sleep_happens_only_after_a_triggered_flash() -> None:
     assert cb.calls[0][:3] == (0, 0, 200)
 
 
-def test_registration_order_drives_poll_order_not_construction_order() -> None:
+def test_tuple_order_drives_poll_order_not_construction_order() -> None:
     cb = FakeSignalCb()
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     a, _ = make_signal("WarnCO2", value=2000, color=(1, 0, 0))
     b, _ = make_signal("WarnVOC", value=2000, color=(0, 1, 0))
     c, _ = make_signal("WarnHum", value=2000, color=(0, 0, 1))
-    # constructed in A, B, C order above; registered deliberately out of that order
-    coordinator.register(c)
-    coordinator.register(a)
-    coordinator.register(b)
-    coordinator.finalize()
+    # built in A, B, C order above; passed in a different order
+    coordinator, _clock, _cb = make_coordinator((c, a, b), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -995,12 +893,9 @@ def test_flashes_run_strictly_sequentially_not_interleaved() -> None:
     cb = FakeSignalCb()
     cb.stall()
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     a, _ = make_signal("WarnCO2", value=2000, color=(1, 0, 0))
     b, _ = make_signal("WarnVOC", value=2000, color=(0, 1, 0))
-    coordinator.register(a)
-    coordinator.register(b)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -1027,10 +922,8 @@ def test_flashes_run_strictly_sequentially_not_interleaved() -> None:
 
 def test_sleep_window_boundaries_inclusive() -> None:
     cb = FakeSignalCb()
-    coordinator, clock, _cb = make_coordinator(signal_cb=cb)
     signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, clock, _cb = make_coordinator((signal,), signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def run_at(hour: int, minute: int) -> int:
@@ -1059,10 +952,8 @@ def test_sleep_window_boundaries_inclusive() -> None:
 
 def test_sleep_window_just_after_off_bound_is_excluded() -> None:
     cb = FakeSignalCb()
-    coordinator, clock, _cb = make_coordinator(signal_cb=cb)
     signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, clock, _cb = make_coordinator((signal,), signal_cb=cb)
     run(coordinator.cfgmgr.setup())
     clock.value = _FakeTime(18, 1)
 
@@ -1081,10 +972,8 @@ def test_local_time_callback_returns_none_no_checks_run_no_crash() -> None:
     cb = FakeSignalCb()
     clock = FakeClock()
     clock.value = None
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -1100,10 +989,8 @@ def test_local_time_callback_raises_treated_as_none() -> None:
     cb = FakeSignalCb()
     clock = FakeClock()
     clock.raise_exc = RuntimeError("clock boom")
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -1120,10 +1007,8 @@ def test_local_time_callback_raises_treated_as_none() -> None:
 def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
     cb = FakeSignalCb()
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((signal,), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -1143,8 +1028,7 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
     # monitor_loop()'s gate (`if auto_on and self._auto_active:`) is the same expression already proven to
     # gate correctly on its first operand, and both go through one plain `and`, so there is no asymmetric-
     # bug case where one operand gates correctly and the other does not.
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool, bool]":
@@ -1180,8 +1064,7 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
     # It would silently clobber an override auto_led_override() had legitimately set active meanwhile, the
     # two tasks being independently restartable by start_and_check_tasks() while sharing one unlocked flag.
     # Fixed by making auto_led_override() the flag's sole writer.
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool]":
@@ -1235,11 +1118,9 @@ def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
 
 
 def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> None:
-    coordinator, clock, _cb = make_coordinator()
-    clock.value = _FakeTime(12, 0)
     signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
+    coordinator, clock, _cb = make_coordinator((signal,))
+    clock.value = _FakeTime(12, 0)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
@@ -1264,8 +1145,7 @@ def test_next_sleep_secs_subtracts_elapsed_time() -> None:
     # unit test, so this exercises the same clamp and subtraction expression directly.
     import time
 
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
     t0 = time.ticks_ms()
     time.sleep_ms(50)
@@ -1276,8 +1156,7 @@ def test_next_sleep_secs_subtracts_elapsed_time() -> None:
 def test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv() -> None:
     import time
 
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
     t0_100s_ago = time.ticks_add(time.ticks_ms(), -100000)  # simulate 100s already elapsed
     result = coordinator._next_sleep_secs(60.0, t0_100s_ago)
@@ -1289,10 +1168,9 @@ def test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv() -> No
 # ---------------------------------------------------------------------------
 
 
-def test_zero_registered_signals_just_sleeps_no_crash() -> None:
-    coordinator, clock, _cb = make_coordinator()
+def test_no_signals_just_sleeps_no_crash() -> None:
+    coordinator, clock, _cb = make_coordinator(())
     clock.value = _FakeTime(12, 0)
-    coordinator.finalize()
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
@@ -1313,12 +1191,9 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
     cb = FakeSignalCb()
     cb.raise_exc = RuntimeError("cb boom")
     clock = FakeClock(hour=12, minute=0)
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     a, _ = make_signal("WarnCO2", value=2000, color=(1, 0, 0))
     b, _ = make_signal("WarnVOC", value=2000, color=(0, 1, 0))
-    coordinator.register(a)
-    coordinator.register(b)
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator((a, b), local_time=clock, signal_cb=cb)
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
@@ -1333,33 +1208,12 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
     assert list(coordinator.pr.history).count(code("E", "CALLBACK")) == 1  # one slot for the repeat
 
 
-def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
-    cb = FakeSignalCb()
-    clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
-    # finalize() deliberately never called - every method below must degrade to its own documented
-    # sentinel/no-op instead of crashing on a missing self.pr/self.cfgmgr/self.cfg_schema/self._datastruct.
-
-    async def scenario() -> None:
-        assert await coordinator.get_data() == (False, None)
-        assert await coordinator.get_dict_data() == {"NOTIFY": {"Triggered": False, "TS": None}}
-        assert await coordinator.get_dict_cfg() == {"NOTIFY": {}}
-        assert await coordinator.get_error_counter() == {"NOTIFY": {"ErrCount": 0, "ErrNum": [], "ErrType": []}}
-        await coordinator.setup()
-        await coordinator.reset_error_counter()
-        await coordinator.monitor_loop()
-        await coordinator.auto_led_override()
-
-    run(scenario())  # would raise/hang if any guard above were missing
-
-
 def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persists_one_slot() -> None:
     # A restart re-reads the same config the loop already re-reads every cycle, so giving up would
     # only spend the supervisor's reboot budget (Part C.7.2). Every failure still counts.
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
-    coordinator.finalize()
+    coordinator = NotificationCoordinator(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
     run(coordinator.cfgmgr.setup())
     coordinator.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
 
@@ -1392,8 +1246,7 @@ def test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slo
     # "just don't repeat the same error in the slots. Pure and simple").
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
-    coordinator.finalize()
+    coordinator = NotificationCoordinator(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
     run(coordinator.cfgmgr.setup())
     saved = coordinator.cfgmgr._cache.pop("FlashBri")
 
@@ -1428,8 +1281,7 @@ def test_monitor_loop_self_heals_in_place_once_its_config_reads_again() -> None:
     # The same task (no restart) goes back to its normal cycle: it stores fresh NOTIFY data again.
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
-    coordinator.finalize()
+    coordinator = NotificationCoordinator(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
     run(coordinator.cfgmgr.setup())
     saved = coordinator.cfgmgr._cache.pop("FlashBri")
 
@@ -1485,8 +1337,7 @@ def test_now_mktime_overflow_returns_none_and_stores_a_none_timestamp() -> None:
     # rp2's real mktime() raises OverflowError past its ~2037 32-bit epoch range. _store_notif_data()
     # is _now()'s only caller, so the degrade must surface as a plain TS=None snapshot - the
     # Triggered flag still recorded, nothing raised out of the poll loop.
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
     original_time = asy_notification_service.time
     asy_notification_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
@@ -1501,8 +1352,7 @@ def test_now_mktime_overflow_returns_none_and_stores_a_none_timestamp() -> None:
 
 def test_now_gmtime_raising_returns_none_and_stores_a_none_timestamp() -> None:
     # The OSError arm of the same guard, from gmtime() rather than mktime() - see _RaisingGmtime.
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
     original_time = asy_notification_service.time
     asy_notification_service.time = _RaisingGmtime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
@@ -1515,8 +1365,7 @@ def test_now_gmtime_raising_returns_none_and_stores_a_none_timestamp() -> None:
 
 
 def test_get_task_starters_and_get_timer_starters_shape() -> None:
-    coordinator, _clock, _cb = make_coordinator()
-    coordinator.finalize()
+    coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
     starters = coordinator.get_task_starters()
     assert len(starters) == 2

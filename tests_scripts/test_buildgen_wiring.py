@@ -1,5 +1,5 @@
 """Tests for buildgen.wiring: the `# @wiring <toml_field> <ProducerClass> <target>
-<required|optional> <kwarg|attr|setter>` comment tag (SPECIFICATION.md Part C.14.2). Covers the
+<required|optional> <kwarg|attr>` comment tag (SPECIFICATION.md Part C.14.2). Covers the
 real tags in src/ plus the whole accept/reject matrix SPECIFICATION.md Part L.5 requires."""
 
 from pathlib import Path
@@ -14,7 +14,7 @@ from buildgen.wiring import WiringField, parse_wiring
 # recombination.
 
 _REQUIREDNESS = [("required", True), ("optional", False)]
-_MODES = ["kwarg", "attr", "setter"]
+_MODES = ["kwarg", "attr"]
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def test_parse_wiring_requiredness_mode_cross_product(tmp_path: Path, word: str,
         ("fram_target", "AsyFramManager", "fram"),
         ("fram_target", "AsyFramManager", "fram_storage"),
         ("signal_sink", "NeopixelDriver", "request_signal"),
-        ("led_target", "NeopixelDriver", "set_ext_led"),
+        ("led_target", "NeopixelDriver", "ext_led"),
         ("x", "A", "b"),  # single-character names are still names
         ("_leading_underscore", "_Private", "_target"),
         ("with9digits", "Bmp3xxReader", "t9"),
@@ -110,7 +110,7 @@ def test_parse_wiring_several_tags_keep_source_order(tmp_path: Path) -> None:
         tmp_path,
         "# @wiring signal_sink NeopixelDriver request_signal required attr\n"
         "# @wiring fram_target AsyFramManager fram optional kwarg\n"
-        "# @wiring led_target NeopixelDriver set_ext_led optional setter\n",
+        "# @wiring led_target NeopixelDriver ext_led optional kwarg\n",
     )
     assert [f.toml_field for f in fields] == ["signal_sink", "fram_target", "led_target"]
 
@@ -156,7 +156,8 @@ def test_parse_wiring_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Pa
     "source",
     [
         "# @wiring fram_target AsyFramManager fram maybe kwarg\n",  # requiredness not required/optional
-        "# @wiring fram_target AsyFramManager fram optional bogus\n",  # mode outside the three
+        "# @wiring fram_target AsyFramManager fram optional bogus\n",  # mode outside the two
+        "# @wiring led_target NeopixelDriver set_ext_led optional setter\n",  # the retired setter mode
         "# @wiring fram-target AsyFramManager fram optional kwarg\n",  # non-identifier field name
         "# @wiring fram_target AsyFramManager fram optional kwarg extra\n",  # a sixth element
     ],
@@ -225,27 +226,27 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 @pytest.mark.parametrize(
     "driver,expected",
     [
-        ("asy_bmp3xx_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("asy_isl29125_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("asy_neopixel_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("asy_scd30_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("asy_sgp40_driver.py", (WiringField("fram_target", "AsyFramManager", "fram_storage", False, "kwarg"),)),
+        ("asy_bmp3xx_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_isl29125_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_neopixel_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_scd30_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_sgp40_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
         (
             "asy_wifi_service.py",
             (
-                WiringField("led_target", "NeopixelDriver", "set_ext_led", False, "setter"),
-                WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),
+                WiringField("led_target", "NeopixelDriver", "ext_led", False, "kwarg"),
+                WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),
             ),
         ),
-        ("asy_ntp_client.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("asy_webserver_service.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("system_service.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
-        ("asy_uart_link_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
+        ("asy_ntp_client.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_webserver_service.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("system_service.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_uart_link_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
         (
             "asy_notification_service.py",
             (
                 WiringField("signal_sink", "NeopixelDriver", "request_signal", True, "attr"),
-                WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),
+                WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),
             ),
         ),
     ],

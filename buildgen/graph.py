@@ -16,6 +16,26 @@ def _node_label(node: object) -> str:
     return node if isinstance(node, str) else instance_label(node)  # type: ignore[arg-type]
 
 
+def _urgency(nodes: "list[Node]", dependents: "dict[Node, list[Node]]", priority: "dict[Node, int]") -> "dict[Node, int]":
+    # The lowest priority among a node and everything that transitively waits on it. A cycle stops
+    # the walk at the repeated node; build_construction_order() reports it afterwards.
+    urgency: dict[Node, int] = {}
+
+    def visit(n: Node, path: "set[Node]") -> int:
+        if n in urgency:
+            return urgency[n]
+        best = priority[n]
+        for d in dependents[n]:
+            if d not in path:
+                best = min(best, visit(d, path | {n}))
+        urgency[n] = best
+        return best
+
+    for n in nodes:
+        visit(n, set())
+    return urgency
+
+
 def build_construction_order(model: DeviceModel) -> "list[Node]":
     nodes: list[Node] = list(_FIXED_INFRA_ORDER) + list(model.instances.keys())
     deps: dict[Node, set[Node]] = {n: set() for n in nodes}
@@ -33,11 +53,14 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
         deps["sysfunct"].add(fram_key)
         deps["conn"].add(fram_key)
         deps["ntp"].add(fram_key)
+    led_target = device_wiring.get("led_target")
+    if led_target is not None:
+        deps["conn"].add(resolve_instance_key(model, led_target))  # passed to conn as ext_led
 
     for spec in model.instances.values():
+        if spec.driver in ("sgp40", "notification"):
+            deps[spec.key].add("ntp")  # built with ntp.ntp_issynced / ntp.cettime
         for wf in spec.wiring_schema:
-            if wf.mode == "setter":
-                continue  # post-construction call, not a construction-order dependency
             value = spec.wiring.get(wf.toml_field)
             if value is None:
                 continue  # optional and absent - validate.py already confirmed required ones are present
@@ -62,11 +85,17 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
     for n, ds in deps.items():
         for d in ds:
             dependents[d].append(n)
+    # A node something earlier waits on inherits that urgency (the NeoPixel conn is built with goes
+    # right after fram, ahead of the sensors), then its own priority breaks the tie.
+    urgency = _urgency(nodes, dependents, priority)
 
-    ready = sorted((n for n in nodes if in_degree[n] == 0), key=lambda n: priority[n])
+    def sort_key(n: Node) -> "tuple[int, int]":
+        return urgency[n], priority[n]
+
+    ready = sorted((n for n in nodes if in_degree[n] == 0), key=sort_key)
     order: list[Node] = []
     while ready:
-        ready.sort(key=lambda n: priority[n])
+        ready.sort(key=sort_key)
         n = ready.pop(0)
         order.append(n)
         for dep in dependents[n]:

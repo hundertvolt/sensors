@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+from collections import namedtuple
 
 # Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
 # real device firmware freezes ext/ and src/ flat together, so this resolves fine at runtime; see
@@ -13,7 +14,7 @@ from micropython import const
 import api_response as ar
 from base_classes import LockedCounter
 from config_manager import type_or_range_error
-from print_log import make_logger
+from print_log import DEFAULT_LOG, LogConfig, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -22,11 +23,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Coroutine, Iterable, Sequence
-    from typing import Any, Protocol, TypeVar
+    from typing import Any, NamedTuple, Protocol, TypeVar
 
     import config_manager as cm
     from api_response import _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement)
-    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog, PrintLogHistory
 
     _T = TypeVar("_T")
@@ -99,7 +99,7 @@ _WRN_HTTP_WAIT_CLOSED = const(53)
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its FRAM
 # error-log target, resolved from [device.wiring].fram_target implicitly because this is mandatory
 # infra, never an [[instance]] entry - the same tag system_service/wifi/ntp carry.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
@@ -114,9 +114,15 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
+# Shipped defaults: buildgen reads each from here and passes it in ServingLimits/StaticSite.
+_DEFAULT_MAX_CONTENT_LENGTH = const(2048)  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
 _DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pieces and static reads,
 # sized to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run -
 # under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
+_DEFAULT_MAX_CONNECTIONS = const(6)  # three below the firmware's MEMP_NUM_TCP_PCB (toolchain/versions.toml), Part H.7
+_DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)
+_DEFAULT_OUTER_CAP_S = const(15.0)
+_DEFAULT_STATIC_INDEX = const("index.html")
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # the five shaped statuses SPECIFICATION.md A.5 names.
@@ -305,74 +311,83 @@ class _TimeoutStreamProxy:
         return self._stream.get_extra_info(name)
 
 
+# Three config objects the generated module builds whole (every field passed): what the routes
+# read, how connections are served, and the optional static website.
+if TYPE_CHECKING:
+    class RouteSources(NamedTuple):
+        sensors: Sequence[_ModuleLike]
+        settings: dict[str, Sequence[SettingsGroup]] | None
+        build_info: dict[str, Any] | None  # verbatim "build" sub-entry of GET /system (Part L.7); None omits it
+        system_cmd: SystemCmdFct | None
+        notification_led: NotificationLedFct | None
+        notification_pause: NotificationPauseFct | None
+        status_sources: dict[str, StatusSourceFct] | None
+        maintenance_sensors: Sequence[tuple[str, MaintenanceFct]]
+        error_sources: Sequence[_ModuleLike]
+
+    class ServingLimits(NamedTuple):
+        max_content_length: int  # request body cap (Part I.6)
+        chunk_bytes: int  # largest single write of any response body (Part I.3); clamped to >= 1
+        max_connections: int  # reject-when-full ceiling; with backlog a relationship (Part H.7)
+        backlog: int | None  # None derives max_connections + 1; clamped to >= max_connections
+        per_call_timeout_s: float
+        outer_cap_s: float
+        host: str
+        port: int
+
+    class StaticSite(NamedTuple):
+        mount: str  # freezefs mount of the frozen website (Part A.9)
+        index_file: str  # served for "/" and "/<index_file>"
+        is_hotspot_active: HotspotActiveFct | None  # the captive fallback's gate (Part A.5)
+
+else:
+    RouteSources = namedtuple("RouteSources", (
+        "sensors", "settings", "build_info", "system_cmd", "notification_led", "notification_pause",
+        "status_sources", "maintenance_sensors", "error_sources",
+    ))
+    ServingLimits = namedtuple("ServingLimits", (
+        "max_content_length", "chunk_bytes", "max_connections", "backlog", "per_call_timeout_s", "outer_cap_s", "host", "port",
+    ))
+    StaticSite = namedtuple("StaticSite", ("mount", "index_file", "is_hotspot_active"))
+
+
 class WebserverService:
     def __init__(
         self,
         app: "_MicrodotApp",  # a real ext/microdot.py Microdot() instance - routes are registered
         # onto it once, here; not itself importable for typing (see the microdot import comment above).
-        sensors: "Sequence[_ModuleLike]" = (),
-        settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
-        build_info: "dict[str, Any] | None" = None,  # verbatim "build" sub-entry on GET /system's
-        # otherwise-flat response (firmwareVersion/websiteVersion/buildDate - SPECIFICATION.md
-        # Part L.7) - a fixed, generator-supplied fact this class never computes itself; None
-        # (default) omits the key entirely, matching every other optional constructor knob here.
-        system_cmd: "SystemCmdFct | None" = None,
-        notification_led: "NotificationLedFct | None" = None,
-        notification_pause: "NotificationPauseFct | None" = None,
-        status_sources: "dict[str, StatusSourceFct] | None" = None,
-        maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
-        error_sources: "Sequence[_ModuleLike]" = (),
-        max_content_length: int = 2048,  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
-        chunk_bytes: int = _DEFAULT_CHUNK_BYTES,  # the largest single write of any response body: each
-        # streamed JSON piece and each static-file read. One parameter, so the two can never drift
-        # apart (SPECIFICATION.md Part I.3). Clamped to >= 1: a read of 0 would never end microdot's loop.
-        max_connections: int = 6,  # reject-when-full ceiling, three below the firmware's own
-        # MEMP_NUM_TCP_PCB (toolchain/versions.toml) for connections still closing - Part H.7 holds
-        # that as a RELATIONSHIP, not a number; buildgen passes the per-device value.
-        backlog: int | None = None,  # arrivals lwIP holds until asyncio accepts them, i.e. one burst
-        # while the loop is busy; None derives max_connections + 1, so one over-ceiling arrival is
-        # refused by _serve() rather than reset unseen. buildgen bounds it to [max, max + 1] (H.7).
-        per_call_timeout_s: float = 5.0,
-        outer_cap_s: float = 15.0,
-        host: str = "0.0.0.0",
-        port: int = 80,
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
-        static_mount: str | None = None,  # e.g. "/html" (see SPECIFICATION.md Part A.9) - the
-        # freezefs mount point of an already-`import`ed frozen static-content module. None (default)
-        # registers no static routes at all - every existing route/registration above is unaffected.
-        static_index: str = "index.html",  # served for both "/" and "/<static_index>" verbatim.
-        is_hotspot_active: "HotspotActiveFct | None" = None,  # e.g. AsyConnTime.is_hotspot_active
-        # (see SPECIFICATION.md Part A.5) - only consulted by _serve_static()'s own
-        # unmatched-path fallback, and only when static_mount is not None. None (default) reproduces
-        # today's plain-404 fallback exactly - every existing call site omits this and is unaffected.
+        routes: RouteSources,
+        serving: ServingLimits,
+        static: StaticSite | None = None,  # None registers no static routes at all
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
-        self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
+        self.pr: PrintLogHistory = make_logger(log, _NAME)
         self._app = app
-        self._sensors = _index_by_name(sensors)
-        self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (settings or {}).items()}
-        self._build_info = build_info
-        self._system_cmd = system_cmd
-        self._notification_led = notification_led
-        self._notification_pause = notification_pause
-        self._status_sources: dict[str, StatusSourceFct] = dict(status_sources or {})
-        self._maintenance_sensors = _index_pairs(maintenance_sensors)
-        self._error_sources = _index_by_name(error_sources)
+        self._sensors = _index_by_name(routes.sensors)
+        self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (routes.settings or {}).items()}
+        self._build_info = routes.build_info
+        self._system_cmd = routes.system_cmd
+        self._notification_led = routes.notification_led
+        self._notification_pause = routes.notification_pause
+        self._status_sources: dict[str, StatusSourceFct] = dict(routes.status_sources or {})
+        self._maintenance_sensors = _index_pairs(routes.maintenance_sensors)
+        self._error_sources = _index_by_name(routes.error_sources)
+        max_connections = serving.max_connections
         self._max_connections = max_connections
-        self._chunk_bytes = max(chunk_bytes, 1)
+        self._chunk_bytes = max(serving.chunk_bytes, 1)  # a read of 0 would never end microdot's loop
         # Clamped rather than rejected, matching LockedCounter's own out-of-range convention: a
         # backlog under the ceiling resets part of a burst the ceiling admits, which reads as an
         # application bug. buildgen rejects the same mistake in config, where it can be named.
-        self._backlog = max_connections + 1 if backlog is None else max(backlog, max_connections)
-        self._per_call_timeout_s = per_call_timeout_s
-        self._outer_cap_s = outer_cap_s
-        self._host = host
-        self._port = port
+        self._backlog = max_connections + 1 if serving.backlog is None else max(serving.backlog, max_connections)
+        self._per_call_timeout_s = serving.per_call_timeout_s
+        self._outer_cap_s = serving.outer_cap_s
+        self._host = serving.host
+        self._port = serving.port
         self._open_conns = LockedCounter(init_value=0, max_val=0xFFFFFFFF)
-        self._static_mount = static_mount
-        self._static_index = static_index
-        self._is_hotspot_active = is_hotspot_active
+        self._static_mount = None if static is None else static.mount
+        self._static_index = _DEFAULT_STATIC_INDEX if static is None else static.index_file
+        self._is_hotspot_active = None if static is None else static.is_hotspot_active
+        max_content_length = serving.max_content_length
 
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
         # per-app-instance (ext/microdot.py's own module docstring example) - see
@@ -406,7 +421,7 @@ class WebserverService:
         # SPECIFICATION.md Part A.5); this just gets the exception into pr.err_s()/history.
         app.errorhandler(Exception)(self._handle_unhandled_exception)
 
-        if static_mount is not None:
+        if static is not None:
             # Registered last: "/<path:filename>"'s own regex also matches every fixed path above
             # (e.g. "/measurements") - Microdot's find_route() returns the first matching pattern,
             # so every exact-match API route must already be registered or it would be shadowed.

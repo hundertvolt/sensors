@@ -13,11 +13,11 @@ from machine import RTC, Timer
 import asy_ntp_client as ntpmod
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
-from asy_ntp_client import AsyNtpClient
-from print_log import PrintLogHistoryStore
+from asy_ntp_client import AsyNtpClient, NtpTiming
+from print_log import DEFAULT_LOG, LogConfig, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as test_base_classes.py/test_asy_fram_driver.py/
-# test_asy_fram_manager.py - only exercised by the fram= wiring test below, isolated to this
+# test_asy_fram_manager.py - only exercised by the FRAM-backed log test below, isolated to this
 # file's own process.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
@@ -67,18 +67,32 @@ def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
 
+# The generated module's NtpTiming values: the resolver's DNS bounds and codegen's fetch timeout,
+# then the client's own backoff defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) - mirrored, not imported.
+_DNS_TIMEOUT_MS = 500
+_DNS_TRIES = 1
+_FETCH_TIMEOUT_MS = 5000
+_RETRY_S = 10
+_RETRY_MAX_S = 600
+
+
+def _timing(
+    dns_timeout_ms: int = _DNS_TIMEOUT_MS,
+    dns_tries: int = _DNS_TRIES,
+    fetch_timeout_ms: int = _FETCH_TIMEOUT_MS,
+    retry_s: int = _RETRY_S,
+    retry_max_s: int = _RETRY_MAX_S,
+) -> NtpTiming:
+    return NtpTiming(dns_timeout_ms, dns_tries, fetch_timeout_ms, retry_s, retry_max_s)
+
+
 def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
-    dns_timeout_ms: int = 500,
-    dns_tries: int = 1,
-    ntp_fetch_timeout_ms: int = 5000,
-    retry_s: int = 10,
-    retry_max_s: int = 600,
-    debug: "int | None" = None,
+    timing: "NtpTiming | None" = None,
+    log: LogConfig = DEFAULT_LOG,
     cfg_path: "str | None" = None,
-    fram: "AsyFramManager | None" = None,
 ) -> AsyNtpClient:
     if wifi_mode_lock is None:
         wifi_mode_lock = asyncio.Lock()
@@ -92,14 +106,9 @@ def make_client(
         wifi_mode_lock,
         network_available,
         get_dns_server,
-        dns_timeout_ms=dns_timeout_ms,
-        dns_tries=dns_tries,
-        ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
-        retry_s=retry_s,
-        retry_max_s=retry_max_s,
-        debug=debug,
+        _timing() if timing is None else timing,
         cfg_path=cfg_path,
-        fram=fram,
+        log=log,
     )
     run(client.cfgmgr.setup())
     return client
@@ -221,7 +230,7 @@ def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None
 
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
     print("(expected) debug=3 makes the fresh ConfigManager below log its normal first-use config-file creation")
-    client = make_client(debug=3)
+    client = make_client(log=LogConfig(None, 10, 3))
     assert client.pr.get_level() == 3
 
 
@@ -274,12 +283,11 @@ def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
 
 
 def test_fram_given_uses_fram_backed_logging() -> None:
-    # AsyNtpClient took no fram= parameter before this migration - proves the constructor forwards
-    # it to SensorReaderConfig/SensorReader rather than silently dropping it, using the same real
-    # AsyFramManager plus simulated chip test_base_classes.py uses for the base-class check.
+    # Proves the constructor forwards its log config to SensorReaderConfig/SensorReader rather than
+    # dropping it, using the same real AsyFramManager plus simulated chip test_base_classes.py uses.
     bus = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     manager = AsyFramManager(bus, 1, max_size=0x2000)
-    client = make_client(fram=manager)
+    client = make_client(log=LogConfig(manager, 10, None))
     assert isinstance(client.pr, PrintLogHistoryStore)
 
 
@@ -535,7 +543,7 @@ def test_start_ntp_timer_fires_the_trigger_event() -> None:
 
 
 def test_start_ntp_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
-    client = make_client(debug=1)
+    client = make_client()
     print("(expected) simulating alarm-pool exhaustion - the following 'Could not start NTP timer' is intentional")
     with _RaiseOnArm():
         client.start_ntp_timer()  # must not raise despite the timer failing to arm
@@ -546,7 +554,7 @@ def test_start_ntp_timer_degrades_gracefully_on_a_memory_error() -> None:
     # Sibling of the OSError test above, for the other arm of start_ntp_timer()'s own
     # `except (OSError, MemoryError)`: a real alarm allocation can fail with MemoryError instead,
     # which is not an OSError subclass - same graceful degradation must hold either way.
-    client = make_client(debug=1)
+    client = make_client()
     print("(expected) simulating an allocation failure - the following 'Could not start NTP timer' is intentional")
     with _RaiseOnArm(MemoryError):
         client.start_ntp_timer()  # must not raise despite the timer failing to arm
@@ -806,7 +814,7 @@ def test_resolve_ntp_server_forwards_the_constructors_own_dns_timeout_and_tries(
     original = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
-        client = make_client(dns_timeout_ms=1234, dns_tries=3)
+        client = make_client(timing=_timing(dns_timeout_ms=1234, dns_tries=3))
         run(client._resolve_ntp_server("pool.ntp.org", None))
     finally:
         ntpmod.resolve_ipv4 = original
@@ -884,7 +892,7 @@ class _RecordingUDPSocket:
 
 
 def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
-    client = make_client(ntp_fetch_timeout_ms=9999)
+    client = make_client(timing=_timing(fetch_timeout_ms=9999))
     original = ntpmod.AsyUDPSocket
     _recording_udp_calls.clear()
     ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[assignment, misc]
@@ -1957,7 +1965,7 @@ def test_asy_ntp_time_never_gives_up_on_a_persistently_failing_server() -> None:
 
 
 def test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_its_cap() -> None:
-    client = make_client(retry_s=10, retry_max_s=70)
+    client = make_client(timing=_timing(retry_s=10, retry_max_s=70))
     seen: list[int] = []
 
     async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
@@ -1971,7 +1979,7 @@ def test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_i
 
 def test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone() -> None:
     # A skipped attempt says nothing about the server, so the next one must come promptly.
-    client = make_client(retry_s=10, retry_max_s=600)
+    client = make_client(timing=_timing(retry_s=10, retry_max_s=600))
 
     async def unavailable_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         return None, False
@@ -1984,7 +1992,7 @@ def test_asy_ntp_time_network_unavailable_cycles_leave_the_retry_interval_alone(
 def test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_alone() -> None:
     # A synced device's failed resync is _handle_ntp_sync_failure()'s retry loop's business; the
     # backoff starts only once the sync has actually gone stale.
-    client = make_client(retry_s=10, retry_max_s=600)
+    client = make_client(timing=_timing(retry_s=10, retry_max_s=600))
 
     async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         await client._set_synced(value=True)
@@ -1996,7 +2004,7 @@ def test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_al
 
 
 def test_a_successful_sync_resets_the_backoff() -> None:
-    client = make_client(retry_s=10, retry_max_s=600)
+    client = make_client(timing=_timing(retry_s=10, retry_max_s=600))
     client._retry_wait_s, client._unsynced_wait_s = 320, 30
     run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
     assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
@@ -2004,16 +2012,16 @@ def test_a_successful_sync_resets_the_backoff() -> None:
 
 def test_ntp_force_sync_resets_the_backoff() -> None:
     # An operator's resync (a PUT of NTP_Host) must run now, not after a ten-minute backoff step.
-    client = make_client(retry_s=10, retry_max_s=600)
+    client = make_client(timing=_timing(retry_s=10, retry_max_s=600))
     client._retry_wait_s, client._unsynced_wait_s = 600, 50
     run(client.ntp_force_sync())
     assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
 
 
 def test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other() -> None:
-    client = make_client(retry_s=3, retry_max_s=5)
+    client = make_client(timing=_timing(retry_s=3, retry_max_s=5))
     assert (client.retry_s, client.retry_max_s, client._retry_wait_s) == (10, 10, 10)
-    client = make_client(retry_s=40, retry_max_s=20)
+    client = make_client(timing=_timing(retry_s=40, retry_max_s=20))
     assert (client.retry_s, client.retry_max_s) == (40, 40)
 
 
@@ -2191,7 +2199,7 @@ def test_integration_full_task_stays_not_synced_when_nobody_answers() -> None:
     async def scenario() -> bool:
         task = asyncio.create_task(client.asy_ntp_time())
         client.ntp_sync_trigger_event.set()
-        await asyncio.sleep(1)  # comfortably longer than _NTP_CONN_TIMEOUT would need to fail once
+        await asyncio.sleep(1)  # comfortably longer than the fetch timeout would need to fail once
         synced = await client.ntp_issynced()
         task.cancel()
         try:
@@ -2258,7 +2266,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
 
                 await client.ntp_force_sync()  # trigger a second attempt
                 await server.serve_once(None)  # drop it entirely
-                for _ in range(300):  # wait for the real _NTP_CONN_TIMEOUT to elapse and arm a retry
+                for _ in range(300):  # wait for the real fetch timeout to elapse and arm a retry
                     if client.ntp_retry_timer.callback is not None:
                         break
                     await asyncio.sleep_ms(20)
@@ -2345,8 +2353,8 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
 
 
 def test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes() -> None:
-    client = AsyNtpClient(asyncio.Lock(), lambda: True, lambda: None, cfg_path=_tmp_cfg_dir())
-    assert (client.retry_s, client.retry_max_s, client._retry_wait_s, client._unsynced_wait_s) == (10, 600, 10, 0)
+    client = AsyNtpClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, _RETRY_S, _RETRY_MAX_S), cfg_path=_tmp_cfg_dir())
+    assert (client.retry_s, client.retry_max_s, client._retry_wait_s, client._unsynced_wait_s) == (_RETRY_S, _RETRY_MAX_S, _RETRY_S, 0)
 
 
 def _twice_one_slot(client: AsyNtpClient, make_call: "Callable[[], Coroutine[Any, Any, object]]") -> "tuple[int, list[int], list[str]]":
@@ -2390,7 +2398,7 @@ def test_invalid_server_address_is_counted_twice_but_persisted_once() -> None:
 
 
 def test_no_reply_is_counted_twice_but_persisted_once() -> None:
-    client = make_client(ntp_fetch_timeout_ms=100)
+    client = make_client(timing=_timing(fetch_timeout_ms=100))
     addr = make_addr()
     assert _twice_one_slot(client, lambda: client._fetch_ntp_reply(addr)) == (2, [code("E", "NTP_NO_REPLY")], ["E"])
 
@@ -2445,7 +2453,7 @@ def test_distinct_codes_each_keep_a_slot() -> None:
 
 
 def test_backoff_restarts_from_the_first_interval_after_a_recovery() -> None:
-    client = make_client(retry_s=10, retry_max_s=600)
+    client = make_client(timing=_timing(retry_s=10, retry_max_s=600))
     outcomes = [None, None, (2026, 1, 1, 0, 0, 0, 0, 0), None, None]
     seen: list[int] = []
 

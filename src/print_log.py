@@ -4,7 +4,7 @@ Every method returns a well-defined value, never raises - PrintLogHistoryStore's
 """
 
 import struct
-from collections import deque
+from collections import deque, namedtuple
 
 from micropython import const
 
@@ -16,7 +16,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any, Protocol, TypedDict, TypeVar
+    from typing import Any, NamedTuple, Protocol, TypedDict, TypeVar
 
     # The envelope get_log()/get_error_counter() return project-wide - one entry per module name.
     # Declared here (their only shared definition) and imported by every module that returns one.
@@ -278,18 +278,30 @@ class PrintLogHistoryStore(PrintLogHistory):
             self._diag("PrintLog: FRAM setup failed!")
 
 
-def make_logger(
-    fram: "_FramManager | None",
-    history_length: int = 10,
-    debug: int | None = None,
-    name: str = "",
-) -> "PrintLogHistory":
+_DEFAULT_HISTORY_LENGTH = const(10)
+
+# One module's logging parameters, passed as one object to its constructor and on to make_logger():
+# the FRAM manager (None: RAM-only), the history length and the console level (None: off).
+if TYPE_CHECKING:
+
+    class LogConfig(NamedTuple):
+        fram: "_FramManager | None"
+        history_length: int
+        debug: int | None
+
+else:
+    LogConfig = namedtuple("LogConfig", ("fram", "history_length", "debug"))
+
+DEFAULT_LOG = LogConfig(None, _DEFAULT_HISTORY_LENGTH, None)
+
+
+def make_logger(log: LogConfig, name: str) -> "PrintLogHistory":
     # Shared fram-vs-memory PrintLogHistory(Store) selection - every direct constructor (as opposed
     # to a logger= reach-through onto an already-built sibling instance) goes through this one place.
-    if fram is None:
-        pr = PrintLogHistory(history_length, debug, name=name)
+    if log.fram is None:
+        pr = PrintLogHistory(log.history_length, log.debug, name=name)
         pr.one("Init with memory logging.")
     else:
-        pr = PrintLogHistoryStore(fram, history_length, debug, name=name)
+        pr = PrintLogHistoryStore(log.fram, log.history_length, log.debug, name=name)
         pr.one("Init with FRAM logging.")
     return pr

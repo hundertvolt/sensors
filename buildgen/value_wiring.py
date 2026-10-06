@@ -1,6 +1,6 @@
-"""Parses a driver module's `# @value-wiring <toml_field> <source_kwarg> <field_kwarg>
-<required|optional>` comment tags - the per-value measurement wiring that generalizes `warn_*`'s
-`{source, field}` shape to any module consuming one scalar out of another's `get_data()`."""
+"""Parses a driver module's `# @value-wiring <toml_field> <kwarg> <required|optional>` comment tags -
+the per-value measurement wiring that generalizes `warn_*`'s `{source, field}` shape to any module
+consuming one scalar out of another's `get_data()`, passed as `<kwarg>=ValueRef(<source>, "<field>")`."""
 
 import re
 from dataclasses import dataclass
@@ -11,14 +11,13 @@ from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_com
 
 _SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "value-wiring")
 
-_TAG_RE = re.compile(r"#+\s*@value-wiring\s+(?P<toml_field>\w+)\s+(?P<source_kwarg>\w+)\s+(?P<field_kwarg>\w+)\s+(?P<required>required|optional)\s*$")
+_TAG_RE = re.compile(r"#+\s*@value-wiring\s+(?P<toml_field>\w+)\s+(?P<kwarg>\w+)\s+(?P<required>required|optional)\s*$")
 
 
 @dataclass(frozen=True)
 class ValueWiringField:
     toml_field: str
-    source_kwarg: str
-    field_kwarg: str
+    kwarg: str  # the constructor parameter receiving the ValueRef
     required: bool
 
 
@@ -37,7 +36,7 @@ def parse_value_wiring(path: Path, device: str, driver: str) -> "tuple[ValueWiri
                 f"{path}:{tok.lineno}: @value-wiring tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
                 instance=driver,
             )
-        fields.append(ValueWiringField(m.group("toml_field"), m.group("source_kwarg"), m.group("field_kwarg"), m.group("required") == "required"))
+        fields.append(ValueWiringField(m.group("toml_field"), m.group("kwarg"), m.group("required") == "required"))
     seen: set[str] = set()
     for f in fields:
         if f.toml_field in seen:

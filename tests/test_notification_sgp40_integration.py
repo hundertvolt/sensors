@@ -17,6 +17,7 @@ from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_sgp40_driver import SGP40_Reader
+from base_classes import ValueRef
 
 try:
     from typing import TYPE_CHECKING
@@ -98,10 +99,8 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     comp = _FakeCompSource()
     reader = SGP40_Reader(
         i2c,
-        temperature_source=comp,
-        temperature_field="Temp",
-        humidity_source=comp,
-        humidity_field="Hum",
+        ValueRef(comp, "Temp"),
+        ValueRef(comp, "Hum"),
         max_module_error=2,
         cfg_path=_tmp_cfg_dir(),
     )
@@ -110,14 +109,12 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
 
 
 def make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
-    # Direct (source, field) reference (SPECIFICATION.md Part C.14.2), mirrors
+    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), mirrors
     # src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnVOC", sgp_reader, "VOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
-    notify.register(signal)
-    notify.finalize()
+    signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    notify = NotificationCoordinator(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
     run(notify.cfgmgr.setup())
     return pixel, notify
 

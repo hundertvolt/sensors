@@ -1,6 +1,7 @@
 import asyncio
 
 from asy_neopixel_driver import NeopixelDriver, _clamp_byte
+from print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -32,7 +33,7 @@ def make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int |
     # freq=100, against the real 20 default, keeps every ramp's step count high enough - 5 per direction at
     # the t=0.1 floor - to observe mid-ramp state while keeping real ramp time short. These tests drive real
     # asyncio.sleep() rather than a simulated clock, so fast ramps matter for suite runtime.
-    return NeopixelDriver(0, neopixel_freq=neopixel_freq, led_overl_bri=led_overl_bri, debug=debug)
+    return NeopixelDriver(0, neopixel_freq=neopixel_freq, led_overl_bri=led_overl_bri, log=LogConfig(None, 10, debug))
 
 
 async def _start_all_tasks(driver: NeopixelDriver) -> "list[asyncio.Task[None]]":
@@ -492,7 +493,7 @@ class _FakeFramManager:
 def test_fram_backed_variant_survives_a_reboot() -> None:
     chunk = _FakeFramChunk()
     fram = _FakeFramManager(chunk)
-    driver1 = NeopixelDriver(0, fram=fram)  # type: ignore[arg-type]  # structurally satisfies the Protocol
+    driver1 = NeopixelDriver(0, log=LogConfig(fram, 10, None))  # the fake structurally satisfies print_log's _FramManager Protocol
 
     async def scenario1() -> None:
         await driver1.pr.setup()  # FRAM persistence is inert until setup() runs - matches every
@@ -501,13 +502,19 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 
     run(scenario1())
 
-    driver2 = NeopixelDriver(0, fram=fram)  # type: ignore[arg-type]
+    driver2 = NeopixelDriver(0, log=LogConfig(fram, 10, None))
 
     async def scenario2() -> None:
         await driver2.pr.setup()
 
     run(scenario2())
     assert driver2.pr.err_count == driver1.pr.err_count
+
+
+def test_the_log_config_sets_the_loggers_length_and_level() -> None:
+    driver = NeopixelDriver(0, log=LogConfig(None, 3, 2))
+    assert len(driver.pr.history) == 3
+    assert driver.pr.get_level() == 2
 
 
 def test_in_memory_variant_works_without_fram() -> None:

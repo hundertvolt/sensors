@@ -12,7 +12,7 @@ import asyncio
 from micropython import const
 
 from asy_udp_socket import AsyUDPSocket
-from print_log import PrintLogHistory, make_logger
+from print_log import DEFAULT_LOG, PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -22,8 +22,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
-    from print_log import ErrorLog
+    from print_log import ErrorLog, LogConfig
 
 _NAME = const("DNSSRV")
 
@@ -60,13 +59,8 @@ def _ipv4_to_int(ip: str) -> int | None:
 
 
 class DNSServer:
-    def __init__(
-        self,
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
-    ) -> None:
-        self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
+    def __init__(self, log: "LogConfig" = DEFAULT_LOG) -> None:
+        self.pr: PrintLogHistory = make_logger(log, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address

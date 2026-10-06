@@ -56,7 +56,7 @@ async def _priced(logger: PrintLogHistoryStore) -> "tuple[int, int]":
 
 async def _rig() -> "tuple[AsyFramManager, PrintLogHistoryStore]":
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=0x2000, debug=None)
+    manager = AsyFramManager(bus, 1, max_size=0x2000)
     assert await manager.setup()
     return manager, PrintLogHistoryStore(manager, 10, None, name="BUDGET")
 

@@ -235,19 +235,15 @@ class I2C:
         address: int,
         buffer_out: bytes | bytearray,
         buffer_in: bytearray,
-        out_start: int = 0,
-        out_end: int | None = None,
-        in_start: int = 0,
-        in_end: int | None = None,
         *,
         out_stop: bool = True,
         in_stop: bool = True,
     ) -> None:
-        # Not a native machine.I2C primitive - a write then a read via this class's own
-        # writeto()/readfrom_into(). out_stop/in_stop are independent so a repeated-start read
-        # (write without a stop, then a read that does stop) is expressible; pass out_stop=False.
-        self.writeto(address, buffer_out, out_start, out_end, stop=out_stop)
-        self.readfrom_into(address, buffer_in, in_start, in_end, stop=in_stop)
+        # Not a native machine.I2C primitive - a write then a read via writeto()/readfrom_into(); out_stop/in_stop are
+        # independent so a repeated-start read is expressible (pass out_stop=False). The combined form takes whole
+        # buffers; pass a memoryview slice for a region (Part G.2 buffer handoff).
+        self.writeto(address, buffer_out, stop=out_stop)
+        self.readfrom_into(address, buffer_in, stop=in_stop)
 
 
 class I2CDevice(Lockable):
@@ -347,22 +343,8 @@ class I2CDevice(Lockable):
         self,
         buffer_out: bytes | bytearray,
         buffer_in: bytearray,
-        out_start: int = 0,
-        out_end: int | None = None,
-        in_start: int = 0,
-        in_end: int | None = None,
         *,
         out_stop: bool = True,
         in_stop: bool = True,
     ) -> None:
-        self.i2c.writeto_then_readfrom(
-            self.device_address,
-            buffer_out,
-            buffer_in,
-            out_start=out_start,
-            out_end=out_end,
-            in_start=in_start,
-            in_end=in_end,
-            out_stop=out_stop,
-            in_stop=in_stop,
-        )
+        self.i2c.writeto_then_readfrom(self.device_address, buffer_out, buffer_in, out_stop=out_stop, in_stop=in_stop)

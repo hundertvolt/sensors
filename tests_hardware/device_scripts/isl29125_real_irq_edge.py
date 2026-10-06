@@ -85,7 +85,7 @@ async def _main() -> None:
 
     # Part B: the real fast path, through the real reader. A 30s periodic interval means a
     # reading inside 3s can only have come from the interrupt.
-    reader = ISL29125_Reader(i2c1, 6, trigger_sec=TRIGGER_SEC, max_module_error=999, fram=None, debug=None)
+    reader = ISL29125_Reader(i2c1, 6, trigger_sec=TRIGGER_SEC, max_module_error=999)
     reader.cfgmgr.valid = True
     # Seeded from the driver's own schema, never a hand-copied list - a key added there
     # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
@@ -107,12 +107,18 @@ async def _main() -> None:
         wdt.feed()
         await asyncio.sleep_ms(100)
 
+    died: list[str] = []
     for task in (trigger_task, read_task):
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # a task that died on its own fails the run, never passes it
+            died.append(repr(e))
+    if died:
+        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
+        return
 
     # Asserted, not merely reported: persist_for_interval() compares PRST x a whole RGB CYCLE
     # against the sample interval. If the part answered "channel integrations" the real window

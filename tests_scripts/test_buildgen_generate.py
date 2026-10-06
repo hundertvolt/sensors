@@ -9,6 +9,7 @@ the full validate -> sort -> generate pipeline from one TOML file, no code chang
 import ast
 import re
 from datetime import datetime
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -138,8 +139,8 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     ast.parse(result.boot_entry_source)
     assert "scd30_primary" in result.module_source
     assert "scd30_secondary" in result.module_source
-    assert "SGP40_Reader(i2c1, temperature_source=scd30_secondary, temperature_field='Temp'" in result.module_source
-    assert "humidity_source=scd30_primary, humidity_field='Hum'" in result.module_source
+    assert "SGP40_Reader(i2c1, temperature=ValueRef(scd30_secondary, 'Temp')" in result.module_source
+    assert "humidity=ValueRef(scd30_primary, 'Hum')" in result.module_source
     # Only warn_co2 is wired - warn_voc/warn_hum must not appear at all.
     assert "WarnCO2" in result.module_source
     assert "WarnVOC" not in result.module_source
@@ -148,7 +149,7 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     # i2c1/GPIO6/fram-wired instance.
     isl_call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "ISL29125_Reader(i2c0, 3, trigger_sec=5" in isl_call
-    assert "fram=" not in isl_call
+    assert "log=log_ram" in isl_call
 
 
 def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -170,18 +171,18 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     assert "scd30_b" in result.module_source
     assert "sgp40_a" in result.module_source
     assert "sgp40_b" in result.module_source
-    assert "temperature_source=scd30_b, temperature_field='Temp'" in result.module_source
-    assert "humidity_source=scd30_b, humidity_field='Hum'" in result.module_source
-    assert "temperature_source=bmp3xx_only, temperature_field='Temp'" in result.module_source
-    assert "humidity_source=_DefaultHumiditySource(relative_humidity=35)" in result.module_source
+    assert "temperature=ValueRef(scd30_b, 'Temp')" in result.module_source
+    assert "humidity=ValueRef(scd30_b, 'Hum')" in result.module_source
+    assert "temperature=ValueRef(bmp3xx_only, 'Temp')" in result.module_source
+    assert "humidity=ValueRef(_DefaultHumiditySource(relative_humidity=35), 'value')" in result.module_source
     assert "_DefaultSignalSink().request_signal" in result.module_source
-    # led_target/fram_target both left unwired - conn.set_ext_led/sysfunct's fram kwarg both absent.
-    assert "conn.set_ext_led(" not in result.module_source
-    assert "SystemService(ntp.ntp_issynced, watchdog=watchdog, cfg_path=cfg_path" in result.module_source
-    # Only sgp40_a is monitored via warn_voc - exactly one NotificationSignal is registered
+    # led_target/fram_target both left unwired - conn gets no LED, sysfunct no storage, both RAM logs.
+    assert "ext_led=None" in result.module_source
+    assert "SystemService(ntp.ntp_issynced, watchdog=watchdog, storage=None, level_setters=_collect_level_setters, cfg_path=cfg_path, log=log_ram)" in result.module_source
+    # Only sgp40_a is monitored via warn_voc - exactly one NotificationSignal is passed
     # (warn_co2/warn_hum are absent from this fixture entirely, and sgp40_b is never a warn_* source).
     assert result.module_source.count("NotificationSignal(") == 1
-    assert "NotificationSignal('WarnVOC', sgp40_a, 'VOC'" in result.module_source
+    assert "signals=(NotificationSignal('WarnVOC', ValueRef(sgp40_a, 'VOC'), _FIELD_WARN_VOC, (0, 1, 0)),)" in result.module_source
     # Two scd30 instances and two sgp40 instances share one module each - one import line per
     # module, not one per instance, merging whichever _Default* extras either instance needs.
     assert result.module_source.count("from asy_scd30_driver import") == 1
@@ -227,10 +228,11 @@ def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserve
     conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
     ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
     sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
-    assert "fram=fram" in conn_line
-    assert "fram=fram" in ntp_line
-    assert "fram=fram" in sysfunct_line
-    assert "fram=fram" in result.module_source.split("webserver = WebserverService(")[1].split(")\n")[0]
+    assert "log=log_fram" in conn_line
+    assert "log=log_fram" in ntp_line
+    assert "log=log_fram" in sysfunct_line
+    assert "storage=fram" in sysfunct_line
+    assert "log=log_fram," in result.module_source.split("webserver = WebserverService(")[1].split("\n    )\n")[0]
     # fram must actually be constructed before all three consume it - a real NameError on device,
     # not just a codegen-shape check.
     fram_pos = result.module_source.index("fram = AsyFramManager(")
@@ -248,7 +250,7 @@ def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path,
     assert all("max_module_error" not in line for line in calls), calls
 
 
-def test_ntp_backoff_keys_reach_the_constructor_only_when_stated(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     def ntp_line(doc: "dict[str, object]", name: str) -> str:
         source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
         ast.parse(source)
@@ -256,11 +258,12 @@ def test_ntp_backoff_keys_reach_the_constructor_only_when_stated(tmp_path: Path,
 
     doc = base_doc()
     unstated = ntp_line(doc, "ntp_backoff_unstated")
-    assert "retry_s=" not in unstated and "retry_max_s=" not in unstated  # the class defaults apply
+    # Unstated, the src/ defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) are passed as literals.
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 10, 600)" in unstated
     assert "max_module_error" not in unstated  # NTP keeps no give-up streak (Part C.7.2)
     doc["device"]["ntp_retry_s"] = 30
     doc["device"]["ntp_retry_max_s"] = 900
-    assert "retry_s=30, retry_max_s=900" in ntp_line(doc, "ntp_backoff_stated")
+    assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 30, 900)" in ntp_line(doc, "ntp_backoff_stated")
 
 
 def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -269,16 +272,18 @@ def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_o
     # the mandatory-infra constructors, and no forced construction-order dependency on fram either.
     doc = base_doc()
     del doc["device"]["wiring"]["fram_target"]
+    del doc["device"]["wiring"]["led_target"]  # its FRAM-logged NeoPixel would rightly precede conn
     result = generate_device(write_doc(tmp_path, "device_fram_absent", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
     ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
     sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
-    assert "fram=" not in conn_line
-    assert "fram=" not in ntp_line
-    assert "fram=" not in sysfunct_line
-    webserver_call = result.module_source.split("webserver = WebserverService(")[1].split(")\n")[0]
-    assert "fram=" not in webserver_call
+    assert "log=log_ram" in conn_line
+    assert "log=log_ram" in ntp_line
+    assert "log=log_ram" in sysfunct_line
+    assert "storage=None" in sysfunct_line
+    webserver_call = result.module_source.split("webserver = WebserverService(")[1].split("\n    )\n")[0]
+    assert "log=log_ram," in webserver_call
     # conn is still built first among mandatory infra - nothing forces fram ahead of it when there's
     # no device-level fram_target to justify that dependency.
     order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
@@ -318,8 +323,8 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     del doc["device"]["wiring"]["led_target"]
     result = generate_device(write_doc(tmp_path, "minimal", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
-    assert "notification_led=" not in result.module_source
-    assert "notification_pause=" not in result.module_source
+    assert "notification_led=None" in result.module_source
+    assert "notification_pause=None" in result.module_source
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
 
 
@@ -332,23 +337,51 @@ def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, s
     result = generate_device(write_doc(tmp_path, "with_defaults", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "_DefaultSignalSink().request_signal" in result.module_source
-    assert "temperature_source=_DefaultTemperatureSource(temperature=20)" in result.module_source
     # Every defaulted per-value field always resolves to (provider, "value") - the fixed contract
     # every _Default<Field> class's get_data() follows - not the real field name.
-    assert "temperature_field='value'" in result.module_source
+    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=20), 'value')" in result.module_source
     # humidity_source stays a real reference - not defaulted in this fixture.
-    assert "humidity_source=scd30, humidity_field='Hum'" in result.module_source
+    assert "humidity=ValueRef(scd30, 'Hum')" in result.module_source
 
 
-def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+def test_device_level_led_target_unwired_passes_no_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
-    # confirms validate.py accepts neopixel-present-but-led_target-unwired - but nothing confirmed
-    # the generated module itself comes out right (conn.set_ext_led(...) correctly omitted).
+    # confirms validate.py accepts neopixel-present-but-led_target-unwired; the generated conn
+    # line then passes ext_led=None.
     doc = base_doc()
     del doc["device"]["wiring"]["led_target"]
     result = generate_device(write_doc(tmp_path, "no_led_target", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
-    assert "conn.set_ext_led(" not in result.module_source
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    assert "ext_led=None" in conn_line
+
+
+def test_a_device_with_led_target_builds_the_neopixel_first_and_passes_it_to_conn(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    result = generate_device(write_doc(tmp_path, "led_target", base_doc()), src_dir, ext_dir)
+    source = result.module_source
+    conn_line = next(line for line in source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    assert "ext_led=neopixel" in conn_line
+    assert source.index("neopixel = NeopixelDriver(") < source.index(conn_line)
+    assert "set_ext_led" not in source
+
+
+def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # One LogConfig per FRAM store, built right after it; the FRAM manager itself gets the FRAM-less
+    # one, and so does any module with no fram_target (here: the notification).
+    doc = base_doc()
+    del doc["instance"][4]["wiring"]["fram_target"]
+    source = generate_device(write_doc(tmp_path, "log_configs", doc), src_dir, ext_dir).module_source
+    lines = [line.strip() for line in source.splitlines()]
+    assert "log_ram = LogConfig(None, DEFAULT_LOG.history_length, debug)" in lines
+    fram_line, after = next((line, nxt) for line, nxt in pairwise(lines) if line.startswith("fram = AsyFramManager("))
+    assert fram_line == "fram = AsyFramManager(spi0, 1, max_size=0x2000, log=log_ram)"
+    assert after == "log_fram = LogConfig(fram, DEFAULT_LOG.history_length, debug)"
+    calls = {line.split(" = ")[0]: line for line in lines if re.match(r"\w+ = [A-Z]\w*\(", line) and not line.startswith(("log_", "watchdog", "app"))}
+    for var in ("scd30", "sgp40", "neopixel", "conn", "ntp", "sysfunct"):
+        assert "log=log_fram" in calls[var], calls[var]
+    assert "log=log_ram" in calls["notification"]
+    assert "debug=debug" not in source.split("async def build_system(")[1].split("async def main(")[0].split(") -> None:")[1]
+    assert "fram=" not in source
 
 
 def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -357,7 +390,7 @@ def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir:
     del doc["instance"][0]["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
     result = generate_device(write_doc(tmp_path, "nosgp40", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
-    assert "maintenance_sensors=" not in result.module_source
+    assert "maintenance_sensors=()," in result.module_source
 
 
 def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path) -> None:
@@ -407,8 +440,7 @@ def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: 
     # and then reached nothing, so every device booted as the shared "SensorNode". They are
     # passed to AsyConnTime now, as the two persisted fields' per-device defaults.
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert "hostname='SensorStationWozi'" in result.module_source
-    assert "hotspot_password='12345678'" in result.module_source
+    assert "WifiConfig('SensorStationWozi', '12345678', " in result.module_source
     ast.parse(result.module_source)
 
 
@@ -430,7 +462,8 @@ def test_isl29125_irq_pin_and_trigger_sec_are_rendered_into_the_constructor_call
     doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6, "trigger_sec": 5, "wiring": {"fram_target": "fram"}})
     result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
     assert "ISL29125_Reader(i2c0, 6, trigger_sec=5" in result.module_source
-    assert "fram=fram" in result.module_source
+    call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
+    assert "log=log_fram" in call
     ast.parse(result.module_source)
 
 
@@ -441,7 +474,7 @@ def test_isl29125_without_trigger_sec_or_fram_target_omits_both(tmp_path: Path, 
     result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "trigger_sec" not in call
-    assert "fram=" not in call
+    assert "log=log_ram" in call
     assert "irq_pull_up" not in call
     ast.parse(result.module_source)
 
@@ -520,7 +553,7 @@ def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path,
     build_construction_order(model)
     model.instances[("scd30", "")].driver_info = None
     with pytest.raises(BuildError, match="driver_info unresolved by codegen time"):
-        generate_module_source(model, model.construction_order, "2026-01-01T00:00:00Z")
+        generate_module_source(model, model.construction_order, "2026-01-01T00:00:00Z", src_dir)
 
 
 def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_key_fails_loud(tmp_path: Path, src_dir: Path) -> None:
@@ -535,7 +568,7 @@ def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_ke
     build_construction_order(model)
     mutated_order = [*model.construction_order, "bogus_node"]
     with pytest.raises(BuildError, match="is not a known bare node or an instance key"):
-        generate_module_source(model, mutated_order, "2026-01-01T00:00:00Z")
+        generate_module_source(model, mutated_order, "2026-01-01T00:00:00Z", src_dir)
 
 
 def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:
@@ -576,16 +609,20 @@ def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path,
 
 
 def _webserver_keywords(source: str) -> dict[str, object]:
-    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "WebserverService"]
+    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ServingLimits"]
     assert len(calls) == 1, len(calls)
     return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
 
 
 @pytest.mark.parametrize(
     ("stated", "expected"),
-    [({"max_connections": 3, "backlog": 4}, {"max_connections": 3, "backlog": 4}), ({"max_connections": 5}, {"max_connections": 5}), ({}, {})],
+    [
+        ({"max_connections": 3, "backlog": 4}, {"max_connections": 3, "backlog": 4}),
+        ({"max_connections": 5}, {"max_connections": 5, "backlog": None}),
+        ({}, {"max_connections": 6, "backlog": None}),  # asy_webserver_service._DEFAULT_MAX_CONNECTIONS
+    ],
 )
-def test_the_stated_connection_ceiling_reaches_the_webserver_and_an_absent_one_is_left_to_its_default(tmp_path: Path, src_dir: Path, ext_dir: Path, stated: dict[str, int], expected: dict[str, int]) -> None:
+def test_the_stated_connection_ceiling_reaches_the_webserver_and_an_absent_one_is_its_src_default(tmp_path: Path, src_dir: Path, ext_dir: Path, stated: dict[str, int], expected: dict[str, int]) -> None:
     # validate.py checks the stated values against the firmware's lwIP pools; that check is only
     # worth anything if the same values are the ones the device is then built with.
     doc = base_doc()

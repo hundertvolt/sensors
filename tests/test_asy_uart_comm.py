@@ -6,20 +6,28 @@ import asyncio
 import struct
 
 from _error_codes import code
+from _fram_chip_fake import FakeMB85RS64V
 from _uart_comm_harness import PAYLOAD_SIZE, TIMEOUT_MS, Pair, accept_set, build_pair, echo_get, frames, run
 from machine import LinkPoller
 
+import asy_spi_driver
 import asy_uart_comm
+from asy_fram_manager import AsyFramManager
+from asy_spi_driver import SPI
 from asy_uart_comm import (
     ROLE_INITIATOR,
     ROLE_RESPONDER,
     ListenResult,
+    ResponderCallbacks,
     UART_Comm,
 )
 from asy_uart_driver import UART
 from base_classes import LockableBuffer
 from crc_checks import CRC16
 from framing_codecs import Framing_COBS
+from print_log import LogConfig, PrintLogHistoryStore, make_logger
+
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]  # one process per test file: the FRAM-backed log case
 
 try:
     from typing import TYPE_CHECKING
@@ -67,7 +75,21 @@ def make_comm(**kwargs: "Any") -> UART_Comm:
     params.update(kwargs)
     role = params.pop("role", ROLE_INITIATOR)
     bus = params.pop("uart", driver)
+    names = ("get_callback", "set_callback", "message_callback")
+    if any(n in params for n in names):
+        params["callbacks"] = ResponderCallbacks(*(params.pop(n, None) for n in names))
     return UART_Comm(bus, role, **params)
+
+
+def _make_fram_manager(chip: "FakeMB85RS64V | None" = None) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+    # A fresh manager, over the given chip's memory when one is passed (a simulated reboot).
+    manager = AsyFramManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
+    if chip is not None:
+        manager.fram._spidev.spi._spi = chip
+    own = manager.fram._spidev.spi._spi
+    assert isinstance(own, FakeMB85RS64V)
+    assert run(manager.setup()) is True
+    return manager, own
 
 
 # ===========================================================================
@@ -213,6 +235,21 @@ def test_logger_injection_uses_both_routes() -> None:
     assert own.pr.name == own.name  # registration keys on one and the history on the other
     shared = make_comm(logger=own.pr)
     assert shared.pr is own.pr  # the AsyFramManager-style reach-through
+
+
+def test_a_fram_backed_log_reads_back_through_a_second_logger() -> None:
+    manager, chip = _make_fram_manager()
+    comm = make_comm(name="UART_X", log=LogConfig(manager, 10, None))
+    assert isinstance(comm.pr, PrintLogHistoryStore)
+    assert run(comm.setup()) is True
+    assert run(comm.uart_set(1, b"x"), limit=20) is False  # nothing is on the line: a silent peer
+    assert persisted(comm)[-1] == _e("UART_NO_ACK"), persisted(comm)
+    rebooted, _ = _make_fram_manager(chip)
+    second = make_logger(LogConfig(rebooted, 10, None), "UART_X")
+    run(second.setup())
+    entry = run(second.get_log())["UART_X"]
+    assert entry["ErrNum"][-1] == code("E", "UART_NO_ACK")
+    assert entry["ErrType"][-1] == "E"
 
 
 def test_get_error_counter_returns_the_shared_envelope() -> None:

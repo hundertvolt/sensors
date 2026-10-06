@@ -8,8 +8,9 @@ import asyncio
 
 from micropython import const
 
-from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UART_Comm
 from config_manager import instance_name
+from print_log import DEFAULT_LOG
 
 try:
     from typing import TYPE_CHECKING
@@ -21,12 +22,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
     from asy_uart_driver import UART
-    from print_log import ErrorLog, PrintLogHistory
+    from print_log import ErrorLog, LogConfig, PrintLogHistory
 
 _NAME = const("UART")
-# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 # The two bench-only command ids this exerciser answers/asks across the jumper - never protocol-
 # level (UART_Comm itself carries no application semantics, SPECIFICATION.md Part J.1). Bench-only:
@@ -48,9 +48,7 @@ class UartLinkExerciser:
         payload_size: int = 48,
         timeout: int = 1000,
         name_ext: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: "LogConfig" = DEFAULT_LOG,
         logger: "PrintLogHistory | None" = None,
     ) -> None:
         self.role = role
@@ -59,22 +57,11 @@ class UartLinkExerciser:
         # way it already reaches every other bus-attached instance's own bus object - see
         # digital_twin/run_generic_integration.py's _wire_uart_crossover()).
         resolved_name = instance_name(_NAME, name_ext)
-        # fram=/logger= forwarded straight into UART_Comm's own reach-through. The protocol carries
-        # no application semantics (Part J.1), but its errno/wrnno history is real diagnostic state,
-        # so it gets the same optional-FRAM treatment as every other module's logger.
+        # log=/logger= forwarded into UART_Comm. The protocol carries no application semantics (Part J.1), but its
+        # history is real diagnostic state, so it gets the same optional-FRAM treatment as every module's logger.
+        callbacks = ResponderCallbacks(self._get_callback, self._set_callback, self._message_callback) if role == ROLE_RESPONDER else None
         self._comm = UART_Comm(
-            uart,
-            role,
-            payload_size=payload_size,
-            timeout=timeout,
-            get_callback=self._get_callback if role == ROLE_RESPONDER else None,
-            set_callback=self._set_callback if role == ROLE_RESPONDER else None,
-            message_callback=self._message_callback if role == ROLE_RESPONDER else None,
-            fram=fram,
-            history_length=history_length,
-            debug=debug,
-            name=resolved_name,
-            logger=logger,
+            uart, role, payload_size=payload_size, timeout=timeout, callbacks=callbacks, name=resolved_name, log=log, logger=logger,
         )
         self.name = self._comm.name  # matches self.pr.name - the _ModuleLike registration shape
         self.pr = self._comm.pr

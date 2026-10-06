@@ -10,12 +10,13 @@ import time
 from collections import namedtuple
 
 import network
-from machine import Pin, Timer
+from machine import Timer
 from micropython import const
 
 from base_classes import LockedCounter, SensorReaderConfig
 from captive_dns import DNSServer
 from config_manager import make_dict, schema_dict
+from print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -24,9 +25,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any, Protocol
+    from typing import Any, NamedTuple, Protocol
 
-    from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, FieldSchema, WriteValidity
     from print_log import ErrorLog, PrintLogHistory
 
@@ -115,14 +115,14 @@ def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...
 
 
 # This service's one optional live cross-instance dependency (Parts C.14 and L.4): the status LED it
-# drives, resolved from [device.wiring].led_target to an already-constructed NeopixelDriver.
-# "setter" mode - the generator emits `conn.set_ext_led(<instance>)` once, after both exist.
-# @wiring led_target NeopixelDriver set_ext_led optional setter
+# drives, resolved from [device.wiring].led_target to an already-constructed NeopixelDriver and passed
+# as ext_led at construction (the NeoPixel is built first).
+# @wiring led_target NeopixelDriver ext_led optional kwarg
 
 # Its other optional dependency: the FRAM error-log target, resolved from [device.wiring].fram_target
 # implicitly because AsyConnTime is mandatory infra, exactly as system_service.py's own tag is.
-# __init__ forwards it into both super().__init__() and this service's own DNSServer.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# __init__ passes the log config to super().__init__() and to this service's DNSServer.
+# @wiring fram_target AsyFramManager log optional kwarg
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
@@ -142,49 +142,53 @@ _PHASE_STA_ESTABLISHED = const(1)  # STA mode, connected at least once since the
 _PHASE_HOTSPOT = const(2)  # AP/hotspot fallback mode active
 _PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated, needs a task/device restart
 
+_WIFI_REFRESH_S = const(5)  # wlan_connect()'s loop period between connection checks
+
 _STAT_OBTAINING_IP = const(2)  # network.STAT_* value seen mid-connect, between STAT_CONNECTING and
 # STAT_GOT_IP - not yet exposed as a named constant by MicroPython's network module itself.
+
+
+# The device's [device] settings, passed whole by the generated module: hostname and hotspot
+# password are the two persisted fields' build-time defaults (_with_default).
+if TYPE_CHECKING:
+    class WifiConfig(NamedTuple):
+        hostname: str
+        hotspot_password: str
+        conn_fail_to_hotspot: int
+        hotspot_time_min: int
+
+else:
+    WifiConfig = namedtuple("WifiConfig", ("hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min"))
 
 
 class AsyConnTime(SensorReaderConfig):
     def __init__(
         self,
-        conn_fail_to_hotspot: int = 5,
-        led_pin: int | None = None,
+        wifi: WifiConfig,
         ext_led: "LEDControl | None" = None,
-        wifi_refresh_sec: int = 5,
-        hotspot_time_min: int = 5,
         max_module_error: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
         # task supervisor restart this task - same _error_check() contract every Reader uses,
         # inherited from SensorReaderConfig (no I2C bus here, just the shared generic mechanism).
         cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        hostname: str | None = None,  # devices/*.toml's own [device].hostname, injected by buildgen;
-        hotspot_password: str | None = None,  # None keeps the shared default, which is what every test wants
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
             WIFI(None, None, None, None),
-            max_module_error,
             _NAME,
-            _VAL_SSID + _VAL_PW + _VAL_CTRY + _with_default(_VAL_HOST, hostname) + _VAL_LED + _with_default(_VAL_HOTSPOT_PW, hotspot_password),
+            _VAL_SSID + _VAL_PW + _VAL_CTRY + _with_default(_VAL_HOST, wifi.hostname) + _VAL_LED + _with_default(_VAL_HOTSPOT_PW, wifi.hotspot_password),
+            max_module_error=max_module_error,
             cfg_path=cfg_path,
-            fram=fram,
-            history_length=history_length,
-            debug=debug,
+            log=log,
         )
         self.wlan = network.WLAN(network.STA_IF)
-        self.led_pin = None if led_pin is None else Pin(led_pin, mode=Pin.OUT, value=0)
         self.ext_led = ext_led
         self.led: LEDControl | None = None
-        self.wifi_refresh_sec = wifi_refresh_sec
-        self.hotspot_time = 60000 * hotspot_time_min  # convert to ms
-        self.conn_fail_to_hotspot = conn_fail_to_hotspot
+        self.hotspot_time = 60000 * wifi.hotspot_time_min  # convert to ms
+        self.conn_fail_to_hotspot = wifi.conn_fail_to_hotspot
         self.wifi_uptime = LockedCounter(max_val=0xFFFFFFFF)
         # DNSServer gets its own independent "DNSSRV"-named logger, not this class's own self.pr (owner, 2026-08-07) -
         # its history is shown with the networking data (owner, 2026-09-26).
-        self.dns_server = DNSServer(fram=fram, history_length=history_length, debug=debug)
+        self.dns_server = DNSServer(log=log)
         self.dns_server_task: asyncio.Task[None] | None = None
         self.reconn_wifi = False
         self.time_counter_trigger_event = asyncio.ThreadSafeFlag()
@@ -252,7 +256,7 @@ class AsyConnTime(SensorReaderConfig):
             # stations command needs no other status commands close before (and does not support "async with"!)
             stations = self.wlan.status("stations")
             self.pr.all("Connected stations:", stations)
-        except Exception as e:  # observation-tier (polled every wifi_refresh_sec while hotspot is
+        except Exception as e:  # observation-tier (polled every _WIFI_REFRESH_S while hotspot is
             # active) - see _wlan_status_or_none()'s comment on why this stays silent, not err_s()
             self.pr.err("Could not fetch connected clients:", e)
             return []
@@ -434,7 +438,7 @@ class AsyConnTime(SensorReaderConfig):
                 self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
             except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - matches
                 # asy_ntp_client.py's own Timer.init() guards; hotspot_timer_running stays False so
-                # the next wifi_refresh_sec cycle retries arming it instead of getting stuck unset.
+                # the next _WIFI_REFRESH_S cycle retries arming it instead of getting stuck unset.
                 self.pr.err("Could not start hotspot timer:", e)
         if self.ledflash is None:
             evtloop = asyncio.get_event_loop()
@@ -792,18 +796,12 @@ class AsyConnTime(SensorReaderConfig):
         # getter shape (like get_dns_server_ip()/get_wlan_rssi() above), not network_available()'s.
         return self._conn_phase == _PHASE_HOTSPOT
 
-    def set_ext_led(self, ext_led: "LEDControl") -> None:  # for post-setting ext_led at any time
-        self.ext_led = ext_led  # if called even after init, call set_wifi_led(status=True) to init LED
-
     async def set_wifi_led(self, *, status: bool) -> bool:
         # Uniform setter return contract (owner, 2026-09-26): always True here - pure attribute
         # assignment plus _led_off()'s own already-defensive degrade-on-raise, nothing to reject.
         if status:  # try to turn on
             if self.led is None:  # LED is actually off
-                if self.led_pin is None:  # no gpio led defined
-                    self.led = self.ext_led  # if also None, LED stays off anyway
-                else:
-                    self.led = self.led_pin  # gpio has priority if not None
+                self.led = self.ext_led  # if None, the LED stays off
         else:  # turn off
             self._led_off()
             self.led = None
@@ -844,7 +842,7 @@ class AsyConnTime(SensorReaderConfig):
                         "Giving up after repeated WLAN hardware failures, restarting task.", errno=_ERR_WLAN_GIVE_UP,
                     )
                     return
-            await asyncio.sleep(self.wifi_refresh_sec)
+            await asyncio.sleep(_WIFI_REFRESH_S)
 
     async def time_counter(self) -> None:
         await self.wifi_uptime.set_value(0)

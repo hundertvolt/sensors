@@ -252,7 +252,7 @@ def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, 
 def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # The real-hardware form of test_asy_ntp_client.py's retry-after-one-dropped-request test:
     # the retry timer alone recovers, with no reboot. A guaranteed block_udp_ports() rather than
-    # netem loss, so the outage outlasts _NTP_CONN_TIMEOUT (5s) but clears inside the 15s retry.
+    # netem loss, so the outage outlasts the 5s NTP fetch timeout (NtpTiming.fetch_timeout_ms) but clears inside the 15s retry.
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_host = get_before.json()["NTP_Host"]

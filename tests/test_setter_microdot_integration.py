@@ -32,10 +32,11 @@ import api_response as ar
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_i2c_driver import I2C
-from asy_ntp_client import AsyNtpClient
+from asy_ntp_client import AsyNtpClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
-from asy_wifi_service import AsyConnTime
+from asy_wifi_service import AsyConnTime, WifiConfig
+from base_classes import ValueRef
 from crc_checks import CRC8
 
 try:
@@ -64,7 +65,7 @@ def _tmp_cfg_dir() -> str:
 
 
 def make_wifi_client() -> AsyConnTime:
-    client = AsyConnTime(led_pin=None, cfg_path=_tmp_cfg_dir())
+    client = AsyConnTime(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=_tmp_cfg_dir())
     run(client.cfgmgr.setup())
     return client
 
@@ -75,6 +76,7 @@ def make_ntp_client() -> AsyNtpClient:
         wifi_mode_lock,
         network_available=lambda: True,
         get_dns_server=lambda: None,
+        timing=NtpTiming(500, 1, 5000, 10, 600),
         cfg_path=_tmp_cfg_dir(),
     )
     run(client.cfgmgr.setup())
@@ -590,10 +592,8 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
     comp = _FakeCompSource()
     reader = SGP40_Reader(
         i2c,
-        temperature_source=comp,
-        temperature_field="Temp",
-        humidity_source=comp,
-        humidity_field="Hum",
+        ValueRef(comp, "Temp"),
+        ValueRef(comp, "Hum"),
         max_module_error=5,
         cfg_path=_tmp_cfg_dir(),
     )

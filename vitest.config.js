@@ -11,6 +11,7 @@ import {
     startLiveMatrix,
     stopLiveMatrix,
 } from "./tests_js/_live_matrix_command.js";
+import { probeLintRule } from "./tests_js/_lint_command.js";
 
 // The dev sandbox pre-installs Chromium at this fixed path; CI runners lack it and run
 // `npx playwright install chromium` first (ci.yml's web-unit-tests job), so Playwright
@@ -55,6 +56,7 @@ export default defineConfig({
                 applyField,
                 applyUnchangedFieldExpectNothingToSubmit,
                 remountAndReadField,
+                probeLintRule,
             },
         },
     },

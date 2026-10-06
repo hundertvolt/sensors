@@ -3,12 +3,14 @@ construction-order shape) plus its boot-entry sibling, from a validated `DeviceM
 construction order (`buildgen.graph.build_construction_order()`)."""
 
 import keyword
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from buildgen.defaults import default_class_name
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, resolve_instance_key
+from buildgen.validate import module_float_const, module_int_const, module_str_const, ntp_backoff
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 from buildgen.wiring import WiringField
 
@@ -43,6 +45,18 @@ def _identifier(name: str, device: str, instance: "str | None"=None, field: "str
 @dataclass
 class _Ctx:
     model: DeviceModel
+    # FRAM instance var -> its LogConfig var (log_<fram var>); a module with no FRAM store gets log_ram.
+    log_vars: "dict[str, str]" = field(default_factory=dict)
+    src: "Path | None" = None  # src/, for the shipped defaults codegen reads by AST
+
+    @property
+    def src_dir(self) -> Path:
+        if self.src is None:
+            raise BuildError(self.model.device, "internal: codegen reached a src/ default with no src_dir")
+        return self.src
+
+    def log_var(self, fram_var: "str | None") -> str:
+        return "log_ram" if fram_var is None else self.log_vars[fram_var]
 
     def bus_var(self, bus_id: str) -> str:
         return _identifier(bus_id, self.model.device, instance=f"bus.{bus_id}", field=bus_id)
@@ -67,18 +81,17 @@ class _Ctx:
         var = self.instance_var(target_key)
         return var if wf.mode == "kwarg" else f"{var}.{wf.target}"
 
-    def value_wiring_kwargs(self, spec: InstanceSpec, toml_field: str) -> "list[tuple[str, str]]":
+    def value_ref(self, value: "TomlDoc", toml_field: str) -> str:
         # Per-value measurement wiring: either a real {source, field} reference matched by
-        # attribute name, or an explicit default provider. Always rendered as a
-        # (source_kwarg, field_kwarg) pair, as the _Default*Source classes expose one "value".
+        # attribute name, or an explicit default provider, whose one field is "value".
+        if value.get("default") is True:
+            return f"ValueRef({self.default_provider_expr(toml_field, value)}, {'value'!r})"
+        source_var = self.instance_var(resolve_instance_key(self.model, value["source"]))
+        return f"ValueRef({source_var}, {value['field']!r})"
+
+    def value_wiring_kwarg(self, spec: InstanceSpec, toml_field: str) -> "tuple[str, str]":
         vwf = next(f for f in spec.value_wiring_schema if f.toml_field == toml_field)
-        value = spec.wiring[toml_field]
-        if isinstance(value, dict) and value.get("default") is True:
-            provider_expr = self.default_provider_expr(toml_field, value)
-            return [(vwf.source_kwarg, provider_expr), (vwf.field_kwarg, repr("value"))]
-        source_key = resolve_instance_key(self.model, value["source"])
-        source_var = self.instance_var(source_key)
-        return [(vwf.source_kwarg, source_var), (vwf.field_kwarg, repr(value["field"]))]
+        return vwf.kwarg, self.value_ref(spec.wiring[toml_field], toml_field)
 
 
 def _wf(spec: InstanceSpec, toml_field: str) -> "WiringField | None":
@@ -99,25 +112,29 @@ def _defaulted_wiring_fields(spec: InstanceSpec) -> "list[str]":
     return [f for f, v in spec.wiring.items() if isinstance(v, dict) and v.get("default") is True]
 
 
-def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
+def _fram_var(spec: InstanceSpec, ctx: _Ctx) -> "str | None":
+    # The instance's wired FRAM store, or None (no fram_target tag, or not wired).
     fram_wf = _wf(spec, "fram_target")
-    return (fram_wf.target, ctx.wiring_expr(spec, fram_wf)) if fram_wf is not None and "fram_target" in spec.wiring else None
+    return ctx.wiring_expr(spec, fram_wf) if fram_wf is not None and "fram_target" in spec.wiring else None
 
 
-def _device_fram_arg(model: DeviceModel, ctx: _Ctx) -> str:
-    # The device-level counterpart to _fram_kw(): [device.wiring].fram_target is always a plain
+def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str]":
+    # Every module's log config: its FRAM target's LogConfig, else the FRAM-less one, passed under
+    # its fram_target tag's own target name ("log").
+    fram_wf = _wf(spec, "fram_target")
+    return ("log" if fram_wf is None else fram_wf.target), ctx.log_var(_fram_var(spec, ctx))
+
+
+def _device_fram_var(model: DeviceModel, ctx: _Ctx) -> "str | None":
+    # The device-level counterpart to _fram_var(): [device.wiring].fram_target is always a plain
     # instance name, never a default-provider dict (_check_device_wiring() enforces that), and is
     # wired into every mandatory-infra consumer declaring a fram_target tag.
     fram_target = model.doc.get("device", {}).get("wiring", {}).get("fram_target")
-    return f"fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
+    return ctx.instance_var(resolve_instance_key(model, fram_target)) if fram_target else None
 
 
-def _device_fram_kwarg_suffix(model: DeviceModel, ctx: _Ctx) -> str:
-    # ", fram=<var>" ready to splice into an inline argument list, as conn/ntp/sysfunct's
-    # one-line constructor calls need. _emit_webserver() emits one kwarg per line and so calls
-    # _device_fram_arg() directly for the bare form.
-    arg = _device_fram_arg(model, ctx)
-    return f", {arg}" if arg else ""
+def _device_log_arg(model: DeviceModel, ctx: _Ctx) -> str:
+    return f"log={ctx.log_var(_device_fram_var(model, ctx))}"
 
 
 def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
@@ -129,28 +146,22 @@ def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[t
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
-    kw.append(("debug", "debug"))
+    kw.append(_fram_kw(spec, ctx))
     return pos, kw
 
 
 def _build_args_sgp40(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     f = spec.fields
     pos = [ctx.bus_var(f["bus"])]
-    kw: list[tuple[str, str]] = []
-    kw.extend(ctx.value_wiring_kwargs(spec, "temperature_source"))
-    kw.extend(ctx.value_wiring_kwargs(spec, "humidity_source"))
+    kw: list[tuple[str, str]] = [ctx.value_wiring_kwarg(spec, "temperature_source"), ctx.value_wiring_kwarg(spec, "humidity_source")]
+    fram_var = _fram_var(spec, ctx)
+    if fram_var is not None:  # the VOC backup lives in the same FRAM store its logger does
+        kw.append(("backup", f"SgpBackup({fram_var}, ntp.ntp_issynced)"))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
-    kw.append(("fram_ntp_callback", "ntp.ntp_issynced"))
-    kw.append(("debug", "debug"))
+    kw.append(_fram_kw(spec, ctx))
     return pos, kw
 
 
@@ -166,10 +177,7 @@ def _build_args_bmp3xx(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
-    kw.append(("debug", "debug"))
+    kw.append(_fram_kw(spec, ctx))
     return pos, kw
 
 
@@ -186,31 +194,25 @@ def _build_args_isl29125(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], lis
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
     # Omitted -> the driver's own irq_pull_up=True default (the internal pull-up, for a board with
     # no external resistor of its own); a device whose board already has one sets this false.
     if "irq_pull_up" in f:
         kw.append(("irq_pull_up", str(f["irq_pull_up"])))
-    kw.append(("debug", "debug"))
+    kw.append(_fram_kw(spec, ctx))
     return pos, kw
 
 
 def _build_args_fram(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["cs_pin"])]
-    kw: list[tuple[str, str]] = [("max_size", hex(f["max_size"])), ("debug", "debug")]
+    # The FRAM manager's own log never lives on the chip it manages (Part C.7.1).
+    kw: list[tuple[str, str]] = [("max_size", hex(f["max_size"])), ("log", "log_ram")]
     return pos, kw
 
 
 def _build_args_neopixel(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     pos = [str(spec.fields["pin"])]
-    kw: list[tuple[str, str]] = []
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
-    kw.append(("debug", "debug"))
+    kw: list[tuple[str, str]] = [_fram_kw(spec, ctx)]
     return pos, kw
 
 
@@ -219,27 +221,19 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
     if signal_wf is None:
         raise BuildError(ctx.model.device, "internal: notification has no signal_sink wiring field by codegen time", instance=spec.label)
     pos = [ctx.wiring_expr(spec, signal_wf), "ntp.cettime"]
-    kw: list[tuple[str, str]] = [("cfg_path", "cfg_path")]
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
-    kw.append(("debug", "debug"))
+    kw: list[tuple[str, str]] = [("signals", _notification_signals(spec, ctx)), ("cfg_path", "cfg_path"), _fram_kw(spec, ctx)]
     return pos, kw
 
 
 def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
-    # fram= is the same optional per-instance _fram_kw() every other driver with a "# @wiring
-    # fram_target ..." tag uses (WP3 - was wrongly, deliberately excluded; UartLinkExerciser's own
-    # class-level support already existed in asy_uart_comm.py, only the buildgen wiring was missing).
+    # Forwards bus, role and name_ext, and the log config every driver with a "# @wiring fram_target
+    # ..." tag gets from _fram_kw().
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), repr(f["role"])]
     kw: list[tuple[str, str]] = []
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
-    fram_kw = _fram_kw(spec, ctx)
-    if fram_kw:
-        kw.append(fram_kw)
-    kw.append(("debug", "debug"))
+    kw.append(_fram_kw(spec, ctx))
     return pos, kw
 
 
@@ -268,8 +262,9 @@ def _build_call(spec: InstanceSpec, ctx: _Ctx) -> str:
     return f"{class_name}({args})"
 
 
-def _notification_lines(spec: InstanceSpec, ctx: _Ctx, var: str) -> "list[str]":
-    lines = []
+def _notification_signals(spec: InstanceSpec, ctx: _Ctx) -> str:
+    # The notification's signals, passed at construction as one tuple, in TOML order.
+    signals = []
     for toml_field, sig in spec.wiring.items():
         if not toml_field.startswith("warn_"):
             continue
@@ -283,10 +278,8 @@ def _notification_lines(spec: InstanceSpec, ctx: _Ctx, var: str) -> "list[str]":
                 field=toml_field,
             )
         name, const_name, _schema_literal, color = known
-        source_var = ctx.instance_var(resolve_instance_key(ctx.model, sig["source"]))
-        lines.append(f'{var}.register(NotificationSignal({name!r}, {source_var}, {sig["field"]!r}, {const_name}, {color!r}))')
-    lines.append(f"{var}.finalize()")
-    return lines
+        signals.append(f"NotificationSignal({name!r}, {ctx.value_ref(sig, toml_field)}, {const_name}, {color!r})")
+    return "(" + ", ".join(signals) + ("," if len(signals) == 1 else "") + ")"
 
 
 def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instances: "dict[tuple[str, str], InstanceSpec]", have: "set[str]", build_date: str) -> None:
@@ -317,8 +310,10 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
         if spec.driver == "notification":
             continue  # imported below, together with NotificationSignal
         _class_name, extras = module_imports.setdefault(spec.driver_info.module, (spec.driver_info.class_name, []))
-        for f in _defaulted_wiring_fields(spec):
-            name = default_class_name(f)
+        names = [default_class_name(f) for f in _defaulted_wiring_fields(spec)]
+        if spec.driver == "sgp40" and _fram_var(spec, ctx) is not None:
+            names.append("SgpBackup")
+        for name in names:
             if name not in extras:
                 extras.append(name)
     for module, (class_name, extras) in module_imports.items():
@@ -328,9 +323,12 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
         notif_extra_spec = next(s for s in instances.values() if s.driver == "notification")
         notif_extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(notif_extra_spec))
         lines.append(f"from asy_notification_service import NotificationCoordinator, NotificationSignal{notif_extra}")
-    lines.append("from asy_ntp_client import AsyNtpClient")
-    lines.append("from asy_webserver_service import SettingsGroup, WebserverService")
-    lines.append("from asy_wifi_service import AsyConnTime")
+    lines.append("from asy_ntp_client import AsyNtpClient, NtpTiming")
+    lines.append("from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService")
+    lines.append("from asy_wifi_service import AsyConnTime, WifiConfig")
+    if have & {"sgp40", "notification"}:
+        lines.append("from base_classes import ValueRef")
+    lines.append("from print_log import DEFAULT_LOG, LogConfig")
     lines.append("from system_service import SystemService")
     lines.append("")
     lines.append("try:")
@@ -396,6 +394,10 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             extra_kw = "".join(f", {f}={bus_table[f]}" for f in ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms") if f in bus_table)
             lines.append(f"    {var} = asy_uart_driver.UART({port}, {bus_table['tx_pin']}, {bus_table['rx_pin']}, baudrate={bus_table['baudrate']}{extra_kw})")
 
+    # One LogConfig per FRAM store a module logs into (log_<fram var>, right after that FRAM), and
+    # log_ram for every module without one, the FRAM manager itself included.
+    lines.append("    log_ram = LogConfig(None, DEFAULT_LOG.history_length, debug)")
+    led_var = ctx.instance_var(resolve_instance_key(model, dev["wiring"]["led_target"])) if "led_target" in dev.get("wiring", {}) else None
     for node in construction_order:
         if node == "conn":
             # Here rather than hardcoded ahead of the bus loop, so it can follow fram's own
@@ -403,40 +405,36 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             # still builds conn first.
 
             # hostname/hotspot_password are [device]'s values, passed as the DEFAULTS of the two
-            # ConfigManager-persisted fields (_with_default). Before this every device booted as
-            # the shared "SensorNode" whatever its TOML said.
-            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, hostname={dev['hostname']!r}, hotspot_password={dev['hotspot_password']!r}{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            # ConfigManager-persisted fields (_with_default). The status LED is built first (graph.py).
+            wifi = f"WifiConfig({dev['hostname']!r}, {dev['hotspot_password']!r}, {dev['conn_fail_to_hotspot']}, {dev['hotspot_time_min']})"
+            lines.append(f"    conn = AsyConnTime({wifi}, ext_led={led_var}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
             continue
         if node == "ntp":
-            # Backoff keys emitted only when stated, as max_connections is: absent, the class default applies.
-            backoff = "".join(f", {kw}={dev[key]}" for key, kw in (("ntp_retry_s", "retry_s"), ("ntp_retry_max_s", "retry_max_s")) if key in dev)
-            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS{backoff}, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            # The backoff pair is always the effective one: [device]'s stated keys, else the src/ defaults.
+            retry_s, retry_max_s = ntp_backoff(dev, ctx.src_dir)
+            timing = f"NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, {retry_s}, {retry_max_s})"
+            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
             continue
         if node == "sysfunct":
-            lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{_device_fram_kwarg_suffix(model, ctx)}, cfg_path=cfg_path, debug=debug)")
+            storage = _device_fram_var(model, ctx)
+            lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, storage={storage}, level_setters=_collect_level_setters, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
             continue
         if not isinstance(node, tuple):
             raise BuildError(model.device, f"internal: construction_order entry {node!r} is not a known bare node or an instance key")
         spec = instances[node]
         var = ctx.instance_var(node)
         lines.append(f"    {var} = {_build_call(spec, ctx)}")
-        if spec.driver == "notification":
-            lines.extend(f"    {line}" for line in _notification_lines(spec, ctx, var))
-
-    device_wiring = model.doc.get("device", {}).get("wiring", {})
-    led_target = device_wiring.get("led_target")
-    if led_target is not None:
-        lines.append(f"    conn.set_ext_led({ctx.instance_var(resolve_instance_key(model, led_target))})")
+        if spec.driver == "fram" and var in ctx.log_vars:
+            lines.append(f"    {ctx.log_vars[var]} = LogConfig({var}, DEFAULT_LOG.history_length, debug)")
 
     lines.append("")
     uart_initiator_var = next(
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx), dev)
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_log_arg(model, ctx), dev, ctx.src_dir)
 
     lines.append("    timers_running = ThreadSafeFlag()")
-    lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
     lines.append("")
     # fram must precede sysfunct: sysfunct.setup() reaches its cfgmgr's FRAM-backed logger, which
     # needs AsyFramManager initialized. The other order left CFGMGR_SYSTEM degrading every boot,
@@ -479,9 +477,12 @@ def _emit_main(lines: "list[str]") -> None:
     lines.append("")
 
 
-def generate_module_source(model: DeviceModel, construction_order: "list[str | tuple[str, str]]", build_date: str) -> str:
-    ctx = _Ctx(model)
+def generate_module_source(model: DeviceModel, construction_order: "list[str | tuple[str, str]]", build_date: str, src_dir: Path) -> str:
+    ctx = _Ctx(model, src=src_dir)
     instances = model.instances
+    # Every FRAM instance some module logs into, the device's infra included, gets its LogConfig.
+    targeted = [_device_fram_var(model, ctx)] + [_fram_var(spec, ctx) for spec in instances.values()]
+    ctx.log_vars = {var: f"log_{var}" for var in targeted if var is not None}
     have = {spec.driver for spec in instances.values()}
     order_position = {node: i for i, node in enumerate(construction_order)}
     sensor_specs = sorted((s for s in instances.values() if s.driver_info and s.driver_info.kind == "sensor"), key=lambda s: order_position[s.key])
@@ -596,34 +597,37 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str, dev: "TomlDoc") -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", log_arg: str, dev: "TomlDoc", src_dir: Path) -> None:
+    # The three config objects, every field passed: a [device] value where the TOML states one,
+    # else the shipped default read out of asy_webserver_service.py's own _DEFAULT_* constants.
+    ws = "asy_webserver_service.py"
+    max_connections = dev["max_connections"] if "max_connections" in dev else module_int_const(src_dir, ws, "_DEFAULT_MAX_CONNECTIONS")
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
-    lines.append('        build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE},')
-    lines.append(f"        sensors=({', '.join(sensor_vars)}{',' if len(sensor_vars) == 1 else ''}),  # type: ignore[arg-type]")
-    lines.append("        settings={")
-    lines.append('            "networking": [')
-    lines.append('                SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname"), post_fct=conn.reconnect_wifi),  # type: ignore[arg-type]')
-    lines.append('                SettingsGroup(conn, ("LedWifiOn",)),  # type: ignore[arg-type]')
-    lines.append('                SettingsGroup(ntp, ("NTP_Host", "NTP_Offset_S", "NTP_Interv_H"), post_asy_fct=ntp.ntp_force_sync),  # type: ignore[arg-type]')
-    lines.append("            ],")
-    lines.append('            "system": [')
-    lines.append('                SettingsGroup(sysfunct, ("DebugLevel",)),  # type: ignore[arg-type]')
-    lines.append('                SettingsGroup(ntp, ("GMTOffset", "DSTOffset")),  # type: ignore[arg-type]')
-    lines.append("            ],")
+    lines.append("        routes=RouteSources(")
+    lines.append(f"            sensors=({', '.join(sensor_vars)}{',' if len(sensor_vars) == 1 else ''}),  # type: ignore[arg-type]")
+    lines.append("            settings={")
+    lines.append('                "networking": [')
+    lines.append('                    SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname"), post_fct=conn.reconnect_wifi),  # type: ignore[arg-type]')
+    lines.append('                    SettingsGroup(conn, ("LedWifiOn",)),  # type: ignore[arg-type]')
+    lines.append('                    SettingsGroup(ntp, ("NTP_Host", "NTP_Offset_S", "NTP_Interv_H"), post_asy_fct=ntp.ntp_force_sync),  # type: ignore[arg-type]')
+    lines.append("                ],")
+    lines.append('                "system": [')
+    lines.append('                    SettingsGroup(sysfunct, ("DebugLevel",)),  # type: ignore[arg-type]')
+    lines.append('                    SettingsGroup(ntp, ("GMTOffset", "DSTOffset")),  # type: ignore[arg-type]')
+    lines.append("                ],")
     if "notification" in have:
-        lines.append('            "notification": [SettingsGroup(notification, cm.schema_names(notification.get_cfg_schema()))],  # type: ignore[arg-type]')
-    lines.append("        },")
-    lines.append("        system_cmd=_system_cmd_callback,")
-    if "neopixel" in have:
-        lines.append("        notification_led=_notification_led_callback,")
-    if "notification" in have:
-        lines.append("        notification_pause=_notification_pause_callback,")
+        lines.append('                "notification": [SettingsGroup(notification, cm.schema_names(notification.get_cfg_schema()))],  # type: ignore[arg-type]')
+    lines.append("            },")
+    lines.append('            build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE},')
+    lines.append("            system_cmd=_system_cmd_callback,")
+    lines.append(f"            notification_led={'_notification_led_callback' if 'neopixel' in have else None},")
+    lines.append(f"            notification_pause={'_notification_pause_callback' if 'notification' in have else None},")
     status_sources = ['"networking": _networking_status', '"system": _system_status']
     if "notification" in have:
         status_sources.append('"notification": _notification_status')
-    lines.append("        status_sources={" + ", ".join(status_sources) + "},")
+    lines.append("            status_sources={" + ", ".join(status_sources) + "},")
     maintenance_entries = []
     if "sgp40" in have:
         maintenance_entries.append('("SGP40", _sgp_maintenance_status)')
@@ -632,22 +636,24 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
         # initiates a transfer - SPECIFICATION.md Part J.1's "the protocol carries no application
         # semantics" means the responder side has nothing of its own to report here).
         maintenance_entries.append(f'("UARTLINK", {uart_initiator_var}.get_link_status)')
-    if maintenance_entries:
-        comma = "," if len(maintenance_entries) == 1 else ""
-        lines.append(f"        maintenance_sensors=({', '.join(maintenance_entries)}{comma}),")
-    lines.append("        error_sources=_collect_error_sources(),")
-    lines.append("        debug=debug,")
-    lines.append('        static_mount="/html",')
-    lines.append("        is_hotspot_active=conn.is_hotspot_active,")
-    lines.append("        host=web_host,")
-    lines.append("        port=web_port,")
-    # Emitted only when the device states one: absent, WebserverService's own default applies, and
-    # validate.py has already checked THAT value against the firmware's lwIP PCB count.
-    for key in ("max_connections", "backlog"):
-        if key in dev:
-            lines.append(f"        {key}={dev[key]},")
-    if fram_arg:
-        lines.append(f"        {fram_arg},")
+    comma = "," if len(maintenance_entries) == 1 else ""
+    lines.append(f"            maintenance_sensors=({', '.join(maintenance_entries)}{comma}),")
+    lines.append("            error_sources=_collect_error_sources(),")
+    lines.append("        ),")
+    # max_connections/backlog: [device]'s values when stated; validate.py has already checked the
+    # effective pair against the firmware's own lwIP PCB count.
+    lines.append("        serving=ServingLimits(")
+    lines.append(f"            max_content_length={module_int_const(src_dir, ws, '_DEFAULT_MAX_CONTENT_LENGTH')},")
+    lines.append(f"            chunk_bytes={module_int_const(src_dir, ws, '_DEFAULT_CHUNK_BYTES')},")
+    lines.append(f"            max_connections={max_connections},")
+    lines.append(f"            backlog={dev.get('backlog')},")
+    lines.append(f"            per_call_timeout_s={module_float_const(src_dir, ws, '_DEFAULT_PER_CALL_TIMEOUT_S')!r},")
+    lines.append(f"            outer_cap_s={module_float_const(src_dir, ws, '_DEFAULT_OUTER_CAP_S')!r},")
+    lines.append("            host=web_host,")
+    lines.append("            port=web_port,")
+    lines.append("        ),")
+    lines.append(f'        static=StaticSite(mount="/html", index_file={module_str_const(src_dir, ws, "_DEFAULT_STATIC_INDEX")!r}, is_hotspot_active=conn.is_hotspot_active),')
+    lines.append(f"        {log_arg},")
     lines.append("    )")
 
 

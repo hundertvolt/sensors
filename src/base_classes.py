@@ -7,11 +7,12 @@ Every method returns a well-defined value, never raises.
 # `self.cfgmgr`, and its own `async def setup()` awaits `self.cfgmgr.setup()`.
 
 import asyncio
+from collections import namedtuple
 
 from micropython import const
 
 from config_manager import ConfigManager, check_cfg_get_default, instance_name, schema_dict, schema_names, type_or_range_error
-from print_log import PrintLogHistory, make_logger
+from print_log import DEFAULT_LOG, LogConfig, PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -20,14 +21,25 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, Literal, NamedTuple, TypeVar
+    from typing import Any, Literal, NamedTuple, Protocol, TypeVar
 
     from typing_extensions import Self
 
-    from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
 
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
+
+    class _DataProducer(Protocol):
+        # Any module exposing the get_data() -> NamedTuple contract every driver has (C.4.2).
+        async def get_data(self) -> object: ...
+
+    # a producer plus the field to read off its get_data() (SPECIFICATION.md C.14)
+    class ValueRef(NamedTuple):
+        source: _DataProducer
+        field: str
+
+else:
+    ValueRef = namedtuple("ValueRef", ("source", "field"))
 
 # Codes from the global catalog (buildgen/error_catalog.json): the base band every SensorReader inherits.
 _ERR_STREAK = const(1)
@@ -167,12 +179,10 @@ class SensorReader:
     def __init__(
         self,
         init_data: "NamedTuple",
-        max_module_error: int,
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
-        name: str = "",
+        name: str,
+        max_module_error: int = 5,
         name_ext: str = "",
+        log: LogConfig = DEFAULT_LOG,
         logger: PrintLogHistory | None = None,
     ) -> None:
         # name_ext="" (every module today) reproduces `name` unchanged - see instance_name()'s own
@@ -182,7 +192,7 @@ class SensorReader:
         if logger is not None:  # reach-through: reuse a directly-bound sibling object's own logger
             self.pr = logger
         else:
-            self.pr = make_logger(fram, history_length, debug, resolved_name)
+            self.pr = make_logger(log, resolved_name)
         self.name = resolved_name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (sensors=/error_sources=/settings=).
         self._datastruct = init_data
@@ -387,16 +397,14 @@ class SensorReaderConfig(SensorReader):
     def __init__(
         self,
         init_data: "NamedTuple",
-        max_module_error: int,
         name: str,
         default_vals: "ConfigSchema",
+        max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
-        super().__init__(init_data, max_module_error, fram, history_length, debug, name=name, name_ext=name_ext)
+        super().__init__(init_data, name, max_module_error=max_module_error, name_ext=name_ext, log=log)
         self.cfg_schema = default_vals
         # self.name - already instance_name(name, name_ext) from super().__init__() - threads the
         # per-instance extension into both the on-flash filename and this ConfigManager's own
@@ -405,7 +413,7 @@ class SensorReaderConfig(SensorReader):
             cfg_path + "config_" + self.name + ".cfg",
             default_vals,
             self.name,
-            fram=fram,
+            log=log,
         )
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:

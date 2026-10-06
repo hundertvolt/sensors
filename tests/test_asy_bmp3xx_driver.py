@@ -14,7 +14,7 @@ from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
 from asy_spi_driver import SPI
-from print_log import PrintLogHistoryStore
+from print_log import LogConfig, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as test_print_log.py/test_asy_fram_manager.py: routes
 # AsyFramManager's SPI traffic to the simulated FRAM chip instead of unavailable real hardware.
@@ -1463,6 +1463,13 @@ def test_reader_read_bmp_triggers_exactly_one_measurement_cycle() -> None:
     assert _count_forced_mode_triggers(i2c) == 1
 
 
+def test_the_log_config_sets_both_loggers_length_and_level() -> None:
+    reader = BMP3xx_Reader(make_i2c(), address=_ADDR, cfg_path=_tmp_cfg_path("log_config"), log=LogConfig(None, 3, 2))
+    for pr in (reader.pr, reader.cfgmgr.pr):
+        assert len(pr.history) == 3
+        assert pr.get_level() == 2
+
+
 def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     # print_log.py's PrintLogHistoryStore path (FRAM-backed, survives a reboot) is never exercised
     # by the default in-memory tests above - this drives it through a real AsyFramManager against
@@ -1475,8 +1482,9 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     i2c = make_i2c()
     fake(i2c).nak_addresses.add(_ADDR)
     cfg_path = _tmp_cfg_path("fram_backed")
-    reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, fram=manager)
+    reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, log=LogConfig(manager, 10, None))
     assert isinstance(reader.pr, PrintLogHistoryStore)
+    assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)  # CFGMGR_BMP3XX shares the log config
 
     async def scenario() -> "ErrorLog":
         # _init_bmp()'s real call order: self.pr.setup() always runs first ("required for all
@@ -1496,7 +1504,7 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     manager2 = AsyFramManager(spi2, 1, max_size=0x2000)
     manager2.fram._spidev.spi._spi = chip
     run(manager2.setup())
-    rebooted_reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, fram=manager2)
+    rebooted_reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, log=LogConfig(manager2, 10, None))
 
     async def reboot_scenario() -> "ErrorLog":
         await rebooted_reader.pr.setup()  # loads persisted history from FRAM

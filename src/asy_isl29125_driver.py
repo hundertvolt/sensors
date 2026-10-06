@@ -19,6 +19,7 @@ import math_helpers
 from asy_i2c_driver import I2CDevice
 from base_classes import Lockable, LockedValue, SensorReaderConfig
 from config_manager import name_cfg, type_or_range_error
+from print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -29,7 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
     from asy_i2c_driver import I2C
     from config_manager import ConfigSchema
     from print_log import ErrorLog
@@ -198,8 +198,8 @@ if TYPE_CHECKING:
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
 # FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
-# already-constructed instance, passed directly as this driver's own fram= kwarg.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# already-constructed instance, passed directly as this driver's own log= kwarg.
+# @wiring fram_target AsyFramManager log optional kwarg
 
 # Driver-declared value domains (SPECIFICATION.md Part L.6.4), read by buildgen/limits.py from the
 # tags below - bounds kept in sync with _MIN/_MAX_TRIGGER_SECS by hand, since a comment cannot
@@ -213,29 +213,24 @@ class ISL29125_Reader(SensorReaderConfig):
         i2c: "I2C",
         irq_pin: int,
         *,
-        address: int = 0x44,
         trigger_sec: int = 1,
+        irq_pull_up: bool = True,
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        irq_pull_up: bool = True,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
             ISL29125(None, None, None, None, None, None, None, None, None, None, None, None),
-            max_module_error,
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_THRESH + _VAL_AR_DWELL
             + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
+            max_module_error=max_module_error,
             name_ext=name_ext,
             cfg_path=cfg_path,
-            fram=fram,
-            history_length=history_length,
-            debug=debug,
+            log=log,
         )
-        self.isl = ISL29125_I2C(i2c, address=address)
+        self.isl = ISL29125_I2C(i2c)
         # This INT is open-drain (p6), so the high level needs a resistor somewhere - unlike SCD30's
         # push-pull RDY. irq_pull_up=True enables the internal one; a board with its own external
         # resistor passes False and gets a bare Pin.IN, so the two are never stacked.

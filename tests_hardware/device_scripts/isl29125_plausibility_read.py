@@ -28,7 +28,7 @@ async def _main() -> None:
     np.write()
     await asyncio.sleep_ms(300)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
+    reader = ISL29125_Reader(i2c1, 6, max_module_error=999)
     # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O.
     reader.cfgmgr.valid = True
     # Seeded from the driver's own schema, never a hand-copied list - a key added there
@@ -49,12 +49,18 @@ async def _main() -> None:
         wdt.feed()
         await asyncio.sleep(0.5)
 
+    died: list[str] = []
     for task in (trigger_task, read_task):
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # a task that died on its own fails the run, never passes it
+            died.append(repr(e))
+    if died:
+        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
+        return
 
     if data is None or data.Lux is None:
         print("RESULT: FAIL no reading obtained within the wait window - sensor not responding or not wired to i2c1")

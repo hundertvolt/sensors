@@ -33,5 +33,5 @@
     // shape as digital_twin/typecheck.ini's own split from the main mypy pass (see CLAUDE.md's
     // "Code quality tooling"). Excluded here so this browser-context pass doesn't also see Node's
     // ambient globals (process, require, "node:*" specifiers) as if they existed in a real browser.
-    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"]
+    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js"]
 }

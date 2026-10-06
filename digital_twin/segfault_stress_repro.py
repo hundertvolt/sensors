@@ -102,8 +102,8 @@ async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: 
         main_task.cancel()
         try:
             await main_task
-        except (asyncio.CancelledError, Exception):
-            pass
+        except asyncio.CancelledError:
+            pass  # the cancel above; a main task that died on its own re-raises and fails the run
 
 
 if __name__ == "__main__":

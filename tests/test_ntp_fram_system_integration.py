@@ -17,11 +17,12 @@ import asy_spi_driver
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
-from asy_ntp_client import AsyNtpClient
+from asy_ntp_client import AsyNtpClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_spi_driver import SPI
-from asy_wifi_service import AsyConnTime
+from asy_wifi_service import AsyConnTime, WifiConfig
+from base_classes import ValueRef
 from crc_checks import CRC32
 from system_service import SystemService
 
@@ -69,7 +70,7 @@ def _tmp_cfg_dir() -> str:
 
 
 def make_conn() -> AsyConnTime:
-    conn = AsyConnTime(led_pin=None, cfg_path=_tmp_cfg_dir())
+    conn = AsyConnTime(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=_tmp_cfg_dir())
     run(conn.cfgmgr.setup())
     return conn
 
@@ -87,8 +88,8 @@ def make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
+        NtpTiming(500, 1, ntp_fetch_timeout_ms, 10, 600),
         cfg_path=cfg_path,
-        ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
     )
     run(ntp.cfgmgr.setup())
     return ntp
@@ -242,7 +243,7 @@ async def sync_real_ntp_chain(conn: AsyConnTime, ntp: AsyNtpClient) -> None:
 # ---------------------------------------------------------------------------
 # FRAM timestamped-chunk propagation: ntp.ntp_issynced, real and chain-derived, flowing into
 # AsyFramChunkTimestampedBuffer's write_into()/read_into() - exactly the seam SGP40_Reader relies on via
-# fram_ntp_callback, but without needing a full fake I2C sensor to prove it.
+# SgpBackup.ntp_synced, but without needing a full fake I2C sensor to prove it.
 # ---------------------------------------------------------------------------
 
 
@@ -340,7 +341,7 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
 # ---------------------------------------------------------------------------
 # SystemService propagation: ntp.ntp_issynced (real, chain-derived) flowing into
 # SystemService._ntp_boot_signature()/status_counter(), exactly sensortask-wozi.py's own
-# `SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)` wiring.
+# `SystemService(ntp.ntp_issynced, watchdog=watchdog, storage=fram, log=...)` wiring.
 # ---------------------------------------------------------------------------
 
 
@@ -570,16 +571,14 @@ def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
 
 def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    # A real SCD30_Reader as temperature_source/humidity_source (SPECIFICATION.md Parts C.14 and L.6.3) -
+    # A real SCD30_Reader behind the temperature/humidity value references (SPECIFICATION.md Parts C.14 and L.6.3) -
     # never read() or setup(), so its get_data() just returns its unmeasured-sentinel namedtuple with every
     # field None, matching what the old _no_comp_data() returned directly.
     scd_reader = make_scd30_reader()
     reader = SGP40_Reader(
         i2c,
-        temperature_source=scd_reader,
-        temperature_field="Temp",
-        humidity_source=scd_reader,
-        humidity_field="Hum",
+        ValueRef(scd_reader, "Temp"),
+        ValueRef(scd_reader, "Hum"),
         max_module_error=max_module_error,
         cfg_path=cfg_path,
     )

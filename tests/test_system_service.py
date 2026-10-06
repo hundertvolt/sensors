@@ -11,7 +11,7 @@ import asy_spi_driver
 import system_service
 from asy_fram_manager import AsyFramManager
 from asy_spi_driver import SPI
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+from print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore
 from system_service import SystemService
 
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -54,15 +54,15 @@ def make_ntp_stub(
 def make_service(  # parameters/defaults after ntp mirror SystemService.__init__()'s own
     ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
     watchdog: "WDT | None" = None,
-    fram: "AsyFramManager | None" = None,
-    history_length: int = 10,
-    debug: int | None = None,
+    storage: "AsyFramManager | None" = None,
+    log: "LogConfig" = DEFAULT_LOG,
     cfg_path: str = "",
+    level_setters: "Callable[[], list[Callable[[int], None]]] | None" = None,
 ) -> SystemService:
     if ntp is None:
         ntp, _calls = make_ntp_stub(synced=False)
     return SystemService(
-        ntp, watchdog=watchdog, fram=fram, history_length=history_length, debug=debug, cfg_path=cfg_path,
+        ntp, watchdog=watchdog, storage=storage, level_setters=level_setters, cfg_path=cfg_path, log=log,
     )
 
 
@@ -135,8 +135,9 @@ def test_init_uses_in_memory_logging_when_fram_is_none() -> None:
 
 def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     assert isinstance(svc.pr, PrintLogHistoryStore)
+    assert isinstance(svc.cfgmgr.pr, PrintLogHistoryStore)  # the settings store's logger shares the log config
     assert svc.storage_pause is not None
     assert svc.pr.name == "SYSTEM"
     # Bound-method identity isn't guaranteed (each attribute access can mint a fresh bound-method
@@ -148,13 +149,25 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
 
 
 def test_init_debug_level_is_forwarded_to_the_logger() -> None:
-    svc = make_service(debug=PrintLog.level_err())
+    svc = make_service(log=LogConfig(None, 10, PrintLog.level_err()))
     assert svc.pr.get_level() == PrintLog.level_err()
+    assert svc.cfgmgr.pr.get_level() == PrintLog.level_err()  # CFGMGR_SYSTEM takes the same config
 
 
 def test_init_history_length_is_forwarded() -> None:
-    svc = make_service(history_length=3)
+    svc = make_service(log=LogConfig(None, 3, None))
     assert len(svc.pr.history) == 3
+    assert len(svc.cfgmgr.pr.history) == 3
+
+
+def test_init_storage_without_a_fram_log_keeps_ram_logging_and_the_pause() -> None:
+    # storage= is only the pause target; whether SYSTEM logs into FRAM is the log config's choice alone.
+    manager, _chip = make_fram_manager()
+    svc = make_service(storage=manager)
+    assert type(svc.pr) is PrintLogHistory
+    assert svc.storage_pause is not None
+    svc.storage_pause(value=True)
+    assert manager.get_pause() is True
 
 
 def test_init_watchdog_is_stored() -> None:
@@ -204,7 +217,7 @@ def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
 
 def test_init_zero_history_length_is_accepted_in_memory() -> None:
     # Unusual-but-typing-valid content: 0 is a legal int, not just the documented default of 10.
-    svc = make_service(history_length=0)
+    svc = make_service(log=LogConfig(None, 0, None))
     assert len(svc.pr.history) == 0
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))  # must not raise despite there being nowhere to store it
@@ -214,7 +227,7 @@ def test_init_zero_history_length_is_accepted_in_memory() -> None:
 def test_init_negative_history_length_is_clamped_to_zero() -> None:
     # Unusual-but-typing-valid content: print_log.py's own PrintLogHistory clamps this internally;
     # confirms system_service.py passes it through unmodified rather than re-validating/rejecting it.
-    svc = make_service(history_length=-5)
+    svc = make_service(log=LogConfig(None, -5, None))
     assert len(svc.pr.history) == 0
 
 
@@ -223,7 +236,7 @@ def test_init_all_constructor_params_combined_wire_correctly() -> None:
     # isolation - confirms none of the four constructor params interferes with wiring the others.
     manager, _chip = make_fram_manager()
     wdt = machine.WDT()
-    svc = make_service(fram=manager, watchdog=wdt, history_length=4, debug=PrintLog.level_info())
+    svc = make_service(storage=manager, watchdog=wdt, log=LogConfig(manager, 4, PrintLog.level_info()))
     assert isinstance(svc.pr, PrintLogHistoryStore)
     assert svc.storage_pause is not None
     assert svc.watchdog is wdt
@@ -634,7 +647,7 @@ def test_reboot_system_without_fram_arms_reset_timer_and_fires_machine_reset() -
 
 def test_reboot_system_with_fram_pauses_storage_before_arming_the_reset() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     machine.reset_count = 0
     svc.reboot_system()
     assert manager.get_pause() is True  # paused immediately, before the reset timer ever fires
@@ -644,7 +657,7 @@ def test_reboot_system_with_fram_pauses_storage_before_arming_the_reset() -> Non
 
 def test_reboot_system_cancels_any_pending_storage_unpause_timer() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(60)
     assert svc.storage_timer.deinit_called is False
     svc.reboot_system()
@@ -656,7 +669,7 @@ def test_reboot_system_with_fram_falls_back_to_watchdog_starve_when_reset_timer_
     # storage still gets paused (the step before the failing timer.init() call) even though the
     # reset timer itself then fails to arm and falls back to the watchdog-starve backstop.
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     with _RaiseOnArm():
         svc.reboot_system()  # must not raise despite the timer failing to arm
     assert manager.get_pause() is True  # storage pause already happened before the failing init()
@@ -667,7 +680,7 @@ def test_reboot_system_with_fram_falls_back_to_watchdog_starve_on_a_memory_error
     # Sibling of the OSError test above, for the other arm of _reboot()'s own
     # `except (OSError, MemoryError)` - same fram + failed-arm cross-dependency, same outcome.
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     with _RaiseOnArm(MemoryError):
         svc.reboot_system()  # must not raise despite the timer failing to arm
     assert manager.get_pause() is True  # storage pause already happened before the failing init()
@@ -725,7 +738,7 @@ def test_reboot_bootloader_arms_reset_timer_and_fires_machine_bootloader() -> No
 
 def test_reboot_bootloader_with_fram_pauses_storage_before_arming_the_reset() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     machine.bootloader_count = 0
     svc.reboot_bootloader()
     assert manager.get_pause() is True  # paused immediately, before the reset timer ever fires
@@ -741,35 +754,35 @@ def test_pause_permanent_storage_without_fram_is_a_no_op() -> None:
 
 def test_pause_permanent_storage_zero_duration_immediately_unpauses() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(0)
     assert manager.get_pause() is False
 
 
 def test_pause_permanent_storage_negative_duration_is_clamped_to_zero_and_immediately_unpauses() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(-5)
     assert manager.get_pause() is False
 
 
 def test_pause_permanent_storage_clamps_to_the_max() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(999_999)
     assert svc.storage_timer.period == 3600 * 1000  # _MAX_STORAGE_PAUSE: compiled away, hardcoded
 
 
 def test_pause_permanent_storage_exact_max_boundary_is_accepted_not_clamped_further() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(3600)
     assert svc.storage_timer.period == 3600 * 1000  # _MAX_STORAGE_PAUSE: compiled away, hardcoded
 
 
 def test_pause_permanent_storage_valid_duration_pauses_then_auto_unpauses_when_timer_fires() -> None:
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(60)
     assert manager.get_pause() is True
     assert svc.storage_timer.period == 60 * 1000
@@ -782,7 +795,7 @@ def test_pause_permanent_storage_second_call_rearms_over_the_first_pending_unpau
     # replace it, deinit()-ing the old one before init()-ing the new duration and callback, not stack two
     # competing callbacks. Triggering afterward must reflect only the second call's state.
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(60)
     svc.pause_permanent_storage(120)
     assert svc.storage_timer.period == 120 * 1000  # re-armed with the new duration, not the first
@@ -796,7 +809,7 @@ def test_pause_permanent_storage_aborts_the_pause_when_the_unpause_timer_cannot_
     # against ports/rp2/machine_timer.c) - without this fallback, storage would be left paused
     # forever with no way to auto-resume, worse than just failing the pause request outright.
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     with _RaiseOnArm():
         svc.pause_permanent_storage(60)  # must not raise despite the timer failing to arm
     assert manager.get_pause() is False  # aborted, not left stuck paused
@@ -807,7 +820,7 @@ def test_pause_permanent_storage_aborts_the_pause_on_a_memory_error() -> None:
     # `except (OSError, MemoryError)` - the abort-rather-than-stay-paused-forever fallback must not
     # depend on which of the two an alarm allocation happens to fail with.
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager)
+    svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     with _RaiseOnArm(MemoryError):
         svc.pause_permanent_storage(60)  # must not raise despite the timer failing to arm
     assert manager.get_pause() is False  # aborted, not left stuck paused
@@ -883,7 +896,7 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     # history_length=1: get_log() always reports the full (fixed-length) history deque, not just
     # the entries actually written - a length-1 history is what makes "just one error" also
     # produce a length-1 ErrNum/ErrType, matching this test's single err_s() call exactly.
-    svc = make_service(history_length=1)
+    svc = make_service(log=LogConfig(None, 1, None))
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
     result = run(svc.get_error_counter())
@@ -895,9 +908,9 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
 def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     # Cross-dependency: system_service.py's own get_error_counter()/reset_error_counter() just
     # proxy to self.pr - confirms that still works correctly when self.pr is the FRAM-backed
-    # PrintLogHistoryStore (constructed via fram=...), not only the plain in-memory PrintLogHistory.
+    # PrintLogHistoryStore (constructed via log=LogConfig(manager, ...)), not only the plain in-memory PrintLogHistory.
     manager, _chip = make_fram_manager()
-    svc = make_service(fram=manager, history_length=1)
+    svc = make_service(storage=manager, log=LogConfig(manager, 1, None))
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
     result = run(svc.get_error_counter())
@@ -1326,8 +1339,7 @@ def test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_bo
 def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() -> None:
     calls: list[int] = []
     cfg_path = _tmp_cfg_dir()
-    svc = make_service(cfg_path=cfg_path)
-    svc.set_level_setters([calls.append])
+    svc = make_service(cfg_path=cfg_path, level_setters=lambda: [calls.append])
     run(svc.setup())
     # Nothing persisted yet - first boot writes and uses the schema default (0) - but the registry
     # still gets called once, even for the unchanged default.
@@ -1340,8 +1352,7 @@ def test_setup_leaves_the_level_alone_when_the_persisted_value_cannot_be_read() 
     # what a corrupt or unreadable store degrades to. The level must stay as constructed rather
     # than being pushed out as a bogus value, and nothing may raise out of boot.
     calls: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    svc.set_level_setters([calls.append])
+    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [calls.append])
     # Seeded away from the schema default, which _current_debug_level starts at: leaving it at 0
     # would make "untouched" and "overwritten with 0" the same observation.
     svc._current_debug_level = PrintLog.level_info()
@@ -1358,8 +1369,7 @@ def test_setup_leaves_the_level_alone_when_the_persisted_value_cannot_be_read() 
 def test_set_debug_level_persists_and_calls_every_registered_setter() -> None:
     calls_a: list[int] = []
     calls_b: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    svc.set_level_setters([calls_a.append, calls_b.append])
+    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [calls_a.append, calls_b.append])
     run(svc.setup())
     ok = run(svc.set_debug_level(PrintLog.level_info()))
     assert ok is True
@@ -1370,8 +1380,7 @@ def test_set_debug_level_persists_and_calls_every_registered_setter() -> None:
 
 def test_set_debug_level_out_of_range_is_rejected_and_never_reaches_the_registry() -> None:
     calls: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    svc.set_level_setters([calls.append])
+    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [calls.append])
     run(svc.setup())
     calls.clear()  # drop setup()'s own push of the default, isolate this call's own effect
     ok = run(svc.set_debug_level(99))  # outside the schema's 0-5 range
@@ -1387,7 +1396,7 @@ def test_set_debug_level_before_setup_fails_cleanly_not_raise() -> None:
 
 
 def test_set_debug_level_without_any_registered_setters_still_persists() -> None:
-    # No set_level_setters() call at all (the default, empty registry) degrades gracefully -
+    # No level_setters provider at all (the default, empty registry) degrades gracefully -
     # persistence and get_debug_level() still work, matching every other optional dependency on
     # this class (watchdog, fram) - _apply_level() on an empty list is simply a no-op loop.
     cfg_path = _tmp_cfg_dir()
@@ -1406,8 +1415,7 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    svc.set_level_setters([calls.append, _raising_setter, calls.append])
+    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [calls.append, _raising_setter, calls.append])
     run(svc.setup())
     ok = run(svc.set_debug_level(PrintLog.level_warn()))
     assert ok is True  # persistence itself is unaffected by a registry-side failure
@@ -1420,8 +1428,7 @@ def test_a_bad_setter_now_persists_its_own_failure() -> None:
     def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    svc.set_level_setters([_raising_setter])
+    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=lambda: [_raising_setter])
     run(svc.setup())
     run(svc.set_debug_level(PrintLog.level_warn()))
     log = run(svc.pr.get_log())[svc.pr.name]
@@ -1446,24 +1453,33 @@ def test_get_cfg_schema_returns_the_debug_level_field() -> None:
     assert schema[0][0] == "DebugLevel"
 
 
-def test_set_level_setters_replaces_any_previously_registered_list() -> None:
-    first: list[int] = []
-    second: list[int] = []
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    svc.set_level_setters([first.append])
-    svc.set_level_setters([second.append])  # replaces, does not accumulate
+def test_the_level_setters_provider_is_resolved_once_in_setup() -> None:
+    # The provider is called once, in setup(): not at construction (the other modules' loggers
+    # may not exist yet), and not again on a later level change.
+    resolved = [0]
+    calls: list[int] = []
+
+    def provider() -> "list[Callable[[int], None]]":
+        resolved[0] += 1
+        return [calls.append]
+
+    svc = make_service(cfg_path=_tmp_cfg_dir(), level_setters=provider)
+    assert resolved[0] == 0
     run(svc.setup())
-    assert first == []
-    assert second == [0]
+    assert resolved[0] == 1
+    assert calls == [0]
+    run(svc.set_debug_level(PrintLog.level_warn()))
+    assert resolved[0] == 1
+    assert calls == [0, PrintLog.level_warn()]
 
 
 def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
-    # End-to-end: registering self.pr.set_level itself (exactly what sensortask_wozi.py's
+    # End-to-end: providing self.pr.set_level itself (exactly what sensortask_wozi.py's
     # _collect_level_setters() does for every module, including sysfunct's own) - a real logger's
     # own log methods actually change behavior, not just an internal bookkeeping value.
     cfg_path = _tmp_cfg_dir()
-    svc = make_service(cfg_path=cfg_path)
-    svc.set_level_setters([svc.pr.set_level])
+    svc: SystemService | None = None
+    svc = make_service(cfg_path=cfg_path, level_setters=lambda: [svc.pr.set_level] if svc is not None else [])
     run(svc.setup())
     run(svc.set_debug_level(PrintLog.level_err()))
     assert svc.pr.get_level() == PrintLog.level_err()

@@ -12,7 +12,7 @@ from collections import namedtuple
 from micropython import const
 
 from base_classes import LockableBuffer
-from print_log import PrintLogHistory, make_logger
+from print_log import DEFAULT_LOG, PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -22,11 +22,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     import asyncio as _asyncio
     from collections.abc import Callable
-    from typing import Any, Protocol
+    from typing import Any, NamedTuple, Protocol
 
-    from asy_fram_manager import AsyFramManager
     from asy_uart_driver import UART
-    from print_log import ErrorLog
+    from print_log import ErrorLog, LogConfig
 
     # Every callback may be sync or async, so each returns `object`: the result is either the
     # value itself or a coroutine yielding it, and _call() below is what tells the two apart.
@@ -129,6 +128,17 @@ _WRN_UART_DRAIN_BOUND = const(54)
 _WRN_UART_CANCEL_UNACKED = const(55)
 _WRN_UART_CMD_DECLINED = const(56)
 
+# A responder's get/set callbacks (both required) and its optional message callback, passed as one object.
+if TYPE_CHECKING:
+
+    class ResponderCallbacks(NamedTuple):
+        get: "_GetCallback | None"
+        set: "_SetCallback | None"
+        message: "_MessageCallback | None"
+
+else:
+    ResponderCallbacks = namedtuple("ResponderCallbacks", ("get", "set", "message"))
+
 # One allocation per logical message, never per frame (J.9). Returned on every path,
 # including the ones that fail - _LISTEN_FAILED is preallocated so even a MemoryError-degraded
 # path has a well-formed value to hand back.
@@ -160,30 +170,26 @@ class UART_Comm:
         role: str,
         payload_size: int = 48,
         timeout: int = 1000,
-        get_callback: "_GetCallback | None" = None,
-        set_callback: "_SetCallback | None" = None,
-        message_callback: "_MessageCallback | None" = None,
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        callbacks: ResponderCallbacks | None = None,
         name: str = _NAME,
+        log: "LogConfig" = DEFAULT_LOG,
         logger: PrintLogHistory | None = None,
     ) -> None:
-        if logger is not None:  # reach-through: reuse a directly-bound sibling object's own logger
-            self.pr = logger
-        else:
-            self.pr = make_logger(fram, history_length, debug, name)
+        self.pr = logger if logger is not None else make_logger(log, name)  # reach-through: reuse a directly-bound sibling object's own logger
         self.name = name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
         self.uart = uart
         self.role = role
         self.payload_size = payload_size
         self.timeout = timeout
-        self.get_callback = get_callback
-        self.set_callback = set_callback
         # Optional, unlike the other two: a GET-only responder has nothing to deliver, so an
         # absent one is not a construction error (only a wholly unanswerable instance is refused).
-        self.message_callback = message_callback
+        if callbacks is None:
+            self.get_callback: _GetCallback | None = None
+            self.set_callback: _SetCallback | None = None
+            self.message_callback: _MessageCallback | None = None
+        else:
+            self.get_callback, self.set_callback, self.message_callback = callbacks
         self.initialized = False
         self.uid = 0
         self._busy = False  # asyncio.Lock is not reentrant, so re-entry is refused, not awaited

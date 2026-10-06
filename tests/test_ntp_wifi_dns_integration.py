@@ -18,8 +18,8 @@ from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 import asy_ntp_client as ntpmod
-from asy_ntp_client import AsyNtpClient
-from asy_wifi_service import AsyConnTime
+from asy_ntp_client import AsyNtpClient, NtpTiming
+from asy_wifi_service import AsyConnTime, WifiConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -58,7 +58,7 @@ def _tmp_cfg_dir() -> str:
 def make_conn(cfg_path: "str | None" = None) -> AsyConnTime:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    conn = AsyConnTime(led_pin=None, cfg_path=cfg_path)
+    conn = AsyConnTime(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=cfg_path)
     run(conn.cfgmgr.setup())
     return conn
 
@@ -67,7 +67,7 @@ def make_ntp(
     conn: AsyConnTime,
     ntp_host: str,
     cfg_path: "str | None" = None,
-    ntp_fetch_timeout_ms: "int | None" = None,  # None = AsyNtpClient's own real default
+    ntp_fetch_timeout_ms: int = 5000,  # the generated wiring's fetch timeout
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real
@@ -78,10 +78,8 @@ def make_ntp(
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    kwargs: dict[str, Any] = {"cfg_path": cfg_path}
-    if ntp_fetch_timeout_ms is not None:
-        kwargs["ntp_fetch_timeout_ms"] = ntp_fetch_timeout_ms
-    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, **kwargs)
+    timing = NtpTiming(500, 1, ntp_fetch_timeout_ms, 10, 600)
+    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, timing, cfg_path=cfg_path)
     run(ntp.cfgmgr.setup())
     return ntp
 
@@ -215,7 +213,7 @@ def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -
     conn = make_conn()
     connect_wlan(conn)
     unreachable_addr = make_addr()  # nobody listens here - _fetch_ntp_reply() blocks for its own
-    # _NTP_CONN_TIMEOUT (5s), giving this test a window to observe the lock genuinely held.
+    # NtpTiming.fetch_timeout_ms (5s), giving this test a window to observe the lock genuinely held.
     ntp = make_ntp(conn, unreachable_addr[0])
 
     async def scenario() -> bool:

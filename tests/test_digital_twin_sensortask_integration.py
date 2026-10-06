@@ -643,7 +643,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
         state_path = cfg_path + "fram_state.json"
         machine.configure_fram_state_path(state_path)
         try:
-            # --- Boot 1: real construction, real FRAM chunk 3 (SPECIFICATION.md Part A.7) write
+            # --- Boot 1: real construction, the real timestamped FRAM backup chunk (SPECIFICATION.md Part A.7) write
             # through the real chain. ---
             machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())

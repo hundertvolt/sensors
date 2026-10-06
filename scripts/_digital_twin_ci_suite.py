@@ -109,9 +109,9 @@ _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the 
 _WIFI_PERSISTED_WARNINGS = 1
 
 # ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it
-# far exceeds _http()'s 5s default. The value below is DERIVED from the server's own cap;
+# far exceeds _http()'s 5s default. The value below is DERIVED from the server's own _DEFAULT_OUTER_CAP_S;
 # README.md has the derivation and BACKLOG item 24 the real-hardware measurements.
-_SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's own outer_cap_s default - keep in sync
+_SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 # The BUDGET rather than the timeout above, which only catches a call that never finished. Sized
 # from both datasets - twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of

@@ -15,6 +15,7 @@ from asy_isl29125_driver import (
     ISL29125_I2C,
     ISL29125_Reader,
 )
+from print_log import LogConfig
 
 # Mirrors of asy_isl29125_driver.py's own underscore-prefixed micropython.const() values - those
 # are folded into every use site at compile time and are NOT importable module attributes (see
@@ -836,6 +837,15 @@ def test_reader_construction_performs_no_bus_transactions() -> None:
     i2c = make_i2c()
     ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path("no_io"))
     assert fake(i2c).log == []
+
+
+def test_the_log_config_sets_both_loggers_length_and_level() -> None:
+    FakeTimer.all_timers.clear()
+    reader = ISL29125_Reader(make_i2c(), 6, cfg_path=_tmp_cfg_path("log_config"), log=LogConfig(None, 3, 2))
+    for pr in (reader.pr, reader.cfgmgr.pr):
+        assert len(pr.history) == 3
+        assert pr.get_level() == 2
+    assert reader.isl.i2c_isl29125.i2c_device.device_address == _ADDR  # the chip's one fixed address
 
 
 def test_reader_construction_enables_the_internal_pull_up_on_the_int_pin() -> None:

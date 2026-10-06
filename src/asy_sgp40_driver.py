@@ -20,6 +20,7 @@ from asy_i2c_driver import I2CDevice
 from base_classes import Lockable, SensorReaderConfig
 from config_manager import make_dict, name_cfg
 from crc_checks import CRC8, CRC32
+from print_log import DEFAULT_LOG, LogConfig
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -29,17 +30,21 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, Protocol
+    from typing import Any, NamedTuple
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer, AsyFramManager
     from asy_i2c_driver import I2C
+    from base_classes import ValueRef
     from print_log import ErrorLog
 
-    class _ValueSource(Protocol):
-        # Structural stand-in for temperature_source/humidity_source's producer (Part L.6.3): any
-        # *_Reader, or a `_Default*` fallback below, exposing the get_data() -> NamedTuple contract
-        # every driver already has (C.4.2). Same shape as asy_notification_service's _ValueSource.
-        async def get_data(self) -> "Any": ...
+    # The VOC backup's two parts: the FRAM store its chunk comes from and the NTP-sync check that
+    # timestamps it (the generated module passes ntp.ntp_issynced).
+    class SgpBackup(NamedTuple):
+        store: AsyFramManager
+        ntp_synced: Callable[[], Coroutine[Any, Any, bool]]
+
+else:
+    SgpBackup = namedtuple("SgpBackup", ("store", "ntp_synced"))
 
 # Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
 _ERR_INIT = const(10)
@@ -89,25 +94,21 @@ _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields ab
 # @web Raw section=measurements submitGroup=self kind=readonly label="VOC Raw" unit="ticks"
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
-# This driver's live cross-instance dependencies (SPECIFICATION.md Parts C.14 and L.4): the optional
-# FRAM backup target, resolved to an already-constructed instance (fram_target maps to this driver's
-# own fram_storage= kwarg, for historical reasons - buildgen/buildspec.py), never a getter.
-
-# Temperature/humidity compensation used to be one whole-object comp_source fixed to SCD30_Reader;
-# Part L.6.3 generalized it into two independent per-value fields, each wireable from any instance
-# exposing a matching attribute name.
+# Live cross-instance dependencies (SPECIFICATION.md Parts C.14 and L.4): the optional FRAM store (its
+# logger's and, through backup=, the VOC backup's), and two per-value compensation references (Part
+# L.6.3), each wireable from any instance exposing a matching field.
 
 # datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz. A
 # generator-checked build requirement, not a comment a TOML author must remember - a bus shared
 # with an SCD30 is additionally held to that sensor's stricter 100 kHz tag.
 # @requires bus.frequency<=400000
-# @wiring fram_target AsyFramManager fram_storage optional kwarg
+# @wiring fram_target AsyFramManager log optional kwarg
 
 # Per-value measurement wiring (Part L.6.3): each field resolves independently in the same
 # {source, field} shape the warn_* fields use, matched by attribute name alone. Both are required,
-# so an SGP40 with no compensation data at all has to opt in explicitly through a `_Default*`.
-# @value-wiring temperature_source temperature_source temperature_field required
-# @value-wiring humidity_source humidity_source humidity_field required
+# so an SGP40 with no compensation data at all opts in explicitly through a `_Default*`.
+# @value-wiring temperature_source temperature required
+# @value-wiring humidity_source humidity required
 
 _ConstValue = namedtuple("_ConstValue", ("value",))
 
@@ -143,28 +144,22 @@ class SGP40_Reader(SensorReaderConfig):
     def __init__(
         self,
         i2c: "I2C",
-        temperature_source: "_ValueSource",
-        temperature_field: str,
-        humidity_source: "_ValueSource",
-        humidity_field: str,
+        temperature: "ValueRef",
+        humidity: "ValueRef",
+        backup: SgpBackup | None = None,
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
-        fram_storage: "AsyFramManager | None" = None,
-        fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
             SGP40(None, None, None),
-            max_module_error,
             _NAME,
             _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
+            max_module_error=max_module_error,
             name_ext=name_ext,
             cfg_path=cfg_path,
-            fram=fram_storage,
-            history_length=history_length,
-            debug=debug,
+            log=log,
         )
         self.sgp = SGP40_I2C(i2c)
         # SGPResetVOC is command-only (see _VAL_RESET above) - registered the same way as every
@@ -177,21 +172,18 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        # A direct reference to each producer's own concurrency-safe holder (its already
-        # _datalock-guarded get_data(), Part C.14/G.2), never a wrapping getter. The two may be the
-        # same instance - the common case, both off one SCD30 - or two different ones.
-        self.temperature_source = temperature_source
-        self.temperature_field = temperature_field
-        self.humidity_source = humidity_source
-        self.humidity_field = humidity_field
-        if fram_storage is None or fram_ntp_callback is None:
+        # References to each producer and the field to read off its get_data() result (Part C.14):
+        # the two may be one instance or two.
+        self._temperature: ValueRef = temperature
+        self._humidity: ValueRef = humidity
+        if backup is None:
             self.ts_storage = None
         else:
             try:  # broad on purpose, matching print_log.py's own FRAM-allocation guard - this
                 # matters more here since __init__ runs before any task supervisor exists to
                 # catch an escaped exception.
-                self.ts_storage = fram_storage.get_timestamped_chunk(
-                    VOCAlgorithm.get_params_memsize(), fram_ntp_callback, crc=CRC32(),
+                self.ts_storage = backup.store.get_timestamped_chunk(
+                    VOCAlgorithm.get_params_memsize(), backup.ntp_synced, crc=CRC32(),
                 )  # timestamped backup storage (FRAM)
             except Exception:
                 self.ts_storage = None
@@ -276,14 +268,14 @@ class SGP40_Reader(SensorReaderConfig):
         temp_val: int | float | None
         hum_val: int | float | None
         try:
-            temp_data = await self.temperature_source.get_data()
-            hum_data = await self.humidity_source.get_data()
+            temp_data = await self._temperature.source.get_data()
+            hum_data = await self._humidity.source.get_data()
         except Exception as e:
             await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE)
             temp_val, hum_val = None, None
         else:
-            temp_val = getattr(temp_data, self.temperature_field, None)
-            hum_val = getattr(hum_data, self.humidity_field, None)
+            temp_val = getattr(temp_data, self._temperature.field, None)
+            hum_val = getattr(hum_data, self._humidity.field, None)
 
         if temp_val is None or hum_val is None:
             if deserialize:

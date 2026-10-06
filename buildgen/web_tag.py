@@ -145,16 +145,25 @@ def _split_special(pairs: "dict[str, str]") -> "tuple[dict[str, str], tuple[tupl
     return plain, tuple(special)
 
 
-def _check_known_and_required(
-    plain: "dict[str, str]", known_keys: "frozenset[str]", required: "frozenset[str]",
-    *, device: str, path: Path, lineno: int, instance_label: str, field: "str | None", raw: str, tag_name: str,
-) -> None:
+@dataclass(frozen=True)
+class TagSite:
+    # Where one tag sits, built once per tag: what every error raised about it names.
+    device: str
+    path: Path
+    lineno: int
+    instance_label: str
+    field: "str | None"
+    raw: str
+    tag_name: str
+
+
+def _check_known_and_required(plain: "dict[str, str]", known_keys: "frozenset[str]", required: "frozenset[str]", site: TagSite) -> None:
     unknown = set(plain) - known_keys
     if unknown:
-        raise BuildError(device, f"{path}:{lineno}: @{tag_name} tag has unknown key(s) {sorted(unknown)}: {raw!r}", instance=instance_label, field=field)
+        raise BuildError(site.device, f"{site.path}:{site.lineno}: @{site.tag_name} tag has unknown key(s) {sorted(unknown)}: {site.raw!r}", instance=site.instance_label, field=site.field)
     missing = required - set(plain)
     if missing:
-        raise BuildError(device, f"{path}:{lineno}: @{tag_name} tag is missing required key(s) {sorted(missing)}: {raw!r}", instance=instance_label, field=field)
+        raise BuildError(site.device, f"{site.path}:{site.lineno}: @{site.tag_name} tag is missing required key(s) {sorted(missing)}: {site.raw!r}", instance=site.instance_label, field=site.field)
 
 
 def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFieldTag, ...]":
@@ -175,10 +184,8 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
         except _WebGrammarError as e:
             raise BuildError(device, f"{path}:{tok.lineno}: malformed @web tag for {field_name!r} ({e}): {text!r}", instance=instance_label, field=field_name) from None
         plain, special = _split_special(pairs)
-        _check_known_and_required(
-            plain, _FIELD_KNOWN_KEYS, frozenset({"section", "submitGroup", "label"}),
-            device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field=field_name, raw=text, tag_name="web",
-        )
+        site = TagSite(device, path, tok.lineno, instance_label, field_name, text, "web")
+        _check_known_and_required(plain, _FIELD_KNOWN_KEYS, frozenset({"section", "submitGroup", "label"}), site)
         kind = plain.get("kind")
         if kind is not None and kind not in _VALID_KINDS:
             raise BuildError(device, f"{path}:{tok.lineno}: @web tag for {field_name!r} has unknown kind {kind!r}: {text!r}", instance=instance_label, field=field_name)
@@ -225,10 +232,8 @@ def parse_web_group_tags(path: Path, device: str, instance_label: str) -> "tuple
             pairs = _parse_kv_pairs(m.group("rest"))
         except _WebGrammarError as e:
             raise BuildError(device, f"{path}:{tok.lineno}: malformed @web-group tag ({e}): {text!r}", instance=instance_label) from None
-        _check_known_and_required(
-            pairs, _GROUP_KNOWN_KEYS, frozenset({"section", "submitGroup", "label"}),
-            device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field=None, raw=text, tag_name="web-group",
-        )
+        site = TagSite(device, path, tok.lineno, instance_label, None, text, "web-group")
+        _check_known_and_required(pairs, _GROUP_KNOWN_KEYS, frozenset({"section", "submitGroup", "label"}), site)
         tags.append(WebGroupTag(
             section=pairs["section"],
             submit_group=pairs["submitGroup"],

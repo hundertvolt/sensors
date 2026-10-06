@@ -8,7 +8,7 @@ import print_log as print_log_module
 from asy_fram_manager import AsyFramChunk, AsyFramManager
 from asy_spi_driver import SPI
 from base_classes import LockableBuffer
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+from print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, make_logger
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -812,6 +812,23 @@ def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -
     run(store.err_s("boom", errno=3))
     assert store.err_count == 1
     assert list(store.history)[-1] == 3
+
+
+def test_make_logger_builds_a_store_or_a_ram_history_by_config() -> None:
+    manager, _ = make_fram_manager()
+    run(manager.setup())
+    store = make_logger(LogConfig(manager, 4, 2), "SGP40")
+    assert isinstance(store, PrintLogHistoryStore)
+    assert store.name == "SGP40"
+    assert store.level == 2
+    assert len(store.history) == 4
+    assert isinstance(store.fram, AsyFramChunk)
+    ram = make_logger(DEFAULT_LOG, "X")
+    assert type(ram) is PrintLogHistory
+    assert ram.name == "X"
+    assert ram.level == 0
+    assert len(ram.history) == 10
+    assert DEFAULT_LOG == (None, 10, None)
 
 
 if __name__ == "__main__":

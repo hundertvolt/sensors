@@ -1,4 +1,4 @@
-"""Pins the product's own request timeouts (asy_webserver_service.py's `outer_cap_s`/`per_call_timeout_s`)
+"""Pins the product's own request timeouts (asy_webserver_service.py's `_DEFAULT_OUTER_CAP_S`/`_DEFAULT_PER_CALL_TIMEOUT_S`)
 to every place that mirrors or must stay inside them - the web UI's give-up time, both tiers' ResetErrors
 timeouts, the bench's connection-holding instruments. Read with ast, since src/ can't be imported here."""
 
@@ -46,17 +46,23 @@ def _default_for_parameter(source_path: Path, param: str) -> float:
 
 
 def _module_constant(source_path: Path, name: str) -> float:
-    """A module-level numeric constant's literal value."""
+    """A module-level numeric constant's literal value, plain (`NAME = 5.0`) or `const()`-wrapped (`NAME = const(5.0)`)."""
     tree = ast.parse(source_path.read_text())
     for node in tree.body:
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, int | float) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            return float(node.value.value)
+        if not (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)):
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and len(value.args) == 1:
+            value = value.args[0]
+        if isinstance(value, ast.Constant) and isinstance(value.value, int | float):
+            return float(value.value)
     raise AssertionError(f"no module-level numeric constant {name!r} in {source_path}")
 
 
 @pytest.fixture(scope="session")
 def outer_cap_s(repo_root: Path) -> float:
-    return _default_for_parameter(repo_root / "src" / "asy_webserver_service.py", "outer_cap_s")
+    # ServingLimits' outer_cap_s field takes its shipped value from this constant (generated code passes it).
+    return _module_constant(repo_root / "src" / "asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S")
 
 
 def test_the_web_ui_gives_up_exactly_at_the_servers_own_ceiling(repo_root: Path, outer_cap_s: float) -> None:
@@ -104,7 +110,7 @@ def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_r
 
 @pytest.fixture(scope="session")
 def per_call_timeout_s(repo_root: Path) -> float:
-    return _default_for_parameter(repo_root / "src" / "asy_webserver_service.py", "per_call_timeout_s")
+    return _module_constant(repo_root / "src" / "asy_webserver_service.py", "_DEFAULT_PER_CALL_TIMEOUT_S")
 
 
 def _largest_shipped_ceiling(repo_root: Path) -> int:
@@ -191,9 +197,18 @@ def test_a_non_numeric_constant_does_not_satisfy_the_lookup(tmp_path: Path) -> N
     # A constant turned into a string/None keeps the name alive while making every comparison
     # against it meaningless - so the name matching is deliberately not enough on its own.
     source = tmp_path / "stringly.py"
-    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n')
+    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n_CAP_S = const("15.0")\n')
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
         _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
+    with pytest.raises(AssertionError, match="no module-level numeric constant"):
+        _module_constant(source, "_CAP_S")
+
+
+def test_a_const_wrapped_constant_reads_like_a_plain_one(tmp_path: Path) -> None:
+    # src/'s defaults are MicroPython const()s; the reader unwraps the one literal argument.
+    source = tmp_path / "consts.py"
+    source.write_text("_DEFAULT_OUTER_CAP_S = const(15.0)\n_DEFAULT_MAX_CONNECTIONS = const(6)\n_PLAIN_S = 2.5\n")
+    assert [_module_constant(source, n) for n in ("_DEFAULT_OUTER_CAP_S", "_DEFAULT_MAX_CONNECTIONS", "_PLAIN_S")] == [15.0, 6.0, 2.5]
 
 
 @pytest.fixture(scope="module")

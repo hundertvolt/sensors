@@ -6,7 +6,7 @@ from machine import LinkPoller, UARTLink
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
 from asy_uart_link_driver import UartLinkExerciser
-from print_log import make_logger
+from print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -257,13 +257,9 @@ def test_get_error_counter_delegates_to_the_inner_comms_own_log() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WP3 - optional FRAM support, previously excluded. UART_Comm's own fram=/logger= reach-through already
-# existed and is unit-tested by the digital-twin FRAM-order check; what is new here is exclusively
-# UartLinkExerciser's own forwarding.
-#
-# So these cover functionality, the no-fram= regression, the allocation-failure fallback, the logger= reach-
-# through and a reboot-survival roundtrip, mirroring the notification suite's own reboot test for the same
-# class of claim.
+# Optional FRAM support: UartLinkExerciser forwards log=/logger= into UART_Comm, whose FRAM-backed
+# history is unit-tested in test_asy_uart_comm.py. Covered here: the forwarding, the default, the
+# allocation-failure fallback, the logger reach-through and a reboot roundtrip.
 # ---------------------------------------------------------------------------
 
 
@@ -297,19 +293,24 @@ class _FakeFramManager:
         return self._chunk
 
 
-def test_fram_kwarg_gives_the_instance_its_own_fram_backed_logger() -> None:
-    from print_log import PrintLogHistoryStore
+def test_a_fram_log_config_lands_entries_in_the_managers_chunk() -> None:
+    async def go() -> None:
+        fram = _FakeFramManager()
+        driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+        initiator = UartLinkExerciser(driver, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
+        assert isinstance(initiator.pr, PrintLogHistoryStore)
+        assert initiator.pr.fram is fram._chunk
+        await initiator.setup()
+        await initiator.pr.err_s("boom", errno=7)
+        second = make_logger(LogConfig(fram, 10, None), "UART")
+        await second.setup()
+        assert list(second.history)[-1] == 7
 
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-    initiator = UartLinkExerciser(driver, ROLE_INITIATOR, fram=_FakeFramManager())  # type: ignore[arg-type]
-    assert isinstance(initiator.pr, PrintLogHistoryStore)
-    assert initiator.pr.fram is not None
+    run(go())
 
 
-def test_no_fram_kwarg_stays_ram_only_exactly_as_before_wp3() -> None:
-    # Regression: the pre-WP3 default (no fram=) must be byte-for-byte unaffected.
-    from print_log import PrintLogHistory, PrintLogHistoryStore
-
+def test_the_default_log_stays_ram_only() -> None:
+    # The default (no log=) stays a RAM-only history.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
     initiator = UartLinkExerciser(driver, ROLE_INITIATOR)
     assert isinstance(initiator.pr, PrintLogHistory)
@@ -317,10 +318,8 @@ def test_no_fram_kwarg_stays_ram_only_exactly_as_before_wp3() -> None:
 
 
 def test_fram_allocation_failure_degrades_to_ram_only_not_a_crash() -> None:
-    from print_log import PrintLogHistoryStore
-
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-    initiator = UartLinkExerciser(driver, ROLE_INITIATOR, fram=_FakeFramManager(fail=True))  # type: ignore[arg-type]
+    initiator = UartLinkExerciser(driver, ROLE_INITIATOR, log=LogConfig(_FakeFramManager(fail=True), 10, None))
     assert isinstance(initiator.pr, PrintLogHistoryStore)
     assert initiator.pr.fram is None
 
@@ -330,7 +329,7 @@ def test_logger_kwarg_reaches_through_to_an_already_built_sibling_logger() -> No
     # upstream instantiator's logger - now reachable through this wrapper too.
     driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
     driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
-    owner = UartLinkExerciser(driver_a, ROLE_INITIATOR, fram=_FakeFramManager())  # type: ignore[arg-type]
+    owner = UartLinkExerciser(driver_a, ROLE_INITIATOR, log=LogConfig(_FakeFramManager(), 10, None))
     shared = UartLinkExerciser(driver_b, ROLE_RESPONDER, logger=owner.pr)
     assert shared.pr is owner.pr
 
@@ -341,12 +340,12 @@ def test_fram_backed_error_history_survives_a_simulated_reboot() -> None:
         fram = _FakeFramManager(chunk)
 
         driver1 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-        before = UartLinkExerciser(driver1, ROLE_INITIATOR, fram=fram)  # type: ignore[arg-type]
+        before = UartLinkExerciser(driver1, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
         await before.setup()
         await before.pr.err_s("boom", errno=1)
 
         driver2 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-        after = UartLinkExerciser(driver2, ROLE_INITIATOR, fram=fram)  # type: ignore[arg-type]
+        after = UartLinkExerciser(driver2, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
         await after.setup()
         assert after.pr.err_count == before.pr.err_count
         assert list(after.pr.history) == list(before.pr.history)
@@ -355,12 +354,12 @@ def test_fram_backed_error_history_survives_a_simulated_reboot() -> None:
 
 
 def test_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks() -> None:
-    # WP3's blocking-latency requirement: the new fram= path must not introduce a blocking wait anywhere the
+    # WP3's blocking-latency requirement: the FRAM-backed log path must not introduce a blocking wait anywhere the
     # "never blocks the asyncio loop, not even in a wait state" rule covers. asy_uart_comm.py is unchanged
     # here and the fake chunk's methods are coroutines, so this proves no regression.
     async def go() -> None:
         pair = await build_pair()
-        pair.initiator._comm.pr = make_logger(_FakeFramManager(), name="UART_fram_test")
+        pair.initiator._comm.pr = make_logger(LogConfig(_FakeFramManager(), 10, None), "UART_fram_test")
         ticks = 0
 
         async def ticker() -> None:

@@ -7,7 +7,7 @@ import asyncio
 from _error_codes import code
 from _uart_comm_harness import Pair, accept_set, echo_get, frames, run
 
-from asy_uart_comm import ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UART_Comm
 from crc_checks import CRC16
 
 try:
@@ -796,7 +796,7 @@ def _mismatched_responder(pair: Pair, payload_size: int) -> UART_Comm:
     # a wrong baud rate or a different CRC algorithm all look like from the receiving end.
     return UART_Comm(
         pair.driver_b, ROLE_RESPONDER, payload_size=payload_size, timeout=pair.responder.timeout,
-        get_callback=echo_get(b"v"), set_callback=accept_set(), name="UART_MISMATCH",
+        callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_MISMATCH",
     )
 
 
@@ -1103,7 +1103,7 @@ def _check_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted(crc: "C
     # callback is dispatched by the owned _listen_loop(), which this test does not run.
     responder = UART_Comm(
         pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder.timeout,
-        get_callback=echo_get(b"v"), set_callback=accept_set(), name="UART_LOSTACK",
+        callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_LOSTACK",
     )
     assert run(responder.setup()) is True
     to_initiator = pair.link.direction_from(pair.fake_b)
@@ -1159,7 +1159,7 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
     to_initiator.silent = False
     reborn = UART_Comm(
         pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder.timeout,
-        get_callback=echo_get(b"v"), set_callback=accept_set(), name="UART_REBORN",
+        callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_REBORN",
     )
     assert run(reborn.setup()) is True  # setup() drains whatever the old instance left behind
     run(pair.initiator.clear(), limit=30)

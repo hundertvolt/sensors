@@ -99,7 +99,6 @@ SPECIFICATION.md	tests/test_digital_twin_run_dev_integration.py
 SPECIFICATION.md	tests_hardware/bus_topology.py
 UART_C_PORT_CHANGELOG.md	WP3
 buildgen/buildspec.py	Session 2
-buildgen/codegen.py	WP3
 buildgen/frozen_modules.py	Session 6
 buildgen/generate.py	Session 6
 devices/dev.toml	WP3

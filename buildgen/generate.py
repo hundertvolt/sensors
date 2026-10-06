@@ -28,7 +28,7 @@ class GeneratedDevice:
 def generate_device(toml_path: Path, src_dir: Path, ext_dir: "Path | None" = None, build_date: "str | None" = None) -> GeneratedDevice:
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
-    module_source = generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date())
+    module_source = generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date(), src_dir)
     boot_entry_source = generate_boot_entry_source(model.device)
     frozen = compute_frozen_modules(model, src_dir, ext_dir)
     return GeneratedDevice(model, module_source, boot_entry_source, frozen)

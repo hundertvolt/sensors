@@ -13,6 +13,7 @@ from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
+from base_classes import ValueRef
 from crc_checks import CRC8
 
 try:
@@ -158,10 +159,8 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, FakeI2C]":
     comp = _FakeCompSource()
     reader = SGP40_Reader(
         i2c,
-        temperature_source=comp,
-        temperature_field="Temp",
-        humidity_source=comp,
-        humidity_field="Hum",
+        ValueRef(comp, "Temp"),
+        ValueRef(comp, "Hum"),
         max_module_error=2,
         cfg_path=_tmp_cfg_dir("sgp"),
     )
@@ -196,16 +195,13 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
 
 
 def make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
-    # Direct (source, field) references (SPECIFICATION.md Part C.14.2), mirrors
+    # ValueRef(source, field) references (SPECIFICATION.md Part C.14.2), mirrors
     # src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir("notify"))
-    co2_signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    voc_signal = NotificationSignal("WarnVOC", sgp_reader, "VOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
-    notify.register(co2_signal)
-    notify.register(voc_signal)
-    notify.finalize()
+    co2_signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    voc_signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    notify = NotificationCoordinator(pixel.request_signal, _local_time, (co2_signal, voc_signal), cfg_path=_tmp_cfg_dir("notify"))
     run(notify.cfgmgr.setup())
     return pixel, notify
 

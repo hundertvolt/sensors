@@ -199,17 +199,17 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-# Ceilings sit at the measured maximum, so they gate regression without forcing a rewrite; ratchet
-# DOWN only. max-args 24 is WebserverService's keyword-defaulted wiring, raised one reviewed
-# parameter at a time (L.7, H.7, I.3).
+# Ceilings sit at the measured maximum and only go down, enforced by
+# tests_scripts/test_lint_ceilings.py; a signature mirroring an external API is exempted per file
+# below, never by raising a limit (owner, 2026-09-26: "8 is fine").
 [tool.ruff.lint.mccabe]
 max-complexity = 20
 
 [tool.ruff.lint.pylint]
-max-args = 24
+max-args = 8
 max-branches = 20
-max-statements = 80
-max-returns = 12
+max-statements = 79
+max-returns = 11
 
 # Per-file exemptions live HERE, centrally and with a reason, rather than as `# noqa` comments
 # scattered inline (owner, 2026-09-10: enable the strict rule, do not paper it over inline). Each is
@@ -235,17 +235,21 @@ max-returns = 12
 # (owner, 2026-09-26; CLAUDE.md); exempted per file so S105/S106 still catch a new one anywhere
 # else.
 #
-# The machine fakes mirror MicroPython's own constructors, whose parameter really is `id` upstream,
-# and I2C writeto()/readfrom_into()'s positional-only `stop` (extmod/machine_i2c.c rejects kwargs):
-# a faithful double must match.
-"tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
+# The machine fakes mirror MicroPython's own signatures - the constructors' `id`, I2C
+# writeto()/readfrom_into()'s positional-only `stop` (extmod/machine_i2c.c rejects kwargs), and
+# machine.UART/SPI's parameter lists (PLR0913): a faithful double must match.
+"tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401", "PLR0913"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
 # ANN401: _build_i2c_chip() returns Any on purpose - no single chip fake implements every _I2CDevice
 # method (see that function's comment).
-"digital_twin/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]
+"digital_twin/machine.py" = ["A002", "FBT001", "FBT002", "ANN401", "PLR0913"]
 # Same faithful-double reasoning: test_setup_toolchain_env.py's fake_run() doubles must accept
 # setup_toolchain.run()'s signature exactly, positional `check=True` included; its own helpers stay
 # keyword-only.
 "tests_scripts/test_setup_toolchain_env.py" = ["FBT001", "FBT002"]
+# PLR0913/PLR0917: UART.__init__/init() take machine.UART's twelve parameters plus the wrapper's own four;
+# ISL29125_I2C.configure() takes one keyword per CONFIG1-3 field (FN8424 p10-11).
+"src/asy_uart_driver.py" = ["PLR0913", "PLR0917"]
+"src/asy_isl29125_driver.py" = ["PLR0913"]
 # The `_push_*` dispatch family takes the config-VALUE union, where bool is a JSON value, not a
 # flag, through Part C.5.2's single-positional-argument contract that D.10 forbids splitting.
 "src/asy_bmp3xx_driver.py" = ["FBT001"]
@@ -336,12 +340,11 @@ max-returns = 12
 # S112: injected packet loss makes individual request failures the fault itself; the assertions are
 # about torn reads, and logging each would drown the finding.
 "tests_hardware/bench/test_bus_concurrency_under_api_load.py" = ["S112"]
-# S105/S106: tests that join the DUT's hotspot must know its fallback password, accepted permanently
+# S105: tests that join the DUT's hotspot must know its fallback password, accepted permanently
 # (owner, 2026-09-26; see asy_wifi_service.py above) - copies of an accepted risk, exempted per file.
 "tests_hardware/conftest.py" = ["S105"]
 "tests_hardware/bench/test_hotspot_role_reversal.py" = ["S105"]
 "tests_hardware/bench/test_network_resilience.py" = ["S105"]
-"tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py" = ["S106"]
 # S105: same "copy of a risk accepted permanently (owner, 2026-09-26), not a new credential"
 # reasoning as the tests_hardware/ entries above, for buildgen's [device].hotspot_password
 # minimum-length boundary test - it asserts against the real WPA2 8-character floor literal.

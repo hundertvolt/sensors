@@ -22,8 +22,9 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import machine
 import network
 import run_generic_integration
+from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, Pin
-from run_generic_integration import RunConfig, _apply_fault, _apply_hang, _collect_chips, main, parse_args
+from run_generic_integration import RunConfig, RunLimits, _apply_fault, _apply_hang, _collect_chips, main, parse_args
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
@@ -55,6 +56,17 @@ def test_parse_args_minimal_valid_config() -> None:
     config = parse_args(["--module", "sensortask_novel_combo", "--wiring-plan", "plan.json"])
     assert config == RunConfig("sensortask_novel_combo", "plan.json")
     assert config.device == "sensortask_novel_combo"  # defaults to the module name, unset --device
+    assert config.state == StatePaths(None, None)
+    assert config.injections == Injections(None, [], [], [])
+    assert config.run == RunLimits(None, 32768, None)
+
+
+def test_run_config_compares_and_prints_its_grouped_fields() -> None:
+    faulted = RunConfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", 1)], [], []))
+    assert faulted != RunConfig("m", "p.json")
+    assert faulted == RunConfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", 1)], [], []))
+    text = repr(faulted)
+    assert "state=" in text and "injections=" in text and "run=" in text, text
 
 
 def test_parse_args_device_label_overrides_the_module_name() -> None:
@@ -70,7 +82,7 @@ def test_parse_args_host_and_port() -> None:
 
 def test_parse_args_empty_fram_state_path_means_in_memory_only() -> None:
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--fram-state-path", ""])
-    assert config.fram_state_path is None
+    assert config.state.fram is None
 
 
 def test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers() -> None:
@@ -82,9 +94,9 @@ def test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers() -> N
             "--wifi-outcome", "no_ap",
         ],
     )
-    assert config.faults == [("sgp40", "writeto", 2)]
-    assert config.hangs == [("scd30", "readfrom_into", 0.5, 1)]
-    assert len(config.wifi_outcomes) == 1
+    assert config.injections.faults == [("sgp40", "writeto", 2)]
+    assert config.injections.hangs == [("scd30", "readfrom_into", 0.5, 1)]
+    assert len(config.injections.wifi_outcomes) == 1
 
 
 def test_parse_args_rejects_an_unrecognized_flag() -> None:
@@ -109,7 +121,7 @@ def test_parse_args_gc_threshold_defaults_to_matching_real_firmware() -> None:
     # an ordinary twin run should model production's real memory-safety configuration by default,
     # not just its allocation code. See _GC_THRESHOLD_DEFAULT's own module-level comment.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
-    assert config.gc_threshold == 32768
+    assert config.run.gc_threshold == 32768
 
 
 def test_parse_args_gc_threshold_is_overridable() -> None:
@@ -117,7 +129,7 @@ def test_parse_args_gc_threshold_is_overridable() -> None:
     # reactive-only default - Part I.4(e)'s standing rule that the suite must pass there before it is ever
     # run with a chosen threshold.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--gc-threshold", "-1"])
-    assert config.gc_threshold == -1
+    assert config.run.gc_threshold == -1
 
 
 def test_parse_args_mem_sample_interval_ms_defaults_to_disabled() -> None:
@@ -125,12 +137,12 @@ def test_parse_args_mem_sample_interval_ms_defaults_to_disabled() -> None:
     # scripts/_digital_twin_ci_suite.py's own Run 11 soak-trend check; an ordinary twin run has no
     # reason to pay for it.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
-    assert config.mem_sample_interval_ms is None
+    assert config.run.mem_sample_interval_ms is None
 
 
 def test_parse_args_mem_sample_interval_ms_is_settable() -> None:
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--mem-sample-interval-ms", "25"])
-    assert config.mem_sample_interval_ms == 25
+    assert config.run.mem_sample_interval_ms == 25
 
 
 # ---------------------------------------------------------------------------
@@ -236,10 +248,9 @@ def test_main_boots_arms_a_fault_and_shuts_down_cleanly() -> None:
         "build/generated_src/sensortask_wozi_wiring_plan.json",  # buildgen-generated - see this file's own module docstring
         host="127.0.0.1",
         port=19099,
-        fram_state_path=None,
-        scd30_state_path=None,
-        duration=0.0,  # boot, arm the fault, then shut down immediately - no soak driving here any more
-        faults=[("sgp40", "writeto", 2)],
+        state=StatePaths(None, None),
+        injections=Injections(None, [("sgp40", "writeto", 2)], [], []),
+        run=RunLimits(0.0, run_generic_integration._GC_THRESHOLD_DEFAULT, None),  # boot, arm the fault, then shut down immediately - no soak driving here any more
     )
     run_timed(main(config), timeout_s=15.0)
     # _booted_module is set by main() itself and read the same way _print_wdt_status()'s own two

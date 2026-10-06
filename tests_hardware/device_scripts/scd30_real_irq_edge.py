@@ -15,7 +15,7 @@ TRIGGER_SEC = 10
 
 async def _main() -> None:
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c1, 11, trigger_sec=TRIGGER_SEC, max_module_error=999, fram=None, debug=None)
+    reader = SCD30_Reader(i2c1, 11, trigger_sec=TRIGGER_SEC, max_module_error=999)
     reader.start_timer()  # wires the real GPIO IRQ (rising edge) + the 500ms self-healing poll timer
 
     read_task = asyncio.create_task(reader.read_loop())
@@ -32,11 +32,17 @@ async def _main() -> None:
 
     read_task.cancel()
     init_irq_task.cancel()
+    died: list[str] = []
     for task in (read_task, init_irq_task):
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # a task that died on its own fails the run, never passes it
+            died.append(repr(e))
+    if died:
+        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
+        return
 
     if data is not None and data.CO2 is not None:
         elapsed_s = time.ticks_diff(time.ticks_ms(), start) / 1000.0

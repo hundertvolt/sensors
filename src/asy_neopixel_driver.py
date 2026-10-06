@@ -11,7 +11,7 @@ import neopixel
 from machine import Pin
 from micropython import const
 
-from print_log import PrintLogHistory, make_logger
+from print_log import DEFAULT_LOG, LogConfig, PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -22,15 +22,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
 _NAME = const("NEOPIXEL")
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN/garbage fallback
 
-# This driver's one optional live cross-instance dependency (SPECIFICATION.md Parts C.14 and L.4):
-# its own FRAM backup target, resolved to an already-constructed instance and passed as fram=.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# One optional live cross-instance dependency (SPECIFICATION.md Parts C.14 and L.4): the FRAM store its logger writes to, passed as log=.
+# @wiring fram_target AsyFramManager log optional kwarg
 
 
 def _clamp_byte(value: "int | float") -> int:
@@ -46,11 +44,9 @@ class NeopixelDriver:
         neopixel_pin: int,
         neopixel_freq: int = 20,
         led_overl_bri: int = 50,
-        fram: "AsyFramManager | None" = None,
-        history_length: int = 10,
-        debug: int | None = None,
+        log: LogConfig = DEFAULT_LOG,
     ) -> None:
-        self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
+        self.pr: PrintLogHistory = make_logger(log, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         self.pixel = neopixel.NeoPixel(Pin(neopixel_pin, Pin.OUT), 1, bpp=3)

@@ -6,7 +6,7 @@ import asyncio
 
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
-from print_log import make_logger
+from print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 10
 E_TEST_SEED_A = 125
@@ -24,7 +24,7 @@ _ACCEPTED: "tuple[list[int], ...]" = ([], SEEDS, SEEDS + [E_TEST_SEED_C])
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram = AsyFramManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() did not succeed after the reset - device not found?")
         return
@@ -32,7 +32,7 @@ async def _main() -> None:
     # Same two objects in the same order as the seed script, so this addresses the same chunk.
     # Deliberately NOT cleared first, against tests_hardware/README.md's clear-at-the-start rule:
     # what the raced reset left behind is the thing under test, so a wipe would erase it.
-    store = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    store = make_logger(LogConfig(fram, HISTORY_LENGTH, None), LOG_NAME)
     await store.setup()
     if not store.initialized:
         print("RESULT: FAIL PrintLogHistoryStore.setup() did not initialize after the reset")

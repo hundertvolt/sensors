@@ -13,7 +13,7 @@ from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
 from buildgen.errors import BuildError
-from buildgen.validate import build_model
+from buildgen.validate import build_model, module_float_const, module_str_const
 
 if TYPE_CHECKING:
     from _toml_fixtures import TomlDoc
@@ -625,7 +625,7 @@ def test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value(t
 
     model = DeviceModel("dev", tmp_path / "dev.toml", {})
     spec = InstanceSpec("sgp40", "", {}, {"temperature_source": "not-a-table"}, 0)
-    vwf = ValueWiringField("temperature_source", "temperature_source", "temperature_field", True)
+    vwf = ValueWiringField("temperature_source", "temperature", True)
     with pytest.raises(BuildError, match="internal: default-selection check reached with a non-table wiring value"):
         _check_default_value_selection(model, spec, vwf)
 
@@ -951,10 +951,10 @@ def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir
 @pytest.mark.parametrize(
     "filename,tag",
     [
-        ("system_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
-        ("asy_wifi_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
-        ("asy_ntp_client.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
-        ("asy_webserver_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
+        ("system_service.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
+        ("asy_wifi_service.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
+        ("asy_ntp_client.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
+        ("asy_webserver_service.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
     ],
 )
 def test_device_wiring_fram_target_checks_every_consumers_own_tag(tmp_path: Path, src_dir: Path, filename: str, tag: str) -> None:
@@ -1184,8 +1184,8 @@ def test_optional_value_wiring_field_may_be_absent(tmp_path: Path, src_dir: Path
         tmp_path,
         src_dir,
         "asy_sgp40_driver.py",
-        "# @value-wiring humidity_source humidity_source humidity_field required",
-        "# @value-wiring humidity_source humidity_source humidity_field optional",
+        "# @value-wiring humidity_source humidity required",
+        "# @value-wiring humidity_source humidity optional",
     )
     doc = base_doc()
     del doc["instance"][1]["wiring"]["humidity_source"]
@@ -1194,9 +1194,20 @@ def test_optional_value_wiring_field_may_be_absent(tmp_path: Path, src_dir: Path
 
 
 def test_device_wiring_field_with_no_matching_tag_on_the_consumer(tmp_path: Path, src_dir: Path) -> None:
-    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", "# @wiring led_target NeopixelDriver set_ext_led optional setter", "")
+    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", "# @wiring led_target NeopixelDriver ext_led optional kwarg", "")
     path = write_doc(tmp_path, "dev", base_doc())
     with pytest.raises(BuildError, match="has no matching @wiring tag"):
+        build_model(path, staged)
+
+
+def test_a_setter_wiring_mode_is_refused_as_unknown(tmp_path: Path, src_dir: Path) -> None:
+    # The LED reaches conn at construction; the retired post-construction setter mode is no mode.
+    staged = _staged_src(
+        tmp_path, src_dir, "asy_wifi_service.py",
+        "# @wiring led_target NeopixelDriver ext_led optional kwarg", "# @wiring led_target NeopixelDriver set_ext_led optional setter",
+    )
+    path = write_doc(tmp_path, "dev", base_doc())
+    with pytest.raises(BuildError, match="malformed @wiring tag"):
         build_model(path, staged)
 
 
@@ -1321,6 +1332,17 @@ def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path
             module_int_const(tmp_path, "m.py", name)
     with pytest.raises(BuildError, match=r"cannot read .*nope\.py"):
         module_int_const(tmp_path, "nope.py", "_A")
+
+
+def test_module_float_and_str_consts_read_only_their_own_literal_type(tmp_path: Path) -> None:
+    # The ServingLimits/StaticSite defaults codegen passes: a float or a str const(), never another type.
+    (tmp_path / "m.py").write_text('_F = const(5.0)\n_I = const(5)\n_S = const("index.html")\n')
+    assert module_float_const(tmp_path, "m.py", "_F") == 5.0
+    assert module_str_const(tmp_path, "m.py", "_S") == "index.html"
+    with pytest.raises(BuildError, match="no longer has a readable float _I"):
+        module_float_const(tmp_path, "m.py", "_I")
+    with pytest.raises(BuildError, match="no longer has a readable str _F"):
+        module_str_const(tmp_path, "m.py", "_F")
 
 
 def test_every_shipped_device_passes_the_uart_link_bus_check(src_dir: Path) -> None:
@@ -1595,32 +1617,32 @@ def test_an_unloadable_override_module_is_a_named_build_error(tmp_path: Path, sr
         _build(tmp_path, src_dir, base_doc())
 
 
-def _webserver_src(tmp_path: Path, init: str) -> Path:
-    (tmp_path / "asy_webserver_service.py").write_text(f"class Other:\n    def __init__(self, max_connections=99): ...\n\nclass WebserverService:\n    {init}\n")
+def _webserver_src(tmp_path: Path, body: str) -> Path:
+    (tmp_path / "asy_webserver_service.py").write_text(body)
     return tmp_path
 
 
 @pytest.mark.parametrize(
-    ("init", "want"),
+    ("body", "want"),
     [
-        ("def __init__(self, a, *, max_connections: int = 7, backlog: int = 8): ...", 7),
-        ("def __init__(self, a, max_connections=5, backlog=6): ...", 5),
-        ("def __init__(self, max_connections, *, backlog=6, other=max_connections): ...", None),
-        ("def __init__(self, *, max_connections=True): ...", None),
-        ("def __init__(self, *, max_connections=MAX): ...", None),
-        ("def setup(self, *, max_connections=4): ...", None),
+        ("_DEFAULT_MAX_CONNECTIONS = const(7)\n", 7),
+        ("_DEFAULT_MAX_CONNECTIONS = 5\n", 5),
+        ("_DEFAULT_MAX_CONNECTIONS = const(True)\n", None),
+        ("_DEFAULT_MAX_CONNECTIONS = const(_MAX)\n", None),
+        ("class WebserverService:\n    def __init__(self, *, max_connections=4): ...\n", None),
+        ("def f():\n    _DEFAULT_MAX_CONNECTIONS = 4\n", None),
     ],
 )
-def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, init: str, want: "int | None") -> None:
-    # Keyword-only and positional defaults both count; a same-named argument on another class, a
-    # bool, a name, or a method other than __init__ never does - each is refused by name instead.
+def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, body: str, want: "int | None") -> None:
+    # The ServingLimits default is the module-level _DEFAULT_MAX_CONNECTIONS const(): a bool, a
+    # name, a constructor keyword or a function-local copy never counts - each is refused by name.
     from buildgen.validate import webserver_init_default
 
-    src = _webserver_src(tmp_path, init)
+    src = _webserver_src(tmp_path, body)
     if want is not None:
         assert webserver_init_default(src, "max_connections") == want
         return
-    with pytest.raises(BuildError, match=r"no longer has a readable int default for 'max_connections'"):
+    with pytest.raises(BuildError, match=r"no longer has a readable int _DEFAULT_MAX_CONNECTIONS"):
         webserver_init_default(src, "max_connections")
 
 
@@ -1641,11 +1663,11 @@ def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path:
 
 
 def test_the_shipped_ntp_backoff_defaults_are_readable_from_the_real_source(src_dir: Path) -> None:
-    # Regression guard for the validator's own input: renaming either keyword breaks this, not a device build.
-    from buildgen.validate import init_int_default
+    # Regression guard for the validator's own input: renaming either constant breaks this, not a device build.
+    from buildgen.validate import module_int_const
 
-    assert init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s") == 10
-    assert init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s") == 600
+    assert module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S") == 10
+    assert module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S") == 600
 
 
 @pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
@@ -1654,9 +1676,9 @@ def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, c
 
     if content is not None:
         (tmp_path / "asy_webserver_service.py").write_text(content)
-    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve WebserverService's own backlog default") as info:
-        webserver_init_default(tmp_path, "backlog")
-    assert info.value.field == "backlog"
+    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve its _DEFAULT_MAX_CONNECTIONS") as info:
+        webserver_init_default(tmp_path, "max_connections")
+    assert info.value.field == "_DEFAULT_MAX_CONNECTIONS"
 
 
 @pytest.mark.parametrize("field", ["max_connections", "backlog"])
@@ -1669,13 +1691,14 @@ def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, f
 
 
 def test_ntp_backoff_keys_are_optional_and_their_src_defaults_pass_the_check(tmp_path: Path, src_dir: Path) -> None:
-    from buildgen.validate import init_int_default
+    from buildgen.validate import ntp_backoff
 
     doc = base_doc()
     for key in ("ntp_retry_s", "ntp_retry_max_s"):
         doc["device"].pop(key, None)
     _build(tmp_path, src_dir, doc)
-    assert 10 <= init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s") <= init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s")
+    retry_s, retry_max_s = ntp_backoff(doc["device"], src_dir)
+    assert 10 <= retry_s <= retry_max_s
 
 
 def test_an_ntp_retry_interval_below_the_check_tick_is_rejected(tmp_path: Path, src_dir: Path) -> None:

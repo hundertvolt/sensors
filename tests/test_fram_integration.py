@@ -16,7 +16,7 @@ from asy_fram_manager import AsyFramChunk, AsyFramManager
 from asy_spi_driver import SPI
 from base_classes import SensorReader
 from crc_checks import CRC32, CRC_Pass
-from print_log import PrintLogHistoryStore
+from print_log import LogConfig, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -69,7 +69,7 @@ async def _synced() -> bool:
 def test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager_without_overlap() -> None:
     manager, _chip = make_manager()
     run(manager.setup())
-    reader = SensorReader(Meas(20.0, 50), 3, fram=manager)
+    reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
     run(reader.pr.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert isinstance(reader.pr.fram, AsyFramChunk)
@@ -115,7 +115,7 @@ def test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tra
     # holds when the failure is genuinely hardware-level, not a hypothetical misbehaving _FramManager.
     manager, chip = make_manager()
     run(manager.setup())
-    reader = SensorReader(Meas(20.0, 50), 3, fram=manager)
+    reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
     run(reader.pr.setup())
     chip.drop_wren = True
 
@@ -131,13 +131,13 @@ def test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tra
 
 def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() -> None:
     # Models a chip dead or missing at boot (a real device-ID mismatch): setup() fails, but a driver's
-    # SensorReader(fram=manager) must still construct and run. get_chunk() needs no successful setup(), so
+    # SensorReader(log=LogConfig(manager, ...)) must still construct and run. get_chunk() needs no successful setup(), so
     # reader.pr.fram is a real but permanently unusable chunk, not None, and must degrade cleanly.
     manager, chip = make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
     setup_ok = run(manager.setup())
     assert setup_ok is False
-    reader = SensorReader(Meas(20.0, 50), 3, fram=manager)
+    reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
     run(reader.pr.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is not None  # allocated fine, just backed by a chip that never came up
@@ -183,7 +183,7 @@ def test_many_write_read_cycles_with_crc32_and_verify_show_no_state_leak() -> No
 
 # ---------------------------------------------------------------------------
 # Multiple independent consumers on one shared manager, and surviving a simulated reboot -
-# the actual production topology (multiple sensor drivers, each with fram=<one shared manager>)
+# the actual production topology (multiple sensor drivers, each with log=LogConfig(<one shared manager>, ...))
 # and the static-allocation-order invariant the whole module exists to preserve.
 # ---------------------------------------------------------------------------
 
@@ -194,8 +194,8 @@ def test_two_sensorreaders_sharing_one_manager_keep_independent_error_histories(
     # in another driver's own error log even though both ultimately hit the same FRAM chip.
     manager, _chip = make_manager()
     run(manager.setup())
-    reader_a = SensorReader(Meas(1.0, 1), 3, fram=manager)
-    reader_b = SensorReader(Meas(2.0, 2), 3, fram=manager)
+    reader_a = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager, 10, None))
+    reader_b = SensorReader(Meas(2.0, 2), "", max_module_error=3, log=LogConfig(manager, 10, None))
     run(reader_a.pr.setup())
     run(reader_b.pr.setup())
     assert isinstance(reader_a.pr, PrintLogHistoryStore) and isinstance(reader_b.pr, PrintLogHistoryStore)
@@ -222,7 +222,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
     # fresh manager and reader objects to the same chip, in the same instantiation order, must decode both.
     manager1, chip = make_manager()
     run(manager1.setup())
-    reader1 = SensorReader(Meas(1.0, 1), 3, fram=manager1)
+    reader1 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager1, 10, None))
     run(reader1.pr.setup())
     value_chunk1 = manager1.get_timestamped_chunk(8, _synced, crc=CRC32())
     assert value_chunk1 is not None
@@ -240,7 +240,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
     manager2, _chip2 = make_manager()
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
     run(manager2.setup())
-    reader2 = SensorReader(Meas(1.0, 1), 3, fram=manager2)
+    reader2 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager2, 10, None))
     run(reader2.pr.setup())
     value_chunk2 = manager2.get_timestamped_chunk(8, _synced, crc=CRC32())
     assert value_chunk2 is not None
@@ -270,7 +270,7 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
     # AsyFramChunk -> FRAM_SPI chain, not just when a test pokes a directly-allocated chunk.
     manager1, chip = make_manager()
     run(manager1.setup())
-    reader1 = SensorReader(Meas(1.0, 1), 3, fram=manager1)
+    reader1 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager1, 10, None))
     run(reader1.pr.setup())
     run(reader1.pr.err_s("before reboot", errno=code("E", "LOCK_TIMEOUT")))
     assert isinstance(reader1.pr, PrintLogHistoryStore)
@@ -283,7 +283,7 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
     manager2, _chip2 = make_manager()
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
     run(manager2.setup())
-    reader2 = SensorReader(Meas(1.0, 1), 3, fram=manager2)
+    reader2 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager2, 10, None))
     run(reader2.pr.setup())
 
     async def scenario() -> "ErrorLog":
@@ -306,7 +306,7 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
     # (Run 5b) and on real silicon (tests_hardware/flash/test_fram_storage.py).
     manager1, chip = make_manager()
     run(manager1.setup())
-    reader1 = SensorReader(Meas(1.0, 1), 3, fram=manager1)
+    reader1 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager1, 10, None))
     run(reader1.pr.setup())
     run(reader1.pr.err_s("before reboot", errno=code("E", "LOCK_TIMEOUT")))
     assert isinstance(reader1.pr, PrintLogHistoryStore)
@@ -320,7 +320,7 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
     manager2, _chip2 = make_manager()
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
     run(manager2.setup())
-    reader2 = SensorReader(Meas(1.0, 1), 3, fram=manager2)
+    reader2 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager2, 10, None))
     run(reader2.pr.setup())
 
     async def scenario() -> "ErrorLog":
@@ -401,7 +401,7 @@ def test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works()
     # that test, verified by confirming no byte anywhere on the simulated chip changed while paused.
     manager, chip = make_manager()
     run(manager.setup())
-    reader = SensorReader(Meas(1.0, 1), 3, fram=manager)
+    reader = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager, 10, None))
     run(reader.pr.setup())
     before = bytes(chip.memory)
     manager.set_pause(value=True)

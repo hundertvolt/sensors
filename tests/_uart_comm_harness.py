@@ -7,7 +7,7 @@ import asyncio
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
 
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UART_Comm
 from asy_uart_driver import UART
 
 try:
@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     # Callable alias, so it matches asy_uart_comm.py's named-parameter form structurally.
     class CommCallback(Protocol):
         def __call__(self, cmd_id: int) -> object: ...
+
+    class MessageCallback(Protocol):
+        def __call__(self, cmd_id: int, cmd: int, payload: "bytearray | None") -> object: ...
 
 PAYLOAD_SIZE = 8
 TIMEOUT_MS = 100
@@ -52,6 +55,7 @@ class Pair:
         timeout: int = TIMEOUT_MS,
         get_callback: "CommCallback | None" = None,
         set_callback: "CommCallback | None" = None,
+        message_callback: "MessageCallback | None" = None,
         crc_a: "CRC_Base | None" = None,
         crc_b: "CRC_Base | None" = None,
         **comm_kwargs: "Any",
@@ -76,8 +80,7 @@ class Pair:
             ROLE_RESPONDER,
             payload_size=payload_size,
             timeout=timeout,
-            get_callback=get_callback,
-            set_callback=set_callback,
+            callbacks=ResponderCallbacks(get_callback, set_callback, message_callback),
             name="UART_B",
             **comm_kwargs,
         )

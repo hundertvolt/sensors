@@ -283,7 +283,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
         for t in threads:
             t.start()
         for t in threads:
-            # This join alone virtually guarantees it outlasts the 5s _NTP_CONN_TIMEOUT needed to
+            # This join alone virtually guarantees it outlasts the 5s NTP fetch timeout needed to
             # genuinely fail one attempt - no separate sleep needed, unlike the standalone test.
             t.join(timeout=180.0)
             assert not t.is_alive(), "a worker thread never finished within 180s during the NTP outage - possible real deadlock, not just slow requests"

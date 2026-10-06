@@ -73,17 +73,23 @@ def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
         build_construction_order(model)
 
 
-def test_setter_mode_wiring_on_an_instance_gates_no_construction_order(tmp_path: Path, src_dir: Path) -> None:
-    # "setter" wiring is a post-construction call and must never contribute a dependency edge,
-    # or a pair wiring each other by setter would deadlock the sort. Only AsyConnTime declares
-    # one today, and it is mandatory infra, so this uses a synthetic model.
-    from buildgen.wiring import WiringField
+def test_led_target_builds_the_neopixel_before_conn(tmp_path: Path, src_dir: Path) -> None:
+    # The device's status LED is passed to conn at construction, so its NeoPixel comes first; the
+    # NeoPixel depends only on the FRAM chip, so the order is fram -> neopixel -> conn.
+    order = build_construction_order(build_model(write_doc(tmp_path, "dev", base_doc()), src_dir))
+    assert order.index(("fram", "")) < order.index(("neopixel", "")) < order.index("conn")
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
-    scd30 = model.instances[("scd30", "")]
-    # A setter edge in the direction opposite to the real dependency: a real edge here would be a
-    # cycle (sgp40 already depends on scd30 for both its values), so a clean sort proves it isn't one.
-    scd30.wiring_schema = (WiringField("led_target", "SGP40_Reader", "set_something", False, "setter"),)
-    scd30.wiring["led_target"] = "sgp40"
-    order = build_construction_order(model)
-    assert order.index(("scd30", "")) < order.index(("sgp40", ""))
+
+def test_without_led_target_conn_does_not_wait_for_the_neopixel(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    del doc["device"]["wiring"]["led_target"]
+    order = build_construction_order(build_model(write_doc(tmp_path, "dev", doc), src_dir))
+    assert order.index("conn") < order.index(("neopixel", ""))
+
+
+def test_ntp_precedes_every_sgp40_and_notification(tmp_path: Path, src_dir: Path) -> None:
+    # Both are built with a reference into ntp (the backup's sync check, the local-time callback);
+    # with led_target pulling scd30 ahead of conn, only an explicit edge keeps ntp ahead of them.
+    order = build_construction_order(build_model(write_doc(tmp_path, "dev", base_doc()), src_dir))
+    assert order.index("ntp") < order.index(("sgp40", ""))
+    assert order.index("ntp") < order.index(("notification", ""))

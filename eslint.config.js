@@ -110,12 +110,12 @@ const BUG_CATCHING_RULES = {
     // scripts/*.mjs is exempt below (H.8).
     "no-console": ["error", { allow: ["error", "warn"] }],
 
-    // --- complexity ceilings at the measured maximum, so they gate regression: ratchet DOWN only
-    // (H.8) ---
+    // --- complexity ceilings at the measured maximum, so they gate regression: ratchet DOWN only, pinned by
+    // tests_js/lint-ceilings.test.js (H.8) ---
     complexity: ["error", 41],
     "max-depth": ["error", 4],
     "max-nested-callbacks": ["error", 4],
-    "max-classes-per-file": ["error", 2],
+    "max-classes-per-file": ["error", 1],
 };
 
 export default [
@@ -133,7 +133,7 @@ export default [
     },
     {
         files: ["tests_js/**/*.js"],
-        ignores: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"],
+        ignores: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js"],
         languageOptions: {
             ecmaVersion: "latest",
             sourceType: "module",
@@ -147,7 +147,7 @@ export default [
         // Vitest Commands API implementations run server-side, in the real Node process - not the
         // sandboxed browser context every other tests_js/*.js file runs in (SPECIFICATION.md Part
         // H.7's own rationale for needing this file at all). Node globals, not browser ones.
-        files: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"],
+        files: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js"],
         languageOptions: {
             ecmaVersion: "latest",
             sourceType: "module",
