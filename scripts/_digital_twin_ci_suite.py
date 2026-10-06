@@ -311,10 +311,10 @@ def _non_empty_slots(entry: dict[str, Any]) -> list[tuple[Any, Any]]:
 
 
 def _restore_is_all_or_nothing(written: dict[str, Any], restored: dict[str, Any]) -> bool:
-    # Whole: the written ring and at least its count came back. Nothing: no "E" slot survived, only
-    # what this boot logged itself. Anything else is a partial or garbled restore.
-    slots = _non_empty_slots(restored)
-    whole = slots == _non_empty_slots(written) and restored.get("counter", 0) >= written.get("counter", 0)
+    # Whole: the written ring and at least its count came back, newer slots only after it (this boot's
+    # own). Nothing: no "E" slot survived, only what this boot logged itself. Else partial or garbled.
+    slots, kept = _non_empty_slots(restored), _non_empty_slots(written)
+    whole = slots[: len(kept)] == kept and all(kind != "E" for kind, _ in slots[len(kept) :]) and restored.get("counter", 0) >= written.get("counter", 0)
     return whole or all(kind != "E" for kind, _ in slots)
 
 
