@@ -86,6 +86,8 @@ Applied from the first executing agent on:
 - Fault planting and repeat runs are budgeted first, run on tmpfs, at most about 20 repeats, as confirmation only. A
   timing failure under contention stays unconfirmed until reproduced alone. A retry is never a fix (OR37.a (2)).
 - Worktrees and scratch branches go when their unit closes.
+- Every unit closes only after the silent-failure scan (`audit/sweeps/silent_failure_scan.md`, OR147) has run over its
+  changes and swept each class it found project-wide; the result is in the unit's record.
 
 ## Unreachable sources (OR4.a)
 

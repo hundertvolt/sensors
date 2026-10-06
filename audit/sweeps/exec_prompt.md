@@ -31,6 +31,12 @@ rules, pillars and specifications are binding and applied as written, never chan
    the lead runs scoped and full gates after merging lanes.
 7. **Out of scope.** Anything you notice that no step asks for: do not fix it. List it under "Findings" in your report
    (file:line, what, why it matters).
+8. **Silent failures (owner, 2026-10-06).** While you write code and tests, watch for the classes in
+   `audit/sweeps/silent_failure_scan.md` (an ignored status from the layer below, bounded storage that drops silently,
+   detection left to chance, a swallowed failure, a window that loses time or data, a fault without self-healing, a fault
+   one side detects and the other never learns of) in every file you touch. Where your step owns the site, close it
+   (detect, count, fail visibly, recover) with a test that plants the fault; otherwise list it under "Findings" with its
+   class.
 
 ## Finish
 Commit everything in your worktree in one commit (or one per co-landing group if the packet marks groups), message
