@@ -3,6 +3,7 @@ import errno as errno_mod
 import struct
 import time
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
@@ -1053,7 +1054,7 @@ def test_a_dark_room_never_increments_the_error_counter() -> None:
 
     counters = run(scenario())
     assert run(reader.get_data()).CCT is None
-    assert errors(counters) == []  # in particular no errno=1, _error_check's own increment
+    assert errors(counters) == []  # a dark cycle is no failure
     assert reader._err_cnt_internal == 0
 
 
@@ -3276,7 +3277,7 @@ def test_never_touches_any_address_but_its_own() -> None:
 
 
 def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
-    # Regression (SPECIFICATION.md C.7.3): a failed config write no longer ends the read task (errno 12).
+    # A failed config write does not end the read task: the reader runs on the defaults (SPECIFICATION.md C.7.3).
     FakeTimer.all_timers.clear()
     i2c = make_i2c()
     seed_healthy_chip(i2c)
@@ -3290,7 +3291,7 @@ def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> N
         return await reader.get_error_counter()
 
     assert 12 not in errors(run(scenario()))
-    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == 4
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
 if __name__ == "__main__":

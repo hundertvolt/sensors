@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections import namedtuple
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 import api_response as ar
@@ -78,13 +79,13 @@ def test_make_response_standard_error_text_can_be_overridden() -> None:
 
 
 def test_make_response_every_standard_code_present() -> None:
-    for code in (0, 1, 2, 3, 4, 5, 100):
-        resp = ar.make_response(code)
-        assert resp["code"] == code
+    for status in (0, 1, 2, 3, 4, 5, 100):
+        resp = ar.make_response(status)
+        assert resp["code"] == status
         assert resp["descr"] != ""
     assert ar.make_response(0)["res"] == "OK"
-    for code in (1, 2, 3, 4, 5, 100):
-        assert ar.make_response(code)["res"] == "ERR"
+    for status in (1, 2, 3, 4, 5, 100):
+        assert ar.make_response(status)["res"] == "ERR"
 
 
 def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() -> None:
@@ -279,6 +280,12 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
         _remove(path)
 
 
+def _persisted(reader: "SensorReaderConfig") -> "list[int]":
+    # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return [n for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+
+
 def test_handle_set_cmd_sync_post_fct_raising_is_caught_and_reports_generic_error() -> None:
     # Defense-in-depth: post_fct is caller-supplied and lives outside _set_dict_cfg's own
     # try/except entirely - this is exactly the kind of escaping exception handle_set_cmd's own
@@ -292,6 +299,7 @@ def test_handle_set_cmd_sync_post_fct_raising_is_caught_and_reports_generic_erro
         resp = run(ar.handle_set_cmd(reader, {"SampleInterv": 42}, _VAL_SI, post_fct=bad_post))
         assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
         assert reader.pr.err_count == 1
+        assert _persisted(reader) == [code("E", "CALLBACK")]
     finally:
         _remove(path)
 
@@ -306,6 +314,7 @@ def test_handle_set_cmd_async_post_fct_raising_is_caught_and_reports_generic_err
         resp = run(ar.handle_set_cmd(reader, {"SampleInterv": 42}, _VAL_SI, post_asy_fct=bad_post))
         assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
         assert reader.pr.err_count == 1
+        assert _persisted(reader) == [code("E", "CALLBACK")]
     finally:
         _remove(path)
 
@@ -328,6 +337,7 @@ def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -
         assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
         assert async_calls == []  # never invoked - post_fct raised before it could be awaited
         assert reader.pr.err_count == 1
+        assert _persisted(reader) == [code("E", "CALLBACK")]
     finally:
         _remove(path)
 

@@ -27,6 +27,12 @@ if TYPE_CHECKING:
 
 _NAME = const("DNSSRV")
 
+_ERR_BAD_ARG = const(21)
+_ERR_UNEXPECTED = const(23)
+_WRN_DNS_REPLY_DROPPED = const(41)
+_WRN_DNS_BAD_REQUEST = const(42)
+_WRN_DNS_TEARDOWN = const(43)
+
 # Backoff for a persistently-failing recvfrom() that returns (None, None) without raising - e.g. a
 # bind() that never succeeded. This path once looped at zero delay, measured at ~5 warning lines a
 # second in a real run (Part C.9's cascading-recovery-storm convention).
@@ -88,7 +94,7 @@ class DNSServer:
         if netmask_int is None or server_int is None:
             # server_ip/netmask come from the OS's own wlan.ifconfig() - a startup misconfiguration,
             # not expected in normal operation, so it's worth a persisted errno.
-            await self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=1)
+            await self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=_ERR_BAD_ARG)
             return
         network = server_int & netmask_int
         recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S
@@ -116,11 +122,11 @@ class DNSServer:
                     else:
                         sent = await self.udps.sendto(packet, addr)
                         if sent is None:
-                            await self.pr.wrn_s(f"Reply to {addr[0]:s}:{addr[1]} dropped by sendto().", wrnno=1)
+                            await self.pr.wrn_s(f"Reply to {addr[0]:s}:{addr[1]} dropped by sendto().", wrnno=_WRN_DNS_REPLY_DROPPED)
                         else:
                             self.pr.evt(f"Replying to {addr[0]:s}:{addr[1]}: {dns.domain:s} -> {server_ip:s}")
                 else:  # data or address is None
-                    await self.pr.wrn_s("Invalid DNS request data or address, not sending response.", wrnno=2)
+                    await self.pr.wrn_s("Invalid DNS request data or address, not sending response.", wrnno=_WRN_DNS_BAD_REQUEST)
                     await asyncio.sleep(recv_fail_backoff_s)
                     recv_fail_backoff_s = min(
                         recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S,
@@ -132,7 +138,7 @@ class DNSServer:
 
             except Exception as e:
                 # nothing supervises this task - never let an unexpected exception here kill it.
-                await self.pr.err_s("DNS Server error:", e, errno=2)
+                await self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
                 await asyncio.sleep(3)
 
         try:
@@ -144,13 +150,13 @@ class DNSServer:
         except Exception as e:
             # disconnect() is documented as never raising, but nothing supervises this task -
             # never let cleanup itself become the uncaught exception.
-            await self.pr.err_s("DNS Server error during disconnect:", e, errno=3)
+            await self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
             disconnect_ok = True  # already logged above via the except-Exception branch
         if not disconnect_ok:
             # Part C.7's silent-failure-masking convention: disconnect() never raises (AsyUDPSocket
             # owns no logger), but its bool says whether unregister()/close() succeeded - logged here
             # so a real socket or poll-slot leak over a long uptime leaves a trail.
-            await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=3)
+            await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=_WRN_DNS_TEARDOWN)
         self.pr.evt("DNS Server disconnected.")
 
 

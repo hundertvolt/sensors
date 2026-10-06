@@ -418,8 +418,8 @@ information):
   device script builds its own `AsyFramManager` over the same chip, and the allocator is
   deterministic, so its first chunk *is* production's first chunk — a flash/bench-tier run
   overwrites the real error logs, and a script leaving a well-formed chunk behind fabricates a
-  plausible-looking one (a seeded `errno=5` read back as SYSTEM's `"Task N ended with exception"`,
-  chased down as if real). Before treating a FRAM-backed log as evidence, check what has been run
+  plausible-looking one (a seeded entry read back as a plausible SYSTEM task end (test data, not
+  firmware evidence), chased down as if real). Before treating a FRAM-backed log as evidence, check what has been run
   against that board; `tests_hardware/README.md` has the full mechanism.
 
 ## Working agreements

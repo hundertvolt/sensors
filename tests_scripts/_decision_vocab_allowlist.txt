@@ -365,7 +365,6 @@ tests/test_asy_spi_driver.py	Bypasses `async with device:` deliberately: __aente
 tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
 tests/test_asy_spi_driver.py	The synchronous session deliberately does not take the lock, so the caller-holds
 tests/test_asy_spi_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
-tests/test_asy_uart_comm.py	/status must never show a number the catalog cannot explain, so the ranges are c
 tests/test_asy_uart_comm.py	A caller must never believe a failed transfer succeeded.
 tests/test_asy_uart_comm.py	A demonstration, deliberately not a constraint - the module is standalone and th
 tests/test_asy_uart_comm.py	A malformed ACK accepted as valid confirmation is worse than no ACK at all.
@@ -517,7 +516,6 @@ tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx 
 tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
 tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
 tests/test_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
-tests/test_system_service.py	no real exception occurred - errno=5 must never fire
 tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch

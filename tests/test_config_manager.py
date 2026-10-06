@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 import config_manager as cm
@@ -875,7 +876,7 @@ def test_configmanager_non_string_filename_runs_unpersisted_not_uncaught() -> No
         run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_int_values(_VAL_INT)) == [5]
-        assert _last_errno(mgr) == 4
+        assert _last_errno(mgr) == code("E", "CFG_FILE_WRITE")
 
 
 def test_configmanager_none_or_non_iterable_schema_is_invalid() -> None:
@@ -1353,7 +1354,7 @@ def test_configmanager_parent_directory_missing_runs_on_defaults_unpersisted() -
     run(mgr.setup())
     assert mgr.valid is True
     assert run(mgr.get_dict(["Count", "Offset", "Name", "Enabled"])) == {"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True}
-    assert _last_errno(mgr) == 4
+    assert _last_errno(mgr) == code("E", "CFG_FILE_WRITE")
 
 
 def test_get_dict_on_invalid_manager_returns_none() -> None:
@@ -1818,6 +1819,7 @@ def test_write_config_non_dict_data_returns_false_not_uncaught() -> None:
         for bad_data in (None, 5, 12.5, "abc", ["Count", 1]):
             ok, results = run(mgr.write_config(bad_data, _VAL_INT))  # type: ignore[arg-type]
             assert (ok, results) == (False, {})
+            assert _last_errno(mgr) == code("E", "BAD_ARG")
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched by any of the above
     finally:
         _remove(path)
@@ -1985,7 +1987,7 @@ def test_write_config_genuine_write_failure_keeps_the_new_value_in_effect() -> N
         assert mgr._cache == {"Count": 8}
         assert mgr._staged is None
         assert run(mgr.get_dict(["Count"])) == {"Count": 8}
-        assert _last_errno(mgr) == 14
+        assert _last_errno(mgr) == code("E", "CFG_FILE_WRITE")
     finally:
         _remove(path)  # a no-op here - the parent directory is gone, so there's nothing to remove
         try:
@@ -2166,6 +2168,7 @@ def test_configmanager_setup_directory_path_error_recorded_via_err_s() -> None:
         assert mgr.valid is False
         log = run(mgr.get_error_counter())
         assert log["CFGMGR_TEST"]["ErrCount"] == 1
+        assert _last_errno(mgr) == code("E", "CFG_PATH_IS_DIR")
     finally:
         os.rmdir(path)
 
@@ -2182,6 +2185,7 @@ def test_get_error_counter_accumulates_across_later_calls_too() -> None:
         run(mgr.get_dict(["Count"]))
         log = run(mgr.get_error_counter())
         assert log["CFGMGR_TEST"]["ErrCount"] == 2
+        assert _last_errno(mgr) == code("E", "CFG_NOT_VALID")
     finally:
         os.rmdir(path)
 
@@ -2199,6 +2203,7 @@ def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
         assert mgr.valid is True
         log = run(mgr.get_error_counter())
         assert log["CFGMGR_TEST"]["ErrCount"] == 1
+        assert (_last_errno(mgr), log["CFGMGR_TEST"]["ErrType"][-1]) == (code("W", "CFG_FILE_JSON"), "W")
     finally:
         _remove(path)
 
@@ -2294,6 +2299,7 @@ def test_configmanager_setup_memoryerror_from_json_load_degrades_to_defaults() -
             assert json.load(f) == {"Count": 5}  # rewritten from defaults
         log = run(mgr.get_error_counter())
         assert log["CFGMGR_TEST"]["ErrCount"] == 1  # recorded via wrn_s, not silently swallowed
+        assert _last_errno(mgr) == code("W", "CFG_FILE_UNREADABLE")
     finally:
         _remove(path)
 
@@ -2313,7 +2319,7 @@ def test_configmanager_setup_memoryerror_from_json_dump_runs_on_defaults_unpersi
             cm.json = original_json
         assert mgr.valid is True  # degraded to unpersisted, not raised and not refused (C.7.3)
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}
-        assert _last_errno(mgr) == 4
+        assert _last_errno(mgr) == code("E", "CFG_FILE_WRITE")
     finally:
         _remove(path)
 
@@ -2353,7 +2359,7 @@ class _WriteCountingOpen:
 
 
 def _log_entry(mgr: "cm.ConfigManager") -> "tuple[int, list[int]]":
-    # (count, codes) of the persisted ERRORS only - a missing file's wrnno 3 is routine, not a failure.
+    # (count, codes) of the persisted ERRORS only - a missing file's CFG_FILE_UNREADABLE warning is routine.
     entry = run(mgr.pr.get_log())[mgr.name]
     nums, types = entry["ErrNum"], entry["ErrType"]
     assert isinstance(nums, list) and isinstance(types, list)
@@ -2373,7 +2379,7 @@ def test_setup_write_failure_attempts_exactly_one_write_and_serves_the_validated
     assert run(mgr.get_float_values(_VAL_FLOAT)) == [1.5]
     assert run(mgr.get_str_values(_VAL_STR)) == ["abc"]
     assert run(mgr.get_bool_values(_VAL_BOOL)) == [True]
-    assert _log_entry(mgr) == (1, [4])
+    assert _log_entry(mgr) == (1, [code("E", "CFG_FILE_WRITE")])
 
 
 def test_setup_write_failure_keeps_the_valid_keys_of_a_partly_bad_file() -> None:
@@ -2413,7 +2419,7 @@ def test_setup_write_failure_for_each_error_class_is_logged_never_raised() -> No
         with _WriteCountingOpen(fail_writes=True, error=error) as fake:
             mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
             run(mgr.setup())
-        assert (fake.writes, mgr.valid, _log_entry(mgr)) == (1, True, (1, [4])), error
+        assert (fake.writes, mgr.valid, _log_entry(mgr)) == (1, True, (1, [code("E", "CFG_FILE_WRITE")])), error
 
 
 def test_no_read_path_ever_writes_after_a_failed_setup_write() -> None:
@@ -2430,7 +2436,7 @@ def test_no_read_path_ever_writes_after_a_failed_setup_write() -> None:
             run(mgr.get_dict(["Count", "Name"]))
             run(mgr.flush_pending())
         assert fake.writes == 1  # setup()'s single attempt, nothing since
-    assert _log_entry(mgr) == (1, [4])
+    assert _log_entry(mgr) == (1, [code("E", "CFG_FILE_WRITE")])
 
 
 def test_writes_follow_accepted_changes_only_never_failures() -> None:
@@ -2450,7 +2456,8 @@ def test_writes_follow_accepted_changes_only_never_failures() -> None:
             assert results == {"Nope": "Invalid"}
             assert fake.writes == 2  # exactly the two changes
         assert run(mgr.get_dict(["Count"])) == {"Count": 9}
-        assert _log_entry(mgr)[1] == [14, 12, 14, 10]  # failed flush, range, failed flush, unknown key
+        expected = [code("E", "CFG_FILE_WRITE"), code("E", "BAD_ARG"), code("E", "CFG_FILE_WRITE"), code("E", "BAD_ARG")]
+        assert _log_entry(mgr)[1] == expected  # failed flush, range, failed flush, unknown key
     finally:
         _remove(path)
 

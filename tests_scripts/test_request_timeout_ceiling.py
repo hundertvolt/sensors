@@ -293,7 +293,7 @@ def test_the_ceiling_holder_ends_as_soon_as_its_test_sets_stop(ceiling_holder: M
 
 
 def test_the_bench_ceiling_test_keeps_its_held_set_inside_the_per_call_timeout(repo_root: Path, per_call_timeout_s: float) -> None:
-    # A held socket silent past per_call_timeout_s is answered and logs wrnno=2, failing the test's
+    # A held socket silent past per_call_timeout_s is answered and logs HTTP_CALL_TIMEOUT, failing the test's
     # own empty-WEBSERVER-log check; one extra blocking in recv for 10 s held the set that long.
     source = (repo_root / "tests_hardware" / "bench" / "test_network_resilience.py").read_text()
     fn = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef) and n.name == "test_connections_at_and_above_the_real_socket_limit_degrade_cleanly")

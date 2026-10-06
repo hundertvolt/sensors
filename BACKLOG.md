@@ -18,21 +18,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Refactor targets not yet done
 
-- **Four modules this branch changed substantially still number inside the reserved range —
-  the renumbering rule was not applied (found 2026-09-25).** SPECIFICATION.md C.7.1 records the
-  owner's decision (2026-09-24): a module still numbering in `base_classes.py`'s reserved
-  `errno` 1-9/`wrnno` 1-2 moves to 10+ on its next substantial change, with the table and tests in
-  the same change. The NTP/notification/WiFi/config-write work of 2026-09-24/25 was that change
-  for four of them, and none was renumbered: `asy_ntp_client.py` (`wrnno` 1-3; the backoff
-  rewrite, `wrnno` 2 put under the repeat rule), `asy_wifi_service.py` (`wrnno` 1-8; the radio
-  byte bounds, and the new `wrnno` 8 was even *added* inside the range), `asy_notification_service.py`
-  (`wrnno` 1-5; `wrnno` 5 put under the repeat rule) and `config_manager.py` (`errno` 1-15 and
-  `wrnno` 1-6, partly inside; the unpersisted-config handling of `errno` 4/14). No clash is live -
-  none shares a logger with a `SensorReader`. Doing it touches more than `src/`: the C.7.1 table,
-  the unit and twin tests that pin the codes, the bench tests that assert them
-  (`test_network_resilience.py` accepts WIFI `W4`/`W5`), the codes cited in this file, and a
-  reflash plus a bench tier before it counts as confirmed; FRAM histories hold a mix of old and new
-  codes until the next `ResetErrors` (no field device runs this code).
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
@@ -274,8 +259,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     readers already reach 88-98% of the ceiling and four exceed it. The "~6 more chunks under load"
     headroom derived from the single 3-reader point no longer holds — under load there is none.
     At four readers the board is saturated outright (F18; the owner's decision on such clients is in
-    SPECIFICATION.md H.7: ceiling starvation of the `PUT`, WEBSERVER `W2` reclaims, UART link
-    `E20`/`E22`/`W10`). Nothing asserts elapsed time anywhere: both client timeouts
+    SPECIFICATION.md H.7: ceiling starvation of the `PUT`, WEBSERVER `W49`/`W50` reclaims
+    (`HTTP_CALL_TIMEOUT`/`HTTP_REQUEST_CAP`), UART link `E81`/`E22` (`UART_NO_ACK`/`TIMEOUT`) and
+    resyncs). Nothing asserts elapsed time anywhere: both client timeouts
     are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
     mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
     and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
@@ -372,9 +358,9 @@ gates, traps).
   down the rig geometry S3b depends on; the reference light meter is an optional data point, never
   pass/fail), then `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` (~10 min). R9's
   `Overrange` half rides S3b (open question "ISL29125's chip configuration divergence" above).
-- **R13 + N3, UART `wrnno` 11 against a real babbling peer** — needs hardware the bench does not
-  have (owner, 2026-09-25): the live firmware owns both UARTs, so nothing on the board can play the
-  peer. Confirm `GET /status` shows `W11` rather than `W10` for `UART_init`/`UART_resp` after the
+- **R13 + N3, UART `wrnno` 54 (`UART_DRAIN_BOUND`) against a real babbling peer** — needs hardware
+  the bench does not have (owner, 2026-09-25): the live firmware owns both UARTs, so nothing on the
+  board can play the peer. Confirm `GET /status` shows `W54` for `UART_init`/`UART_resp` after the
   drain hits its bound, and that a boot drain against the same peer persists nothing
   (SPECIFICATION.md C.7.1). N3 also owes a check that `UART_C_PORT_CHANGELOG.md` records the
   reclassification (receiver-side only, no emitted bytes change). Low urgency: the mock tier covers
@@ -454,8 +440,8 @@ gates, traps).
 
 - **A transient SPI RX overrun is not retried (owner, 2026-09-24).** MicroPython 1.29's
   `OSError(EIO)` on 32+ byte rp2 SPI reads (SPECIFICATION.md Part F.5.2) is absorbed by the FRAM
-  layer's dual copy: `_read_chunk()` logs errno 47 and `_read()` falls back to block 1 and repairs
-  block 0, so a retry inside the chunk loop would buy little.
+  layer's dual copy: `_read_chunk()` logs errno 23 (`UNEXPECTED`) and `_read()` falls back to block 1
+  and repairs block 0, so a retry inside the chunk loop would buy little.
 - **`FiltCoeff` keeps its two meanings, namespaced per sensor** (owner, 2026-09-26). BMP3xx's IIR
   register index and the ISL29125's EMA coefficient share the name, namespaced per sensor on
   `/sensors`.

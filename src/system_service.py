@@ -37,6 +37,14 @@ if TYPE_CHECKING:
     class _StoragePause(Protocol):
         def __call__(self, *, value: bool) -> None: ...
 
+# Codes from the global catalog (buildgen/error_catalog.json): the shared ones and SYSTEM's band.
+_ERR_CALLBACK = const(14)
+_ERR_CLOCK = const(16)
+_ERR_TASK_STARTER_RAISED = const(40)
+_ERR_TASK_BUDGET_REBOOT = const(41)
+_ERR_TASK_RAISED = const(42)
+_ERR_TASK_CANCELLED = const(43)
+
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
 _NTP_WAIT_TIME = const(120)  # 2 mins until random boot signature is used
@@ -136,14 +144,14 @@ class SystemService:
             synced = await self.ntp_is_synced()
         except Exception as e:  # caller-supplied callback, typed as any Callable - guarded broadly
             # since it isn't guaranteed to be a specific, known-safe implementation
-            await self.pr.err_s("NTP sync callback failed:", e, errno=1)
+            await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             return None
         if not synced:
             return None
         try:
             return time.mktime(time.gmtime())
         except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
-            await self.pr.err_s("Computing boot signature timestamp failed:", e, errno=2)
+            await self.pr.err_s("Computing boot signature timestamp failed:", e, errno=_ERR_CLOCK)
             return None
 
     def _timer_sequencer(self, timers: "list[Callable[[], None]]", counter: int = 0) -> None:
@@ -179,7 +187,7 @@ class SystemService:
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
-            await self.pr.err_s("Task starter", n, "failed to start:", e, errno=3)
+            await self.pr.err_s("Task starter", n, "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
             return None
 
     async def _log_dead_task(self, task: "asyncio.Task[Any]", n: int) -> None:
@@ -190,11 +198,11 @@ class SystemService:
             await task
         except asyncio.CancelledError:
             # Previously logged via the non-persisting self.pr.err() - left zero trace in errcount,
-            # indistinguishable from a clean return. Persists now via its own errno=6, distinct from
-            # errno=5's real-exception case (see SPECIFICATION.md's errno/wrnno table).
-            await self.pr.err_s("Task", n, "ended: was cancelled", errno=6)
+            # indistinguishable from a clean return. Persists now via its own TASK_CANCELLED, distinct
+            # from TASK_RAISED's real-exception case (buildgen/error_catalog.json).
+            await self.pr.err_s("Task", n, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
-            await self.pr.err_s("Task", n, "ended with exception:", e, errno=5)
+            await self.pr.err_s("Task", n, "ended with exception:", e, errno=_ERR_TASK_RAISED)
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -249,7 +257,7 @@ class SystemService:
             if task_errors <= _TASK_FAIL_MAX:
                 self.feed_watchdog()
             else:
-                await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=4)
+                await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
                 self.reboot_system()
                 return
 
@@ -336,7 +344,7 @@ class SystemService:
             try:
                 setter(value)
             except Exception as e:
-                await self.pr.err_s("Level setter failed:", e, errno=7)
+                await self.pr.err_s("Level setter failed:", e, errno=_ERR_CALLBACK)
 
     def get_debug_level(self) -> int:
         return self._current_debug_level

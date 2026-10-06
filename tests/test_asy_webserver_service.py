@@ -12,6 +12,7 @@ import sys
 # this rather than a build-environment scope change.
 sys.path.insert(0, "ext")
 
+from _error_codes import code
 from _shared_rest_roundtrip import drain_json_response_body
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
@@ -1640,7 +1641,54 @@ def test_a_write_phase_timeout_is_logged_once_not_twice() -> None:
     run_timed(service._serve(_ScriptedReader([(0.0, request)]), _HangingWriter()), timeout_s=2.0)
     entry = next(iter(run(service.get_error_counter()).values()))
     assert entry["ErrCount"] == 1, entry
+    assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
     assert run(service._open_conns.get_value()) == 0
+
+
+def _newest_entry(service: "WebserverService") -> "tuple[int, str]":  # WEBSERVER's newest (ErrNum, ErrType)
+    entry = run(service.get_error_counter())["WEBSERVER"]
+    return entry["ErrNum"][-1], entry["ErrType"][-1]
+
+
+def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
+    # A silent client: the proxy's own read bound fires and logs; microdot swallows it and answers 400.
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    run_timed(service._serve(_HangingReader(), _ScriptedWriter()), timeout_s=2.0)
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
+    assert _newest_entry(service) == (code("W", "HTTP_CALL_TIMEOUT"), "W")
+
+
+def test_an_outer_cap_timeout_logs_the_request_cap_code() -> None:
+    # Slowloris pacing: no single readline() nears the per-call bound, so only the outer cap fires.
+    full_line = _request_bytes("GET", "/status")
+    chunks = [(0.02, part + b"\r\n") for part in full_line.split(b"\r\n")[:-1]]
+    service, _app = _make_service(per_call_timeout_s=1.0, outer_cap_s=0.05)
+    run_timed(service._serve(_ScriptedReader(chunks), _ScriptedWriter()), timeout_s=1.0)
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
+    assert _newest_entry(service) == (code("W", "HTTP_REQUEST_CAP"), "W")
+
+
+def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> None:
+    # The read bound fires and is logged; microdot's 400 then hangs until the outer cap cuts it,
+    # and that second reclaim is the cap's, not a per-call one the earlier read had flagged.
+    service, _app = _make_service(per_call_timeout_s=0.2, outer_cap_s=0.3)
+    run_timed(service._serve(_HangingReader(), _HangingWriter()), timeout_s=2.0)
+    entry = run(service.get_error_counter())["WEBSERVER"]
+    assert entry["ErrCount"] == 2, entry
+    assert entry["ErrNum"][-2:] == [code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_REQUEST_CAP")], entry
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag() -> None:
+    timed_out = [False]
+    proxy = _TimeoutStreamProxy(_ScriptedWriter(hang_close=True), 0.05, _FakeLogger("X"), [False], timed_out)  # type: ignore[arg-type]
+    try:
+        run_timed(proxy.wait_closed())
+    except asyncio.TimeoutError:
+        pass
+    else:
+        raise AssertionError("a hanging wait_closed() was not bounded")
+    assert timed_out == [True]
 
 
 class _ResetReader:
@@ -1714,7 +1762,8 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
     assert run(service._open_conns.get_value()) == 0
     log = run(service.get_error_counter())
     entry = next(iter(log.values()))
-    assert "E" in entry["ErrType"]  # errno=1 path (err_s, not wrn_s) - a genuinely unexpected bug
+    assert entry["ErrNum"][-1] == code("E", "UNEXPECTED")  # err_s, not wrn_s - a genuinely unexpected bug
+    assert entry["ErrType"][-1] == "E"
 
 
 # F.7 - adversarial/malformed-input shapes
@@ -2232,7 +2281,7 @@ def test_h1_unhandled_exception_is_logged_via_pr_err_s_not_just_swallowed() -> N
     log = run(service.get_error_counter())
     entry = log["WEBSERVER"]
     assert entry["ErrCount"] == 1
-    assert entry["ErrNum"].count(4) == 1
+    assert entry["ErrNum"].count(code("E", "UNEXPECTED")) == 1
     assert entry["ErrType"].count("E") == 1
 
 
@@ -2245,7 +2294,7 @@ def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_indepe
     log = run(service.get_error_counter())
     entry = log["WEBSERVER"]
     assert entry["ErrCount"] == 2
-    assert entry["ErrNum"].count(4) == 2
+    assert entry["ErrNum"].count(code("E", "UNEXPECTED")) == 2
     assert entry["ErrType"].count("E") == 2
 
 
@@ -2356,8 +2405,8 @@ def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_str
     assert set(body.keys()) == {"networking", "system", "sensors", "notification", "errcount"}
     assert body["networking"] == {"error": "unavailable"}
     log = run(service.get_error_counter())
-    assert log["WEBSERVER"]["ErrNum"].count(6) == 1
-    assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(6)] == "E"
+    assert log["WEBSERVER"]["ErrNum"].count(code("E", "CALLBACK")) == 1
+    assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(code("E", "CALLBACK"))] == "E"
 
 
 def test_h2_stream_maintenance_source_failure_is_isolated_to_that_one_sensor() -> None:
@@ -2379,7 +2428,7 @@ def test_h2_stream_errcount_source_failure_is_isolated_to_that_one_module() -> N
     errcount = json.loads(status_body(res))["errcount"]
     assert errcount["SGP40"] == {"error": "unavailable"}
     assert errcount["BMP3XX"] == {"counter": 0, "history": []}
-    # WEBSERVER's counter reflects the SGP40 failure just logged (errno=6) - that failure genuinely
+    # WEBSERVER's counter reflects the SGP40 failure just logged (CALLBACK) - that failure genuinely
     # happened and belongs in this service's own history too. history_length=0 above keeps the ring
     # at zero capacity, so the detail entry never lands in "history".
     assert errcount["WEBSERVER"]["counter"] == 1
@@ -2417,7 +2466,7 @@ def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_d
     assert body["errcount"]["BMP3XX"] == {"error": "unavailable"}
     # WEBSERVER's own entry is never itself an "error" marker (its get_log() never raised here);
     # its counter instead reflects the 5 other failures just logged - 3 status sources, 1
-    # maintenance sensor, 1 errcount module, each its own errno=6 call.
+    # maintenance sensor, 1 errcount module, each its own CALLBACK entry.
     assert body["errcount"]["WEBSERVER"]["counter"] == 5
     assert body["errcount"]["WEBSERVER"]["history"] == []  # history_length=0 above, see comment above
 

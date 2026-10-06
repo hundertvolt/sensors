@@ -41,6 +41,12 @@ if TYPE_CHECKING:
     T = TypeVar("T")  # narrows a struct.unpack() result for the cast() shim above
 
 
+# Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
+_ERR_INIT = const(10)
+_ERR_READ = const(11)
+_ERR_CHIP_GET = const(12)
+_ERR_CHIP_SET = const(13)
+
 _SCD30_DEFAULT_ADDR = const(0x61)
 _CMD_CONTINUOUS_MEASUREMENT = const(0x0010)
 _CMD_STOP_CONTINUOUS_MEASUREMENT = const(0x0104)
@@ -166,7 +172,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.setup()
         except Exception as e:
-            await self.pr.err_s("Error in initial setup:", e, errno=10)
+            await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             return False
         self.pr.one("initialized")
         return True
@@ -183,7 +189,7 @@ class SCD30_Reader(SensorReader):
             self.pr.all("read")
         except Exception as e:
             timestamp = co2 = temperature = humidity = None
-            await self.pr.err_s("Read failed:", e, errno=11)
+            await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return co2, temperature, humidity, timestamp
 
     async def _store_scd(self, results: "SCDResults") -> None:
@@ -304,49 +310,49 @@ class SCD30_Reader(SensorReader):
         try:
             return await self.scd.get_measurement_interval()
         except Exception as e:
-            await self.pr.err_s("Error reading measurement interval:", e, errno=14)
+            await self.pr.err_s("Error reading measurement interval:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_self_calibration_enabled(self) -> bool | None:
         try:
             return await self.scd.get_self_calibration_enabled()
         except Exception as e:
-            await self.pr.err_s("Error reading self calibration enabled:", e, errno=16)
+            await self.pr.err_s("Error reading self calibration enabled:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_ambient_pressure(self) -> int | None:
         try:
             return await self.scd.get_ambient_pressure()
         except Exception as e:
-            await self.pr.err_s("Error reading ambient pressure:", e, errno=18)
+            await self.pr.err_s("Error reading ambient pressure:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_altitude(self) -> int | None:
         try:
             return await self.scd.get_altitude()
         except Exception as e:
-            await self.pr.err_s("Error reading altitude:", e, errno=20)
+            await self.pr.err_s("Error reading altitude:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_temperature_offset(self) -> float | None:
         try:
             return await self.scd.get_temperature_offset()
         except Exception as e:
-            await self.pr.err_s("Error reading temperature offset:", e, errno=22)
+            await self.pr.err_s("Error reading temperature offset:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_forced_recalibration_reference(self) -> int | None:
         try:
             return await self.scd.get_forced_recalibration_reference()
         except Exception as e:
-            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=24)
+            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def set_measurement_interval(self, value: int) -> bool:
         try:
             await self.scd.set_measurement_interval(value)
         except Exception as e:
-            await self.pr.err_s("Error setting measurement interval:", e, errno=15)
+            await self.pr.err_s("Error setting measurement interval:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -355,7 +361,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.set_self_calibration_enabled(enabled)
         except Exception as e:
-            await self.pr.err_s("Error setting self calibration enabled:", e, errno=17)
+            await self.pr.err_s("Error setting self calibration enabled:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -364,7 +370,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.set_ambient_pressure(pressure_mbar)
         except Exception as e:
-            await self.pr.err_s("Error setting ambient pressure:", e, errno=19)
+            await self.pr.err_s("Error setting ambient pressure:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -373,7 +379,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.set_altitude(altitude)
         except Exception as e:
-            await self.pr.err_s("Error setting altitude:", e, errno=21)
+            await self.pr.err_s("Error setting altitude:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -382,7 +388,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.set_temperature_offset(offset)
         except Exception as e:
-            await self.pr.err_s("Error setting temperature offset:", e, errno=23)
+            await self.pr.err_s("Error setting temperature offset:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -391,7 +397,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.set_forced_recalibration_reference(reference_value)
         except Exception as e:
-            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=25)
+            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True
@@ -429,7 +435,7 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.stop_continuous_measurement()
         except Exception as e:
-            await self.pr.err_s("Error stopping continuous measurement:", e, errno=13)
+            await self.pr.err_s("Error stopping continuous measurement:", e, errno=_ERR_CHIP_SET)
             return False
         else:
             return True

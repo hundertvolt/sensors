@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections import namedtuple
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 
@@ -475,11 +476,17 @@ def test_sensorreader_history_length_zero_is_forwarded_and_never_raises() -> Non
     assert list(reader.pr.history) == []  # nothing to hold, but the count still tracked
 
 
+def _newest(reader: "SensorReader") -> "tuple[int, str]":
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return log["ErrNum"][-1], log["ErrType"][-1]
+
+
 def test_error_check_max_module_error_zero_gives_up_on_first_failure() -> None:
     # Zero tolerance is a legitimate, if unusual, config value - not a caller mistake to guard
     # against like a negative max_module_error would be (see BACKLOG.md's structural-pass note).
     reader = SensorReader(Meas(None, 50), max_module_error=0)
     assert run(reader._error_check(Meas(None, 50))) is False
+    assert _newest(reader) == (code("E", "GIVE_UP"), "E")
 
 
 def test_get_dict_cfg_duplicate_schema_names_collapse_to_one_key() -> None:
@@ -504,7 +511,7 @@ def test_sensorreader_meas_data_roundtrip() -> None:
 def test_sensorreader_reset_error_counter_clears_history() -> None:
     reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     run(reader.pr.setup())
-    run(reader.pr.err_s("boom", errno=1))
+    run(reader.pr.err_s("boom", errno=code("E", "STREAK")))
     assert reader.pr.err_count == 1
     run(reader.reset_error_counter())
     assert reader.pr.err_count == 0
@@ -577,6 +584,7 @@ def test_get_dict_cfg_callback_extra_key_is_still_merged() -> None:
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI, callback=callback))
     assert result == {"Sensor": {"SampleInterv": 5, "Unexpected": 1}}
     assert reader.pr.err_count == 1  # the "unknown keys" path goes through wrn_s(), not silently
+    assert _newest(reader) == (code("W", "CALLBACK_KEYS"), "W")
 
 
 def test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned() -> None:
@@ -591,6 +599,7 @@ def test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned() -> None:
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
     assert result == {"Sensor": {"SampleInterv": 5, "Unexpected": 1}}
     assert reader.pr.err_count == 1
+    assert _newest(reader) == (code("W", "CFG_KEYS"), "W")
 
 
 def test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn() -> None:
@@ -645,6 +654,7 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     rebooted = SensorReader(Meas(None, 50), max_module_error=5, fram=manager2)
     run(rebooted.pr.setup())
     assert rebooted.pr.err_count == 2
+    assert run(rebooted.pr.get_log())[rebooted.pr.name]["ErrNum"][-2:] == [code("E", "STREAK")] * 2  # the streak's own entries
 
 
 def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> None:

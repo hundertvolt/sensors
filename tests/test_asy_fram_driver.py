@@ -1,5 +1,6 @@
 import asyncio
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
@@ -666,7 +667,7 @@ def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_
     result = run(scenario())
     assert result is False
     assert fram.initialized is True  # a lock-busy timeout isn't a device-identification failure
-    assert 97 in fram.pr.history
+    assert code("E", "LOCK_TIMEOUT") in fram.pr.history
 
 
 # ---------------------------------------------------------------------------
@@ -906,7 +907,7 @@ def test_get_write_protected_before_setup_logs_a_persisted_error() -> None:
 
     assert run(scenario()) is False
     assert fram.pr.err_count == 1
-    assert list(fram.pr.history)[-1] == 89
+    assert list(fram.pr.history)[-1] == code("E", "NOT_INIT")
 
 
 def test_get_values_before_setup_logs_a_persisted_error() -> None:
@@ -917,7 +918,7 @@ def test_get_values_before_setup_logs_a_persisted_error() -> None:
 
     assert run(scenario()) is False
     assert fram.pr.err_count == 1
-    assert 90 in fram.pr.history
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_get_values_out_of_range_logs_a_persisted_error() -> None:
@@ -930,7 +931,7 @@ def test_get_values_out_of_range_logs_a_persisted_error() -> None:
 
     run(scenario())
     assert fram.pr.err_count == 1
-    assert 91 in fram.pr.history
+    assert code("E", "BAD_ARG") in fram.pr.history
 
 
 def test_set_values_before_setup_logs_a_persisted_error() -> None:
@@ -941,7 +942,7 @@ def test_set_values_before_setup_logs_a_persisted_error() -> None:
 
     assert run(scenario()) is False
     assert fram.pr.err_count == 1
-    assert 92 in fram.pr.history
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_set_values_out_of_range_logs_a_persisted_error() -> None:
@@ -954,7 +955,7 @@ def test_set_values_out_of_range_logs_a_persisted_error() -> None:
 
     run(scenario())
     assert fram.pr.err_count == 1
-    assert 93 in fram.pr.history
+    assert code("E", "BAD_ARG") in fram.pr.history
 
 
 def test_set_write_protected_before_setup_logs_a_persisted_error() -> None:
@@ -965,7 +966,7 @@ def test_set_write_protected_before_setup_logs_a_persisted_error() -> None:
 
     assert run(scenario()) is False
     assert fram.pr.err_count == 1
-    assert 94 in fram.pr.history
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
@@ -977,7 +978,7 @@ def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert 95 in fram.pr.history
+    assert code("E", "FRAM_WP_MISMATCH") in fram.pr.history
 
 
 def test_verify_present_before_setup_logs_a_persisted_error() -> None:
@@ -987,7 +988,7 @@ def test_verify_present_before_setup_logs_a_persisted_error() -> None:
         return await fram.verify_present()
 
     assert run(scenario()) is False
-    assert 96 in fram.pr.history
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
@@ -1000,7 +1001,7 @@ def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
             return await fram.set_values(b"bad!", 0x00)
 
     assert run(scenario()) is False
-    assert 0x80 + 82 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert 0x80 + code("W", "FRAM_WEL_NOT_SET") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
@@ -1012,7 +1013,7 @@ def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert 0x80 + 83 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert 0x80 + code("W", "FRAM_WEL_NOT_SET") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
@@ -1027,21 +1028,20 @@ def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
 
     ok = run(scenario())
     assert ok is True  # the payload write itself still succeeded, only WEL housekeeping is stuck
-    assert 0x80 + 81 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert 0x80 + code("W", "FRAM_WEL_STUCK") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_write_protected_and_access_not_locked_are_now_persisted() -> None:
-    # WP8: "currently write protected" (a benign, expected refusal, matching AsyFramManager's own
-    # "communication paused" wrn_s precedent) and "access not locked" (a caller contract violation, so errno
-    # rather than wrnno) both now persist, replacing the print-only degrade this test previously pinned.
+    # "Currently write protected" (a benign, expected refusal, as the manager's "communication paused") and "access
+    # not locked" (a caller contract violation, so an errno) both persist.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     assert run(fram.set_write_protected(value=True)) is True
 
     async def scenario() -> tuple[bool, bool]:
-        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper - errno=99
+        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper - CONTRACT
         async with fram:
-            still_protected = await fram.set_values(b"x", 0)  # locked, so this reaches _write() - wrnno=84
+            still_protected = await fram.set_values(b"x", 0)  # locked, so this reaches _write() - FRAM_WRITE_PROTECTED
         return no_lock, still_protected
 
     no_lock, still_protected = run(scenario())
@@ -1049,7 +1049,7 @@ def test_write_protected_and_access_not_locked_are_now_persisted() -> None:
     assert still_protected is False
     assert fram.pr.err_count == 2
     log = run(fram.pr.get_log())[fram.pr.name]
-    assert log["ErrNum"][-2:] == [99, 84]
+    assert log["ErrNum"][-2:] == [code("E", "CONTRACT"), code("W", "FRAM_WRITE_PROTECTED")]
     assert log["ErrType"][-2:] == ["E", "W"]
 
 
@@ -1279,7 +1279,7 @@ def test_write_protected_warning_keeps_its_number_and_message() -> None:
             return await fram.set_values(b"x", 0)
 
     assert run(scenario()) is False
-    assert recorded == [(("FRAM currently write protected.",), 84)]
+    assert recorded == [(("FRAM currently write protected.",), code("W", "FRAM_WRITE_PROTECTED"))]
 
 
 def test_write_enable_latch_warning_keeps_its_number_and_message() -> None:
@@ -1293,7 +1293,7 @@ def test_write_enable_latch_warning_keeps_its_number_and_message() -> None:
             return await fram.set_values(b"bad!", 0x00)
 
     assert run(scenario()) is False
-    assert recorded == [(("FRAM write enable latch did not set, aborting write.",), 82)]
+    assert recorded == [(("FRAM write enable latch did not set, aborting write.",), code("W", "FRAM_WEL_NOT_SET"))]
 
 
 def test_wrdi_stuck_warning_keeps_its_number_and_message() -> None:
@@ -1308,7 +1308,7 @@ def test_wrdi_stuck_warning_keeps_its_number_and_message() -> None:
             return await fram.set_values(b"ok!!", 0x00)
 
     assert run(scenario()) is True  # the payload landed; only the WEL housekeeping is stuck
-    assert recorded == [(("FRAM write enable latch did not clear after WRDI retry.",), 81)]
+    assert recorded == [(("FRAM write enable latch did not clear after WRDI retry.",), code("W", "FRAM_WEL_STUCK"))]
 
 
 # ---------------------------------------------------------------------------

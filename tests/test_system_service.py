@@ -1,6 +1,7 @@
 import asyncio
 
 import machine
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from machine import Timer
@@ -272,6 +273,7 @@ def test_ntp_boot_signature_callback_exception_returns_none_and_logs_once() -> N
     assert run(svc._ntp_boot_signature()) is None
     assert calls[0] == 1
     assert svc.pr.err_count == 1
+    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "CALLBACK")
 
 
 class _OverflowingTime:
@@ -298,6 +300,7 @@ def test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once() -> None
         system_service.time = original_time
     assert result is None
     assert svc.pr.err_count == 1
+    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "CLOCK")
 
 
 class _RaisingGmtime:
@@ -322,6 +325,7 @@ def test_ntp_boot_signature_gmtime_raising_returns_none_and_logs_once() -> None:
         system_service.time = original_time
     assert result is None
     assert svc.pr.err_count == 1
+    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "CLOCK")
 
 
 # ---------------------------------------------------------------------------
@@ -879,9 +883,9 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     # produce a length-1 ErrNum/ErrType, matching this test's single err_s() call exactly.
     svc = make_service(history_length=1)
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=1))
+    run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
     result = run(svc.get_error_counter())
-    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
     assert svc.pr.err_count == 0
 
@@ -893,9 +897,9 @@ def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     manager, _chip = make_fram_manager()
     svc = make_service(fram=manager, history_length=1)
     run(svc.pr.setup())
-    run(svc.pr.err_s("boom", errno=1))
+    run(svc.pr.err_s("boom", errno=code("E", "CALLBACK")))
     result = run(svc.get_error_counter())
-    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
     assert svc.pr.err_count == 0
 
@@ -931,6 +935,7 @@ def test_start_task_starter_exception_returns_none_and_logs_once() -> None:
     result = run(svc._start_task(bad_starter, 2))
     assert result is None
     assert svc.pr.err_count == 1
+    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_STARTER_RAISED")
 
 
 # ---------------------------------------------------------------------------
@@ -1161,7 +1166,7 @@ def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> No
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 5 in log["ErrNum"]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
+    assert code("E", "TASK_RAISED") in log["ErrNum"]  # _log_dead_task's own entry, distinct from wrn_s's own wrnno
 
 
 def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
@@ -1170,7 +1175,7 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
     # errcount, indistinguishable from a clean return.
     #
     # That was the actual explanation for a real restart which had already ruled out both the clean-return
-    # path and a real exception. Fixed to persist via its own errno=6.
+    # path and a real exception. Fixed to persist via its own TASK_CANCELLED.
     svc = make_service()
     call_count = [0]
 
@@ -1199,8 +1204,8 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 6 in log["ErrNum"]  # _log_dead_task's own errno=6 for a self-cancelled task
-    assert svc.pr.err_count >= 2  # the errno=6 entry plus the routine "Task ended" warning
+    assert code("E", "TASK_CANCELLED") in log["ErrNum"]  # _log_dead_task's own entry for a self-cancelled task
+    assert svc.pr.err_count >= 2  # the TASK_CANCELLED entry plus the routine "Task ended" warning
 
 
 def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_exception() -> None:
@@ -1230,7 +1235,7 @@ def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_excepti
     with _FastAsyncSleep():
         run(scenario())
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 5 not in log["ErrNum"]  # no real exception occurred - errno=5 must never fire
+    assert code("E", "TASK_RAISED") not in log["ErrNum"]  # no real exception occurred - TASK_RAISED never fires
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:
@@ -1249,6 +1254,7 @@ def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() ->
         run(asyncio.wait_for(svc.start_and_check_tasks([always_raising_starter]), 5))
 
     assert call_count[0] >= 4  # enough restart attempts to cross _TASK_FAIL_MAX (100 per attempt)
+    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_BUDGET_REBOOT")
     svc.reset_timer.trigger()
     assert machine.reset_count == 1
 
@@ -1377,7 +1383,7 @@ def test_a_bad_setter_now_persists_its_own_failure() -> None:
     run(svc.setup())
     run(svc.set_debug_level(PrintLog.level_warn()))
     log = run(svc.pr.get_log())[svc.pr.name]
-    assert log["ErrNum"][-1] == 7
+    assert log["ErrNum"][-1] == code("E", "CALLBACK")
     assert log["ErrType"][-1] == "E"
 
 

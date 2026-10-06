@@ -2,6 +2,8 @@ import asyncio
 import socket
 import time
 
+from _error_codes import code
+
 from asy_udp_socket import AsyUDPSocket
 from captive_dns import DNSQuery, DNSServer, _ipv4_to_int
 from print_log import PrintLog, PrintLogHistory
@@ -20,6 +22,11 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+async def _newest_entry(server: DNSServer) -> "tuple[int, str]":  # the newest (ErrNum, ErrType) of DNSSRV's ring
+    entry = (await server.get_error_counter())["DNSSRV"]
+    return entry["ErrNum"][-1], entry["ErrType"][-1]
 
 
 def make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independent logger per test/DNSQuery
@@ -500,6 +507,7 @@ def test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error() -> No
 
     run(scenario())
     assert server.pr.err_count == 1
+    assert run(_newest_entry(server)) == (code("E", "BAD_ARG"), "E")
 
 
 def test_run_cancellation_disconnects_cleanly() -> None:
@@ -553,6 +561,7 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
         try:
             assert await _wait_until(lambda: len(fake.sent) >= 1)
             assert server.pr.err_count == 1
+            assert await _newest_entry(server) == (code("W", "DNS_REPLY_DROPPED"), "W")
         finally:
             await _cancel(task)
 
@@ -568,6 +577,7 @@ def test_run_invalid_recvfrom_data_logs_a_persisted_warning() -> None:
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
             assert await _wait_until(lambda: server.pr.err_count >= 1)
+            assert await _newest_entry(server) == (code("W", "DNS_BAD_REQUEST"), "W")
         finally:
             await _cancel(task)
 
@@ -940,6 +950,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
             try:
                 assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=5000)
                 assert server.pr.err_count == 1  # the flaky first attempt logged a real, persisted error
+                assert await _newest_entry(server) == (code("E", "UNEXPECTED"), "E")
                 return fake.sent, time.ticks_diff(time.ticks_ms(), t0)
             finally:
                 await _cancel(task)
@@ -973,6 +984,7 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
         await _cancel(task)  # disconnect()'s own exception must not escape cancellation either
         assert fake.disconnect_called is True
         assert server.pr.err_count == 1
+        assert await _newest_entry(server) == (code("E", "UNEXPECTED"), "E")
 
     run(scenario())  # must not raise despite disconnect() itself failing
 
@@ -1097,6 +1109,7 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
         await _cancel(task)
         assert fake.disconnect_called is True
         assert server.pr.err_count == 1
+        assert await _newest_entry(server) == (code("W", "DNS_TEARDOWN"), "W")
 
     run(scenario())
 

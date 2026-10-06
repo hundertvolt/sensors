@@ -232,6 +232,32 @@ def test_get_log_classifies_error_warning_and_clear_entries() -> None:
     assert log == {"Sensor": {"ErrCount": 2, "ErrNum": [0, 5, 2], "ErrType": ["N", "E", "W"]}}
 
 
+class _DiagRecordingHistory(PrintLogHistory):
+    # Records the internal-failure prints instead of gating them on a level, so a test can assert one fired.
+    def __init__(self, history_length: int) -> None:
+        super().__init__(history_length=history_length)
+        self.diags: list[tuple[object, ...]] = []
+
+    def _diag(self, *args: object) -> None:
+        self.diags.append(args)
+
+
+def test_a_negative_code_is_counted_diagnosed_and_takes_no_slot() -> None:
+    hist = _DiagRecordingHistory(history_length=2)
+    run(hist.err_s("e", errno=-3))
+    run(hist.wrn_s("w", wrnno=-1))
+    assert hist.err_count == 2
+    assert list(hist.history) == [0, 0]
+    assert [d[:3] for d in hist.diags if "is invalid!" in d] == [("PrintLog: Error number", -3, "is invalid!"), ("PrintLog: Error number", -1, "is invalid!")]
+
+
+def test_get_log_reports_an_empty_warning_slot_as_no_entry() -> None:
+    hist = PrintLogHistory(history_length=2)
+    hist.history.extend([0x80, 0x80 + 2])  # whitebox: the warning sentinel byte beside a real W2
+    log = run(hist.get_log("Sensor"))
+    assert log == {"Sensor": {"ErrCount": 0, "ErrNum": [0, 2], "ErrType": ["N", "W"]}}
+
+
 def test_printloghistory_forwards_name_to_the_base_class() -> None:
     hist = PrintLogHistory(history_length=2, name="SGP40")
     assert hist.name == "SGP40"
@@ -455,6 +481,23 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 1
     assert list(rebooted_store.history)[-1] == 3
+
+
+def test_a_restored_0x80_byte_reads_back_as_no_entry() -> None:
+    # A 0x80 byte in the stored ring (the warning sentinel, or a foreign image) is an empty slot, never ErrNum 128.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=3)
+    run(store.setup())
+    store.history.extend([0x80, 5, 0x80])
+    assert run(store._write()) is True
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip  # same chip image - models a reboot
+    run(manager2.setup())
+    rebooted = PrintLogHistoryStore(manager2, history_length=3)
+    run(rebooted.setup())
+    log = run(rebooted.get_log("Sensor"))
+    assert log == {"Sensor": {"ErrCount": 0, "ErrNum": [0, 5, 0], "ErrType": ["N", "E", "N"]}}
 
 
 def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:

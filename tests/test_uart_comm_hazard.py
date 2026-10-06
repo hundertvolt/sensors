@@ -4,6 +4,7 @@ and an address sweep are replaced by same-instance concurrency, both-ends-transm
 
 import asyncio
 
+from _error_codes import code
 from _uart_comm_harness import Pair, accept_set, echo_get, frames, run
 
 from asy_uart_comm import ROLE_RESPONDER, UART_Comm
@@ -538,22 +539,14 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
 # ---------------------------------------------------------------------------
 # Which error is reported, not merely that one was: every test above asserts ErrCount, none ErrNum,
 # so a fault reporting the wrong code would pass the whole suite. The catalog is the module's only
-# diagnostic surface (SPECIFICATION.md Part J, errno 10-34).
+# diagnostic surface (the global catalog's UART band, SPECIFICATION.md Part C.7.1).
 # ---------------------------------------------------------------------------
-
-_ERR_NO_ACK = 20
-_ERR_READ_TIMEOUT = 22
-_ERR_PAYLOAD_TOO_LARGE = 23
-_ERR_SIZE_MISMATCH = 25
-_ERR_REENTRANT = 27
-_ERR_PEER_INITIATED = 31
-_ERR_BAD_ARG = 34
 
 
 def errnos(comm: UART_Comm) -> "list[int]":
-    # Errors only. ErrNum holds errnos and wrnnos in one ring sharing the number space - wrnno 10 is a
-    # resync, errno 10 a bad payload_size - so ErrType tells them apart, and every fault also resyncs, so
-    # the newest entry is usually the resync warning. Indexed, not zip()ed: MicroPython has no strict=.
+    # Errors only. ErrNum holds errnos and wrnnos in one ring, so ErrType tells them apart, and every
+    # fault also resyncs, so the newest entry is usually the resync warning. Indexed, not zip()ed:
+    # MicroPython has no strict=.
     entry = run(comm.get_error_counter())[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
@@ -568,7 +561,7 @@ def _check_a_silent_peer_reports_no_ack_not_a_generic_failure(crc: "CrcMaker") -
     pair = hazard_pair(crc)
     pair.link.direction_from(pair.fake_b).silent = True
     assert run(pair.with_listener(pair.initiator.uart_set(0x02, b"x"), rounds=0), limit=10) is False
-    assert last_errno(pair.initiator) == _ERR_NO_ACK, f"a silent peer reported errno {last_errno(pair.initiator)}"
+    assert last_errno(pair.initiator) == code("E", "UART_NO_ACK"), f"a silent peer reported errno {last_errno(pair.initiator)}"
 
 
 def _check_a_listener_whose_frame_never_arrives_reports_a_read_timeout(crc: "CrcMaker") -> None:
@@ -585,7 +578,7 @@ def _check_a_listener_whose_frame_never_arrives_reports_a_read_timeout(crc: "Crc
         await asyncio.wait_for(listener, 5)
 
     run(drive(), limit=10)
-    assert last_errno(pair.responder) == _ERR_READ_TIMEOUT
+    assert last_errno(pair.responder) == code("E", "TIMEOUT")
 
 
 def _check_a_reentrant_call_reports_its_own_errno(crc: "CrcMaker") -> None:
@@ -601,13 +594,13 @@ def _check_a_reentrant_call_reports_its_own_errno(crc: "CrcMaker") -> None:
     run(scenario(), limit=20)
     # Read outside the coroutine: errnos() drives its own asyncio.run(), and nesting one inside a
     # running loop segfaults this interpreter rather than raising (CLAUDE.md's known segfault).
-    assert _ERR_REENTRANT in errnos(pair.initiator), f"got {errnos(pair.initiator)}"
+    assert code("E", "UART_REENTRANT") in errnos(pair.initiator), f"got {errnos(pair.initiator)}"
 
 
-def _check_a_bad_argument_reports_errno_34_before_anything_reaches_the_wire(crc: "CrcMaker") -> None:
+def _check_a_bad_argument_reports_bad_arg_before_anything_reaches_the_wire(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
     assert run(pair.initiator.uart_set(0x101, b"x"), limit=5) is False  # command id past one byte
-    assert last_errno(pair.initiator) == _ERR_BAD_ARG
+    assert last_errno(pair.initiator) == code("E", "BAD_ARG")
     assert pair.wire_from_initiator() == b"", "a refused argument still put bytes on the wire"
 
 
@@ -616,7 +609,7 @@ def _check_an_oversized_payload_reports_payload_too_large(crc: "CrcMaker") -> No
     # _CHUNKS_MAX is 255, so 254 data chunks is the ceiling; one byte past it must be refused.
     too_big = bytes(_PAYLOAD * 254 + 1)
     assert run(pair.initiator.uart_set(0x02, too_big), limit=20) is False
-    assert last_errno(pair.initiator) == _ERR_PAYLOAD_TOO_LARGE
+    assert last_errno(pair.initiator) == code("E", "UART_PAYLOAD_TOO_LARGE")
     assert pair.wire_from_initiator() == b"", "an oversized payload was partially sent before being refused"
 
 
@@ -626,7 +619,7 @@ def _check_a_peer_initiating_mid_transaction_reports_peer_initiated(crc: "CrcMak
     # because there is no arbitration and it is the peer's violation rather than link noise.
     pair.fake_a.feed_rx(raw_frame(cmd=_CMD_GET, size=1, chunks=2, cur=1, crc=crc))
     assert run(pair.initiator.uart_get(0x01), limit=10) is None
-    assert _ERR_PEER_INITIATED in errnos(pair.initiator), f"got {errnos(pair.initiator)}"
+    assert code("E", "UART_PEER_INITIATED") in errnos(pair.initiator), f"got {errnos(pair.initiator)}"
 
 
 def _check_a_size_mismatch_against_an_expected_size_reports_it_distinctly(crc: "CrcMaker") -> None:
@@ -635,7 +628,7 @@ def _check_a_size_mismatch_against_an_expected_size_reports_it_distinctly(crc: "
     # The answer is 2 bytes; the caller declared it expects 5. A wrong-length answer must be named,
     # not silently truncated or padded into something plausible.
     assert run(pair.with_listener(pair.initiator.uart_get(0x01, exp_size=5)), limit=10) is None
-    assert last_errno(pair.initiator) == _ERR_SIZE_MISMATCH
+    assert last_errno(pair.initiator) == code("E", "UART_SIZE_MISMATCH")
 
 
 # ---------------------------------------------------------------------------
@@ -787,18 +780,16 @@ def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc:
     from asy_uart_driver import UART as Driver
     too_small = Driver(0, tx_pin=0, rx_pin=1, rxbuf=32, txbuf=256, poll_wait_ms=1)
     comm = UART_Comm(too_small, ROLE_INITIATOR, payload_size=255, timeout=_TIMEOUT_MS, name="UART_TINY")
-    assert comm._init_errno != 0, "an rxbuf below one whole frame was accepted"
+    assert comm._init_errno == code("E", "UART_RXBUF"), "an rxbuf below one whole frame was accepted"
     assert run(comm.setup()) is False, "a refused construction still opened its readiness gate"
 
 
 
 # ---------------------------------------------------------------------------
 # The mismatched-peer signature: parameters are agreed out of band and never negotiated, so a pair
-# configured differently is diagnosed (errno 32), never recovered (SPECIFICATION.md Part J.6). The
-# signature the C-port reconciliation will most likely meet first.
+# configured differently is diagnosed (E89, link unintelligible), never recovered (SPECIFICATION.md
+# Part J.6). The signature the C-port reconciliation will most likely meet first.
 # ---------------------------------------------------------------------------
-
-_ERR_LINK_UNINTELLIGIBLE = 32
 
 
 def _mismatched_responder(pair: Pair, payload_size: int) -> UART_Comm:
@@ -851,13 +842,13 @@ def _check_a_peer_that_never_produces_a_valid_frame_is_diagnosed(crc: "CrcMaker"
                 listener.cancel()
 
     run(scenario(), limit=120)
-    # Pins the known blind spot, not the desired behaviour: errno 32 never fires here, because the
+    # Pins the known blind spot, not the desired behaviour: E89 never fires here, because the
     # failing read has already swallowed the bytes _resync() gates on, so the mismatch reports as a
-    # generic errno 22. Accepted rather than fixed (SPECIFICATION.md Part J.6); this inverts if it is.
+    # generic E22. Accepted rather than fixed (SPECIFICATION.md Part J.6); this inverts if it is.
     codes = errnos(responder)
-    assert _ERR_READ_TIMEOUT in codes, f"expected the generic timeout this currently reports: {codes}"
-    assert _ERR_LINK_UNINTELLIGIBLE not in codes, (
-        "errno 32 now fires against a mismatched peer - the defect is fixed, so invert this test "
+    assert code("E", "TIMEOUT") in codes, f"expected the generic timeout this currently reports: {codes}"
+    assert code("E", "UART_LINK_UNINTELLIGIBLE") not in codes, (
+        "E89 now fires against a mismatched peer - the defect is fixed, so invert this test "
         "to assert it is present and drop this comment"
     )
 

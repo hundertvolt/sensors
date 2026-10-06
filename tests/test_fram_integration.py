@@ -8,6 +8,7 @@ import asyncio
 import gc
 from collections import namedtuple
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
@@ -83,7 +84,7 @@ def test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager
     assert value_chunk.block_addr[0] == pr_full_end
 
     async def scenario() -> "tuple[ErrorLog, bool, bytearray | None]":
-        await reader.pr.err_s("integration test error", errno=1)
+        await reader.pr.err_s("integration test error", errno=code("E", "CALLBACK"))
         log = await reader.pr.get_log("sensor")
         buf = value_chunk.get_buffer()
         dbuf = buf.get_data_buf()
@@ -96,7 +97,7 @@ def test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager
         return log, write_ok, None if data is None else bytearray(data)
 
     log, write_ok, data = run(scenario())
-    assert log["sensor"]["ErrNum"][-1] == 1  # the error persisted through the PrintLogHistoryStore chunk
+    assert log["sensor"]["ErrNum"][-1] == code("E", "CALLBACK")  # the error persisted through the PrintLogHistoryStore chunk
     assert write_ok is True
     assert data == bytearray(b"12345678")  # the separate value chunk round-trips independently
 
@@ -119,13 +120,13 @@ def test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tra
     chip.drop_wren = True
 
     async def scenario() -> "tuple[int, ErrorLog]":
-        await reader.pr.err_s("boom", errno=5)
+        await reader.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
         log = await reader.pr.get_log("sensor")
         return reader.pr.err_count, log
 
     err_count, log = run(scenario())
     assert err_count == 1  # in-memory counting is unaffected by the underlying FRAM fault
-    assert log["sensor"]["ErrNum"][-1] == 5
+    assert log["sensor"]["ErrNum"][-1] == code("E", "UNEXPECTED")
 
 
 def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() -> None:
@@ -142,7 +143,7 @@ def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() ->
     assert reader.pr.fram is not None  # allocated fine, just backed by a chip that never came up
 
     async def scenario() -> int:
-        await reader.pr.err_s("boom", errno=7)
+        await reader.pr.err_s("boom", errno=code("E", "BAD_ARG"))
         return reader.pr.err_count
 
     assert run(scenario()) == 1  # still tracked in memory, no crash despite the dead chip
@@ -202,17 +203,17 @@ def test_two_sensorreaders_sharing_one_manager_keep_independent_error_histories(
     assert reader_a.pr.fram.block_addr != reader_b.pr.fram.block_addr
 
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
-        await reader_a.pr.err_s("err in a", errno=1)
-        await reader_b.pr.wrn_s("wrn in b", wrnno=2)
+        await reader_a.pr.err_s("err in a", errno=code("E", "CALLBACK"))
+        await reader_b.pr.wrn_s("wrn in b", wrnno=code("W", "STORED_DEFAULT"))
         log_a = await reader_a.pr.get_log("a")
         log_b = await reader_b.pr.get_log("b")
         return log_a, log_b
 
     log_a, log_b = run(scenario())
     assert log_a["a"]["ErrCount"] == 1
-    assert log_a["a"]["ErrNum"][-1] == 1
+    assert log_a["a"]["ErrNum"][-1] == code("E", "CALLBACK")
     assert log_b["b"]["ErrCount"] == 1
-    assert log_b["b"]["ErrNum"][-1] == 2  # reader_a's error never leaked into reader_b's history
+    assert log_b["b"]["ErrNum"][-1] == code("W", "STORED_DEFAULT")  # reader_a's error never leaked into reader_b's history
 
 
 def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -> None:
@@ -227,7 +228,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
     assert value_chunk1 is not None
 
     async def before_reboot() -> None:
-        await reader1.pr.err_s("persisted error", errno=3)
+        await reader1.pr.err_s("persisted error", errno=code("E", "CONTRACT"))
         buf = value_chunk1.get_buffer()
         dbuf = buf.get_data_buf()
         assert dbuf is not None
@@ -252,7 +253,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
         return log, None if data is None else bytearray(data)
 
     log, data = run(after_reboot())
-    assert log["x"]["ErrNum"][-1] == 3
+    assert log["x"]["ErrNum"][-1] == code("E", "CONTRACT")
     assert data == bytearray(b"deadbeef")
 
 
@@ -271,7 +272,7 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
     run(manager1.setup())
     reader1 = SensorReader(Meas(1.0, 1), 3, fram=manager1)
     run(reader1.pr.setup())
-    run(reader1.pr.err_s("before reboot", errno=9))
+    run(reader1.pr.err_s("before reboot", errno=code("E", "LOCK_TIMEOUT")))
     assert isinstance(reader1.pr, PrintLogHistoryStore)
     assert isinstance(reader1.pr.fram, AsyFramChunk)
     addr0, _addr1 = reader1.pr.fram.block_addr
@@ -289,7 +290,7 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
         return await reader2.pr.get_log("y")
 
     log = run(scenario())
-    assert log["y"]["ErrNum"][-1] == 9  # recovered from block 1 despite block 0's torn-write marker
+    assert log["y"]["ErrNum"][-1] == code("E", "LOCK_TIMEOUT")  # recovered from block 1 despite block 0's torn-write marker
 
 
 def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partially() -> None:
@@ -307,7 +308,7 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
     run(manager1.setup())
     reader1 = SensorReader(Meas(1.0, 1), 3, fram=manager1)
     run(reader1.pr.setup())
-    run(reader1.pr.err_s("before reboot", errno=9))
+    run(reader1.pr.err_s("before reboot", errno=code("E", "LOCK_TIMEOUT")))
     assert isinstance(reader1.pr, PrintLogHistoryStore)
     assert isinstance(reader1.pr.fram, AsyFramChunk)
     addr0, addr1 = reader1.pr.fram.block_addr
@@ -327,14 +328,14 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
 
     log = run(scenario())
     assert log["y"]["ErrCount"] == 0  # not a partially-restored count
-    assert set(log["y"]["ErrType"]) == {"N"}  # cleanly empty, never a torn remnant of errno 9
-    assert 9 not in log["y"]["ErrNum"]
+    assert set(log["y"]["ErrType"]) == {"N"}  # cleanly empty, never a torn remnant of the planted entry
+    assert code("E", "LOCK_TIMEOUT") not in log["y"]["ErrNum"]
 
     # And the chunk must still be usable afterwards - a wedged chunk that never takes a write again
     # would be a real defect even under the accepted-loss rule above.
-    run(reader2.pr.err_s("after reboot", errno=11))
+    run(reader2.pr.err_s("after reboot", errno=code("E", "READ")))
     log_after = run(scenario())
-    assert log_after["y"]["ErrNum"][-1] == 11
+    assert log_after["y"]["ErrNum"][-1] == code("E", "READ")
     assert log_after["y"]["ErrCount"] == 1
 
 
@@ -406,7 +407,7 @@ def test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works()
     manager.set_pause(value=True)
 
     async def scenario() -> int:
-        await reader.pr.err_s("paused write", errno=11)
+        await reader.pr.err_s("paused write", errno=code("E", "READ"))
         return reader.pr.err_count
 
     err_count = run(scenario())

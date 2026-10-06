@@ -562,8 +562,10 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - A `pkill -f`/`pgrep -f` wait loop matches its own command line; list by PID or wait on a log marker.
 - A running process keeps its loaded code, while a new invocation of a host tool re-reads it and its
   device script — don't edit either between chained runs.
-- A FRAM pair E31 (status byte not IDLE at a write) + W73 (block 1 invalid, restored from block 0)
-  is what a block write cut off by a reset leaves; the two-copy scheme recovers it.
+- A FRAM pair, one entry per layer that met the failure - the guard's `FRAM_STATUS_BYTE` (`E46`,
+  status byte not IDLE at a write), then the chunk's `FRAM_BLOCK_INVALID` (`W63`, block 1 invalid,
+  restored from block 0) - is what a block write cut off by a reset leaves; the two-copy scheme
+  recovers it.
 
 ## The ISL29125 mock-conformance probe
 
@@ -595,9 +597,9 @@ a live question:
   required property, SPECIFICATION.md Part A.4), so a device script's own first chunk *is*
   production's first chunk. Usually the next boot's `_read()` just fails on the size/CRC mismatch
   and the log honestly reads empty — but a script leaving a well-formed chunk behind fabricates a
-  plausible one. `fram_error_log_reset_race_seed_and_race.py` seeds three `errno=5` entries into
-  what is physically SystemService's chunk, which reads back as SYSTEM's own
-  `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
+  plausible one. `fram_error_log_reset_race_seed_and_race.py` seeds three entries into what is
+  physically SystemService's chunk: a seeded entry read back as a plausible SYSTEM task end (test
+  data, not firmware evidence; chased down as real on 2026-09-11). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
 - **The UART crossover coverage is 5 flash-tier tests and 3 bench-tier tests, all passing as part
@@ -625,8 +627,9 @@ a live question:
   script with UART1 deliberately moved to unjumpered pins, i.e. by simulating the exact wiring fault
   this tier exists to catch. Both scripts now poll `task.done()` in bounded steps, feeding as they
   go, and use `UART_Comm.clear()` - the module's own documented unstick - to free a parked listener.
-  The same run now reports `GET returned None ... errno 20` (initiator, no ACK) and `errno 22`
-  (responder, read timeout), which is the diagnosis a bench session actually needs.
+  The same run now reports `GET returned None ... ` with `UART_NO_ACK` (`errno` 81, initiator) and
+  `TIMEOUT` (`errno` 22, responder read timeout), which is the diagnosis a bench session actually
+  needs.
 - **Both crossover device scripts poll at two rates, matching `sensortask_dev.py`**: `POLL_WAIT_MS`
   (2 ms) for a transaction in flight, `POLL_IDLE_MS` (50 ms) for a listener waiting on a frame that
   may never come (SPECIFICATION.md Part F.5.9). A script that used one rate would not be exercising
@@ -1010,8 +1013,10 @@ exposed error/warning history (`PUT /status {"ResetErrors": true}`) before a fau
 confirm the *specific* expected `err_s()`/`wrn_s()` entry actually landed on the *right* module's
 log afterward (not just "the system didn't crash"), then reset again so a real bench rig's live
 error history is never left showing a test's own deliberately-provoked faults - `error_log_helpers.py`
-(new shared module) is the reusable primitive for this. `/status`'s own `errcount` shape
-(`asy_webserver_service.py`'s `_shape_errcount_entry()`: `{"counter": int, "history": [{"num": int,
+(new shared module) is the reusable primitive for this, and its re-exported `code("E"|"W", NAME)`
+(`tests/_error_codes.py`, read from `buildgen/error_catalog.json`) is how a test names the expected
+entry. `/status`'s own `errcount` shape (`asy_webserver_service.py`'s
+`_shape_errcount_entry()`: `{"counter": int, "history": [{"num": int,
 "type": "E"|"W"}, ...]}`) is *not* the same shape as `print_log.py`'s raw `get_log()` several
 `device_scripts/` files already consume directly - confirmed directly before writing the helper,
 not assumed from that other shape. Applied to every fault-injecting test in
@@ -1039,10 +1044,10 @@ this pass.
 `test_malformed_truncated_packet_is_silently_dropped` and
 `test_malformed_http_request_over_real_wireless_degrades_cleanly` now assert the module log stays
 empty too (`DNSSRV`/`WEBSERVER` respectively - both grounded directly against source: a
-garbage-but-present UDP datagram never reaches `captive_dns.py`'s own `wrnno=2` backoff branch,
-which only fires on a genuine `(None, None)` `recvfrom()` failure, and an unparseable HTTP request
-line fails entirely inside vendored `ext/microdot.py` before this project's own code is ever
-reached). **Real finding while doing this, since corrected (2026-09-08)**:
+garbage-but-present UDP datagram never reaches `captive_dns.py`'s own `DNS_BAD_REQUEST` (`W42`)
+backoff branch, which only fires on a genuine `(None, None)` `recvfrom()` failure, and an
+unparseable HTTP request line fails entirely inside vendored `ext/microdot.py` before this
+project's own code is ever reached). **Real finding while doing this, since corrected (2026-09-08)**:
 `test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment used to claim its flood
 "triggers the backoff path" - checked directly against `captive_dns.py`'s `run()` and that was not
 what happens: `AsyUDPSocket.recvfrom()` returns real `(data, addr)` for any received-but-garbage UDP
@@ -1348,7 +1353,7 @@ genuine, surprising miscoverage plus two closeable gaps:
 Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
 against real silicon when written.
 
-## Tenth pass - full test-suite sweep for tier/layering completeness and wrongly-trusted tests, beyond bus-hazard (project owner, 2026-09-15, BACKLOG.md HIGH PRIORITY item)
+## Tenth pass - full test-suite sweep for tier/layering completeness and wrongly-trusted tests, beyond bus-hazard (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in terms of order now, it's only highly important to be applied.')
 
 Direct follow-up to the Ninth pass's own SGP40 miscoverage: is that failure mode (a test whose
 name/pattern matches a hazard but whose real call chain doesn't reach it) present anywhere else in

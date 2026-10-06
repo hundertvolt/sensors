@@ -4,9 +4,28 @@ provoked fault produced the expected error/warning entry, then reset again. Shap
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
 import http_client
+
+# The one catalog lookup every tier shares, re-exported for the bench modules. The repo root is
+# appended, so tests/ resolves as this repository's namespace package and no tests/ fake shadows a host module.
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from tests._error_codes import code
+
+__all__ = [
+    "assert_module_error_log_clean",
+    "assert_module_error_log_contains",
+    "assert_module_error_log_empty",
+    "assert_module_error_log_nonempty",
+    "assert_no_module_logged_a_new_error",
+    "assert_no_task_ended",
+    "code",
+    "get_errcount",
+    "reset_all_error_logs",
+]
 
 # Above the server's own 15.0s outer_cap_s, not below it: a legitimate sweep can never exceed the
 # cap, and the 10.0s this used to be made a slow-but-legitimate reset read as a network fault. The

@@ -1254,7 +1254,7 @@ def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
 
 def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path: Path, src_dir: Path) -> None:
     # 2 x 2 + poll_idle_ms + 21ms GC pause against UartLinkExerciser's 1000ms timeout: 975 is the
-    # last idle poll that fits, 976 the first UART_Comm.setup() refuses with errno 11.
+    # last idle poll that fits, 976 the first UART_Comm.setup() refuses with UART_TIMEOUT_PARAM.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart1"]["poll_idle_ms"] = 975
     _build(tmp_path, src_dir, doc)
@@ -1265,7 +1265,7 @@ def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path:
 
 
 def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # 115200 baud over 2 + 5ms = 80 bytes per poll, above the 53-byte frame: 80 fits, 79 is errno 15.
+    # 115200 baud over 2 + 5ms = 80 bytes per poll, above the 53-byte frame: 80 fits, 79 is UART_RXBUF.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart0"]["rxbuf"] = 80
     _build(tmp_path, src_dir, doc)

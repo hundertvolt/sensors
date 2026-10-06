@@ -167,8 +167,10 @@ features as today's deployed units, not a feature change.
   acquires the driver lock and the bus together for one whole block operation, its command bodies
   are plain functions over `SPIDevice.session_begin()`/`session_end()` with a blocking 2 us CS
   settle, and the owning coroutine yields between commands and reports the status they return
-  (`get_values_sync()`/`set_values_sync()` plus `report_get_values()`/`report_set_values()`). Every
-  `errno`/`wrnno` keeps its number and meaning; only the logging site moved up. The async
+  (`get_values_sync()`/`set_values_sync()` plus `report_get_values()`/`report_set_values()`). Its
+  codes are the error catalog's, and every layer that meets a chunk failure — the driver's guard, the
+  chunk's status or payload check, the block write or read — persists its own entry, so the history
+  shows how far the fault reached (C.7; owner, 2026-10-02). The async
   `__aenter__`/`write`/`readinto`/`write_readinto` forms stay for any other bus user.
   `src/`'s promoted versions: each chunk stores two copies plus a
   busy/idle status byte guarding reads and writes (reads too: owner-confirmed, 2026-07-18,
@@ -179,9 +181,9 @@ features as today's deployed units, not a feature change.
   intended and worth stating outright, since it looks like a bug from the outside: `_read_chunk()`
   marks a block busy before reading and only restores idle on the way out, so an interruption in
   between leaves it marked, and an interruption hitting *both* copies makes every later read fail
-  the status check (errno 31) even once the bus is healthy again — the payload bytes may still read
-  back intact, but an interrupted restore means they cannot be trusted, so refusing them is
-  correct. Only a write clears it. Pinned down by `tests/test_asy_fram_manager.py`'s
+  the status check (errno 46, `FRAM_STATUS_BYTE`) even once the bus is healthy again — the payload
+  bytes may still read back intact, but an interrupted restore means they cannot be trusted, so
+  refusing them is correct. Only a write clears it. Pinned down by `tests/test_asy_fram_manager.py`'s
   `test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten`; don't "fix" it
   (owner, 2026-09-10, `2e523d2`: the owner confirmed the design intent).
   **What this costs at the error-log layer, and the decision on it** (owner, 2026-09-11; confirmed
@@ -204,9 +206,9 @@ features as today's deployed units, not a feature change.
   *access* gate, not data loss — the stored bytes are untouched and come back intact once
   protection is cleared. Two properties separate it from the pause gate, both asserted: it fails
   *at* the chip (the status byte is clocked off the bus first, then the marker write is refused —
-  errno 32 per block, then warning 72) where `set_pause()` short-circuits before SPI runs; and
-  `override_pause=True` bypasses only the manager's pause flag, never the chip's protection.
-  Asserted at mock, twin and flash tiers. One claim only real silicon can settle, and the flash
+  the chunk layer's status-byte write entry per block, then the invalid-block warning) where
+  `set_pause()` short-circuits before SPI runs; and `override_pause=True` bypasses only the
+  manager's pause flag, never the chip's protection. Asserted at mock, twin and flash tiers. One claim only real silicon can settle, and the flash
   tier does: every tier's write check stops at the driver's own guard, so
   `device_scripts/fram_write_protect_roundtrip.py` desyncs the cached `_wp` from the
   still-protected chip and sends a genuine WREN+WRITE — the bytes never land, so BP0|BP1 itself
@@ -1762,8 +1764,8 @@ independently including unrecognized keys; a whole-operation validation failure 
 a later flash-write failure - see below) marks every requested key `"Failed"`. **Since WP5**
 (SPECIFICATION.md Part F.2), the actual flash write is deferred to an independent task, so
 `"persisted"` here really means "validated and staged" - a genuine disk write failure surfaces only
-later, as a logged `errno` on `cfgmgr.pr`, never back through this return value or the caller's own
-response; `_set_dict_cfg()` therefore has no way to observe it and none is expected to. **A push
+later, as a logged errno 33 (`CFG_FILE_WRITE`) on `cfgmgr.pr`, never back through this return
+value or the caller's own response; `_set_dict_cfg()` therefore has no way to observe it and none is expected to. **A push
 callback always receives the coerced, persisted value, not the caller's
 raw one** — a type-checking callback would otherwise wrongly reject a coercible value like `45.0`
 for an int field. `self._push_callbacks` is a plain `{field: async_fn}` dict populated per subclass
@@ -1888,8 +1890,11 @@ info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything 
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site
 (e.g. a `Timer.init()` failure handler) or a routine observation that shouldn't count at all.
 
-`errno=`/`wrnno=` are small positive ints, per driver, grouped by the raising method.
-**`base_classes.py` reserves `errno=1`-`9`/`wrnno=1`-`2`**, inherited unmodified — a driver's own
+`errno=`/`wrnno=` are small positive ints from the one global error catalog
+(`buildgen/error_catalog.json`, C.7.1), declared per module as `_ERR_<NAME>`/`_WRN_<NAME>`
+`const()`s and passed by keyword; a code means the same thing on every logger. A module not yet
+moved onto the catalog numbers per driver, grouped by the raising method:
+**`base_classes.py` owns `errno=1`-`9`/`wrnno=1`-`2`**, inherited unmodified — a driver's own
 numbering starts at 10+ (why `errno=10` = "init failed" recurs everywhere). **Three fixed common
 slots after the base range, used only if applicable**: `10` = init failed (universal); `11` = the
 driver's primary/periodic read failed; `12` = a persisted-config read at init failed (BMP3XX/SGP40
@@ -1918,18 +1923,16 @@ the failure — `AsyUDPSocket.disconnect()`, `WebserverService._close_writer()`,
 
 ### C.7.1 Running `errno`/`wrnno` table
 
-Real numbers per module — each module's history stream is independent, so overlap *between* rows
-is expected; only overlap *within* one row matters. **The base range (`errno` 1-9/`wrnno` 1-2,
-reserved to `base_classes.py`) and each driver's own 10+ numbering are a convention this table
-records, not one the code itself enforces** — nothing raises if a new module picks a colliding
-number or starts below 10; get it right by checking this table before assigning a new one (WP8),
-the same "check the shared catalog first" discipline Part G.1 states generally. **Seven modules
-still number inside the reserved range** (`config_manager.py`, `system_service.py`,
-`asy_webserver_service.py`, `captive_dns.py`, `asy_wifi_service.py`, `asy_ntp_client.py`, and
-`asy_notification_service.py`'s `wrnno`). No clash is live, since none shares a logger with a
-`SensorReader`. **Each is renumbered to 10+ on its next substantial change, not in one pass**
-(owner decision, 2026-09-24): a code is a persisted value in FRAM histories, so a renumbering
-rides a change that already needs deploying, updating this table and its tests with it.
+**One global catalog numbers every code** (owner, 2026-09-25, paraphrase: harmonize `errno` and
+`wrnno` globally): `buildgen/error_catalog.json` gives each code its owner, name and meaning, and a
+number means the same thing on every logger — base 1-9/1-2, a shared band for conditions any module
+meets (10-29/10-19), then one band per owner. Each module declares the codes it logs as
+`_ERR_<NAME>`/`_WRN_<NAME>` `const()`s and passes them by keyword. The rows below for
+`base_classes.py`, `config_manager.py`, the FRAM modules, `system_service.py`, `api_response.py`,
+`asy_webserver_service.py`, `captive_dns.py`, `asy_scd30_driver.py` and `asy_uart_comm.py` carry
+catalog numbers; the other rows still carry
+their module's own numbers until that module moves onto the catalog, so overlap *between* those rows
+is expected and only overlap *within* one row matters.
 
 **The repeat rule.** A history is a bounded ring (ten slots per logger), so a condition that warns
 on every attempt empties it by itself and evicts the entry naming what preceded the fault. Three
@@ -1947,24 +1950,24 @@ while the ring still says what else happened.
 
 | Module | `errno` | `wrnno` | Notes |
 |---|---|---|---|
-| `base_classes.py` | 1-9 | 1-2 | Reserved base range — every driver starts at 10+. |
-| `config_manager.py` (`CFGMGR_<name>`) | 1-15 | 1-6 | Sequential in source order. 4=`setup()`'s create/repair write failed, 14=the deferred flush's own write failure (`_flush_staged()`, WP5) - both run on unpersisted, validated values and are never retried (C.7.3); 15=a validation-phase `MemoryError`/`AttributeError` in `write_config()` itself, split off 14 once the actual file write moved into the separate deferred method. |
-| `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-100 | 60-84 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). **WP8**: 99=`get_values()`'s own "access not locked" internal-contract violation, 100=`set_values()`'s (each its own number per the "grouped by the raising method" convention, matching the sibling not-initialized pair); `wrnno` 84=`_write()`'s "currently write protected" refusal — a benign, expected outcome (matches `AsyFramManager`'s own "communication paused" `wrn_s` precedent, `wrnno` 60/70/80), so `wrnno` rather than `errno` unlike the two lock violations. **Re-traced after the 2026-09-18 synchronous restructure and every number and meaning is unchanged** (manager `errno` 17-88 + `wrnno` 80, driver `errno` 89-100 + `wrnno` 81-84, checked against the source rather than assumed). What moved is the raising site, which this column's "grouped by the raising method" convention has to be read against: 90/91/99 and 92/93/84/82/81 are now raised by `report_get_values()`/`report_set_values()`, the reporters that own `get_values()`'/`set_values()`' messages, because a synchronous body holding the bus lock must not await a persisted log entry. The chunk's own 60 and 70-73 follow the repeat rule above, per distinct code per degraded episode, which a clean read or write ends — a dead cell or a held mempause warns on every single operation otherwise, and the chunk logs into its OWNER's FRAM-backed history, not the manager's. |
+| `base_classes.py` | 1-9 | 1-2 | The catalog's base codes, inherited by every `SensorReader`. |
+| `config_manager.py` (`CFGMGR_<name>`) | 20, 21, 24, 30-34 | 10, 20-24 | 30=the config path is a directory, 31=the schema has no defaults, 32=a schema default is invalid, 33=writing the config file failed (`setup()`'s create/repair write or the deferred flush, `_flush_staged()`) - both run on unpersisted, validated values and are never retried (C.7.3), 34=the manager is not valid (a read or write refused); shared 20=an allocation failure validating a `write_config()`, 21=a refused value or argument (a non-dict `data` included), 24=an internal contract violation. `wrnno` 20/21/22=the file is not a JSON object / not valid JSON / missing or unreadable, 23=unknown keys removed, 24=the schema stores no values; shared 10=a stored value is unusable, its default is used. |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10, 14, 16, 18, 19, 21, 23, 24, 45-51, chunk layer | 25-28, chunk layer | Driver: 18=not initialised, 19=`verify_present()`'s lock timeout, 21=an address range refused, 24=access not locked (an internal-contract violation, so an `errno`), 45=write-protection readback mismatch; `wrnno` 26=the write-enable latch did not set, 27=it did not clear after the WRDI retry (advisory: the operation completed), 28=a write refused as write-protected - a benign, expected refusal, like the manager's paused one. The synchronous bodies decide the status and `report_get_values()`/`report_set_values()` own every message, because a body holding the bus lock must not await a persisted log entry. Manager: 10=chip setup failed, 14=the NTP sync callback raised, 16=computing a timestamp failed, 21=a refused size, 23=an unexpected exception in a block operation, 46=a status byte neither idle nor uninitialised, 47=a block's two status bytes disagree, 48=a CRC could not be computed, 49=stored data failed its CRC, 50=a write's verification read back different data, 51=both copies valid but different; `wrnno` 25=storage paused, operation refused. The chunk layer also keeps its own entry for a failure an inner layer already persisted - a block write, a status-byte read or write, the payload write, a read, a clear's write and the clear itself - and warns on an invalid block (`FRAM_BLOCK_WRITE` … `FRAM_CLEAR`, `FRAM_BLOCK_INVALID`; numbers in the catalog). The paused and invalid-block warnings follow the repeat rule above, per distinct code per degraded episode, which a clean read or write ends - a dead cell or a held mempause warns on every single operation otherwise, and the chunk logs into its OWNER's FRAM-backed history, not the manager's. |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
-| `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
+| `asy_scd30_driver.py` (`SCD30`) | 10-13 | — | 10=init, 11=periodic read, 12=a chip getter failed (`CHIP_GET`, one per forwarded field), 13=a chip setter failed (`CHIP_SET`, each forwarded field and stop-continuous-measurement). |
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 35=paired gain-ratio calibration leg (`_read_on()`), 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/M.1.1). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale; 13=a backup written without a timestamp (NTP absent past `SGPWaitTimeNTP`) follows the repeat rule above, one slot per outage, which a timestamped backup ends — one slot per 1-minute backup filled the ring during a single hotspot episode (bench, 2026-09-25). A missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
 | `asy_wifi_service.py` (`WIFI`) | 11-20 | 1-8 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout, 20=a PUT's radio value refused over its byte bound (C.7.4); `wrnno` 1-3=missing-config, 4-7=WLAN status (4 is cyw43-driver's catch-all for any failed auth or handshake, an AP dropping mid-association included - not proof of a wrong password, BACKLOG item 29), 8=a stored radio value over its byte bound, run on its default (C.7.4) — 4-8 follow the repeat rule above, one slot per distinct verdict per connect episode, which a successful connection ends. **19 is retired, not reused**: it was the hotspot timer's one-shot self-heal backstop, gone since that timer is `PERIODIC` (C.9). |
 | `asy_ntp_client.py` (`NTP`) | 11-21 | 1-3 | 11=missing-config, 12=DNS resolution, 13=invalid address, 14=implausible time, 15=malformed reply, 16/17=retry-timer arm/max retries, 18=interval-fallback, 19=time-calc, 21=no reply within the fetch timeout (a silent timeout used to persist nothing). **20 is retired, not reused**: it was the give-up that let the supervisor restart the task (C.7.2). 11-15, 21 and `wrnno` 2 follow the repeat rule above per distinct code; a successful sync ends the episode. `wrnno` 1/3=callback failures, 2=unsynchronized/Kiss-o'-Death reply. |
-| `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
-| `system_service.py` (`SYSTEM`) | 1-7 | dynamic (`n+1`) | 4=task-error-budget-exceeded, 5=`_log_dead_task()` recovering a real raised exception, 6=recovering a `CancelledError`-ended task (previously invisible, now persists). **WP8**: 7=`_apply_level()`'s own caller-supplied level-setter callback failing — the one caller-supplied-callback call site in this codebase that hadn't already persisted via `err_s()`. |
+| `captive_dns.py` (`DNSSRV`) | 21, 23 | 41-43 | Shared 21=invalid server_ip/netmask (`BAD_ARG`), 23=a loop or disconnect-cleanup exception (`UNEXPECTED`); `wrnno` 41=dropped reply, 42=invalid recvfrom, 43=socket teardown incomplete. |
+| `system_service.py` (`SYSTEM`) | 14, 16, 40-43 | dynamic (`n+1`) | 40=a task starter raised, 41=the task-error budget is spent (reboot), 42=`_log_dead_task()` recovering a real raised exception, 43=recovering a `CancelledError`-ended task; shared 14=a caller-supplied callback raised (the NTP sync callback, `_apply_level()`'s level setter), 16=computing the boot signature's timestamp failed. |
 | `asy_notification_service.py` (`NOTIFY`) | 10-13 | 1-5 | 10=value-callback, 11=threshold-config-read, 12=`local_time_callback`, 13=`request_signal_cb`. Numbered from 10, clear of base's reserved 1/2. `wrnno` 5=own-config read failed, one slot per run of failed reads (the repeat rule), which a good read ends. |
-| `api_response.py`'s `handle_set_cmd()` | 99 | — | One defense-in-depth catch (a caller `post_fct`/`post_asy_fct` raising) — fixed at 99 since it runs against any registered module's `.pr`. |
-| `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
+| `api_response.py`'s `handle_set_cmd()` | 14 | — | One defense-in-depth catch (a caller `post_fct`/`post_asy_fct` raising), logged as the shared `CALLBACK` on whichever module's `.pr` it runs against - catalog numbers are valid on any logger. |
+| `asy_webserver_service.py` (`WEBSERVER`) | 14, 23 | 48-53 | Shared 14=a callback failed (`system_cmd`, `notification_led`, `notification_pause`, or one `/status` streamed-fragment source), 23=an unexpected exception in dispatch or reaching `errorhandler(Exception)`. `wrnno` 48-53=connection-lifecycle reclaim reasons: 48=the peer closed early, 49=one stream call exceeded `per_call_timeout_s`, 50=the request exceeded `outer_cap_s`, 51=a socket error, 52=closing the writer raised, 53=waiting for it to close failed. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner (owner, 2026-08-20, `c80d293`: no logging in these layers). |
-| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **`wrnno` 11 outranks 10 for the episode's single slot** (owner, 2026-09-18) — `_resync()` drains first and then persists 11 when the drain hit its bound, 10 otherwise, so "the peer never stopped sending", the one signal separating a babbling or misconfigured peer from ordinary line noise, is what a field log actually carries. The budget is unchanged at one persisted warning per episode. The same change closed the inverse leak: `setup()`'s boot drain is deliberately not a fault and not counted, yet it used to persist 11 on every boot of a babbling link, because the bound logged itself rather than flagging the caller. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
-| `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 14, 18, 20-23, 75-90 | 54-56, resync, fault cleared | 75-78=construction refusals (`payload_size`, `timeout`, bus handle, `rxbuf`), 79=role refusal, 80=frame validation, 81=missing/mismatched ACK, 82=write, 83=payload too large, 84=size mismatch, 85=re-entrant call, 86=wrong frame kind, 87=GET id mismatch, 88=peer initiated simultaneously, 89=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 90=streamed chunk short-filled; shared 14=callback, 18=not-ready gate, 20=an allocation (the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead, or a destination), 21=a refused argument (role, missing callback, a command id outside a byte, a non-integer or negative size, a non-buffer payload or destination), 22=read timeout, 23=listen loop. `wrnno` 54=drain bound reached, 55=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 56=a callback declined a command id; the resync and fault-cleared warnings keep their module numbers until they leave the persisted set. **Exactly one of the resync, drain-bound and declined-command warnings is persisted per fault episode, and the declined-command one at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and the declined-command warning escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **The drain-bound warning (54) outranks the resync warning for the episode's single slot** (owner, 2026-09-18) — `_resync()` drains first and then persists 54 when the drain hit its bound, the resync warning otherwise, so "the peer never stopped sending", the one signal separating a babbling or misconfigured peer from ordinary line noise, is what a field log actually carries. The budget is unchanged at one persisted warning per episode. The same change closed the inverse leak: `setup()`'s boot drain is deliberately not a fault and not counted, yet it used to persist the drain-bound warning on every boot of a babbling link, because the bound logged itself rather than flagging the caller. |
+| `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 55. |
 
 ### C.7.2 Which failures may end a task
 
@@ -1997,16 +2000,16 @@ wiring/construction config that doesn't match the board, is a massive config fai
 defect that no software handles cleanly — so today's init-failure restart (and the reboot it leads
 to) is not a C.7.2 case, and neither is a UART link whose `setup()` refused its construction.
 The two refusals a device TOML can actually cause — a reply timeout below 2 × `poll_wait_ms` +
-`poll_idle_ms` + the GC pause (errno 11), an `rxbuf` below one frame or one poll's arrivals
-(errno 15) — are build errors instead (`buildgen/validate.py`'s `_check_uart_link_buses()`, reading
+`poll_idle_ms` + the GC pause (`UART_TIMEOUT_PARAM`), an `rxbuf` below one frame or one poll's
+arrivals (`UART_RXBUF`) — are build errors instead (`buildgen/validate.py`'s `_check_uart_link_buses()`, reading
 the thresholds out of `asy_uart_comm.py`); every other refusal needs code the generator never emits.
 
 ### C.7.3 A failed config write costs persistence, never the config
 
 `ConfigManager` (`config_manager.py`) validates before it writes, so a write that fails loses only
 the copy on flash: the validated values stay in effect. `setup()` runs on the file's good keys and
-the defaults for the rest when its create-or-repair write fails (errno 4), and a deferred PUT flush
-that fails (errno 14) keeps the new value, which its push already delivered to the module. Before
+the defaults for the rest when its create-or-repair write fails (`CFG_FILE_WRITE`), and a deferred
+PUT flush that fails (`CFG_FILE_WRITE` too) keeps the new value, which its push already delivered to the module. Before
 this, a failed setup write left the manager invalid: every reader's `_init_<sensor>()` then logged
 errno 12 and ended its task, the supervisor rebooted the device, and every boot repeated the write —
 a reboot loop that also wrote the flash on each pass (owner, 2026-09-24).
@@ -3370,8 +3373,8 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   heapsize=1200k`, 42.8 % full against the board's 44 %) is a placement question, not a cost.
   Ballast guards use the largest free run, never `gc.mem_free()`. (§9 lists the figures these rules
   retired.)
-- **`ErrNum` mixes errnos and wrnnos in one ring sharing a number space** (wrnno 10 = resync,
-  errno 10 = bad `payload_size`), and every fault also resyncs, so the newest entry is almost always
+- **`ErrNum` mixes errnos and wrnnos in one ring sharing a number space** (the resync warning
+  beside every fault's `errno`), and every fault also resyncs, so the newest entry is almost always
   the resync warning. Filter on `ErrType == "E"`.
 
 **The trap under the traps: a guard whose oracle cannot see the regression it guards.** Verified by
@@ -3785,8 +3788,8 @@ be strictly worse.
 **It does not reach the reader task, though**, and an earlier draft of this section that said it
 did was wrong. Driving the fault through the real stack (`tests/test_asy_fram_manager.py`'s
 live-path tests, mirrored in the twin tier) shows `_read_chunk()`'s blanket `except Exception`
-catching it, logging errno 47, and returning a clean failure — after which `_read()` reads block 1
-instead, so **a single transient overrun costs nothing at all**: the caller gets its data and the
+catching it, logging errno 23 (`UNEXPECTED`), and returning a clean failure — after which `_read()`
+reads block 1 instead, so **a single transient overrun costs nothing at all**: the caller gets its data and the
 repair write restores block 0. Only an overrun hitting both copies degrades the read to `None`.
 So no retry is added (owner decision, 2026-09-24): the dual-copy layer already covers the read path.
 
@@ -4751,9 +4754,11 @@ open, and every host-side instrument that holds connections stays inside both** 
 fails silently, not loudly.
 
 - A connection that is admitted and then says nothing is closed after `per_call_timeout_s` (5.0),
-  answering `HTTP/1.0 400 N/A`, not a bare FIN. Measured: **5.12 / 5.14 / 5.16 s**.
+  answering `HTTP/1.0 400 N/A`, not a bare FIN, and logs `wrnno` 49 (`HTTP_CALL_TIMEOUT`).
+  Measured: **5.12 / 5.14 / 5.16 s**.
 - A connection that keeps dripping bytes survives the per-call timeout but not the `outer_cap_s`
-  (15.0) around the whole request. Measured with a header line every 2 s: **15.08 / 15.13 s**.
+  (15.0) around the whole request, and logs `wrnno` 50 (`HTTP_REQUEST_CAP`). Measured with a header
+  line every 2 s: **15.08 / 15.13 s**.
   **No connection can be held longer than ~15 s on this firmware**, whatever the client does.
 - A slot is released in `_serve()`'s `finally`, after the writer close has been awaited, so it
   outlives the client's own close — and released even when that close's own warning raises
@@ -5430,7 +5435,7 @@ Opcode and payload stay separate fields (an id in chunk 1, data from chunk 2), a
 left implicit — that only one side ever initiates — is now the role gate. Two conformance tests in
 `tests/test_asy_uart_comm.py` pin it, each verified to fail when the capability is removed; they
 demonstrate rather than constrain, since any API able to express the flow passes them.
-**One deployed value has to change in a faithful port**: `rxbuf` 32 is refused (`errno` 15) against
+**One deployed value has to change in a faithful port**: `rxbuf` 32 is refused (`errno` 78) against
 this module's 80-byte per-poll-interval `rxbuf` floor (J.6) at 115200 baud — loud at construction
 rather than an intermittent lost tail, and 128 bytes of RX ring costs nothing. Two further
 spellings the board's own exploratory script used still work unchanged: a GET declaring
@@ -5598,14 +5603,14 @@ probe, so a healthy link pays nothing for it; once a byte does turn up, every la
 full quiet window exactly as a resync does. **Hitting the bound is reported by flagging the caller,
 never by logging in place**: the boot drain is not a fault and so persists nothing, while a resync
 persists the more specific of its two warnings, once the drain has decided which case this is
-(C.7.1's `wrnno` 10/11 note).
+(C.7.1's drain-bound note, `wrnno` 54).
 
 ## J.6 Deployment parameters
 
 `payload_size` and `timeout` are **agreed out of band and must match on both ends** — nothing is
 negotiated, now or at the C reconciliation (owner decision, 2026-09-11). A mismatched pair is
 therefore *diagnosed*, never recovered: bytes keep arriving while not one frame ever validates, and
-the module logs that signature (`errno` 32) naming all three candidates (CRC algorithm, baud rate,
+the module logs that signature (`errno` 89) naming all three candidates (CRC algorithm, baud rate,
 `payload_size`) rather than guessing one.
 
 **That diagnostic has a known blind spot, accepted rather than fixed** (owner decision,
@@ -5613,7 +5618,7 @@ the module logs that signature (`errno` 32) naming all three candidates (CRC alg
 only what `_drain()` finds *after* a failure — and `readinto_until_complete()` has already consumed
 the short frame's bytes while waiting for a full-length one, discarding them on timeout. Measured
 against a genuinely `payload_size`-mismatched peer: `drained == 0` at every one of five resyncs, so
-`errno` 32 never fires. **What errno 32 does still catch is unparseable bytes arriving while this
+`errno` 89 never fires. **What errno 89 does still catch is unparseable bytes arriving while this
 side is not mid-read** — a peer spewing continuously onto an idle line, which is the shape a bad
 baud rate often takes. **What it misses is a speak-when-spoken-to peer**, where every stray byte is
 swallowed by the failing read: that presents as repeated `errno` 22 (read timeout) plus `wrnno` 10
@@ -5778,8 +5783,8 @@ desync, and a link-state snapshot would be a new top-level feature the refactor 
 `asy_fram_manager.py` is its closest structural match. `_error_check()` is therefore neither
 reimplemented (G.1) nor needed — its give-up exists so the supervisor can re-run an
 `_init_<sensor>()` and re-initialize hardware, and this module owns none. C.9's capped exponential
-backoff is the primitive that fits a link fault. `errno`/`wrnno` still align to `base_classes.py`'s
-reservation regardless of the base class (C.7.1).
+backoff is the primitive that fits a link fault. Its codes are the error catalog's, like every
+module's (C.7.1).
 
 **`None` means failure; an empty result means a genuinely empty payload.** The two must never
 collapse, at any of the four result shapes: `uart_get()` returns `None` or a right-sized buffer that
@@ -6165,7 +6170,7 @@ error ever can circumvent it').
   `AsyConnTime(hostname=..., hotspot_password=...)`, which substitutes them into the two
   `ConfigManager`-persisted fields' schemas (`_with_default()`), so a rename through the web UI
   still wins on every later boot. Confirmed on silicon (2026-09-25): with `Hostname` removed from
-  `config_WIFI.cfg`, the next boot served `dev.toml`'s default (`CFGMGR_WIFI` `W4`) and wrote it
+  `config_WIFI.cfg`, the next boot served `dev.toml`'s default (`CFGMGR_WIFI` `W10`, `STORED_DEFAULT`) and wrote it
   back once. Until 2026-09-18 nothing passed them at all and every device booted as the shared
   `"SensorNode"` whatever its TOML said. `[device].hostname` is capped at `network.hostname()`'s own
   32 characters at build time, and `[device].hotspot_password` is held to WPA2-PSK's own 8-63,
@@ -6394,6 +6399,8 @@ module set. There is no separate `boot_entry/` directory: the generic boot entry
 - **Notification signal catalog**: each signal's threshold default/range and flash colour is a
   fixed, generator-owned catalog (`buildgen.codegen._KNOWN_SIGNALS`). Every real device uses
   identical values, and the schema has no per-device override for them today.
+- **Error catalog**: `buildgen/error_catalog.json`, host-side data never frozen into the firmware -
+  every code's number, owner, name and meaning (C.7.1).
 - **Website `definitions.json`**: `buildgen.definitions.generate_definitions(model, src_dir)` takes
   an already-validated `DeviceModel`, scans each relevant instance's and mandatory-infra file's
   `# @web`/`# @web-group` tags (`buildgen/web_tag.py`) and assembles the full

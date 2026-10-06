@@ -253,7 +253,7 @@ def _uart_bus_value(src_dir: Path, table: TomlDoc, name: str) -> int:
 
 
 def _check_uart_link_buses(model: DeviceModel, src_dir: Path) -> None:
-    """UART_Comm.setup() refuses a link whose bus cannot carry its protocol (errno 11/15) - a config
+    """UART_Comm.setup() refuses a link whose bus cannot carry its protocol (UART_TIMEOUT_PARAM, UART_RXBUF) - a config
     mismatch out of runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24).
     Mirrors _min_timeout()/_min_rxbuf(); generated code wires no CRC or framing, so both add 0."""
     links = [spec for spec in model.instances.values() if spec.driver == "uart_link"]

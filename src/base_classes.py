@@ -8,6 +8,8 @@ Every method returns a well-defined value, never raises.
 
 import asyncio
 
+from micropython import const
+
 from config_manager import ConfigManager, check_cfg_get_default, instance_name, schema_dict, schema_names, type_or_range_error
 from print_log import PrintLogHistory, make_logger
 
@@ -26,6 +28,19 @@ if TYPE_CHECKING:
     from config_manager import ConfigSchema, WriteValidity
 
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
+
+# Codes from the global catalog (buildgen/error_catalog.json): the base band every SensorReader inherits.
+_ERR_STREAK = const(1)
+_ERR_GIVE_UP = const(2)
+_ERR_CFG_GET_RAISED = const(3)
+_ERR_CFG_CALLBACK_RAISED = const(4)
+_ERR_CFG_SET_RAISED = const(5)
+_ERR_PUSH_RAISED = const(6)
+_ERR_CFG_SNAPSHOT_RAISED = const(7)
+_ERR_RECOVERY_READ_RAISED = const(8)
+_ERR_RECOVERY_WRITE_RAISED = const(9)
+_WRN_CALLBACK_KEYS = const(1)
+_WRN_CFG_KEYS = const(2)
 
 
 class Lockable:
@@ -195,19 +210,19 @@ class SensorReader:
             sensor_conf = await self._get_mgr_cfg(cfg)
             if sensor_conf is not None:
                 if not all(k in ret[name] for k in sensor_conf):
-                    await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=2)
+                    await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
                 ret[name].update(sensor_conf)
         except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
-            await self.pr.err_s("Error updating config dict:", e, errno=3)
+            await self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
 
         if callback is not None:
             try:
                 sensor_callback = await callback()
                 if not all(k in ret[name] for k in sensor_callback):
-                    await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=1)
+                    await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
                 ret[name].update(sensor_callback)
             except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                await self.pr.err_s("Error reading config from sensor:", e, errno=4)
+                await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
 
         return ret
 
@@ -220,9 +235,9 @@ class SensorReader:
         # _error_check() bullet for the full contract.
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
-            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=1)
+            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
             if self._err_cnt_internal > self.max_module_error:
-                await self.pr.err_s("Maximum error count reached!", errno=2)
+                await self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
                 return False  # breaking the loop triggers a task reset
         elif self._err_cnt_internal > 0:
             self._err_cnt_internal -= 1
@@ -304,12 +319,12 @@ class SensorReaderConfig(SensorReader):
     ) -> "WriteValidity":
         # Setter mirror of _get_dict_cfg (Part C.5.2): persist first, then push only the changed
         # fields. Pre-write values are snapshotted for _recover_failed_push, filtered to persisted
-        # keys - an unfiltered fetch logged a spurious errno=8 for every command-only field write.
+        # keys - an unfiltered fetch logged a spurious RECOVERY_READ_RAISED for every command-only field write.
         persisted_keys = [key for key, field in schema_dict(cfg_vals).items() if key in data and check_cfg_get_default(field)[0]]
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
             old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
         except Exception as e:
-            await self.pr.err_s("Error reading previous config for fallback:", e, errno=7)
+            await self.pr.err_s("Error reading previous config for fallback:", e, errno=_ERR_CFG_SNAPSHOT_RAISED)
             old_values = None
         if old_values is None:
             old_values = {}
@@ -320,7 +335,7 @@ class SensorReaderConfig(SensorReader):
             persisted, results = await self._set_mgr_cfg(data, cfg_vals)
             results = _checked_write_results(results)
         except Exception as e:
-            await self.pr.err_s("Error writing config dict:", e, errno=5)
+            await self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
             persisted, results = False, {}
 
         if not persisted:
@@ -350,7 +365,7 @@ class SensorReaderConfig(SensorReader):
             try:
                 pushed = await callback(push_value)
             except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=6)
+                await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
                 pushed = False
             if not pushed:
                 results[key] = "Failed"
@@ -380,7 +395,7 @@ class SensorReaderConfig(SensorReader):
             try:
                 recovered = await getter()
             except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
-                await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=8)
+                await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=_ERR_RECOVERY_READ_RAISED)
                 recovered = None
             # A getter reads live, possibly-adversarial hardware state - a value outside this
             # field's own schema is treated the same as a raised exception (fall through), so
@@ -394,7 +409,7 @@ class SensorReaderConfig(SensorReader):
         try:
             await self._set_mgr_cfg({key: recovered}, cfg_vals)
         except Exception as e:
-            await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=9)
+            await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
 
     def get_error_sources(self) -> "list[Any]":
         # Extends SensorReader.get_error_sources() with this class's own nested error-logging

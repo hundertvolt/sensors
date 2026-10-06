@@ -62,8 +62,8 @@ def test_every_exemption_still_names_a_real_fault_test() -> None:
         ({"counter": 0, "history": []}, True),
         (None, True),  # a board whose SYSTEM never logged anything reports no entry at all
         ({"counter": 1, "history": [{"num": 1, "type": "W"}]}, False),  # "Task ended - attempting restart"
-        ({"counter": 1, "history": [{"num": 5, "type": "E"}]}, False),  # a task ended with an exception
-        ({"counter": 1, "history": [{"num": 4, "type": "E"}]}, False),  # the budget rebooted the board
+        ({"counter": 1, "history": [{"num": error_log_helpers.code("E", "TASK_RAISED"), "type": "E"}]}, False),  # a task ended with an exception
+        ({"counter": 1, "history": [{"num": error_log_helpers.code("E", "TASK_BUDGET_REBOOT"), "type": "E"}]}, False),  # the budget rebooted the board
     ],
 )
 def test_assert_no_task_ended_reads_the_system_log(monkeypatch: pytest.MonkeyPatch, system_entry: "dict[str, object] | None", passes: bool) -> None:  # noqa: FBT001

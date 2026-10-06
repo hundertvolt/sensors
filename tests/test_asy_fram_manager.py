@@ -1,5 +1,6 @@
 import asyncio
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_fram_manager
@@ -231,7 +232,7 @@ def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() ->
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # recovered from block 1
-    assert 31 in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Read status byte is not IDLE but X" (err=30+1)
+    assert code("E", "FRAM_STATUS_BYTE") in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Read status byte is not IDLE but X"
     addr0, _addr1 = chunk.block_addr
     assert chip.memory[addr0 + 4] == _STATUS_IDLE  # block 0 healed back to IDLE...
     assert bytes(chip.memory[addr0 : addr0 + 4]) == b"good"  # ...with the correct data
@@ -279,7 +280,7 @@ def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_a
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # recovered from block 1, same as the BUSY case
-    assert 31 in errs["FRAM"]["ErrNum"]  # same errno the BUSY case produces - no special-casing
+    assert code("E", "FRAM_STATUS_BYTE") in errs["FRAM"]["ErrNum"]  # same code the BUSY case produces - no special-casing
     assert chip.memory[addr0 + 4] == _STATUS_IDLE  # healed back to a real, recognized state
 
 
@@ -321,7 +322,7 @@ def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # recovered from block 1
-    assert 46 in errs["FRAM"]["ErrNum"]  # _read_chunk: "CRC error in _read_chunk!" - same path as payload corruption
+    assert code("E", "FRAM_DATA_CRC") in errs["FRAM"]["ErrNum"]  # _read_chunk: "CRC error in _read_chunk!" - same path as payload corruption
 
 
 def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -> None:
@@ -462,11 +463,11 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
 
     paused_result, paused_errs = run(while_paused())
     assert paused_result is None  # refused by the gate
-    # The refusal is logged as a WARNING (_read()'s wrnno=70), never an error, and no error
+    # The refusal is logged as a WARNING (_read()'s FRAM_PAUSED), never an error, and no error
     # appears at all since nothing reached the bus. Asserting on ErrType rather than ErrCount is
     # deliberate: ErrCount counts "W" entries too, so it cannot tell "refused" from "tried".
     assert "E" not in paused_errs["FRAM"]["ErrType"]
-    assert 70 in paused_errs["FRAM"]["ErrNum"]  # _read()'s own "FRAM communication paused" warning
+    assert code("W", "FRAM_PAUSED") in _warnings(paused_errs)  # _read()'s own "FRAM communication paused" warning
 
     manager.set_pause(value=False)
 
@@ -588,7 +589,7 @@ def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() ->
 
     ts, data, errs = run(scenario())
     assert ts is not None and data == bytearray(b"data")  # recovered from block 1
-    assert 46 in errs["FRAM"]["ErrNum"]  # _read_chunk: "CRC error in _read_chunk!" - same path as payload corruption
+    assert code("E", "FRAM_DATA_CRC") in errs["FRAM"]["ErrNum"]  # _read_chunk: "CRC error in _read_chunk!" - same path as payload corruption
 
 
 def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
@@ -610,7 +611,7 @@ def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
 
     ts, age, data, errs = run(scenario())
     assert (ts, age, data) == (None, None, None)  # hard fail, not a silently wrong timestamp
-    assert 73 in errs["FRAM"]["ErrNum"]  # _read(): "Both blocks valid but different data"
+    assert code("E", "FRAM_COPIES_DIFFER") in errs["FRAM"]["ErrNum"]  # _read(): "Both blocks valid but different data"
 
 
 def test_timestamped_read_skips_age_when_currently_not_synced() -> None:
@@ -670,7 +671,7 @@ def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() ->
     ntp_synced, _utc, write_ok = run(scenario())
     assert ntp_synced is False
     assert write_ok is True  # still writes, with the uninitialized timestamp sentinel
-    assert 85 in run(manager.get_error_counter())["FRAM"]["ErrNum"], "the write-path callback failure needs its own errno to be told apart from the read-path one (87)"
+    assert code("E", "CALLBACK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]  # the console line tells it from the read path
 
 
 def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -> None:
@@ -707,7 +708,7 @@ def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -
 
     assert ntp_synced is False
     assert write_ok is True
-    assert 86 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
+    assert code("E", "CLOCK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
     async def read_back() -> int | None:
         ts, _age, _data = await chunk.read()
@@ -750,9 +751,9 @@ def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever
         return await asyncio.wait_for(chunk.read(), timeout=5)
 
     assert run(scenario()) == bytearray(b"data")  # block 1 unverifiable -> healed from block 0
-    # Pinned, not just "some error": a bench session reads these numbers out of the FRAM log to
-    # tell this apart from a real read failure (errno 37), which degrades identically from outside.
-    assert 48 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
+    # Pinned, not just "some error": a bench session reads these codes out of the FRAM log to
+    # tell this apart from a real read failure (FRAM_READ), which degrades identically from outside.
+    assert code("E", "BAD_ARG") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_compare_with_huge_check_length_during_write_verification_degrades_safely() -> None:
@@ -770,10 +771,9 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
     assert run(scenario()) is False
 
 
-def test_oversized_write_logs_errno_84_not_colliding_with_clears_errno_80() -> None:
-    # AsyFramChunk.write's "data too large" errno used to collide with _AsyBaseFramChunk.clear()'s
-    # errno=80, and both log into the one shared PrintLogHistory every chunk of a manager uses, so
-    # the two failures were indistinguishable in the error history.
+def test_oversized_write_persists_a_bad_arg_entry() -> None:
+    # AsyFramChunk.write's "data too large" refusal and _AsyBaseFramChunk.clear()'s failure log into the one
+    # PrintLogHistory every chunk of a manager shares, so they carry two different catalog codes.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -784,8 +784,8 @@ def test_oversized_write_logs_errno_84_not_colliding_with_clears_errno_80() -> N
         return await manager.get_error_counter()
 
     result = run(scenario())
-    assert 84 in result["FRAM"]["ErrNum"]
-    assert 80 not in result["FRAM"]["ErrNum"]
+    assert code("E", "BAD_ARG") in result["FRAM"]["ErrNum"]
+    assert code("E", "FRAM_CLEAR") not in result["FRAM"]["ErrNum"]
 
 
 # ---------------------------------------------------------------------------
@@ -812,8 +812,8 @@ def test_write_fails_cleanly_when_chip_drops_wren_latch() -> None:
     write_ok, result = run(scenario())
     errnums = result["FRAM"]["ErrNum"]
     assert write_ok is False
-    assert 10 in errnums  # _set_check_sb: "Write status byte failed!" (busy status, check_idle=False, err=10)
-    assert 61 in errnums  # _write: "Writing block 0 failed!"
+    assert code("E", "FRAM_STATUS_WRITE") in errnums  # _set_check_sb: "Write status byte failed!" (the busy mark)
+    assert code("E", "FRAM_BLOCK_WRITE") in errnums  # _write: "Writing block 0 failed!"
 
 
 def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
@@ -834,8 +834,8 @@ def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
     result, errs = run(scenario())
     errnums = errs["FRAM"]["ErrNum"]
     assert result is None
-    assert errnums.count(32) == 2  # both blocks fail the same way (err=30+2, the read's own busy-set write)
-    assert 72 in errnums  # "Invalid data in block 1" - neither copy usable
+    assert errnums.count(code("E", "FRAM_STATUS_WRITE")) == 2  # both blocks fail the same way (the read's own busy-set write)
+    assert code("W", "FRAM_BLOCK_INVALID") in _warnings(errs)  # "Invalid data in block 1" - neither copy usable
 
 
 def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
@@ -854,8 +854,8 @@ def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
     cleared, errs = run(scenario())
     errnums = errs["FRAM"]["ErrNum"]
     assert cleared is False
-    assert 50 in errnums  # check_idle=False, err=50
-    assert 80 in errnums
+    assert code("E", "FRAM_STATUS_WRITE") in errnums  # the status-byte write, then clear()'s own entry
+    assert code("E", "FRAM_CLEAR") in errnums
 
 
 def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
@@ -877,8 +877,8 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     errnums = errs["FRAM"]["ErrNum"]
     assert protect_ok is True
     assert write_ok is False
-    assert 10 in errnums
-    assert 61 in errnums
+    assert code("E", "FRAM_STATUS_WRITE") in errnums
+    assert code("E", "FRAM_BLOCK_WRITE") in errnums
 
 
 def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -> None:
@@ -904,9 +904,9 @@ def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -
     assert blocked is None
     assert bytes(restored or b"") == b"keep"
     # Identical error signature to the WREN-drop read above: the busy-status write is what fails,
-    # for both blocks (err=30+2), and neither copy is then usable.
-    assert errnums.count(32) == 2
-    assert 72 in errnums
+    # for both blocks, and neither copy is then usable.
+    assert errnums.count(code("E", "FRAM_STATUS_WRITE")) == 2
+    assert code("W", "FRAM_BLOCK_INVALID") in _warnings(errs)
 
 
 def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> None:
@@ -951,7 +951,7 @@ def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> Non
 def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> None:
     # Models a chip that stopped responding after a successful setup() - every FRAM_SPI call
     # short-circuits on its own `initialized` guard before touching the bus. Distinct from the
-    # WREN-drop case: reads fail at the read step (errno 30), not the later status write (32).
+    # WREN-drop case: reads fail at the status-byte read, not the later status write.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -971,7 +971,7 @@ def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> 
     assert write_ok is False
     assert read_result is None
     assert cleared is False
-    assert 30 in errnums  # read's own status-byte *read* fails immediately (vs. 32 for WREN-drop)
+    assert code("E", "FRAM_STATUS_READ") in errnums  # read's own status-byte *read* fails immediately (vs. the write for WREN-drop)
 
 
 # ---------------------------------------------------------------------------
@@ -998,8 +998,8 @@ def test_read_fails_when_both_blocks_have_crc_invalid_payloads() -> None:
     result, errs = run(scenario())
     errnums = errs["FRAM"]["ErrNum"]
     assert result is None
-    assert errnums.count(46) == 2  # CRC error in _read_chunk, both blocks
-    assert 72 in errnums  # "Invalid data in block 1" - none of the copies usable
+    assert errnums.count(code("E", "FRAM_DATA_CRC")) == 2  # CRC error in _read_chunk, both blocks
+    assert code("W", "FRAM_BLOCK_INVALID") in _warnings(errs)  # "Invalid data in block 1" - none of the copies usable
 
 
 def test_block1_invalid_while_block0_valid_self_heals_block1() -> None:
@@ -1050,7 +1050,7 @@ def test_read_fails_when_self_heal_write_to_block0_fails() -> None:
     result, errs = run(scenario())
     errnums = errs["FRAM"]["ErrNum"]
     assert result is None
-    assert 71 in errnums  # "Writing block 0 failed!" - the heal write itself
+    assert code("E", "FRAM_BLOCK_WRITE") in errnums  # "Writing block 0 failed!" - the heal write itself
 
 
 def test_read_fails_when_self_heal_write_to_block1_fails() -> None:
@@ -1078,11 +1078,11 @@ def test_read_fails_when_self_heal_write_to_block1_fails() -> None:
     result, errs = run(scenario())
     errnums = errs["FRAM"]["ErrNum"]
     assert result is None
-    assert 72 in errnums  # "Writing block 1 failed!" - the heal write itself
+    assert code("E", "FRAM_BLOCK_WRITE") in errnums  # "Writing block 1 failed!" - the heal write itself
 
 
 def test_read_into_rejects_a_buffer_of_the_wrong_size() -> None:
-    # Mirror of the existing write_into size-mismatch test - _read()'s own errno=70 guard.
+    # Mirror of the existing write_into size-mismatch test - _read()'s own BAD_ARG guard.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -1391,7 +1391,7 @@ def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() ->
 
 def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
     # Real device-not-found path (asy_fram_driver.py's FRAM_SPI.setup() raises OSError) - caught
-    # by AsyFramManager.setup()'s own try/except, turned into a clean False + errno=83, not left
+    # by AsyFramManager.setup()'s own try/except, turned into a clean False + an INIT entry, not left
     # to propagate. A different, driver-owned RDID mismatch, not a caller misconfiguration.
     manager, chip = make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
@@ -1403,7 +1403,7 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
 
     ok, errs = run(scenario())
     assert ok is False
-    assert 83 in errs["FRAM"]["ErrNum"]
+    assert code("E", "INIT") in errs["FRAM"]["ErrNum"]
 
 
 def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_mid_run() -> None:
@@ -1429,9 +1429,10 @@ def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_
     assert write_ok is False
     assert read_result is None
     assert cleared is False
-    assert 26 in errnums  # "General write error in _write_chunk:" - the caught RuntimeError
-    assert 47 in errnums  # "General read error in _read_chunk:"
-    assert 58 in errnums  # "General write error in _clear_chunk:"
+    # The three "General ... error" catches (write, read, clear) share UNEXPECTED; each outer layer keeps its own entry.
+    assert code("E", "UNEXPECTED") in errnums  # the caught RuntimeError
+    assert code("E", "FRAM_BLOCK_WRITE") in errnums
+    assert code("E", "FRAM_CLEAR") in errnums
 
 
 # ---------------------------------------------------------------------------
@@ -1524,7 +1525,7 @@ def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
 def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_self_healed() -> None:
     # _handle_status_bytes checks that its two status bytes' "uninit" results agree before
     # trusting either: byte 1 = UNINIT with byte 2 = IDLE are each individually valid (neither
-    # trips the errno=31 path), but disagreeing is its own failure the base checks cannot catch.
+    # trips the FRAM_STATUS_BYTE path), but disagreeing is its own failure the base checks cannot catch.
 
     # Only reachable via _read_chunk's initial busy-set step, the one call site where the "uninit"
     # flag is not hardcoded False. Previously untested.
@@ -1544,11 +1545,11 @@ def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_se
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # falls back to block 1 and self-heals, like any other invalid block 0
-    assert 36 in errs["FRAM"]["ErrNum"]  # _handle_status_bytes: "Read status uninit bytes inconsistent!" (30+6)
+    assert code("E", "FRAM_STATUS_DISAGREE") in errs["FRAM"]["ErrNum"]  # _handle_status_bytes: "Read status uninit bytes inconsistent!"
 
 
-def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verification() -> None:
-    # The verify loop's `errno=63+n` was only exercised for n=0, since block 0 failing first
+def test_write_verify_fails_when_only_block_1_fails_verification() -> None:
+    # The verify loop's block-1 failure was never exercised, since block 0 failing first
     # short-circuits before n=1. Isolating block 1's own verification failure needs a per-address
     # patch, the same technique as the self-heal-write-failure tests, so block 0 genuinely passes.
     manager, _chip = make_manager()
@@ -1572,7 +1573,7 @@ def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verific
 
     write_ok, errs = run(scenario())
     assert write_ok is False
-    assert 64 in errs["FRAM"]["ErrNum"]  # "Block 1 write verification error!" (63+1), not 63
+    assert code("E", "FRAM_VERIFY") in errs["FRAM"]["ErrNum"]  # "Block 1 write verification error!"
 
 
 def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -> None:
@@ -1645,7 +1646,7 @@ def test_get_chunk_size_1_still_needs_status_byte_overhead_at_the_capacity_bound
 
 
 def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
-    # _write()'s own block-1-write-failure path, distinct from block 0's (different errno) -
+    # _write()'s own block-1-write-failure path, distinct from block 0's (its own console line) -
     # isolated the same way the self-heal write-failure tests are, by patching _write_chunk
     # per-address so only block 1's own write call fails.
     manager, _chip = make_manager()
@@ -1669,7 +1670,7 @@ def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
 
     ok, errs = run(scenario())
     assert ok is False
-    assert 62 in errs["FRAM"]["ErrNum"]  # _write(): "Writing block 1 failed!"
+    assert code("E", "FRAM_BLOCK_WRITE") in errs["FRAM"]["ErrNum"]  # _write(): "Writing block 1 failed!"
 
 
 def test_read_self_heals_block_1_when_it_reads_back_as_uninitialized() -> None:
@@ -1713,7 +1714,7 @@ def test_handle_status_bytes_fails_cleanly_when_only_the_second_byte_write_fails
 
     ok, errs = run(scenario())
     assert ok is False
-    assert 11 in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Write status byte failed!" for byte 2 (10+1)
+    assert code("E", "FRAM_STATUS_WRITE") in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Write status byte failed!" for byte 2
 
 
 def test_write_chunk_fails_cleanly_when_crc_computation_itself_fails() -> None:
@@ -1737,7 +1738,7 @@ def test_write_chunk_fails_cleanly_when_crc_computation_itself_fails() -> None:
 
     ok, errs = run(scenario())
     assert ok is False
-    assert 17 in errs["FRAM"]["ErrNum"]  # _write_chunk: "CRC computation failed!"
+    assert code("E", "FRAM_CRC_FAILED") in errs["FRAM"]["ErrNum"]  # _write_chunk: "CRC computation failed!"
 
 
 def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None:
@@ -1757,7 +1758,7 @@ def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None
 
     ok, errs = run(scenario())
     assert ok is False
-    assert 18 in errs["FRAM"]["ErrNum"]  # _write_chunk: "_write_chunk failed!" (the payload write)
+    assert code("E", "FRAM_PAYLOAD_WRITE") in errs["FRAM"]["ErrNum"]  # _write_chunk: "_write_chunk failed!" (the payload write)
 
 
 def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fails() -> None:
@@ -1779,7 +1780,7 @@ def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fa
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # self-heals from block 1
-    assert 37 in errs["FRAM"]["ErrNum"]  # _read_chunk: "FRAM read error in _read_chunk!"
+    assert code("E", "FRAM_READ") in errs["FRAM"]["ErrNum"]  # _read_chunk: "FRAM read error in _read_chunk!"
 
 
 def test_read_chunk_fails_cleanly_when_incremental_crc_update_itself_fails() -> None:
@@ -1803,7 +1804,7 @@ def test_read_chunk_fails_cleanly_when_incremental_crc_update_itself_fails() -> 
 
     result, errs = run(scenario())
     assert result is None  # both blocks share the same patched crc, so neither can self-heal
-    assert 38 in errs["FRAM"]["ErrNum"]  # _read_chunk: "Incremental CRC failed in _read_chunk!"
+    assert code("E", "FRAM_CRC_FAILED") in errs["FRAM"]["ErrNum"]  # _read_chunk: "Incremental CRC failed in _read_chunk!"
 
 
 def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails() -> None:
@@ -1826,7 +1827,7 @@ def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails(
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # self-heals from block 1 (block 0's own heal-write succeeds too)
-    assert 39 in errs["FRAM"]["ErrNum"]  # _read_chunk: read-idle-set "write status byte failed"
+    assert code("E", "FRAM_STATUS_WRITE") in errs["FRAM"]["ErrNum"]  # _read_chunk: read-idle-set "write status byte failed"
 
 
 def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> None:
@@ -1846,7 +1847,7 @@ def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> No
 
     ok, errs = run(scenario())
     assert ok is False
-    assert 57 in errs["FRAM"]["ErrNum"]  # _clear_chunk: "FRAM write failed in _clear_chunk!"
+    assert code("E", "FRAM_CLEAR_WRITE") in errs["FRAM"]["ErrNum"]  # _clear_chunk: "FRAM write failed in _clear_chunk!"
 
 
 def test_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
@@ -1876,7 +1877,7 @@ def test_timestamped_write_returns_false_tuple_for_a_negative_size_chunk() -> No
     assert run(scenario()) == (False, None, False)
 
 
-def test_timestamped_write_data_larger_than_buffer_fails_with_errno_81() -> None:
+def test_timestamped_write_data_larger_than_buffer_fails_with_bad_arg() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(2, _synced, crc=CRC_Pass())
@@ -1889,7 +1890,7 @@ def test_timestamped_write_data_larger_than_buffer_fails_with_errno_81() -> None
 
     result, errs = run(scenario())
     assert result == (False, None, False)
-    assert 81 in errs["FRAM"]["ErrNum"]
+    assert code("E", "BAD_ARG") in errs["FRAM"]["ErrNum"]
 
 
 def test_timestamped_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
@@ -1934,7 +1935,7 @@ def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught(
     assert ts is not None  # timestamp itself decoded fine
     assert age is None  # NTP check failed, so age can't be computed
     assert data == bytearray(b"data")
-    assert 87 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
+    assert code("E", "CALLBACK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_timestamped_read_age_computation_overflow_degrades_cleanly() -> None:
@@ -1969,7 +1970,7 @@ def test_timestamped_read_age_computation_overflow_degrades_cleanly() -> None:
     assert ts is not None  # timestamp itself decoded fine
     assert age is None  # age computation failed cleanly, not propagated
     assert data == bytearray(b"data")
-    assert 88 in run(manager.get_error_counter())["FRAM"]["ErrNum"]
+    assert code("E", "CLOCK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_manager_reset_error_counter_clears_history() -> None:
@@ -1979,7 +1980,7 @@ def test_manager_reset_error_counter_clears_history() -> None:
     assert chunk is not None
 
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
-        await chunk.write(b"toolongdata")  # errno=84, oversized - just to populate some history
+        await chunk.write(b"toolongdata")  # BAD_ARG, oversized - just to populate some history
         before = await manager.get_error_counter()
         await manager.reset_error_counter()
         after = await manager.get_error_counter()
@@ -2155,7 +2156,7 @@ def test_write_into_degrades_to_uninit_timestamp_when_pack_into_fails() -> None:
         result = run(chunk.write_into(buf))
     finally:
         asy_fram_manager.struct = original_struct
-    # pack_into's own failure is swallowed (errno=82 logged) - the write itself still proceeds
+    # pack_into's own failure is swallowed (UNEXPECTED logged) - the write itself still proceeds
     # with whatever the tbuf ended up holding, matching this method's own "never raises" contract.
     assert result[0] is True  # ntp_synced
     assert result[2] is True  # the FRAM write itself still succeeded
@@ -2224,7 +2225,7 @@ def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recove
     result, errs = run(scenario())
     assert result == bytearray(payload)  # correct data, from block 1
     assert chip.rx_overrun_remaining == 0  # the overrun really did fire
-    assert 47 in errs["FRAM"]["ErrNum"]  # _read_chunk's "General read error", not an escaped raise
+    assert code("E", "UNEXPECTED") in errs["FRAM"]["ErrNum"]  # _read_chunk's "General read error", not an escaped raise
 
 
 def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_caller() -> None:
@@ -2244,7 +2245,7 @@ def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_c
 
     result, errs = run(scenario())
     assert result is None
-    assert 47 in errs["FRAM"]["ErrNum"]
+    assert code("E", "UNEXPECTED") in errs["FRAM"]["ErrNum"]
 
 
 def test_a_sub_threshold_chunk_is_immune_to_a_bus_wide_overrun() -> None:
@@ -2264,7 +2265,7 @@ def test_a_sub_threshold_chunk_is_immune_to_a_bus_wide_overrun() -> None:
 
     result, errs = run(scenario())
     assert result == bytearray(b"good")
-    assert 47 not in errs["FRAM"]["ErrNum"]  # nothing raised at all
+    assert code("E", "UNEXPECTED") not in errs["FRAM"]["ErrNum"]  # nothing raised at all
 
 
 def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> None:
@@ -2328,13 +2329,12 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
     assert left_as == (_STATUS_BUSY, _STATUS_BUSY)
     assert data_on_chip == payload  # the data itself was never damaged
     assert still_failing is None  # ...and is refused anyway, deliberately
-    assert 31 in errs["FRAM"]["ErrNum"]  # "Read status byte is not 1 but 2"
+    assert code("E", "FRAM_STATUS_BYTE") in errs["FRAM"]["ErrNum"]  # "Read status byte is not 1 but 2"
     assert repaired  # a write is the only thing that clears it
 
 
-# The status-byte errno spread, branch by branch. _set_check_sb()/_handle_status_bytes() decide
-# these and the block operation logs them; the numbers and the public entry point they are
-# reachable from are the contract (Part C.7.1).
+# Status-byte failures, branch by branch: one code per condition (Part C.7.1); each layer the
+# failure reaches keeps its own entry (owner, 2026-10-02).
 
 
 def status_byte_addrs(chunk: "AsyFramChunk") -> tuple[int, int]:
@@ -2344,7 +2344,7 @@ def status_byte_addrs(chunk: "AsyFramChunk") -> tuple[int, int]:
 
 def fail_set_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) -> None:
     # Address- and occurrence-selective: the same status byte is written once for the BUSY mark and
-    # once for the IDLE mark, so the two errno spreads need different occurrences. Injected at
+    # once for the IDLE mark, so the BUSY and IDLE marks need different occurrences. Injected at
     # set_values_sync(), the seam the chunk layer actually calls; the sentinel is an unused status bit.
     original_sync = chunk.fram.set_values_sync
     original_report = chunk.fram.report_set_values
@@ -2404,23 +2404,23 @@ def errnums(manager: AsyFramManager) -> list[int]:
     return run(scenario())["FRAM"]["ErrNum"]
 
 
-def test_write_chunk_idle_mark_failing_on_status_byte_1_reports_errno_19() -> None:
+def test_write_chunk_idle_mark_failing_on_status_byte_1_logs_the_status_byte_write_failure() -> None:
     manager, _chip, chunk = make_written_chunk()
     byte1, _byte2 = status_byte_addrs(chunk)
     fail_set_values_at(chunk, byte1, on_call=2)  # the IDLE mark, after the BUSY mark succeeded
     assert run(chunk.write(b"more")) is False
-    assert 19 in errnums(manager)  # _handle_status_bytes(err=19), byte 1, check_idle=False
+    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # byte 1's IDLE mark
 
 
-def test_write_chunk_idle_mark_failing_on_status_byte_2_reports_errno_20() -> None:
+def test_write_chunk_idle_mark_failing_on_status_byte_2_logs_the_status_byte_write_failure() -> None:
     manager, _chip, chunk = make_written_chunk()
     _byte1, byte2 = status_byte_addrs(chunk)
     fail_set_values_at(chunk, byte2, on_call=2)
     assert run(chunk.write(b"more")) is False
-    assert 20 in errnums(manager)  # err=19 + gap=1 for check_idle=False
+    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # byte 2's IDLE mark
 
 
-def test_read_chunk_busy_mark_status_byte_2_read_failure_reports_errno_33() -> None:
+def test_read_chunk_busy_mark_status_byte_2_read_failure_logs_the_status_byte_read_failure() -> None:
     manager, _chip, chunk = make_written_chunk()
     _byte1, byte2 = status_byte_addrs(chunk)
     fail_get_values_at(chunk, byte2)
@@ -2429,10 +2429,10 @@ def test_read_chunk_busy_mark_status_byte_2_read_failure_reports_errno_33() -> N
         return await chunk.read()
 
     run(scenario())
-    assert 33 in errnums(manager)  # err=30 + gap=3, byte 2's own "Read status byte failed!"
+    assert code("E", "FRAM_STATUS_READ") in errnums(manager)  # byte 2's own "Read status byte failed!"
 
 
-def test_read_chunk_busy_mark_status_byte_2_not_idle_reports_errno_34() -> None:
+def test_read_chunk_busy_mark_status_byte_2_not_idle_logs_fram_status_byte() -> None:
     manager, chip, chunk = make_written_chunk()
     _byte1, byte2 = status_byte_addrs(chunk)
     chip.memory[byte2] = 0x7F  # neither IDLE nor UNINIT: a torn or corrupted status byte
@@ -2441,10 +2441,10 @@ def test_read_chunk_busy_mark_status_byte_2_not_idle_reports_errno_34() -> None:
         return await chunk.read()
 
     run(scenario())
-    assert 34 in errnums(manager)  # err=30 + gap=3 + 1
+    assert code("E", "FRAM_STATUS_BYTE") in errnums(manager)
 
 
-def test_read_chunk_busy_mark_status_byte_2_write_failure_reports_errno_35() -> None:
+def test_read_chunk_busy_mark_status_byte_2_write_failure_logs_the_status_byte_write_failure() -> None:
     manager, _chip, chunk = make_written_chunk()
     _byte1, byte2 = status_byte_addrs(chunk)
     fail_set_values_at(chunk, byte2)  # the read's own BUSY mark; the write above already finished
@@ -2453,10 +2453,10 @@ def test_read_chunk_busy_mark_status_byte_2_write_failure_reports_errno_35() -> 
         return await chunk.read()
 
     run(scenario())
-    assert 35 in errnums(manager)  # err=30 + gap=3 + 2, the check_idle=True write slot
+    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # the read's BUSY mark on byte 2
 
 
-def test_clear_chunk_status_byte_2_failure_reports_errno_51() -> None:
+def test_clear_chunk_status_byte_2_failure_logs_the_status_byte_write_failure_and_clears_own() -> None:
     manager, _chip, chunk = make_written_chunk()
     _byte1, byte2 = status_byte_addrs(chunk)
     fail_set_values_at(chunk, byte2)
@@ -2465,7 +2465,8 @@ def test_clear_chunk_status_byte_2_failure_reports_errno_51() -> None:
         return await chunk.clear()
 
     assert run(scenario()) is False
-    assert 51 in errnums(manager)  # err=50 + gap=1 for check_idle=False
+    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # byte 2's UNINIT mark
+    assert code("E", "FRAM_CLEAR") in errnums(manager)  # clear()'s own entry
 
 
 # A block operation is not an opaque unit, and its scratch buffers belong to the chunk rather
@@ -2610,7 +2611,7 @@ def test_a_block_0_that_keeps_failing_persists_one_warning_per_episode_not_one_p
             await chunk.read()
         return await manager.get_error_counter()
 
-    assert _warnings(run(scenario())) == [71], "five failing reads must not spend five slots"
+    assert _warnings(run(scenario())) == [code("W", "FRAM_BLOCK_INVALID")], "five failing reads must not spend five slots"
 
 
 def test_a_clean_read_ends_the_episode_so_a_later_fault_persists_again() -> None:
@@ -2629,7 +2630,7 @@ def test_a_clean_read_ends_the_episode_so_a_later_fault_persists_again() -> None
         await chunk.read()  # a fresh fault, so a fresh persisted warning
         return await manager.get_error_counter()
 
-    assert _warnings(run(scenario())) == [71, 71]
+    assert _warnings(run(scenario())) == [code("W", "FRAM_BLOCK_INVALID")] * 2
 
 
 def test_a_held_mempause_persists_one_refusal_not_one_per_operation() -> None:
@@ -2642,13 +2643,13 @@ def test_a_held_mempause_persists_one_refusal_not_one_per_operation() -> None:
 
     async def scenario() -> "ErrorLog":
         for _cycle in range(4):
-            await chunk.write(b"else")  # wrnno 60
-            await chunk.read()  # wrnno 70
+            await chunk.write(b"else")  # FRAM_PAUSED
+            await chunk.read()  # FRAM_PAUSED
         return await manager.get_error_counter()
 
-    # Both codes persist once: a paused write and a paused read are different facts, and a pause
+    # A paused write and a paused read are one condition, one code: it persists once, since a pause
     # long enough to matter is a pause many operations run into.
-    assert _warnings(run(scenario())) == [60, 70]
+    assert _warnings(run(scenario())) == [code("W", "FRAM_PAUSED")]
 
 
 if __name__ == "__main__":

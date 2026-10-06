@@ -2,6 +2,7 @@ import asyncio
 import errno as errno_mod
 import struct
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -2069,7 +2070,7 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     assert writes[0] == 0
     assert run(reader.bmp.get_pressure_oversampling()) == 1  # the schema default reached the chip
     assert 12 not in run(reader.get_error_counter())["BMP3XX"]["ErrNum"]
-    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == 4
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
 if __name__ == "__main__":

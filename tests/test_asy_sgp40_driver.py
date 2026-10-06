@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections import namedtuple
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -2425,7 +2426,7 @@ def test_init_sgp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     queue_successful_init(bus(reader.sgp.i2c_sgp40.i2c_device.i2c))
     assert run(reader._init_sgp()) is True
     assert 12 not in run(reader.get_error_counter())["SGP40"]["ErrNum"]
-    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == 4
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 
 if __name__ == "__main__":

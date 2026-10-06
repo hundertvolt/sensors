@@ -87,6 +87,15 @@ if TYPE_CHECKING:
 
 _NAME = const("WEBSERVER")
 
+_ERR_CALLBACK = const(14)
+_ERR_UNEXPECTED = const(23)
+_WRN_HTTP_PEER_CLOSED = const(48)
+_WRN_HTTP_CALL_TIMEOUT = const(49)
+_WRN_HTTP_REQUEST_CAP = const(50)
+_WRN_HTTP_SOCKET_ERROR = const(51)
+_WRN_HTTP_CLOSE_RAISED = const(52)
+_WRN_HTTP_WAIT_CLOSED = const(53)
+
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its FRAM
 # error-log target, resolved from [device.wiring].fram_target implicitly because this is mandatory
 # infra, never an [[instance]] entry - the same tag system_service/wifi/ntp carry.
@@ -235,23 +244,28 @@ class _TimeoutStreamProxy:
     # Forwards every stream method ext/microdot.py calls, each bounded by timeout_s (a plain
     # asyncio.TimeoutError, not an OSError subclass - Part F.1). Microdot's read-phase catch
     # swallows it (Part A.5), so this proxy is the only place a read timeout is observable.
-    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory", peer_gone: "list[bool] | None" = None) -> None:
+    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory", peer_gone: "list[bool] | None" = None, timed_out: "list[bool] | None" = None) -> None:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
         self._head: list[bytes] | None = []  # the response's header block until its blank line
         self._peer_gone = [False] if peer_gone is None else peer_gone  # shared by one connection's pair
+        self._timed_out = [False] if timed_out is None else timed_out  # likewise: _serve() reads it
 
     async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
-        return await asyncio.wait_for(coro, self._timeout_s)
+        try:
+            return await asyncio.wait_for(coro, self._timeout_s)
+        except asyncio.TimeoutError:
+            self._timed_out[0] = True  # only non-read calls: a read's was logged already, below
+            raise
 
     async def _bounded_read(self, coro: "Awaitable[_T]") -> "_T":
         # Logged here, and only for reads: a write-phase timeout escapes microdot and reaches
         # _serve(), which logs it itself - logging both counted one timeout twice.
         try:
-            return await self._bounded(coro)
+            return await asyncio.wait_for(coro, self._timeout_s)
         except asyncio.TimeoutError as e:
-            await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=2)
+            await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
             raise
         except OSError:
             # A read that saw a reset: modlwip has freed the pcb yet still accepts writes, which reach
@@ -512,7 +526,7 @@ class WebserverService:
             # the way every comparable callback failure does.
             ok = await self._system_cmd(cmd)
         except Exception as e:
-            await self.pr.err_s("system_cmd callback failed:", e, errno=2)
+            await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
             return "Failed"
         return "Valid" if ok else "Failed"
 
@@ -538,7 +552,7 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_led(payload)
         except Exception as e:
-            await self.pr.err_s("notification_led callback failed:", e, errno=3)
+            await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
             return "Failed"
         return "Valid" if ok else "Failed"
 
@@ -560,7 +574,7 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_pause(coerced_payload)
         except Exception as e:
-            await self.pr.err_s("notification_pause callback failed:", e, errno=5)
+            await self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
             return "Failed"
         return "Valid" if ok else "Failed"
 
@@ -614,7 +628,7 @@ class WebserverService:
             # one failing source discard every other section's already-fetched data.
             value = await fct()
         except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=6)
+            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add('{"error":"unavailable"}')
             return
         writer.add_value(value)
@@ -623,7 +637,7 @@ class WebserverService:
         try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=6)
+            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add('{"error":"unavailable"}')
             return
         writer.add_value(_shape_errcount_entry(raw, name))
@@ -672,7 +686,7 @@ class WebserverService:
         # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
         # into FRAM history - never to shape the reply. The 500 status-code handler already does
         # that on its own, whether or not this one is registered (Part A.5).
-        await self.pr.err_s("Unhandled exception in route handler:", exc, errno=4)
+        await self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
         return ar.make_response(500, descr="Internal server error"), 500
 
     # -- connection lifecycle ---------------------------------------------------------------------
@@ -683,11 +697,11 @@ class WebserverService:
         except Exception as e:  # best-effort cleanup, never load-bearing - still logged (Part C.7's
             # silent-failure-masking convention) since a repeatedly-failing close() could leak TCP
             # PCBs under this platform's tiny connection ceiling with no other trace.
-            await self.pr.wrn_s("Error closing connection writer:", e, wrnno=4)
+            await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
         try:
             await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)
         except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
-            await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=5)
+            await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
 
     async def _serve(self, reader: "Any", writer: "Any") -> None:
         # Any, not _StreamLike: asyncio.start_server() types its callback as
@@ -702,8 +716,9 @@ class WebserverService:
             return
         try:
             peer_gone = [False]
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone)
+            timed_out = [False]
+            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone, timed_out)
+            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone, timed_out)
             try:
                 await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
             except asyncio.CancelledError:
@@ -712,18 +727,18 @@ class WebserverService:
                 # Structurally unreachable today - Microdot's blanket catch around Request.create()
                 # absorbs any EOFError raised there, the same shape as the TimeoutError case below -
                 # but kept as defense in depth under this module's own "never raise" convention.
-                await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=1)
+                await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=_WRN_HTTP_PEER_CLOSED)
             except asyncio.TimeoutError as e:
                 # Either the outer wait_for() above (bounds a Slowloris-paced client no per-call
                 # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
                 # read-phase one logged inside the proxy, and microdot swallowed it.
-                await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=2)
+                await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP)
             except OSError as e:  # a genuine, real socket-level failure (e.g. a broken pipe) -
                 # never actually raised by any of this module's own fakes/proxy, kept for real
                 # hardware defense-in-depth.
-                await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=3)
+                await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
             except Exception as e:  # never raises out of this task - see module docstring
-                await self.pr.err_s("Unexpected error serving connection:", e, errno=1)
+                await self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
         finally:
             try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
                 await self._close_writer(writer)

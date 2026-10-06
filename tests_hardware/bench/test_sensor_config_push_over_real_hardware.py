@@ -66,7 +66,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         # failure with a cleanup assertion.
         assert all(v in ("Valid", "Unchanged") for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
 
-    # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
+    # A fully valid push-and-restore round trip is not a fault - config_manager.py's BAD_ARG only
     # fires on a rejected key, which none of these were.
     assert_module_error_log_empty(dut_ip, "BMP3XX")
     assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
@@ -106,7 +106,7 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
         # failure with a cleanup assertion.
         assert all(v in ("Valid", "Unchanged") for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
 
-    # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
+    # A fully valid push-and-restore round trip is not a fault - config_manager.py's BAD_ARG only
     # fires on a rejected key, which none of these were.
     assert_module_error_log_empty(dut_ip, "ISL29125")
     assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")

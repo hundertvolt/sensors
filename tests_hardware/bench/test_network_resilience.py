@@ -18,6 +18,7 @@ from error_log_helpers import (
     assert_module_error_log_empty,
     assert_no_module_logged_a_new_error,
     assert_no_task_ended,
+    code,
     get_errcount,
     reset_all_error_logs,
 )
@@ -636,7 +637,7 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
     last_response: bytes | None = None
     try:
         # Each held socket sends a request line and is padded before every step: silent past the 5 s
-        # per-call timeout, each would be answered and log wrnno=2, failing the log check below.
+        # per-call timeout, each would be answered and log HTTP_CALL_TIMEOUT, failing the log check below.
         for _ in range(_MAX_CONNECTIONS):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(10.0)
@@ -926,13 +927,13 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
     # Nothing above should have changed anything real - confirm the server is still fully healthy.
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after nonsense PUT field values"
 
-    # A rejected key logs errno=12 on its own separate "CFGMGR_<NAME>" logger, not "BMP3XX" itself
+    # A rejected key logs BAD_ARG on its own separate "CFGMGR_<NAME>" logger, not "BMP3XX" itself
     # (config_manager.py's write_config()) - in-RAM only, but still real and REST-visible.
     try:
         errcount = get_errcount(dut_ip)
         cfgmgr_entry = errcount.get("CFGMGR_BMP3XX", {})
         assert cfgmgr_entry.get("counter") == 2, f"expected exactly 2 type/range validation errors on CFGMGR_BMP3XX (one per rejected field), got: {cfgmgr_entry!r}"
-        assert_module_error_log_contains(dut_ip, "CFGMGR_BMP3XX", 12, "E")
+        assert_module_error_log_contains(dut_ip, "CFGMGR_BMP3XX", code("E", "BAD_ARG"), "E")
         assert_no_task_ended(dut_ip, "nonsense field values")
     finally:
         reset_all_error_logs(dut_ip)
@@ -966,10 +967,10 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
     assert response == b"", f"a genuinely Slowloris-paced request (no single stall over 5s, 18s cumulative) was not reclaimed by the outer timeout: {response!r}"
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a slowloris-style trickle-fed request"
-    # _serve()'s outer wait_for(outer_cap_s) timeout logs wrnno=2 - this test's pacing avoids ever
-    # triggering the (also wrnno=2) per-call timeout path instead, so the wrnno is unambiguous here.
+    # _serve()'s outer wait_for(outer_cap_s) timeout logs HTTP_REQUEST_CAP; a per-call timeout would
+    # log HTTP_CALL_TIMEOUT instead, which this test's pacing never triggers.
     try:
-        assert_module_error_log_contains(dut_ip, "WEBSERVER", 2, "W")
+        assert_module_error_log_contains(dut_ip, "WEBSERVER", code("W", "HTTP_REQUEST_CAP"), "W")
         assert_no_task_ended(dut_ip, "a slowloris-paced request")
     finally:
         reset_all_error_logs(dut_ip)
@@ -989,7 +990,7 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str) ->
     # such events, not an immediate, obvious failure of this one check alone.
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a client disconnected abruptly mid-response"
     # No hard assertion on WEBSERVER's error log: whether the server is still mid-write when this
-    # RST lands (wrnno=3) is a genuine timing race, not deterministic - asserting either way risks flakiness.
+    # RST lands (HTTP_SOCKET_ERROR) is a genuine timing race, not deterministic - asserting either way risks flakiness.
     assert_no_task_ended(dut_ip, "an abrupt mid-response disconnect")  # deterministic either way
     reset_all_error_logs(dut_ip)  # hygiene regardless of which way the race went
 

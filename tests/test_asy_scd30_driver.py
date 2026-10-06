@@ -8,6 +8,7 @@ Integration-level tests wire SCD30_Reader to the real asy_i2c_driver.py/base_cla
 import asyncio
 import struct
 
+from _error_codes import code
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
@@ -432,7 +433,7 @@ def test_read_measurement_rejects_a_non_finite_word_in_any_position_and_keeps_th
 
 
 def test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_stores_nothing() -> None:
-    # Caller side of the gate above: _read_scd()'s blanket except logs errno=11 and _store_scd()
+    # Caller side of the gate above: _read_scd()'s blanket except logs READ and _store_scd()
     # discards the all-None result, so the published data never carries the value.
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
@@ -448,7 +449,7 @@ def test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_sto
     assert results == (None, None, None, None)
     assert data.CO2 is None and data.Temp is None and data.Hum is None
     err_num = log["SCD30"]["ErrNum"]
-    assert isinstance(err_num, list) and err_num[-1] == 11
+    assert isinstance(err_num, list) and err_num[-1] == code("E", "READ")
 
 
 def test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no_measurement_read() -> None:
@@ -822,10 +823,9 @@ def test_reader_setters_return_false_on_bus_nak() -> None:
     assert run(scenario()) == (False, False, False, False, False, False)
 
 
-def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
-    # Regression test for the getter forwards' own pr.err_s() logging (added alongside the
-    # setters' below) - errno values per asy_scd30_driver.py's own forward-logging block, matching
-    # SPECIFICATION.md Part C.7's documented convention that every forward logs, not just returns a sentinel.
+def test_reader_getters_log_chip_get_on_bus_nak() -> None:
+    # Every forward logs its failure (SPECIFICATION.md C.7): one CHIP_GET class for all six; the
+    # console line names the field.
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
@@ -841,11 +841,12 @@ def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     log = run(scenario())["SCD30"]
     # History is a fixed-length deque (default history_length=10), left-padded with "no error"
     # sentinels until it fills - only the trailing entries are this scenario's own 6 calls.
-    assert log["ErrNum"][-6:] == [14, 16, 18, 20, 22, 24]
+    assert log["ErrCount"] == 6
+    assert log["ErrNum"][-6:] == [code("E", "CHIP_GET")] * 6
     assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
 
 
-def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
+def test_reader_setters_log_chip_set_on_bus_nak() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
@@ -859,7 +860,8 @@ def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
         return await reader.get_error_counter()
 
     log = run(scenario())["SCD30"]
-    assert log["ErrNum"][-6:] == [15, 17, 19, 21, 23, 25]
+    assert log["ErrCount"] == 6
+    assert log["ErrNum"][-6:] == [code("E", "CHIP_SET")] * 6
     assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
 
 
@@ -943,7 +945,7 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
 
     ok, log = run(scenario())
     assert ok is False
-    assert log["SCD30"]["ErrNum"][-1] == 13
+    assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_SET")
 
 
 def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:

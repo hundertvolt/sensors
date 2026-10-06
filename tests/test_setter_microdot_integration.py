@@ -23,6 +23,7 @@ sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
 # as src/asy_webserver_service.py's own import of this module.
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 from microdot import Microdot, Request  # type: ignore[import-not-found]
 
@@ -681,7 +682,7 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     # Never made it to disk, but stays in effect (SPECIFICATION.md C.7.3) - and the failure is on record.
     assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
     nums = run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"]
-    assert isinstance(nums, list) and nums[-1] == 14
+    assert isinstance(nums, list) and nums[-1] == code("E", "CFG_FILE_WRITE")
 
 
 # ---------------------------------------------------------------------------
@@ -731,7 +732,7 @@ async def _scd_apply_field(
     try:
         applied = await setter(value)
     except Exception as e:  # setter is caller-supplied; its runtime behavior isn't statically known
-        await reader.pr.err_s("Error setting", key, "on SCD30:", e, errno=30)
+        await reader.pr.err_s("Error setting", key, "on SCD30:", e, errno=code("E", "CHIP_SET"))
         applied = False
     return "Valid" if applied else "Failed"
 
@@ -855,12 +856,12 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_bus_fault_surfaces_as_f
     writes = _scd_writes(reader)
     assert len(writes) == 1  # the faulted write never made it into the bus log at all
     assert writes[0][:4] == b"\x00\x10\x03\xf5"
-    # The fault is real and counted, on SCD30's own error log (errno=15, its set_measurement_interval
-    # wrapper's own number) - not swallowed silently just because the response says 200.
+    # The fault is real and counted, on SCD30's own error log (CHIP_SET, its set_measurement_interval
+    # wrapper's code) - not swallowed silently just because the response says 200.
     log = run(reader.get_error_counter())
     err_nums = log["SCD30"]["ErrNum"]
     assert isinstance(err_nums, list)
-    assert err_nums[-1] == 15
+    assert err_nums[-1] == code("E", "CHIP_SET")
 
 
 if __name__ == "__main__":

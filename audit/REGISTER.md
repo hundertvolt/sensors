@@ -23,7 +23,7 @@ lease and resumption procedure.
 | U0 | B0 ENV: baseline, apparatus, prevention rules, B0 doc pass | done 2026-10-06 | through `d6534c0`; record `audit/artefacts/ENV/u0_record.md` |
 | U0R | dependency refresh after the baseline | done 2026-10-06 | merges `9f32315`, `d2bb623`, `e8f5dc0`, `6ca1d7f`; record `audit/artefacts/ENV/dependency_refresh.md` |
 | U1 | legacy move to `legacy/` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U1_close.md` |
-| U2 | error-number catalog | not started | — |
+| U2 | error-number catalog | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U2_close.md` |
 | U3 | central log-repeat rule, one entry per event | not started | — |
 | U4 | compare-before-write primitive, SCD30 onto it | not started | — |
 | U5 | config objects and `max-args` | not started | — |
@@ -129,6 +129,13 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U1 | BACKLOG's "Rough sequencing" bullet removed whole: after U0 its one clause (environment setup) was done, and deleting only the clause left an empty label | the merged end state removes the section anyway; reversible |
 | U1 | SPEC's sentence on the legacy site keeping the old `Led` names cites the legacy rule (owner, 2026-09-11) as its reason instead of "accepted debt" | the rule is why the legacy site gets no update; the vocabulary check needs an actor and the list only shrinks |
 | U1 | Three later-unit comments whose U1 stage was "dropped" (`buildgen/codegen.py`'s generated boot-entry docstring, `scripts/build_frozen_html.sh`, `js/mock-server.js`) got a minimal repath | U1's old-path check would fail on them until their units rewrite them |
+| U2 | The FRAM and SGP40 bands could not hold their per-layer rows: FRAM's chunk layer takes E100-109 and W63-64, SGP40 takes E110-114 and W65-66, from the range kept free for new modules | the bands' neighbours are fixed for later units; an extension range keeps every fixed number and moves only codes "numbered at execution"; reversible until U3's band table |
+| U2 | `CFG_READ` is E26 and W13: E25 is fixed for `STACK_EXHAUSTED` (U30), W11/W12/W14/W15 for later units | the next free numbers; no fixed number moves |
+| U2 | FRAM's episode warning: once the paused codes merged into W25, a paused read and a paused write share one slot, and `_WRN_EPISODE_BASE` goes now, not at U3 | the shift arithmetic would have needed bit 38; both are the same pause, and the episode rule persists one warning per episode either way |
+| U2 | UART comm's range-sweep test goes with `_ERRNO_MIN/_MAX` in U2, not U3 | the test reads the removed constants; the literal-bypass test stays |
+| U2 | BMP3XX and SGP40 keep their whole numbering, catalog block included, until U3 | the block's values are U3's renumbering; a partial block would mix two idioms in one module |
+| U2 | The twin suite's Run 9 keeps NTP's HEAD number (21) until NTP moves in U3 | NTP still logs 21 at U2; a catalog lookup would fail the twin tier |
+| U2 | SF-U2-02: UART comm's repeat rule now treats codes the catalog merged (ALLOC from two sites, BAD_ARG from three) as one; a different-site fault right after is printed and counted but not persisted, until U3's central rule | reachable only by two different-site failures back to back with no recovery; U3 replaces the rule |
 
 ## Parked deltas (OR2.c, OR106.a)
 

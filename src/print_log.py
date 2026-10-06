@@ -156,20 +156,19 @@ class PrintLogHistory(PrintLog):
             print(self.name, *args)
 
     async def _store_err(self, min_e: int, max_e: int, errno: int, *, repeat: bool = False) -> None:
-        # errno<=_NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike;
-        # a real code is only shifted into its own sub-range by min_e past this check.
+        # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike; a
+        # negative or over-range code is a defect the catalog check prevents: counted, diagnosed, no slot.
         if self.err_count < _MAX_CNT:
             self.err_count += 1
         else:
             self._diag("PrintLog: Error count reached maximum value!")
-        if errno <= _NO_ERR:
+        if errno == _NO_ERR:
             return
-        if not repeat:  # a repeat is counted and written, but spends no slot - SPECIFICATION.md Part C.7.1
-            errno += min_e
-            if errno <= max_e:
-                self.history.append(errno)
-            else:
-                self._diag("PrintLog: Error number", errno - min_e, "is invalid!")
+        code = errno + min_e
+        if errno < 0 or code > max_e:
+            self._diag("PrintLog: Error number", errno, "is invalid!")
+        elif not repeat:  # a repeat is counted and written, but spends no slot - SPECIFICATION.md Part C.7.1
+            self.history.append(code)
         if not self.initialized:
             # Return regardless of logging level - don't write stale state to FRAM before setup().
             self._diag("PrintLog: Uninitialized, call setup first!")
@@ -178,8 +177,8 @@ class PrintLogHistory(PrintLog):
             self._diag("PrintLog: History write failed!")
 
     async def get_log(self, name: str | None = None) -> "ErrorLog":
-        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
-        # _NO_ERR/_NO_WRN to recover the original error/warning code. name=None falls back to
+        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded" and report 0, never the
+        # raw byte; else shift back by _NO_ERR/_NO_WRN to recover the code. name=None falls back to
         # self.name (every real src/ call site relies on this); tests still pass an explicit override.
         if name is None:
             name = self.name
@@ -187,7 +186,7 @@ class PrintLogHistory(PrintLog):
         err_type = []
         for errno in self.history:
             if errno in (_NO_ERR, _NO_WRN):
-                err_num.append(errno)
+                err_num.append(_NO_ERR)
                 err_type.append("N")
             elif errno <= _MAX_ERR:
                 err_num.append(errno - _NO_ERR)

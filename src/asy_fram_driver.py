@@ -77,21 +77,30 @@ _ADDR_BUF_16BIT = const(3)
 _VERIFY_PRESENT_LOCK_TIMEOUT_S = const(1.0)
 
 # Outcomes of the synchronous write bodies below, as a bit set. They decide what happened; the
-# coroutine that owns the operation logs it, with the same wrnno/errno and message as before -
-# awaiting a persisted log entry is not something a body holding the bus lock may do.
+# coroutine that owns the operation logs it - awaiting a persisted log entry is not something a
+# body holding the bus lock may do.
 _W_OK = const(0)
-_W_PROTECTED = const(1)  # wrnno 84
-_W_WEL_NOT_SET = const(2)  # wrnno 82 (write) / 83 (write protection)
-_W_WEL_STUCK = const(4)  # wrnno 81 - advisory: the operation itself still completed
-_W_WP_MISMATCH = const(8)  # errno 95
+_W_PROTECTED = const(1)  # wrnno 28
+_W_WEL_NOT_SET = const(2)  # wrnno 26
+_W_WEL_STUCK = const(4)  # wrnno 27 - advisory: the operation itself still completed
+_W_WP_MISMATCH = const(8)  # errno 45
 
 # The three guards get_values()/set_values() share, in the same bit set so one status carries
-# whatever the synchronous body decided. Which errno each maps to differs per entry point, so the
-# two reporters below spell that out rather than a shared table doing it.
+# whatever the synchronous body decided; the two reporters below own every message.
 _SV_OK = const(0)
-_SV_NOT_INIT = const(16)  # errno 90 (get) / 92 (set)
-_SV_NOT_LOCKED = const(32)  # errno 99 (get) / 100 (set)
-_SV_BAD_RANGE = const(64)  # errno 91 (get) / 93 (set)
+_SV_NOT_INIT = const(16)  # errno 18
+_SV_NOT_LOCKED = const(32)  # errno 24
+_SV_BAD_RANGE = const(64)  # errno 21
+
+# Error-catalog codes this module logs (buildgen/error_catalog.json, SPECIFICATION.md Part C.7.1).
+_ERR_NOT_INIT = const(18)
+_ERR_LOCK_TIMEOUT = const(19)
+_ERR_BAD_ARG = const(21)
+_ERR_CONTRACT = const(24)
+_ERR_FRAM_WP_MISMATCH = const(45)
+_WRN_FRAM_WEL_NOT_SET = const(26)
+_WRN_FRAM_WEL_STUCK = const(27)
+_WRN_FRAM_WRITE_PROTECTED = const(28)
 
 
 class FRAM_SPI(Lockable):
@@ -222,7 +231,7 @@ class FRAM_SPI(Lockable):
     def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> int:
         if self._is_write_protected():
             # WP8: persisted by the caller, matching AsyFramManager's own "communication paused,
-            # not writing" precedent (asy_fram_manager.py, wrnno=60/70/80) for the same class of
+            # not writing" precedent (asy_fram_manager.py, wrnno 25) for the same class of
             # condition - a refused-but-expected write against a deliberately-gated chip.
             return _W_PROTECTED
         if not self._enable_write():
@@ -270,7 +279,7 @@ class FRAM_SPI(Lockable):
         # is the cached value from the last verified set_write_protected() call (see there for
         # why re-reading the status register on every get isn't needed).
         if not self.initialized:
-            await self.pr.err_s("FRAM not initialized, run setup first!", errno=89)
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         return self._is_write_protected()
 
@@ -294,14 +303,14 @@ class FRAM_SPI(Lockable):
         # get_values()' own numbers and messages, in the one place that has them, whichever path
         # decided the status. Returns what get_values() returns.
         if status & _SV_NOT_INIT:
-            await self.pr.err_s("FRAM not initialized, run setup first!", errno=90)
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
         elif status & _SV_NOT_LOCKED:
             # WP8: an internal-contract violation (a caller failing to hold the lock the Lockable
             # base class requires), not a hardware fault - a real code defect if it ever fires, so
             # errno rather than wrnno, unlike the benign, expected refusals elsewhere.
-            await self.pr.err_s("get_values: FRAM access not locked!", errno=99)
+            await self.pr.err_s("get_values: FRAM access not locked!", errno=_ERR_CONTRACT)
         elif status & _SV_BAD_RANGE:
-            await self.pr.err_s("get_values: Invalid FRAM address range!", errno=91)
+            await self.pr.err_s("get_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
         else:
             return True
         return False
@@ -317,8 +326,7 @@ class FRAM_SPI(Lockable):
         if not self.initialized:
             return _SV_NOT_INIT
         if not self.asy_lock.locked():  # from Lockable class
-            # WP8: same internal-contract violation as get_values_sync() above, own errno per the
-            # "grouped by the raising method" convention (SPECIFICATION.md C.7.1).
+            # Same internal-contract violation as get_values_sync() above.
             return _SV_NOT_LOCKED
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             return _SV_BAD_RANGE
@@ -328,25 +336,25 @@ class FRAM_SPI(Lockable):
         # set_values()' own numbers and messages. A stuck write-enable latch is the one status that
         # warns and still reports success: the payload landed, only the housekeeping is stuck.
         if status & _SV_NOT_INIT:
-            await self.pr.err_s("FRAM not initialized, run setup first!", errno=92)
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         if status & _SV_NOT_LOCKED:
-            await self.pr.err_s("set_values: FRAM access not locked!", errno=100)
+            await self.pr.err_s("set_values: FRAM access not locked!", errno=_ERR_CONTRACT)
             return False
         if status & _SV_BAD_RANGE:
-            await self.pr.err_s("set_values: Invalid FRAM address range!", errno=93)
+            await self.pr.err_s("set_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
             return False
         if status & _W_PROTECTED:
             # WP8: persisted, matching AsyFramManager's own "communication paused, not writing"
-            # precedent (asy_fram_manager.py, wrnno=60/70/80) for the same class of condition - a
+            # precedent (asy_fram_manager.py, wrnno 25) for the same class of condition - a
             # refused-but-expected write against a deliberately-gated chip, not a hardware fault.
-            await self.pr.wrn_s("FRAM currently write protected.", wrnno=84)
+            await self.pr.wrn_s("FRAM currently write protected.", wrnno=_WRN_FRAM_WRITE_PROTECTED)
             return False
         if status & _W_WEL_NOT_SET:
-            await self.pr.wrn_s("FRAM write enable latch did not set, aborting write.", wrnno=82)
+            await self.pr.wrn_s("FRAM write enable latch did not set, aborting write.", wrnno=_WRN_FRAM_WEL_NOT_SET)
             return False
         if status & _W_WEL_STUCK:
-            await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
+            await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=_WRN_FRAM_WEL_STUCK)
         return True
 
     async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
@@ -359,7 +367,7 @@ class FRAM_SPI(Lockable):
         # bus like setup(), so it must NOT be called from inside `async with fram:` - asyncio.Lock
         # isn't reentrant and that would hang, the same caveat verify_present() carries.
         if not self.initialized:
-            await self.pr.err_s("FRAM not initialized, run setup first!", errno=94)
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         await self._bus_lock.acquire()
         try:
@@ -368,12 +376,12 @@ class FRAM_SPI(Lockable):
             self._bus_lock.release()
         await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
         if status & _W_WEL_NOT_SET:
-            await self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=83)
+            await self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)
             return False
         if status & _W_WEL_STUCK:
-            await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
+            await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=_WRN_FRAM_WEL_STUCK)
         if status & _W_WP_MISMATCH:
-            await self.pr.err_s("FRAM write protection readback mismatch, not applied!", errno=95)
+            await self.pr.err_s("FRAM write protection readback mismatch, not applied!", errno=_ERR_FRAM_WP_MISMATCH)
             return False
         self.pr.evt("FRAM Write Protection set to", value)
         return True
@@ -402,12 +410,12 @@ class FRAM_SPI(Lockable):
         # failure. Wait is bounded, not a bare `async with self:`, since asyncio.Lock isn't
         # reentrant and a caller nesting this inside its own `async with fram:` would else hang.
         if not self.initialized:
-            await self.pr.err_s("FRAM not initialized, run setup first!", errno=96)
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         try:
             await asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)
         except asyncio.TimeoutError:
-            await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=97)
+            await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=_ERR_LOCK_TIMEOUT)
             return False
         try:
             id_error: ValueError | None = None
@@ -424,7 +432,7 @@ class FRAM_SPI(Lockable):
                 # Provably unreachable (self._max_size is fixed post-construction, and reaching here
                 # already required a prior successful setup() with that same size) - kept per Part
                 # E.5.1's documented precedent for this exact class of defensive branch, not chased.
-                await self.pr.err_s("FRAM verify_present: device ID check failed.", id_error, errno=98)
+                await self.pr.err_s("FRAM verify_present: device ID check failed.", id_error, errno=_ERR_CONTRACT)
             if not present:
                 self.initialized = False
         finally:

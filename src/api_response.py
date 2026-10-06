@@ -28,10 +28,8 @@ if TYPE_CHECKING:
         @property
         def json(self) -> object: ...
 
-# Logged onto whatever caller's own self.pr this runs against, so it must not collide with any
-# driver's own numbering or with base_classes.py's reserved 1-9 - hence a fixed out-of-range
-# sentinel rather than a small number (SPECIFICATION.md Part C.7.1 carries the whole map).
-_ERRNO_UNHANDLED_DISPATCH = const(99)
+# Global catalog numbers, valid on any logger.
+_ERR_CALLBACK = const(14)
 
 # Standard code -> default message catalog. A caller can override any standard code's text (pass
 # descr=...) or use an entirely different code with its own text (any code not listed here) -
@@ -101,5 +99,5 @@ async def handle_set_cmd(
         # Defense-in-depth: reader._set_dict_cfg() already catches its own internal failure modes,
         # so what reaches here is almost always a caller-supplied post_fct/post_asy_fct raising -
         # produce a precise, on-brand reply rather than relying solely on Microdot's blanket catch.
-        await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=_ERRNO_UNHANDLED_DISPATCH)
+        await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=_ERR_CALLBACK)
         return make_response(100)
