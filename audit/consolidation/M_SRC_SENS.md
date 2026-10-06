@@ -271,6 +271,27 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   bus `OSError` propagates from both. `set_bits() -> bool`: `False` for no bus or an out-of-range field, `True` after
   `_writeto_mem()`. `set_register_struct() -> bool`: `False` for no bus or a pack failure (`except (TypeError,
   ValueError)`, alphabetical), `True` after the write. `get_bits()`/`get_register_struct()` unchanged (`None` contract).
+  (1) (A-C fold, silent-failure scan SF-A01, register-write half, 2026-10-06; stage U13) A data byte the device NACKs
+  is no longer a full write: `_writeto_mem()` goes (`writeto_mem()` returns `None`, so a short ACK count is not even
+  observable, `extmod/machine_i2c.c:640-648`). `set_bits()` and `set_register_struct()` preassemble the register address
+  and the payload in the bus's scratch (the oversized fallback allocates, as reads do; no await between fill and write):
+  a new static `_fill_reg_addr(buf, reg_addr, addrsize) -> int` writes `(8 if addrsize is None else addrsize) // 8`
+  address bytes most significant first, as `machine.I2C` sends them (`fill_memaddr_buf()`), and returns their count
+  `n`; `set_bits()` writes the register value's `reg_width` bytes after them in `lsb_first` order (a byte loop in place
+  of `to_bytes()`); `set_register_struct()` uses `struct.pack_into(reg_format, buf, n, value)` (the same `(TypeError,
+  ValueError)` → `False`); then `I2C._write_all(self._i2c, address, <view of n + payload bytes>, True)`
+  (M.SRC_SENS.012 (1)), `True` after it. Wire-identical to `writeto_mem()`: one transfer, address then payload
+  (`write_mem()`), without the port's own concatenation copy.
+  (2) (A-C fold, silent-failure scan SF-A02, 2026-10-06; stage U13) A NACKed register-address byte is no longer a
+  silent stale read: `_read_into_scratch()` and `get_register_into()` stop calling `readfrom_mem_into()` (on rp2 it
+  writes the address with no stop and, on a short count, sends a STOP and returns with the buffer untouched,
+  `extmod/machine_i2c.c:556-562, 625`). Each writes the address from the scratch, `n = _fill_reg_addr(self._scratch,
+  reg_addr, addrsize)`, `I2C._write_all(bus, address, self._scratch_view[:n], False)` (a short count: the STOP and
+  `OSError(EIO)` of M.SRC_SENS.012 (1)), then `bus.readfrom_into(address, view)` — the sequence `read_mem()` issues
+  itself on rp2 (no WRITE1 path), with the count tested; the read may overwrite the address bytes (no await between).
+  Comment (≤ 3 lines) on `_read_into_scratch()`: "# Not readfrom_mem_into(): it returns with the buffer untouched when
+  the device NACKs the register byte, so stale bytes would decode as fresh; here that is an EIO (SPECIFICATION.md
+  F.5.1)." No new state.
 - **Resolved**: A.U13.10 and A.U30.07 add sibling helpers and A.U30.21 changes the one they share (U30 cross-unit note
   6): one change, order-independent. After A.U30.07, `get_register_bytes()` serves four driver sites (BMP3XX
   `_read_register()`, ISL29125 `_read_byte()`, `get_config_snapshot()`, `reset()`); its per-call `bytes` copy is a
@@ -284,6 +305,12 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `tests/test_asy_i2c_driver.py` bool/`None` asserts and new helper cases → A.U13.07/A.U13.10/A.U30.07/A.U30.21
   (TEST_UNIT); I.2 rows and A.U13.02's sentence (as amended by A.U30.21) → A.U30.02/A.U13.02 (SPEC); SPEC G.2 I2C entry →
   A.U13.01/A.U13.10/A.U30.07 (SPEC); four tiers wire-identical → A.U13.10/A.U30.07/A.U30.21 blasts
+  (SF-A01/SF-A02: L1 fake `I2C` gains a short-ACK mode and register semantics over `writeto()`/`readfrom_into()`
+  (TEST_HELP), cases: a NACKed data byte and a NACKed register byte each raise EIO, the fallback paths, address bytes
+  for `addrsize` 8/16; L2 twin `machine.I2C` routes an address-prefixed `writeto()` and a no-stop address write plus
+  `readfrom_into()` to each chip's register handlers, with a NACK knob (TWIN); four tiers re-run for the changed call
+  form (L3 flash sweep, L4 bench, phase C); SPEC F.5.1 sentences on the short count and `read_mem()`'s silent return —
+  tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.012 Transfers: bool results, whole-buffer fast path, no range params
@@ -297,12 +324,33 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `return self.writeto(address, buffer_out, stop=out_stop) is not None and self.readfrom_into(address, buffer_in,
   stop=in_stop)`; comment (≤ 3 lines) keeps the repeated-start sentence and gains "The combined form takes whole
   buffers; pass a memoryview slice for a region (Part G.2 buffer handoff)."
+  (1) (A-C fold, silent-failure scan SF-A01, choke point, 2026-10-06; stage U13) Every write tests the ACK count
+  `machine.I2C.writeto()` returns (a data-byte NACK is a short non-negative count, pico-sdk `i2c.c:229-231`, passed
+  through by `ports/rp2/machine_i2c.c:150-158` and `extmod/machine_i2c.c:467-472`): new `@staticmethod def
+  _write_all(bus: _I2C, address: int, buf: memoryview | bytes | bytearray, stop: bool) -> int:` `n =
+  bus.writeto(address, buf, stop)`; `if n != len(buf):` `if not stop: bus.writeto(address, b"", True)` (the STOP
+  `read_mem()` itself sends after a short no-stop write, `extmod/machine_i2c.c:556-560`), `raise OSError(errno.EIO)`;
+  `return n`. `writeto()` returns `self._write_all(self._i2c, address, <buffer or view>, stop)`, keeping its `int |
+  None` contract (`None`: no bus, or a `str` outside Latin-1); `writeto_then_readfrom()`, `I2CDevice.write()`
+  (M.SRC_SENS.013, its `is not None` unchanged) and the register helpers (M.SRC_SENS.011 (1)-(2)) all pass through it,
+  so a short count reaches every driver's existing `OSError` path. `import errno` joins M.SRC_SENS.007's imports.
+  Comment (≤ 3 lines) on `_write_all()`: "# machine.I2C reports a data byte the device NACKed only as a short ACK count,
+  so a short count is an EIO here, as a NACKed address already is (SPECIFICATION.md F.5.1)." SGP40's general-call
+  `_reset()` (M.SRC_SENS.069) already catches `OSError`: a general call no device ACKs stays best-effort, as at HEAD.
+  (2) (A-C fold, silent-failure scan SF-A03, 2026-10-06) Stage U13, with (1). No code: the abort cause (address NACK, arbitration loss,
+  other abort) is folded into one `EIO` below this module and its register is cleared on read before Python could look
+  (pico-sdk `i2c.c:180-186, 222-235`; `ports/rp2/machine_i2c.c:150-155`), so every `OSError` here is treated alike.
+  The sentence stating that it cannot be read is the SPEC carrier's (F.5.1/F.2, M_SPEC per phase 2); this module's
+  header (M.SRC_SENS.006) keeps its three lines.
 - **Resolved**: —
 - **Unit**: stage U5 (A.U5.14 signature); stage U13 (bool); stage U30 (fast path)
 - **Depends**: M.SRC_SENS.009
 - **Blast carried by**: tests `tests/test_asy_i2c_driver.py:69-98, 140, 417, 479-490, 571-586, 993` → A.U13.07; the nine
   calls passing no range → A.U5.14 (unchanged); identity/partial-view L1 → A.U30.21; driver callers of `readinto`/
   `write` → M.SRC_SENS.013
+  (SF-A01: L1 a short count raises EIO and a no-stop short count also sends the STOP, the fakes' short-ACK mode
+  (TEST_HELP, TWIN), the SGP40 general-call case; SF-A03: SPEC F.5.1/F.2 sentence (SPEC) — tests in M_TEST_UNIT/M_TWIN
+  per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.013 `I2CDevice`: session lock, probe setup, bool forwarders
@@ -559,6 +607,16 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   list[TimerStarter]` (comment kept). `get_error_sources(self) -> list[ErrorSource]` (comment kept; "see this module's
   own docstring" → "no schema, see the module comment"). `get_loggers(self) -> list[PrintLogHistory]` (unquoted).
   `async def reset_error_counter(self) -> bool: return await self.pr.reset()`.
+  (1) (A-C fold, silent-failure scan SF-M3-09, LED half, 2026-10-06) Stage U22 (the overlay re-apply stage), with M.TEST_UNIT.079 (1). The overlay is rewritten on a recurring event:
+  `_overlay_loop()`'s wait becomes `try: await asyncio.wait_for_ms(self._overlay_start.wait(), _OVERLAY_REFRESH_MS)`
+  `except asyncio.TimeoutError: pass`, followed by the unchanged re-apply under `_overlay_lock` (a running signal holds
+  that lock, so a refresh never cuts into a ramp). Comment (≤ 3 lines): "# Rewrites the overlay at least once per
+  period: a WS2812 that lost its state in a supply dip shows the right overlay again (it has no status to read)." New
+  constant in M.SRC_SENS.021's block: `# @tunable led.overlay_refresh_ms = 300000` / `_OVERLAY_REFRESH_MS =
+  const(300000)` (the default notification `FlashInterval`, so about once per notification cycle). The scan names
+  "once per notification cycle"; the notification holds no handle on the driver (its only wiring is `request_signal`),
+  so the recurring event is the overlay task's own bounded wait — no new task, timer or wiring (agent, 2026-10-06). The
+  `wait_for_ms()` wrapper task is a temporary once per period (OR110.a (3)).
 - **Resolved**: A.U10.44's map names the overlay/signal starters; the external-watcher starter has no name because
   A.U9.02 removes it first (A.U10.44 Depends A.U9.02).
 - **Unit**: stage U9 (watcher removed), stage U10 (names), stage U11 (bool reset), stage U22 (overlay re-apply, typing)
@@ -566,6 +624,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Blast carried by**: `tests/test_asy_neopixel_driver.py:653-658` (two starters) → A.U9.02; starter-name users in tests
   → A.U10.44; L1/L2 restart cases → A.U22.01 (TEST_UNIT, TWIN); `_put_status()`/`ResetErrors` → A.U11.31 (SRC_NET);
   SPEC A.4 NeoPixel paragraph → A.U22.01/A.U9.02/A.U9.05/A.U9.06 (SPEC)
+  (SF-M3-09: L1 with a driven clock the pixel is rewritten after one idle period and not during a signal; L2 a blanked
+  twin pixel shows the overlay again; Part N row `led.overlay_refresh_ms` (SPEC) — tests in M_TEST_UNIT/M_TWIN per
+  phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.026 `led_signal()`: refused at once while busy
@@ -783,6 +844,19 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_store_notif_data()` → `await self._set_meas_data(NOTIFY(any_triggered, utc_now()))`. `_safe_local_time()`: `except
   Exception as e: report_if_fatal(e); await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK); return
   None`. `_trigger_signal()`: same shape with `"request_signal_cb failed:"` and `_ERR_CALLBACK`.
+  (1) (A-C fold, silent-failure scan SF-B2, 2026-10-06) Stage U9, with M.TEST_UNIT.277 (1) and .088 (2) (it needs only the busy refusal of M.SRC_SENS.027's U9 stage). `_trigger_signal()` tests the `bool` the sink returns
+  (`NeopixelDriver.request_signal()`, M.SRC_SENS.027): inside the existing `try`, `ok = await
+  self._request_signal_cb(…)`; `if not ok and not self._sink_is_default: await self.pr.wrn_s(notif.name, "LED signal
+  dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)` — persisted and counted in `ErrCount` like every warning;
+  `Triggered` keeps its meaning (a threshold was crossed). New code in M.SRC_SENS.031's catalog block:
+  `_WRN_NOTIFY_SIGNAL_DROPPED`, the next free warning number, assigned at execution with the catalog as the numbering
+  source (M.GEN.034). The default sink keeps returning `False` (no semantic change to the sink; the conservative option
+  of the two the scan names); the service knows it holds it: `_DefaultSignalSink.request_signal` becomes a
+  `@staticmethod` with the same `(r, g, b, t)` call signature, so the attribute the generated wiring passes is the
+  class's own function (`py/runtime.c:1149-1151`; a bound method carries no `__self__` to test,
+  `py/objboundmeth.c:112-121`), and `__init__` (M.SRC_SENS.033) sets `self._sink_is_default = request_signal_cb is
+  _DefaultSignalSink.request_signal` (agent, 2026-10-06). The sink's comment keeps its contract sentence. On the
+  owner-review list (M.PROC.035): the default sink's `False` is read as "no LED", not as a drop.
 - **Resolved**: A.U10.06 (no `try` at the timestamp) and A.U14.26 (1) (`except MemoryError` at the `_now()`-shaped
   sites) conflict; ruled for A.U10.06 by V.U18.R10 (U18 register fix 10, A.U18.25's Depends; U30 cross-unit note 1).
   A.U10.43's `_next_sleep_s()` is overtaken by A.U31.14's `_next_sleep_ms()` (U31 conflict table row 7).
@@ -791,6 +865,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: A.U10.06, A.U30.19
 - **Blast carried by**: `tests/test_asy_notification_service.py:1256-1279` → A.U31.14; `:1440-1498` (`_now()` overflow
   tests) go → A.U10.06 (TEST_UNIT); `_FastAsyncSleep` gains `sleep_ms` → A.U31.14/A.U24.49 (TEST_HELP)
+  (SF-B2: L1 a busy NeoPixel drop persists the new warning once per drop, the default sink persists nothing; L2 the
+  integration files' `ErrCount`; catalog row (GEN), SPEC C.7.1 NOTIFY row (SPEC) — tests in M_TEST_UNIT/M_TWIN per
+  phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.035 `_check_one()`: value reference, numeric guard, the threshold read keeps its entry
@@ -807,6 +884,17 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (this layer's own entry beside the config store's, as at HEAD); `threshold = thresholds[0]`;
   `numeric_value = float(value)` (cannot raise now; comment → "# float() cannot raise here: value is numeric."); return
   the comparison.
+  (1) (A-C fold, silent-failure scan SF-M3-01, notification half, 2026-10-06) Stage U22. A frozen producer sample is unavailable:
+  inside the `try`, after the field read, `ts = getattr(data, "TS", None)`; when `ts is not None` and `utc_now()` is not
+  `None` and `utc_now() - ts > _SAMPLE_MAX_AGE_S`, `value = None`, which takes the existing `value is None` path; a
+  `TS` of `None` (before the first sync) counts as current, as today. New constant in M.SRC_SENS.031's block: `#
+  @tunable notify.sample_max_age_s = 10800` / `_SAMPLE_MAX_AGE_S = const(10800)` with "# Three of the longest
+  configurable producer interval (BMP3XX SampleInterval 3600 s): a slow producer is never cut off (agent,
+  2026-10-06)." No new state; the same bound as SGP40's compensation (M.SRC_SENS.064 (1)).
+  (2) (A-C fold, silent-failure scan SF-B17, 2026-10-06) Stage U22. `_check_one(self, notif) -> bool | None`: `None` where the
+  signal could not be evaluated — the read raised, the value is `None` or stale (part (1)), not numeric, NaN, or the
+  threshold read failed — and the comparison's `bool` otherwise (a different return value, no new state); its one
+  caller, `_monitor_loop()`, turns `None` into the inactive reason (M.SRC_SENS.037 (1)).
 - **Resolved**: A.U9.08 writes `notif.last_value = None`/`notif.triggered = False` in its new branches — dropped with
   the attributes (A.U22.02's Depends). `bool` counts as numeric (A.U9.08 "(`bool` counts as `int`)") — written as an
   explicit type set because MicroPython's `bool` is not an `int` subclass (`py/objbool.c:87-96`, A.U11.S01).
@@ -814,6 +902,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: M.SRC_SENS.033
 - **Blast carried by**: tests `:768-801`, `:873-893` (`"abc"`, `[1]`, `"1800"` rows), `FakeValue` typing → A.U9.08
   (TEST_UNIT); catalog row 15 wording "raised or returned a non-numeric field" → A.U9.08 into A.U2.01 (GEN)
+  (SF-M3-01: L1 a stale `TS` does not trigger, a `None` `TS` is evaluated, L2 SCD30 `ContMeas` off ends WarnCO2 after
+  the bound, Part N row `notify.sample_max_age_s` (SPEC); SF-B17: L1 each unavailable path returns `None` — tests in
+  M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.036 Starters, the pause task and the override API
@@ -849,6 +940,17 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   off_min_of_day, cur_min_of_day):`, the per-signal loop with `await asyncio.sleep_ms(round(flash_dur * 2000))` after a
   triggered flash, `await self._store_notif_data(any_triggered=any_triggered)`; `await
   asyncio.sleep_ms(self._next_sleep_ms(interv, t0))`.
+  (1) (A-C fold, silent-failure scan SF-B17, 2026-10-06) Stage U22, with M.SRC_SENS.035 (2). The published sample says whether the signals were evaluated:
+  `NOTIFY = namedtuple("NOTIFY", ("Triggered", "State", "TS"))` and `_FIELDS` follow (`TS` stays last); M.SRC_SENS.033's
+  two construction defaults read `NOTIFY(Triggered=False, State=None, TS=None)`. `_monitor_loop()` computes one `state`
+  per cycle and stores it with `await self._store_notif_data(any_triggered=any_triggered, state=state)`: `4` own
+  configuration unreadable (the failing branch now stores too, `Triggered=False`); `1` not evaluated by setting
+  (`AutoOn` off, paused, or outside the window); `2` not evaluated: no local time (`_safe_local_time()` `None`: no NTP
+  sync or the callback failed); `3` evaluated in part: at least one `_check_one()` returned `None` (M.SRC_SENS.035
+  (2)); `0` every signal evaluated. One comment line at the codes: "# State: 0 evaluated, 1 off by setting, 2 no clock,
+  3 a value unavailable, 4 own config unreadable (SPECIFICATION.md A.4)." A field of the existing sample, not a new
+  task or flag; `Triggered` keeps its meaning. The page renders `State` as it renders `Triggered` (no `@web` tag on
+  either at HEAD).
 - **Resolved**: A.U3.02 removes the `cfg_failing` flag and `repeat=`; A.U3.05's console line is dropped (OR140.a (7),
   A-C review fold), so the line stays a persisted warning, written directly.
 - **Unit**: stages U3 (`repeat=` out), U5 (flush moved to `setup()`), U8 (constant), U9 (window), U10 (setup out, name), U31
@@ -856,6 +958,10 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: M.SRC_SENS.031, M.SRC_SENS.033, M.SRC_SENS.034
 - **Blast carried by**: `_in_window()` table, one-cycle and L2 window tests → A.U9.01 (TEST_UNIT, TWIN); config-failure
   tests `:665-686, :1350-1407` keep the module's own entry → M.TEST_UNIT.086, .091; DEVICE_REFERENCE window bullet → A.U9.01 (DOCS); SPEC A.4 → A.U9.01
+  (SF-B17: L1 one case per `State` code and every `NOTIFY(` tuple in tests gains the field; L2 a twin boot without NTP
+  publishes `State` 2; mock data and the measurements page row (WEB), generated definitions if NOTIFY's fields are
+  listed there (GEN), SPEC A.4 code table and DEVICE_REFERENCE line (SPEC, DOCS) — tests in M_TEST_UNIT/M_TWIN per
+  phase 2)
 - **Kind**: code
 
 ## src/asy_bmp3xx_driver.py
@@ -989,6 +1095,20 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   self.pr.wrn_s("PresOffset moves the pressure outside 300-1250 hPa; sea-level pressure not computed:", p_comp,
   wrnno=_WRN_DERIVED_DOMAIN)`, else `slp = math_helpers.pressure_at_height(p_comp, -self._cycle_comp[2],
   self._cycle_comp[3])`; store `BMP3XX(p_comp, t_comp, slp, results[2])`.
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, reader half, 2026-10-06) Stage U15, with M.SRC_SENS.048 (1). A chip self-reset no longer leaves the
+  stored settings silently reverted: in `_read_bmp()`'s `try`, before the conversion, `if await
+  self._bmp.take_por_detected():` (M.SRC_SENS.048 (1)) `await self.pr.wrn_s("Chip reset detected - re-applying the
+  stored configuration.", wrnno=_WRN_BMP_CHIP_RESET)`, then `async with self._set_lock: code = await
+  self._apply_stored_config()` (the existing re-apply path, under the lock the rung takes, M.SRC_SENS.044); a non-zero
+  code (logged by the helper) raises `RuntimeError("stored configuration not re-applied after a chip reset")`, so the
+  cycle fails into the existing ladder, whose participant rung resets and re-applies. The same shape as ISL29125's
+  brownout (M.SRC_SENS.076). New code in M.SRC_SENS.040's block: `_WRN_BMP_CHIP_RESET`, the next free warning number,
+  assigned at execution with the catalog as the numbering source (M.GEN.034). No new state.
+  (2) (A-C fold, silent-failure scan SF-M3-02, BMP3XX half, 2026-10-06) Stage U15, with M.SRC_SENS.055 (2). The operating-range gate's `ValueError` gets
+  its own code: `_read_bmp()` gains, before its broad handler, `except ValueError as e: pressure = temperature = None;
+  await self.pr.err_s("Reading rejected:", e, errno=_ERR_READ_RANGE)` with the comment of M.SRC_SENS.055 (2) (no other
+  `ValueError` is raised on the read path). Escalation unchanged; the streak question is on the owner-review list
+  (M.PROC.035). `_ERR_READ_RANGE` is the shared code of M.SRC_SENS.055 (2), declared in M.SRC_SENS.040's block too.
 - **Resolved**: (1) Shared wrnno 11: A.U15.24 (`DERIVED_DOMAIN`) and A.U18.15 (`SOCKET_TEARDOWN`) both claim it
   (SUPP_recovery conflicts row 7, "A-C assigns 11 to one and 12 to the other"): U15 lands before U18, so
   `DERIVED_DOMAIN` = 11, `SOCKET_TEARDOWN` = 12; A.U10.R01's W14/W15 keep their numbers (agent, 2026-10-01). (2)
@@ -999,6 +1119,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Blast carried by**: L1 staleness/capture/domain cases → A.U15.22/A.U15.24/A.U10.06 (TEST_UNIT); catalog row W11 and
   W12 → A.U15.24 and A.U18.15 into A.U2.01 (GEN, SRC_NET: GAP-7 for the number); SPEC C.4.2/M.4/C.7.1 → A.U15.22/
   A.U15.24/A.U2.22 (SPEC)
+  (SF-B9/SF-A05: L1 a set `por_detected` persists the warning and re-applies OSR/IIR, a failed re-apply fails the
+  cycle; L2 twin `_bmp3xx_chip.py` power cycle sets EVENT bit 0, clear-on-read; the per-cycle EVENT read is a new
+  transaction on a shared bus (dev i2c0, wozi i2c1), so the four bus-hazard tiers re-run (L1, L2, L3 flash sweep, L4
+  bench, phase C); SF-M3-02: L1 a reading outside 300-1250 hPa logs the new code; catalog rows (GEN), SPEC M.4/C.7.1
+  (SPEC) — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.044 `_init_bmp()`, the stored-config re-apply and the participant rung
@@ -1078,11 +1203,21 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Change**: `_read_sensor_dict()` and the three `get_*` forwarders log `errno=_ERR_CHIP_GET`; the three `set_*`
   forwarders `errno=_ERR_CHIP_SET`; each `except Exception as e:` starts with `report_if_fatal(e)`; `get_data()`/
   `get_dict_data()`/`get_dict_cfg()`/`get_error_counter()` unchanged but for the renamed `_VAL_` names and `self._bmp`.
+  (1) (A-C fold, silent-failure scan SF-B8, BMP3XX driver half, 2026-10-06) Stage U19, with M.SRC_CORE.038 (1) (a `None` returned before the marker exists would reach the GET as nulls). A chip-read failure is no longer a map of
+  `null`s that reads as "not set": `_read_sensor_dict()`'s failure branch keeps its `_ERR_CHIP_GET` entry and returns
+  `None` in place of the three-`None` dict (return type `dict[str, CfgValue] | None`). The base half — `_get_dict_cfg()`
+  in `asy_base_classes.py` (M.SRC_CORE.038, M_SRC_CORE, F1) — turns a `None` from the callback or from
+  `_get_mgr_cfg()` into the module's GET entry exactly `{"error":"unavailable"}` **in place of** the field map
+  (`{name: {"error": "unavailable"}}`, never a marker beside values), the shape M.WEB.001's `isUnavailable()` tests;
+  the file keys of that GET are not sent either. The method's comment states the new return (≤ 3 lines).
 - **Resolved**: —
 - **Unit**: U30 (stage U2 numbers)
   A-C2 step order: A.U2.10's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.040
 - **Blast carried by**: number asserts → A.U2.10 (TEST_UNIT)
+  (SF-B8: L1 a raising snapshot gives `{<module name>: {"error": "unavailable"}}` on `GET /sensors` with one
+  `_ERR_CHIP_GET`; depends on the base half in M_SRC_CORE (F1); page rendering M.WEB.001 — tests in M_TEST_UNIT/M_TWIN
+  per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.048 `BMP3XX_I2C`: session, conversion wait, own burst buffer, bool bus results
@@ -1117,6 +1252,18 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   ID (`RuntimeError(f"failed to find BMP3XX, chip ID {hex(chip_id)}")`), coefficients, `reset()`, `return True`.
   `reset()`: bool-checked CMD write, `await asyncio.sleep_ms(_RESET_SETTLE_MS)`, `err is None` → `OSError("I2C bus not
   initialized")`, `err & _REG_ERR_CMD_BIT` → `RuntimeError("reset command rejected (ERR_REG cmd_err set)")`.
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, protocol half, 2026-10-06) Stage U15, with the device session (its pinning tests M.TEST_UNIT.010 (1), M.TWIN.010 (1), .100 (1) and M.TEST_HELP.026 (11) move the burst there): the 8-byte burst from `_REGISTER_ERR` replaces HEAD's 6-byte read, and U30's own buffer takes `_PT_BURST_LEN` as 8. EVENT and ERR_REG are read (BMP384
+  ds003 4.3.7, BMP388 ds001 4.3.7, BMP390 ds002 4.3.8: EVENT 0x10 bit 0 `por_detected`, set after power-up or a soft
+  reset, clear-on-read; ERR_REG 0x02 bit 0 `fatal_err`). New `async def take_por_detected(self) -> bool:` one EVENT
+  byte under the device session (`get_register_bytes(_REGISTER_EVENT, 1)`, `None` → `OSError("I2C bus not
+  initialized")`), returns bit 0 (the read clears it). `reset()`: in the same hold, after the ERR read, one EVENT read
+  discards the `por_detected` our own soft reset raises (so `setup()` and the participant rung start clear). The data
+  burst starts at `_REGISTER_ERR` instead of `_REGISTER_PRESSUREDATA`: ERR_REG, STATUS and the six data bytes are
+  contiguous (0x02-0x09), so `_PT_BURST_LEN` 6 → 8 and `adc_p`/`adc_t` decode from offset 2; `self._pt_burst[0] &
+  _REG_ERR_FATAL_BIT` raises `RuntimeError("BMP3XX fatal error (ERR_REG fatal_err)")`, a failed read for the ladder.
+  New constants in M.SRC_SENS.040's block: `_REGISTER_EVENT = const(0x10)`, `_EVENT_POR_BIT = const(0x01)`,
+  `_REG_ERR_FATAL_BIT = const(0x01)` (comments cite the sections above); `_PT_BURST_LEN`'s comment names the three
+  parts. One register read more per cycle, no new state.
 - **Resolved**: A.U15.25's L1 expects `0.128939 s` through `asyncio.sleep`; A.U31.11 makes it `sleep_ms(129)` (U31
   conflict row 2). A.U13.10's BMP burst site is replaced by A.U30.07's driver-owned buffer (U30 note 6). A.U10.38's
   session rename is moot (A.U15.40 removes the class).
@@ -1129,6 +1276,10 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `tests/_bus_hazard_catalog.py` `seed_bmp_ready(chip_id=)`, `_exercise_bmp3xx` (`get_pressure_altitude`),
   `test_bus_hazard_multi_device.py:114` per-ID loop → A.U15.25/A.U15.27 (TEST_HELP, TEST_UNIT); four tiers → A.U15.25
   blast; SPEC M.4 rows → A.U15.05/A.U15.25/A.U31.11 (SPEC); `bmp3xx_plausibility_read.py:24` comment → A.U15.40 (HW_DEV)
+  (SF-B9/SF-A05: L1 `take_por_detected()` true once then false, `reset()` leaves it clear, a set `fatal_err` fails the
+  read, the 8-byte burst decodes as before; twin `_bmp3xx_chip.py` models EVENT and ERR_REG within the burst (TWIN);
+  `_bus_hazard_catalog.py` gains the EVENT read (TEST_HELP); four tiers as M.SRC_SENS.043 — tests in M_TEST_UNIT/M_TWIN
+  per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.089 A pre-sync `TS` of `None` is not a failed read
@@ -1200,6 +1351,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   keys; a tuple of literals `const()` folds); module function `_temp_offset_ticks(offset: float) -> int: return
   int(offset * 100 + 0.5)` with the comment "# Nearest 0.01 degC tick, not truncation: in float32 130 of the 2001
   two-decimal inputs land one tick low when truncated (offset is validated >= 0 first)."
+  (1) (A-C fold, register row "SCD30 temperature offset truncated" (refresh family (g), no SF number), 2026-10-06)
+  Already the end state, no further change: `_temp_offset_ticks()` above rounds to the nearest 0.01 °C tick (A.U4.05,
+  owner, 2026-09-29, OR101.a; D4.61), which settles the row's D.1 flag (the owner chose rounding over the legacy
+  truncation) and matches upstream Adafruit `3eb3b52`'s `round()` except at an exact half-tick tie (half-up here, half-even
+  there), which no two-decimal input reaches.
 - **Resolved**: A.U8.07's float-second constants → A.U31.09's integer ms (U31 conflict row 1). A.U4.04's `_APPLY_ORDER`
   lands in U4 with the HEAD keys; A.U10.40's rename script updates the tuple in U10.
 - **Unit**: stages U2, U4, U8, U10, U15, U31
@@ -1300,6 +1456,12 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   (A.U15.12 (4)). `get_dict_cfg()` → `await self._get_dict_cfg(self.name, <nine-key schema>)` (no callback);
   `get_cfg_schema()` returns the nine-key schema (the comment `:252-254` → "# The nine keys a PUT may carry: six stored
   on the chip, three in the config file.").
+  (1) (A-C fold, silent-failure scan SF-B8, SCD30 driver half, 2026-10-06) Stage U19, with M.SRC_CORE.038 (1) (a `None` returned before the marker exists would reach the GET as nulls). `_get_mgr_cfg()`: a failed
+  `get_config_snapshot()` keeps its one `_ERR_CHIP_GET` entry and returns `None` for the whole call (the FRC keys are
+  not read), in place of `None` values for the six chip keys — the GET mirror of OR89.a (6)'s whole-body PUT refusal.
+  The base half (`_get_dict_cfg()`, M.SRC_CORE.038, M_SRC_CORE, F1) sends the module's entry as exactly
+  `{"error":"unavailable"}` in place of its field map, the shape M.WEB.001's `isUnavailable()` tests (never a marker
+  beside values).
 - **Resolved**: A.U4.03/A.U4.04 wrote the chip store for a plain `SensorReader`; A.U15.12 makes the reader a
   `SensorReaderConfig` — U15 register fix 13 settles the composition (chip store for six keys, file for three).
   `always=` stays in the firmware: A.U4.04 calls it "the stopgap until U6 derives the never-Unchanged
@@ -1314,6 +1476,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   `_sensortask_scenarios.py:898-905`, twin `:394-411`, `tests_js/live-backend-put-matrix.test.js` → A.U4.04/A.U15.09/
   A.U15.12 (TEST_UNIT, TEST_HELP, TWIN, WEB); `tests_hardware/manual/manual_persistence.py:36-48` → A.U4.04 (HW_BENCH);
   SPEC C.4.3/C.4.4/C.5.2/A.4/A.8 → A.U4.04/A.U15.12 (SPEC)
+  (SF-B8: L1 a raising snapshot gives the whole-module `{"error": "unavailable"}` entry with one `_ERR_CHIP_GET`;
+  depends on the base half in M_SRC_CORE (F1); page M.WEB.001 — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.054 `_init_scd()`: first-start comment, interval cache, the participant rung
@@ -1358,6 +1522,26 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   self._scd_timer_triggers < self._trigger_half_ticks: self._scd_timer_triggers += 1` with A.U15.03's trailing comment
   ("# ticks with the pin high since the last read, not necessarily consecutive; capped at the threshold"); the FRC idle
   tick step and republish (A.U15.12 (4)); the `>=` test and `read_event.set()` as today.
+  (1) (A-C fold, silent-failure scan SF-B10 = SF-A04, 2026-10-06) Flag-first: the store keeps re-storing the cached
+  values with the cycle's timestamp on a not-ready read (the owner's named exception, owner, 2026-07-22, `110f3db`); not
+  changing it is a SPEC D.1 fine-tuning question on the owner-review list (M.PROC.035). Only the stuck-RDY visibility is
+  applied: `_read_scd()`, on the successful path, `if new_data: self._not_ready_reads = 0` `elif self._not_ready_reads <
+  _NOT_READY_WARN_AT: self._not_ready_reads += 1` and, on reaching it, `await self.pr.wrn_s("Data ready signalled but
+  no new measurement - RDY line stuck?", wrnno=_WRN_SCD_NOT_READY)` — one warning per episode, the counter bounded at
+  the threshold and cleared by the next new data; a raised read counts nothing here. New state `self._not_ready_reads
+  = 0` (set in `__init__`, M.SRC_SENS.052; reset by `_init_scd()`), the one counter the scan names: nothing else tells a
+  single late edge from a line that never clears. New constants in M.SRC_SENS.050's block: `_NOT_READY_WARN_AT =
+  const(5)  # consecutive not-ready reads, as ISL29125's _PERIODIC_ONLY_WARN_AT` and `_WRN_SCD_NOT_READY`, the next
+  free warning number, assigned at execution with the catalog as the numbering source (M.GEN.034).
+  (2) (A-C fold, silent-failure scan SF-M3-02, SCD30 half, 2026-10-06) A rejected reading is told apart from a bus
+  fault in the log: `_read_scd()` gains, before its broad handler, `except ValueError as e:` (raised only by
+  M.SRC_SENS.057's finiteness and range gate) with the same `None` results and `new_data = False` and `await
+  self.pr.err_s("Reading rejected:", e, errno=_ERR_READ_RANGE)`, comment "# The range gate's rejected value, kept
+  apart from a bus fault in the log; it still counts as a failed read." The escalation is unchanged (a failed read for
+  `_error_check()`, the conservative option); whether such a reading should count toward the streak at all (OR18/OR18.a)
+  is on the owner-review list (M.PROC.035). `_ERR_READ_RANGE` is a new shared code (also BMP3XX, M.SRC_SENS.043 (2)),
+  the next free shared number, assigned at execution with the catalog as the numbering source (M.GEN.034), declared in
+  M.SRC_SENS.050's block.
 - **Resolved**: A.U15.03 (saturate at `trigger_half_sec`) and A.U10.43 (rename to `trigger_half_ticks`) co-land on the
   same lines. A.U15.41 re-arms inside `scd_init_irq()`, which A.U10.44 renames `_irq_loop()`.
 - **Unit**: U15 (stages U8/U31 period constant, U10 names/split, U30 handler)
@@ -1365,6 +1549,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Blast carried by**: tests `tests/test_asy_scd30_driver.py:668-702, 726-786` and the FRC/staleness/saturation L1
   cases, L2 `tests/test_digital_twin_scd30.py` → A.U15.03/A.U15.12/A.U15.22/A.U15.41 (TEST_UNIT, TWIN); SPEC C.9.1/M.2 →
   A.U10.14/A.U15.03/A.U15.12 (SPEC)
+  (SF-B10/SF-A04: L1 five not-ready reads persist one warning, new data clears it, a raised read counts nothing; L2
+  twin RDY stuck high; SF-M3-02: L1 an out-of-range or non-finite reading logs the new code and still steps the streak;
+  catalog rows (GEN), SPEC C.7.1/M.2 (SPEC) — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.056 Reader forwarders: catalog numbers and handlers
@@ -1562,6 +1749,13 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   lines): "# Two independent sub-parts of a pending reset, tracked separately since they can complete on different cycles
   (see reset_voc()/_read_sgp()); both start done. Never drop a reset, never redo the whole thing, never give up retrying
   (owner, 2026-07-22, `90ced2b`, 'verbatim in spirit')." then the two flags.
+  (1) (A-C fold, silent-failure scan SF-B1 and SF-B12, SGP40 halves, 2026-10-06) Stage U16, with M.SRC_CORE.091 (1) (the `owner=` keyword lands there). The backup chunk call passes
+  `owner=_NAME + name_ext + "_VOC"` (M.SRC_CORE.091 (1)'s keyword; distinct from the logger's own chunk owner, so the
+  two never share a seed), and a refused allocation is no longer only a console line: `self._backup_refused = backup is
+  not None and self._ts_storage is None`; `_init_sgp()` (M.SRC_SENS.063) then persists once per boot `await
+  self.pr.wrn_s("Backup storage unavailable - VOC state not preserved", wrnno=_WRN_SGP_NO_BACKUP)` (the existing code:
+  the effect is the same, no backup to restore) and clears the flag. FRAM's own `_ERR_FRAM_FULL` (M.SRC_CORE.092 (1))
+  counts the refusal; this entry names who runs without it.
 - **Resolved**: A.U10.35 lists nine attributes of this class; `reset` has no outside reader either — G10/R07 private by
   default (agent, OR2.c list, same reading as M.SRC_SENS.004). The `_ntp_synced` reference replaces A.U15.17's
   `fram_ntp_callback` (A.U5.11's `backup.ntp_synced`, named in A.U15.17's own text).
@@ -1591,17 +1785,44 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   self._restore_waiting and self._voc_init > 0 and not await self._ntp_synced(): return False`; `res, ts, age = await
   self._ts_storage.read_into(buf)`; no backup → `self._voc_init = 0`, return `False`, with `res is None` (unreadable: the FRAM layer
   persisted its fault) → `await self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)` (SGP40's own entry, as
-  at HEAD) and `res is False` (blank, a first boot) → the console line (an expected condition, G5/R21); `ts is None` → `wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)`, `ts =
-  _NO_TIMESTAMP`; `age is None` with `_voc_init > 0` → `self._restore_waiting = True`, the NTP-wait event, return
-  `False`; otherwise `self._voc_init = 0`, `self._restore_waiting = False`, and `if cfg_values[1] > 0 and (age < 0 or age >
-  60 * cfg_values[1]): await self.pr.wrn_s("Backup age out of range (too old, or dated in the future)",
-  wrnno=_WRN_SGP_BACKUP_AGE); return False`; `self._restored_from = ts`; `return True`. `_run_backup()`: verify period
+  at HEAD) and `res is False` (blank, a first boot) → the console line (an expected condition, G5/R21); then one
+  `if`/`elif` chain, as at HEAD and in the legacy driver: `if ts is None:` (undated: restored at once, no age to test)
+  `await self.pr.wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)`, `ts = _NO_TIMESTAMP`; `elif
+  age is None and self._voc_init > 0:` `self._restore_waiting = True`, the NTP-wait event, return `False`; `elif age is
+  None:` (dated, but the NTP wait ended unsynced: restored without an age test) `await self.pr.wrn_s("Backup loaded
+  with unknown age (no NTP sync)", wrnno=_WRN_SGP_RESTORED_NO_TS)`; `elif cfg_values[1] > 0 and (age < 0 or age > 60 *
+  cfg_values[1]):` `self._voc_init = 0`, `self._restore_waiting = False`, `await self.pr.wrn_s("Backup age out of range
+  (too old, or dated in the future)", wrnno=_WRN_SGP_BACKUP_AGE)`, return `False`; after the chain `self._voc_init =
+  0`, `self._restore_waiting = False`, `self._restored_from = ts`, `return True`. No branch compares `age` while it is
+  `None`. `_run_backup()`: verify period
   through `_verify_every()`; `res, ntp_synced, ts = await self._ts_storage.write_into(buf, require_ntp=require_ntp)`; a
   failed write → `await self.pr.err_s("Write error during backup!", errno=_ERR_SGP_BACKUP_WRITE)` (SGP40's own entry
   beside the FRAM layer's, as at HEAD); the two
   `_no_ts_episode` lines go; the untimestamped branch `await self.pr.wrn_s("Backup written without timestamp.",
   wrnno=_WRN_SGP_WRITTEN_NO_TS)` every time.
-- **Resolved**: A.U15.17 (3) and A.U16.18 write the same negative-age condition at `:390` — one `if`, in A.U16.18's
+  (1) (A-C fold, silent-failure scan SF-M1-02, 2026-10-06) This entry's own `_run_restore()` text is corrected in place
+  above: as merged, its "otherwise" branch tested `age < 0 or age > …` while `age` could still be `None` (an undated
+  backup, or a dated one read while NTP was unsynced when `_voc_init` reached 0); `None < 0` raises `TypeError` on
+  MicroPython, so the SGP40 task would die and restart until the supervisor reboots, on every device while NTP is
+  unreachable. The end state is the explicit chain above: the bound is tested only when `age` is not `None`; an undated
+  backup restores at once (HEAD `asy_sgp40_driver.py:380-383`, legacy `python/IndividualDrivers/asy_sgp40_driver/
+  __init__.py:113-116`); a dated backup whose wait ended unsynced restores without an age test, as HEAD and legacy do,
+  now with the existing `_WRN_SGP_RESTORED_NO_TS` persisted (the unknown age has the no-timestamp consequence; no new
+  code). Also found independently by by-mode M4 (M4-03).
+  (2) (A-C fold, silent-failure scan SF-M3-05, 2026-10-06) A task restart no longer restores the backup over the live
+  algorithm state: in the storage part of `_init_sgp()`, right after `self._voc_init = max(1, wait)`, `if
+  self._voc_samples > 0 or self._voc_restored: self._voc_init = 0` (M.SRC_SENS.062's state, which `_init_sgp()` does not
+  reset) and `self.pr.one("live VOC state kept, no restore")`, with the comment "# A task restart keeps the algorithm,
+  which lives on SGP40_I2C: the backup is older than it. A boot still restores." A boot restores as before (both start
+  0/`False`). Legacy check (CLAUDE.md field-behaviour rule): the legacy read task never restarts in place, its end resets
+  the board ("Abbruch der Schleife führt zu System-Reset", `python/IndividualDrivers/asy_sgp40_driver/__init__.py:186-
+  189`), so legacy never overwrote a live state with a backup; the skip keeps that behaviour across the refactor's
+  in-place restart (agent, 2026-10-06).
+  (3) (A-C fold, silent-failure scan SF-M3-06, SGP40 half, 2026-10-06) `_check_storage()`: after `buf = …get_buffer()`,
+  `if buf is not None and buf.get_buf() is None:` (the shared buffer's allocation failed; its own text is the base
+  half's, M_SRC_CORE) → `if deserialize: self._voc_init += 1` (the restore stays pending for the next cycle instead of
+  reading as "No backup found!" or a blank first-boot chunk), `serialize = deserialize = False`, `buf = None`; the
+  backup is retried at its next period. No new state.
   form (gap pass G2, M_TEST_UNIT GAP-U1): G5/R31 "a staleness limit of 0 accepts any age; a negative age … counts as
   expired under a nonzero limit", so a negative age expires only when `BackupMaxAge` > 0 (M.TEST_UNIT.138 pins it). A.U3.09's and
   A.U3.05's console halves are dropped (OR140.a (7), A-C review fold): e14/e15/w10 and the two config reads stay
@@ -1613,6 +1834,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   blank chunk, blackout skip) → A.U15.17/A.U16.18 (TEST_UNIT, TWIN), the SGP40 entries kept beside FRAM's →
   M.TEST_UNIT.136, .138; `tests/test_asy_sgp40_driver.py:1055-1056`
   stub order → A.U16.18; W13 tests → A.U3.02; BACKLOG `:362-365` → A.U3.02 (DOCS); SPEC C.7.1 SGP40 row → A.U2.22 (SPEC)
+  (SF-M1-02: L1 an undated backup, and a dated one with NTP never synced, each after the wait expires, both restore and
+  nothing raises; SF-M3-05: L1/L2 a task restart after fed samples keeps the live state, a boot restores; SF-M3-06: L1 a
+  `None` buffer leaves the restore pending — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.064 `_read_sgp()`: timestamp, checked compensation, VOC state
@@ -1635,6 +1859,14 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   serialize failures `errno=_ERR_SGP_ALGO_STATE`; `except Exception as e: report_if_fatal(e);` … `errno=_ERR_READ`; return
   `SGP40(voc_index, raw, voc_state, timestamp)` (`voc_state = None` on the failure path). `_COMP_T_FIELD: FieldSchema =
   ("Temp", "float", None, -1.0e30, 1.0e30, None)` and `_COMP_RH_FIELD` (A.U15.14) sit in the constants block.
+  (1) (A-C fold, silent-failure scan SF-M3-01, SGP40 half, 2026-10-06) A frozen compensation sample is unavailable: in
+  the `else:` branch after the two `getattr()` field reads, for each producer result `ts = getattr(<data>, "TS",
+  None)`, and when `ts is not None` and `utc_now()` is not `None` and `utc_now() - ts > _COMP_MAX_AGE_S`, that value is
+  set to `None`, so the existing `None` branch skips the cycle (the owner rule "skip if unavailable"); a `TS` of `None`
+  (before the first sync, or a constant default source without a `TS`) counts as current, as today. New constant in the
+  constants block (M.SRC_SENS.059's site): `# @tunable sgp40.comp_max_age_s = 10800` / `_COMP_MAX_AGE_S =
+  const(10800)` with "# Three of the longest configurable producer interval (BMP3XX SampleInterval 3600 s): a slow
+  producer is never cut off (agent, 2026-10-06)." No new state.
 - **Resolved**: A.U15.14 puts the finite check "as the first statement inside the existing `try` (before the reset
   bookkeeping)"; A.U10.06 moves the timestamp before the `try` — both hold. OR109.a (1): the per-sample floats and
   tuples here are temporaries (accepted). Gap pass G2: `measure_index_and_raw()` takes `float`s, so the values come from
@@ -1645,6 +1877,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: M.SRC_SENS.062, M.SRC_SENS.068, M.SRC_CORE.047 (`checked_float()`)
 - **Blast carried by**: L1 NaN/inf/`True` and lost-reset regression, VOCState cases → A.U15.14/A.U15.19 (TEST_UNIT); L2
   `tests/test_digital_twin_sgp40.py` → A.U15.19 (TWIN); every `SGP40(` tuple in tests gains the field → A.U15.19
+  (SF-M3-01: L1 a producer `TS` older than the bound skips the cycle, a `None` `TS` does not; L2 SCD30 `ContMeas` off
+  leads SGP40 to skip; Part N row `sgp40.comp_max_age_s` (SPEC) — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.065 `_init_sgp()`, the store guard and the participant rung
@@ -1966,7 +2200,7 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   M.SRC_SENS.076), A.U2.12 (55, 56, 11), A.U0.16 (the decision comment is `_evaluate_range()`'s), A.U30.19
 - **Site**: `src/asy_isl29125_driver.py:368-431`
 - **Change**: `async def _read_isl(self) -> "ISLResults":` `self._unsettled_cycle = False`; `timestamp = utc_now()`; the
-  five value locals `None`; `try:` `await self._verify_after_failed_write()` (comment kept); `if
+  five value locals `None`; `try:` `await self._verify_config()` (comment kept; the name from M.SRC_SENS.077 (1)); `if
   self._isl.time_to_settle_ms() > 0:` `await self._settle_wait()`; `if self._isl.time_to_settle_ms() > 0:` (one comment
   line: "# Past the bound the data may come from the previous CONFIG1: discard the cycle, count nothing.")
   `self._unsettled_cycle = True`; `return None, None, None, None, None, timestamp`. Capture block as HEAD plus
@@ -2043,6 +2277,14 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   await self._rearm_interrupt()`. New `async def _rearm_interrupt(self) -> None:` `try: await
   self._isl.configure(force=True)` `except Exception as e: report_if_fatal(e); await self.pr.err_s("Error re-arming the
   interrupt:", e, errno=_ERR_CHIP_SET); return`; `await self._write_thresholds(self._active_range)` (logs its own).
+  (1) (A-C fold, silent-failure scan SF-M3-04, 2026-10-06) The existing shadow-vs-chip comparison runs every read
+  cycle, not only after a failed write or on a GET: `_verify_after_failed_write()` is renamed `_verify_config()` (its
+  one caller in `_read_isl()`, M.SRC_SENS.075, follows) and its early return on `seen ==
+  self._reconciled_write_failures` goes; it still records `self._reconciled_write_failures = seen` (the counter keeps
+  its own purpose), then the one 3-byte snapshot and `await self._check_divergence(raw)` (a divergence persists W31 and
+  re-applies the shadow, M.SRC_SENS.082). Its comment → "# The chip is the authority: one snapshot per cycle catches a
+  burst that NAKed partway and a CONFIG byte corrupted on the bus, on a headless device too." A failed snapshot keeps
+  this entry's console line and the next cycle retries. No new state; one 3-byte read per cycle (≈ 1 ms at 50 kHz).
 - **Resolved**: A.U15.R05 adds no second persisted entry for the event (OR56.a (1)): the wrnno 32 is it; a failed
   re-arm logs its own CHIP_SET.
 - **Unit**: U15 (stage U2 numbers; U30 handlers)
@@ -2050,6 +2292,9 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: M.SRC_SENS.080 (`_write_thresholds()`)
 - **Blast carried by**: L1 console-only ID/reconciliation cases → A.U15.29 (TEST_UNIT); re-arm L1/L2 → A.U15.R05
   (TEST_UNIT, TWIN); wrnno-13 → 32 asserts → A.U2.12
+  (SF-M3-04: L1 a corrupted CONFIG byte on a cycle with no failed write persists W31 and re-applies; the per-cycle
+  snapshot is a new transaction on dev's i2c1, so the four bus-hazard tiers re-run (L1 hazard, L2 twin, L3 flash
+  sweep, L4 bench, phase C) — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.078 `_store_isl()`: captured filter, values-only guard, CalLight
@@ -2138,12 +2383,23 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   None: return None`; `if time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0: self._cal_meas = None; return
   None` (comment → "# None once the hold expires, and the candidate goes, so the stored tick is never compared again.");
   `return self._cal_meas`.
+  (1) (A-C fold, silent-failure scan SF-B11, 2026-10-06) A calibration run that ends without converging is persisted:
+  `_end_calibration(self, why: str, *, converged: bool)`; the window-closed call (`:634`) passes `converged=False` and
+  then `await self.pr.wrn_s("Gain-ratio calibration timed out: no stable reading in the window.",
+  wrnno=_WRN_ISL_CAL_TIMEOUT)`, readable over REST through the module's `errcount` entry; the converged call (`:697`)
+  passes `converged=True` and keeps the console line. New code in M.SRC_SENS.071's catalog block:
+  `_WRN_ISL_CAL_TIMEOUT`, the next free warning number, assigned at execution with the catalog as the numbering source
+  (M.GEN.034). The smaller of the scan's two options (a persisted warning, not a new calibration-state field); no new
+  state.
 - **Resolved**: —
 - **Unit**: U15 (stage U2; U30 handler)
   A-C2 step order: A.U2.12's part lands in U3, not U2 (it needs A.U3.05, which lands in U3).
 - **Depends**: M.SRC_SENS.080 (`_down_thresh()`)
 - **Blast carried by**: band-edge L1 cases → A.U15.36; Ticks30 crossing case (b) and `:3083` → A.U15.35 (TEST_UNIT);
   I.2 allocation rows → A.U30.02 (SPEC); allow-list entries → A.U30.03 (TSC)
+  (SF-B11: L1 a run with no stable reading persists the new warning once, a converged run persists nothing; L2 twin
+  calibration with a walking lux; catalog row (GEN), SPEC M.1.5/C.7.1 row (SPEC) — tests in M_TEST_UNIT/M_TWIN per phase
+  2)
 - **Kind**: code
 
 ### M.SRC_SENS.082 Config read-back, divergence and the two numeric helpers
@@ -2162,6 +2418,11 @@ define; 83 such actions read, of which the ones that edit a site here are merged
   checked is None: await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value, errno=_ERR_BAD_ARG);
   return None`; `return checked` (`:772-774` go; no annotated local).
   `_reapply_persist(self, trigger_s: int)`: `except Exception as e: report_if_fatal(e); … errno=_ERR_CHIP_SET`.
+  (1) (A-C fold, silent-failure scan SF-B8, ISL29125 driver half, 2026-10-06) Stage U19, with M.SRC_CORE.038 (1) (a `None` returned before the marker exists would reach the GET as nulls). `_read_sensor_dict()`'s failure branch
+  keeps its `_ERR_CHIP_GET` entry and returns `None` in place of the `dict.fromkeys(…, None)` map (return type
+  `dict[str, CfgValue] | None`); a `decode_config()` of `None` returns `None` too, not `{}`. The base half
+  (`_get_dict_cfg()`, M.SRC_CORE.038, M_SRC_CORE, F1) sends the module's entry as exactly `{"error":"unavailable"}` in
+  place of its field map, the shape M.WEB.001's `isUnavailable()` tests (never a marker beside values).
 - **Resolved**: A.U15.38 (1) removes the arm as unreachable; A.U11.S01 keeps it as narrowing (SUPP_coverage A-C note
   1) — settled by the lead's L1 answer "no" (2026-09-30, SUPP_coverage open points): "A.U15.38 (1) stands"; a
   never-firing check is dead code, narrowing belongs at the type level. The annotated local narrows while the
@@ -2177,6 +2438,8 @@ define; 83 such actions read, of which the ones that edit a site here are merged
 - **Depends**: A.U11.S01 (slot type, SRC_CORE), M.SRC_CORE.047 (`checked_numeric()`)
 - **Blast carried by**: `tests/test_asy_isl29125_driver.py:2878-2890` goes → A.U15.38 (TEST_UNIT); E.5.1 rows → A.U35.41
   (SPEC); SPEC M.1.4 settle bullet → A.U15.30 (SPEC); number asserts → A.U2.12
+  (SF-B8: L1 a raising snapshot gives the whole-module `{"error": "unavailable"}` entry; depends on the base half in
+  M_SRC_CORE (F1); page M.WEB.001 — tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_SENS.083 Push callbacks, starters, timer arm and the reader loop

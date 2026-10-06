@@ -34,6 +34,15 @@ change lists its stages; the end state is the last stage's.
   `from machine import WDT; asyncio.run(main(watchdog=WDT(timeout=8000)))`. In `codegen.py` the two literals 32768 and
   100 each sit on a line preceded by its tag comment: `# @tunable gc.threshold_bytes = 32768`,
   `# @tunable gc.emergency_exc_buf_bytes = 100` (the tags are `codegen.py` comments, never emitted text).
+  (1) (A-C fold, silent-failure scan SF-A14, 2026-10-06) Autostart tail: `try:` / `asyncio.run(main(watchdog=watchdog))`
+  / `except KeyboardInterrupt:` / `write_reset_record(RR_INTERRUPTED)` / `raise` / `finally:` /
+  `asyncio.new_event_loop()`, with `from asy_system_service import RR_INTERRUPTED, write_reset_record` after the device
+  import (already loaded by it) and the comment (2 lines) "# Ctrl-C on the console ends the whole loop and the armed
+  watchdog then resets the unit: record / # why first, or the next boot reads a plain watchdog reset." Only
+  `KeyboardInterrupt` is caught (any other exit keeps the boot-phase decode, M.SRC_CORE.006) and it is re-raised, so the
+  REPL behaviour is unchanged (`extmod/asyncio/core.py` catches only `CancelledError`/`Exception`, so the interrupt
+  leaves `asyncio.run()`). The no-autostart variant arms no watchdog and runs no loop, so it gains nothing. Code 21 is
+  M.SRC_CORE.006 (2)'s.
 - **Resolved**: A.U1.23 (U1) rewrote the docstring's "see modules/_boot.py" to the legacy path; A.U20.15 (U20, later,
   the generator's owner) makes it a generator-only statement with no legacy reference — A.U20.15 wins (later unit,
   same line; CLAUDE.md "legacy tree is reference-only"). A.U25.69 is firm (AC_NOTES 25/33/37, OR126.a (1)): the four
@@ -45,6 +54,8 @@ change lists its stages; the end state is the last stage's.
   cluster); SPEC A.7/F.1 boot-entry paragraph → A.U20.03 Docs, A.U25.69 (SPEC cluster); `digital_twin/` runner passes
   `watchdog=` → A.U24.54/A.U24.55 (TWIN/TST); Part N rows `gc.threshold_bytes`, `gc.emergency_exc_buf_bytes` →
   A.U8.14/A.U20.04 (SPEC).
+  (SF-A14: tests in M_TEST_UNIT/M_TWIN per phase 2; the boot-entry AST pin, TSC; SPEC A.8 code row 21, SPEC; bench
+  Ctrl-C then `ResetReason` 21, HW_BENCH)
 - **Kind**: code
 
 ### M.GEN.002 Module constants, tags and imports of the generator
@@ -249,6 +260,13 @@ change lists its stages; the end state is the last stage's.
   sysfunct.get_last_task_end()`, `LocalTime`, `utc = time.gmtime() if await ntp.ntp_issynced() else None` then
   `"UTCTime": _gmtimestruct_to_dict(utc)`, `"UnixTime": utc_now()`; `_notification_status()` unchanged in role. No
   `get_wlan_ifconfig`/`get_wlan_rssi` calls; no `assert` lines; every instance reference via `instance_var()`.
+  (1) (A-C fold, silent-failure scan SF-B3 and SF-M1-07, 2026-10-06) `_system_status()` gains `"ConfigUnpersisted":
+  sysfunct.get_config_unpersisted()` after `ConfigFaults`: the modules whose accepted config runs from RAM only because
+  their last write to the file failed, cleared by the next good write (M.SRC_CORE.015 (1), .044 (1), .043 (2)). Stage
+  U20, with `ConfigFaults`.
+  (2) (A-C fold, silent-failure scan SF-A10, 2026-10-06) `_system_status()` gains `"ResetBits":
+  sysfunct.get_reset_bits()` after `ResetReason`: the chip's raw reset flags at this boot (M.SRC_CORE.006 (1)). Stage
+  U20, with `ResetReason`'s template lines.
 - **Resolved**: (a) A.U11.03 callback flush vs A.S0930.11 — SUPP wins (M.GEN.007). (b) A.U9.03 (neopixel
   `request_signal` body) and A.U11.S01 (type narrowing added to `_notification_led_callback`) vs A.U19.02 (callback
   delegates to `led_signal`, validation in the webserver) — A.U19.02 wins, its Depends names A.U9.03 as superseded;
@@ -269,6 +287,7 @@ change lists its stages; the end state is the last stage's.
   `WifiTS`, `ConfigFaults`; `IP` out) → M.GEN.014; `mockdata/samples.json` → M.WEB.045; mock data rows and `js/field-format.js` handlers → A.U6.06/A.U32.06/A.U23.22 (WEB);
   `tests_scripts/test_js_api_mirrors.py` → A.U23.24 (TST); SPEC H.6.1 wire table → A.U36.044 (SPEC); Part H
   not-shown list → A.U19.10 (2) (SPEC).
+  (SF-B3, SF-M1-07, SF-A10: tests in M_TEST_UNIT/M_TWIN per phase 2; mock samples, WEB)
 - **Kind**: code
 
 ### M.GEN.009 Emitted webserver construction: config objects, renamed keys
@@ -409,6 +428,14 @@ change lists its stages; the end state is the last stage's.
   [<INSTANCE>, <Field>]`, `specialValues` from the tag incl. `null`), UARTLINK rows keep their keys and gain `path`;
   notification `TS` `"format": "epoch"`. The errcount-last rule is stated in place ("the Status section lists errcount
   last; the webserver's row is its last entry"). Types `JsonDict`.
+  (1) (A-C fold, silent-failure scan SF-B3 and SF-M1-07, 2026-10-06) System fields add `ConfigUnpersisted` ("Config
+  Unpersisted", readonly, description "Modules whose last accepted config change could not be written to flash: it
+  applies now but is lost at the next boot. Empty when none; cleared by the module's next successful write.") after
+  `ConfigFaults`. Stage U20, with its key (M.GEN.008 (1)).
+  (2) (A-C fold, silent-failure scan SF-A10, 2026-10-06) System fields add `ResetBits` ("Reset Flags", readonly,
+  description "The chip's own reset flags at this boot, reported raw: 1 watchdog timer expired, 2 reset forced by
+  software, 256 power-on or brown-out, 65536 RUN pin, 1048576 debug-port restart.") after `ResetReason`. Stage U20
+  (M.GEN.008 (2)).
 - **Resolved**: A.U6.24 wrote camelCase `build` keys and A.U10.40 renames them — end state PascalCase (A.U6.24 says
   so itself). A.U20.15's `:373` rewrite is kept (A.U6.04 deletes the hand files, so "matching every hand-written" has
   no referent).
@@ -420,6 +447,7 @@ change lists its stages; the end state is the last stage's.
 - **Blast carried by**: mock data rows (`mockdata/samples.json` `status.*`) → A.U6.06 (WEB); `js/field-format.js`
   `epoch`/`lasttaskend` handlers, `js/definitions.js` unions → A.U6.19/A.U32.06/A.U23.20 (WEB); L0 parity tests →
   A.U6.22/A.U6.20 (TST).
+  (SF-B3, SF-M1-07, SF-A10: L0 parity tests, TSC; mock rows, WEB)
 - **Kind**: code
 
 ### M.GEN.015 Networking and System sections: groups and command options
@@ -953,6 +981,14 @@ change lists its stages; the end state is the last stage's.
   execution after its band's last used code (the shared pair: the next free shared codes), in landing order, the
   catalog the numbering source; every A.U2.01 row text that names a site "printed after A.U3.0x" states the persisted
   entry instead. UART 93 `UART_TRANSFER_CAP` "a declared train or a line over max_transfer_bytes was refused" (M.SRC_NET.153/.220/.202). Host-side only, never frozen.
+  (1) (A-C fold, silent-failure scan SF-B12, SF-M1-03, SF-M1-01 and SF-A14, 2026-10-06) New rows, each numbered at
+  execution after its band's last used code in landing order: FRAM `FRAM_FULL` "the FRAM allocator refused a chunk: the
+  declared chunks exceed the chip; their owners run RAM-only" (M.SRC_CORE.092 (1), Stage U16); shared E `LOG_RAM_ONLY` "this
+  module's FRAM-backed error log is unavailable this boot (not allocated, unreadable, or its first write failed); its
+  entries are RAM-only until the next boot", owners every FRAM-backed logger (M.SRC_CORE.065 (1), Stage U16); SYSTEM W
+  `CONFIG_LOST` "the config file was absent at this boot while FRAM history exists and no config reset was commanded:
+  the filesystem was reformatted or wiped" (M.SRC_CORE.005 (1)/.017 (1), Stage U11); `status.ResetReason` gains 21
+  "interrupted: Ctrl-C on the console ended the run, the watchdog reset followed" (M.SRC_CORE.006 (2), M.GEN.001 (1), Stage U20). SYSTEM's existing E17 `TIMER` gains the uptime-timer site (M.SRC_CORE.013 (1), Stage U11) with no new row.
 - **Resolved**: A.U2.21's golden-file edit falls away with A.U6.04 (A.U2.21 says so). `SOCKET_TEARDOWN`: M_SRC_NET
   (M.SRC_NET.004/.023/.047, written first) numbers it W11; M.SRC_SENS.043 (later, SUPP_recovery conflicts row 7) gives W11
   to `DERIVED_DOMAIN` and W12 to `SOCKET_TEARDOWN`, and M_TEST_UNIT follows it (GAP-U5) — W12 (gap pass G1). The
@@ -968,6 +1004,7 @@ change lists its stages; the end state is the last stage's.
   definitions' `codes` and so the website read the catalog (M.GEN.016 — no hand mirror, M_SRC_CORE GAP-G2's "JS mirror");
   the `src/` constants that differ (`_WRN_SOCKET_TEARDOWN = const(11)` in M.SRC_NET.004/.023/.047) → M_TEST_UNIT
   GAP-U5 and M_SRC_SENS GAP-7 (SRC_NET).
+  (SF-B12, SF-M1-03, SF-M1-01, SF-A14: catalog test, TSC)
 - **Kind**: code
 
 ## buildgen/model.py

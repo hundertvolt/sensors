@@ -138,6 +138,10 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `_ERR_TASK_CANCELLED = const(43)`, `_ERR_TASK_RETURNED = const(44)`; every `err_s` passes one of them (no literal, no
   arithmetic). No `_ERR_CLOCK`: A.U10.06 removes SYSTEM's e2 site (catalog row 16 loses it). No `_WRN_*`: the dynamic
   `wrnno = n + 1` goes (A.U3.06, console line).
+  (1) (A-C fold, silent-failure scan SF-M1-01, 2026-10-06) Stage U11, with M.SRC_CORE.017 (1). The block gains `_WRN_CONFIG_LOST`, SYSTEM's one warning
+  constant, numbered at execution in SYSTEM's warning band with the catalog as the numbering source (M.GEN.034 (1)); its
+  one user is M.SRC_CORE.017 (1), so it lands in U11 with that user. The sentence "No `_WRN_*`" above then stands for
+  the dynamic `wrnno = n + 1` only.
 - **Resolved**: the C-stack log line needs a number and the system band 40-44 is full (A.U2.01's table); the shared band
   has 25-29 unassigned, and the condition is recorded by any module's handler, so it takes shared **25
   STACK_EXHAUSTED** "a C-stack overflow was recorded; rebooting" (agent, 2026-10-01; OR2.c list, "Agent decisions" 3).
@@ -171,6 +175,21 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   (three word stores, no allocation); `get_reset_reason() -> int` returns the constructor's `reset_reason`.
   `_purpose_name(purpose) -> str`: `"reboot"`, `"bootloader"`, `"config reset"`, `"FRAM erase"` (A.S0930.31 (2)). Every
   stored word is < 2**30 (no heap int).
+  (1) (A-C fold, silent-failure scan SF-A10, 2026-10-06) Stage U13, after M.SRC_NET.221 (6) settles the register-access form. `begin_boot()` also keeps the chip's own reset flags, which
+  `reset_cause()` collapses (rp2 `modmachine.c:74-89` at v1.29.0: WDT_RESET whenever the watchdog reason is non-zero,
+  else PWRON_RESET): two `machine.mem32` reads, WATCHDOG `REASON` (0x40058008; bit 0 TIMER, bit 1 FORCE) and
+  `CHIP_RESET` (0x40064008; bit 8 HAD_POR, power-on or brown-out; bit 16 HAD_RUN; bit 20 HAD_PSM_RESTART), addresses and
+  bits per the pinned pico-sdk `watchdog.h`/`vreg_and_chip_reset.h`, stored once as the module value `_reset_bits =
+  (reason & 0x3) | (chip & 0x110100)` (a small int); `SystemService.get_reset_bits() -> int` returns it for the
+  `/status` key `ResetBits` (M.GEN.008 (2)). The decode above is unchanged: the bits are reported raw, not folded into
+  it, since HAD_POR is not cleared by a watchdog reset and a decode would first need the bench evidence. The
+  register-access form follows the one M.SRC_NET.221 (6) settles (both addresses lie outside the small-int range).
+  SCRATCH4 is not read: the boot entry's `WDT()` (M.GEN.001) overwrites it before `begin_boot()` runs.
+  (2) (A-C fold, silent-failure scan SF-A14, 2026-10-06) A public `RR_INTERRUPTED = const(21)`, the next code after 20
+  outside the 10 + phase band (the catalog's `status.ResetReason` table the numbering source, M.GEN.034 (1)): the run
+  was ended by an interrupt (Ctrl-C on the console) and the armed watchdog reset followed. Public because the boot entry
+  imports it with `write_reset_record()` (M.GEN.001 (1)); the decode's "region 0 valid → its code" reads it like 3-9 and
+  20. Stage U20, with M.GEN.001 (1).
 - **Resolved**: A.U11.05's code table, A.S0930.15's 7-9 and A.U30.19's 20 are one table (7-9 were free, 20 lies outside
   10 + phase); SPEC A.8's code table has one owner — A.U11.05 (its own Blast asks A-C to choose; SPEC cluster carries it).
 - **Unit**: U11 (record, decode, phases, 7-9 — A.S0930.15 has no own unit and lands with its gate here); U30 adds the
@@ -185,6 +204,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   A.U23.20 (+ A.U6.23 mock sample) (WEB/GEN); SPEC A.8 code table, F.5.4, A.7 phase sentence → A.U11.05, A.U14.20,
   A.U11.11 (SPEC); `tests_hardware/README.md` reset-code rows → A.U26.28 (HW_BENCH); twin Run 12 code list → A.U25.55
   (TWIN).
+  (SF-A10, SF-A14: tests in M_TEST_UNIT/M_TWIN per phase 2; `machine.mem32` at the two addresses in `tests/machine.py`
+  and the twin's `machine.py`, TEST_HELP/TWIN; bench reset-reason rows, HW_BENCH)
 - **Kind**: code
 
 ### M.SRC_CORE.007 Settings schema comment and the wiring-tag block
@@ -243,6 +264,10 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `self._current_debug_level` and its comment `:103-104`, the registry comment `:106-108` (→ "# Every logger's own
   set_level(), resolved once from the provider in setup() and called on every level change."). Every list is filled once
   at boot and never grows (OR110.a (1)).
+  (1) (A-C fold, silent-failure scan SF-A11 and SF-B5, 2026-10-06) `self._storage_timer` and `self._unpause_flag` go
+  (M.SRC_CORE.012 (1) removes the one-shot); new `self._unpause_at: int | None = None` ("# ticks_ms() deadline of a
+  mempause auto-unpause; None when none is pending") and `self._tick_failed = False` ("# True while the uptime tick
+  timer is unarmed: status_counter() then sleeps one second per pass and re-arms", M.SRC_CORE.013 (1)). Stage U11.
 - **Resolved**: (a) Parameter order: A.U11.05 lists `…, cfg_path, log, level_setters, config_stores, reset_reason`, but
   A.U5.02/A.U5.18 (G10/R15, owner, OR46.b) require every `src/` constructor with `log` to end `…, cfg_path, log` —
   A.U5.18's L0 check would fail on A.U11.05's order; the tail rule settles it (the three providers go before `cfg_path`;
@@ -324,6 +349,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   supervisor escalation it is the last flush, with FRAM paused (its failure reaches the / # console only). No await
   between it and the reset, so no write can start in between."; `await self._flush_config_stores(close=True)`;
   `action()`. `_RESET_DELAY` stays 4 s for every reset.
+  (1) (A-C fold, silent-failure scan SF-A11, 2026-10-06) (e)'s `self._storage_timer.deinit()` goes with the timer
+  (M.SRC_CORE.012 (1)): a pending unpause deadline stays set, and the deadline test refuses to unpause once
+  `_reset_armed` is set.
 - **Resolved**: A.U11.03's point 2 order record → flush → pause → arm (G5/R02 register fix, U11 Register fixes) plus
   A.S0930.33's own feed as the statement immediately before `reset_timer.init()` — A.U11.03 (f)'s `create_task` stays the
   first statement of the `try`, the feed sits between it and `init()`, so both texts hold (create_task does not yield).
@@ -381,6 +409,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   self._reboot(code, <"Reboot triggered" | "Reboot into bootloader triggered" | "Reboot after config reset" | "Reboot
   after FRAM erase">, system_bootloader if purpose == _RR_BOOTLOADER else system_reset, fed=True)`. No `gc.collect()`;
   allocation: the task object, log strings, the erase's one `bytearray(256)` (M.SRC_CORE.083).
+  (7) (A-C fold, silent-failure scan SF-A11, 2026-10-06) Stage U11, with M.SRC_CORE.012 (1). S3's `self._storage_timer.deinit();` goes with the timer
+  (M.SRC_CORE.012 (1)); a pending unpause deadline stays set and the deadline test refuses it once `_feed_owned` is set,
+  so S3 starts with the `quiesce()` call.
 - **Resolved**: A.U11.03 (4) (reboot methods call `_reboot()` directly) is superseded by A.S0930.31 (1) (OR126.a (3),
   owner, 2026-09-30); A.S0930.12's `if self._shutdown: return False` guard for the two old words is replaced by rule (1)
   (SUPP conflict 10). S4's handler: A.U30.19 requires `report_if_fatal()` as every broad handler's first statement; S4's
@@ -423,6 +454,27 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   auto-unpause must not reopen it."; `self._storage_pause(value=False)` (guarded `is not None`); `self.pr.evt("Storage
   auto-unpaused.")`. `start_asy_unpause()` creates it; `get_task_starters()` → `[self.start_asy_uptime_counter,
   self.start_asy_unpause]` (the flag has one waiter; a restart replaces a dead one).
+  (1) (A-C fold, silent-failure scan SF-A11 and SF-B4, 2026-10-06) The auto-unpause is a deadline tested on a pass that
+  already runs, not a soft one-shot: a one-shot fire dropped on a full scheduler queue
+  (`shared/runtime/mpirq.c:103-106`, queue depth 8) leaves FRAM paused until the next reboot, and a failed arm aborted
+  the pause while `mempause` still answered "Valid" (SF-B4). End state: `pause_permanent_storage(self, duration: int) ->
+  bool`: `if self._shutdown: return False`; `if self._storage_pause is not None:` HEAD's clamp to `[0,
+  _MAX_STORAGE_PAUSE]`; `duration == 0` → `self._unpause_at = None`, evt "Storage immediately unpaused.",
+  `self._storage_pause(value=False)`; else evt "Storage paused for", duration, "seconds.",
+  `self._storage_pause(value=True)`, `self._unpause_at = ticks_add(ticks_ms(), duration * 1000)` with the comment "# A
+  deadline, not a timer: tested on every uptime pass, so no fire can be lost (SPECIFICATION.md Part F.1)."; `return
+  True`. Nothing can fail after the pause began, so SF-B4's abort branch has no site and "Valid" always means a pause
+  that ends. `status_counter()` (M.SRC_CORE.013) tests it on every pass, after reading uptime and before the signature:
+  `if self._unpause_at is not None and ticks_diff(ticks_ms(), self._unpause_at) >= 0:` `self._unpause_at = None`; `if
+  not (self._reset_armed or self._feed_owned) and self._storage_pause is not None:` `self._storage_pause(value=False)`,
+  `self.pr.evt("Storage auto-unpaused.")`, under the comment above ("# A reset or a shutdown has paused storage for
+  good; a late auto-unpause must not reopen it."). Gone: the timer callback, the arm `try`/`except`,
+  `_unpause_waiter()`, `start_asy_unpause()`, `_unpause_flag`, `_storage_timer` (M.SRC_CORE.008 (1), .010 (1), .011
+  (7)); `get_task_starters()` → `[self.start_asy_uptime_counter]`; `ticks_add`/`ticks_diff`/`ticks_ms` join
+  M.SRC_CORE.003's import block. The pass runs at 1 Hz on the uptime tick, or on M.SRC_CORE.013 (1)'s one-second sleep
+  while that timer is unarmed, so the unpause is late by at most one pass; the bound (`_MAX_STORAGE_PAUSE`, one hour)
+  lies far inside `ticks_diff()`'s 2**29 ms horizon. The Resolved race (an unpause during the reset window or the erase)
+  is closed the same way, by the `_reset_armed`/`_feed_owned` test at the moment of unpausing.
 - **Resolved**: gap between A.U10.15 and A.U11.03/A.S0930.14: at HEAD the unpause runs in the timer callback, so
   `_reboot()`'s and S3's `storage_timer.deinit()` leaves nothing behind; with A.U10.15's deferral a flag set just before
   the deinit wakes the waiter after `_reboot()`'s pause or S3's `quiesce()` and would unpause FRAM during the reset window
@@ -438,6 +490,9 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   `_reboot()`/after acceptance leaves storage paused" → GAP-G4 (TEST_UNIT); `tests/test_digital_twin_sensortask_integration.py:785-811`
   → A.U10.15 (TWIN); `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py` starts the waiter → A.U10.15
   (HW_DEV); twin/L2 `mempause` answers "Failed" during a shutdown → A.U25.57 (TWIN).
+  (SF-A11, SF-B4: tests in M_TEST_UNIT/M_TWIN per phase 2 — the pause tests' `_storage_timer.trigger()` becomes a
+  deadline crossed by driven ticks; the twin case "an unpause timer that cannot arm aborts" loses its premise;
+  `fram_pause_unpause_and_gating.py`'s real-Timer step becomes the deadline, HW_DEV)
 - **Kind**: code
 
 ### M.SRC_CORE.013 Uptime and boot signature on measured ticks; one tick-timer starter
@@ -455,6 +510,18 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   callback counts as not synced (owner, 2026-07-18); / # the caller falls back to random after _NTP_WAIT_TIME.";
   the callback `try`/`except Exception as e:` keeps its guard (`report_if_fatal(e)` first from U30; `errno=_ERR_CALLBACK`);
   `if not synced: return None`; `return utc_now()` — no `try`, the errno-2 handler goes.
+  (1) (A-C fold, silent-failure scan SF-B5 and SF-M1-06, 2026-10-06) The tick-timer result is used; this replaces
+  "(result unused; …)" above. `start_uptime_timer()`: `self._tick_failed = not arm_tick_timer(self._uptime_timer,
+  self._uptime_event, self.pr, "uptime")`; `if self._tick_failed: self._uptime_event.set()` ("# wakes status_counter()
+  into its one-second fallback"). `status_counter()`: a local `reported = False`; each pass starts `if
+  self._tick_failed:` — `if not reported: await self.pr.err_s("Uptime timer not armed - one-second sleep instead, re-arm
+  retried", errno=_ERR_TIMER)`, `reported = True`; `await asyncio.sleep_ms(1000)`; `self._tick_failed = not
+  arm_tick_timer(…)` (the same call; a failed re-arm prints its own level-gated line) — else `await
+  self._uptime_event.wait()`; then the body as above (uptime read, M.SRC_CORE.012 (1)'s unpause test, the signature). So
+  `BootSignature` resolves and `TickSeconds` is read at least once a second on both paths, inside its 2**29 ms horizon
+  (SF-M1-06), with one persisted `_ERR_TIMER` per task run. The task never ends on it, unlike NTP's second-failure end
+  (M.SRC_NET.054): a supervisor restart would retry nothing the loop does not retry itself. The flag left set after a
+  successful re-arm costs one extra pass, harmless with measured ticks.
 - **Resolved**: A.U10.06 (no `try` around the timestamp) vs A.U14.26 (1) (`except MemoryError` with a heap-int comment):
   ruled for A.U10.06 by V.U18.R10 / U18 register fix 10 (the one reachable failure is a fixed small allocation, not
   caught; CLAUDE.md memory rule, SPEC I.4(a)); a `MemoryError` there ends the uptime task and the supervisor restarts it,
@@ -470,6 +537,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   keeps signature) → A.U11.01/A.U11.02 (TEST_UNIT); driven-cap test K.02 → A.U35.35 (TEST_UNIT); long-uptime scenario →
   A.U35.33 (TEST_HELP); SPEC A.8 `SysUptime`/`BootSignature` sentences → A.U11.01/A.U11.02 (SPEC); changelog D4.20/D4.36 →
   A.U11.01/A.U11.02 (DOCS); `tests_hardware/bench/…rollover` uptime note → A.U26.36 (HW_BENCH).
+  (SF-B5, SF-M1-06: tests in M_TEST_UNIT/M_TWIN per phase 2 — L1 a dead uptime timer with a 7-day gap keeps uptime and
+  `HTTPDropped` exact and persists one 17; twin alarm-pool exhaustion case)
 - **Kind**: code
 
 ### M.SRC_CORE.014 Stagger read triggers from one shared start, in task context
@@ -511,6 +580,10 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   or holding a value the schema refuses — fixed for the rest of the boot (the boot's repair write of a damaged file
   does not clear it; a missing or unknown key alone is a repair, not listed), at most one name per store, built once; new `def get_config_faults(self) -> list[str]: return
   self._config_faults` (the generated `/status` block reads it, M.GEN.008).
+  (1) (A-C fold, silent-failure scan SF-B3 and SF-M1-07, 2026-10-06) New `def get_config_unpersisted(self) -> list[str]:
+  return [store.module_name for store in self._config_stores if store.unpersisted]` beside `get_config_faults()`, built
+  per read (at most one name per store) because the flag changes during the boot (M.SRC_CORE.044 (1), .043 (2)); the
+  generated `/status` block reads it as `ConfigUnpersisted` (M.GEN.008 (1)). Lands in U20 with `get_config_faults()`.
 - **Resolved**: `AsyncCallback` (A.U11.S04) vs `setup() -> bool` (A.U10.21) → `SetupFct` (M.SRC_CORE.003 Resolved).
 - **Unit**: U20 (co-lands with the generator's `_collect_setups()` and the guard changes in one commit, A.U11.10 Depends).
 - **Depends**: M.SRC_CORE.009, M.SRC_CORE.030; M.SRC_CORE.043/.049 (`faulted`, `module_name`, U11);
@@ -525,6 +598,7 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   (TEST_HELP, TWIN); L1 `run_setups()` order/feeds/collects → A.U11.10 (TEST_UNIT); stretch scenario → A.U31.03
   (TEST_HELP); SPEC I.4(f.1), A.7 step 16, CLAUDE.md memory rule → A.U11.10 (SPEC, DOCS); BACKLOG chroot line for
   `lint.sh` → A.U11.10 (DOCS).
+  (SF-B3, SF-M1-07: tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_CORE.016 The supervisor: start loop, own task, park point, one escalation block, pass-end feed
@@ -575,6 +649,17 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
     returned", errno=_ERR_TASK_RETURNED)` — exactly one persisted entry per task end, no history comment (the old
     "Previously logged via …" block goes).
   - `get_last_task_end(self) -> "dict[str, str | int] | None"`: returns `self._last_task_end`.
+  - (1) (A-C fold, silent-failure scan SF-M4-01 (a), 2026-10-06) The start loop first sets
+    `asyncio.get_event_loop().set_exception_handler(self._report_unretrieved)` (Stage U11, in `start_and_check_tasks()`'s start loop; carried into `start_tasks()` with the U20 split); new `def _report_unretrieved(self, _loop: object, context: "dict[str,
+    object]") -> None: self.pr.err(context["message"], context["exception"])` — one level-gated line carrying `str(e)`,
+    in place of asyncio's default handler, which prints a whole traceback at any `DebugLevel`
+    (`extmod/asyncio/core.py:288-300` at v1.29.0, called as `handler(loop, context)` with `message`, `exception`,
+    `future`). Comment (3 lines): "# A task ending with an exception nobody has awaited yet reaches this handler, not a
+    print: the default one / # writes a whole traceback at any DebugLevel, which a USB host holding the port without
+    reading turns into / # a loop hold past the watchdog. _log_dead_task() persists the end." Checked at execution
+    first: every memory-gated tier runs at `DebugLevel` ≥ 1, so an uncaught task `MemoryError`'s "memory allocation
+    failed" still reaches the gates through this line. Parts (b) (Microdot's print, SRC_NET), (c) and (d) (SPEC/DOCS
+    sentences) are not this entry's.
 - **Resolved**: (a) A.U31.07's escalation feed "directly followed by the starve-flag assignment (checked by `ast`)"
   (its Blast) vs its Change ("feed, then the entry, the starve flag, `_reboot()`") vs A.S0930.32 (2) (the `_feed_owned`
   re-check after the log write, before the starve flag): one order satisfies all three and OR130.a ("feeds once …, then
@@ -623,6 +708,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   Run 12 code 20 → A.U25.36, A.U30.19 (TWIN); bench supervisor escalation → A.U26.28 (HW_BENCH); SPEC A.2/A.4/A.7/C.4.1/
   C.9.1/F.1/F.3/G.2/Part N (`system.scan_budget` formula) and CLAUDE.md `:623, :648` names → A.U10.09, A.U31.07,
   A.U20.06, A.U30.19, A.U14.15, A.U10.14 (SPEC, DOCS); BACKLOG `:68-72` item removed → A.U10.23 (DOCS).
+  (SF-M4-01 (a): tests in M_TEST_UNIT/M_TWIN per phase 2; the gated-tier `DebugLevel` check, TSC/SCR; bench
+  non-reading-host check, HW_BENCH)
 - **Kind**: code
 
 ### M.SRC_CORE.017 Settings store: setup, level push, one nested dict shape, write through the store's own schema
@@ -651,6 +738,21 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   setter(value)` / `except Exception as e: report_if_fatal(e)`; `await self.pr.err_s("Level setter failed:", e,
   errno=_ERR_CALLBACK)`. Gone: `set_level_setters()` (A.U5.08), `get_debug_level()` and `_current_debug_level` (A.U35.41),
   `set_debug_level()` (M.SRC_CORE.018).
+  (1) (A-C fold, silent-failure scan SF-M1-01, with by-mode M4-04's detector, 2026-10-06) `setup()`, after `await
+  self.cfgmgr.setup()`: `if self.cfgmgr.absent_at_boot and self.pr.restored and self._reset_reason not in
+  (_RR_CONFIG_RESET, _RR_COMMAND_INCOMPLETE): await self.pr.wrn_s("Config file absent while FRAM history exists -
+  filesystem reformatted or wiped", wrnno=_WRN_CONFIG_LOST)`, with the comment (2 lines) "# The stock _boot.py reformats
+  an unmountable filesystem silently; a missing settings file beside / # surviving FRAM history is its one trace (a
+  commanded config reset deletes the files itself)." One persisted entry in SYSTEM's history per such boot; a factory
+  first boot (blank FRAM) and the twin's Run 1 stay silent (M.SCR.049). Chosen over the row's first form (every store's
+  absent-file print becoming a persisted warning), which would log on every fresh filesystem and break M.SCR.049's clean
+  boot with no tolerance list (OR140.a (13)); code 9 is excluded with 7 because an incomplete config reset has already
+  deleted files. Reads M.SRC_CORE.043 (3)'s `absent_at_boot` and M.SRC_CORE.065 (2)'s `restored`; `_WRN_CONFIG_LOST`
+  from M.SRC_CORE.005 (1).
+  (2) (A-C fold, silent-failure scan SF-B8, SYSTEM half, lead, 2026-10-06) `get_dict_cfg()`: an unreadable store
+  (`values is None`) returns `{_NAME: {"error": "unavailable"}}` in place of `dict.fromkeys(names)`, the same marker as
+  M.SRC_CORE.038 (1), so the SYSTEM row never reads as unset values; the comment's "nested shape" line gains "or the
+  unavailable marker (Part C.6)". `cfgmgr.get_dict()` already persists the read failure (M.SRC_CORE.048).
 - **Resolved**: A.U11.12 (1)(3) vs A.U35.41 (removal) → removal (the later G5/R54 verdict; A.U11.12 conditions itself on
   it). A.U11.12 (2) uses `self.cfgmgr.writable` (A.U11.20's flag, M.SRC_CORE.043). Gap pass G2's `self.initialized = True` is withdrawn by the routine settlement "initialized-flags" (M.SRC_CORE.008
   (e); A-C review fold); `data: "JsonMapping"` per U19 A-C note 2 (M_SRC_NET gap 4: the webserver's
@@ -667,6 +769,8 @@ parks on `_never`); inside `_supervise()` one scan per pass with the park point 
   A.U5.08, A.U11.12, A.U10.36 + GAP-G3 (TEST_UNIT, TEST_HELP); `tests/test_digital_twin_sensortask_integration.py:211`,
   `digital_twin/README.md:227-229` → A.U10.36 (TWIN); SPEC A.7 registry paragraph, C.6 one shape, C.13 → A.U11.12,
   A.U10.36, A.U10.21 (SPEC).
+  (SF-M1-01: tests in M_TEST_UNIT/M_TWIN per phase 2 — L1 absent file + restored history + code 2 gives one W, blank
+  FRAM or code 7/9 none; the twin's Run 1 stays clean)
 - **Kind**: code
 
 ### M.SRC_CORE.018 Remove the service's two caller-less public methods
@@ -865,6 +969,11 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
 - **Site**: `src/base_classes.py:54-80`.
 - **Change**: `class RegionBuffer:` (no base class, no `super().__init__()`); `self._buf`; `get_buf()`/`get_data_buf()`
   read `self._buf`; comments `:60-68` kept. The decision comment of A.U16.05 lives in SPEC G.2, not here.
+  (1) (A-C fold, silent-failure scan SF-M3-06, 2026-10-06) The allocation `except` binds the error and prints its text
+  once: `except (MemoryError, OverflowError) as e:` `print("RegionBuffer: buffer allocation failed:", e)`; `self._buf =
+  None`; one comment line "# No logger in this class: one ungated line keeps a caught allocation failure visible to the
+  memory gates (CLAUDE.md memory rule)." The size and region guards' `None` stay silent (a caller mistake, not an
+  allocation). The SGP40 half (a `None` buffer read as an allocation failure, not as "no backup") is SRC_SENS's.
 - **Resolved**: —
 - **Unit**: U16 (U10 stage: `_buf`).
 - **Depends**: —
@@ -873,6 +982,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   `:259-270`, `test_print_log.py`, `test_asy_uart_comm.py`, comments in `test_asy_fram_manager.py`,
   `test_crc_checks.py:719`, `test_framing_codecs.py:165`) → A.U16.05 (TEST_UNIT); UART changelog Class B → A.U16.05
   (DOCS); SPEC `:3025, 3481, 4200-4216, 4797, 4871, 5640` → A.U16.05 (SPEC).
+  (SF-M3-06: tests in M_TEST_UNIT/M_TWIN per phase 2; an injected `MemoryError` keeps its own wording, clear of the
+  gates' markers)
 - **Kind**: code
 
 ### M.SRC_CORE.134 `PieceBuffer`: received bytes held in pieces of at most `piece_bytes`
@@ -1042,6 +1153,16 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   _checked_write_results(res)`; when `not persisted` or `res.get(key) not in (VALID, UNCHANGED)`: `self.pr.err("Recovery
   of", key, "after a failed push was not stored:", res.get(key))` (console: the refusing store persisted its own entry);
   a raise → `_ERR_RECOVERY_WRITE_RAISED`. Every broad handler starts with `report_if_fatal(e)`.
+  (1) (A-C fold, silent-failure scan SF-B8, base half, 2026-10-06) A read failure is never a map of `null`s that reads
+  as "not set": `_get_dict_cfg()` returns `{name: {"error": "unavailable"}}` — exactly that one-key object **in place
+  of** the field map, never beside values or file keys — when `_get_mgr_cfg()` raises or returns `None`, or the callback
+  raises or returns `None`; each keeps its own persisted entry (`_ERR_CFG_GET_RAISED`, `_ERR_CFG_CALLBACK_RAISED`, or
+  the driver's `_ERR_CHIP_GET`), and after a failed `_get_mgr_cfg()` the callback is not awaited. The callback type
+  becomes `Callable[[], Awaitable[dict[str, CfgValue] | None]]`; the return type keeps its shape (the marker is a `str`
+  value). It is the shape M.WEB.001's `isUnavailable()` tests and M.SRC_NET.123 sends for a failed `/status` source.
+  Comment (2 lines): "# A failed read goes out as the {"error": "unavailable"} marker in place of the field map, never
+  as nulls / # a reader would take for unset values (the /status sources' shape)." The drivers' `None` returns are
+  SRC_SENS's (BMP3XX, SCD30, ISL29125).
 - **Resolved**: A.U11.27 and A.U19.12 take the same `self._set_lock` for PUT and GET (no re-entry: nothing under the lock
   calls `_get_dict_cfg()`/`_set_dict_cfg()`); A.U11.28's `finally` and A.U11.27's lock nest as lock → try/finally.
 - **Unit**: U19 (A.U19.12 is the latest constituent; stages: U2 names; U4 the move and the narrower snapshot; U11 lock,
@@ -1054,6 +1175,8 @@ config GET/PUT orchestration under one per-module lock) with `SensorReaderConfig
   A.U11.27/A.U19.12 (SRC_NET); tests `tests/test_base_classes.py:1128-1617` → A.U4.03, A.U11.27, A.U11.28 (TEST_UNIT);
   `tests/test_asy_webserver_service.py:1108-1137` consistency test → A.U19.12 (TEST_UNIT); L2 twin consistency scenario
   → A.U19.12 (TWIN); SPEC C.4.3/C.5.2/C.5.2.2/A.8 `:627-631` → A.U4.03, A.U11.27, A.U11.28, A.U19.12 (SPEC).
+  (SF-B8: tests in M_TEST_UNIT/M_TWIN per phase 2 — L1 a raising or `None` source gives exactly `{name: {"error":
+  "unavailable"}}` with one entry)
 - **Kind**: code
 
 ### M.SRC_CORE.039 Reader lifecycle helpers: setup, trigger starters, divider, timer fault, republish
@@ -1339,6 +1462,14 @@ for the config reset.
   regress a replaced value (PrintLogHistoryStore._write() applies the same rule)."); `try:` `if staged != self._cache: text = json.dumps(staged)`, `with open(self._config_file,
   "w") as f: f.write(text)`, evt "written"`; `except (MemoryError, OSError, ValueError) as e:` `_ERR_CFG_FILE_WRITE`
   (comment kept); `finally:` the bookkeeping `:384-388` unchanged.
+  (1) (A-C fold, silent-failure scan SF-B3, 2026-10-06) A store records that it runs unpersisted: `self.unpersisted =
+  False` in the constructor beside `faulted` (M.SRC_CORE.049); `_flush_staged()`'s failed write (`_ERR_CFG_FILE_WRITE`)
+  also sets `self.unpersisted = True` and a successful write sets it `False` (the whole snapshot is written, so the file
+  then matches); a snapshot equal to `_cache` writes nothing and changes nothing. No retry (C.7.3's one attempt holds).
+  Reported per read as `/status` `ConfigUnpersisted` (M.SRC_CORE.015 (1), M.GEN.008 (1)). The row's own first step is
+  U11's check: the persisted `_ERR_CFG_FILE_WRITE` entry says a write failed once, not whether the store still runs from
+  RAM, so the flag is the expected outcome; if the check finds the entry enough, U11 records why and this part,
+  M.SRC_CORE.015 (1), .043 (2), M.GEN.008 (1) and M.GEN.014 (1) do not land.
 - **Resolved**: A.U11.22 (create the task, then stage) and A.U11.28 (a deferred task waits on `_commit_ready`) keep
   their order (A.U11.28 says so). A.U11.04's "checked first, before the lock" + A.S0930.16's re-check inside the lock →
   both (SUPP conflict 1). A.U2.07's `:356` split (`MemoryError` → 20, `AttributeError` → 21) is superseded: A.U4.02 moves
@@ -1360,6 +1491,7 @@ for the config reset.
   `create_task(`, zero `json.dump(`) → A.U11.23/A.U11.28 (TEST_UNIT); `tests_scripts/test_device_script_config_flush.py`
   → A.U11.28 (TSC); task-inventory row (config flush) → A.U10.19 (SPEC/TSC); SPEC C.5/C.5.2/C.7.3/F.2 → A.U4.02,
   A.U11.25, A.U11.28, A.U35.43 (SPEC).
+  (SF-B3: tests in M_TEST_UNIT/M_TWIN per phase 2 — L1 failed flush sets, next good flush clears, equal snapshot keeps)
 - **Kind**: code
 
 ### M.SRC_CORE.041 Closing and flushing for a reset
@@ -1434,6 +1566,15 @@ for the config reset.
   open(…, "w") as f: f.write(text)`, `except (MemoryError, OSError) as e:` `_ERR_CFG_FILE_WRITE` (comments `:480`,
   `:482-483` kept). `return self.valid`. After a fresh flash, a filesystem erase or "Reset to defaults" every
   schema-backed module's file therefore exists after the first boot: one write per file per fresh filesystem.
+  (1) (A-C fold, silent-failure scan SF-M1-04, 2026-10-06) The directory branch is a file fault: `_ERR_CFG_PATH_IS_DIR`,
+  `self.faulted = True`, `return False`, so `/status` `ConfigFaults` lists the store ("existed but could not be read");
+  "Reset to defaults" removes an empty directory, a non-empty one ends in reset reason 9.
+  (2) (A-C fold, silent-failure scan SF-M1-07, 2026-10-06) The one write's failure (`_ERR_CFG_FILE_WRITE`) also sets
+  `self.unpersisted = True` (M.SRC_CORE.044 (1)'s flag), so an absent file whose defaults write fails, or a failed
+  repair, shows in `/status` `ConfigUnpersisted` (M.SRC_CORE.015 (1)).
+  (3) (A-C fold, silent-failure scan SF-M1-01, 2026-10-06) The ENOENT branch also sets `self.absent_at_boot = True`
+  (initialised `False` in the constructor beside `faulted`, M.SRC_CORE.049); the `pr.one` print stays, so a fresh
+  filesystem logs nothing (M.SCR.049). SystemService reads the flag for its one warning (M.SRC_CORE.017 (1)).
 - **Resolved**: A.U11.19 (missing) and A.U11.20 (unreadable) split HEAD's one `except (MemoryError, OSError, TypeError)`
   by errno; A.U35.43 drops `TypeError` (the filename is a typed `str`). OR136.a (owner, 2026-10-01, the most recent
   owner decision) supersedes OR71.a (2)'s "a first boot with no config file writes nothing": a genuinely absent file is
@@ -1458,6 +1599,7 @@ for the config reset.
   the twin's normal-boot log check expects NTP synced → M.TWIN.168; mockdata W22/W24 rows → A.U2.25/A.U3.15
   (WEB); SPEC C.7.3, C.5.2.1, the CLAUDE.md wear and flash-write wording and the Reset-to-defaults text → A.U11.19,
   A.U11.20 with M.SPEC.061, M.SPEC.021 and M.DOCS.082, M.DOCS.086, M.DOCS.026; register G5/R34 and LEAD/R32 (updated for OR136/OR138).
+  (SF-M1-04, SF-M1-07, SF-M1-01: tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ## src/print_log.py (→ `src/asy_print_log.py`)
@@ -1561,6 +1703,15 @@ fatal flag (M.SRC_CORE.034).
   `repeat`. `async def setup(self) -> bool: self.initialized = True; return True`. `async def reset(self) -> bool`: clear
   ring, `_err_count = 0`, `_pre_setup_slots = 0`, `if not await self._write(): self._diag(…); return False`;
   `self.initialized = True`; `return True` (comment `:214-216` kept).
+  (1) (A-C fold, silent-failure scan SF-B12, 2026-10-06) The history allocation's `except MemoryError as e:` keeps
+  `history_length = 0` and the empty ring and adds `self._diag("PrintLog: history allocation failed:", e)`, so the
+  failure's own text reaches the console and the memory gates. No flag: `get_log()` reports one slot per ring entry (`N`
+  for an empty one), so a 0-length ring's empty `ErrNum` already differs on `/status` from every allocated ring's
+  `history_length` slots.
+  (2) (A-C fold, silent-failure scan SF-B14, firmware half, 2026-10-06) No behaviour change: the counter keeps
+  saturating at 65535 (K.28), and `_MAX_CNT` stays a module `const(65535)` literal, the source the page's
+  `ERR_COUNT_CAP` mirrors (M.WEB.001 (1), pinned by `tests_scripts/test_js_api_mirrors.py`), so the page can show a
+  frozen counter as "65535+" (M.WEB.016 (1)) and a change of the cap fails the mirror check.
 - **Resolved**: —
 - **Unit**: U11 (stages U2 `get_log()`/negative code, U3 the rule and `repeat` removal, U10 `_pre_setup_slots`,
   `_err_count`, `setup() -> bool`).
@@ -1570,6 +1721,7 @@ fatal flag (M.SRC_CORE.034).
   (TEST_UNIT); tests reading `err_count` → A.U10.35 (TEST_UNIT); `test_print_log.py:201-205` K.28 → A.U24.39/A.U35.35
   (TEST_UNIT); `reset()` result users → M.SRC_CORE.019/.037/.049 and A.U11.31 (SRC_NET); SPEC C.7.1 repeat text, H.6
   `:4522` → A.U3.10, A.U2.05 (SPEC).
+  (SF-B12, SF-B14: tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_CORE.064 `PrintLogHistoryStore` writes: allocation-only guards, little-endian format, newest state last
@@ -1609,6 +1761,22 @@ fatal flag (M.SRC_CORE.034).
   min(count + self._err_count, _MAX_CNT)`; `False` → keep the RAM ring (re-initialise); then `self._pre_setup_slots = 0`;
   `if await self._write(): self.initialized = True` else `self._diag("PrintLog: FRAM setup failed!")`; `return
   self.initialized`.
+  (1) (A-C fold, silent-failure scan SF-M1-03 and SF-B12, 2026-10-06) Every `False` return of `setup()` while not
+  initialised also records one counted entry in the logger's own RAM ring, so `/status` shows which module runs
+  RAM-only: the head becomes `if self.initialized: return True` / `if self.fram is None: await self.err_s("FRAM history
+  not allocated - RAM-only until reboot", errno=_ERR_LOG_RAM_ONLY); return False`; the `stored is None` branch keeps its
+  `_diag` and adds `await self.err_s("FRAM history unreadable - RAM-only until reboot", errno=_ERR_LOG_RAM_ONLY)`; the
+  failed setup write keeps its `_diag` and adds the same entry ("FRAM history setup write failed - RAM-only until
+  reboot"). While not initialised `_store_err()` appends and counts but never writes, so the entry lives in RAM for this
+  boot under the module's own `/status` name; no retry (A.U16.06 stands). `_ERR_LOG_RAM_ONLY` is a new shared-band
+  constant in this file, numbered at execution (M.GEN.034 (1)). The row put the entry in FRAM's RAM logger through the
+  chunk's `pr`; the module's own ring names the store by its `/status` key without a FRAM-band code in this file or a
+  `pr` member on the chunk Protocol, and also covers the unallocated chunk, where there is no chunk to reach FRAM's
+  logger through.
+  (2) (A-C fold, silent-failure scan SF-M1-01, 2026-10-06) The tuple branch sets `self.restored = True` (initialised
+  `False` in `PrintLogHistory.__init__`, M.SRC_CORE.063's constructor: a RAM-only logger never restores), read by
+  M.SRC_CORE.017 (1). Stage U11 on HEAD's `setup()` (set when `_read()` returns `True`), so that warning can land in
+  U11; U16's tri-state rewrite carries it into the tuple branch.
 - **Resolved**: A.U10.11's `(count, entries) | None` and A.U16.06's `False`/`None` split are one tri-state (A.U16.06's
   Depends names this merge).
 - **Unit**: U16 (A.U10.11's and A.U11.16's `_read()` halves are pulled into U16's rewrite of the same lines; no earlier
@@ -1618,6 +1786,8 @@ fatal flag (M.SRC_CORE.034).
   A.U10.11, A.U16.06 (TEST_UNIT); `tests/_sensortask_scenarios.py:1160-1175`, twin `:300-320` → A.U10.11 (TEST_HELP,
   TWIN); L2 write-protected chip keeps its bytes → A.U16.06 (TWIN); SPEC C.7 setup sentences, A.4 FRAM bullet →
   A.U10.11, A.U16.06 (SPEC).
+  (SF-M1-03, SF-B12, SF-M1-01: tests in M_TEST_UNIT/M_TWIN per phase 2 — L1 unallocated, unreadable and failed-write
+  stores each show one entry under their own name)
 - **Kind**: code
 
 ## src/api_response.py (→ `src/asy_api_response.py`)
@@ -1980,6 +2150,26 @@ both persist.
   construct with `self` as manager; append the chunk to `self._chunks`; `_allocated_size` bookkeeping as HEAD.
   `set_pause()` gains "# Finish all ongoing ops, reject new ones (owner, 2026-07-18)". `reset_error_counter()
   -> bool: return await self.pr.reset()`.
+  (1) (A-C fold, silent-failure scan SF-B1, 2026-10-06) A chunk's CRC is seeded per owner, so a chunk another owner
+  wrote fails its CRC and takes the existing blank-or-invalid path (M.SRC_CORE.065's `False` branch) instead of loading
+  as this owner's history: `get_chunk(size, crc=None, verify=0, check_length=8, *, owner: str)` and
+  `get_timestamped_chunk(size, ntp_sync_callback, crc=None, verify=0, check_length=8, *, owner: str)` take the owner's
+  name; module function `_owner_seed(owner: str, crc: CRCBase) -> int` folds the name's bytes into `min(crc.length(),
+  2)` bytes, every intermediate a small int, never returning 0 (a zero register leaves zero data undetected,
+  `crc_checks.py`'s zero-padding note); the chunk keeps it as `self._crc_seed` (a `crc_seed: int` parameter of
+  M.SRC_CORE.081's constructor) and passes `init=self._crc_seed` to `add_into()` in `_write_chunk()` and to the first
+  `run_inc()` in `_read_chunk()` (M.SRC_CORE.085's lines; a pass-through CRC ignores it; `crc_checks.py` unchanged). By
+  CRC linearity an equal-length chunk written under another seed leaves the residual Δinit·x^(8n) mod g, non-zero for
+  Δinit ≠ 0 because g has a constant term. Comment at `_owner_seed()` (2 lines): "# Seeds each owner's CRC differently:
+  after a reflash that shifts the layout by whole chunks, a / # chunk another owner wrote fails its CRC and reads blank,
+  never as this owner's history." Callers in the same commit: `PrintLogHistoryStore.__init__` passes `owner=name`
+  (M.SRC_CORE.064's call); SGP40's backup chunk passes a name distinct from its logger's (SRC_SENS). The fold's
+  constants are fixed at execution so the pinned set below is distinct. The first boot of an image with this change
+  reads every chunk an older image wrote as blank once: FRAM content need not survive a reflash (owner, 2026-09-26).
+  (2) (A-C fold, silent-failure scan SF-B12, 2026-10-06) An allocator refusal is counted for `setup()` to report, since
+  the two allocators run during construction and cannot await an entry: `self._refused = 0` in `__init__`; each "FRAM
+  out of memory!" branch keeps its `pr.err` and adds `self._refused += 1` (bounded by the construction's allocation
+  count); M.SRC_CORE.092 (1) reports it.
 - **Resolved**: —
 - **Unit**: U16 (stages U5 constructor, U10 names, U11 `-> bool` and the `_chunks` list with its append — the U11
   quiesce of M.SRC_CORE.083 walks it, U0 tags).
@@ -1989,6 +2179,9 @@ both persist.
   bound re-derived for the `_chunks` slot → A.S0930.17 (TEST_UNIT); long-lived-object catalog gains `FRAMManager._chunks`
   ("grows once per allocation at construction") → GAP-G9 (TSC A.U30.03, SPEC A.U30.02); tests reading `allocated_size`,
   `ntp_sync_callback` → A.U10.35 (TEST_UNIT); SPEC C.3.1 FRAM API list → A.S0930.17 (SPEC).
+  (SF-B1, SF-B12: tests in M_TEST_UNIT/M_TWIN per phase 2 — A.U16.03 gains an image shifted by exactly one chunk span;
+  an L0 check (TSC) pins every chunk-owner name's seed distinct and non-zero per CRC width; SPEC C.7's pitfall text and
+  A.4 say a shifted chunk reads blank, SPEC)
 - **Kind**: code
 
 ### M.SRC_CORE.083 Erase FRAM: close the chunk layer, then blank and zero the whole chip in fed units
@@ -2031,6 +2224,11 @@ both persist.
   (`not self.initialized`) → `self.pr.err("FRAM chip declared but not set up - escalating")`, `return`; was up and lost →
   `if not await self.setup(): return`; `self.pr.one("FRAM chip answers again")`; then `await self.fram.lost.wait()`;
   `return`.
+  (1) (A-C fold, silent-failure scan SF-B12, 2026-10-06) `setup()`, after `await self.pr.setup()`: `if self._refused and
+  not self.initialized: await self.pr.err_s("FRAM out of memory:", self._refused, "chunk(s) refused - their owners run
+  RAM-only", errno=_ERR_FRAM_FULL)` — one counted entry in FRAM's RAM logger per boot (`not self.initialized` keeps the
+  chip-watch task's re-setup from repeating it). `_ERR_FRAM_FULL` joins M.SRC_CORE.080's constants as a new FRAM-band
+  row numbered at execution (M.GEN.034 (1)).
 - **Resolved**: A.U16.17's `get_task_starters()` returns `[]` when initialised; A.U16.R03 (4) makes it always one
   starter (SUPP_recovery Conflicts 5: R03 extends it) — R03. Both write the task as returning `False`; the typed task
   lists are `Task[None]` (G8/R61, owner OR81; A.U10.46's `TaskStarter`; A.U15.43 makes the readers' tasks `None` for
@@ -2045,6 +2243,7 @@ both persist.
   TEST_HELP, SPEC); `tests/_sensortask_scenarios.py:490-545` dead-chip scenario → A.U16.17 (TEST_HELP); L1 watch-task
   cases → A.U16.17, A.U16.R03 (TEST_UNIT); L2 silent chip → A.U16.R03/U25 (TWIN); L3 CS-hijack loss case → A.U16.R03
   (HW_DEV); SPEC A.4/A.7/C.7 → A.U16.17, A.U16.R03 (SPEC).
+  (SF-B12: tests in M_TEST_UNIT/M_TWIN per phase 2)
 - **Kind**: code
 
 ### M.SRC_CORE.093 Member order and annotation form in `asy_fram_manager.py`

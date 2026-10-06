@@ -313,6 +313,14 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   `feed_count` and appends `time.ticks_ms()` to `feed_times`, a `_CallLog`-bounded list. (4) `TEST_API` for `WDT`:
   `feed_count`, `feed_times`; module test names `reset_count`, `bootloader_count`, `reset_cause_value`, `power_on`,
   `Simulated*Error` listed in a module-level `TEST_API`.
+  (5) (A-C fold, silent-failure scan SF-A10, 2026-10-06) `machine.mem32` gains the two reset registers in U13, on the
+  same object M.TEST_HELP.069 creates for the UART block: a module object indexed by address answering the WATCHDOG
+  `REASON` (0x40058008) with test-only `watchdog_reason_value` and `CHIP_RESET` (0x40064008) with `chip_reset_value`,
+  any address neither block models raising `ValueError` ("not modelled"); `power_on()` sets them to 0 and 0x100
+  (HAD_POR); `reset()` and `bootloader()` set the reason to 2 (FORCE: `watchdog_reboot(…, 0)` sets the trigger bit,
+  pico-sdk `watchdog.c:65-66` at the v1.29.0 submodule; what the bootrom leaves after `bootloader()` is a phase C bench
+  check) and leave `chip_reset_value`; both in `TEST_API`, restored by the per-test reset. Pins M.SRC_CORE.006 (1);
+  stage U13 (after M.SRC_NET.221 (6)).
 - **Resolved**: A.U11.07's "`reset()`/`bootloader()` set `WDT_RESET`" and A.U24.17's "count then raise" combine as
   count → cause → raise; A.U11.07's `mem_backup()` gains rp2's `-1` tuple and object identity (verified in the pinned
   source above; the twin half, A.U25.08, asserts both — one contract, M.TEST_HELP.049).
@@ -364,6 +372,15 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   `I2C.reset_registry()` (hook) and `I2C.reset_id(id)` (a power-cycled controller, called by every test-side fresh-bus
   helper); `I2C.raise_on_construct: BaseException | None` makes the next construction raise. `TEST_API` lists them
   with the state names.
+  (1) (A-C fold, silent-failure scan SF-A01 and SF-A02, 2026-10-06) Register route and short-ACK knob: an address the
+  test declares a register device (`I2C.register_device(address, addrsize=8)`, or one already holding `registers`
+  entries) takes `writeto(address, buf, True)` as a register write (its first `addrsize // 8` bytes the register, most
+  significant first, the rest stored as with `writeto_mem`) and `writeto(address, <register>, False)` as a pointer set
+  that the next `readfrom_into(address, buf)` reads from; every other address keeps HEAD's raw-command read queue
+  (SCD30, SGP40). Test-only `short_ack(address, n)`: the next write to that address returns `n`, and a no-stop short
+  write is followed by the driver's own zero-length STOP in the log. The log records the calls made (`writeto`,
+  `readfrom_into`), never a `*_mem` name for them. Both in `TEST_API`. Pins M.SRC_SENS.012 (1), .011 (1), (2); stage U13
+  (the driver stops calling `*_mem` there).
 - **Resolved**: —
 - **Unit**: U24
 - **Depends**: M.TEST_HELP.010, M.TEST_HELP.012.
@@ -398,6 +415,10 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   `ValueError` (`scan`; SPI `write`); an SPI read fault fires only on a transfer of ≥ `_SPI_DMA_MIN_SIZE` bytes
   (`ports/rp2/machine_spi.c:267-318`) — the comment saying the queue is not size-gated goes; `pending(op) -> int`.
   Both in `TEST_API`.
+  (1) (A-C fold, silent-failure scan SF-A01 and SF-A02, 2026-10-06) For a declared register device, `match` on `writeto`
+  and on `readfrom_into` is the register pointer (the first written byte(s); for a read, the pointer the preceding
+  no-stop write set), so a test injects a fault on one register as it did through `match=memaddr` on `*_mem`. Pins
+  M.SRC_SENS.011 (1), (2); stage U13.
 - **Resolved**: A.U24.78 vs A.U25.70 on `match`: I2C `match` is the command key and `address=` the address filter (A.U24.78's
   verified text, the twin's own key) — settled.
 - **Unit**: U24
@@ -692,6 +713,10 @@ change; the shared header, reset hook and citations are M.TEST_HELP.010.
   page in `datasheets/bmp3xx/`. (9) `inject_fault` calls take the class-plus-args form. (10) `_RESERVED_I2C_RANGES`/`_is_reserved` become public
   `RESERVED_I2C_RANGES`/`is_reserved` (A.U35.19 imports them into `tests/test_bus_hazard_multi_device.py`; a name
   imported across modules is public). Typed through `_protocols.I2CLike`, no `Any`.
+  (11) (A-C fold, silent-failure scan SF-B9 = SF-A05 and SF-M3-04, 2026-10-06) `seed_bmp_ready()` seeds ERR_REG (0x02) 0
+  and EVENT (0x10) 0 and plants the burst as the 8 bytes from 0x02; `_exercise_bmp3xx` runs a read cycle that issues the
+  EVENT read; the ISL29125 adapter's read exercise includes the per-cycle 3-byte CONFIG snapshot. Pins M.SRC_SENS.048
+  (1), .077 (1); stage U15.
 - **Resolved**: A.U24.28 removes the sweep's blanket `except`; the same rule is applied to the per-call `except
   Exception: pass` inside each `_exercise_*` (otherwise the sweep's "an exercise that raised before its first
   transfer fails" never bites) — agent decision D6.
@@ -1025,6 +1050,12 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   one starter, and driving `start_tasks(…, task_names=…)` then `supervise_tasks()` with `asyncio.sleep` shortened from
   outside arms the reboot with the task-budget reset reason, catching `machine.SimulatedRebootError` from the fake
   timer; its comment keeps the owner requirement with its tag.
+  (7) (A-C fold, silent-failure scan SF-B1, 2026-10-06) (1)'s owner list uses the real chunk owners: SGP40's backup is
+  `"SGP40" + name_ext + "_VOC"` (read from the built reader), not the label `"SGP40_BACKUP"`, and (2) also asserts every
+  owner in the layout distinct. (5) gains the aligned shift: an image written by a build whose owner list has one more
+  leading owner reads blank under every shifted owner (no module restores a neighbour's history) and each such chunk is
+  then re-initialised. Any direct `get_chunk(`/`get_timestamped_chunk(` call left in the file passes `owner=`. Pins
+  M.SRC_CORE.091 (1), M.SRC_SENS.062 (1); stage U16.
 - **Resolved**: GAP-10 / GAP-G7 / AC_NOTES 13 — A.U15.12's "two chunks" and A.U20.11's "every logger FRAM-backed" are
   superseded for SCD30's config log by the RAM-only ruling; (1) and (3) derive the exemption from the class attribute,
   never from a name (AC_NOTES 13: "derive, not name").
@@ -1184,6 +1215,13 @@ The unit-tier (L1) per-device scenario library: 57 scenarios at HEAD, run per de
   the generated module's embedded values via `src_const` (A.U24.63). (6) New non-finite scenario: every float field and
   float config value set to NaN/±inf in turn, every GET route strict-parses with `null` there (A.U10.27). (7) New
   serving-demand scenario (A.U19.13's L1). Keys follow A.U10.40's map as it lands.
+  (8) (A-C fold, silent-failure scan SF-B3, SF-M1-07, SF-A10, SF-B8, SF-B17, 2026-10-06) Per device: `GET /status`
+  carries `ResetBits` (an int) and `ConfigUnpersisted` (`[]` on a clean boot; the module named after its file write was
+  refused, until a good write) (Stage U20); a planted chip-read fault in each config snapshot the device has (BMP3XX, SCD30,
+  ISL29125) makes `GET /sensors` send that module as exactly `{"error":"unavailable"}` while the other modules' maps are
+  intact, and SYSTEM's unreadable store makes `GET /system` send the same marker (Stage U19); the notification sample on
+  `/measurements` carries `State` (2 before the first sync, 0 once synced with readable producers) (Stage U22). Pins M.GEN.008
+  (1), (2), M.SRC_CORE.038 (1), .017 (2), M.SRC_SENS.037 (1).
 - **Resolved**: A.U24.32's "SCD30 PUT path" and A.U4.04's chip-store PUT co-land on `:898-905` — merged as (1) (A.U4.04's
   path, A.U24.32's assertion).
 - **Unit**: U24 (stages with each constituent's unit: U4, U5, U6, U9, U10, U11, U18, U19, U23, U32; A-C review fold:
@@ -1592,6 +1630,9 @@ Each is a new `tests/_*.py` module (MicroPython-runnable unless noted), with a �
   must leave it 0). (3) Test knobs, each "test-only knob" in `TEST_API`: a consumer-stall and an arrival-rate setting
   (line rate by default: 8N1 at 115200 baud, 11.52 B/ms) and a direct ring-fill setter for boundary cases. (4)
   `reset_test_state()` (M.TEST_HELP.010) resets the DMA channels, the register blocks and `rx_api_calls`.
+  (5) (A-C fold, silent-failure scan SF-A06, 2026-10-06) UARTRSR FE (bit 0) and BE (bit 2) are plantable beside OE
+  through the same test knob, each cleared by a UARTECR write; a planted BE also loads one 0x00 into the RX FIFO (RP2040
+  datasheet 4.2.8, Table 426). Pins M.SRC_NET.221 (7); U13.
 - **Resolved**: the time-driven model is what OR141.a (4) (g) asks of the unit tier; the twin carries the same model
   (M.TWIN.169) and the shared contract checks both (M.TEST_HELP.025).
 - **Unit**: U13 (with the driver's DMA receive path, so every existing UART test runs on it from that unit on).

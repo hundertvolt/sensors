@@ -235,6 +235,11 @@ special, OR140.a (18)).
   fails the teardown naming the field), and the final `errcount` saved (`save_errcount(dut_ip, "session-end")` with a
   bench). (3) `report_recovery_events(board, request)`: at teardown every entry of `board.recovery_events` (A.U26.13 (3))
   goes through `record_session_note(…, recovery=True, source="mpremote")`.
+  (4) (A-C fold, silent-failure scan SF-M3-08, 2026-10-06) On the bench host, `standard_state` also records the VL805
+  firmware version (`rpi-eeprom-update`'s read-only status call, through the sudo rules of M.HW_BENCH.125 if it needs
+  root) as a session note `vl805_firmware`; a version below 0138c1 prints one console warning naming RP2040-E15 and the
+  host fix (`sudo rpi-eeprom-update -a`), and never fails the session: the firmware carries TinyUSB's E15 workaround
+  (M.HW_BENCH.125 (1)). U26.
 - **Resolved**: three DebugLevel checks (A.U26.12's flash fixture `debug_level_standard`, A.U26.27's bench
   `debug_level_checked`, A.U26.79's `standard_state`) merge into `standard_state`, which A.U26.79 (1) already defines as
   the one check "over REST when the bench is configured (else over a read-only exec as A.U26.12)"; the two separate
@@ -394,6 +399,11 @@ special, OR140.a (18)).
   …)` and returns that path with `parse_facts(output)` (`status_register`, `write_protected`, `rdid`; gap pass, GAP-D6). Docstrings →
   `#` blocks (B3) stating once: raw-REPL entry stops `main.py`; the soft reset that follows keeps the armed watchdog, the
   GC threshold, `ticks_ms()` and pin muxing and never re-runs `main.py` (`ports/rp2/main.c:246-247`, v1.29.0).
+  (1) (A-C fold, silent-failure scan SF-M4-01, 2026-10-06) `run_isolated_expect_reset(script_path, *, timeout_s=None,
+  hold_unread_s: float | None = None, **extras)`: with `hold_unread_s`, the script starts through `mpremote run
+  --no-follow`, then the host opens the console port with DTR asserted and reads nothing for `hold_unread_s` or until
+  the board drops off USB, and returns `""` (the outcome is read from `/status` after the production boot); without it,
+  as above. U26; for M.HW_BENCH.083 (4).
 - **Resolved**: A.U26.13 (two calls) and A.U26.44 (render first) edit the same method: render, then the two calls.
 - **Unit**: U26.
 - **Depends**: M.HW_BENCH.011, M.HW_BENCH.041 (`bench_facts.build()`), M.HW_BENCH.055 (`evidence`), A.U26.78's
@@ -1167,6 +1177,12 @@ special, OR140.a (18)).
   `_FLAP_CYCLES` 3 (the shared `l4.network_resilience_flap_*` IDs), `_FLAP_RECOVERY_*`, `_REBOOT_READY_*` (the latter
   two now `recover_by_reset`'s waits), `_ISL29125_WRITE_CYCLES` 4), the join messages interpolating their constant.
   `COVERS_TWIN_SCENARIOS = ["bus_hazard_concurrency"]`.
+  (1) (A-C fold, silent-failure scan SF-A01, SF-A02, SF-B9, SF-M3-02 and SF-M3-04, 2026-10-06) Stage U26 (written; run in phase C). The arms run unchanged
+  against the image whose read paths now hold the changed I2C call forms, the BMP3XX EVENT read and ERR_REG burst, and
+  the ISL29125 per-cycle snapshot; each arm's error-log check for SCD30, BMP3XX and ISL29125 additionally names the new
+  codes, read from the catalog at run time: no `BMP_CHIP_RESET`, no `READ_RANGE`, no ISL29125 divergence warning under
+  load. L4, the bench leg of the four tiers; pins M.SRC_SENS.011 (1)-(2), .012 (1), .043 (1)-(2), .048 (1), .055 (2),
+  .077 (1). Phase C.
 - **Resolved**: A.U8C.45's tags on the six worker bodies' literals move with the bodies into `_load.py`'s call
   arguments (the constants stay here and are passed). A.U36.544 (U36) edits two comments the U26 rewrite keeps:
   stage 2.
@@ -1329,6 +1345,13 @@ special, OR140.a (18)).
   `test_bench_radio_associates_within_bounded_window` asserts the recorded association time ≤ `_JOIN_HOTSPOT_TIMEOUT_S`.
   `test_real_static_website_content_serves_over_the_hotspot_link` passes `device=bench_device_name`. Constants per
   A.U8C.48 (B4); `import socket` at module top.
+  (1) (A-C fold, silent-failure scan SF-M4-09, 2026-10-06) On a bench device with `uart_link` instances (`dev`),
+  `joined_hotspot` reads the link counters from `/status` right before the stage-0 PUT and again over the hotspot once
+  joined, and the same around the flip back; new `test_the_uart_link_across_the_mode_switch_is_recorded` records the
+  link failures each switch added and the switch's span (the stage-0 PUT to the first hotspot answer) through
+  `result_note`, and asserts only that transfers advance again inside the window. The record fills F.3's
+  `stall.wlan_switch` row (M.SPEC.097 (v)); zero wear beyond the fixture's pinned prerequisite. Measures SF-M4-09 (no
+  source part); phase C, R1.
 - **Resolved**: A.U7.15 (U7) would route the two stage-7 notes through `record_session_note`; A.U26.39 (2) (U26,
   G1/R28 "a rejected restore fails loudly") turns them into a raise — A.U7.15's two sites are dropped (no hardware run
   falls between U7 and U26). The `request` parameter A.U7.15 adds stays (stage 8's note uses it).
@@ -1689,6 +1712,14 @@ special, OR140.a (18)).
   slowloris connections, refused heads, truncated bodies, resets, ceiling refusals; asserts no reboot (`ResetReason`,
   `SysUptime` unchanged) and `/status` serving; `finally` restores `DebugLevel` 5 (asserting `"Valid"`) — two owned
   flash writes.
+  (4) (A-C fold, silent-failure scan SF-A open point: CYW43 under a flash stall, 2026-10-06)
+  `@pytest.mark.persistence_write test_a_flash_write_holding_interrupts_off_keeps_the_wifi_link(dut_ip, result_note)`:
+  one reader worker polls `GET /status` every 50 ms over STA; `PUT /notification {"WarnCO2": <current + 1>}` and then
+  the original back, each answered "Valid" (two owned flash writes, each a deferred flush that may erase a 4 KB sector
+  with interrupts off, up to 400 ms); asserts `Connected` true at every answered poll, `WifiUptime` never reset, no new
+  WIFI history entry; records the longest response gap and the polls lost per write, which show what the closed CYW43
+  firmware drops under the stall. Budget row 2 writes (M.HW_BENCH.130 (1)); its host logic runs against the twin first.
+  Phase C, R3.
 - **Resolved**: D5 — A.U19.23 states a phase-C hardware row and A.C.05 (1) runs it, but no action writes its
   instrument; a gated test makes the row repeatable instead of a hand step (shown in the OR2.c review).
 - **Unit**: U26.
@@ -1723,6 +1754,26 @@ special, OR140.a (18)).
   `time.sleep_ms(10000)` from outside — code 10 + p; `test_a_c_stack_exhaustion_is_attributed` — code 20. The four
   A.C.12 scripts are HW_DEV's; none writes flash (FRAM only). A code an attempt cannot reach returns to the E.6
   exception list with the attempt's recorded result (OR77.a), as a phase-C delta.
+  (1) (A-C fold, silent-failure scan SF-A14, 2026-10-06) `test_a_console_interrupt_is_attributed`: with the production
+  image serving and no PUT pending, the host opens the console port afresh (the 512-byte stdin ring empty,
+  M.HW_BENCH.127 (1)) and writes one 0x03; the board drops to the REPL with its watchdog armed and resets within the
+  timeout; after the production boot serves, `ResetReason` is 21 and `ResetBits` shows the watchdog timer bit (1)
+  without the forced bit (2). No wear. Pins M.GEN.001 (1), M.SRC_CORE.006 (2).
+  (2) (A-C fold, silent-failure scan SF-A10, 2026-10-06) Every test records `ResetBits` through `result_note`, and
+  asserts its watchdog half where the reset kind fixes it: codes 6 and 10 + p (a starvation) the timer bit set and the
+  forced bit clear; codes 0 and 5 (`machine.reset()`) the forced bit set. The CHIP_RESET bits are recorded, never
+  asserted: what they read after each kind is the record F.5.4's decode waits on. Pins M.SRC_CORE.006 (1).
+  (3) (A-C fold, silent-failure scan SF-M1-05, 2026-10-06) `test_a_bootloader_reboot_is_attributed` records `ResetBits`
+  too; when `ResetReason` reads 2 or 1 instead of 4, it fails naming that outcome (the bootrom's own watchdog reboot
+  into BOOTSEL overwrote the scratch registers holding the record). That outcome is the phase-C delta that writes
+  F.5.4's sentence (M.SPEC.103 (2)) and moves code 4 to the E.6 exception list (OR77.a).
+  (4) (A-C fold, silent-failure scan SF-M4-01 (a), 2026-10-06)
+  `test_a_crash_loop_under_a_non_reading_host_is_still_the_budget_reboot`: `system_service_restarts_a_real_dead_task.py`
+  in `hold_console` mode with `level=0` through `run_isolated_expect_reset(..., hold_unread_s=<three watchdog
+  timeouts>)` (M.HW_BENCH.012 (1)): the host holds the port open with DTR asserted and reads nothing while the task
+  keeps dying; after the production boot, `ResetReason` is 5, as `test_the_supervisor_escalation_reboot_is_attributed`
+  asserts it, never 2 (the watchdog starved by console writes, which asyncio's default handler would make). No wear.
+  Pins M.SRC_CORE.016 (1).
 - **Resolved**: A.U26.28's "boot-failure (10 + phase) … a structural exception" is replaced by A.C.12's attempt (C A-C
   note 2); code 1 stays the manual power-cycle step (M.HW_BENCH.102).
 - **Unit**: U26 (C's instruments co-land with U26, C.md heading).
@@ -2070,6 +2121,13 @@ special, OR140.a (18)).
   its answer tells the caller to retry later). (5)
   Constants: `_LEAD_WINDOW_S = 20`, `_RECOVERY_WATCH_S = 30.0`, `_REBOOT_WATCH_S = 30.0` (B4), the operator texts
   interpolating them. The bench IP comes from `--dut-ip`/the README hint, not a literal.
+  (6) (A-C fold, silent-failure scan SF-M4-10, 2026-10-06) New `fram_cs_at_power_off`, run only when the operator has an
+  oscilloscope at hand (no test hardware is bought, owner, 2026-09-22; without one the step records "not measured"):
+  probe FRAM CS and VDD, capture a watchdog reset (`kick_then_reset.py` without its kick) and a USB power removal; the
+  operator records whether CS stays above 0.8 × VDD until VDD is below the part's minimum (the datasheets' power-off
+  sequence, tpd), `confirm_pass()` on the record. The result replaces C.3.1's "unverified on this board"
+  (M.SPEC.049 (5)); a CS that falls below makes a board-level pull-up the remedy, an owner decision. No wear. Phase C,
+  R2.
 - **Resolved**: —
 - **Unit**: U26 (A.U9.03's U9 instruction text lands in U9 and is rewritten in U26's (4)).
 - **Depends**: A.U13.R01/A.U15.R01 (rungs), A.U16.R03 (FRAM recovery), A.U2.01 (catalog), M.HW_BENCH.016,
@@ -2107,6 +2165,22 @@ special, OR140.a (18)).
   "rewrites the saved config files once, one flash write per file" and takes `confirm()` — the manual branch of the
   wear guard requires a `confirm(` before every persisting script a manual step runs, A.C.17's rule, M.TSC.119; gap
   pass, GAPS_G3 hand-off 2), the bench joining the DUT's hotspot inside the round's armed network switch. Constants `_POWER_CUT_WINDOW_S = 20`, `_POWER_OFF_S = 10` (B4).
+  (5) (A-C fold, silent-failure scan SF-A10, 2026-10-06) Stage U26. Every power-cycle step also records `ResetBits` after power
+  returns (expected: the power-on bit, 256), written into the step's record.
+  (6) (A-C fold, silent-failure scan SF-A open point: SCD30 NVM write cut by power loss, 2026-10-06) Stage U26. New
+  `power_loss_mid_scd30_nvm_write`: states "up to 21 SCD30 NVM writes (20 changes and the restore)" and takes
+  `confirm()` before running `scd30_argument_reaction.py` with `STATE="interval_write_loop"` through
+  `Board().run_isolated()` (M.HW_DEV.156 (2)); the operator cuts USB power while `WROTE` lines arrive; after power
+  returns and the board serves, the SCD30 answers (its `/measurements` `TS` advances within three intervals) and `GET
+  /sensors` `MeasInterval` reads the last value written or the one before, never another; the step then PUTs the
+  original back (one more NVM write, stated) and `confirm_pass()`; once only. The manual branch of the wear guard (a
+  `confirm(` before the run) covers it; budget row M.HW_BENCH.130 (1). Phase C, R2.
+  (7) (A-C fold, silent-failure scan SF-A open point: mem_backup across a RUN-pin reset, 2026-10-06) Stage U26. New
+  `run_pin_reset_keeps_or_clears_the_record`: `reset_code_invalid_record.py` with `STATE="valid_record_wait"`
+  (M.HW_DEV.154 (5)); at `PRESS_RUN_NOW` the operator connects RUN to GND briefly; after the boot serves, `ResetReason`
+  3 means `mem_backup()` survives a RUN-pin reset and 1 or 0 that it does not, and `ResetBits` should show the RUN
+  bit (65536); both go into the step's record, `confirm_pass()` on the operator's report; a bench with no access to RUN
+  records "not run". No wear. The outcome is F.5.4's delta (M.SPEC.103 (3)). Phase C, R2.
 - **Resolved**: A.U4.04's instruction (U4) and A.U26.42's rewrite (U26) touch the same step: one text, U26's, carrying
   U4's "GET first … Valid" wording. A.C.17 replaces the HEAD mid-write step (same purpose, a measured instrument).
 - **Unit**: stage 1 U4 (`:36-48` instruction); stage 2 U26.
@@ -2396,6 +2470,10 @@ check.
   and restored), `erasefram` (destroys the FRAM logs: the raw save runs first), `reboot` and `bootloader` (run the
   reboot sequence: record, flush, pause, reset; the reply precedes the reset within its bound), `mempause` — each naming
   its L3 and L4 test, what it spends, and the hotspot join a restore needs.
+  (1) (A-C fold, silent-failure scan SF-A14 and SF-A10, 2026-10-06) The table gains the row for code 21 (test
+  `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed`, L4), and one sentence under it: "`ResetBits` is
+  recorded for every row; once measured, a table here lists the raw flags each reset kind leaves." U26 (the code lands
+  in U20).
 - **Resolved**: —
 - **Unit**: U26 (table), SUPP_owner_0930 B2 rows, A.C.12 rows (C delta).
   A-C3 (AC3_R R-08 (h)): "SUPP_owner_0930" is not a unit; its parts land as the work order places them: A.S0930.15,
@@ -2505,6 +2583,13 @@ check.
   item 2 "the board named by `bench = true` runs its own image (`scripts/build_firmware.py <bench device>`); no other
   build's image is flashed" (OR140.a (18), A-C review fold: no WoZi-specific wording); item 3 → A.U21.27's sentence plus A.U1.07's; new "the bench host's `uv` matches `pyproject.toml`'s pin"; new
   "the board's standard state holds `DebugLevel` 5 (checked by the session fixtures)"; item 4 → M.HW_BENCH.114.
+  (1) (A-C fold, silent-failure scan SF-M3-08, 2026-10-06) New item: "RP2040-E15: a Raspberry Pi 4's downstream USB
+  ports (VL805 xHCI) can hang the RP2040's USB device controller on Bulk IN transfers over 50 bytes (RP2040 datasheet,
+  erratum RP2040-E15). The firmware at the pin carries TinyUSB's workaround (pico-sdk's TinyUSB target sets
+  `PICO_RP2040_USB_DEVICE_UFRAME_FIX`); the host-side fix is VL805 firmware 0138c1 or later (`sudo rpi-eeprom-update
+  -a`). The session start records the bench's VL805 version." The sudo line gains `rpi-eeprom-update`'s read-only status
+  call if it needs root. The workaround's presence is re-checked at each pin move (the
+  `PICO_RP2040_USB_DEVICE_UFRAME_FIX=1` define in the rp2 build flags). Stage U26.
 - **Resolved**: —
 - **Unit**: U1 (picotool hint), U21, U26, U28.
 - **Depends**: A.U21.24, A.U21.26, A.U21.27, M.HW_BENCH.010.
@@ -2568,6 +2653,14 @@ check.
   the session resets it"; "the USB CDC can stop entering raw REPL until the port is rebound (bench, <date of the
   observation>); one rebind per call" (the Workarounds row, M.HW_BENCH.128); "ad-hoc scripts run under `timeout` with
   capped retries"; the two HEAD traps of `:258-284` kept as current facts.
+  (1) (A-C fold, silent-failure scan SF-M4-11, 2026-10-06) New bullet: "Ctrl-C reaches the autostart image only while
+  the board's 512-byte stdin ring has room: the firmware never reads stdin, so after a host program has sent 511 bytes
+  (a terminal, a probe) a later Ctrl-C stays in the USB buffer and `mpremote`'s raw-REPL entry fails with a generic
+  error that looks like a board fault. Reset the board by power or RUN, or use the no-autostart image
+  (`shared/tinyusb/mp_usbd_cdc.c`, `ports/rp2/mphalport.c` at the pin)." Stage U26.
+  (2) (A-C fold, silent-failure scan SF-A14, 2026-10-06) New bullet: "A Ctrl-C into the autostart image ends its whole
+  event loop: the board records reset reason 21 and the watchdog resets it within its timeout; an accepted change still
+  waiting for its deferred flush is lost." Stage U26 (the code lands in U20).
 - **Resolved**: A.U14.02 (U14) and A.U26.25 (U26) touch the same trap; U14's text stands, U26 adds nothing to it
   (A.U26.25's blast names it U14's).
 - **Unit**: U11/U14 (reset text), U26, U33.
@@ -2637,6 +2730,10 @@ check.
   every field is rejected, unknown, unchanged or dispatch-only needs no marker; an always-executed field always does;
   `resetconfig` is persisting"; the guard's checks in one paragraph (device scripts, class markers, raw sockets, the
   prerequisite set pinned by name); "Read the deselected count" → the run record's report.
+  (1) (A-C fold, silent-failure scan SF-A07, SF-M4-10 and SF-A open points, 2026-10-06) The budget table gains, under
+  `--allow-persistence-write`: the Wi-Fi link under a flash stall 2 (M.HW_BENCH.082 (4)); the UART link during config
+  writes 5 scratch writes and 1 removal (M.HW_DEV.160 (5)); under manual mode: the SCD30 NVM power cut, up to 21 SCD30
+  NVM writes and 1 restore (M.HW_BENCH.102 (6)). Zero-wear additions are not listed. Stage U26.
 - **Resolved**: A.U26.09's "+2" for `--allow-scd30-extra-write` counts only A.U26.08 (3); the table lists every
   `scd30_extra_write` row (M.HW_BENCH.001's settlement). A.U4.08 (U4) writes the REST half into `:1310-1325`; U26's
   table carries it (A.U4.08's Blast names the flash-tier text U26's).
@@ -2667,6 +2764,15 @@ check.
   "the standard state holds `DebugLevel` 5; boot oracles need ≥ 3; the session fixtures check it"; `:620` "(BACKLOG.md's
   2026-09-05/07 … sessions)" → the fact with its date, no BACKLOG citation; `:427` "(both in BACKLOG.md's "Deferred" list)" stays only while those rows exist (A.U0.08's check at landing); every upstream citation and version stamp
   re-read at the pinned tag at execution (A.SDEP.08).
+  (1) (A-C fold, silent-failure scan SF-A open points, SF-M1-05, SF-M3-03, SF-M4-10, 2026-10-06) New bullets, each a
+  current open finding with the check that settles it and leaving at that round's delta: what the CYW43 firmware drops
+  while a flash write holds interrupts off (M.HW_BENCH.082 (4)); whether DMA reads update UARTRSR's error flags
+  (M.HW_DEV.160 (4)); whether the reset record survives a RUN-pin reset (M.HW_BENCH.102 (7)) and the bootloader reboot
+  (M.HW_BENCH.083 (3)); the SCD30's answer after a register pointer cut short and after an NVM write cut by power loss
+  (M.HW_DEV.156 (1), M.HW_BENCH.102 (6)); the FRAM breakout's MISO idle level (M.HW_DEV.132 (1)); the FRAM CS level at
+  power-off (M.HW_BENCH.101 (6), scope only). One more, not measurable through the sensor's interface (no ASC progress
+  readout): whether the SCD30's soft reset at every boot restarts ASC's first-week search (SPEC M.2); whether that boot
+  reset is needed is the owner-review question (M.PROC). No audit ID in the README text. Stage U26.
 - **Resolved**: A.U26.30, A.U0.36, A.U14.08, A.U14.16 and A.U7.15 all rewrite `:625-641`: A.U26.30 (U26) is the whole
   paragraph and already carries A.U0.36's tag and A.U14.16's removal; A.U14.08 (U14) supplies the link inside it; A.U7.15's
   wording note is satisfied by "reported as recovery passes" — one text.

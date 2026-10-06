@@ -533,6 +533,25 @@ Conventions used below (each defined once, then cited):
   refused and logged exactly once, every config PUT answered, zero `MemoryError` and `memory
   allocation failed` in the run log (the twin gate), the largest free block at the end not below the boot-contiguity
   bound (read from `tests_scripts/test_digital_twin_boot_contiguity.py` by `ast`).
+  (1) (A-C fold, silent-failure scan SF-M2-05, 2026-10-06) `client_gone_mid_response_is_counted`: `HTTPDropped` read; a
+  raw socket with its `SO_RCVBUF` at the minimum requests the largest GET body the route table and the staged site
+  offer, reads the status line and closes with `SO_LINGER` 0 (a reset); `HTTPDropped` read again equals the first read
+  plus one (exact, as (l) reasons), WEBSERVER's newest entry is the peer-reset code, and a following `GET /status`
+  serves. The body must exceed the loopback buffers so the write is in progress at the reset (its size asserted against
+  the host's buffer sizes first); if none does, the scenario skips with that reason and the L1 case (M.TEST_UNIT.202
+  (1)) carries it. Pins M.SRC_NET.118 (1), .127 (1).
+  (2) (A-C fold, silent-failure scan SF-B8, 2026-10-06) `failed_config_snapshot_is_sent_as_unavailable`, per sensor
+  driver the device has (`drivers=` each of `bmp3xx`, `scd30`, `isl29125`): a counted `--fault` on the chip op the
+  config snapshot reads, its consumption read from `FAULT_PENDING` lines; `GET /sensors`, strict-parsed, sends that
+  module as exactly `{"error":"unavailable"}` while the other modules' maps are intact, and its errcount holds
+  `CHIP_GET`; once the fault is spent the next GET shows the module's map again. Pins M.SRC_CORE.038 (1), M.SRC_SENS.047
+  (1), .053 (1), .082 (1).
+  (3) (A-C fold, silent-failure scan SF-B3, 2026-10-06) `refused_config_write_is_reported_unpersisted`: after the boot
+  the host makes NTP's config file and its directory unwritable (file 0444, directory 0555, restored in `finally`;
+  skipped with its reason when the harness runs as root, where modes do not bind); `PUT /networking` changing
+  `NTPOffset` answers "Valid", and once its flush ran (polled) `GET /status` `ConfigUnpersisted == ["NTP"]` and
+  `CFGMGR_NTP` holds `CFG_FILE_WRITE`; with the modes restored a second changing PUT clears it (`[]`) and the file holds
+  that value. Pins M.SRC_CORE.044 (1), .015 (1), M.GEN.008 (1).
 - **Resolved**: A.U22.03's `:377` comment edit dropped — A.U22.03 withdrawn (AC_NOTES 37). The in-process halves of
   A.S0930.27 (3)/(4)/(5) and A.S0930.38 (5) (wire-time knob, late-feed backstop, power loss) are TWIN's (M.TWIN.104) — no
   runner flag sets `wire_time_us_per_byte`, settled by M.TWIN.051's flag list.
@@ -1045,6 +1064,14 @@ Conventions used below (each defined once, then cited):
   `per_file_timeout_overrides_s[scenarios]` (`# @tunable runner.scenarios_timeout_s` — estimated at landing as 5× its first
   measured wall clock (agent), re-measured by A.U35.23); after the command, every twin log under its logs dir is appended to
   the job log before the gate, so the two `_flag_memory_errors` sites cover it.
+  (1) (A-C fold, silent-failure scan SF-M4-06, 2026-10-06) The job log is truncated once per job, before attempt 1
+  (HEAD's per-attempt `: >"$log_file"` moves out of the loop), never between attempts: with `tee -a` every attempt's
+  output stays in the log, so `_flag_memory_errors` at the deciding attempt reads every attempt and a caught allocation
+  failure printed in a timed-out attempt fails the file instead of reading `RETRIED-PASS`; the scenarios job appends its
+  twin logs after every attempt, not only the deciding one. HEAD's comment ("only the attempt that decided … cannot fail
+  a passing file") goes; one line in its place: "# Truncated once per job: the memory gate reads every attempt's output,
+  a timed-out one included (CLAUDE.md memory rule)." The two `_flag_memory_errors "$tag" "$log_file"` call sites stay
+  two (Resolved).
 - **Resolved**: the count of `_flag_memory_errors "$tag" "$log_file"` stays 2 (A.U7.05/A.U24.65 blast) by moving the loop
   into `_run_with_retries`; A.U0.40 and A.U0.60 both name `:311-313` — A.U0.60's actor label is A.U0.40's text (the
   measured floor is the owner's E.3.1 rule; no separate label).
@@ -1054,6 +1081,8 @@ Conventions used below (each defined once, then cited):
 - **Blast carried by**: `tests_scripts/test_test_sh.py:564-628` (`_flag` extraction, `RETRIED-PASS`, noverdict, count == 2)
   → A.U7.04/A.U7.05 (TSC); SPEC E.3.1 retry text → A.U7.04 (SPEC); Part N rows `runner.*`, `l1.unix_heapsize`,
   `runner.scenarios_timeout_s` → A.U8.15 and GAP (SPEC, below).
+  (SF-M4-06: `tests_scripts/test_test_sh.py` gains a marker printed in a timed-out attempt failing a file whose retry
+  passes, TSC)
 - **Kind**: code
 
 ### M.SCR.041 Dispatch: per-device expansion, harness jobs, lwIP host files
@@ -1286,6 +1315,12 @@ Conventions used below (each defined once, then cited):
   `/status` is polled (bounded by NTP's own first-sync deadline, read from the generated module) until `NTPSynced` is
   true, after which both are non-null; then the `ResetErrors` PUT as today (answer `Valid`, timed against
   `_RESET_ERRORS_BUDGET_S`). The `:663` state check reads `ctx.state_dir`.
+  (1) (A-C fold, silent-failure scan SF-M1-01, 2026-10-06) Run 1's exact "no E and no W" check also proves that a
+  factory first boot (fresh config dir, blank FRAM state) logs no `CONFIG_LOST`. New step after Run 1's `ResetErrors`:
+  the twin stopped, its `--config-dir` emptied while its `--fram-state-path` file is kept (a reformatted filesystem
+  beside surviving FRAM history), then relaunched: SYSTEM's errcount holds exactly one W `CONFIG_LOST` and every other
+  module's history no E and no W; the errcount is kept as `<pass>/runs/run1_reformat_errcount.json` before a
+  `ResetErrors` clears it. Pins M.SRC_CORE.017 (1), .043 (3), .065 (2); U35.
 - **Resolved**: A.U6.21's L2 clause ("existing twin CI boot log … U25 checks") was carried by no U25 action — added here
   (gap closed in-cluster, agent decision AD-8).
 - **Unit**: U35 (after U25's NTP responder).
@@ -1735,6 +1770,12 @@ Conventions used below (each defined once, then cited):
   refuses, M.HW_BENCH.060), `deviceToml` (repo-relative path built from), `uartCrc` (per UART bus mode),
   `imageUsedBytes`, `filesystemBaseBytes`, `imageFreeBytes`, `autostart` (bool). Final line for `--no-autostart`: "Built
   without autostart: start with the line the board prints at boot".
+  (1) (A-C fold, silent-failure scan SF-M4-07, 2026-10-06) The image and its record are written in an order that never
+  pairs a new image with an old record: first `output.with_suffix(".json").unlink(missing_ok=True)`; then the `.uf2` is
+  copied to a same-dir `output.with_name(output.name + ".tmp")` and `os.replace`d onto `output` (replacing
+  `shutil.copy(uf2, output)`, `:162`); the record is written last, as above. A kill at any point leaves either no record
+  or a record beside the image it describes, and never a truncated `.uf2` under the normal name. The copy lines sit in
+  M.SCR.065's `main()` range and land with this entry.
 - **Resolved**: A.U26.02's key `buildDate` follows A.U10.40's rename to `BuildDate` (A.U26.02 states it; M.HW_BENCH.060
   reads `record["BuildDate"]`). A.U26.02 offers the lwIP dict "returned from it or re-read from its build dir" and
   A.U26.85 reads `overrides` as "the list `st.build_firmware()` applied"; M.TOOL.055 (D3) keeps `build_firmware()`
@@ -1753,6 +1794,7 @@ Conventions used below (each defined once, then cited):
   M.SCR.074; L0 `tests_scripts/test_build_firmware.py` record keys, the tick-offset entry and report parse (fake `nm`) →
   A.U26.02/A.U27.31 (TSC, M.TSC.032); BACKLOG resize item → A.U36.521 (DOCS); CI
   `firmware-build-verify` prints the size line → A.U28.43 (TOOL).
+  (SF-M4-07: `tests_scripts/test_build_firmware.py` pins the order, TSC)
 - **Kind**: code
 
 ## scripts/_generate_sensortask_modules.py

@@ -393,6 +393,14 @@ Conventions every merged change below applies (stated once, not repeated per cha
       `machine.reset()`/`bootloader()` call sites are confined to `asy_system_service.py` by
       `tests/test_reset_call_site_invariant.py`, and the one `WDT()` construction — the generated boot entry's first
       statement (A.7) — by the same test over the generated boot entries."
+  (12) (A-C fold, silent-failure scan SF-B1, SF-B12 and SF-M1-03, 2026-10-06) Item 5's A.U16.03 sentence becomes: "The
+  first boot after a reflash re-initialises every chunk the new build no longer recognises, pinned per device: each
+  chunk's CRC is seeded from its owner's name, so a chunk another owner wrote, a layout shifted by whole chunks
+  included, fails its CRC and reads blank, never as this owner's history." Item 5 also gains, after its first sentence:
+  "A logger left RAM-only at setup (its chunk refused by a full allocator, unreadable, or its first write failed)
+  records one entry in its own history, so `/status` names it; each refused chunk is also counted in one entry of the
+  FRAM manager's own history." Stage U16, with M.SRC_CORE.091 (1)-(2), .092 (1) and .065 (1); the entry's unit stays U36
+  for the bullet's full text.
 - **Resolved**: A.U16.11 (A.4) and A.U36.546 (2) (move the MB85RS64V fact to M.6): the datasheet fact moves, the
   project consequence (status-byte endurance, busy marker) stays in A.4 with a pointer — both constituents' intents
   kept. A.U11.03's and A.S0930.41's rewrites of `:195-198` merge: A.S0930.41 (later, SUPP) supersedes the "20/20"
@@ -424,6 +432,18 @@ Conventions every merged change below applies (stated once, not repeated per cha
   Recalibration value') (owner, 2026-09-26)." and one pointer "Whether the light conditions suit a recalibration is
   published as `FRCState` (M.2)." (4) A.U15.06's `TempOffs` bullet verbatim, then its "**SCD30 not-ready cycle.**"
   bullet verbatim.
+  (5) (A-C fold, silent-failure scan SF-B10 = SF-A04, 2026-10-06) Bullet (4)'s "**SCD30 not-ready cycle.**" bullet gains
+  one sentence: "Five consecutive data-ready signals with no new measurement persist one `SCD_NOT_READY` warning (a
+  data-ready line stuck high is the likely cause), cleared by the next new measurement; the cached values keep being
+  stored with the cycle's timestamp, as above." (the warning's catalog name as landed). Stage U15, with
+  M.SRC_SENS.055 (1). The restamp itself is unchanged here: whether it should change is the D.1 question on the
+  owner-review list (M.PROC.035).
+  (6) (A-C fold, silent-failure scan SF-M3-03, 2026-10-06) Bullet (1) gains at its end: "Every boot, every SCD30 task
+  restart and the participant rung send the soft reset, which puts the sensor into the same state as after powering up
+  (Interface Description 1.4.10); a power loss within the first 7 days after ASC is activated aborts its search for
+  calibration parameters (1.4.6), and whether a soft reset does the same is not stated there (agent, 2026-10-06)." The
+  executor re-reads both sections' pages before writing. Stage U15. The bench cannot settle it (no ASC progress readout,
+  M.HW_BENCH.131 (1)); whether the boot reset is needed on a warm MCU reboot is the owner-review question (M.PROC).
 - **Resolved**: A.U4.04's "`force=True` … genuine truncation" wording (Blast) is the HEAD text A.U15.06 replaces (U15
   after U4); A.U15.06 states the rounding A.U4.05 implements. The `FRCState` pointer joins the M.2 code table
   (A.U15.12/A.U36.537) to the operator bullet (agent decision, OR2.c).
@@ -441,6 +461,14 @@ Conventions every merged change below applies (stated once, not repeated per cha
   with `VOCState` 0 (M.3)"; and at its end: "A second consecutive failed cycle sends the device-addressed heater-off
   (SGP40 datasheet Table 14), which reaches only the SGP40 — the participant rung of the recovery ladder (C.7); the
   general-call reset stays at setup (C.8)."
+  (1) (A-C fold, silent-failure scan SF-M3-05, 2026-10-06) The bullet gains: "A task restart keeps the running algorithm
+  state and restores nothing; only a boot restores the FRAM backup (agent, 2026-10-06: the legacy read task never
+  restarted in place, its end reset the board, so it never restored over a live state)." Stage U16, with
+  M.SRC_SENS.063 (2) (the entry's unit stays U15; the sentence lands with the code it states).
+  (2) (A-C fold, silent-failure scan SF-M3-01, SGP40 half, 2026-10-06) The bullet gains: "A compensation value whose
+  producer timestamp is older than `sgp40.comp_max_age_s` (Part N, three hours) counts as unavailable, so the read is
+  skipped as for a missing value (the owner-confirmed rule in this section's list); a value with no timestamp yet counts
+  as current (agent, 2026-10-06)." Stage U15, with M.SRC_SENS.064 (1).
 - **Resolved**: A.U15.19 asks this bullet to "co-land with U36's move of that bullet", but no U36 action moves the SGP40
   bullet (A.U36.546 (2) moves only the BMP390 and FRAM facts): the bullet stays in A.4. A.U15.R02's A.4 clause carries
   no text: written from its Change (heater-off to idle, device-addressed).
@@ -457,6 +485,12 @@ Conventions every merged change below applies (stated once, not repeated per cha
   the stored oversampling and filter configuration back, since the reset returns every user setting to its default
   (BMP388 DS001 §4.3.22) — the participant rung of the recovery ladder (C.7); a reset the chip rejects (`ERR_REG`
   `cmd_err`) is logged once and writes no configuration."
+  (1) (A-C fold, silent-failure scan SF-B9 = SF-A05, 2026-10-06) The bullet gains: "A self-reset of the chip is read,
+  not inferred: every cycle reads EVENT's `por_detected` (0x10 bit 0, cleared by the read), and when it is set the
+  reader persists `BMP_CHIP_RESET` and writes the stored configuration back under the setter lock before converting; a
+  write-back that fails fails the cycle into the ladder. ERR_REG (0x02) is read in the same burst as the data, and a set
+  `fatal_err` fails the cycle (BMP388 DS001 4.3.7, BMP390 DS002 4.3.8, BMP384 DS003 4.3.7)." The catalog name as landed;
+  the executor re-reads the three datasheet sections. Stage U15, with M.SRC_SENS.043 (1) and .048 (1).
 - **Resolved**: — (no constituent gave the text; this is the action's own behaviour, stated as A.U15.R01/R02 state
   theirs).
 - **Unit**: U15.
@@ -492,6 +526,25 @@ Conventions every merged change below applies (stated once, not repeated per cha
   weight (0/1) scaled by the shared `FlashBri` at trigger time. Config field names carry no "Led" prefix (`WarnCO2`,
   not `LedWarnCO2`); the new API is the only reference and no legacy spelling or
   `legacy/firmware/html_raw/` compatibility is kept (owner, 2026-09-26)."
+  (1) (A-C fold, silent-failure scan SF-B17, 2026-10-06) The bullet gains: "The published notification sample says
+  whether its signals were evaluated: `State` 0 every signal evaluated; 1 not evaluated by setting (`AutoOn` off,
+  paused, outside the window); 2 no local time (no NTP sync yet this boot, or the clock callback failed); 3 evaluated in
+  part (a value unavailable, stale or not numeric); 4 the service's own configuration unreadable (agent, 2026-10-06).
+  `Triggered` keeps its meaning." Stage U22, with M.SRC_SENS.037 (1) and .035 (2).
+  (2) (A-C fold, silent-failure scan SF-B2, 2026-10-06) The bullet gains: "A notification flash the LED refuses, because
+  a signal is still running, is persisted as `NOTIFY_SIGNAL_DROPPED`; with no LED wired (the default sink) nothing is
+  logged." Stage U22; the code lands earlier, in U9 (M.SRC_SENS.034 (1)).
+  (3) (A-C fold, silent-failure scan SF-M3-09, LED half, 2026-10-06) The NeoPixel sentence "each (re)start writes a
+  defined state" gains: "and the overlay task rewrites the overlay at least once per `led.overlay_refresh_ms` (Part N,
+  five minutes, the default `FlashInterval`) with no change pending, so a pixel that lost its state in a supply dip
+  shows the right overlay again; a running signal holds the overlay lock, so a refresh never cuts into a ramp (agent,
+  2026-10-06)". Stage U22, with M.SRC_SENS.025 (1).
+  (4) (A-C fold, silent-failure scan SF-M3-01, notification half, 2026-10-06) The bullet gains: "A producer value whose
+  timestamp is older than `notify.sample_max_age_s` (Part N, three hours) is unavailable, like a missing one; a value
+  with no timestamp yet counts as current (agent, 2026-10-06)." Stage U22, with M.SRC_SENS.035 (1).
+  (5) (A-C fold, silent-failure scan SF-M2-02, 2026-10-06) The window sentence gains: "The window needs local time,
+  which counts from the boot's first NTP sync and keeps running when later syncs fail, so the alerts continue through a
+  network outage (agent, 2026-10-06)." Lands with the bullet (U22); the code lands in U18 (M.SRC_NET.053 (1)).
 - **Resolved**: A.U9.11 and A.U0.38 (V17) reword `:264-265` differently; A.U9.11's Blast settles it ("A-C merges onto
   this action's wording, which follows G3/R69's 'accepted debt goes'"); A.U1.15's path joins it. The staged
   `register()`/`finalize()` text goes (A.U5.06: signals at construction; C7). A.U22.03 is withdrawn (OR126.a (4),
@@ -572,6 +625,27 @@ Conventions every merged change below applies (stated once, not repeated per cha
   WLAN hardware errors first re-initialise the radio (power-cycled by the driver) before the task gives up — the
   participant rung (C.7) — and the supervisor takes over after that. A CYW43 `isconnected()` false positive is
   recovered by a power cycle or `hard_reset()` (F.2). Every delay named here is a Part N `wifi.*` row."
+  (1) (A-C fold, silent-failure scan SF-M2-01, 2026-10-06) "An empty SSID or five failed attempts lead to hotspot mode;"
+  becomes "An empty SSID leads straight to hotspot mode, at boot and at the end of every hotspot window, and never
+  counts as a failed attempt (agent, 2026-10-06); five failed attempts lead there too;". The second-streak sentence
+  stays as written: a streak is one of real STA attempts. Stage U18, with M.SRC_NET.088 (1).
+  (2) (A-C fold, silent-failure scan SF-M2-03, 2026-10-06) After the deactivation sentence: "The fallback to the hotspot
+  and the permanent deactivation each persist a WIFI warning, and so does a connect poll that ends without a verdict
+  (joined, no IP within the poll window), so the history says why a unit was offline." Stage U18, with
+  M.SRC_NET.088 (2), .089 (1).
+  (3) (A-C fold, silent-failure scan SF-M2-04, 2026-10-06) After the hotspot sentence: "A station joined to the hotspot
+  shows its own pattern, an even 1.5 s on, 1.5 s off, so a phone holding the access point never looks like a working
+  home link (agent, 2026-10-06); how long such a client may hold it is not bounded, as in the legacy firmware." Stage
+  U18, with M.SRC_NET.087 (1). The bound is the owner question M.DOCS.067 (1) enters.
+  (4) (A-C fold, silent-failure scan SF-B6 and SF-B7, 2026-10-06) After the power-saving sentence: "A radio observation
+  that fails is unknown, not a state: a failed stations query leaves the hotspot timer as it was, and a failed status
+  read in the uptime loop keeps the last link state and uptime; each failure persists one WIFI warning (agent,
+  2026-10-06)." Stage U18, with M.SRC_NET.093 (1), .101 (1).
+  (5) (A-C fold, silent-failure scan SF-A09, 2026-10-06) Closing sentence: "The hotspot's DHCP server holds eight
+  leases, each kept 24 h for its client's MAC; with all eight held, a further client's request is ignored, with no NAK
+  and nothing Python can read (`shared/netutils/dhcpserver.h:32`, `dhcpserver.c:68, 234-236` at the pin). The hotspot
+  serves one configuring client, so the limit is accepted and stated (agent, 2026-10-06)." Line cites re-read at the pin
+  in force (C3). Stage U18; no code.
 - **Resolved**: the bullet is written from G6/R25's Req (the register's statement of the current machine) and the
   constituents' clauses; A.U18.28's "phase table" becomes this bullet's hotspot sentence (no table exists to gain a
   row). Agent decision for the OR2.c review.
@@ -634,6 +708,22 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `legacy/firmware/python/CommonDrivers/microdot.py`"; "v2.6.2's async-safe `invoke_handler()`" → "the pinned tag's
   async-safe `invoke_handler()`" if that function still exists at the tag, else the sentence states the tag's
   equivalent.
+  (12) (A-C fold, silent-failure scan SF-M4-01 (b), 2026-10-06) HEAD's `print_exception` bullet (`:319-321`) becomes:
+  "Microdot prints an exception with its module-level `print_exception()` before it dispatches to our handler (the read
+  phase, a handler, a failing handler; `ext/microdot.py` at the pinned tag). `WebserverService` rebinds that module name
+  to its level-gated logger at construction, the file itself untouched (CLAUDE.md's vendoring rule), so `DebugLevel` 0
+  keeps it off the console, and the catch-all `errorhandler(Exception)` persists the entry (agent, 2026-10-06)." Stage
+  U19, with M.SRC_NET.119 (1).
+  (13) (A-C fold, silent-failure scan SF-M2-05, 2026-10-06) (4)'s response-writing-gap bullet gains: "`Response.write()`
+  also mutes a reset (ECONNRESET, EPIPE) from a response write; the stream proxy marks the peer gone when a write raises
+  `OSError`, so such a client counts in `HTTPDropped` and no further write is tried." Stage U19, with M.SRC_NET.118 (1).
+  (14) (A-C fold, silent-failure scan SF-M4-01 (a), (c), (d), 2026-10-06) (9)'s first sentence becomes "Client traffic,
+  a task that ends with an exception and an exception Microdot reports print nothing at the shipped `DebugLevel` 0: the
+  last two go through level-gated loggers (F.1, above); the CYW43 driver's own warnings still reach the console (F.1)."
+  and (9) gains a closing sentence: "A raised `DebugLevel` persists across reboots, so with such a host attached a crash
+  or a busy log can starve the watchdog at every boot; the exits are closing the host program, unplugging, or `PUT
+  /system {"DebugLevel": 0}` inside the window (agent, 2026-10-06)." Stage U19 (the handler of (a) lands in U11/U20, the
+  rebind of (b) in U19).
 - **Resolved**: A.U19.23 states "500 ms per line", A.S0930.41 "about 2 s per line": both are right at different units
   (500 ms per `mp_hal_stdout_tx_strn()` call; a `print(a, b)` issues one call per argument, separator and line end,
   V.SUPP_owner_0930.B2.02) — the merged sentence states both units (OR126.a (2)). A.U19.08's B.14 pointer is
@@ -830,6 +920,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   deployed-data-loss risk", `:548-550` ("This order, and `i2c0`'s … are wozi's own", folded into 2/6), `:440`
   "(§Part J)" and `:458` "See Part J for the wrapper module's exact shape" (→ `asy_uart_link_driver.py`), `:502`
   "Part C.9's" → "C.9.1's" where the stagger is meant.
+  (16) (A-C fold, silent-failure scan SF-A14, 2026-10-06) Item 3's "and runs `asyncio.run(main(watchdog=watchdog))`."
+  gains "; a Ctrl-C on the console ends the whole event loop, so the entry writes reset reason 21 before the interrupt
+  reaches the REPL, and the armed watchdog then resets the unit (A.8)". Stage U20, with M.GEN.001 (1).
 - **Resolved**: (a) AC_NOTES 13 and GAP-G7/GAP-10: A.U15.12's Blast ("SCD30 → its own `CFGMGR_SCD30`, wozi 17
   chunks") is superseded — the SCD30 store logs RAM-only, so the chunk order gains none. (b) A.U5.07 moves neopixel
   ahead of `conn` when `led_target` is set: the chunk order and step list follow (no action rewrote the A.7 list for
@@ -973,6 +1066,29 @@ Conventions every merged change below applies (stated once, not repeated per cha
      and wrnno 11 when the chip diverged from its shadow), taken under the device session like any read." The executor
      checks each figure against the landed drivers.
   9. `:632-634` → A.U0.29's "Connection hardening" paragraph verbatim (owner tags 2026-08-12, `ed48887`, `ee5310c`).
+  (10) (A-C fold, silent-failure scan SF-A14, 2026-10-06) Item 4's marked `ResetReason` table gains, after 20: "21
+  interrupted: Ctrl-C on the console ended the run, and the watchdog reset followed" (the catalog row of M.GEN.034 (1)
+  is its source; the marker test keeps them equal). Stage U20, with M.SRC_CORE.006 (2).
+  (11) (A-C fold, silent-failure scan SF-A10, 2026-10-06) Item 3 gains, after `ResetReason`: "`ResetBits`: the chip's
+  own reset flags at this boot, reported raw: 1 watchdog timer expired, 2 reset forced by software, 256 power-on or
+  brown-out, 65536 RUN pin, 1048576 debug-port restart; read once at boot, never decoded into `ResetReason` (F.5.4)."
+  Stage U20, with the key (M.GEN.008 (2), M.GEN.014 (2)).
+  (12) (A-C fold, silent-failure scan SF-B3 and SF-M1-07, 2026-10-06) Item 3 gains, after `ConfigFaults`:
+  "`ConfigUnpersisted`: the modules whose last config write to flash failed (the absent file's defaults, the boot
+  repair, or an accepted change's deferred flush), so their current values apply now but are lost at the next boot; an
+  empty list when there are none; a module leaves the list at its next successful write (C.7.3)." Stage U20, with the
+  key (M.GEN.008 (1)); it does not land if U11's check keeps the persisted write error enough (M.SRC_CORE.044 (1)).
+  (13) (A-C fold, silent-failure scan SF-M1-04, 2026-10-06) Item 3's `ConfigFaults` parenthesis "(unparseable, not a
+  JSON object, or holding a value the schema refuses)" gains ", or a directory in the file's place". Stage U20.
+  (14) (A-C fold, silent-failure scan SF-M2-05, 2026-10-06) Item 3's `HTTPDropped` clause "a refusal at the ceiling, a
+  refused head or an early peer reset" becomes "a refusal at the ceiling, a refused head, or a peer reset before or
+  during its response". Stage U19, with M.SRC_NET.118 (1), .127 (1).
+  (15) (A-C fold, silent-failure scan SF-B5 and SF-M1-06, 2026-10-06) Item 3's `BootSignature` sentence gains "; if the
+  uptime tick timer cannot be armed, a one-second sleep stands in, so it still resolves and `SysUptime` stays measured
+  (C.9)". Stage U36, with item 3's text (this entry's main change); the code is U11's (M.SRC_CORE.013 (1)).
+  (16) (A-C fold, silent-failure scan SF-A11, 2026-10-06) Item 5's "`mempause`'s fixed 300 s lives in the command
+  callback" gains "; the pause ends at a deadline the uptime pass tests once a second, so it cannot be lost and ends at
+  most a second late (C.9)". Stage U36, with item 5's text (this entry's main change); the code is U11's (M.SRC_CORE.012 (1)).
 - **Resolved**: (a) A.U19.12 and A.U36.544 RF063 rewrite the same "One open exception" sentence; both mechanisms exist
   in the merged product (M.SRC_CORE.038 lock; `get_config_snapshot()` at HEAD) — one sentence states both. (b)
   A.S0930.41 supersedes A.S0930.30's A.8 paragraph ("becomes"); A.S0930.30's purposes and A.S0930.31's behaviour stay.
@@ -1358,6 +1474,10 @@ Conventions every merged change below applies (stated once, not repeated per cha
   the real-website scenarios of `scripts/_digital_twin_scenarios.py`, H.7) that the booted twin serves the real website …";
   "and on first run caught a real bug (an early manifest omitted `ports/rp2/modules/rp2.py`, since fixed by reusing the
   stock manifest)" → "(it proved the stock manifest must be reused: an own manifest omitted `ports/rp2/modules/rp2.py`)".
+  (8) (A-C fold, silent-failure scan SF-M4-07, 2026-10-06) (3)'s "Each build writes an image record beside its `.uf2`"
+  gains ": the old record is removed first, the image is copied under a temporary name and renamed into place, and the
+  record is written last, so a killed build never leaves a new image beside an old record, nor a truncated image under
+  the image's name". Stage U27, with M.SCR.067 (1).
 - **Resolved**: (a) "parametrized over `wozi`/`dev`" is false at HEAD (`tests_scripts/test_build_firmware.py:196`
   parametrizes over `DEVICE_NAMES`) — corrected (adherence finding). (b) A.U20.15's "`<device>_boot.py`" naming is
   superseded by M.GEN.019 (C7). (c) "(retired, Session 6's finish criterion)" goes under A.U36.544 (2) (G9/R12). (d) The
@@ -1668,6 +1788,17 @@ Conventions every merged change below applies (stated once, not repeated per cha
   sentence takes A.U21.16's wording — "the mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (B.7.1) is the kind of
   GCC ≥ 14-only diagnostic noble cannot see, and the build treats any `warning:` as fatal" — in the tense B.7.1's branch
   leaves (M.SPEC.031).
+  (1) (A-C fold, silent-failure scan U36 chroot row, Node, 2026-10-06) The per-verification block runs `uv run
+  toolchain/setup_toolchain.py env --tier generic` in place of its bare `uv sync` (the tier runs `uv sync` itself and
+  installs the `.nvmrc`-pinned Node), before `scripts/lint.sh`, because `tests_scripts/test_live_twin_ceiling_parser.py`
+  needs `node` on `PATH` and fails, never skips, without it; one comment line (at most 3) states that reason and the
+  date the bare form was found failing in a noble chroot (2026-10-06, 10 tests). No audit ID in the text. Stage U36,
+  with the recipe's move.
+  (2) (A-C fold, silent-failure scan U36 chroot row, git index, 2026-10-06) After the `cp -r` of the working tree, the
+  recipe rebuilds the copy's index inside the chroot: `rm -rf .git && git init -q && git add -A` (git is in the chroot's
+  package list), with one comment line: a worktree's `.git` is a file pointing outside the chroot, and the citation,
+  vocabulary and import-placement checks read `git ls-files`, which then lists exactly the copied tree, uncommitted
+  changes included and ignored files left out. Stage U36.
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: U36.
 - **Depends**: A.U28.02, A.U33.04, M.SPEC.044.
@@ -1792,6 +1923,18 @@ Conventions every merged change below applies (stated once, not repeated per cha
   status register with only some protection bits set is reported and treated as protected. The manager's
   `quiesce()`, `erase_ready()` and `erase_chip()` serve the two shutdown commands (A.8): the erase holds both FRAM locks
   per 256-byte unit and never across an await of another lock (C.8)."
+  (4) (A-C fold, silent-failure scan SF-B1, 2026-10-06) (3)'s FRAM API bullet gains: "`get_chunk()` and
+  `get_timestamped_chunk()` take the owner's name (`owner=`), which seeds the chunk's CRC (A.4); no two chunks share an
+  owner name, so a module that owns two chunks names them apart (SGP40's backup is `<logger name>_VOC`)." Stage U16,
+  with M.SRC_CORE.091 (1) and M.SRC_SENS.062 (1).
+  (5) (A-C fold, silent-failure scan SF-M4-10, 2026-10-06) (1)'s CS sentence gains: "The power-off rule is not met by
+  construction: the datasheets ask CS above 0.8 × VDD through power-down (tpd), and a reset or brown-out while VDD falls
+  returns CS to the intermediate level above; SCK and SI stay pulled down, so no op-code can be clocked in, and whether
+  the part can still disturb a cell is unverified on this board (agent, 2026-10-06)." After phase C, the bench's result
+  (M.HW_BENCH.101 (6), run only with an oscilloscope at hand) replaces "unverified on this board" with its dated
+  outcome. The power-on state stays the datasheet fact AC_NOTES 11 settled; this part covers only the power-off edge,
+  which that settlement did not address (agent decision for review: AC_NOTES 23 dropped a CS scope item on the power-on
+  grounds). Stage U16.
 - **Resolved**: A.U16.20 and A.U20.10 rewrite the same sentence (A.U20.10: "joins the same sentence") — one sentence.
   A.U36.546 moves the chip facts to M.6 in U36; until then the text stays in C.3.1. A.U13.05's second sentence as first
   written (pull-up needed, phase-C measurement) is superseded by the lead's withdrawal (AC_NOTES 11, 23; the lead's note
@@ -1837,6 +1980,12 @@ Conventions every merged change below applies (stated once, not repeated per cha
   receive cap as a transfer and never grows by concatenation: a line over the cap is discarded, the call returns
   `None` and the case is logged (J.8)." — the cap's parameter named as landed (C7); since this layer keeps no logger of
   its own (C.7.1), which layer writes that entry is decided at execution, with its reason recorded.
+  (8) (A-C fold, silent-failure scan SF-A06, 2026-10-06) After (6): "The fill-level choke point also reads UARTRSR
+  (RP2040 datasheet 4.2.8, Table 427): an overrun (OE), a framing error (FE) or a break (BE), each a received byte that
+  is not what was sent, is cleared through UARTECR and handed to the caller as the receive overrun J.7 names, so the
+  frame fails and the sender's transaction fails with it (owner, 2026-10-06, for the overrun; framing errors and breaks
+  the same way, agent, 2026-10-06). Parity is not tested while no link configures it." This also carries
+  M.SRC_NET.221 (6)'s OE half, which no SPEC part stated. Stage 2b U13, with M.SRC_NET.221 (6)-(7).
 - **Resolved**: A.U36.544 (3) drops changelog labels from permanent text; A.U17.28's rewrite of the same sentence makes
   the history parenthesis go with it (C2).
 - **Unit**: Stage 1 U0 ((1)); Stage 2 U12/U13/U17 ((3), (2)); Stage 2b U13 ((6), (7), with the DMA receive path and
@@ -2047,6 +2196,12 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Site**: `SPECIFICATION.md:1808-1814` (C.6); `:5687-5688` (J, carried in M.SPEC.139).
 - **Change**: C.6 → A.U11.35's paragraph verbatim, plus "Every module's config dict has the same nested shape `{<name>:
   {field: value}}`; no module returns a flat one."
+  (1) (A-C fold, silent-failure scan SF-B8, base, driver and SYSTEM halves, 2026-10-06) C.6 gains: "A config GET that
+  cannot read its source (a chip snapshot that failed, a store that cannot be read, a callback that raised or returned
+  nothing) sends `{<name>: {"error": "unavailable"}}` in place of the field map: never `null` values a reader would take
+  for unset ones, and never the marker beside values or file keys; `SystemService`'s settings follow the same rule, and
+  the failure keeps its persisted entry (C.7). It is the marker a failed `/status` source sends (H.6.1)." Stage U19,
+  with M.SRC_CORE.038 (1) (the SYSTEM half's code lands in U11, M.SRC_CORE.017 (2); the drivers' in this same U19 stage, M.SRC_SENS.047/.053/.082 (1)).
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: Stage 1 U10 (shape sentence); Stage 2 U11 (paragraph).
 - **Depends**: A.U10.36, A.U11.34, A.U11.35.
@@ -2130,6 +2285,22 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `ifconfig()`, the stations query, the LED helpers) stay print-only as routine observations; the persisted ones are the
   connect-attempt tier and the timer arms. The resolver resolves only names RFC 1035 can encode (no empty label, at most
   255 octets); anything else resolves to `None`."
+  (12) (A-C fold, silent-failure scan SF-B1, 2026-10-06) (1)'s pitfall "after a reflash it survives only where the new
+  build happens to keep the same chunk, and otherwise reads as invalid and restarts empty (A.4)" becomes "after a
+  reflash it survives only where the new build keeps that owner's chunk at the same place and size; any other chunk,
+  another owner's history shifted onto it included, fails its owner-seeded CRC and restarts empty (A.4)". Stage 7 U16,
+  with M.SRC_CORE.091 (1).
+  (13) (A-C fold, silent-failure scan SF-B12 and SF-M1-03, 2026-10-06) (1)'s "A FRAM chunk operation fails only by
+  allocation, which degrades that logger to RAM-only logging." gains " A logger that runs RAM-only for the boot (its
+  chunk refused, unreadable at setup, or its first write failed) records one `LOG_RAM_ONLY` entry in its own history,
+  and a chunk the allocator refused is counted in one `FRAM_FULL` entry of the FRAM manager's history." (catalog names
+  as landed). Stage 7 U16.
+  (14) (A-C fold, silent-failure scan SF-B6, SF-B7 and SF-M2-03, 2026-10-06) (11)'s WIFI rule "stay print-only as
+  routine observations; the persisted ones are the connect-attempt tier and the timer arms" becomes "stay print-only as
+  routine observations, except a failed stations query and a failed status read in the uptime loop, each persisted once
+  per failure since the state is then unknown and kept; the persisted ones are also the connect-attempt tier (a poll
+  that ends without a verdict included), the fallback to the hotspot, the permanent deactivation and the timer arms
+  (agent, 2026-10-06)". Stage 8 U18.
 - **Resolved**: (a) A.U26.22 says "SPEC C.7 is U36's" and A.U16.01 (U16) rewrites the same sentence: Stage U16 lands
   A.U16.01's "read and save the log first … then clear" and U36 adds "the one save primitive" pointer once A.U26.22's
   primitive exists — one sentence. (b) A.U3.10 places "one event, one entry" in C.7 and A.U35.37's rule (G5/R21) is the
@@ -2176,6 +2347,12 @@ Conventions every merged change below applies (stated once, not repeated per cha
   or key exchange as BADAUTH (`lib/cyw43-driver/src/cyw43_ctrl.c`), not proof of a wrong password; the no-logging layers
   "(owner, 2026-08-20, `c80d293`: no logging in these layers)" — the bus drivers, `asy_udp_socket.py`,
   `asy_dns_client.py`, `asy_uart_driver.py` (whose `cancel_unacknowledged` its owner reads and logs).
+  (3) (A-C fold, silent-failure scan SF-A12 and SF-M3-06, 2026-10-06) The no-logging-layers statement gains: "A layer
+  with no logger prints a caught `MemoryError`'s own text once, a console line and no entry, so the memory gates see it
+  (I.4(e))." Stage U18, with M.SRC_NET.027/.028/.030 (1). The new codes the folds add (`NOTIFY_SIGNAL_DROPPED`,
+  `ISL_CAL_TIMEOUT`, `BMP_CHIP_RESET`, `SCD_NOT_READY`, `READ_RANGE`, `DNS_REPLY_TRUNCATED`, `FRAM_FULL`,
+  `LOG_RAM_ONLY`, `CONFIG_LOST`, the five WIFI warnings) take no C.7.1 row: C.7.1 carries the band table only, and each
+  code's text is its catalog row (M.GEN.034).
 - **Resolved**: A.U0.40 L56 and A.U0.38 V48 tag rows that A.U2.22 deletes (U2, later): their tags survive in the kept
   statements (C8). A.U3.08's W10/W11 restatement replaces A.U2.22's quoted "W11 outranks W10 … persisted when the drain
   bound is hit". Catalog numbers in the statements are the catalog's (M.SPEC.008).
@@ -2258,6 +2435,20 @@ Conventions every merged change below applies (stated once, not repeated per cha
   "(owner, 2026-09-24)" → A.U0.37 V52's "(owner, 2026-09-24; the bound — each write once per explicit change or once per
   boot — confirmed by the owner, 2026-09-26)" at `:1994`. (4) Phase C (A.C.17): the power-loss result is recorded in
   F.2's sentence, which this section cites ("A power cut during a write leaves a loadable file: F.2.").
+  (5) (A-C fold, silent-failure scan SF-B3 and SF-M1-07, 2026-10-06) (1) gains: "A failed write costs persistence only
+  until the next good one: from the failed write (the absent file's defaults, the boot repair, or an accepted change's
+  flush) until the store's next successful write, `/status` lists it in `ConfigUnpersisted`; the write is not retried
+  (A.8)." Stage 4 U20, with the key; it does not land if U11's check keeps the persisted write error enough
+  (M.SRC_CORE.044 (1)).
+  (6) (A-C fold, silent-failure scan SF-M1-01, 2026-10-06) (1) gains: "`SystemService`'s config file absent at boot
+  while its FRAM history survived, after a reset that was not a config reset (reset reasons 7 and 9 delete the files
+  themselves), persists one SYSTEM warning, `CONFIG_LOST`: the stock frozen `_boot.py` reformats a filesystem it cannot
+  mount and leaves no trace, so the surviving FRAM history is the one evidence (agent, 2026-10-06). A factory first
+  boot, with blank FRAM, logs nothing." Stage 3 U11, with M.SRC_CORE.017 (1).
+  (7) (A-C fold, silent-failure scan SF-M1-04, 2026-10-06) (1) gains: "A directory where a config file belongs is a file
+  fault: the module runs on its defaults and is listed in `ConfigFaults`; "Reset to defaults" removes an empty
+  directory, and a non-empty one leaves the command incomplete (reset reason 9)." Stage 3 U11 (the `ConfigFaults` clause
+  with Stage 4 U20), with M.SRC_CORE.043 (1).
 - **Resolved**: A.U11.19 and A.U11.20 contradict HEAD's "missing" case of `setup()`; A.U11.19's end state (no write for
   a missing file) is itself superseded by OR136.a (1) (owner, 2026-10-01: "if the file is genuinely missing, it shall be
   written once with defaults"), which narrows HEAD's case to ENOENT — an unreadable file is never treated as missing
@@ -2303,6 +2494,11 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **Change**: "`asy_captive_dns.py` answers every on-subnet A/ANY query with the AP's IP and every other type with an
   empty NOERROR reply (owner, 2026-09-29). A datagram that is a response (QR), declares other than one question, uses a
   compressed or reserved label or a name over 255 octets is dropped (agent, 2026-09-28); a reply is at most 287 B."
+  (1) (A-C fold, silent-failure scan SF-A08, 2026-10-06) C.7.5 gains: "lwIP queues at most four datagrams per UDP socket
+  and frees any further one in its receive callback, with no counter Python could read (`extmod/modlwip.c`
+  `LWIP_INCOMING_PACKET_QUEUE_LEN` and `udp_raw_incoming()`, at the pin). The server reads every queued datagram before
+  its socket sleeps again, so a burst loses only what exceeds four per idle poll (`udp.poll_idle_ms`), and the client's
+  own retry recovers it (agent, 2026-10-06)." Stage U18, with M.SRC_NET.007 (1).
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: U18.
 - **Depends**: A.U18.01, A.U18.02.
@@ -2448,6 +2644,15 @@ Conventions every merged change below applies (stated once, not repeated per cha
   `Timer.init()` catch widened to `(MemoryError, OSError)` however hard the failure is to provoke)". (4) Cascading
   paragraph: "`captive_dns.py`'s `DNSServer.run()`" → "`CaptiveDNS.run()`"; "before this fix, a persistent failure produced
   ~5 log lines/sec continuously" → "without it, a persistent failure printed ~5 lines per second"; the rest holds.
+  (5) (A-C fold, silent-failure scan SF-A11 and SF-B4, 2026-10-06) (2)'s `ONE_SHOT` list gains: "the storage
+  auto-unpause is no timer: `mempause` stores a deadline that the uptime pass tests once a second, so no dropped fire
+  can leave storage paused and the pause ends at most one pass late; a reset or a shutdown that paused storage meanwhile
+  keeps it paused, and a `mempause` answered "Valid" always ends (agent, 2026-10-06)". Stage U11, with
+  M.SRC_CORE.012 (1).
+  (6) (A-C fold, silent-failure scan SF-B5 and SF-M1-06, 2026-10-06) (2)'s "A failed arm is re-armed at the task's next
+  opportunity and persisted on a second failure, then the task ends for the supervisor" gains "; SYSTEM's uptime tick is
+  the one exception: its task falls back to a one-second sleep, persists `TIMER` once per task run and re-arms on every
+  pass, since a restart would retry nothing the loop does not (agent, 2026-10-06)". Stage U11, with M.SRC_CORE.013 (1).
 - **Resolved**: A.U18.22's comment-only action also names C.9 (A.U10.14's text) — its backstop joins the `ONE_SHOT` list.
   A.U10.12 moves read triggers out of `get_timer_starters()`; C.9's starter wording follows it (M.SPEC.067).
 - **Unit**: Stage 1 U10 ((1)-(3), (4)); Stage 2 U15 (read-trigger arm sentence); Stage 3 U18 (re-arm points, NTP retry).
@@ -2876,6 +3081,9 @@ Conventions every merged change below applies (stated once, not repeated per cha
   in `scripts/test.sh` rather than once per test file"; "is rejected before the run touches the live tree" gains "(exit
   2)"; the `--coverage` sentence → "`--coverage` runs at the reactive default and ignores `GC_THRESHOLD`, and says so
   (E.5)".
+  (5) (A-C fold, silent-failure scan SF-M4-06, 2026-10-06) (2)'s `RETRIED-PASS` clause gains "; the memory gate reads
+  every attempt's output, a timed-out attempt's included (the job log is truncated once per job), so a caught allocation
+  failure in any attempt fails the file". Stage 5 U27, with M.SCR.040 (1).
 - **Resolved**: A.U7.06 exits 1 on an invalid timeout; the owner's answer OR133 (AC_NOTES 43) makes every runner,
   `test.sh` included, exit 2 on a usage or setting error, with no exception — exit 2 (M.SCR.035).
 - **Unit**: Stage 1 U0 ((1) tag, (2) tag); Stage 2 U7 ((2) retry, validation); Stage 3 U8 (Part N pointers); Stage 4 U24
@@ -3275,6 +3483,9 @@ it; an unflipped fact keeps the text given here.
   plausible" (A.U10.45's order), plus, once phase C has run, "(silicon: <n> free alarms constructed with the image's other
   default-pool users, <date>)" (A.C.03 (4), A.C.10). (3) A.U14.14's "**What rp2's buses raise, and what they answer
   instead**" paragraph verbatim after it.
+  (4) (A-C fold, silent-failure scan SF-A11, 2026-10-06) (1)'s drop fact gains, after "is C.9's": "; for the same reason
+  the storage auto-unpause is a deadline, not a one-shot (C.9)" (the source comment at the deadline cites F.1). Stage
+  U11, with M.SRC_CORE.012 (1).
 - **Resolved**: (a) A.U10.14 strips F.1's soft-callback text to the platform fact; A.U0.25's owner tag on the rejected
   mitigation stays in F.1 (the rejection concerns the drop, a platform fact). (b) A.U14.12 leaves the pool size unasserted
   until the corpus is read; A.U25.19's twin pool uses this value (16 until then) — the F.1 number is the source both read.
@@ -3373,6 +3584,16 @@ it; an unflipped fact keeps the text given here.
   "**UDP on rp2/lwIP** (bench, 2026-09-08): …" paragraph verbatim, then its `WLAN.status()` sentence: "`WLAN.status()`
   returns the link status as an int; `status('rssi')` (STA only) an int; `status('stations')` (AP only) the list of
   connected stations; any other query raises `ValueError` (`extmod/network_cyw43.c:357-392`)."
+  (6) (A-C fold, silent-failure scan SF-M4-01 (a), 2026-10-06) A.U14.15's asyncio list gains: "a task that ends with an
+  exception nobody awaited goes to the loop's exception handler, whose default prints the message, the task and a whole
+  traceback to the console at any level (`extmod/asyncio/core.py` `default_exception_handler()`);
+  `SystemService.start_tasks()` installs one that writes a single level-gated line instead (agent, 2026-10-06)". Stage 1
+  U14 with the list (the handler lands in U11, M.SRC_CORE.016 (1)).
+  (7) (A-C fold, silent-failure scan SF-M4-01 (c), 2026-10-06) Before F.2, beside (5)'s network paragraphs: "The CYW43
+  driver reports its own faults (firmware load or verify, bus stalls) only as console text (`CYW43_WARN` through
+  `mp_printf`, `extmod/cyw43_config_common.h` at the pin): Python cannot read them, they are lost with no host attached,
+  and a host holding the port open without reading stalls on them like on any console write (A.5)." Stage U14 (the
+  owning unit of (c)); no code.
 - **Resolved**: (a) A.S0930.30 places the forwarded-cancel fact in "F.5"; it is no 1.29 delta (`task.py`'s forwarding is
   older) and A.U36.532 files standing facts by topic — the asyncio list is its home, cited once by A.8's sequence text
   (agent decision, OR2.c review). (b) A.U25.39's twin comment cites "SPECIFICATION.md F.1, asyncio.run() catches only
@@ -3525,6 +3746,18 @@ it; an unflipped fact keeps the text given here.
   more (AC_NOTES 55, lead ruling, 2026-10-05): `con.uart_reply`'s source cell `asy_uart_link_driver.py:49` →
   "`asy_uart_comm.py` `_DEFAULT_TIMEOUT_MS`" — the link's timeout default lives in `DEFAULT_LIMITS` from U17, before
   this table lands.
+  (iv) (A-C fold, silent-failure scan SF-A07, 2026-10-06) The consumer table gains a row in A.U31.01's form:
+  `con.uart_tx` (a device with a `uart_link`): a frame longer than the 32-byte TX FIFO pauses on the wire while a flash
+  erase holds interrupts off (up to tSE 400 ms, W25Q16JV), so the peer's receive and the initiator's reply deadline
+  (`con.uart_reply`) can pass mid-frame; source the frame length, `devices/dev.toml`; soft: a crossing is a failed,
+  retried and counted transaction, never a silent loss. `stall.flash_program`'s consumers gain `con.uart_tx`, "owed:
+  measured on the bench (link transactions during config writes, phase C)". No code unless the measurement
+  (M.HW_DEV.160 (5)) shows a crossing. Stage 3 U31; the measured cell phase C.
+  (v) (A-C fold, silent-failure scan SF-M4-09, 2026-10-06) The budget rows gain `stall.wlan_switch`: a STA↔AP mode
+  switch, whose `wlan.active()`/`deinit()` and CYW43 firmware upload run synchronously in the loop; value "owed:
+  measured on the bench across the role-reversal switch (phase C)"; consumers `con.uart_reply` (`dev`: both link
+  instances stall together, and a crossing is a failed transaction counted against the link) and LED ramps (cosmetic).
+  No code unless the measurement (M.HW_BENCH.071 (1)) shows a crossing. Stage 3 U31; the measured cell phase C.
 - **Resolved**: (a) A.U8.19's "F.3 gains one sentence pointing to both rows" and A.U31.01's rows `stall.sync_wait`/
   `stall.uart_call` name the same rows — one sentence after the table. (b) `hold.recovery_rung` ("each SCL wait bounded by
   the bus timeout and yielding every millisecond") matches A.U13.R01's runtime path; the boot clear runs synchronously
@@ -3597,6 +3830,22 @@ it; an unflipped fact keeps the text given here.
   bullet keeps its version wording (the floor is the fact, A.SDEP.21 (2)). If W26 finds rp2 now sets the `.deinit` slot or
   stops returning static singletons, the section is rewritten to the new fact as a U13/U14 delta with its phase-C check
   (M.PROC.011).
+  (1) (A-C fold, silent-failure scan SF-A01, 2026-10-06) New paragraph after the re-construction bullet: "**A data byte
+  the device NACKs is reported only as a short count.** pico-sdk returns the number of bytes ACKed (`i2c.c:229-231`);
+  `machine.I2C.writeto()` passes it on (`extmod/machine_i2c.c:467-472`), while `writeto_mem()` returns `None`
+  (`:640-648`). `asy_i2c_driver.py` therefore writes a register as one `writeto()` of a pre-assembled
+  address-and-payload buffer and raises `OSError(EIO)` on a short count, as for a NACKed address." Stage 1 U13, with
+  M.SRC_SENS.011 (1), .012 (1).
+  (2) (A-C fold, silent-failure scan SF-A02, 2026-10-06) Then: "**A NACKed register-address byte leaves
+  `readfrom_mem_into()`'s buffer untouched and raises nothing**: it sends a STOP and returns (`:556-562, 625`), so stale
+  bytes would decode as fresh. A register read therefore writes the address with `writeto(..., stop=False)`, tests the
+  count, then reads with `readfrom_into()`, the sequence `read_mem()` itself issues on rp2." Stage 1 U13, with
+  M.SRC_SENS.011 (2).
+  (3) (A-C fold, silent-failure scan SF-A03, 2026-10-06) Then: "**An I2C `OSError` carries no cause.** pico-sdk reads
+  and clears the abort source (address NACK, arbitration loss, any other abort; `i2c.c:180-186`) and folds it into one
+  generic error, which rp2 maps to `EIO` (`:222-235`; `ports/rp2/machine_i2c.c:150-155`), so the driver treats every I2C
+  `OSError` alike: the distinction cannot be recovered from Python." Every line cite re-read at the pin in force (C3).
+  Stage 1 U13; no code (M.SRC_SENS.012 (2)).
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: Stage 1 U13 (A.U13.R01 sentence); Stage 2 U14 (A.U14.04).
 - **Depends**: A.U13.R01, A.U14.04, M.SPEC.095.
@@ -3652,6 +3901,22 @@ it; an unflipped fact keeps the text given here.
 - **Site**: `SPECIFICATION.md:3796-3810`.
 - **Change**: A.U14.20's heading and two paragraphs verbatim, then A.U14.01's "**`machine.reset_cause()` separates
   power-on from everything else, nothing more.**" paragraph verbatim.
+  (1) (A-C fold, silent-failure scan SF-A10, 2026-10-06) After A.U14.01's paragraph: "**The chip keeps what
+  `reset_cause()` collapses.** `begin_boot()` reads the watchdog's REASON register (TIMER, FORCE) and CHIP_RESET
+  (HAD_POR for power-on or brown-out, HAD_RUN, HAD_PSM_RESTART; RP2040 datasheet 2.12.7) once and `/status` reports them
+  raw as `ResetBits` (A.8); addresses and bits from pico-sdk's `watchdog.h` and `vreg_and_chip_reset.h` at the pin. They
+  are not folded into `ResetReason`: CHIP_RESET names the last chip-level reset, which a watchdog reset is not, so a
+  decode waits on the bench's record of each reset kind (agent, 2026-10-06). SCRATCH4 is not read: the boot entry's
+  `WDT()` has overwritten it." Stage U20, with the key (the read lands in U11, M.SRC_CORE.006 (1)).
+  (2) (A-C fold, silent-failure scan SF-M1-05, 2026-10-06) Phase C: after the bench's bootloader case
+  (M.HW_BENCH.083 (3)), one sentence states its dated outcome: whether a reset record written before
+  `machine.bootloader()` survives the bootrom's own watchdog-driven reboot into BOOTSEL (RP2040 datasheet 2.8:
+  `_reset_to_usb_boot` uses the watchdog scratch registers), so that the next boot reads 4, or not, in which case A.8's
+  code 4 row says it is not observable and the code joins E.6's exception list.
+  (3) (A-C fold, silent-failure scan SF-A open point, RUN pin, 2026-10-06) Phase C: after the bench's RUN-pin step
+  (M.HW_BENCH.102 (7)), one sentence states whether `mem_backup()` (the watchdog scratch registers, which the datasheet
+  promises across a soft reset only) survives a RUN-pin reset, with its date; A.8's code 1 row ("also the RUN pin")
+  follows the outcome.
 - **Resolved**: A.U14.20 and A.U14.01 are one commit (both say so); the code table stays A.8's (A.U11.05 owns it,
   M.SPEC.021).
 - **Unit**: U14 (after A.U11.05/A.U11.06 at U11).
@@ -3742,6 +4007,15 @@ it; an unflipped fact keeps the text given here.
   A.U14.28's "not a divergence" wording. (6) A.6's `:691` pointer → "F.7" (A.U36.544). (7) A.SDEP.16: a row whose upstream
   condition the refreshed pin meets loses its workaround (and the row states the port now agrees, or goes) in the commit
   that removes the workaround.
+  (8) (A-C fold, silent-failure scan SF-M4-08, 2026-10-06) Two rows state the number model (merged with (4)'s diff rows
+  where that diff already lists the setting): floats, single precision on rp2 (`MICROPY_FLOAT_IMPL_FLOAT`,
+  `ports/rp2/mpconfigport.h`) and double on the rig, so a defect that needs float32 rounding passes L1/L2 by
+  construction; its proof L3 and a scratch single-precision Unix build
+  (`CFLAGS_EXTRA=-DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT`) of the float-touching L1 files at both GC stages, its
+  trigger a float-handling change. Small ints, 31-bit on rp2 and 63-bit on the rig, so every current epoch timestamp
+  (above 2**30) is a heap integer on silicon and a small int on the rig, and the rig's heap figures leave out one such
+  integer per timestamp; its proof the L3 heap figures, its trigger a heap-budget change (I). Stage U35, with the
+  scratch run's procedure (M.PROC, not this cluster).
 - **Resolved**: (a) AC_NOTES 29 (owner-accepted, AC_NOTES 37): A.U14.28's row-12 mechanism ("never re-evaluates a non-fd
   object's `ioctl()`") is wrong; the corrected mechanism replaces it here, in CLAUDE.md (M.DOCS.099) and in J.7
   (M.SPEC.137). (b) A.U14.28's row 12 also carried the pollfds growth segfault; A.U36.040 gives it its own paragraph —
@@ -4116,6 +4390,11 @@ U36 change that owns its paragraph below.
   its SCD30 clause → "SCD30's `ForceCalRef` reads back the last reference applied since power-up, 400 after power-up
   (Interface Description 1.4.6), and the mock answers the same — the last value applied, 400 on a fresh mock" and its
   GET clause → "the dispatch fields and `ContMeas` are never reported by GET (command-only triggers, C.5.2.1)".
+  (1) (A-C fold, silent-failure scan SF-M2-06, 2026-10-06) The sparse-PUT row's "The card's baseline then follows the
+  section's post-write GET" is preceded by: "Apply first refreshes the section from the device (one GET), so a toggle or
+  enum is compared against what the device holds now, not what the page loaded: a value another client changed meanwhile
+  is sent, not dropped as unchanged (agent, 2026-10-06)." Lands with the table (Stage 3 U36); the code is U23's
+  (M.WEB.021 (1)).
 - **Resolved**: (a) A.U36.510 (5) predates A.U25.12's volatile FRC read-back and A.U10.40's key rename — M_WEB gap 4 (c)
   takes the landed facts. (b) A.U36.504 merges A.S0930.30's two H sentences, as it states. (c) A.U11.31's "concurrently"
   and A.U8.04's Part N citation are merged into A.U36.503 (2), as it states. (d) M_WEB gap 4 (e): HEAD names no
@@ -4195,6 +4474,12 @@ U36 change that owns its paragraph below.
   one name" (A.U20.38); after A.U36.508's "Each number is a button …" sentence (A-C review fold): "A readonly status
   code — `ResetReason`, `VOCState`, `FRCState` — is shown the same way: its number is a button that shows the code's
   description from the catalog on click (`ResetReason`: owner, 2026-10-02)."
+  (1) (A-C fold, silent-failure scan SF-B14, 2026-10-06) "Errcount UX" gains: "A counter at the firmware's saturation
+  value reads "65535+": it has stopped counting there (C.7.1's shared saturating counter)." Stage 2 U36; the page code
+  is U23's (M.WEB.016 (1)).
+  (2) (A-C fold, silent-failure scan SF-B8, page half, 2026-10-06) The field conventions gain: "A writable field whose
+  source the device could not read shows "unavailable" in place of a value, so a setting it could not read never looks
+  unset; the card carries the unavailable cue (H.3)." Stage 2 U36; the page code is U23's (M.WEB.014 (1), .015 (1)).
 - **Resolved**: A.U19.02 and A.U9.03 write the same `lightCmdLED` exception into `:4524-4528`, which A.U36.504 (2)
   replaces — the exception joins A.U36.504's sentence. A.U2.05's empty-slot fact lands in H.6.1 row 2 (M.SPEC.120), where
   the entry shape now lives.
@@ -4217,6 +4502,13 @@ U36 change that owns its paragraph below.
   in the nested body; nothing is flattened | the driver's `get_dict_data()` keys | `js/definitions.js`
   `resolveFieldValue()`"; row 9 client cell → "the definitions' `options` (the mock derives them)"; row 5's server cell
   `api_response.py` → `asy_api_response.py`. H.6's history-entry sentence is A.U36.508's ("its shape is H.6.1 row 2").
+  (1) (A-C fold, silent-failure scan SF-B8, 2026-10-06) The table gains row (11): "a source the device cannot read
+  answers `{"error": "unavailable"}` in place of its field map, a `/status` source and a module's config GET alike |
+  `WebserverService`'s `/status` writer, `SensorReader._get_dict_cfg()`, `SystemService.get_dict_cfg()` |
+  `js/api-contract.js` `isUnavailable()`". U36.
+  (2) (A-C fold, silent-failure scan SF-B14, 2026-10-06) The table gains row (12): "an error counter saturates at 65535
+  and stops there | `asy_print_log.py` `_MAX_CNT` | `js/api-contract.js` `ERR_COUNT_CAP`, the errcount card in
+  `js/templates.js`" (pinned by `tests_scripts/test_js_api_mirrors.py`). U36.
 - **Resolved**: M_WEB gap 4 (a)-(b): A.U36.044 predates A.U10.40's capitalised members (M.WEB.001) and A.U23.19's path
   reads (M.WEB.020); the landed facts are the rows.
 - **Unit**: U36 (after U19/U23).
@@ -4259,6 +4551,9 @@ U36 change that owns its paragraph below.
   twin32 to be kept at all'; both frozen twins, owner, 2026-09-29)". (10) `:4642-4643` → A.U0.44 L26's text. (11)
   `WebserverService` constructor mentions name its config objects (`ServingLimits`, `StaticSite`; A.U5.04/A.U5.05); the
   ceiling, timeouts and per-connection cost cite Part N (`web.max_connections`, `web.outer_cap_s`, `lwip.*`; A.U8.18).
+  (12) (A-C fold, silent-failure scan SF-M2-05, 2026-10-06) (8)'s sentence "A refusal, a refused head and a peer reset
+  before the response are counted" becomes "A refusal, a refused head and a peer reset before or during the response are
+  counted". Stage 3 U19, with M.SRC_NET.118 (1), .127 (1).
 - **Resolved**: (a) M.SPEC.042 (2) lists H.7 among B.14.4's citers; no landed H.7 sentence cites the `modlwip_eagain`
   subsection (the send path is B.14.2.1's, A.U14.30) — that repoint is void unless a landed sentence names it. (b) A.U0.33
   F18 and A.U19.14 both point at the "It stays that way" sentence; A.U19.14 defers to A.U0.33 — one text. (c) A.U36.532's
@@ -4491,6 +4786,11 @@ U36 change that owns its paragraph below.
   `gc.threshold()` call outside the test runners, checked by `tests_scripts/test_gc_collect_sites.py`"; "the twin CI was the
   only place the shipped value was exercised at all until 2026-09-21" goes (history). After phase C: "Release proof:
   <image>, both stages, <date>."
+  (6) (A-C fold, silent-failure scan SF-A12, SF-M3-06, SF-B12 and SF-M4-01 (a), 2026-10-06) (e) gains: "A class with no
+  logger that catches a `MemoryError` prints its text once (`asy_udp_socket.py`, the region buffer, the log history's
+  allocation), and an uncaught one ending a task reaches the console through the exception handler's level-gated line
+  (F.1); the memory-gated tiers run at a `DebugLevel` of at least 1 for that reason (the hardware standard state holds
+  5)." The tiers' level is checked at execution first (M.SRC_CORE.016 (1); the check is TSC/SCR's). Stage 6 U30.
 - **Resolved**: A.U7.21 removes the count ("FOUR") so it cannot drift; the SPEC list names the gates the landed tree has.
 - **Unit**: Stage 1 U0 ((1)); Stage 2 U7 ((2) unit, (3) gate list); Stage 3 U8 (Part N); Stage 4 U14/U20 ((3) A.U14.05
   with A.U20.04 in the same commit); Stage 5 U27 ((2) twin); Stage 6 U30 ((4), (5)); Stage 7 U35 ((4) outcome); Stage 8
@@ -4680,6 +4980,10 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   `max_transfer_bytes`: a train declaring more is refused before anything is allocated (J.8). The cap and the ring size
   are declared together in the link's device TOML and checked together by the build; they stay two values, since
   stop-and-wait means the ring never holds a whole transfer (owner, 2026-10-05)."
+  (9) (A-C fold, silent-failure scan SF-M3-07, 2026-10-06) After (2)'s paragraph: "The diagnostic needs a link that has
+  not validated one frame since boot: `ResetErrors` clears the history and the resync streak but never the valid-frame
+  count, so a reset cannot re-arm it on a link that has worked (agent, 2026-10-06)." Stage U17, with (2); the code is
+  U11's (M.SRC_NET.171 (1)).
 - **Resolved**: A.U3.08 (U3) rewrites the old blind-spot paragraph's signature sentence; A.U17.15 (U17) replaces the
   paragraph — A.U17.15 is the end state.
 - **Unit**: Stage 1 U0 ((3) V44 tag); Stage 2 U2/U3 (codes, A.U3.08 interim); Stage 3 U8 (Part N); Stage 4 U13 ((4), (6)
@@ -4743,6 +5047,12 @@ protocol: each is spec text (the Class A/B entries are their code actions').
   crossover jumper: every frame within the bound intact with UARTRSR's overrun bit clear, the over-bound window read as
   an overrun), a soft reset during traffic and a maximum-size transfer; a real config write during traffic only behind
   the persistence-write flag (owner, 2026-10-05). Cells are filled from the landed tests like the rest.
+  (8) (A-C fold, silent-failure scan SF-A06, 2026-10-06) The tier map gains: L1, a planted framing error and a planted
+  break each fail the receiving frame and the initiator's transaction like a planted overrun, with and without CRC, and
+  the next transaction succeeds (M.TEST_UNIT.344); L2, the twin's UART register model sets FE and BE (M.TWIN.169); L3, a
+  break the other UART sends mid-frame fails that transaction, the next succeeds, and the run records whether UARTRSR's
+  error bits follow a DMA read as they follow a CPU read (M.HW_DEV.160 (4)). Cells filled from the landed tests. Stage
+  2b U13 (L1, L2); Stage 3c U26 (L3 written, its cell owed until phase C).
 - **Resolved**: (a) AC_NOTES 29 corrects `:5619-5622`'s mechanism ("does not re-evaluate a Python object's `ioctl()`") — one
   mechanism, stated in F.7 row 12 (M.SPEC.107) and pointed to here. (b) M_DOCS gap 1 (c) routes the UART-fakes entry to J.9;
   its facts are about the test models, J.7's subject, so they land in J.7 (agent decision, OR2.c review); J.9 gains
@@ -5136,6 +5446,21 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   `MeanAtmTemp` bound, A.U15.24's `PressOffset` warning sentence (code as landed), A.U15.26's `SampleInterv` sentence.
   (6) After phase C, M.2 gains A.U26.72's measured answer — whether a changed Altitude applies at once while `AmbPres` is 0 —
   with its date (the Altitude help text follows it, U15/U23).
+  (7) (A-C fold, silent-failure scan SF-M3-03 and SF-M3-02, SCD30 half, 2026-10-06) M.2 gains: "The soft reset (0xD304)
+  puts the sensor into its power-up state (Interface Description 1.4.10); a power loss within ASC's first 7 days aborts
+  its parameter search (1.4.6), and whether the soft reset counts as one is not stated; the firmware sends it at every
+  boot, task restart and participant rung (A.4) (agent, 2026-10-06)." and the range-gate sentence gains "; a rejected
+  reading is logged as `READ_RANGE`, apart from a bus fault, and counts as a failed read". Stage 1 U15.
+  (8) (A-C fold, silent-failure scan SF-M3-09, SGP40 half, 2026-10-06) M.3 gains: "The SGP40 reports no reset: it has no
+  status register (datasheet Table 8), so a self-reset cannot be read; the next measure command restarts its hotplate
+  cold, and the first raw samples after it can move the VOC index, and its warning, before the algorithm settles (agent,
+  2026-10-06)." The executor re-reads the table before writing. Stage 1 U15; no code. The module header sentence the
+  scan also names has no M entry (M.SRC_SENS.058 starts below the docstring; listed for the lead).
+  (9) (A-C fold, silent-failure scan SF-B9 = SF-A05 and SF-M3-02, BMP3XX half, 2026-10-06) M.4 gains: "EVENT (0x10) bit
+  0 `por_detected` is set after a power-up or a soft reset and cleared by reading; ERR_REG (0x02) bit 0 is `fatal_err`.
+  The reader reads EVENT every cycle and starts its data burst at ERR_REG (0x02-0x09 contiguous), so a chip self-reset
+  re-applies the stored configuration (A.4) and a fatal error fails the read; a pressure outside 300-1250 hPa is logged
+  as `READ_RANGE`." Stage 1 U15.
 - **Resolved**: the sections exist from U15 (C6: A.U36.537's catalog markers and A.U15.12's table cite them).
 - **Unit**: Stage 1 U15 ((1) partial list, (2), (3), (4) without VOCState, (5)); Stage 2 U36 ((1) M.5/M.6 names, A.6's BMP390
   move, `VOCState` table, marker); Stage 3 phase C (A.U15.20 figures).
@@ -5199,6 +5524,12 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   `:6781` gains A.U0.16's "(the peak-of-three rule: proposed by the agent, confirmed by the owner, 2026-09-12, `12a616a`)". (5)
   M.1.6 `:6804-6805` "do not re-raise it as actionable" → "not actionable on one board (owner, 2026-09-13, `05f4746`: 'Do not
   re-raise it as actionable')".
+  (6) (A-C fold, silent-failure scan SF-B11, 2026-10-06) M.1.5 gains: "A calibration run whose window closes without a
+  stable reading persists `ISL_CAL_TIMEOUT`, readable in the module's history; a converged run logs nothing (agent,
+  2026-10-06)." Stage 5 U15.
+  (7) (A-C fold, silent-failure scan SF-M3-04, 2026-10-06) M.1.3's divergence-detection text gains: "The shadow-vs-chip
+  comparison runs every read cycle (one 3-byte snapshot), not only after a failed write or on a GET, so a CONFIG byte
+  corrupted on the bus is caught and re-applied on a headless unit too (agent, 2026-10-06)." Stage 5 U15.
 - **Resolved**: A.U3.10 and A.U3.14 rewrite `:6675-6678` the same way (the central rule) — one edit. A.U0.38 V63 and A.U15.39 both
   rewrite `:6731`; A.U15.39's text is the end state and keeps V63's clause.
 - **Unit**: Stage 1 U0 (tags); Stage 2 U3 ((1) latch); Stage 3 U8 (Part N); Stage 4 U12 (McCamy); Stage 5 U15 ((1) table, (2)-(4)
@@ -5286,6 +5617,15 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   (Basis: the wrap about 15 minutes after boot, owner, 2026-10-01); the interrupts-off sweep's windows (3 ms, 45 ms,
   400 ms and one past the ring bound: the W25Q16JV tPP/tSE figures, J.6). Each row is written in the unit that lands
   its tag (U13/U17/U20 for the UART values, U19 for the window, U21 for the override, U26 for the sweep).
+  (9) (A-C fold, silent-failure scan SF-M3-01, SF-M3-09 and SF-M2-04, 2026-10-06) New rows in C4's form, each written in
+  the unit that lands its tag: `sgp40.comp_max_age_s = 10800` (Sites `src/asy_sgp40_driver.py` `_COMP_MAX_AGE_S`; Basis
+  three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never
+  cut off (agent, 2026-10-06); Margin a producer late by up to three intervals still counts; Re-check trigger a producer's interval maximum changes; Stage U15); `notify.sample_max_age_s = 10800` (Sites `src/asy_notification_service.py`
+  `_SAMPLE_MAX_AGE_S`; the same Basis, Margin and trigger; Stage U22); `led.overlay_refresh_ms = 300000` (Sites
+  `src/asy_neopixel_driver.py` `_OVERLAY_REFRESH_MS`; Basis the default notification `FlashInterval`, about once per
+  notification cycle (agent, 2026-10-06); Re-check trigger a `FlashInterval` default change; Stage U22); and, under the tags
+  the sibling `wifi.*` LED constants carry (M.SRC_NET.077), the station-on-hotspot pair at 1500 ms on and 1500 ms off
+  (Basis an even slow blink unlike the hotspot, deactivated and steady-link patterns (agent, 2026-10-06); Stage U18).
 - **Resolved**: M_PROC gap 1's end-state rule over the U8C lists (drops above); the GAP rows are carried here because no tagging
   action writes them (each cluster's gap names SPEC).
 - **Unit**: each row with its tagging action (U8, U8C, U8C2, then the unit introducing the tunable); (1) and (3)-(5) at the unit

@@ -1,6 +1,7 @@
 """Execution packets: for one unit, every step in work-order order with its merged change and carried action texts.
 Lanes group steps whose site files overlap (union-find), so disjoint lanes can be applied by separate agents.
-Every packet opens with the silent-failure scan and lists the unit's register deltas; it is refused while one is unfolded.
+Every packet opens with the silent-failure scan, the unit's register deltas (refused while one is unfolded) and every
+fold part landing in the unit: its stage words, else its entry's main unit.
 Usage: step_packet.py <unit> [--outdir DIR] [--lanes]"""
 import argparse
 import json
@@ -61,6 +62,42 @@ def register_deltas(unit):
     return rows
 
 
+UT = r"U\d+(?:C2|C|R)?"
+STAGE = re.compile(r"[Ss]tage(?:d with)?\s+(?:\d+[a-z]?\s+)?(" + UT + r")\b|\b(" + UT + r")\s+stage\b")
+FOLD = re.compile(r"\((\w+)\) \(A-C fold, (?:silent-failure scan|dependency refresh family \(g\))")
+
+
+def entry_unit(text, units):
+    """An entry's main unit: the Unit slot's leading unit, else its latest; 'phase C/D' when only those are named."""
+    m = re.search(r"^- \*\*Unit\*\*:(.*?)(?=^- \*\*|\Z)", text, re.S | re.M)
+    t = re.sub(r"(after|before|until|since|not)\s+" + UT, "", " ".join((m.group(1) if m else "").split()))
+    lead = re.match(r"\s*(" + UT + r")\b", t)
+    if lead and lead.group(1) in units:
+        return lead.group(1)
+    toks = [u for u in re.findall(r"(?<![A-Za-z0-9.])(" + UT + r")\b", t) if u in units]
+    if toks:
+        return max(toks, key=units.index)
+    return next((u for u in ("C", "D") if f"phase {u}" in t), None)
+
+
+def fold_parts(changes, units):
+    """{unit: [(M-ID, part, text)]} for every A-C fold part: each unit its stage words name, else the entry's unit."""
+    out = {}
+    for mid, text in changes.items():
+        m = re.search(r"^- \*\*Change\*\*[^:\n]*:(.*?)(?=^- \*\*)", text, re.S | re.M)
+        if not m:
+            continue
+        for part in re.split(r"\n  (?:- )?(?=\((?:\d+|[a-z]+)\) \(A-C fold)", m.group(1)):
+            f = FOLD.match(part.strip())
+            if not f:
+                continue
+            flat = " ".join(part.split())
+            staged = [a or b for a, b in STAGE.findall(flat) if (a or b) in units]
+            for u in dict.fromkeys(staged or [entry_unit(text, units)]):
+                out.setdefault(u, []).append((mid, f.group(1), part.strip()))
+    return out
+
+
 def lanes(order, files):
     parent = {}
 
@@ -111,6 +148,10 @@ def main():
     if deltas:
         out.append("\n# Register deltas for this unit (folded; their merged text is in the steps below)\n")
         out += [r for r, _ in deltas]
+    folds = fold_parts(changes, [u["unit"] for u in wo["units"]]).get(a.unit, [])
+    if folds:
+        out.append("\n# Fold parts landing in this unit (silent-failure scan; the steps below may carry other units' parts)\n")
+        out += [f"{mid} ({k}): {t}\n" for mid, k, t in folds]
     for group in order:
         n = pos[tuple(group)]
         if len(group) > 1:

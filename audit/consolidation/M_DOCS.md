@@ -345,6 +345,8 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   ordered A1 … A15 (A13/A14/A15 from M.DOCS.022); Status cells: A4 `recorded`, A8 `recorded`, A6 `applied-python`, A7
   `applied-python`, A11 `proposed`; A1-A3, A5, A9, A10, A12 unchanged. Class B gains a trailing `Status` column, every
   row `applied-python`.
+  (1) (A-C fold, silent-failure scan SF-A06, 2026-10-06) The Class A order reads A1 … A16 (A16 from M.DOCS.022 (1)), its
+  Status cell `applied-python`. Stage U13, with that row.
 - **Resolved**: —
 - **Unit**: U17
 - **Depends**: M.DOCS.021 (A7/A8/A11 cells, same rows), M.DOCS.024 (rows B33-B52 already present)
@@ -425,6 +427,12 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
   the heap (owner, 2026-10-05) | That the C sender never declares more than the receiver's cap, and whether the C
   receiver refuses the same way. A receiver-only tightening: a conforming peer within the cap is unaffected |
   applied-python |".
+  (1) (A-C fold, silent-failure scan SF-A06, with the OE half of M.SRC_NET.221 (6), which had no row, 2026-10-06) One
+  more row, after A15: "| A16 | A received byte the UART flags as an overrun (OE), a framing error (FE) or a break (BE)
+  in UARTRSR fails the frame being assembled: the receiver withholds the ACK and resyncs, as for a lap of its receive
+  ring | The CRC was the only guard, and a link without CRC accepted the corrupted frame; a FIFO overrun before the ring
+  lost bytes unseen (owner, 2026-10-06, for the overrun) | That the C receiver checks its UART's error flags the same
+  way. A receiver-only tightening: a conforming peer is unaffected | applied-python |". Stage U13, with M.SRC_NET.221 (6)-(7).
 - **Resolved**: —
 - **Unit**: U17 (A15 with `max_transfer_bytes` and its refusal)
 - **Depends**: M.SRC_NET.159, M.SRC_NET.170, M.DOCS.019; M.SRC_NET.220 (the refusal)
@@ -575,6 +583,11 @@ then and follows the U10/U16 renames with the rest of the file (M.DOCS.023).
     1000 and the two receive defaults); `UARTLinkDriver` takes and forwards the same object, its own `payload_size`/
     `timeout` parameters gone | Python API only, no C impact: the values and their defaults are unchanged and stay
     agreed out of band".
+  (1) (A-C fold, silent-failure scan SF-M3-07, 2026-10-06) One more row, numbered at landing in landing order with the
+  rows above (it lands in U11), "no C impact": "`reset_error_counter()` (`ResetErrors`) leaves the valid-frame count
+  alone, clearing only the history and the blind-resync streak, so a reset never re-arms the link-unintelligible
+  diagnostic on a link that has worked | A local diagnostic; no byte, acceptance rule or timing on the wire changes".
+  Stage U11, with M.SRC_NET.171 (1).
 - **Resolved**: A.U32.06's own row ("`start_listen`, `start_exercise`") and A.U10.44's are one row with the U10 names
   (M.SRC_NET.170, M_SRC_NET gap 6). A.U10.35's row adds `set_callback` (M.SRC_NET.155 makes it private; gap 6). A.U3.13's row
   adds the synchronous `_note_valid_frame()` (M.SRC_NET.164; gap 6 — no constituent carried it). A.U10.37/A.U10.38's two
@@ -632,6 +645,12 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   item cites the FRC readiness defaults by their SPECIFICATION.md Part N rows (`sens.scd30_frc_*`), not by value; the
   bench measures them in phase C (M.HW_BENCH.085, R5), and that round's delta (A.C.10) restates any figure this file
   gives (A.U26.84's docs slot; gap pass G1).
+  (1) (A-C fold, silent-failure scan SF-B3, SF-M1-07 and SF-M1-01, 2026-10-06) After the Config Faults item: "**Config
+  Unpersisted** (Status) names a module whose last setting change could not be written to flash: the change applies now
+  and is lost at the next boot; the module leaves the list at its next successful write. A unit that comes back on
+  factory settings with a SYSTEM "config file absent" warning in its history had its filesystem reformatted or wiped
+  (agent, 2026-10-06)." Labels as the definitions carry them at landing. U36; the Config Unpersisted half does not land
+  if U11's check drops the key (M.SRC_CORE.044 (1)).
 - **Resolved**: —
 - **Unit**: U36
 - **Depends**: A.U6.18, A.U6.23 (labels; GEN/WEB), A.U15.12 (`FRCState`, SRC_SENS), A.U14.17 (SPEC F.2 text), A.U32.01 (README
@@ -657,6 +676,17 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   flash (`LightCmdLED`) is refused ("Failed") while another flash is still playing — try again later; a notification the
   unit raises itself waits for the playing flash and then queues, since the unit's own notifications are few and spaced
   (owner, 2026-10-02)." Table unchanged.
+  (1) (A-C fold, silent-failure scan SF-M2-04, 2026-10-06) The overlay bullet's "steadily on once a client has joined"
+  becomes "an even slow blink (1.5 s on, 1.5 s off) once a client has joined: the unit stays on its hotspot while the
+  client stays". Stage U18 (with M.SRC_NET.087 (1)), carried into the U36 rewrite.
+  (2) (A-C fold, silent-failure scan SF-M3-09, LED half, 2026-10-06) The overlay bullet gains: "The overlay is rewritten
+  at least every five minutes, so a pixel blanked by a supply dip shows the right state again." U36 (the code lands in
+  U22).
+  (3) (A-C fold, silent-failure scan SF-B17, SF-M3-01, SF-M2-02 and SF-B2, 2026-10-06) The notification bullet gains:
+  "`/measurements`' notification `State` says whether the signals were checked: 0 all checked; 1 off by setting
+  (`AutoOn` off, paused, outside the window); 2 no local time yet (no NTP sync since boot); 3 a sensor value unavailable
+  or older than three hours; 4 the notification's own settings unreadable. Once the clock was set, the window keeps
+  working through a network outage. A flash dropped because the LED was busy leaves a NOTIFY warning." Stage U36 (the code lands in U9/U18/U22).
 - **Resolved**: the pattern list is read from the service at landing (A.U36.546 (4): the executor checks the text against
   `asy_wifi_service.py`/`asy_neopixel_driver.py` and corrects any mismatch); `LightCmdLED` per A.U10.40.
 - **Unit**: U36. Stages: U9 (window and refusal sentences, old key names), U10 (`LEDWifiOn`, `LightCmdLED`), U18 (the
@@ -676,6 +706,10 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   failed resync does not extend it, and a change to an NTP setting clears it until the next successful sync (owner,
   2026-09-29). `DNSFallback` (Networking) lists up to three IPv4 DNS servers, comma-separated, tried in order after the
   one the network hands out; empty means none (default `8.8.8.8,1.1.1.1`)."
+  (1) (A-C fold, silent-failure scan SF-B6, SF-B7 and SF-M2-03, 2026-10-06) The section gains: "While the radio's status
+  cannot be read, `Connected` and `WifiUptime` keep their last values and the WIFI history counts a warning. Why a unit
+  went offline is in that history too: the fallback to the hotspot, the permanent switch-off and a connect attempt that
+  ended without a verdict each leave a warning." U18, with M.SRC_NET.088 (2), .089 (1), .101 (1).
 - **Resolved**: A.U18.20's text is "(agent, 2026-09-27)" in its code comment (legacy intent) — the DR sentence states the
   behaviour without a tag for the three-interval rule and the owner tag for the settings clear (OR102.a (3)).
 - **Unit**: U18
@@ -712,6 +746,10 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   different directions: `BackupPeriod` turns a feature off, `BackupMaxAge` turns a limit off, `WaitTimeNTP` skips a
   wait."); a closing sentence: "**VOC Algorithm** tells what the VOC index means right now: 0 while it starts up, 1 while
   it is learning (the first day after a fresh start), 2 once settled, 3 while it runs on a restored backup."
+  (1) (A-C fold, silent-failure scan SF-M1-02 and SF-M3-05, 2026-10-06) The `WaitTimeNTP` bullet gains: "A wait that
+  ends without a sync restores the backup without an age check and logs a warning." and the section gains: "A restart of
+  the SGP40 task (not a boot) keeps the running VOC state and restores nothing." Stage U16 (with
+  M.SRC_SENS.063 (1)-(2)), carried into the entry's text.
 - **Resolved**: A.U15.17 writes "rejects a backup dated in the future" unconditionally; A.U16.18 and the register (G5/R31,
   M_TEST_UNIT GAP-U1, M.TEST_UNIT.138) settle "a limit of 0 accepts any age; a negative age expires under a nonzero
   limit" — the text says so. The "two `0`s" sentence becomes three (WaitTimeNTP joins the list; agent wording).
@@ -1500,6 +1538,20 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   over the jumper, and one optional real config write during traffic behind `--allow-persistence-write` (owner,
   2026-10-05) — each landing with its device script or test (U26); (e) the console-starvation row runs only behind
   `--allow-persistence-write` (2 flash writes; owner, 2026-10-02).
+  (f) (A-C fold, silent-failure scan SF-A10, SF-A14, SF-M1-05, SF-M4-01, SF-A06, SF-A07, SF-M4-09, SF-M4-10, SF-A01/A02,
+  SF-B9, SF-M3-04, SF-A open points, 2026-10-06) New rows, by what each measures, with the test, the expected outcome,
+  the wear and the twin row it confirms: R1 (bench default) the console interrupt reads reset reason 21; the raw reset
+  flags per reset kind; a bootloader reboot keeps or loses its record (reason 4 or not); a crash loop under a host that
+  holds the port without reading still ends in the task-budget reboot (5, not 2); a break mid-frame fails that
+  transaction only, and whether DMA reads update the UART's error flags; the bus-hazard sweep and the bench arms re-run
+  for the changed I2C call forms and the new per-cycle BMP3XX and ISL29125 reads; the FRAM MISO idle level; the SCD30's
+  answer after a register pointer cut short; the UART link across the Wi-Fi mode switch (timing row
+  `stall.wlan_switch`); all zero wear. R2 (operator) the reset record across a RUN-pin reset; the SCD30 after a power
+  cut during an NVM write (up to 21 SCD30 NVM writes); the FRAM CS level at power-off, only with an oscilloscope at
+  hand. R3 (`--allow-persistence-write`) the Wi-Fi link while a flash write holds interrupts off (2 flash writes); UART
+  link transactions during config writes (5 scratch flash writes, timing row `con.uart_tx`). Instruments:
+  M.HW_BENCH.083 (1)-(4), .101 (6), .102 (5)-(7), .082 (4), .071 (1), .064 (1); M.HW_DEV.090 (1), .132 (1),
+  .156 (1)-(2), .160 (4)-(5). No audit ID in the rows.
 - **Resolved**: A.U37.05 rewrites the section from the phase-C inventory and supersedes the earlier stages' wording;
   their row content is its input. A.U33.09 (3) deletes the board-state line once A.U26.79's fixtures exist (U26 lands
   first, so the line goes at U33). `audit/b3/queue_c.md` rows missing from the inventory are reported by A.U37.05's
@@ -1635,6 +1687,10 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   (A.U35.57's paragraph); U36 (A.U36.512, A.U36.544: comments only). "variant" in the Unix-port sense at `:528`, `:531`,
   `:604` → "build flavour" (A.U36.512). At U37 (A.U37.04 (3)) the history query of A.U33.04 (2) is re-run from `c82149f`
   and any file it lists that no paragraph names is added under its leg.
+  (1) (A-C fold, silent-failure scan SF-M4-06 and SF-M4-07, 2026-10-06) The U27 paragraph names: "`scripts/test.sh`: the
+  job log is truncated once per job, so the memory gate reads every attempt's output (test leg);
+  `scripts/build_firmware.py`: the image record is removed first, the `.uf2` renamed into place, the record written last
+  (no environment change)". Stage U27.
 - **Resolved**: M.SCR.074's new runner is a `scripts/` change the lint leg covers, so the U27 paragraph names it (GAPS_G4
   hand-off 1 (c), gap pass G1). A.U0.58 is not void: A.U5.17 keeps `:626-630` until the owner's run covers them, so the item survives
   and is relabelled (U36). A.U24.48's own line no longer names the eslint-comments plugin (moved into the U0 refresh,
@@ -1668,6 +1724,18 @@ Before any item number is removed, every citer is repointed (A.U36.544 (5); the 
   grkizi Run 5c relaunch SIGSEGV "not reproduced" record (A.U25.64, U25: count, HEAD, binary); Run 11's retry question
   if the planted-leak calibration finds no separating window (A.U27.17, A.U35.27, U35); any citation allow-list entry
   that cannot be fixed without an owner decision (A.U36.544, U36).
+  (1) (A-C fold, silent-failure scan SF-M2-01 and SF-M2-04, 2026-10-06) Two entries, entered at U18 with the code they
+  concern unless the owner answers them first in the A-C review (the answer then lands as the decision instead): "**<n>.
+  Bound how long a hotspot client holds the unit?** (entered <date>, agent) A phone joined to the fallback hotspot keeps
+  the unit off its home network for as long as it stays associated, as the legacy firmware did; the LED now shows
+  it. (a) keep it unbounded: on every device the unit stays reachable only through its hotspot until the phone
+  leaves; (b) bound it to a number of hotspot windows, then retry the home network with the client still joined: the
+  phone loses the setup page mid-use after the bound, on every device." and "**<n+1>. Leave the hotspot after a
+  non-credential PUT?** (entered <date>, agent) A `Hostname`, `Country` or `HotspotPW` PUT made from the hotspot page
+  triggers a reconnect, which tries the stored network; with the router down, two failed streaks switch Wi-Fi off until
+  a power cycle. (a) keep it: any Wi-Fi field reconnects, on every device; (b) from hotspot mode only `SSID` or `PW`
+  reconnect, and the other fields apply at the next hotspot start, on every device." Numbered from the list's next free
+  number.
 - **Resolved**: A.U36.548 (3) adds the streaming-GET item to BACKLOG as an agent-deferred goal; the four kinds admit
   only owner-deferred goals, so it is entered as an owner question with the agent's recommendation (agent decision for
   OR2.c, below); its names follow the U10 class renames (`UARTComm`, `UARTLinkDriver`). OR143.a supersedes OR69.a (7)'s
