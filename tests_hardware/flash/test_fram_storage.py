@@ -115,7 +115,7 @@ def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: 
 # ---------------------------------------------------------------------------
 # WP4/Topic 6: a shipped firmware asking for more FRAM than its own chip has must be caught before
 # flash, not discovered as a silent boot-time console print nobody's watching. mpremote-only by
-# design (owner's own decision) - no new /status field, this is a one-time build-validity fact.
+# design (owner, 2026-09-16) - no new /status field, this is a one-time build-validity fact.
 # ---------------------------------------------------------------------------
 
 

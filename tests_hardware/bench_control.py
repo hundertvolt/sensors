@@ -188,7 +188,7 @@ class BenchBridge:
         _run_tc(["qdisc", "del", "dev", iface, "root"], allow_missing=True)
 
     # -- role reversal: the bridge's one radio temporarily becomes the DUT's own hotspot client --
-    # Sequential flip, not simultaneous AP+client - the bench Pi4 has a single WiFi radio.
+    # Sequential flip, not simultaneous AP+client - the bench Pi4 has a single WiFi radio (owner, 2026-09-01).
 
     def is_ssid_visible(self, ssid: str) -> bool:
         """A real, fresh (`--rescan yes`) scan for `ssid` on the AP radio - confirms a DUT-hosted

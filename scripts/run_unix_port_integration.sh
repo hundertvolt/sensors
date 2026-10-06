@@ -3,9 +3,9 @@
 # digital_twin/run_generic_integration.py against the real twin buses under the real MicroPython
 # Unix-port interpreter, for any real device (--device, default wozi; SPECIFICATION.md Part L.4).
 #
-# Deliberately separate from scripts/test.sh: the twin needs its own MICROPYPATH with no "tests"
-# segment (digital_twin/README.md's "never together" rule), and this run can serve forever with no
-# --duration, which would hang that script's own test-file loop.
+# Deliberately separate from scripts/test.sh (owner, 2026-08-13): the twin needs its own MICROPYPATH
+# with no "tests" segment (digital_twin/README.md's "never together" rule), and this run can serve
+# forever with no --duration, which would hang that script's own test-file loop.
 #
 # That path needs "ext", unlike scripts/test.sh's, because every generated sensortask_<device>.py
 # imports vendored ext/microdot.py - a test file works around the ext-less path with its own
@@ -21,9 +21,9 @@
 # generated module/wiring plan to boot; every other flag goes straight through to
 # run_generic_integration.py's parse_args(), whose docstring has the full list.
 #
-# No flags just launches wozi on localhost:8080 and serves forever. There is no --soak flag any
-# more: the HTTP+memory-trend soak check moved host-side into
-# scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md's "Driver/DUT process separation").
+# No flags just launches wozi on localhost:8080 and serves forever (owner, 2026-08-13:
+# browser-reachable, escalation watchable). No --soak flag: the HTTP+memory-trend soak check is
+# host-side, scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md "Driver/DUT process separation").
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

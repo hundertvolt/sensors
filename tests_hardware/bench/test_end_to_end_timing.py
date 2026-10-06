@@ -118,7 +118,7 @@ def _try_fetch_ok(dut_ip: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (owner's explicit request): a real hard_reset() landing at an uncontrolled
+# Recombination test (owner, 2026-09-04): a real hard_reset() landing at an uncontrolled
 # point in FRAM's natural background write activity - SGP40's periodic VOC backup - must leave
 # the subsystem healthy. The flash tier's reset race can only land as a write session begins.
 # ---------------------------------------------------------------------------

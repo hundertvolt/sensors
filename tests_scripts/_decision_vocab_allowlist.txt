@@ -1,0 +1,693 @@
+# path<TAB>sentence prefix: actorless decision vocabulary present when the check landed. Only shrinks:
+# the sentence, then rerun `uv run python tests_scripts/test_decision_vocabulary.py --regenerate`.
+BACKLOG.md	**Decided**: deployed code stays pinned to 1.26 until a deliberate reflash campa
+BACKLOG.md	**Note**: `get_long_block_lock()` itself was already removed entirely before thi
+BACKLOG.md	**Still open**: retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi
+BACKLOG.md	- **A digital-twin soak's wall clock is set by GC timing, so it must never be bi
+BACKLOG.md	- **The UART fakes still do not *wait* the way a real read does, deliberately.**
+BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol
+BACKLOG.md	A DNS name cannot exceed **253** characters in presentation format (255 octets o
+BACKLOG.md	Deliberately does **not** use the Unix-port twin's own `gc.mem_free()` recovery-
+BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod
+BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
+BACKLOG.md	Recorded here per CLAUDE.md's flag-don't-silently-fix rule for cross-file API di
+BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
+BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no BME688/BSEC
+BACKLOG.md	Why it nonetheless works on the deployed 1.26 firmware was never verified agains
+BACKLOG.md	decided, with full upstream research citations, real bench-hardware recovery-tim
+BACKLOG.md	structurally incompatible.** It validates that every `root_packages` entry is a
+CLAUDE.md	**That does not make the file safe to change** — the trace is against 1.28/1.29,
+CLAUDE.md	**That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided an
+CLAUDE.md	- **A third party's momentary outage must never read as a red test result.** `sc
+CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
+CLAUDE.md	- **Two suites that both bind real ports must never run at the same time.** `scr
+CLAUDE.md	- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `
+CLAUDE.md	Does **not** disable the `assignment` error code — the old `improved-quality/myp
+CLAUDE.md	Installed into `typings/` (gitignored) — **deliberately not** a `pyproject.toml`
+CLAUDE.md	On the *target* this is already institutionalized and stays that way: every oper
+CLAUDE.md	One further narrow exemption lives in a central `[[tool.mypy.overrides]]` block:
+CLAUDE.md	The hardware pair reads one shared `tests_hardware/harness.py` `MEMORY_ERROR_MAR
+CLAUDE.md	`scripts/test.sh`'s own backgrounded `tests_scripts/` tier is a deliberate non-i
+CLAUDE.md	`tests/` and `digital_twin/` reassign methods to mock them — that IS the project
+CLAUDE.md	a *dispatch-only* PUT persists nothing and is deliberately outside the gate, and
+CLAUDE.md	catching `(OSError, MemoryError)` and degrading locally is a backstop for genuin
+CLAUDE.md	if you need to change its behavior, treat that as a deliberate fork decision, no
+CLAUDE.md	it never gates anything** — no threshold is enforced anywhere, by design (confir
+DEVICE_REFERENCE.md	**`0` disables this staleness check** — a restored backup is accepted no matter
+DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux scale to shift with
+HEAP_FRAGMENTATION_MEASUREMENTS.md	**It holds method, not results.** Current-state facts and rules live where they
+HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build_system`, `after_starter_loop_end`
+HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000
+README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
+README.md	# deliberate, dedicated invocation, one of three named tiers (see tests_hardware
+README.md	Every field type is checked strictly against its schema — a JSON integer for a `
+README.md	Everything permanent each one settled was migrated first: the five-backend model
+README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
+README.md	Set the log level to `all` (5) via the real API, then reboot to see a full start
+README.md	`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WI
+README.md	| soak | Same as bench, plus a deliberate long run | `scripts/run_bench_soak_tes
+SPECIFICATION.md	(1) RIOT is the only prior art for the normalisation chain, and this driver copi
+SPECIFICATION.md	*(`dev` only)* two buildgen-generated `[[instance]]` entries construct `asy_uart
+SPECIFICATION.md	**A dedicated unit-test file for the driver itself** (`tests/test_asy_<name>_dri
+SPECIFICATION.md	**A lost final ACK folds into failure**, deliberately, rather than becoming a th
+SPECIFICATION.md	**CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate
+SPECIFICATION.md	**Constraint — a loopback harness must never register a fake UART with a real `s
+SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a
+SPECIFICATION.md	**Deliberately never a symlink**: [MicroPython issue #12671](https://github.com/
+SPECIFICATION.md	**Deliberately not adopted** (project owner, 2026-09-11): there is no standing r
+SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
+SPECIFICATION.md	**Hitting the bound is reported by flagging the caller, never by logging in plac
+SPECIFICATION.md	**Known structural gap, accepted risk (`SGP40_I2C._reset()`)**: `writeto(0x00, b
+SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
+SPECIFICATION.md	**Numeric coercion policy** (`config_manager.py`'s `coerce_numeric()`): a JSON i
+SPECIFICATION.md	**Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_
+SPECIFICATION.md	**Specialty: raw hardware bus-transaction calls are the one deliberate exception
+SPECIFICATION.md	**The persistence counter** was settled with both thresholds parked at `0x0000`,
+SPECIFICATION.md	**This backstop is safe in practice, with one narrow, accepted residual window (
+SPECIFICATION.md	**This is the boot-time-lifecycle mechanism, not the only legitimate way to star
+SPECIFICATION.md	**Vitest in real-browser mode** (`@vitest/browser-playwright`, real Chromium, de
+SPECIFICATION.md	**`unwedge_heap_after_interrupt()`'s three call sites are kept, deliberately, as
+SPECIFICATION.md	- **Frame codecs for a byte-stream link** — `framing_codecs.py`'s `Framing_Base`
+SPECIFICATION.md	- **One real, deliberate exception to the pure phase-math argument, found while
+SPECIFICATION.md	- **Part M** — Chip Reference (per-chip measured behaviour and settled requireme
+SPECIFICATION.md	- **SPECIFICATION.md Part M** — a new `M.<n>` section for any real, datasheet-de
+SPECIFICATION.md	- **Tested to the same bar as `src/` code**: correct-path functioning, full erro
+SPECIFICATION.md	- **`digital_twin/machine.py`'s `UARTLink.wire_log`** — E.8's own bullet — is un
+SPECIFICATION.md	- The value space (`0 … 0xFE`, 255 values) is **exactly** as large as the longes
+SPECIFICATION.md	- [ ] `buildgen/driver_registry.py` — confirmed auto-resolves, or a deliberate `
+SPECIFICATION.md	- `Request.max_content_length` — the largest body that is *accepted*;
+SPECIFICATION.md	A change is protocol-level ("Class A") if it alters the bytes emitted, which rec
+SPECIFICATION.md	A mismatch desyncs the link outright, so an out-of-range value must never be sil
+SPECIFICATION.md	Because the final chunk's acknowledgement is deferred until after the responder'
+SPECIFICATION.md	Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`)
+SPECIFICATION.md	Confirmed deliberate by the project owner.
+SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a dire
+SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
+SPECIFICATION.md	Every deliberate system reset pauses FRAM first (`system_service.py`'s `_reboot(
+SPECIFICATION.md	Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a qu
+SPECIFICATION.md	I2C deliberately has no equivalent (BACKLOG's deferred list).
+SPECIFICATION.md	It also pins each device's maximum, so a new driver or a widened string bound fa
+SPECIFICATION.md	It stays documented here as a tool to reach for *if* a severe, hard-to-debug res
+SPECIFICATION.md	No static `src/sensortask_*.py` file exists: `scripts/_generate_sensortask_modul
+SPECIFICATION.md	Nothing legitimate could provoke it — every accepted body is far smaller — but a
+SPECIFICATION.md	One deliberate divergence stays: both fakes hand back a **fresh object** per con
+SPECIFICATION.md	One section per chip whose behaviour needed more than its datasheet and its driv
+SPECIFICATION.md	Only a string config value can be that scalar — `errcount` holds ints alone (`_s
+SPECIFICATION.md	Pico W's CYW43 firmware genuinely reduces usable heap versus a plain Pico (rough
+SPECIFICATION.md	Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s `# @requi
+SPECIFICATION.md	Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-co
+SPECIFICATION.md	Removing it (2026-09-14, auditing the now-retired in-process `_soak()`'s own ide
+SPECIFICATION.md	Self-healing follows from the same two sites: the next accepted change writes th
+SPECIFICATION.md	Separately, the 60s STA-retry branch holds `wifi_mode_lock` while NTP's sync tas
+SPECIFICATION.md	Since `_timer_sequencer()` assigns every `start_offset` a distinct value strictl
+SPECIFICATION.md	That is **accepted** — no recovery scheme is wanted for a reboot that catches th
+SPECIFICATION.md	That makes it a host-dependency wherever a test asserts that every one of a long
+SPECIFICATION.md	The accepted trade-off is that neither test would now catch a *latency* regressi
+SPECIFICATION.md	The comparable 1.28 figure is the 2026-09-08 hammer-load `mem_free` floor of 91,
+SPECIFICATION.md	The corrected value writes back through `_set_mgr_cfg`, deliberately **not** thr
+SPECIFICATION.md	The final chunk's acknowledgement is deliberately deferred until after the total
+SPECIFICATION.md	The generated `sensortask_wozi.py` constructs `scd30` before `sgp40` for exactly
+SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove (layered coverage
+SPECIFICATION.md	The widened gate still costs nothing: measured over a full 85-file run at `gc.th
+SPECIFICATION.md	This does **not** override four already-established, deliberate exceptions — the
+SPECIFICATION.md	W1-W4 pass on the real `dev` board over real WiFi: the boundary is exact (2047 -
+SPECIFICATION.md	Without this, a `ResetErrors` landing in the boot window was silently undone: ev
+SPECIFICATION.md	`SensorReaderConfig.__init__` captures `default_vals` as `self.cfg_schema`, expo
+SPECIFICATION.md	`TCP_SND_QUEUELEN` is per connection.** One connection can drain the pool, leavi
+SPECIFICATION.md	`_store_err()` does not.** The asymmetry is deliberate.
+SPECIFICATION.md	`asy_uart_comm.py` carries six statements of a third variant: a buffer or a boun
+SPECIFICATION.md	`bool` never accepted for int/float (`type()`, not `isinstance()`).
+SPECIFICATION.md	`disable_error_code = assignment` is deliberately not set.
+SPECIFICATION.md	`js/mock-server.js` is deliberately never staged at all — its `fetch` patching h
+SPECIFICATION.md	`run_project_dependency_install()` (`uv sync`/`npm ci`) runs with `env=None` (in
+SPECIFICATION.md	`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception
+SPECIFICATION.md	`wozi` deliberately does not, since it is never physically flashed and would oth
+SPECIFICATION.md	`wozi`/`arzi`/ `klkizi`/`grkizi`/`schlafzi` have no real board to flash at all,
+SPECIFICATION.md	`wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range deci
+SPECIFICATION.md	a JSON float is accepted for an int field only with no fractional part (`5.0`→`5
+SPECIFICATION.md	a periodic timer self-heals next tick, a dropped one-shot never fires again.
+SPECIFICATION.md	a real device may never be named that way.
+SPECIFICATION.md	a single part's measured behaviour, reference-layer traps and settled requiremen
+SPECIFICATION.md	a split-out module (`field-format.js`) must never be *re-exported*.
+SPECIFICATION.md	a write under SCD30's one-shot budget fires at one deliberately chosen represent
+SPECIFICATION.md	an empty result means a genuinely empty payload.** The two must never collapse,
+SPECIFICATION.md	both `setup`/`test` were run against a deliberately hostile environment (poisone
+SPECIFICATION.md	digital_twin/ Hardware simulator for I2C/SPI/WiFi under the MicroPython Unix-por
+SPECIFICATION.md	int→float has a known, accepted gap (every int representable as float only up to
+SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.per
+SPECIFICATION.md	left as-is, but a new getter should pick a contract deliberately.
+SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
+SPECIFICATION.md	only legacy `html_raw/` isn't updated (accepted debt, H.1).
+SPECIFICATION.md	the exact boundary values *accepted*;
+SPECIFICATION.md	the excluded file holds two trivial fixtures, its real logic moved to `_script_l
+SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
+SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original reason (a 256 B C
+SPECIFICATION.md	webserver = WebserverService(app, sensors=(...), ..., static_mount="/html", is_h
+SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
+SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen
+SPECIFICATION.md	| `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surface
+UART_C_PORT_CHANGELOG.md	- **Class A — protocol-level, must be mirrored in C.** It alters the bytes emitt
+UART_C_PORT_CHANGELOG.md	A change that alters emitted bytes is a coordinated flag-day, and **the project
+UART_C_PORT_CHANGELOG.md	The reconciliation session will most likely meet this signature first, so it is
+UART_C_PORT_CHANGELOG.md	`_drain()` now flags the condition instead of logging it and the caller chooses,
+UART_C_PORT_CHANGELOG.md	`uart_get()`'s empty-payload contract is settled in the same round (`None` = fai
+UART_C_PORT_CHANGELOG.md	| B16 | `setup()` drains the receive path once before the readiness gate opens,
+UART_C_PORT_CHANGELOG.md	| B26 | **No change made** - recording an accepted limitation of the errno 32 di
+buildgen/codegen.py	fram= is the same optional per-instance _fram_kw() every other driver with a "#
+buildgen/driver_registry.py	`_NAME = const("SCD30")` (or a plain `_NAME = "SCD30"`) - the instance_name()/RE
+buildgen/requires_tag.py	"#+" so a "## @requires ..." section-style comment is accepted rather than repor
+buildgen/tag_comments.py	"label=" or "special:0=" - deliberately not anchored to a specific key name, sin
+buildgen/tag_comments.py	Deliberately not the
+buildgen/web_tag.py	"#+" so a "## @web ..." section-style comment is accepted, matching every other
+buildgen/web_tag.py	Escaping a literal '"' inside a quoted value is deliberately unsupported (see mo
+digital_twin/README.md	- **The `wire_log` clearer.** `UARTLink.wire_log` is unbounded by design, so a u
+digital_twin/README.md	- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this proce
+digital_twin/README.md	- **`segfault_stress_repro.py`** is a manual, deliberately-aggressive concurrenc
+digital_twin/README.md	- `network.py` / `neopixel.py` — independent, deliberately duplicated (not reuse
+digital_twin/README.md	5c also confirms the pause itself does *not* survive the reboot (RAM-only by des
+digital_twin/README.md	A commanded reboot, taken with storage paused — the case that must never lose an
+digital_twin/README.md	Confirms the process survives and exits cleanly, and — the one thing sustained-b
+digital_twin/README.md	Deliberately kept hardcoded to `sensortask_wozi`, not generalized to `run_generi
+digital_twin/README.md	FRAM itself is deliberately excluded from the sweep for a different reason: its
+digital_twin/README.md	Once the interpreter unfreezes, `system_service.py`'s periodic `feed()` (its own
+digital_twin/README.md	That loss is **accepted behavior** (project owner's call, 2026-09-11 — no recove
+digital_twin/README.md	The value sits just **above** the server's own `outer_cap_s`, deliberately: belo
+digital_twin/README.md	This run also deliberately does **not** claim SGP40's FRAM-backed history surviv
+digital_twin/README.md	Two things could not, and both are deliberate:
+digital_twin/README.md	`Timer` fires for real on a wall-clock schedule via an internal `asyncio` task,
+digital_twin/README.md	`_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is t
+digital_twin/README.md	`digital_twin/launch.py --hang DEVICE:OP:SECONDS[:TIMES]` (also accepted by `dig
+digital_twin/README.md	`digital_twin` sits between `src` and `frozen_modules`/`.frozen` — never togethe
+digital_twin/README.md	`fram` is deliberately absent from that set even though its own log genuinely is
+digital_twin/README.md	`network.py`'s one real behavioral difference: `WLAN.connect()` transitions to a
+digital_twin/_crc8.py	Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared
+digital_twin/_isl29125_chip.py	A persistent behavioural MODE, deliberately not a FaultInjector entry: that prim
+digital_twin/_isl29125_chip.py	Deliberately NOT the nominal 10000/375 = 26.67: the driver's gain-ratio self-cal
+digital_twin/_isl29125_chip.py	Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF a
+digital_twin/_isl29125_chip.py	Models the destructive 0x08 status read, the active-low INT line, `BOUTF` high a
+digital_twin/_isl29125_chip.py	That flag is the whole signal the driver's recovery path keys on, and _reset() d
+digital_twin/_isl29125_chip.py	p12, Table 18 - HIGH at power-up by design
+digital_twin/launch.py	Bus devices only - "wlan" has no real blocking call for time.sleep() to stand in
+digital_twin/machine.py	Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to
+digital_twin/machine.py	Spelled out rather than **kwargs-forwarded so the accepted settings are statical
+digital_twin/machine.py	Twin-only: real hardware can never be asked "would you have reset by now".
+digital_twin/run_generic_integration.py	deliberately reused, not reimplemented - see digital_twin/README.md
+digital_twin/segfault_stress_repro.py	Manual, deliberately-aggressive concurrency stress tool for the (now root-caused
+digital_twin/segfault_stress_repro.py	read_body=False: only ever checks that the request didn't raise - see _http_clie
+digital_twin/unix_port_poll_prewarm.py	A fresh socket per attempt, because a bind that failed leaves nothing worth reus
+digital_twin/unix_port_poll_prewarm.py	Only the accepted server-side socket has to stay registered to force pollfds gro
+host_typecheck.ini	it holds two trivial fixtures - an accepted gap (B.15).
+js/field-format.js	Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - s
+js/templates.js	See SPECIFICATION.md Part H.3's "One deliberate exception" note for why this ret
+pyproject.toml	---- Contradicts CLAUDE.md's own documentation rule (continued) ---- CPY001: no
+pyproject.toml	---- Deliberate, documented idiom ---- `x != x` is asy_scd30_driver.py's NaN tes
+pyproject.toml	---- Layout the frozen build requires ---- src/ and ext/ are frozen flat into on
+pyproject.toml	ANN401, category 4 - this test deliberately passes a TYPE-INVALID value to prove
+pyproject.toml	Bump deliberately, re-running lint.sh and typecheck.sh.
+pyproject.toml	S110 wants a log call at sites that are deliberately silent;
+pyproject.toml	The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they r
+pyproject.toml	`assignment` is deliberately not disabled.
+pyproject.toml	api_response.py calls a reader's `_set_dict_cfg` across objects by design: Part
+scripts/_digital_twin_ci_suite.py	---- Run 5c: the case that must NEVER lose anything, a commanded reboot.
+scripts/_digital_twin_ci_suite.py	192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproduc
+scripts/_digital_twin_ci_suite.py	Counter and slot count are therefore different numbers here, deliberately - SPEC
+scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
+scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
+scripts/_digital_twin_ci_suite.py	The one registered error source deliberately not FRAM-backed: AsyFramManager bui
+scripts/_require_clean_hardware_run.sh	Shared helper for run_flash_hardware_suite.sh/run_bench_hardware_suite.sh: runs
+scripts/_require_clean_hardware_run.sh	deliberately not -e: the verdict comes from pytest's own output, not its exit co
+scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
+scripts/build_website.sh	Part H.7 owns why bundling and inlining exist at all, and why keep-alive is deli
+scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
+scripts/lint.sh	scripts/ only, deliberately NOT the four legacy build-*.sh at the repo root: tho
+scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
+scripts/run_bench_hardware_suite.sh	Goes through _require_clean_hardware_run.sh, because a plain exit code cannot se
+scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
+scripts/run_flash_hardware_suite.sh	Goes through _require_clean_hardware_run.sh, because a plain exit code cannot se
+scripts/test.sh	A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which
+scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
+scripts/test.sh	Truncated per attempt: only the attempt that decided this file's verdict is sear
+src/asy_bmp3xx_driver.py	A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionErro
+src/asy_bmp3xx_driver.py	PressOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not cont
+src/asy_fram_driver.py	The three guards get_values()/set_values() share, in the same bit set so one sta
+src/asy_fram_driver.py	WP8: persisted by the caller, matching AsyFramManager's own "communication pause
+src/asy_fram_driver.py	WP8: persisted, matching AsyFramManager's own "communication paused, not writing
+src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
+src/asy_fram_manager.py	Deliberate: no generation counter says which block is newer, so a write torn bet
+src/asy_isl29125_driver.py	ISLCalibrate is deliberately absent from this schema argument: ConfigManager.get
+src/asy_isl29125_driver.py	None once the hold expires, so a stale candidate can never be mistaken for a fre
+src/asy_isl29125_driver.py	Only the four hardware-backed fields have one: the software knobs have nothing t
+src/asy_isl29125_driver.py	The shadow must never claim a value the part did not take: normalise() scales ev
+src/asy_isl29125_driver.py	The switch-back-down point is derived from this - 1/53.3 of it - so both ends of
+src/asy_isl29125_driver.py	_active_range is deliberately NOT updated, so the next cycle re-evaluates and re
+src/asy_isl29125_driver.py	flag=False is deliberately a no-op, matching SGP40_Reader.reset_voc()'s own cont
+src/asy_scd30_driver.py	Deliberately no _VAL_* entry for "ContMeas": the SCD30 cannot report whether con
+src/asy_scd30_driver.py	Pure cache read from the last read_measurement() call, no I2C of its own - see r
+src/asy_sgp40_driver.py	Deliberately does NOT forward reset_voc()'s own return value: it uses False for
+src/asy_sgp40_driver.py	Deliberately excluded from get_dict_cfg()'s own schema argument below - this key
+src/asy_sgp40_driver.py	Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: i
+src/asy_spi_driver.py	OSError(EIO) from a 32+ byte RX overrun is deliberately not caught - it propagat
+src/asy_uart_comm.py	0xFF is never emitted - a deliberate off-by-one barrier, see J.3
+src/asy_uart_comm.py	A boot-time drain is expected on a live link and is deliberately not counted - p
+src/asy_uart_comm.py	A coroutine and a plain value are both accepted - a generator-like result is awa
+src/asy_uart_comm.py	A multiple of the quiet window, so it can never be shorter than the peer's own d
+src/asy_uart_comm.py	The two must never collapse into one value (J.9).
+src/asy_uart_comm.py	no machine.Timer anywhere in this module, deliberately
+src/asy_uart_driver.py	Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() infers "a r
+src/asy_uart_link_driver.py	Registered as a maintenance sensor, not a new /status key - that list is variabl
+src/asy_webserver_service.py	Only a group whose field subset intersects the request body is dispatched: one w
+src/asy_webserver_service.py	Reuses type_or_range_error() against a synthetic FieldSchema rather than a secon
+src/asy_webserver_service.py	The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTE
+src/asy_webserver_service.py	per-route handler shapes differ by design - Microdot's own
+src/asy_wifi_service.py	A new getter picks one shape deliberately, never by copying its nearest neighbou
+src/config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
+src/system_service.py	A device with no watchdog and one deliberately left to die take the same path.
+src/system_service.py	It pushes on "Unchanged" too, not only on a real change, so every logger's live
+src/system_service.py	System-settings store, deliberately not a SensorReaderConfig subclass - no measu
+src/voc_algorithm.py	__init__ and reset() deliberately share one body (reset() is the source of truth
+tests/_bus_hazard_catalog.py	Register-addressed, not queue-based (see seed_isl_ready()) - a fixed register sn
+tests/_bus_hazard_catalog.py	Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read
+tests/_fram_chip_fake.py	Different in kind from the knobs above: simulates a disturbance landing on a WRI
+tests/_sensortask_scenarios.py	Deliberately never loops - the real implementation runs forever;
+tests/_sensortask_scenarios.py	Deliberately one dispatch per test: _dispatch() drives each call through its own
+tests/_sensortask_scenarios.py	Keyed per-device (register_for_device() sets this up), not one shared "sensortas
+tests/_sensortask_scenarios.py	LedWifiOn alone must never reconnect
+tests/_sensortask_scenarios.py	The whole point of the generated-module split: importing this test file and call
+tests/_sensortask_scenarios.py	Upstream/downstream error handling: real content must keep flowing through clean
+tests/_uart_link_contract.py	the wire accepted them;
+tests/_webserver_concurrency_scenarios.py	Both the scratch key and the port range are keyed per device, not shared across
+tests/_webserver_concurrency_scenarios.py	One thing this file deliberately does NOT attempt is a "different source host" v
+tests/_webserver_concurrency_scenarios.py	Opens a real connection, sends a deliberately incomplete request (no terminating
+tests/_webserver_concurrency_scenarios.py	Settled, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is f
+tests/_webserver_concurrency_scenarios.py	This deliberately revisits that exact scale, repeated, as an in-process regressi
+tests/_webserver_concurrency_scenarios.py	the stall: no await, so nothing is accepted until it ends
+tests/machine.py	One period elapsing with its soft callback lost to a full scheduler queue (Part
+tests/machine.py	test-only: caps bytes accepted per write() call - see write()
+tests/machine.py	write() is deliberately not injectable - the real write-only path has no failure
+tests/test_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
+tests/test_asy_bmp3xx_driver.py	Not a bug in this driver: it is the lower layer's deliberate "non-hardware failu
+tests/test_asy_bmp3xx_driver.py	start_timer() is synchronous, so it logs via the plain, non-counting pr.err() ra
+tests/test_asy_bmp3xx_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_dns_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_asy_dns_client.py	Both are unused by design - it raises before reading them.
+tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
+tests/test_asy_dns_client.py	dns_servers deliberately point nowhere real (and aren't even valid literals for
+tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
+tests/test_asy_fram_driver.py	Deliberately-allowed exception paths - inherited from asy_spi_driver.py, never c
+tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch, by design (not a bug)
+tests/test_asy_fram_driver.py	The other deliberately-allowed path: if the underlying bus is deinitialized out
+tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
+tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_fram_manager.py	...and is refused anyway, deliberately
+tests/test_asy_fram_manager.py	A READ fault deliberately - machine.SPI's fake makes write() non-injectable on p
+tests/test_asy_fram_manager.py	Asserting on ErrType rather than ErrCount is deliberate: ErrCount counts "W" ent
+tests/test_asy_fram_manager.py	Deliberately-allowed exceptions propagating through this file's own composition
+tests/test_asy_fram_manager.py	Intended, accepted behavior, not a defect (project owner, 2026-09-11; Part A.4):
+tests/test_asy_fram_manager.py	Parameter name must match FakeMB85RS64V.readinto()'s own (_write_value) - mypy c
+tests/test_asy_fram_manager.py	Real callers: a deliberate reboot pauses storage right before resetting so no wr
+tests/test_asy_fram_manager.py	deliberately not _STATUS_UNINIT/_STATUS_IDLE/_STATUS_BUSY
+tests/test_asy_fram_manager.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_fram_wire_trace.py	(ntp_synced, utc, wrote_ok) - the clock is deliberately unsynced
+tests/test_asy_i2c_driver.py	I2CDevice's read and write methods never acquire self.asy_lock themselves - by d
+tests/test_asy_i2c_driver.py	Not reentrant by design, being a plain asyncio.Lock: nesting `async with device:
+tests/test_asy_i2c_driver.py	This driver deliberately doesn't range-check `address` itself (SPECIFICATION.md
+tests/test_asy_i2c_driver.py	set_register_struct is deliberately single-value-only;
+tests/test_asy_i2c_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
+tests/test_asy_isl29125_driver.py	0xC8 is B7|B6|B3 - the reserved bits that read zero on a working part (p12, Tabl
+tests/test_asy_isl29125_driver.py	A software-only knob has nothing to read back, and _recover_failed_push() skips
+tests/test_asy_isl29125_driver.py	Deliberate: the factor 2 absorbs the entire [20, 34] band that field allows, so
+tests/test_asy_isl29125_driver.py	Green alone really would have decided to go back down - that is what makes this
+tests/test_asy_isl29125_driver.py	Its own errno rather than the caller's, because the value that failed to land is
+tests/test_asy_isl29125_driver.py	One increment, deliberately: the driver genuinely has no sample that cycle.
+tests/test_asy_isl29125_driver.py	SampleInterv is deliberately NOT in this list any more: the derived transient re
+tests/test_asy_isl29125_driver.py	Starting on the LOW range deliberately: that is the only arrangement where the P
+tests/test_asy_isl29125_driver.py	That must decode without raising AND be distinguishable from a configured chip -
+tests/test_asy_isl29125_driver.py	The _error_check trap: base_classes counts a failed read when ANY element is Non
+tests/test_asy_isl29125_driver.py	The legs give 53340/2000 = 26.67 deliberately - a swallowed failure then produce
+tests/test_asy_isl29125_driver.py	The property the whole change exists for, asserted across every combination the
+tests/test_asy_isl29125_driver.py	The threshold registers are compared against the RAW ADC value, so a 16-bit-scal
+tests/test_asy_isl29125_driver.py	Without the re-arm the recovery leaves a correctly configured chip whose fast pa
+tests/test_asy_isl29125_driver.py	deliberately out of contract
+tests/test_asy_isl29125_driver.py	the registers are compared against the RAW ADC value, so at 12 bits an unscaled
+tests/test_asy_isl29125_driver.py	type(value) is not int, deliberately NOT isinstance: isinstance(True, int) is Tr
+tests/test_asy_isl29125_driver.py	type: ignore[arg-type] # 375.0 is deliberately the wrong type
+tests/test_asy_isl29125_driver.py	type: ignore[assignment] # deliberate monkeypatch
+tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_notification_service.py	An int is always accepted and coerced for a float field (Part A.8) - a blanket a
+tests/test_asy_notification_service.py	An integral float is accepted and coerced (Part A.8);
+tests/test_asy_notification_service.py	exactly _MAX_OVERRIDE_TIME - accepted, not clamped further
+tests/test_asy_notification_service.py	finalize() deliberately never called - every method below must degrade to its ow
+tests/test_asy_notification_service.py	int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
+tests/test_asy_notification_service.py	integral float accepted for an int field, coerced
+tests/test_asy_notification_service.py	must never raise, for any of the above
+tests/test_asy_notification_service.py	registered deliberately out of that order
+tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_notification_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_ntp_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
+tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successful sync".
+tests/test_asy_ntp_client.py	exactly enough bytes - accepted
+tests/test_asy_ntp_client.py	one must never suppress the other's slot.
+tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
+tests/test_asy_scd30_driver.py	An invalid argument must never reach _send_command at all (no partial/garbage I2
+tests/test_asy_scd30_driver.py	start_timer() is synchronous, so it logs via the plain, non-counting pr.err() ra
+tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/asy_scd30_driver.py on why they
+tests/test_asy_scd30_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_sgp40_driver.py	from system_service.py's own _timer_sequencer() - it must degrade instead of rai
+tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
+tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_spi_driver.py	Bypasses `async with device:` deliberately: __aenter__ would call configure(), w
+tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
+tests/test_asy_spi_driver.py	The synchronous session deliberately does not take the lock, so the caller-holds
+tests/test_asy_spi_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
+tests/test_asy_uart_comm.py	/status must never show a number the catalog cannot explain, so the ranges are c
+tests/test_asy_uart_comm.py	A caller must never believe a failed transfer succeeded.
+tests/test_asy_uart_comm.py	A demonstration, deliberately not a constraint - the module is standalone and th
+tests/test_asy_uart_comm.py	A malformed ACK accepted as valid confirmation is worse than no ACK at all.
+tests/test_asy_uart_comm.py	CHUNKS has to be in chunk 1, so an unknown length is out of scope by design.
+tests/test_asy_uart_comm.py	Everything else the legacy link declared is accepted unchanged: 115200 baud, a 1
+tests/test_asy_uart_comm.py	Optional by design: a GET-only responder has nothing to deliver, so its absence
+tests/test_asy_uart_comm.py	Refused at the header, so the train's own frames were never accepted: one valida
+tests/test_asy_uart_comm.py	The 0xFE -> 0 wrap is a deliberate off-by-one barrier and keeps the UID space ex
+tests/test_asy_uart_comm.py	The UID space is exactly as large as the longest train, so no UID repeats inside
+tests/test_asy_uart_comm.py	an idle uart_listen() waits forever by design, so the task is cancelled out
+tests/test_asy_uart_comm.py	setup()'s drain is deliberately not a fault and not counted, but it shares _drai
+tests/test_asy_uart_driver.py	J.5's "provably terminating" half: a lock holder that never calls ready() again
+tests/test_asy_uart_driver.py	Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's sha
+tests/test_asy_uart_driver.py	Two consecutive delimiters must never surface as a zero-length frame to index in
+tests/test_asy_uart_driver.py	`msg += add`'s own MemoryError guard is deliberately not fault-injected: unlike
+tests/test_asy_uart_driver.py	never touches the bus again
+tests/test_asy_uart_driver.py	type: ignore[assignment] # never becomes ready again
+tests/test_asy_udp_socket.py	"0.0.0.0", or a deliberately unreachable address - rather than a fresh loopback
+tests/test_asy_udp_socket.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_udp_socket.py	write() semantically requires a connected socket, so calling it on a bound-but-u
+tests/test_asy_webserver_service.py	A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") n
+tests/test_asy_webserver_service.py	A torn read: Interval read before the mutation, Offset read after it - exactly t
+tests/test_asy_webserver_service.py	Accepted means APPLIED: the real field next to the padding reached the module.
+tests/test_asy_webserver_service.py	Deliberately a plain list of pre-fetched fragments handed to a sync iterator, ne
+tests/test_asy_webserver_service.py	Deliberately lightweight: sections A-E test the webserver's own dispatch/aggrega
+tests/test_asy_webserver_service.py	F.2b - request-body buffering: an oversized body must never be read into memory
+tests/test_asy_webserver_service.py	HTTPException (abort()) is caught separately by ext/microdot.py's dispatch_reque
+tests/test_asy_webserver_service.py	Same defensive bound as test_asy_uart_driver.py's own run(): section F below del
+tests/test_asy_webserver_service.py	Same sys.path convention as tests/test_setter_microdot_integration.py: scripts/t
+tests/test_asy_webserver_service.py	Settled (SPECIFICATION.md H.7): the client already holds its whole response, yet
+tests/test_asy_webserver_service.py	The ".." guard aborts(404) before the try/except OSError block that consults is_
+tests/test_asy_webserver_service.py	The two must never drift apart: one constructor value drives both, at a size of
+tests/test_asy_webserver_service.py	These tests pin the direct cause, not a memory heuristic the Unix-port heap coul
+tests/test_asy_webserver_service.py	deliberately not one per punctuation character either
+tests/test_asy_webserver_service.py	never accepted - no response ever written
+tests/test_asy_webserver_service.py	the callback must never see an out-of-range value
+tests/test_asy_webserver_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_webserver_service.py	writer.close() raising is real Stream-caller-supplied behavior this module must
+tests/test_asy_wifi_service.py	(field, largest accepted, smallest refused) - each pair within the schema's char
+tests/test_asy_wifi_service.py	A task restart (e.g. after the hw_op_failed streak gives up) must NOT pull the s
+tests/test_asy_wifi_service.py	All four _conn_phase values are exercised deliberately: a regression narrowed to
+tests/test_asy_wifi_service.py	Neither WLAN fake ever transitions _status to STAT_GOT_IP for AP mode on its own
+tests/test_asy_wifi_service.py	Proves the give-up decision is a genuine streak, not a monotonic lifetime counte
+tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be accepted, not rejected.
+tests/test_asy_wifi_service.py	_wlan(client) is typed against the real network.WLAN stub (pyproject.toml's test
+tests/test_asy_wifi_service.py	noqa: S106 - deliberately too short, which is the point of the test
+tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
+tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
+tests/test_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
+tests/test_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
+tests/test_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
+tests/test_bus_hazard_multi_device.py	And BMP3xx's own address must never appear mixed into a general-call entry - the
+tests/test_bus_hazard_multi_device.py	Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance,
+tests/test_captive_dns.py	"Any", not "int": mypy's time.pyi types ticks_ms() as the opaque _TicksMs marker
+tests/test_captive_dns.py	A query whose header claims QDCOUNT=2: __init__ only ever parses the first quest
+tests/test_captive_dns.py	A real server socket in this Unix-port build is always bound via a resolved sock
+tests/test_captive_dns.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
+tests/test_captive_dns.py	_FakeUDPS lets run()'s actual subnet-membership, malformed-query and error-path
+tests/test_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
+tests/test_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
+tests/test_config_manager.py	Deliberate consequence of _cache (see module docstring): get_dict never re-opens
+tests/test_config_manager.py	Deliberate consequence of _cache: write_config no longer reads the file first, o
+tests/test_config_manager.py	Deliberate, longstanding asymmetry.
+tests/test_config_manager.py	Deliberately not asserting mgr._cache's exact value here: whether the deferred f
+tests/test_config_manager.py	One write per accepted CHANGE, zero for an unchanged, invalid or unknown value -
+tests/test_config_manager.py	bool must never be coerced into an int field even though `type(True) is bool` si
+tests/test_config_manager.py	bool subclasses int in Python/MicroPython, but type() rather than isinstance() e
+tests/test_config_manager.py	empty string accepted at the min=0 boundary
+tests/test_config_manager.py	lower boundary accepted
+tests/test_config_manager.py	type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON i
+tests/test_config_manager.py	upper boundary accepted
+tests/test_config_manager.py	write_config()'s one deferred flush per accepted change
+tests/test_crc_checks.py	Fewer total bytes fed than the CRC width itself must never report a valid (let a
+tests/test_crc_checks.py	a later call passing a (deliberately invalid) init must not retroactively invali
+tests/test_digital_twin_bus_hazard_concurrency.py	A persistent one degrades to None instead of propagating, and leaves the chunk m
+tests/test_digital_twin_bus_hazard_concurrency.py	Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its share
+tests/test_digital_twin_bus_hazard_concurrency.py	Twin-tier parity for the mock tier's pair of write-protect tests, and the accept
+tests/test_digital_twin_bus_hazard_concurrency.py	wozi's own SGP40+BMP3xx-on-i2c1 pairing can never be confirmed on real hardware
+tests/test_digital_twin_http_client.py	_soak() and _wait_until_serving() never look at a fetched body, so they must nev
+tests/test_digital_twin_http_client.py	deliberately not a multiple of the scratch buffer
+tests/test_digital_twin_isl29125_autorange.py	BOUTF is HIGH at power-up by design (p12, Table 18), so setup() has to clear it
+tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never flip to connected
+tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never resolve at all
+tests/test_digital_twin_poll_prewarm.py	Twin-tier coverage for digital_twin/unix_port_poll_prewarm.py's own port handlin
+tests/test_digital_twin_poll_prewarm.py	type: ignore[attr-defined, assignment] # deliberate monkeypatch
+tests/test_digital_twin_real_website_integration.py	"wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4
+tests/test_digital_twin_run_generic_integration.py	Deliberately exactly one such test, not a boot-only one plus a separate fault-in
+tests/test_digital_twin_run_generic_integration.py	_booted_module is set by main() itself and read the same way _print_wdt_status()
+tests/test_digital_twin_scd30.py	_FixedRandom itself asserts a <= value <= b for every uniform() call - if _produ
+tests/test_digital_twin_sensortask_integration.py	A second real backup mutates the twin's in-memory FRAM image but is deliberately
+tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/start_and_check_tasks().
+tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT pre-seed scd30's measurement data the way every other SGP4
+tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
+tests/test_digital_twin_sensortask_integration.py	Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why.
+tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
+tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
+tests/test_digital_twin_sensortask_integration.py	The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rat
+tests/test_digital_twin_sgp40.py	CRC trailer deliberately wrong
+tests/test_digital_twin_sgp40.py	digital_twin/ is not on scripts/test.sh's MICROPYPATH, deliberately kept separat
+tests/test_digital_twin_uart_link.py	Drives the responder's own UART_Comm.uart_listen() directly rather than UartLink
+tests/test_digital_twin_uart_link.py	The UID wraps at 0xFE, so this deliberately runs past one whole wrap.
+tests/test_digital_twin_uart_link.py	The pollers are then swapped for the bounded stand-in: a real select.poll() neve
+tests/test_digital_twin_unix_port_gc_unwedge.py	The wedged state itself - GC_COLLECT_FLAG stuck in gc_lock_depth after a SIGINT
+tests/test_fram_integration.py	A shared physical chip does not mean shared bookkeeping - each SensorReader gets
+tests/test_fram_integration.py	And the chunk must still be usable afterwards - a wedged chunk that never takes
+tests/test_fram_integration.py	Deliberately not modeled: a raw-SPI-bus-level fault.
+tests/test_fram_integration.py	That loss is accepted behavior, not a defect (project owner, 2026-09-11): no rec
+tests/test_notification_neopixel_integration.py	accepted/queued, not rejected
+tests/test_notification_scd30_integration.py	Built outside scenario() deliberately: register_frame()/data_frame() call crc8_b
+tests/test_notification_scd30_sgp40_integration.py	scd_reader's real reading is deliberately not used: _settle_and_spike() below ne
+tests/test_notification_scd30_sgp40_integration.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_notification_sgp40_integration.py	confirms the baseline genuinely settled before phase 2 starts
+tests/test_notification_sgp40_integration.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_ntp_fram_system_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_ntp_wifi_dns_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_ntp_wifi_dns_integration.py	type: ignore[assignment] # deliberate monkeypatch, same as test_asy_ntp_client.p
+tests/test_print_log.py	SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard.
+tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
+tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
+tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
+tests/test_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
+tests/test_system_service.py	no real exception occurred - errno=5 must never fire
+tests/test_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_system_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
+tests/test_ticks_rollover.py	Re-derives the exact accepted/rejected boundary independently of the bisection a
+tests/test_ticks_rollover.py	largest accepted delta is in (lo, hi)
+tests/test_tmp_scratch.py	A deliberately cheap population - the invariant is independence from sibling COU
+tests/test_tmp_scratch.py	The exact bug _sweep_stale_tmp_dirs() existed for: a second call reusing the sam
+tests/test_uart_comm_hazard.py	A CRC yields once per byte, so the same wall-clock budget covers far fewer bytes
+tests/test_uart_comm_hazard.py	A short timeout keeps each recovery cycle cheap: this tier is about which frames
+tests/test_uart_comm_hazard.py	Accepted rather than fixed (SPECIFICATION.md Part J.6);
+tests/test_uart_comm_hazard.py	Byte order is part of the wire contract, not an implementation detail: the C pee
+tests/test_uart_comm_hazard.py	Repeated attempts: the diagnostic deliberately waits for a streak before firing,
+tests/test_uart_comm_hazard.py	The protocol's at-least-once seam: the final ACK is deferred until after the res
+tests/test_uart_comm_hazard.py	Which byte does not matter here and is deliberately not pinned: the claim is tha
+tests/test_uart_comm_hazard.py	what must never happen is two transactions interleaving frames on the wire.
+tests/test_voc_algorithm.py	sraw <= 0 or >= 65000 skips updating msraw (datasheet SRAW_VOC is 0-65535 ticks;
+tests_hardware/README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
+tests_hardware/README.md	# need their own deliberate, dedicated invocation, one of three named tiers (sho
+tests_hardware/README.md	**Deliberately not `fram.allocated_size <= fram.size`** - `AsyFramManager.get_ch
+tests_hardware/README.md	**Do not rely on this test skipping cleanly if you deliberately want to skip sta
+tests_hardware/README.md	**Standing design, project owner's own choice** (broadened from SCD30-only to al
+tests_hardware/README.md	**Standing policy from this pass on, applied everywhere it's practical**: reset
+tests_hardware/README.md	**What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and t
+tests_hardware/README.md	- **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` rea
+tests_hardware/README.md	- **Real socket-limit degradation** (`test_connections_at_and_above_the_real_soc
+tests_hardware/README.md	- **UART's sharpest invariant (`asy_uart_driver.py`/`asy_uart_comm.py` may never
+tests_hardware/README.md	- **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve =
+tests_hardware/README.md	- **`tests_hardware/manual/`'s files are deliberately named away from the `test_
+tests_hardware/README.md	- The opt-in gates that skip per test (`--allow-flash-cycle`, `--soak-tier`, `--
+tests_hardware/README.md	A **dispatch-only** PUT is deliberately outside the gate, because it is never pe
+tests_hardware/README.md	At `DebugLevel=0` (this project's own production-quiet default — see DEVICE_REFE
+tests_hardware/README.md	Deliberately a stability/sanity check, not a numerical-accuracy claim against a
+tests_hardware/README.md	Deliberately stops at ~3.6s real time (task_errors capped at 200): a task that d
+tests_hardware/README.md	Found (2026-09-11) by running the exchange script with UART1 deliberately moved
+tests_hardware/README.md	One case (`test_abrupt_disconnect_ mid_response_does_not_hang_the_server`) has a
+tests_hardware/README.md	Residue is the accepted outcome;
+tests_hardware/README.md	SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberat
+tests_hardware/README.md	That is the deliberate cost of the owner's rule, not an oversight — gating them
+tests_hardware/README.md	The helper therefore inspects pytest's own output (which is also why it runs wit
+tests_hardware/README.md	The practical consequence for a bench session: a responder notices the first byt
+tests_hardware/README.md	These wrappers exist to run against real, attached hardware, so that ambiguity m
+tests_hardware/README.md	They are also the suite's longest pair at roughly ten minutes combined, so optin
+tests_hardware/README.md	`bus_concurrency_isl29125_write_vs_siblings.py` now cycles through a deliberatel
+tests_hardware/README.md	`fram_error_log_reset_race_verify.py` is the one deliberate exception — it exist
+tests_hardware/README.md	`is_reachable()` stays `mpremote`-based deliberately, for the few callers specif
+tests_hardware/README.md	deliberately not duplicated here.
+tests_hardware/bench/test_bus_concurrency_under_api_load.py	Same accepted real-pass pattern as test_network_resilience.py's flapping test -
+tests_hardware/bench/test_heap_under_connection_ceiling.py	Row 5 of the decision table, and the reason §5 needs only two images: this walks
+tests_hardware/bench/test_hotspot_role_reversal.py	content deliberately not asserted, see below
+tests_hardware/bench/test_memory_stress_bench.py	A success here means the server accepted, processed and answered with valid JSON
+tests_hardware/bench/test_memory_stress_bench.py	Deliberately only cleared AFTER the assertions above have already captured/repor
+tests_hardware/bench/test_network_resilience.py	A connect()'d client socket that only accepts datagrams from its true peer must
+tests_hardware/bench/test_network_resilience.py	Always runs, even on a failed assertion above - this test's own last hard_reset(
+tests_hardware/bench/test_network_resilience.py	Before Part I.6 the content cap was 4096 and max_body_length was microdot's own
+tests_hardware/bench/test_network_resilience.py	Length/type-only schema (see this test's own module comment above) - accepted as
+tests_hardware/bench/test_network_resilience.py	ONE character over _VAL_NH's own 3..1024 bound, so the handler marks it Invalid
+tests_hardware/bench/test_network_resilience.py	This opens several times max_connections' worth of connections, so most are refu
+tests_hardware/bench/test_network_resilience.py	_VAL_NH bounds string length (3-1024) and nothing else, so a syntactically garba
+tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
+tests_hardware/bench/test_network_resilience.py	the one deliberately-provoked failed attempt above did legitimately log somethin
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	Invariant 1: a calibration run measures a CANDIDATE ratio and must never become
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	PauseTime is dispatch-only, so GET /notification has nothing to read back - but
+tests_hardware/bench/test_uart_link_under_api_load.py	a rejected connection under a deliberate overload is an accepted outcome
+tests_hardware/bench/test_wifi_networking.py	A blocked port is routine for NTP (SPECIFICATION.md Part C.7.2): errno 21 (no re
+tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py	Restore the datasheet/production default (x1, see asy_bmp3xx_driver.py's own _in
+tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py	Deliberately discarded - see _SETTLE_S.
+tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py	this script must never be called more than once per opt-in run.
+tests_hardware/device_scripts/float_boundary_2pow24.py	Deliberately not `coerced == float(above)` - float(above) is recomputed on this
+tests_hardware/device_scripts/float_boundary_2pow24.py	Targets coerce_numeric()'s int->float path: always accepted, so the real check i
+tests_hardware/device_scripts/float_boundary_2pow24.py	coerce_numeric() always accepts this by design;
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	mpremote-only by design;
+tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from _ORIGINAL_PATTERN
+tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from every other pattern above
+tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py	Clear first: this chunk is real, persistent on-chip storage, so setup() above ju
+tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py	what the three settled, fully-written entries carry
+tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Deliberately NOT cleared first, against tests_hardware/README.md's clear-at-the-
+tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Proves the restored history is ALL-OR-NOTHING (never partial, never garbage) and
+tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	The chunk must be writable again afterwards - a reset-wedged chunk that stays un
+tests_hardware/device_scripts/fram_pause_unpause_and_gating.py	the first two report whether a real timestamp could be stamped, which is False o
+tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	what the interrupted write attempts, must never land
+tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py	Hard requirement: the raced write must never have reached the chip.
+tests_hardware/device_scripts/fram_same_device_rw_concurrency.py	deliberately distinct from SEED_PATTERN
+tests_hardware/device_scripts/fram_write_protect_roundtrip.py	Reads being gated too is intended, accepted behavior - SPECIFICATION.md Part A.4
+tests_hardware/device_scripts/fram_write_protect_roundtrip.py	deliberately desynced from the chip, see above
+tests_hardware/device_scripts/heap_headroom_after_full_system_build.py	Deliberately measured at MicroPython's own reactive-only default first: a headro
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py	Same doubling/halving bounds as heap_headroom_after_full_system_build.py, delibe
+tests_hardware/device_scripts/isl29125_lighting_scenarios.py	Deliberately NOT rig.observe(): a switch caused by getting INTO position is not
+tests_hardware/device_scripts/isl29125_lighting_scenarios.py	False if it never settled on one.
+tests_hardware/device_scripts/isl29125_lighting_scenarios.py	across every scenario - reset_scenario() deliberately leaves it alone
+tests_hardware/device_scripts/isl29125_lighting_scenarios.py	consecutive same-range samples that count as "the entry range has settled"
+tests_hardware/device_scripts/isl29125_lighting_scenarios.py	entry_light is parked and settled BEFORE counting, so a budget measures only its
+tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Parks the pixel at one STEADY level (the overlay path, never a ramp) and samples
+tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Responsiveness, NOT calibration: brighter light must never report dimmer, and th
+tests_hardware/device_scripts/isl29125_mechanism_envelope.py	The applied ratio is config now and only a user PUT changes it, so this asserts
+tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Two settled holds have no such confound.
+tests_hardware/device_scripts/isl29125_real_irq_edge.py	deliberately long: only a real interrupt can beat it
+tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py	An IR-compensation-only change: a 2-byte burst at 0x02, which deliberately does
+tests_hardware/device_scripts/scd30_plausibility_read.py	Let the sensor's own post-reset response-time settle (see module docstring) befo
+tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py	Deliberately discarded - see _SETTLE_S.
+tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py	noqa: B007 - deliberately read after the loop (below) to report how many Timers
+tests_hardware/device_scripts/uart_crossover_exchange.py	Every wait below is bounded and feeds as it goes: a link that never answers park
+tests_hardware/device_scripts/uart_crossover_recovery.py	Isolated-driver device script: the failure half of the crossover-jumper tier - o
+tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py	Isolated-driver device script: the shipped asy_uart_driver read path must never
+tests_hardware/device_scripts/uart_idle_poll_rate.py	The ratio is what the finding is about, so the bound is deliberately loose on ab
+tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py	The floor is deliberately far below the unloaded rate - this asserts the link ke
+tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py	Isolated-driver device script: the clamped read path must never hold the CPU for
+tests_hardware/device_scripts/watchdog_starvation_reset.py	Isolated-driver device script: deliberately starves the RP2040 hardware watchdog
+tests_hardware/device_scripts/wifi_service_reconnect_repro.py	Read the production file first, then divert: from here on config_WIFI.cfg is nev
+tests_hardware/flash/test_bus_concurrency.py	Deliberately does NOT depend on scd30_continuous_measurement_triggered - this sw
+tests_hardware/flash/test_bus_concurrency.py	The SCD30-as-writer half of the same gap, deliberately outside the routine group
+tests_hardware/flash/test_bus_electrical_timing.py	Deliberately its own separate marker/flag, never bundled with the long_soak/--so
+tests_hardware/flash/test_sensor_accuracy.py	The device script's _scenarios() table sums to ~8.5 minutes of real segment time
+tests_hardware/flash/test_toolchain_flash_boot.py	Deliberate re-provisioning only.
+tests_hardware/flash/test_toolchain_flash_boot.py	The real UF2 flash-and-boot smoke test is gated behind `--allow-flash-cycle` and
+tests_hardware/flash/test_uart_crossover.py	The two failure classes that matter on real hardware: the one the design recover
+tests_hardware/harness.py	Deliberately ignore the return code/output - see this method's own docstring.
+tests_hardware/harness.py	Like run_isolated(), but for a script that deliberately triggers a real machine.
+tests_hardware/harness.py	Raised for a genuine real-hardware assertion failure - deliberately a plain Asse
+tests_hardware/harness.py	resolve_board_device()'s ambiguous-hardware raise is the deliberate exception: t
+tests_hardware/manual/runner.py	Deliberately no `if __name__ == "__main__":` block here - running this file dire
+tests_js/_live_matrix_command.js	@param {{ sectionKey: string, groupKey: string, fieldKey: string, field: import(
+tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+tests_js/_live_matrix_command.js	no-op by design, per the comment above
+tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+tests_js/_live_twin_command.js	no-op by design, per the comment above
+tests_js/definitions-mockdata-coverage.test.js	Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that func
+tests_js/live-backend-put-matrix.test.js	Fills+applies `value` expecting real rejection, then confirms the render never m
+tests_js/live-backend-put-matrix.test.js	wholeRange (cosmetic probe-value shape) and isFloat (the real accept/reject-frac
+tests_js/live-backend.test.js	"Valid" or "Unchanged" both mean the backend accepted the write, matching every
+tests_js/main.test.js	The actual point of inlining (scripts/build_website.sh's own "Inlining" comment,
+tests_js/mock-server.test.js	Boundary values (0/255 for r/g/b, 0.5/60.0 for t) are still accepted - only genu
+tests_js/mock-server.test.js	SGPResetVOC is a special-alone schema field, deliberately excluded from get_dict
+tests_js/mock-server.test.js	Sequential is the point: each PUT must be accepted after the previous one alread
+tests_js/render.test.js	Both real definitions files declare "status" as pollGroup "live" and this fixtur
+tests_js/render.test.js	Deliberately not the real SCD30 key "ContMeas": mock-server.js special-cases tha
+tests_js/render.test.js	JSON.stringify(NaN) is "null", so typed garbage used to arrive as null and a ser
+tests_js/render.test.js	On -> Off: a real, deliberate change
+tests_js/render.test.js	On -> Off: a real, deliberate change from the current value (true)
+tests_js/render.test.js	min: 0 deliberately, to catch a form input coerced to the number 0 by accident (
+tests_js/render.test.js	networkingConfig deliberately never mentions AuxEnabled - the mock GET response
+tests_js/render.test.js	request settled
+tests_js/vitest-commands.d.ts	Deliberately NOT `import type {...} from "./_live_twin_command.js"` (or the matr
+tests_scripts/_devices.py	A leaked live-tree fixture (tests_scripts/conftest.py's own reclamation, scripts
+tests_scripts/_toml_fixtures.py	A parsed/to-be-serialized TOML table - str keys, arbitrarily nested str/int/floa
+tests_scripts/buildgen_fixtures/malformed_missing_device_table.toml	Deliberately invalid buildgen fixture: no [device] table at all (a plausible han
+tests_scripts/buildgen_fixtures/multi_instance.toml	multi_instance.toml - axis 9's own dedicated multi-instance fixture (SPECIFICATI
+tests_scripts/buildgen_fixtures/novel_combo.toml	ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_sec combo n
+tests_scripts/test_build_website_sh.py	build_website.sh's cp lists are hand-kept, not derived from directory contents,
+tests_scripts/test_buildgen_definitions.py	Failure paths: a minimal DeviceModel pointed at a deliberately mutated copy of o
+tests_scripts/test_buildgen_definitions.py	SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenanc
+tests_scripts/test_buildgen_definitions.py	asy_ntp_client.py deliberately never declares its own @web-group for section=sys
+tests_scripts/test_buildgen_generate.py	a warn_* key outside it must abort and name the catalog, never be silently dropp
+tests_scripts/test_buildgen_graph.py	"setter" wiring is a post-construction call and must never contribute a dependen
+tests_scripts/test_buildgen_requires_tag.py	"Present, or close to present, with typos" - a typo'd/malformed/misplaced @requi
+tests_scripts/test_buildgen_requires_tag.py	A driver gaining or losing one is a deliberate change that has to show up here t
+tests_scripts/test_buildgen_schema_ast.py	ContMeas is deliberately freestanding (no _VAL_* constant at all - see the drive
+tests_scripts/test_buildgen_tag_comments.py	Mirrors a real near-collision in this repo, where a wrapped comment line began w
+tests_scripts/test_buildgen_tag_comments.py	With the sigil, any bare-word payload counts - that is what catches a tag whose
+tests_scripts/test_buildgen_validate.py	Absent, WebserverService's own default applies - and the ceiling check below sti
+tests_scripts/test_buildgen_validate.py	Every abort condition gets its own test, driven by a deliberately malformed fixt
+tests_scripts/test_buildgen_validate.py	The partial state: FRAM present, some wirable instances declaring fram_target an
+tests_scripts/test_buildgen_validate.py	Top-level key, deliberately written before the [device] header so it isn't swall
+tests_scripts/test_buildgen_value_wiring.py	The three names are independent by design - nothing requires the TOML field and
+tests_scripts/test_buildgen_web_tag.py	Cross-family safety: a well-formed @web-group line must never be flagged while s
+tests_scripts/test_buildgen_web_tag.py	GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System
+tests_scripts/test_buildgen_wiring.py	Deleting a piece must never leave a line that silently parses as "no tag declare
+tests_scripts/test_buildgen_wiring.py	The one deletion that does NOT abort, deliberately and consistently with @requir
+tests_scripts/test_coverage_runner.py	NOT the rig binary: this runner installs sys.settrace, and build-standard is del
+tests_scripts/test_device_tomls.py	Each scenario library's `_DEVICES` tuple stays hand-written deliberately: its OR
+tests_scripts/test_device_tomls.py	The on-target sweep keeps its own copy deliberately, being MicroPython on the bo
+tests_scripts/test_device_tomls.py	wifi/ntp/system must never appear as [[instance]] entries.
+tests_scripts/test_digital_twin_boot_contiguity.py	Same import route tests_scripts/test_heap_map_parser.py uses for the same file:
+tests_scripts/test_digital_twin_boot_contiguity.py	The heap size is deliberately NOT calibrated to a fill fraction: every bound bel
+tests_scripts/test_digital_twin_ci_suite_errcount.py	A per-name settle would call SGP40 settled while SCD30 was still climbing, and s
+tests_scripts/test_digital_twin_ci_suite_errcount.py	The tolerance is deliberate and load-bearing: _wait_for_errcount_above()/ _wait_
+tests_scripts/test_digital_twin_ci_suite_soak.py	A negative trend (memory went UP between quarters) must never itself be a failur
+tests_scripts/test_digital_twin_generated_boot.py	Same for a new synthetic fixture, minus the deliberately malformed ones (they ex
+tests_scripts/test_digital_twin_generated_boot.py	Through _devices.DEVICE_NAMES, not a local glob of devices/*.toml: that glob ran
+tests_scripts/test_http_client_ceiling_close.py	A timeout is the one worth naming: the DUT accepted the connection and then fail
+tests_scripts/test_lint_sh.py	tests/ and digital_twin/ carry ~157 of these deliberately - that IS the mocking
+tests_scripts/test_measurement_field_tuple_agreement.py	It stays deliberately: mypy's namedtuple plugin infers field names only from a l
+tests_scripts/test_memory_error_gate_agreement.py	A deliberate injection reads "simulated allocation failure" for exactly this rea
+tests_scripts/test_memory_error_gate_agreement.py	The other half of a substring gate: what the suite's own deliberate failures are
+tests_scripts/test_memory_error_gate_agreement.py	This keeps all four agreeing, and the suite's own deliberate injections clear of
+tests_scripts/test_persistence_write_marker_completeness.py	Pinned by name so a NEW one has to be triaged deliberately: a helper is reached
+tests_scripts/test_persistence_write_marker_completeness.py	Raw `socket` is deliberately out of scope: this tier uses it for DNS probes and
+tests_scripts/test_request_body_cap_headroom.py	Deliberately an upper bound rather than the field's own min/max: a client may se
+tests_scripts/test_request_body_cap_headroom.py	Pinned so each step is deliberate, the same way the persistence-write guard pins
+tests_scripts/test_request_body_cap_headroom.py	The measured maximum per device, pinned so that growth is deliberate and visible
+tests_scripts/test_request_timeout_ceiling.py	A constant turned into a string/None keeps the name alive while making every com
+tests_scripts/test_require_clean_hardware_run_sh.py	persistence_write/scd30_extra_write are deliberately absent: they DESELECT rathe
+tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
+tests_scripts/test_test_sh.py	That wording is deliberately not the interpreter's, so the widened pattern still
+tests_scripts/test_test_sh.py	`set -e` plus a failing command substitution would kill the run before it printe
+tests_scripts/test_tests_hardware_conftest_constants.py	A candidate longer than the field's own cap could never be a live Hostname, so s
+tests_scripts/test_tests_hardware_persistence_write_gating.py	The AND-gate itself: --allow-scd30-extra-write must never substitute for --allow
+tests_scripts/test_timer_stagger_no_coincidence.py	An exact replica of _timer_sequencer()'s arithmetic - a fixed delay between each
+toolchain/micropython_overrides.py	PCBs past the ceiling: a closed connection's FIN_WAIT pcb outlives its slot (tcp
+toolchain/setup_toolchain.py	Deliberately a full clone, not `--depth 1`: a shallow clone only has one ref's h
+toolchain/setup_toolchain.py	Deliberately not an apt package - see README.md's "Website tooling" for why, and
+toolchain/setup_toolchain.py	Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat
+tsconfig.json	skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir
+tsconfig.node.json	skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir

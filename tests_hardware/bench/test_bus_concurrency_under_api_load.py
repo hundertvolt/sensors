@@ -1,6 +1,6 @@
-"""Bench-tier automated tests: heavily loads the real I2C buses through the full production HTTP
-stack (concurrent threads hammering GET /sensors, the real bus-touching endpoint) - complements
-tests_hardware/flash/test_bus_concurrency.py's direct-driver, no-HTTP version (SPECIFICATION.md Part C.8)."""
+"""Bench-tier automated tests (the owner's suggested angle, 2026-09-03): heavily loads the real I2C
+buses through the full HTTP stack (concurrent threads hammering GET /sensors, the bus-touching
+endpoint) - complements flash/test_bus_concurrency.py's direct-driver version (SPECIFICATION.md C.8)."""
 
 from __future__ import annotations
 
