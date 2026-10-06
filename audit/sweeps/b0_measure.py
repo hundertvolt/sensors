@@ -1,6 +1,8 @@
 """Run each full-suite command once, recording exit code, wall clock, host peak RAM and SSD writes (M.PROC.002/.007).
 Output: <outdir>/<label>.log per command and one JSON line per command appended to <outdir>/results.jsonl.
-Usage: [MEASURE_ROOT=<tree>] b0_measure.py <outdir> [label ...]   (no labels: every command, in order)"""
+Usage: [MEASURE_ROOT=<tree>] [NETNS=1] b0_measure.py <outdir> [label ...]   (no labels: every command, in order)
+NETNS=1 runs each port-binding command in its own network namespace (proven in U0 (5a)); toolchain rows take the
+toolchain lock, since every tree shares one MicroPython checkout."""
 import json
 import os
 import resource
@@ -32,6 +34,21 @@ COMMANDS = [
 ]
 
 
+PORT_BINDING = ("L0_npm_test", "L1_", "L2_")
+TOOLCHAIN = ("firmware_build_verify", "toolchain_test")
+
+
+def wrap(label, cmd):
+    """The shell line for one row: netns for port-binding rows when NETNS=1, the toolchain lock for toolchain rows."""
+    line = f"source .venv/bin/activate && {cmd}"
+    if os.environ.get("NETNS") == "1" and label.startswith(PORT_BINDING):
+        inner = "ip link set lo up; export UV_OFFLINE=1; " + line
+        return ["unshare", "-n", "bash", "-c", inner]
+    if label.startswith(TOOLCHAIN):
+        return ["flock", "/tmp/sensors-audit-toolchain.lock", "bash", "-c", line]
+    return ["bash", "-c", line]
+
+
 def sectors_written(dev="vda"):
     for line in Path("/proc/diskstats").read_text().splitlines():
         f = line.split()
@@ -60,7 +77,7 @@ def run(label, cmd, outdir):
     th = threading.Thread(target=sample, daemon=True)
     th.start()
     with (outdir / f"{label}.log").open("w") as log:
-        rc = subprocess.call(["bash", "-c", f"source .venv/bin/activate && {cmd}"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=os.environ | {"PYTHONUNBUFFERED": "1"})
+        rc = subprocess.call(wrap(label, cmd), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=os.environ | {"PYTHONUNBUFFERED": "1"})
     stop.set()
     th.join()
     rss1 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss

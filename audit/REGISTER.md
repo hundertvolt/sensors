@@ -72,7 +72,9 @@ Applied from the first executing agent on:
   Implementation agents work on disjoint files only.
 - Every port-binding command (`scripts/test.sh`, `npm test`, twin runs, coverage) runs under
   `flock /tmp/sensors-audit-ports.lock` until U0 proves network-namespace isolation (M.PROC.003 (5a)); firmware builds
-  under `flock /tmp/sensors-audit-toolchain.lock`. A private toolchain copy (with its own `setcap`) only when the shared
+  under `flock /tmp/sensors-audit-toolchain.lock`. Isolation proven 2026-10-06 (U0 record (5a)): from then on each
+  port-binding command runs in its own network namespace (`unshare -n`, `lo` up) instead of taking the ports lock, and
+  parallel twin runs each get their own worktree, since the twin keeps its state in the tree. A private toolchain copy (with its own `setcap`) only when the shared
   one is locked longer than the agent can wait, never by default.
 - Before a rerun, the twin's FRAM log is read; `digital_twin/fram_state.json`, `digital_twin/scd30_state.json`,
   `digital_twin_ci_logs/`, `htmlcov*/`, `coverage*.xml` and failed-run output move to `audit/archive/<UTC timestamp>/`
@@ -85,6 +87,7 @@ Applied from the first executing agent on:
 
 | source | reason | needed for |
 |---|---|---|
+| `deb.debian.org`, `security.debian.org` (HTTP and HTTPS) | egress policy: 403 at the proxy, 2026-10-06 | the trixie leg of CLAUDE.md's chroot recipe (M.PROC.009, families (a) and (e)); owed in BACKLOG's chroot list |
 
 ## Owner-review list (OR2.c)
 
