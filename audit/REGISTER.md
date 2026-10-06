@@ -112,3 +112,4 @@ Findings during execution that need a change outside the work order; each passes
 
 | ID | title | area | severity | status |
 |---|---|---|---|---|
+| X01 | `tests/test_uart_comm_hazard.py` `_hammer_faulted` (`:1077`): the per-failure retention bound (< 16 B) failed once in family (b)'s gate at `-1` (704 B over 30 failures = 23.5 B) on a 4-core host carrying two gates, twelve twins and the baseline; the test and everything it imports are byte-identical to the baseline; 10/10 repeats under the same load pass. Unconfirmed: re-run alone before the gate counts; the bound's load sensitivity goes to U30's restructure of this measurement (`M.TEST_UNIT`, `_hammer_faulted.hammer`) | tests | low | open |
