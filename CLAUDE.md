@@ -23,7 +23,7 @@ any platform-facing code work; don't rely on memory of it, and don't re-derive t
 memory or general Python knowledge — they were confirmed against real MicroPython source, not
 assumed.
 
-Two standing AI-session practices (not facts, kept here since they're instructions, not
+Three standing AI-session practices (not facts, kept here since they're instructions, not
 information):
 
 - **Always check current MicroPython and Microdot documentation before asserting how an API
@@ -40,14 +40,24 @@ information):
   SPECIFICATION.md Part F.2 for its current can't-be-timeout-wrapped status, which is exactly the
   kind of fact a version bump could change and silently invalidate). This is a standing practice,
   not a one-time pass — repeat it every time `toolchain/versions.toml`'s MicroPython `ref` moves.
-  **Last run: 1.28.0 → 1.29.0, 2026-09-10; results in SPECIFICATION.md Part F.5** — including what
-  it found (`I2C`/`SPI` `deinit()` are no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte
-  SPI reads) and what it ruled out (`extmod/asyncio/` byte-identical between the tags, so
-  `getaddrinfo()`'s status is unchanged).
+  **Last run: 2026-10-06, no newer stable MicroPython release than `v1.29.0`.** The last pin move,
+  1.28.0 → 1.29.0 (2026-09-10), is recorded in SPECIFICATION.md Part F.5 — including what it found
+  (`I2C`/`SPI` `deinit()` are no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads)
+  and what it ruled out (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s
+  status is unchanged).
   This same pass also covers `toolchain/micropython_overrides.py`'s own anchor checks (SPECIFICATION.md
   Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
   but re-reading the real mechanism behind each anchor (not just whether the literal string still
   matches) is still part of this practice, the same as everything else it covers.
+- **Every external dependency is refreshed as one step, not only MicroPython** (owner, 2026-09-30:
+  "Check all external dependencies for updates - both modules, repos and tooling, just
+  everything."): the vendored `ext/` code (only as an unmodified upstream tag or commit), the stub
+  packages, every Python and npm tool with its lock, Node, the GitHub Actions pins and every other
+  fetched source. Read each update's changelog and the diff of the parts this repo uses; fix what
+  breaks with no regression at every level and both GC stages; take the fixes the project profits
+  from; and re-check every standing workaround in SPECIFICATION.md Part F.9, removing it for the
+  clean form where upstream fixed it. Pins stay pinned; the bullet above runs whenever the
+  MicroPython ref moves.
 
 ## Hard rules
 

@@ -3719,7 +3719,7 @@ reference implementation — internal naming traces the original C source 1:1 so
 against Sensirion's own reference. A genuine bug fix or behavior-preserving optimization (D.8) is
 still in scope; a stylistic rewrite is not.
 
-## F.5 MicroPython 1.29 delta (audited 2026-09-10, `v1.28.0..v1.29.0`)
+## F.5 MicroPython 1.29 delta (audited 2026-10-06, `v1.28.0..v1.29.0`)
 
 Everything here was read out of upstream source at the two tags, or measured on the firmware
 `toolchain/setup_toolchain.py` actually builds — not taken from changelog prose.
@@ -4192,6 +4192,53 @@ still prove the *shutdown paths themselves* stay correct, just not this specific
 within them.
 
 ---
+
+## F.9 Standing workarounds for upstream defects, and what retires each
+
+Every workaround this tree carries for a defect or limitation outside it (agent, 2026-10-06). Each line names the
+workaround, where it lives, the upstream change that retires it and the section holding the detail. Every entry is
+re-checked at each MicroPython pin move and at every dependency refresh, and leaves in the commit that removes its
+workaround.
+
+| Workaround | Where | Retired when upstream … | Detail |
+|---|---|---|---|
+| Deferred SIGINT delivery for the Unix test binary (`unix_kbd_intr` override) | `toolchain/micropython_overrides.py`, `build_unix_port()` | the Unix standard variant delivers SIGINT through the scheduler by default | B.14.1 |
+| Heap unwedge after a SIGINT inside `gc_collect()` | `digital_twin/unix_port_gc_unwedge.py` and the twin runners' `except KeyboardInterrupt:` | retired by a build-time proof that the SIGINT override is applied, not by upstream | F.6 |
+| `-Wno-array-bounds` for mbedtls's `mbedtls_xor()` under GCC ≥ 14 | `toolchain/setup_toolchain.py` build flags | mbedtls ≥ 3.6.6 (already met at `v1.29.0`) and a GCC ≥ 14 build of both targets clean without the flag | B.7.1 |
+| No `setsockopt(TCP_NODELAY)` call | absence in `src/` | `modlwip.c` NULL-checks the pcb and takes the lwIP lock there; lifting it is the owner's call (owner, 2026-09-30) | B.14.2 |
+| `peer_gone` write suppression after a connection reset | `src/asy_webserver_service.py` `_TimeoutStreamProxy` | `modlwip.c` refuses writes on a freed pcb with an error | H.7.1 |
+| Stub repair: `asyncio/futures.pyi` re-export | `scripts/typecheck.sh` | the stdlib stubs ship the re-export again | F.5.5 |
+| Stub repair: `NotImplemented` declared | `scripts/typecheck.sh` | `builtins.pyi` declares it | F.5.5 |
+| Bare `Timer()` type-checked only through `tests/machine.py` | `src/` timer constructions | the board stub declares a zero-argument `Timer()` | B.15 |
+| Stub-gap `# type: ignore`s | the sites each names | the stub gains the missing precision; `warn_unused_ignores` then fails on each one | F.5.5 |
+| Poll-set prewarm (`modselect.c` rewrites a `NULL` `pollfd` while growing the poll array) | `digital_twin/unix_port_poll_prewarm.py` and its callers | `extmod/modselect.c` skips `NULL` entries on reallocation | `digital_twin/README.md` |
+| UDP address shim and `getaddrinfo()` pre-resolution in tests (micropython#6924) | `digital_twin/_unix_port_udp_addr_shim.py`, the pre-resolving tests | the Unix `modsocket.c` takes and returns `(host, port)` tuples | `digital_twin/README.md` |
+| Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double | none: a non-fd `select.poll()` never becomes ready on GitHub runners, and the bounded fake is the test design | CLAUDE.md |
+| `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | CLAUDE.md |
+| Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | `digital_twin/README.md` |
+| Two Unix binaries, the test rig without `sys.settrace` | `toolchain/setup_toolchain.py` `build_unix_port()`, `scripts/test.sh` | an idle compiled-in `sys.settrace` stops allocating per call; merging the binaries is the owner's call (owner, 2026-09-21) | E.5.2 |
+| Never nest `asyncio.run()` (segfaults instead of raising) | test helpers' synchronous scope | `asyncio.run()` raises inside a running loop | F.1 |
+| `/status` collected into a list (no async generators) | `src/asy_webserver_service.py` | async generators are supported | F.1 |
+| List concatenation instead of `[*a, b]`; plain loops instead of `await` in comprehensions | `src/` | both forms compile | F.1 |
+| Shape validated before `struct.pack()` (silent truncation) | the packing sites | overflow checks leave `MICROPY_PREVIEW_VERSION_2` | F.1 |
+| `PERIODIC` for every must-fire soft timer (a full queue drops a callback silently) | the timer sites | `mp_sched_schedule()` reports or never drops | C.9 |
+| Sizes clamped before allocating (`[x] * n` segfault range) | `LockableBuffer`, `PrintLogHistory` | the size check precedes the multiplication | F.1 |
+| A fresh `machine.UART(...)` on every re-init | `src/asy_uart_driver.py` | `deinit()` keeps the RX buffer rooted, or `init()` re-roots it | F.5.7 |
+| `any()` clamp and yield in `ready()` | `src/asy_uart_driver.py` | none for the clamp and yield themselves: the owner's no-block rule keeps them (owner, 2026-09-11); the text follows a `read()` that stops waiting per missing byte | F.5.8, F.5.9 |
+| `I2C`/`SPI` `deinit()` treated as a reference drop only (a no-op on rp2) | the bus wrappers and both `machine` fakes | rp2 sets the `.deinit` slot or drops its static singletons | F.5.1 |
+| `getaddrinfo()` only on a numeric host (it cannot be timeout-wrapped) | `src/` | an asyncio-level timeout exists for it | F.2 |
+| Power-cycle backstop for the CYW43 `isconnected()` false positive | `src/asy_wifi_service.py` | none: the recovery is intended (owner, 2026-09-04) | F.2 |
+| Header block coalesced into one write | `src/asy_webserver_service.py` `_TimeoutStreamProxy.awrite()` | Microdot writes the header block in one call | I.3 |
+| Read timeouts logged in the per-call proxy; write-phase escapes caught in `_serve()` | `src/asy_webserver_service.py` | Microdot reports both through a hook | A.5 |
+| zizmor's `self-repository` audit disabled | `.github/zizmor.yml` | actionlint accepts `uses: $/…` | H.8 |
+| Vitest coverage excludes `**/*.json` | `vitest.config.js` | `@vitest/coverage-v8` stops re-parsing non-JS files | H.8 |
+| Firefox from conda-forge, Edge from Microsoft's repository | `scripts/setup_cross_browser_toolchain.sh` | Ubuntu ships a non-snap Firefox and Playwright's own engines are reachable | H.7 |
+| Live-backend browser tests drive their own Playwright page through Vitest's Commands API (vitest-dev/vitest#7875) | `tests_js/_live_twin_command.js`, `_live_matrix_command.js`, `vitest.config.js` | Vitest's browser `page` can navigate to an external origin | H.7 |
+| Boot-confined `gc.collect()` placement reset and `gc.threshold(32768)` (micropython#2057) | the generated boot entry | the allocator gains a placement or long-lived heap section; any change is the owner's (owner, 2026-09-18) | I.4 |
+| Strict RFC 8259 check before decoding response bodies (`json.loads()` accepts a doubled or missing comma) | `tests/_strict_json.py` | `extmod/modjson.c` rejects malformed separators | `digital_twin/README.md` |
+| Twin HTTP client reads in fixed chunks, never `readexactly()`/`read(-1)` (`stream.py` re-concatenates) | `digital_twin/_http_client.py` | `extmod/asyncio/stream.py` reads without re-concatenating | `digital_twin/README.md` |
+| The Unix port's 9-element `gmtime()` normalised to 8 in the NTP tests | `tests/test_asy_ntp_client.py` | the Unix `modtime.c` returns 8 elements | `tests/test_asy_ntp_client.py` |
+| 100 ms settle before `status("stations")` | `src/asy_wifi_service.py` | a hardware round shows the station count right without it | `src/asy_wifi_service.py` |
 
 # Part G — Shared Pattern & Primitive Reuse
 
