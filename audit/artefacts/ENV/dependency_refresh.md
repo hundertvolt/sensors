@@ -62,9 +62,9 @@ Each family commit's full gate ran on its own worktree with every port-binding s
 | family | commit | result |
 |---|---|---|
 | (a) | `9f32315` (merged) | green. First run: `firmware_build_verify` and `toolchain_test` rc 1 from the unlocked baseline firmware build sharing `mpy-cross/build`; both pass on a quiet re-run (logs archived under `audit/archive/20261006T072405Z/`); the toolchain lock was added. |
-| (b) | `b10a3f1` | green. `L1_test_sh_gc_default` rc 1 once (`_hammer_faulted`'s retention bound under host contention, finding X01); 10/10 isolated repeats and the quiet re-run pass. |
-| (c) | `3c37346` | green, all 19 rows rc 0 (pytest 319 s, npm test 571 s, unit tier 334/375 s, coverage 497 s, firmware 247 s, twins 748-898 s). |
-| (d) | `e0e9b0c` | green, all 19 rows rc 0 (firmware 495 s while queued on the toolchain lock). |
+| (b) | `b10a3f1` (merged `d2bb623`, CI green) | green. `L1_test_sh_gc_default` rc 1 once (`_hammer_faulted`'s retention bound under host contention, finding X01); 10/10 isolated repeats and the quiet re-run pass. |
+| (c) | `3c37346` (merged `e8f5dc0`, CI green) | green, all 19 rows rc 0 (pytest 319 s, npm test 571 s, unit tier 334/375 s, coverage 497 s, firmware 247 s, twins 748-898 s). |
+| (d) | `e0e9b0c` (merged `6ca1d7f`, CI green) | green, all 19 rows rc 0 (firmware 495 s while queued on the toolchain lock). |
 
 ## Workarounds (W01-W45)
 
