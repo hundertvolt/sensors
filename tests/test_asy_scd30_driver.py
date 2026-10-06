@@ -839,11 +839,10 @@ def test_reader_getters_log_chip_get_on_bus_nak() -> None:
         return await reader.get_error_counter()
 
     log = run(scenario())["SCD30"]
-    # History is a fixed-length deque (default history_length=10), left-padded with "no error"
-    # sentinels until it fills - only the trailing entries are this scenario's own 6 calls.
+    # Six counts, one slot: a repeat of the newest entry spends none (SPECIFICATION.md C.7.1).
     assert log["ErrCount"] == 6
-    assert log["ErrNum"][-6:] == [code("E", "CHIP_GET")] * 6
-    assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
+    assert log["ErrNum"][-2:] == [0, code("E", "CHIP_GET")]
+    assert log["ErrType"][-2:] == ["N", "E"]
 
 
 def test_reader_setters_log_chip_set_on_bus_nak() -> None:
@@ -861,8 +860,8 @@ def test_reader_setters_log_chip_set_on_bus_nak() -> None:
 
     log = run(scenario())["SCD30"]
     assert log["ErrCount"] == 6
-    assert log["ErrNum"][-6:] == [code("E", "CHIP_SET")] * 6
-    assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
+    assert log["ErrNum"][-2:] == [0, code("E", "CHIP_SET")]
+    assert log["ErrType"][-2:] == ["N", "E"]
 
 
 def test_reader_setters_return_false_on_invalid_range_not_just_bus_faults() -> None:

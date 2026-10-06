@@ -41,6 +41,19 @@ if TYPE_CHECKING:
         # every driver already has (C.4.2). Same shape as asy_notification_service's _ValueSource.
         async def get_data(self) -> "Any": ...
 
+# Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
+_ERR_INIT = const(10)
+_ERR_READ = const(11)
+_ERR_SOURCE = const(15)
+_ERR_CFG_READ = const(26)
+_ERR_SGP_ALGO_STATE = const(58)
+_ERR_SGP_BACKUP_CLEAR = const(59)
+_ERR_SGP_BACKUP_WRITE = const(110)
+_WRN_SGP_RESTORED_NO_TS = const(33)
+_WRN_SGP_BACKUP_TOO_OLD = const(34)
+_WRN_SGP_WRITTEN_NO_TS = const(35)
+_WRN_SGP_NO_BACKUP = const(65)
+
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
 _FRAM_VERIFY_MINS = const(60)
@@ -164,7 +177,6 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        self._no_ts_episode = False  # W13 already persisted this run of untimestamped backups (C.7.1)
         # A direct reference to each producer's own concurrency-safe holder (its already
         # _datalock-guarded get_data(), Part C.14/G.2), never a wrapping getter. The two may be the
         # same instance - the common case, both off one SCD30 - or two different ones.
@@ -204,7 +216,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_BMAX + _VAL_WT)
         if cfg_values is None or len(cfg_values) != _N_STORAGE_CFG:
-            await self.pr.err_s("Error reading config data!", errno=13)
+            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
             return None, False, False, None
 
         serialize = False
@@ -252,7 +264,7 @@ class SGP40_Reader(SensorReaderConfig):
             elif not self._reset_fram_cleared:
                 self._reset_fram_cleared = await self.ts_storage.clear()
                 if not self._reset_fram_cleared:
-                    await self.pr.err_s("Error clearing FRAM!", errno=15)
+                    await self.pr.err_s("Error clearing FRAM!", errno=_ERR_SGP_BACKUP_CLEAR)
 
         # Direct read of each producer's get_data() (Part C.14), resolved by attribute name like
         # _check_one() does for warn_*. get_data() never raises, but the named field can be None -
@@ -267,7 +279,7 @@ class SGP40_Reader(SensorReaderConfig):
             temp_data = await self.temperature_source.get_data()
             hum_data = await self.humidity_source.get_data()
         except Exception as e:
-            await self.pr.err_s("Compensation data read failed:", e, errno=18)
+            await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE)
             temp_val, hum_val = None, None
         else:
             temp_val = getattr(temp_data, self.temperature_field, None)
@@ -295,7 +307,7 @@ class SGP40_Reader(SensorReaderConfig):
             ) = await self.sgp.measure_index_and_raw(
                 # float(), not a plain narrowed value: these are known not-None here but not known
                 # numeric, so a non-numeric field from a caller-supplied source raises here like a
-                # genuine I2C fault and is caught below (errno=11) rather than escaping.
+                # genuine I2C fault and is caught below (READ) rather than escaping.
                 temperature=float(temp_val),
                 relative_humidity=float(hum_val),
                 reset=reset_for_measure,
@@ -311,13 +323,13 @@ class SGP40_Reader(SensorReaderConfig):
                 if deserialized:
                     self.pr.one("Restore applied successfully")
                 else:
-                    await self.pr.err_s("Error deserializing!", errno=16)
+                    await self.pr.err_s("Error deserializing!", errno=_ERR_SGP_ALGO_STATE)
 
             if serialize:
                 if serialized:
                     self.pr.evt("Backup data created successfully")
                 else:
-                    await self.pr.err_s("Error serializing!", errno=17)
+                    await self.pr.err_s("Error serializing!", errno=_ERR_SGP_ALGO_STATE)
 
         except Exception as e:
             # I2C failed, but a pending reset_for_measure already completed above regardless.
@@ -325,7 +337,7 @@ class SGP40_Reader(SensorReaderConfig):
                 self.reset = False
             voc_index = raw = timestamp = None
             serialized = False
-            await self.pr.err_s("Read failed:", e, errno=11)
+            await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return SGP40(voc_index, raw, timestamp), True, serialized
 
     async def _init_sgp(self) -> bool:
@@ -337,7 +349,7 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self.sgp.setup()
         except Exception as e:
-            await self.pr.err_s("Error in initial setup:", e, errno=10)
+            await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             return False  # error
 
         if self.ts_storage is None:
@@ -346,7 +358,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_WT)
         if cfg_values is None or len(cfg_values) != _N_SETUP_CFG:
-            await self.pr.err_s("Error reading config data!", errno=12)
+            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
             return False  # error
 
         if cfg_values[0] > 0:  # backup verification period setting
@@ -373,12 +385,12 @@ class SGP40_Reader(SensorReaderConfig):
 
         res, ts, age = await self.ts_storage.read_into(buf)
         if not res:  # not valid / no backup
-            await self.pr.wrn_s("No backup found!", wrnno=10)
+            await self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)
             self.voc_init = 0
             return False
 
         if ts is None:
-            await self.pr.wrn_s("Backup loaded without timestamp", wrnno=11)
+            await self.pr.wrn_s("Backup loaded without timestamp", wrnno=_WRN_SGP_RESTORED_NO_TS)
             self.voc_init = 0
             ts = -1  # means valid data, no timestamp
         elif age is None:
@@ -389,7 +401,7 @@ class SGP40_Reader(SensorReaderConfig):
             self.pr.one("Backup with timestamp loaded")
             self.voc_init = 0
             if cfg_values[1] > 0 and age > (60 * cfg_values[1]):  # SGPBackupMaxAge
-                await self.pr.wrn_s("Backup is too old", wrnno=12)
+                await self.pr.wrn_s("Backup is too old", wrnno=_WRN_SGP_BACKUP_TOO_OLD)
                 return False
 
         self.restored_from = ts
@@ -426,23 +438,20 @@ class SGP40_Reader(SensorReaderConfig):
             return  # no write error
 
         if not res:  # no data was written for other reason
-            await self.pr.err_s("Write error during backup!", errno=14)
+            await self.pr.err_s("Write error during backup!", errno=_ERR_SGP_BACKUP_WRITE)
             return  # don't continue due to error
 
         if require_ntp:  # (ntp_synced and require_ntp) and res must have been True here
             self.voc_write = cfg_values[2]  # SGPWaitTimeNTP
-            self._no_ts_episode = False
             self.last_backup = ts
             self.pr.evt("Backup written with timestamp.")
             return
 
         if ntp_synced:  # require_ntp was false from here on, but res was True
             self.voc_write = cfg_values[2]  # SGPWaitTimeNTP
-            self._no_ts_episode = False
             self.pr.evt("Backup written with timestamp again.")
-        else:  # one slot per NTP outage, not per backup - a timestamped backup ends the episode
-            await self.pr.wrn_s("Backup written without timestamp.", wrnno=13, repeat=self._no_ts_episode)
-            self._no_ts_episode = True
+        else:  # every untimestamped backup warns; the newest-entry rule spends one slot per run
+            await self.pr.wrn_s("Backup written without timestamp.", wrnno=_WRN_SGP_WRITTEN_NO_TS)
         self.last_backup = ts
         return
 

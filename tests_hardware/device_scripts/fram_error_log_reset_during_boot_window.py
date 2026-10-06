@@ -9,7 +9,11 @@ from asy_fram_manager import AsyFramManager
 from print_log import make_logger
 
 HISTORY_LENGTH = 10
-SEEDED_ERRNO = 5
+E_TEST_SEED_A = 125
+E_TEST_SEED_B = 126
+# Alternating test-band codes, so the newest-entry rule keeps three slots and no product code
+# is ever seeded.
+SEEDS = [E_TEST_SEED_A, E_TEST_SEED_B, E_TEST_SEED_A]
 LOG_NAME = "ERRBOOT"
 
 
@@ -28,8 +32,8 @@ async def _main() -> None:
     # Clear at the START, never at the end (tests_hardware/README.md's own rule): this chunk is
     # real persistent storage, so without this the seeding below stacks on a previous run's ring.
     await store.reset()
-    for _ in range(3):
-        await store.err_s("seeded", errno=SEEDED_ERRNO)
+    for seed in SEEDS:
+        await store.err_s("seeded", errno=seed)
     seeded = (await store.get_log())[LOG_NAME]
     if seeded["ErrType"].count("E") != 3:
         print(f"RESULT: FAIL could not seed a real 3-entry history to reset against ({seeded!r})")

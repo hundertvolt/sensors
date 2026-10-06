@@ -10,6 +10,7 @@ PrintLogHistoryStore chunk and asy_notification_service.py's single combined one
 
 import asyncio
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from print_log import ErrorLog
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
+_PLANTED = code("E", "CALLBACK")  # any catalog code; the tests pin separation and survival, not the code
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
 # module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -119,8 +121,8 @@ def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
         # NeopixelDriver structurally can't fail on any of its own real code paths (see its own
         # module docstring) - this directly exercises the FRAM-backed history machinery itself,
         # not a real failure this driver would ever hit.
-        await pixel.pr.err_s("driver-side", errno=1)
-        await notify.pr.err_s("notify-side", errno=1)
+        await pixel.pr.err_s("driver-side", errno=_PLANTED)
+        await notify.pr.err_s("notify-side", errno=_PLANTED)
         pixel_log = await pixel.pr.get_log("NEOPIXEL")
         notify_log = await notify.pr.get_log("NOTIFY")
         return pixel_log, notify_log
@@ -142,8 +144,8 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     async def before_reboot() -> None:
         await pixel1.pr.setup()
         await notify1.pr.setup()
-        await pixel1.pr.err_s("driver before reboot", errno=1)
-        await notify1.pr.err_s("notify before reboot", errno=1)
+        await pixel1.pr.err_s("driver before reboot", errno=_PLANTED)
+        await notify1.pr.err_s("notify before reboot", errno=_PLANTED)
 
     run(before_reboot())
 
@@ -161,8 +163,8 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
         return pixel_log, notify_log
 
     pixel_log, notify_log = run(after_reboot())
-    assert pixel_log["NEOPIXEL"]["ErrNum"][-1] == 1
-    assert notify_log["NOTIFY"]["ErrNum"][-1] == 1
+    assert pixel_log["NEOPIXEL"]["ErrNum"][-1] == _PLANTED
+    assert notify_log["NOTIFY"]["ErrNum"][-1] == _PLANTED
 
 
 if __name__ == "__main__":

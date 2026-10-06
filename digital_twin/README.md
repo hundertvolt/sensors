@@ -469,10 +469,11 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    the self-healing story run 3 alone can't show: not just "doesn't crash while still broken," but
    "comes back once the fault clears." Confirms the real error count stops climbing once the 3
    queued failures are exhausted (a driver's own "recovered" notice is itself logged as a warning,
-   not an error — this suite counts `"E"`-typed history entries specifically, not the raw combined
-   counter, to avoid mistaking a recovery notice for a new failure) and that measurements resume.
+   not an error — this suite counts failure events, the counter's steps not backed by a `"W"` slot,
+   since `print_log.py`'s newest-entry rule folds the three identical failures into one slot while
+   counting each) and that measurements resume.
    **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
-   left exactly three `"E"` entries on a *healthy* chip, write-through (`print_log.py`'s
+   left exactly three failures on a *healthy* chip, write-through (`print_log.py`'s
    `_store_err()` writes on every push — there is no deferred flush to race), so they should come
    back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
    go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,

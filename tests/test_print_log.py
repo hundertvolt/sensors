@@ -7,6 +7,7 @@ import asy_spi_driver
 import print_log as print_log_module
 from asy_fram_manager import AsyFramChunk, AsyFramManager
 from asy_spi_driver import SPI
+from base_classes import LockableBuffer
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
-    from base_classes import LockableBuffer
     from crc_checks import CRC_Base
 
     T = TypeVar("T")
@@ -79,6 +79,17 @@ class _RaisingFramManager:
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise RuntimeError("simulated allocation failure")
+        return self._chunk
+
+
+class _CountingFramManager:
+    def __init__(self, chunk: "_CountingFramChunk") -> None:
+        self._chunk = chunk
+
+    # Parameter names kept exact for the structural _FramManager Protocol match (see _RaisingFramManager).
+    def get_chunk(
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "_CountingFramChunk":
         return self._chunk
 
 
@@ -249,6 +260,76 @@ def test_a_negative_code_is_counted_diagnosed_and_takes_no_slot() -> None:
     assert hist.err_count == 2
     assert list(hist.history) == [0, 0]
     assert [d[:3] for d in hist.diags if "is invalid!" in d] == [("PrintLog: Error number", -3, "is invalid!"), ("PrintLog: Error number", -1, "is invalid!")]
+
+
+class _PrintRecorder:
+    # Local stand-in for a shared print recorder: shadows print() inside print_log only, so every
+    # console line a logger emits is captured with its arguments; restore() removes the shadow.
+    def __init__(self) -> None:
+        self.lines: list[tuple[object, ...]] = []
+        print_log_module.print = self  # type: ignore[attr-defined]
+
+    def __call__(self, *args: object, **_kwargs: object) -> None:
+        self.lines.append(args)
+
+    def restore(self) -> None:
+        del print_log_module.print  # type: ignore[attr-defined]
+
+
+class _CountingFramChunk:
+    # Counts the write-throughs a store makes; reads report nothing stored (a blank chunk).
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.writes = 0
+
+    # Parameter names kept exact for the structural _FramChunk Protocol match (see _RaisingFramChunk).
+    def get_buffer(self) -> "LockableBuffer":
+        return LockableBuffer(self.size, data_start=0, data_length=self.size)
+
+    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+        self.writes += 1
+        return True
+
+    async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+        return False
+
+
+def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "_CountingFramChunk | None") -> None:
+    # Shared body of the per-history-type tests below: the newest-entry rule, SPECIFICATION.md Part C.7.1.
+    run(hist.setup())
+    writes_before = 0 if writes is None else writes.writes
+    run(hist.err_s("earlier", errno=3))
+    run(hist.wrn_s("earlier", wrnno=2))
+    rec = _PrintRecorder()
+    try:
+        for _ in range(10):
+            run(hist.err_s("sustained", errno=5))
+    finally:
+        rec.restore()
+    assert list(hist.history) == [0, 3, 0x80 + 2, 5]  # the earlier entries intact, one slot for the ten
+    assert hist.err_count == 12
+    assert [line for line in rec.lines if "sustained" in line] == [(hist.name, "sustained")] * 10  # console unfiltered
+    if writes is not None:
+        assert writes.writes - writes_before == 12  # one write-through per call, a repeat included
+    run(hist.err_s("other", errno=6))  # a different code between spends a slot
+    run(hist.err_s("again", errno=5))
+    assert list(hist.history) == [0x80 + 2, 5, 6, 5]
+    run(hist.err_s("recurring", errno=5))  # recovered (nothing logged), then the same code again: no new slot
+    assert list(hist.history) == [0x80 + 2, 5, 6, 5]
+    run(hist.wrn_s("same number as a warning", wrnno=5))  # the other kind is a different code
+    assert list(hist.history) == [5, 6, 5, 0x80 + 5]
+    assert hist.err_count == 16
+
+
+def test_a_sustained_identical_code_spends_one_slot() -> None:
+    _sustained_identical_code_spends_one_slot(PrintLogHistory(history_length=4, level=PrintLog.level_err(), name="H"), None)
+
+
+def test_a_sustained_identical_code_spends_one_slot_in_the_store() -> None:
+    chunk = _CountingFramChunk(2 + 4)  # the store's "<H" header plus four history bytes
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4, level=PrintLog.level_err(), name="S")
+    _sustained_identical_code_spends_one_slot(store, chunk)
+    assert store.initialized is True
 
 
 def test_get_log_reports_an_empty_warning_slot_as_no_entry() -> None:

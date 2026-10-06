@@ -1611,6 +1611,32 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     assert service.pr.err_count == 1
 
 
+class _RaisingCloseAndWaitWriter(_RaisingCloseWriter):
+    async def wait_closed(self) -> None:
+        self.wait_closed_called = True
+        raise OSError("simulated wait_closed() failure")
+
+
+def test_a_close_that_raises_and_whose_wait_fails_keeps_both_warnings() -> None:
+    # Two failures of one call, each its own warning: neither is an error-and-warning pair for one occurrence.
+    service, _app = _make_service()
+    run_timed(service._close_writer(_RaisingCloseAndWaitWriter()))
+    entry = run(service.get_error_counter())["WEBSERVER"]
+    assert entry["ErrCount"] == 2
+    assert entry["ErrNum"][-2:] == [code("W", "HTTP_CLOSE_RAISED"), code("W", "HTTP_WAIT_CLOSED")], entry
+    assert entry["ErrType"][-2:] == ["W", "W"]
+
+
+def test_repeated_reclaims_spend_one_slot() -> None:
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    for _ in range(5):
+        run_timed(service._serve(_HangingReader(), _ScriptedWriter()), timeout_s=2.0)
+    entry = run(service.get_error_counter())["WEBSERVER"]
+    assert entry["ErrCount"] == 5
+    used = [entry["ErrNum"][i] for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] != "N"]
+    assert used == [code("W", "HTTP_CALL_TIMEOUT")], entry
+
+
 def test_a_close_whose_own_warning_runs_out_of_heap_still_frees_the_slot() -> None:
     # At the limit's extreme the heap empties (Part H.7), so the warning a failed close() logs can
     # itself raise MemoryError; the slot must be freed anyway, or every later connection is refused.
@@ -2286,7 +2312,8 @@ def test_h1_unhandled_exception_is_logged_via_pr_err_s_not_just_swallowed() -> N
 
 
 def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_independently() -> None:
-    # Confirms the registration is a real per-request catch-all, not a one-shot/latched handler.
+    # Confirms the registration is a real per-request catch-all, not a one-shot/latched handler: both
+    # are counted, and the identical code spends one slot (the central newest-entry rule, C.7.1).
     sensor = _RaisingSensorModule("SCD30")
     service, app = _make_service(sensors=[sensor])
     run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
@@ -2294,8 +2321,8 @@ def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_indepe
     log = run(service.get_error_counter())
     entry = log["WEBSERVER"]
     assert entry["ErrCount"] == 2
-    assert entry["ErrNum"].count(code("E", "UNEXPECTED")) == 2
-    assert entry["ErrType"].count("E") == 2
+    assert entry["ErrNum"].count(code("E", "UNEXPECTED")) == 1
+    assert entry["ErrType"].count("E") == 1
 
 
 def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:

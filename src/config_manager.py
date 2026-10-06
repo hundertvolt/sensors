@@ -273,7 +273,8 @@ class ConfigManager:
             return None
         try:
             return [converter(v) for v in values]
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as e:  # a stored value of the wrong type: persisted, all-or-nothing
+            await self.pr.err_s(self.config_file, "- stored value has the wrong type:", e, errno=_ERR_CONTRACT)
             return None
 
     async def get_error_counter(self) -> "ErrorLog":
@@ -311,6 +312,7 @@ class ConfigManager:
         if values is None:
             return None
         if any(not isinstance(v, bool) for v in values):  # bool(v) never raises, unlike int()/float()/str() - must reject wrong types explicitly
+            await self.pr.err_s(self.config_file, "- stored value has the wrong type: not a bool", errno=_ERR_CONTRACT)
             return None
         return values
 

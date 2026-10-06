@@ -9,15 +9,17 @@ from asy_fram_manager import AsyFramManager
 from print_log import make_logger
 
 HISTORY_LENGTH = 10
-SEEDED_ERRNO = 5
-RACED_ERRNO = 6
-POST_RECOVERY_ERRNO = 7
+E_TEST_SEED_A = 125
+E_TEST_SEED_B = 126
+# The seed script's alternating test-band codes (the newest-entry rule keeps three slots).
+SEEDS = [E_TEST_SEED_A, E_TEST_SEED_B, E_TEST_SEED_A]
+E_TEST_SEED_C = 127  # the raced fourth entry; the post-recovery entry is E_TEST_SEED_B
 LOG_NAME = "ERRRACE"
 
 # The only three outcomes a reset landing mid-chunk-write may leave behind. Losing the whole
 # history is accepted (owner, 2026-09-11) - SPECIFICATION.md Part C.3.1 has the mechanism; a
 # PARTIAL or garbled restore never is, since that is the dual-block+CRC protocol's actual job.
-_ACCEPTED: "tuple[list[int], ...]" = ([], [SEEDED_ERRNO] * 3, [SEEDED_ERRNO] * 3 + [RACED_ERRNO])
+_ACCEPTED: "tuple[list[int], ...]" = ([], SEEDS, SEEDS + [E_TEST_SEED_C])
 
 
 async def _main() -> None:
@@ -52,13 +54,13 @@ async def _main() -> None:
 
     # The chunk must be writable again afterwards - a reset-wedged chunk that stays unreadable
     # forever would be a real defect even under the accepted-loss rule above.
-    await store.err_s("post-recovery", errno=POST_RECOVERY_ERRNO)
+    await store.err_s("post-recovery", errno=E_TEST_SEED_B)
     after = await store.get_log()
     tail = [n for n, t in zip(after[LOG_NAME]["ErrNum"], after[LOG_NAME]["ErrType"]) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
     # `recovered + [...]`, not `[*recovered, ...]`: MicroPython has no iterable unpacking inside a
     # list display, only in an assignment target - the star form is a runtime SyntaxError on target
     # and neither ruff nor mypy sees it (caught by the real board, 2026-09-11).
-    if tail != recovered + [POST_RECOVERY_ERRNO]:
+    if tail != recovered + [E_TEST_SEED_B]:
         print(f"RESULT: FAIL the chunk did not accept a fresh entry after the reset: {tail}")
         return
 

@@ -430,7 +430,9 @@ def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_fa
     assert start_time_set is True
     assert signature is not None
     assert calls[0] == 120  # every tick retried the callback until the wait-time fallback resolved it
-    assert svc.pr.err_count == 120  # each retry logged its own failure - bounded by print_log.py's own history/count caps
+    assert svc.pr.err_count == 120  # every tick retried and was counted; the repeat spends one slot
+    log = run(svc.pr.get_log())["SYSTEM"]
+    assert [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [code("E", "CALLBACK")]
 
 
 def test_status_counter_stops_checking_ntp_once_start_time_is_set() -> None:
@@ -1106,7 +1108,70 @@ def test_start_and_check_tasks_without_watchdog_does_not_raise() -> None:
         run(scenario())  # must not raise despite watchdog being None
 
 
-def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None:
+def _persisted(svc: SystemService) -> "list[int]":
+    # The SYSTEM ring's used slots, oldest first ("N" marks an unused one).
+    log = run(svc.get_error_counter())["SYSTEM"]
+    return [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+
+
+def _supervise(svc: SystemService, starter: "Callable[[], asyncio.Task[Any]]", passes: int = 20) -> None:
+    # Drives the supervisor through `passes` yields under the fast sleep, then cancels it.
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([starter]))
+        for _ in range(passes):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())
+
+
+def _ending_then_parked(how: str, calls: "list[int]", parked: asyncio.Event) -> "Callable[[], asyncio.Task[None]]":
+    # A starter whose first task ends `how` ("raise", "cancel" or "return") and whose later ones park on an
+    # event; "starter" makes the second start itself raise. Parked, not slept: the fast sleep returns at once.
+    def starter() -> "asyncio.Task[None]":
+        calls[0] += 1
+        attempt = calls[0]
+        if how == "starter" and attempt == 2:
+            raise RuntimeError("injected starter failure")
+
+        async def _c() -> None:
+            if attempt == 1:
+                if how == "raise":
+                    raise RuntimeError("injected task crash")
+                if how == "cancel":
+                    raise asyncio.CancelledError
+                return
+            await parked.wait()
+
+        return asyncio.create_task(_c())
+
+    return starter
+
+
+def test_each_task_end_adds_exactly_one_entry() -> None:
+    # One SYSTEM entry per task end, by how it ended; the restart line beside it is console-only.
+    for how, name in (("raise", "TASK_RAISED"), ("cancel", "TASK_CANCELLED"), ("return", "TASK_RETURNED")):
+        svc = make_service()
+        calls = [0]
+        _supervise(svc, _ending_then_parked(how, calls, asyncio.Event()))
+        assert calls[0] == 2, (how, calls)
+        assert _persisted(svc) == [code("E", name)], (how, _persisted(svc))
+        assert svc.pr.err_count == 1, how
+    # A restart whose starter raises adds only its own TASK_STARTER_RAISED beside the task end's entry.
+    svc = make_service()
+    calls = [0]
+    _supervise(svc, _ending_then_parked("starter", calls, asyncio.Event()))
+    assert calls[0] == 3, calls
+    assert _persisted(svc) == [code("E", "TASK_RETURNED"), code("E", "TASK_STARTER_RAISED")], _persisted(svc)
+    assert svc.pr.err_count == 2
+
+
+def test_start_and_check_tasks_restarts_a_dead_task_and_logs_its_end() -> None:
     svc = make_service()
     call_count = [0]
 
@@ -1131,7 +1196,8 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
     with _FastAsyncSleep():
         run(scenario())
     assert call_count[0] >= 2  # started once at startup, restarted at least once after dying
-    assert svc.pr.err_count >= 1  # the "Task ended - attempting restart" warning persisted
+    assert _persisted(svc)[0] == code("E", "TASK_RETURNED"), _persisted(svc)  # the task's end
+    assert "W" not in run(svc.get_error_counter())["SYSTEM"]["ErrType"]  # the restart line is console-only
 
 
 def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> None:
@@ -1166,7 +1232,7 @@ def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> No
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert code("E", "TASK_RAISED") in log["ErrNum"]  # _log_dead_task's own entry, distinct from wrn_s's own wrnno
+    assert code("E", "TASK_RAISED") in log["ErrNum"]  # _log_dead_task's own entry for the crash
 
 
 def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
@@ -1178,40 +1244,14 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
     # path and a real exception. Fixed to persist via its own TASK_CANCELLED.
     svc = make_service()
     call_count = [0]
-
-    def self_cancelling_starter() -> "asyncio.Task[None]":
-        call_count[0] += 1
-        attempt = call_count[0]
-
-        async def _c() -> None:
-            if attempt == 1:
-                raise asyncio.CancelledError
-            await asyncio.sleep(3600)  # second attempt: stay alive so the loop settles
-
-        return asyncio.create_task(_c())
-
-    async def scenario() -> None:
-        task = asyncio.create_task(svc.start_and_check_tasks([self_cancelling_starter]))
-        for _ in range(10):
-            await asyncio.sleep(0)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    with _FastAsyncSleep():
-        run(scenario())
+    _supervise(svc, _ending_then_parked("cancel", call_count, asyncio.Event()), passes=10)
     assert call_count[0] >= 2
-    log = run(svc.get_error_counter())["SYSTEM"]
-    assert code("E", "TASK_CANCELLED") in log["ErrNum"]  # _log_dead_task's own entry for a self-cancelled task
-    assert svc.pr.err_count >= 2  # the TASK_CANCELLED entry plus the routine "Task ended" warning
+    assert _persisted(svc) == [code("E", "TASK_CANCELLED")]  # exactly one entry, _log_dead_task's own
 
 
 def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_exception() -> None:
-    # Sibling of the crash test above: a task that returns cleanly (no exception) must still be
-    # restarted and logged via the routine "Task ended" warning, but _log_dead_task() itself must
-    # not report a phantom exception for it - awaiting a cleanly-finished Task raises nothing.
+    # Sibling of the crash test above: a task that returns cleanly (no exception) is restarted and
+    # persists TASK_RETURNED, never a phantom exception - awaiting a cleanly-finished Task raises nothing.
     svc = make_service()
     call_count = [0]
 
@@ -1225,7 +1265,8 @@ def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_excepti
 
     async def scenario() -> None:
         task = asyncio.create_task(svc.start_and_check_tasks([quick_dying_starter]))
-        await asyncio.sleep(0)
+        for _ in range(3):  # enough for one supervisor pass to see the end
+            await asyncio.sleep(0)
         task.cancel()
         try:
             await task
@@ -1236,6 +1277,7 @@ def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_excepti
         run(scenario())
     log = run(svc.get_error_counter())["SYSTEM"]
     assert code("E", "TASK_RAISED") not in log["ErrNum"]  # no real exception occurred - TASK_RAISED never fires
+    assert code("E", "TASK_RETURNED") in log["ErrNum"]  # the clean return's own entry
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:

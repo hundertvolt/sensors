@@ -489,6 +489,20 @@ def test_error_check_max_module_error_zero_gives_up_on_first_failure() -> None:
     assert _newest(reader) == (code("E", "GIVE_UP"), "E")
 
 
+def test_a_failing_cycle_keeps_the_drivers_and_the_streaks_entries() -> None:
+    # Each layer that meets the fault keeps its own entry: the driver's read failure, then the streak's;
+    # the give-up adds its own. Alternating codes each take a slot under the newest-entry rule (C.7.1).
+    reader = SensorReader(Meas(None, 50), max_module_error=1)
+    run(reader.pr.setup())
+    for _ in range(2):
+        run(reader.pr.err_s("read failed", errno=code("E", "READ")))  # the driver's own entry
+        run(reader._error_check(Meas(None, 50)))
+    log = run(reader.pr.get_log())[reader.pr.name]
+    used = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+    assert used == [code("E", "READ"), code("E", "STREAK"), code("E", "READ"), code("E", "STREAK"), code("E", "GIVE_UP")], used
+    assert log["ErrCount"] == 5
+
+
 def test_get_dict_cfg_duplicate_schema_names_collapse_to_one_key() -> None:
     # schema_names() documents "duplicates preserved" - _get_dict_cfg's own dict comprehension must
     # still behave sanely (last write wins, no raise) rather than assuming names are unique.
@@ -654,7 +668,8 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     rebooted = SensorReader(Meas(None, 50), max_module_error=5, fram=manager2)
     run(rebooted.pr.setup())
     assert rebooted.pr.err_count == 2
-    assert run(rebooted.pr.get_log())[rebooted.pr.name]["ErrNum"][-2:] == [code("E", "STREAK")] * 2  # the streak's own entries
+    nums = run(rebooted.pr.get_log())[rebooted.pr.name]["ErrNum"]
+    assert nums[-1] == code("E", "STREAK") and nums.count(code("E", "STREAK")) == 1  # the streak's entry; its repeat spent no slot
 
 
 def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> None:

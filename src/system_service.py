@@ -44,6 +44,7 @@ _ERR_TASK_STARTER_RAISED = const(40)
 _ERR_TASK_BUDGET_REBOOT = const(41)
 _ERR_TASK_RAISED = const(42)
 _ERR_TASK_CANCELLED = const(43)
+_ERR_TASK_RETURNED = const(44)
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
@@ -191,18 +192,16 @@ class SystemService:
             return None
 
     async def _log_dead_task(self, task: "asyncio.Task[Any]", n: int) -> None:
-        # A finished Task carries no .exception()/.result() in MicroPython's asyncio - awaiting it
-        # again is the only way to recover why it ended (a real exception re-raises here, a clean
-        # return does not), giving the restart warning below real diagnostic content.
+        # A finished Task has no .exception()/.result() (Part F.1): awaiting it again is how to learn why it
+        # ended, giving the restart line below real diagnostic content.
         try:
             await task
         except asyncio.CancelledError:
-            # Previously logged via the non-persisting self.pr.err() - left zero trace in errcount,
-            # indistinguishable from a clean return. Persists now via its own TASK_CANCELLED, distinct
-            # from TASK_RAISED's real-exception case (buildgen/error_catalog.json).
             await self.pr.err_s("Task", n, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
             await self.pr.err_s("Task", n, "ended with exception:", e, errno=_ERR_TASK_RAISED)
+        else:
+            await self.pr.err_s("Task", n, "ended: returned", errno=_ERR_TASK_RETURNED)
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -244,9 +243,7 @@ class SystemService:
                     task_errors += _TASK_FAIL_INCREMENT
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False
-                    await self.pr.wrn_s(
-                        "Task ended - attempting restart, error counter increased to", task_errors, wrnno=n + 1,
-                    )
+                    self.pr.wrn("Task ended - attempting restart, error counter increased to", task_errors, "- task", n)
 
             if no_fail:
                 self.pr.all("All tasks running.")

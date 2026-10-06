@@ -61,7 +61,7 @@ def test_every_exemption_still_names_a_real_fault_test() -> None:
     [
         ({"counter": 0, "history": []}, True),
         (None, True),  # a board whose SYSTEM never logged anything reports no entry at all
-        ({"counter": 1, "history": [{"num": 1, "type": "W"}]}, False),  # "Task ended - attempting restart"
+        ({"counter": 1, "history": [{"num": error_log_helpers.code("E", "TASK_RETURNED"), "type": "E"}]}, False),  # a task returned
         ({"counter": 1, "history": [{"num": error_log_helpers.code("E", "TASK_RAISED"), "type": "E"}]}, False),  # a task ended with an exception
         ({"counter": 1, "history": [{"num": error_log_helpers.code("E", "TASK_BUDGET_REBOOT"), "type": "E"}]}, False),  # the budget rebooted the board
     ],

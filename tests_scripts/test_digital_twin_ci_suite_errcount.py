@@ -66,6 +66,50 @@ def test_error_type_count_is_never_satisfied_by_the_raw_counter(ci_suite: Module
 
 
 # ---------------------------------------------------------------------------
+# _failure_events() - under print_log.py's newest-entry rule a repeated code spends no slot, so a
+# failure is an ErrCount step not backed by a warning slot.
+# ---------------------------------------------------------------------------
+
+
+def test_failure_events_counts_repeats_the_ring_folded_into_one_slot(ci_suite: ModuleType) -> None:
+    assert ci_suite._failure_events(_entry((10, "E"), counter=3)) == 3
+
+
+def test_failure_events_subtracts_each_warning_slot(ci_suite: ModuleType) -> None:
+    assert ci_suite._failure_events(_entry((10, "E"), (15, "W"), (10, "E"), counter=4)) == 3
+
+
+def test_failure_events_is_zero_for_an_empty_or_unreadable_entry(ci_suite: ModuleType) -> None:
+    assert ci_suite._failure_events(_entry()) == 0
+    assert ci_suite._failure_events({}) == 0
+
+
+def test_link_failures_count_only_what_one_link_added(ci_suite: ModuleType) -> None:
+    # Run 5c's real case: each earlier link's boot logged SGP40's no-backup warning, folded into one slot.
+    before = _entry((65, "W"), counter=2)
+    after = _entry((65, "W"), (10, "E"), (65, "W"), counter=6)
+    assert ci_suite._failure_events(after) == 4
+    assert ci_suite._link_failures(before, after) == 3
+
+
+def test_a_restore_equal_to_the_ring_written_is_whole(ci_suite: ModuleType) -> None:
+    written = _entry((10, "E"), (65, "W"), counter=4)
+    assert ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=5))
+
+
+def test_a_lost_ring_holding_only_this_boots_warning_is_nothing(ci_suite: ModuleType) -> None:
+    written = _entry((10, "E"), (65, "W"), counter=4)
+    assert ci_suite._restore_is_all_or_nothing(written, _entry((65, "W"), counter=1))
+    assert ci_suite._restore_is_all_or_nothing(written, _entry())
+
+
+def test_a_partial_ring_or_a_lost_count_is_neither(ci_suite: ModuleType) -> None:
+    written = _entry((11, "E"), (10, "E"), (65, "W"), counter=6)
+    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=6))
+    assert not ci_suite._restore_is_all_or_nothing(written, _entry((11, "E"), (10, "E"), (65, "W"), counter=2))
+
+
+# ---------------------------------------------------------------------------
 # _bus_fault_drivers() - the per-device fault matrix, derived from that device's own wiring plan.
 # ---------------------------------------------------------------------------
 
@@ -219,6 +263,14 @@ def test_error_counts_settle_only_once_consecutive_reads_agree(ci_suite: ModuleT
     # entries that landed AFTER the snapshot, and a run that lost nothing would read as a loss.
     reads = iter([1, 2, 3, 3, 3])
     monkeypatch.setattr(ci_suite, "_errcount_all", lambda: {"SGP40": _entry(*[(10, "E")] * next(reads))})
+    monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
+    assert ci_suite._wait_for_error_counts_to_settle(["SGP40"], timeout_s=30.0) == {"SGP40": 3}
+
+
+def test_error_counts_settle_on_the_counter_while_a_repeated_code_keeps_one_slot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The newest-entry rule: three identical failures hold one slot, so only the counter shows them landing.
+    reads = iter([1, 2, 3, 3, 3])
+    monkeypatch.setattr(ci_suite, "_errcount_all", lambda: {"SGP40": _entry((10, "E"), counter=next(reads))})
     monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
     assert ci_suite._wait_for_error_counts_to_settle(["SGP40"], timeout_s=30.0) == {"SGP40": 3}
 

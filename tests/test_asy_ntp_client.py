@@ -5,6 +5,7 @@ import socket
 import struct
 import time
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from machine import RTC, Timer
@@ -731,7 +732,7 @@ def test_safe_get_dns_server_callback_raising_returns_none() -> None:
     assert run(client._safe_get_dns_server()) is None
 
 
-def test_safe_get_dns_server_callback_raising_persists_a_warning() -> None:
+def test_safe_get_dns_server_callback_raising_persists_a_callback_error() -> None:
     def raiser() -> "str | None":
         raise RuntimeError("get_wlan_ifconfig() exploded")
 
@@ -739,8 +740,8 @@ def test_safe_get_dns_server_callback_raising_persists_a_warning() -> None:
     run(client.pr.setup())
     run(client._safe_get_dns_server())
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 3
-    assert _last_err(counter, "ErrType") == "W"
+    assert _last_err(counter, "ErrNum") == code("E", "CALLBACK")
+    assert _last_err(counter, "ErrType") == "E"
 
 
 # ---------------------------------------------------------------------------
@@ -835,7 +836,7 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     finally:
         ntpmod.resolve_ipv4 = original
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 12
+    assert _last_err(counter, "ErrNum") == code("E", "NTP_DNS")
     assert _last_err(counter, "ErrType") == "E"
 
 
@@ -909,7 +910,7 @@ def test_fetch_ntp_reply_no_server_listening_times_out_to_none() -> None:
     run(client.pr.setup())
     result = run(client._fetch_ntp_reply(addr))
     assert result is None
-    assert _last_err(run(client.get_error_counter()), "ErrNum") == 21  # a silent timeout used to persist nothing
+    assert _last_err(run(client.get_error_counter()), "ErrNum") == code("E", "NTP_NO_REPLY")  # a silent timeout used to persist nothing
 
 
 def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None:
@@ -1212,14 +1213,42 @@ def test_handle_sync_failure_degrades_gracefully_when_alarm_pool_exhausted() -> 
 def test_handle_sync_failure_degrades_gracefully_on_a_memory_error() -> None:
     # Sibling of the OSError test above, for the other arm of _handle_ntp_sync_failure()'s own
     # `except (OSError, MemoryError)` - the retry cycle is given up the same way either way, and the
-    # same errno=16 is persisted (this site logs via the async err_s(), unlike the two starters above).
+    # same TIMER error is persisted (this site logs via the async err_s(), unlike the two starters above).
     client = make_client()
     run(client.pr.setup())
     run(client._set_synced(value=True))
     with _RaiseOnArm(MemoryError):
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
     assert client.ntp_retries == 0  # given up this cycle rather than left stuck
-    assert _last_err(run(client.get_error_counter()), "ErrNum") == 16
+    assert _last_err(run(client.get_error_counter()), "ErrNum") == code("E", "TIMER")
+
+
+def _slots(client: AsyNtpClient) -> "tuple[int, list[int]]":
+    # (ErrCount, the ring's used slots oldest first) - "N" marks an unused one.
+    entry = run(client.get_error_counter())["NTP"]
+    nums, types = entry["ErrNum"], entry["ErrType"]
+    assert isinstance(nums, list) and isinstance(types, list)
+    return int(entry["ErrCount"]), [nums[i] for i in range(len(nums)) if types[i] != "N"]
+
+
+def test_repeated_retry_arm_failures_count_each_and_keep_one_slot() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    run(client._set_synced(value=True))
+    with _RaiseOnArm():
+        run(client._handle_ntp_sync_failure())
+        run(client._handle_ntp_sync_failure())
+    assert _slots(client) == (2, [code("E", "TIMER")])
+
+
+def test_repeated_retry_exhaustion_counts_each_and_keep_one_slot() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    run(client._set_synced(value=True))
+    for _ in range(2):
+        client.ntp_retries = 3  # _NTP_SYNC_RETRIES: const(), compiled away
+        run(client._handle_ntp_sync_failure())
+    assert _slots(client) == (2, [code("E", "NTP_RETRIES")])
 
 
 def test_handle_sync_success_resets_retries_marks_synced_and_records_the_sync_time() -> None:
@@ -1645,7 +1674,7 @@ def test_run_sync_attempt_network_available_raising_is_treated_as_unavailable() 
     assert reached[0] is False
 
 
-def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None:
+def test_run_sync_attempt_network_available_raising_persists_a_callback_error() -> None:
     def raiser() -> bool:
         raise RuntimeError("wlan.status() exploded")
 
@@ -1653,8 +1682,8 @@ def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None
     run(client.pr.setup())
     run(client._run_ntp_sync_attempt(None))
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 1
-    assert _last_err(counter, "ErrType") == "W"
+    assert _last_err(counter, "ErrNum") == code("E", "CALLBACK")
+    assert _last_err(counter, "ErrType") == "E"
 
 
 def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
@@ -1924,8 +1953,7 @@ def test_asy_ntp_time_never_gives_up_on_a_persistently_failing_server() -> None:
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
     assert run(_drive_attempts(client, 50)) is True
     assert client._err_cnt_internal == 0  # no streak is kept at all
-    counter = run(client.get_error_counter())
-    assert 20 not in counter["NTP"]["ErrNum"]  # the retired give-up code
+    assert run(client.get_error_counter())["NTP"]["ErrCount"] == 0  # no give-up entry, nor any other
 
 
 def test_asy_ntp_time_failed_unsynced_attempts_double_the_retry_interval_up_to_its_cap() -> None:
@@ -1967,13 +1995,11 @@ def test_asy_ntp_time_failures_while_synced_leave_the_unsynced_retry_interval_al
     assert client._retry_wait_s == 10
 
 
-def test_a_successful_sync_resets_the_backoff_and_ends_the_failure_episode() -> None:
+def test_a_successful_sync_resets_the_backoff() -> None:
     client = make_client(retry_s=10, retry_max_s=600)
     client._retry_wait_s, client._unsynced_wait_s = 320, 30
-    client._episode_errs, client._episode_wrns = 1 << 12, 1 << 2
     run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
     assert (client._retry_wait_s, client._unsynced_wait_s) == (10, 0)
-    assert (client._episode_errs, client._episode_wrns) == (0, 0)
 
 
 def test_ntp_force_sync_resets_the_backoff() -> None:
@@ -1991,38 +2017,39 @@ def test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other
     assert (client.retry_s, client.retry_max_s) == (40, 40)
 
 
-def test_asy_ntp_time_persists_each_distinct_failure_code_once_per_episode_but_counts_every_one() -> None:
-    # C.7.1's repeat rule: a dead server would otherwise fill the ten-slot ring with one code.
+def test_asy_ntp_time_alternating_failure_codes_spend_a_slot_each_and_count_every_one() -> None:
+    # The central newest-entry rule (C.7.1) collapses only a repeat of the newest code: alternation spends a slot each.
     client = make_client()
-    codes = [12, 21, 12, 21, 12]
+    codes = [code("E", "NTP_DNS"), code("E", "NTP_NO_REPLY")] * 2 + [code("E", "NTP_DNS")]
+    expected = list(codes)
 
     async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
-        await client._episode_log(codes.pop(0), "failed")
+        await client.pr.err_s("failed", errno=codes.pop(0))
         return None, True
 
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
     assert run(_drive_attempts(client, 5)) is True
-    counter = run(client.get_error_counter())["NTP"]
-    assert counter["ErrCount"] == 5
-    assert counter["ErrNum"][-2:] == [12, 21] and counter["ErrNum"][:-2] == [0] * 8
+    assert _slots(client) == (5, expected)
 
 
-def test_episode_log_persists_a_code_again_after_a_successful_sync() -> None:
+def test_a_recurring_code_after_a_success_keeps_one_slot() -> None:
     client = make_client()
+    no_reply, unsync = code("E", "NTP_NO_REPLY"), code("W", "NTP_UNSYNC_REPLY")
 
-    async def scenario() -> "list[int]":
+    async def scenario() -> None:
         await client.pr.setup()
-        await client._episode_log(21, "no reply")
-        await client._episode_log(21, "no reply")
+        await client.pr.err_s("no reply", errno=no_reply)
+        await client.pr.err_s("no reply", errno=no_reply)
         await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
-        await client._episode_log(21, "no reply")
-        await client._episode_log(2, "kiss of death", warn=True)
-        await client._episode_log(2, "kiss of death", warn=True)
-        log = (await client.get_error_counter())["NTP"]
-        assert log["ErrCount"] == 5
-        return log["ErrNum"][-3:]
+        await client.pr.err_s("no reply", errno=no_reply)
+        await client.pr.wrn_s("kiss of death", wrnno=unsync)
+        await client.pr.wrn_s("kiss of death", wrnno=unsync)
 
-    assert run(scenario()) == [21, 21, 2]
+    run(scenario())
+    log = run(client.get_error_counter())["NTP"]
+    assert log["ErrCount"] == 5
+    assert log["ErrNum"][-2:] == [no_reply, unsync]
+    assert log["ErrType"][-2:] == ["E", "W"]
 
 
 def test_asy_ntp_time_keeps_running_across_alternating_failure_and_success() -> None:
@@ -2312,8 +2339,8 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Part C.7.2: never give up, back off while unsynced, one ring slot per code per failure episode -
-# every failure site, the recovery path, and the whole outage-then-recovery cycle end to end.
+# Part C.7.2: never give up, back off while unsynced, one ring slot per repeated code
+# (the central newest-entry rule)
 # ---------------------------------------------------------------------------
 
 
@@ -2337,14 +2364,14 @@ def _twice_one_slot(client: AsyNtpClient, make_call: "Callable[[], Coroutine[Any
     return int(entry["ErrCount"]), [n for n, _ in kept], [t for _, t in kept]
 
 
-def test_missing_config_failure_is_counted_twice_but_persisted_once() -> None:
-    client = make_client()
-
-    async def no_cfg() -> "tuple[list[str], list[int]] | None":
-        return None
-
-    client._get_ntp_config = no_cfg  # type: ignore[method-assign]
-    assert _twice_one_slot(client, lambda: client._run_ntp_sync_attempt(None)) == (2, [11], ["E"])
+def test_missing_config_failure_logs_in_both_layers_one_slot_each() -> None:
+    client = make_invalid_cfg_client()  # the store logs its own CFG_PATH_IS_DIR at construction
+    before = run(client.cfgmgr.get_error_counter())["CFGMGR_NTP"]["ErrCount"]
+    assert _twice_one_slot(client, lambda: client._run_ntp_sync_attempt(None)) == (2, [code("E", "CFG_READ")], ["E"])
+    store = run(client.cfgmgr.get_error_counter())["CFGMGR_NTP"]
+    assert store["ErrCount"] - before == 4  # each attempt reads the store twice (host, then offset)
+    kept = [store["ErrNum"][i] for i in range(len(store["ErrNum"])) if store["ErrType"][i] != "N"]
+    assert kept[-1] == code("E", "CFG_NOT_VALID") and kept.count(code("E", "CFG_NOT_VALID")) == 1, kept
 
 
 def test_dns_failure_is_counted_twice_but_persisted_once() -> None:
@@ -2352,47 +2379,48 @@ def test_dns_failure_is_counted_twice_but_persisted_once() -> None:
     ntpmod.resolve_ipv4 = _RecordingResolver(None)  # type: ignore[assignment]
     try:
         client = make_client()
-        assert _twice_one_slot(client, lambda: client._resolve_ntp_server("bogus.invalid", None)) == (2, [12], ["E"])
+        assert _twice_one_slot(client, lambda: client._resolve_ntp_server("bogus.invalid", None)) == (2, [code("E", "NTP_DNS")], ["E"])
     finally:
         ntpmod.resolve_ipv4 = original
 
 
 def test_invalid_server_address_is_counted_twice_but_persisted_once() -> None:
     client = make_client()
-    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply((12345, 80))) == (2, [13], ["E"])  # type: ignore[arg-type]
+    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply((12345, 80))) == (2, [code("E", "BAD_ARG")], ["E"])  # type: ignore[arg-type]
 
 
 def test_no_reply_is_counted_twice_but_persisted_once() -> None:
     client = make_client(ntp_fetch_timeout_ms=100)
     addr = make_addr()
-    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply(addr)) == (2, [21], ["E"])
+    assert _twice_one_slot(client, lambda: client._fetch_ntp_reply(addr)) == (2, [code("E", "NTP_NO_REPLY")], ["E"])
 
 
 def test_implausible_time_is_counted_twice_but_persisted_once() -> None:
     client = make_client()
     msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=1, unix_seconds=1000)  # past 2100 in every era
-    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [14], ["E"])
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [code("E", "NTP_IMPLAUSIBLE")], ["E"])
 
 
 def test_malformed_reply_is_counted_twice_but_persisted_once() -> None:
     client = make_client()
-    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(b"x", 0)) == (2, [15], ["E"])
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(b"x", 0)) == (2, [code("E", "NTP_MALFORMED")], ["E"])
 
 
 def test_kiss_of_death_warning_is_counted_twice_but_persisted_once() -> None:
     client = make_client()
     msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=0, unix_seconds=int(time.time()))
-    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [2], ["W"])
+    assert _twice_one_slot(client, lambda: client._parse_ntp_reply(msg, 0)) == (2, [code("W", "NTP_UNSYNC_REPLY")], ["W"])
 
 
-def test_the_same_number_as_error_and_as_warning_are_separate_episode_codes() -> None:
-    # errno 2 and wrnno 2 mean different things; one must never suppress the other's slot.
+def test_an_error_and_a_warning_with_the_same_number_are_different_codes() -> None:
+    # errno n and wrnno n mean different things; one must never suppress the other's slot.
     client = make_client()
+    n = code("W", "NTP_UNSYNC_REPLY")
 
     async def scenario() -> "list[str]":
         await client.pr.setup()
-        await client._episode_log(2, "an error numbered 2")
-        await client._episode_log(2, "a warning numbered 2", warn=True)
+        await client.pr.err_s("an error numbered n", errno=n)
+        await client.pr.wrn_s("a warning numbered n", wrnno=n)
         types = (await client.get_error_counter())["NTP"]["ErrType"]
         assert isinstance(types, list)
         return types[-2:]
@@ -2400,20 +2428,20 @@ def test_the_same_number_as_error_and_as_warning_are_separate_episode_codes() ->
     assert run(scenario()) == ["E", "W"]
 
 
-def test_every_distinct_failure_code_keeps_its_own_slot_within_one_episode() -> None:
-    # Per DISTINCT code (C.7.1): a changed verdict mid-outage is evidence, so no code may shadow another.
+def test_distinct_codes_each_keep_a_slot() -> None:
+    # A changed verdict mid-outage is evidence, so no code may shadow another (C.7.1).
     client = make_client()
-    codes = [11, 12, 13, 14, 15, 21]
+    errors = [code("E", name) for name in ("NTP_DNS", "NTP_IMPLAUSIBLE", "NTP_MALFORMED", "NTP_RETRIES", "NTP_NO_REPLY")]
+    warning = code("W", "NTP_UNSYNC_REPLY")
 
-    async def scenario() -> "list[int]":
+    async def scenario() -> None:
         await client.pr.setup()
-        for code in codes:
-            await client._episode_log(code, "failed")
-        nums = (await client.get_error_counter())["NTP"]["ErrNum"]
-        assert isinstance(nums, list)
-        return nums[-len(codes):]
+        for errno in errors:
+            await client.pr.err_s("failed", errno=errno)
+        await client.pr.wrn_s("rejected", wrnno=warning)
 
-    assert run(scenario()) == codes
+    run(scenario())
+    assert _slots(client) == (6, errors + [warning])
 
 
 def test_backoff_restarts_from_the_first_interval_after_a_recovery() -> None:
@@ -2475,7 +2503,7 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
     client.ntp_fetch_timeout_ms = 100
     reply = make_ntp_reply(int(time.time()))
 
-    async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
+    async def scenario() -> "tuple[bool, bool, int, ErrorLog]":
         server = FakeNtpServer()
         try:
             with server.redirect_resolution():
@@ -2492,17 +2520,16 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
                     await task
                 except asyncio.CancelledError:
                     pass
-                return still_running, await client.ntp_issynced(), client._retry_wait_s, client._episode_errs, await client.get_error_counter()
+                return still_running, await client.ntp_issynced(), client._retry_wait_s, await client.get_error_counter()
         finally:
             server.close()
 
-    still_running, synced, wait_s, episode, log = run(scenario())
+    still_running, synced, wait_s, log = run(scenario())
     assert still_running is True
     assert synced is True
     assert wait_s == client.retry_s
-    assert episode == 0
     assert log["NTP"]["ErrCount"] == 3
-    assert log["NTP"]["ErrNum"] == [0] * 9 + [21]
+    assert log["NTP"]["ErrNum"] == [0] * 9 + [code("E", "NTP_NO_REPLY")]
 
 
 def test_integration_a_successful_exchange_persists_nothing() -> None:

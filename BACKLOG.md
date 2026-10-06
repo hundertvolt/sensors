@@ -89,10 +89,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   concurrent request) that lock does get contended, so a `configure()` call could be suspended
   *after* mutating the shadow but *before* its write reached the chip, letting a concurrent `GET`'s
   `get_config_snapshot()` + `matches_shadow()` observe the shadow already showing the new value
-  against a chip that still held the old one — a false "diverged from the shadow" `wrnno=11` report
-  with nothing actually wrong on the wire, which is why three quiet trials never reproduced it but
-  2 concurrent `GET` workers did (twice, per the original isolation). The existing mock test that
-  looked like it should cover this
+  against a chip that still held the old one — a false "diverged from the shadow" `ISL_DIVERGED`
+  (`W31`) report with nothing actually wrong on the wire, which is why three quiet trials never
+  reproduced it but 2 concurrent `GET` workers did (twice, per the original isolation). The existing
+  mock test that looked like it should cover this
   (`test_concurrent_read_and_write_never_interleave_on_the_wire`) only ever proved wire-level
   atomicity, never this shadow-vs-chip timing race. **Fixed** by widening the device-session lock in
   `configure()` to span the whole validate-mutate-write(-rollback-on-failure) sequence, matching
@@ -104,8 +104,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   first fully clean bench tier after the fix (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7H.6),
   and every bench tier of 2026-09-24/25 since, ran the concurrent load that used to produce it.
   **Still open, R9's other half**: the `Overrange` field below has never run on silicon
-  (`device_scripts/isl29125_mechanism_envelope.py` reads it instead of the retired `W12` entry); it
-  rides S3b ("Real-hardware work still owed").
+  (`device_scripts/isl29125_mechanism_envelope.py` reads it instead of the retired saturation
+  warning); it rides S3b ("Real-hardware work still owed").
 - **The sibling `W12` ("saturated on the high range") finding from the same isolation work is
   resolved differently, by design rather than by fixing a bug (project owner, 2026-09-15):**
   saturation status was never a fault, so it no longer lives in the error/warning log at all. It's
@@ -117,7 +117,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   *fixed low-range* reading used to go unreported entirely (the old condition only ever checked
   `sample_range == _RANGE_HIGH_LUX`). Covered by three new/updated tests in
   `tests/test_asy_isl29125_driver.py`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py`
-  updated to check the field directly instead of the retired `W12` log entry (also pending
+  updated to check the field directly instead of the retired saturation warning (also pending
   real-hardware re-run). `html/definitions/dev.json`/`mockdata/dev.json` updated with the new field.
 
 1. `legacy/firmware/modules/_boot.py`'s `import sensortask.py` (literal `.py`) - **mechanism
@@ -275,14 +275,15 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
     predictor of real-hardware cost in either direction.
 
-29. **The spurious `W4` ("WLAN wrong password") on a correct password - answered from source
-    (2026-09-24).** Kept as a stub because `SPECIFICATION.md` C.7.1 and `tests/test_asy_wifi_service.py`
-    cite this number. cyw43-driver reports BADAUTH, which MicroPython surfaces as
-    `STAT_WRONG_PASSWORD`, for any failed AUTH event and any failed 4-way handshake other than three
-    timeout codes (`lib/cyw43-driver/src/cyw43_ctrl.c`), so an AP vanishing mid-association reads as a
-    wrong password; `_poll_sta_connect_status()` records it faithfully. Both sightings sat inside
-    `W5`/`W6` runs. The log text now says what the status means, and the bench outage check accepts
-    `W4` as benign beside `W5`.
+29. **The spurious `WLAN_AUTH_FAILED` (`W36`, "WLAN wrong password") on a correct password -
+    answered from source (2026-09-24).** Kept as a stub because `SPECIFICATION.md` C.7.1 and
+    `tests/test_asy_wifi_service.py` cite this number. cyw43-driver reports BADAUTH, which
+    MicroPython surfaces as `STAT_WRONG_PASSWORD`, for any failed AUTH event and any failed 4-way
+    handshake other than three timeout codes (`lib/cyw43-driver/src/cyw43_ctrl.c`), so an AP
+    vanishing mid-association reads as a wrong password; `_poll_sta_connect_status()` records it
+    faithfully. Both sightings sat inside `WLAN_NO_AP`/`WLAN_CONNECT_FAILED` (`W37`/`W38`) runs. The
+    log text now says what the status means, and the bench outage check accepts `WLAN_AUTH_FAILED`
+    as benign beside `WLAN_NO_AP`.
 
 32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
     to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
@@ -320,8 +321,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
       `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
     - Hotspot fallback after a reset, three times. `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is
       the mechanism that would take it there. **One instance is now measured (2026-09-25, F17)**: a watchdog reset with no `kick_all_stations()` before it gave `reset_cause()` =
-      `WDT_RESET` and WIFI `W6` ×5 (`STAT_CONNECT_FAIL`) — the stale-AP-station mechanism, cleared
-      by a kick. Whether the earlier three were the same is not recoverable.
+      `WDT_RESET` and WIFI `WLAN_CONNECT_FAILED` (`W38`) ×5 (`STAT_CONNECT_FAIL`) — the
+      stale-AP-station mechanism, cleared by a kick. Whether the earlier three were the same is not
+      recoverable.
     - ~~A likely watchdog reset at `mpremote` attach~~ — **not an open anomaly: that mechanism is
       already measured** (item 12, 2026-09-11 — an `mpremote exec` stops `main.py`, nothing feeds the
       WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
@@ -346,10 +348,11 @@ gates, traps).
   deselected count, not only "clean". **Board state at the fold**: `dev` image
   `buildDate 2026-09-25T12:54:13Z` (tree `851e816`), `max_connections = 6`, `DebugLevel` 5; its last
   runs were two clean default bench tiers and one clean gated run (2026-09-25).
-- **Not yet confirmed on silicon.** (1) SGP40 `W13` spends one slot per NTP outage (`83c9920`, on
-  the board's image): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged a
-  `W13`. Zero-wear check: block UDP 123 longer than that, expect one `W13` with `ErrCount` rising
-  per backup. (2) The flash tier's watchdog-starvation test ending with `hard_reset()` (`79eb41b`,
+- **Not yet confirmed on silicon.** (1) SGP40 `SGP_WRITTEN_NO_TS` (`W35`) spends one slot per run
+  of untimestamped backups (`83c9920`'s episode rule on the board's image, the central newest-entry
+  rule in `print_log.py` since): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged
+  one. Zero-wear check: block UDP 123 longer than that, expect one `W35` with `ErrCount` rising per
+  backup. (2) The flash tier's watchdog-starvation test ending with `hard_reset()` (`79eb41b`,
   test-only, no reflash needed): no full flash-tier run since. Before it, the flash tier always left
   the board parked at the REPL with no watchdog, because the test attached within ~1 s of boot.
 - **M1 + S3b, the ISL29125 light programs** — needs the owner at the bench, ~30 min. M1 first

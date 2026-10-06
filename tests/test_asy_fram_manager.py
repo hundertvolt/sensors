@@ -18,7 +18,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Awaitable, Callable, Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -467,7 +467,7 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
     # appears at all since nothing reached the bus. Asserting on ErrType rather than ErrCount is
     # deliberate: ErrCount counts "W" entries too, so it cannot tell "refused" from "tried".
     assert "E" not in paused_errs["FRAM"]["ErrType"]
-    assert code("W", "FRAM_PAUSED") in _warnings(paused_errs)  # _read()'s own "FRAM communication paused" warning
+    assert (code("W", "FRAM_PAUSED"), "W") in _entries(paused_errs)  # _read()'s own "FRAM communication paused" warning
 
     manager.set_pause(value=False)
 
@@ -501,6 +501,28 @@ def test_unpausing_restores_a_genuinely_working_bus_not_just_a_cleared_flag() ->
     assert run(chunk.write(b"bbbb")) is True
     assert run(chunk.read()) == bytearray(b"bbbb")
     assert bytes(chip.memory[addr0 : addr0 + 4]) == b"bbbb"  # ...and the real chip bytes changed
+
+
+def test_a_commanded_mempause_spends_one_slot_across_chunks() -> None:
+    # Every chunk logs into the manager's one history, so a pause refusing operations on several
+    # chunks is still one repeated code: one slot, with ErrCount counting every refusal.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk_a = manager.get_chunk(4, crc=CRC_Pass())
+    chunk_b = manager.get_chunk(4, crc=CRC8())
+    assert chunk_a is not None and chunk_b is not None
+    manager.set_pause(value=True)
+
+    async def scenario() -> "ErrorLog":
+        for chunk in (chunk_a, chunk_b):
+            assert await chunk.write(b"data") is False
+            assert await chunk.read() is None
+            assert await chunk.clear() is False
+        return await manager.get_error_counter()
+
+    errs = run(scenario())
+    assert _entries(errs) == [(code("W", "FRAM_PAUSED"), "W")]
+    assert errs["FRAM"]["ErrCount"] == 6
 
 
 # ---------------------------------------------------------------------------
@@ -835,7 +857,7 @@ def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
     errnums = errs["FRAM"]["ErrNum"]
     assert result is None
     assert errnums.count(code("E", "FRAM_STATUS_WRITE")) == 2  # both blocks fail the same way (the read's own busy-set write)
-    assert code("W", "FRAM_BLOCK_INVALID") in _warnings(errs)  # "Invalid data in block 1" - neither copy usable
+    assert (code("W", "FRAM_BLOCK_INVALID"), "W") in _entries(errs)  # "Invalid data in block 1" - neither copy usable
 
 
 def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
@@ -906,7 +928,7 @@ def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -
     # Identical error signature to the WREN-drop read above: the busy-status write is what fails,
     # for both blocks, and neither copy is then usable.
     assert errnums.count(code("E", "FRAM_STATUS_WRITE")) == 2
-    assert code("W", "FRAM_BLOCK_INVALID") in _warnings(errs)
+    assert (code("W", "FRAM_BLOCK_INVALID"), "W") in _entries(errs)
 
 
 def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> None:
@@ -999,7 +1021,7 @@ def test_read_fails_when_both_blocks_have_crc_invalid_payloads() -> None:
     errnums = errs["FRAM"]["ErrNum"]
     assert result is None
     assert errnums.count(code("E", "FRAM_DATA_CRC")) == 2  # CRC error in _read_chunk, both blocks
-    assert code("W", "FRAM_BLOCK_INVALID") in _warnings(errs)  # "Invalid data in block 1" - none of the copies usable
+    assert (code("W", "FRAM_BLOCK_INVALID"), "W") in _entries(errs)  # "Invalid data in block 1" - none of the copies usable
 
 
 def test_block1_invalid_while_block0_valid_self_heals_block1() -> None:
@@ -2116,6 +2138,41 @@ def test_an_unallocated_buffer_never_reaches_the_chip_at_all() -> None:
     assert sent == [], f"a write from an unallocated buffer still drove the bus: {sent!r}"
 
 
+def test_a_missing_chunk_buffer_logs_alloc() -> None:
+    # Every chunk entry point that meets an unallocated buffer persists one ALLOC entry of its own:
+    # an own buffer that failed (negative size) and a foreign one handed in, on both chunk classes.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    plain = manager.get_chunk(4, crc=CRC8())
+    stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8())
+    plain_unalloc = manager.get_chunk(-4, crc=CRC_Pass())  # allocated last: a negative size moves the bump pointer back
+    stamped_unalloc = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    assert plain is not None and plain_unalloc is not None
+    assert stamped is not None and stamped_unalloc is not None
+    calls: tuple[Callable[[], Awaitable[object]], ...] = (
+        lambda: plain_unalloc.write(b"data"),
+        plain_unalloc.read,
+        lambda: plain.write_into(_degraded_buffer()),
+        lambda: plain.read_into(_degraded_buffer()),
+        lambda: stamped_unalloc.write(b"data"),
+        stamped_unalloc.read,
+        lambda: stamped.write_into(_degraded_timestamped_buffer()),
+        lambda: stamped.read_into(_degraded_timestamped_buffer()),
+    )
+
+    async def scenario() -> "list[int]":
+        counts = []
+        for call in calls:
+            await call()
+            log = await manager.get_error_counter()
+            assert log["FRAM"]["ErrNum"][-1] == code("E", "ALLOC")
+            counts.append(log["FRAM"]["ErrCount"])
+        return counts
+
+    assert run(scenario()) == list(range(1, len(calls) + 1)), "each call adds exactly one entry"
+    assert _entries(run(manager.get_error_counter())) == [(code("E", "ALLOC"), "E")]  # one repeated code, one slot
+
+
 # ---------------------------------------------------------------------------
 # write_into()/read_into() timestamp pack/unpack exception handling - struct.pack_into() and
 # unpack_from() cannot fail through real use, since the buffer is always exactly
@@ -2582,20 +2639,20 @@ def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SPECIFICATION.md Part C.7.1 - a degraded condition warns on every operation, so persisting each one refills
-# the owning module's bounded history by itself. Episode-scoped per distinct code, like
-# asy_uart_comm.py's own _episode_wrn(); SPECIFICATION.md Part C.7.1 states the rule.
+# The central newest-entry rule (print_log.py, SPECIFICATION.md C.7.1): a repeated identical code spends no
+# new slot; ErrCount counts every event.
 # ---------------------------------------------------------------------------
 
 
-def _warnings(errs: "ErrorLog") -> list[int]:
+def _entries(errs: "ErrorLog") -> list[tuple[int, str]]:
     nums, types = errs["FRAM"]["ErrNum"], errs["FRAM"]["ErrType"]
     assert isinstance(nums, list)
     assert isinstance(types, list)
-    return [num for index, num in enumerate(nums) if types[index] == "W"]  # zip(strict=) has no MicroPython equivalent
+    # (number, type) pairs of the occupied slots; zip(strict=) has no MicroPython equivalent
+    return [(num, types[index]) for index, num in enumerate(nums) if types[index] != "N"]
 
 
-def test_a_block_0_that_keeps_failing_persists_one_warning_per_episode_not_one_per_read() -> None:
+def test_a_block_0_that_keeps_failing_keeps_each_layers_entry_on_every_read() -> None:
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
@@ -2605,35 +2662,41 @@ def test_a_block_0_that_keeps_failing_persists_one_warning_per_episode_not_one_p
         await chunk.write(b"good")
         addr0, _addr1 = chunk.block_addr
         for _read in range(5):
-            # Re-corrupted each time: _read() heals block 0 from block 1, so one flip is one
-            # warning. A cell that no longer holds what was written to it is what warns forever.
+            # Re-corrupted each time: _read() heals block 0 from block 1, so one flip is one event.
             chip.memory[addr0] ^= 0xFF
-            await chunk.read()
+            assert await chunk.read() == bytearray(b"good")
         return await manager.get_error_counter()
 
-    assert _warnings(run(scenario())) == [code("W", "FRAM_BLOCK_INVALID")], "five failing reads must not spend five slots"
+    errs = run(scenario())
+    # Each read meets the fault at two layers (the CRC check, then the block warning), so the two codes
+    # alternate and each spends a slot: alternation is outside the newest-entry rule.
+    crc_entry, block_entry = (code("E", "FRAM_DATA_CRC"), "E"), (code("W", "FRAM_BLOCK_INVALID"), "W")
+    assert _entries(errs) == [crc_entry, block_entry] * 5
+    assert errs["FRAM"]["ErrCount"] == 10
 
 
-def test_a_clean_read_ends_the_episode_so_a_later_fault_persists_again() -> None:
-    manager, chip = make_manager()
+def test_a_recurrence_after_recovery_stays_one_slot() -> None:
+    manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC8())
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
 
     async def scenario() -> "ErrorLog":
-        await chunk.write(b"good")
-        addr0, _addr1 = chunk.block_addr
-        chip.memory[addr0] ^= 0xFF
-        await chunk.read()  # warns, and heals block 0 from block 1
-        await chunk.read()  # both copies healthy again - the episode is over
-        chip.memory[addr0] ^= 0xFF
-        await chunk.read()  # a fresh fault, so a fresh persisted warning
+        manager.set_pause(value=True)
+        assert await chunk.write(b"data") is False  # FRAM_PAUSED
+        manager.set_pause(value=False)
+        assert await chunk.write(b"data") is True  # recovered: nothing logged
+        assert await chunk.read() == bytearray(b"data")
+        manager.set_pause(value=True)
+        assert await chunk.write(b"else") is False  # the same code again, after the recovery
         return await manager.get_error_counter()
 
-    assert _warnings(run(scenario())) == [code("W", "FRAM_BLOCK_INVALID")] * 2
+    errs = run(scenario())
+    assert _entries(errs) == [(code("W", "FRAM_PAUSED"), "W")]
+    assert errs["FRAM"]["ErrCount"] == 2
 
 
-def test_a_held_mempause_persists_one_refusal_not_one_per_operation() -> None:
+def test_a_held_mempause_spends_one_slot_for_paused_writes_and_reads() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
@@ -2647,9 +2710,10 @@ def test_a_held_mempause_persists_one_refusal_not_one_per_operation() -> None:
             await chunk.read()  # FRAM_PAUSED
         return await manager.get_error_counter()
 
-    # A paused write and a paused read are one condition, one code: it persists once, since a pause
-    # long enough to matter is a pause many operations run into.
-    assert _warnings(run(scenario())) == [code("W", "FRAM_PAUSED")]
+    errs = run(scenario())
+    # A paused write and a paused read are one condition, one code.
+    assert _entries(errs) == [(code("W", "FRAM_PAUSED"), "W")]
+    assert errs["FRAM"]["ErrCount"] == 8
 
 
 if __name__ == "__main__":

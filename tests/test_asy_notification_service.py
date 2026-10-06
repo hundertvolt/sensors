@@ -1,5 +1,6 @@
 import asyncio
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 import asy_notification_service
@@ -618,6 +619,7 @@ def test_signal_value_failure_and_own_time_callback_failure_share_one_history() 
     log = run(read_log())
     assert log["NOTIFY"]["ErrCount"] == 2
     assert len(log["NOTIFY"]["ErrNum"]) == len(coordinator.pr.history)
+    assert log["NOTIFY"]["ErrNum"][-2:] == [code("E", "SOURCE"), code("E", "CALLBACK")]
 
 
 def test_a_rejected_registration_surfaces_as_a_warning_with_its_own_wrnno() -> None:
@@ -638,19 +640,20 @@ def test_a_rejected_registration_surfaces_as_a_warning_with_its_own_wrnno() -> N
 
     log = run(scenario())
     assert coordinator._pending_wrn == [], "the queue was not drained, so every later cycle re-logs it"
-    assert log["NOTIFY"]["ErrNum"][-1] == 1, f"the field-collision rejection must report wrnno 1, got {log['NOTIFY']['ErrNum']}"
+    collision = code("W", "NOTIFY_NAME_COLLISION")
+    assert log["NOTIFY"]["ErrNum"][-1] == collision, f"the field-collision rejection must report {collision}, got {log['NOTIFY']['ErrNum']}"
     assert log["NOTIFY"]["ErrType"][-1] == "W"
 
 
 def test_every_rejection_reason_keeps_its_own_distinct_wrnno() -> None:
-    # Four rejection reasons, four numbers (1-4): they are what a /status read distinguishes them
-    # by, the message text being free-form. A shared number would make them indistinguishable.
+    # Four rejection reasons, four catalog codes: they are what a /status read distinguishes them
+    # by, the message text being free-form. A shared code would make them indistinguishable.
     coordinator, _clock, _cb = make_coordinator()
-    coordinator.register(make_signal("AutoOn")[0])  # 1: collides with a static field
-    coordinator.register(NotificationSignal("Empty", FakeValue(1, field="Empty"), "Empty", (), (1, 0, 0)))  # 2: zero fields
+    coordinator.register(make_signal("AutoOn")[0])  # NOTIFY_NAME_COLLISION: collides with a static field
+    coordinator.register(NotificationSignal("Empty", FakeValue(1, field="Empty"), "Empty", (), (1, 0, 0)))  # NOTIFY_SCHEMA_SHAPE
     coordinator.finalize()
-    coordinator.register(make_signal("WarnCO2")[0])  # 3: after finalize()
-    coordinator.finalize()  # 4: finalize() again
+    coordinator.register(make_signal("WarnCO2")[0])  # NOTIFY_LATE_REGISTER: after finalize()
+    coordinator.finalize()  # NOTIFY_FINALIZE_AGAIN
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, Any]":
@@ -659,10 +662,11 @@ def test_every_rejection_reason_keeps_its_own_distinct_wrnno() -> None:
         return await coordinator.get_error_counter()
 
     numbers = run(scenario())["NOTIFY"]["ErrNum"]
-    assert sorted(numbers[-4:]) == [1, 2, 3, 4], f"the four rejection reasons no longer report distinctly: {numbers}"
+    expected = sorted(code("W", name) for name in ("NOTIFY_NAME_COLLISION", "NOTIFY_SCHEMA_SHAPE", "NOTIFY_LATE_REGISTER", "NOTIFY_FINALIZE_AGAIN"))
+    assert sorted(numbers[-4:]) == expected, f"the four rejection reasons no longer report distinctly: {numbers}"
 
 
-def test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read() -> None:
+def test_check_one_degrades_when_the_threshold_config_cannot_be_read_logs_in_both_layers() -> None:
     # The branch a corrupt or unreadable store reaches: without it, `thresholds[0]` would raise
     # out of the monitor loop and the supervisor would restart the task in a loop.
     signal, _fv = make_signal("WarnCO2")
@@ -670,11 +674,7 @@ def test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read() 
     coordinator.register(signal)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
-
-    async def unreadable(_schema: object) -> None:
-        return None
-
-    coordinator.cfgmgr.get_float_values = unreadable  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    coordinator.cfgmgr._cache.pop("WarnCO2")  # a missing key in the real store
 
     async def scenario() -> "dict[str, Any]":
         await coordinator.pr.setup()
@@ -683,7 +683,9 @@ def test_check_one_degrades_and_logs_when_the_threshold_config_cannot_be_read() 
         return await coordinator.get_error_counter()
 
     log = run(scenario())
-    assert log["NOTIFY"]["ErrNum"][-1] == 11, f"an unreadable threshold must report errno 11, got {log['NOTIFY']['ErrNum']}"
+    assert log["NOTIFY"]["ErrNum"][-1] == code("E", "CFG_READ"), f"an unreadable threshold must report CFG_READ, got {log['NOTIFY']['ErrNum']}"
+    # Each layer keeps its own entry: the notification's fallback here, the store's refusal there.
+    assert run(coordinator.cfgmgr.pr.get_log())[coordinator.cfgmgr.name]["ErrNum"][-1] == code("E", "CONTRACT")
 
 
 def test_the_defaulted_signal_sink_accepts_a_request_and_reports_no_flash() -> None:
@@ -693,7 +695,7 @@ def test_the_defaulted_signal_sink_accepts_a_request_and_reports_no_flash() -> N
     assert run(sink.request_signal(1, 2, 3, 0.5)) is False
 
 
-def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() -> None:
+def test_two_signals_failures_share_one_code_and_one_slot() -> None:
     a, fv_a = make_signal("WarnCO2")
     b, fv_b = make_signal("WarnVOC")
     fv_a.raise_exc = RuntimeError("a boom")
@@ -716,8 +718,8 @@ def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() ->
 
     log = run(read_log())
     assert log["NOTIFY"]["ErrCount"] == 2
-    assert log["NOTIFY"]["ErrType"][-2:] == ["E", "E"]
-    assert log["NOTIFY"]["ErrNum"][-2:] == [10, 10]  # same errno for both - the name is in the message text, not the errno
+    assert log["NOTIFY"]["ErrType"][-2:] == ["N", "E"]  # the names are in the console lines, not the code
+    assert log["NOTIFY"]["ErrNum"][-2:] == [0, code("E", "SOURCE")]
 
 
 # ---------------------------------------------------------------------------
@@ -833,10 +835,11 @@ def test_check_one_get_value_raises_is_caught_and_logged_and_treated_as_none() -
     assert signal.last_value is None
     assert signal.triggered is False
     assert coordinator.pr.err_count == 1
+    assert coordinator.pr.history[-1] == code("E", "SOURCE")
 
 
 def test_check_one_indefinite_logging_no_cap() -> None:
-    # Confirmed by the project owner: no failure-escalation cap - every failing cycle logs.
+    # Confirmed by the project owner: no failure-escalation cap - every failing cycle logs to console and count; a repeat spends no slot.
     coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2")
     fv.raise_exc = RuntimeError("boom")
@@ -851,6 +854,7 @@ def test_check_one_indefinite_logging_no_cap() -> None:
 
     run(scenario())
     assert coordinator.pr.err_count == 5
+    assert list(coordinator.pr.history).count(code("E", "SOURCE")) == 1
 
 
 def test_check_one_last_value_and_triggered_reflect_most_recent_call_only() -> None:
@@ -1110,6 +1114,7 @@ def test_local_time_callback_raises_treated_as_none() -> None:
     run(scenario())
     assert len(cb.calls) == 0
     assert coordinator.pr.err_count >= 1
+    assert coordinator.pr.history[-1] == code("E", "CALLBACK")
 
 
 def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
@@ -1325,6 +1330,7 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
     # both signals were still reached despite the first flash's callback raising
     assert len(cb.calls) == 2
     assert coordinator.pr.err_count == 2
+    assert list(coordinator.pr.history).count(code("E", "CALLBACK")) == 1  # one slot for the repeat
 
 
 def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
@@ -1374,10 +1380,16 @@ def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persi
     assert still_running is True
     entry = log["NOTIFY"]
     assert entry["ErrCount"] > 5  # well past the old give-up streak, each failure counted
-    assert entry["ErrNum"] == [0] * 9 + [5]  # but one ring slot for the whole run of failures
+    assert entry["ErrNum"][-2:] == [0, code("W", "CFG_READ")]  # but one ring slot for the whole run
+    # The store keeps its own entry for each failed read, in one slot too.
+    store = run(coordinator.cfgmgr.pr.get_log())[coordinator.cfgmgr.name]
+    assert store["ErrNum"][-1] == code("E", "CONTRACT")
+    assert store["ErrNum"].count(code("E", "CONTRACT")) == 1
 
 
-def test_monitor_loop_persists_the_config_read_warning_afresh_after_a_good_read() -> None:
+def test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slot() -> None:
+    # A repeat of the newest entry spends no slot, recovered in between or not (owner, 2026-09-26:
+    # "just don't repeat the same error in the slots. Pure and simple").
     cb = FakeSignalCb()
     clock = FakeClock()
     coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
@@ -1385,10 +1397,11 @@ def test_monitor_loop_persists_the_config_read_warning_afresh_after_a_good_read(
     run(coordinator.cfgmgr.setup())
     saved = coordinator.cfgmgr._cache.pop("FlashBri")
 
-    async def scenario() -> "ErrorLog":
+    async def scenario() -> "tuple[ErrorLog, int]":
         task = coordinator.start_asy_notify_monitor()
         for _ in range(10):
             await asyncio.sleep(0)
+        first_run = coordinator.pr.err_count
         coordinator.cfgmgr._cache["FlashBri"] = saved  # a good read ends the run of failures
         for _ in range(10):
             await asyncio.sleep(0)
@@ -1400,11 +1413,15 @@ def test_monitor_loop_persists_the_config_read_warning_afresh_after_a_good_read(
             await task
         except asyncio.CancelledError:
             pass
-        return await coordinator.get_error_counter()
+        return await coordinator.get_error_counter(), first_run
 
     with _FastAsyncSleep():
-        log = run(scenario())
-    assert log["NOTIFY"]["ErrNum"][-2:] == [5, 5]
+        log, first_run = run(scenario())
+    assert log["NOTIFY"]["ErrNum"][-2:] == [0, code("W", "CFG_READ")]
+    assert log["NOTIFY"]["ErrCount"] > first_run > 0  # both runs counted
+    store = run(coordinator.cfgmgr.pr.get_log())[coordinator.cfgmgr.name]
+    assert store["ErrNum"][-1] == code("E", "CONTRACT")
+    assert store["ErrNum"].count(code("E", "CONTRACT")) == 1
 
 
 def test_monitor_loop_self_heals_in_place_once_its_config_reads_again() -> None:

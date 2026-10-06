@@ -24,7 +24,7 @@ lease and resumption procedure.
 | U0R | dependency refresh after the baseline | done 2026-10-06 | merges `9f32315`, `d2bb623`, `e8f5dc0`, `6ca1d7f`; record `audit/artefacts/ENV/dependency_refresh.md` |
 | U1 | legacy move to `legacy/` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U1_close.md` |
 | U2 | error-number catalog | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U2_close.md` |
-| U3 | central log-repeat rule, one entry per event | not started | — |
+| U3 | central log-repeat rule, one entry per event | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U3_close.md` |
 | U4 | compare-before-write primitive, SCD30 onto it | not started | — |
 | U5 | config objects and `max-args` | not started | — |
 | U6 | one-source website definitions | not started | — |
@@ -135,7 +135,17 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U2 | UART comm's range-sweep test goes with `_ERRNO_MIN/_MAX` in U2, not U3 | the test reads the removed constants; the literal-bypass test stays |
 | U2 | BMP3XX and SGP40 keep their whole numbering, catalog block included, until U3 | the block's values are U3's renumbering; a partial block would mix two idioms in one module |
 | U2 | The twin suite's Run 9 keeps NTP's HEAD number (21) until NTP moves in U3 | NTP still logs 21 at U2; a catalog lookup would fail the twin tier |
-| U2 | SF-U2-02: UART comm's repeat rule now treats codes the catalog merged (ALLOC from two sites, BAD_ARG from three) as one; a different-site fault right after is printed and counted but not persisted, until U3's central rule | reachable only by two different-site failures back to back with no recovery; U3 replaces the rule |
+| U2 | SF-U2-03: UART comm's repeat rule now treats codes the catalog merged (ALLOC from two sites, BAD_ARG from three) as one; a different-site fault right after is printed and counted but not persisted, until U3's central rule | reachable only by two different-site failures back to back with no recovery; U3 replaces the rule |
+| U3 | A dead FRAM block now persists E49 then W63 on every read (one per layer, owner 2026-10-02); the two alternate, so five corrupt reads fill ten slots, not the one slot the FRAM manager tests expected; the tests pin the real result | alternation is outside the central rule (owner, 2026-09-26); `ErrCount` and the console still show every event |
+| U3 | The FRAM error-log seed scripts move to the catalog's test band now (125, 126, 125; raced 127; post-recovery 126), not at U26 | under the central rule three identical seeds take one slot, so the scripts would fail on the board; the values are M.HW_DEV.012's end state, U26 keeps the rest of the rewrite |
+| U3 | The website mock histories (`mockdata/dev.json`, `wozi.json`) take catalog codes now, not at U6 | the catalog check reads these files until U6's `samples.json`; display data only, no test asserts the numbers |
+| U3 | WIFI's give-up persists both the base `GIVE_UP` and its own `WLAN_GIVE_UP` (E66) | the A-C review fold's text (WIFI keeps its own entry beside the base one) over A.U3.07's console-only form; SPEC C.7.4 names both |
+| U3 | `set_write_protected()`'s W27-then-E45 pair stays until U16 and is allow-listed in the fault-or-warning scan | its reorder is U16's step; the scan's U3 allow-list names it |
+| U3 | The fault-or-warning scan's allow-list also holds `ConfigManager.setup()` (12 pairs), `base_classes._get_dict_cfg()` (3, mixed since U2's numbering) and `captive_dns.run()` (1, never both in one run: a flag keeps them apart) | the tree really has these pairs at U3; each carries its reason, and the list only shrinks |
+| U3 | The fault-or-warning scan counts a function as a persisting wrapper only when it forwards a parameter as the code; loops are taken once, a handler starts from any top-level try statement | the literal "whose body persists" would pair one function's entry with another's, which the rule forbids |
+| U3 | NOTIFY's W46/W47 stay declared and live, and SGP40's W34 keeps `SGP_BACKUP_TOO_OLD`, until U5 and U15 | `register()`/`finalize()` exist until U5; the rename is A.U15.17's |
+| U3 | NTP's `cettime()` handler stays until U18, logging E16 `CLOCK` | its removal is U18's register fix |
+| U3 | The twin suite's counting (A.U25.36 (4)) lands now, not at U25: Run 5 and the settle helper count failure events, Run 5c's SGP40 check counts its own link only, Run 5b compares the restored ring with Run 5's; cross-reboot loss checks keep counting E slots | under the central rule three identical failures hold one slot, so the slot-counting checks failed on every device; a boot-time warning that folds would make a cross-process failure count read one high; the rest of A.U25.36 stays U25 |
 
 ## Parked deltas (OR2.c, OR106.a)
 

@@ -14,6 +14,7 @@ import struct
 import time
 
 import network
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 import asy_ntp_client as ntpmod
@@ -397,14 +398,13 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
             server.close()
 
     still_running, synced, wait_s, max_s, counter = run(scenario())
-    # Never synced, but the task handles it itself (Part C.7.2): still running, backed off to its cap,
-    # and the silent timeout persisted as errno 21 - once for the whole run (C.7.1's repeat rule) while
-    # still counted every time. The value over the unit test is the real network_available() chain.
+    # Never synced, but the task handles it (Part C.7.2): still running, backed off to its cap, and the
+    # silent timeout persisted once for the run (C.7.1's repeat rule) while counted every time.
     assert still_running is True
     assert synced is False
     assert wait_s == max_s
     assert counter["NTP"]["ErrCount"] == 8
-    assert counter["NTP"]["ErrNum"] == [0] * 9 + [21]
+    assert counter["NTP"]["ErrNum"] == [0] * 9 + [code("E", "NTP_NO_REPLY")]
 
 
 def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_unavailable() -> None:
@@ -450,7 +450,7 @@ def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errn
     counter = run(ntp.get_error_counter())
     err_num, err_type = counter["NTP"]["ErrNum"], counter["NTP"]["ErrType"]
     assert isinstance(err_num, list) and isinstance(err_type, list)
-    assert err_num[-1] == 12  # the last entry now: no streak counter logs after it any more
+    assert err_num[-1] == code("E", "NTP_DNS")  # the last entry now: no streak counter logs after it any more
     assert err_type[-1] == "E"
 
 

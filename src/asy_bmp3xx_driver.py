@@ -33,6 +33,14 @@ if TYPE_CHECKING:
     from print_log import ErrorLog
 
 
+# Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
+_ERR_INIT = const(10)
+_ERR_READ = const(11)
+_ERR_CHIP_GET = const(12)
+_ERR_CHIP_SET = const(13)
+_ERR_BAD_ARG = const(21)
+_ERR_CFG_READ = const(26)
+
 _BMP388_CHIP_ID = const(0x50)  # also reported by BMP384 (datasheet sec 4.3.1); BMP390 differs
 _BMP390_CHIP_ID = const(0x60)
 
@@ -46,7 +54,7 @@ _REGISTER_CONFIG = const(0x1F)
 _REGISTER_CAL_DATA = const(0x31)
 _REGISTER_CMD = const(0x7E)
 
-_ERR_CMD = const(0x02)  # ERR_REG bit 1 "cmd_err": command execution failed (datasheet sec 4.3.2)
+_REG_ERR_CMD_BIT = const(0x02)  # ERR_REG bit 1 "cmd_err": command execution failed (datasheet sec 4.3.2)
 
 _STATUS_CMD_RDY = const(0x10)  # STATUS bit 4: command decoder ready for a new CMD (sec 4.3.3)
 _STATUS_DATA_READY = const(0x60)  # STATUS bits 5+6: drdy_press | drdy_temp (sec 4.3.3)
@@ -174,7 +182,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             pressure_oversampling, temperature_oversampling, filter_coefficient = await self.bmp.get_config_snapshot()
         except Exception as e:
-            await self.pr.err_s("Error reading oversampling/filter config from sensor:", e, errno=22)
+            await self.pr.err_s("Error reading oversampling/filter config from sensor:", e, errno=_ERR_CHIP_GET)
             return {name_cfg(_VAL_POV): None, name_cfg(_VAL_TOV): None, name_cfg(_VAL_FC): None}
         return {
             name_cfg(_VAL_POV): pressure_oversampling,
@@ -192,7 +200,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             self.pr.all("read")
         except Exception as e:
             timestamp = pressure = temperature = None
-            await self.pr.err_s("Read failed:", e, errno=11)
+            await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return pressure, temperature, timestamp
 
     async def _init_bmp(self) -> bool:
@@ -201,17 +209,17 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             await self.bmp.setup()
         except Exception as e:
-            await self.pr.err_s("Error in initial setup:", e, errno=10)
+            await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             return False  # error
 
         self.pr.one("Setting sensor config at startup.")
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC)
         if cfg_values is None or len(cfg_values) != _N_INT_CFG:
-            await self.pr.err_s("Error reading config data!", errno=12)
+            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
             return False  # error
 
-        # set_trigger_secs() never raises (logs errno=21, keeps the previous value) - a bad stored
+        # set_trigger_secs() never raises (logs BAD_ARG, keeps the previous value) - a bad stored
         # SampleInterv is a pure software timing knob, not a reason to fail this whole init attempt.
         await self.set_trigger_secs(cfg_values[0])  # BMPSampleInterv
         try:
@@ -219,7 +227,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self.bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff
         except Exception as e:
-            await self.pr.err_s("Error setting config data:", e, errno=13)
+            await self.pr.err_s("Error setting config data:", e, errno=_ERR_CHIP_SET)
             return False  # error
         self.pr.one("initialized")
         return True
@@ -231,7 +239,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         comp_values = await self.cfgmgr.get_float_values(_VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM)
         if comp_values is None or len(comp_values) != _N_FLOAT_CFG:
             comp_values = [0.0, 0.0, 0.0, 15.0]
-            await self.pr.err_s("Error reading config data!", errno=14)
+            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
 
         # results holds pressure, temperature and timestamp, in that order
         p_comp = results[0] - comp_values[0]  # pressure - BMPPressOffset
@@ -327,21 +335,21 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             return await self.bmp.get_pressure_oversampling()
         except Exception as e:
-            await self.pr.err_s("Error reading pressure oversampling:", e, errno=15)
+            await self.pr.err_s("Error reading pressure oversampling:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_temperature_oversampling(self) -> int | None:
         try:
             return await self.bmp.get_temperature_oversampling()
         except Exception as e:
-            await self.pr.err_s("Error reading temperature oversampling:", e, errno=17)
+            await self.pr.err_s("Error reading temperature oversampling:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def get_filter_coefficient(self) -> int | None:
         try:
             return await self.bmp.get_filter_coefficient()
         except Exception as e:
-            await self.pr.err_s("Error reading filter coefficient:", e, errno=19)
+            await self.pr.err_s("Error reading filter coefficient:", e, errno=_ERR_CHIP_GET)
             return None
 
     async def set_trigger_secs(self, value: float) -> bool:
@@ -353,7 +361,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
                 raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
         except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s("Error setting trigger interval:", e, errno=21)
+            await self.pr.err_s("Error setting trigger interval:", e, errno=_ERR_BAD_ARG)
             return False
         await self.trigger_period.set_value(trigger_secs)
         return True
@@ -362,7 +370,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             await self.bmp.set_pressure_oversampling(oversample)
         except Exception as e:
-            await self.pr.err_s("Error setting pressure oversampling:", e, errno=16)
+            await self.pr.err_s("Error setting pressure oversampling:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -370,7 +378,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             await self.bmp.set_temperature_oversampling(oversample)
         except Exception as e:
-            await self.pr.err_s("Error setting temperature oversampling:", e, errno=18)
+            await self.pr.err_s("Error setting temperature oversampling:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -378,7 +386,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             await self.bmp.set_filter_coefficient(coef)
         except Exception as e:
-            await self.pr.err_s("Error setting filter coefficient:", e, errno=20)
+            await self.pr.err_s("Error setting filter coefficient:", e, errno=_ERR_CHIP_SET)
             return False
         return True
 
@@ -642,5 +650,5 @@ class BMP3XX_I2C:
             await asyncio.sleep(0.002)  # datasheet-confirmed 2ms post-reset settle time
             async with bmp3xx.i2c_device as i2c:  # bus session
                 err = await i2c.get_register_struct(_REGISTER_ERR, "B")
-        if isinstance(err, int) and err & _ERR_CMD:
+        if isinstance(err, int) and err & _REG_ERR_CMD_BIT:
             raise RuntimeError("reset command rejected (ERR_REG cmd_err set)")

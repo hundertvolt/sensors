@@ -544,9 +544,7 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
 
 
 def errnos(comm: UART_Comm) -> "list[int]":
-    # Errors only. ErrNum holds errnos and wrnnos in one ring, so ErrType tells them apart, and every
-    # fault also resyncs, so the newest entry is usually the resync warning. Indexed, not zip()ed:
-    # MicroPython has no strict=.
+    # Errors only: ErrNum holds both kinds and ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=.
     entry = run(comm.get_error_counter())[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]

@@ -40,6 +40,7 @@ _NAME = const("FRAM")
 _ERR_INIT = const(10)
 _ERR_CALLBACK = const(14)
 _ERR_CLOCK = const(16)
+_ERR_ALLOC = const(20)
 _ERR_BAD_ARG = const(21)
 _ERR_UNEXPECTED = const(23)
 _ERR_FRAM_STATUS_BYTE = const(46)
@@ -104,21 +105,11 @@ class _AsyBaseFramChunk:
         self._read_match = True
         self._read_iters = 0
         self._compare_against: memoryview | None = None
-        self._episode_wrns = 0  # codes already persisted this degraded episode - see _episode_wrn()
-
-    async def _episode_wrn(self, wrnno: int, *args: object) -> None:
-        # C.7.1's repeat rule, per DISTINCT code. A corrupted block or a held mempause warns on
-        # EVERY operation, so a slot per operation refills the owner's bounded history by itself.
-        # Repeats still count; they just spend no slot, and never evict what preceded the fault.
-        bit = 1 if wrnno == _WRN_FRAM_PAUSED else 2  # one bit per episode code: FRAM_PAUSED, FRAM_BLOCK_INVALID
-        seen = bool(self._episode_wrns & bit)
-        self._episode_wrns |= bit
-        await self.pr.wrn_s(*args, wrnno=wrnno, repeat=seen)
 
     async def _write(self, buf: bytearray, *, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if (not override_pause) and (self._mempause()):
-                await self._episode_wrn(_WRN_FRAM_PAUSED, "FRAM communication paused, not writing FRAM!")
+                await self.pr.wrn_s("FRAM communication paused, not writing FRAM!", wrnno=_WRN_FRAM_PAUSED)
                 return False
             if len(buf) != self.size + self.crc.length():
                 await self.pr.err_s("Data size", len(buf), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
@@ -144,13 +135,12 @@ class _AsyBaseFramChunk:
                             await self.pr.err_s("Block", n, "write verification error!", errno=_ERR_FRAM_VERIFY)
                             return False
                     self.pr.evt("Write verification successful")
-            self._episode_wrns = 0  # a clean write ends the episode; a later one persists afresh
             return True
 
     async def _read(self, buf: bytearray, *, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if (not override_pause) and (self._mempause()):
-                await self._episode_wrn(_WRN_FRAM_PAUSED, "FRAM communication paused, not reading FRAM!")
+                await self.pr.wrn_s("FRAM communication paused, not reading FRAM!", wrnno=_WRN_FRAM_PAUSED)
                 return False
             if len(buf) != self.size + self.crc.length():
                 await self.pr.err_s("Data size", len(buf), "does not match chunk size", self.size, "!", errno=_ERR_BAD_ARG)
@@ -160,13 +150,13 @@ class _AsyBaseFramChunk:
                 if uninit:
                     self.pr.evt("Uninitialized data in block 0, reading block 1")
                 else:
-                    await self._episode_wrn(_WRN_FRAM_BLOCK_INVALID, "Invalid data in block 0, reading block 1")
+                    await self.pr.wrn_s("Invalid data in block 0, reading block 1", wrnno=_WRN_FRAM_BLOCK_INVALID)
                 valid, uninit = await self._read_into(buf, self.block_addr[1])
                 if not valid:
                     if uninit:
                         self.pr.evt("Uninitialized data in block 1")
                     else:
-                        await self._episode_wrn(_WRN_FRAM_BLOCK_INVALID, "Invalid data in block 1")
+                        await self.pr.wrn_s("Invalid data in block 1", wrnno=_WRN_FRAM_BLOCK_INVALID)
                     return False  # none of the copies is valid
                 self.pr.all("Valid data in block 1, overwriting block 0")
                 # if block 1 is valid, overwrite invalid block 0 with valid data
@@ -183,7 +173,7 @@ class _AsyBaseFramChunk:
                 if uninit:
                     self.pr.evt("Uninitialized data in block 1, writing block 0 data")
                 else:
-                    await self._episode_wrn(_WRN_FRAM_BLOCK_INVALID, "Invalid data in block 1, overwriting with block 0 data")
+                    await self.pr.wrn_s("Invalid data in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
                 # write valid data into block 1
                 res = await self._write_chunk(buf, self.block_addr[1])
                 if not res:
@@ -198,7 +188,6 @@ class _AsyBaseFramChunk:
                 await self.pr.err_s("Both blocks valid but different data", errno=_ERR_FRAM_COPIES_DIFFER)
                 return False
             self.pr.all("Both blocks valid and data verified")
-            self._episode_wrns = 0  # both copies healthy: the episode is over
             return True
 
     def _read_progress(self, global_start: int, span: int, n_iter: int) -> None:
@@ -445,6 +434,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         databuf = buf.get_data_buf()
         if databuf is None:
+            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False
         if len(data) > len(databuf):
             await self.pr.err_s("Data size", len(data), "larger than buffer size", len(databuf), "!", errno=_ERR_BAD_ARG)
@@ -456,6 +446,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
     async def write_into(self, buf: AsyFramChunkBuffer, *, override_pause: bool = False) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
+            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False
         return await self._write(dbuf, override_pause=override_pause)
 
@@ -471,6 +462,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
     async def read_into(self, buf: AsyFramChunkBuffer, *, override_pause: bool = False) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
+            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
             return False
         return await self._read(dbuf, override_pause=override_pause)
 
@@ -530,6 +522,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         dbuf = buf.get_data_buf()
         if dbuf is None:
+            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False, None, False
         if len(data) > len(dbuf):
             await self.pr.err_s("Data size", len(data), "larger than buffer size", len(dbuf), "!", errno=_ERR_BAD_ARG)
@@ -566,6 +559,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
                 return False, None, False
         tbuf = buf.get_ts_buf()
         if tbuf is None:
+            await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
             return False, None, False
         try:
             struct.pack_into(_TS_FMT, tbuf, 0, utc)
@@ -593,6 +587,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
     ) -> tuple[bool, int | None, int | None]:
         bbuf = buf.get_buf()
         if bbuf is None:
+            await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
             return False, None, None
         if not await self._read(bbuf, override_pause=override_pause):
             return False, None, None

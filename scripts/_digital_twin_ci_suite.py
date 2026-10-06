@@ -24,6 +24,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+# The repo root is appended, so tests/ resolves as a namespace package and no tests/ fake shadows a host module.
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from tests._error_codes import code
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = REPO_ROOT / "digital_twin"
 FRAM_STATE_PATH = STATE_DIR / "fram_state.json"
@@ -59,7 +63,6 @@ _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes 
     "fram": "write",
 }
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9 - past the old NTP give-up (~60s), see that run
-_NTP_ERRNO_NO_REPLY = 21  # asy_ntp_client.py's own no-reply errno (SPECIFICATION.md C.7.1)
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source. They all happen to
 # equal driver.upper() here, which is NOT a general rule - NotificationCoordinator's is "NOTIFY",
@@ -100,9 +103,9 @@ _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40'
 # 5/5b, then one link per bus-attached driver in Run 5c. Not device- or driver-specific, and
 # deliberately small: each one ends the driver's read task, and three is the supervisor's budget.
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
-# All five are the same verdict, so the episode rule spends ONE history slot on them while still
-# counting all five (asy_wifi_service.py's _episode_wrn(), SPECIFICATION.md Part C.7.1). Counter
-# and slot count are therefore different numbers here, deliberately - SPECIFICATION.md Part C.7.1.
+# All five are the same verdict, so the central newest-entry rule (print_log.py) spends ONE history
+# slot on them while still counting all five. Counter and slot count are therefore different numbers
+# here, deliberately - SPECIFICATION.md Part C.7.1.
 _WIFI_PERSISTED_WARNINGS = 1
 
 # ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it
@@ -291,6 +294,42 @@ def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
     return sum(1 for item in history if isinstance(item, dict) and item.get("type") == type_char)
 
 
+def _failure_events(entry: dict[str, Any]) -> int:
+    # print_log.py's newest-entry rule folds a repeated code into one slot while "counter" counts
+    # every call, so a failure is a counter step not backed by a "W" slot (exact while no warning repeats).
+    counter = entry.get("counter", 0)
+    return (counter if isinstance(counter, int) else 0) - _error_type_count(entry, "W")
+
+
+def _link_failures(before: dict[str, Any], after: dict[str, Any]) -> int:
+    # One process's own failures: a boot-time warning folded into an older slot before it cancels out.
+    return _failure_events(after) - _failure_events(before)
+
+
+def _non_empty_slots(entry: dict[str, Any]) -> list[tuple[Any, Any]]:
+    return [(item.get("type"), item.get("num")) for item in entry.get("history", []) if isinstance(item, dict) and item.get("type") != "N"]
+
+
+def _restore_is_all_or_nothing(written: dict[str, Any], restored: dict[str, Any]) -> bool:
+    # Whole: the written ring and at least its count came back. Nothing: no "E" slot survived, only
+    # what this boot logged itself. Anything else is a partial or garbled restore.
+    slots = _non_empty_slots(restored)
+    whole = slots == _non_empty_slots(written) and restored.get("counter", 0) >= written.get("counter", 0)
+    return whole or all(kind != "E" for kind, _ in slots)
+
+
+def _wait_for_failure_events(name: str, target: int, timeout_s: float) -> dict[str, Any]:
+    # _wait_for_error_type_count()'s poll, keyed on failure events rather than history slots.
+    deadline = time.monotonic() + timeout_s
+    entry: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        entry = _errcount(name)
+        if _failure_events(entry) >= target:
+            return entry
+        time.sleep(1.0)
+    return entry
+
+
 def _errcount(name: str) -> dict[str, Any]:
     # TOLERANT: answers {} for a /status it could not parse, since the polling helpers call it in
     # a loop and a transient non-200 during boot must retry. Assertions take _errcount_required()
@@ -326,7 +365,7 @@ def _errcount_all() -> dict[str, dict[str, Any]]:
 
 
 def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples: int = 3, interval_s: float = 2.0) -> dict[str, int]:
-    # A bounded fault is exhausted when its drivers stop adding "E" entries - observable, not a
+    # A bounded fault is exhausted when its drivers stop adding failures - observable, not a
     # wall-clock guess - so this samples until consecutive reads agree for every name. A snapshot
     # taken mid-fault would read as a persistence failure when nothing was lost.
     deadline = time.monotonic() + timeout_s
@@ -335,7 +374,7 @@ def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples
     current: dict[str, int] = {}
     while time.monotonic() < deadline:
         table = _errcount_all()
-        current = {name: _error_type_count(table.get(name, {})) for name in names}
+        current = {name: _failure_events(table.get(name, {})) for name in names}
         agreed = agreed + 1 if current == previous else 0
         if agreed >= samples - 1:
             return current
@@ -762,24 +801,25 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
         _check(condition=ec == 0, msg=f"Run 4: clean shutdown (exit code {ec})")
 
 
-def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
+def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> dict[str, Any]:
     # ---- Run 5: clean boot with a small BOUNDED fault, proving recovery - the half Run 3 cannot
     # show, since it only proves the system survives while still broken. SGP40 is on every real
     # device (Part L.3), so this needs no device-conditional logic. ----
     _clean_state()
     log5 = ctx.logs_dir / "run5_recovery_after_bounded_fault.log"
     proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_BOUNDED_FAULT_COUNT}"], log5)
+    entry2: dict[str, Any] = {}
     try:
         _wait_until_serving(proc)
-        # Poll rather than sleep a guessed interval: the fault is exhausted when the third "E"
+        # Poll rather than sleep a guessed interval: the fault is exhausted when the third failure
         # lands, which is a real event to wait for, not a wall-clock duration to assume.
-        entry = _wait_for_error_type_count("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
-        errors_after_exhaustion = _error_type_count(entry)
+        entry = _wait_for_failure_events("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        errors_after_exhaustion = _failure_events(entry)
         _check(condition=errors_after_exhaustion == _BOUNDED_FAULT_COUNT, msg=f"Run 5: SGP40's bounded fault ({_BOUNDED_FAULT_COUNT} failures) was fully recorded, no more ({entry!r})")
         time.sleep(3.0)  # a few more cycles past exhaustion - real ("E") errors should NOT keep climbing
-        # (a "W" recovery notice may legitimately appear here - see _error_type_count()'s own comment)
+        # (a "W" recovery notice may legitimately appear here - _failure_events() discounts it)
         entry2 = _errcount("SGP40")
-        _check(condition=_error_type_count(entry2) == errors_after_exhaustion, msg=f"Run 5: SGP40's real error count stopped climbing once the fault cleared (recovery) ({entry2!r})")
+        _check(condition=_failure_events(entry2) == errors_after_exhaustion, msg=f"Run 5: SGP40's real error count stopped climbing once the fault cleared (recovery) ({entry2!r})")
         status, body = _http("GET", "/measurements")
         sgp40_reading = body.get("SGP40", {}) if status == _HTTP_OK and isinstance(body, dict) else {}
         _check(condition=status == _HTTP_OK and bool(sgp40_reading), msg=f"Run 5: SGP40 measurements resumed after recovery ({sgp40_reading!r})")
@@ -788,11 +828,12 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
     finally:
         ec = _shutdown(proc, "Run 5")
         _check(condition=ec == 0, msg=f"Run 5: clean shutdown (exit code {ec})")
+    return entry2
 
 
-def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
+def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: dict[str, Any]) -> None:
     # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 left exactly
-    # _BOUNDED_FAULT_COUNT "E" entries on a healthy chip, written through on every push, so they
+    # _BOUNDED_FAULT_COUNT failures on a healthy chip, written through on every push, so they
     # SHOULD come back.
 
     # But Run 5 shut down abruptly, which can catch a chunk write in flight: both status bytes go
@@ -814,11 +855,8 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
             # The webserver answers well before the FRAM-backed loggers finish their own setup(),
             # and that setup() IS the restore - so poll for it rather than sampling immediately,
             # the same host-speed trap the old Run 4 check fell into, one layer down.
-            entry = _wait_for_error_type_count(name, _BOUNDED_FAULT_COUNT, timeout_s=30.0)
-            restored = _error_type_count(entry)
-            _check(condition=restored in (0, _BOUNDED_FAULT_COUNT), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
-            if restored:
-                _check(condition=entry.get("counter", 0) >= restored, msg=f"Run 5b: {name}'s restored error COUNT is consistent with the {restored} restored entries, not left behind ({entry!r})")
+            entry = _wait_for_error_type_count(name, _error_type_count(written), timeout_s=30.0)
+            _check(condition=_restore_is_all_or_nothing(written, entry), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - Run 5's ring and count or no error at all, never a partial remnant (wrote {written!r}, restored {entry!r})")
     except Exception as exc:
         _fail(f"Run 5b (error-log restore is all-or-nothing): {exc!r}")
     finally:
@@ -846,6 +884,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     snapshot_table: dict[str, dict[str, Any]] = {}
     for driver in drivers:
         name = _DRIVER_ERRCOUNT_NAME[driver]
+        before_link = snapshot_table.get(name, {})
         log5c_a = ctx.logs_dir / f"run5c_a_{driver}_record_then_pause_storage.log"
         proc = _spawn(ctx, ["--fault", f"{driver}:{_BUS_FAULT_OPS[driver]}:{_BOUNDED_FAULT_COUNT}"], log5c_a)
         try:
@@ -860,16 +899,18 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             settled = _wait_for_error_counts_to_settle([name], timeout_s=90.0)
             _check(condition=settled[name] > 0, msg=f"Run 5c: {name}'s bounded fault was recorded as a real error against a HEALTHY store ({settled!r})")
             if name == "SGP40":
-                _check(condition=settled[name] == _BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_BOUNDED_FAULT_COUNT} bounded failures and no more before the commanded reboot ({settled!r})")
+                sgp40 = _errcount_required(name)
+                _check(condition=_link_failures(before_link, sgp40) == _BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_BOUNDED_FAULT_COUNT} bounded failures and no more before the commanded reboot (before {before_link!r}, after {sgp40!r})")
             snapshot_table = _errcount_all()
+            snapshot_errors = _error_type_count(snapshot_table.get(name, {}))
             status, _ = _http("PUT", "/system", {"SystemCmd": "mempause"})
             _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /system mempause accepted before {name}'s reboot (status {status})")
             paused = _wait_for_mem_paused(expected=True, timeout_s=15.0)
             _check(condition=paused, msg=f"Run 5c: storage actually reported paused before {name}'s shutdown, not just a 200")
             time.sleep(2.0)  # let anything already in flight finish - nothing new can start while paused
             at_pause = _error_type_count(_errcount_required(name))
-            _check(condition=at_pause == settled[name], msg=f"Run 5c: nothing more was logged for {name} between the snapshot and the storage pause, so the snapshot is what the chip actually holds ({settled[name]} snapshot, {at_pause} at the pause)")
-            recorded[name] = settled[name]
+            _check(condition=at_pause == snapshot_errors, msg=f"Run 5c: nothing more was logged for {name} between the snapshot and the storage pause, so the snapshot is what the chip actually holds ({snapshot_errors} snapshot, {at_pause} at the pause)")
+            recorded[name] = snapshot_errors
         except Exception as exc:
             _fail(f"Run 5c ({driver}: record then pause storage): {exc!r}")
         finally:
@@ -880,7 +921,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     proc = _spawn(ctx, [], log5c_b)
     try:
         _wait_until_serving(proc)
-        _wait_for_error_type_count("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        _wait_for_error_type_count("SGP40", recorded.get("SGP40", 1), timeout_s=30.0)
         restored_table = _errcount_all()
         for name, expected in recorded.items():
             entry = restored_table.get(name, {})
@@ -1024,7 +1065,8 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         ntp = _errcount_required("NTP")
         nums = [item.get("num") for item in ntp.get("history", []) if isinstance(item, dict)]
-        _check(condition=_NTP_ERRNO_NO_REPLY in nums, msg=f"Run 9: NTP logged errno {_NTP_ERRNO_NO_REPLY} (no reply) for the unreachable host (history {nums})")
+        no_reply = code("E", "NTP_NO_REPLY")
+        _check(condition=no_reply in nums, msg=f"Run 9: NTP logged errno {no_reply} (NTP_NO_REPLY) for the unreachable host (history {nums})")
         system_after = _errcount_required("SYSTEM").get("counter", 0)
         _check(condition=system_after == system_before, msg=f"Run 9: no task ended and was restarted while NTP failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:
@@ -1248,8 +1290,8 @@ def run_suite(ctx: RunContext) -> None:
     _run_2_reboot_settings_persistence(ctx)
     _run_3_sustained_bus_fault_matrix(ctx)
     _run_4_bus_fault_persistence_sweep(ctx)
-    _run_5_recovery_after_bounded_fault(ctx)
-    _run_5b_error_log_restore_is_all_or_nothing(ctx)
+    run5_entry = _run_5_recovery_after_bounded_fault(ctx)
+    _run_5b_error_log_restore_is_all_or_nothing(ctx, run5_entry)
     _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx)
     _run_6_configure_ssid(ctx)
     _run_7_wifi_hotspot_dns(ctx)

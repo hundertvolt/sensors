@@ -38,10 +38,11 @@ _BASELINE_LEVEL = 20
 _BASELINE_TOL = 0.35  # return-to-baseline: same light must read the same after ANY scenario
 _PARK_STABLE_SAMPLES = 3  # consecutive same-range samples that count as "the entry range has settled"
 _PARK_TIMEOUT_S = 20.0
+W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 
 failures: "list[str]" = []
 notes: "list[str]" = []
-w13_seen: "list[str]" = []  # scenarios during which the driver's cross-scenario W13 run-of-five surfaced
+periodic_only_seen: "list[str]" = []  # scenarios during which the driver's cross-scenario run-of-five warning surfaced
 
 
 def check(condition: object, message: str) -> None:
@@ -198,11 +199,11 @@ async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[t
     entries = _log_entries(await rig.reader.get_error_counter())
     errors = [pair for pair in entries if pair[0] == "E"]
     check(not errors, f"{name}: the module logged real ERRORS: {errors}")
-    # W13 needs five periodic-path range decisions in a row, and that run lives in driver state
+    # ISL_PERIODIC_ONLY needs five periodic-path range decisions in a row, and that run lives in driver state
     # (_periodic_only_switches) which reset_error_counter() does not touch - so it can span
     # scenarios, and blaming the one it surfaces in would be arbitrary. Asserted once per run.
-    if ("W", 13) in entries:
-        w13_seen.append(name)
+    if ("W", W_ISL_PERIODIC_ONLY) in entries:
+        periodic_only_seen.append(name)
     check(rig.samples >= 3, f"{name}: only {rig.samples} samples arrived - the read chain stalled")
     check(rig.max_gap_ms <= int(_MAX_SAMPLE_GAP_S * 1000), f"{name}: {rig.max_gap_ms}ms between samples - the read chain stalled mid-scenario")
     check(rig.switches <= max_switches, f"{name}: {rig.switches} range switches (limit {max_switches}) - chattering")
@@ -329,11 +330,11 @@ async def _main() -> None:
             await _baseline(rig, spec[0], reference)
         # Collectively the scenarios must have covered a real dynamic range, not one corner of it.
         check(span_hi > span_lo * 100.0, f"the scenario set only spanned {span_lo:.1f}..{span_hi:.1f} lux - the brightness range was not really covered")
-        # Without this the W13 check below proves nothing: the warning needs five
+        # Without this the ISL_PERIODIC_ONLY check below proves nothing: the warning needs five
         # consecutive periodic-only decisions, so a run with four switches in total could not have
         # produced it however dead the interrupt line was.
-        check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the W13 dead-interrupt check below to be able to fire at all")
-        check(not w13_seen, f"W13 logged during {w13_seen} - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
+        check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the ISL_PERIODIC_ONLY dead-interrupt check below to be able to fire at all")
+        check(not periodic_only_seen, f"ISL_PERIODIC_ONLY logged during {periodic_only_seen} - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
         notes.append(f"combined span across every scenario: {span_lo:.1f}..{span_hi:.1f} lux, {rig.total_switches} range switches in total")
     finally:
         pixel[0] = (0, 0, 0)

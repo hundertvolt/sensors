@@ -99,7 +99,6 @@ _DIAG_RESYNC_STREAK = const(2)  # resyncs with bytes seen but no frame ever vali
 _MIN_CHUNKS = const(2)  # even a payload-less command carries one data chunk, so it can be confirmed
 _CALLBACK_PAIR_LEN = const(2)  # every callback returns exactly (valid, value)
 _CMD_ID_MAX = const(0xFF)  # a command id is one payload byte, so this is its whole range
-_REJECT_MAP_LEN = const(32)  # one bit per command id (256 / 8), so a refusal is news exactly once
 
 # Codes from the global catalog (buildgen/error_catalog.json): the UART band 75-99 for this module's
 # own conditions, the shared codes for the rest. Mirrored in SPECIFICATION.md Part C.7.1.
@@ -126,8 +125,6 @@ _ERR_UART_PEER_INITIATED = const(88)
 _ERR_UART_LINK_UNINTELLIGIBLE = const(89)
 _ERR_UART_STREAM_SHORT = const(90)
 
-_WRN_RESYNC = const(10)
-_WRN_FAULT_CLEARED = const(12)
 _WRN_UART_DRAIN_BOUND = const(54)
 _WRN_UART_CANCEL_UNACKED = const(55)
 _WRN_UART_CMD_DECLINED = const(56)
@@ -193,9 +190,6 @@ class UART_Comm:
         self._in_resync = False  # a fault during a resync must not start a second one
         self._holdoff_active = False
         self._holdoff_deadline = time.ticks_ms()  # only meaningful while _holdoff_active is set
-        self._last_errno = 0  # a repeated identical fault escalates once, then stops persisting
-        self._fault_streak = 0
-        self._episode_events = 0  # the repeat rule applied to the recovery warnings, not just the errno
         self._valid_frames = 0
         self._blind_resyncs = 0  # resyncs that saw bytes but never a valid frame
         self._drain_bound_hit = False  # set by _drain(), read by the resync that called it
@@ -209,7 +203,7 @@ class UART_Comm:
         self.frame_size = _HEADER_LEN + payload
         self._backoff_initial_ms = max(backoff_base // 2, 1)
         self._backoff_max_ms = max(backoff_base * _BACKOFF_MAX_MULT, self._backoff_initial_ms)
-        self._tx, self._rx, self._ack, self._zero, self._cmd_buf, self._rejected = self._allocate()
+        self._tx, self._rx, self._ack, self._zero, self._cmd_buf = self._allocate()
         if self._init_errno == 0 and not self._buffers_ready(payload):
             self._init_errno = _ERR_ALLOC
         if self._init_errno:
@@ -262,10 +256,10 @@ class UART_Comm:
         per_poll = ((bus.baudrate // 10) * (bus.poll_wait_ms + _POLL_JITTER_MS)) // 1000
         return max(wire, per_poll)
 
-    def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray, bytearray]":
-        # Everything the steady state needs, once: the TX/RX frame buffers, the ACK scratch,
-        # the zero padding, the command-id scratch and the declined-id bitmap. Nothing is allocated
-        # per frame after this - zero bytes retained per transaction, pinned by test_uart_comm_hazard.py.
+    def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray]":
+        # Everything the steady state needs, once: the TX/RX frame buffers, the ACK scratch, the zero
+        # padding and the command-id scratch. Nothing is allocated per frame after this - zero bytes
+        # retained per transaction, pinned by test_uart_comm_hazard.py.
         if self.uart is None or self._init_errno == _ERR_UART_PAYLOAD_SIZE:
             size = _HEADER_LEN  # a refused construction still needs well-formed attributes
             room = size
@@ -278,19 +272,18 @@ class UART_Comm:
             ack = bytearray(room)
             zero = bytearray(max(size - _HEADER_LEN, 0))
             cmd_buf = bytearray(1)
-            rejected = bytearray(_REJECT_MAP_LEN)
         except (MemoryError, OverflowError):
-            return tx, rx, bytearray(0), bytearray(0), bytearray(0), bytearray(0)
+            return tx, rx, bytearray(0), bytearray(0), bytearray(0)
         # An ACK's shape is fixed, so only its UID is ever written again.
         if len(ack) >= _HEADER_LEN:
             ack[_MSG_CMD] = CMD_ACK
             ack[_MSG_SIZE] = 0
             ack[_MSG_CHUNKS] = 1
             ack[_MSG_CUR_CHUNK] = 1
-        return tx, rx, ack, zero, cmd_buf, rejected
+        return tx, rx, ack, zero, cmd_buf
 
     def _buffers_ready(self, payload: int) -> bool:
-        # Every buffer, not only the TX frame: _allocate() guards its four scratch buffers as one
+        # Every buffer, not only the TX frame: _allocate() guards its three scratch buffers as one
         # group, so a heap exhausted after the frame buffers leaves zero-length ones behind. That
         # object passed the gate, then padding shrank the TX buffer and the id write raised (F.1).
         return (
@@ -299,44 +292,13 @@ class UART_Comm:
             and len(self._ack) >= self.frame_size
             and len(self._zero) >= payload
             and len(self._cmd_buf) >= 1
-            and len(self._rejected) >= _REJECT_MAP_LEN
         )
 
     # ---- logging --------------------------------------------------------------------------
 
     async def _err(self, errno: int, *args: object) -> None:
-        # A permanently faulty link would otherwise bury every other module's FRAM history
-        # under one repeated code. Exactly two entries per fault episode: the transition in (here)
-        # and the transition back out (_fault_cleared).
-        if errno == self._last_errno:
-            self._fault_streak += 1
-            self.pr.err("Repeated errno", errno, *args)  # visible, not persisted, not counted
-            return
-        self._last_errno = errno
-        self._fault_streak = 0
+        # Every fault persists its errno; a repeat of the newest code is collapsed by the central rule (C.7.1).
         await self.pr.err_s("UART error:", *args, errno=errno)
-
-    async def _fault_cleared(self) -> None:
-        # The other end of the episode (Part C.7.1). Persisted only when the fault had actually been
-        # repeating, so a single transient leaves one entry rather than a matched pair.
-        if self._fault_streak:
-            await self.pr.wrn_s("Link recovered after", self._fault_streak, "repeats of errno", self._last_errno, wrnno=_WRN_FAULT_CLEARED)
-        self._clear_fault_state()
-
-    async def _episode_wrn(self, wrnno: int, *args: object) -> None:
-        # C.7.1's repeat rule applied to the warnings a fault drags along: every fault also resyncs, so an
-        # unconditionally persisted resync warning refills the bounded history by itself, evicting
-        # the entry that says what broke. One persisted warning per episode, the rest visible only.
-        if self._episode_events:
-            self.pr.wrn(*args)
-        else:
-            await self.pr.wrn_s(*args, wrnno=wrnno)
-        self._episode_events += 1
-
-    def _clear_fault_state(self) -> None:
-        self._last_errno = 0
-        self._fault_streak = 0
-        self._episode_events = 0
 
     # ---- readiness and role gates ---------------------------------------------------------
 
@@ -540,8 +502,8 @@ class UART_Comm:
         total = 0
         while True:
             if time.ticks_diff(time.ticks_ms(), start) > bound_ms:
-                # Visible only, and flagged rather than persisted here: the caller owns the episode's
-                # one slot, and setup()'s boot drain owns no episode at all (SPECIFICATION.md C.7.1).
+                # Visible only, and flagged rather than persisted here: the resync that called it
+                # persists W54, and setup()'s boot drain persists nothing (C.7.1).
                 self._drain_bound_hit = True
                 self.pr.wrn("Drain bound reached, resyncing anyway")
                 break
@@ -558,13 +520,12 @@ class UART_Comm:
         self._in_resync = True
         try:
             drained = await self._drain(device)
-            # The episode's single persisted slot goes to the more specific of the two: 11 separates a
-            # babbling or misconfigured peer from ordinary line noise, 10 only says a resync happened.
-            # Logged after the drain for that reason - the drain is what decides which one this is.
+            # A resync is routine and prints; only a drain that hit its bound (a babbling or misconfigured
+            # peer) persists W54. Logged after the drain, which decides which one this is.
             if self._drain_bound_hit:
-                await self._episode_wrn(_WRN_UART_DRAIN_BOUND, "Resynced the link - drain bound reached, the peer never stopped sending")
+                await self.pr.wrn_s("Resynced the link - drain bound reached, the peer never stopped sending", wrnno=_WRN_UART_DRAIN_BOUND)
             else:
-                await self._episode_wrn(_WRN_RESYNC, "Resyncing the link")
+                self.pr.wrn("Resyncing the link")
             self._hold_off_writes()
             if self.uart is not None:
                 self.uart.resync_framing()  # inert unless a delimited codec is selected (Part G.2)
@@ -583,22 +544,14 @@ class UART_Comm:
 
     async def _fault(self, device: "UART", errno: int, *args: object) -> None:
         # Every fault this module reports also resyncs, without exception - one helper so that is a
-        # single enforced shape rather than a convention repeated at twenty-eight call sites.
+        # single enforced shape rather than a convention repeated at every call site.
         await self._err(errno, *args)
         await self._resync(device)
 
     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
-        # C.7.1's repeat rule for a declined command: a peer polling an id this side does not implement
-        # is a standing condition, and every refusal also resyncs - two slots each, a ten-slot history
-        # gone in five rounds. One bit per id, not just the last, so an alternation cannot refill it.
-        index = cmd_id >> 3
-        bit = 1 << (cmd_id & 7)
-        if index < len(self._rejected) and not self._rejected[index] & bit:
-            self._rejected[index] |= bit
-            await self._episode_wrn(_WRN_UART_CMD_DECLINED, "callback rejected command", cmd_id)
-        else:
-            self._episode_events += 1  # so the resync below stays visible-only too
-            self.pr.wrn("Repeated rejection of command", cmd_id)
+        # A declined command persists W56 every time (a run of identical codes spends one slot under the
+        # central rule) and, like every refusal, resyncs.
+        await self.pr.wrn_s("callback rejected command", cmd_id, wrnno=_WRN_UART_CMD_DECLINED)
         await self._resync(device)
 
     async def clear(self) -> None:
@@ -644,13 +597,12 @@ class UART_Comm:
             else:
                 await self._fault(device, err, "invalid ACK for frame", cur_chunk)
             return False
-        await self._note_valid_frame()
+        self._note_valid_frame()
         return True
 
-    async def _note_valid_frame(self) -> None:
+    def _note_valid_frame(self) -> None:
         self._valid_frames += 1
         self._blind_resyncs = 0
-        await self._fault_cleared()
 
     # ---- callback dispatch -----------------------------------------------------------------------
 
@@ -771,7 +723,7 @@ class UART_Comm:
                 # Part I.1 says to avoid on a non-compacting heap.
                 dest[written : written + size] = memoryview(rx)[_MSG_PAYLOAD : _MSG_PAYLOAD + size]
             written += size
-            await self._note_valid_frame()
+            self._note_valid_frame()
             if cur == chunks:
                 break  # the final ACK is deferred until after the total-size check below
             if not await self._send_ack(device, prev_uid):
@@ -956,7 +908,7 @@ class UART_Comm:
             # Otherwise the initiator accepts an answer to a question it never asked.
             await self._fault(device, _ERR_UART_GET_ID_MISMATCH, "answer echoes id", rx[_MSG_PAYLOAD], "not", get_id)
             return None
-        await self._note_valid_frame()
+        self._note_valid_frame()
         return rx[_MSG_CHUNKS], rx[_MSG_UID]
 
     # ---- public API: responder ----------------------------------------------------------------------
@@ -1000,7 +952,7 @@ class UART_Comm:
         cmd_id = rx[_MSG_PAYLOAD]
         uid = rx[_MSG_UID]
         chunks = rx[_MSG_CHUNKS]
-        await self._note_valid_frame()
+        self._note_valid_frame()
         if cmd == CMD_GET:
             return await self._answer_get(device, get_cb, cmd_id, uid)
         return await self._accept_set(device, set_cb, cmd_id, uid, chunks)
@@ -1092,7 +1044,6 @@ class UART_Comm:
             # persisting it would put an entry in the FRAM history on every single boot,
             # indistinguishable there from a real fault.
             self.pr.one("Drained", drained, "stale bytes at setup")
-        self._clear_fault_state()  # a boot-time drain must not count as an episode's first event
         self.initialized = True
         self.pr.one("UART link ready as", self.role)
         return True
@@ -1131,11 +1082,7 @@ class UART_Comm:
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:
-        # Resets everything this module counts, not just the history - the streak state behind
-        # C.7.1's escalate-once rule must not survive a reset the caller expects to be total.
-        self._clear_fault_state()
+        # Clears the history and the link diagnostic's state behind it (valid-frame count, blind-resync streak).
         self._valid_frames = 0
         self._blind_resyncs = 0
-        for index in range(len(self._rejected)):
-            self._rejected[index] = 0  # in place: a reset must not depend on the heap having room
         await self.pr.reset()

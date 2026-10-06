@@ -4,6 +4,7 @@ import select
 import socket
 
 import network
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 from machine import Timer
 
@@ -54,6 +55,12 @@ def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "in
     value = counter["WIFI"][field]
     assert isinstance(value, list)
     return value[-1]
+
+
+def _used_slots(counter: "ErrorLog", name: str = "WIFI") -> "list[int]":
+    # The ring's used slots, oldest first ("N" marks an unused one).
+    nums, types = counter[name]["ErrNum"], counter[name]["ErrType"]
+    return [nums[i] for i in range(len(nums)) if types[i] != "N"]
 
 
 def _wlan(client: AsyConnTime) -> "Any":
@@ -1392,25 +1399,25 @@ def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_switch_wlan_mode_exception_sets_hw_op_failed_and_persists_errno_11() -> None:
+def test_switch_wlan_mode_exception_sets_hw_op_failed_and_persists_wlan_mode_switch() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client).raise_on["disconnect"] = RuntimeError("simulated hardware fault")
     run(client._switch_wlan_mode(network.AP_IF))
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 11
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_MODE_SWITCH")
     assert _last_err(counter, "ErrType") == "E"
 
 
-def test_activate_hotspot_ap_exception_sets_hw_op_failed_and_persists_errno_12() -> None:
+def test_activate_hotspot_ap_exception_sets_hw_op_failed_and_persists_wlan_ap_start() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client).raise_on["config"] = RuntimeError("simulated hardware fault")
     run(client._activate_hotspot_ap("DE", "TestHost", "12345678"))
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 12
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_AP_START")
     assert _last_err(counter, "ErrType") == "E"
 
 
@@ -1428,7 +1435,7 @@ def test_activate_hotspot_ap_success_configures_and_activates_the_ap() -> None:
     run(scenario())
 
 
-def test_trigger_sta_connect_exception_sets_hw_op_failed_and_persists_errno_13() -> None:
+def test_trigger_sta_connect_exception_sets_hw_op_failed_and_persists_wlan_sta_start() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client).raise_on["connect"] = RuntimeError("simulated hardware fault")
@@ -1436,7 +1443,7 @@ def test_trigger_sta_connect_exception_sets_hw_op_failed_and_persists_errno_13()
     assert result is False
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 13
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_STA_START")
     assert _last_err(counter, "ErrType") == "E"
 
 
@@ -1449,87 +1456,84 @@ def test_trigger_sta_connect_success_returns_true_and_records_the_attempt() -> N
     assert _wlan(client)._active is True
 
 
-def test_poll_sta_connect_status_exception_sets_hw_op_failed_and_persists_errno_14() -> None:
+def test_poll_sta_connect_status_exception_sets_hw_op_failed_and_persists_wlan_sta_poll() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client).raise_on["status"] = RuntimeError("simulated hardware fault")
     run(client._poll_sta_connect_status())
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 14
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_STA_POLL")
     assert _last_err(counter, "ErrType") == "E"
 
 
-def test_poll_sta_connect_status_wrong_password_persists_wrnno_4() -> None:
+def test_poll_sta_connect_status_wrong_password_persists_wlan_auth_failed() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._status = network.STAT_WRONG_PASSWORD
     run(client._poll_sta_connect_status())
     assert client.hw_op_failed is False  # a real connect outcome, not a hardware/driver failure
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 4
+    assert _last_err(counter, "ErrNum") == code("W", "WLAN_AUTH_FAILED")
     assert _last_err(counter, "ErrType") == "W"
 
 
-def test_poll_sta_connect_status_no_ap_found_persists_wrnno_5() -> None:
+def test_poll_sta_connect_status_no_ap_found_persists_wlan_no_ap() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._status = network.STAT_NO_AP_FOUND
     run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 5
+    assert _last_err(counter, "ErrNum") == code("W", "WLAN_NO_AP")
     assert _last_err(counter, "ErrType") == "W"
 
 
-def test_poll_sta_connect_status_connect_fail_persists_wrnno_6() -> None:
+def test_poll_sta_connect_status_connect_fail_persists_wlan_connect_failed() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._status = network.STAT_CONNECT_FAIL
     run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 6
+    assert _last_err(counter, "ErrNum") == code("W", "WLAN_CONNECT_FAILED")
     assert _last_err(counter, "ErrType") == "W"
 
 
-def test_poll_sta_connect_status_undefined_state_persists_wrnno_7() -> None:
+def test_poll_sta_connect_status_undefined_state_persists_wlan_status_unknown() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._status = 12345  # not any real/defined network.STAT_* value
     run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 7
+    assert _last_err(counter, "ErrNum") == code("W", "WLAN_STATUS_UNKNOWN")
     assert _last_err(counter, "ErrType") == "W"
 
 
-# SPECIFICATION.md Part C.7.1: one persisted slot per connect ATTEMPT empties the ten-slot ring in ten retries,
-# evicting whatever preceded the outage. The episode rule is per distinct code, not per episode as
-# asy_uart_comm.py's own _episode_wrn() is - see that module and SPECIFICATION.md Part C.7.1.
+# A repeated connect verdict is one code: one slot, every attempt counted (C.7.1's central rule).
 
 
-def test_a_repeated_connect_verdict_persists_once_per_episode_however_often_the_outage_retries() -> None:
+def test_a_repeated_connect_verdict_spends_one_slot_however_often_the_outage_retries() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._status = network.STAT_NO_AP_FOUND
     for _attempt in range(10):
         run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5], "ten retries must not spend ten slots"
+    assert _used_slots(counter) == [code("W", "WLAN_NO_AP")], "ten retries must not spend ten slots"
     assert counter["WIFI"]["ErrCount"] == 10, "...and must still be counted: ten failed attempts are ten events"
 
 
-def test_a_different_verdict_in_the_same_episode_still_persists() -> None:
+def test_a_different_verdict_in_the_same_outage_still_persists() -> None:
     client = make_client()
     run(client.pr.setup())
     for status in (network.STAT_NO_AP_FOUND, network.STAT_NO_AP_FOUND, network.STAT_WRONG_PASSWORD):
         _wlan(client)._status = status
         run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    # Exactly item 29's shape: a W4 beside a W5 on one outage must survive the dedup - two distinct
-    # verdicts, each evidence of what the link did; collapsing to the first would destroy one.
-    assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5, 4]
+    # Two distinct verdicts on one outage, each evidence of what the link did: both keep a slot.
+    assert _used_slots(counter) == [code("W", "WLAN_NO_AP"), code("W", "WLAN_AUTH_FAILED")]
 
 
-def test_a_successful_connection_ends_the_episode_so_a_later_outage_persists_again() -> None:
+def test_a_recurrence_after_recovery_stays_one_slot() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client)._status = network.STAT_NO_AP_FOUND
@@ -1537,17 +1541,18 @@ def test_a_successful_connection_ends_the_episode_so_a_later_outage_persists_aga
     client._on_sta_connected()
     run(client._poll_sta_connect_status())
     counter = run(client.get_error_counter())
-    assert [num for num in counter["WIFI"]["ErrNum"] if num] == [5, 5]
+    assert _used_slots(counter) == [code("W", "WLAN_NO_AP")]
+    assert counter["WIFI"]["ErrCount"] == 2
 
 
-def test_disconnect_sta_and_wait_exception_sets_hw_op_failed_and_persists_errno_15() -> None:
+def test_disconnect_sta_and_wait_exception_sets_hw_op_failed_and_persists_wlan_sta_disconnect() -> None:
     client = make_client()
     run(client.pr.setup())
     _wlan(client).raise_on["disconnect"] = RuntimeError("simulated hardware fault")
     run(client._disconnect_sta_and_wait())
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 15
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_STA_DISCONNECT")
     assert _last_err(counter, "ErrType") == "E"
 
 
@@ -1573,7 +1578,7 @@ def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     run(client._disconnect_sta_and_wait())
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 18
+    assert _last_err(counter, "ErrNum") == code("E", "TIMEOUT")
     assert _last_err(counter, "ErrType") == "E"
 
 
@@ -1586,7 +1591,7 @@ def test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_rais
     assert client._conn_phase == _PHASE_DEACTIVATED
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 16
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_OFF")
     assert _last_err(counter, "ErrType") == "E"
 
 
@@ -1693,19 +1698,20 @@ def test_handle_sta_connection_result_disconnected_calls_on_sta_disconnected() -
 
 
 # ---------------------------------------------------------------------------
-# Missing-configuration warnings - a real, actionable reason now persists via pr.wrn_s() instead of
-# vanishing into a debug-only print
+# Missing configuration - logged in both layers: CFGMGR_WIFI's refused read, and WIFI's own entry for
+# running on its fallback
 # ---------------------------------------------------------------------------
 
 
-def test_apply_initial_led_config_missing_config_persists_wrnno_1_and_deactivates() -> None:
+def test_apply_initial_led_config_missing_config_logs_in_both_layers_and_deactivates() -> None:
     client = make_invalid_cfg_client()
     run(client.pr.setup())
     run(client._apply_initial_led_config())
     assert client._conn_phase == _PHASE_DEACTIVATED
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 1
+    assert _last_err(counter, "ErrNum") == code("W", "CFG_READ")
     assert _last_err(counter, "ErrType") == "W"
+    assert _used_slots(run(client.cfgmgr.get_error_counter()), "CFGMGR_WIFI")[-1] == code("E", "CFG_NOT_VALID")
 
 
 def test_apply_initial_led_config_valid_config_does_not_deactivate() -> None:
@@ -1714,7 +1720,7 @@ def test_apply_initial_led_config_valid_config_does_not_deactivate() -> None:
     assert client._conn_phase != _PHASE_DEACTIVATED
 
 
-def test_start_hotspot_missing_config_persists_wrnno_2() -> None:
+def test_start_hotspot_missing_config_logs_in_both_layers() -> None:
     client = make_invalid_cfg_client()
     run(client.pr.setup())
 
@@ -1725,18 +1731,20 @@ def test_start_hotspot_missing_config_persists_wrnno_2() -> None:
     run(client._start_hotspot())
     assert client.hotspot_started_once is True
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 2
+    assert _last_err(counter, "ErrNum") == code("W", "CFG_READ")
     assert _last_err(counter, "ErrType") == "W"
+    assert _used_slots(run(client.cfgmgr.get_error_counter()), "CFGMGR_WIFI")[-1] == code("E", "CFG_NOT_VALID")
 
 
-def test_attempt_sta_connect_missing_config_persists_wrnno_3() -> None:
+def test_attempt_sta_connect_missing_config_logs_in_both_layers() -> None:
     client = make_invalid_cfg_client()
     run(client.pr.setup())
     run(client._attempt_sta_connect())
     assert _wlan(client).connect_calls == []  # never reached the real connect attempt
     counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == 3
+    assert _last_err(counter, "ErrNum") == code("W", "CFG_READ")
     assert _last_err(counter, "ErrType") == "W"
+    assert _used_slots(run(client.cfgmgr.get_error_counter()), "CFGMGR_WIFI")[-1] == code("E", "CFG_NOT_VALID")
 
 
 def test_attempt_sta_connect_empty_ssid_forces_immediate_hotspot_fallback() -> None:
@@ -2220,7 +2228,7 @@ def test_wlan_connect_calls_handle_reconnect_trigger_when_reconn_wifi_is_set() -
     assert run(scenario()) == 1
 
 
-def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_errno_17() -> None:
+def test_connect_loop_gives_up_after_repeated_hardware_failures_and_persists_both_entries() -> None:
     client = make_client(wifi_refresh_sec=0, max_module_error=2)
 
     async def failing_run_sta_mode() -> None:
@@ -2234,8 +2242,10 @@ def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_err
         return await client.get_error_counter()
 
     counter = run(scenario())
-    assert _last_err(counter, "ErrNum") == 17
-    assert _last_err(counter, "ErrType") == "E"
+    kept = _used_slots(counter)
+    # The base streak's GIVE_UP, then WIFI's own give-up entry: each layer keeps its own, once.
+    assert kept.count(code("E", "GIVE_UP")) == 1 and kept.count(code("E", "WLAN_GIVE_UP")) == 1, kept
+    assert _last_err(counter, "ErrNum") == code("E", "WLAN_GIVE_UP")
 
 
 def test_wlan_connect_never_gives_up_while_repeatedly_succeeding() -> None:
@@ -2672,7 +2682,7 @@ def test_poll_sta_connect_status_obtaining_ip_logs_and_keeps_polling() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _start_hotspot() success branch - only the missing-config (wrnno=2) branch was exercised above;
+# _start_hotspot() success branch - only the missing-config (CFG_READ) branch was exercised above;
 # a healthy config must actually reach set_wifi_led()/_activate_hotspot_ap().
 # ---------------------------------------------------------------------------
 
@@ -2898,7 +2908,7 @@ def test_each_radio_field_refuses_one_byte_over_its_bound_and_accepts_the_bound(
         assert run(client._set_dict_cfg({field: too_long}, client.get_cfg_schema())) == {field: "Invalid"}, field
         run(client.cfgmgr.flush_pending())
         assert run(client.cfgmgr.get_dict([field])) == before, field  # nothing stored
-        assert _last_err(run(client.get_error_counter()), "ErrNum") == 20, field
+        assert _last_err(run(client.get_error_counter()), "ErrNum") == code("E", "BAD_ARG"), field
         assert run(client._set_dict_cfg({field: fits}, client.get_cfg_schema())) == {field: "Valid"}, field
         run(client.cfgmgr.flush_pending())
         assert run(client.cfgmgr.get_dict([field])) == {field: fits}, field
@@ -2942,7 +2952,7 @@ def test_a_character_bound_violation_is_still_the_schemas_refusal_not_a_byte_one
     client = make_client()
     run(client.pr.setup())
     assert run(client._set_dict_cfg({"Country": "D"}, client.get_cfg_schema())) == {"Country": "Invalid"}
-    assert 20 not in run(client.get_error_counter())["WIFI"]["ErrNum"]
+    assert code("E", "BAD_ARG") not in run(client.get_error_counter())["WIFI"]["ErrNum"]
 
 
 def _client_with_stored(values: "dict[str, str]", conn_fail_to_hotspot: int = 5) -> AsyConnTime:
@@ -2972,9 +2982,29 @@ def test_a_stored_over_long_country_connects_on_the_default_not_a_hardware_failu
     assert network.country() == "DE"
     assert len(_wlan(client).connect_calls) == 3
     log = run(client.get_error_counter())["WIFI"]
-    assert log["ErrNum"][-1] == 8 and log["ErrType"][-1] == "W"
-    assert log["ErrCount"] == 3  # counted every attempt, one ring slot for the episode
-    assert log["ErrNum"].count(8) == 1
+    assert log["ErrNum"][-1] == code("W", "STORED_DEFAULT") and log["ErrType"][-1] == "W"
+    assert log["ErrCount"] == 3  # counted every attempt, one ring slot (the central rule)
+    assert log["ErrNum"].count(code("W", "STORED_DEFAULT")) == 1
+
+
+def test_two_over_bound_stored_fields_count_each_and_keep_one_slot() -> None:
+    client = _client_with_stored({"Country": "ÄT", "Hostname": "ä" * 17})
+    run(client.pr.setup())
+    _no_poll(client)
+    run(client._attempt_sta_connect())
+    log = run(client.get_error_counter())
+    assert _used_slots(log) == [code("W", "STORED_DEFAULT")]
+    assert log["WIFI"]["ErrCount"] == 2
+
+
+def test_two_refused_radio_puts_count_each_and_keep_one_slot() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    for value in ("ä" * 17, "ä" * 18):
+        assert run(client._set_dict_cfg({"Hostname": value}, client.get_cfg_schema())) == {"Hostname": "Invalid"}
+    log = run(client.get_error_counter())
+    assert _used_slots(log) == [code("E", "BAD_ARG")]
+    assert log["WIFI"]["ErrCount"] == 2
 
 
 def test_a_stored_over_long_ssid_and_password_never_reach_connect() -> None:
@@ -3016,7 +3046,7 @@ def test_a_stored_over_long_hotspot_value_starts_the_hotspot_on_the_default() ->
 
 def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:
     # Regression: an over-long Country used to raise on every attempt, set hw_op_failed, and end the
-    # task after max_module_error cycles (errno 17) - a supervisor restart per few cycles, then a reboot.
+    # task after max_module_error cycles (the give-up) - a supervisor restart per few cycles, then a reboot.
     client = _client_with_stored({"Country": "ÄT"}, conn_fail_to_hotspot=1000)  # stays on the STA path
     _no_poll(client)
     client.wifi_refresh_sec = 0
@@ -3047,7 +3077,8 @@ def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:
 
     assert run(scenario()) is True
     assert attempts[0] > 3 * client.max_module_error  # far past the old give-up streak
-    assert 17 not in run(client.get_error_counter())["WIFI"]["ErrNum"]
+    kept = _used_slots(run(client.get_error_counter()))
+    assert code("E", "GIVE_UP") not in kept and code("E", "WLAN_GIVE_UP") not in kept
 
 
 if __name__ == "__main__":

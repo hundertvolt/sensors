@@ -5,6 +5,7 @@ import asyncio
 import struct
 from collections import namedtuple
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 from asy_i2c_driver import I2C
@@ -280,6 +281,7 @@ def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_trigg
     sgp_log = run(sgp_reader.get_error_counter())
     notify_log = run(notify.get_error_counter())
     assert scd_log["SCD30"]["ErrCount"] == 2  # attributed to SCD30 alone - see the SCD30-only file's own comment
+    assert scd_log["SCD30"]["ErrNum"][-2:] == [code("E", "READ"), code("E", "STREAK")]  # the driver's, then the streak's
     assert sgp_log["SGP40"]["ErrCount"] == 0  # the healthy sibling's own log is untouched
     assert notify_log["NOTIFY"]["ErrCount"] == 0  # a per-driver read failure is not a NOTIFY-layer failure
 

@@ -54,8 +54,8 @@
                 "counter": 4,
                 "history": [
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 2, "type": "W" }, { "num": 2, "type": "W" }, { "num": 6, "type": "E" }
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 42, "type": "E" },
+                    { "num": 44, "type": "E" }, { "num": 42, "type": "E" }
                 ]
             },
             "CFGMGR_SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
@@ -65,9 +65,9 @@
             "SHTC3": {
                 "counter": 8,
                 "history": [
-                    { "num": 3, "type": "E" }, { "num": 3, "type": "E" }, { "num": 2, "type": "E" }, { "num": 3, "type": "E" },
-                    { "num": 2, "type": "E" }, { "num": 3, "type": "E" }, { "num": 2, "type": "E" }, { "num": 3, "type": "E" },
-                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 11, "type": "E" }, { "num": 1, "type": "E" },
+                    { "num": 11, "type": "E" }, { "num": 1, "type": "E" }, { "num": 11, "type": "E" }, { "num": 1, "type": "E" },
+                    { "num": 11, "type": "E" }, { "num": 2, "type": "E" }
                 ]
             },
             "CFGMGR_SHTC3": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
@@ -78,7 +78,7 @@
                 "history": [
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 6, "type": "E" }, { "num": 6, "type": "E" }
+                    { "num": 0, "type": "N" }, { "num": 55, "type": "E" }
                 ]
             },
             "CFGMGR_ISL29125": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },

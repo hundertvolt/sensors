@@ -46,7 +46,7 @@
                 "history": [
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 3, "type": "W" }, { "num": 5, "type": "E" }
+                    { "num": 40, "type": "W" }, { "num": 71, "type": "E" }
                 ]
             },
             "CFGMGR_NTP": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
@@ -58,17 +58,17 @@
                 "counter": 3,
                 "history": [
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 3, "type": "E" }, { "num": 3, "type": "E" }, { "num": 5, "type": "E" }
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 11, "type": "E" }, { "num": 110, "type": "E" }
                 ]
             },
             "CFGMGR_SGP40": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
             "BMP3XX": {
                 "counter": 12,
                 "history": [
-                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 4, "type": "E" },
-                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 4, "type": "E" },
-                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 11, "type": "E" }, { "num": 13, "type": "E" }, { "num": 11, "type": "E" },
+                    { "num": 13, "type": "E" }, { "num": 11, "type": "E" }
                 ]
             },
             "CFGMGR_BMP3XX": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
@@ -80,7 +80,7 @@
                 "history": [
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
                     { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
-                    { "num": 0, "type": "N" }, { "num": 1, "type": "W" }
+                    { "num": 0, "type": "N" }, { "num": 48, "type": "W" }
                 ]
             }
         }

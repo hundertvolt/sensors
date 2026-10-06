@@ -113,15 +113,16 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
 
 
 def _assert_wifi_log_has_only_benign_outage_warnings(dut_ip: str) -> None:
-    """Tolerates the two warnings a real outage logs: wrnno=5 (AP not found, a retry poll landing
-    mid-outage) and wrnno=4 (cyw43's BADAUTH, also raised when the AP drops mid-handshake - BACKLOG
-    item 29). Anything else still fails; the password never changes here, so 4 cannot be real."""
+    """Tolerates the two warnings a real outage logs: WLAN_NO_AP (a retry poll landing mid-outage) and
+    WLAN_AUTH_FAILED (cyw43's BADAUTH, also raised when the AP drops mid-handshake - BACKLOG item 29).
+    Anything else still fails; the password never changes here, so WLAN_AUTH_FAILED cannot be real."""
     entry = get_errcount(dut_ip).get("WIFI", {})
     history = entry.get("history", [])
     # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
     # always present, filling out the fixed-size ring, and not a real log line at all.
-    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") in (4, 5))]
-    assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=4/5: {unexpected!r} (full: {entry!r})"
+    benign = (code("W", "WLAN_AUTH_FAILED"), code("W", "WLAN_NO_AP"))
+    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") in benign)]
+    assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign WLAN_AUTH_FAILED/WLAN_NO_AP {benign}: {unexpected!r} (full: {entry!r})"
 
 
 def _sta_reconnected(dut_ip: str) -> bool:
@@ -312,7 +313,7 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with a garbage-answering NTP server:\n{joined}"
     # Read from the live tail_log, not the REST errcount history, whose fixed 10-entry window a
     # full 90s of garbage evicts. "Invalid NTP time received!" is the string because it fires for
-    # either rejection branch this 63-byte payload can hit (errno 14 or 15).
+    # either rejection branch this 63-byte payload can hit (NTP_IMPLAUSIBLE or NTP_MALFORMED).
     assert "Invalid NTP time received!" in joined, f"no sign of a rejected NTP sync attempt observed - the garbage payload may not have reached the DUT at all:\n{joined}"
 
     # Bounded recovery retry - see test_wifi_networking.py's own equivalent comment.
@@ -351,9 +352,9 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
     # No standalone DNS-client error log exists (resolve_ipv4() is a plain function, no
     # PrintLogHistory of its own) - a garbage reply fails the same sanity checks as no reply at
-    # all, so resolve_ipv4() exhausts every server and lands on "NTP" module's own errno=12.
+    # all, so resolve_ipv4() exhausts every server and lands on "NTP" module's own NTP_DNS.
     try:
-        assert_module_error_log_contains(dut_ip, "NTP", 12, "E")
+        assert_module_error_log_contains(dut_ip, "NTP", code("E", "NTP_DNS"), "E")
         assert_no_task_ended(dut_ip, "90s of garbage DNS replies")
     finally:
         reset_all_error_logs(dut_ip)
@@ -447,13 +448,13 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         assert put_res.json()["result"].get("NTP_Host") == "Valid", f"garbage NTP_Host was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
 
         # post_asy_fct resyncs asynchronously, so poll for the DNS failure to land:
-        # _resolve_ntp_server() logs "No valid NTP server:" at errno=12 - the same path the
+        # _resolve_ntp_server() logs "No valid NTP server:" as NTP_DNS - the same path the
         # network-level garbage-response test hits, reached by a bad hostname instead.
         wait_until(
-            lambda: _ntp_error_log_contains(dut_ip, 12),
+            lambda: _ntp_error_log_contains(dut_ip, code("E", "NTP_DNS")),
             timeout_s=30.0,
             poll_interval_s=2.0,
-            description="NTP module to log errno=12 (No valid NTP server) for the garbage NTP_Host",
+            description="NTP module to log NTP_DNS (No valid NTP server) for the garbage NTP_Host",
         )
         # The rest of the system must stay fully healthy throughout - a bad NTP host degrading
         # gracefully means exactly this, not just "the error got logged".

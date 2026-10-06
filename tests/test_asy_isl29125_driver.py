@@ -169,12 +169,18 @@ def mem_reads(i2c: I2C) -> "list[tuple[int, int]]":
 
 def logged(counters: "ErrorLog", kind: str, name: str = "ISL29125") -> "list[int]":
     # print_log.py keeps errors and warnings in ONE history list, discriminated by the parallel
-    # ErrType entry ("E"/"W") - so asserting on ErrNum alone would let wrnno=13 satisfy a test
-    # written for errno=13, and vice versa.
+    # ErrType entry ("E"/"W") - so asserting on ErrNum alone would let warning 13 satisfy a test
+    # written for error 13, and vice versa.
     entry = counters[name]
     # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only), and ErrEntry
     # keeps both lists in step by construction - the same note src/asy_webserver_service.py carries.
     return [number for number, entry_kind in zip(entry["ErrNum"], entry["ErrType"]) if entry_kind == kind]  # noqa: B905
+
+
+def err_count(counters: "ErrorLog", name: str = "ISL29125") -> int:
+    count = counters[name]["ErrCount"]
+    assert isinstance(count, int)
+    return count
 
 
 def errors(counters: "ErrorLog", name: str = "ISL29125") -> "list[int]":
@@ -850,7 +856,7 @@ def test_reader_construction_can_disable_the_internal_pull_up_for_a_board_with_i
     assert reader.irq_pin.pull == -1  # tests/machine.py's own Pin: -1 means "never configured"
 
 
-def test_init_returns_false_and_logs_errno_10_when_the_chip_is_absent() -> None:
+def test_init_returns_false_and_logs_an_init_error_when_the_chip_is_absent() -> None:
     i2c, reader = make_reader("absent", healthy=False)
     fake(i2c).nak_addresses.add(_ADDR)
 
@@ -860,10 +866,10 @@ def test_init_returns_false_and_logs_errno_10_when_the_chip_is_absent() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert errors(counters)[-1] == 10
+    assert errors(counters)[-1] == code("E", "INIT")
 
 
-def test_init_returns_false_and_logs_errno_12_when_the_config_is_unreadable() -> None:
+def test_init_returns_false_when_the_config_is_unreadable_logs_in_both_layers() -> None:
     i2c, reader = make_reader("nocfg")
     reader.cfgmgr.valid = False  # what an unreadable/corrupt config file produces
 
@@ -873,10 +879,12 @@ def test_init_returns_false_and_logs_errno_12_when_the_config_is_unreadable() ->
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 12 in errors(counters)
+    assert errors(counters)[-1] == code("E", "CFG_READ")
+    # Each layer keeps its own entry: the reader's refusal here, the store's there.
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_NOT_VALID")
 
 
-def test_init_returns_false_and_logs_errno_13_when_applying_the_config_raises() -> None:
+def test_init_returns_false_and_logs_chip_set_when_applying_the_config_raises() -> None:
     i2c, reader = make_reader("cfgwrite")
     real_configure = reader.isl.configure
 
@@ -895,7 +903,7 @@ def test_init_returns_false_and_logs_errno_13_when_applying_the_config_raises() 
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 13 in errors(counters)
+    assert code("E", "CHIP_SET") in errors(counters)
 
 
 def test_init_arms_the_thresholds_for_the_starting_range() -> None:
@@ -1149,7 +1157,7 @@ def test_output_filter_applies_only_when_filtcoeff_is_positive() -> None:
 
 def test_the_store_path_survives_a_config_read_that_fails_or_answers_the_wrong_shape() -> None:
     # The store path reads ONE float (FiltCoeff) per sample. Both ways that can go wrong have to
-    # end the same way: log errno=14, fall back to the filter being OFF, and still store the
+    # end the same way: log CFG_READ, fall back to the filter being OFF, and still store the
     # sample - a reading the config could not decorate is worth far more than no reading.
     for label, answer in (("cfg_none", None), ("cfg_wrong_len", [85.0, 1.5, 10.0, -1.0])):
         i2c, reader = ready_reader(label)
@@ -1166,7 +1174,7 @@ def test_the_store_path_survives_a_config_read_that_fails_or_answers_the_wrong_s
             run(reader._store_isl(run(reader._read_isl())))
             second = run(reader.get_data()).Lux
         counters = run(reader.get_error_counter())
-        assert 14 in errors(counters), f"{label}: no errno=14 for a config read that did not answer as expected"
+        assert code("E", "CFG_READ") in errors(counters), f"{label}: no CFG_READ for a config read that did not answer as expected"
         assert first is not None and second is not None, f"{label}: the sample was dropped instead of being stored unfiltered"
         # Doubling the counts has to double the reported lux EXACTLY: that is the -1.0 fallback
         # actually being in force, observed rather than inferred from the value it was given.
@@ -1207,7 +1215,7 @@ def test_a_bus_fault_pattern_is_confirmed_by_a_failed_device_id_re_read() -> Non
 
     results, counters = run(scenario())
     assert results[0] is None
-    assert 32 in errors(counters)
+    assert code("E", "ISL_BUS_FAULT") in errors(counters)
 
 
 def test_a_genuinely_saturated_white_scene_survives_the_device_id_re_read() -> None:
@@ -1229,7 +1237,7 @@ def test_a_genuinely_saturated_white_scene_survives_the_device_id_re_read() -> N
 
 
 def test_fixed_range_saturation_on_the_low_range_is_overrange_too() -> None:
-    # A real gap the old W12 warning never covered, it only ever checking sample_range == _RANGE_HIGH_LUX:
+    # A real gap the old saturation warning never covered, it only ever checking sample_range == _RANGE_HIGH_LUX:
     # with RangeAuto off, nothing will ever switch a saturated LOW range up, so "no option left to mitigate
     # it" is equally true there - a saturated fixed-low reading silently under-reported before this field.
     i2c, reader = ready_reader("fixed_low_sat")
@@ -1424,26 +1432,27 @@ def test_a_partial_switch_is_retried_on_the_next_cycle() -> None:
         assert reader._active_range == _RANGE_LOW_LUX
 
 
-def test_a_failed_threshold_write_logs_errno_29_and_the_range_write_logs_errno_30() -> None:
+def test_a_failed_threshold_write_and_a_failed_range_write_each_log_chip_set() -> None:
     i2c, reader = ready_reader("switch_errnos")
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
             fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
-            await reader._switch_range(_RANGE_LOW_LUX)  # the threshold burst fails -> errno 29
+            await reader._switch_range(_RANGE_LOW_LUX)  # the threshold burst fails -> CHIP_SET
             real_configure = reader.isl.configure
 
             async def failing_configure(**_kwargs: object) -> None:
                 raise OSError(errno_mod.EIO, "injected")
 
             reader.isl.configure = failing_configure  # type: ignore[method-assign]
-            await reader._switch_range(_RANGE_LOW_LUX)  # thresholds land, CONFIG1 fails -> errno 30
+            await reader._switch_range(_RANGE_LOW_LUX)  # thresholds land, CONFIG1 fails -> CHIP_SET
             reader.isl.configure = real_configure  # type: ignore[method-assign]
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 29 in errors(counters)
-    assert 30 in errors(counters)
+    assert err_count(counters) == 2  # one count per failure, one slot for the repeated code
+    assert errors(counters)[-1] == code("E", "CHIP_SET")
+    assert reader._active_range == _RANGE_HIGH_LUX
 
 
 def test_the_periodic_path_switches_range_when_the_interrupt_never_fires() -> None:
@@ -1477,7 +1486,7 @@ def test_a_periodic_only_switch_warns_after_five_consecutive_occurrences() -> No
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 13 in warnings(counters)
+    assert code("W", "ISL_PERIODIC_ONLY") in warnings(counters)
 
 
 def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
@@ -1502,7 +1511,7 @@ def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
 
     counters = run(scenario())
     assert reader._periodic_only_switches == 0
-    assert 13 not in warnings(counters), "the counter was reset by reaching its warn point, not by the interrupt"
+    assert code("W", "ISL_PERIODIC_ONLY") not in warnings(counters), "the counter was reset by reaching its warn point, not by the interrupt"
 
 
 def test_a_latched_flag_with_no_pin_edge_still_counts_as_a_periodic_only_switch() -> None:
@@ -1544,7 +1553,7 @@ def test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt()
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 13 in warnings(counters)
+    assert code("W", "ISL_PERIODIC_ONLY") in warnings(counters)
 
 
 # ---------------------------------------------------------------------------
@@ -1564,7 +1573,8 @@ def test_brownout_reapplies_the_whole_configuration_and_discards_one_cycle() -> 
     assert any(register == _REG_THRESHOLDS for register, _payload in writes)  # thresholds re-armed
 
 
-def test_repeated_brownout_warns_once_per_event_not_once_per_cycle() -> None:
+def test_repeated_brownouts_each_warn_into_one_slot() -> None:
+    # Every detected brownout warns; the newest-entry rule folds the run into one slot.
     i2c, reader = ready_reader("brownout_flood")
 
     async def scenario() -> "ErrorLog":
@@ -1575,10 +1585,12 @@ def test_repeated_brownout_warns_once_per_event_not_once_per_cycle() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert warnings(counters).count(10) == 1
+    assert warnings(counters) == [code("W", "ISL_BROWNOUT")]
+    assert errors(counters) == []
+    assert err_count(counters) == 5
 
 
-def test_a_recovered_brownout_warns_again_on_the_next_real_event() -> None:
+def test_a_recovered_brownout_and_the_next_one_share_one_slot() -> None:
     i2c, reader = ready_reader("brownout_again")
 
     async def scenario() -> "ErrorLog":
@@ -1592,7 +1604,9 @@ def test_a_recovered_brownout_warns_again_on_the_next_real_event() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert warnings(counters).count(10) == 2
+    assert warnings(counters) == [code("W", "ISL_BROWNOUT")]
+    assert errors(counters) == []
+    assert err_count(counters) == 2
 
 
 def test_brownout_does_not_feed_the_leaky_bucket_beyond_its_own_lost_cycle() -> None:
@@ -1611,9 +1625,13 @@ def test_brownout_does_not_feed_the_leaky_bucket_beyond_its_own_lost_cycle() -> 
         return reader._err_cnt_internal
 
     assert run(scenario()) == 0  # and a good cycle immediately pays it back
+    # Each layer the brownout reaches keeps its entry: the driver's warning, then the streak step.
+    counters = run(reader.get_error_counter())
+    assert warnings(counters) == [code("W", "ISL_BROWNOUT")]
+    assert errors(counters) == [code("E", "STREAK")]
 
 
-def test_a_brownout_recovery_write_failure_logs_errno_33() -> None:
+def test_a_brownout_recovery_write_failure_logs_chip_set() -> None:
     i2c, reader = ready_reader("brownout_fail")
 
     async def scenario() -> "ErrorLog":
@@ -1624,7 +1642,8 @@ def test_a_brownout_recovery_write_failure_logs_errno_33() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 33 in errors(counters)
+    assert counters["ISL29125"]["ErrNum"][-2:] == [code("W", "ISL_BROWNOUT"), code("E", "CHIP_SET")]
+    assert counters["ISL29125"]["ErrType"][-2:] == ["W", "E"]
 
 
 # ---------------------------------------------------------------------------
@@ -1655,11 +1674,11 @@ def test_a_snapshot_field_read_degrades_to_none_when_the_snapshot_cannot_be_deco
     _i2c, reader = ready_reader("snapshot_field_undecodable")
     reader.isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
     with _FastAsyncSleep():
-        assert run(reader._snapshot_field(0, 29, "resolution")) is None
+        assert run(reader._snapshot_field(0, "resolution")) is None
 
 
 def test_read_sensor_dict_key_names_produce_no_unknown_key_warning() -> None:
-    # _get_dict_cfg() warns (wrnno=1) on any key the schema does not carry, so a typo here would
+    # _get_dict_cfg() warns (CALLBACK_KEYS) on any key the schema does not carry, so a typo here would
     # log a warning on every GET /sensors rather than failing anywhere visible.
     _i2c, reader = ready_reader("sensor_dict_keys")
 
@@ -1669,7 +1688,7 @@ def test_read_sensor_dict_key_names_produce_no_unknown_key_warning() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 1 not in warnings(counters)
+    assert code("W", "CALLBACK_KEYS") not in warnings(counters)
 
 
 def test_range_readback_is_suppressed_while_autorange_is_on() -> None:
@@ -1684,7 +1703,7 @@ def test_range_readback_is_suppressed_while_autorange_is_on() -> None:
         assert "Range" in run(reader._read_sensor_dict())
 
 
-def test_read_sensor_dict_returns_all_none_and_logs_errno_28_on_a_bus_fault() -> None:
+def test_read_sensor_dict_returns_all_none_and_logs_chip_get_on_a_bus_fault() -> None:
     # Caught HERE rather than left to _get_dict_cfg()'s own guard: that outer guard skips the
     # whole dict update and leaves the fields showing persisted values as if they were live.
     i2c, reader = ready_reader("sensor_dict_fail")
@@ -1698,7 +1717,7 @@ def test_read_sensor_dict_returns_all_none_and_logs_errno_28_on_a_bus_fault() ->
     result, counters = run(scenario())
     assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust"}
     assert all(value is None for value in result.values())
-    assert 28 in errors(counters)
+    assert code("E", "CHIP_GET") in errors(counters)
 
 
 def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> None:
@@ -1715,10 +1734,10 @@ def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> 
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    # wrnno=11, NOT the brownout's own 10: a chip that disagrees with the shadow for any other
-    # reason - a stray write, a bus glitch - is a different event and has to be readable as one.
-    assert warnings(counters).count(11) == 1
-    assert 10 not in warnings(counters)
+    # ISL_DIVERGED, not ISL_BROWNOUT: a chip that disagrees with the shadow for any other reason
+    # is a different event.
+    assert warnings(counters).count(code("W", "ISL_DIVERGED")) == 1
+    assert code("W", "ISL_BROWNOUT") not in warnings(counters)
     assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in mem_writes(i2c))
 
 
@@ -1735,7 +1754,7 @@ def test_a_reserved_bit_difference_is_not_reported_as_divergence() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 11 not in warnings(counters)
+    assert code("W", "ISL_DIVERGED") not in warnings(counters)
 
 
 def test_get_dict_cfg_excludes_the_command_only_field() -> None:
@@ -1891,7 +1910,7 @@ def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_tak
         green, red, blue, sample_range, _sample_span, _timestamp = run(reader._read_isl())
     assert (green, red, blue) == (20000, 20000, 20000), "a 16-bit conversion must not be shifted as if it were 12-bit"
     assert sample_range == _RANGE_HIGH_LUX
-    assert 12 not in warnings(run(reader.get_error_counter())), "no saturation happened, so none may be reported"
+    assert reader._last_overrange is False, "no saturation happened"
 
 
 def test_a_failed_config_write_leaves_the_shadow_on_the_value_the_chip_still_holds() -> None:
@@ -1933,7 +1952,7 @@ def test_a_reconciling_re_read_that_itself_fails_is_retried_on_the_following_cyc
     with _FastAsyncSleep():
         run(reader._verify_after_failed_write())
     assert reader._reconciled_write_failures == 1
-    assert 11 in warnings(run(reader.get_error_counter()))
+    assert code("W", "ISL_DIVERGED") in warnings(run(reader.get_error_counter()))
 
 
 def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None:
@@ -1983,7 +2002,7 @@ def test_a_config_burst_that_lands_only_partly_is_reconciled_by_the_next_read_cy
     with _FastAsyncSleep():
         run(reader._read_isl())
     counters = run(reader.get_error_counter())
-    assert 11 in warnings(counters), "the next read cycle must notice the chip disagreeing"
+    assert code("W", "ISL_DIVERGED") in warnings(counters), "the next read cycle must notice the chip disagreeing"
     assert bytes(chip.registers[(_ADDR, _REG_CONFIG1)])[0] & _BITS_12 == 0, "and put the chip back on the shadow"
 
 
@@ -2002,10 +2021,9 @@ def test_a_failed_config_write_does_not_make_the_divergence_check_see_a_phantom_
     assert isl.matches_shadow(on_chip) is True
 
 
-def test_re_deriving_the_transient_rejection_logs_errno_24_when_that_write_fails() -> None:
-    # CONFIG3 is a real chip write, so it can fail like any other. Its own errno rather than the
-    # caller's, because the value that failed to land is derived - a reader seeing errno=25 or 16
-    # would look for a bad SampleInterv or Resolution that was in fact accepted.
+def test_re_deriving_the_transient_rejection_logs_chip_set_when_that_write_fails() -> None:
+    # CONFIG3 is a real chip write and fails like any other; the console line names the derived
+    # window, so a reader does not look for a bad SampleInterval or Resolution.
     i2c, reader = ready_reader("persist_write_fail")
 
     async def scenario() -> "ErrorLog":
@@ -2014,7 +2032,7 @@ def test_re_deriving_the_transient_rejection_logs_errno_24_when_that_write_fails
             assert await reader._reapply_persist(2) is False
         return await reader.get_error_counter()
 
-    assert 24 in errors(run(scenario()))
+    assert code("E", "CHIP_SET") in errors(run(scenario()))
 
 
 def test_set_resolution_reports_failure_when_the_derived_window_cannot_be_re_applied() -> None:
@@ -2116,7 +2134,7 @@ def test_turning_autorange_back_on_rearms_intsel_and_the_thresholds() -> None:
     assert config[-1] & 0x03 == _INTSEL_GREEN
 
 
-def test_turning_autorange_off_logs_errno_38_when_that_write_fails() -> None:
+def test_turning_autorange_off_logs_chip_set_when_that_write_fails() -> None:
     i2c, reader = ready_reader("auto_off_fail")
 
     async def scenario() -> "ErrorLog":
@@ -2126,7 +2144,7 @@ def test_turning_autorange_off_logs_errno_38_when_that_write_fails() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 38 in errors(counters)
+    assert code("E", "CHIP_SET") in errors(counters)
 
 
 def test_a_failed_autorange_mode_write_leaves_the_live_flag_where_the_config_still_says() -> None:
@@ -2160,10 +2178,10 @@ def test_set_range_rejects_a_value_outside_the_two_real_ranges() -> None:
         assert await reader.set_range(5000) is False
         return await reader.get_error_counter()
 
-    assert 18 in errors(run(scenario()))
+    assert code("E", "CHIP_SET") in errors(run(scenario()))
 
 
-def test_set_trigger_secs_logs_errno_25_and_does_not_raise_on_a_bad_value() -> None:
+def test_set_trigger_secs_refuses_bad_values_with_bad_arg_and_never_raises() -> None:
     _i2c, reader = make_reader("trigger_bad")
 
     async def scenario() -> "ErrorLog":
@@ -2176,19 +2194,16 @@ def test_set_trigger_secs_logs_errno_25_and_does_not_raise_on_a_bad_value() -> N
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    # One per rejected value: a non-number, +inf (OverflowError, not ValueError), and both
-    # out-of-range ends. The valid one must not be counted.
-    assert errors(counters).count(25) == 4
+    # One event per rejected value, one slot: a non-number, +inf, and both out-of-range ends.
+    assert err_count(counters) == 4
+    assert errors(counters)[-1] == code("E", "BAD_ARG")
     assert run(reader.trigger_period.get_value()) == 30
 
 
-def test_every_hardware_setter_logs_its_own_errno_on_a_bus_fault() -> None:
-    expected = {
-        "set_resolution": (16, 12),
-        "set_ir_comp_offset": (20, 1),
-        "set_ir_comp_adjust": (22, 63),
-    }
-    for method, (errno_value, argument) in expected.items():
+def test_every_hardware_setter_logs_chip_set_on_a_bus_fault() -> None:
+    # Numbers name the failure class; the console line names the field.
+    expected = {"set_resolution": 12, "set_ir_comp_offset": 1, "set_ir_comp_adjust": 63}
+    for method, argument in expected.items():
         i2c, reader = ready_reader("setter_" + method)
 
         async def scenario(
@@ -2200,12 +2215,12 @@ def test_every_hardware_setter_logs_its_own_errno_on_a_bus_fault() -> None:
             return await reader.get_error_counter()
 
         counters = run(scenario())
-        assert errno_value in errors(counters), method
+        assert errors(counters)[-1] == code("E", "CHIP_SET"), method
 
 
-def test_every_getter_logs_its_own_errno_and_returns_none_on_a_bus_fault() -> None:
-    expected = {"get_resolution": 15, "get_range": 17, "get_ir_comp_offset": 19, "get_ir_comp_adjust": 21}
-    for method, errno_value in expected.items():
+def test_every_getter_logs_chip_get_and_returns_none_on_a_bus_fault() -> None:
+    # Numbers name the failure class; the console line names the field.
+    for method in ("get_resolution", "get_range", "get_ir_comp_offset", "get_ir_comp_adjust"):
         i2c, reader = ready_reader("getter_" + method)
 
         async def scenario(method: str = method, i2c: I2C = i2c, reader: ISL29125_Reader = reader) -> "ErrorLog":
@@ -2215,7 +2230,7 @@ def test_every_getter_logs_its_own_errno_and_returns_none_on_a_bus_fault() -> No
             return await reader.get_error_counter()
 
         counters = run(scenario())
-        assert errno_value in errors(counters), method
+        assert errors(counters)[-1] == code("E", "CHIP_GET"), method
 
 
 def test_the_getters_read_the_live_chip_not_the_shadow() -> None:
@@ -2446,7 +2461,7 @@ def test_a_diverged_configuration_re_arms_the_range_thresholds_too() -> None:
     assert _threshold_bursts(i2c) != [], "the recovery left the threshold registers as the fault found them"
 
 
-def test_a_failed_re_apply_after_divergence_logs_errno_34_and_stops_there() -> None:
+def test_a_failed_re_apply_after_divergence_logs_chip_set_and_stops_there() -> None:
     # The other end of the same path: if the re-apply itself fails there is nothing to re-arm the
     # thresholds against, and writing them anyway would arm a configuration that never landed.
     i2c, reader = ready_reader("divergence_reapply_fails")
@@ -2465,7 +2480,7 @@ def test_a_failed_re_apply_after_divergence_logs_errno_34_and_stops_there() -> N
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 34 in errors(counters)
+    assert code("E", "CHIP_SET") in errors(counters)
     assert _threshold_bursts(i2c) == [], "thresholds were armed against a configuration that never landed"
 
 
@@ -2494,7 +2509,7 @@ def test_a_warm_scene_reports_a_lower_colour_temperature_than_a_cool_one() -> No
 
 
 def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising() -> None:
-    # The status read is the first bus transaction of the cycle and its own errno, separate from a
+    # The status read is the first bus transaction of the cycle and its own code, separate from a
     # data-read failure. A sample must not be invented from registers that were never read.
     i2c, reader = ready_reader("status_fail")
 
@@ -2510,12 +2525,12 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 31 in errors(counters)
+    assert code("E", "ISL_STATUS_READ") in errors(counters)
     assert run(reader.get_data()).Lux is None, "a sample was stored from a cycle whose status read never succeeded"
     assert _threshold_bursts(i2c) == [], "the range was evaluated on data that was never read"
 
 
-def test_the_filter_coefficient_rejects_values_outside_its_band_and_logs_errno_26() -> None:
+def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -> None:
     # The setter owns the verdict even though it stores nothing - a False here is what makes
     # _set_dict_cfg() report the field "Failed" instead of silently accepting an unusable value.
     _i2c, reader = ready_reader("filter_reject")
@@ -2530,7 +2545,8 @@ def test_the_filter_coefficient_rejects_values_outside_its_band_and_logs_errno_2
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert errors(counters).count(26) == 4, "one per rejected value, and the two boundaries must not count"
+    assert err_count(counters) == 4, "one event per rejected value; the two boundaries add none"
+    assert errors(counters)[-1] == code("E", "BAD_ARG")
 
 
 def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_spent() -> None:
@@ -2640,10 +2656,11 @@ def test_pinning_a_range_while_autorange_is_off_actually_programs_the_chip() -> 
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert errors(counters).count(18) == 2
+    assert err_count(counters) == 2
+    assert errors(counters)[-1] == code("E", "CHIP_SET")
 
 
-def test_the_two_remaining_auto_range_knobs_reject_out_of_range_values_with_errno_27() -> None:
+def test_the_two_remaining_auto_range_knobs_reject_out_of_range_values_with_bad_arg() -> None:
     # Both are pure software knobs with no chip write, so a rejected value has to be caught here
     # or it silently becomes the live policy - a negative dwell removes the asymmetry that stops
     # the range chattering, and a threshold below its floor leaves no headroom before saturation.
@@ -2662,7 +2679,8 @@ def test_the_two_remaining_auto_range_knobs_reject_out_of_range_values_with_errn
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert errors(counters).count(27) == 5, "one per rejected value, and neither boundary may count"
+    assert err_count(counters) == 5, "one event per rejected value; neither boundary adds one"
+    assert errors(counters)[-1] == code("E", "BAD_ARG")
     assert reader._ar_thresh == 95.0, "a rejected value must not disturb the last good one"
     assert reader._ar_dwell_s == 300.0
 
@@ -2777,8 +2795,8 @@ def test_the_dark_offset_is_a_datasheet_constant_on_the_low_range_alone() -> Non
 
 
 def test_every_hardware_backed_setter_reports_a_rejected_field_without_writing() -> None:
-    # Each setter's own errno, and nothing on the bus - the reader must surface the hardware
-    # driver's refusal rather than swallow it into a silent success.
+    # Each setter refuses (its own False), one CHIP_SET count each, and nothing on the bus - the reader
+    # must surface the hardware driver's refusal rather than swallow it into a silent success.
     i2c, reader = ready_reader("field_guard")
 
     async def scenario() -> "ErrorLog":
@@ -2788,9 +2806,8 @@ def test_every_hardware_backed_setter_reports_a_rejected_field_without_writing()
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 16 in errors(counters)  # resolution
-    assert 20 in errors(counters)  # IR compensation offset
-    assert 22 in errors(counters)  # IR compensation adjust
+    assert err_count(counters) == 3
+    assert errors(counters)[-1] == code("E", "CHIP_SET")
     assert mem_writes(i2c) == []
 
 
@@ -2806,7 +2823,7 @@ def test_set_range_rejects_a_bad_value_with_auto_range_off_too() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 18 in errors(counters)
+    assert code("E", "CHIP_SET") in errors(counters)
     assert mem_writes(i2c) == []
     assert reader._fixed_range == _RANGE_HIGH_LUX, "a rejected range must not become the preference"
 
@@ -2825,8 +2842,8 @@ def test_a_fractional_setting_is_rejected_rather_than_silently_truncated() -> No
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert errors(counters).count(25) == 1
-    assert errors(counters).count(27) == 0
+    assert err_count(counters) == 1  # the accepted values prove which one was refused
+    assert errors(counters)[-1] == code("E", "BAD_ARG")
     assert run(reader.trigger_period.get_value()) == 30
     assert reader._ar_dwell_s == 10.0
     assert reader._ar_thresh == 85.0
@@ -2884,10 +2901,10 @@ def test_a_malformed_schema_record_is_refused_rather_than_returned_as_a_setting(
     bogus = (("Bogus", "str", "x", 0, 8, None),)
 
     async def scenario() -> "ErrorLog":
-        assert await reader._checked_cfg("abc", bogus, 27) is None  # type: ignore[arg-type]
+        assert await reader._checked_cfg("abc", bogus) is None  # type: ignore[arg-type]
         return await reader.get_error_counter()
 
-    assert 27 in errors(run(scenario()))
+    assert code("E", "BAD_ARG") in errors(run(scenario()))
 
 
 # ---------------------------------------------------------------------------
@@ -3119,9 +3136,7 @@ def test_starting_a_calibration_with_false_is_a_no_op() -> None:
     assert reader._calibrating is False
 
 
-def test_a_failed_partner_read_logs_errno_35_and_puts_the_range_back() -> None:
-    # 35, not 11: the periodic read owns 11 (SPECIFICATION.md C.7.1), so sharing it would make the
-    # two indistinguishable in the FRAM-persisted history the errcount UI reads back.
+def test_a_failed_partner_read_logs_a_read_error_and_puts_the_range_back() -> None:
     _i2c, reader = calibrating_reader("cal_read_fails")
 
     async def _boom() -> "tuple[int, int, int]":
@@ -3135,8 +3150,8 @@ def test_a_failed_partner_read_logs_errno_35_and_puts_the_range_back() -> None:
     assert counter["ErrCount"] >= 1
     err_num = counter["ErrNum"]
     assert isinstance(err_num, list)
-    assert 35 in err_num, f"the calibration leg's own failure must log errno=35, got {err_num}"
-    assert 11 not in err_num, f"errno=11 belongs to the periodic read, not this path: {err_num}"
+    assert err_num[-1] == code("E", "READ"), f"the calibration leg's own failure must log READ, got {err_num}"
+    assert reader._active_range == _RANGE_HIGH_LUX
 
 
 def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
@@ -3161,7 +3176,7 @@ def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidat
     with _FastAsyncSleep():
         fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
         run(reader._measure_gain_ratio(2000))
-    assert 29 in errors(run(reader.get_error_counter())), "the switch really did fail"
+    assert code("E", "CHIP_SET") in errors(run(reader.get_error_counter())), "the switch really did fail"
     assert reader._measured_ratio() is None, "a leg read off an unswitched chip must not become a candidate"
     # The third leg still runs - it is also what puts the range back - so the run ends where it
     # started rather than stranding every later sample on the partner's range.
@@ -3290,7 +3305,7 @@ def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> N
             assert await init_reader(reader, i2c) is True
         return await reader.get_error_counter()
 
-    assert 12 not in errors(run(scenario()))
+    assert err_count(run(scenario())) == 0
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 

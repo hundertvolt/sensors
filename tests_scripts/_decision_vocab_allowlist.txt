@@ -52,7 +52,6 @@ SPECIFICATION.md	**Contract between them**: controllers reach into a template on
 SPECIFICATION.md	**Deliberately never a symlink**: [MicroPython issue #12671](https://github.com/
 SPECIFICATION.md	**Deliberately not adopted** (project owner, 2026-09-11): there is no standing r
 SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
-SPECIFICATION.md	**Hitting the bound is reported by flagging the caller, never by logging in plac
 SPECIFICATION.md	**Known structural gap, accepted risk (`SGP40_I2C._reset()`)**: `writeto(0x00, b
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
 SPECIFICATION.md	**Numeric coercion policy** (`config_manager.py`'s `coerce_numeric()`): a JSON i
@@ -119,7 +118,6 @@ SPECIFICATION.md	`run_project_dependency_install()` (`uv sync`/`npm ci`) runs wi
 SPECIFICATION.md	`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception
 SPECIFICATION.md	`wozi` deliberately does not, since it is never physically flashed and would oth
 SPECIFICATION.md	`wozi`/`arzi`/ `klkizi`/`grkizi`/`schlafzi` have no real board to flash at all,
-SPECIFICATION.md	`wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range deci
 SPECIFICATION.md	a JSON float is accepted for an int field only with no fractional part (`5.0`→`5
 SPECIFICATION.md	a periodic timer self-heals next tick, a dropped one-shot never fires again.
 SPECIFICATION.md	a real device may never be named that way.
@@ -140,7 +138,6 @@ SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original 
 SPECIFICATION.md	webserver = WebserverService(app, sensors=(...), ..., static_mount="/html", is_h
 SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
 SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen
-SPECIFICATION.md	| `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surface
 UART_C_PORT_CHANGELOG.md	- **Class A — protocol-level, must be mirrored in C.** It alters the bytes emitt
 UART_C_PORT_CHANGELOG.md	A change that alters emitted bytes is a coordinated flag-day, and **the project
 UART_C_PORT_CHANGELOG.md	The reconciliation session will most likely meet this signature first, so it is
@@ -317,7 +314,6 @@ tests/test_asy_isl29125_driver.py	0xC8 is B7|B6|B3 - the reserved bits that read
 tests/test_asy_isl29125_driver.py	A software-only knob has nothing to read back, and _recover_failed_push() skips
 tests/test_asy_isl29125_driver.py	Deliberate: the factor 2 absorbs the entire [20, 34] band that field allows, so
 tests/test_asy_isl29125_driver.py	Green alone really would have decided to go back down - that is what makes this
-tests/test_asy_isl29125_driver.py	Its own errno rather than the caller's, because the value that failed to land is
 tests/test_asy_isl29125_driver.py	One increment, deliberately: the driver genuinely has no sample that cycle.
 tests/test_asy_isl29125_driver.py	SampleInterv is deliberately NOT in this list any more: the derived transient re
 tests/test_asy_isl29125_driver.py	Starting on the LOW range deliberately: that is the only arrangement where the P
@@ -345,7 +341,6 @@ tests/test_asy_notification_service.py	registered deliberately out of that order
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
-tests/test_asy_notification_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_ntp_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
 tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successful sync".
@@ -581,7 +576,6 @@ tests_hardware/bench/test_network_resilience.py	the one deliberately-provoked fa
 tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	Invariant 1: a calibration run measures a CANDIDATE ratio and must never become
 tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	PauseTime is dispatch-only, so GET /notification has nothing to read back - but
 tests_hardware/bench/test_uart_link_under_api_load.py	a rejected connection under a deliberate overload is an accepted outcome
-tests_hardware/bench/test_wifi_networking.py	A blocked port is routine for NTP (SPECIFICATION.md Part C.7.2): errno 21 (no re
 tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py	Restore the datasheet/production default (x1, see asy_bmp3xx_driver.py's own _in
 tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py	Deliberately discarded - see _SETTLE_S.
 tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py	this script must never be called more than once per opt-in run.
@@ -592,7 +586,6 @@ tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	mpremote-
 tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from _ORIGINAL_PATTERN
 tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from every other pattern above
 tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py	Clear first: this chunk is real, persistent on-chip storage, so setup() above ju
-tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py	what the three settled, fully-written entries carry
 tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Deliberately NOT cleared first, against tests_hardware/README.md's clear-at-the-
 tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Proves the restored history is ALL-OR-NOTHING (never partial, never garbage) and
 tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	The chunk must be writable again afterwards - a reset-wedged chunk that stays un

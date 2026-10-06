@@ -1494,10 +1494,19 @@ def test_get_typed_values_happy_path() -> None:
         _remove(path)
 
 
+def _refused_with_one_contract_entry(mgr: "cm.ConfigManager", read: "Coroutine[Any, Any, object]") -> bool:
+    # True when `read` returns None and leaves exactly one CONTRACT entry (setup()'s own entries cleared first).
+    run(mgr.reset_error_counter())
+    result = run(read)
+    log = run(mgr.get_error_counter())[mgr.name]
+    used = [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+    return result is None and log["ErrCount"] == 1 and used == [code("E", "CONTRACT")]
+
+
 def test_get_int_values_conversion_failure_returns_none() -> None:
     mgr, path = _make("badconvert.cfg")
     try:
-        assert run(mgr.get_int_values(_VAL_STR)) is None  # int("abc") can't convert
+        assert _refused_with_one_contract_entry(mgr, mgr.get_int_values(_VAL_STR))  # int("abc") can't convert
     finally:
         _remove(path)
 
@@ -1505,7 +1514,7 @@ def test_get_int_values_conversion_failure_returns_none() -> None:
 def test_get_float_values_conversion_failure_returns_none() -> None:
     mgr, path = _make("badconvertfloat.cfg")
     try:
-        assert run(mgr.get_float_values(_VAL_STR)) is None  # float("abc") can't convert
+        assert _refused_with_one_contract_entry(mgr, mgr.get_float_values(_VAL_STR))  # float("abc") can't convert
     finally:
         _remove(path)
 
@@ -1527,7 +1536,7 @@ def test_get_int_values_mixed_schema_one_field_fails_conversion_aborts_whole_cal
     # int() conversion discards the entire result rather than returning a partial list.
     mgr, path = _make("mixedconvertfail.cfg")
     try:
-        assert run(mgr.get_int_values(_VAL_INT + _VAL_STR)) is None
+        assert _refused_with_one_contract_entry(mgr, mgr.get_int_values(_VAL_INT + _VAL_STR))
     finally:
         _remove(path)
 
@@ -1547,7 +1556,7 @@ def test_get_bool_values_wrong_cached_type_returns_none() -> None:
     mgr, path = _make("badconvertbool.cfg")
     try:
         mgr._cache["Enabled"] = "notabool"
-        assert run(mgr.get_bool_values(_VAL_BOOL)) is None
+        assert _refused_with_one_contract_entry(mgr, mgr.get_bool_values(_VAL_BOOL))
     finally:
         _remove(path)
 
@@ -1556,7 +1565,7 @@ def test_get_int_values_unknown_key_in_schema_returns_none() -> None:
     mgr, path = _make("typedunknownkey.cfg")
     try:
         bad_schema: cm.ConfigSchema = (("NoSuchKey", "int", 1, 0, 10, None),)
-        assert run(mgr.get_int_values(bad_schema)) is None
+        assert _refused_with_one_contract_entry(mgr, mgr.get_int_values(bad_schema))
     finally:
         _remove(path)
 

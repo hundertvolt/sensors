@@ -12,6 +12,7 @@ Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate 
 import asyncio
 import struct
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
 from asy_i2c_driver import I2C
@@ -207,13 +208,12 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
 
     scd_log, notify_log, still_running = run(scenario())
     assert still_running is True  # one failure, well under max_module_error=5 - not a give-up condition
-    # the fault is real and counted, but attributed to SCD30 alone - one faulted cycle logs twice
-    # (asy_scd30_driver.py's own _read_scd() catch, errno=11, then base_classes.py's generic
-    # _error_check() streak-counter increment, errno=1 - see read_loop()'s own two-call sequence).
+    # One faulted cycle persists the driver's read error and the reader's streak step: each layer the fault
+    # reaches keeps its entry (owner, 2026-10-02; SPECIFICATION.md C.7).
     assert scd_log["SCD30"]["ErrCount"] == 2
     # ErrNum is the whole fixed-length history deque (_NO_ERR-padded), not just what was actually
     # recorded - only the trailing entries are this fault's own (see PrintLogHistory.get_log()).
-    assert _last_two_err_nums(scd_log, "SCD30") == [11, 1]
+    assert _last_two_err_nums(scd_log, "SCD30") == [code("E", "READ"), code("E", "STREAK")]
     assert notify_log["NOTIFY"]["ErrCount"] == 0
     # neopixel_signal()'s own startup sets a defined (0,0,0) off state once, unconditionally -
     # nothing beyond that single boot-time write, since no signal was ever triggered.
@@ -257,11 +257,9 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     writes = [w[0] for w in pixel.pixel.writes]
     assert (200, 0, 0) in writes  # the prior fault didn't permanently poison later good reads
     scd_log = run(scd_reader.get_error_counter())
-    # the earlier fault's two log entries are still on record - a later success doesn't erase
-    # history, it only decrements the internal consecutive-failure streak (a plain sync pr.err(),
-    # not pr.err_s() - see base_classes.py's _error_check() - so it adds no new history entry).
+    # history keeps the fault; the later success only resets the streak.
     assert scd_log["SCD30"]["ErrCount"] == 2
-    assert _last_two_err_nums(scd_log, "SCD30") == [11, 1]
+    assert _last_two_err_nums(scd_log, "SCD30") == [code("E", "READ"), code("E", "STREAK")]
 
 
 if __name__ == "__main__":

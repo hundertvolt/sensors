@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 sys.path.insert(0, "digital_twin")
 
 import machine
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 from machine import Pin
 
@@ -299,7 +300,7 @@ def test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible() 
             await cycle(chip, reader, 40.0 if index % 2 == 0 else 900.0)
         return await reader.get_error_counter()
 
-    assert 13 in warnings(run(scenario()))
+    assert code("W", "ISL_PERIODIC_ONLY") in warnings(run(scenario()))
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +381,7 @@ def test_a_freshly_constructed_chip_is_recovered_from_its_own_power_on_brownout_
 
     data, counters = run(scenario())
     assert data.Lux is not None
-    assert 10 not in warnings(counters)
+    assert code("W", "ISL_BROWNOUT") not in warnings(counters)
 
 
 def test_a_real_brownout_is_detected_reconfigured_and_recovered_from() -> None:
@@ -395,7 +396,7 @@ def test_a_real_brownout_is_detected_reconfigured_and_recovered_from() -> None:
         return good, recovered, await reader.get_error_counter()
 
     good, recovered, counters = run(scenario())
-    assert 10 in warnings(counters)
+    assert code("W", "ISL_BROWNOUT") in warnings(counters)
     assert recovered.Lux is not None
     assert abs(recovered.Lux - 200.0) / 200.0 < 0.04  # reading correctly again afterwards
     assert good.Lux is not None

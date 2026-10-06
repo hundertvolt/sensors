@@ -529,7 +529,7 @@ def test_read_raises_oserror_when_the_data_burst_returns_an_unexpected_result() 
 
 def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_result() -> None:
     # Caller side of the guard above: _read_bmp()'s blanket try/except turns that OSError into the
-    # same logged errno=11 as any other failed read and returns an all-None result, which
+    # same logged READ entry as any other failed read and returns an all-None result, which
     # _store_bmp() discards - degrading like a NAKed bus instead of crashing read_loop()'s task.
     i2c, reader = make_clean_reader("bad_burst_reader")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
@@ -548,7 +548,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_re
         results, counters = run(scenario())
 
     assert results == (None, None, None)
-    assert counters["BMP3XX"]["ErrNum"][-1] == 11  # errno=11, "Read failed:"
+    assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "READ")  # "Read failed:"
     assert counters["BMP3XX"]["ErrType"][-1] == "E"
     assert run(reader.get_data()) == BMP3XX(None, None, None, None)  # nothing corrupted got stored
 
@@ -878,7 +878,7 @@ def test_reader_set_trigger_secs_logs_and_does_not_raise_on_bad_value() -> None:
 
     counters = run(scenario())
     assert counters["BMP3XX"]["ErrCount"] == 1
-    assert counters["BMP3XX"]["ErrNum"][-1] == 21
+    assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "BAD_ARG")
 
 
 def test_reader_set_trigger_secs_accepts_valid_values() -> None:
@@ -900,7 +900,7 @@ def test_reader_set_trigger_secs_accepts_boundary_values() -> None:
 def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
     # Bound is 1-3600 seconds, the deployed validation of this field (BMPSampleInterv in the legacy
     # firmware's sensortask module, legacy/firmware/modules/; mirrored across every other sensor).
-    # Below/above/zero/negative are rejected like a bad type - logged (errno=21), never raises.
+    # Below/above/zero/negative are rejected like a bad type - logged (BAD_ARG), never raises.
     reader = make_reader("out_of_range_trigger")
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
     for bad in (0, -1, 3601, 100000):
@@ -912,7 +912,7 @@ def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
 
         counters = run(scenario())
         assert run(reader.trigger_period.get_value()) == 30  # rejected - kept the prior value
-        assert counters["BMP3XX"]["ErrNum"][-1] == 21
+        assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "BAD_ARG")
 
 
 def test_reader_set_trigger_secs_rejects_inf_and_nan() -> None:
@@ -930,7 +930,7 @@ def test_reader_set_trigger_secs_rejects_inf_and_nan() -> None:
 
         counters = run(scenario())
         assert run(reader.trigger_period.get_value()) == 30  # rejected - kept the prior value
-        assert counters["BMP3XX"]["ErrNum"][-1] == 21
+        assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "BAD_ARG")
 
 
 def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None:
@@ -957,7 +957,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
         return await reader.get_error_counter()
 
     counters = run(error_counter())["BMP3XX"]
-    assert counters["ErrNum"][-1] == 21
+    assert counters["ErrNum"][-1] == code("E", "BAD_ARG")
 
 
 def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure() -> None:
@@ -1287,9 +1287,8 @@ def test_the_three_reader_level_setting_getters_all_report_the_live_sensor() -> 
     assert run(reader.get_filter_coefficient()) == 3
 
 
-def test_each_reader_level_setting_getter_degrades_with_its_own_errno_on_a_dead_bus() -> None:
-    # The numbers matter on their own: 15/17/19 are what /status reports and what a bench session
-    # reads back, and a shared or copy-pasted errno would make the three indistinguishable.
+def test_each_reader_level_setting_getter_degrades_with_a_chip_get_entry_on_a_dead_bus() -> None:
+    # The three getters share the catalog's CHIP_GET class (numbers name the failure class, not the call site).
     i2c, reader = make_clean_reader("getter_trio_dead")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
@@ -1297,16 +1296,17 @@ def test_each_reader_level_setting_getter_degrades_with_its_own_errno_on_a_dead_
     seed_err(i2c, 0x00)
     assert run(reader._init_bmp()) is True
 
-    async def scenario() -> "ErrorLog":
+    async def scenario() -> "tuple[ErrorLog, ErrorLog]":
+        before = await reader.get_error_counter()
         fake(i2c).nak_addresses.add(_ADDR)  # every later transfer raises, as a pulled wire does
         assert await reader.get_pressure_oversampling() is None
         assert await reader.get_temperature_oversampling() is None
         assert await reader.get_filter_coefficient() is None
-        return await reader.get_error_counter()
+        return before, await reader.get_error_counter()
 
-    errnums = run(scenario())["BMP3XX"]["ErrNum"]
-    for errno in (15, 17, 19):
-        assert errno in errnums, f"errno {errno} missing from {errnums} - the three getters no longer report distinctly"
+    before, after = run(scenario())
+    assert after["BMP3XX"]["ErrCount"] == before["BMP3XX"]["ErrCount"] + 3  # one count per call
+    assert after["BMP3XX"]["ErrNum"][-1] == code("E", "CHIP_GET")
 
 
 def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
@@ -1323,7 +1323,7 @@ def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
     ok, counters = run(scenario())
     assert ok is False
     assert counters["BMP3XX"]["ErrCount"] == 1
-    assert counters["BMP3XX"]["ErrNum"][-1] == 10  # errno=10, "Error in initial setup"
+    assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "INIT")  # "Error in initial setup"
 
 
 def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
@@ -1341,11 +1341,13 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrNum"][-1] == 12  # errno=12, "Error reading config data!"
+    assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "CFG_READ")  # "Error reading config data!"
+    # Each layer keeps its own entry: the reader's fallback here, the store's refusal there.
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_NOT_VALID")
 
 
 def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreadable() -> None:
-    # _store_bmp()'s errno=14 counterpart to _init_bmp()'s errno=12 above - same message,
+    # _store_bmp()'s CFG_READ counterpart to _init_bmp()'s one above - same message and code,
     # different consequence: the compensation values are pure post-processing inputs, so it logs,
     # substitutes the documented [0.0, 0.0, 0.0, 15.0] fallback and stores an uncompensated read.
     i2c, reader = make_clean_reader("store_fallback_cfg")
@@ -1380,8 +1382,9 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
         return await reader.get_error_counter()
 
     counters = run(scenario())["BMP3XX"]
-    assert counters["ErrNum"][-1] == 14  # errno=14, "Error reading config data!"
+    assert counters["ErrNum"][-1] == code("E", "CFG_READ")  # "Error reading config data!"
     assert counters["ErrType"][-1] == "E"
+    assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_NOT_VALID")
 
     fallback = run(reader.get_data())
     assert fallback.Pres == results[0]  # PressOffset fell back to 0.0, not the stored 10.0
@@ -1430,12 +1433,12 @@ def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
     async def scenario() -> "ErrorLog":
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
-        await reader._read_bmp()  # errno=11, "Lesefehler:"
+        await reader._read_bmp()  # READ, "Read failed:"
         return await reader.get_error_counter()
 
     counters = run(scenario())["BMP3XX"]
     assert counters["ErrCount"] == 1
-    assert counters["ErrNum"][-1] == 11
+    assert counters["ErrNum"][-1] == code("E", "READ")
     assert counters["ErrType"][-1] == "E"
 
 
@@ -1918,7 +1921,7 @@ def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failu
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrNum"][-1] == 18
+    assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "CHIP_SET")
 
 
 def test_reader_set_filter_coefficient_applies_the_value_and_returns_true() -> None:
@@ -1938,7 +1941,7 @@ def test_reader_set_filter_coefficient_logs_and_returns_false_on_bus_failure() -
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrNum"][-1] == 20
+    assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "CHIP_SET")
 
 
 # ---------------------------------------------------------------------------
@@ -2041,7 +2044,7 @@ def test_never_touches_any_address_but_its_own() -> None:
 
 def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> None:
     # Regression (SPECIFICATION.md C.7.3): a failed config write used to leave cfgmgr invalid, so
-    # _init_bmp() logged errno 12 and ended the task on every restart - a reboot loop that rewrote the
+    # _init_bmp() logged its config-read error and ended the task on every restart - a reboot loop that rewrote the
     # file each boot. Now it initialises on the validated defaults and the write is not retried.
     import config_manager
 
@@ -2069,7 +2072,7 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
         del config_manager.open  # type: ignore[attr-defined]
     assert writes[0] == 0
     assert run(reader.bmp.get_pressure_oversampling()) == 1  # the schema default reached the chip
-    assert 12 not in run(reader.get_error_counter())["BMP3XX"]["ErrNum"]
+    assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
     assert run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_FILE_WRITE")
 
 

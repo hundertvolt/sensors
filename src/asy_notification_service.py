@@ -45,6 +45,16 @@ if TYPE_CHECKING:
         # every driver already has (C.4.2). Only get_data() is used here.
         async def get_data(self) -> "Any": ...
 
+# Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
+_ERR_CALLBACK = const(14)
+_ERR_SOURCE = const(15)
+_ERR_CFG_READ = const(26)
+_WRN_CFG_READ = const(13)
+_WRN_NOTIFY_NAME_COLLISION = const(44)
+_WRN_NOTIFY_SCHEMA_SHAPE = const(45)
+_WRN_NOTIFY_LATE_REGISTER = const(46)
+_WRN_NOTIFY_FINALIZE_AGAIN = const(47)
+
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
 
@@ -188,7 +198,7 @@ class NotificationCoordinator(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
-            await self.pr.err_s("local_time_callback failed:", e, errno=12)
+            await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
     async def _check_one(self, notif: NotificationSignal) -> bool:
@@ -200,7 +210,7 @@ class NotificationCoordinator(SensorReaderConfig):
             data = await notif.source.get_data()
             value = getattr(data, notif.field, None)
         except Exception as e:
-            await self.pr.err_s(notif.name, "Value read failed:", e, errno=10)
+            await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             value = None
         notif.last_value = value
         if value is None:
@@ -208,7 +218,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
         if thresholds is None:
-            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=11)
+            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)
             notif.triggered = False
             return False
         threshold = thresholds[0]  # exactly one field - register() rejects any other shape
@@ -225,7 +235,7 @@ class NotificationCoordinator(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
         except Exception as e:
-            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=13)
+            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
 
     async def _store_notif_data(self, *, any_triggered: bool) -> None:
         await self._set_meas_data(NOTIFY(any_triggered, self._now()))
@@ -275,22 +285,22 @@ class NotificationCoordinator(SensorReaderConfig):
 
     def register(self, notif: NotificationSignal) -> None:  # call once per signal, in check order, before finalize()
         if self._finalized:
-            self._reject_registration(notif.name, "register() called after finalize(), ignoring", 3)
+            self._reject_registration(notif.name, "register() called after finalize(), ignoring", _WRN_NOTIFY_LATE_REGISTER)
             return
         key = name_cfg(notif.field_schema)
         if key == "":
-            self._reject_registration(notif.name, "field_schema must have exactly one field, ignoring", 2)
+            self._reject_registration(notif.name, "field_schema must have exactly one field, ignoring", _WRN_NOTIFY_SCHEMA_SHAPE)
             return
         existing = set(schema_names(_VAL_OWN_SCHEMA))
         existing.update(name_cfg(n.field_schema) for n in self._registered)
         if key in existing:
-            self._reject_registration(notif.name, "field name '" + key + "' collides, ignoring", 1)
+            self._reject_registration(notif.name, "field name '" + key + "' collides, ignoring", _WRN_NOTIFY_NAME_COLLISION)
             return
         self._registered.append(notif)
 
     def finalize(self) -> None:  # call exactly once, after all register() calls, before any task starter runs
         if self._finalized:
-            self._reject_registration("(coordinator)", "finalize() called again, ignoring", 4)
+            self._reject_registration("(coordinator)", "finalize() called again, ignoring", _WRN_NOTIFY_FINALIZE_AGAIN)
             return
         super().__init__(
             NOTIFY(Triggered=False, TS=None),
@@ -333,7 +343,6 @@ class NotificationCoordinator(SensorReaderConfig):
         if not self._finalized:  # self.pr/self.cfgmgr don't exist yet - caller-ordering bug, defense-in-depth only
             return
         await self.pr.setup()  # required for all logged warnings and errors
-        cfg_failing = False  # C.7.1's repeat rule: one slot per run of failed reads, all still counted
         # No self._auto_active = True here, unlike __init__/auto_led_override() which own it - this
         # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
         # an override set mid-run: two independently-restartable tasks over one unlocked flag.
@@ -352,10 +361,9 @@ class NotificationCoordinator(SensorReaderConfig):
                 or len(cfg_bool) != 1
             ):
                 interv = 600.0
-                await self.pr.wrn_s("Error reading own configuration!", wrnno=5, repeat=cfg_failing)
-                cfg_failing = True
+                # Persisted every failing cycle; a repeat spends no slot (the newest-entry rule).
+                await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
             else:
-                cfg_failing = False
                 on_h, on_m, off_h, off_m, flash_bri = cfg_int
                 interv, flash_dur = cfg_float
                 auto_on = cfg_bool[0]

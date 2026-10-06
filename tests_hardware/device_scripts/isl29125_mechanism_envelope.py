@@ -29,6 +29,7 @@ OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so
 # around a nominal 26.67, so the worst a working driver can be off by is ~25%. Past that is a
 # missing or inverted correction. The accuracy question itself lives in Part M.1.6.
 MAX_RANGE_STEP = 0.25
+W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 
 failures: "list[str]" = []
 notes: "list[str]" = []
@@ -214,11 +215,11 @@ async def _main() -> None:
 
         # Overrange must be set at full white - this rig really does exceed 10000 lx at ~20mm -
         # and it is a live measurement field now, not a log entry, so the reader's own data is
-        # what to read. W13 stays a log check, and one leg cannot reach it: a guard, not a proof.
+        # what to read. ISL_PERIODIC_ONLY stays a log check, and one leg cannot reach it: a guard, not a proof.
         entries, count = _log_entries(await reader.get_error_counter())
         notes.append(f"ascending-leg log: count={count} entries={entries}")
         check((await reader.get_data()).Overrange is True, "Overrange is not True after driving the part into hard saturation at full white - the saturation detector never fired")
-        check(("W", 13) not in entries, "W13 logged: the range was decided by the PERIODIC path only - the interrupt is not carrying the decisions")
+        check(("W", W_ISL_PERIODIC_ONLY) not in entries, "ISL_PERIODIC_ONLY logged: the range was decided by the PERIODIC path only - the interrupt is not carrying the decisions")
         check(not any(kind == "E" for kind, _ in entries), f"the ascending envelope logged real ERRORS, not just warnings: {entries}")
 
         down = await _descending(pixel, reader, wdt)

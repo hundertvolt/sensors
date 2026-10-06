@@ -29,6 +29,11 @@ async def _newest_entry(server: DNSServer) -> "tuple[int, str]":  # the newest (
     return entry["ErrNum"][-1], entry["ErrType"][-1]
 
 
+async def _used_slots(server: DNSServer) -> "list[tuple[int, str]]":  # DNSSRV's used (ErrNum, ErrType) slots, oldest first
+    entry = (await server.get_error_counter())["DNSSRV"]
+    return [(entry["ErrNum"][i], entry["ErrType"][i]) for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] != "N"]
+
+
 def make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independent logger per test/DNSQuery
     return PrintLogHistory(level=level, name="TESTDNS")
 
@@ -550,18 +555,19 @@ def test_run_continues_after_sendto_reports_failure() -> None:
 
 
 def test_run_sendto_failure_logs_a_persisted_warning() -> None:
+    # Two refused replies: both counted, one slot (the central newest-entry rule, C.7.1).
     query = make_query(["a", "io"])
-    fake = _FakeUDPS([(query, ("127.0.0.5", 5000))])
-    fake.sendto_results = [None]
+    fake = _FakeUDPS([(query, ("127.0.0.5", 5000)), (query, ("127.0.0.5", 5000))])
+    fake.sendto_results = [None, None]
 
     async def scenario() -> None:
         server = DNSServer(debug=PrintLog.level_warn())
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1)
-            assert server.pr.err_count == 1
-            assert await _newest_entry(server) == (code("W", "DNS_REPLY_DROPPED"), "W")
+            assert await _wait_until(lambda: len(fake.sent) >= 2)
+            assert server.pr.err_count == 2
+            assert await _used_slots(server) == [(code("W", "DNS_REPLY_DROPPED"), "W")]
         finally:
             await _cancel(task)
 
@@ -569,15 +575,16 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
 
 
 def test_run_invalid_recvfrom_data_logs_a_persisted_warning() -> None:
-    fake = _FakeUDPS([(None, None)])
+    # Two failed receives: both counted, one slot (the central newest-entry rule, C.7.1).
+    fake = _FakeUDPS([(None, None), (None, None)])
 
     async def scenario() -> None:
         server = DNSServer(debug=PrintLog.level_warn())
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            assert await _wait_until(lambda: server.pr.err_count >= 1)
-            assert await _newest_entry(server) == (code("W", "DNS_BAD_REQUEST"), "W")
+            assert await _wait_until(lambda: server.pr.err_count >= 2)
+            assert await _used_slots(server) == [(code("W", "DNS_BAD_REQUEST"), "W")]
         finally:
             await _cancel(task)
 

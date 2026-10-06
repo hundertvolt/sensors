@@ -8,6 +8,7 @@ import struct
 import time
 
 import network
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 
@@ -554,7 +555,8 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1
+    assert counter["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_RETURNED")  # the task's end is persisted; the restart line is console-only
 
 
 _SCD30_ADDR = 0x61
@@ -618,7 +620,8 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1
+    assert counter["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_RETURNED")  # the task's end is persisted; the restart line is console-only
 
 
 def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up() -> None:
@@ -648,7 +651,8 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1
+    assert counter["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_RETURNED")  # the task's end is persisted; the restart line is console-only
 
 
 if __name__ == "__main__":

@@ -376,8 +376,8 @@ in software every sample with no persistence requirement. **The shorter window d
 | 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
 
 That is why the window is derived rather than configured (SPECIFICATION.md Part M.1.4), and why
-`wrnno=13` - five range decisions in a row taken by the periodic path - means the INT line looks dead
-rather than that a setting is wrong.
+`ISL_PERIODIC_ONLY` (`W32`) - five range decisions in a row taken by the periodic path - means the
+INT line looks dead rather than that a setting is wrong.
 
 ## What the two gated light tests prove
 
@@ -388,7 +388,7 @@ rather than that a setting is wrong.
   with no chatter, the return to the low range, fixed-range pinning at both ends, 12-bit and 16-bit
   agreeing on one static scene (which is what proves the `<< 4` normalisation), `ISLCalibrate`
   starting a run without moving the applied ratio, `Overrange` true at full white (this rig really
-  does exceed 10000 lx at ~20 mm), no `W13`, and zero `E` entries.
+  does exceed 10000 lx at ~20 mm), no `ISL_PERIODIC_ONLY` (`W32`), and zero `E` entries.
 - **Lighting scenarios** (`isl29125_lighting_scenarios.py`, ~8.5 min of real segments): ten scenarios
   recombining colour, slope shape, direction, start/end level, pauses and threshold proximity, driven
   **raw** because `NeopixelDriver` offers only a steady white and a 0->peak->0 triangle. Two
@@ -408,11 +408,12 @@ found by running the test rather than reading it, and every one green first:
   The envelope script once seeded `cfgmgr._cache` without calling `setup()`, so its `_set_dict_cfg()`
   calls wrote that cache over the board's real `config_ISL29125.cfg`: six silent flash writes per run.
 - **Assert a minimum engagement beside every ceiling**, or a test passes while the mechanism it
-  targets never runs. A "no `W13`" check proves nothing in a run making two switches when the warning
-  needs five in a row, and an oscillation scenario passed with `switches=0` because both its levels
-  sat inside the band. Every scenario now carries `min_switches` and a must-use-both-ranges flag
-  beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
-  `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
+  targets never runs. A "no `ISL_PERIODIC_ONLY`" check proves nothing in a run making two switches
+  when the warning needs five in a row, and an oscillation scenario passed with `switches=0` because
+  both its levels sat inside the band. Every scenario now carries `min_switches` and a
+  must-use-both-ranges flag beside its ceiling: `threshold_oscillation_crossing` must switch at
+  least 4 times and `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either
+  vacuous fails the other.
 - **`await flush_pending()` after any config write.** `write_config()` only *stages* (SPECIFICATION.md
   Part F.2); a script that returns before the flush loses the write while `write_config()` has
   already reported success. `tests_scripts/test_device_script_config_flush.py` pins this **per
