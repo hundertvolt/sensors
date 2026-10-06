@@ -208,7 +208,7 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 `.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
 downloads the Playwright Chromium build Vitest needs. Node comes from nodejs.org (checksum-verified
 against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
-repo pins 22, so `apt install nodejs` would silently install a version the repo says not to use. A
+repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use. A
 Node already on `PATH` that matches the pin is used as-is and never overridden, so `nvm`, a system
 install or CI's own `setup-node` all keep working. `--skip-npm` opts out of the whole JS side.
 
