@@ -50,7 +50,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     from typing_extensions import Self
@@ -120,7 +120,13 @@ def _tmp_cfg_path(name: str) -> str:
 
 
 def make_i2c() -> I2C:
-    return I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    # A fresh static bus 0 (this tier has no per-test reset), its construction entry dropped so the
+    # log holds only the test's own traffic.
+    FakeI2C.reset_id(0)
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    fake(i2c).log.clear()
+    fake(i2c).register_device(_ADDR)  # register-addressed (p9-p10), as the driver reads it
+    return i2c
 
 
 def fake(i2c: I2C) -> FakeI2C:
@@ -146,6 +152,7 @@ def counts_burst(green: int, red: int, blue: int) -> bytes:
 
 def make_protocol(address: int = _ADDR) -> "tuple[I2C, ISL29125_I2C]":
     i2c = make_i2c()
+    fake(i2c).register_device(address)
     return i2c, ISL29125_I2C(i2c, address=address)
 
 
@@ -167,12 +174,40 @@ def protocol_at(bits: int) -> ISL29125_I2C:
     return isl
 
 
-def mem_writes(i2c: I2C) -> "list[tuple[int, bytes]]":
-    return [(entry[2], entry[3]) for entry in fake(i2c).log if entry[0] == "writeto_mem"]
+def register_writes(i2c: I2C) -> "list[tuple[int, bytes]]":
+    # A register write is one writeto() of the register byte and the payload, with a stop.
+    return [(entry[2][0], entry[2][1:]) for entry in fake(i2c).log if entry[0] == "writeto" and entry[3] and len(entry[2]) > 1]
 
 
-def mem_reads(i2c: I2C) -> "list[tuple[int, int]]":
-    return [(entry[2], entry[3]) for entry in fake(i2c).log if entry[0] == "readfrom_mem"]
+def register_reads(i2c: I2C) -> "list[tuple[int, int]]":
+    # A register read is a no-stop writeto() of the register byte, then readfrom_into(): (register, length).
+    reads: list[tuple[int, int]] = []
+    pointer = None
+    for entry in fake(i2c).log:
+        if entry[0] == "writeto" and not entry[3] and len(entry[2]) == 1:
+            pointer = entry[2][0]
+        elif entry[0] == "readfrom_into" and pointer is not None:
+            reads.append((pointer, len(entry[2])))
+            pointer = None
+    return reads
+
+
+def fail_register_writes(i2c: I2C, times: int = 1) -> None:
+    # The next `times` register writes raise EIO (a NACK); reads, whose no-stop pointer write carries the
+    # same register byte, are left alone - a match= on the register could not tell the two apart.
+    bus = fake(i2c)
+    real_writeto = bus.writeto
+    remaining = [times]
+
+    def failing(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        if remaining[0] and stop and len(buf) > 1:  # type: ignore[arg-type]
+            remaining[0] -= 1
+            if not remaining[0]:
+                bus.writeto = real_writeto  # type: ignore[method-assign]
+            raise OSError(errno_mod.EIO, "no ACK")
+        return real_writeto(address, buf, stop)
+
+    bus.writeto = failing  # type: ignore[method-assign]
 
 
 def logged(counters: "ErrorLog", kind: str, name: str = "ISL29125") -> "list[int]":
@@ -477,8 +512,8 @@ def test_setup_sequence_is_id_reset_brownout_config() -> None:
     i2c, isl = ready_protocol()
     with _FastAsyncSleep():
         assert run(isl.setup()) is True
-    reads = mem_reads(i2c)
-    writes = mem_writes(i2c)
+    reads = register_reads(i2c)
+    writes = register_writes(i2c)
     assert reads[0][0] == _REG_ID  # identity first
     assert writes[0] == (_REG_ID, bytes([_CMD_RESET]))  # then the reset command
     assert reads[1][0] == _REG_CONFIG1  # the reset verify read
@@ -516,7 +551,7 @@ def test_setup_writes_sync_and_conven_as_zero() -> None:
     i2c, isl = ready_protocol()
     with _FastAsyncSleep():
         run(isl.setup())
-    config1, _config2, config3 = mem_writes(i2c)[2][1]
+    config1, _config2, config3 = register_writes(i2c)[2][1]
     assert config1 & 0x20 == 0  # SYNC
     assert config3 & 0x10 == 0  # CONVEN
     assert config1 & 0x07 == _MODE_RGB
@@ -538,7 +573,7 @@ def test_reset_does_not_read_the_destructive_status_register() -> None:
     # STATUS == 0x00, which contradicts Table 15's documented 0x04 default.
     i2c, isl = ready_protocol()
     run(isl.reset())
-    assert all(register != _REG_STATUS for register, _length in mem_reads(i2c))
+    assert all(register != _REG_STATUS for register, _length in register_reads(i2c))
 
 
 def test_reset_restores_the_shadow_to_the_chips_own_defaults() -> None:
@@ -557,7 +592,7 @@ def test_reset_restores_the_shadow_to_the_chips_own_defaults() -> None:
 def test_get_device_id_reads_one_byte_from_register_zero() -> None:
     i2c, isl = ready_protocol()
     assert run(isl.get_device_id()) == _DEVICE_ID
-    assert mem_reads(i2c) == [(_REG_ID, 1)]
+    assert register_reads(i2c) == [(_REG_ID, 1)]
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +641,7 @@ def test_encode_shadow_leaves_every_reserved_bit_zero() -> None:
 def test_configure_writes_three_bytes_only_when_config1_changed() -> None:
     i2c, isl = ready_protocol()
     run(isl.configure(mode=_MODE_RGB))
-    assert mem_writes(i2c) == [(_REG_CONFIG1, bytes([_MODE_RGB, 0x00, 0x00]))]
+    assert register_writes(i2c) == [(_REG_CONFIG1, bytes([_MODE_RGB, 0x00, 0x00]))]
 
 
 def test_configure_writes_two_bytes_from_0x02_for_an_ir_only_change() -> None:
@@ -616,7 +651,7 @@ def test_configure_writes_two_bytes_from_0x02_for_an_ir_only_change() -> None:
     run(isl.configure(mode=_MODE_RGB))
     fake(i2c).log.clear()
     run(isl.configure(ir_adjust=40))
-    assert mem_writes(i2c) == [(_REG_CONFIG2, bytes([40, 0x00]))]
+    assert register_writes(i2c) == [(_REG_CONFIG2, bytes([40, 0x00]))]
 
 
 def test_configure_writes_nothing_when_nothing_changed() -> None:
@@ -624,7 +659,7 @@ def test_configure_writes_nothing_when_nothing_changed() -> None:
     run(isl.configure(mode=_MODE_RGB))
     fake(i2c).log.clear()
     run(isl.configure(mode=_MODE_RGB))
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
 
 
 def test_configure_force_rewrites_all_three_bytes_even_with_no_change() -> None:
@@ -634,7 +669,7 @@ def test_configure_force_rewrites_all_three_bytes_even_with_no_change() -> None:
     run(isl.configure(mode=_MODE_RGB))
     fake(i2c).log.clear()
     run(isl.configure(force=True))
-    assert mem_writes(i2c) == [(_REG_CONFIG1, bytes([_MODE_RGB, 0x00, 0x00]))]
+    assert register_writes(i2c) == [(_REG_CONFIG1, bytes([_MODE_RGB, 0x00, 0x00]))]
 
 
 def test_configure_sets_the_settle_deadline_only_on_a_config1_write() -> None:
@@ -688,13 +723,13 @@ def test_set_thresholds_is_one_four_byte_burst_little_endian() -> None:
     run(isl.set_thresholds(0x1234, 0xABCD))
     # Table 14's own row labels invite a byte-order mistake, so both values are distinguishable
     # whichever way round they land.
-    assert mem_writes(i2c) == [(_REG_THRESHOLDS, bytes([0x34, 0x12, 0xCD, 0xAB]))]
+    assert register_writes(i2c) == [(_REG_THRESHOLDS, bytes([0x34, 0x12, 0xCD, 0xAB]))]
 
 
 def test_set_thresholds_clamps_out_of_range_counts() -> None:
     i2c, isl = ready_protocol()
     run(isl.set_thresholds(-10, 70000))
-    assert mem_writes(i2c) == [(_REG_THRESHOLDS, bytes([0x00, 0x00, 0xFF, 0xFF]))]
+    assert register_writes(i2c) == [(_REG_THRESHOLDS, bytes([0x00, 0x00, 0xFF, 0xFF]))]
 
 
 def test_set_thresholds_rescales_both_counts_to_the_active_resolution() -> None:
@@ -704,7 +739,7 @@ def test_set_thresholds_rescales_both_counts_to_the_active_resolution() -> None:
     run(isl.configure(resolution=12))
     fake(i2c).log.clear()  # drop the resolution write itself
     run(isl.set_thresholds(983, 55705))
-    assert mem_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 983 >> 4, 55705 >> 4))]
+    assert register_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 983 >> 4, 55705 >> 4))]
 
 
 def test_set_thresholds_parks_an_omitted_up_crossing_at_the_top_of_the_active_scale() -> None:
@@ -715,22 +750,20 @@ def test_set_thresholds_parks_an_omitted_up_crossing_at_the_top_of_the_active_sc
         run(isl.configure(resolution=bits))
         fake(i2c).log.clear()
         run(isl.set_thresholds(0))
-        assert mem_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 0, ceiling))]
+        assert register_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 0, ceiling))]
 
 
 def test_read_counts_uses_a_six_byte_burst_not_three_halfwords() -> None:
-    # Named for the trap: get_register_struct() returns unpacked[0] only, so passing "<HHH" would
-    # silently discard red and blue. This is the single most likely implementation mistake here
-    # and it fails silently, so the test asserts all three channels come back distinct.
+    # Named for the trap: one 6-byte burst, never three 2-byte reads, so the three channels come from one conversion.
     i2c, isl = ready_protocol()
     seed(i2c, _REG_DATA, counts_burst(0x1111, 0x2222, 0x3333))
     assert run(isl.read_counts()) == (0x1111, 0x2222, 0x3333)
-    assert mem_reads(i2c) == [(_REG_DATA, 6)]
+    assert register_reads(i2c) == [(_REG_DATA, 6)]
 
 
 def test_read_counts_raises_rather_than_returning_none_on_a_bus_fault() -> None:
     i2c, isl = ready_protocol()
-    fake(i2c).inject_fault("readfrom_mem", OSError(errno_mod.EIO, "no ACK"))
+    fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no ACK"), match=_REG_DATA)
     try:
         run(isl.read_counts())
     except OSError:
@@ -741,9 +774,9 @@ def test_read_counts_raises_rather_than_returning_none_on_a_bus_fault() -> None:
 def test_every_protocol_read_raises_rather_than_returning_none() -> None:
     # Layer 1 returns None for a malformed request but lets a real OSError through; this layer
     # normalises both into a raise so the reader's try blocks see one shape.
-    for call in ("get_device_id", "read_status", "get_config_snapshot", "read_counts"):
+    for call, register in (("get_device_id", _REG_ID), ("read_status", _REG_STATUS), ("get_config_snapshot", _REG_CONFIG1), ("read_counts", _REG_DATA)):
         i2c, isl = ready_protocol()
-        fake(i2c).inject_fault("readfrom_mem", OSError(errno_mod.EIO, "no ACK"))
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no ACK"), match=register)
         try:
             run(getattr(isl, call)())
         except OSError:
@@ -751,19 +784,41 @@ def test_every_protocol_read_raises_rather_than_returning_none() -> None:
         raise AssertionError(f"{call}() must raise on a bus fault")
 
 
+def test_every_protocol_write_raises_on_a_bus_that_is_down() -> None:
+    # A write the bus never made is no silent no-op: each raises, and configure() keeps its shadow on
+    # what the chip still holds.
+    i2c, isl = ready_protocol()
+    i2c.deinit()
+    calls: tuple[Callable[[], Coroutine[Any, Any, None]], ...] = (
+        lambda: isl.configure(resolution=12),
+        lambda: isl.set_thresholds(0, 1000),
+        isl.clear_brownout,
+    )
+    for call in calls:
+        try:
+            run(call())
+            message = ""
+        except OSError as e:
+            message = str(e)
+        assert message == "I2C bus not initialized"
+    decoded = ISL29125_I2C.decode_config(isl.encode_shadow())
+    assert decoded is not None
+    assert decoded[0] == 16
+
+
 def test_read_status_reads_one_byte_and_clear_brownout_writes_it_low() -> None:
     i2c, isl = ready_protocol()
     seed(i2c, _REG_STATUS, bytes([_STATUS_BOUTF | _STATUS_RGBTHF]))
     assert run(isl.read_status()) == (_STATUS_BOUTF | _STATUS_RGBTHF)
     run(isl.clear_brownout())
-    assert mem_writes(i2c) == [(_REG_STATUS, bytes([0x00]))]
+    assert register_writes(i2c) == [(_REG_STATUS, bytes([0x00]))]
 
 
 def test_get_config_snapshot_is_one_transaction_and_returns_the_raw_bytes_unmodified() -> None:
     i2c, isl = ready_protocol()
     seed(i2c, _REG_CONFIG1, bytes([0x15, 0xA8, 0x0D]))
     assert run(isl.get_config_snapshot()) == bytes([0x15, 0xA8, 0x0D])
-    assert mem_reads(i2c) == [(_REG_CONFIG1, 3)]
+    assert register_reads(i2c) == [(_REG_CONFIG1, 3)]
 
 
 def test_get_config_snapshot_reports_the_chip_not_the_shadow() -> None:
@@ -930,7 +985,7 @@ def test_init_arms_the_thresholds_for_the_starting_range() -> None:
     i2c, reader = make_reader("armed")
     with _FastAsyncSleep():
         assert run(init_reader(reader, i2c)) is True
-    threshold_writes = [payload for register, payload in mem_writes(i2c) if register == _REG_THRESHOLDS]
+    threshold_writes = [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
     assert len(threshold_writes) == 1
     # Starting on the high range, so only the DOWN crossing is armed: low = the derived
     # 85/53.33 = 1.594% of full scale, high parked at the resolution's own maximum.
@@ -1266,7 +1321,7 @@ def test_status_register_is_read_exactly_once_per_cycle() -> None:
     seed_cycle(i2c, 20000, 20000, 20000)
     with _FastAsyncSleep():
         run(reader._read_isl())
-    assert [register for register, _length in mem_reads(i2c)].count(_REG_STATUS) == 1
+    assert [register for register, _length in register_reads(i2c)].count(_REG_STATUS) == 1
 
 
 def test_handle_status_decodes_every_byte_value_without_raising() -> None:
@@ -1478,7 +1533,7 @@ def test_thresholds_are_written_before_the_range_bit() -> None:
     i2c, reader = ready_reader("order")
     with _FastAsyncSleep():
         assert run(reader._switch_range(_RANGE_LOW_LUX)) is True
-    writes = mem_writes(i2c)
+    writes = register_writes(i2c)
     assert writes[0][0] == _REG_THRESHOLDS
     assert writes[1][0] == _REG_CONFIG1
     # On the low range only an UP crossing matters: high = 85% of full scale, low parked at 0.
@@ -1494,7 +1549,7 @@ def test_thresholds_are_scaled_to_the_active_resolution() -> None:
         run(reader._isl.configure(resolution=12))
         fake(i2c).log.clear()
         run(reader._switch_range(_RANGE_LOW_LUX))
-    writes = [payload for register, payload in mem_writes(i2c) if register == _REG_THRESHOLDS]
+    writes = [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
     assert writes[0] == struct.pack("<HH", 0, 55705 >> 4)  # 3481, inside a 12-bit reading's range
 
 
@@ -1503,7 +1558,7 @@ def test_a_partial_switch_is_retried_on_the_next_cycle() -> None:
     # updated when the second one fails, so the next evaluation re-decides and retries.
     i2c, reader = ready_reader("partial")
     with _FastAsyncSleep():
-        fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+        fail_register_writes(i2c, times=1)
         assert run(reader._switch_range(_RANGE_LOW_LUX)) is False
         assert reader._active_range == _RANGE_HIGH_LUX
         assert run(reader._switch_range(_RANGE_LOW_LUX)) is True
@@ -1515,7 +1570,7 @@ def test_a_failed_threshold_write_and_a_failed_range_write_each_log_chip_set() -
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
-            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+            fail_register_writes(i2c, times=1)
             await reader._switch_range(_RANGE_LOW_LUX)  # the threshold burst fails -> CHIP_SET
             real_configure = reader._isl.configure
 
@@ -1645,7 +1700,7 @@ def test_brownout_reapplies_the_whole_configuration_and_discards_one_cycle() -> 
     with _FastAsyncSleep():
         results = run(reader._read_isl())
     assert results == (None, None, None, None, None, None)  # no sample: the chip was in power-down
-    writes = mem_writes(i2c)
+    writes = register_writes(i2c)
     assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in writes)
     assert (_REG_STATUS, bytes([0x00])) in writes  # BOUTF written low
     assert any(register == _REG_THRESHOLDS for register, _payload in writes)  # thresholds re-armed
@@ -1717,7 +1772,7 @@ def test_a_brownout_recovery_write_failure_logs_chip_set() -> None:
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
             seed_cycle(i2c, 20000, 20000, 20000, status=_STATUS_BOUTF)
-            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=5)
+            fail_register_writes(i2c, times=5)
             await reader._read_isl()
         return await reader.get_error_counter()
 
@@ -1818,7 +1873,7 @@ def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> 
     # is a different event.
     assert warnings(counters).count(code("W", "ISL_DIVERGED")) == 1
     assert code("W", "ISL_BROWNOUT") not in warnings(counters)
-    assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in mem_writes(i2c))
+    assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in register_writes(i2c))
 
 
 def test_a_reserved_bit_difference_is_not_reported_as_divergence() -> None:
@@ -1884,14 +1939,14 @@ def test_each_push_rejects_the_wrong_type_without_touching_the_bus() -> None:
     with _FastAsyncSleep():
         for field, value in wrong.items():
             assert run(_push(reader._push_callbacks[field], value)) is False, field
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
 
 
 def test_pushing_resolution_reaches_the_chip_byte_exactly() -> None:
     i2c, reader = ready_reader("push_resolution")
     with _FastAsyncSleep():
         assert run(_push(reader._push_callbacks["Resolution"], 12)) is True
-    config1 = next(payload for register, payload in mem_writes(i2c) if register == _REG_CONFIG1)
+    config1 = next(payload for register, payload in register_writes(i2c) if register == _REG_CONFIG1)
     assert config1[0] & _BITS_12
 
 
@@ -1900,7 +1955,7 @@ def test_pushing_ir_compensation_reaches_config2_without_touching_config1() -> N
     with _FastAsyncSleep():
         assert run(_push(reader._push_callbacks["IRCompOffset"], 1)) is True
         assert run(_push(reader._push_callbacks["IRCompAdjust"], 63)) is True
-    writes = mem_writes(i2c)
+    writes = register_writes(i2c)
     assert all(register == _REG_CONFIG2 for register, _payload in writes)
     assert writes[-1][1][0] == 0x80 | 63
 
@@ -1912,7 +1967,7 @@ def test_the_derived_persistence_reaches_config3_and_tracks_its_two_inputs() -> 
     i2c, reader = ready_reader("derived_persist")
     with _FastAsyncSleep():
         assert run(reader.set_resolution(12)) is True
-    writes = mem_writes(i2c)
+    writes = register_writes(i2c)
     assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "12 bit should derive PRST=8"
 
 
@@ -1999,7 +2054,7 @@ def test_a_failed_config_write_leaves_the_shadow_on_the_value_the_chip_still_hol
     # high. Nothing in the read path notices: the reads themselves keep succeeding.
     i2c, isl = ready_protocol()
     run(isl.setup())
-    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+    fail_register_writes(i2c, times=1)
     raised = False
     try:
         run(isl.configure(resolution=12))
@@ -2023,7 +2078,7 @@ def test_a_reconciling_re_read_that_itself_fails_is_retried_on_the_following_cyc
     reader._isl._write_failures = 1
 
     with _FastAsyncSleep():
-        fake(i2c).inject_fault("readfrom_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+        fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no ACK"), match=_REG_CONFIG1)
         run(reader._verify_after_failed_write())
     assert reader._reconciled_write_failures == 0, "a failed re-read reconciles nothing"
 
@@ -2042,14 +2097,14 @@ def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None
     i2c, reader = ready_reader("reconcile_race")
     chip = fake(i2c)
     reader._isl._write_failures = 1  # one failure already outstanding
-    real_read = chip.readfrom_mem
+    real_read = chip.readfrom_into
 
-    def _fail_a_write_during_the_re_read(address: int, register: int, nbytes: int, **kwargs: object) -> bytes:
-        chip.readfrom_mem = real_read  # type: ignore[method-assign]  # once only
+    def _fail_a_write_during_the_re_read(address: int, buf: object, stop: bool = True) -> None:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        chip.readfrom_into = real_read  # type: ignore[method-assign]  # once only
         reader._isl._write_failures += 1  # a second write fails while this read is in flight
-        return real_read(address, register, nbytes, **kwargs)  # type: ignore[arg-type]
+        real_read(address, buf, stop)
 
-    chip.readfrom_mem = _fail_a_write_during_the_re_read  # type: ignore[method-assign, assignment]
+    chip.readfrom_into = _fail_a_write_during_the_re_read  # type: ignore[method-assign]
     with _FastAsyncSleep():
         run(reader._verify_after_failed_write())
     assert reader._reconciled_write_failures == 1, "only what was seen before the re-read counts as reconciled"
@@ -2063,18 +2118,21 @@ def test_a_config_burst_that_lands_only_partly_is_reconciled_by_the_next_read_cy
     # resolution while the part runs the new one. Only a config GET used to notice.
     i2c, reader = ready_reader("torn_burst")
     chip = fake(i2c)
-    real_write = chip.writeto_mem
+    real_write = chip.writeto
 
-    def _land_config1_only(address: int, memaddr: int, buf: object, **kwargs: object) -> None:
-        real_write(address, memaddr, bytes(buf)[:1], **kwargs)  # type: ignore[arg-type, call-overload]
+    def _land_config1_only(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        data = bytes(buf)  # type: ignore[call-overload]
+        if not stop or len(data) <= 2:
+            return real_write(address, buf, stop)
+        real_write(address, data[:2], stop)  # the register byte and CONFIG1 land, then the NACK
         raise OSError(errno_mod.EIO, "no ACK on the second byte")
 
-    chip.writeto_mem = _land_config1_only  # type: ignore[method-assign]
+    chip.writeto = _land_config1_only  # type: ignore[method-assign]
     try:
         with _FastAsyncSleep():
             assert run(reader.set_resolution(12)) is False
     finally:
-        chip.writeto_mem = real_write  # type: ignore[method-assign]
+        chip.writeto = real_write  # type: ignore[method-assign]
     # The chip now carries the 12-bit BITS flag the shadow was rolled back out of.
     assert bytes(chip.registers[(_ADDR, _REG_CONFIG1)])[0] & _BITS_12 == _BITS_12
 
@@ -2093,7 +2151,7 @@ def test_a_failed_config_write_does_not_make_the_divergence_check_see_a_phantom_
     i2c, isl = ready_protocol()
     run(isl.setup())
     on_chip = isl.encode_shadow()
-    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+    fail_register_writes(i2c, times=1)
     try:
         run(isl.configure(range_fs=_RANGE_HIGH_LUX, ir_adjust=7))
     except OSError:
@@ -2108,7 +2166,7 @@ def test_re_deriving_the_transient_rejection_logs_chip_set_when_that_write_fails
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
-            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+            fail_register_writes(i2c, times=1)
             assert await reader._reapply_persist(2) is False
         return await reader.get_error_counter()
 
@@ -2124,21 +2182,22 @@ def test_set_resolution_reports_failure_when_the_derived_window_cannot_be_re_app
     # own CONFIG1 burst first, then the re-derived CONFIG3. Only the second is this test's
     # subject, so the fault is placed by call index rather than by queueing one up front.
     chip = fake(i2c)
-    real_write = chip.writeto_mem
+    real_write = chip.writeto
     calls = [0]
 
-    def _fail_the_second_write(address: int, memaddr: int, buf: object, **kwargs: object) -> None:
-        calls[0] += 1
-        if calls[0] == 2:
-            raise OSError(errno_mod.EIO, "no ACK")
-        real_write(address, memaddr, buf, **kwargs)  # type: ignore[arg-type]
+    def _fail_the_second_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        if stop and len(buf) > 1:  # type: ignore[arg-type]  # a register write, not a read's pointer
+            calls[0] += 1
+            if calls[0] == 2:
+                raise OSError(errno_mod.EIO, "no ACK")
+        return real_write(address, buf, stop)
 
-    chip.writeto_mem = _fail_the_second_write  # type: ignore[method-assign]
+    chip.writeto = _fail_the_second_write  # type: ignore[method-assign]
     try:
         with _FastAsyncSleep():
             assert run(reader.set_resolution(12)) is False
     finally:
-        chip.writeto_mem = real_write  # type: ignore[method-assign]
+        chip.writeto = real_write  # type: ignore[method-assign]
     assert calls[0] == 2, "the CONFIG1 burst must have landed before the CONFIG3 write failed"
 
 
@@ -2153,7 +2212,7 @@ def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
         assert run(_push(reader._push_callbacks["FiltCoeff"], 0.25)) is True
     assert reader._ar_thresh == 90.0
     assert reader._ar_dwell_s == 30.0
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
 
 
 def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> None:
@@ -2166,7 +2225,7 @@ def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> Non
         assert run(_push(reader._push_callbacks["SampleInterval"], 7)) is True
     assert run(reader._trigger_period.get_value()) == 7
     assert reader._isl._persist == 8
-    writes = mem_writes(i2c)
+    writes = register_writes(i2c)
     assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "the new PRST has to reach CONFIG3"
 
 
@@ -2196,7 +2255,7 @@ def test_turning_autorange_off_writes_intsel_zero_and_applies_the_stored_range()
     with _FastAsyncSleep():
         assert run(reader.set_range(_RANGE_LOW_LUX)) is True
         assert run(reader.set_range_auto(flag=False)) is True
-    config1, _config2, config3 = mem_writes(i2c)[-1][1]
+    config1, _config2, config3 = register_writes(i2c)[-1][1]
     assert config3 & 0x03 == 0x00  # INTSEL = "No Interrupt"
     assert config1 & _RNG_HIGH == 0  # the stored fixed range applied
     assert reader._active_range == _RANGE_LOW_LUX
@@ -2208,7 +2267,7 @@ def test_turning_autorange_back_on_rearms_intsel_and_the_thresholds() -> None:
         run(reader.set_range_auto(flag=False))
         fake(i2c).log.clear()
         assert run(reader.set_range_auto(flag=True)) is True
-    writes = mem_writes(i2c)
+    writes = register_writes(i2c)
     assert any(register == _REG_THRESHOLDS for register, _payload in writes)
     config = next(payload for register, payload in writes if register in (_REG_CONFIG1, _REG_CONFIG2))
     assert config[-1] & 0x03 == _INTSEL_GREEN
@@ -2219,7 +2278,7 @@ def test_turning_autorange_off_logs_chip_set_when_that_write_fails() -> None:
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
-            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+            fail_register_writes(i2c, times=1)
             assert await reader.set_range_auto(flag=False) is False
         return await reader.get_error_counter()
 
@@ -2235,7 +2294,7 @@ def test_a_failed_autorange_mode_write_leaves_the_live_flag_where_the_config_sti
 
     async def scenario() -> None:
         with _FastAsyncSleep():
-            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+            fail_register_writes(i2c, times=1)
             assert await reader.set_range_auto(flag=False) is False
 
     run(scenario())
@@ -2248,7 +2307,7 @@ def test_setting_range_while_autorange_is_on_stores_the_preference_without_a_chi
         assert run(reader.set_range(_RANGE_LOW_LUX)) is True
     assert reader._fixed_range == _RANGE_LOW_LUX
     assert reader._active_range == _RANGE_HIGH_LUX  # the state machine still owns the chip
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
 
 
 def test_set_range_rejects_a_value_outside_the_two_real_ranges() -> None:
@@ -2521,7 +2580,7 @@ def test_get_data_returns_the_all_none_namedtuple_before_the_first_read() -> Non
 
 
 def _threshold_bursts(i2c: I2C) -> "list[bytes]":
-    return [payload for register, payload in mem_writes(i2c) if register == _REG_THRESHOLDS]
+    return [payload for register, payload in register_writes(i2c) if register == _REG_THRESHOLDS]
 
 
 def test_a_diverged_configuration_re_arms_the_range_thresholds_too() -> None:
@@ -2690,16 +2749,15 @@ def test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all() 
 
 
 def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raising() -> None:
-    # The dangerous half of layer 1's mixed contract: a malformed request returns None with no
-    # exception, so a driver that passed it onward would fail much later, somewhere unrelated.
-    # reset() is listed because its verify read IS the settle - a None must not read as "cleared".
+    # Layer 1 answers None for a bus it cannot use; each protocol read raises instead, so a caller's
+    # error path sees one shape. reset() is listed because its verify read IS the settle.
     for call in ("get_device_id", "read_status", "get_config_snapshot", "read_counts", "reset"):
         _i2c, isl = ready_protocol()
 
         async def silent_none(*_args: object, **_kwargs: object) -> None:
             return None
 
-        isl._i2c_isl29125.i2c_device.get_register_struct = silent_none  # type: ignore[method-assign]
+        isl._i2c_isl29125.i2c_device.get_register_bytes = silent_none  # type: ignore[method-assign]
         try:
             run(getattr(isl, call)())
         except OSError:
@@ -2729,7 +2787,7 @@ def test_pinning_a_range_while_autorange_is_off_actually_programs_the_chip() -> 
             fake(i2c).log.clear()
             assert await reader._push_callbacks["Range"](_RANGE_HIGH_LUX) is True
             assert reader._active_range == _RANGE_HIGH_LUX
-            assert any(register == _REG_CONFIG1 for register, _payload in mem_writes(i2c)), "the pinned range never reached CONFIG1"
+            assert any(register == _REG_CONFIG1 for register, _payload in register_writes(i2c)), "the pinned range never reached CONFIG1"
             fake(i2c).nak_addresses.add(_ADDR)
             assert await reader.set_range(_RANGE_LOW_LUX) is False
             assert await reader.set_range(999) is False  # not one of the two real full scales
@@ -2820,7 +2878,7 @@ def test_configure_rejects_a_field_the_chip_cannot_take_instead_of_masking_it() 
         except ValueError:
             raised = True
         assert raised, f"configure({kwargs}) must raise, not mask"
-    assert mem_writes(i2c) == [], "a rejected field must not reach the bus at all"
+    assert register_writes(i2c) == [], "a rejected field must not reach the bus at all"
 
 
 def test_configure_accepts_every_value_the_datasheet_does_allow() -> None:
@@ -2852,7 +2910,7 @@ def test_check_range_is_the_same_verdict_configure_applies_without_writing() -> 
         except ValueError:
             raised = True
         assert raised, f"check_range({bad}) must raise"
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
 
 
 def test_verify_device_id_raises_on_the_wrong_part_and_passes_on_the_right_one() -> None:
@@ -2888,7 +2946,7 @@ def test_every_hardware_backed_setter_reports_a_rejected_field_without_writing()
     counters = run(scenario())
     assert err_count(counters) == 3
     assert errors(counters)[-1] == code("E", "CHIP_SET")
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
 
 
 def test_set_range_rejects_a_bad_value_with_auto_range_off_too() -> None:
@@ -2904,7 +2962,7 @@ def test_set_range_rejects_a_bad_value_with_auto_range_off_too() -> None:
 
     counters = run(scenario())
     assert code("E", "CHIP_SET") in errors(counters)
-    assert mem_writes(i2c) == []
+    assert register_writes(i2c) == []
     assert reader._fixed_range == _RANGE_HIGH_LUX, "a rejected range must not become the preference"
 
 
@@ -3253,7 +3311,7 @@ def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidat
     i2c, reader = calibrating_reader("cal_switch_fail")
     queue_legs(reader, (53340, 53340, 53340), (2000, 2000, 2000))
     with _FastAsyncSleep():
-        fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+        fail_register_writes(i2c, times=1)
         run(reader._measure_gain_ratio(2000))
     assert code("E", "CHIP_SET") in errors(run(reader.get_error_counter())), "the switch really did fail"
     assert reader._measured_ratio() is None, "a leg read off an unswitched chip must not become a candidate"
@@ -3300,9 +3358,9 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
         run(_gather(reader(), writer()))
 
     # Every logged transaction went to this one address, and the config writes really did land.
-    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into")}
     assert touched == {_ADDR}
-    config_writes = [entry for entry in fake(i2c).log if entry[0] == "writeto_mem" and entry[2] == _REG_CONFIG2]
+    config_writes = [register for register, _payload in register_writes(i2c) if register == _REG_CONFIG2]
     assert len(config_writes) == 3
 
 
@@ -3365,7 +3423,7 @@ def test_never_touches_any_address_but_its_own() -> None:
     with _FastAsyncSleep():
         run(exercise())
 
-    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into")}
     assert touched == {_ADDR}, f"ISL29125_I2C touched unexpected address(es): {touched - {_ADDR}}"
 
 

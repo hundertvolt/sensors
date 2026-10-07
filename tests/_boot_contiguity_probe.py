@@ -18,9 +18,11 @@ import asyncio
 import time
 
 import micropython
+import uctypes
 from _sensortask_scenarios import fram_fake_class
 
 import asy_spi_driver
+import asy_uart_driver
 
 try:
     from typing import TYPE_CHECKING
@@ -29,6 +31,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from types import ModuleType
     from typing import Any
 
     from asy_system_service import SystemService
@@ -54,6 +57,17 @@ def _dump(label: str) -> None:
     print(f"=== MAP {label} ===")
     micropython.mem_info(1)
     print(f"=== ENDMAP {label} ===")
+
+
+def _rings(label: str, module: "ModuleType") -> None:
+    # One RING line per UART bus the device built: its receive ring's address and length, or "none".
+    # Its consumer checks each ring sits with the boot's survivors and keeps its address afterwards.
+    for name in sorted(dir(module)):
+        bus = getattr(module, name)
+        if isinstance(bus, asy_uart_driver.UART):
+            ring = getattr(bus, "_ring", None)
+            where = "none 0" if ring is None else f"0x{uctypes.addressof(ring):x} {len(ring)}"
+            print(f"RING {label} {name} {where}")
 
 
 class _ProbeGc:
@@ -143,6 +157,7 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
     await module.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
     build_ms = time.ticks_diff(time.ticks_ms(), started_ms)
     _dump("after_batch")
+    _rings("after_batch", module)
 
     sysfunct = module.sysfunct
     if sysfunct is None:
@@ -157,6 +172,7 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
         return 1
     if not await _run_starter_loop(sysfunct, task_starters):
         return 1
+    _rings("after_starter_loop_end", module)
     print(f"COUNTS batch_collects={batch_gc.calls} starter_collects={starter_gc.calls}")
 
     if settle_ms > 0:  # reported, never asserted on: the run phase undoes most of it (MEASUREMENTS M3.9)

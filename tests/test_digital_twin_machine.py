@@ -162,6 +162,7 @@ def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
                 return 0
 
         machine.configure_random_source(_FixedRandom())
+        machine.configure_i2c_wiring("wozi")  # a new board: I2C(0) wires its chips after the hook is set
         i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
         scd30 = i2c0.devices[0x61]
         assert scd30._co2 == scd30._min_co2  # drawn via the fixed source's uniform(a, b) -> a
@@ -253,13 +254,16 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
     Pin.reset_registry()
     try:
         machine.configure_scd30_state_path(path)
+        machine.configure_i2c_wiring("wozi")
         i2c0a = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
         payload = bytes([0x46, 0x00, 0x00, 0x0A])  # SET_MEASUREMENT_INTERVAL, arg=10
         i2c0a.devices[0x61].handle_writeto(payload + bytes([crc8(payload[2:4])]))
         machine.flush_scd30()
 
         Pin.reset_registry()
+        machine.configure_i2c_wiring("wozi")  # the reboot: a fresh I2C(0) whose SCD30 loads the saved state
         i2c0b = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+        assert i2c0b is not i2c0a
         i2c0b.devices[0x61].handle_writeto(bytes([0x46, 0x00]))
         assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
     finally:
@@ -333,6 +337,121 @@ def test_i2c_log_stays_bounded_across_many_transactions() -> None:
         i2c.writeto(0x00, b"")  # general-call address - always tolerated, logged every time
     assert len(i2c.log) == machine._LOG_MAXLEN
     assert i2c.log[-1] == ("writeto", 0x00, b"", True)  # most recent entry survives, not the oldest
+
+
+def test_pin_open_drain_reads_the_wired_and_of_its_drive_and_the_line() -> None:
+    Pin.reset_registry()
+    pin = Pin(16, Pin.OPEN_DRAIN, Pin.PULL_UP)
+    assert pin.value() == 1  # released: an undriven line reads high, the bus pull-ups
+    pin.value(0)
+    assert pin.value() == 0
+    pin.value(1)
+    Pin.set_external_level(16, 0)  # a slave holds the line low
+    assert pin.value() == 0
+    assert list(Pin.value_log(16)) == [0, 1]
+    Pin.reset_registry()
+    assert list(Pin.value_log(16)) == []
+
+
+def test_pin_init_applies_value_before_the_mode_and_records_alt() -> None:
+    Pin.reset_registry()
+    cs = Pin(17)
+    cs.init(Pin.OUT, value=1)
+    assert (cs.mode, cs.value()) == (Pin.OUT, 1)
+    scl = Pin(13, Pin.ALT, Pin.PULL_UP, alt=Pin.ALT_I2C)
+    assert (scl.mode, scl.pull, scl.alt) == (Pin.ALT, Pin.PULL_UP, Pin.ALT_I2C)
+    assert (Pin.OPEN_DRAIN, Pin.ALT, Pin.ALT_I2C) == (2, 3, 3)  # ports/rp2/machine_pin.h:34-37, GPIO_FUNC_I2C
+    Pin.reset_registry()
+
+
+def test_pin_external_level_callable_sees_the_value_log() -> None:
+    Pin.reset_registry()
+    scl = Pin(13, Pin.OPEN_DRAIN, Pin.PULL_UP, value=1)
+    sda = Pin(12, Pin.OPEN_DRAIN, Pin.PULL_UP, value=1)
+    Pin.set_external_level(12, lambda _pin_id, _log: 1 if list(Pin.value_log(13)).count(0) >= 3 else 0)
+    pulses = 0
+    while sda.value() == 0 and pulses < 9:
+        scl.value(0)
+        scl.value(1)
+        pulses += 1
+    assert pulses == 3
+    Pin.reset_registry()
+
+
+def test_pin_simulate_edge_drives_the_line_a_pulled_up_input_reads() -> None:
+    Pin.reset_registry()
+    irq = Pin(6, Pin.IN, Pin.PULL_UP)
+    assert irq.value() == 1  # idle high through the pull-up, before any edge
+    irq.simulate_edge(0)
+    assert irq.value() == 0
+    Pin.reset_registry()
+
+
+def test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions() -> None:
+    machine.configure_i2c_wiring("wozi")
+    Pin.reset_registry()
+    first = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    chip = first.devices[0x77]
+    again = I2C(1, scl=Pin(19), sda=Pin(18), freq=100000, timeout=1234)
+    assert again is first and again.devices[0x77] is chip
+    assert again.log[-1] == ("init", 100000, 1234)
+    assert (again.freq, again.timeout) == (100000, 1234)
+    machine.configure_i2c_wiring("wozi")  # a new wiring is a new board: fresh buses and chips
+    assert I2C(1, scl=Pin(19), sda=Pin(18), freq=50000) is not first
+
+
+def test_i2c_address_prefixed_writeto_reaches_the_register_handler() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    assert i2c.writeto(0x77, bytes([0x1C, 0x05]), True) == 2  # OSR register, one payload byte
+    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x05])
+    assert i2c.log[-1] == ("writeto", 0x77, bytes([0x1C, 0x05]), True)
+
+
+def test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    assert i2c.writeto(0x77, bytes([0x00]), False) == 1  # CHIP_ID pointer
+    reply = bytearray(1)
+    i2c.readfrom_into(0x77, reply)
+    assert reply[0] in (0x50, 0x60)
+    assert [entry[0] for entry in list(i2c.log)[-2:]] == ["writeto", "readfrom_into"]
+
+
+def test_i2c_zero_length_write_to_a_register_chip_is_the_probe() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    i2c.devices[0x77].fault.inject_fault("writeto", OSError(5, "probe NAK"))
+    try:
+        i2c.writeto(0x77, b"")
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+
+
+def test_i2c_register_faults_keep_the_chip_keys() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    i2c.devices[0x77].fault.inject_fault("readfrom_mem", OSError(5, "read fault"))
+    i2c.writeto(0x77, bytes([0x04]), False)
+    try:
+        i2c.readfrom_into(0x77, bytearray(6))
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+
+
+def test_i2c_nack_after_returns_the_short_count_and_records_the_stop() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    i2c.nack_after[0x77] = 1
+    assert i2c.writeto(0x77, bytes([0x1C, 0x07]), True) == 1  # the data byte NACKed
+    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x00])  # the chip took nothing
+    i2c.nack_after[0x77] = 0
+    assert i2c.writeto(0x77, bytes([0x04]), False) == 0  # the register byte NACKed, no stop
+    i2c.writeto(0x77, b"", True)  # the STOP the driver sends after a short no-stop write
+    assert list(i2c.log)[-2:] == [("writeto", 0x77, bytes([0x04]), False), ("writeto", 0x77, b"", True)]
+    assert i2c.writeto(0x77, bytes([0x1C, 0x07]), True) == 2  # the knob is spent
 
 
 def test_spi_log_stays_bounded_across_many_transactions() -> None:
@@ -544,6 +663,36 @@ def test_power_on_clears_both_regions() -> None:
     machine.power_on()
     assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
     assert list(machine.mem_backup(1)) == [0, 0, 0]
+
+
+def test_mem32_answers_the_reset_registers_on_each_reset_path() -> None:
+    reason, chip = 0x40058008, 0x40064008  # WATCHDOG REASON, VREG_AND_CHIP_RESET CHIP_RESET
+    machine.power_on()
+    assert (machine.mem32[reason], machine.mem32[chip]) == (0, 0x100)  # HAD_POR
+    for action in (reset, bootloader):
+        machine.power_on()
+        try:
+            action()
+        except SimulatedRebootError:
+            pass
+        assert (machine.mem32[reason], machine.mem32[chip]) == (2, 0x100)  # FORCE; HAD_POR survives
+    machine.power_on()
+
+    async def starve() -> None:
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
+        for _ in range(_WDT_POLL_TRIES):
+            if wdt.would_have_triggered_count:
+                return
+            await asyncio.sleep_ms(_WDT_POLL_MS)
+
+    run(starve())
+    assert machine.mem32[reason] == 1  # TIMER: the reset a starved watchdog makes
+    machine.power_on()
+    try:
+        machine.mem32[0x40058000]
+        raise AssertionError("an unmodelled address answered")
+    except ValueError:
+        pass
 
 
 def test_rtc_datetime_round_trips() -> None:

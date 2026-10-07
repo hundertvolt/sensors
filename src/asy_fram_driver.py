@@ -85,12 +85,13 @@ _W_WEL_NOT_SET = const(2)  # wrnno 26
 _W_WEL_STUCK = const(4)  # wrnno 27 - advisory: the operation itself still completed
 _W_WP_MISMATCH = const(8)  # errno 45
 
-# The three guards get_values()/set_values() share, in the same bit set so one status carries
-# whatever the synchronous body decided; the two reporters below own every message.
+# The guards get_values()/set_values() share, in the same bit set so one status carries whatever the
+# synchronous body found; the two reporters below own every message.
 _SV_OK = const(0)
 _SV_NOT_INIT = const(16)  # errno 18
 _SV_NOT_LOCKED = const(32)  # errno 24
 _SV_BAD_RANGE = const(64)  # errno 21
+_SV_BUS_DOWN = const(128)  # errno 52
 
 # Error-catalog codes this module logs (buildgen/error_catalog.json, SPECIFICATION.md Part C.7.1).
 _ERR_NOT_INIT = const(18)
@@ -98,6 +99,7 @@ _ERR_LOCK_TIMEOUT = const(19)
 _ERR_BAD_ARG = const(21)
 _ERR_CONTRACT = const(24)
 _ERR_FRAM_WP_MISMATCH = const(45)
+_ERR_FRAM_BUS_DOWN = const(52)
 _WRN_FRAM_WEL_NOT_SET = const(26)
 _WRN_FRAM_WEL_STUCK = const(27)
 _WRN_FRAM_WRITE_PROTECTED = const(28)
@@ -290,6 +292,8 @@ class FRAM_SPI(Lockable):
             return _SV_NOT_INIT
         if not self.session_lock.locked():  # from Lockable class
             return _SV_NOT_LOCKED
+        if not self._spidev.spi.available:  # checked once: the synchronous body below cannot lose the bus
+            return _SV_BUS_DOWN
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             return _SV_BAD_RANGE
         self._read_address(addr_start, buf)
@@ -317,6 +321,8 @@ class FRAM_SPI(Lockable):
         if not self.session_lock.locked():  # from Lockable class
             # Same internal-contract violation as get_values_sync() above.
             return _SV_NOT_LOCKED
+        if not self._spidev.spi.available:
+            return _SV_BUS_DOWN
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             return _SV_BAD_RANGE
         return self._write(addr_start, buf)
@@ -329,8 +335,11 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=_ERR_NOT_INIT)
             return False
         async with self._bus_lock:
-            status = self._set_write_protected(value=value)
+            status = _SV_BUS_DOWN if not self._spidev.spi.available else self._set_write_protected(value=value)
         await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
+        if status & _SV_BUS_DOWN:
+            await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
+            return False
         if status & _W_WEL_NOT_SET:
             await self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=_WRN_FRAM_WEL_NOT_SET)
             return False
@@ -352,6 +361,8 @@ class FRAM_SPI(Lockable):
             # base class requires), not a hardware fault - a real code defect if it ever fires, so
             # errno rather than wrnno, unlike the benign, expected refusals elsewhere.
             await self.pr.err_s("get_values: FRAM access not locked!", errno=_ERR_CONTRACT)
+        elif status & _SV_BUS_DOWN:
+            await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
         elif status & _SV_BAD_RANGE:
             await self.pr.err_s("get_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
         else:
@@ -366,6 +377,9 @@ class FRAM_SPI(Lockable):
             return False
         if status & _SV_NOT_LOCKED:
             await self.pr.err_s("set_values: FRAM access not locked!", errno=_ERR_CONTRACT)
+            return False
+        if status & _SV_BUS_DOWN:
+            await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
             return False
         if status & _SV_BAD_RANGE:
             await self.pr.err_s("set_values: Invalid FRAM address range!", errno=_ERR_BAD_ARG)
@@ -385,6 +399,8 @@ class FRAM_SPI(Lockable):
 
     async def setup(self) -> bool:
         await self._spidev.setup()
+        if not self._spidev.spi.available:
+            raise OSError("SPI bus not initialized")
         async with self._bus_lock:
             present = self._check_device_id()
             if present:
@@ -413,6 +429,9 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=_ERR_LOCK_TIMEOUT)
             return False
         try:
+            if not self._spidev.spi.available:
+                await self.pr.err_s("SPI bus not initialized", errno=_ERR_FRAM_BUS_DOWN)
+                return False
             id_error: ValueError | None = None
             async with self._bus_lock:
                 try:

@@ -1533,10 +1533,9 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
     assert code("E", "INIT") in errs["FRAM"]["ErrNum"]
 
 
-def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_mid_run() -> None:
-    # asy_spi_driver.py's contract says a mid-operation bus deinit raises an uncaught RuntimeError
-    # at that layer. This confirms the other half: one layer up, the broad `except Exception` in
-    # _write_chunk/_read_chunk/_clear_chunk catches it before it leaves FRAMChunk's API.
+def test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run() -> None:
+    # A deinitialised bus is reported by the driver as bus-down; the chunk layer fails the operation
+    # and logs its own entry.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass())
@@ -1556,9 +1555,10 @@ def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_
     assert write_ok is False
     assert read_result is None
     assert cleared is False
-    # The three "General ... error" catches (write, read, clear) share UNEXPECTED; each outer layer keeps its own entry.
-    assert code("E", "UNEXPECTED") in errnums  # the caught RuntimeError
+    assert code("E", "FRAM_BUS_DOWN") in errnums  # the driver's status, no raise
+    assert code("E", "UNEXPECTED") not in errnums
     assert code("E", "FRAM_BLOCK_WRITE") in errnums
+    assert code("E", "FRAM_STATUS_READ") in errnums
     assert code("E", "FRAM_CLEAR") in errnums
 
 

@@ -11,7 +11,7 @@ import gc
 import random
 import time
 
-from machine import PWRON_RESET, WDT, Timer, mem_backup, reset_cause
+from machine import PWRON_RESET, WDT, Timer, mem32, mem_backup, reset_cause
 from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
@@ -82,6 +82,12 @@ _RR_CONFIG_RESET = const(7)
 _RR_FRAM_ERASED = const(8)
 _RR_COMMAND_INCOMPLETE = const(9)
 _RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
+# The chip's own reset flags, which reset_cause() collapses (ports/rp2/modmachine.c:74-89): WATCHDOG REASON bits 0-1
+# (TIMER, FORCE) and CHIP_RESET bits 8, 16, 20 (HAD_POR, HAD_RUN, HAD_PSM_RESTART; pico-sdk watchdog.h, vreg_and_chip_reset.h).
+_WATCHDOG_REASON = const(0x40058008)
+_CHIP_RESET = const(0x40064008)
+_REASON_BITS = const(0x3)
+_CHIP_RESET_BITS = const(0x110100)
 BOOT_CONSTRUCTION = const(1)
 BOOT_SETUP = const(2)
 BOOT_TASKS = const(3)
@@ -111,9 +117,14 @@ def _write_region(region: int, magic: int, value: int) -> None:
     mem[0] = magic
 
 
+_reset_bits = 0  # this boot's reset flags, read once by begin_boot() and reported raw, never decoded
+
+
 def begin_boot() -> int:
     # Once per boot, before any construction: decodes this boot's reset reason, clears the record (magic first)
     # and marks phase 1, so a crash in any constructor already reads as a boot failure.
+    global _reset_bits
+    _reset_bits = (mem32[_WATCHDOG_REASON] & _REASON_BITS) | (mem32[_CHIP_RESET] & _CHIP_RESET_BITS)
     record = mem_backup(0)
     phase = mem_backup(1)
     if reset_cause() == PWRON_RESET:
@@ -423,6 +434,9 @@ class SystemService:
 
     def get_loggers(self) -> "list[PrintLogHistory]":
         return [self.pr, self.cfgmgr.pr]
+
+    def get_reset_bits(self) -> int:
+        return _reset_bits
 
     def get_reset_reason(self) -> int:
         return self._reset_reason

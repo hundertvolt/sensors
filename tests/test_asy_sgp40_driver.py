@@ -122,7 +122,12 @@ def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "in
 
 
 def make_i2c() -> I2C:
-    return I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    # A fresh static bus 1 (this tier has no per-test reset), its construction entry dropped so the
+    # log holds only the test's own traffic.
+    FakeI2C.reset_id(1)
+    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    bus(i2c).log.clear()
+    return i2c
 
 
 def bus(i2c: I2C) -> FakeI2C:
@@ -246,6 +251,18 @@ def test_reset_tolerates_nak_at_general_call_address() -> None:
     run(sgp._reset())  # must not raise
 
 
+def test_reset_raises_when_the_bus_is_not_initialised() -> None:
+    # No bus is not a NAK: writeto() answers None, and the reset reports it like every other write.
+    sgp = make_sgp()
+    sgp._i2c_sgp40.i2c_device.i2c.deinit()
+    try:
+        run(sgp._reset())
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
+
+
 # ---------------------------------------------------------------------------
 # temperature/humidity-to-ticks conversion (datasheet Table 10 worked examples)
 # ---------------------------------------------------------------------------
@@ -304,6 +321,26 @@ def test_measure_raw_custom_compensation_encodes_correct_ticks_and_crc() -> None
     assert sent[0:2] == b"\x26\x0f"
     assert sent[2:5] == b"\x00\x00\x81"  # 0% RH -> 0x0000, CRC 0x81 (Table 10)
     assert sent[5:8] == b"\x00\x00\x81"  # -45C -> 0x0000, CRC 0x81 (Table 10)
+
+
+def test_a_read_on_a_down_bus_fails_without_a_crc_check() -> None:
+    # The reply buffer still holds a valid word from before; a read that moved no bytes must not let
+    # it pass the CRC check as a fresh one.
+    sgp = make_sgp()
+    sgp._reply_buffer[:] = _word(1111)
+    device = sgp._i2c_sgp40.i2c_device
+
+    async def no_bus(buf: bytearray, start: int = 0, end: int | None = None) -> bool:
+        del buf, start, end  # the signature of the replaced readinto(); nothing is read
+        return False
+
+    device.readinto = no_bus  # type: ignore[method-assign]
+    try:
+        run(sgp.get_raw())
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
 
 
 def test_get_raw_crc_mismatch_raises() -> None:

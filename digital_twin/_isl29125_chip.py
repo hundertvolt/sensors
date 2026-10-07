@@ -68,6 +68,8 @@ _LUX_WALK_DEFAULT = Walk(5.0, 9000.0, 400.0)
 
 
 class Isl29125Chip:
+    REGISTER_ADDRSIZE = 8  # register-addressed: machine.I2C routes an address-prefixed writeto() here
+
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,

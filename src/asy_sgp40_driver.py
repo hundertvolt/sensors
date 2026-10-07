@@ -606,10 +606,12 @@ class SGP40_I2C:
         replybuffer = self._reply_buffer if replylen == len(self._reply_buffer) else bytearray(replylen)
 
         async with sgp40.i2c_device as i2c:  # bus session
-            await i2c.write(self._command_buffer)
+            if not await i2c.write(self._command_buffer):
+                raise OSError("I2C bus not initialized")
         await asyncio.sleep(round(delay_ms * 0.001, 3))
         async with sgp40.i2c_device as i2c:
-            await i2c.readinto(replybuffer, end=replylen)
+            if not await i2c.readinto(replybuffer, end=replylen):
+                raise OSError("I2C bus not initialized")  # before the CRC check: a stale buffer would pass it
 
         for i in range(0, replylen, 3):
             if await self.crc.check_from(replybuffer, 3, start=i) is None:
@@ -628,11 +630,14 @@ class SGP40_I2C:
     async def _reset(self) -> None:
         # True I2C general-call reset (datasheet Table 17): 0x06 to the reserved address 0x00,
         # broadcast to every device on the bus. A NAK (OSError) is expected, not a failure.
+        acked: int | None = 0
         async with self._i2c_sgp40 as sgp40, sgp40.i2c_device as i2c:
             try:
-                i2c.i2c.writeto(0x00, b"\x06")
+                acked = i2c.i2c.writeto(0x00, b"\x06")
             except OSError:
                 pass
+        if acked is None:
+            raise OSError("I2C bus not initialized")
         await asyncio.sleep(_GENERAL_CALL_RESET_WAIT_S)
 
     async def get_raw(self) -> int | None:

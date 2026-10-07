@@ -10,6 +10,7 @@
 # counterpart turning this raw JSON into a real report - see SPECIFICATION.md Part E.5 for the pipeline.
 # scripts/test.sh renders two reports from one dump, scoped to src/ and digital_twin/.
 import json
+import os
 import sys
 
 try:
@@ -24,28 +25,54 @@ if TYPE_CHECKING:
 _TRACED_PREFIXES = ("src/", "digital_twin/")
 
 
+def _line_tables() -> dict[str, bytearray]:
+    # One byte per line of every traced file, sized before the test file runs: recording a line stores into it and
+    # allocates nothing, so a test measuring its own heap never sees the tracer grow (SPECIFICATION.md Part E.5.2).
+    tables: dict[str, bytearray] = {}
+    for prefix in _TRACED_PREFIXES:
+        for name in os.listdir(prefix[:-1]):
+            if name.endswith(".py"):
+                with open(prefix + name) as f:
+                    tables[prefix + name] = bytearray(f.read().count("\n") + 2)
+    return tables
+
+
+# The tracer's state lives in module globals and its two functions are module-level: a closure call with more than
+# five closed-over values plus arguments heap-allocates its argument array on every call (py/objclosure.c), which is
+# every traced line here (2.6x slower whole-file runs, 2026-10-07).
+_TABLES: dict[str, bytearray] = {}
+_HITS: dict[str, dict[int, bool]] = {}  # a traced file or line no table holds: recorded, at an allocation's cost
+
+
+def _local_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object]":
+    if event == "line":
+        filename = frame.f_code.co_filename
+        table = _TABLES.get(filename)
+        lineno = frame.f_lineno
+        if table is not None and lineno < len(table):
+            table[lineno] = 1
+        elif filename.startswith(_TRACED_PREFIXES):
+            lines = _HITS.get(filename)
+            if lines is None:
+                lines = {}
+                _HITS[filename] = lines
+            lines[lineno] = True
+    return _local_trace
+
+
+def _global_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object] | None":
+    if event == "call" and frame.f_code.co_filename.startswith(_TRACED_PREFIXES):
+        return _local_trace
+    return None
+
+
 def _run() -> int:
     test_file = sys.argv[1]
     out_path = sys.argv[2]
-    hits: dict[str, dict[int, bool]] = {}
+    _TABLES.update(_line_tables())
+    hits = _HITS
 
-    def local_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object]":
-        if event == "line":
-            filename = frame.f_code.co_filename
-            if filename.startswith(_TRACED_PREFIXES):
-                lines = hits.get(filename)
-                if lines is None:
-                    lines = {}
-                    hits[filename] = lines
-                lines[frame.f_lineno] = True
-        return local_trace
-
-    def global_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object] | None":
-        if event == "call" and frame.f_code.co_filename.startswith(_TRACED_PREFIXES):
-            return local_trace
-        return None
-
-    sys.settrace(global_trace)
+    sys.settrace(_global_trace)
     exit_code = 0
     try:
         with open(test_file) as f:
@@ -63,6 +90,10 @@ def _run() -> int:
         sys.settrace(None)
 
     with open(out_path, "w") as f:
+        for filename, table in _TABLES.items():
+            for lineno in range(len(table)):
+                if table[lineno]:
+                    hits.setdefault(filename, {})[lineno] = True
         json.dump({filename: sorted(lines.keys()) for filename, lines in hits.items()}, f)
 
     return exit_code

@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 # A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and what is
 # emitted, not about real-world durations, and every value still clears the module's own floor of 2 x
-# poll_wait_ms + poll_idle_ms plus the worst-case GC pause - 24ms here, the harness leaving them equal.
+# poll_wait_ms + poll_idle_ms plus the worst-case GC pause - 24ms here, the harness setting poll_idle_ms equal to poll_wait_ms.
 # @tunable l1.uart_comm_hazard_timeout_ms = 30
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
@@ -472,15 +472,13 @@ def _check_one_sided_silence_recovers_once_the_direction_returns(crc: "CrcMaker"
 
 def _check_a_receive_overrun_recovers_to_a_working_exchange(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
-    direction = pair.link.direction_from(pair.fake_a)
-    direction.capacity = wire_frame(crc) // 2  # the far buffer cannot hold one whole frame
+    pair.fake_b.plant_rx_error(0x08)  # UARTRSR OE: the far UART lost a received byte before its ring
 
     async def scenario() -> "tuple[bool, bool]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         broken = await pair.initiator.uart_set(1, b"x")
         await asyncio.sleep_ms(_LISTENER_SETTLE_MS)
         listener.cancel()
-        direction.capacity = 512
         healthy = asyncio.create_task(pair.responder.uart_listen())
         recovered = await pair.initiator.uart_set(2, b"y")
         await asyncio.sleep_ms(_LISTENER_SETTLE_MS)
@@ -489,7 +487,7 @@ def _check_a_receive_overrun_recovers_to_a_working_exchange(crc: "CrcMaker") -> 
 
     broken, recovered = run(scenario(), limit=_RECOVERY_LIMIT_S)
     assert broken is False
-    assert direction.dropped_overrun > 0
+    assert pair.driver_b.rx_overruns == 1
     assert recovered is True
 
 
@@ -504,7 +502,7 @@ _MEASURED = 100
 def _scrub(pair: Pair) -> None:
     # The link's wire log is scaffolding a test reads back, not something the protocol retains.
     for direction in (pair.link.a_to_b, pair.link.b_to_a):
-        direction.wire_log = bytearray()
+        direction.wire_log.clear()
 
 
 async def _listen_rounds(pair: Pair, rounds: int) -> None:
@@ -827,7 +825,7 @@ def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc:
     # indistinguishable from a link fault. The module refuses the configuration instead (B17).
     from asy_uart_comm import ROLE_INITIATOR, UARTComm
     from asy_uart_driver import UART as Driver
-    too_small = Driver(0, tx_pin=0, rx_pin=1, rxbuf=32, txbuf=256, poll_wait_ms=1)
+    too_small = Driver(0, tx_pin=0, rx_pin=1, rxbuf=32, txbuf=256, poll_wait_ms=1, poll_idle_ms=1)
     comm = UARTComm(too_small, ROLE_INITIATOR, payload_size=255, timeout=_TIMEOUT_MS, name="UART_TINY")
     assert comm._init_errno == code("E", "UART_RXBUF"), "an rxbuf below one whole frame was accepted"
     assert run(comm.setup()) is False, "a refused construction still opened its readiness gate"

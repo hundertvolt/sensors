@@ -4,6 +4,7 @@ just incidentally exercised by the six real device TOMLs happening to be valid."
 
 import importlib.util
 import json
+import re
 import shutil
 from pathlib import Path
 from types import ModuleType
@@ -11,9 +12,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 import tomllib
+from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
+import buildgen.validate as validate_mod
 from buildgen.errors import BuildError
 from buildgen.validate import build_model, module_float_const, module_str_const
 
@@ -465,8 +468,55 @@ def test_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 def test_bus_timeout_is_allowed_on_i2c(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["bus"]["i2c0"]["timeout"] = 300000
+    doc["bus"]["i2c0"]["timeout"] = 200000
     _build(tmp_path, src_dir, doc)  # no raise - i2c's own optional field, no false positive
+
+
+def _second_i2c_bus(doc: "TomlDoc", timeout: "int | None") -> "TomlDoc":
+    # Moves the sgp40 onto its own i2c1 (GP7 SCL, GP6 SDA), with `timeout` declared or left out.
+    doc["bus"]["i2c1"] = {"scl_pin": 7, "sda_pin": 6, "frequency": 50000}
+    if timeout is not None:
+        doc["bus"]["i2c1"]["timeout"] = timeout
+    next(inst for inst in doc["instance"] if inst["driver"] == "sgp40")["bus"] = "i2c1"
+    return doc
+
+
+def test_bus_timeout_above_the_bound_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["bus"]["i2c0"]["timeout"] = 200001
+    with pytest.raises(BuildError, match=r"bus\.i2c0 \(i2c\) timeout 200001 us is above the 200000 us bound"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("bad_value", [0, -1])
+def test_bus_timeout_not_positive_is_rejected(tmp_path: Path, src_dir: Path, bad_value: int) -> None:
+    doc = _second_i2c_bus(base_doc(), bad_value)  # on a bus with no scd30, so its @requires floor stays out of it
+    with pytest.raises(BuildError, match=rf"bus\.i2c1 \(i2c\) timeout {bad_value} us is not positive"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_a_boot_clear_past_its_budget_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 11 SCL waits per bus (lead-in, nine pulses, the STOP) x 200 ms x 2 buses, against a budget set below it.
+    monkeypatch.setattr(validate_mod, "_BOOT_CLEAR_BUDGET_MS", 4000)
+    doc = _second_i2c_bus(base_doc(), 200000)
+    with pytest.raises(BuildError, match=r"boot bus clear can run 4400 ms unfed over 2 I2C bus\(es\) .* above its 4000 ms budget"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("second_timeout", [None, 200000])
+def test_two_i2c_buses_up_to_the_bound_fit_the_boot_clear_budget(tmp_path: Path, src_dir: Path, second_timeout: "int | None") -> None:
+    # Every real device's 11 x (200 + 50) ms, and the two-SCD30 shape (one per bus, each at its floor): 4400 ms.
+    _build(tmp_path, src_dir, _second_i2c_bus(base_doc(), second_timeout))  # no raise
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_real_device_meets_the_i2c_timeout_bound_and_budget(src_dir: Path, device: str) -> None:
+    build_model(device_toml(device), src_dir)  # no raise
+
+
+def test_the_watchdog_mirror_matches_the_generated_boot(repo_root: Path) -> None:
+    generated = re.findall(r"WDT\(timeout=(\d+)\)", (repo_root / "buildgen" / "codegen.py").read_text())
+    assert generated == [str(validate_mod._WDT_TIMEOUT_MS)]
 
 
 def test_bus_timeout_wrong_type_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -1054,7 +1104,7 @@ def test_requires_tag_missing_bus_field(tmp_path: Path, src_dir: Path) -> None:
 
 def test_requires_tag_satisfied(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["bus"]["i2c0"]["timeout"] = 250000
+    doc["bus"]["i2c0"]["timeout"] = 200000
     _build(tmp_path, src_dir, doc)  # no raise
 
 
@@ -1347,27 +1397,29 @@ def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: P
 
 
 def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, src_dir: Path) -> None:
-    # No knobs stated: UART's own defaults (rxbuf 256, poll_wait_ms 20, poll_idle_ms = poll_wait_ms)
-    # are what boots, so they are what gets checked - fine at 9600 baud, refused at 115200.
+    # No knobs stated: UART's own defaults (rxbuf 256, poll_wait_ms 2, poll_idle_ms 50) are what boots,
+    # so they are what gets checked - they fit at 115200 baud; an rxbuf of 52 is below one 53-byte frame.
     doc = _with_uart_pair(base_doc())
     for bus in ("uart0", "uart1"):
-        doc["bus"][bus] = {"tx_pin": doc["bus"][bus]["tx_pin"], "rx_pin": doc["bus"][bus]["rx_pin"], "baudrate": 9600}
+        doc["bus"][bus] = {"tx_pin": doc["bus"][bus]["tx_pin"], "rx_pin": doc["bus"][bus]["rx_pin"], "baudrate": 115200}
     _build(tmp_path, src_dir, doc)
-    doc["bus"]["uart0"]["baudrate"] = 115200
-    with pytest.raises(BuildError, match=r"rxbuf 256 is below the 288 bytes"):
+    doc["bus"]["uart0"]["baudrate"] = 9600  # a poll brings 6 bytes, so one frame is the floor
+    doc["bus"]["uart0"]["rxbuf"] = 52
+    with pytest.raises(BuildError, match=r"rxbuf 52 is below the 53 bytes .*one 53-byte frame"):
         _build(tmp_path, src_dir, doc)
 
 
-def test_an_unstated_poll_idle_ms_is_checked_as_poll_wait_ms(tmp_path: Path, src_dir: Path) -> None:
-    # UART's poll_idle_ms=None means "poll at poll_wait_ms", so 3 x 326 + 21 = 999 fits and 327 does not.
+def test_an_unstated_poll_idle_ms_is_read_from_the_driver_source(tmp_path: Path, src_dir: Path) -> None:
+    # An unstated poll_idle_ms is UART's own default, read from source: 2 x 2 + 975 + 21 = 1000 fits
+    # UARTLinkDriver's 1000ms timeout, 976 does not.
     doc = _with_uart_pair(base_doc())
     del doc["bus"]["uart1"]["poll_idle_ms"]
-    doc["bus"]["uart1"]["baudrate"] = 9600  # keeps rxbuf 512 above one long poll's arrivals
-    doc["bus"]["uart1"]["poll_wait_ms"] = 326
-    _build(tmp_path, src_dir, doc)
-    doc["bus"]["uart1"]["poll_wait_ms"] = 327
-    with pytest.raises(BuildError, match=r"poll_idle_ms 327"):
-        _build(tmp_path, src_dir, doc)
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "poll_idle_ms: int = 50,", "poll_idle_ms: int = 975,")
+    _build(tmp_path, staged, doc)
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "poll_idle_ms: int = 975,", "poll_idle_ms: int = 976,")
+    with pytest.raises(BuildError, match=r"poll_idle_ms 976") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.field, info.value.instance) == ("poll_idle_ms", "uart_link_resp")
 
 
 def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path: Path) -> None:

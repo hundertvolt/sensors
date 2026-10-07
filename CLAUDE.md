@@ -154,20 +154,21 @@ information):
   **standalone/self-contained** (its BME688/BSEC first use case is out of scope and constrains
   nothing) (owner, 2026-08-20, `b6cb852`; 2026-09-11, `32b136f`), and it is **strictly
   initiator/responder, never a symmetric peer** — there is no collision arbitration, so simultaneous
-  initiation is out of contract. **`dev` carries two instances across its permanent crossover
-  jumper** (owner, 2026-09-11, UART promotion 'Target variant. dev, two instances') **and `wozi`
-  carries none** — wozi is never flashed, so the peripheral would be untestable there (agent,
-  2026-09-11). The protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py`
-  as `const()` values; a change to any of them is Class A by definition. **Construction is
-  buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
-  `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
-  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one
-  role's `UARTComm` plus the bench-only banner/echo application logic and transfer/failure counters
-  (none of which belong in the standalone protocol module itself); resolved via
-  `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
-  isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
-  singleton (`SINGLETON_SERVICE_DRIVERS` excludes it), since a device wires exactly one initiator +
-  one responder.
+  initiation is out of contract. Each link receives through a DMA ring, so a flash write holding
+  interrupts off loses no frame (owner, 2026-10-05; SPECIFICATION.md F.5.8). **`dev` carries two
+  instances across its permanent crossover jumper** (owner, 2026-09-11, UART promotion 'Target
+  variant. dev, two instances') **and `wozi` carries none** — wozi is never flashed, so the
+  peripheral would be untestable there (agent, 2026-09-11). The protocol's own wire constants and
+  recovery timings live in `src/asy_uart_comm.py` as `const()` values; a change to any of them is
+  Class A by definition. **Construction is buildgen-driven, like every other driver**:
+  `devices/dev.toml` declares the two instances as `driver = "uart_link"` (`role =
+  "initiator"`/`"responder"`, one on each of `[bus.uart0]`/`[bus.uart1]`) —
+  `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one role's `UARTComm` plus the bench-only
+  banner/echo application logic and transfer/failure counters (none of which belong in the
+  standalone protocol module itself); resolved via `buildgen/driver_registry.py`'s `_OVERRIDES`
+  table like `fram`/`neopixel`/`notification`, since it isn't a `SensorReader`/`SensorReaderConfig`
+  subclass either — but unlike those three it is not a singleton (`SINGLETON_SERVICE_DRIVERS`
+  excludes it), since a device wires exactly one initiator + one responder.
 - **`dev` meets every device's bar**: its generated config is held to the same standard as every
   device's; a quirk is a defect (owner, 2026-09-26).
 - **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
@@ -249,17 +250,18 @@ information):
   `machine.UART.read()/readinto()` wait out `timeout_char` for every byte asked for that has not
   arrived yet, inside `mp_event_handle_nowait()`, which never yields — so a plain "read the whole
   frame after `POLLIN`" holds the loop for the frame's entire wire time (measured: 4.4ms per
-  53-byte frame at 115200 baud). The fix needs **both** a clamp to `uart.any()` on every read and a
-  real yield between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no
-  `await` and the block simply moves into a Python loop. The yield lives in `ready()` itself, which
-  every read loop goes through, so the invariant is one guarantee in one place rather than a
-  per-call-site obligation. **The mirror-image failure is just as forbidden** (agent, 2026-09-11,
-  extending the owner's rule): `ready()` polls, so a listener waiting on traffic that may never come
-  must not idle at the transaction rate — an instance takes a second, slower `poll_idle_ms` for a
-  wait with no deadline (Part F.5.9). Full account and the measured before/after: SPECIFICATION.md
-  Parts F.5.8 and F.5.9 — F.5.8 also states why this must **not** be generalised to
-  `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals expose no partial-read API to clamp to
-  (that case stays F.2's watchdog backstop).
+  53-byte frame at 115200 baud), which is why the driver never calls `machine.UART`'s receive side.
+  The fix needs **both** a clamp to the bytes already received on every read — the DMA receive
+  ring's fill level (owner, 2026-10-05) — and a real yield between rounds; the clamp alone is
+  *worse*, because `ready()` returns `True` with no `await` and the block simply moves into a Python
+  loop. The yield lives in `ready()` itself, which every read loop goes through, so the invariant is
+  one guarantee in one place rather than a per-call-site obligation. **The mirror-image failure is
+  just as forbidden** (agent, 2026-09-11, extending the owner's rule): `ready()` polls, so a
+  listener waiting on traffic that may never come must not idle at the transaction rate — an
+  instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
+  account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
+  why this must **not** be generalised to `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals
+  expose no partial-read API to clamp to (that case stays F.2's watchdog backstop).
 - **A new device on a shared resource — an I2C/SPI bus and every other shared resource (locks, FRAM,
   the config file, sockets, the heap) — gets hazard test coverage across all four test tiers that
   apply to it — never forget this** (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this';
@@ -574,15 +576,16 @@ information):
   `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
   one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
   never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
-  `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
-  otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
-  exclude guards against) and `digital_twin/launch.py`/`run_generic_integration.py`/
-  `segfault_stress_repro.py`/every `tests/test_digital_twin_*.py` (attr-
-  defined noise on every twin-only API the real board stub doesn't declare, e.g.
-  `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
-  one real `mypy src tests`-only finding this design caught that a from-scratch `mypy` run missed)
-  are therefore excluded from the main `[tool.mypy]` pass and checked correctly by the dedicated
-  pass instead — SPECIFICATION.md Part B.15 has the full account of all three passes.
+  `neopixel.py`/`rp2.py` (a straight `Duplicate module named "machine"` collision with
+  `tests/machine.py` otherwise, and the same for `rp2` against `tests/rp2.py` — confirmed directly,
+  not the softer resolution-priority hijack `tests/network.py`'s own exclude guards against) and
+  `digital_twin/launch.py`/`run_generic_integration.py`/ `segfault_stress_repro.py`/every
+  `tests/test_digital_twin_*.py` (attr- defined noise on every twin-only API the real board stub
+  doesn't declare, e.g. `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` —
+  confirmed directly, including one real `mypy src tests`-only finding this design caught that a
+  from-scratch `mypy` run missed) are therefore excluded from the main `[tool.mypy]` pass and
+  checked correctly by the dedicated pass instead — SPECIFICATION.md Part B.15 has the full account
+  of all three passes.
 - **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
   to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
   flavored stubs — see SPECIFICATION.md Part E.1 ("Why not pytest"). `scripts/test.sh` builds that

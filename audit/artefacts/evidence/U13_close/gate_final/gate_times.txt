@@ -1,0 +1,16 @@
+start 17:44:44
+lint rc=0 17:44:46
+typecheck noargs rc=0 17:46:11
+typecheck ci rc=0 17:47:08
+gc32768 rc=0 17:55:32
+gc-1 rc=0 17:55:33
+wozi rc=0 17:57:38
+dev rc=0 17:59:29
+klkizi rc=0 18:07:06
+schlafzi rc=0 18:07:07
+arzi rc=0 18:07:07
+grkizi rc=0 18:07:08
+npm rc=0 18:07:59
+done 18:07:59
+
+[exited with code 0]

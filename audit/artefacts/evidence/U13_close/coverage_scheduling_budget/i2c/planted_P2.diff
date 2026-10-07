@@ -1,0 +1,11 @@
+--- ../wt-u13rc/src/asy_i2c_driver.py	2026-10-07 16:03:00.880541884 +0000
++++ planted_P2/asy_i2c_driver.py	2026-10-07 16:20:32.142673681 +0000
+@@ -81,6 +81,8 @@
+         scl.value(0)
+         time.sleep_us(_CLEAR_HALF_PERIOD_US)
+         scl.value(1)
++        if not scl.value():  # PLANTED P2: a stretched pulse is taken as a held SCL (no wait)
++            return status | _REC_SCL_HELD
+         if not await _scl_released(scl, timeout_us):
+             return status | _REC_SCL_HELD
+         time.sleep_us(_CLEAR_HALF_PERIOD_US)

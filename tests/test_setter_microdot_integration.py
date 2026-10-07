@@ -397,14 +397,29 @@ def _nak_i2c_address(i2c: I2C, address: int) -> None:
 
 
 def _fault_i2c_write(i2c: I2C, exc: Exception) -> None:
-    # Narrower than _nak_i2c_address above: fails only the write half of a read-modify-write
-    # register access (writeto_mem), leaving reads - and therefore a registered _get_callbacks
-    # getter - fully functional. Same i2c._i2c narrowing as _nak_i2c_address.
+    # Narrower than _nak_i2c_address above: fails only the write half of a read-modify-write register
+    # access (the next writeto with a stop - a read's address write has none), leaving reads and so a
+    # registered _get_callbacks getter functional. Same i2c._i2c narrowing as _nak_i2c_address.
     from machine import I2C as _FakeI2C
 
     real_i2c = i2c._i2c
     assert isinstance(real_i2c, _FakeI2C)
-    real_i2c.inject_fault("writeto_mem", exc)
+    real_writeto = real_i2c.writeto
+
+    def fail_the_next_register_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        if stop:
+            real_i2c.writeto = real_writeto  # type: ignore[method-assign]  # once only
+            raise exc
+        return real_writeto(address, buf, stop)
+
+    real_i2c.writeto = fail_the_next_register_write  # type: ignore[method-assign]
+
+
+def _register_device(i2c: I2C, address: int) -> None:
+    # The fake routes a declared register device's address writes and reads through its registers.
+    real_i2c = i2c._i2c
+    assert real_i2c is not None
+    real_i2c.register_device(address)
 
 
 def _bmp_app(reader: BMP3XX_Reader) -> Microdot:
@@ -448,6 +463,7 @@ def test_real_microdot_setter_end_to_end_write_only_fault_recovers_via_live_gett
     # only - that leaves the registered getter functional, proving the getter rung resolves end to end
     # through a real Microdot request, not only when driven synthetically at the driver level.
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    _register_device(i2c, 0x77)
     reader = BMP3XX_Reader(i2c, address=0x77, cfg_path=_tmp_cfg_dir())
     run(reader.cfgmgr.setup())
     run(reader._bmp.set_pressure_oversampling(2))  # desync: real sensor register = 2, cfgmgr = 1 (default)

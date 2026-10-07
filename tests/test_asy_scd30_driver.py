@@ -27,7 +27,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Coroutine, Sequence
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -47,7 +47,12 @@ _EVENT_WAIT_S = 1
 
 
 def make_i2c() -> I2C:
-    return I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    # A fresh static bus 0 (this tier has no per-test reset), its construction entry dropped so the
+    # log holds only the test's own traffic.
+    FakeI2C.reset_id(0)
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    fake(i2c).log.clear()
+    return i2c
 
 
 def fake(i2c: I2C) -> FakeI2C:
@@ -508,6 +513,25 @@ def test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no
     assert scd._relative_humidity == 3.0
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "readfrom_into"]  # only the data-ready probe, no measurement read
+
+
+def test_a_deinitialised_bus_fails_the_read_without_checking_a_stale_buffer() -> None:
+    # A no-op transfer would leave the previous frame in the buffer, whose CRCs pass: the bus result
+    # is tested before any CRC, so the stale frame is never decoded as a fresh reading.
+    scd, i2c = make_scd()
+    i2c.read_queue.append(register_frame(1))
+    i2c.read_queue.append(data_frame(400.0, 20.0, 50.0))
+    run(scd.read_measurement())
+    assert (scd._co2, scd._temperature, scd._relative_humidity) == (400.0, 20.0, 50.0)
+    scd._buffer[:] = data_frame(800.0, 25.0, 60.0)  # a valid frame left behind, first word non-zero
+    scd._i2c_scd30.i2c_device.i2c.deinit()
+    try:
+        run(scd.read_measurement())
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
+    assert (scd._co2, scd._temperature, scd._relative_humidity) == (400.0, 20.0, 50.0)
 
 
 def test_read_measurement_never_ran_yet_leaves_getters_at_their_initial_none() -> None:
@@ -1674,7 +1698,7 @@ _CMD_READ_MEASUREMENT = b"\x03\x00"
 _CMD_SET_TEMPERATURE_OFFSET = b"\x54\x03"
 
 
-def _parse_scd30_log(log: "list[tuple[Any, ...]]", read_iterations: int) -> None:
+def _parse_scd30_log(log: "Sequence[tuple[Any, ...]]", read_iterations: int) -> None:
     # Command-byte-based proof that same-device ops never interleave on the wire: parses the log into non-
     # overlapping runs and fails on any stray entry. A before/after log-length "span" check was rejected - a
     # coroutine blocked on the lock overlaps the holder's span, which is correct serialization.
@@ -1727,7 +1751,7 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire_byte_exact() -> 
 
     assert reads_completed == read_iterations
     assert write_completed
-    _parse_scd30_log(i2c.log, read_iterations)
+    _parse_scd30_log(list(i2c.log), read_iterations)  # a snapshot of the ring log, oldest first
 
 
 def test_never_touches_any_address_but_its_own() -> None:

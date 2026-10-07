@@ -1,8 +1,10 @@
 import asyncio
+import select
 
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, awaited_with_listener
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
+from rp2 import DMA
 
 from asy_base_classes import LockableBuffer
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
@@ -39,14 +41,16 @@ class Pair:
     # One initiator and one responder UARTLinkDriver across a real crossover link - the same
     # shape tests/_uart_comm_harness.py's own Pair uses for bare UARTComm objects, one layer up.
     def __init__(self, payload_size: int = PAYLOAD_SIZE, timeout: int = TIMEOUT_MS) -> None:
-        self.uart_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-        self.uart_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+        DMA.reset_registry()  # no per-test reset exists, and each link's ring holds two of the twelve channels
+        self.uart_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+        self.uart_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
         self.fake_a: FakeUART = self.uart_a._uart  # type: ignore[assignment]
         self.fake_b: FakeUART = self.uart_b._uart  # type: ignore[assignment]
         self.link = UARTLink(self.fake_a, self.fake_b)
-        # A bounded stand-in, never a real select.poll() - CLAUDE.md's known CI-hang cause.
-        self.uart_a.poller = LinkPoller(self.fake_a)  # type: ignore[assignment]
-        self.uart_b.poller = LinkPoller(self.fake_b)  # type: ignore[assignment]
+        self.fake_a.rx_rate = self.fake_b.rx_rate = float("inf")  # bytes land at once, not on the fake clock
+        # A bounded stand-in, never a real select.poll() - CLAUDE.md's known CI-hang cause. Only TX polls.
+        self.uart_a.poller = LinkPoller(self.fake_a, mask=select.POLLOUT)  # type: ignore[assignment]
+        self.uart_b.poller = LinkPoller(self.fake_b, mask=select.POLLOUT)  # type: ignore[assignment]
         self.initiator = UARTLinkDriver(self.uart_a, ROLE_INITIATOR, payload_size=payload_size, timeout=timeout, name_ext="init")
         self.responder = UARTLinkDriver(self.uart_b, ROLE_RESPONDER, payload_size=payload_size, timeout=timeout, name_ext="resp")
 
@@ -70,7 +74,7 @@ async def build_pair(payload_size: int = PAYLOAD_SIZE, timeout: int = TIMEOUT_MS
 
 
 def test_name_resolution_matches_instance_name_convention() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     plain = UARTLinkDriver(driver, ROLE_INITIATOR)
     assert plain.name == "UART"
     extended = UARTLinkDriver(driver, ROLE_INITIATOR, name_ext="init")
@@ -79,7 +83,7 @@ def test_name_resolution_matches_instance_name_convention() -> None:
 
 
 def test_initiator_task_starters_include_exercise_loop() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     starters = initiator.get_task_starters()
     assert len(starters) == 1  # UARTComm's own list is empty for an initiator - see its own get_task_starters()
@@ -88,7 +92,7 @@ def test_initiator_task_starters_include_exercise_loop() -> None:
 
 
 def test_responder_task_starters_are_the_listen_loop_only() -> None:
-    driver = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
 
     def get_cb(cmd_id: int) -> "tuple[bool, bytes | None]":
         return False, None
@@ -117,27 +121,27 @@ def test_the_readiness_flag_follows_the_inner_setup() -> None:
 
 
 def test_timer_starters_are_always_empty() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     assert initiator.get_timer_starters() == []
 
 
 def test_get_error_sources_and_loggers_delegate_to_inner_comm() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     assert initiator.get_error_sources() == [initiator._comm]
     assert initiator.get_loggers() == [initiator._comm.pr]
 
 
 def test_get_link_status_starts_at_zero() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     status = run(initiator.get_link_status())
     assert status == {"Transfers": 0, "Failures": 0}
 
 
 def test_reset_error_counter_also_resets_link_counters() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     initiator._transfers = 5
     initiator._failures = 2
@@ -148,7 +152,7 @@ def test_reset_error_counter_also_resets_link_counters() -> None:
 
 def test_reset_error_counter_answers_the_comms_own_result() -> None:
     # The link's history lives in its UARTComm: a failed history write there is this reset's answer.
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
 
     async def refused() -> bool:
@@ -319,7 +323,7 @@ class _FakeFramManager:
 def test_a_fram_log_config_lands_entries_in_the_managers_chunk() -> None:
     async def go() -> None:
         fram = _FakeFramManager()
-        driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+        driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
         initiator = UARTLinkDriver(driver, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
         assert isinstance(initiator.pr, PrintLogHistoryStore)
         assert initiator.pr.fram is fram._chunk
@@ -334,14 +338,14 @@ def test_a_fram_log_config_lands_entries_in_the_managers_chunk() -> None:
 
 def test_the_default_log_stays_ram_only() -> None:
     # The default (no log=) stays a RAM-only history.
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     assert isinstance(initiator.pr, PrintLogHistory)
     assert not isinstance(initiator.pr, PrintLogHistoryStore)
 
 
 def test_fram_allocation_failure_degrades_to_ram_only_not_a_crash() -> None:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR, log=LogConfig(_FakeFramManager(fail=True), 10, None))
     assert isinstance(initiator.pr, PrintLogHistoryStore)
     assert initiator.pr.fram is None
@@ -350,8 +354,8 @@ def test_fram_allocation_failure_degrades_to_ram_only_not_a_crash() -> None:
 def test_logger_kwarg_reaches_through_to_an_already_built_sibling_logger() -> None:
     # The other half of UARTComm's own reach-through (asy_uart_comm.py) - own chunk vs. sharing an
     # upstream instantiator's logger - now reachable through this wrapper too.
-    driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-    driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+    driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+    driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     owner = UARTLinkDriver(driver_a, ROLE_INITIATOR, log=LogConfig(_FakeFramManager(), 10, None))
     shared = UARTLinkDriver(driver_b, ROLE_RESPONDER, logger=owner.pr)
     assert shared.pr is owner.pr
@@ -362,12 +366,12 @@ def test_fram_backed_error_history_survives_a_simulated_reboot() -> None:
         chunk = _FakeFramChunk()
         fram = _FakeFramManager(chunk)
 
-        driver1 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+        driver1 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
         before = UARTLinkDriver(driver1, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
         await before.setup()
         await before.pr.err_s("boom", errno=1)
 
-        driver2 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+        driver2 = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
         after = UARTLinkDriver(driver2, ROLE_INITIATOR, log=LogConfig(fram, 10, None))
         await after.setup()
         assert after.pr._err_count == before.pr._err_count

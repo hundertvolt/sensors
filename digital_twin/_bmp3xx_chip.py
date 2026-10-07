@@ -91,6 +91,8 @@ def _invert_pressure(pressure_calib: "tuple[float, ...]", temperature: float, ta
 
 
 class Bmp3xxChip:
+    REGISTER_ADDRSIZE = 8  # register-addressed: machine.I2C routes an address-prefixed writeto() here
+
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,
@@ -151,9 +153,9 @@ class Bmp3xxChip:
         # an ACK, which real hardware answers whatever its protocol family. Without this the twin
         # raised AttributeError on every BMP3xx boot, restarting the reader task forever.
 
-        # Nothing else in this driver calls plain writeto(), every register access going through
-        # writeto_mem(), so this only has to answer the empty-probe shape - hence the ignored,
-        # underscore-prefixed payload, which every caller passes positionally anyway.
+        # Every register access reaches handle_writeto_mem()/handle_readfrom_mem(), the bus routing
+        # an address-prefixed writeto() there, so this only answers the empty probe - hence the
+        # ignored, underscore-prefixed payload, which every caller passes positionally anyway.
         self.fault.maybe_raise("writeto")
 
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:

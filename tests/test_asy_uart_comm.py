@@ -3,12 +3,14 @@ and readiness, frame build/validate/ACK, the acknowledged exchange and its recov
 transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py."""
 
 import asyncio
+import select
 import struct
 
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _uart_comm_harness import PAYLOAD_SIZE, POLL_WAIT_MS, TIMEOUT_MS, Pair, accept_set, build_pair, echo_get, frames, run
 from machine import LinkPoller
+from rp2 import DMA
 
 import asy_spi_driver
 import asy_uart_comm
@@ -101,8 +103,10 @@ def _w(name: str) -> str:  # persisted()'s form of a catalog wrnno
 
 
 def make_comm(**kwargs: "Any") -> UARTComm:
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    DMA.reset_registry()  # no per-test reset exists, and each link's ring holds two of the twelve channels
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
+    driver._uart.rx_rate = float("inf")  # type: ignore[union-attr]  # fed bytes land at once, not on the fake clock
+    driver.poller = LinkPoller(driver._uart, mask=select.POLLOUT)  # type: ignore[assignment,arg-type]
     params: dict[str, Any] = {"payload_size": PAYLOAD_SIZE, "timeout": TIMEOUT_MS}
     params.update(kwargs)
     role = params.pop("role", ROLE_INITIATOR)
@@ -140,7 +144,7 @@ def test_valid_construction_sets_the_gate_only_after_setup() -> None:
 def test_payload_size_boundaries_are_accepted_and_refused() -> None:
     # SIZE/CHUNKS are single bytes and a zero-width payload cannot carry the command id.
     for good in (1, 255):
-        roomy = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=2048)
+        roomy = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=2048)
         roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
         comm = make_comm(payload_size=good, uart=roomy)
         assert comm._init_errno == 0, f"payload_size {good} should be legal"
@@ -166,7 +170,7 @@ def test_non_positive_timeout_is_refused() -> None:
 def test_timeout_below_the_gc_pause_floor_is_refused() -> None:
     # Below this a routine collection pause reads as a link fault, and the link resyncs
     # continuously under memory pressure for no reason.
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=10)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=10, poll_idle_ms=10)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     assert UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=30)._init_errno != 0
     assert UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=200)._init_errno == 0
@@ -203,7 +207,7 @@ def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
 
 def test_construction_performs_no_bus_call() -> None:
     # An allocate-only constructor, so construction can never hang outside any supervisor.
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     before = len(driver._uart.log)  # type: ignore[union-attr]
     UARTComm(driver, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS)
@@ -214,11 +218,11 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
     # 5 + 255 = 260 bytes against the driver's own 256-byte default rxbuf, so the maximum
     # legal payload_size overruns it outright - a frame that never completes, indistinguishable
     # from a link fault unless it is caught at construction.
-    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)  # rxbuf defaults to 256
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)  # rxbuf defaults to 256
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     refused = UARTComm(driver, ROLE_INITIATOR, payload_size=255, timeout=TIMEOUT_MS)
     assert refused._init_errno != 0
-    roomy = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024)
+    roomy = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024)
     roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]
     assert UARTComm(roomy, ROLE_INITIATOR, payload_size=255, timeout=TIMEOUT_MS)._init_errno == 0
 
@@ -226,7 +230,7 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
 def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
     # At 115200 baud a 20ms poll interval plus the module's 5ms of scheduling slack admits
     # ~288 bytes, so a 64-byte rxbuf loses the tail of anything sustained even though a frame fits.
-    driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=20, rxbuf=64)
+    driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=20, poll_idle_ms=20, rxbuf=64)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     assert UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno != 0
 
@@ -235,13 +239,13 @@ def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
     # Every codec has a ready() to report a failed scratch allocation, and nothing read it.
     # A dead codec constructed cleanly, passed setup() and then failed every single write with
     # _ERR_UART_WRITE_FAILED - the link looking broken instead of the configuration being refused.
-    dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(-1))
+    dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(-1))
     dead.poller = LinkPoller(dead._uart)  # type: ignore[assignment,arg-type]
     assert dead.framing.ready() is False
     comm = UARTComm(dead, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup()) is False
-    live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(128))
+    live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(128))
     live.poller = LinkPoller(live._uart)  # type: ignore[assignment,arg-type]
     assert UARTComm(live, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno == 0
 
@@ -972,21 +976,57 @@ def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
     assert persisted(comm) == [], persisted(comm)
 
 
-def test_the_drain_reads_into_the_scratch_buffer() -> None:
-    # read() would allocate per round, on exactly the degraded link where the heap is most
-    # fragmented. Asserted on what the fake was asked to do.
+def test_a_flood_that_laps_the_ring_drains_to_its_bound_not_as_quiet() -> None:
+    # A peer sending faster than the drain reads laps the receive ring, and the read reports that overrun as a
+    # failure: the drain must keep going (the line is anything but quiet) until its bound, then log W54.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    pair.fake_a.log.clear()
-    pair.fake_a.feed_rx(b"xyz")
+
+    async def flood() -> None:
+        while True:
+            pair.fake_a.feed_rx(b"\xff" * 600)  # more than the 512-byte ring holds, every round
+            await asyncio.sleep_ms(_FLOOD_STEP_MS)
 
     async def scenario() -> None:
-        async with pair.driver_a as device:
-            await pair.initiator._drain(device)
+        flooder = asyncio.create_task(flood())
+        try:
+            async with pair.driver_a as device:
+                await asyncio.wait_for(pair.initiator._resync(device), _STEP_BOUND_S)
+        finally:
+            flooder.cancel()
 
-    run(scenario(), limit=_STEP_BOUND_S)
-    kinds = {entry[0] for entry in pair.fake_a.log}
-    assert "read" not in kinds
-    assert "readinto" in kinds
+    run(scenario(), limit=_RUN_BOUND_S)
+    assert pair.driver_a.rx_overruns > 0  # the case under test really happened
+    assert pair.initiator._drain_bound_hit is True
+    assert persisted(pair.initiator) == [_w("UART_DRAIN_BOUND")], persisted(pair.initiator)
+
+
+def test_the_drain_reads_into_the_scratch_buffer() -> None:
+    # read() would allocate per round, on exactly the degraded link where the heap is most
+    # fragmented. Asserted on the driver calls the drain makes.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    pair.fake_a.feed_rx(b"xyz")
+    calls: list[str] = []
+    driver = pair.driver_a
+    real_read, real_readinto = driver.read, driver.readinto
+
+    async def spy_read(nbytes: "int | None" = None, timeout_ms: int = -1) -> "bytes | None":
+        calls.append("read")
+        return await real_read(nbytes, timeout_ms)
+
+    async def spy_readinto(buf: bytearray, nbytes: "int | None" = None, timeout_ms: int = -1) -> "int | None":
+        calls.append("readinto")
+        return await real_readinto(buf, nbytes, timeout_ms)
+
+    driver.read = spy_read  # type: ignore[method-assign]
+    driver.readinto = spy_readinto  # type: ignore[method-assign]
+
+    async def scenario() -> int:
+        async with driver as device:
+            return await pair.initiator._drain(device)
+
+    assert run(scenario(), limit=_STEP_BOUND_S) == 3
+    assert "read" not in calls
+    assert "readinto" in calls
 
 
 def test_a_resync_is_not_re_entrant() -> None:

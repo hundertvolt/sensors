@@ -61,11 +61,11 @@ async def _main() -> None:
     spidev = fram._spidev
     original_write_sync = spidev.write_sync
 
-    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> None:
+    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> bool:
         # The command buffers around the payload are 1 or 5 bytes, never its length.
         if len(buf) == len(_NEW_TARGET_PATTERN):
             machine.reset()  # never returns - real RP2040 hardware reset, immediate, CS still asserted
-        original_write_sync(buf)
+        return original_write_sync(buf)
 
     spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]
     await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)

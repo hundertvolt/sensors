@@ -5,7 +5,7 @@ one lives with that driver. Runs alongside test_bus_hazard_generated.py, not a s
 import asyncio
 import struct
 
-from _bus_hazard_catalog import crc8, fake, make_i2c, seed_isl_ready
+from _bus_hazard_catalog import I2C_HAZARD_CATALOG, assert_no_transfer_inside_the_recovery, crc8, fake, hold_sda_through_a_stretched_clear, make_i2c, recover_marking_the_clear, seed_isl_ready
 from _bus_hazard_catalog import sgp_word as _sgp_word
 
 from asy_bmp3xx_driver import BMP3XX_I2C
@@ -20,7 +20,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     from typing_extensions import Self
@@ -150,9 +150,9 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
     assert all(raw == 0x8000 for raw in sgp_results)
 
     # Genuine interleaving proof: addressed log entries must not form two separate contiguous
-    # blocks (one fully before the other). Both op families (BMP3xx's readfrom_mem/writeto_mem,
-    # SGP40's writeto/readfrom_into) must be counted or BMP3xx's entries silently drop out.
-    addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")]
+    # blocks (one fully before the other). BMP3xx's register access (an address writeto, then
+    # readfrom_into) and SGP40's raw words both log as writeto/readfrom_into.
+    addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into")]
     # Plain index-based comparison, not zip(strict=...): MicroPython's builtin zip() doesn't accept
     # keyword arguments (confirmed against the pinned Unix-port interpreter).
     switches = sum(1 for i in range(len(addressed) - 1) if addressed[i] != addressed[i + 1])
@@ -192,7 +192,7 @@ def test_cross_device_isl29125_and_sgp40_interleave_and_both_stay_correct() -> N
     assert len(isl_results) == isl_iterations
     assert all(counts == (0x2000, 0x1800, 0x1000) for counts in isl_results)
     assert sgp_results == [0x8000] * sgp_iterations
-    addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")]
+    addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into")]
     switches = sum(1 for i in range(len(addressed) - 1) if addressed[i] != addressed[i + 1])
     assert switches >= 2, f"only {switches} address switch(es) - looks fully serialized, not interleaved: {addressed}"
 
@@ -344,6 +344,195 @@ def test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read() 
     assert len(isl_results) == isl_iterations
     assert all(counts == (0x2000, 0x1800, 0x1000) for counts in isl_results), "SGP40's own bus fault corrupted a concurrent ISL29125 read"
     assert sgp_errors == sgp_attempts, f"expected every faulted SGP40 call to raise, got {sgp_errors}/{sgp_attempts}"
+
+
+def _register_reads_unbroken(log: "list[Any]", address: int) -> int:
+    # Every no-stop register-address write to `address` is followed at once by its readfrom_into, never by
+    # a sibling's transfer between the two. Returns how many such reads the log holds.
+    count = 0
+    for i, entry in enumerate(log):
+        if entry[0] == "writeto" and entry[1] == address and not entry[3] and entry[2]:
+            assert i + 1 < len(log) and log[i + 1][0:2] == ("readfrom_into", address), f"a transfer landed inside a register read at log index {i}: {log[i : i + 2]}"
+            count += 1
+    return count
+
+
+def test_a_register_read_is_two_transfers_with_no_sibling_transfer_between_them() -> None:
+    # A register read writes the address with no stop, then reads: both inside one bus session, so a
+    # concurrent sibling's transfer can never land between the two halves.
+    i2c = make_i2c(1)
+    bmp = BMP3XX_I2C(i2c, address=_BMP_ADDR)
+    sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+    fake_bus = fake(i2c)
+    seed_bmp_ready(i2c)
+    run(bmp.setup())
+    for _ in range(4):
+        fake_bus.read_queue.append(_sgp_word(0x8000))
+
+    async def bmp_loop() -> None:
+        for _ in range(6):
+            await bmp.get_pressure_and_temperature()
+            await asyncio.sleep(0)
+
+    async def sgp_loop() -> None:
+        for _ in range(4):
+            assert await sgp.measure_raw(temperature=25, relative_humidity=50) == 0x8000
+            await asyncio.sleep(0)
+
+    with _FastAsyncSleep():
+        run(_gather(bmp_loop(), sgp_loop()))
+    assert _register_reads_unbroken(list(fake_bus.log), _BMP_ADDR) >= 6 * 2  # STATUS and the burst per cycle
+
+
+def test_a_short_ack_on_one_device_fails_only_that_device_and_leaves_sibling_reads_valid() -> None:
+    i2c = make_i2c(1)
+    bmp = BMP3XX_I2C(i2c, address=_BMP_ADDR)
+    sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+    fake_bus = fake(i2c)
+    seed_bmp_ready(i2c)
+    run(bmp.setup())
+    for _ in range(4):
+        fake_bus.read_queue.append(_sgp_word(0x8000))
+    fake_bus.log.clear()  # drop setup()'s own traffic, its zero-length probe included
+    fake_bus.short_ack(_BMP_ADDR, 0)  # the BMP3xx NACKs the next register byte it is sent
+    bmp_errors: list[int | None] = []
+
+    async def bmp_loop() -> None:
+        for _ in range(3):
+            try:
+                await bmp.get_config_snapshot()
+            except OSError as e:
+                bmp_errors.append(e.errno)
+            await asyncio.sleep(0)
+
+    async def sgp_loop() -> None:
+        for _ in range(4):
+            assert await sgp.measure_raw(temperature=25, relative_humidity=50) == 0x8000
+            await asyncio.sleep(0)
+
+    with _FastAsyncSleep():
+        run(_gather(bmp_loop(), sgp_loop()))
+    assert bmp_errors == [5]  # one EIO, then the device answers again
+    log = list(fake_bus.log)  # a snapshot of the ring log, oldest first
+    stop = log.index(("writeto", _BMP_ADDR, b"", True))
+    assert log[stop - 1][0:2] == ("writeto", _BMP_ADDR), "the STOP follows the short write at once"
+
+
+async def _recover_between_halves(i2c: I2C, target: int, trigger: bytes, read: "Coroutine[Any, Any, None]", after_recovery: "Callable[[], None] | None" = None) -> None:
+    # Runs `read`, and i2c.recover() the moment `trigger` (its first half's write) has reached the bus.
+    bus = fake(i2c)
+    real_writeto = bus.writeto
+    fired = asyncio.Event()
+
+    def watching(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        n = real_writeto(address, buf, stop)
+        if address == target and bytes(buf) == trigger:  # type: ignore[call-overload]
+            fired.set()
+        return n
+
+    async def recovery() -> None:
+        await fired.wait()
+        await i2c.recover()
+        if after_recovery is not None:
+            after_recovery()
+
+    bus.writeto = watching  # type: ignore[method-assign]
+    try:
+        await asyncio.gather(read, recovery())
+    finally:
+        bus.writeto = real_writeto  # type: ignore[method-assign]
+
+
+def _assert_recovery_between(i2c: I2C, address: int, trigger: bytes) -> None:
+    # The second half ends with the transaction's last read (BMP3XX: the data burst after its STATUS polls).
+    log = list(fake(i2c).log)  # a snapshot of the ring log, oldest first
+    first = log.index(("writeto", address, trigger, True))
+    init = next(i for i in range(first, len(log)) if log[i][0] == "init")
+    last = max(i for i in range(first + 1, len(log)) if log[i][0] == "readfrom_into" and log[i][1] == address)
+    assert first < init < last, f"the recovery did not land between the two halves: {log[first : last + 1]}"
+
+
+def test_a_recovery_between_a_split_session_still_returns_a_valid_value() -> None:
+    # SCD30 command -> read, SGP40 command -> read, BMP3XX trigger -> read: each releases the bus between
+    # its halves, where a bus clear and controller re-construction may land; the idle slave sees no
+    # START, and the transaction's second half still reads a valid value (adapters' read_once checks).
+    failures: list[str] = []
+    for driver, address, trigger in (
+        ("scd30", _SCD_ADDR, b"\x03\x00"),  # read measurement (Interface Description 1.4.5)
+        ("sgp40", _SGP_ADDR, _sgp40_measure_command(25, 50)),
+        ("bmp3xx", _BMP_ADDR, b"\x1b\x13"),  # PWR_CTRL forced mode
+    ):
+        adapter = I2C_HAZARD_CATALOG[driver]
+        i2c = make_i2c(1)
+        instance = adapter.construct(i2c, address)
+        after = None
+        if driver == "bmp3xx":
+            with _FastAsyncSleep():
+                run(instance.setup())
+            fake(i2c).registers[(address, 0x03)] = bytearray([0x00])  # STATUS not ready: the poll yields
+
+            def after(i2c: I2C = i2c, address: int = address) -> None:  # bound now: the loop moves on
+                fake(i2c).registers[(address, 0x03)] = bytearray([0x10 | 0x60])
+
+        adapter.seed(fake(i2c), address, 1)
+        with _FastAsyncSleep():
+            run(_recover_between_halves(i2c, address, trigger, adapter.read_once(instance), after))
+        try:
+            _assert_recovery_between(i2c, address, trigger)
+        except AssertionError as e:
+            failures.append(f"{driver}: {e}")
+    assert not failures, failures
+
+
+def test_a_recovery_during_a_held_bus_clear_lets_no_sibling_transfer_in() -> None:
+    # The clear yields under the bus lock (a stretched clock); the sibling read loops queue behind it.
+    i2c = make_i2c(1)
+    isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+    sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+    fake_bus = fake(i2c)
+    seed_isl_ready(i2c)
+    for _ in range(4):
+        fake_bus.read_queue.append(_sgp_word(0x8000))
+    hold_sda_through_a_stretched_clear(i2c)
+    marks: list[int] = []
+
+    async def isl_loop() -> None:
+        for _ in range(4):
+            assert await isl.read_counts() == (0x2000, 0x1800, 0x1000)
+            await asyncio.sleep(0)
+
+    async def sgp_loop() -> None:
+        for _ in range(4):
+            assert await sgp.measure_raw(temperature=25, relative_humidity=50) == 0x8000
+            await asyncio.sleep(0)
+
+    async def recovery() -> None:
+        await asyncio.sleep(0)
+        _status, mark = await recover_marking_the_clear(i2c)
+        marks.append(mark)
+
+    async def scenario() -> None:
+        await asyncio.gather(isl_loop(), sgp_loop(), recovery())
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert_no_transfer_inside_the_recovery(fake_bus, marks[0])
+
+
+# Mirrors of asy_i2c_driver's clear constants (const() names are not importable) and a stall past its 50 ms bound
+_CLEAR_PULSES = 9
+_REC_SDA_LOW = 1
+_REC_SDA_STUCK = 2
+_HOST_STALL_MS = 60
+
+
+def test_a_host_stall_inside_a_stretched_clear_does_not_read_as_a_held_clock() -> None:
+    # The planted slave stretches for a count of reads, so the recovery must judge it in poll rounds: a host
+    # stall past the driver's 50 ms SCL-release bound, landing inside the first wait, still clears the bus.
+    i2c = make_i2c(1)
+    hold_sda_through_a_stretched_clear(i2c, pulses=_CLEAR_PULSES + 1, host_stall_ms=_HOST_STALL_MS)
+    status, _mark = run(recover_marking_the_clear(i2c))
+    assert status == _REC_SDA_LOW | _REC_SDA_STUCK, f"a host stall read as a held clock: status {status}"
 
 
 # ---------------------------------------------------------------------------

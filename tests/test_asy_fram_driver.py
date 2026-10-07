@@ -815,7 +815,8 @@ def test_verify_present_before_setup_returns_false_not_a_raised_runtimeerror() -
 
 
 # ---------------------------------------------------------------------------
-# Deliberately-allowed exception paths - inherited from asy_spi_driver.py, never caught here
+# Construction errors raise at boot (asy_spi_driver.py's contract); a bus that goes down later is
+# reported by status, never raised.
 # ---------------------------------------------------------------------------
 
 
@@ -843,27 +844,71 @@ def test_construction_with_an_out_of_range_spi_cs_raises_uncaught_at_boot() -> N
     assert raised
 
 
-def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
-    # The other deliberately-allowed path: if the underlying bus is deinitialized out from under an in-
-    # flight FRAM_SPI, SPIDevice.__aenter__'s configure() call raises RuntimeError, uncaught here, matching
-    # asy_spi_driver.py's signed-off precedent that this is the caller's responsibility.
-    #
-    # Not a hardware disturbance: a real electrical fault never touches this Python-level lifecycle state,
-    # only an explicit deinit()/init() call elsewhere does.
-    fram, _chip = make_fram()
+def _bus_down_entries(fram: FRAM_SPI) -> int:
+    log = run(fram.pr.get_log())[fram.pr.name]
+    nums, kinds = log["ErrNum"], log["ErrType"]
+    return sum(1 for i in range(len(nums)) if kinds[i] == "E" and nums[i] == code("E", "FRAM_BUS_DOWN"))
+
+
+def test_bus_deinit_mid_operation_returns_false_and_logs_bus_down() -> None:
+    # A deinitialised bus is reported as bus-down by the driver (bool SPI results, C.3), not raised.
+    fram, chip = make_fram()
     run(setup_fram(fram))
     fram._spidev.spi.deinit()
+    logged = len(chip.log)
 
     async def scenario() -> bool:
         async with fram:
             return await fram.get_values(bytearray(1), 0)
 
+    assert run(scenario()) is False
+    assert _bus_down_entries(fram) == 1
+    assert fram.pr._err_count == 1
+    assert len(chip.log) == logged  # no transfer was made
+
+
+def test_set_values_on_a_bus_that_went_down_returns_false_and_logs_bus_down() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    before = bytes(chip.memory[0:2])
+    fram._spidev.spi.deinit()
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.set_values(b"\x5a\xa5", 0)
+
+    assert run(scenario()) is False
+    assert _bus_down_entries(fram) == 1
+    assert fram.pr._err_count == 1
+    assert bytes(chip.memory[0:2]) == before
+
+
+def test_verify_present_and_set_write_protected_report_a_bus_down_after_setup() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    fram._spidev.spi.deinit()
+    assert run(fram.verify_present()) is False
+    assert _bus_down_entries(fram) == 1
+    assert fram.pr._err_count == 1
+    assert run(fram.set_write_protected(value=True)) is False
+    assert _bus_down_entries(fram) == 1  # the same code again shares the newest slot (C.7.1)
+    assert fram.pr._err_count == 2  # one count per call
+    assert fram.initialized is True  # a bus that is down is not a lost chip
+    assert not fram.session_lock.locked()
+    assert not fram._bus_lock.locked()
+
+
+def test_setup_raises_when_the_bus_is_down() -> None:
+    fram, chip = make_fram()
+    fram._spidev.spi.deinit()
     try:
-        run(scenario())
-        raised = False
-    except RuntimeError:
-        raised = True
-    assert raised
+        run(setup_fram(fram))
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "SPI bus not initialized"
+    assert fram.initialized is False
+    assert not [entry for entry in chip.log if entry[0] != "deinit"]  # no RDID was clocked
 
 
 # ---------------------------------------------------------------------------

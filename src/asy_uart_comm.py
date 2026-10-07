@@ -462,9 +462,12 @@ class UARTComm:
                 self._drain_bound_hit = True
                 self.pr.wrn("Drain bound reached, resyncing anyway")
                 break
+            overruns = device.rx_overruns
             got = await device.readinto(buf, len(buf), timeout_ms=wait_ms)
-            if got is None:  # the line has been quiet for a whole window
-                break
+            if got is None:
+                if device.rx_overruns == overruns:  # the line has been quiet for a whole window
+                    break
+                continue  # a receive overrun: bytes arrived faster than this drain reads them
             total += got
             wait_ms = quiet_ms
         return total
@@ -953,8 +956,11 @@ class UARTComm:
         if bus is None:
             await self.pr.err_s("No bus handle, not starting", errno=_ERR_UART_NO_BUS)
             return False
+        if not bus.setup_rx_ring():  # before the drain: bytes held since boot reach the ring, and the drain drops them
+            await self.pr.err_s("No receive ring, not starting", errno=_ERR_UART_NO_BUS)
+            return False
         async with bus as device:
-            # A peer that outlived this side's reset leaves partial-frame bytes in the rxbuf.
+            # A peer that outlived this side's reset leaves partial-frame bytes in the receive ring.
             # Recovering reactively would log a fault on every boot of a live link that the FRAM
             # history cannot tell from a real one. A boot drain is not a fault, and not counted.
             drained = await self._drain(device, first_ms=(bus.poll_wait_ms * 2) + _POLL_JITTER_MS)

@@ -151,7 +151,13 @@ def _adc_to_data6(adc_p: int, adc_t: int) -> bytes:
 
 
 def make_i2c() -> I2C:
-    return I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    # A fresh static bus 0 (this tier has no per-test reset), its construction entry dropped so the
+    # log holds only the test's own traffic.
+    FakeI2C.reset_id(0)
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    fake(i2c).log.clear()
+    fake(i2c).register_device(_ADDR)  # register-addressed (datasheet sec 5), as the driver reads it
+    return i2c
 
 
 def fake(i2c: I2C) -> FakeI2C:
@@ -182,11 +188,12 @@ def seed_data(i2c: I2C, six_bytes: bytes, address: int = _ADDR) -> None:
 # documents as supported: single-byte read/write, and a multi-byte read from one auto-incremented
 # register address (the 6-byte PRESSUREDATA and 21-byte CAL_DATA bursts).
 
-# readfrom_mem() returning one blob keyed by the burst's starting register is faithful, since this
+# A read returning one blob keyed by the burst's starting register is faithful, since this
 # driver only ever requests a burst starting at the documented base register. The datasheet's other
 # shape, a multi-byte write of address/data pairs, is never used here, so it is not modeled.
 def make_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
     i2c = make_i2c()
+    fake(i2c).register_device(address)
     return i2c, BMP3XX_I2C(i2c, address=address)
 
 
@@ -200,30 +207,24 @@ def ready_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
 
 
 class _BadBurstRead:
-    # Replaces the device session's get_register_struct() with a wrapper returning `value` for the
-    # PRESSUREDATA burst only - every other register read still goes to the real fake-I2C bus, so
-    # _read() gets past its trigger and data-ready poll to the burst-length guard.
-
-    # tests/machine.py's fake I2C cannot produce this shape (readfrom_mem always returns exactly
-    # nbytes), but asy_i2c_driver.py's get_register_struct() can: it returns None on a
-    # deinitialized bus, a malformed format string and a zero-field unpack - the guarded case.
-    def __init__(self, bmp: BMP3XX_I2C, value: "bytes | None") -> None:
+    # The burst read reports no bus (get_register_bytes() -> None) for PRESSUREDATA only; every other
+    # register read still goes to the fake bus, so _read() gets past its trigger and data-ready poll.
+    def __init__(self, bmp: BMP3XX_I2C) -> None:
         self._device = bmp._i2c_bmp3xx.i2c_device
-        self._value = value
 
     def __enter__(self) -> "Self":
-        self._real = self._device.get_register_struct
+        self._real = self._device.get_register_bytes
 
-        async def _patched(reg_addr: int, reg_format: str, addrsize: "int | None" = None) -> "int | float | bytes | None":
+        async def _patched(reg_addr: int, length: int, addrsize: "int | None" = None) -> "bytes | None":
             if reg_addr == _REGISTER_PRESSUREDATA:
-                return self._value
-            return await self._real(reg_addr, reg_format, addrsize)
+                return None
+            return await self._real(reg_addr, length, addrsize)
 
-        self._device.get_register_struct = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
+        self._device.get_register_bytes = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        self._device.get_register_struct = self._real  # type: ignore[method-assign]
+        self._device.get_register_bytes = self._real  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
@@ -355,18 +356,16 @@ def test_reset_raises_oserror_on_cmd_rdy_timeout() -> None:
 
 
 def test_reset_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
-    # asy_i2c_driver.py's contract: a deinitialized bus makes get_register_struct() return None
-    # rather than raise, and _wait_status_bits() treats that as "not ready yet". The message then
-    # reads as a hardware timeout, but the poll does terminate within its bound instead of hanging.
+    # A deinitialized bus makes the status poll raise at once (bool bus results, SPECIFICATION.md C.3).
     i2c, bmp = make_bmp()
     seed_status(i2c, 0x00)  # not ready
     i2c.deinit()
     try:
         run(bmp.reset())
-        raised = False
-    except OSError:
-        raised = True
-    assert raised
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
 
 
 def test_reset_raises_runtime_error_when_cmd_err_set() -> None:
@@ -383,8 +382,10 @@ def test_reset_raises_runtime_error_when_cmd_err_set() -> None:
 
 
 def test_reset_succeeds_when_err_reg_clear() -> None:
-    _i2c, bmp = ready_bmp()
+    i2c, bmp = ready_bmp()
     run(bmp.reset())  # must not raise
+    # 0xB6 to CMD (0x7E) is the soft reset (BMP388 datasheet section 4.3.22, Table 45)
+    assert ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True) in fake(i2c).log
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +427,7 @@ def _count_forced_mode_triggers(i2c: I2C) -> int:
     return sum(
         1
         for entry in fake(i2c).log
-        if entry[0] == "writeto_mem" and entry[2] == _REGISTER_CONTROL and bytes(entry[3]) == bytes([0x13])
+        if entry[0] == "writeto" and entry[1] == _ADDR and entry[2] == bytes([_REGISTER_CONTROL, 0x13])
     )
 
 
@@ -513,25 +514,23 @@ def test_read_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
     assert raised
 
 
-def test_read_raises_oserror_when_the_data_burst_returns_an_unexpected_result() -> None:
-    # _read()'s defensive guard between the burst read and the compensation math: without it a
-    # None sentinel raises a cryptic TypeError from data[2] << 16, and a short/long blob either
-    # raises IndexError or computes a pressure from stray bytes. Each must be one clear OSError.
-    for bad in (None, b"\x00\x00\x00", b"\x00" * 7):
-        i2c, bmp = ready_bmp()
-        seed_calibration(i2c)
-        seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
-        run(bmp._read_coefficients())
-        with _BadBurstRead(bmp, bad):
-            try:
-                run(bmp._read())
-                raised = False
-            except OSError as e:
-                raised = "unexpected data burst read result" in str(e)
-        assert raised
+def test_read_raises_oserror_when_the_data_burst_read_fails() -> None:
+    # The burst helper answers exactly the length asked or None (no bus); the None must be one clear
+    # OSError, not a TypeError from data[2] << 16.
+    i2c, bmp = ready_bmp()
+    seed_calibration(i2c)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    run(bmp._read_coefficients())
+    with _BadBurstRead(bmp):
+        try:
+            run(bmp._read())
+            message = ""
+        except OSError as e:
+            message = str(e)
+    assert message == "I2C bus not initialized"
 
 
-def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_result() -> None:
+def test_read_bmp_logs_and_degrades_when_the_data_burst_read_fails() -> None:
     # Caller side of the guard above: _read_bmp()'s blanket try/except turns that OSError into the
     # same logged READ entry as any other failed read and returns an all-None result, which
     # _store_bmp() discards - degrading like a NAKed bus instead of crashing _read_loop()'s task.
@@ -548,7 +547,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_re
         await reader._store_bmp(results)
         return results, await reader.get_error_counter()
 
-    with _BadBurstRead(reader._bmp, None):
+    with _BadBurstRead(reader._bmp):
         results, counters = run(scenario())
 
     assert results == (None, None, None)  # TS too: no clock sync in this test, utc_now() is None
@@ -820,16 +819,17 @@ def test_get_temperature_oversampling_raises_oserror_on_reserved_osr_encoding() 
     assert raised
 
 
-def test_bus_deinit_write_no_ops_silently_but_read_raises_oserror() -> None:
-    # A real read/write asymmetry in asy_i2c_driver.py's documented contract: get_bits() returns
-    # None on a deinitialized bus - a checkable sentinel _get_osr_setting() turns into an OSError -
-    # but set_bits() returns None unconditionally, so a write-shaped call can silently no-op.
-
-    # Not a bug in this driver: it is the lower layer's deliberate "non-hardware failure" carve-out
-    # (a deinitialized bus means someone called deinit() without a matching reinit).
+def test_bus_deinit_fails_the_write_and_the_read_with_oserror() -> None:
+    # A deinitialized bus: every register helper reports it (None or False) and the driver turns each
+    # into an OSError (SPECIFICATION.md C.3).
     i2c, bmp = ready_bmp()
     i2c.deinit()
-    run(bmp.set_pressure_oversampling(8))  # must not raise, despite doing nothing
+    try:
+        run(bmp.set_pressure_oversampling(8))
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "I2C bus not initialized"
     try:
         run(bmp.get_pressure_oversampling())
         raised = False
@@ -1563,10 +1563,10 @@ def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:
     i2c.deinit()
     try:
         run(bmp._read_byte(_REGISTER_CHIPID))
-        raised = False
+        message = ""
     except OSError as e:
-        raised = "failed to read" in str(e)
-    assert raised
+        message = str(e)
+    assert message == "I2C bus not initialized"
 
 
 # ---------------------------------------------------------------------------
@@ -1670,8 +1670,21 @@ def test_set_dict_cfg_pressure_oversampling_write_fails_but_getter_recovers_real
     run(reader._bmp.set_pressure_oversampling(2))
     assert run(reader.cfgmgr.get_dict(["PresOvers"])) == {"PresOvers": 1}  # untouched schema default
 
-    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK on write"))
+    # set_bits()'s write half only: a match on the register would also hit its read half's pointer write,
+    # which carries the same register byte, so the one OSR writeto with a stop is failed directly.
+    bus = fake(i2c)
+    real_writeto = bus.writeto
+    pending = [True]
+
+    def fail_the_osr_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        if pending[0] and stop and bytes(buf)[:1] == bytes([_REGISTER_OSR]):  # type: ignore[call-overload]
+            pending[0] = False
+            raise OSError(errno_mod.EIO, "no ACK on write")
+        return real_writeto(address, buf, stop)
+
+    bus.writeto = fail_the_osr_write  # type: ignore[method-assign]
     results = run(reader._set_dict_cfg({"PresOvers": 8}, reader.get_cfg_schema()))
+    assert pending == [False]  # the write half did fail
     assert results == {"PresOvers": "Failed"}
     # Recovered via the live getter (2, the sensor's real state) - neither the requested-but-failed
     # 8 nor cfgmgr's own pre-write snapshot (1).

@@ -11,6 +11,7 @@ from _bus_hazard_catalog import (
     make_i2c,
     scenario_a_write_does_not_disturb_concurrent_sibling_reads,
     scenario_all_occupants_concurrent_reads_stay_correct,
+    scenario_bus_recovery_does_not_disturb_concurrent_siblings,
     scenario_each_occupant_never_touches_an_unexpected_address,
     scenario_general_call_does_not_disturb_concurrent_siblings,
     scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read,
@@ -128,6 +129,11 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
         run(scenario_general_call_does_not_disturb_concurrent_siblings(_make_build_fresh(bus_name, attachments)))
 
     namespace[f"{prefix}_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets"] = test_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets
+
+    def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets() -> None:
+        run(scenario_bus_recovery_does_not_disturb_concurrent_siblings(_make_build_fresh(bus_name, attachments)))
+
+    namespace[f"{prefix}_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
 
 
 for _device, _plan in _all_device_wiring_plans():

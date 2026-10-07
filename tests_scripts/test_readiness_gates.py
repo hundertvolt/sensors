@@ -17,11 +17,8 @@ _CARRY_NONE = ("SystemService", "SensorReader", "WebserverService", "NeopixelDri
 _TEARDOWN_RE = re.compile(r"^(?:deinit|close|disconnect|stop_\w+|cleanup)$")
 _CHIP_CLASS_RE = re.compile(r"^\w+_I2C$")  # a stop_* there is a chip command, not a teardown
 _MIRRORS = frozenset({("_TimeoutStreamProxy", "close")})  # the asyncio stream's own close(), mirrored
-# Teardowns that answer None until the bus deinit() rework lands; an entry that answers bool fails.
-_PENDING_TEARDOWNS = {
-    ("I2C", "deinit"): "U13",
-    ("SPI", "deinit"): "U13",
-}
+# Teardowns that answer None until their rework lands; an entry that answers bool fails. Empty: the list only shrinks.
+_PENDING_TEARDOWNS: dict[tuple[str, str], str] = {}
 
 Method = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -191,8 +188,8 @@ def test_a_teardown_not_answering_bool_fails(src_copy: Path) -> None:
     assert len(findings) == 1 and findings[0].startswith("asy_uart_driver.py:") and "UART.deinit() -> None: a teardown on a class with no logger answers bool" in findings[0], findings
 
 
-def test_a_pending_teardown_that_answers_bool_must_leave_the_list(src_copy: Path) -> None:
-    _edit(src_copy, "asy_i2c_driver.py", "    def deinit(self) -> None:", "    def deinit(self) -> bool:")
+def test_a_pending_teardown_that_answers_bool_must_leave_the_list(src_copy: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(_PENDING_TEARDOWNS, ("I2C", "deinit"), "a later unit")
     findings = all_findings(src_copy)
     assert len(findings) == 1 and "I2C.deinit() answers bool now: drop it from the pending teardowns" in findings[0], findings
 

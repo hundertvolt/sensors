@@ -69,6 +69,15 @@ _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog", "ntp_retry_s", "ntp_retry_max_s")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring"}
 _MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
+# The boot bus clear runs unfed after WDT() (Part A.7, stretch 1): per I2C bus up to _CLEAR_PULSES + 2 SCL
+# waits (lead-in, pulses, STOP) of one timeout each. Bound (agent, 2026-10-07): the largest timeout any
+# device declares, the SCD30's own floor; 2 buses x 11 waits x 200 ms = 4400 ms fit the budget below.
+# @tunable i2c.timeout_max_us = 200000
+_I2C_TIMEOUT_MAX_US = 200000
+# @tunable wdt.timeout_ms = 8000
+_WDT_TIMEOUT_MS = 8000  # codegen's generated WDT(timeout=...), the one the boot clear runs under
+# Three quarters of the watchdog (agent, 2026-10-07): 2000 ms stay for the rest of stretch 1 (~0.17 s measured).
+_BOOT_CLEAR_BUDGET_MS = _WDT_TIMEOUT_MS * 3 // 4
 # @tunable ntp.check_interval_s = 10
 _NTP_CHECK_TICK_S = 10  # asy_ntp_client._NTP_CHECK_INTERV: a shorter retry interval cannot be honoured
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
@@ -278,12 +287,9 @@ def _check_ntp_backoff(model: DeviceModel, src_dir: Path) -> None:
 
 
 def _uart_bus_value(src_dir: Path, table: TomlDoc, name: str) -> int:
-    # A bus table's stated value, else asy_uart_driver.UART's own default - poll_idle_ms's None
-    # default means "poll_wait_ms", mirrored here rather than read.
+    # A bus table's stated value, else asy_uart_driver.UART's own default, read from source.
     if name in table:
         return int(table[name])
-    if name == "poll_idle_ms":
-        return _uart_bus_value(src_dir, table, "poll_wait_ms")
     return init_int_default(src_dir, "asy_uart_driver.py", "UART", name)
 
 
@@ -335,6 +341,12 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
             raise BuildError(model.device, f"bus.{bus_name} (uart) is missing an int baudrate", field="baudrate")
         if "timeout" in bus_table and not (isinstance(bus_table["timeout"], int) and not isinstance(bus_table["timeout"], bool)):
             raise BuildError(model.device, f"bus.{bus_name} ({kind}) timeout must be an int, got {bus_table['timeout']!r}", field="timeout")
+        if kind == "i2c" and "timeout" in bus_table:
+            timeout = bus_table["timeout"]
+            if timeout < 1:
+                raise BuildError(model.device, f"bus.{bus_name} ({kind}) timeout {timeout} us is not positive - every SCL wait would end before it began", field="timeout")
+            if timeout > _I2C_TIMEOUT_MAX_US:
+                raise BuildError(model.device, f"bus.{bus_name} ({kind}) timeout {timeout} us is above the {_I2C_TIMEOUT_MAX_US} us bound - the boot bus clear waits up to one timeout per SCL edge, unfed, under the {_WDT_TIMEOUT_MS} ms watchdog", field="timeout")
         if kind == "uart":
             for f in _UART_OPTIONAL_INT_FIELDS:
                 if f in bus_table and not (isinstance(bus_table[f], int) and not isinstance(bus_table[f], bool)):
@@ -343,6 +355,19 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
         if unknown:
             raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated bus kind?", field=min(unknown))
     return buses
+
+
+def _check_boot_clear_budget(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
+    # Every I2C bus's boot clear at its worst: each SCL wait runs to its timeout, plus the clock's half periods.
+    tables = [t for name, t in buses.items() if _bus_kind(name, model.device) == "i2c"]
+    if not tables:
+        return
+    drv = "asy_i2c_driver.py"
+    pulses, half_us, default_us = (module_int_const(src_dir, drv, n) for n in ("_CLEAR_PULSES", "_CLEAR_HALF_PERIOD_US", "_DEFAULT_TIMEOUT_US"))
+    timeouts = [int(t.get("timeout", default_us)) for t in tables]
+    worst_us = sum((pulses + 2) * t + 2 * (pulses + 1) * half_us for t in timeouts)
+    if worst_us > _BOOT_CLEAR_BUDGET_MS * 1000:
+        raise BuildError(model.device, f"the boot bus clear can run {worst_us // 1000} ms unfed over {len(timeouts)} I2C bus(es) ({pulses + 2} SCL waits of one timeout each per bus), above its {_BOOT_CLEAR_BUDGET_MS} ms budget (three quarters of the {_WDT_TIMEOUT_MS} ms watchdog) - lower a bus timeout", field="timeout")
 
 
 def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
@@ -766,6 +791,7 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     model = load_device(toml_path)
     _check_device_table(model)
     buses = _check_bus_tables(model)
+    _check_boot_clear_budget(model, buses, src_dir)
     _resolve_instances(model, src_dir)
     _check_required_fields(model, buses)
     _check_uart_link_roles(model)

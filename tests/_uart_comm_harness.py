@@ -3,9 +3,11 @@ link, driven as concurrent tasks the way the dev bench drives them across its ju
 Kept out of the test files themselves so the mock and hazard tiers build the pair identically."""
 
 import asyncio
+import select
 
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
+from rp2 import DMA
 
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
 from asy_uart_driver import UART
@@ -69,15 +71,17 @@ class Pair:
         # crc_a/crc_b are per-bus, not per-Comm: the CRC sits on the UART object below the protocol
         # and is invisible to it (SPECIFICATION.md Part J). Both ends must agree, so a test that
         # passes only one models a mismatched pair rather than a protected link.
-        self.driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, crc=crc_a)
-        self.driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, crc=crc_b)
+        DMA.reset_registry()  # no per-test reset exists, and each link's ring holds two of the twelve channels
+        self.driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=crc_a)
+        self.driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=crc_b)
         self.fake_a = fake_of(self.driver_a)
         self.fake_b = fake_of(self.driver_b)
         self.link = UARTLink(self.fake_a, self.fake_b)
+        self.fake_a.rx_rate = self.fake_b.rx_rate = float("inf")  # bytes land at once, not on the fake clock
         # A bounded stand-in, never a real select.poll(): the Unix port does not re-evaluate a
-        # Python object's ioctl() after registration (CLAUDE.md's known CI hang).
-        self.driver_a.poller = LinkPoller(self.fake_a)  # type: ignore[assignment]
-        self.driver_b.poller = LinkPoller(self.fake_b)  # type: ignore[assignment]
+        # Python object's ioctl() after registration (CLAUDE.md's known CI hang). Only TX polls.
+        self.driver_a.poller = LinkPoller(self.fake_a, mask=select.POLLOUT)  # type: ignore[assignment]
+        self.driver_b.poller = LinkPoller(self.fake_b, mask=select.POLLOUT)  # type: ignore[assignment]
         self.initiator = UARTComm(
             self.driver_a, ROLE_INITIATOR, payload_size=payload_size, timeout=timeout, name="UART_A", **comm_kwargs,
         )

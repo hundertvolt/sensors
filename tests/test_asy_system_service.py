@@ -1760,6 +1760,71 @@ def test_the_record_and_the_phase_marker_stay_small_ints() -> None:
     assert (_src_const("_RR_MAGIC") ^ _src_const("_RR_CHECK")) < 2**30
 
 
+def _plant_reset_flags(reason: int, chip: int) -> None:
+    # What the chip's WATCHDOG REASON and VREG_AND_CHIP_RESET CHIP_RESET registers read at this boot.
+    machine.watchdog_reason_value = reason
+    machine.chip_reset_value = chip
+
+
+def test_the_reset_flags_read_power_on_after_a_power_cycle() -> None:
+    machine.power_on()
+    assert begin_boot() == _src_const("_RR_POWER_ON")
+    assert make_service().get_reset_bits() == 0x100  # HAD_POR
+
+
+def test_the_reset_flags_after_a_reboot_read_force_with_had_por_kept() -> None:
+    machine.power_on()
+    begin_boot()
+    svc = make_service()
+
+    async def scenario() -> None:
+        await svc.reboot_system()
+        await _fire(svc)
+
+    run(scenario())
+    assert begin_boot() == _src_const("_RR_REBOOT")
+    assert make_service().get_reset_bits() == 0x102  # FORCE, and HAD_POR survives a watchdog reset
+
+
+def test_the_reset_flags_keep_only_their_named_bits() -> None:
+    machine.power_on()
+    _plant_reset_flags(1, 0x10000)  # a watchdog timeout after a RUN-pin reset
+    begin_boot()
+    assert make_service().get_reset_bits() == 0x10001
+    _plant_reset_flags(0xFFFFFFFF, 0xFFFFFFFF)
+    begin_boot()
+    assert make_service().get_reset_bits() == 0x3 | 0x110100  # TIMER|FORCE, HAD_PSM_RESTART|HAD_RUN|HAD_POR
+
+
+def test_the_reset_flags_are_taken_once_at_boot() -> None:
+    machine.power_on()
+    begin_boot()
+    _plant_reset_flags(0x2, 0x10000)  # registers that change later never reach the reported value
+    assert make_service().get_reset_bits() == 0x100
+
+
+def test_the_reset_flags_never_change_the_decoded_reason() -> None:
+    # Reported raw beside the decode, never folded into it: HAD_POR survives a watchdog reset, so a
+    # decode reading it would need bench evidence first.
+    def decoded(flags: "tuple[int, int]", prepare: "Callable[[], None]") -> int:
+        machine.power_on()
+        prepare()
+        _plant_reset_flags(*flags)
+        return begin_boot()
+
+    def after_a_full_boot() -> None:
+        begin_boot()
+        make_service().boot_phase(BOOT_DONE)
+        _watchdog_reset()
+
+    def after_a_record() -> None:
+        write_reset_record(_src_const("_RR_REBOOT"))
+        _watchdog_reset()
+
+    for prepare in (lambda: None, after_a_full_boot, after_a_record):
+        assert decoded((0, 0), prepare) == decoded((0xFFFFFFFF, 0xFFFFFFFF), prepare) == decoded((1, 0x10000), prepare)
+
+
 # ---------------------------------------------------------------------------
 # System-settings store (config_SYSTEM.cfg) - DebugLevel through the SettingsGroup call, real file I/O
 # ---------------------------------------------------------------------------

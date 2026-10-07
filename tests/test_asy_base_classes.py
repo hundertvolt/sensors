@@ -803,6 +803,219 @@ def test_error_check_condition_false_ignores_none_results() -> None:
     assert reader._err_cnt_internal == 0
 
 
+# The recovery ladder (SPECIFICATION.md C.7): one rung per failed cycle, each once per episode, smallest
+# blast radius first; a stub bus counts the bus rungs a real asy_i2c_driver.I2C would run.
+
+
+class _StubBus:
+    def __init__(self, boot_status: int = 0) -> None:
+        self.recoveries = 0
+        self.clears = 0
+        self.recovers = 0
+        self._boot_status = boot_status
+
+    async def clear(self) -> int:
+        self.clears += 1
+        self.recoveries += 1
+        return 0
+
+    async def recover(self) -> int:
+        self.recovers += 1
+        self.recoveries += 1
+        return 0
+
+    def take_boot_clear_status(self) -> int:
+        status = self._boot_status
+        self._boot_status = 0
+        return status
+
+
+class _LadderReader(SensorReader):
+    # A reader with a participant rung whose outcome the test picks: True done, False failed, or a raise.
+    def __init__(self, *, outcome: "bool | Exception | None" = True, max_module_error: int = 5, bus: "_StubBus | None" = None) -> None:
+        super().__init__(Meas(None, 50), "LADDER", max_module_error=max_module_error)
+        self._recovery_bus = bus  # type: ignore[assignment]  # a stub with the I2C rung surface
+        self._outcome = outcome
+        self.device_calls = 0
+
+    async def _recover_device(self) -> bool | None:
+        self.device_calls += 1
+        if isinstance(self._outcome, Exception):
+            raise self._outcome
+        if self._outcome is False:
+            await self.pr.err_s("participant recovery failed", errno=code("E", "CHIP_SET"))
+        return self._outcome
+
+
+def _fail(reader: SensorReader) -> bool:
+    return run(reader._error_check(Meas(None, 50)))
+
+
+def _pass(reader: SensorReader) -> bool:
+    return run(reader._error_check(Meas(20.0, 50)))
+
+
+def _entries(reader: SensorReader, kind: str, name: str) -> int:
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return sum(1 for i in range(len(log["ErrNum"])) if log["ErrType"][i] == kind and log["ErrNum"][i] == code(kind, name))
+
+
+def test_the_ladder_fires_each_rung_once_in_order() -> None:
+    bus = _StubBus()
+    reader = _LadderReader(bus=bus)
+    seen = []
+    for _ in range(6):
+        ok = _fail(reader)
+        seen.append((ok, reader.device_calls, bus.clears, bus.recovers))
+    assert seen == [
+        (True, 0, 0, 0),  # 1st failure: the retry is the next cycle
+        (True, 1, 0, 0),  # 2nd: the participant
+        (True, 1, 1, 0),  # 3rd: the bus clear
+        (True, 1, 1, 1),  # 4th: the controller
+        (True, 1, 1, 1),  # 5th: nothing left below the give-up
+        (False, 1, 1, 1),  # 6th: past max_module_error, the task ends
+    ], seen
+    assert _entries(reader, "W", "DEVICE_RECOVERY") == 1
+    assert run(reader.pr.get_log())[reader.pr.name]["ErrNum"][-1] == code("E", "GIVE_UP")
+
+
+def test_a_success_mid_streak_fires_nothing_new_until_the_streak_returns_to_zero() -> None:
+    bus = _StubBus()
+    reader = _LadderReader(bus=bus)
+    for _ in range(3):
+        _fail(reader)
+    assert (reader.device_calls, bus.clears) == (1, 1)
+    _pass(reader)  # streak 3 -> 2: the episode goes on
+    _fail(reader)  # back at 3: its rungs already ran
+    assert (reader.device_calls, bus.clears, bus.recovers) == (1, 1, 0)
+    for _ in range(3):
+        _pass(reader)  # down to 0: the episode ends
+    assert reader._err_cnt_internal == 0
+    _fail(reader)
+    _fail(reader)
+    assert reader.device_calls == 2  # a new episode climbs again
+
+
+def test_an_externally_zeroed_streak_re_arms_every_rung() -> None:
+    bus = _StubBus()
+    reader = _LadderReader(bus=bus)
+    for _ in range(4):
+        _fail(reader)
+    assert (reader.device_calls, bus.clears, bus.recovers) == (1, 1, 1)
+    reader._err_cnt_internal = 0  # what a task restart's _init_*() does
+    _fail(reader)
+    assert reader.device_calls == 1  # the rungs that ran stay spent until a good cycle
+    reader._err_cnt_internal = 0
+    _pass(reader)  # a good cycle at streak 0 ends the episode
+    for _ in range(4):
+        _fail(reader)
+    assert (reader.device_calls, bus.clears, bus.recovers) == (2, 2, 2)
+
+
+def test_a_max_module_error_of_one_fires_no_rung() -> None:
+    bus = _StubBus()
+    reader = _LadderReader(max_module_error=1, bus=bus)
+    assert _fail(reader) is True
+    assert _fail(reader) is False  # the give-up is tested first
+    assert (reader.device_calls, bus.clears, bus.recovers) == (0, 0, 0)
+
+
+def test_reset_error_counter_re_arms_every_rung() -> None:
+    bus = _StubBus()
+    reader = _LadderReader(bus=bus)
+    for _ in range(4):
+        _fail(reader)
+    assert run(reader.reset_error_counter()) is True
+    assert reader._rungs == 0
+    for _ in range(4):
+        _fail(reader)
+    assert (reader.device_calls, bus.clears, bus.recovers) == (2, 2, 2)
+
+
+def test_init_failed_rebuilds_the_controller_once_per_episode() -> None:
+    bus = _StubBus()
+    reader = _LadderReader(bus=bus)
+    run(reader._init_failed())
+    run(reader._init_failed())  # the same episode: already spent
+    assert (bus.clears, bus.recovers) == (0, 1)
+    assert _entries(reader, "W", "BUS_RECOVERY") == 1
+    run(reader._init_done())
+    run(reader._init_failed())
+    assert bus.recovers == 2
+
+
+def test_init_failed_and_init_done_without_a_recovery_bus_do_nothing() -> None:
+    reader = _LadderReader()
+    run(reader._init_failed())
+    run(reader._init_done())
+    assert reader.pr._err_count == 0
+
+
+def test_init_done_re_arms_the_rungs_and_reports_a_held_boot_bus_once_per_bus() -> None:
+    bus = _StubBus(boot_status=3)
+    first = _LadderReader(bus=bus)
+    second = _LadderReader(bus=bus)
+    for _ in range(2):
+        _fail(first)
+    run(first._init_done())
+    assert first._rungs == 0
+    assert _entries(first, "W", "BUS_RECOVERY") == 1
+    run(second._init_done())
+    assert second.pr._err_count == 0  # the status was taken once: the second reader logs nothing
+
+
+def test_two_readers_failing_on_one_bus_clear_it_once_and_rebuild_it_once() -> None:
+    bus = _StubBus()
+    a = _LadderReader(bus=bus)
+    b = _LadderReader(bus=bus)
+    for _ in range(4):
+        _fail(a)
+        _fail(b)
+    assert (bus.clears, bus.recovers) == (1, 1)
+    assert _entries(a, "W", "BUS_RECOVERY") + _entries(b, "W", "BUS_RECOVERY") == 2
+    assert a.pr._err_count + b.pr._err_count == 8 + 2 * 1 + 2  # 8 streak steps, 2 participant warnings, 2 bus warnings
+
+
+def test_a_hook_returning_none_logs_nothing() -> None:
+    reader = _LadderReader(outcome=None)
+    _fail(reader)
+    _fail(reader)
+    assert reader.device_calls == 1
+    assert reader.pr._err_count == 2  # the two streak steps only
+
+
+def test_a_successful_hook_adds_one_warning_and_a_failed_one_only_its_own_error() -> None:
+    good = _LadderReader(outcome=True)
+    _fail(good)
+    _fail(good)
+    assert good.pr._err_count == 3
+    assert _entries(good, "W", "DEVICE_RECOVERY") == 1
+    bad = _LadderReader(outcome=False)
+    _fail(bad)
+    _fail(bad)
+    assert bad.pr._err_count == 3  # two streak steps and the hook's own CHIP_SET
+    assert _entries(bad, "W", "DEVICE_RECOVERY") == 0
+    assert _entries(bad, "E", "CHIP_SET") == 1
+
+
+def test_a_raising_hook_is_logged_once_as_a_callback_failure_and_the_check_returns() -> None:
+    reader = _LadderReader(outcome=ValueError("boom"))
+    _fail(reader)
+    assert _fail(reader) is True  # the raise counts as a failed rung, never escapes
+    assert _entries(reader, "E", "CALLBACK") == 1
+    assert _entries(reader, "W", "DEVICE_RECOVERY") == 0
+    _fail(reader)
+    assert reader.device_calls == 1
+
+
+def test_a_reader_without_a_recovery_bus_skips_the_bus_rungs() -> None:
+    reader = _LadderReader()
+    for _ in range(5):
+        assert _fail(reader) is True
+    assert reader.device_calls == 1
+    assert _entries(reader, "W", "BUS_RECOVERY") == 0
+
+
 def test_get_dict_cfg_default_returns_all_none() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))

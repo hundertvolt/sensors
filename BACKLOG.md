@@ -424,6 +424,13 @@ gates, traps).
   feed, and from the last setup feed to the supervisor's first, each expected well inside the 8,000 ms
   timeout. It replaces the estimates in Part N `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms`
   (SPECIFICATION.md) and checks the L1 boot-stretch scenario's sleep sum.
+- **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding
+  SDA low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction
+  (pico-sdk's `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the
+  constructor's boot clear. Expected: the held slave releases SDA within the nine pulses, the STOP
+  is on the wire, and no sibling sees a stray START while the controller is rebuilt. Zero wear; it
+  confirms the twin's bus-recovery case (`tests/test_digital_twin_bus_hazard_concurrency.py`). Needs
+  a device script that holds SDA, which the flash tier does not have.
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve feeds item 24's design fix and
   item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
   G6, a rollover method that leaves the board running (item 12, adapt now, measure later by
@@ -597,19 +604,11 @@ gates, traps).
   `scripts/_digital_twin_ci_suite.py`: one comment. `tests_scripts/` gains two AST checks
   (`test_device_script_config_schemas.py`, `test_stored_config_golden.py`): stdlib host Python, no
   new dependency, so nothing here moves either leg.
+  **2026-10-07, mypy config only, no build impact**: `pyproject.toml`'s main-pass `exclude` gains
+  `digital_twin/rp2.py`, which collides with the new `tests/rp2.py` fake as `digital_twin/machine.py`
+  does with `tests/machine.py`. No new dependency and no build input changed, so nothing here moves
+  either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
-- **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
-  `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
-  fixed.** The SPI form exists because the FRAM path drives the chip through blocking register
-  writes and paid a coroutine pair plus a bus-lock cycle for every CS cycle (the heap-fragmentation
-  work, HEAP_FRAGMENTATION_MEASUREMENTS.md archive §3A/§3B). `I2CDevice` has no CS pin, no per-session `configure()`
-  and no settle, so it has nothing equivalent to make synchronous: its `async with` is
-  `Lockable`'s plain lock acquisition, and its own `async def` transfer wrappers already sit
-  directly on blocking `machine.I2C` calls. Generalising the session shape to I2C is explicitly
-  refused by SPECIFICATION.md Part F.5.8 for the neighbouring read-clamp case, and would be a
-  rewrite of every I2C driver's call sites for no measured gain. Recorded here per CLAUDE.md's
-  flag-don't-silently-fix rule for cross-file API divergence (Part D.10), as a known and deliberate
-  asymmetry rather than an inconsistency to tidy up.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
   verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`
@@ -829,26 +828,6 @@ gates, traps).
   entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
   entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
   is small: extracting a shared helper is a minor simplification, not a correctness fix.
-- **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` now read through
-  `readfrom_mem_into()` - done (owner decision, 2026-09-18).** Not the way this entry assumed,
-  which is why it is worth a line: it predicted "a changed signature on three shared methods every
-  existing driver calls", and no signature moved at all. The allocation was internal
-  (`_readfrom_mem()` returned a fresh `bytes` per read), so the fix is one long-lived 32-byte
-  scratch per `I2C` instance plus a `memoryview` slice - CLAUDE.md's "reuse, don't churn
-  same-shaped objects" (Part I), applied where it costs nothing at the call sites.
-  Safe to share across the devices on a bus because every one of these methods fills and decodes
-  with no `await` in between, and no `Timer`/`Pin.irq` callback in this codebase touches I2C -
-  both checked against the real code, not assumed. A read larger than the scratch (nothing today;
-  BMP3XX's 21-byte calibration block is the largest) falls back to allocating rather than refusing.
-  `machine.I2C.readfrom_mem_into()` was verified against the pinned 1.29.0 source rather than from
-  memory: `extmod/machine_i2c.c` routes it through the same `read_mem()` as `readfrom_mem` with the
-  same `OSError` semantics, and rp2's own hardware I2C type reuses that same locals dict.
-  Both test fakes gained `readfrom_mem_into()` **delegating to their own `readfrom_mem`**, so fault
-  injection (`--fault <chip>:readfrom_mem`), the bus log and every existing test keep working
-  unchanged. Three new tests in `tests/test_asy_i2c_driver.py`: the entry points use the
-  non-allocating form, a returned value is copied out rather than aliased to the shared buffer
-  (the one real hazard this design creates), and an oversized read still works.
-
 - **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller

@@ -2,6 +2,7 @@
 SystemExit contract, but had no test of its own: a swallowed exit code would leave every failing
 file in a --coverage run reported as a pass, and the raw dump is what the reports are built from."""
 
+import ast
 import json
 import subprocess
 from pathlib import Path
@@ -116,3 +117,71 @@ def test_only_the_traced_prefixes_are_recorded(repo_root: Path, settrace_bin: Pa
     assert recorded, "calling into src/ recorded nothing, so the tracer is not attached at all"
     assert all(name.startswith(("src/", "digital_twin/")) for name in recorded), f"untraced files leaked into the dump: {sorted(recorded)}"
     assert not any(str(probe) in name for name in recorded), "the test file's own body must stay untraced"
+
+
+_FIRST_TOUCH_PROBE = """import gc
+import sys
+import math_helpers
+
+
+def warm_up():
+    for _ in range(3):
+        math_helpers.abs_humidity(20.0, 50.0)
+        math_helpers.cct_mccamy(0.31, 0.32)
+        math_helpers.chromaticity_xy(1.0, 2.0, 3.0)
+        math_helpers.ema_step(1.0, 2.0, 0.5)
+
+
+def first_run():
+    for _ in range(3):
+        math_helpers.pressure_at_height(1013.0, 100.0, 15.0)
+        math_helpers.rel_humidity(20.0, 8.0)
+        math_helpers.rgb_to_hsb(10.0, 20.0, 30.0)
+        math_helpers.rgb_to_xyz(10.0, 20.0, 30.0)
+        math_helpers.wet_bulb_temperature(20.0, 50.0)
+
+
+def measured(span):
+    gc.collect()
+    before = gc.mem_alloc()
+    span()
+    gc.collect()
+    return gc.mem_alloc() - before
+
+
+math_helpers.dew_point(20.0, 50.0)
+measured(warm_up)
+print("GREW", measured(first_run))
+sys.exit(0)
+"""
+
+
+def _grew(completed: "subprocess.CompletedProcess[str]") -> list[str]:
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    return [line for line in completed.stdout.splitlines() if line.startswith("GREW ")]
+
+
+def test_lines_run_for_the_first_time_leave_the_collected_heap_where_it_was(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    # Tests measure their own heap under this runner, so recording must not allocate: lines first run inside a
+    # measured span store into tables sized at start. The first measured span carries a one-time cost with or without
+    # a tracer (up to 128 B, 2026-10-07), so a warm-up span absorbs it; the per-line dict grew 416 B on the second.
+    out, probe = tmp_path / "raw.json", _probe(tmp_path, _FIRST_TOUCH_PROBE)
+    untraced = _grew(subprocess.run([str(settrace_bin), str(probe)], cwd=repo_root, env={"MICROPYPATH": "build/generated_src:src:tests:frozen_modules:.frozen", "TZ": "UTC"}, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False))
+    traced = _grew(_run(repo_root, settrace_bin, probe, out))
+    assert len(untraced) == 1, untraced
+    assert traced == untraced, f"recording the measured span's new lines moved the collected heap: {traced} traced against {untraced} untraced"
+    recorded = json.loads(out.read_text())["src/math_helpers.py"]
+    source = (repo_root / "src" / "math_helpers.py").read_text().splitlines()
+    wet_bulb = next(n for n, text in enumerate(source, 1) if text.startswith("def wet_bulb_temperature("))
+    assert any(n > wet_bulb for n in recorded), "the lines first run inside the measured span are missing from the dump"
+    assert max(recorded) <= len(source), f"a recorded line lies past the file's end: {max(recorded)} > {len(source)}"
+
+
+def test_the_trace_functions_close_over_nothing(repo_root: Path) -> None:
+    # The tracer runs on every traced line, and MicroPython heap-allocates a closure call's argument array once its
+    # closed-over values plus arguments pass five (py/objclosure.c): one nested trace function with one more captured
+    # name made whole coverage runs 2.6x slower (2026-10-07). Module-level functions capture nothing.
+    tree = ast.parse((repo_root / _RUNNER).read_text())
+    scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+    nested = [getattr(inner, "name", "<lambda>") for outer in ast.walk(tree) if isinstance(outer, scopes) for inner in ast.walk(outer) if inner is not outer and isinstance(inner, scopes)]
+    assert not nested, f"{_RUNNER} defines functions inside functions, each a closure on the per-line path: {nested}"

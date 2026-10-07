@@ -15,6 +15,7 @@ import time
 sys.path.insert(0, "ext")
 
 import machine
+import rp2
 from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
@@ -147,6 +148,7 @@ async def _boot(device: str, cfg_path: "str | None" = None, **kwargs: "Any") -> 
     # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and
     # several devices' own modules get booted in this one process across this file's full run.
     asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
+    rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
     module = __import__(f"sensortask_{device}")
     await module.build_system(cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
     return module
@@ -294,6 +296,22 @@ def _register(name: str) -> "Callable[[Callable[[str], None]], Callable[[str], N
         return fn
 
     return deco
+
+
+@_register("every_build_starts_with_every_dma_channel_free")
+def _scenario_every_build_starts_with_every_dma_channel_free(device: str) -> None:
+    # Each UART link claims two of the twelve DMA channels in its setup; without the per-build reset a
+    # process rebuilding a linked graph runs out on its third build. Four builds, each after every channel was taken.
+    for _ in range(4):
+        stale = []
+        while True:
+            try:
+                stale.append(rp2.DMA())
+            except OSError:
+                break
+        assert stale, f"{device}: no DMA channel was free to plant before this build"
+        build(device)
+        assert all(channel.channel == 0xFF for channel in stale), f"{device}: a DMA channel held before the build was still claimed after it"
 
 
 @_register("build_system_constructs_every_real_module")

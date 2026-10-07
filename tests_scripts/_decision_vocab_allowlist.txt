@@ -7,7 +7,6 @@ BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from th
 BACKLOG.md	Deliberately does **not** use the Unix-port twin's own `gc.mem_free()` recovery-
 BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod
 BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
-BACKLOG.md	Recorded here per CLAUDE.md's flag-don't-silently-fix rule for cross-file API di
 BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
 BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no BME688/BSEC
 BACKLOG.md	decided, with full upstream research citations, real bench-hardware recovery-tim
@@ -71,12 +70,10 @@ SPECIFICATION.md	Confirmed deliberate by the project owner.
 SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a dire
 SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
 SPECIFICATION.md	Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a qu
-SPECIFICATION.md	I2C deliberately has no equivalent (BACKLOG's deferred list).
 SPECIFICATION.md	It also pins each device's maximum, so a new driver or a widened string bound fa
 SPECIFICATION.md	It stays documented here as a tool to reach for *if* a severe, hard-to-debug res
 SPECIFICATION.md	No static `src/sensortask_*.py` file exists: `scripts/_generate_sensortask_modul
 SPECIFICATION.md	Nothing legitimate could provoke it — every accepted body is far smaller — but a
-SPECIFICATION.md	One deliberate divergence stays: both fakes hand back a **fresh object** per con
 SPECIFICATION.md	One section per chip whose behaviour needed more than its datasheet and its driv
 SPECIFICATION.md	Pico W's CYW43 firmware genuinely reduces usable heap versus a plain Pico (rough
 SPECIFICATION.md	Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s `# @requi
@@ -197,7 +194,6 @@ scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state an
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
 src/asy_bmp3xx_driver.py	A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionErro
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
-src/asy_fram_driver.py	The three guards get_values()/set_values() share, in the same bit set so one sta
 src/asy_fram_driver.py	WP8: persisted by the caller, matching FRAMManager's own "communication paused,
 src/asy_fram_driver.py	WP8: persisted, matching FRAMManager's own "communication paused, not writing" p
 src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
@@ -253,7 +249,6 @@ tests/machine.py	One period elapsing with its soft callback lost to a full sched
 tests/machine.py	test-only: caps bytes accepted per write() call - see write()
 tests/machine.py	write() is deliberately not injectable - the real write-only path has no failure
 tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
-tests/test_asy_bmp3xx_driver.py	Not a bug in this driver: it is the lower layer's deliberate "non-hardware failu
 tests/test_asy_bmp3xx_driver.py	start_timer() is synchronous, so it logs via the plain, non-counting pr.err() ra
 tests/test_asy_bmp3xx_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
@@ -262,9 +257,7 @@ tests/test_asy_dns_client.py	Both are unused by design - it raises before readin
 tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
 tests/test_asy_dns_client.py	dns_servers deliberately point nowhere real (and aren't even valid literals for
 tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
-tests/test_asy_fram_driver.py	Deliberately-allowed exception paths - inherited from asy_spi_driver.py, never c
 tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch, by design (not a bug)
-tests/test_asy_fram_driver.py	The other deliberately-allowed path: if the underlying bus is deinitialized out
 tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
 tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
@@ -282,7 +275,6 @@ tests/test_asy_i2c_driver.py	I2CDevice's read and write methods never acquire se
 tests/test_asy_i2c_driver.py	Not reentrant by design, being a plain asyncio.Lock: nesting `async with device:
 tests/test_asy_i2c_driver.py	This driver deliberately doesn't range-check `address` itself (SPECIFICATION.md
 tests/test_asy_i2c_driver.py	set_register_struct is deliberately single-value-only;
-tests/test_asy_i2c_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
 tests/test_asy_isl29125_driver.py	0xC8 is B7|B6|B3 - the reserved bits that read zero on a working part (p12, Tabl
 tests/test_asy_isl29125_driver.py	A software-only knob has nothing to read back, and _recover_failed_push() skips
 tests/test_asy_isl29125_driver.py	Deliberate: the factor 2 absorbs the entire [20, 34] band that field allows, so
@@ -323,7 +315,6 @@ tests/test_asy_scd30_driver.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
 tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
-tests/test_asy_spi_driver.py	Bypasses `async with device:` deliberately: __aenter__ would call configure(), w
 tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
 tests/test_asy_spi_driver.py	The synchronous session deliberately does not take the lock, so the caller-holds
 tests/test_asy_spi_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
@@ -341,9 +332,7 @@ tests/test_asy_uart_comm.py	setup()'s drain is deliberately not a fault and not 
 tests/test_asy_uart_driver.py	J.5's "provably terminating" half: a lock holder that never calls ready() again
 tests/test_asy_uart_driver.py	Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's sha
 tests/test_asy_uart_driver.py	Two consecutive delimiters must never surface as a zero-length frame to index in
-tests/test_asy_uart_driver.py	`msg += add`'s own MemoryError guard is deliberately not fault-injected: unlike
 tests/test_asy_uart_driver.py	never touches the bus again
-tests/test_asy_uart_driver.py	type: ignore[assignment] # never becomes ready again
 tests/test_asy_udp_socket.py	"0.0.0.0", or a deliberately unreachable address - rather than a fresh loopback
 tests/test_asy_udp_socket.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch

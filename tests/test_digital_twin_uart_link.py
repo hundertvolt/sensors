@@ -21,9 +21,13 @@ prewarm_poll_set()
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto().
 patch_asy_udp_socket_for_unix_port()
 
+import rp2  # noqa: E402
 import sensortask_dev  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from machine import LinkPoller, UARTLink  # noqa: E402
+
+import asy_uart_comm  # noqa: E402
+import asy_uart_driver  # noqa: E402
 
 try:
     from typing import TYPE_CHECKING
@@ -58,6 +62,9 @@ _COLLECT_STEP_MS = 3
 _COLLECT_ROUNDS = 6
 # @tunable l2.uart_link_max_train_limit_s = 240
 _MAX_TRAIN_LIMIT_S = 240
+# A host stall past the link's 1000 ms reply timeout, after this many UART sleeps (mid-train: about 4350 in all)
+_MAX_TRAIN_STALL_MS = 1100
+_MAX_TRAIN_STALL_AFTER = 2000
 # @tunable l2.uart_link_hammer_limit_s = 300
 _HAMMER_LIMIT_S = 300
 # @tunable l2.uart_link_leak_rounds = 300
@@ -88,6 +95,48 @@ def run(coro: "Coroutine[Any, Any, T]", limit: int = _RUN_LIMIT_S) -> "T":
     return asyncio.run(asyncio.wait_for(coro, limit))
 
 
+class _PollRoundClock:
+    # The UART modules' deadlines read on a clock only they advance: by each sleep, and 1 ms per read so a wait that
+    # never yields still expires. Both ends share this interpreter, so on the wall clock a host stall or a slow twin
+    # step would spend the peer's reply budget. `stall_ms` blocks the interpreter once, after `stall_after` sleeps.
+    def __init__(self, stall_after: int = 0, stall_ms: int = 0) -> None:
+        self._stall = [stall_after, stall_ms]
+
+    def __enter__(self) -> "_PollRoundClock":
+        real_time = time
+        now: list[Any] = [time.ticks_ms()]  # the real value: deadlines stored before entry stay comparable
+        stall = self._stall
+
+        class _Time:
+            ticks_add = staticmethod(real_time.ticks_add)
+            ticks_diff = staticmethod(real_time.ticks_diff)
+
+            @staticmethod
+            def ticks_ms() -> int:
+                now[0] = real_time.ticks_add(now[0], 1)
+                return int(now[0])
+
+        class _Asyncio:
+            Lock = asyncio.Lock
+            get_event_loop = staticmethod(asyncio.get_event_loop)
+
+            @staticmethod
+            async def sleep_ms(ms: int) -> None:
+                now[0] = real_time.ticks_add(now[0], ms)
+                await asyncio.sleep_ms(ms)
+                stall[0] -= 1
+                if stall[0] == 0 and stall[1]:
+                    real_time.sleep_ms(stall[1])
+
+        asy_uart_driver.asyncio = asy_uart_comm.asyncio = _Asyncio()  # type: ignore[attr-defined, assignment]
+        asy_uart_driver.time = asy_uart_comm.time = _Time()  # type: ignore[attr-defined, assignment]
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asy_uart_driver.asyncio = asy_uart_comm.asyncio = asyncio  # type: ignore[attr-defined]
+        asy_uart_driver.time = asy_uart_comm.time = time  # type: ignore[attr-defined]
+
+
 def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
@@ -106,6 +155,7 @@ def build_linked_system() -> "TwinLink":
     # The real dev object graph, its two UART peripherals joined the way the bench jumper joins
     # them (GP0<->GP9, GP1<->GP8). The pollers are then swapped for the bounded stand-in: a real
     # select.poll() never re-checks a Python object's ioctl(), so readiness would never be seen.
+    rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     dev = sensortask_dev
     assert dev.uart0 is not None and dev.uart1 is not None
@@ -115,6 +165,26 @@ def build_linked_system() -> "TwinLink":
     dev.uart0.poller = LinkPoller(fake_a)  # type: ignore[assignment]
     dev.uart1.poller = LinkPoller(fake_b)  # type: ignore[assignment]
     return link
+
+
+def _claim_every_free_channel() -> "list[rp2.DMA]":
+    # Stands in for the channels an earlier build's links still hold: twelve exist (rp2_dma.c:357-366).
+    claimed = []
+    while True:
+        try:
+            claimed.append(rp2.DMA())
+        except OSError:
+            return claimed
+
+
+def test_every_build_starts_with_every_dma_channel_free() -> None:
+    # A process that rebuilds dev's graph would otherwise run out of channels on its third build,
+    # each link claiming two in its setup; four builds, each after every channel was taken.
+    for _ in range(4):
+        stale = _claim_every_free_channel()
+        assert stale, "no channel was free to plant before this build"
+        build_linked_system()
+        assert all(channel.channel == 0xFF for channel in stale), "a channel held before the build was still claimed after it"
 
 
 async def exchange(work: "Coroutine[Any, Any, T]") -> "T":
@@ -345,9 +415,9 @@ def test_a_forced_collection_mid_transfer_does_not_break_the_link() -> None:
 
 
 def test_a_maximum_length_train_completes_and_still_yields() -> None:
-    # The massive singular load: the longest transaction this protocol can express, 254 data chunks
-    # at payload_size 48. One transfer, hundreds of stop-and-wait round trips - the case where a
-    # single non-yielding step anywhere in the read or write path would be most visible.
+    # The massive singular load: the longest transaction this protocol can express, 254 data chunks at payload_size 48,
+    # where one non-yielding step in the read or write path would be most visible. A host stall past the 1000 ms reply
+    # timeout lands mid-train: the deadlines count poll rounds.
     build_linked_system()
     dev = sensortask_dev
     assert dev.uart_link_init is not None
@@ -367,7 +437,9 @@ def test_a_maximum_length_train_completes_and_still_yields() -> None:
         finally:
             background.cancel()
 
-    assert run(scenario(), limit=_MAX_TRAIN_LIMIT_S) is True, "the maximum-length train did not complete"
+    with _PollRoundClock(stall_after=_MAX_TRAIN_STALL_AFTER, stall_ms=_MAX_TRAIN_STALL_MS):
+        completed = run(scenario(), limit=_MAX_TRAIN_LIMIT_S)
+    assert completed is True, "the maximum-length train did not complete"
     # Progress, not a rate: the ticker must have been scheduled throughout, which it cannot be if
     # any step held the loop for the whole transfer.
     assert len(ticks) > 50, f"other tasks ran only {len(ticks)} times across a 254-chunk transfer"
@@ -389,11 +461,11 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
     fake_a, fake_b = fakes()
 
     def _clear_wire_logs() -> None:
-        # The twin records every delivered byte in an unbounded wire_log. Over this many transfers
-        # that is ~95kB of test instrumentation, which would otherwise be measured as the leak this
-        # test is looking for - it is the harness growing, not the driver.
-        link.direction_from(fake_a).wire_log = bytearray()
-        link.direction_from(fake_b).wire_log = bytearray()
+        # The twin keeps up to 4 KB of delivered bytes per direction in wire_log: test instrumentation
+        # that would otherwise be measured as the leak this test is looking for - the harness growing
+        # to its cap, not the driver.
+        link.direction_from(fake_a).wire_log.clear()
+        link.direction_from(fake_b).wire_log.clear()
 
     async def scenario() -> "tuple[int, int]":
         _clear_wire_logs()
@@ -479,8 +551,8 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         # The twin records every delivered byte in an unbounded wire_log - about 15kB over this
         # many transactions. That is the harness growing, not the driver, and measuring it as a
         # leak is exactly the mistake Part E.7 warns about.
-        link.direction_from(fake_a).wire_log = bytearray()
-        link.direction_from(fake_b).wire_log = bytearray()
+        link.direction_from(fake_a).wire_log.clear()
+        link.direction_from(fake_b).wire_log.clear()
 
     async def scenario() -> "tuple[int, int]":
         noise = [asyncio.create_task(_uptime_noise(dev)) for _ in range(_HAMMER_NOISE_CONSUMERS)]

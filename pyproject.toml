@@ -383,11 +383,12 @@ no_site_packages = true
 # effect during mypy's own directory walk.
 files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
 # Excluded, each for a reason B.15 states: tests/network.py would hijack the real `network` stub
-# project-wide; the twin's fakes collide with tests/machine.py; the rest need the twin's own API, so
-# digital_twin/typecheck.ini checks them.
+# project-wide; the twin's fakes collide with tests/machine.py and tests/rp2.py; the rest need the
+# twin's own API, so digital_twin/typecheck.ini checks them.
 exclude = [
     "tests/network\\.py$",
     "digital_twin/machine\\.py$",
+    "digital_twin/rp2\\.py$",
     "digital_twin/network\\.py$",
     "digital_twin/neopixel\\.py$",
     "digital_twin/launch\\.py$",

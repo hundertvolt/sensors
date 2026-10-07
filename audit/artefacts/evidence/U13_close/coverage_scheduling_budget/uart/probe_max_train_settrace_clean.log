@@ -1,0 +1,3 @@
+rep 0 PASS elapsed_ms 6774 polls {'resp': 462, 'init': 541} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [294, 452, 10, 1], 'init': [335, 482, 10, 1]}
+rep 1 PASS elapsed_ms 6610 polls {'resp': 464, 'init': 546} bounded waits role:[n,max_ms,n>100ms,n_false] {'resp': [295, 387, 10, 1], 'init': [337, 443, 11, 1]}
+fails 0 / 2

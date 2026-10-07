@@ -43,18 +43,18 @@ class _CsHijack:
         cs.value(not active)
 
     def install_for_write(self) -> None:
-        def hijacked(buf: "bytes | bytearray | memoryview") -> None:
+        def hijacked(buf: "bytes | bytearray | memoryview") -> bool:
             if len(buf) == self._payload_len and not self.injected_with_cs_asserted:
                 self._yank()  # deselect the chip before its payload can reach it
-            self._write_sync(buf)
+            return self._write_sync(buf)
 
         self._spidev.write_sync = hijacked  # type: ignore[method-assign]
 
     def install_for_read(self) -> None:
-        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> None:
+        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> bool:
             if len(buf) == self._payload_len and not self.injected_with_cs_asserted:
                 self._yank()
-            self._readinto_sync(buf, write_value)
+            return self._readinto_sync(buf, write_value)
 
         self._spidev.readinto_sync = hijacked  # type: ignore[method-assign]
 

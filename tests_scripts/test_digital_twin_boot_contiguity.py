@@ -4,6 +4,7 @@ their survivors low, measured through tests_hardware/heap_map.py - the board tie
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -33,6 +34,7 @@ _MICROPYPATH = "build/generated_src:src:tests:frozen_modules:.frozen"
 # @tunable l1.unix_heapsize = 16M
 _HEAPSIZE = "16M"
 _PROBE = "tests/_boot_contiguity_probe.py"
+_GENERATED = Path(__file__).resolve().parent.parent / "build" / "generated_src"
 # @tunable l0.boot_contiguity_probe_timeout_s = 120
 _PROBE_TIMEOUT_S = 120
 
@@ -92,13 +94,25 @@ _RETENTION_TOLERANCE = 0.01
 _MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
 
 _COUNTER_LINE = re.compile(r"^(?:LISTS|COUNTS) (.*)$", re.MULTILINE)
+_RING_LINE = re.compile(r"^RING (\S+) (\S+) (none|0x[0-9a-f]+) (\d+)$", re.MULTILINE)
+_POOL_START = re.compile(r"^GC memory layout; from ([0-9a-fA-F]+):", re.MULTILINE)
 
 
 class _ProbeRun(NamedTuple):
-    # One boot of one device on one arm: the maps it dumped and the counters it printed.
+    # One boot of one device on one arm: the maps it dumped, the counters it printed, each UART bus's
+    # receive ring (position -> bus -> (address, length), address None for no ring) and the heap's start.
 
     maps: dict[str, HeapMap]
     counters: dict[str, int]
+    rings: dict[str, dict[str, tuple[int | None, int]]]
+    pool_start: int | None
+
+
+def _parse_rings(stdout: str) -> dict[str, dict[str, tuple[int | None, int]]]:
+    found: dict[str, dict[str, tuple[int | None, int]]] = {}
+    for label, bus, address, length in _RING_LINE.findall(stdout):
+        found.setdefault(label, {})[bus] = (None if address == "none" else int(address, 16), int(length))
+    return found
 
 
 def _parse_counters(stdout: str) -> dict[str, int]:
@@ -121,7 +135,8 @@ def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedPro
     maps = parse_labelled(completed.stdout)
     missing = [label for label in _REQUIRED_MAPS if label not in maps]
     assert not missing, f"no usable map captured for {missing} on {device}/{arm} - the measurement would be vacuous:\n{tail}"
-    return _ProbeRun(maps, _parse_counters(completed.stdout))
+    pool = _POOL_START.search(completed.stdout)
+    return _ProbeRun(maps, _parse_counters(completed.stdout), _parse_rings(completed.stdout), int(pool.group(1), 16) if pool else None)
 
 
 @pytest.fixture(scope="session")
@@ -272,6 +287,35 @@ def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
     assert counters["batch_collects"] == setup_calls + 1, f"{device}: the generated build_system() awaits {setup_calls} setup() calls, so it must collect {setup_calls + 1} times (one before the batch, one after each module) - a real boot fired {counters['batch_collects']}"
     assert counters["starter_collects"] == counters["starters"] + 1, f"{device}: {counters['starters']} task starters ran but the loop collected {counters['starter_collects']} times, not {counters['starters'] + 1}"
     assert source.count("gc.collect()") == setup_calls + 1, f"{device}: the generated module carries {source.count('gc.collect()')} gc.collect() lines against {setup_calls} setup() calls - one before the batch and one after each module is {setup_calls + 1}"
+
+
+def _uart_link_devices() -> list[str]:
+    # Every device whose wiring builds a UART link: the ones whose setup allocates receive rings.
+    return [device for device in DEVICE_NAMES if "uart_link" in json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())["instances"]]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+    # Each link allocates its DMA ring in its own setup(), a unit of the one-time batch, so the placement
+    # reset puts it low with the other survivors (SPECIFICATION.md I.4(f.1)), and its address never moves:
+    # the same ring after the starter loop, nothing reallocated once the batch ended.
+    if device not in _uart_link_devices():
+        pytest.skip(f"{device} builds no UART link, so it has no receive ring")
+    run = boot_probe(device, _ARM_LIVE)
+    after_batch, after_loop = run.rings.get("after_batch", {}), run.rings.get("after_starter_loop_end", {})
+    plan = json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())
+    assert len(after_batch) == len(plan["uart"]), f"{device}: the probe reported rings for {sorted(after_batch)}, not one per bus of the {len(plan['uart'])}-bus link"
+    assert after_loop == after_batch, f"{device}: a receive ring moved or appeared after the setup batch: {after_batch} then {after_loop}"
+    assert run.pool_start is not None, f"{device}: the probe's maps carry no heap start, so no ring can be placed"
+    seam = run.maps["batch_00"]
+    seam_top = seam.total_bytes - seam.free_above_top_survivor
+    for bus, (address, length) in sorted(after_batch.items()):
+        assert address is not None, f"{device}: {bus} came out of the setup batch with no receive ring"
+        above = address + length - run.pool_start - seam_top
+        assert above <= _HIGH_BAND, f"{device}: {bus}'s receive ring ends {above} B above the seam, past the {_HIGH_BAND} B high band - it is not placed with the boot's survivors"
+    batch, before = run.maps["after_batch"], seam
+    windows = sum(length for _address, length in after_batch.values())
+    print(f"{device}: {len(after_batch)} receive rings, {windows} B of windows; largest free run {before.largest_free_run} B before the batch, {batch.largest_free_run} B after")
 
 
 _BOARD_SCRIPT = "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py"

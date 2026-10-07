@@ -1,0 +1,15 @@
+316-
+317-    async def clear(self) -> int:
+318-        # The bus-clear rung: nine SCL pulses and a STOP at most, under the bus lock. Returns _REC_* bits.
+319:        if True:  # mutation: no bus lock
+320-            status = await self._clear_locked()
+321-            self.recoveries = self.recoveries + 1 if self.recoveries < COUNTER_CAP else 0  # a wrap-by-design sequence: compared for equality only
+322-        return status
+--
+368-    async def recover(self) -> int:
+369-        # The controller rung: the bus clear, then a re-construction with the stored arguments - rp2's only
+370-        # controller re-init (Part F.5.1) - under one bus-lock hold. _REC_NO_CONTROLLER leaves no bus.
+371:        if True:  # mutation: no bus lock
+372-            status = await self._clear_locked()
+373-            try:
+374-                self.init(*self._args)

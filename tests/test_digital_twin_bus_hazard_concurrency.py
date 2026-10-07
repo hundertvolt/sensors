@@ -593,6 +593,73 @@ def test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words(
         assert results[(t, rh)] == own, f"the session at {t} C/{rh} % got {results[(t, rh)]}, not the word read after its own write ({own:#x})"
 
 
+# @tunable l2.bus_hazard_recovery_offsets = 6
+_RECOVERY_OFFSETS = 6
+# @tunable l2.bus_hazard_recovery_reads = 6
+_RECOVERY_READS = 6
+
+
+def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads() -> None:
+    # The controller rung on the twin chips (Part C.8): recover() clears the bus and rebuilds its controller
+    # under the bus lock while the SGP40 and BMP3XX read loops run, at every offset into them. Every sibling
+    # read stays valid, the chips survive the re-construction, and no transfer runs inside the recovery.
+    machine.configure_i2c_wiring("wozi")
+    machine.Pin.reset_registry()
+    bus = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)  # wozi's i2c1, as its generated module builds it
+    fake = bus._i2c
+    assert fake is not None
+    chips = dict(fake.devices)
+    sgp = SGP40_I2C(bus)
+    bmp = asy_i2c_driver.I2CDevice(bus, 0x77)
+
+    def scl_line(_pin_id: int, _value_log: object) -> int:
+        fake.log.append(("scl-read",))  # every SCL read the clear makes, marked in the bus log itself
+        return 1
+
+    async def sgp_reads(results: "list[int | None]") -> None:
+        for _ in range(_RECOVERY_READS):
+            results.append(await sgp.measure_raw())
+
+    async def bmp_reads(results: "list[int | None]") -> None:
+        for _ in range(_RECOVERY_READS):
+            raw = await bmp.get_register_bytes(0x00, 1)  # CHIP_ID
+            results.append(None if raw is None else raw[0])
+
+    async def recovery(offset: int) -> int:
+        for _ in range(offset):
+            await asyncio.sleep(0)
+        return await bus.recover()
+
+    machine.Pin.set_external_level(19, scl_line)  # wozi's i2c1 SCL, released: the line reads high
+    try:
+        for offset in range(_RECOVERY_OFFSETS):
+            sgp_results: list[int | None] = []
+            bmp_results: list[int | None] = []
+            before = bus.recoveries
+
+            async def scenario(offset: int = offset, sgp_results: "list[int | None]" = sgp_results, bmp_results: "list[int | None]" = bmp_results) -> int:
+                status, _sgp, _bmp = await asyncio.gather(recovery(offset), sgp_reads(sgp_results), bmp_reads(bmp_results))
+                return status
+
+            status = run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+            assert status == 0, f"offset {offset}: a healthy bus's recovery reported status {status}"
+            assert bus.recoveries == before + 1, f"offset {offset}: the recovery did not run once"
+            assert bus._i2c is fake and fake.devices == chips, f"offset {offset}: the re-construction lost the wired chips"
+            assert None not in sgp_results and len(sgp_results) == _RECOVERY_READS, f"offset {offset}: an SGP40 read failed beside the recovery: {sgp_results}"
+            assert bmp_results == [bmp_results[0]] * _RECOVERY_READS and bmp_results[0] in (0x50, 0x60), f"offset {offset}: a BMP3XX chip-ID read went wrong beside the recovery: {bmp_results}"
+            # This recovery's window runs from the previous rebuild to its own: every SCL read in it must sit
+            # in one unbroken run right before the rebuild, so no transfer ran between the clear and the init.
+            kinds = [entry[0] for entry in fake.log]
+            rebuilt = len(kinds) - 1 - kinds[::-1].index("init")
+            previous = rebuilt - 1 - kinds[rebuilt - 1 :: -1].index("init") if "init" in kinds[:rebuilt] else -1
+            window = kinds[previous + 1 : rebuilt]
+            assert "scl-read" in window, f"offset {offset}: the recovery rebuilt the controller without clearing the bus first"
+            first = window.index("scl-read")
+            assert window[first:] == ["scl-read"] * (len(window) - first), f"offset {offset}: a transfer ran between the clear's start and the rebuilt controller: {window[first:]}"
+    finally:
+        machine.Pin.reset_registry()
+
+
 if __name__ == "__main__":
     import microtest
 

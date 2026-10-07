@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from asy_config_manager import CfgValue, ConfigSchema, FieldSchema, WriteValidity
+    from asy_i2c_driver import I2C
     from asy_print_log import ErrorLog, PrintLogHistory
 
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
@@ -78,8 +79,23 @@ _ERR_PUSH_RAISED = const(6)
 _ERR_CFG_SNAPSHOT_RAISED = const(7)
 _ERR_RECOVERY_READ_RAISED = const(8)
 _ERR_RECOVERY_WRITE_RAISED = const(9)
+_ERR_CALLBACK = const(14)
 _WRN_CALLBACK_KEYS = const(1)
 _WRN_CFG_KEYS = const(2)
+_WRN_DEVICE_RECOVERY = const(14)
+_WRN_BUS_RECOVERY = const(15)
+
+# Recovery ladder: participant at the 2nd failed cycle, bus clear at the 3rd, controller at the 4th, task end
+# past max_module_error (owner, 2026-09-30: smallest blast radius first; thresholds agent, 2026-09-30).
+# @tunable module.recover_device_at = 2
+_RECOVER_DEVICE_AT = const(2)
+# @tunable module.recover_bus_at = 3
+_RECOVER_BUS_AT = const(3)
+# @tunable module.recover_controller_at = 4
+_RECOVER_CONTROLLER_AT = const(4)
+_RUNG_DEVICE = const(1)
+_RUNG_BUS = const(2)
+_RUNG_CONTROLLER = const(4)
 
 
 class Lockable:
@@ -281,6 +297,9 @@ class SensorReader:
         # Per-field live read-back for _recover_failed_push's fallback chain (optional, unlike
         # _push_callbacks); a field with no entry skips to the next rung (see SPECIFICATION.md C.5.2).
         self._get_callbacks: dict[str, Callable[[], Awaitable[CfgValue]]] = {}
+        self._rungs = 0  # the _RUNG_* bits this failure episode already ran
+        self._bus_mark = 0  # _recovery_bus.recoveries when this episode began
+        self._recovery_bus: I2C | None = None  # set by a driver whose chip sits on I2C
 
     async def _get_dict_cfg(
         self,
@@ -388,23 +407,89 @@ class SensorReader:
         # No store: nothing persists, so _set_dict_cfg() answers every requested key "Failed".
         return False, {}
 
+    async def _climb_ladder(self) -> None:
+        # One rung per failed cycle, each at most once per episode; the bit is set before the first await.
+        n = self._err_cnt_internal
+        if n >= _RECOVER_DEVICE_AT and not self._rungs & _RUNG_DEVICE:
+            self._rungs |= _RUNG_DEVICE
+            try:
+                ok = await self._recover_device()
+            except Exception as e:  # an overridable extension point, guarded like this file's others
+                await self.pr.err_s("Device recovery raised:", e, errno=_ERR_CALLBACK)
+                return  # a failed rung: its one entry is this error
+            if ok is True:  # a failed hook has logged its own error; None means no participant rung
+                await self.pr.wrn_s("Device recovery after", n, "failed cycles: done", wrnno=_WRN_DEVICE_RECOVERY)
+        elif n >= _RECOVER_BUS_AT and not self._rungs & _RUNG_BUS:
+            await self._recover_bus(_RUNG_BUS)
+        elif n >= _RECOVER_CONTROLLER_AT:
+            await self._recover_bus(_RUNG_CONTROLLER)
+
     def _commit_mgr_cfg(self) -> None:
         # Releases a store's deferred write once the pushes ended; no store, nothing deferred.
         return
 
     async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
-        # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
-        # _error_check() bullet for the full contract.
+        # Shared consecutive-failure-streak counter and recovery ladder - see SPECIFICATION.md Part
+        # C.7's _error_check() bullet for the full contract.
         if any(res is None for res in results) and condition:
+            if self._err_cnt_internal == 0 and self._recovery_bus is not None:
+                self._bus_mark = self._recovery_bus.recoveries  # a new episode: no reader has recovered the bus yet
             self._err_cnt_internal += 1
             await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=_ERR_STREAK)
             if self._err_cnt_internal > self._max_module_error:
                 await self.pr.err_s("Maximum error count reached!", errno=_ERR_GIVE_UP)
                 return False  # breaking the loop triggers a task reset
-        elif self._err_cnt_internal > 0:
+            await self._climb_ladder()
+            return True
+        if self._err_cnt_internal > 0:
             self._err_cnt_internal -= 1
             self.pr.err("Error counter back to", self._err_cnt_internal)
+        if self._err_cnt_internal == 0:
+            self._rungs = 0  # the episode ends: every rung is armed again
         return True
+
+    async def _init_done(self) -> None:
+        # A driver's _init_*() calls it after a successful setup: the episode ends, and the bus's
+        # construction-time clear is reported once, by the first reader on that bus.
+        self._rungs = 0
+        bus = self._recovery_bus
+        if bus is None:
+            return
+        status = bus.take_boot_clear_status()
+        if status:
+            await self.pr.wrn_s("I2C bus was held at boot and cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
+
+    async def _init_failed(self) -> None:
+        # A driver's _init_*() calls it before a chip-setup failure's return False: the bus is cleared and
+        # its controller rebuilt before the task's restart budget reaches the reboot.
+        bus = self._recovery_bus
+        if bus is None:
+            return
+        self._bus_mark = bus.recoveries  # the setup attempt starts its own episode
+        self._rungs |= _RUNG_BUS
+        await self._recover_bus(_RUNG_CONTROLLER)
+
+    async def _recover_bus(self, rung: int) -> None:
+        # One bus rung per bus per episode: a reader that sees the bus already recovered since its episode
+        # began (another reader on it ran the rung) only marks its own rung as spent.
+        bus = self._recovery_bus
+        if bus is None or self._rungs & rung:
+            return
+        self._rungs |= rung
+        if bus.recoveries != self._bus_mark:
+            return
+        if rung == _RUNG_BUS:
+            status = await bus.clear()
+            await self.pr.wrn_s("I2C bus cleared, status", status, wrnno=_WRN_BUS_RECOVERY)
+        else:
+            status = await bus.recover()
+            await self.pr.wrn_s("I2C controller re-initialised, status", status, wrnno=_WRN_BUS_RECOVERY)
+        self._bus_mark = bus.recoveries  # this reader's own rung is not another reader's at the next one
+
+    async def _recover_device(self) -> bool | None:
+        # The participant rung a driver overrides: True done, False failed (it has persisted its own error),
+        # never a raise. None: this reader has none, and nothing is logged.
+        return None
 
     async def _recover_failed_push(
         self,
@@ -475,6 +560,7 @@ class SensorReader:
         # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
         # decision relies on, and must not survive a reset the caller expects to be total.
         self._err_cnt_internal = 0
+        self._rungs = 0
         return await self.pr.reset()
 
     async def setup(self) -> bool:
