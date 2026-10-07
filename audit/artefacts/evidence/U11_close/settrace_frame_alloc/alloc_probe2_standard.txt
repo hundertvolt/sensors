@@ -1,0 +1,12 @@
+RESULT method level 0 0 96
+RESULT method level 0 1 0
+RESULT method level 0 2 0
+RESULT method level 1 0 0
+RESULT method level 1 1 0
+RESULT method level 1 2 0
+RESULT direct_empty_call 0 0
+RESULT direct_empty_call 1 0
+RESULT direct_empty_call 2 0
+RESULT method_empty 0 0
+RESULT method_empty 1 0
+RESULT method_empty 2 0

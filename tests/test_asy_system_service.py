@@ -2131,6 +2131,19 @@ def _context(exc: object) -> "_Context":
     return {"message": _UNRETRIEVED, "exception": exc, "future": object()}
 
 
+def _call_cost() -> int:
+    # What one empty two-argument Python call allocates on this binary: 0, except build-settrace's frame
+    # object per call (Part E.5.2), so "allocates nothing" holds the report to exactly that cost.
+    def empty(_loop: object, _context: object) -> None:
+        pass
+
+    empty(None, None)
+    gc.collect()
+    before = gc.mem_alloc()
+    empty(None, None)
+    return gc.mem_alloc() - before
+
+
 def _call_locked(report: "Callable[[object, _Context], None]", context: "_Context") -> None:
     micropython.heap_lock()
     try:
@@ -2223,11 +2236,12 @@ def test_the_reports_outputs_allocate_nothing() -> None:
         svc = make_service()
         assert svc.pr.set_level(level)
         context = _context(exc)
+        cost = _call_cost()
         gc.collect()
         before = gc.mem_alloc()
         svc.pr.report_unretrieved(None, context)
         after = gc.mem_alloc()
-        assert after == before, (level, after - before)
+        assert after - before == cost, (level, after - before, cost)
 
 
 def test_a_report_that_cannot_print_still_releases_the_task_and_never_raises() -> None:
