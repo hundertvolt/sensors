@@ -46,7 +46,6 @@ SPECIFICATION.md	**Constraint — a loopback harness must never register a fake 
 SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a
 SPECIFICATION.md	**Deliberately never a symlink**: [MicroPython issue #12671](https://github.com/
 SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
-SPECIFICATION.md	**Known structural gap, accepted risk (`SGP40_I2C._reset()`)**: `writeto(0x00, b
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
 SPECIFICATION.md	**Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_
 SPECIFICATION.md	**The persistence counter** was settled with both thresholds parked at `0x0000`,
@@ -64,7 +63,6 @@ SPECIFICATION.md	- `Request.max_content_length` — the largest body that is *ac
 SPECIFICATION.md	A change is protocol-level ("Class A") if it alters the bytes emitted, which rec
 SPECIFICATION.md	A mismatch desyncs the link outright, so an out-of-range value must never be sil
 SPECIFICATION.md	Because the final chunk's acknowledgement is deferred until after the responder'
-SPECIFICATION.md	Confirmed deliberate by the project owner.
 SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a dire
 SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
 SPECIFICATION.md	Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a qu
@@ -178,7 +176,6 @@ scripts/_digital_twin_ci_suite.py	192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non
 scripts/_digital_twin_ci_suite.py	Counter and slot count are therefore different numbers here, deliberately - SPEC
 scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
 scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
-scripts/_digital_twin_ci_suite.py	The one registered error source deliberately not FRAM-backed: FRAMManager builds
 scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
 scripts/build_website.sh	Part H.7 owns why bundling and inlining exist at all, and why keep-alive is deli
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
@@ -188,20 +185,17 @@ scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- del
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
 scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
-src/asy_bmp3xx_driver.py	A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionErro
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
 src/asy_fram_driver.py	WP8: persisted by the caller, matching FRAMManager's own "communication paused,
 src/asy_fram_driver.py	WP8: persisted, matching FRAMManager's own "communication paused, not writing" p
 src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
 src/asy_fram_manager.py	Deliberate: no generation counter says which block is newer, so a write torn bet
 src/asy_isl29125_driver.py	Calibrate is deliberately absent from this schema argument: ConfigManager.get_di
-src/asy_isl29125_driver.py	None once the hold expires, so a stale candidate can never be mistaken for a fre
 src/asy_isl29125_driver.py	Only the four hardware-backed fields have one: the software knobs have nothing t
 src/asy_isl29125_driver.py	The shadow must never claim a value the part did not take: normalise() scales ev
 src/asy_isl29125_driver.py	The switch-back-down point is derived from this - 1/53.3 of it - so both ends of
 src/asy_isl29125_driver.py	_active_range is deliberately NOT updated, so the next cycle re-evaluates and re
 src/asy_isl29125_driver.py	flag=False is deliberately a no-op, matching SGP40_Reader.reset_voc()'s own cont
-src/asy_scd30_driver.py	Deliberately no _VAL_* entry for "ContMeas": the SCD30 cannot report whether con
 src/asy_scd30_driver.py	Pure cache read from the last read_measurement() call, no I2C of its own - see r
 src/asy_sgp40_driver.py	Deliberately does NOT forward reset_voc()'s own return value: it uses False for
 src/asy_sgp40_driver.py	Deliberately excluded from get_dict_cfg()'s own schema argument below - this key
@@ -245,7 +239,6 @@ tests/machine.py	One period elapsing with its soft callback lost to a full sched
 tests/machine.py	test-only: caps bytes accepted per write() call - see write()
 tests/machine.py	write() is deliberately not injectable - the real write-only path has no failure
 tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
-tests/test_asy_bmp3xx_driver.py	start_timer() is synchronous, so it logs via the plain, non-counting pr.err() ra
 tests/test_asy_bmp3xx_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_dns_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
@@ -276,7 +269,6 @@ tests/test_asy_isl29125_driver.py	A software-only knob has nothing to read back,
 tests/test_asy_isl29125_driver.py	Deliberate: the factor 2 absorbs the entire [20, 34] band that field allows, so
 tests/test_asy_isl29125_driver.py	Green alone really would have decided to go back down - that is what makes this
 tests/test_asy_isl29125_driver.py	One increment, deliberately: the driver genuinely has no sample that cycle.
-tests/test_asy_isl29125_driver.py	SampleInterval is deliberately NOT in this list any more: the derived transient
 tests/test_asy_isl29125_driver.py	Starting on the LOW range deliberately: that is the only arrangement where the P
 tests/test_asy_isl29125_driver.py	That must decode without raising AND be distinguishable from a configured chip -
 tests/test_asy_isl29125_driver.py	The legs give 53340/2000 = 26.67 deliberately - a swallowed failure then produce
@@ -305,7 +297,6 @@ tests/test_asy_ntp_client.py	one must never suppress the other's slot.
 tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_scd30_driver.py	An invalid argument must never reach _send_command at all (no partial/garbage I2
-tests/test_asy_scd30_driver.py	start_timer() is synchronous, so it logs via the plain, non-counting pr.err() ra
 tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/asy_scd30_driver.py on why they
 tests/test_asy_scd30_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
@@ -601,7 +592,6 @@ tests_scripts/test_buildgen_definitions.py	asy_ntp_client.py deliberately never 
 tests_scripts/test_buildgen_generate.py	a warn_* key outside it must abort and name the catalog, never be silently dropp
 tests_scripts/test_buildgen_requires_tag.py	"Present, or close to present, with typos" - a typo'd/malformed/misplaced @requi
 tests_scripts/test_buildgen_requires_tag.py	A driver gaining or losing one is a deliberate change that has to show up here t
-tests_scripts/test_buildgen_schema_ast.py	ContMeas is deliberately freestanding (no _VAL_* constant at all - see the drive
 tests_scripts/test_buildgen_tag_comments.py	Mirrors a real near-collision in this repo, where a wrapped comment line began w
 tests_scripts/test_buildgen_tag_comments.py	With the sigil, any bare-word payload counts - that is what catches a tag whose
 tests_scripts/test_buildgen_validate.py	Absent, WebserverService's own default applies - and the ceiling check below sti

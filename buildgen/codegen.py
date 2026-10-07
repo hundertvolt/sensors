@@ -151,6 +151,7 @@ def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[t
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
+    kw.append(("cfg_path", "cfg_path"))
     kw.append(_fram_kw(spec, ctx))
     return pos, kw
 

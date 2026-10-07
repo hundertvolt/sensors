@@ -108,18 +108,18 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
     read_once = None
     try:
         if address == 0x61:
-            scd = SCD30_I2C(i2c, address=address)
+            scd = SCD30_I2C(i2c)
             read_once = lambda: _read_scd30_once(scd)  # noqa: E731
         elif address == 0x77:
             bmp = BMP3XX_I2C(i2c, address=address)
             await bmp.setup()
             read_once = lambda: _read_bmp3xx_once(bmp)  # noqa: E731
         elif address == 0x59:
-            sgp = SGP40_I2C(i2c, address=address)
+            sgp = SGP40_I2C(i2c)
             await sgp.setup()
             read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
         elif address == 0x44:
-            isl = ISL29125_I2C(i2c, address=address)
+            isl = ISL29125_I2C(i2c)
             await isl.setup()
             read_once = lambda: _read_isl29125_once(isl)  # noqa: E731
     except Exception as e:

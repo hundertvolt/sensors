@@ -708,9 +708,9 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end to end for SCD30, whose config store is the chip itself: the route hands the body to the
-# real SCD30_Reader._set_dict_cfg(), which compares against a chip snapshot and writes only what changed, in
-# a fixed order. Each snapshot is six register replies queued on the fake bus before the request.
+# Real Microdot end to end for SCD30, whose config store is composite: the route hands the body to the real
+# SCD30_Reader._set_dict_cfg(), which compares its six chip keys against a chip snapshot and writes only what
+# changed, in a fixed order, and keeps its three FRC keys in its config file (six register replies queued per snapshot).
 # ---------------------------------------------------------------------------
 
 
@@ -734,9 +734,11 @@ def _scd_app(reader: SCD30_Reader) -> Microdot:
 
 
 def make_scd_reader() -> SCD30_Reader:
-    # Same construction as test_asy_scd30_driver.py's own make_reader(): a real SCD30_Reader over
-    # the real asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin.
-    return SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_s=3, max_module_error=5)
+    # Same construction as test_asy_scd30_driver.py's own make_reader(): a real SCD30_Reader over the real
+    # asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin, its config file in a scratch directory.
+    reader = SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir())
+    run(reader.setup())
+    return reader
 
 
 def _queue_scd_snapshot(reader: SCD30_Reader) -> None:
@@ -792,6 +794,17 @@ def test_real_microdot_scd30_put_writes_each_field_through_the_real_driver() -> 
         writes = _scd_writes(reader)
         assert len(writes) == 1, key
         assert writes[0][:2] == word, key
+
+
+def test_real_microdot_scd30_put_keeps_an_frc_setting_in_the_config_file() -> None:
+    # The readiness settings are file-stored config: "Valid", no command on the bus, the value read back.
+    reader = make_scd_reader()
+    app = _scd_app(reader)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "FRCNoise": 30.0})))
+    assert res.status_code == 200
+    assert json.loads(res.body)["result"] == {"FRCNoise": "Valid"}
+    assert _scd_writes(reader) == []
+    assert run(reader.cfgmgr.get_dict(["FRCNoise"])) == {"FRCNoise": 30.0}
 
 
 def test_real_microdot_scd30_put_applies_several_fields_in_the_fixed_order() -> None:

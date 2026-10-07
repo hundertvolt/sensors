@@ -198,6 +198,11 @@ def test_parse_limits_real_isl29125_driver(src_dir: Path) -> None:
     assert parse_limits(src_dir / "asy_isl29125_driver.py", "dev", "isl29125") == (LimitField("trigger_s", None, 1, 3600),)
 
 
+def test_parse_limits_real_scd30_driver(src_dir: Path) -> None:
+    # 1 s up to the chip's longest measurement interval (Interface Description 1.4.3): the stuck-pin fallback's bounds.
+    assert parse_limits(src_dir / "asy_scd30_driver.py", "dev", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
+
+
 def test_no_other_src_module_declares_an_unnoticed_limits_tag(src_dir: Path) -> None:
     tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "dev", "x")}
-    assert tagged == {"asy_bmp3xx_driver.py", "asy_isl29125_driver.py"}
+    assert tagged == {"asy_bmp3xx_driver.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}

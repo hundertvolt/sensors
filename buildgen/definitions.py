@@ -112,7 +112,7 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("ntp", "NTP Client", True),
     ("fram", "FRAM Storage", False),
     ("system", "System", True),
-    ("scd30", "SCD30", False),  # NVM-backed - no local ConfigManager, so no CFGMGR_ companion (H.6)
+    ("scd30", "SCD30", True),  # (H.6) a CFGMGR_ companion for the three FRC settings
     ("sgp40", "SGP40", True),
     ("bmp3xx", "BMP388", True),
     ("isl29125", "ISL29125", True),
@@ -132,7 +132,7 @@ _ERRCOUNT_NAME: "dict[str, str]" = {
 }
 _CFGMGR_LABEL: "dict[str, str]" = {
     "wifi": "Wi-Fi Config Store", "ntp": "NTP Config Store", "system": "System Config Store",
-    "sgp40": "SGP40 Config Store", "bmp3xx": "BMP388 Config Store", "isl29125": "ISL29125 Config Store",
+    "scd30": "SCD30 Config Store", "sgp40": "SGP40 Config Store", "bmp3xx": "BMP388 Config Store", "isl29125": "ISL29125 Config Store",
     "notification": "Notification Config Store",
 }
 
@@ -268,7 +268,7 @@ def _number_field(tag: WebFieldTag, field_type: "str | None", min_v: object, max
         out["specialValues"] = [{"value": special, "meaning": meaning}]
     elif tag.special:
         # No schema-declared sentinel, but the tag documents one or more values anyway (e.g.
-        # SGP40's BackupPeriod=0 - a perfectly ordinary in-range value that also has a special UI
+        # ISL29125's AutoRangeDwell=0.0 - a perfectly ordinary in-range value that also has a special UI
         # meaning, never a bypass asy_config_manager.py's own validation needs to know about).
         out["specialValues"] = [{"value": _coerce_special_value(raw, field_type), "meaning": meaning} for raw, meaning in tag.special]
     return out

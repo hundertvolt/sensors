@@ -548,6 +548,9 @@ def check_a_full_uart_buffer_leaves_bytes_to_the_fifo(make: "LinkFactory") -> No
     assert b.read()[-32:] == b"x" * 32
 
 
+_ONE_BLOCK_MAX = 512  # entries a bounded log may keep in one storage block (the fakes' chunk sizes: 256, 512)
+
+
 def _assert_fixed_occupancy(name: str, log: "_BoundedRecord", append: "Callable[[int], object]", cap: int) -> None:
     # Once full, a bounded log overwrites its oldest entry in place: its live size never swings (a
     # swing reads as retention in the heap tests), and it still reads oldest first.
@@ -560,6 +563,9 @@ def _assert_fixed_occupancy(name: str, log: "_BoundedRecord", append: "Callable[
     assert log.dropped == dropped + 2 * cap + 2, f"{name}: the overwritten entries were not counted"
     entries = list(log)
     assert entries[-1] == log[-1] and entries[0] == log[0] == log[-cap], f"{name}: not read oldest first"
+    if cap > _ONE_BLOCK_MAX:  # a full log as one list or bytearray needs one large contiguous block mid-run
+        blocks = getattr(log, "_chunks", [entries])
+        assert max(len(block) for block in blocks) <= _ONE_BLOCK_MAX, f"{name}: stored in one block of {cap}"
 
 
 def check_the_bounded_logs_keep_a_fixed_occupancy(make: "LinkFactory") -> None:

@@ -99,17 +99,12 @@ def test_strips_multiple_type_checking_blocks_in_one_file(strip_module: ModuleTy
 
 def test_real_src_files_round_trip_to_syntactically_valid_type_checking_free_output(strip_module: ModuleType, repo_root: Path) -> None:
     # End-to-end proof against the real promoted drivers, not just the synthetic snippets above.
-    # Every bare `if TYPE_CHECKING:` block must go; the import guard itself only has to disappear
-    # in the plain two-line D.6 form.
-
-    # Some files extend the except handler with a runtime cast() fallback called outside any
-    # TYPE_CHECKING block, so that body holds more than the matched statement and the transform
-    # correctly leaves it alone rather than guessing.
+    # Every bare `if TYPE_CHECKING:` block must go. The transform only removes the plain two-line
+    # D.6 guard; a guard with any other body is left alone, so every src/ guard must have that form.
     src_files_with_guard = [p for p in (repo_root / "src").glob("*.py") if "TYPE_CHECKING" in p.read_text()]
     assert src_files_with_guard, "sanity: at least one real src/ file should use this pattern"
     for src_file in src_files_with_guard:
         output = strip_module.strip_type_checking_blocks(src_file.read_text())
         assert "if TYPE_CHECKING:" not in output
         ast.parse(output)
-        if "from typing import TYPE_CHECKING" not in output:  # the guard went, so no name may still use it
-            assert "TYPE_CHECKING" not in output, f"{src_file.name}: stripped output still references TYPE_CHECKING"
+        assert "TYPE_CHECKING" not in output, f"{src_file.name}: its guard is not the plain D.6 form, or a name still uses it"

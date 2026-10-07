@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 _VALUE_LOG_MAXLEN = 64  # a line's value log: a chip-select toggles on every SPI transaction
 _MEM32_LOG_MAXLEN = 64  # likewise for register accesses: a DMA reader reads UARTRSR at every fill-level read
 _WIRE_LOG_MAXLEN = 4096  # bytes of a link direction's wire log kept; its `dropped` counts the rest
+_WIRE_CHUNK = 512  # bytes per storage chunk of a wire log
 
 
 class _BoundedLog:
@@ -104,38 +105,44 @@ class _WireLog:
     def __init__(self, maxlen: int) -> None:
         self.maxlen = maxlen
         self.dropped = 0
-        self._items = bytearray()
+        self._chunks: list[bytearray] = []  # fixed-size, so the log never reallocates one 4 kB block
+        self._n = 0
         self._head = 0
 
     def __eq__(self, other: object) -> bool:
         return self._ordered() == other
 
     def __getitem__(self, index: int) -> int:
-        n = len(self._items)
-        position = index + n if index < 0 else index
-        if not 0 <= position < n:
+        position = index + self._n if index < 0 else index
+        if not 0 <= position < self._n:
             raise IndexError("wire log index out of range")
-        return self._items[(self._head + position) % n]
+        slot = (self._head + position) % self._n
+        return self._chunks[slot // _WIRE_CHUNK][slot % _WIRE_CHUNK]
 
     def __iter__(self) -> "Iterator[int]":
         return iter(self._ordered())
 
     def __len__(self) -> int:
-        return len(self._items)
+        return self._n
 
     def _ordered(self) -> bytearray:
-        return self._items[self._head :] + self._items[: self._head]
+        flat = bytearray().join(self._chunks)
+        return flat[self._head :] + flat[: self._head]
 
     def append(self, byte: int) -> None:
-        if len(self._items) < self.maxlen:
-            self._items.append(byte)
+        if self._n < self.maxlen:
+            if self._n % _WIRE_CHUNK == 0:
+                self._chunks.append(bytearray())
+            self._chunks[-1].append(byte)
+            self._n += 1
             return
-        self._items[self._head] = byte
+        self._chunks[self._head // _WIRE_CHUNK][self._head % _WIRE_CHUNK] = byte
         self._head = (self._head + 1) % self.maxlen
         self.dropped += 1
 
     def clear(self) -> None:
-        self._items = bytearray()
+        self._chunks = []
+        self._n = 0
         self._head = 0
 
     def extend(self, data: "bytes | bytearray") -> None:

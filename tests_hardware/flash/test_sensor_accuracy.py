@@ -34,6 +34,10 @@ _ENVELOPE_SCRIPT_TIMEOUT_S = 420.0
 _SCENARIOS_SCRIPT_TIMEOUT_S = 900.0
 # @tunable l3.sensor_accuracy_conformance_script_timeout_s = 120.0
 _CONFORMANCE_SCRIPT_TIMEOUT_S = 120.0
+# The script's fixed 600 s window plus the boot it runs first.
+# @tunable l3.sensor_accuracy_sgp40_cadence_script_timeout_s = 660.0
+_SGP40_CADENCE_SCRIPT_TIMEOUT_S = 660.0
+CADENCE_RE = re.compile(r"^CADENCE cycles=(\d+) elapsed_ms=(\d+) lost=(-?\d+) max_gap_ms=(\d+) gaps_over_1500=(\d+)", re.MULTILINE)
 
 
 def test_scd30_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:
@@ -59,6 +63,19 @@ def test_sgp40_voc_algorithm_produces_plausible_and_stable_results(board: Board)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"SGP40/VOC algorithm quality check failed: {match.group(2).strip()}\nfull output:\n{output}"
+
+
+@pytest.mark.long_soak
+def test_sgp40_sample_cadence(board: Board, request: pytest.FixtureRequest) -> None:
+    # Ten minutes of the real dev task graph, read cycles counted: the figures are the deliverable (no pass
+    # threshold, SPECIFICATION.md M.3), recorded from the CADENCE line; the window is fixed, whatever the tier.
+    if request.config.getoption("--soak-tier") is None:
+        pytest.skip("a fixed 600 s run of the whole task graph - run via scripts/run_bench_soak_tests.sh --tier short")
+    output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_sample_cadence.py", timeout_s=_SGP40_CADENCE_SCRIPT_TIMEOUT_S)
+    match = CADENCE_RE.search(output)
+    assert match is not None, f"device script printed no CADENCE line - full output:\n{output}"
+    assert int(match.group(1)) > 0, f"no SGP40 read cycle in the window - full output:\n{output}"
+    print(match.group(0))
 
 
 def test_isl29125_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:

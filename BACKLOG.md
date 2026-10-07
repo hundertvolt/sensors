@@ -341,7 +341,7 @@ gates, traps).
   runs were two clean default bench tiers and one clean gated run (2026-09-25).
 - **Not yet confirmed on silicon.** (1) SGP40 `SGP_WRITTEN_NO_TS` (`W35`) spends one slot per run
   of untimestamped backups (`83c9920`'s episode rule on the board's image, the central newest-entry
-  rule in `asy_print_log.py` since): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged
+  rule in `asy_print_log.py` since): no run since has kept NTP away past `WaitTimeNTP`, so none logged
   one. Zero-wear check: block UDP 123 longer than that, expect one `W35` with `ErrCount` rising per
   backup. (2) The flash tier's watchdog-starvation test ending with `hard_reset()` (`79eb41b`,
   test-only, no reflash needed): no full flash-tier run since. Before it, the flash tier always left
@@ -443,6 +443,15 @@ gates, traps).
   `constructed=N` (the alarms free at that moment, not the pool size) with the image's other
   default-pool users named. Expected: N at most the pool's 16 (SPECIFICATION.md F.1). Zero wear; no
   twin row confirms it yet (neither machine fake models the pool's size).
+- **The SGP40's lost samples over ten minutes** — `flash/test_sensor_accuracy.py::
+  test_sgp40_sample_cadence` on `dev` (`scripts/run_bench_soak_tests.sh --tier short`): one `CADENCE`
+  line, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
+  dropped soft-timer tick is not mitigated in software, owner, 2026-07-18, `f3924e1`). Wear: none (FRAM writes
+  are not wear; read the FRAM logs first). Twin row: none (the twin's timers model no rp2 drop).
+- **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, one `AmbPres`
+  PUT (one SCD30 NVM write, `--allow-persistence-writes`), a power cycle, then 0x0010 read back:
+  the answer goes into SPECIFICATION.md M.2 (Interface Description 1.4.1 documents only the
+  measurement status as persisted). Twin row: `digital_twin/README.md`'s "SCD30 persistence".
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve feeds item 24's design fix and
   item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
   G6, a rollover method that leaves the board running (item 12, adapt now, measure later by
@@ -456,9 +465,6 @@ gates, traps).
   `OSError(EIO)` on 32+ byte rp2 SPI reads (SPECIFICATION.md Part F.5.2) is absorbed by the FRAM
   layer's dual copy: `_read_chunk()` logs errno 23 (`UNEXPECTED`) and `_read()` falls back to block 1
   and repairs block 0, so a retry inside the chunk loop would buy little.
-- **`FiltCoeff` keeps its two meanings, namespaced per sensor** (owner, 2026-09-26). BMP3xx's IIR
-  register index and the ISL29125's EMA coefficient share the name, namespaced per sensor on
-  `/sensors`.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
@@ -620,6 +626,10 @@ gates, traps).
   `digital_twin/rp2.py`, which collides with the new `tests/rp2.py` fake as `digital_twin/machine.py`
   does with `tests/machine.py`. No new dependency and no build input changed, so nothing here moves
   either leg.
+  **2026-10-07, lint and mypy config only, no build impact**: `pyproject.toml`'s
+  `src/asy_sgp40_driver.py` entry drops `ANN401` (its explicit `Any` is gone), and the four sensor
+  drivers (`asy_bmp3xx_driver`, `asy_isl29125_driver`, `asy_scd30_driver`, `asy_sgp40_driver`) leave
+  the explicit-`Any` baseline. No new dependency and no build input changed, so nothing here moves either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -752,8 +762,7 @@ gates, traps).
     reach.
   - **`vulture`** (dead code) - **rejected, measured.** All 8 of its >=80%-confidence findings are
     false positives: it cannot see through quoted annotations or `if TYPE_CHECKING:` blocks, so it
-    reports `Self`/`NamedTuple`/`Iterable`/`Sequence` as unused imports and flags the no-op
-    `cast()` shim's required `typ` parameter.
+    reports `Self`/`NamedTuple`/`Iterable`/`Sequence` as unused imports.
   - **`gitleaks`/`detect-secrets`** - **rejected, redundant.** `detect-secrets` found only the known
     test/twin WiFi passwords and *missed* the real documented credential in `asy_wifi_service.py`
     that ruff's `S106` catches. Ruff's `S105`/`S106` are live everywhere except the three known,
@@ -840,10 +849,6 @@ gates, traps).
   entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
   entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
   is small: extracting a shared helper is a minor simplification, not a correctness fix.
-- **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
-  (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
-  never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller
-  without reconsidering this.
 - Network fault injection against the real dev bench unit is complete
   (`BenchBridge.inject_network_degradation()`, `tc netem` on `wifi_iface()` only: loss,
   latency+jitter, corruption, duplication, reordering, exercised by
@@ -876,8 +881,8 @@ gates, traps).
   the hardware watchdog (SPECIFICATION.md F.2): a `machine.I2C` transfer on a wedged bus; a single
   `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`, v1.29.0; the FRAM's
   waits around it wait only on other coroutines, SPECIFICATION.md F.2).
-  `socket.getaddrinfo()` is not called from `src/` (`asy_dns_client.py` resolves over its own
-  non-blocking UDP client). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
+  `socket.getaddrinfo()` is not called from `src/`; its one call is `asyncio.start_server()`'s, on the
+  numeric bind host (SPECIFICATION.md F.2). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
   target').
 - **Resize the rp2 littlefs reservation** — only once flash space is actually short (owner,
   2026-09-26); trigger: the firmware image-size report; mechanism SPECIFICATION.md B.14.3.

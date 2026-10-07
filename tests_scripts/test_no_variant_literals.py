@@ -50,7 +50,6 @@ _NOT_YET_CLEANED: "dict[str, str]" = {
     "tests/_digital_twin_construction_scenarios.py": _REASON_UNIT_TEST,
     "tests/_sensortask_scenarios.py": _REASON_UNIT_TEST,
     "tests/_webserver_concurrency_scenarios.py": _REASON_UNIT_TEST,
-    "tests/test_asy_isl29125_driver.py": _REASON_UNIT_TEST,
     "tests/test_asy_wifi_service.py": _REASON_UNIT_TEST,
     "tests/test_bus_hazard_multi_device.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_bus_hazard_concurrency.py": _REASON_UNIT_TEST,

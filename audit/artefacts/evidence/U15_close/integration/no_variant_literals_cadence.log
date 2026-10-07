@@ -1,0 +1,16 @@
+F..................                                                      [100%]
+=================================== FAILURES ===================================
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_hardware/device_scripts/sgp40_sample_cadence.py: [(9, 'sensortask_dev'), (29, 'sensortask_dev'), (33, 'sensortask_dev')]
+E       assert not {'tests_hardware/device_scripts/sgp40_sample_cadence.py': [(9, 'sensortask_dev'), (29, 'sensortask_dev'), (33, 'sensortask_dev')]}
+
+tests_scripts/test_no_variant_literals.py:205: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+1 failed, 18 passed in 4.01s

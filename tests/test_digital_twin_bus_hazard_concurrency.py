@@ -3,6 +3,7 @@ real digital_twin buses and proves SPECIFICATION.md Part C.8's locking model hol
 concurrent load; Part C.8 also covers this file's own device-scope rationale."""
 
 import asyncio
+import errno
 import json
 import sys
 
@@ -12,6 +13,7 @@ sys.path.insert(0, "digital_twin")
 import _http_client
 import machine
 from _crc8 import crc8  # the twin's own CRC-8, independent of src/
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 from unix_port_poll_prewarm import prewarm_poll_set
 
@@ -25,6 +27,8 @@ import sensortask_wozi  # noqa: E402
 
 import asy_i2c_driver  # noqa: E402 - same reason as the two device imports above
 from asy_crc_checks import CRC8  # noqa: E402 - same reason as the two device imports above
+from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader  # noqa: E402 - same reason as the two device imports above
+from asy_scd30_driver import SCD30_I2C  # noqa: E402 - same reason as the two device imports above
 from asy_sgp40_driver import SGP40_I2C  # noqa: E402 - same reason as the two device imports above
 
 try:
@@ -33,12 +37,13 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Container, Coroutine
+    from collections.abc import Callable, Container, Coroutine
     from types import ModuleType
     from typing import Any, TypeVar
 
     from machine import WDT
 
+    from asy_base_classes import SensorReader
     from asy_wifi_service import WifiService
 
     T = TypeVar("T")
@@ -105,6 +110,16 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # A new driver added to a device's own i2c1 needs an entry here before it gets this generic check - see the
 # fail-loud assert there.
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
+
+
+def _register_reads_on(log: "list[Any]", address: int, register: int) -> int:
+    # Register reads of `register` at `address`: each no-stop pointer write must be followed at once by its read.
+    count = 0
+    for i, entry in enumerate(log):
+        if entry[:4] == ("writeto", address, bytes([register]), False):
+            assert i + 1 < len(log) and log[i + 1][:2] == ("readfrom_into", address), f"a transfer split a register read: {log[i : i + 2]}"
+            count += 1
+    return count
 
 
 async def _api_burst_at_the_ceiling(module: "ModuleType", host: str, port: int) -> "list[object]":
@@ -174,6 +189,12 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         # SGP40_I2C._reset()'s general-call broadcast (SPECIFICATION.md Part C.8) must actually have
         # fired at least once, landing concurrently with its bus-sharing sibling's own startup.
         assert _GENERAL_CALL_ENTRY in shared_bus_log, "SGP40's general-call reset never fired during this run - test isn't exercising the real hazard window"
+        # The per-cycle register reads (BMP3XX's EVENT read, ISL29125's CONFIG snapshot) ran on the shared bus,
+        # each pointer write followed at once by its own read.
+        log = list(shared_bus_log)  # type: ignore[call-overload]  # the twin bus log is a deque of entries
+        for address, register in ((0x77, 0x10), (0x44, 0x01)):
+            if getattr(module, "bmp3xx" if address == 0x77 else "isl29125", None) is not None and any(e[:2] == ("writeto", address) for e in log):
+                assert _register_reads_on(log, address, register) > 0, f"no per-cycle read of {register:#04x} at {address:#04x} under load"
 
         # TOML-driven pass (SPECIFICATION.md Part C.8): a second, cheap look at the same
         # already-booted graph, from the real wiring-plan JSON's own i2c1 membership rather than the
@@ -659,6 +680,203 @@ def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads() -> None:
     finally:
         machine.Pin.reset_registry()
 
+
+
+# ---------------------------------------------------------------------------
+# The participant rungs mid-traffic on the twin chips (SPECIFICATION.md C.7, C.8): dev's i2c1 carries SCD30,
+# SGP40 and ISL29125; each chip's own recovery runs at every offset into its siblings' read loops.
+# ---------------------------------------------------------------------------
+
+_RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
+
+
+class _FastSleep:
+    # asyncio.sleep() yields once instead of waiting (the SCD30's 2.5 s restart, the SGP40's conversion);
+    # process-wide, so restored however the block exits.
+    def __enter__(self) -> "_FastSleep":
+        self._real = asyncio.sleep
+
+        async def fast(_seconds: float) -> None:
+            await self._real(0)
+
+        asyncio.sleep = fast  # type: ignore[assignment]  # restored on exit
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asyncio.sleep = self._real
+
+
+def _dev_i2c1() -> "asy_i2c_driver.I2C":
+    machine.configure_i2c_wiring("dev")
+    machine.Pin.reset_registry()
+    return asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)  # dev's i2c1, as its generated module builds it
+
+
+async def _sibling_reads(sibling: str, bus: "asy_i2c_driver.I2C", failures: "list[str]") -> None:
+    # One valid read per round from a protocol instance of `sibling`; any raise or None is a failure.
+    reads: dict[str, Callable[[], Coroutine[Any, Any, object]]] = {
+        "scd30": SCD30_I2C(bus).get_measurement_interval,
+        "sgp40": SGP40_I2C(bus).measure_raw,
+        "isl29125": ISL29125_I2C(bus).read_counts,
+    }
+    for _ in range(_RUNG_OFFSETS):
+        try:
+            value = await reads[sibling]()
+        except Exception as e:  # recorded with its class: the assertion names it
+            failures.append(f"{sibling}: {type(e).__name__}: {e}")
+        else:
+            if value is None:
+                failures.append(f"{sibling}: None")
+        await asyncio.sleep(0)
+
+
+def _rung_across_offsets(siblings: "tuple[str, ...]", rung: "Callable[[asy_i2c_driver.I2C], Coroutine[Any, Any, object]]", check: "Callable[[asy_i2c_driver.I2C], None]") -> None:
+    for offset in range(_RUNG_OFFSETS):
+        bus = _dev_i2c1()
+        failures: list[str] = []
+
+        async def fire(bus: "asy_i2c_driver.I2C" = bus, offset: int = offset) -> None:
+            for _ in range(offset):
+                await asyncio.sleep(0)
+            await rung(bus)
+
+        async def scenario(bus: "asy_i2c_driver.I2C" = bus, failures: "list[str]" = failures, fire: "Callable[[], Coroutine[Any, Any, None]]" = fire) -> None:
+            await asyncio.gather(*(_sibling_reads(s, bus, failures) for s in siblings), fire())
+
+        with _FastSleep():
+            run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+        assert not failures, f"offset {offset}: a sibling read failed beside the rung: {failures}"
+        check(bus)
+
+
+def test_an_scd30_soft_reset_mid_read_leaves_every_twin_sibling_read_valid() -> None:
+    async def rung(bus: "asy_i2c_driver.I2C") -> None:
+        await SCD30_I2C(bus).reset()
+
+    def check(bus: "asy_i2c_driver.I2C") -> None:
+        assert bus._i2c is not None
+        assert ("writeto", 0x61, b"\xd3\x04", True) in bus._i2c.log, "the soft reset never reached the SCD30"
+
+    _rung_across_offsets(("sgp40", "isl29125"), rung, check)
+
+
+def test_sgp40_heater_off_mid_read_leaves_every_twin_sibling_read_valid() -> None:
+    async def rung(bus: "asy_i2c_driver.I2C") -> None:
+        sgp = SGP40_I2C(bus)
+        await sgp.turn_heater_off()
+        assert await sgp.measure_raw() is not None, "the SGP40 did not measure again after its heater-off"
+
+    def check(bus: "asy_i2c_driver.I2C") -> None:
+        assert bus._i2c is not None
+        assert ("writeto", 0x59, b"\x36\x15", True) in bus._i2c.log, "the heater-off never reached the SGP40"
+
+    _rung_across_offsets(("scd30", "isl29125"), rung, check)
+
+
+def test_an_isl29125_reapply_mid_read_leaves_every_twin_sibling_read_valid() -> None:
+    # The reader's own ladder runs the rung (one W DEVICE_RECOVERY); the chip's configuration then equals the shadow.
+    readers: list[ISL29125_Reader] = []
+
+    async def rung(bus: "asy_i2c_driver.I2C") -> None:
+        reader = ISL29125_Reader(bus, 16, cfg_path=_tmp_cfg_dir())
+        readers.append(reader)
+        await reader.setup()
+        reader._err_cnt_internal = 2  # the streak at the participant rung
+        await reader._climb_ladder()
+
+    def check(_bus: "asy_i2c_driver.I2C") -> None:
+        reader = readers[-1]
+        log = run_timed(reader.get_error_counter(), timeout_s=_RUN_BOUND_S)["ISL29125"]
+        assert [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [code("W", "DEVICE_RECOVERY")], log
+        snapshot = run_timed(reader._isl.get_config_snapshot(), timeout_s=_RUN_BOUND_S)
+        assert bytes(snapshot) == reader._isl.encode_shadow(), "the chip's CONFIG1-3 differ from the shadow after the re-apply"
+
+    _rung_across_offsets(("scd30", "sgp40"), rung, check)
+
+
+# ---------------------------------------------------------------------------
+# The recovery ladder on the real task graph (SPECIFICATION.md C.7): a reader whose chip keeps failing climbs to
+# the bus rungs, each run once per bus however many readers fail, and returns once the fault clears.
+# ---------------------------------------------------------------------------
+
+_POLL_S = 0.1  # how often the ladder runs look at the bus and the streaks
+
+
+async def _w15(*readers: "SensorReader") -> int:
+    # W BUS_RECOVERY slots across `readers`' logs: one per bus rung that reader ran.
+    total = 0
+    for reader in readers:
+        log = (await reader.pr.get_log())[reader.pr.name]
+        total += sum(1 for i in range(len(log["ErrNum"])) if log["ErrType"][i] == "W" and log["ErrNum"][i] == code("W", "BUS_RECOVERY"))
+    return total
+
+
+async def _ladder_run(faults: "dict[int, str]", until_recoveries: int) -> "tuple[int, int, int, int, bool]":
+    # wozi's graph with `faults` (chip address -> its read op) failing until i2c1 has run `until_recoveries` bus rungs,
+    # then cleared; returns (rungs run, bus clears, controller rebuilds, W15 slots, every streak back to 0, chips kept).
+    module = sensortask_wozi
+    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
+    assert module.i2c1 is not None and module.i2c1._i2c is not None and module.watchdog is not None and module.sysfunct is not None
+    assert module.sgp40 is not None and module.bmp3xx is not None
+    bus, fake = module.i2c1, module.i2c1._i2c
+    chips = dict(fake.devices)
+    await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
+    tasks = [starter() for starter in module._collect_task_starters()]
+    tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
+    try:
+        # Both readers set up and measuring first: the faults then hit read cycles, not setup.
+        while (await module.sgp40.get_data()).VOC is None or (await module.bmp3xx.get_data()).Pres is None:
+            await asyncio.sleep(_POLL_S)
+        before = bus.recoveries
+        calls = {"clear": 0, "recover": 0}
+        for name in calls:
+            real = getattr(bus, name)
+
+            async def counted(real: "Callable[[], Coroutine[Any, Any, int]]" = real, name: str = name) -> int:
+                calls[name] += 1
+                return await real()
+
+            setattr(bus, name, counted)
+        for address, op in faults.items():
+            chips[address].fault.inject_fault(op, OSError(errno.EIO, "no ACK"), times=500)
+        while bus.recoveries - before < until_recoveries:
+            await asyncio.sleep(_POLL_S)
+        for address in faults:
+            chips[address].fault.clear()
+        assert module.sgp40._err_cnt_internal > 0  # the streak the faults built, now unwinding
+        while module.sgp40._err_cnt_internal or module.bmp3xx._err_cnt_internal:
+            await asyncio.sleep(_POLL_S)
+        assert module.watchdog.would_have_triggered_count == 0
+        kept = fake.devices == chips and all(fake.devices[a] is chips[a] for a in chips)
+        return bus.recoveries - before, calls["clear"], calls["recover"], await _w15(module.sgp40, module.bmp3xx), kept
+    finally:
+        for task in tasks:
+            await _cancel(task)
+
+
+def test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared() -> None:
+    # The SGP40's reads fail until its reader has run the bus clear (its 3rd failed cycle); the BMP3XX on the same
+    # bus keeps reading, and once the fault clears both streaks return to 0.
+    machine.configure_i2c_wiring("wozi")
+    rungs, clears, rebuilds, w15, kept = run_timed(_ladder_run({0x59: "readfrom_into"}, 1), timeout_s=_STATE_RUN_BOUND_S)
+    assert (rungs, clears, rebuilds, w15) == (1, 1, 0, 1), f"expected one bus clear, no controller rebuild and one W15; got {rungs} rung(s), {clears} clear(s), {rebuilds} rebuild(s), {w15} W15 slot(s)"
+    assert kept, "the bus rung lost the wired chips"
+    assert sensortask_wozi.bmp3xx is not None and sensortask_wozi.sgp40 is not None
+    bmp_log = run_timed(sensortask_wozi.bmp3xx.get_error_counter(), timeout_s=_RUN_BOUND_S)["BMP3XX"]
+    assert bmp_log["ErrCount"] == 0, f"the sibling BMP3XX failed beside the SGP40's fault: {bmp_log}"
+    sgp_log = run_timed(sensortask_wozi.sgp40.get_error_counter(), timeout_s=_RUN_BOUND_S)["SGP40"]
+    heater_offs = [i for i in range(len(sgp_log["ErrNum"])) if sgp_log["ErrType"][i] == "W" and sgp_log["ErrNum"][i] == code("W", "DEVICE_RECOVERY")]
+    assert len(heater_offs) == 1, f"the participant rung (heater-off) did not run once before the bus clear: {sgp_log}"
+
+
+def test_two_failing_readers_on_one_bus_run_each_bus_rung_once() -> None:
+    # Both chips of wozi's i2c1 fail: the bus gets one clear and one controller rebuild, both readers recover and
+    # the chips stay wired. The faster SGP40 reaches both rungs first; a second reader's sharing of a rung its
+    # sibling already ran is pinned at the unit tier (test_asy_base_classes.py).
+    machine.configure_i2c_wiring("wozi")
+    rungs, clears, rebuilds, w15, kept = run_timed(_ladder_run({0x59: "readfrom_into", 0x77: "readfrom_mem"}, 2), timeout_s=_STATE_RUN_BOUND_S)
+    assert (rungs, clears, rebuilds, w15) == (2, 1, 1, 2), f"expected one clear and one controller rung, each with one W15; got {rungs} rung(s), {clears} clear(s), {rebuilds} rebuild(s), {w15} W15 slot(s)"
+    assert kept, "the bus rungs lost the wired chips"
 
 if __name__ == "__main__":
     import microtest

@@ -561,6 +561,16 @@ def test_bmp3xx_trigger_s_is_rendered_into_the_constructor_call(tmp_path: Path, 
     ast.parse(result.module_source)
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_constructs_scd30_with_the_boot_config_path(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # SCD30 keeps its three FRC readiness settings in a config file, so it is built like the other config readers.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    calls = [line for line in result.module_source.splitlines() if "SCD30_Reader(" in line]
+    assert calls, f"{device} constructs no SCD30_Reader - the check holds nothing"
+    for call in calls:
+        assert ", cfg_path=cfg_path, log=" in call, call
+
+
 def test_isl29125_irq_pin_and_trigger_s_are_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # irq_pin is a required positional arg (like scd30's own shape); trigger_s is optional (like
     # bmp3xx's own shape) - ISL29125_Reader is the one driver combining both.

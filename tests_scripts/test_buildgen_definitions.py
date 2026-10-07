@@ -190,6 +190,21 @@ def test_every_errcount_codes_block_equals_the_catalogs_live_codes(repo_root: Pa
         assert group["codes"] == {"E": _live_codes("E"), "W": _live_codes("W")}, group["key"]
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_scd30_errcount_and_readiness_rows_match_the_catalog(repo_root: Path, src_dir: Path, device: str) -> None:
+    # Each SCD30 lists its config store's logger beside its own, and FRCState names the catalog's readiness table.
+    generated = _generate(repo_root, src_dir, device)
+    keys = [m["key"] for _section, group in _errcount_groups(generated) for m in group["modules"]]
+    scd30 = [k for k in keys if k.startswith("SCD30")]
+    assert scd30, f"{device} lists no SCD30 errcount row - the check holds nothing"
+    for name in scd30:
+        assert keys.count(f"CFGMGR_{name}") == 1, name
+    states = [f for _section, group in _field_groups(generated) for f in group["fields"] if f["key"] == "FRCState"]
+    assert len(states) == len(scd30)
+    for field in states:
+        assert field["codes"] == {num: row["text"] for num, row in _CATALOG["status"]["FRCState"].items()}
+
+
 def _tagged_code_tables(src_dir: Path) -> "dict[str, str]":
     # Field key -> the status table its `codes=` tag names, over every tagged src/ file.
     return {t.field_name: t.codes for p in sorted(src_dir.glob("*.py")) for t in parse_web_tags(p, "fixture", "x") if t.codes is not None}
@@ -535,10 +550,11 @@ def test_duplicate_mandatory_group_across_two_files_fails_loud(tmp_path: Path, s
 
 
 def test_web_tag_with_no_schema_and_no_kind_override_fails_loud(tmp_path: Path, src_dir: Path) -> None:
-    # ContMeas is freestanding, with no _VAL_* ConfigSchema constant at all, so its kind=toggle
-    # override is the only thing letting _infer_kind() resolve it. Drop that and it has neither a
-    # schema-derived field_type nor an explicit kind to fall back on.
-    mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", " kind=toggle", "")
+    # ContMeas has no _VAL_* entry; drop its synthetic FieldSchema and its kind=toggle override too, and
+    # it has neither a schema-derived field_type nor an explicit kind to fall back on.
+    without_schema = _copy_driver_without(tmp_path, src_dir, "asy_scd30_driver.py", "_CONT_MEAS_FIELD: ")
+    mutated = _copy_driver_replacing(tmp_path, tmp_path, "asy_scd30_driver.py", " kind=toggle", "")
+    assert without_schema == mutated
     model = _single_scd30_model("dev", mutated)
     with pytest.raises(BuildError, match="no matching ConfigSchema constant and no explicit kind"):
         generate_definitions(model, src_dir)
@@ -546,7 +562,7 @@ def test_web_tag_with_no_schema_and_no_kind_override_fails_loud(tmp_path: Path, 
 
 def test_web_tag_kind_enum_with_no_discrete_schema_choice_set_fails_loud(tmp_path: Path, src_dir: Path) -> None:
     # Same freestanding ContMeas field, forced to kind=enum instead of dropped entirely - _enum_field()
-    # needs a tuple/list `special` from the schema, and ContMeas has no schema at all.
+    # needs a tuple/list `special` from the schema, and ContMeas's synthetic bool schema has none.
     mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", "kind=toggle", "kind=enum")
     model = _single_scd30_model("dev", mutated)
     with pytest.raises(BuildError, match="kind=enum but its ConfigSchema has no discrete choice set"):

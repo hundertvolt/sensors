@@ -88,8 +88,10 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
 
 
 def make_scd_reader() -> "tuple[SCD30_Reader, Any]":
+    # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot.
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir("scd"))
+    run(reader.setup())
     return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c
 
 
@@ -128,9 +130,9 @@ def drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
     # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
     # instead of through the full irq/timer machinery, same convention as the sibling files.
     with _UTCValid():
-        results = run(reader._read_scd())
+        results, new_data = run(reader._read_scd())
     run(reader._error_check(results))
-    run(reader._store_scd(results))
+    run(reader._store_scd(results, new_data))
     return results
 
 

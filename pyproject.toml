@@ -258,6 +258,7 @@ max-returns = 11
 # flag, through Part C.5.2's single-positional-argument contract that D.10 forbids splitting.
 "src/asy_bmp3xx_driver.py" = ["FBT001", "N801"]
 "src/asy_scd30_driver.py" = ["FBT001", "N801"]
+"src/asy_sgp40_driver.py" = ["FBT001", "N801"]
 "src/asy_wifi_service.py" = ["S106", "FBT001"]
 # N801, here and in the four sensor drivers' entries: C.2's `<CHIP>_<Role>` compounds; the Sensirion
 # port's names.
@@ -292,7 +293,6 @@ max-returns = 11
 # ARG004: _DefaultSignalSink.request_signal() is a no-op static sink whose signature mirrors
 # NeopixelDriver's exactly, so codegen needs no special case.
 "src/asy_notification_service.py" = ["ANN401", "ARG004"]
-"src/asy_sgp40_driver.py" = ["ANN401", "FBT001", "N801"]
 "tests/test_asy_sgp40_driver.py" = ["ANN401"]
 "tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
 "tests/test_notification_sgp40_integration.py" = ["ANN401"]
@@ -438,13 +438,9 @@ module = [
     "_uart_comm_harness",
     "_uart_link_contract",
     "allocation_need_per_source",
-    "asy_bmp3xx_driver",
-    "asy_isl29125_driver",
     "asy_neopixel_driver",
     "asy_notification_service",
     "asy_ntp_client",
-    "asy_scd30_driver",
-    "asy_sgp40_driver",
     "asy_system_service",
     "asy_uart_comm",
     "asy_uart_link_driver",

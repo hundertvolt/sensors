@@ -1,0 +1,132 @@
+== OLD clock, standard, D=40
+ok   k=1 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=1 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=2 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=2 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=3 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=3 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=4 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=4 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=5 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=5 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=6 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=6 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=7 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=7 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=8 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=8 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=9 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=9 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=10 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=10 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=11 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=11 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=12 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=12 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=14 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=14 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=16 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=16 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=18 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=18 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=20 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=20 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+== OLD clock, standard, D=300
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=3 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=3 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=4 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=4 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=5 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=5 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=7 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=7 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=8 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=8 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=9 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=9 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=10 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=10 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=11 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=11 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=12 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=12 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=14 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=14 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=16 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=16 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=18 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=18 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=20 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=20 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+== OLD clock, settrace, D=40
+ok   k=1 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=1 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=2 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=2 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=3 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=3 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=4 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=4 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=5 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=5 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=6 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=6 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=7 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=7 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=8 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=8 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=9 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=9 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=10 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=10 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=11 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=11 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=12 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=12 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+ok   k=14 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=14 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+ok   k=16 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=16 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 672 bytes over 30 failures = 22.4 B/failure
+ok   k=18 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=18 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 672 bytes over 30 failures = 22.4 B/failure
+ok   k=20 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=20 D=40 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 672 bytes over 30 failures = 22.4 B/failure
+== OLD clock, settrace, D=300
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=1 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=2 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+FLIP k=2 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+FLIP k=3 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+FLIP k=3 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+FLIP k=4 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+FLIP k=4 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+FLIP k=5 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+FLIP k=5 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 576 bytes over 30 failures = 19.2 B/failure
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=6 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=7 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=7 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=8 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=8 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=9 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=9 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=10 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=10 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=11 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=11 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+ok   k=12 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: pass
+ok   k=12 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass
+FLIP k=14 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+FLIP k=14 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+FLIP k=16 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+FLIP k=16 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 672 bytes over 30 failures = 22.4 B/failure
+FLIP k=18 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: 640 bytes over 30 failures = 21.3 B/failure
+FLIP k=18 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: FAIL AssertionError: 672 bytes over 30 failures = 22.4 B/failure
+FLIP k=20 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_crc16: FAIL AssertionError: the planted stall did not fire inside the measured burst
+ok   k=20 D=300 test_a_host_stall_cannot_fail_the_faulted_hammer_nocrc: pass

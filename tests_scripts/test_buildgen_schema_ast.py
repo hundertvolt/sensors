@@ -158,9 +158,9 @@ def test_extract_field_schemas_real_bmp3xx_resolves_named_choice_sets(src_dir: P
     assert fields["FiltCoeff"] == ("int", 0, None, None, (0, 1, 3, 7, 15, 31, 63, 127))
 
 
-def test_extract_field_schemas_real_scd30_has_no_schema_entry_for_contmeas(src_dir: Path) -> None:
-    # ContMeas is deliberately freestanding (no _VAL_* constant at all - see the driver's own
-    # comment); confirms the AST scan doesn't invent one.
+def test_extract_field_schemas_real_scd30_reads_contmeas_from_its_synthetic_field_schema(src_dir: Path) -> None:
+    # ContMeas has no _VAL_* constant: its schema is the bare module-level FieldSchema _CONT_MEAS_FIELD,
+    # which the AST scan reads like any other (SPECIFICATION.md H.5.1).
     fields = extract_field_schemas(src_dir / "asy_scd30_driver.py")
-    assert "ContMeas" not in fields
+    assert fields["ContMeas"] == ("bool", None, None, None, None)
     assert fields["AmbPres"] == ("int", None, 700, 1400, 0)
