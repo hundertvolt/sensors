@@ -718,6 +718,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   survey the plan was built from), the harvest of what the project's own comments, docs and history
   already record, the plan validators under `sweeps/`, and later the findings register. Outside the
   lint/typecheck scopes; deleted together with the plan.
+- **[`mqtt_poc/`](mqtt_poc/)** — the MQTT client proof of concept's research round (2026-10-07):
+  `mqtt_poc/RESEARCH.md` (the client landscape, Peter Hinch's `mqtt_as` in detail, the rp2 platform facts, what
+  the framework requires of the service, and the open owner questions) and the six raw, unverified
+  research reports under `research/` it was built from. Like `audit/`, outside the doc gates' scan;
+  deleted once the PoC's outcomes are migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; for
