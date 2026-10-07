@@ -112,6 +112,10 @@ def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Bo
 # straddling one poll is still recognised - and the ambiguity fails honestly instead of passing.
 # @tunable l3.bus_electrical_timing_wrap_headroom_h = 2
 _WRAP_FLOOR_MS = (2**30) - 2 * 60 * 60 * 1000
+# @tunable l3.bus_electrical_timing_rollover_headroom_s = 60
+_ROLLOVER_HEADROOM_S = 60
+# @tunable l3.bus_electrical_timing_rollover_poll_interval_s = 3600.0
+_ROLLOVER_POLL_INTERVAL_S = 3600.0
 
 
 @pytest.mark.multi_day_rollover
@@ -123,10 +127,10 @@ def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequ
         pytest.skip("real ~12.4-day wait for the actual 2**30 rollover - pass --allow-multi-day-rollover-wait to actually run this (never bundled with --soak-tier)")
     before_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
     before = int(before_output.strip().split("=")[-1])
-    target_wait_s = ((2**30) - before) / 1000.0 + 60  # +60s headroom past the exact boundary
+    target_wait_s = ((2**30) - before) / 1000.0 + _ROLLOVER_HEADROOM_S  # headroom past the exact boundary
     deadline = time.monotonic() + target_wait_s
     wrapped = False
-    poll_interval_s = 3600.0  # coarse polling - this is a multi-day wait, not a tight loop
+    poll_interval_s = _ROLLOVER_POLL_INTERVAL_S  # coarse polling - this is a multi-day wait, not a tight loop
     while time.monotonic() < deadline:
         time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0)))
         check_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")

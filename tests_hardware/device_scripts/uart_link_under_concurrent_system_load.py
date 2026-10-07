@@ -38,7 +38,9 @@ RUN_MS = 12000  # long enough for a second measurement window to mean something
 _MIN_TRANSFERS = 20  # measured 58 unloaded-by-comparison; this is a floor, not a throughput target
 # No transfer may come close to its own deadline: half the timeout still leaves the link visibly
 # healthy rather than merely not-yet-failing. Measured worst case under this load is ~114ms.
-_MAX_RTT_MS = TIMEOUT_MS // 2
+# @tunable l3.uart_link_under_concurrent_system_load_max_rtt_fraction = 2
+_MAX_RTT_FRACTION = 2
+_MAX_RTT_MS = TIMEOUT_MS // _MAX_RTT_FRACTION
 # @tunable l3.uart_link_under_concurrent_system_load_churn_block = 512
 _CHURN_BLOCK = 512  # bytes per allocation in the churn task - enough to fragment, far from the cap
 # @tunable l3.uart_link_under_concurrent_system_load_sensor_load_step_ms = 5
@@ -51,6 +53,10 @@ _CHURN_STEP_MS = 2
 _HEAP_SAMPLE_STEP_MS = 8
 # @tunable l3.uart_link_under_concurrent_system_load_transfer_step_ms = 5
 _TRANSFER_STEP_MS = 5
+# @tunable l3.uart_link_under_concurrent_system_load_heap_floor_samples = 8
+_HEAP_FLOOR_SAMPLES = 8
+# @tunable l3.uart_link_under_concurrent_system_load_heap_growth_max_bytes = 2048
+_HEAP_GROWTH_MAX_BYTES = 2048
 
 
 def get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
@@ -126,7 +132,7 @@ async def _heap_floor() -> int:
     # 13 and 25 x 512 B - a 6144 B swing that swamped the 2048 B bound (queue F7). The minimum over
     # more than two churn cycles is the live floor, which is what "did the link retain" needs.
     floor = 0
-    for _ in range(8):
+    for _ in range(_HEAP_FLOOR_SAMPLES):
         gc.collect()
         sample = gc.mem_alloc()
         floor = sample if not floor else min(floor, sample)
@@ -234,7 +240,7 @@ async def _main() -> None:
     # The memory half of the claim. A frame is 53 bytes; two thirds of the run happen after the
     # sample, so real per-transaction retention would be thousands of bytes, far above this bound.
     heap_growth = heap_at_end - heap_at_third
-    if heap_at_third and heap_growth > 2048:
+    if heap_at_third and heap_growth > _HEAP_GROWTH_MAX_BYTES:
         failures.append(f"heap grew {heap_growth} bytes over the last two thirds of the run under parallel load")
 
     if failures:

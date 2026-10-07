@@ -43,7 +43,7 @@ const H1_WAIT_MS = 10000;
 // per engine at the proxy apart from the data requests that follow: a higher count, or none, fails the check.
 // @tunable web.connections_per_page_load = 2
 const CONNECTIONS_PER_PAGE_LOAD = 2;
-// A Chromium-family engine sometimes opens one spare socket that carries no request; it is printed and bounded.
+// An engine (Chromium and Firefox both seen) sometimes opens one spare socket that carries no request; it is printed and bounded.
 // @tunable l0.smoke_speculative_connections_max = 1
 const SPECULATIVE_CONNECTIONS_MAX = 1;
 

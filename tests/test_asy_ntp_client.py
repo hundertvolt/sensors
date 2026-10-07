@@ -102,6 +102,16 @@ _REPLY_PROCESS_S = 0.2
 _NO_REPLY_FETCH_TIMEOUT_MS = 100
 # @tunable l1.asy_ntp_client_past_fetch_timeout_ms = 200
 _PAST_FETCH_TIMEOUT_MS = 200
+# @tunable l1.asy_ntp_client_responder_poll_tries = 500
+_RESPONDER_POLL_TRIES = 500
+# @tunable l1.asy_ntp_client_fake_server_poll_tries = 1000
+_FAKE_SERVER_POLL_TRIES = 1000
+# @tunable l1.asy_ntp_client_synced_poll_tries = 50
+_SYNCED_POLL_TRIES = 50
+# @tunable l1.asy_ntp_client_state_poll_tries = 200
+_STATE_POLL_TRIES = 200
+# @tunable l1.asy_ntp_client_retry_armed_poll_tries = 300
+_RETRY_ARMED_POLL_TRIES = 300
 
 
 def _timing(
@@ -962,7 +972,7 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
         server.setblocking(False)
         poller = select.poll()
         poller.register(server, select.POLLIN)
-        for _ in range(500):
+        for _ in range(_RESPONDER_POLL_TRIES):
             # ipoll(0) returns an always-truthy iterator on this port (confirmed directly) - must
             # iterate and check the actual event flags, exactly like asy_udp_socket.py's own
             # ready() does, not just truth-test the returned object itself.
@@ -2168,7 +2178,7 @@ class FakeNtpServer:
         # Answers exactly one request with `reply` (None = drop it silently, never answer).
         # ipoll(0) returns an always-truthy iterator on this port (confirmed directly) - must
         # iterate and check the actual event flags, exactly like asy_udp_socket.py's own ready().
-        for _ in range(1000):
+        for _ in range(_FAKE_SERVER_POLL_TRIES):
             ready = any(event & select.POLLIN for _fd, event in self.poller.ipoll(0))
             if ready:
                 try:
@@ -2202,7 +2212,7 @@ def test_integration_full_task_reaches_synced_state_on_a_real_successful_reply()
                 server_task = asyncio.create_task(server.serve_once(reply))
                 client.ntp_sync_trigger_event.set()
                 await asyncio.wait_for(server_task, 5)
-                for _ in range(50):
+                for _ in range(_SYNCED_POLL_TRIES):
                     if await client.ntp_issynced():
                         break
                     await asyncio.sleep_ms(_STATE_POLL_MS)
@@ -2277,7 +2287,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
     reply = make_ntp_reply(int(time.time()))
 
     async def _wait_synced(*, target: bool) -> None:
-        for _ in range(200):
+        for _ in range(_STATE_POLL_TRIES):
             if await client.ntp_issynced() == target:
                 return
             await asyncio.sleep_ms(_STATE_POLL_MS)
@@ -2295,7 +2305,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
 
                 await client.ntp_force_sync()  # trigger a second attempt
                 await server.serve_once(None)  # drop it entirely
-                for _ in range(300):  # wait for the real fetch timeout to elapse and arm a retry
+                for _ in range(_RETRY_ARMED_POLL_TRIES):  # wait for the real fetch timeout to elapse and arm a retry
                     if client.ntp_retry_timer.callback is not None:
                         break
                     await asyncio.sleep_ms(_STATE_POLL_MS)
@@ -2537,7 +2547,7 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
     # Three real requests go unanswered, then the server answers: the same task (never restarted)
     # syncs, the backoff drops back to its first step, and the outage left exactly one ring slot.
     client = make_integration_client()
-    client.ntp_fetch_timeout_ms = 100
+    client.ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS
     reply = make_ntp_reply(int(time.time()))
 
     async def scenario() -> "tuple[bool, bool, int, ErrorLog]":

@@ -29,6 +29,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 # @tunable l1.asy_notification_service_elapsed_stimulus_ms = 50
 _ELAPSED_STIMULUS_MS = 50
+# @tunable l1.asy_notification_service_override_secs = 2
+_OVERRIDE_SECS = 2
+# @tunable l1.asy_notification_service_next_sleep_min_s = 59.0
+_NEXT_SLEEP_MIN_S = 59.0
 
 
 # Mirrors asy_ntp_client.py's own GMTimeStruct (hour/minute are all monitor_loop() actually reads).
@@ -1042,7 +1046,7 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
         # override_secs=1 would decrement to 0 on the very first iteration (decrement() fires
         # once per loop pass, immediately) - giving zero observable "active" window. 2 guarantees
         # at least one full ~1s window where secs stays > 0.
-        await coordinator.set_override_led(2)
+        await coordinator.set_override_led(_OVERRIDE_SECS)
         await asyncio.sleep(1.1)  # first decrement(): 2 -> 1, still > 0 -> _auto_active False
         during = coordinator._auto_active
         await asyncio.sleep(1.1)  # second decrement(): 1 -> 0 -> _auto_active True again
@@ -1074,7 +1078,7 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
     async def scenario() -> "tuple[bool, bool]":
         override_task = coordinator.start_asy_auto_override()
         await asyncio.sleep(0.05)
-        await coordinator.set_override_led(2)
+        await coordinator.set_override_led(_OVERRIDE_SECS)
         await asyncio.sleep(1.1)  # first decrement(): 2 -> 1, still > 0 -> _auto_active False
         during_before_restart = coordinator._auto_active
 
@@ -1154,7 +1158,7 @@ def test_next_sleep_secs_subtracts_elapsed_time() -> None:
     t0 = time.ticks_ms()
     time.sleep_ms(_ELAPSED_STIMULUS_MS)
     result = coordinator._next_sleep_secs(60.0, t0)
-    assert 59.0 < result < 60.0  # ~60s minus the ~50ms actually elapsed
+    assert _NEXT_SLEEP_MIN_S < result < 60.0  # ~60s minus the ~50ms actually elapsed
 
 
 def test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv() -> None:

@@ -294,6 +294,10 @@ _SCRIPT_SERVER_TIMEOUT_S = 120.0
 _SCRIPT_SERVER_HANDOVER_S = 20.0
 # @tunable l4.harness_script_server_probe_timeout_s = 3.0
 _SCRIPT_SERVER_PROBE_TIMEOUT_S = 3.0
+# @tunable l4.harness_script_server_handover_poll_s = 0.5
+_SCRIPT_SERVER_HANDOVER_POLL_S = 0.5
+# @tunable l4.harness_script_server_poll_s = 1.0
+_SCRIPT_SERVER_POLL_S = 1.0
 
 
 def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = _SCRIPT_SERVER_TIMEOUT_S, handover_s: float = _SCRIPT_SERVER_HANDOVER_S) -> bool:
@@ -310,13 +314,13 @@ def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/sta
 
     handover_until = time.monotonic() + handover_s
     while time.monotonic() < handover_until and serves():
-        if stop.wait(0.5):
+        if stop.wait(_SCRIPT_SERVER_HANDOVER_POLL_S):
             return False
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if serves():
             return True
-        if stop.wait(1.0):
+        if stop.wait(_SCRIPT_SERVER_POLL_S):
             return False
     return False
 

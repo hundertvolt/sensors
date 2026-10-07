@@ -23,6 +23,10 @@ REARM_SEC = 6
 _WDT_TIMEOUT_MS = 8000
 # @tunable l3.fram_pause_unpause_and_gating_feed_step_s = 1.0
 _FEED_STEP_S = 1.0
+# @tunable l3.fram_pause_unpause_and_gating_pause_margin_s = 1.5
+_PAUSE_MARGIN_S = 1.5
+# @tunable l3.fram_pause_unpause_and_gating_rearm_margin_s = 0.5
+_REARM_MARGIN_S = 0.5
 failures: list[str] = []
 wdt: "machine.WDT | None" = None
 
@@ -83,7 +87,7 @@ async def _check_auto_unpause_timers(fram: AsyFramManager, sysfunct: SystemServi
     # 6. The REAL auto-unpause timer. A mock Timer cannot prove this fires on an rp2 alarm pool.
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     check(f"pause_permanent_storage({PAUSE_SEC}) did not pause", condition=fram.get_pause() is True)
-    await sleep_fed(PAUSE_SEC + 1.5)
+    await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)
     check(f"real ONE_SHOT auto-unpause timer never fired after {PAUSE_SEC}s - storage stayed paused", condition=fram.get_pause() is False)
     check("write after the real auto-unpause was still refused", condition=await chunk.write(PATTERN_B) is True)
 
@@ -97,9 +101,9 @@ async def _check_auto_unpause_timers(fram: AsyFramManager, sysfunct: SystemServi
     #    early (pause_permanent_storage() deinit()s storage_timer before re-arming).
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     sysfunct.pause_permanent_storage(REARM_SEC)
-    await sleep_fed(PAUSE_SEC + 1.5)  # the FIRST window has now elapsed
+    await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)  # the FIRST window has now elapsed
     check(f"storage unpaused after the superseded {PAUSE_SEC}s window - re-arm did not cancel the first timer", condition=fram.get_pause() is True)
-    await sleep_fed(REARM_SEC - PAUSE_SEC + 0.5)  # now past the SECOND window too
+    await sleep_fed(REARM_SEC - PAUSE_SEC + _REARM_MARGIN_S)  # now past the SECOND window too
     check(f"re-armed {REARM_SEC}s auto-unpause timer never fired", condition=fram.get_pause() is False)
 
 
@@ -121,7 +125,7 @@ async def _check_exhausted_alarm_pool(fram: AsyFramManager, sysfunct: SystemServ
     else:
         sysfunct.pause_permanent_storage(PAUSE_SEC)
         if fram.get_pause():  # not the abort path - then it must still auto-unpause on its own
-            await sleep_fed(PAUSE_SEC + 1.5)
+            await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)
         check(
             "storage was left paused with no pending auto-unpause after the alarm pool was exhausted",
             condition=fram.get_pause() is False,

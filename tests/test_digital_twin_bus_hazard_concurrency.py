@@ -44,6 +44,8 @@ if TYPE_CHECKING:
 _WDT_FEED_INTERVAL_S = 1.0
 # @tunable l2.bus_hazard_concurrency_run_bound_s = 20.0
 _RUN_BOUND_S = 20.0
+# @tunable l2.bus_hazard_concurrency_run_seconds = 9.0
+_RUN_SECONDS = 9.0
 # @tunable l2.bus_hazard_concurrency_established_poll_s = 0.5
 _ESTABLISHED_POLL_S = 0.5
 # @tunable l2.bus_hazard_concurrency_reconnect_poll_s = 1.0
@@ -197,7 +199,7 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
     async def scenario() -> None:
         await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=9.0)
+        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=_RUN_SECONDS)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -211,7 +213,7 @@ def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
     async def scenario() -> None:
         await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0)
+        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=_RUN_SECONDS)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -225,7 +227,7 @@ def test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load(
     async def scenario() -> None:
         await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=9.0, api_port=port)
+        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=_RUN_SECONDS, api_port=port)
 
     run_timed(scenario(), timeout_s=40.0)
 
@@ -239,7 +241,7 @@ def test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load()
     async def scenario() -> None:
         await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0, api_port=port)
+        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=_RUN_SECONDS, api_port=port)
 
     run_timed(scenario(), timeout_s=40.0)
 

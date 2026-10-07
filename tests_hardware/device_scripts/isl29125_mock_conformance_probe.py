@@ -20,6 +20,18 @@ INT_PIN = 6
 REG_ID, REG_C1, REG_C2, REG_C3, REG_THR, REG_STATUS, REG_DATA = 0x00, 0x01, 0x02, 0x03, 0x04, 0x08, 0x09
 MODE_RGB = 0x05
 CFG1_RNG, CFG1_BITS = 0x08, 0x10
+# @tunable l3.isl29125_mock_conformance_probe_hold_window_ms = 700
+_HOLD_WINDOW_MS = 700
+# @tunable l3.isl29125_mock_conformance_probe_int_poll_tries = 40
+_INT_POLL_TRIES = 40
+# @tunable l3.isl29125_mock_conformance_probe_int_poll_ms = 50
+_INT_POLL_MS = 50
+# @tunable l3.isl29125_mock_conformance_probe_int_fast_ms = 400
+_INT_FAST_MS = 400
+# @tunable l3.isl29125_mock_conformance_probe_prst_poll_tries = 60
+_PRST_POLL_TRIES = 60
+# @tunable l3.isl29125_mock_conformance_probe_prst_poll_ms = 25
+_PRST_POLL_MS = 25
 
 
 def emit(key: str, value: object) -> None:
@@ -176,11 +188,11 @@ async def _section_f_powerdown(p: "Probe") -> None:
     await settle(1000)
     held = p.counts()
     p.wr(REG_C1, [0x00, 0x28, 0x00])  # power-down
-    await settle(700)
+    await settle(_HOLD_WINDOW_MS)
     after_pd = p.counts()
     emit("F01_powerdown_holds_data", "yes" if after_pd == held else f"no ({held} -> {after_pd})")
     p.wr(REG_C1, [0x04, 0x28, 0x00])  # standby
-    await settle(700)
+    await settle(_HOLD_WINDOW_MS)
     emit("F02_standby_holds_data", "yes" if p.counts() == after_pd else "no")
 
 
@@ -209,13 +221,13 @@ async def _section_h_interrupt(p: "Probe") -> None:
     p.wr(REG_THR, [0x00, 0x00, 0x01, 0x00])  # high threshold = 1 count: any light trips it
     fired_ms = -1
     start = time.ticks_ms()
-    for _ in range(40):
+    for _ in range(_INT_POLL_TRIES):
         if pin.value() == 0:
             fired_ms = time.ticks_diff(time.ticks_ms(), start)
             break
-        await settle(50)
+        await settle(_INT_POLL_MS)
     emit("H02_int_asserted_low", "yes" if fired_ms >= 0 else "no")
-    emit("H03_int_assert_ms_bucket", "n/a" if fired_ms < 0 else ("fast<400" if fired_ms < 400 else "slow>=400"))
+    emit("H03_int_assert_ms_bucket", "n/a" if fired_ms < 0 else (f"fast<{_INT_FAST_MS}" if fired_ms < _INT_FAST_MS else f"slow>={_INT_FAST_MS}"))
     status_at_int = p.rd(REG_STATUS, 1)[0]
     emit("H04_status_rgbthf_set_when_int", "yes" if status_at_int & 0x01 else "no")
     await settle(20)
@@ -232,11 +244,11 @@ async def _section_h_interrupt(p: "Probe") -> None:
     p.rd(REG_STATUS, 1)
     start = time.ticks_ms()
     prst_ms = -1
-    for _ in range(60):
+    for _ in range(_PRST_POLL_TRIES):
         if pin.value() == 0:
             prst_ms = time.ticks_diff(time.ticks_ms(), start)
             break
-        await settle(25)
+        await settle(_PRST_POLL_MS)
     emit("H07_prst4_ms", prst_ms)
     emit("H08_prst4_unit", "inconclusive" if prst_ms < 0 else ("rgb_cycles" if abs(prst_ms - 1212) < abs(prst_ms - 404) else "channel_integrations"))
     p.rd(REG_STATUS, 1)

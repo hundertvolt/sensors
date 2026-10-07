@@ -38,6 +38,8 @@ _ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "Ir
 _PROBE_TIMEOUT_S = 10.0
 # @tunable l4.sensor_config_push_over_real_hardware_override_poll_s = 1.0
 _OVERRIDE_POLL_S = 1.0
+# @tunable l4.sensor_config_push_over_real_hardware_override_poll_tries = 10
+_OVERRIDE_POLL_TRIES = 10
 
 
 @pytest.mark.persistence_write
@@ -136,7 +138,7 @@ def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, d
 
     last = first
     reached_zero = False
-    for _ in range(10):  # real ~1s-per-tick auto_led_override() cadence - 10s comfortably covers a 3s countdown
+    for _ in range(_OVERRIDE_POLL_TRIES):  # real ~1s-per-tick auto_led_override() cadence - 10s comfortably covers a 3s countdown
         time.sleep(_OVERRIDE_POLL_S)
         get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
         current = get_res.json()["notification"]["PauseTime"]

@@ -54,18 +54,34 @@ _EXCHANGE_LIMIT_S = 60
 _TICKER_STEP_MS = 2
 # @tunable l2.uart_link_collect_step_ms = 3
 _COLLECT_STEP_MS = 3
+# @tunable l2.uart_link_collect_rounds = 6
+_COLLECT_ROUNDS = 6
 # @tunable l2.uart_link_max_train_limit_s = 240
 _MAX_TRAIN_LIMIT_S = 240
 # @tunable l2.uart_link_hammer_limit_s = 300
 _HAMMER_LIMIT_S = 300
+# @tunable l2.uart_link_leak_rounds = 300
+_LEAK_ROUNDS = 300
+# @tunable l2.uart_link_leak_budget_bytes = 8192
+_LEAK_BUDGET_BYTES = 8192
+# @tunable l2.uart_link_hammer_rounds = 120
+_HAMMER_ROUNDS = 120
+# @tunable l2.uart_link_hammer_warmup_rounds = 20
+_HAMMER_WARMUP_ROUNDS = 20
+# @tunable l2.uart_link_hammer_noise_consumers = 3
+_HAMMER_NOISE_CONSUMERS = 3
 # @tunable l2.uart_link_churn_step_ms = 1
 _CHURN_STEP_MS = 1
 # @tunable l2.uart_link_cancel_settle_ms = 5
 _CANCEL_SETTLE_MS = 5
 # @tunable l2.uart_link_churn_limit_s = 180
 _CHURN_LIMIT_S = 180
+# @tunable l2.uart_link_churn_transfers = 10
+_CHURN_TRANSFERS = 10
 # @tunable l2.uart_link_noise_step_ms = 1
 _NOISE_STEP_MS = 1
+# @tunable l2.uart_link_coexist_noise_tasks = 4
+_COEXIST_NOISE_TASKS = 4
 
 
 def run(coro: "Coroutine[Any, Any, T]", limit: int = _RUN_LIMIT_S) -> "T":
@@ -293,7 +309,7 @@ def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
     initiator = dev.uart_link_init._comm
 
     async def scenario() -> "list[Any]":
-        noise = [asyncio.create_task(dev.sysfunct.get_uptime()) for _ in range(4)]  # type: ignore[union-attr]
+        noise = [asyncio.create_task(dev.sysfunct.get_uptime()) for _ in range(_COEXIST_NOISE_TASKS)]  # type: ignore[union-attr]
         results = [await exchange(initiator.uart_get(0x01))]
         for task in noise:
             await task
@@ -315,7 +331,7 @@ def test_a_forced_collection_mid_transfer_does_not_break_the_link() -> None:
 
     async def scenario() -> bool:
         async def collector() -> None:
-            for _ in range(6):
+            for _ in range(_COLLECT_ROUNDS):
                 gc.collect()
                 await asyncio.sleep_ms(_COLLECT_STEP_MS)
 
@@ -369,7 +385,7 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
     dev = sensortask_dev
     assert dev.uart_link_init is not None
     initiator = dev.uart_link_init._comm
-    rounds = 300
+    rounds = _LEAK_ROUNDS
     fake_a, fake_b = fakes()
 
     def _clear_wire_logs() -> None:
@@ -399,7 +415,7 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
     assert counts[initiator.name]["ErrCount"] == 0, f"{rounds} clean transfers logged an error"
     # Buffers are preallocated per instance, so a steady-state loop must not grow the heap. The
     # bound is generous - this asserts "no per-transfer leak", not an allocation budget.
-    assert leaked < 8192, f"{leaked} bytes not reclaimed across {rounds} transfers - a per-transfer leak"
+    assert leaked < _LEAK_BUDGET_BYTES, f"{leaked} bytes not reclaimed across {rounds} transfers - a per-transfer leak"
 
 
 def test_the_link_survives_sustained_allocation_pressure() -> None:
@@ -430,7 +446,7 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
         background = asyncio.create_task(churn())
         try:
             out = []
-            for _ in range(10):
+            for _ in range(_CHURN_TRANSFERS):
                 # The suppression below: MicroPython has no `await` inside a comprehension, so
                 # ruff's suggested rewrite does not compile on the target interpreter at all.
                 out.append(await exchange(initiator.uart_set(0x02, bytes(200))))  # noqa: PERF401
@@ -467,15 +483,15 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         link.direction_from(fake_b).wire_log = bytearray()
 
     async def scenario() -> "tuple[int, int]":
-        noise = [asyncio.create_task(_uptime_noise(dev)) for _ in range(3)]
+        noise = [asyncio.create_task(_uptime_noise(dev)) for _ in range(_HAMMER_NOISE_CONSUMERS)]
         try:
-            for _ in range(20):  # absorb one-time cost before the window opens
+            for _ in range(_HAMMER_WARMUP_ROUNDS):  # absorb one-time cost before the window opens
                 await exchange(initiator.uart_get(0x01))
             clear_wire_logs()
             gc.collect()
             before = gc.mem_free()
             ok = 0
-            for i in range(120):
+            for i in range(_HAMMER_ROUNDS):
                 if await exchange(initiator.uart_get(0x01)) is not None:
                     ok += 1
                 if not i % 20:
@@ -492,10 +508,10 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         ok, leaked = run(scenario(), limit=_HAMMER_LIMIT_S)
     finally:
         gc.threshold(original)
-    assert ok == 120, f"only {ok}/120 hammered transactions completed at gc.threshold({threshold})"
+    assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed at gc.threshold({threshold})"
     counts = run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, f"errors logged under hammer at gc.threshold({threshold})"
-    assert leaked < 8192, f"{leaked} bytes retained across 120 hammered transactions at gc.threshold({threshold})"
+    assert leaked < _LEAK_BUDGET_BYTES, f"{leaked} bytes retained across {_HAMMER_ROUNDS} hammered transactions at gc.threshold({threshold})"
 
 
 async def _uptime_noise(dev: "ModuleType") -> None:

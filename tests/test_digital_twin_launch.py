@@ -32,6 +32,8 @@ _FAULT_DURATION_S = 2.5
 _LONG_DURATION_S = 4.5
 # @tunable l2.launch_long_main_bound_s = 15
 _LONG_MAIN_BOUND_S = 15
+# @tunable l2.launch_long_min_readings = 5
+_LONG_MIN_READINGS = 5
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -270,7 +272,7 @@ def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driv
     machine.Pin.reset_registry()
     config = LaunchConfig(_IN_MEMORY, Injections(55, [], [], []), no_wdt_feed=False, duration=_LONG_DURATION_S)
     summary = run(asyncio.wait_for(main(config), _LONG_MAIN_BOUND_S))
-    assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
+    assert summary["readings"] >= _LONG_MIN_READINGS  # several rounds across 4.5s, well past SCD30's 2s cadence
     assert summary["would_have_triggered_count"] == 0  # fed for real, well under wdt.timeout_ms (8000 ms)
 
 

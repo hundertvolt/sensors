@@ -9,6 +9,8 @@ from runner import confirm, confirm_pass, countdown, print_instruction, register
 _RECOVERY_WATCH_S = 30.0
 # @tunable l4.manual_bus_electrical_reboot_watch_s = 30.0
 _REBOOT_WATCH_S = 30.0
+# @tunable l4.manual_bus_electrical_lead_window_s = 20
+_LEAD_WINDOW_S = 20
 
 
 @register(
@@ -19,13 +21,13 @@ _REBOOT_WATCH_S = 30.0
 def test_hot_unplug_replug_i2c_recovery() -> None:
     board = Board()
     print_instruction("Locate the SCD30's SDA and SCL jumper wires on the breadboard.")
-    print_instruction("Disconnect BOTH the SDA and SCL leads now. You have 20 seconds.")
+    print_instruction(f"Disconnect BOTH the SDA and SCL leads now. You have {_LEAD_WINDOW_S:g} seconds.")
     state_expected_outcome("the system keeps running (no crash/reboot); the SCD30 reader's own error count starts climbing in the log.")
-    countdown(20, "Disconnect the SCD30 I2C leads now")
+    countdown(_LEAD_WINDOW_S, "Disconnect the SCD30 I2C leads now")
     confirm("Confirm both leads are fully disconnected, then press Enter")
 
-    print_instruction("Now reconnect BOTH leads exactly as they were. You have 20 seconds.")
-    countdown(20, "Reconnect the SCD30 I2C leads now")
+    print_instruction(f"Now reconnect BOTH leads exactly as they were. You have {_LEAD_WINDOW_S:g} seconds.")
+    countdown(_LEAD_WINDOW_S, "Reconnect the SCD30 I2C leads now")
     confirm("Confirm both leads are reconnected, then press Enter")
 
     print_instruction(f"Watching the live log for {_RECOVERY_WATCH_S:g}s for evidence of recovery (a fresh successful SCD30 read).")

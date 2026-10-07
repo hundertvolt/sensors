@@ -36,12 +36,18 @@ _VAL_HOTSPOT_PW = (("HotspotPW", "str", "12345678", 8, 63, None),)
 _CONNECT_BOUND_S = 2.0
 # @tunable l1.asy_wifi_service_sent_poll_ms = 10
 _SENT_POLL_MS = 10
+# @tunable l1.asy_wifi_service_sent_poll_tries = 100
+_SENT_POLL_TRIES = 100
 # @tunable l1.asy_wifi_service_off_subnet_wait_s = 0.2
 _OFF_SUBNET_WAIT_S = 0.2
 # @tunable l1.asy_wifi_service_connect_poll_ms = 50
 _CONNECT_POLL_MS = 50
+# @tunable l1.asy_wifi_service_connect_poll_tries = 200
+_CONNECT_POLL_TRIES = 200
 # @tunable l1.asy_wifi_service_phase_poll_ms = 20
 _PHASE_POLL_MS = 20
+# @tunable l1.asy_wifi_service_phase_poll_tries = 100
+_PHASE_POLL_TRIES = 100
 # @tunable l1.asy_wifi_service_flash_cancel_bound_s = 1
 _FLASH_CANCEL_BOUND_S = 1
 
@@ -2394,7 +2400,7 @@ def test_integration_hotspot_captive_dns_answers_an_on_subnet_query() -> None:
 
     async def scenario() -> None:
         task = asyncio.create_task(client.dns_server.run("192.168.4.1", "255.255.255.0"))
-        for _ in range(100):
+        for _ in range(_SENT_POLL_TRIES):
             if fake_udps.sent:
                 break
             await asyncio.sleep_ms(_SENT_POLL_MS)
@@ -2452,7 +2458,7 @@ def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:
         connect_task = asyncio.create_task(client.wlan_connect())
         counter_task = asyncio.create_task(client.time_counter())
         connected_once = False
-        for _ in range(200):
+        for _ in range(_CONNECT_POLL_TRIES):
             client.time_counter_trigger_event.set()
             await asyncio.sleep_ms(_CONNECT_POLL_MS)
             data = await client.get_data()
@@ -2475,7 +2481,7 @@ def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> Non
 
     async def scenario() -> bool:
         task = asyncio.create_task(client.wlan_connect())
-        for _ in range(100):
+        for _ in range(_PHASE_POLL_TRIES):
             if client._conn_phase == _PHASE_HOTSPOT:
                 break
             await asyncio.sleep_ms(_PHASE_POLL_MS)

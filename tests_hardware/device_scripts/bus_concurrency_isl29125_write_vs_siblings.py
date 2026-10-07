@@ -17,7 +17,9 @@ from asy_sgp40_driver import SGP40_I2C
 # than whichever phase natural jitter lands on.
 # @tunable l3.bus_concurrency_isl29125_write_vs_siblings_write_delays_ms = 5
 _WRITE_DELAYS_MS = (5, 15, 40, 80, 120)
-WRITE_CYCLES = len(_WRITE_DELAYS_MS) * 2  # each delay exercised twice, not just once
+# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_delay_repeats = 2
+_DELAY_REPEATS = 2
+WRITE_CYCLES = len(_WRITE_DELAYS_MS) * _DELAY_REPEATS  # each delay exercised twice, not just once
 _MODE_RGB = 0x05
 # @tunable l3.bus_concurrency_isl29125_write_vs_siblings_sibling_step_ms = 15
 _SIBLING_STEP_MS = 15

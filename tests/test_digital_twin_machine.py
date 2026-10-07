@@ -40,12 +40,18 @@ from machine import (
 _WDT_SHORT_TIMEOUT_MS = 150
 # @tunable l2.machine_wdt_poll_ms = 5
 _WDT_POLL_MS = 5
+# @tunable l2.machine_wdt_poll_tries = 200
+_WDT_POLL_TRIES = 200
+# @tunable l2.machine_wdt_second_notice_poll_tries = 600
+_WDT_SECOND_NOTICE_POLL_TRIES = 600
 # @tunable l2.machine_run_bound_s = 5
 _RUN_BOUND_S = 5
 # @tunable l2.machine_wdt_fed_timeout_ms = 100
 _WDT_FED_TIMEOUT_MS = 100
 # @tunable l2.machine_feed_step_ms = 20
 _FEED_STEP_MS = 20
+# @tunable l2.machine_feed_rounds = 6
+_FEED_ROUNDS = 6
 # @tunable l2.machine_double_trigger_bound_s = 8
 _DOUBLE_TRIGGER_BOUND_S = 8
 # @tunable l2.machine_timer_period_ms = 20
@@ -58,8 +64,12 @@ _AFTER_DEINIT_MS = 80
 _CHAIN_PERIOD_MS = 10
 # @tunable l2.machine_chain_poll_ms = 10
 _CHAIN_POLL_MS = 10
+# @tunable l2.machine_chain_poll_tries = 100
+_CHAIN_POLL_TRIES = 100
 # @tunable l2.machine_fire_poll_ms = 20
 _FIRE_POLL_MS = 20
+# @tunable l2.machine_fire_poll_tries = 100
+_FIRE_POLL_TRIES = 100
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -380,7 +390,7 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
     # to its period races it, the observed count depending on scheduling.
     async def scenario() -> None:
         wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
-        for _ in range(200):
+        for _ in range(_WDT_POLL_TRIES):
             if wdt.would_have_triggered_count >= 1:
                 return
             await asyncio.sleep_ms(_WDT_POLL_MS)
@@ -392,7 +402,7 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
 def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
     async def scenario() -> int:
         wdt = WDT(timeout=_WDT_FED_TIMEOUT_MS)
-        for _ in range(6):  # ~120ms of continuous feeding, comfortably past one 100ms window
+        for _ in range(_FEED_ROUNDS):  # ~120ms of continuous feeding, comfortably past one 100ms window
             await asyncio.sleep_ms(_FEED_STEP_MS)
             wdt.feed()
         return wdt.would_have_triggered_count
@@ -405,7 +415,7 @@ def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> Non
     # "keeps monitoring so a long-unfed stretch can notify more than once" - not a one-shot.
     async def scenario() -> None:
         wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
-        for _ in range(600):
+        for _ in range(_WDT_SECOND_NOTICE_POLL_TRIES):
             if wdt.would_have_triggered_count >= 2:
                 return
             await asyncio.sleep_ms(_WDT_POLL_MS)
@@ -419,7 +429,7 @@ def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notificatio
         wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
         wdt.feed()
         wdt.feed()  # feed_count is 2 going into the unfed stretch below
-        for _ in range(200):
+        for _ in range(_WDT_POLL_TRIES):
             if wdt.would_have_triggered_count >= 1:
                 return wdt.would_have_triggered_log
             await asyncio.sleep_ms(_WDT_POLL_MS)
@@ -433,7 +443,7 @@ def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
     async def scenario() -> "list[WDT]":
         seen: list[WDT] = []
         _wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS, on_would_trigger=seen.append)
-        for _ in range(200):
+        for _ in range(_WDT_POLL_TRIES):
             if seen:
                 return seen
             await asyncio.sleep_ms(_WDT_POLL_MS)
@@ -517,7 +527,7 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
 
     async def scenario() -> None:
         timer.init(period=_CHAIN_PERIOD_MS, mode=Timer.ONE_SHOT, callback=_chain)
-        for _ in range(100):  # generous relative to the 10ms period, matches the sibling test below
+        for _ in range(_CHAIN_POLL_TRIES):  # generous relative to the 10ms period, matches the sibling test below
             if len(steps) >= 3:
                 return
             await asyncio.sleep_ms(_CHAIN_POLL_MS)
@@ -548,7 +558,7 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
 
     async def scenario() -> None:
         timer.init(period=_TIMER_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
-        for _ in range(100):  # up to ~2s total, generous relative to the 20ms period
+        for _ in range(_FIRE_POLL_TRIES):  # up to ~2s total, generous relative to the 20ms period
             if fired:
                 return
             await asyncio.sleep_ms(_FIRE_POLL_MS)

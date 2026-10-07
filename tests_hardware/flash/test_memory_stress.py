@@ -32,6 +32,8 @@ WORST_CASE_ALLOCATION = 16_384
 
 # @tunable l3.memory_stress_headroom_script_timeout_s = 120.0
 _HEADROOM_SCRIPT_TIMEOUT_S = 120.0
+# @tunable l3.memory_stress_probe_map_tolerance_blocks = 2
+_PROBE_MAP_TOLERANCE_BLOCKS = 2
 
 
 def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
@@ -57,7 +59,7 @@ def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> Non
     # like this (MEASUREMENTS M2.2), and it always understates.
     probed = _probed_largest_block(output, "after_build_system")
     assert probed is not None, f"no HEAP after_build_system line to cross-check the map against:\n{output}"
-    assert abs(layout.largest_free_run - probed) <= layout.block_bytes * 2, (
+    assert abs(layout.largest_free_run - probed) <= layout.block_bytes * _PROBE_MAP_TOLERANCE_BLOCKS, (
         f"the allocating probe says {probed} B and the block map says {layout.largest_free_run} B. They measure the same run, "
         f"so one is wrong; the probe understating by a power-of-two fraction of 192 KB is the known artefact.\nfull output:\n{output}"
     )

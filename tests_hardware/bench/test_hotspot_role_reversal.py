@@ -56,6 +56,8 @@ _READY_PROBE_TIMEOUT_S = 5.0
 _REASSOC_VISIBLE_TIMEOUT_S = 15.0
 # @tunable l4.hotspot_role_reversal_reassoc_visible_poll_s = 1.0
 _REASSOC_VISIBLE_POLL_S = 1.0
+# @tunable l4.hotspot_role_reversal_reassociate_cycles = 3
+_REASSOCIATE_CYCLES = 3
 # @tunable l4.hotspot_role_reversal_dns_flood_s = 3.0
 _DNS_FLOOD_S = 3.0
 # @tunable l4.hotspot_role_reversal_dns_flood_step_s = 0.05
@@ -221,7 +223,7 @@ def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench
     # Fault injection against the CYW43 firmware's own DHCP server - there is no Python DHCP code
     # here to test. Three reassociate cycles, each confirming a lease. Polls is_ssid_visible()
     # after an explicit ap_down(), since the bench's single radio otherwise misses the hotspot.
-    for cycle in range(3):
+    for cycle in range(_REASSOCIATE_CYCLES):
         bench.leave_dut_hotspot_and_restore_bridge()
         bench.ap_down()
         wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=_REASSOC_VISIBLE_TIMEOUT_S, poll_interval_s=_REASSOC_VISIBLE_POLL_S, description=f"DUT hotspot {hotspot_ssid!r} visible again on reassociate cycle {cycle}")
@@ -397,7 +399,7 @@ def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(benc
     # See test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server's own comment for
     # why this polls is_ssid_visible() (after an explicit ap_down()) instead of a fixed settle -
     # same real single-radio AP-to-client transition race, same fix.
-    for cycle in range(3):
+    for cycle in range(_REASSOCIATE_CYCLES):
         bench.leave_dut_hotspot_and_restore_bridge()
         bench.ap_down()
         wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=_REASSOC_VISIBLE_TIMEOUT_S, poll_interval_s=_REASSOC_VISIBLE_POLL_S, description=f"DUT hotspot {hotspot_ssid!r} visible again on churn cycle {cycle}")

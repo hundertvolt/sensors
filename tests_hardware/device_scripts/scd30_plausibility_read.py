@@ -16,6 +16,8 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 _SETTLE_S = 45.0  # datasheet-bound response-time window (see docstring) plus margin
 # @tunable l3.scd30_plausibility_read_step_s = 0.5
 _STEP_S = 0.5
+# @tunable l3.scd30_plausibility_read_poll_tries = 30
+_POLL_TRIES = 30
 
 
 async def _main() -> None:
@@ -37,7 +39,7 @@ async def _main() -> None:
     # asy_scd30_driver.py's own `SCD30 = namedtuple(...)` definition; field names are capitalized,
     # not the lowercase attribute names a first guess from the datasheet's own prose might suggest.
     data = None
-    for _ in range(30):  # ~15s at 0.5s polling - generous relative to the sensor's own ~2s default interval
+    for _ in range(_POLL_TRIES):  # ~15s at 0.5s polling - generous relative to the sensor's own ~2s default interval
         data = await reader.get_data()
         if data.CO2 is not None:
             break

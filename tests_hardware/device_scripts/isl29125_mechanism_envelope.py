@@ -34,6 +34,12 @@ OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so
 MAX_RANGE_STEP = 0.25
 # @tunable l3.isl29125_mechanism_envelope_poll_ms = 200
 _POLL_MS = 200
+# @tunable l3.isl29125_mechanism_envelope_min_step_ratio = 0.75
+_MIN_STEP_RATIO = 0.75
+# @tunable l3.isl29125_mechanism_envelope_min_span_ratio = 10.0
+_MIN_SPAN_RATIO = 10.0
+# @tunable l3.isl29125_mechanism_envelope_bit_depth_rel_max = 0.5
+_BIT_DEPTH_REL_MAX = 0.5
 W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 
 failures: "list[str]" = []
@@ -130,9 +136,9 @@ async def _ascending(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: machin
     for i in range(1, len(up)):
         prev_level, prev_lux, _ = up[i - 1]
         level, lux, _ = up[i]
-        check(lux > prev_lux * 0.75, f"level {prev_level}->{level}: reported lux DROPPED {prev_lux:.2f}->{lux:.2f} as the light rose")
+        check(lux > prev_lux * _MIN_STEP_RATIO, f"level {prev_level}->{level}: reported lux DROPPED {prev_lux:.2f}->{lux:.2f} as the light rose")
     if len(up) >= 2:
-        check(up[-1][1] > up[0][1] * 10.0, f"envelope only spanned {up[0][1]:.2f}->{up[-1][1]:.2f} lux - the LED never really moved the sensor")
+        check(up[-1][1] > up[0][1] * _MIN_SPAN_RATIO, f"envelope only spanned {up[0][1]:.2f}->{up[-1][1]:.2f} lux - the LED never really moved the sensor")
     ranges = [entry[2] for entry in up]
     check(375 in ranges, "the low (375 lx) range was never used across the whole ascending envelope")
     check(10000 in ranges, "the high (10000 lx) range was never used - the LED never crossed the switch point")
@@ -171,7 +177,7 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
     if twelve is not None and sixteen is not None and twelve.Lux is not None and sixteen.Lux:
         rel = abs(twelve.Lux - sixteen.Lux) / sixteen.Lux
         notes.append(f"12bit vs 16bit on one static scene: {twelve.Lux:.2f} vs {sixteen.Lux:.2f} ({rel * 100:.1f}%)")
-        check(rel < 0.5, f"12-bit and 16-bit disagree by {rel * 100:.1f}% on one scene - the <<4 normalisation looks wrong")
+        check(rel < _BIT_DEPTH_REL_MAX, f"12-bit and 16-bit disagree by {rel * 100:.1f}% on one scene - the <<4 normalisation looks wrong")
 
     # Cross-range CONTINUITY: one stationary light, read on each range in turn - the only honest
     # way to measure the gain step. The retired ramp sweep tried it on a moving ramp, where the

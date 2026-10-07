@@ -35,6 +35,8 @@ _RECONNECT_TIMEOUT_S = 60.0
 _RECONNECT_POLL_S = 3.0
 # @tunable l4.wifi_networking_ready_probe_timeout_s = 5.0
 _READY_PROBE_TIMEOUT_S = 5.0
+# @tunable l4.wifi_networking_association_attempts = 2
+_ASSOCIATION_ATTEMPTS = 2
 
 
 def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
@@ -49,7 +51,7 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
     # full suite runs, 12/12 clean in isolation, CYW43 reporting status -1 after the firmware's own
     # two retries). A second cold boot separates that from a break, which fails both - queue F13.
     attempts = []
-    for attempt in range(2):
+    for attempt in range(_ASSOCIATION_ATTEMPTS):
         bench.kick_all_stations()
         board.hard_reset()
         joined = "\n".join(board.tail_log(duration_s=_BOOT_TAIL_S))

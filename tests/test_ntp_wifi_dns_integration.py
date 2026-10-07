@@ -40,10 +40,14 @@ _LOCK_BLOCKED_WAIT_S = 0.05
 _SERVE_WAIT_S = 5
 # @tunable l1.asy_ntp_client_state_poll_ms = 20
 _STATE_POLL_MS = 20
+# @tunable l1.asy_ntp_client_synced_poll_tries = 50
+_SYNCED_POLL_TRIES = 50
 # @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100
 _FETCH_TIMEOUT_NO_REPLY_MS = 100
 # @tunable l1.ntp_wifi_dns_integration_past_fetch_timeout_ms = 150
 _PAST_FETCH_TIMEOUT_MS = 150
+# @tunable l1.ntp_wifi_dns_integration_failure_cycles = 8
+_FAILURE_CYCLES = 8
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -355,7 +359,7 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
                 server_task = asyncio.create_task(server.serve_once(reply))
                 ntp.ntp_sync_trigger_event.set()
                 await asyncio.wait_for(server_task, _SERVE_WAIT_S)
-                for _ in range(50):
+                for _ in range(_SYNCED_POLL_TRIES):
                     if await ntp.ntp_issynced():
                         break
                     await asyncio.sleep_ms(_STATE_POLL_MS)
@@ -393,7 +397,7 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
             with server.redirect_resolution():
                 task = asyncio.create_task(ntp.asy_ntp_time())
                 # Far past the old five-failure give-up, each cycle bounded by the 100ms fetch timeout.
-                for _ in range(8):
+                for _ in range(_FAILURE_CYCLES):
                     ntp.ntp_sync_trigger_event.set()
                     await asyncio.sleep_ms(_PAST_FETCH_TIMEOUT_MS)
                 still_running = not task.done()

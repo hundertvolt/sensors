@@ -19,6 +19,8 @@ ROOM_LIGHT_MIN_LUX = 5.0  # with the board lighting ITSELF (below), anything thi
 # fault rather than a dark bench - see the self-lighting note in _main().
 # @tunable l3.isl29125_plausibility_read_poll_s = 0.5
 _POLL_S = 0.5
+# @tunable l3.isl29125_plausibility_read_poll_tries = 30
+_POLL_TRIES = 30
 
 
 async def _main() -> None:
@@ -46,7 +48,7 @@ async def _main() -> None:
     data = None
     # One RGB cycle is ~303 ms at 16 bit, so this window is generous; ~15s worst case exceeds the
     # 8.388s hardware WDT ceiling, so this script feeds it rather than relying on anything else.
-    for _ in range(30):
+    for _ in range(_POLL_TRIES):
         data = await reader.get_data()
         if data.Lux is not None:
             break

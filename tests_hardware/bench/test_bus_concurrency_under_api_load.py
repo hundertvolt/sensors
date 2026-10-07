@@ -42,6 +42,8 @@ _ceiling_retries_lock = threading.Lock()
 _FETCH_TIMEOUT_S = 15.0
 # @tunable l4.bus_concurrency_under_api_load_ceiling_retry_backoff_s = 0.25
 _CEILING_RETRY_BACKOFF_S = 0.25
+# @tunable l4.bus_concurrency_under_api_load_ceiling_retry_attempts = 3
+_CEILING_RETRY_ATTEMPTS = 3
 # @tunable l4.bus_concurrency_under_api_load_join_timeout_s = 120.0
 _JOIN_TIMEOUT_S = 120.0
 # @tunable l4.bus_concurrency_under_api_load_probe_timeout_s = 10.0
@@ -60,6 +62,8 @@ _NTP_RESYNC_TIMEOUT_S = 20.0
 _NTP_RESYNC_POLL_S = 1.0
 # @tunable l4.network_resilience_flap_step_s = 3.0
 _FLAP_STEP_S = 3.0
+# @tunable l4.network_resilience_flap_cycles = 3
+_FLAP_CYCLES = 3
 # @tunable l4.bus_concurrency_under_api_load_flap_recovery_timeout_s = 150.0
 _FLAP_RECOVERY_TIMEOUT_S = 150.0
 # @tunable l4.bus_concurrency_under_api_load_flap_recovery_poll_s = 5.0
@@ -99,11 +103,11 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
     """http_client.fetch(), retrying only a connection-ceiling refusal, never a transport failure. Same
     name and positional signature on purpose: tests_scripts/test_persistence_write_marker_completeness.py
     reads PUT bodies by AST and would silently lose a persisting write behind another shape (F15)."""
-    for attempt in range(3):
+    for attempt in range(_CEILING_RETRY_ATTEMPTS):
         try:
             return http_client.fetch(host, port, method, path, json_body, timeout_s=timeout_s)
         except Exception as exc:
-            if attempt == 2 or not http_client.is_ceiling_close(exc):
+            if attempt == _CEILING_RETRY_ATTEMPTS - 1 or not http_client.is_ceiling_close(exc):
                 raise
             with _ceiling_retries_lock:
                 _ceiling_retries[f"{method} {path}"] = _ceiling_retries.get(f"{method} {path}", 0) + 1
@@ -399,7 +403,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     def flap_worker() -> None:
         # Same 3x(3s down/3s up) shape as test_network_resilience.py's flapping test - short
         # relative to the 60s established-retry cadence, so the DUT is still mid-wait between toggles.
-        for _cycle in range(3):
+        for _cycle in range(_FLAP_CYCLES):
             bench.ap_down()
             time.sleep(_FLAP_STEP_S)
             bench.ap_up()

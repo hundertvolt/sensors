@@ -24,6 +24,10 @@ _MODE_RGB = 0x05
 _INT_POLL_MS = 50
 # @tunable l3.isl29125_real_irq_edge_fast_path_poll_ms = 100
 _FAST_PATH_POLL_MS = 100
+# @tunable l3.isl29125_real_irq_edge_cycle_margin_ms = 50
+_CYCLE_MARGIN_MS = 50
+# @tunable l3.isl29125_real_irq_edge_int_poll_tries = 30
+_INT_POLL_TRIES = 30
 
 
 async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
@@ -36,7 +40,7 @@ async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
     before = await isl.read_counts()
     await isl.configure(range_fs=375)  # a real CONFIG1 write
     immediately = await isl.read_counts()
-    await asyncio.sleep_ms(_CYCLE_MS_16BIT + 50)
+    await asyncio.sleep_ms(_CYCLE_MS_16BIT + _CYCLE_MARGIN_MS)
     wdt.feed()
     after_one_cycle = await isl.read_counts()
     restarted = immediately == before and after_one_cycle != immediately
@@ -55,7 +59,7 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
     await isl.read_status()  # destructive: clears any flag already standing
     start = time.ticks_ms()
     fired_ms = -1
-    for _ in range(30):
+    for _ in range(_INT_POLL_TRIES):
         if pin.value() == 0:
             fired_ms = time.ticks_diff(time.ticks_ms(), start)
             break
@@ -63,7 +67,7 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
         await asyncio.sleep_ms(_INT_POLL_MS)
     await isl.read_status()  # release the line again
     if fired_ms < 0:
-        return "persist_unit=inconclusive (the interrupt never asserted within 1.5s)"
+        return f"persist_unit=inconclusive (the interrupt never asserted within {_INT_POLL_TRIES * _INT_POLL_MS / 1000:g}s)"
     per_cycle_ms = 4 * _CYCLE_MS_16BIT  # ~1212 ms if PRST counts whole RGB cycles
     per_channel_ms = 4 * 101  # ~404 ms if it counts single-channel integrations
     closer = "rgb_cycles" if abs(fired_ms - per_cycle_ms) < abs(fired_ms - per_channel_ms) else "channel_integrations"

@@ -37,6 +37,12 @@ _HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: 
 _FETCH_TIMEOUT_S = 5.0
 # @tunable l4.memory_stress_bench_join_timeout_s = 10.0
 _JOIN_TIMEOUT_S = 10.0
+# @tunable l4.memory_stress_bench_voc_reset_interval_s = 3.0
+_VOC_RESET_INTERVAL_S = 3.0
+# @tunable l4.memory_stress_bench_min_answered = 100
+_MIN_ANSWERED = 100
+# @tunable l4.memory_stress_bench_soak_request_step_s = 0.2
+_SOAK_REQUEST_STEP_S = 0.2
 
 
 def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
@@ -67,7 +73,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
 
     def _reset_voc_periodically() -> None:
         nonlocal success_count
-        while not stop.wait(3.0):
+        while not stop.wait(_VOC_RESET_INTERVAL_S):
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
                 with lock:
@@ -113,7 +119,7 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     # A success here means the server accepted, processed and answered with valid JSON under load
     # - which a wedged-but-not-crashed server cannot fake, unlike an absent crash marker.
     # max_connections rejections do not count against it (_run_max_speed_hammer_load()).
-    assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
+    assert success_count > _MIN_ANSWERED, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     reset_all_error_logs(dut_ip)
 
 
@@ -133,7 +139,7 @@ def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnos
     try:
         _assert_no_crash_or_reboot(lines)
         assert not fram_errcount_after, f"a FRAM-backed module logged a real error during the hammer load - real diagnostic evidence, captured before any cleanup: {fram_errcount_after!r}"
-        assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
+        assert success_count > _MIN_ANSWERED, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     finally:
         # Deliberately only cleared AFTER the assertions above have already captured/reported
         # whatever FRAM-backed history existed - never clear before a failure had the chance to
@@ -162,7 +168,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
                     request_errors.append(f"GET {path} -> {res.status_code}")
             except (OSError, http_client.HTTP_ERROR) as exc:  # a real transient network hiccup during a long soak is expected sometimes
                 request_errors.append(f"GET {path} -> {exc!r}")
-            stop.wait(0.2)  # a modest, sustained request rate - not a flood (that's item 17's job)
+            stop.wait(_SOAK_REQUEST_STEP_S)  # a modest, sustained request rate - not a flood (that's item 17's job)
 
     hammer_thread = threading.Thread(target=_hammer, daemon=True)
     hammer_thread.start()

@@ -56,6 +56,12 @@ _WORKER_JOIN_S = 10.0
 _SCRIPT_TIMEOUT_S = 240.0
 # @tunable l4.heap_under_connection_ceiling_hammer_join_s = 30.0
 _HAMMER_JOIN_S = 30.0
+# @tunable l4.ceiling_refused_backoff_s = 0.1
+_REFUSED_BACKOFF_S = 0.1
+# @tunable l4.ceiling_stagger_margin_s = 2.0
+_STAGGER_MARGIN_S = 2.0
+# @tunable l4.ceiling_sample_step_s = 0.25
+_SAMPLE_STEP_S = 0.25
 
 
 def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float, port: int = 80) -> None:
@@ -77,7 +83,7 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
             except TimeoutError:
                 pass
             else:
-                stop.wait(0.1)
+                stop.wait(_REFUSED_BACKOFF_S)
                 continue
             sock.setblocking(False)
             with lock:
@@ -93,7 +99,7 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
                     continue  # nothing to read, which is what a parked connection looks like
                 break  # readable at all means the server answered or closed: take a fresh one
         except OSError:
-            stop.wait(0.1)  # refused or reset - back off rather than spinning on a busy board
+            stop.wait(_REFUSED_BACKOFF_S)  # refused or reset - back off rather than spinning on a busy board
         finally:
             if parked:
                 with lock:
@@ -115,8 +121,8 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
     try:
         for worker in workers:
             worker.start()
-        stop.wait(_RECYCLE_S + 2.0)  # one full stagger cycle before the count is evidence
-        while time.monotonic() < deadline and not stop.wait(0.25):
+        stop.wait(_RECYCLE_S + _STAGGER_MARGIN_S)  # one full stagger cycle before the count is evidence
+        while time.monotonic() < deadline and not stop.wait(_SAMPLE_STEP_S):
             with lock:
                 observed.append(live[0])
     finally:

@@ -13,6 +13,8 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
 # @tunable l3.bmp3xx_plausibility_read_poll_s = 0.5
 _POLL_S = 0.5
+# @tunable l3.bmp3xx_plausibility_read_poll_tries = 30
+_POLL_TRIES = 30
 
 
 async def _main() -> None:
@@ -31,7 +33,7 @@ async def _main() -> None:
     data = None
     # ~15s worst case exceeds the 8.388s hardware WDT ceiling; soft-reset doesn't reset that timer,
     # so this script feeds it manually rather than relying on anything outside itself.
-    for _ in range(30):  # ~15s at 0.5s polling - generous relative to a forced-mode conversion's own <=~130ms
+    for _ in range(_POLL_TRIES):  # ~15s at 0.5s polling - generous relative to a forced-mode conversion's own <=~130ms
         data = await reader.get_data()
         if data.Pres is not None:
             break

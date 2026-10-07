@@ -53,6 +53,8 @@ _RECONNECT_POLL_S = 3.0
 _PROBE_TIMEOUT_S = 10.0
 # @tunable l4.network_resilience_flap_step_s = 3.0
 _FLAP_STEP_S = 3.0
+# @tunable l4.network_resilience_flap_cycles = 3
+_FLAP_CYCLES = 3
 # @tunable l4.network_resilience_ready_probe_timeout_s = 5.0
 _READY_PROBE_TIMEOUT_S = 5.0
 # @tunable l4.network_resilience_degraded_reconnect_timeout_s = 90.0
@@ -107,6 +109,16 @@ _TRICKLE_STEP_S = 3.0
 _BURST_JOIN_S = 40.0
 # @tunable l4.network_resilience_served_elapsed_max_s = 30.0
 _SERVED_ELAPSED_MAX_S = 30.0
+# @tunable l4.network_resilience_degraded_get_count = 5
+_DEGRADED_GET_COUNT = 5
+# @tunable l4.network_resilience_join_attempts = 3
+_JOIN_ATTEMPTS = 3
+# @tunable l4.network_resilience_over_ceiling_attempts = 3
+_OVER_CEILING_ATTEMPTS = 3
+# @tunable l4.network_resilience_capture_attempts = 3
+_CAPTURE_ATTEMPTS = 3
+# @tunable l4.network_resilience_storm_repeat_min = 3
+_STORM_REPEAT_MIN = 3
 
 
 def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
@@ -153,7 +165,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
 
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
     reset_all_error_logs(dut_ip)
-    for _cycle in range(3):
+    for _cycle in range(_FLAP_CYCLES):
         bench.ap_down()
         time.sleep(_FLAP_STEP_S)  # short relative to the 60s retry cadence above - the DUT is still mid-wait, not yet retrying
         bench.ap_up()
@@ -258,7 +270,7 @@ def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Bo
     reset_all_error_logs(dut_ip)
     bench.inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)
     try:
-        for _ in range(5):
+        for _ in range(_DEGRADED_GET_COUNT):
             res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
             assert res.status_code == 200, f"a plain GET /status failed under light, realistic WiFi congestion (2% loss/30ms delay): {res.status_code} {res.body!r}"
             time.sleep(_PROBE_SPACING_S)
@@ -467,7 +479,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
         # sending no STA-side UDP traffic for tcpdump to see.
         dut_ephemeral_port = None
         attempts_made = 0
-        for _attempt in range(3):
+        for _attempt in range(_CAPTURE_ATTEMPTS):
             attempts_made += 1
             capture = bench.start_udp_source_capture(dut_ip, 123)
             bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
@@ -643,12 +655,12 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
             # A freshly-started AP's beacon interval means is_ssid_visible()==True doesn't
             # guarantee nmcli's own internal rescan sees it a moment later - retry the join
             # (ap_down() is idempotent, see its own docstring).
-            for attempt in range(3):
+            for attempt in range(_JOIN_ATTEMPTS):
                 try:
                     bench.join_dut_hotspot(original_hostname, _HOTSPOT_PASSWORD, timeout_s=_JOIN_HOTSPOT_TIMEOUT_S)
                     break
                 except HardwareTestFailureError:
-                    if attempt == 2:
+                    if attempt == _JOIN_ATTEMPTS - 1:
                         raise
                     time.sleep(_JOIN_RETRY_BACKOFF_S)
             wait_until(lambda: bool(bench.gateway_ip()), timeout_s=_DHCP_TIMEOUT_S, poll_interval_s=_DHCP_POLL_S, description="DHCP lease on the DUT's own hotspot")
@@ -733,7 +745,7 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
         # app layer. A real race, so the retry below uses a fresh socket rather than a longer sleep.
         time.sleep(_HELD_ADMIT_WAIT_S)
 
-        for attempt in range(3):
+        for attempt in range(_OVER_CEILING_ATTEMPTS):
             _pad(held)
             if extra is not None:
                 extra.close()
@@ -754,9 +766,9 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
             if response == b"":
                 break
             last_response = response
-            if attempt < 2:
+            if attempt < _OVER_CEILING_ATTEMPTS - 1:
                 time.sleep(_SLOT_RELEASE_WAIT_S)  # let the previous "extra" connection's own quick error-response cleanup (_open_conns.decrement()) actually complete
-        assert response == b"", f"a connection above the real {_MAX_CONNECTIONS}-connection ceiling was not rejected after 3 attempts: got {last_response!r}"
+        assert response == b"", f"a connection above the real {_MAX_CONNECTIONS}-connection ceiling was not rejected after {_OVER_CEILING_ATTEMPTS} attempts: got {last_response!r}"
     finally:
         for sock in held:
             sock.close()
@@ -934,7 +946,7 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
     time.sleep(_SLOT_RELEASE_WAIT_S)
     # Repeated enough times to stay well past the build's own ceiling however high it has been
     # raised, so the storm keeps overloading admission rather than merely filling it.
-    sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * max(3, _MAX_CONNECTIONS)
+    sizes = [512, _BODY_CAP * 2, _BODY_CAP, _OLD_CONTENT_CAP, 64, _BODY_CAP + 1, 900, _BODY_CAP * 2] * max(_STORM_REPEAT_MIN, _MAX_CONNECTIONS)
     answered: dict[int, int] = {}
     refused: dict[int, str] = {}
     other: dict[int, str] = {}

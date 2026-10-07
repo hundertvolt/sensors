@@ -31,7 +31,7 @@ lease and resumption procedure.
 | U7 | tier ladder and runner summary block | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U7_close.md`; evidence `audit/artefacts/evidence/U7_close/` |
 | U8 | `@tunable` scheme | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U8_close.md`; evidence `audit/artefacts/evidence/U8_close/` |
 | U8C | `@tunable` classification of tests | done 2026-10-07 | the unit's one commit; scan `audit/sweeps/scan_runs/20261007_U8C_close.md`; evidence `audit/artefacts/evidence/U8C_close/` |
-| U8C2 | search gaps of the test-tier classification | not started | — |
+| U8C2 | search gaps of the test-tier classification | done 2026-10-07 | the unit's one commit; scan `audit/sweeps/scan_runs/20261007_U8C2_close.md`; open findings `audit/sweeps/open_findings.md`; evidence `audit/artefacts/evidence/U8_close/smoke_connections/ci_2593600.md` |
 | U9 | LED pilot | not started | — |
 | U10 | XCUT: system-wide contracts | not started | — |
 | U11 | CORE | not started | — |
@@ -238,6 +238,18 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U8C | Tags the merged text withdraws or leaves to a later unit are not written (`l4.network_resilience_crash_check_tail_s`, the four `l3.watchdog_starvation_reachable*`, the toolchain-flash-boot reachable timeout and poll, the driven-time waits) | the later units delete or move those literals |
 | U8C | The pushed U8 smoke fix is carried into the unit's tree as the fix's diff alone | the U8 squash and the lane history share content, not ancestry |
 | U8C | The twin FRAM's fix is paged memory, not a larger test heap or a pinned test order; a write past the chip's end is refused instead of growing it | the memory rules: relieve a single large allocation by design; the old growth was a silent twin bug |
+| U8C2 | A.U8C2.01 (`_webserver_concurrency_scenarios.py`) is not applied and its 13 rows are not written | M.TEST_HELP.033: its constituents travel to the host-side rewrite in U25, "none is applied to this file" |
+| U8C2 | A.U8C2.11's `l2.sensortask_integration_override_poll_tries` is not written | M.TWIN.144 withdraws it with the moved code; U8C left its paired sleep untagged |
+| U8C2 | `l1.asy_ntp_client_fake_server_poll_tries` is sited in `test_asy_ntp_client.py` only; `l1.asy_ntp_client_synced_poll_tries` in all three NTP files | M.TEST_UNIT.282/.285: the copied fake servers leave with the local classes |
+| U8C2 | The memory-stress floor's ID is `l4.memory_stress_bench_min_answered` (`_MIN_ANSWERED`); `_SOAK_ERROR_MAX` is not created | M.HW_BENCH.074's Resolved line over A.U8C2.20's text; U26 turns the error budget into a rate |
+| U8C2 | `l3.uart_read_never_blocks_the_loop_span_fraction` is sited in the driver script only | M.SPEC.156 (4) withdraws A.U8C2.42's rows on the raw script |
+| U8C2 | `l3.heap_headroom_after_full_system_build_worst_case_factor`'s Basis is the requirement the script states, Margin none | A.U8C2.30: the factor is a requirement, not an estimate |
+| U8C2 | Three A.U8C.121 Dependants whose rows do not exist are not written (`l4.network_resilience_ntp_fail_wait_s`, `l3.sgp40_fram_backup_restore_backup_wait_s`, `l3.isl29125_mechanism_envelope_settle_s`); pairs with withdrawn rows are not cited | a Dependant names an existing row |
+| U8C2 | Steps already in place (M.HW_DEV.081, M.TEST_UNIT.098/.105/.106/.162/.240/.323, M.TWIN.036/.044, M.SCR.045) and the moot WiFi repro step change nothing | U8C landed them; the repro scripts were deleted in U5 |
+| U8C2 | Device-script and harness findings with no step (SF-U8C2-01 to -11) go to `open_findings.md` with U26, U30 or U35, not fixed here | each needs its script's later step (facts, recovery) and runs only on the bench, which this phase does not run |
+| U8C2 | U8C's hit-table reason for `l2.uart_link_hammer_limit_s` names the leak test too | V.07 of the G16-G18 verification |
+| U8C2 | Scan findings no step closes are held in `audit/sweeps/open_findings.md`, each with the unit whose step touches its file; earlier scans' open rows are moved there | a finding left only in a scan record has no unit to act on it (the owner's evidence rule) |
+| U8C2 | H.7, the `l0.smoke_speculative_connections_max` row and the smoke comment name Chromium and Firefox | CI on the U8 fix saw Firefox open one spare socket in 48 loads (evidence `U8_close/smoke_connections/ci_2593600.md`); the bound of one holds |
 
 ## Parked deltas (OR2.c, OR106.a)
 

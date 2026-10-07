@@ -31,6 +31,10 @@ _CMD_TIMEOUT_S = 10.0
 _UDP_CAPTURE_TIMEOUT_S = 55.0
 # @tunable l4.bench_control_join_hotspot_timeout_s = 30.0
 _JOIN_HOTSPOT_TIMEOUT_S = 30.0
+# @tunable l4.bench_control_tcpdump_timeout_s = 60
+_TCPDUMP_TIMEOUT_S = 60
+# @tunable l4.bench_control_capture_wait_floor_s = 5.0
+_CAPTURE_WAIT_FLOOR_S = 5.0
 
 
 def _nmcli(*args: str, timeout_s: float = _NMCLI_TIMEOUT_S) -> str:
@@ -141,7 +145,7 @@ class BenchBridge:
         (see tests_hardware/README.md). Pair with read_captured_udp_source_port()."""
         target_iface = iface or self.wifi_iface()
         return subprocess.Popen(
-            ["sudo", "timeout", "60", "tcpdump", "-i", target_iface, "-nn", "-l", "-c", "1", "udp", "and", "src", "host", src_host, "and", "dst", "port", str(dst_port)],
+            ["sudo", "timeout", str(_TCPDUMP_TIMEOUT_S), "tcpdump", "-i", target_iface, "-nn", "-l", "-c", "1", "udp", "and", "src", "host", src_host, "and", "dst", "port", str(dst_port)],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
@@ -154,7 +158,7 @@ class BenchBridge:
         try:
             line = proc.stdout.readline() if proc.stdout is not None else ""
         finally:
-            proc.wait(timeout=max(timeout_s, 5.0))
+            proc.wait(timeout=max(timeout_s, _CAPTURE_WAIT_FLOOR_S))
         # e.g. "14:35:23.753510 IP 192.168.85.57.55718 > 162.159.200.123.123: NTPv3, ..." - the
         # source token's own trailing ".<port>" (tcpdump -nn's own numeric host.port notation).
         match = re.search(r"IP\s+(\S+)\s*>", line)

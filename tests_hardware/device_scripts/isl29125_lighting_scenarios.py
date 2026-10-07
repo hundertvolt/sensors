@@ -46,6 +46,10 @@ _BASELINE_TOL = 0.35  # return-to-baseline: same light must read the same after 
 _PARK_STABLE_SAMPLES = 3  # consecutive same-range samples that count as "the entry range has settled"
 # @tunable l3.isl29125_lighting_scenarios_park_timeout_s = 20.0
 _PARK_TIMEOUT_S = 20.0
+# @tunable l3.isl29125_lighting_scenarios_min_samples = 3
+_MIN_SAMPLES = 3
+# @tunable l3.isl29125_lighting_scenarios_min_span_ratio = 100.0
+_MIN_SPAN_RATIO = 100.0
 W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 
 failures: "list[str]" = []
@@ -212,7 +216,7 @@ async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[t
     # scenarios, and blaming the one it surfaces in would be arbitrary. Asserted once per run.
     if ("W", W_ISL_PERIODIC_ONLY) in entries:
         periodic_only_seen.append(name)
-    check(rig.samples >= 3, f"{name}: only {rig.samples} samples arrived - the read chain stalled")
+    check(rig.samples >= _MIN_SAMPLES, f"{name}: only {rig.samples} samples arrived - the read chain stalled")
     check(rig.max_gap_ms <= int(_MAX_SAMPLE_GAP_S * 1000), f"{name}: {rig.max_gap_ms}ms between samples - the read chain stalled mid-scenario")
     check(rig.switches <= max_switches, f"{name}: {rig.switches} range switches (limit {max_switches}) - chattering")
     # The other half, and the one a passing run can otherwise hide: a scenario built to exercise
@@ -338,10 +342,11 @@ async def _main() -> None:
             span_lo, span_hi = min(span_lo, rig.lux_min), max(span_hi, rig.lux_max)
             await _baseline(rig, spec[0], reference)
         # Collectively the scenarios must have covered a real dynamic range, not one corner of it.
-        check(span_hi > span_lo * 100.0, f"the scenario set only spanned {span_lo:.1f}..{span_hi:.1f} lux - the brightness range was not really covered")
+        check(span_hi > span_lo * _MIN_SPAN_RATIO, f"the scenario set only spanned {span_lo:.1f}..{span_hi:.1f} lux - the brightness range was not really covered")
         # Without this the ISL_PERIODIC_ONLY check below proves nothing: the warning needs five
         # consecutive periodic-only decisions, so a run with four switches in total could not have
         # produced it however dead the interrupt line was.
+        # @tunable isl29125.periodic_only_warn_at = 5
         check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the ISL_PERIODIC_ONLY dead-interrupt check below to be able to fire at all")
         check(not periodic_only_seen, f"ISL_PERIODIC_ONLY logged during {periodic_only_seen} - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
         notes.append(f"combined span across every scenario: {span_lo:.1f}..{span_hi:.1f} lux, {rig.total_switches} range switches in total")

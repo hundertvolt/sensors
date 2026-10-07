@@ -26,6 +26,10 @@ _MIN_RATIO = 5  # measured 20.6x; anything under 5x means the idle rate is not b
 _SAMPLE_STEP_MS = 250
 # @tunable l3.uart_idle_poll_rate_stop_poll_ms = 10
 _STOP_POLL_MS = 10
+# @tunable l3.uart_idle_poll_rate_stop_poll_tries = 40
+_STOP_POLL_TRIES = 40
+# @tunable l3.uart_idle_poll_rate_expected_rounds_factor = 2
+_EXPECTED_ROUNDS_FACTOR = 2
 
 
 class CountingPoller:
@@ -76,7 +80,7 @@ async def _count_rounds(wdt: "machine.WDT", idle_ms: int) -> int:
         await asyncio.sleep_ms(_SAMPLE_STEP_MS)
     rounds = counter.rounds
     await comm.clear()
-    for _ in range(40):
+    for _ in range(_STOP_POLL_TRIES):
         if listener.done():
             break
         wdt.feed()
@@ -106,7 +110,7 @@ async def _main() -> None:
         failures.append(f"idle rate cut poll rounds only {fast // idle}x ({fast} -> {idle}), under the {_MIN_RATIO}x floor")
     # The absolute rate should track poll_idle_ms, not merely be smaller - a listener that stopped
     # polling entirely would also pass the ratio check but would never notice a frame.
-    if idle > _EXPECTED_IDLE_ROUNDS * 2 or idle < _EXPECTED_IDLE_ROUNDS // 2:
+    if idle > _EXPECTED_IDLE_ROUNDS * _EXPECTED_ROUNDS_FACTOR or idle < _EXPECTED_IDLE_ROUNDS // _EXPECTED_ROUNDS_FACTOR:
         failures.append(f"idle listener polled {idle} times in {SAMPLE_MS}ms, not near the expected {_EXPECTED_IDLE_ROUNDS}")
 
     if failures:

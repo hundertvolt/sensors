@@ -49,12 +49,16 @@ _FETCH_TIMEOUT_MS = 5000
 _SERVE_WAIT_S = 5
 # @tunable l1.asy_ntp_client_state_poll_ms = 20
 _STATE_POLL_MS = 20
+# @tunable l1.asy_ntp_client_synced_poll_tries = 50
+_SYNCED_POLL_TRIES = 50
 # @tunable l1.ntp_fram_system_integration_utc_tolerance_s = 5
 _UTC_TOLERANCE_S = 5
 # @tunable l1.ntp_fram_system_integration_supervisor_scan_wait_s = 2.5
 _SCAN_WAIT_S = 2.5
 # @tunable l1.ntp_fram_system_integration_start_poll_s = 0.01
 _START_POLL_S = 0.01
+# @tunable l1.ntp_fram_system_integration_start_poll_tries = 200
+_START_POLL_TRIES = 200
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -243,7 +247,7 @@ async def sync_real_ntp_chain(conn: AsyConnTime, ntp: AsyNtpClient) -> None:
             server_task = asyncio.create_task(server.serve_once(reply))
             ntp.ntp_sync_trigger_event.set()
             await asyncio.wait_for(server_task, _SERVE_WAIT_S)
-            for _ in range(50):
+            for _ in range(_SYNCED_POLL_TRIES):
                 if await ntp.ntp_issynced():
                     break
                 await asyncio.sleep_ms(_STATE_POLL_MS)
@@ -560,7 +564,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
 
     async def scenario() -> int:
         svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
-        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
+        for _ in range(_START_POLL_TRIES):  # bounded wait for the real read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): asy_i2c_driver.py's _probe_for_device() awaits two real
             # 0.1s sleeps regardless of outcome, and sleep(0) never advances wall-clock time on this
             # Unix-port event loop, so it can never observe those real sleeps completing.
@@ -625,7 +629,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
 
     async def scenario() -> int:
         svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
-        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
+        for _ in range(_START_POLL_TRIES):  # bounded wait for the real read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
                 break
@@ -656,7 +660,7 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
 
     async def scenario() -> int:
         svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
-        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
+        for _ in range(_START_POLL_TRIES):  # bounded wait for the real read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
                 break

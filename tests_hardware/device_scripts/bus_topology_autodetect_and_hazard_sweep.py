@@ -32,6 +32,10 @@ _BUSES = ((0, 13, 12, 50000, None), (1, 15, 14, 50000, 200000))
 _BROADCAST_STEP_S = 0.2
 # @tunable l3.bus_topology_autodetect_and_hazard_sweep_run_bound_s = 30.0
 _RUN_BOUND_S = 30.0
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_self_reads = 8
+_SELF_READS = 8
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcasts = 3
+_BROADCASTS = 3
 
 
 async def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | None":
@@ -126,14 +130,14 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
     self_errors: list[str] = []
 
     async def reads() -> None:
-        for i in range(8):
+        for i in range(_SELF_READS):
             err = await read_once()
             if err is not None:
                 self_errors.append(f"bus {port_id} {name} self-hazard read {i}: {err}")
             await asyncio.sleep(0)
 
     async def broadcasts() -> None:
-        for _ in range(3):
+        for _ in range(_BROADCASTS):
             try:
                 i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")
             except OSError:

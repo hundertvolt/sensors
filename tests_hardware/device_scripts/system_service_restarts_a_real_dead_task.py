@@ -12,6 +12,8 @@ from system_service import SystemService
 _WDT_TIMEOUT_MS = 8000
 # @tunable l3.system_service_restarts_a_real_dead_task_watch_step_s = 0.9
 _WATCH_STEP_S = 0.9
+# @tunable l3.system_service_restarts_a_real_dead_task_wait_rounds = 4
+_WAIT_ROUNDS = 4
 call_count = 0
 
 
@@ -37,7 +39,7 @@ async def _main() -> None:
     # ~3.5s real time: two real restarts expected (task_errors capped at 200) but well short of
     # the ~7s a task that dies every ~2s cycle would need to trip a REAL reboot (_TASK_FAIL_MAX=300,
     # _TASK_FAIL_INCREMENT=100 per cycle) - not what this script is testing.
-    for _ in range(4):
+    for _ in range(_WAIT_ROUNDS):
         await asyncio.sleep(_WATCH_STEP_S)
         wdt.feed()
 

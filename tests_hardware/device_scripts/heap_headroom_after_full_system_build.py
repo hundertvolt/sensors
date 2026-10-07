@@ -35,7 +35,9 @@ _WORST_CASE_ALLOCATION = 16_384
 # Requirement, not a fitted floor: room for the worst case twice over. 32,768 B is 12% of the
 # RP2040's 264 KB SRAM; the retired 80,000 B floor was 30%, which is why the owner retired it on
 # 2026-09-19. Nothing here may be raised to fit a reading (agent, 2026-09-19).
-_MIN_LARGEST_BLOCK = 2 * _WORST_CASE_ALLOCATION
+# @tunable l3.heap_headroom_after_full_system_build_worst_case_factor = 2
+_WORST_CASE_FACTOR = 2
+_MIN_LARGEST_BLOCK = _WORST_CASE_FACTOR * _WORST_CASE_ALLOCATION
 # Survivor volume. Every [HW] reading of a fully built dev graph is 87,760-87,968 B, so this is
 # ~14% over the measured cost of the object graph itself, and catches a regression that adds
 # permanent objects rather than one that scatters them.

@@ -1621,11 +1621,11 @@ def test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not()
 
     idle = make_uart(poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
     idle.poller = _StepPoller([0, 0, select.POLLIN])  # type: ignore[assignment]
-    assert run(wait_on(idle, -1)) >= 2 * 40
+    assert run(wait_on(idle, -1)) >= 2 * _IDLE_POLL_MS
 
     bounded = make_uart(poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
     bounded.poller = _StepPoller([0, 0, select.POLLIN])  # type: ignore[assignment]
-    assert run(wait_on(bounded, 1000)) < 40
+    assert run(wait_on(bounded, 1000)) < _IDLE_POLL_MS
 
 
 def test_uncounted_reads_are_clamped_to_what_is_buffered_too() -> None:

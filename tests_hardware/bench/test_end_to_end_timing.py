@@ -42,6 +42,8 @@ _JOIN_TIMEOUT_S = 15.0
 _RECOVERY_SANITY_TIMEOUT_S = 120.0
 # @tunable l4.end_to_end_timing_reset_spacing_s = 25.0
 _RESET_SPACING_S = 25.0
+# @tunable l4.end_to_end_timing_reset_cycles = 3
+_RESET_CYCLES = 3
 # @tunable l4.end_to_end_timing_reset_recovery_timeout_s = 60.0
 _RESET_RECOVERY_TIMEOUT_S = 60.0
 # @tunable l4.end_to_end_timing_backup_advance_timeout_s = 90.0
@@ -169,7 +171,7 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
     )
 
     try:
-        for _cycle in range(3):
+        for _cycle in range(_RESET_CYCLES):
             time.sleep(_RESET_SPACING_S)  # spread across the 60s backup cadence so each of the 3 resets lands
             # at a genuinely different, uncontrolled point relative to it - can't be synchronized
             # to the real SPI write itself from the host side.

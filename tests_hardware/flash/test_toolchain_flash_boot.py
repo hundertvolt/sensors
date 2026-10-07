@@ -26,11 +26,15 @@ _BUILD_TIMEOUT_S = 600
 _LOAD_TIMEOUT_S = 120
 # @tunable l3.toolchain_flash_boot_load_retry_backoff_s = 2.0
 _LOAD_RETRY_BACKOFF_S = 2.0
+# @tunable l3.toolchain_flash_boot_picotool_load_attempts = 5
+_PICOTOOL_LOAD_ATTEMPTS = 5
+# @tunable l3.toolchain_flash_boot_reachability_calls = 5
+_REACHABILITY_CALLS = 5
 
 
 def test_mpremote_connection_is_stable_across_repeated_calls(board: Board) -> None:
-    failures = [i for i in range(5) if not board.is_reachable()]
-    assert not failures, f"mpremote connection failed on attempt(s) {failures} out of 5 consecutive calls to {board.device}"
+    failures = [i for i in range(_REACHABILITY_CALLS) if not board.is_reachable()]
+    assert not failures, f"mpremote connection failed on attempt(s) {failures} out of {_REACHABILITY_CALLS:g} consecutive calls to {board.device}"
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +89,7 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
     # enter_bootloader() can race it, failing with exit 249) - bounded retry here instead of one
     # fixed sleep, since the real enumeration delay varies by run.
     load: subprocess.CompletedProcess[str] | None = None
-    for _attempt in range(5):
+    for _attempt in range(_PICOTOOL_LOAD_ATTEMPTS):
         load = subprocess.run(
             ["sudo", "picotool", "load", "-x", "-v", str(uf2_path)],
             cwd=REPO_ROOT,
@@ -99,6 +103,6 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
         time.sleep(_LOAD_RETRY_BACKOFF_S)
     assert load is not None
     if load.returncode != 0:
-        raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
+        raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after {_PICOTOOL_LOAD_ATTEMPTS:g} attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
 
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after real UF2 reflash")

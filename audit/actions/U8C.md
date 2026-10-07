@@ -2251,7 +2251,7 @@ Every hit of C.0.1 in a classified file, keyed (file:line, kind, literal). Verdi
 | `tests/test_digital_twin_uart_link.py:305` | kw | 60 | tuned | `l2.uart_link_exchange_limit_s` — run() hang bound, value 60 |
 | `tests/test_digital_twin_uart_link.py:322` | call | 2 | tuned | `l2.uart_link_ticker_step_ms` — pace of the co-running ticker whose progress is asserted |
 | `tests/test_digital_twin_uart_link.py:331` | kw | 240 | tuned | `l2.uart_link_max_train_limit_s` — run() hang bound of the maximum-length train |
-| `tests/test_digital_twin_uart_link.py:373` | kw | 300 | tuned | `l2.uart_link_hammer_limit_s` — run() hang bound of the 120-transaction hammers |
+| `tests/test_digital_twin_uart_link.py:373` | kw | 300 | tuned | `l2.uart_link_hammer_limit_s` — run() hang bound of the 300-transfer leak test and the 120-transaction hammer |
 | `tests/test_digital_twin_uart_link.py:404` | call | 1 | tuned | `l2.uart_link_churn_step_ms` — pace of the allocation churn |
 | `tests/test_digital_twin_uart_link.py:418` | call | 5 | tuned | `l2.uart_link_cancel_settle_ms` — real wait for the cancelled background tasks to unwind |
 | `tests/test_digital_twin_uart_link.py:420` | kw | 180 | tuned | `l2.uart_link_churn_limit_s` — run() hang bound of the heap-churn case |
