@@ -28,15 +28,21 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
 
 ## SGP40 VOC baseline FRAM backup
 
-`/sensors`' SGP40 config has two related but independently-meaning "0" values — easy to conflate:
+`/sensors`' SGP40 config has three related but independently-meaning "0" values — easy to conflate:
 
 - **`BackupPeriod`** (minutes, 0–1440): how often the VOC baseline/humidity-compensation state is
-  written to FRAM. **`0` disables periodic backup entirely** — nothing is ever written.
+  written to FRAM. **`0` disables periodic backup entirely** — nothing is ever written. A backup is
+  verified about once an hour, and every backup when they are more than an hour apart.
 - **`BackupMaxAge`** (minutes, 0–10080): on boot, how old a restored FRAM backup is allowed to be
   before it's rejected as stale (falls back to a fresh VOC init instead). **`0` disables this
-  staleness check** — a restored backup is accepted no matter how old it is.
+  staleness check** — a restored backup is accepted no matter how old it is. Under a nonzero limit,
+  a backup stamped later than the unit's clock (the clock was set back) counts as too old.
+- **`WaitTimeNTP`** (seconds, 0–600): how long a boot waits for NTP before restoring a timestamped
+  backup (so its age can be checked). **`0` means never wait**: the backup is restored at once,
+  without an age check.
 
-The two `0`s point in opposite directions: one turns a feature off, the other turns a limit off.
+The `0`s point in different directions: `BackupPeriod` turns a feature off, `BackupMaxAge` turns a
+limit off, `WaitTimeNTP` skips a wait.
 
 ## ISL29125 colour sensor (dev units only)
 
@@ -87,8 +93,10 @@ from the nominal 26.67× ratio between them, and that error is the small step yo
 crosses a range change. The unit will measure the real ratio on *this* chip, but only when you ask
 and it never applies the result by itself.
 
-Set the light so the reading sits in the band where both ranges work — mid-brightness, neither dark
-nor near saturation — and switch **Calibrate Gain Ratio** on. For up to two minutes the unit takes
+Start with the scene dark, let the unit settle on its sensitive range, then raise the light until
+**Calibration Light** reads suitable — mid-brightness, neither dark nor near saturation — and switch
+**Calibrate Gain Ratio** on. (A strongly coloured light can hold the unit on its bright range, where
+its green is too small to calibrate from; starting dark avoids that.) For up to two minutes the unit takes
 readings on both ranges and checks the light held still between them, discarding any pair taken
 while it moved. What it finds appears as **Measured Gain Ratio** among the ISL29125 readings, and
 stays there for ten minutes. If the number looks sensible, type it into **Range Gain Ratio**; that

@@ -374,7 +374,7 @@ def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> No
         buf, serialize, deserialize, _cfg_values = await sgp._check_storage()
         data, compensated, _serialized = await sgp._read_sgp(buf, serialize=serialize, deserialize=deserialize)
         assert compensated is False  # scd30 genuinely hasn't measured yet - real, expected timing
-        assert data == SGP40(None, None, None)
+        assert data == SGP40(None, None, None, None)
         log = await sgp.get_error_counter()
         assert log["SGP40"]["ErrCount"] == 0, f"expected startup jitter must not log any E/W entry ({log!r})"
 
@@ -493,7 +493,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
         assert cfg is not None
         warn_co2 = cfg["WarnCO2"]
         assert isinstance(warn_co2, int)
-        await scd30._set_meas_data(SCD30(warn_co2 + 100, 22.0, 45.0, None, None, None))
+        await scd30._set_meas_data(SCD30(warn_co2 + 100, 22.0, 45.0, None, None, None, None, None))
 
         async def apply_window(on: int, off: int) -> None:
             body = {"OnH": on, "OnM": 0, "OffH": off, "OffM": 0, "FlashDur": 0.5}
@@ -935,7 +935,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # sgp_comp_callback reads scd30.get_data() for humidity compensation, without which _read_sgp()
             # bails out. scd30's read chain is orthogonal here, so its cached reading is seeded through the
             # same _set_meas_data() a real read cycle calls.
-            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None, None, None))
             # WaitTimeNTP's schema default (30) would need 30 real backup cycles before _run_backup()'s
             # require_ntp gate clears without an NTP sync - set to its minimum positive value so the first
             # backup below completes without depending on NTP reachability here.
@@ -969,7 +969,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # instance surviving in memory - the whole point is that the persisted FRAM bytes, not
             # Python state, are what carries the backup across the "reboot".
             sgp2 = sensortask_wozi.sgp40
-            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))  # see boot 1's own comment above
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None, None, None))  # see boot 1's own comment above
 
             # --- Restore, through the real chain again. ---
             task2 = sgp2.start_asy_read()
@@ -1010,7 +1010,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             sgp1 = sensortask_wozi.sgp40
-            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None, None, None))
             persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1})
             assert persisted
             task = sgp1.start_asy_read()
@@ -1047,7 +1047,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             assert sensortask_wozi.sgp40 is not sgp1  # genuinely fresh object, not memory surviving in-process
             sgp2 = sensortask_wozi.sgp40
-            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None, None, None))
 
             # Restore must succeed cleanly against the last *flushed* state, with no trace of the lost write.
             task3 = sgp2.start_asy_read()

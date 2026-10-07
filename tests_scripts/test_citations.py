@@ -319,9 +319,10 @@ def test_a_file_that_is_not_utf8_raises_rather_than_reading_as_no_prose(tmp_path
 
 
 def test_an_unlisted_file_type_raises_rather_than_reading_as_no_prose() -> None:
-    for path in ("tools/probe.jsonc", "scripts/no_suffix", "src/stub.pyi"):
+    for path in ("tools/probe.jsonc", "scripts/no_suffix", "src/extension.pyx"):
         with pytest.raises(ValueError, match="no prose reader"):
             prose_blocks(path, "# cites src/gone.py\n")
+    assert [b.lines for b in prose_blocks("src/stub.pyi", "# cites src/gone.py\n")] == [b.lines for b in prose_blocks("src/stub.py", "# cites src/gone.py\n")] != []
     assert prose_blocks("package.json", "{}") == prose_blocks(".nvmrc", "24\n") == prose_blocks("ext/LICENSE-x", "MIT") == []
 
 

@@ -71,10 +71,10 @@ _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own co
 # equal driver.upper() here, which is NOT a general rule - NotificationService's is "NOTIFY",
 # not "NOTIFICATION" (Part L.3). A verified narrow table, never generic _NAME resolution.
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
-# The one registered error source deliberately not FRAM-backed: FRAMManager builds a plain
-# PrintLogHistory, the store being unable to persist its own failure history through itself. Run
-# 5c's loss sweep exempts it; _sensortask_scenarios.py pins the set from the real object graph.
-_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM"})
+# The registered error sources not FRAM-backed, exempt from Run 5c's loss sweep: FRAMManager's own log (the store
+# cannot persist its failures through itself) and CFGMGR_SCD30 (RAM-only, owner, 2026-09-29: 'no extra FRAM chunk').
+# _sensortask_scenarios.py pins the same set from the real object graph.
+_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM", "CFGMGR_SCD30"})
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which Run 4 asserts came back at 0.
 #
@@ -992,7 +992,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             _check(condition=restored == expected, msg=f"Run 5c: {name}'s {expected} chip-healthy error(s) survived a reboot taken with storage paused - the one case that must never lose them ({restored} found, {entry!r})")
             _check(condition=entry.get("counter", 0) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
         # Every OTHER registered source in the same breath - the ones with no fault-injection seam
-        # (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every CFGMGR_*, dev's two uart_link instances). A
+        # (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every FRAM-backed CFGMGR_*, dev's two uart_link instances). A
         # fresh entry from THIS boot is legitimate, so the claim is "nothing was lost", not equality.
         for name, before in snapshot_table.items():
             if name in recorded or name in _IN_MEMORY_ONLY_ERROR_SOURCES:

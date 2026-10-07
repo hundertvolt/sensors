@@ -167,9 +167,9 @@ def test_the_evaluator_concatenates_tuples_and_refuses_anything_else() -> None:
 _BITES = (
     ('("PresOffset", "float", 0.0, -500.0, 500.0, None)', '("PresOffset", "float", 0.0, -500.0, 16777217.0, None)', "PresOffset: max 16777217.0 lies outside"),
     ('("PresOffset", "float", 0.0, -500.0, 500.0, None)', '("PresOffset", "float", 0.0, -500, 500.0, None)', "PresOffset: min -500 is not float or None"),
-    ('("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)', '("MeanAtmTemp", "float", 15.0, -50.0, 50.0)', "is not a 6-tuple"),
+    ('("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None)', '("MeanAtmTemp", "float", 15.0, -40.0, 50.0)', "is not a 6-tuple"),
     ('("TempOffset", "float", 0.0, -10.0, 10.0, None)', '("TempOffset", "float", 0.0, 10.0, -10.0, None)', "TempOffset: min 10.0 > max -10.0"),
-    ('("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None)', '("MeanAtmTemp", "float", 99.0, -50.0, 50.0, None)', "MeanAtmTemp: default 99.0 (special None) fails"),
+    ('("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None)', '("MeanAtmTemp", "float", 99.0, -40.0, 50.0, None)', "MeanAtmTemp: default 99.0 (special None) fails"),
 )
 
 

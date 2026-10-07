@@ -857,6 +857,21 @@ def test_bmp3xx_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, 
     _build(tmp_path, src_dir, doc)  # no raise
 
 
+@pytest.mark.parametrize("bad_trigger", [0, 1801, -1])
+def test_scd30_trigger_s_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
+    doc = base_doc()
+    doc["instance"][0]["trigger_s"] = bad_trigger  # scd30
+    with pytest.raises(BuildError, match="outside this driver's legal range"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("legal_trigger", [1, 1800, 3])
+def test_scd30_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
+    doc = base_doc()
+    doc["instance"][0]["trigger_s"] = legal_trigger  # scd30
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
 def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, src_dir: Path) -> None:
     # The actually-common real case ADDRESS_CAPABLE_DRIVERS exists for - two bmp3xx on one
     # bus, told apart by their two legal SDO-pin addresses - had no positive test until now (only

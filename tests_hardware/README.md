@@ -902,6 +902,13 @@ nothing but this README/manual-test references). Ten tests closed these gaps (44
   and checks they're in range *and* neither frozen nor erratic. Deliberately a stability/sanity
   check, not a numerical-accuracy claim against a calibrated reference (that needs a human-supplied
   VOC stimulus - `manual/manual_sensor_accuracy.py` item 10).
+- **SGP40 sample cadence** (`flash/test_sensor_accuracy.py::test_sgp40_sample_cadence`,
+  `device_scripts/sgp40_sample_cadence.py`, L3, `long_soak`: runs under `scripts/run_bench_soak_tests.sh
+  --tier short`, its window fixed at 600 s whatever the tier): boots the generated `dev` system, counts
+  SGP40 read cycles over ten minutes of the real task graph and prints one `CADENCE` line (cycles,
+  elapsed, lost samples, the largest gap, the gaps over 1.5 s). No pass threshold: the figures are the
+  deliverable (SPECIFICATION.md M.3). No flash cycle; its config is the board's own, and it writes the
+  SGP40 backup chunk and the booted modules' logs into FRAM, so read the FRAM logs first.
 - **FRAM backup working** (`device_scripts/fram_manager_roundtrip.py`,
   `sgp40_fram_backup_restore.py`, `flash/test_fram_storage.py`): a real chunk write/read/CRC/dual-
   copy round trip against the physical MB85RS64V chip, plus the real SGP40 VOC-state backup/restore

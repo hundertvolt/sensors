@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import json
 import os
 import time
@@ -16,6 +17,7 @@ import asy_print_log
 import asy_spi_driver
 from asy_base_classes import (
     COUNTER_CAP,
+    DeviceSession,
     Lockable,
     LockableBuffer,
     LockedCounter,
@@ -30,6 +32,7 @@ from asy_base_classes import (
 )
 from asy_config_manager import schema_dict
 from asy_fram_manager import FRAMManager
+from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
 from asy_spi_driver import SPI
 
@@ -208,6 +211,23 @@ def test_lockable_serializes_concurrent_access() -> None:
 
     run(scenario())
     assert max_concurrent == 1
+
+
+def test_device_session_is_one_lockable_holding_its_bus_device() -> None:
+    # The one shared session class every sensor driver builds over its own I2CDevice (SPECIFICATION.md C.2/G.2).
+    machine.I2C.reset_id(1)
+    device = I2CDevice(I2C(1, scl_pin=19, sda_pin=18, frequency=50000), 0x44)
+    session = DeviceSession(device)
+    assert isinstance(session, Lockable)
+    assert session.i2c_device is device
+
+    async def scenario() -> bool:
+        async with session as held:
+            return held is session and session.session_lock.locked()
+
+    assert run(scenario())
+    assert not session.session_lock.locked()
+    assert DeviceSession(device).session_lock is not session.session_lock  # one lock per session
 
 
 def test_lockablebuffer_default_data_length_spans_remainder() -> None:
@@ -1016,6 +1036,124 @@ def test_a_reader_without_a_recovery_bus_skips_the_bus_rungs() -> None:
     assert _entries(reader, "W", "BUS_RECOVERY") == 0
 
 
+# The shared read-trigger divider (SPECIFICATION.md C.9): a dividing reader's 1 s base tick sets its read event
+# every n-th tick; a failed arm wakes the waiting task, which persists one TIMER entry and ends, and re-arms on restart.
+
+
+class _DividingReader(SensorReader):
+    # The divider attributes a dividing driver (BMP3XX, ISL29125) sets, over the fake Timer.
+    def __init__(self, period: int) -> None:
+        super().__init__(Meas(None, 50), "DIVIDER", max_module_error=3)
+        self._base_trigger_event = asyncio.ThreadSafeFlag()
+        self._read_event = asyncio.ThreadSafeFlag()
+        self._trigger_period = LockedValue(init_value=period)
+        self._trigger_counter = 0
+        self._trigger_timer = machine.Timer()
+
+    def start_timer(self) -> None:
+        try:
+            self._trigger_timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=lambda _b: self._base_trigger_event.set())
+        except (MemoryError, OSError) as e:
+            self._timer_failed(e, self._base_trigger_event)
+
+
+async def _settle(n: int = 5) -> None:
+    for _ in range(n):
+        await asyncio.sleep(0)
+
+
+async def _end(task: "asyncio.Task[None]") -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+def test_trigger_loop_sets_the_read_event_on_every_nth_tick() -> None:
+    for period, expected in ((1, [1, 1, 1, 1, 1, 1]), (3, [0, 0, 1, 0, 0, 1])):
+        reader = _DividingReader(period)
+
+        async def scenario(reader: _DividingReader) -> "list[int]":
+            task = asyncio.create_task(reader._trigger_loop())
+            seen = []
+            await _settle()
+            for _ in range(6):
+                reader._base_trigger_event.set()
+                await _settle()
+                seen.append(reader._read_event.state)
+                reader._read_event.clear()
+            await _end(task)
+            return seen
+
+        assert run(scenario(reader)) == expected, (period, expected)
+        assert reader._timer_error is None
+        assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 0
+
+
+def test_a_failed_timer_wakes_the_reader_and_logs_once() -> None:
+    reader = _DividingReader(1)
+    reader.pr.level = 1  # the console line prints at the error level
+    assert run(reader._timer_fault()) is False  # nothing failed: nothing logged
+    flag = asyncio.ThreadSafeFlag()
+    error = OSError(errno.ENOMEM, "alarm pool exhausted")
+    recorder = _PrintRecorder()
+    try:
+        reader._timer_failed(error, flag)
+    finally:
+        recorder.restore()
+    assert flag.state == 1  # the waiting task wakes instead of sleeping forever
+    assert reader._timer_error is error
+    assert [line[:2] for line in recorder.lines] == [("DIVIDER", "Could not start timer:")]
+    assert run(reader._timer_fault()) is True
+    assert _entries(reader, "E", "TIMER") == 1
+    assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 1
+
+
+def test_trigger_loop_re_arms_a_failed_timer_first() -> None:
+    reader = _DividingReader(1)
+    reader._timer_error = OSError(errno.ENOMEM, "alarm pool exhausted")
+
+    async def scenario() -> None:
+        task = asyncio.create_task(reader._trigger_loop())
+        await _settle()
+        await _end(task)
+
+    run(scenario())
+    assert len(reader._trigger_timer.arms) == 1  # one arm, at the task's start
+    assert reader._trigger_timer.period == 1000
+    assert _entries(reader, "E", "TIMER") == 0  # the re-arm succeeded: no fault to persist
+    assert reader._timer_error is None  # last: mypy keeps the OSError narrowed from the line above run()
+
+
+def test_a_failed_re_arm_ends_the_trigger_loop_with_one_timer_entry() -> None:
+    for exc in (OSError, MemoryError):
+        reader = _DividingReader(1)
+        reader._timer_error = OSError(errno.ENOMEM, "alarm pool exhausted")
+        machine.Timer.raise_on_arm = True
+        machine.Timer.raise_on_arm_exc = exc
+        recorder = _PrintRecorder()
+        try:
+            run(asyncio.wait_for(reader._trigger_loop(), 1))  # ends by itself: no cancel needed
+        finally:
+            recorder.restore()
+            machine.Timer.raise_on_arm = False
+            machine.Timer.raise_on_arm_exc = OSError
+        assert _entries(reader, "E", "TIMER") == 1, exc
+        assert isinstance(reader._timer_error, exc)
+        assert reader._read_event.state == 0  # no read was triggered by the fault's wake
+
+
+def test_republish_replaces_the_named_fields_and_keeps_the_rest() -> None:
+    reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
+    assert run(reader._republish(("temp", "hum"), hum=60)) is None
+    assert run(reader._get_meas_data()) == Meas(20.0, 60)
+    run(reader._republish(("temp", "hum")))  # nothing changed: an equal tuple of the same type
+    data = run(reader._get_meas_data())
+    assert data == Meas(20.0, 60)
+    assert type(data) is Meas
+
+
 def test_get_dict_cfg_default_returns_all_none() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
@@ -1541,6 +1679,37 @@ def test_one_log_config_reaches_both_loggers_with_its_store_length_and_level() -
         assert own.fram is not store.fram
     finally:
         _remove(path_prefix + "config_logcfg.cfg")
+
+
+class _RamConfigLogReader(SensorReaderConfig):
+    _CFG_LOG_FRAM = False  # the class attribute a driver sets to keep its config store's logger off FRAM
+
+
+def test_a_reader_that_keeps_its_config_log_off_fram_still_logs_its_own_to_fram() -> None:
+    # One LogConfig: the reader's own logger takes its FRAM store, the config store's stays RAM-only with
+    # the same history length and level, and allocates no chunk.
+    path_prefix = _SHARED_CFG_DIR
+    _remove(path_prefix + "config_ramcfglog.cfg")
+    try:
+        manager, _chip = make_fram_manager()
+        run(manager.setup())
+        start = manager._allocated_size
+        SensorReader(Meas(20.0, 50), "onechunk", max_module_error=3, log=LogConfig(manager, 4, 1))
+        one_chunk = manager._allocated_size - start
+        start = manager._allocated_size
+        reader = _RamConfigLogReader(Meas(20.0, 50), "ramcfglog", _VAL_SI, max_module_error=3, cfg_path=path_prefix, log=LogConfig(manager, 4, 1))
+        assert manager._allocated_size - start == one_chunk  # the reader's own chunk only
+        assert isinstance(reader.pr, PrintLogHistoryStore)
+        assert reader.pr.fram is not None
+        store = reader.cfgmgr.pr
+        assert isinstance(store, PrintLogHistory)
+        assert not isinstance(store, PrintLogHistoryStore)
+        assert len(store.history) == 4
+        assert store.level == 1
+        assert SensorReaderConfig._CFG_LOG_FRAM is True  # every other reader keeps both on FRAM
+        assert run(reader.setup()) is True
+    finally:
+        _remove(path_prefix + "config_ramcfglog.cfg")
 
 
 def test_sensorreaderconfig_cfgmgr_stays_ram_only_when_fram_is_none() -> None:

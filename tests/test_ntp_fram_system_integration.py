@@ -592,9 +592,9 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
     fake_i2c: FakeI2C = reader._bmp._i2c_bmp3xx.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_BMP_ADDR)  # every real bus op fails - setup() itself never succeeds
     svc = SystemService(_never_synced)
-    starts: list[asyncio.Task[bool]] = []
+    starts: list[asyncio.Task[None]] = []
 
-    def spy_starter() -> "asyncio.Task[bool]":
+    def spy_starter() -> "asyncio.Task[None]":
         # Wraps the real starter (not a synthetic one), same technique as
         # test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable above.
         t = reader.start_asy_read()
@@ -626,9 +626,9 @@ _SCD30_ADDR = 0x61
 _SGP40_ADDR = 0x59
 
 
-def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
+def make_scd30_reader(cfg_path: str, max_module_error: int = 1) -> SCD30_Reader:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error)
+    return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error, cfg_path=cfg_path)
 
 
 def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
@@ -636,7 +636,7 @@ def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     # A real SCD30_Reader behind the temperature/humidity value references (SPECIFICATION.md Parts C.14 and L.6.3) -
     # never read() or setup(), so its get_data() just returns its unmeasured-sentinel namedtuple with every
     # field None, matching what the old _no_comp_data() returned directly.
-    scd_reader = make_scd30_reader()
+    scd_reader = make_scd30_reader(cfg_path)
     reader = SGP40_Reader(
         i2c,
         ValueRef(scd_reader, "Temp"),
@@ -649,19 +649,18 @@ def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
 
 
 def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up() -> None:
-    # Same technique as the BMP3xx case above, generalized to the other real sensor Reader shape, a plain
-    # SensorReader with no config schema. The task-completeness audit that motivated the BMP3xx test flagged
-    # SCD30 and SGP40 as the two Readers never driven through a real SystemService.
+    # Same technique as the BMP3xx case above, for the SCD30 reader: the task-completeness audit that motivated
+    # the BMP3xx test flagged SCD30 and SGP40 as the two Readers never driven through a real SystemService.
     #
     # test_asy_scd30_driver.py uses the identical NAK-the-address setup at the module level, just without a
     # real supervisor watching it.
-    reader = make_scd30_reader(max_module_error=1)
+    reader = make_scd30_reader(_tmp_cfg_dir(), max_module_error=1)
     fake_i2c: FakeI2C = reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SCD30_ADDR)  # every real bus op fails - init itself never succeeds
     svc = SystemService(_never_synced)
-    starts: list[asyncio.Task[bool]] = []
+    starts: list[asyncio.Task[None]] = []
 
-    def spy_starter() -> "asyncio.Task[bool]":
+    def spy_starter() -> "asyncio.Task[None]":
         t = reader.start_asy_read()
         starts.append(t)
         return t
@@ -690,9 +689,9 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
     fake_i2c: FakeI2C = reader._sgp._i2c_sgp40.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SGP40_ADDR)  # every real bus op fails - init itself never succeeds
     svc = SystemService(_never_synced)
-    starts: list[asyncio.Task[bool]] = []
+    starts: list[asyncio.Task[None]] = []
 
-    def spy_starter() -> "asyncio.Task[bool]":
+    def spy_starter() -> "asyncio.Task[None]":
         t = reader.start_asy_read()
         starts.append(t)
         return t

@@ -244,21 +244,55 @@ features as today's deployed units, not a feature change.
   SPECIFICATION.md Part L.4) — and the invariant it used to check is instead proven on the
   generated output directly by `tests_scripts/test_buildgen_generate.py::
   test_real_device_constructs_watchdog_exactly_once`, parametrized over all 6 real devices.
-- **SCD30's `AmbPres`** is stored in the sensor's own NVM as a one-time-set value, not a
-  continuously-updated live input — hence a static config value even on wozi (which has a live
-  BMP388); a PUT sends `AmbPres` even when unchanged (`compare_before_write()`'s `always`), since
-  resending the same value is also SCD30's documented command to resume continuous measurement. Confirmed deliberate by the project owner.
+- **SCD30 read timing and first start.** The SCD30 is read on its data-ready edge, with a
+  500 ms tick forcing a read when the pin stays high; that read moment is the chip's own timing and may coincide with
+  other reads on its bus, outside the read-trigger stagger (owner, 2026-09-26). The driver never starts continuous
+  measurement itself: `setup()` reads the firmware version and soft-resets; a new or reset sensor measures after its
+  first `AmbPres` PUT, and the chip keeps measuring across power cycles (SCD30 ID 1.4.1) (owner, 2026-09-26). A second
+  consecutive failed read soft-resets the chip (no NVM write), the participant rung of the recovery ladder (C.7). Every
+  boot, every SCD30 task restart and the participant rung send the soft reset, which puts the sensor into the same state
+  as after powering up (Interface Description 1.4.10); a power loss within the first 7 days after ASC is activated aborts
+  its search for calibration parameters (1.4.6), and whether a soft reset does the same is not stated there (agent,
+  2026-10-06).
+- **SCD30's `AmbPres`** is a one-time-set value stored in the chip, not a live input — a
+  static config value even where a BMP3XX is wired. Every `AmbPres` PUT is sent, never answered "Unchanged": resending
+  it is the documented command that resumes continuous measurement (SCD30 ID 1.4.1), and 0 turns pressure compensation
+  off (owner, 2026-09-26).
 - **SCD30's `ForceCalRef`** recalibration is manual: ventilate until indoor CO2 matches outdoor
-  ambient, then set `ForceCalRef` to that value via REST. No automation planned.
-- **SCD30's `TempOffset`** has real 0.01°C resolution: `set_temperature_offset()` sends the nearest
-  tick, `int(offset * 100 + 0.5)` (in float32, truncation lands one tick low on 130 of the 2001
-  two-decimal inputs from 0.00 to 20.00); more than two decimals is rounded, not rejected, and a PUT compares in ticks.
+  ambient, then set `ForceCalRef` to that value via REST. No automation planned (owner, 2026-08-11, `acc4993`). Every
+  `ForceCalRef` PUT is carried out, never "Unchanged" — its read-back is volatile (400 ppm after power-up, Interface
+  Description p14, 'Set Forced Recalibration value') (owner, 2026-09-26). Whether the conditions suit a recalibration is
+  published as `FRCState` (M.2).
+- **SCD30's `TempOffset`** has 0.01 °C resolution: the driver converts to ticks by rounding to
+  the nearest tick, so every two-decimal value is stored as typed (a truncation stored 130 of 2,001 such values one
+  tick low in float32); a third decimal is rounded by the driver, not by the chip (owner, 2026-09-29).
+- **SCD30 not-ready cycle.** When the chip reports no new data, the reader keeps its cache untouched, counts no
+  error and republishes the last reading under a fresh `TS` — the legacy driver's field behaviour (owner, 2026-07-22,
+  `110f3db`), the one named exception to the rule that no driver re-stamps a sample (C.4.2). Five consecutive
+  data-ready signals with no new measurement persist one `SCD_NOT_READY` warning (a data-ready line stuck high is the
+  likely cause), cleared by the next new measurement; the cached values keep being stored with the cycle's timestamp,
+  as above.
 - **SGP40's VOC index** is deviation-from-learned-baseline, not absolute concentration (confirmed
   against `voc_algorithm.py`'s Sensirion port): (1) 45 sampling intervals must elapse before the
-  index moves off 0; (2) under any constant raw input the index converges toward 100 ("clean air") —
+  index moves off 0 — published as 0 during the blackout, with `VOCState` 0 (M.3); (2) under any constant raw input
+  the index converges toward 100 ("clean air") —
   a spike needs a real step change, not just a high absolute value; (3) a *higher* raw tick count
   reads as *cleaner* air — the inverse of what "raw" suggests. Not a bug — how Sensirion's reference
-  algorithm works; `asy_sgp40_driver.py` treats `VOC` as an opaque index throughout (F.4).
+  algorithm works; `asy_sgp40_driver.py` treats `VOC` as an opaque index throughout (F.4). A compensation value whose
+  producer timestamp is older than `sgp40.comp_max_age_s` (Part N, three hours) counts as unavailable, so the read is
+  skipped as for a missing value (the owner-confirmed rule in this section's list); a value with no timestamp yet counts
+  as current (agent, 2026-10-06). A second consecutive failed cycle sends the device-addressed heater-off (SGP40
+  datasheet Table 14), which reaches only the SGP40 — the participant rung of the recovery ladder (C.7); the
+  general-call reset stays at setup (C.8).
+- **BMP3XX recovery.** A second consecutive failed read soft-resets the chip (0xB6 to CMD) and writes
+  the stored oversampling and filter configuration back, since the reset returns every user setting to its default
+  (BMP388 DS001 §4.3.22) — the participant rung of the recovery ladder (C.7); a reset the chip rejects (`ERR_REG`
+  `cmd_err`) is logged once and writes no configuration. A setup failure or a chip-write failure runs
+  `_init_failed()` (the controller rung); a config-read failure runs no rung. A self-reset of the chip is read, not inferred: every cycle
+  reads EVENT's `por_detected` (0x10 bit 0, cleared by the read), and when it is set the reader persists
+  `BMP_CHIP_RESET` and writes the stored configuration back under the setter lock before converting; a write-back that
+  fails fails the cycle into the ladder. ERR_REG (0x02) is read in the same burst as the data, and a set `fatal_err`
+  fails the cycle (EVENT: BMP388 DS001 4.3.7, BMP390 DS002 4.3.8, BMP384 DS003 4.3.7; ERR_REG: 4.3.2, 4.3.3, 4.3.2).
 - Legacy `neopixel_signal.py` (LED hardware + hardcoded threshold monitoring) was split:
   `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware; also serves
   `asy_wifi_service.py`'s `LEDControl` Protocol) and `asy_notification_service.py`'s
@@ -382,6 +416,9 @@ pins the wireless chip takes.
 the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treats BMP390's
 `0x60` chip ID the same as the other two.
 
+**ISL29125**: `datasheets/isl29125/` holds FN8424 Rev 3.00; the Renesas application notes it refers
+to are not obtainable (agent, 2026-09-25; re-checked if the owner supplies them).
+
 **WS2812**: `datasheets/ws2812/` holds the plain WS2812 datasheet. The boards carry a single-pixel Adafruit RGB NeoPixel
 (not RGBW) on a round PCB, driven by MicroPython's built-in `neopixel` driver, supplied from USB 5 V behind a level
 shifter, so the data-line voltage levels are settled (owner, 2026-09-25); WS2812 vs WS2812B is unconfirmed and low priority.
@@ -438,7 +475,8 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
    `SensorReaderConfig.__init__` (which `WifiService` goes through) builds its own `self.pr` chunk
    first, then its owned `ConfigManager` — **chunk 3** (WP2/CLAUDE.md's implicit-FRAM-wiring rule:
    every `SensorReaderConfig`'s own `cfgmgr` inherits the same `log=` its owner was given, its own
-   separate `"CFGMGR_<name>"`-named logger, never folded into the owner's own history). `conn` then
+   separate `"CFGMGR_<name>"`-named logger, never folded into the owner's own history; the one exception is SCD30's,
+   built RAM-only, step 9). `conn` then
    owns `CaptiveDNS` internally (`asy_captive_dns.py`), constructed with the same `log=` —
    **chunk 4**, its own separate `"DNSSRV"`-named logger.
 7. `ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked,
@@ -451,8 +489,9 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
    cfgmgr chunk" shape as every `SensorReaderConfig`-based module. `storage=fram` gives it the
    FRAM pause control; `level_setters` is a provider, not a list — `sysfunct.setup()` calls it once
    (step 15), after every module exists.
-9. `scd30 = SCD30_Reader(i2c0, 8, trigger_s=3, ..., log=log_fram)` — **chunk 9**; no
-   config schema (params live on-sensor, so no `cfgmgr`/chunk of its own). Constructed before
+9. `scd30 = SCD30_Reader(i2c0, 8, trigger_s=3, ..., cfg_path=cfg_path, log=log_fram)` — **chunk 9**; six
+   of its keys live on-sensor and the three FRC settings in its config file (C.4.3), so it has a `cfgmgr` whose
+   `CFGMGR_SCD30` log is RAM-only (`_CFG_LOG_FRAM = False`): no chunk of its own. Constructed before
    `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a direct `ValueRef(scd30, ...)` reference
    to this already-built object as its `temperature`/`humidity`, so the producer must exist
    first — a pure Python name-resolution requirement, not a FRAM one (chunk order is random-access
@@ -536,12 +575,12 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
 **Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 16
 `PrintLogHistoryStore` chunks plus 1 timestamped chunk): Neopixel (no `cfgmgr`) → WifiService →
 its own `CFGMGR_WIFI` → CaptiveDNS → NTPClient → its own `CFGMGR_NTP` → SystemService → its own
-`CFGMGR_SYSTEM` → SCD30 (no `cfgmgr`) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
+`CFGMGR_SYSTEM` → SCD30 (its `CFGMGR_SCD30` RAM-only, no chunk) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup
 (timestamped) → BMP3xx → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own
 `CFGMGR_ISL29125`) → NotificationService → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
 `UART_resp`, WP3 — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
 Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
-`cfgmgr` (WP2), uses it — which modules may have one is the owner's rule at step 4 above; the order
+`cfgmgr` (WP2) but SCD30's, uses it — which modules may have one is the owner's rule at step 4 above; the order
 is fixed within one build and free to change in the next (owner, 2026-09-26). `src/` has no earlier on-chip layout to
 preserve. (A device with no `[device.wiring].fram_target` keeps `conn`/`ntp`/`sysfunct`/
 `webserver` RAM-only and none of them draw a chunk at all — WP1 changed nothing about that
@@ -1590,14 +1629,10 @@ One file per sensor. Within it:
 - `_VAL_<KEY_IN_UPPER_SNAKE> = const((("<Field>", "<type>", default, min, max, special),))` — one
   schema tuple per config field, named after its key (C.5); cross-instance dependencies are
   `# @wiring …` comment tags beside the schema (C.14.2, L.6.4) — none when the driver has none.
-- `<Sensor>_DeviceSession(Lockable)` — pure boilerplate, identical in all three drivers:
-  ```python
-  class <Sensor>_DeviceSession(Lockable):
-      def __init__(self, i2c_device: I2CDevice) -> None:
-          super().__init__()
-          self.i2c_device = i2c_device
-  ```
-  Copy verbatim (swap `I2CDevice`/`SPIDevice`).
+- `DeviceSession` (`asy_base_classes.py`, G.2): one device's session lock (`session_lock`) plus its bus device
+  (`i2c_device`); every driver builds its
+  own `DeviceSession(I2CDevice(bus, addr))`, no per-driver subclass. Its device is typed `I2CDevice`, the bus every
+  sensor driver uses today; an SPI chip, when one exists, gets its own typed session (agent, 2026-10-07).
 - `<Sensor>_I2C`/`_SPI` (layer 2), `<Sensor>_Reader` (layer 3). A module constructor takes its own
   parameters (bus handle, addressing/pins, `@wiring`-resolved references, `trigger_s` where
   configurable — SGP40's is not, C.11 item 6), then the fixed tail `max_module_error=5`,
@@ -1609,7 +1644,7 @@ One file per sensor. Within it:
 
 ## C.3 Layer 2: `*_I2C`/`*_SPI` protocol class
 
-Owns one `*_DeviceSession` plus chip-specific cached state. **Pre-allocated scratch buffers are
+Owns one `DeviceSession` (C.2) plus chip-specific cached state. **Pre-allocated scratch buffers are
 required only for raw `write()`/`readinto()`/`writeto()`/`readfrom_into()` I/O** (sized once in
 `__init__`, reused every call, D.4 — `SCD30_I2C`/`SGP40_I2C`). A class built entirely on
 `I2CDevice.get_register_struct()`/`get_bits()`/`get_register_bytes()` (`BMP3XX_I2C`) needs no
@@ -1750,25 +1785,25 @@ self.pr.err_s("Message:", e, errno=_ERR_<NAME>)` — the logger prefixes its own
 message string, then the exception or values as separate arguments, never a pre-built or f-string,
 so a suppressed level allocates nothing.
 
-### C.4.1 `_read_loop()` skeleton (identical across all three drivers)
+### C.4.1 `_read_loop()` skeleton (identical across the sensor drivers)
 
 ```python
-async def _read_loop(self) -> bool:
+async def _read_loop(self) -> None:
     if not await self._init_<sensor>():
-        return False
+        return
     while True:
         await self._read_event.wait()
         self.pr.evt(_NAME, "sensor trigger")
         results = await self._read_<sensor>()
         if not await self._error_check(results, condition=results[0] is None):
-            return False
+            return
         await self._store_<sensor>(results)
 ```
 
-Returning `False` is the task supervisor's restart signal. `_init_<sensor>()` (the logger is already
-set up by the boot batch, C.7): reset the internal error counter, then `try: await protocol.setup()
-except Exception: err_s(..., errno=_ERR_INIT); return False`; push stored config into the sensor
-here if applicable. `_read_<sensor>()`: take the timestamp first, `utc_now()` before the `try`
+Returning ends the task; the supervisor restarts it. `_init_<sensor>()` (the logger is already
+set up by the boot batch, C.7): reset the internal error counter, then call `protocol.setup()`: a chip-setup failure
+persists the driver's init code (C.7's catalog), calls `await self._init_failed()` and returns `False`; success calls
+`await self._init_done()`; push stored config into the sensor here if applicable. `_read_<sensor>()`: take the timestamp first, `utc_now()` before the `try`
 (`None` until the first NTP sync, G.2); on failure reset every measured field to `None` together
 and log. `_store_<sensor>()`: if any measured field is `None`, don't overwrite the cached reading;
 otherwise build the namedtuple (computing derived fields via `math_helpers`) and call
@@ -1781,7 +1816,10 @@ answer, which logs nothing), never a raise; and `_init_failed()`/`_init_done()` 
 `_init_<sensor>()` to call after a chip-setup failure (the bus is cleared and its controller
 rebuilt) and after a success (the episode ends, and the first reader on a bus reports that bus's
 boot clear once). With no recovery bus set, `_init_failed()`/`_init_done()` do nothing and the bus
-rungs never run; no driver in `src/` sets one.
+rungs never run. An I2C driver sets `self._recovery_bus = i2c` and may override `_recover_device() -> bool` (never
+raises; persists its own failure) — the participant rung of the recovery ladder (C.7); only a chip failure calls
+`_init_failed()`. All four sensor drivers set it and override the rung: SCD30 soft reset, SGP40 heater-off, BMP3XX soft
+reset plus its stored configuration, ISL29125 the shadow configuration re-applied (A.4, M.1.2).
 
 A failed read persists the driver's read code and `_error_check()`'s streak entry — each layer
 that meets the fault keeps its own entry (owner, 2026-10-02) — and neither persists one occurrence
@@ -1807,19 +1845,31 @@ async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[
 `get_data()` narrows `_get_meas_data()`'s generic return with an identity return + scoped
 `# type: ignore[return-value]` (no runtime `cast()` on MicroPython, C.10 — the convention (owner,
 2026-07-23, `eff19bf`) over a local `cast()` shim or a field-by-field rebuild, since it needs no
-shim code and allocates nothing on this hot path). `typing.cast()` still applies to narrowing a
-`struct.unpack()` result before a non-`Any` return (`SCD30_I2C._read_dev_register()`).
+shim code and allocates nothing on this hot path). A `struct.unpack()` result is narrowed by
+assigning it to an annotated local (`value: int = unpack_from(…)[0]`), as
+`SCD30_I2C._read_dev_register()` does; no `src/` module calls `typing.cast()` or defines a `cast()`
+shim (owner, 2026-07-23).
+
+**One staleness rule** (owner, 2026-09-12; owner, 2026-09-29): a published sample is a real new
+conversion, scaled by config values the driver captured before the cycle's first await; a failed or
+unprovable read publishes nothing, so `get_data()` keeps the last good sample with its original
+`TS`, never re-stamped. One named exception: the SCD30's not-ready cycle republishes its cached
+reading under a fresh `TS` (A.4; owner, 2026-07-22). A reading taken before the first NTP sync
+carries `TS` `None` and is a good reading: the reader's failure test looks only at the measurement
+fields (`condition=results[0] is None`, C.7).
 
 ### C.4.3 `SensorReader` vs. `SensorReaderConfig`
 
 Pick by where config values live. The write orchestration (validate, stage, push, recover) lives on
 `SensorReader`, with the store behind two extension points (`_get_mgr_cfg()`/`_set_mgr_cfg()`);
-**`SensorReaderConfig`** (BMP3xx, SGP40) adds the file-backed `ConfigManager` store, for
-software-only knobs or sensor settings that reset on power-cycle. **Plain `SensorReader`** (SCD30)
-keeps its store in the chip: its six keys live in the sensor's own NVM, are read back from a fresh
-chip snapshot and are written through `compare_before_write()` (G.2), so only a changed value is
-written, `AmbPres`/`ForceCalRef` always (A.4's `AmbPres` note); no `ConfigManager` exists. A field
-with a live chip readback is read through `get_dict_cfg()`'s `callback`.
+**`SensorReaderConfig`** adds the file-backed `ConfigManager` store, for software-only knobs or
+sensor settings that reset on power-cycle. A driver whose values live partly in the chip uses a
+composite store: the SCD30 keeps six keys in its NVM, read back from a fresh chip snapshot and
+written through `compare_before_write()` (G.2), so only a changed value is written,
+`AmbPres`/`ForceCalRef` always (A.4's `AmbPres` note), and three FRC keys in its file
+(`SensorReaderConfig`, A.4). A body whose chip snapshot fails is refused whole, its FRC keys
+included; a body with no chip key reads no snapshot; a GET whose snapshot fails answers the chip keys
+`None`. A field with a live chip readback is read through `get_dict_cfg()`'s `callback`.
 
 Every module's schema is fixed at construction: `NotificationService` takes its signals as
 constructor arguments, so no module completes itself after construction (no
@@ -1829,7 +1879,7 @@ constructor arguments, so no module completes itself after construction (no
 
 `_get_dict_cfg(name, cfg_vals, callback=None)` merges stored values with an optional callback's
 live readback. Only pass `callback=` for a field with a real, independent live-sensor source of
-truth (BMP3xx: 3 of 8 fields; SGP40: none; SCD30: none, its chip snapshot is its store, C.4.3). **Second legitimate reason**:
+truth (BMP3XX: 3 of 8 fields; SGP40: none; SCD30: none, its store reads the six chip keys from a snapshot, C.4.3). **Second legitimate reason**:
 sanitizing a sensitive value before it's ever returned — `asy_wifi_service.py`'s `callback=
 self._mask_pw` unconditionally overwrites the persisted `PW` with a fixed mask.
 
@@ -1839,12 +1889,18 @@ Each field is a 6-tuple: `(name, type: "int"|"float"|"str"|"bool", default, min,
 `special` is a single sentinel value (an "unset" value outside the normal range, e.g. SCD30's
 `AmbPres=0` — deliberately outside it; the validation, not the schema, is what yields
 (owner-confirmed, 2026-07-15, `1ed1c9a`: 'Confirmed with the project owner which side was wrong (the
-validation, not the schema …)'); a field with `default=None` + a single-value `special` is
+validation, not the schema …)') or an in-range value with a documented meaning (SGP40's
+`BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` 0); a field with `default=None` + a single-value `special` is
 "special-alone" — valid but never written to disk, entirely sensor-managed) or a **discrete
 allowed-value set** (tuple/list, for non-continuous legal values, e.g. BMP3xx's oversampling
 `1/2/4/8/16/32` — set `min`/`max` to `None` for a pure enum, or combine both for a range plus bypass
 values). A schema constant referenced inside another `const()`-wrapped tuple must itself be
 `const()`-wrapped — `const()` only folds references to other `const()`-defined names.
+
+**`FiltCoeff` keeps two meanings** (owner, 2026-09-26): the BMP3XX IIR filter coefficient (one of 0,
+1, 3 … 127, `_IIR_SETTINGS`; the chip's CONFIG register holds its index) and the ISL29125 output EMA
+coefficient, namespaced per sensor on `/sensors`. For the ISL29125, −1.0 (the default) is 'filter
+off', and so is any coefficient outside (0, 1] (`math_helpers.ema_step()`).
 
 One JSON file per sensor: `config_<name>.cfg`. Both `SensorReaderConfig.__init__` and
 `ConfigManager.__init__` only stash constructor args; load/write happens once `setup()` is awaited
@@ -2062,7 +2118,8 @@ hook logs one `CALLBACK` error. An episode ends when a good cycle finds the stre
 succeeds; a chip-setup failure (`_init_failed()`) runs the controller rung at once. `condition` lets
 a driver suppress counting a cycle that is not a sensor failure: every reader passes
 `condition=results[0] is None`, so a pre-sync `TS` of `None` alone counts as a good read, and SGP40
-adds `compensated and` (a cycle skipped for want of a compensation value). **A call site with just
+adds `compensated and` (a cycle skipped for want of a compensation value) and ISL29125 `and not
+self._unsettled_cycle` (a cycle discarded past the settle bound, M.1.4). **A call site with just
 one pass/fail flag** passes a fixed one-element sentinel and drives the flag through `condition=`
 (`_error_check((None,), condition=<flag>)`), not a ternary swapping the whole tuple.
 
@@ -2100,7 +2157,7 @@ alternating codes and reboots are outside the rule.
 | cfgmgr | `asy_config_manager.py` (`CFGMGR_<name>`) | 30-39 | 20-24 |
 | system | `asy_system_service.py` (`SYSTEM`) | 40-44 | 69-70 |
 | fram | `asy_fram_manager.py`, `asy_fram_driver.py` (`FRAM`) | 45-54, 100-109 | 25-29, 63-64 |
-| isl29125 | `asy_isl29125_driver.py` (`ISL29125`) | 55-57 | 30-32 |
+| isl29125 | `asy_isl29125_driver.py` (`ISL29125`) | 55-57 | 30-32, 75-76 |
 | sgp40 | `asy_sgp40_driver.py` (`SGP40`) | 58-59, 110-114 | 33-35, 65-66 |
 | wifi | `asy_wifi_service.py` (`WIFI`) | 60-66 | 36-39 |
 | ntp | `asy_ntp_client.py` (`NTP`) | 67-74 | 40 |
@@ -2108,8 +2165,8 @@ alternating codes and reboots are outside the rule.
 | notify | `asy_notification_service.py` (`NOTIFY`) | — | 44-47, 67-68 |
 | webserver | `asy_webserver_service.py` (`WEBSERVER`) | — | 48-53 |
 | uart | `asy_uart_comm.py` (`UART`, or the instance name) | 75-99 | 54-59 |
-| bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared codes only) | — | — |
-| scd30 | `asy_scd30_driver.py` (`SCD30`; base and shared codes only) | — | — |
+| bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared errors) | — | 71-72 |
+| scd30 | `asy_scd30_driver.py` (`SCD30`; base and shared errors) | — | 73-74 |
 | asy_api_response | `asy_api_response.py` (the calling module's logger; shared codes only) | — | — |
 | test | `tests_hardware/device_scripts/` (seeds written by hardware test scripts only) | 125-127 | — |
 
@@ -2237,7 +2294,7 @@ the hostname left unchanged.
 
 Two independent lock layers: **(1) Bus lock** (`I2C.bus_lock`/`SPI.bus_lock`, shared by every
 device on that bus) serializes any single transaction against other devices sharing the bus.
-**(2) Device-session lock** (`*_DeviceSession(Lockable)`'s own `session_lock`) serializes a
+**(2) Device-session lock** (`DeviceSession`'s own `session_lock`, a `Lockable`) serializes a
 multi-transaction sequence against another coroutine starting its own sequence on the same sensor —
 without it, two coroutines could interleave and corrupt a shared scratch buffer even though each
 individual transaction is already serialized by lock 1. Pattern: `async with self._i2c_<sensor> as
@@ -2245,7 +2302,8 @@ dev:` (lock 2) wrapping `async with dev.i2c_device as i2c:` (lock 1). **Lock ord
 always 2 before 1** — audited across every driver with no violation; reversing risks a real
 deadlock. Every per-call input a multi-step operation keeps in a shared buffer is written inside the
 device-session hold, never before it: an await before the hold (a CRC's per-byte yield included)
-lets another caller overwrite it (owner, 2026-09-29: 'No races allowed'). A lock is taken with
+lets another caller overwrite it (owner, 2026-09-29: 'No races allowed'), and a value derived from
+shared driver state is derived inside the same hold (the ISL29125's resolution shadow). A lock is taken with
 `async with`; an explicit `acquire()`/`release()` stays only where
 `async with` cannot express the hold, its reason on the line (`FRAM_SPI.__aenter__`'s hold that
 spans `__aenter__`/`__aexit__`, `FRAM_SPI.verify_present()`'s bounded wait), besides the lock
@@ -2267,7 +2325,8 @@ FRAM driver's session and bus locks (levels 3, 2, 1).
 | `FRAM_SPI._bus_lock` | 1 | the FRAM's SPI bus (an alias of its `SPIDevice`'s bus lock) | nothing |
 | `ConfigManager._config_lock` | — | the config file and its staged snapshot | a FRAM-backed log write |
 | `PrintLogHistoryStore._write_lock` | — | one FRAM-backed log store's pack and write, so the newest state lands last (F.1) | a FRAM-backed log write |
-| `SensorReader._set_lock` | — | one module's config PUT end to end (stage, push, recovery, commit), so one PUT's recovery never overwrites another's accepted value | `ConfigManager._config_lock`, a device session and bus lock (2, 1), a FRAM-backed log write |
+| `SensorReader._set_lock` | — | one module's config PUT end to end (stage, push, recovery, commit), so one PUT's recovery never overwrites another's accepted value | `ConfigManager._config_lock`, `ISL29125_Reader._threshold_lock`, a device session and bus lock (2, 1), a FRAM-backed log write |
+| `ISL29125_Reader._threshold_lock` | — | the chip's threshold registers with the active range and auto-range threshold they derive from, so a range switch and a threshold rewrite never interleave | a device session and bus lock (2, 1), a FRAM-backed log write |
 | `WifiService.wifi_mode_lock` | — | the CYW43 radio mode (`NTPClient` holds the same lock for its sync attempt) | `UDPSocket._connect_lock` (the NTP attempt's DNS and NTP exchanges), a FRAM-backed log write |
 | `UDPSocket._connect_lock` | — | the socket object, its connect against its disconnect | nothing (the class has no logger) |
 | `NeopixelDriver._overlay_lock` | — | the pixel and its `write()` | nothing |
@@ -2300,15 +2359,21 @@ function that needs its caller to hold a lock ends in `_locked`, and the getters
 holds `wifi_mode_lock` while NTP's sync task waits on it — an accepted priority-inversion cost, not
 a bug.
 
-**Known structural gap, accepted risk (`SGP40_I2C._reset()`)**: `writeto(0x00, b"\x06")` is a true
-I2C **general-call broadcast** resetting all devices on the bus — neither lock layer protects a
-sibling device, and this fires on every SGP40 task-supervisor restart. **Low-risk, not fixed**:
-neither sibling's datasheet documents general-call listening, and address `0x00` gets no special
-handling in the pinned rp2 `machine_i2c.c` (an unacknowledged broadcast just times out/NAKs like
-any unaddressed write, already handled). A real-hardware regression test exists
-(`test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions`). The only
-structural fix (a bus-wide "quiesce every session before broadcasting" mechanism) is flagged for a
-project-owner decision if ever revisited, not justified without evidence of a live risk.
+**Owner decision — the SGP40 general-call reset (`SGP40_I2C._reset()`)**: one I2C general call,
+0x06 to the reserved address 0x00 (SGP40 datasheet Table 17), sent at setup and on every task
+restart, never from a REST field (`ResetVOC` resets the algorithm only). Every device on that bus
+that implements the general-call reset restarts — the SGP40 itself; the SCD30, BMP3XX and ISL29125
+datasheets document none. The controller and the bus are not stalled: the write is bounded by the
+bus timeout, the NAK is tolerated, the device and bus locks are held for that one write only, and
+the 1 s wait runs outside them. The broadcast is the accepted risk (owner, 2026-09-26: 'That
+broadcast actually IS the accepted risk and this decision I really took. I only would not have
+accepted something stalling the bus itself.'); nothing may stall, hold or restart a bus or its
+controller, and the mechanism is not to be replaced (owner, 2026-09-26). A failing SGP40 is first
+recovered by the device-addressed heater-off (datasheet Table 14), which reaches only the SGP40; the
+general call stays at setup. Its hazard tests stay at every tier; the real-hardware one
+(`test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions`) checks
+that SCD30 measurement keeps advancing; the bench tier lists it as an exception (E.6.6's
+`sgp40-general-call` row).
 
 **Standing rule — hazard test coverage, read before adding a new device on a shared resource or
 rewiring a bus (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this'; every shared
@@ -2483,9 +2548,11 @@ remaining `ONE_SHOT` is backstopped by the watchdog: the stagger wait (C.9.1); t
 nothing fed once it is armed. The storage auto-unpause is no timer: `mempause` stores a
 deadline that the uptime pass tests once a second, so no dropped fire can leave storage paused and
 the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused, and a
-`mempause` answered "Valid" always ends (agent, 2026-10-06). A driver needing more than one rate (BMP3xx: 1Hz base tick
-divided down) runs a small counting sub-task (`_trigger_loop()`) rather than reprogramming the
-Timer's period at runtime. The 1 s tick timers (system uptime, WiFi uptime, NTP sync age) share
+`mempause` answered "Valid" always ends (agent, 2026-10-06). A driver needing more than one rate
+(BMP3XX, ISL29125: 1 Hz base tick divided down) runs `SensorReader`'s shared trigger divider
+(`_trigger_loop()`, G.2) rather than reprogramming the Timer's period at runtime. A read-trigger arm
+failure wakes the task waiting on it, which persists the failure (`TIMER`) once and ends; its
+restart re-arms first. The 1 s tick timers (system uptime, WiFi uptime, NTP sync age) share
 `arm_tick_timer()`; they start with the timer starters and never take a stagger slot. System
 uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks (`TickSeconds`, G.2), never
 counted wake-ups. SYSTEM's uptime tick falls back to a one-second sleep when its timer cannot be
@@ -2550,9 +2617,10 @@ are added and can itself become a multiple of some sensor's own period.
   fires at the exact target time, not "one period after whenever the previous callback happened to
   run." This is what keeps the separation for the whole runtime rather than only near startup.
 - **SCD30**: `asy_scd30_driver.py` does **not** use the counting mechanism — its own 500ms base tick
-  (`_start_trigger_timer`, unstaggered) only counts consecutive ticks (`_trigger_half_ticks = 2 *
-  trigger_s`) towards *arming* an IRQ-driven trigger (`_irq_loop()`), and the actual read fires on
-  the sensor's own physical data-ready interrupt (`irq_pin`). SCD30's read may coincide with other
+  (`_start_trigger_timer`, unstaggered) counts the ticks with the data-ready pin high since the last
+  read, saturating at `_trigger_half_ticks = 2 * trigger_s`, and on reaching it forces a read
+  (`_irq_loop()`); the ordinary read fires on the sensor's own physical data-ready interrupt
+  (`irq_pin`). SCD30's read may coincide with other
   reads on its bus: that is the chip's own timing, outside the spacing rule (owner, 2026-09-26).
 - **Regression coverage**: the per-device scenario (`tests/_sensortask_scenarios.py`) runs the real
   `start_timers()` under a fake clock, checks every offset and the bus-furthest-apart order, and
@@ -2573,7 +2641,7 @@ retry loop never ends its task to "retry by restart" — that spends the reboot 
 PEP 604 `X | None` everywhere, never `typing.Union`. A caller-supplied object touched only
 structurally gets a `Protocol` fully inside `if TYPE_CHECKING:` (`asy_print_log.py`'s `_FramChunk`/
 `_FramManager`, `asy_api_response.py`'s `_RequestLike`, `asy_wifi_service.py`'s `LEDControl`).
-`typing.cast()` has no runtime presence (C.4.2). A driver-local `*Results` tuple-of-optionals alias
+`typing.cast()` has no runtime presence (C.4.2), so no `src/` module calls it. A driver-local `*Results` tuple-of-optionals alias
 is declared under `TYPE_CHECKING`, used only as `_read_<sensor>()`'s return annotation — a plain
 tuple, not `NamedTuple` (internal, not the public model, C.6). The shared aliases are declared once
 under `TYPE_CHECKING` in `asy_base_classes.py`, each imported under `TYPE_CHECKING` where it is used:
@@ -2587,8 +2655,8 @@ its history write succeeded) and `LoggerOwner` (`get_loggers()`).
 
 A validator takes the REST value as `object`. `type_or_range_error()` refuses with `(True, None)`. A
 consumer that needs an `int` or a `float` calls the per-kind validator (`checked_int()`,
-`checked_float()`, `checked_numeric()`), which returns that type or `None` (the ISL29125's settings
-among them); it never narrows a validated value at runtime.
+`checked_float()`, `checked_numeric()`), which returns that type or `None` (the ISL29125's settings,
+the SGP40 compensation read and BMP3XX `set_trigger_s()` among them); it never narrows a validated value at runtime.
 
 ## C.11 Design decisions a new driver must make (datasheet + judgment, not precedent)
 
@@ -2700,8 +2768,8 @@ name>"` logger — so a name extension threads through the config filename autom
 separate mechanism needed.
 
 **REST dict keys must use `self.name` too, not a driver's `_NAME` module constant.** This was a
-real, confirmed gap found by audit: every `get_dict_cfg()` across the three
-promoted drivers called `self._get_dict_cfg(_NAME, ...)` with the *literal* constant, and every
+real, confirmed gap found by audit: every `get_dict_cfg()` across the
+promoted sensor drivers (four today) called `self._get_dict_cfg(_NAME, ...)` with the *literal* constant, and every
 `get_dict_data()` called `make_dict(data, _FIELDS)`, which itself introspects `type(nt).__name__`
 — the namedtuple's own fixed class name — neither keyed off `self.name` at all. With only one
 instance per driver type in the system today, `self.name == _NAME == type(nt).__name__` always, so
@@ -4206,10 +4274,12 @@ and cannot be wrapped: one that never returns is the watchdog's.
 `MemoryError`** as a blanket policy — only worth closing where the function has a real
 graceful-degradation alternative (owner, 2026-09-25).
 
-**Hot-unplug/replug I2C recovery is two-tier: task-death-and-respawn plus the watchdog backstop.**
-Each `_read_loop()`'s `_init_<sensor>()` fresh on every restart re-probes and soft-resets the sensor
-— fully recovers a clean unplug/replug or a bad sensor state, but doesn't reconstruct the
-underlying `machine.I2C` peripheral (only a full reboot does that). For a **bus-level** fault
+**Hot-unplug/replug I2C recovery is the recovery ladder, task respawn and the watchdog backstop.**
+Within one task, a failure streak climbs C.7's ladder: the chip's own rung, the bus clear
+(`I2C.clear()`), then the controller rung (`I2C.recover()`), which clears the bus and rebuilds the
+`machine.I2C` controller by re-construction. Each `_read_loop()`'s `_init_<sensor>()` fresh on every
+restart re-probes and soft-resets the sensor — fully recovers a clean unplug/replug or a bad sensor
+state; a chip-setup failure there runs the controller rung at once. For a **bus-level** fault
 (SDA/SCL physically wedged), a respawn's own probe can hang the same way — but
 `_supervise()`'s `task_errors` counter escalates repeated respawn failures to a reboot
 through `_reboot()`, feeding stopped one-way first (a reset that cannot be armed still ends in the
@@ -5042,7 +5112,7 @@ backend-only or frontend-only validation/coercion policy change in this project.
 ## G.2 Known reusable primitives (living catalog — extend whenever a new one is established)
 
 - **Numeric type/range validation & coercion** — `asy_config_manager.py`'s `type_or_range_error()`
-  for a schema-backed or dispatch-only (synthetic `FieldSchema`) field, and the per-kind validators
+  for a schema-backed or dispatch-only (synthetic `FieldSchema`, e.g. SCD30's `ContMeas`) field, and the per-kind validators
   `checked_int()`, `checked_float()`, `checked_numeric()` (`None` = refused) for a typed caller,
   which never narrows a validated value at runtime. `bool` is not an `int` here (F.1). Never
   hand-roll a cast or range comparison.
@@ -5082,6 +5152,17 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `# type: ignore[operator]` (three of which it removed outright).
 - **Driver layering/naming/config-schema/error-handling/concurrency/timer shape** — Part C, for a
   sensor driver specifically; complementary to this Part.
+- **Device session** — `asy_base_classes.py`'s `DeviceSession`: one device's session lock
+  (`session_lock`) plus its bus device (`i2c_device`), built by every driver, never subclassed per
+  driver (C.2).
+- **Trigger divider** — `SensorReader._trigger_loop()`: a reader needing a slower rate than its 1 s
+  base tick divides it here, every n-th tick setting the read event (C.9). A read-trigger arm failure
+  goes through `_timer_failed()` (the sync starter keeps the error and wakes the waiting task) and
+  `_timer_fault()` (the task persists `TIMER`, `errno` 17, and ends) (C.9).
+- **Republishing a sample** — `SensorReader._republish(names, **changes)`: the last sample again with
+  some fields changed, in one data-lock hold, its own `TS` kept (SCD30's `FRCState` 0, M.2).
+- **Config-log placement** — `SensorReaderConfig._CFG_LOG_FRAM`: a reader class that sets it `False`
+  keeps its `CFGMGR_<name>` log in RAM (SCD30, A.7).
 - **Read-error escalation** — `SensorReader._error_check()` and its ladder hooks
   `_recover_device()`, `_init_failed()`/`_init_done()`, with `I2C.clear()`/`I2C.recover()` as the
   bus rungs (C.7, F.2).
@@ -5378,10 +5459,13 @@ stops measurement, not a no-op (matching the legacy synthetic reference), not th
 (`buildgen/web_tag.py`, built on `buildgen/tag_comments.py`'s shared near-miss-enforcing scanner
 exactly like `@requires` — never a second, separately-tested detector) and a best-effort,
 never-imported AST read of each driver's real `ConfigSchema`/`FieldSchema` constant
-(`buildgen/schema_ast.py`, same never-import policy as `buildgen.driver_registry`). A tag supplies
+(`buildgen/schema_ast.py`, same never-import policy as `buildgen.driver_registry`). That read takes
+every module-level `ConfigSchema`-of-one and every bare six-field `FieldSchema` tuple as a schema
+field, keyed by its field name — SCD30's synthetic `_CONT_MEAS_FIELD` (`ContMeas`) included, and
+SGP40's compensation records `_COMP_T_FIELD`/`_COMP_RH_FIELD` (`Temp`/`Hum`) too, which no SGP40 tag
+names, so they reach no output. A tag supplies
 only what the schema tuple can't structurally provide — label (always), unit, description, an
-explicit `kind=` override for a field with no matching schema constant at all (`ContMeas` —
-freestanding, fully tag-specified), and a `special:<value>="<meaning>"` label for a discrete/
+explicit `kind=` override, and a `special:<value>="<meaning>"` label for a discrete/
 sentinel schema value; `kind`/`min`/`max`/`minLength`/`maxLength`/`float` are inferred from the
 schema automatically (`kind`: `toggle` for `bool`, `string` for `str`, `enum` when the schema's own
 discrete-choice tuple is non-empty, `number` otherwise). `submitGroup=self` is a reserved sentinel
@@ -5435,9 +5519,14 @@ numeric field regardless of `kind` — `GainRatio` (an ordinary flat `sensors` f
 
 A schema-declared sentinel special value must have a matching tag `special:<value>="<meaning>"` or
 the build fails loud; a tag's own `special:` entries also survive independently of whatever the
-schema's own `special` slot says (SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` each document
-a "0 means X" meaning despite an ordinary, non-sentinel schema tuple — a real in-range value that
-also carries a UI meaning, not a validation bypass).
+schema's own `special` slot says (SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` declare 0 in
+the schema's special slot: an in-range value with a meaning, not a validation bypass; `WaitTimeNTP`
+0 = never wait: one restore attempt on the first cycle).
+
+A readonly state code names its status table with `codes=<table>`: buildgen inlines that table from
+`buildgen/error_catalog.json`'s `status` section into the field's `codes` and fails the build on a
+table the catalog lacks. SCD30's `FRCState`, SGP40's `VOCState` and ISL29125's `CalLight` each carry
+one beside their description (agent, 2026-10-07).
 
 **What stays generator-owned rather than tag-derived**, since none of it is a per-driver fact any
 one source file owns: the six-REST-endpoint section skeleton itself (pure routing architecture,
@@ -5459,7 +5548,7 @@ devices.
 ## H.6 Errcount (Status section) and dispatch-only field conventions
 
 **Errcount module list**: `{key, label}` per registered module plus each module's `CFGMGR_<name>`
-(except SCD30, NVM-backed) plus `WEBSERVER`, looked up in `/status`'s `errcount[key]`. **Keyed per
+plus `WEBSERVER`, looked up in `/status`'s `errcount[key]`. **Keyed per
 logger instance, not per driver kind**: the key has to be the name the live object graph actually
 publishes, so an instance named `scd30_fan_pressure` needs rows under `SCD30_fan_pressure`/
 `CFGMGR_SCD30_fan_pressure` (Part L's instance-naming rule, applied to the website). Getting this
@@ -6205,11 +6294,11 @@ Nothing legitimate could provoke it — every accepted body is far smaller — b
 four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
-rather than per group: the largest legitimate body is **972 B** on `PUT /sensors` on `dev` (635 B on
-`wozi`, 379 B on the other four devices). `/networking` is 536 B on every device, `NTPHost`'s
+rather than per group: the largest legitimate body is **1,080 B** on `PUT /sensors` on `dev` (743 B on
+`wozi`, 487 B on the other four devices). `/networking` is 536 B on every device, `NTPHost`'s
 253-character bound (RFC 1035) being 266 B of it; the others are smaller — `/notification` 530 B,
 `/system` 139 B, `/status` 22 B — and real traffic measures 232 B. So 2048 clears the schema maximum
-with **2.1x** margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048
+with **1.9x** margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048
 = 8,192 B.
 
 **Per route, not per group, and the difference is load-bearing** [SRC]. An earlier revision quoted
@@ -6649,6 +6738,12 @@ accepted trade-off is that neither test would now catch a *latency* regression b
 assert completion and heap retention, not duration, and the CRC arm already carried exactly that
 trade-off.
 
+A wall-clock budget still failed both checks, and the faulted hammer's retention per failure, when one
+host stall inside the measured window outlasted it: reproduced with a planted 300 ms stall, and on the
+coverage build under a slow CI runner. All three therefore run on a poll-round clock: the protocol
+modules' `ticks_ms()` advances only through their own sleeps, plus 1 ms per read, so a host stall
+spends no budget. One planted-stall guard per check and CRC arm pins this (agent, 2026-10-07).
+
 **Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
 Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
 `tests/test_asy_uart_driver.py`'s `_StepPoller` exists, and the cause of a CI-only hang — CLAUDE.md's
@@ -6813,6 +6908,8 @@ draft instance added), not by inspection alone.
    states its address is hardwired with no select pin (FN8424 p15), which is why it lands in
    `FIXED_ADDRESS_DRIVERS` like SCD30/SGP40, not `ADDRESS_CAPABLE_DRIVERS` like BMP3xx; guessing
    this wrong lets a device TOML declare a meaningless `address` field that silently does nothing.
+   A hard-wired chip gets no TOML `address`, and its protocol class takes no `address` parameter at
+   all, not even for tests; a second part needs another bus (owner, 2026-09-26).
 2. **`buildgen/driver_registry.py`** — usually **no change**: `resolve_driver()` AST-scans
    `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass automatically. Only
    add a `_OVERRIDES` entry if the driver genuinely can't follow that convention (today: `fram`,
@@ -7545,6 +7642,13 @@ two value references, `temperature` and `humidity`, each a `ValueRef(source, fie
 independently in `_read_sgp()` via `getattr(await ref.source.get_data(), ref.field)`; its FRAM
 backup settings travel as one group, `backup=SgpBackup(store, ntp_synced)`.
 
+Behaviour (owner, 2026-09-26): with a live source wired, the SGP40 skips its read while that value is
+unavailable (no VOC value, nothing substituted) and reads compensated once it is; with no live
+source, the device TOML states the constant (`{default = true, temperature = 25}`, SGP40 datasheet
+Table 9 defaults 25 °C / 50 %RH). Both `@value-wiring` tags are `required`, so an SGP40 with neither
+fails the build. A live value whose producer `TS` is older than `sgp40.comp_max_age_s` (Part N)
+counts as unavailable (A.4).
+
 Name-matching is the whole mechanism — there is no separate property or unit tag system. A producer
 naming the same physical quantity differently (`"Temperature"` instead of `"Temp"`) simply is not
 recognised as interchangeable until its field is renamed to match.
@@ -7659,13 +7763,14 @@ matching `toolchain/versions.toml`'s own precedent.
 One section per chip whose behaviour needed more than its datasheet and its driver's own comments:
 measured behaviour the datasheet gets wrong, traps a later reader would "fix" back, and the owner's
 settled requirements. Part C is the general specification; this Part is where a single part's facts
-live (C.11.1). Only the ISL29125 has needed one so far.
+live (C.11.1). M.1 ISL29125, M.2 SCD30, M.3 SGP40, M.4 BMP3XX.
 
 ## M.1 ISL29125 (RGB light sensor, `asy_isl29125_driver.py`)
 
-Scope is the `dev` variant only (M.1.1, requirement 18). The legacy ISL29125 only ever ran a single
-config-and-read smoke test (owner), so it proves no behaviour; its evident intent is still the
-requirement where it has one (owner, 2026-09-26).
+Today only `devices/dev.toml` wires an ISL29125; which device wires it is decided in its TOML,
+nowhere else (owner, 2026-09-28). The legacy ISL29125 ran only a config-and-read smoke test, so no
+field-proven behaviour exists: parity is with its evident intent wherever the owner list below does
+not decide otherwise (owner, 2026-09-26).
 
 ### M.1.1 Settled requirements — the project owner's list (owner, 2026-09-12, `a2ea347`/`7890e2b`; later items tagged individually)
 
@@ -7709,8 +7814,8 @@ and this Part cite by number** — the numbering is load-bearing and must not be
     pull-up, a broken jumper, a mis-set `INTSEL` — the periodic read evaluates the same switch
     condition: the interrupt is the *fast* path, the periodic read the *guaranteed* one, on the same
     thresholds, dwell and settle.
-18. **Scope is the `dev` variant only.** `devices/wozi.toml` declares no `isl29125` instance and must
-    not gain one.
+18. **Wiring.** Today only `devices/dev.toml` declares an `isl29125` instance; a device's TOML
+    decides its sensors (owner, 2026-09-28, replacing the dev-only scope rule of 2026-09-12).
 19. **Every emitted value carries a declared unit and a declared precision**, a tested property of
     each field. No driver in `src/` rounds any output; the renderer's `decimals` hint does (H.5).
 20. **Construction and `setup()` must complete on a bus where the chip never answers** — a chip
@@ -7744,6 +7849,28 @@ history slot under the central repeat rule (C.7.1). The fake keeps the two look-
 `_reset()` is the `0x46` **command**, `simulate_brownout()` the **supply** event that raises the
 flag again.
 
+**Cycle order.** Each read cycle reads the status byte first, once. A cycle that finds `BOUTF` logs
+one `ISL_BROWNOUT` (`wrnno` 30), re-applies the whole shadow once and takes no CONFIG snapshot; every
+other cycle takes the 3-byte CONFIG snapshot (M.1.3), then waits out the settle deadline (M.1.4),
+captures the scaling settings and reads the data. A second consecutive failed cycle re-applies the
+whole configuration as a brownout does — the `CONFIG1`-`3` burst, `BOUTF` cleared, the thresholds
+re-armed under `RangeAuto` — the participant rung of the recovery ladder (C.7).
+
+**State across a task restart.** Every `_init_isl()` resets or reloads what a restart must not carry:
+
+| State | At a restart | Why |
+|---|---|---|
+| `_err_cnt_internal`, `_periodic_only_switches` | reset | a new task starts its streak and its periodic-only run at zero |
+| `_filtered` (the EMA state, in place) | reset | the first sample after a restart is unfiltered, never blended with a pre-restart value |
+| `_irq_fired`, `_int_held`, `_int_rearmed` | reset | an edge or a parked INT from before the restart says nothing about the re-armed chip |
+| the cached knobs | reloaded from config | the config file is their store |
+| `_reconciled_write_failures` | kept | it compares against the protocol layer's write-failure count, which survives too |
+| the calibration run and its candidate | kept | each is bounded by its own deadline (M.1.5) |
+| `_last_switch_ms` | kept | refreshed by init's own range switch under `RangeAuto` |
+
+A chip-setup failure at init runs the controller rung (C.7); a config-read failure runs none
+(agent, 2026-10-07).
+
 **The persistence counter** was settled with both thresholds parked at `0x0000`, so any light crosses
 the window and the counter is the only variable. At `PRST = 4`, one status read per second set
 `RGBTHF` in exactly 4 of 8 reads, strictly alternating: a read finding the flag clear leaves the
@@ -7772,6 +7899,13 @@ INT pin into an input, p6/p10); `CONVEN` (muxes conversion-done onto the pin the
 the config registers only, not the status byte SparkFun also checks, because the status read is
 destructive and `BOUTF`'s real lifecycle (M.1.2) makes that check wrong.
 
+**Divergence detection.** The shadow-vs-chip comparison runs every read cycle (one 3-byte snapshot),
+not only after a failed write or on a GET, so a CONFIG byte corrupted on the bus is caught and
+re-applied on a headless unit too (agent, 2026-10-06); a divergence logs `ISL_DIVERGED` (`wrnno` 31).
+A brownout cycle takes no snapshot, so a brownout is never also reported as a divergence. The
+protocol layer's write-failure count is a sequence masked to the small-int range and compared for
+equality only, so it wraps instead of saturating and reconciliation never freezes.
+
 **Prior art.** Five implementations were read: the legacy driver, `jposada202020/MicroPython_ISL29125`,
 SparkFun's Arduino library, RIOT-OS `drivers/isl29125` and Linux's `drivers/iio/light/isl29125.c`.
 (1) RIOT is the only prior art for the normalisation chain, and this driver copies its shape
@@ -7797,9 +7931,12 @@ scaling truncates** (`65535 / 375` is 174 in integer arithmetic, not 174.76); th
 **Config-field classification.** Requirement 1 governs *preferences*; a dark-count offset, a CCT
 floor or a gain-learn period is a device or maths constant, not a config field.
 
-**The Renesas application notes were unobtainable here** (the owner may supply them). Nothing needs
-them: the 12-bit cycle time follows from p6's oscillator/counter model (101 ms × 2⁻⁴ ≈ 6.3 ms), and
-the CCT matrix is a placeholder by p13's own wording.
+**The Renesas application notes are not obtainable** (listed as unobtainable in A.6; re-checked if
+the owner supplies them). Nothing here needs them: the cycle times are three *typical* integrations —
+tINT 101 ms at 16 bit (FN8424 p3, which gives no maximum) and ~6.3 ms at 12 bit, derived from p6's
+oscillator/counter model (101 ms × 2⁻⁴) — so `_CYCLE_MS_16BIT` 303 and `_CYCLE_MS_12BIT` 19 are
+typical, not bounds; 12-bit mode rejects no mains flicker (only the 16-bit ~100 ms integration
+does, p6); the CCT matrix is a placeholder by p13's own wording.
 
 ### M.1.4 Auto-range: derived windows, one constant, and a detector that watches the line
 
@@ -7819,16 +7956,28 @@ switch-down point is derived (owner, 2026-09-14, `90e5ebb`).
 - **The switch-down point is derived** (owner, 2026-09-14): `_down_thresh()` returns
   `AutoRangeThresh / _AR_DOWN_DIVISOR`, with the divisor `2 × 26.67` — the part's *nominal* range
   ratio, deliberately not the measured `GainRatio`. The factor 2 absorbs the whole 20.0–34.0 band, so
-  coupling the two would change no decision. `AutoRangeThresh` sets both ends of the hysteresis.
-- **The settle margin is a constant**, `_SETTLE_CYCLES = 2` (Part N `isl29125.settle_cycles`): the
-  ADC restarts during the I²C write itself (p10, Table 7) while the driver arms its deadline once
-  the write has *returned*, so one cycle can land on the wrong side of that tie. No scene, light
-  level or resolution makes another value right.
+  coupling the two would change no decision. `AutoRangeThresh` sets both ends of the hysteresis. A
+  threshold or resolution change rewrites the chip's threshold registers at once, under the reader's
+  threshold lock (C.8), whether or not `RangeAuto` is on.
+- **The settle margin is a constant**, `_SETTLE_CYCLES = 2` (Part N `isl29125.settle_cycles`):
+  FN8424 Table 7 says only that with `SYNC` = 0 the ADC starts at an I²C write to 0x01; whether such
+  a write restarts a conversion already in flight is not documented (the dev bench measures it,
+  `isl29125_real_irq_edge.py`). The driver arms its deadline once the write has returned, so two
+  cycles cover a restart at the write as well as a conversion that simply continues. No scene, light
+  level or resolution makes another value right. A passed deadline is moved up to now, so the stored
+  tick never ages past `ticks_diff()`'s horizon. A cycle still unsettled past the bound is
+  discarded: nothing is published and the streak does not step; it has already consumed `RGBTHF`
+  and the INT flag, so its interrupt-led credit is lost, and the chip re-raises the flag after `PRST`
+  cycles if green is still outside its window.
 - **The dead-line detector keys on the INT edge, not the flag.** `RGBTHF` is raised by the chip, so
   it is set just the same when the INT line is open — requirement 17's fault. The driver records the
   pin edge itself (`_irq_fired`, set in the handler and consumed once per cycle) and counts a
   decision as interrupt-led only with **both**; five periodic-led decisions in a row warn that the
   line looks dead (`ISL_PERIODIC_ONLY`, `wrnno` 32, C.7.1).
+- **An INT the peak rule overrules, or the low range's 0 threshold in darkness, is parked**
+  (INTSEL = 00) until green is back strictly inside the active range's window; the periodic path
+  decides meanwhile and the dead-line detector pauses (agent, 2026-09-29). Every INTSEL write and its
+  parked flag change together, with no await between them.
 
 ### M.1.5 Calibration: user-triggered, user-applied, writes nothing by itself
 
@@ -7857,6 +8006,22 @@ agent's (agent, 2026-09-13). Each constant named below is a Part N row (`isl2912
   its green is too small to calibrate from. **Operator procedure: park the scene dark first, let
   auto-range settle on the low range, then raise the light to the overlap level.**
 
+- **Whether the light suits a calibration is published** as `CalLight`, decided per sample by the
+  same band test the calibration run applies (owner, 2026-09-28; the codes, agent, 2026-09-28):
+
+  | `CalLight` | Meaning |
+  |---|---|
+  | 0 | not applicable now (fixed range, or the range is changing) |
+  | 1 | suitable for Calibrate Gain Ratio |
+  | 2 | too dark |
+  | 3 | too bright |
+
+- **A run that closes without a stable reading persists `ISL_CAL_TIMEOUT`** (`wrnno` 75), readable in
+  the module's history; a converged run logs nothing (agent, 2026-10-06). The candidate's hold and
+  the calibration window are checked every read cycle, failed ones included: a run whose window
+  closes during an outage still persists the warning, and an outage never revives a run or a
+  candidate.
+
 Proven on silicon (2026-09-14): three runs at ~138 lx each converged within ~6–8 s, nine candidates
 within 23.70–24.13, `GainRatio` unchanged throughout; applying the measured ratio cut the
 cross-range continuity step on a stationary light from 11.4 % to 0.4 %.
@@ -7878,6 +8043,137 @@ design makes that a choice rather than a flaw: **calibrate at the level you care
 span is this specimen or the part needs a second board and a reference meter; not actionable on one
 board (owner, 2026-09-13, `05f4746`: 'Do not re-raise it as actionable').
 `tests_hardware/device_scripts/isl29125_mechanism_envelope.py` adds a data point per run.
+
+## M.2 SCD30 (`asy_scd30_driver.py`)
+
+**Command waits** (each value is its Part N row):
+
+| Wait | Value in the driver | Datasheet bound | Margin | Source |
+|---|---|---|---|---|
+| register read, write → read | 50 ms (`scd30.cmd_response_wait_s`) | > 3 ms (Interface Description 1.4.4, 1.4.5) | ×16.7 | owner-tested for stable operation (owner, 2026-07-13, `144873f`) |
+| command → next access | 50 ms (`scd30.cmd_response_wait_s`) | > 3 ms | ×16.7 | legacy value kept (agent; `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:399`) |
+| soft reset → first access | 2.5 s (`scd30.soft_reset_wait_s`) | boot-up < 2 s (Interface Description 1.1) | ×1.25 | agent: the full bound, since it also runs on every task restart |
+| ASC enable → next command | 10 ms (`scd30.asc_enable_wait_s`) | none documented (1.4.6 names no wait) | — | legacy value kept (agent; `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286`) |
+| data-ready fallback tick | 500 ms (`scd30.start_trigger_period_ms`) | — | — | owner, 2026-09-26 (the tick stays as it is) |
+
+The SCD30 has no repeated start (Interface Description 1.1), so every read is a write, the wait,
+then a separate read; the 50 ms is inside the device-session hold. Each read-task (re)start,
+supervisor restarts included, sends a soft reset and waits 2.5 s and never a start-continuous
+command (owner, 2026-09-26). The soft reset (0xD304) puts the sensor into its power-up state
+(Interface Description 1.4.10); a power loss within ASC's first 7 days aborts its parameter search
+(1.4.6), and whether the soft reset counts as one is not stated; the firmware sends it at every
+boot, task restart and participant rung (A.4) (agent, 2026-10-06).
+
+**Range gate.** Readings outside the datasheet measurement ranges are rejected as failed reads: CO2
+0-40000 ppm (Datasheet Table 1), relative humidity 0-100 %RH (Table 2), temperature −40..70 °C
+(Table 3) on the sensor's own reading, i.e. the reported temperature plus the on-chip offset
+(Interface Description 1.4.7), and any non-finite value; a rejected reading is logged as
+`READ_RANGE`, apart from a bus fault, and counts as a failed read. The derived values are `None`
+outside their formulas' domains, unlogged, since a physical reading there is an expected condition
+(agent, 2026-10-07): `WetBulb` outside −20..50 °C or 5..99 %RH or below the cold-dry corner line from
+(−20 °C, 75 %) to (10 °C, 5 %) (Stull 2011), `DewPoint` outside −40..50 °C or 0.1..100 %RH
+(`math_helpers.py`).
+
+**Not-ready reads.** Five consecutive data-ready signals with no new measurement persist one
+`SCD_NOT_READY` (`wrnno` 73) per episode; the next new measurement clears the count, a raised read
+counts nothing, and every init resets it; the not-ready cycle's restamp is A.4's named exception.
+
+**NVM.** SCD30 NVM (no published endurance figure in any Sensirion document) is written only by an
+accepted PUT that changed a value, or by `AmbPres`/`ForceCalRef`/`ContMeas=false`, which always
+write; nothing periodic or boot-time writes it (owner, 2026-09-26); the test-side budget is C.8's.
+0x0010's argument persistence and read-back are undocumented: 1.4.1 says only that the
+continuous-measurement status is kept in NVM, and the driver reads the pressure back through the
+same word as legacy did (owner, 2026-07-22, `75f2e11`).
+
+**Forced-recalibration readiness** (owner, 2026-09-29: the four criteria and the states; agent,
+2026-09-28: the code values). `FRCState` reports whether the conditions suit a `ForceCalRef`; it never
+refuses one, and all its state is RAM-only:
+
+<!-- catalog: status.FRCState -->
+| `FRCState` | Meaning |
+|---|---|
+| 0 | not measuring |
+| 1 | settling (`FRCWait` = seconds until the uninterrupted target and one full window are reached) |
+| 2 | CO2 drifting |
+| 3 | CO2 noisy |
+| 4 | ready for a forced recalibration |
+
+1. **Continuous measurement running**: two measurement intervals without data republish the last
+   sample with state 0 and its own `TS`.
+2. **At the configured interval, uninterrupted** for `max(⌈360 / interval⌉, 5)` samples — 6 minutes or
+   5 intervals, whichever is longer (Low Power Mode note); a missed measurement (more than 1.5
+   intervals), a `MeasInterval` or `AmbPres` write, `ContMeas=false` or a soft reset starts it over.
+   The count saturates at its target.
+3. **Change rate within limits** over a window of `max(⌈FRCWindow / interval⌉, 3)` samples: state 2
+   when the least-squares slope exceeds `FRCRate` (ppm/min), or the temperature moved by more than
+   `FRCNoise / 2.5` °C across the window (Datasheet Table 1: 2.5 ppm/°C CO2 temperature stability).
+4. **Spread within limits**: state 3 when the residual about the fitted line exceeds `FRCNoise`.
+
+A verdict counts only from a window closed at or after the uninterrupted target; `FRCWait` falls by
+one interval per sample, never reaches 0 in state 1 and is `None` outside it. Settings (file-backed):
+`FRCNoise` 20 ppm (1-500; 2 × the ±10 ppm repeatability, owner, 2026-09-29: 1-2 × the
+repeatability), `FRCRate` 10 ppm/min (0.1-1000) and `FRCWindow` 60 s (20-3600; 3 × τ63), both
+provisional until measured on the bench (agent, 2026-09-29; owner-reviewed, 2026-10-02).
+
+## M.3 SGP40 (`asy_sgp40_driver.py`)
+
+**Command waits** (each value is its Part N row, except the heater-off's datasheet maximum):
+
+| Wait | Value in the driver | Datasheet bound | Margin | Source |
+|---|---|---|---|---|
+| `measure_raw` → read | 100 ms (`sgp40.measure_wait_ms`) | 30 ms max (datasheet v1.2 Table 8) | ×3.3 | owner-directed (owner, 2026-07-21, `5ff8c0b`: 'Owner-directed fix: 100ms') |
+| serial number → read | 3 ms (`sgp40.serial_read_wait_ms`) | 1 ms max (Table 8) | ×3 | owner-tested for stable operation (owner, 2026-07-13, `144873f`) |
+| self-test → read | 500 ms (`sgp40.self_test_wait_ms`) | 320 ms max (Table 8) | ×1.56 | legacy value kept (agent; `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:336`) |
+| general-call reset → next command | 1 s (`sgp40.general_call_reset_wait_s`) | tSR 0.6 ms max (Table 3) | ×1667 | legacy value kept (agent; `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:352`) |
+| heater-off → next command | 2 ms (`_HEATER_OFF_MAX_MS` + 1) | 1 ms max (Table 8) | ×2 | the datasheet maximum, untagged (agent, 2026-10-07) |
+
+The 1 s after the general call is kept for legacy parity, not for the datasheet; it also delays the
+SGP40's first read after every task restart by 1 s.
+
+**Identity.** Setup reads all three CRC-checked serial words (datasheet 3.4) with legacy's
+field-proven word-0 check, and checks the self-test's 0xD4 high byte (Table 13); there is no
+feature-set check, since the datasheet documents none (owner, 2026-07-21).
+
+**Compensation inputs are clamped to Table 10's range and must be finite**: −45..130 °C and
+0-100 %RH convert to ticks rounded to nearest, never wrapped; a non-finite value is a read failure
+and leaves a pending algorithm reset pending.
+
+**The VOC algorithm's state is published** as `VOCState` (codes: `buildgen/error_catalog.json`'s
+`status.VOCState`, the tag's description): 0 during the blackout, whose samples publish `VOC` 0 with
+a fresh `TS` (the reference's defined blackout output for the first 46 samples, not a failed read).
+
+**Sample cadence.** The raw signal feeds the algorithm at a fixed 1 s period ("a measurement is
+performed every second", datasheet 3.1); a merged tick costs one algorithm sample, and
+`backup_counter` and the verify cadence count cycles, not seconds. A dropped soft-timer fire is not
+mitigated in software (F.1; owner, 2026-07-18, `f3924e1`/`af24a01`), so the lost-sample count over
+ten minutes of the real task graph is the deliverable, owed on the dev bench
+(`sgp40_sample_cadence.py`).
+
+**No reset report.** The SGP40 has no status register (datasheet Table 8 lists none), so a self-reset
+cannot be read; the next measure command restarts its hotplate cold, and the first raw samples after
+it can move the VOC index, and its warning, before the algorithm settles (agent, 2026-10-06).
+
+## M.4 BMP3XX (`asy_bmp3xx_driver.py`)
+
+**Command waits** (each value is its Part N row):
+
+| Wait | Value in the driver | Datasheet bound | Margin | Source |
+|---|---|---|---|---|
+| soft reset → ERR read | 2 ms (`bmp3xx.reset_settle_s`) | none documented for 0xB6 (BMP388 DS001 4.3.22) | — | Bosch reference sequence `bmp3_soft_reset()` (agent) |
+| conversion → STATUS ready | computed from the OSR register per 3.9.2, then STATUS polled every 2 ms (`bmp3xx.status_poll_s`), bounded by 300 ms (`bmp3xx.meas_timeout_ms`) | typical 128.94 ms at ×32/×32 (BMP384/388; BMP390 130.07 ms, 2020 µs per repetition), maximum about 15 % above typical (Table 22) | ×2.0 against the maximum | agent |
+| `cmd_rdy` before a command | 50 ms (`bmp3xx.cmd_rdy_timeout_ms`) | none documented (DS001 4.3.3) | — | agent: bounds a bus fault |
+
+AN006 5.2 verifies each trimming parameter against bounds it does not publish; the driver rejects an
+all-0x00/0xFF trim block, which catches the same memory fault class. EVENT (0x10) bit 0
+`por_detected` is set after a power-up or a soft reset and cleared by reading; ERR_REG (0x02) bit 0
+is `fatal_err`. The reader reads EVENT every cycle and starts its data burst at ERR_REG (0x02-0x09
+contiguous), so a chip self-reset re-applies the stored configuration (A.4) and a fatal error fails
+the read; a pressure outside 300-1250 hPa is logged as `READ_RANGE`.
+
+`MeanAtmTemp` is bounded to −40..50 °C so every accepted value lies inside the barometric formula's
+domain. A `PresOffset` that moves the pressure outside 300-1250 hPa still publishes the sample, with
+`SLPres` `None` and one `DERIVED_DOMAIN` (`wrnno` 11) warning. `SampleInterval` is an int field: a
+fractional value is refused at the schema (legacy truncated it; the REST path never passed one).
 
 ---
 
@@ -7982,7 +8278,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 972 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 2.1× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
@@ -8052,16 +8348,18 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `notify.loop_tick_s` | 1 s | `src/asy_notification_service.py` — `1` | `_pause_loop()`'s round: a measured pause ends at most one round late (`l1.asy_notification_service_override_bound_ms` allows the pause plus one round); `l4.sensor_config_push_over_real_hardware_override_poll_s` × `l4.sensor_config_push_over_real_hardware_override_poll_tries`: ten ticks over the bench's 3 s countdown; `l1.asy_notification_service_override_secs` leaves one full round with the override active | estimated (agent, `da9b4ab`) — measurement owed: none for the value, the pause's lateness bound; the loop share, L2 | unknown until measured | the pause loop changes |
 | `notify.min_sleep_s` | 0.1 s | `src/asy_notification_service.py` — `0.1` | the monitor loop's shortest sleep | estimated (agent, `454f6a2`) — measurement owed: the monitor loop's cycle cost, L2 | unknown until measured | the monitor loop changes |
 | `notify.cfg_fail_interval_s` | 600 s | `src/asy_notification_service.py` — `600.0` | the interval used while its config reads fail | estimated (agent, `da9b4ab`) — measurement owed: none: a fallback while the config is unreadable | twice the `FlashInterval` default | the `FlashInterval` range changes |
-| `scd30.cmd_response_wait_s` | 0.05 s | `src/asy_scd30_driver.py` — `0.05` | every command-and-read exchange | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | datasheet margin owed (the command's own response time) | the bus speed or the chip's firmware changes |
+| `scd30.cmd_response_wait_s` | 0.05 s | `src/asy_scd30_driver.py` — `0.05` | every command-and-read exchange | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 16.7× the > 3 ms between write and read (Interface Description 1.4.4, 1.4.5; M.2) | the bus speed or the chip's firmware changes |
 | `scd30.asc_enable_wait_s` | 0.01 s | `src/asy_scd30_driver.py` — `0.01` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286` | datasheet margin owed | the chip's firmware changes |
-| `scd30.soft_reset_wait_s` | 2.5 s | `src/asy_scd30_driver.py` — `2.5` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | datasheet margin owed | the chip's firmware changes |
+| `scd30.soft_reset_wait_s` | 2.5 s | `src/asy_scd30_driver.py` — `2.5` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | 1.25× the boot-up time < 2 s (Interface Description 1.1; M.2) | the chip's firmware changes |
 | `scd30.start_trigger_period_ms` | 500 ms | `src/asy_scd30_driver.py` — `500`; `tests/test_asy_scd30_driver.py` — `500` | the measurement start's retry cadence | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:77` | unknown until measured | the start sequence changes |
+| `scd30.not_ready_warn_at` | 5 | `src/asy_scd30_driver.py` — `5` | consecutive not-ready reads before one `SCD_NOT_READY` warning per episode (A.4) | estimated (agent, 2026-10-06) — measurement owed: the longest run of not-ready reads a healthy SCD30 gives on the dev bench, L3; the same count as ISL29125's periodic-only warning, so a line stuck high warns within five cycles | a late edge on up to four consecutive cycles stays silent | the measurement interval's range or the data-ready handling changes |
 | `sgp40.measure_wait_ms` | 100 ms | `src/asy_sgp40_driver.py` — `100` | every raw-signal read | owner decision (owner, 2026-07-21, `5ff8c0b`) | more than 3× the datasheet's 30 ms maximum (Table 8) | the chip's measurement command changes |
-| `sgp40.serial_read_wait_ms` | 3 ms | `src/asy_sgp40_driver.py` — `3` | — | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | datasheet margin owed | the chip's command set changes |
-| `sgp40.self_test_wait_ms` | 500 ms | `src/asy_sgp40_driver.py` — `500`; `tests/test_asy_sgp40_driver.py` — `500` | the self-test read | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:336` | datasheet margin owed | the chip's command set changes |
-| `sgp40.general_call_reset_wait_s` | 1 s | `src/asy_sgp40_driver.py` — `1` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:352` | datasheet margin owed | the reset path changes |
+| `sgp40.serial_read_wait_ms` | 3 ms | `src/asy_sgp40_driver.py` — `3` | — | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 3× the datasheet's 1 ms maximum (Table 8; M.3) | the chip's command set changes |
+| `sgp40.self_test_wait_ms` | 500 ms | `src/asy_sgp40_driver.py` — `500` | the self-test read | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:336` | 1.56× the datasheet's 320 ms maximum (Table 8; M.3) | the chip's command set changes |
+| `sgp40.general_call_reset_wait_s` | 1 s | `src/asy_sgp40_driver.py` — `1` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_sgp40_driver/__init__.py:352` | about 1667× the soft-reset time tSR, 0.6 ms maximum (Table 3; M.3) | the reset path changes |
 | `sgp40.fram_verify_mins` | 60 min | `src/asy_sgp40_driver.py` — `60` | the FRAM backup's verify period | estimated (agent, `5ff8c0b`) — measurement owed: none for the value, a design period; FRAM reads per day, L3 | unknown until measured | the backup scheme changes |
 | `sgp40.backup_counter_max` | 100000 | `src/asy_sgp40_driver.py` — `100000` | the backup counter's wrap (one day of 1 s cycles is 86,400) | estimated (agent, `770cf13`) — measurement owed: none: a counter bound above one day of cycles | 86,400 cycles a day under it | the sampling period changes |
+| `sgp40.comp_max_age_s` | 10800 s | `src/asy_sgp40_driver.py` — `10800` | the compensation read: a producer sample whose `TS` is older counts as unavailable and the cycle is skipped | three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never cut off (agent, 2026-10-06) | a producer late by up to three intervals still counts | a producer's interval maximum changes |
 | `bmp3xx.cmd_rdy_timeout_ms` | 50 ms | `src/asy_bmp3xx_driver.py` — `50` | — | estimated (agent, `433e35e`) — measurement owed: none: the datasheet gives no bound, so it bounds a bus fault | unknown until measured | the command path changes |
 | `bmp3xx.meas_timeout_ms` | 300 ms | `src/asy_bmp3xx_driver.py` — `300` | — | estimated (agent, `433e35e`) — measurement owed: none: bounds a stuck STATUS past the datasheet's worst case (3.9.2) | about 2× the ~129-150 ms worst case at x32/x32 | the oversampling range changes |
 | `bmp3xx.status_poll_s` | 0.002 s | `src/asy_bmp3xx_driver.py` — `0.002` | the STATUS poll's loop share | estimated (agent, `433e35e`) — measurement owed: the poll rounds per conversion on the dev bench, L3 | unknown until measured | the conversion timing changes |
@@ -8433,6 +8731,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_hammer_warmup_rounds` | 20 | `tests/test_digital_twin_uart_link.py` — `20` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_churn_transfers` | 10 | `tests/test_digital_twin_uart_link.py` — `10` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, `Triggered` or the window's absence in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
+| `l2.isl29125_autorange_red_scene_window_s` | 20 s | `tests/test_digital_twin_isl29125_autorange.py` — `20` | the red-dominant scene's twin time at a 5 s `SampleInterval`: its read cycles are bounded by the window's intervals plus two | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 
 **L3/L4 (real hardware)**
 
@@ -8750,6 +9049,10 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms` | 250 ms | `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` — `250` | — | estimated (agent, 2026-10-07) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3; a later unit withdraws it with its literal | against that measurement, once taken | the code under test or the host class changes |
 | `l3.heap_layout_after_full_boot_sequence_starter_poll_ms` | 20 ms | `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` — `20` | — | estimated (agent, 2026-10-07) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3; a later unit withdraws it with its literal | against that measurement, once taken | the code under test or the host class changes |
 | `l3.heap_layout_after_full_boot_sequence_timers_timeout_s` | 15 s | `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` — `15`; `tests/_boot_contiguity_probe.py` — `15` | — | estimated (agent, `7aba427`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
+| `l3.sgp40_sample_cadence_window_s` | 600 s | `tests_hardware/device_scripts/sgp40_sample_cadence.py` — `600` | ten minutes of 1 s SGP40 cycles (M.3) | estimated (agent, 2026-10-07) — measurement owed: whether a shorter window gives the same lost-sample rate on the dev bench, L3 | against that measurement, once taken | the code under test or the host class changes |
+| `l3.sgp40_sample_cadence_slots` | 1200 | `tests_hardware/device_scripts/sgp40_sample_cadence.py` — `1200` | twice the window's expected cycles, so the record never grows | estimated (agent, 2026-10-07) — measurement owed: the cycle count of one run on the dev bench, L3 | 2× the expected 600 cycles | `l3.sgp40_sample_cadence_window_s` changes |
+| `l3.sgp40_sample_cadence_gap_ms` | 1500 ms | `tests_hardware/device_scripts/sgp40_sample_cadence.py` — `1500` | a gap past it counts at least one merged 1 s tick | estimated (agent, 2026-10-07) — measurement owed: the gap distribution of one run on the dev bench, L3 | half a period past the 1 s tick | the SGP40's read period changes |
+| `l3.sgp40_sample_cadence_timers_timeout_s` | 15 s | `tests_hardware/device_scripts/sgp40_sample_cadence.py` — `15` | the guarded `start_timers()` | estimated (agent, 2026-10-07) — measurement owed: `start_timers()`'s elapsed on the dev bench, L3 | as `l3.heap_layout_after_full_boot_sequence_timers_timeout_s` | the code under test or the host class changes |
 | `l3.memory_stress_headroom_script_timeout_s` | 120.0 s | `tests_hardware/flash/test_memory_stress.py` — `120.0` | — | estimated (agent, `6cf82a1`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.memory_stress_probe_map_tolerance_blocks` | 2 | `tests_hardware/flash/test_memory_stress.py` — `2` | × the map's block size: the allowed disagreement between the allocating probe and the block map | estimated (agent, `3fe0fb2`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.memory_stress_presence_timeout_s` | 30.0 s | `tests_hardware/flash/test_memory_stress.py` — `30.0` | — | estimated (agent, 2026-10-07) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
@@ -8806,6 +9109,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l3.sensor_accuracy_envelope_script_timeout_s` | 420.0 s | `tests_hardware/flash/test_sensor_accuracy.py` — `420.0` | — | estimated (agent, `ddf7d2d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.sensor_accuracy_scenarios_script_timeout_s` | 900.0 s | `tests_hardware/flash/test_sensor_accuracy.py` — `900.0` | — | estimated (agent, `1ea08ad`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.sensor_accuracy_conformance_script_timeout_s` | 120.0 s | `tests_hardware/flash/test_sensor_accuracy.py` — `120.0` | — | estimated (agent, `ddf7d2d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
+| `l3.sensor_accuracy_sgp40_cadence_script_timeout_s` | 660.0 s | `tests_hardware/flash/test_sensor_accuracy.py` — `660.0` | `l3.sgp40_sample_cadence_window_s` plus the boot before it | estimated (agent, 2026-10-07) — measurement owed: the script's elapsed on the dev bench with date and run count, L3 | 60 s over the fixed window | the window or the boot sequence changes |
 | `l3.conftest_scd30_rw_script_timeout_s` | 90.0 s | `tests_hardware/flash/conftest.py` — `90.0` | — | estimated (agent, `7c8dbbc`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.isl29125_real_irq_edge_int_poll_ms` | 50 ms | `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `50` | — | estimated (agent, `ab81b79`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.isl29125_real_irq_edge_fast_path_poll_ms` | 100 ms | `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `100` | — | estimated (agent, `ab81b79`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |

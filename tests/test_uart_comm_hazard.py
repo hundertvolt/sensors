@@ -3,10 +3,13 @@ of the standing bus-hazard rule. A link has exactly two participants, so multi-d
 and an address sweep are replaced by same-instance concurrency, both-ends-transmitting, and a full frame-field sweep."""
 
 import asyncio
+import time
 
 from _error_codes import code
 from _uart_comm_harness import Pair, accept_set, echo_get, frames, run
 
+import asy_uart_comm
+import asy_uart_driver
 from asy_crc_checks import CRC16
 from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
@@ -499,6 +502,61 @@ _WARMUP = 20
 _MEASURED = 100
 
 
+class _PollRoundClock:
+    # The UART modules' deadlines on a clock only they advance: by each of their sleeps, and 1 ms per read so a wait
+    # that never yields still expires. On the wall clock a host stall expires a reply budget: a clean run loses a
+    # transaction, and one still recovering when the heap is sampled reads as retention (agent, 2026-10-07).
+    def __init__(self, stall_after: int = 0, stall_ms: int = 0) -> None:
+        self._stall = [0, stall_after, stall_ms, 0]  # countdown (0 = idle), its start, the stall, whether it fired
+        self._saved: tuple[Any, Any, Any, Any] | None = None
+
+    def arm(self) -> None:
+        # Counts down to the one planted stall: stall_after sleeps on, the whole interpreter blocks for stall_ms.
+        self._stall[0], self._stall[3] = self._stall[1], 0
+
+    def disarm(self) -> bool:
+        # True when the planted stall fired between arm() and here, or when none was planted.
+        self._stall[0] = 0
+        return not self._stall[2] or self._stall[3] == 1
+
+    def __enter__(self) -> "_PollRoundClock":
+        self._saved = (asy_uart_comm.time, asy_uart_comm.asyncio, asy_uart_driver.time, asy_uart_driver.asyncio)
+        now: list[Any] = [time.ticks_ms()]  # the real value: deadlines stored before entry stay comparable
+        stall = self._stall
+
+        class _Time:
+            ticks_add = staticmethod(time.ticks_add)
+            ticks_diff = staticmethod(time.ticks_diff)
+
+            @staticmethod
+            def ticks_ms() -> int:
+                now[0] = time.ticks_add(now[0], 1)
+                return int(now[0])
+
+        class _Asyncio:
+            Lock = asyncio.Lock
+            get_event_loop = staticmethod(asyncio.get_event_loop)
+
+            @staticmethod
+            async def sleep_ms(ms: int) -> None:
+                now[0] = time.ticks_add(now[0], ms)
+                await asyncio.sleep_ms(ms)
+                if stall[0] > 0:
+                    stall[0] -= 1
+                    if stall[0] == 0 and stall[2]:
+                        time.sleep_ms(stall[2])  # the whole interpreter blocked: a host deschedule
+                        stall[3] = 1
+
+        asy_uart_driver.asyncio = asy_uart_comm.asyncio = _Asyncio()  # type: ignore[assignment]
+        asy_uart_driver.time = asy_uart_comm.time = _Time()  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        assert self._saved is not None
+        asy_uart_comm.time, asy_uart_comm.asyncio, asy_uart_driver.time, asy_uart_driver.asyncio = self._saved
+        self._saved = None
+
+
 def _scrub(pair: Pair) -> None:
     # The link's wire log is scaffolding a test reads back, not something the protocol retains.
     for direction in (pair.link.a_to_b, pair.link.b_to_a):
@@ -525,7 +583,7 @@ async def _yield_like_one_transaction(pair: Pair) -> None:
         await crc.check_from(scratch, size=_FRAME + width)
 
 
-async def _measure_retention(pair: Pair) -> "tuple[int, float]":
+async def _measure_retention(pair: Pair, clock: _PollRoundClock) -> "tuple[int, float]":
     import gc
 
     # Three rounds per transaction, not one: a listen round is not always consumed by a completed
@@ -549,9 +607,11 @@ async def _measure_retention(pair: Pair) -> "tuple[int, float]":
 
     gc.collect()
     before = gc.mem_alloc()
+    clock.arm()
     for _ in range(_MEASURED):
         done += 1 if await pair.initiator.uart_set(1, payload) else 0
         _scrub(pair)
+    assert clock.disarm(), "the planted stall did not fire inside the measured run"
     gc.collect()
     grew = max(0, (gc.mem_alloc() - before) - ambient) / _MEASURED
     listener.cancel()
@@ -562,18 +622,24 @@ async def _measure_retention(pair: Pair) -> "tuple[int, float]":
     return done, grew
 
 
-def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None:
+def _retention(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) -> None:
     # CLAUDE.md's memory-safety ladder at its most direct: a link running for weeks has no backstop
     # below the watchdog, so the steady state must not grow the heap. The fakes' recorders are muted
     # so the number is src/'s alone; hazard_pair(crc) is built out here (its asyncio.run() cannot nest).
     pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
-    completed, per_transaction = run(_measure_retention(pair), limit=_RETENTION_LIMIT_S)
+    clock = _PollRoundClock(stall_after, stall_ms)
+    with clock:
+        completed, per_transaction = run(_measure_retention(pair, clock), limit=_RETENTION_LIMIT_S)
     assert completed == _WARMUP + _MEASURED, completed
     # A strict zero would be brittle against interpreter-internal caches; one frame of slack still
     # catches any real per-transaction retention long before it could matter on the target.
     assert per_transaction < wire_frame(crc), f"{per_transaction} bytes retained per transaction"
+
+
+def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None:
+    _retention(crc)
 
 
 # ---------------------------------------------------------------------------
@@ -1034,10 +1100,11 @@ _HAMMER_SAMPLE_AT = _HAMMER_ROUNDS // 3  # the warm-up that absorbs first-touch 
 _HAMMER_MEASURED = _HAMMER_ROUNDS - _HAMMER_SAMPLE_AT - 1  # transactions the heap delta spans
 
 
-def _hammer_clean(crc: "CrcMaker") -> None:
+def _hammer_clean(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) -> None:
     import gc
 
     pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
+    clock = _PollRoundClock(stall_after, stall_ms)
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     payload = bytes(_PAYLOAD * 3)
@@ -1052,6 +1119,8 @@ def _hammer_clean(crc: "CrcMaker") -> None:
             if i == _HAMMER_SAMPLE_AT:  # sample once the steady state is genuinely reached
                 gc.collect()
                 mid[0] = gc.mem_alloc()
+                clock.arm()
+        assert clock.disarm(), "the planted stall did not fire inside the measured run"
         gc.collect()
         grew = gc.mem_alloc() - mid[0]
         listener.cancel()
@@ -1062,7 +1131,8 @@ def _hammer_clean(crc: "CrcMaker") -> None:
         return ok, grew
 
     mid = [0]
-    ok, grew = run(hammer(), limit=_HAMMER_LIMIT_S)
+    with clock:
+        ok, grew = run(hammer(), limit=_HAMMER_LIMIT_S)
     assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed"
     assert not errnos(pair.initiator), f"a clean link logged errors under sustained load: {errnos(pair.initiator)}"
     # A per-transaction RATE over the span actually measured: a leak scales with the work done,
@@ -1072,7 +1142,7 @@ def _hammer_clean(crc: "CrcMaker") -> None:
     assert per_transaction < _RETENTION_PER_TRANSACTION_MAX_BYTES, f"{grew} bytes over {_HAMMER_MEASURED} transactions = {per_transaction:.2f} B/transaction"
 
 
-def _hammer_faulted(crc: "CrcMaker") -> None:
+def _hammer_faulted(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) -> None:
     # The same hammer with a fault running underneath it: the failure path is the one that
     # allocates hardest (resync, drain, backoff), so this is where an unbounded retry or a leak in
     # the recovery path would show.
@@ -1083,9 +1153,12 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     to_initiator = pair.link.direction_from(pair.fake_b)
     to_initiator.corrupt_indices = {2: 0xFF}
+    clock = _PollRoundClock(stall_after, stall_ms)
 
-    async def burst(rounds: int) -> None:
-        for _ in range(rounds):
+    async def burst(rounds: int, *, measured: bool = False) -> None:
+        for i in range(rounds):
+            if measured and i == rounds - 1:
+                clock.arm()  # the last one: a transaction failed there is still recovering when the heap is sampled
             await pair.initiator.uart_get(0x01)  # each one fails; none may raise
             _scrub(pair)
 
@@ -1097,7 +1170,8 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
         await burst(30)
         gc.collect()
         before[0] = gc.mem_alloc()
-        await burst(30)
+        await burst(30, measured=True)
+        assert clock.disarm(), "the planted stall did not fire inside the measured burst"
         gc.collect()
         grew = gc.mem_alloc() - before[0]
         listener.cancel()
@@ -1108,22 +1182,23 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
         return grew
 
     before = [0]
-    grew = run(hammer(), limit=_HAMMER_LIMIT_S)
-    # Same reasoning as the clean hammer, against the failure path's scale. The one-time cost absorbed in
-    # the first burst is ~114 B/failure here, so a bound well below that still catches an unabsorbed or
-    # leaking path while tolerating host-dependent interpreter noise (CI 4.3, locally 0).
-    per_failure = grew / 30
-    assert per_failure < _RETENTION_PER_FAILURE_MAX_BYTES, f"{grew} bytes over 30 failures = {per_failure:.1f} B/failure"
+    with clock:  # one entry for both halves: a deadline stored on the clock stays on it
+        grew = run(hammer(), limit=_HAMMER_LIMIT_S)
+        # Same reasoning as the clean hammer, against the failure path's scale. The one-time cost absorbed in
+        # the first burst is ~114 B/failure here, so a bound well below that still catches an unabsorbed or
+        # leaking path while tolerating host-dependent interpreter noise (CI 4.3, locally 0).
+        per_failure = grew / 30
+        assert per_failure < _RETENTION_PER_FAILURE_MAX_BYTES, f"{grew} bytes over 30 failures = {per_failure:.1f} B/failure"
 
-    to_initiator.corrupt_indices = {}
-    run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
-    run(pair.responder.clear(), limit=_RECOVERY_LIMIT_S)
-    recovered = False
-    for _ in range(_RECOVERY_ATTEMPTS):
-        answer = run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
-        if answer is not None and bytes(answer) == b"v":
-            recovered = True
-            break
+        to_initiator.corrupt_indices = {}
+        run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
+        run(pair.responder.clear(), limit=_RECOVERY_LIMIT_S)
+        recovered = False
+        for _ in range(_RECOVERY_ATTEMPTS):
+            answer = run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+            if answer is not None and bytes(answer) == b"v":
+                recovered = True
+                break
     assert recovered, "a hammered, faulted link never recovered once the fault was cleared"
 
 
@@ -1274,6 +1349,25 @@ def _check_sustained_hammering_never_degrades_or_grows_the_heap(crc: "CrcMaker")
 def _check_hammering_a_faulted_link_never_raises_and_still_recovers(crc: "CrcMaker") -> None:
     for _, threshold in _GC_THRESHOLDS:
         _under_threshold(_hammer_faulted, crc, threshold)
+
+
+# One host stall past every reply budget above (30 and 240 ms), planted inside each measured window: on the wall
+# clock it fails a transaction there and flips each check, the faulted hammer's on the coverage build (its heap
+# figures are larger); on the poll-round clock no bound can expire.
+_PLANTED_STALL_MS = 300
+_PLANTED_STALL_AFTER = 4  # sleeps after arm(): inside the reply wait of the transaction arm() precedes
+
+
+def _check_a_host_stall_cannot_fail_the_retention_check(crc: "CrcMaker") -> None:
+    _retention(crc, _PLANTED_STALL_AFTER, _PLANTED_STALL_MS)
+
+
+def _check_a_host_stall_cannot_fail_the_sustained_hammer(crc: "CrcMaker") -> None:
+    _hammer_clean(crc, _PLANTED_STALL_AFTER, _PLANTED_STALL_MS)
+
+
+def _check_a_host_stall_cannot_fail_the_faulted_hammer(crc: "CrcMaker") -> None:
+    _hammer_faulted(crc, _PLANTED_STALL_AFTER, _PLANTED_STALL_MS)
 
 
 # Registered once per mode, so a failure names the configuration that broke. Two checks are about

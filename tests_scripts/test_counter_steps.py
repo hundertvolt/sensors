@@ -30,8 +30,6 @@ _EXEMPT: dict[tuple[str, str], str] = {
 # Unguarded steps whose bound is not written yet: each leaves when its counter saturates, wraps or is
 # masked, and the stale-entry test then fails until the entry is deleted. The list only shrinks.
 _PENDING: dict[tuple[str, str], str] = {
-    ("src/asy_isl29125_driver.py", "ISL29125_I2C._write_failures"): "becomes a masked sequence",
-    ("src/asy_scd30_driver.py", "SCD30_Reader._scd_timer_triggers"): "saturates at the trigger half-period, checked before it steps",
     ("src/asy_uart_comm.py", "UARTComm._blind_resyncs"): "saturates at the resync streak threshold",
     ("src/asy_uart_driver.py", "UART._cancel_req"): "becomes a conditionally wrapped sequence",
     ("src/asy_uart_driver.py", "UART.cancel_unacknowledged"): "becomes a conditionally wrapped sequence",

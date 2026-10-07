@@ -219,7 +219,7 @@ def prose_blocks(path: str, text: str) -> list[Block]:
     suffix = _suffix(path)
     if suffix in _PLAIN_SUFFIXES:
         return _markdown_blocks(path, text)
-    if suffix == ".py":
+    if suffix in {".py", ".pyi"}:  # a type stub is Python syntax
         return _python_blocks(path, text)
     if suffix in _HASH_SUFFIXES:
         return _hash_blocks(path, text)

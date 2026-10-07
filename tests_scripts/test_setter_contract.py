@@ -207,7 +207,7 @@ def test_the_scan_reaches_push_callbacks_and_generated_dispatchers(modules: dict
 
 def test_a_push_registered_outside_init_fails(src_copy: Path) -> None:
     _edit(src_copy, "asy_sgp40_driver.py", "        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n", "")
-    _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> bool:\n", "    async def _read_loop(self) -> bool:\n        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n")
+    _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> None:\n", "    async def _read_loop(self) -> None:\n        self._push_callbacks[name_cfg(_VAL_RESET_VOC)] = self._push_reset_voc\n")
     findings = all_findings(src_copy, {})
     assert len(findings) == 1 and "asy_sgp40_driver.py SGP40_Reader._read_loop():" in findings[0] and "assigned outside __init__" in findings[0], findings
 
@@ -262,6 +262,6 @@ def test_a_named_out_entry_that_no_longer_exists_fails(src_copy: Path) -> None:
 
 
 def test_a_push_table_mutated_outside_init_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> bool:\n", "    async def _read_loop(self) -> bool:\n        self._push_callbacks.pop('ResetVOC')\n")
+    _edit(src_copy, "asy_sgp40_driver.py", "    async def _read_loop(self) -> None:\n", "    async def _read_loop(self) -> None:\n        self._push_callbacks.pop('ResetVOC')\n")
     findings = all_findings(src_copy, {})
     assert len(findings) == 1 and "SGP40_Reader._read_loop():" in findings[0] and "_push_callbacks.pop() outside __init__" in findings[0], findings

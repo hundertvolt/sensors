@@ -7,7 +7,7 @@
     "cfgmgr": {"files": ["src/asy_config_manager.py"], "loggers": ["CFGMGR"], "bands": {"E": [[30, 39]], "W": [[20, 24]]}},
     "system": {"files": ["src/asy_system_service.py"], "loggers": ["SYSTEM"], "bands": {"E": [[40, 44]], "W": [[69, 70]]}},
     "fram": {"files": ["src/asy_fram_manager.py", "src/asy_fram_driver.py"], "loggers": ["FRAM"], "bands": {"E": [[45, 54], [100, 109]], "W": [[25, 29], [63, 64]]}},
-    "isl29125": {"files": ["src/asy_isl29125_driver.py"], "loggers": ["ISL29125"], "bands": {"E": [[55, 57]], "W": [[30, 32]]}},
+    "isl29125": {"files": ["src/asy_isl29125_driver.py"], "loggers": ["ISL29125"], "bands": {"E": [[55, 57]], "W": [[30, 32], [75, 76]]}},
     "sgp40": {"files": ["src/asy_sgp40_driver.py"], "loggers": ["SGP40"], "bands": {"E": [[58, 59], [110, 114]], "W": [[33, 35], [65, 66]]}},
     "wifi": {"files": ["src/asy_wifi_service.py"], "loggers": ["WIFI"], "bands": {"E": [[60, 66]], "W": [[36, 39]]}},
     "ntp": {"files": ["src/asy_ntp_client.py"], "loggers": ["NTP"], "bands": {"E": [[67, 74]], "W": [[40, 40]]}},
@@ -15,8 +15,8 @@
     "notify": {"files": ["src/asy_notification_service.py"], "loggers": ["NOTIFY"], "bands": {"E": null, "W": [[44, 47], [67, 68]]}},
     "webserver": {"files": ["src/asy_webserver_service.py"], "loggers": ["WEBSERVER"], "bands": {"E": null, "W": [[48, 53]]}},
     "uart": {"files": ["src/asy_uart_comm.py"], "loggers": ["UART"], "bands": {"E": [[75, 99]], "W": [[54, 59]]}},
-    "bmp3xx": {"files": ["src/asy_bmp3xx_driver.py"], "loggers": ["BMP3XX"], "bands": {"E": null, "W": null}},
-    "scd30": {"files": ["src/asy_scd30_driver.py"], "loggers": ["SCD30"], "bands": {"E": null, "W": null}},
+    "bmp3xx": {"files": ["src/asy_bmp3xx_driver.py"], "loggers": ["BMP3XX"], "bands": {"E": null, "W": [[71, 72]]}},
+    "scd30": {"files": ["src/asy_scd30_driver.py"], "loggers": ["SCD30"], "bands": {"E": null, "W": [[73, 74]]}},
     "asy_api_response": {"files": ["src/asy_api_response.py"], "loggers": [], "bands": {"E": null, "W": null}},
     "test": {"files": ["tests_hardware/device_scripts/"], "loggers": [], "bands": {"E": [[125, 127]], "W": null}}
   },
@@ -47,6 +47,7 @@
       "23": {"owner": "shared", "name": "UNEXPECTED", "text": "an unexpected exception reached a never-raise boundary"},
       "24": {"owner": "shared", "name": "CONTRACT", "text": "an internal contract was violated (a code defect)"},
       "26": {"owner": "shared", "name": "CFG_READ", "text": "the module's own config read failed; it runs on its fallback"},
+      "27": {"owner": "shared", "name": "READ_RANGE", "text": "a reading outside the chip's datasheet range (or not finite) was rejected; it counts as a failed read"},
       "30": {"owner": "cfgmgr", "name": "CFG_PATH_IS_DIR", "text": "the config path is a directory"},
       "31": {"owner": "cfgmgr", "name": "CFG_NO_DEFAULTS", "text": "the schema has no defaults"},
       "32": {"owner": "cfgmgr", "name": "CFG_BAD_DEFAULT", "text": "a schema default is invalid"},
@@ -113,6 +114,7 @@
       "1": {"owner": "base", "name": "CALLBACK_KEYS", "text": "a config callback added unknown keys"},
       "2": {"owner": "base", "name": "CFG_KEYS", "text": "the config manager added unknown keys"},
       "10": {"owner": "shared", "name": "STORED_DEFAULT", "text": "a stored value was unusable; its default is used"},
+      "11": {"owner": "shared", "name": "DERIVED_DOMAIN", "text": "a configured offset moves a value outside the validated domain of the formula that derives another from it; the derived value is not published"},
       "13": {"owner": "shared", "name": "CFG_READ", "text": "the module's own config read failed; it runs on its fallback"},
       "14": {"owner": "shared", "name": "DEVICE_RECOVERY", "text": "a participant recovery (the chip's own reset or re-configuration) ran after repeated failures"},
       "15": {"owner": "shared", "name": "BUS_RECOVERY", "text": "the I2C bus was cleared, or its controller re-initialised, after repeated failures"},
@@ -129,7 +131,7 @@
       "31": {"owner": "isl29125", "name": "ISL_DIVERGED", "text": "the chip configuration diverged from the shadow"},
       "32": {"owner": "isl29125", "name": "ISL_PERIODIC_ONLY", "text": "five range decisions running by the periodic path only"},
       "33": {"owner": "sgp40", "name": "SGP_RESTORED_NO_TS", "text": "backup restored without a timestamp"},
-      "34": {"owner": "sgp40", "name": "SGP_BACKUP_TOO_OLD", "text": "backup older than SGPBackupMaxAge"},
+      "34": {"owner": "sgp40", "name": "SGP_BACKUP_AGE", "text": "backup rejected: older than BackupMaxAge or dated in the future"},
       "35": {"owner": "sgp40", "name": "SGP_WRITTEN_NO_TS", "text": "backup written without a timestamp"},
       "36": {"owner": "wifi", "name": "WLAN_AUTH_FAILED", "text": "authentication failed (wrong password or the AP dropped mid-handshake)"},
       "37": {"owner": "wifi", "name": "WLAN_NO_AP", "text": "the access point was not found"},
@@ -155,7 +157,31 @@
       "63": {"owner": "fram", "name": "FRAM_BLOCK_INVALID", "text": "a chunk block held invalid data; it is repaired from the other copy"},
       "65": {"owner": "sgp40", "name": "SGP_NO_BACKUP", "text": "no algorithm-state backup was found"},
       "67": {"owner": "notify", "name": "NOTIFY_SIGNAL_DROPPED", "text": "a requested LED signal was refused (LED busy) and dropped"},
-      "69": {"owner": "system", "name": "CONFIG_LOST", "text": "the config file was absent at this boot while FRAM history exists and no config reset was commanded: the filesystem was reformatted or wiped"}
+      "69": {"owner": "system", "name": "CONFIG_LOST", "text": "the config file was absent at this boot while FRAM history exists and no config reset was commanded: the filesystem was reformatted or wiped"},
+      "71": {"owner": "bmp3xx", "name": "BMP_CHIP_RESET", "text": "a chip self-reset was read (EVENT por_detected); the stored configuration is re-applied"},
+      "73": {"owner": "scd30", "name": "SCD_NOT_READY", "text": "five consecutive data-ready signals brought no new measurement (a data-ready line stuck high?)"},
+      "75": {"owner": "isl29125", "name": "ISL_CAL_TIMEOUT", "text": "a gain-ratio calibration window closed without a stable reading"}
+    }
+  },
+  "status": {
+    "VOCState": {
+      "0": {"text": "blackout (first 46 samples, index 0)"},
+      "1": {"text": "learning (fresh start, first 24 h)"},
+      "2": {"text": "learned (past the 24 h learning time)"},
+      "3": {"text": "restored from backup (first 24 h after the restore)"}
+    },
+    "FRCState": {
+      "0": {"text": "not measuring"},
+      "1": {"text": "settling"},
+      "2": {"text": "CO2 drifting"},
+      "3": {"text": "CO2 noisy"},
+      "4": {"text": "ready for a forced recalibration"}
+    },
+    "CalLight": {
+      "0": {"text": "not applicable now (fixed range, or the range is changing)"},
+      "1": {"text": "suitable for Calibrate Gain Ratio"},
+      "2": {"text": "too dark"},
+      "3": {"text": "too bright"}
     }
   }
 }

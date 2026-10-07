@@ -217,7 +217,7 @@ def _all_loggers(module: "Any") -> "list[Any]":
     # NeoPixel precedes conn (passed as its ext_led) and scd30 precedes sgp40 (its compensation
     # source). setters[i] is paired with loggers[i] elsewhere, so this is load-bearing.
     if _has(module, "scd30"):
-        loggers.append(module.scd30.pr)
+        loggers += [module.scd30.pr, module.scd30.cfgmgr.pr]
     if _has(module, "sgp40"):
         loggers += [module.sgp40.pr, module.sgp40.cfgmgr.pr]
     if _has(module, "bmp3xx"):
@@ -233,6 +233,12 @@ def _all_loggers(module: "Any") -> "list[Any]":
     return loggers
 
 
+def _ram_only_config_logs(module: "Any") -> "list[str]":
+    # The config loggers a reader's class keeps off FRAM (_CFG_LOG_FRAM False): read from the class, never named.
+    owners = [getattr(module, name) for name in _present_optional_instances(module)]
+    return sorted(owner.cfgmgr.pr.name for owner in owners if getattr(owner, "cfgmgr", None) is not None and not getattr(type(owner), "_CFG_LOG_FRAM", True))
+
+
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # The full expected chunk order is SPECIFICATION.md Part A.7's "Real FRAM chunk order" -
     # implicit-FRAM-wiring (conn/ntp/webserver and conn's CaptiveDNS) and a cfgmgr chunk right after
@@ -246,7 +252,7 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     calls += ["chunk", "chunk"]  # NTPClient, its own CFGMGR_NTP
     calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
     if _has(module, "scd30"):
-        calls.append("chunk")  # SCD30_Reader - no cfgmgr
+        calls.append("chunk")  # SCD30_Reader - its CFGMGR_SCD30 stays RAM-only, no chunk
     if _has(module, "sgp40"):
         calls += ["chunk", "chunk", "timestamped"]  # SGP40, its own CFGMGR_SGP40, VOC backup
     if _has(module, "bmp3xx"):
@@ -498,6 +504,7 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     if _has(module, "scd30"):
         assert isinstance(module.scd30.pr, PrintLogHistoryStore)
         assert module.scd30.pr.fram is not None
+        assert not isinstance(module.scd30.cfgmgr.pr, PrintLogHistoryStore)  # its class keeps the config log off FRAM
     if _has(module, "sgp40"):
         assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
         assert module.sgp40.pr.fram is not None
@@ -526,10 +533,11 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
 def _scenario_only_the_fram_manager_logs_in_memory(device: str) -> None:
     module = build(device)
     # scripts/_digital_twin_ci_suite.py's Run 5c sweeps the whole errcount table and exempts its
-    # _IN_MEMORY_ONLY_ERROR_SOURCES. Pinned from the real object graph: FRAMManager is the only
-    # source allowed to be in-memory, since the store cannot persist its own failures through itself.
+    # _IN_MEMORY_ONLY_ERROR_SOURCES. Pinned from the real object graph: FRAMManager (the store cannot persist its
+    # own failures through itself) and the config logs a reader's class keeps off FRAM are the in-memory ones.
     in_memory = sorted(logger.name for logger in _all_loggers(module) if not isinstance(logger, PrintLogHistoryStore))
-    assert in_memory == ["FRAM"], f"{device}: only the FRAM manager's own log may be in-memory-only, found {in_memory}"
+    expected = sorted(["FRAM"] + _ram_only_config_logs(module))
+    assert in_memory == expected, f"{device}: only the FRAM manager's own log and the RAM-only config logs may be in-memory-only, found {in_memory}"
 
 
 class _DeadFramChip(FakeMB85RS64V):

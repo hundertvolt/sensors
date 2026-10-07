@@ -1,0 +1,7 @@
+FLIP k=3 D=40 stalled=6 window_sleeps=1062 window_failed_calls=3 996ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=3 D=40 stalled=9 window_sleeps=841 window_failed_calls=3 957ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=3 D=40 stalled=28 window_sleeps=1676 window_failed_calls=10 2385ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+FLIP k=3 D=40 stalled=24 window_sleeps=942 window_failed_calls=5 1647ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=3 D=40 stalled=40 window_sleeps=783 window_failed_calls=8 2323ms: pass
+FLIP k=7 D=40 stalled=40 window_sleeps=787 window_failed_calls=8 2207ms: FAIL AssertionError: 0 bytes over 30 failures = 0.0 B/failure
+ok   k=3 D=40 stalled=119 window_sleeps=1188 window_failed_calls=30 5641ms: pass

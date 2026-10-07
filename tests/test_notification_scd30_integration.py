@@ -72,8 +72,10 @@ class _UTCValid:
 
 
 def make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
+    # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot.
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir())
+    run(reader.setup())
     return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
 
 
@@ -151,9 +153,9 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
         # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
         # instead of through the full irq/timer machinery, which is already exhaustively covered by
         # test_asy_scd30_driver.py's own tests and isn't what this file is exercising.
-        results = await scd_reader._read_scd()
+        results, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(results)
-        await scd_reader._store_scd(results)
+        await scd_reader._store_scd(results, new_data)
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
@@ -180,9 +182,9 @@ def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() ->
     pixel, notify = make_hum_stack(scd_reader)
 
     async def scenario() -> None:
-        results = await scd_reader._read_scd()
+        results, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(results)
-        await scd_reader._store_scd(results)
+        await scd_reader._store_scd(results, new_data)
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
@@ -206,9 +208,9 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
     pixel, notify = make_stack(scd_reader)
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any], bool]":
-        results = await scd_reader._read_scd()  # the bus fault happens inside here
+        results, new_data = await scd_reader._read_scd()  # the bus fault happens inside here
         still_running = await scd_reader._error_check(results)
-        await scd_reader._store_scd(results)  # a no-op: results has None fields, nothing committed
+        await scd_reader._store_scd(results, new_data)  # a no-op: results has None fields, nothing committed
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
@@ -252,15 +254,15 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     frame2 = data_frame(2000.0, 22.0, 45.0)
 
     async def scenario() -> None:
-        faulted = await scd_reader._read_scd()
+        faulted, new_data = await scd_reader._read_scd()
         await scd_reader._error_check(faulted)
-        await scd_reader._store_scd(faulted)
+        await scd_reader._store_scd(faulted, new_data)
 
         i2c.read_queue.append(frame1)
         i2c.read_queue.append(frame2)
-        recovered = await scd_reader._read_scd()
+        recovered, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(recovered)
-        await scd_reader._store_scd(recovered)
+        await scd_reader._store_scd(recovered, new_data)
 
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]

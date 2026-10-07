@@ -492,9 +492,15 @@ def test_parse_web_group_tags_edit_distance_just_outside_tolerance_stays_silent(
 def test_parse_web_tags_real_scd30_measurement_fields(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
     measurement_fields = {t.field_name for t in tags if t.section == "measurements"}
-    assert measurement_fields == {"CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"}
+    assert measurement_fields == {"CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWait", "TS"}
     config_fields = {t.field_name for t in tags if t.section == "sensors"}
-    assert config_fields == {"TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal", "ContMeas"}
+    assert config_fields == {"TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal", "ContMeas", "FRCNoise", "FRCRate", "FRCWindow"}
+
+
+def test_parse_web_tags_real_scd30_frc_readiness_fields(src_dir: Path) -> None:
+    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")}
+    assert (tags["FRCState"].kind, tags["FRCState"].codes) == ("readonly", "FRCState")
+    assert (tags["FRCWait"].kind, tags["FRCWait"].unit, tags["FRCWait"].decimals) == ("readonly", "s", 0)
 
 
 def test_parse_web_tags_real_scd30_ambpres_special(src_dir: Path) -> None:
@@ -531,7 +537,7 @@ def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
         "IRCompOffset", "IRCompAdjust", "FiltCoeff", "GainRatio", "Calibrate",
     }
     assert {t.field_name for t in tags if t.section == "measurements"} == {
-        "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS",
+        "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "CalLight", "TS",
     }
 
 
@@ -562,12 +568,12 @@ def test_parse_web_tags_real_isl29125_nested_measurement_fields_carry_path_and_d
 
 
 def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> None:
-    # This is the file SPECIFICATION.md Part L flags as the real generator-behavior finding: each of
-    # these three fields has a documented "0 means X" meaning despite an ordinary (special=None)
-    # schema tuple, so the tag's own special: entries - not the schema - must survive parsing.
+    # SPECIFICATION.md H.5.1: a tag's own special: entries survive parsing independently of the schema.
+    # These three fields also declare 0 in the schema's special slot (an in-range value with a meaning),
+    # and each parsed tag must still carry its own wording for it.
     tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
     assert {t.field_name for t in tags if t.section == "sensors"} == {"BackupPeriod", "BackupMaxAge", "WaitTimeNTP", "ResetVOC"}
-    assert {t.field_name for t in tags if t.section == "measurements"} == {"VOC", "Raw", "TS"}
+    assert {t.field_name for t in tags if t.section == "measurements"} == {"VOC", "Raw", "VOCState", "TS"}
     by_name = {t.field_name: t for t in tags}
     assert dict(by_name["BackupPeriod"].special) == {"0": "Backups off"}
     assert dict(by_name["BackupMaxAge"].special) == {"0": "Use all found backups"}

@@ -337,6 +337,47 @@ def test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands
     assert chip.nvm_writes == 8
 
 
+def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings() -> None:
+    # The real SCD30_Reader over the twin's bus, set up and initialised as at boot; the read cycles are driven
+    # in-process, one chip measurement each, with the walks held still (CO2 and temperature step 0).
+    machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
+    machine.Pin.reset_registry()
+    reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8, cfg_path=_scratch.dir())
+    chip = reader._scd._i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    assert chip._timer is not None
+    chip._timer.deinit()
+    chip._timer = None  # the test produces each measurement itself
+    chip._co2_step = chip._temp_step = 0.0  # a twin-only knob: a constant CO2, a steady temperature
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_seconds: float) -> None:
+        await real_sleep(0)
+
+    async def scenario() -> "tuple[list[int | None], dict[str, CfgValue]]":
+        assert await reader.setup() is True
+        assert await reader._init_scd() is True  # the chip answers its interval: 2 s, so 180 samples settle
+        states = []
+        for _ in range(180):
+            chip._produce_new_reading()
+            results, new_data = await reader._read_scd()
+            assert await reader._error_check(results, condition=results[0] is None)
+            await reader._store_scd(results, new_data)
+            states.append((await reader.get_data()).FRCState)
+        body: dict[str, CfgValue] = {"FRCNoise": 25.0, "FRCRate": 5.0, "FRCWindow": 90}
+        assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == dict.fromkeys(body, "Valid")
+        return states, (await reader.get_dict_cfg())["SCD30"]
+
+    asyncio.sleep = fast_sleep  # type: ignore[assignment]
+    try:
+        states, cfg = run(scenario())
+    finally:
+        asyncio.sleep = real_sleep
+    assert states[:-1] == [1] * 179
+    assert states[-1] == 4
+    assert (cfg["FRCNoise"], cfg["FRCRate"], cfg["FRCWindow"]) == (25.0, 5.0, 90)
+    assert chip.nvm_writes == 0  # the FRC settings never reach the chip
+
+
 def test_fault_injection_on_writeto_and_readfrom_into() -> None:
     chip = Scd30Chip(auto_refresh=False)
     chip.fault.inject_fault("writeto", OSError(5, "no ACK"))

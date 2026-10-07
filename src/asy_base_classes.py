@@ -1,4 +1,4 @@
-"""Shared base classes and primitives: the session lock (Lockable), lock-guarded buffers (LockableBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
+"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), lock-guarded buffers (LockableBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 Every method returns a well-defined value, never raises.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from asy_config_manager import CfgValue, ConfigSchema, FieldSchema, WriteValidity
-    from asy_i2c_driver import I2C
+    from asy_i2c_driver import I2C, I2CDevice
     from asy_print_log import ErrorLog, PrintLogHistory
 
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
@@ -80,6 +80,7 @@ _ERR_CFG_SNAPSHOT_RAISED = const(7)
 _ERR_RECOVERY_READ_RAISED = const(8)
 _ERR_RECOVERY_WRITE_RAISED = const(9)
 _ERR_CALLBACK = const(14)
+_ERR_TIMER = const(17)
 _WRN_CALLBACK_KEYS = const(1)
 _WRN_CFG_KEYS = const(2)
 _WRN_DEVICE_RECOVERY = const(14)
@@ -119,6 +120,14 @@ class Lockable:
         except RuntimeError:  # in case it's already released somehow
             pass
         return False
+
+
+class DeviceSession(Lockable):
+    # One device's session lock plus its bus device (SPECIFICATION.md C.2/G.2); every sensor driver's chip sits on
+    # I2C, so the device is typed as one - an SPI chip, when one exists, gets its own typed session.
+    def __init__(self, bus_device: "I2CDevice") -> None:
+        super().__init__()
+        self.i2c_device = bus_device
 
 
 class LockableBuffer(Lockable):
@@ -271,6 +280,13 @@ def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHi
 
 
 class SensorReader:
+    # Set by a reader that divides the 1 s base tick (BMP3XX, ISL29125); read by _trigger_loop() only.
+    _base_trigger_event: asyncio.ThreadSafeFlag
+    _read_event: asyncio.ThreadSafeFlag
+    _trigger_counter: int
+    _trigger_period: LockedValue
+    start_timer: "TimerStarter"
+
     def __init__(
         self,
         init_data: "NamedTuple",
@@ -300,6 +316,7 @@ class SensorReader:
         self._rungs = 0  # the _RUNG_* bits this failure episode already ran
         self._bus_mark = 0  # _recovery_bus.recoveries when this episode began
         self._recovery_bus: I2C | None = None  # set by a driver whose chip sits on I2C
+        self._timer_error: Exception | None = None  # a failed read-trigger arm, until its task reports it
 
     async def _get_dict_cfg(
         self,
@@ -537,6 +554,44 @@ class SensorReader:
             # Console only: the store that refused the recovery persisted its own entry.
             self.pr.err("Recovery of", key, "after a failed push was not stored:", res.get(key))
 
+    async def _republish(self, names: tuple[str, ...], **changes: object) -> None:
+        # The last sample again with the named fields changed, in one hold with no await inside, so a
+        # concurrent store is never overwritten by a stale copy; names are the namedtuple's fields in order.
+        async with self._data_lock:
+            old = self._datastruct
+            values = (changes[n] if n in changes else getattr(old, n) for n in names)
+            self._datastruct = type(old)(*values)  # type: ignore[arg-type]  # the sample's own namedtuple class, not NamedTuple's factory
+
+    def _timer_failed(self, e: Exception, waiter: asyncio.ThreadSafeFlag) -> None:
+        # A read-trigger arm failed in a sync starter: keep it for the waiting task and wake that task.
+        self._timer_error = e
+        self.pr.err("Could not start timer:", e)
+        waiter.set()
+
+    async def _timer_fault(self) -> bool:
+        # True once a failed arm is persisted: the woken task then ends, and its restart re-arms.
+        if self._timer_error is None:
+            return False
+        await self.pr.err_s("Read trigger timer not armed:", self._timer_error, errno=_ERR_TIMER)
+        return True
+
+    async def _trigger_loop(self) -> None:
+        # The shared divider (Part C.9): every n-th base tick sets the read event, n the trigger period; a
+        # failed arm is retried first, and a fault seen after a wake ends the task.
+        if self._timer_error is not None:
+            self._timer_error = None
+            self.start_timer()
+        self._trigger_counter = 0
+        while True:
+            await self._base_trigger_event.wait()
+            if await self._timer_fault():
+                return
+            self._trigger_counter += 1
+            period = await self._trigger_period.get_value()  # set at construction, never None
+            if period is not None and self._trigger_counter >= period:
+                self._read_event.set()
+                self._trigger_counter = 0
+
     def get_trigger_starters(self) -> "list[TimerStarter]":
         # Read-trigger timer starters the system service staggers (SPECIFICATION.md Part C.9.1); none here.
         return []
@@ -575,6 +630,9 @@ def utc_now() -> int | None:
 
 
 class SensorReaderConfig(SensorReader):
+    # False where the owner keeps a module's config store off FRAM (SCD30, owner, 2026-09-29: 'no extra FRAM chunk')
+    _CFG_LOG_FRAM = True
+
     def __init__(
         self,
         init_data: "NamedTuple",
@@ -591,7 +649,8 @@ class SensorReaderConfig(SensorReader):
         # self.name - already instance_name(name, name_ext) from super().__init__() - threads the
         # per-instance extension into both the on-flash filename and this ConfigManager's own
         # "CFGMGR_<name>" logger (Part C.14). Never the raw `name`, which is the type's base name.
-        self.cfgmgr = ConfigManager(config_filename(cfg_path, self.name), default_vals, self.name, log=log)
+        cfg_log = log if self._CFG_LOG_FRAM else LogConfig(None, log.history_length, log.debug)
+        self.cfgmgr = ConfigManager(config_filename(cfg_path, self.name), default_vals, self.name, log=cfg_log)
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         self.pr.evt("Reading config via cfgmgr.")

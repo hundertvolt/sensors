@@ -107,14 +107,16 @@ def _bmp_data6(adc_p: int, adc_t: int) -> bytes:
     return triplet(adc_p) + triplet(adc_t)
 
 
-def seed_bmp_ready(i2c: I2C, address: int = 0x77) -> None:
-    # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear - see test_asy_bmp3xx_driver.py's own
-    # ready_bmp() for the same shape.
-    fake(i2c).registers[(address, 0x03)] = bytearray([0x10 | 0x60])  # _REGISTER_STATUS
-    fake(i2c).registers[(address, 0x02)] = bytearray([0x00])  # _REGISTER_ERR
-    fake(i2c).registers[(address, 0x00)] = bytearray([0x50])  # _REGISTER_CHIPID (BMP388)
+def seed_bmp_ready(i2c: I2C, address: int = 0x77, chip_id: int = 0x50) -> None:
+    # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear; EVENT clear - see test_asy_bmp3xx_driver.py's own
+    # ready_bmp() for the same shape. The driver's burst reads ERR_REG, STATUS and the data as one file from 0x02.
+    status = 0x10 | 0x60
+    fake(i2c).registers[(address, 0x03)] = bytearray([status])  # _REGISTER_STATUS
+    fake(i2c).registers[(address, 0x02)] = bytearray([0x00, status]) + _bmp_data6(_BMP_ADC_P, _BMP_ADC_T)  # _REGISTER_ERR to 0x09
+    fake(i2c).registers[(address, 0x10)] = bytearray([0x00])  # _REGISTER_EVENT, por_detected clear
+    # _REGISTER_CHIPID: 0x50 (BMP384/388) by default, 0x60 (BMP390) on request - both documented IDs
+    fake(i2c).registers[(address, 0x00)] = bytearray([chip_id])
     fake(i2c).registers[(address, 0x31)] = bytearray(_BMP_CAL_RAW)  # _REGISTER_CAL_DATA
-    fake(i2c).registers[(address, 0x04)] = bytearray(_bmp_data6(_BMP_ADC_P, _BMP_ADC_T))  # _REGISTER_PRESSUREDATA
 
 
 def seed_isl_ready(i2c: I2C, address: int = 0x44) -> None:
@@ -229,6 +231,7 @@ async def _general_call_sgp40(instance: "Any") -> None:
 async def _exercise_sgp40(instance: "Any") -> None:
     for call in (
         instance.setup,  # includes one initialize() -> _reset() call, hence GENERAL_CALL_ADDR being allowed below
+        instance.turn_heater_off,  # the participant rung's command: the sweep proves it touches 0x59 only
         instance.get_raw,
         lambda: instance.measure_raw(25, 50),
         lambda: instance.measure_index_and_raw(25, 50),
@@ -247,6 +250,10 @@ def _seed_isl29125(fake_bus: FakeI2C, address: int, iterations: int) -> None:
 
 
 async def _read_once_isl29125(instance: "Any") -> None:
+    # The reader's cycle: STATUS, the 3-byte CONFIG snapshot, then the counts, each its own session block.
+    await instance.read_status()
+    config = await instance.get_config_snapshot()
+    assert config == bytes(3), f"a concurrent hazard tore ISL29125's CONFIG snapshot: {config!r}"
     counts = await instance.read_counts()
     assert counts == _ISL_COUNTS, f"a concurrent hazard corrupted ISL29125's own read: {counts!r}, expected {_ISL_COUNTS!r}"
 
@@ -285,6 +292,7 @@ async def _read_once_bmp3xx(instance: "Any") -> None:
     # occupant's own first read, exactly once, same as a real driver caller would do at boot.
     if not hasattr(instance, "_temp_calib"):
         await instance.setup()
+    assert await instance.take_por_detected() is False, "BMP3xx reported a chip reset nobody issued"  # the reader's per-cycle EVENT read
     pressure, temperature = await instance.get_pressure_and_temperature()
     assert abs(pressure - _BMP_EXPECTED_PRESSURE_HPA) < 1e-6, f"a concurrent hazard corrupted BMP3xx's own pressure read: {pressure!r}, expected {_BMP_EXPECTED_PRESSURE_HPA!r}"
     assert abs(temperature - _BMP_EXPECTED_TEMPERATURE) < 1e-6, f"a concurrent hazard corrupted BMP3xx's own temperature read: {temperature!r}, expected {_BMP_EXPECTED_TEMPERATURE!r}"
@@ -303,11 +311,12 @@ async def _exercise_bmp3xx(instance: "Any") -> None:
         instance.get_pressure,
         instance.get_temperature,
         instance.get_pressure_and_temperature,
-        instance.get_altitude,
+        instance.get_pressure_altitude,
         instance.get_pressure_oversampling,
         instance.get_temperature_oversampling,
         instance.get_filter_coefficient,
         instance.get_config_snapshot,
+        instance.take_por_detected,
         lambda: instance.set_pressure_oversampling(2),
         lambda: instance.set_temperature_oversampling(2),
         lambda: instance.set_filter_coefficient(3),
@@ -324,16 +333,17 @@ def _construct_bmp3xx(i2c: I2C, address: int) -> BMP3XX_I2C:
     return bmp
 
 
-def _construct_scd30(i2c: I2C, address: int) -> SCD30_I2C:
-    return SCD30_I2C(i2c, address=address)
+# The three chips with a hard-wired address take none (SPECIFICATION.md K.3); `address` still keys the seeding.
+def _construct_scd30(i2c: I2C, _address: int) -> SCD30_I2C:
+    return SCD30_I2C(i2c)
 
 
-def _construct_sgp40(i2c: I2C, address: int) -> SGP40_I2C:
-    return SGP40_I2C(i2c, address=address)
+def _construct_sgp40(i2c: I2C, _address: int) -> SGP40_I2C:
+    return SGP40_I2C(i2c)
 
 
 def _construct_isl29125(i2c: I2C, address: int) -> ISL29125_I2C:
-    isl = ISL29125_I2C(i2c, address=address)
+    isl = ISL29125_I2C(i2c)
     seed_isl_ready(i2c, address)
     return isl
 
@@ -518,7 +528,7 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    # A real general-call broadcast (SPECIFICATION.md Part C.8's known structural gap) concurrent
+    # A real general-call broadcast, the general-call reset the owner decided (owner, 2026-09-26; SPECIFICATION.md Part C.8), concurrent
     # with every non-broadcasting sibling's read loop, across swept timing offsets.
     # A no-op if no real occupant of this bus ever broadcasts.
     offsets = list(range(iterations)) if offsets is None else offsets

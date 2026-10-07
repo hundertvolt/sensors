@@ -1,12 +1,12 @@
 {
     "measurements": {
-        "SCD30": { "CO2": 612, "Temp": 21.4, "Hum": 46.2, "WetBulb": 15.1, "DewPoint": 9.8, "TS": 1755000000 },
-        "SGP40": { "VOC": 118, "Raw": 29234, "TS": 1755000000 },
+        "SCD30": { "CO2": 612, "Temp": 21.4, "Hum": 46.2, "WetBulb": 15.1, "DewPoint": 9.8, "FRCState": 4, "FRCWait": null, "TS": 1755000000 },
+        "SGP40": { "VOC": 118, "Raw": 29234, "VOCState": 2, "TS": 1755000000 },
         "BMP3XX": { "Pres": 1005.3, "Temp": 21.6, "SLPres": 1013.8, "TS": 1755000000 },
-        "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "Overrange": false, "GainMeas": null, "TS": 1755000000 }
+        "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "Overrange": false, "GainMeas": null, "CalLight": 1, "TS": 1755000000 }
     },
     "sensorsConfig": {
-        "SCD30": { "MeasInterval": 5, "TempOffset": 2.5, "AmbPres": 0, "Altitude": 180, "ForceCalRef": 400, "SelfCal": true },
+        "SCD30": { "MeasInterval": 5, "TempOffset": 2.5, "AmbPres": 0, "Altitude": 180, "ForceCalRef": 400, "SelfCal": true, "FRCNoise": 20.0, "FRCRate": 10.0, "FRCWindow": 60 },
         "SGP40": { "BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30 },
         "BMP3XX": { "SampleInterval": 5, "PresOvers": 4, "PresOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0, "FiltCoeff": 3, "SeaLevelOffset": 0.0, "MeanAtmTemp": 15.0 },
         "ISL29125": { "SampleInterval": 1, "Resolution": 16, "RangeAuto": true, "Range": 10000, "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0, "IRCompOffset": 0, "IRCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667 }
@@ -30,6 +30,7 @@
         "SYSTEM": { "counter": 4, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 42, "type": "E" }, { "num": 44, "type": "E" }, { "num": 42, "type": "E" }] },
         "CFGMGR_SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
         "SCD30": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+        "CFGMGR_SCD30": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
         "SGP40": { "counter": 3, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 11, "type": "E" }, { "num": 110, "type": "E" }] },
         "CFGMGR_SGP40": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
         "BMP3XX": { "counter": 12, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 11, "type": "E" }, { "num": 13, "type": "E" }, { "num": 11, "type": "E" }, { "num": 13, "type": "E" }, { "num": 11, "type": "E" }] },
