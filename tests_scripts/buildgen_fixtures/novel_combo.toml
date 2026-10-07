@@ -118,7 +118,7 @@ trigger_s = 5
 driver = "fram"
 bus = "spi0"
 cs_pin = 13
-max_size = 0x8000
+max_size = 0x40000
 
 [[instance]]
 driver = "neopixel"

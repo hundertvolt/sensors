@@ -11,7 +11,7 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_base_classes import COUNTER_CAP, LockableBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
 
 try:
@@ -297,7 +297,7 @@ class UARTComm:
             await self._err(_ERR_ALLOC, "could not right-size the received train")
             return ListenResult(None, CMD_SET, None)
 
-    def _allocate(self) -> tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray]:
+    def _allocate(self) -> tuple[RegionBuffer, RegionBuffer, bytearray, bytearray, bytearray]:
         # Everything the steady state needs, once: the TX/RX frame buffers, the ACK scratch, the zero
         # padding and the command-id scratch. Nothing is allocated per frame after this - zero bytes
         # retained per transaction, pinned by test_uart_comm_hazard.py.
@@ -307,8 +307,8 @@ class UARTComm:
         else:
             size = self._frame_size
             room = self._uart.framing.max_encoded(size + self._uart.crc.length())
-        tx = LockableBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0))
-        rx = LockableBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0))
+        tx = RegionBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0))
+        rx = RegionBuffer(room, data_start=_HEADER_LEN, data_length=max(size - _HEADER_LEN, 0))
         try:
             ack = bytearray(room)
             zero = bytearray(max(size - _HEADER_LEN, 0))
@@ -993,7 +993,7 @@ class UARTComm:
             return None
 
     async def uart_get_into(self, get_id: int, buf: "Writable | None", exp_size: int | None = None) -> int | None:
-        # A failed LockableBuffer hands its owner None, so every _into entry point checks it
+        # A failed RegionBuffer hands its owner None, so every _into entry point checks it
         # first rather than raising an AttributeError at the worst possible moment.
         if buf is None:
             await self._err(_ERR_ALLOC, "uart_get_into called with no destination buffer")

@@ -2257,8 +2257,8 @@ def test_the_ring_is_allocated_once_in_setup() -> None:
 
 
 def test_a_read_retains_nothing() -> None:
-    # 1,000 frame reads copied by index into one buffer grow the heap by no more than an ambient control
-    # awaiting a no-op coroutine as often (the read is awaited; the scheduler's churn is the control's).
+    # 2,000 frame reads copied by index into one buffer grow the heap no more than 1,000 do: each run's
+    # asyncio.run() leaves the same fixed residue, which the difference cancels, so any per-read retention shows.
     uart = make_uart()
     buf = bytearray(8)
 
@@ -2270,25 +2270,27 @@ def test_a_read_retains_nothing() -> None:
                 done += 1 if await uart.readinto_until_complete(buf, 8) == 8 else 0
         return done
 
-    async def noop() -> None:
-        return
-
-    async def control(n: int) -> None:
-        for _ in range(n):
-            await noop()
+    def grown(n: int) -> int:
+        gc.collect()
+        before = gc.mem_alloc()
+        assert run(reads(n)) == n
+        gc.collect()
+        return gc.mem_alloc() - before
 
     assert run(reads(10)) == 10  # warm-up: every path taken before the heap is sampled
-    gc.collect()
-    before = gc.mem_alloc()
-    run(control(1000))
-    gc.collect()
-    ambient = gc.mem_alloc() - before
-    gc.collect()
-    before = gc.mem_alloc()
-    assert run(reads(1000)) == 1000
-    gc.collect()
-    grown = gc.mem_alloc() - before
-    assert grown <= max(ambient, 0), (grown, ambient)
+    # The fake's capped logs (mem32's above all) grow until they wrap once, by a count per read that varies with
+    # poll rounds: reading on until each has wrapped, or a batch leaves it untouched, keeps that out of the samples.
+    logs = (fake(uart).log, mem32.log)
+    for _ in range(128):  # 8,192 reads: a 4,096-entry log wraps within them at one entry per read
+        before = [(len(log), log.dropped) for log in logs]
+        assert run(reads(64)) == 64
+        if all(log.dropped >= log.maxlen or (len(log), log.dropped) == b for log, b in zip(logs, before)):  # noqa: B905 - MicroPython zip() rejects strict=
+            break
+    else:
+        raise AssertionError("a fake log still grew after 8,192 reads")
+    short = grown(1000)
+    long = grown(2000)
+    assert long <= short, (long, short)
 
 
 def _frame(i: int) -> bytes:

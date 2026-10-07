@@ -751,7 +751,7 @@ def test_singleton_service_declared_twice(tmp_path: Path, src_dir: Path) -> None
     # exact-duplicate [[instance]] entry - caught by load_device()'s dedup before the
     # singleton-specific check even runs (Part C.14).
     doc = base_doc()
-    second_fram = {"driver": "fram", "bus": "spi0", "cs_pin": 22, "max_size": 1024}
+    second_fram = {"driver": "fram", "bus": "spi0", "cs_pin": 22, "max_size": 0x2000}
     doc["instance"].append(second_fram)
     with pytest.raises(BuildError, match="duplicate \\[\\[instance\\]\\] entry"):
         _build(tmp_path, src_dir, doc)
@@ -869,6 +869,23 @@ def test_scd30_trigger_s_outside_legal_range_rejected(tmp_path: Path, src_dir: P
 def test_scd30_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
     doc = base_doc()
     doc["instance"][0]["trigger_s"] = legal_trigger  # scd30
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+@pytest.mark.parametrize("bad_size", [0x1000, 0x8000])
+def test_fram_max_size_outside_legal_set_rejected(tmp_path: Path, src_dir: Path, bad_size: int) -> None:
+    # A size no known part has would build and then fail at boot; the build names the legal set.
+    doc = base_doc()
+    doc["instance"][2]["max_size"] = bad_size  # fram
+    with pytest.raises(BuildError, match=r"not one of this driver's legal values \[8192, 262144\]") as excinfo:
+        _build(tmp_path, src_dir, doc)
+    assert (excinfo.value.instance, excinfo.value.field) == ("fram", "max_size")
+
+
+@pytest.mark.parametrize("legal_size", [0x2000, 0x40000])
+def test_fram_max_size_in_legal_set_is_fine(tmp_path: Path, src_dir: Path, legal_size: int) -> None:
+    doc = base_doc()
+    doc["instance"][2]["max_size"] = legal_size  # fram
     _build(tmp_path, src_dir, doc)  # no raise
 
 

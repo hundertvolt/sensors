@@ -137,7 +137,7 @@ def test_novel_combo_fixture_wires_two_scd30_instances_on_separate_buses(fixture
     # per-bus address-collision check only scopes within one bus).
     bmp3xx = next(a for a in plan["buses"]["i2c0"] if a["driver"] == "bmp3xx")
     assert bmp3xx["address"] == 0x76  # the alternate hardwired-address-select value
-    assert plan["spi"]["spi0"]["max_size"] == 0x8000
+    assert plan["spi"]["spi0"]["max_size"] == 0x40000
 
 
 def test_multi_instance_fixture_wires_three_devices_sharing_one_bus(fixtures_dir: Path, src_dir: Path) -> None:
@@ -148,4 +148,4 @@ def test_multi_instance_fixture_wires_three_devices_sharing_one_bus(fixtures_dir
     assert addresses == {"scd30": 0x61, "bmp3xx": 0x76, "sgp40": 0x59}
     i2c1_addresses = {a["driver"]: a["address"] for a in plan["buses"]["i2c1"]}
     assert i2c1_addresses == {"scd30": 0x61, "sgp40": 0x59}
-    assert plan["spi"]["spi0"]["max_size"] == 0x4000
+    assert plan["spi"]["spi0"]["max_size"] == 0x40000

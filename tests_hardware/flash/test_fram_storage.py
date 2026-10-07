@@ -120,6 +120,16 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 
 
 # ---------------------------------------------------------------------------
+# The FRAM command hold: the longest stretch a chunk operation holds the loop without yielding stays
+# under one UART poll floor (SPECIFICATION.md F.5.8, J.6). Wire time is silicon-only, so no twin leg.
+# ---------------------------------------------------------------------------
+
+
+def test_fram_command_hold_stays_under_the_uart_poll_floor(board: Board) -> None:
+    _run_and_assert_pass(board, "fram_command_hold_timing.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM command hold timing")
+
+
+# ---------------------------------------------------------------------------
 # The busy-status lockout: the real-hardware half of BACKLOG's SPI RX-overrun coverage. The
 # overrun is a DMA timing condition no Python knob can induce on target, so this tests its
 # consequence, which is inducible and is what actually protects a destructive-readout part.

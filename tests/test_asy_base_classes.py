@@ -19,10 +19,10 @@ from asy_base_classes import (
     COUNTER_CAP,
     DeviceSession,
     Lockable,
-    LockableBuffer,
     LockedCounter,
     LockedFlag,
     LockedValue,
+    RegionBuffer,
     SensorReader,
     SensorReaderConfig,
     TickSeconds,
@@ -50,7 +50,6 @@ if TYPE_CHECKING:
 
     import asy_config_manager as cm
     from asy_base_classes import JsonMapping
-    from asy_base_classes import LockableBuffer as _LockableBufferType
     from asy_crc_checks import CRCBase
 
     T = TypeVar("T")
@@ -77,18 +76,16 @@ class _RaisingFramChunk:
 
     # Every parameter below keeps its exact name (and stays unused): both doubles implement asy_print_log.py's
     # _FramChunk/_FramManager Protocols, which mypy matches structurally by parameter name, and asy_print_log.py
-    # calls get_chunk(size, crc=CRC8()) by keyword on top of that.
-    def get_buffer(self) -> "_LockableBufferType":
-        from asy_base_classes import LockableBuffer as _LB
+    # calls get_chunk(size, crc=CRC8(), owner=name) by keyword on top of that.
+    def get_buffer(self) -> RegionBuffer:
+        return RegionBuffer(6, data_start=0, data_length=6)
 
-        return _LB(6, data_start=0, data_length=6)
-
-    async def write_into(self, buf: "_LockableBufferType", *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: RegionBuffer) -> bool:
         if self.raise_on_write:
             raise MemoryError("simulated allocation failure")
         return True
 
-    async def read_into(self, buf: "_LockableBufferType", *, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: RegionBuffer) -> bool:
         if self.raise_on_read:
             raise MemoryError("simulated allocation failure")
         return True
@@ -101,9 +98,9 @@ class _RaisingFramManager:
 
     # Every parameter below keeps its exact name (and stays unused): both doubles implement asy_print_log.py's
     # _FramChunk/_FramManager Protocols, which mypy matches structurally by parameter name, and asy_print_log.py
-    # calls get_chunk(size, crc=CRC8()) by keyword on top of that.
+    # calls get_chunk(size, crc=CRC8(), owner=name) by keyword on top of that.
     def get_chunk(
-        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise MemoryError("simulated allocation failure")
@@ -144,7 +141,7 @@ def _remove(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Lockable / LockableBuffer
+# Lockable / RegionBuffer
 # ---------------------------------------------------------------------------
 
 
@@ -230,8 +227,8 @@ def test_device_session_is_one_lockable_holding_its_bus_device() -> None:
     assert DeviceSession(device).session_lock is not session.session_lock  # one lock per session
 
 
-def test_lockablebuffer_default_data_length_spans_remainder() -> None:
-    buf = LockableBuffer(10, data_start=2)
+def test_regionbuffer_default_data_length_spans_remainder() -> None:
+    buf = RegionBuffer(10, data_start=2)
     raw = buf.get_buf()
     data = buf.get_data_buf()
     assert raw is not None
@@ -240,8 +237,8 @@ def test_lockablebuffer_default_data_length_spans_remainder() -> None:
     assert len(data) == 8  # 10 - 2
 
 
-def test_lockablebuffer_explicit_data_length_and_offset() -> None:
-    buf = LockableBuffer(10, data_start=2, data_length=3)
+def test_regionbuffer_explicit_data_length_and_offset() -> None:
+    buf = RegionBuffer(10, data_start=2, data_length=3)
     raw = buf.get_buf()
     data = buf.get_data_buf()
     assert raw is not None
@@ -251,51 +248,51 @@ def test_lockablebuffer_explicit_data_length_and_offset() -> None:
     assert bytes(data) == b"\x01\x02\x03"
 
 
-def test_lockablebuffer_oversized_region_yields_none() -> None:
-    buf = LockableBuffer(4, data_start=2, data_length=10)  # data_end (12) > size (4)
+def test_regionbuffer_oversized_region_yields_none() -> None:
+    buf = RegionBuffer(4, data_start=2, data_length=10)  # data_end (12) > size (4)
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
 
 
-def test_lockablebuffer_negative_size_yields_none() -> None:
-    buf = LockableBuffer(-1)  # bytearray(-1) would raise MemoryError on real MicroPython if unguarded
+def test_regionbuffer_negative_size_yields_none() -> None:
+    buf = RegionBuffer(-1)  # bytearray(-1) would raise MemoryError on real MicroPython if unguarded
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
 
 
-def test_lockablebuffer_negative_data_start_yields_none() -> None:
-    buf = LockableBuffer(10, data_start=-3)  # would otherwise silently wrap to a wrong-offset slice
+def test_regionbuffer_negative_data_start_yields_none() -> None:
+    buf = RegionBuffer(10, data_start=-3)  # would otherwise silently wrap to a wrong-offset slice
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
 
 
-def test_lockablebuffer_negative_data_length_yields_none() -> None:
-    buf = LockableBuffer(10, data_start=2, data_length=-5)  # data_end (-3) doesn't trip data_end > size alone
+def test_regionbuffer_negative_data_length_yields_none() -> None:
+    buf = RegionBuffer(10, data_start=2, data_length=-5)  # data_end (-3) doesn't trip data_end > size alone
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
 
 
-def test_lockablebuffer_huge_size_yields_none_not_memoryerror() -> None:
+def test_regionbuffer_huge_size_yields_none_not_memoryerror() -> None:
     # A valid, non-negative size can still exhaust the heap - confirmed directly against the real
     # MicroPython interpreter that bytearray(2**62) raises MemoryError, not a negative-input error.
-    buf = LockableBuffer(2**62)
+    buf = RegionBuffer(2**62)
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
 
 
-def test_lockablebuffer_astronomical_size_yields_none_not_overflowerror() -> None:
+def test_regionbuffer_astronomical_size_yields_none_not_overflowerror() -> None:
     # A second, distinct failure mode above the first: confirmed directly that bytearray(n) raises
     # OverflowError instead of MemoryError once n hits the signed-64-bit machine-word boundary
     # (2**63) - both must degrade the same way, not just the smaller-magnitude one.
-    buf = LockableBuffer(2**63)
+    buf = RegionBuffer(2**63)
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
 
 
-def test_lockablebuffer_zero_length_data_region_is_valid() -> None:
+def test_regionbuffer_zero_length_data_region_is_valid() -> None:
     # data_start == size is a legitimate boundary, not an oversized region: data_length defaults to
     # 0, so data_end (== size) is not > size.
-    buf = LockableBuffer(4, data_start=4)
+    buf = RegionBuffer(4, data_start=4)
     raw = buf.get_buf()
     data = buf.get_data_buf()
     assert raw is not None
@@ -304,18 +301,11 @@ def test_lockablebuffer_zero_length_data_region_is_valid() -> None:
     assert len(data) == 0
 
 
-def test_lockablebuffer_is_still_lockable() -> None:
-    buf = LockableBuffer(4)
-
-    async def scenario() -> None:
-        async with buf:
-            assert buf.session_lock.locked()  # held for the whole block, same as a plain Lockable
-
-    run(scenario())
-
-
-def test_lockablebuffer_is_a_lockable_instance() -> None:
-    assert isinstance(LockableBuffer(4), Lockable)
+def test_regionbuffer_holds_no_lock() -> None:
+    # No caller ever took a buffer's lock (FRAM chunk operations serialise on the manager, UART on its session).
+    buf = RegionBuffer(4)
+    assert not isinstance(buf, Lockable)
+    assert not hasattr(buf, "session_lock")
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +647,26 @@ def test_set_utc_valid_with_valid_false_takes_the_clock_back_to_unavailable() ->
         assert utc_now() is not None
         set_utc_valid(valid=False)
         assert utc_now() is None
+    finally:
+        set_utc_valid(valid=False)
+        _restore_time()
+
+
+def test_utc_now_follows_a_clock_step_while_tickseconds_does_not() -> None:
+    # The RTC stepped back, then forward (an NTP correction, NTP_Offset_S): the timestamp follows the wall clock
+    # each time, while an elapsed-seconds counter keeps counting ticks only.
+    fake = _with_fake_ticks()
+    try:
+        set_utc_valid()
+        ticks = TickSeconds()
+        fake.advance(2000)
+        fake.wall_s -= 3600
+        assert utc_now() == fake.wall_s
+        assert ticks.read() == 2
+        fake.advance(1000)
+        fake.wall_s += 7200
+        assert utc_now() == fake.wall_s
+        assert ticks.read() == 3
     finally:
         set_utc_valid(valid=False)
         _restore_time()
@@ -1306,7 +1316,7 @@ def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> 
 
 def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> None:
     # A chunk write failing by allocation, the one way it can, degrades the same way through SensorReader.
-    chunk = _RaisingFramChunk(raise_on_write=True)
+    chunk = _RaisingFramChunk()
     fake_manager = _RaisingFramManager(chunk)
     # history_length=4 matches _RaisingFramChunk.get_buffer()'s hardcoded 6-byte buffer (2-byte
     # header + 4 history bytes) - a mismatch here makes struct.pack_into/unpack_from fail on
@@ -1314,6 +1324,8 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(fake_manager, 4, None))
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert run(reader.setup()) is True
+    assert reader.pr.initialized is True  # set up first: setup() writes the merged ring too
+    chunk.raise_on_write = True
     assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr._err_count == 1  # FRAM write failed silently; in-memory count still tracked
 
@@ -1330,12 +1342,16 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     assert reader.pr._err_count == 1
 
 
-def test_sensorreader_fram_read_into_raising_falls_back_to_write_during_setup() -> None:
+def test_sensorreader_fram_read_into_raising_leaves_the_logger_ram_only() -> None:
+    # A read failing by allocation is unreadable, not blank: the stored history is never overwritten, the logger runs in
+    # RAM with one LOG_RAM_ONLY entry, and the reader itself is ready.
     chunk = _RaisingFramChunk(raise_on_read=True)
     fake_manager = _RaisingFramManager(chunk)
     reader = SensorReader(Meas(None, 50), "", max_module_error=5, log=LogConfig(fake_manager, 4, None))
-    assert run(reader.setup()) is True  # first-time setup: _read() fails, falls back to _write() succeeding
-    assert reader.pr.initialized is True
+    assert run(reader.setup()) is True
+    assert reader.pr.initialized is False
+    assert reader.pr._err_count == 1
+    assert list(reader.pr.history)[-1] == code("E", "LOG_RAM_ONLY")
 
 
 def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
@@ -1347,8 +1363,9 @@ def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -
     chip.drop_wren = True
     assert run(reader.setup()) is True  # the reader is ready; its logger runs in RAM
     assert reader.pr.initialized is False
+    assert reader.pr._err_count == 1  # the store's one LOG_RAM_ONLY entry
     assert run(reader._error_check(Meas(None, 50))) is True  # still tracks in-memory
-    assert reader.pr._err_count == 1
+    assert reader.pr._err_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1736,6 +1753,7 @@ def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_back
         f.write("{not valid json")
     try:
         manager, _chip = make_fram_manager()
+        run(manager.setup())  # a chip not set up reads unreadable, which would add the store's own RAM-only entry
         reader = SensorReaderConfig(Meas(20.0, 50), "fram2", _VAL_SI, max_module_error=3, cfg_path=path_prefix, log=LogConfig(manager, 10, None))
         run(reader.cfgmgr.setup())
         assert reader.cfgmgr.valid is True  # malformed file was repaired, not left invalid

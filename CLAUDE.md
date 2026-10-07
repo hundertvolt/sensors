@@ -425,10 +425,10 @@ information):
   way (2026-09-11): this rule assumes a board that has been running normally.** An isolated-driver
   device script builds its own `FRAMManager` over the same chip, and the allocator is
   deterministic, so its first chunk *is* production's first chunk — a flash/bench-tier run
-  overwrites the real error logs, and a script leaving a well-formed chunk behind fabricates a
-  plausible-looking one (a seeded entry read back as a plausible SYSTEM task end (test data, not
-  firmware evidence), chased down as if real). Before treating a FRAM-backed log as evidence, check what has been run
-  against that board; `tests_hardware/README.md` has the full mechanism.
+  overwrites the real error logs, and a script leaving a well-formed chunk behind under the
+  production owner's name fabricates a plausible-looking one (a seeded entry read back as a
+  plausible SYSTEM task end (test data, not firmware evidence), chased down as if real). Before
+  treating a FRAM-backed log as evidence, check what has been run against that board; `tests_hardware/README.md` has the full mechanism.
 
 ## Working agreements
 

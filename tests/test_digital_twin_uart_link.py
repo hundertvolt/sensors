@@ -24,7 +24,7 @@ patch_asy_udp_socket_for_unix_port()
 import rp2  # noqa: E402
 import sensortask_dev  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
-from machine import LinkPoller, UARTLink  # noqa: E402
+from machine import LinkPoller, UARTLink, configure_i2c_wiring  # noqa: E402
 
 import asy_uart_comm  # noqa: E402
 import asy_uart_driver  # noqa: E402
@@ -155,6 +155,7 @@ def build_linked_system() -> "TwinLink":
     # The real dev object graph, its two UART peripherals joined the way the bench jumper joins
     # them (GP0<->GP9, GP1<->GP8). The pollers are then swapped for the bounded stand-in: a real
     # select.poll() never re-checks a Python object's ioctl(), so readiness would never be seen.
+    configure_i2c_wiring("dev")  # dev's own chips: wozi's default plan puts an 8 KB FRAM under dev's 256 KB manager
     rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     dev = sensortask_dev
@@ -279,9 +280,9 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
 
 
 def test_both_ends_get_their_own_real_fram_chunk() -> None:
-    # FRAMManager is a bump-pointer allocator, so instantiation order IS the on-chip layout and an
-    # inserted chunk would turn every persisted log into garbage. dev.toml wires fram_target on both
-    # uart_link instances (WP3), each with its own chunk - a shared one would merge two links' histories.
+    # FRAMManager is a bump-pointer allocator, so instantiation order IS the on-chip layout of this
+    # build. dev.toml wires fram_target on both uart_link instances (WP3), each with its own chunk - a
+    # shared one would merge two links' histories.
     build_linked_system()
     dev = sensortask_dev
     assert dev.fram is not None

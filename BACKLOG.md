@@ -34,13 +34,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
   on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
   delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
-- **FRAM's `verify_present()`/`set_write_protected()` stay in `src/` (owner, 2026-09-26: 'So they
-  remain as they are.'; decided earlier more than once).**
-  They have zero callers in `src/` today and that is fine: "zero callers now, maybe callers
-  tomorrow" is the whole point, and both are bus-hazard-tested across all four tiers and confirmed
-  correct under real fault injection (CLAUDE.md's bus-hazard hard rule). The project owner has
-  decided this more than once; it is not an open design question, and no future session should
-  re-propose removing them or ask again who is supposed to call them.
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
   (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
   terms of order now, it's only highly important to be applied.') has now run once, beyond
@@ -361,65 +354,11 @@ gates, traps).
   the logic.
 - **T4 — the FRAM per-block hold stays** (owner, 2026-09-26: 'Probably better to keep';
   SPECIFICATION.md F.5.8). Measured 2026-09-25: a 1-byte write holds the loop 2.8-3.4 ms without
-  yielding (~0.6-0.7 ms per CS command). The command-envelope timing script below is its only copy,
-  until it becomes a committed device script or is deleted. Run it
-  with `scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)"` then
-  `scripts/mpremote_connect.sh run <file>`; it writes at the top of the address space and never
-  calls `get_chunk()`, so production's error logs are safe:
-
-  ```python
-  """Times the real SPI wire cost of one command envelope and one whole block operation."""
-
-  import asyncio
-  import time
-
-  import asy_spi_driver
-  from asy_fram_manager import FRAMManager
-
-
-  async def _main() -> None:
-      spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-      fram = FRAMManager(spi0, 5, max_size=0x40000, debug=None)
-      if not await fram.setup():
-          print("RESULT: FAIL fram.setup() failed - real chip not responding on spi0/cs5")
-          return
-      chip = fram.fram
-      addr = 0x3FF00  # top of the address space, clear of every production chunk
-      one = bytearray(1)
-      eight = bytearray(8)
-
-      # (a) the synchronous, non-yielding stretches, bus already held.
-      async with chip:
-          t0 = time.ticks_us()
-          w_status = chip.set_values_sync(one, addr)
-          t1 = time.ticks_us()
-          r_status = chip.get_values_sync(eight, addr)
-          t2 = time.ticks_us()
-      write_us = time.ticks_diff(t1, t0)
-      read_us = time.ticks_diff(t2, t1)
-      if not await chip.report_set_values(w_status):
-          print("RESULT: FAIL the 1-byte write reported a failure status")
-          return
-      if not await chip.report_get_values(r_status):
-          print("RESULT: FAIL the 8-byte read reported a failure status")
-          return
-
-      # (b) the bus-lock hold: entry to exit, yields inside it included.
-      t3 = time.ticks_us()
-      async with chip:
-          for _ in range(4):  # a block operation's own command count
-              chip.set_values_sync(one, addr)
-              await asyncio.sleep(0)
-              chip.get_values_sync(eight, addr)
-              await asyncio.sleep(0)
-      hold_us = time.ticks_diff(time.ticks_us(), t3)
-
-      print(f"HOLD write_5cs={write_us}us read_1cs={read_us}us block_operation={hold_us}us")
-      print(f"RESULT: PASS longest non-yielding stretch {max(write_us, read_us)}us, bus held {hold_us}us")
-
-
-  asyncio.run(_main())
-  ```
+  yielding (~0.6-0.7 ms per CS command). The command-envelope timing script is committed as
+  `tests_hardware/device_scripts/fram_command_hold_timing.py`, run by the flash tier's
+  `test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor`; its first run on
+  silicon is owed. It writes only at 0x3FF00 and never calls `get_chunk()`, so production's error
+  logs are safe.
 - **Give ad-hoc bench scripts one helper that kicks the AP's stations and then resets.** Every
   hotspot fallback of the 2026-09-25 sitting was a reset without `kick_all_stations()` *immediately*
   before it; kicking 50 s early does not help, since the board re-associates in between.

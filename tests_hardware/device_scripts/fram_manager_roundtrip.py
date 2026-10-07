@@ -19,7 +19,7 @@ async def _main() -> None:
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5 (RDID probe failed)")
         return
 
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_manager_roundtrip")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None - allocator rejected a fresh chunk request")
         return

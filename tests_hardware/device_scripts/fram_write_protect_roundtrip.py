@@ -39,8 +39,6 @@ async def _while_protected(fram: FRAMManager, chunk: "FRAMChunk") -> "str | None
     blocked_read = await chunk.read()
     if blocked_read is not None:
         return f"chunk.read() returned data while the real chip was write-protected: {bytes(blocked_read).hex()}"
-    if await chunk.read(override_pause=True) is not None:
-        return "override_pause bypassed the real chip's write protection - it only ever bypasses the manager's own pause flag"
     return None
 
 
@@ -85,13 +83,14 @@ async def _main() -> None:
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_write_protect_roundtrip")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None")
         return
 
     # Always leave the real chip unprotected on exit, regardless of where a failure occurs -
     # a stuck-protected chip would silently break every other FRAM-owning module's writes.
+    left_protected = False
     try:
         if not await fram.fram.set_write_protected(value=False):  # known starting state, ignore whatever was set before
             print("RESULT: FAIL could not clear write protection to establish a known starting state")
@@ -104,8 +103,12 @@ async def _main() -> None:
             await _chip_itself_refuses(fram, chunk)
             reason = await _after_clearing(fram, chunk)
     finally:
-        await fram.fram.set_write_protected(value=False)
+        left_protected = not await fram.fram.set_write_protected(value=False)
+        if left_protected:
+            print("RESULT: FAIL could not clear write protection on exit - the real chip is left protected")
 
+    if left_protected:
+        return
     if reason is not None:
         print(f"RESULT: FAIL {reason}")
         return

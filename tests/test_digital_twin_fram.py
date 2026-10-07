@@ -1,13 +1,36 @@
-"""Deterministic unit tests for digital_twin/_fram_chip.py's own SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID) and JSON persistence - independently reimplemented, not sharing tests/_fram_chip_fake.py."""
+"""Deterministic unit tests for digital_twin/_fram_chip.py's own SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID) and JSON persistence - independently reimplemented, not sharing tests/_fram_chip_fake.py.
+Also the chunk layer's tri-state read (asy_fram_manager.py) over that chip on the twin's own SPI bus."""
 
+import asyncio
 import json
 import os
 import sys
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
+import machine
+from _error_codes import code
 from _fram_chip import _PAGE_SIZE, FramChip
 from _tmp_scratch import TmpScratch
+
+import asy_base_classes
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
+from asy_print_log import LogConfig
+from asy_spi_driver import SPI
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import TypeVar
+
+    from asy_fram_manager import FRAMChunk, FRAMTimestampedChunk
+
+    T = TypeVar("T")
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04
@@ -16,6 +39,12 @@ _OPCODE_WRSR = 0x01
 _OPCODE_READ = 0x03
 _OPCODE_WRITE = 0x02
 _OPCODE_RDID = 0x9F
+
+# The chunk layer's status-byte values (const() in asy_fram_manager.py, so not importable there).
+_STATUS_IDLE = 0x01
+_STATUS_BUSY = 0x02
+_PAYLOAD = bytes(range(40))  # 41 bytes with its CRC8 byte: over the twin bus's 32-byte RX-overrun threshold
+_FAULT_TIMES = 64  # more chip reads than one chunk read makes: the fault lasts until cleared
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -69,6 +98,62 @@ def _read_mem24(chip: FramChip, addr: int, nbytes: int) -> bytes:
     buf = bytearray(nbytes)
     chip.readinto(buf)
     return bytes(buf)
+
+
+def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
+    return asyncio.run(coro)
+
+
+async def _synced() -> bool:
+    return True
+
+
+def _a_plan_with_an_8kb_fram_on_spi0() -> "dict[str, object]":
+    # The device comes from the generated wiring plans, chosen by its FRAM, never by name: the twin wires
+    # its chip by bus id, so spi0's pins 2/3/4 and CS 1 below drive it on any such device.
+    for name in sorted(os.listdir("build/generated_src")):
+        if name.endswith("_wiring_plan.json"):
+            with open("build/generated_src/" + name) as f:
+                raw = json.load(f)
+            if not isinstance(raw, dict):
+                continue
+            plan: dict[str, object] = raw
+            spi = plan.get("spi")
+            fram = spi.get("spi0") if isinstance(spi, dict) else None
+            if isinstance(fram, dict) and fram.get("driver") == "fram" and fram.get("max_size") == 0x2000:
+                return plan
+    raise AssertionError("no generated device declares an 8KB FRAM on spi0")
+
+
+def _twin_manager() -> "tuple[FRAMManager, machine.SPI, FramChip]":
+    machine.configure_wiring(_a_plan_with_an_8kb_fram_on_spi0())
+    manager = FRAMManager(SPI(0, 2, 3, 4), 1, max_size=0x2000, log=LogConfig(None, 10, None))
+    bus = manager.fram._spidev.spi._spi
+    assert bus is not None
+    assert bus.device is not None
+    assert run(manager.setup()) is True
+    return manager, bus, bus.device
+
+
+def _chunks(manager: FRAMManager) -> "tuple[FRAMChunk, FRAMTimestampedChunk]":
+    chunk = manager.get_chunk(len(_PAYLOAD), crc=CRC8(), owner="T1")
+    ts_chunk = manager.get_timestamped_chunk(len(_PAYLOAD), _synced, crc=CRC8(), owner="T2")
+    assert chunk is not None
+    assert ts_chunk is not None
+    return chunk, ts_chunk
+
+
+def _status_bytes(chip: FramChip, chunk: "FRAMChunk | FRAMTimestampedChunk") -> list[int]:
+    # Both status bytes of both copies; the layout is [data][crc][status 1][status 2] per copy.
+    out = []
+    for addr in chunk._block_addr:
+        status = addr + chunk.size + chunk.crc.length()
+        out += [chip.memory[status], chip.memory[status + 1]]
+    return out
+
+
+def _errnums(manager: FRAMManager) -> list[int]:
+    return run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
 def test_rdid_reports_the_real_mb85rs64v_id_by_default() -> None:
@@ -363,6 +448,116 @@ def test_a_write_past_the_chip_end_is_refused_not_grown() -> None:
     except IndexError:
         pass
     assert len(chip.memory) == _PAGE_SIZE
+
+
+def test_a_chunk_on_the_twin_chip_reads_true_with_the_bytes_it_wrote() -> None:
+    # True: valid data, in the caller's buffer. A read marks each copy busy and back idle, so it leaves the chip as it was.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    stored = bytes(chip.memory)
+    buf = chunk.get_buffer()
+    assert run(chunk.read_into(buf)) is True
+    assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
+    assert bytes(chip.memory) == stored
+    assert _status_bytes(chip, chunk) == [_STATUS_IDLE] * 4
+
+
+def test_a_blank_chunk_reads_false_and_takes_no_busy_marker() -> None:
+    # False: nothing valid stored. A blank copy is never read, so the read marks nothing and logs nothing.
+    manager, _bus, chip = _twin_manager()
+    chunk, ts_chunk = _chunks(manager)
+    assert run(chunk.read_into(chunk.get_buffer())) is False
+    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (False, None, None)
+    assert bytes(chip.memory) == bytes(len(chip.memory)), "a blank read wrote to the chip"
+    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
+
+
+def test_a_persistent_chip_read_fault_reads_none_and_leaves_the_chip_untouched() -> None:
+    # None: nothing could be read. Every read clocked out of the chip fails, its status bytes included, so no
+    # copy is marked or repaired, and the stored bytes read back whole once the fault clears.
+    manager, _bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    stored = bytes(chip.memory)
+    chip.fault.inject_fault("readinto", OSError(5, "chip read fault"), times=_FAULT_TIMES)
+    buf = chunk.get_buffer()
+    assert run(chunk.read_into(buf)) is None
+    chip.fault.clear()
+    assert bytes(chip.memory) == stored, "a faulted read changed the chip"
+    assert code("E", "UNEXPECTED") in _errnums(manager)
+    assert run(chunk.read_into(buf)) is True
+    assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
+
+
+def test_a_persistent_overrun_reads_none_then_the_leftover_busy_markers_read_false() -> None:
+    # The overrun fails each payload read after its busy marker landed: None, payload kept. Once the bus
+    # recovers, both copies still carry the marker, so nothing valid is stored: False, writing nothing, until a write.
+    manager, bus, chip = _twin_manager()
+    chunk, _ts_chunk = _chunks(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    bus.rx_overrun = True
+    assert run(chunk.read_into(chunk.get_buffer())) is None
+    bus.rx_overrun = False
+    assert _status_bytes(chip, chunk) == [_STATUS_BUSY] * 4
+    for addr in chunk._block_addr:
+        assert bytes(chip.memory[addr : addr + len(_PAYLOAD)]) == _PAYLOAD
+    left = bytes(chip.memory)
+    assert run(chunk.read_into(chunk.get_buffer())) is False
+    assert bytes(chip.memory) == left, "reading a leftover busy marker changed the chip"
+    assert code("E", "FRAM_STATUS_BYTE") in _errnums(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    buf = chunk.get_buffer()
+    assert run(chunk.read_into(buf)) is True
+    assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
+
+
+def test_the_timestamped_chunk_read_carries_the_same_tri_state() -> None:
+    # The first element is the plain read's tri-state; the timestamp and its age come only with True.
+    manager, bus, chip = _twin_manager()
+    _chunk, ts_chunk = _chunks(manager)
+    asy_base_classes.set_utc_valid()
+    try:
+        ok, synced, written_ts = run(ts_chunk.write(_PAYLOAD))
+        assert ok is True
+        assert synced is True
+        buf = ts_chunk.get_buffer()
+        valid, ts, age = run(ts_chunk.read_into(buf))
+        assert valid is True
+        assert ts == written_ts
+        assert age is not None
+        assert age >= 0
+        assert bytes(buf.get_data_buf() or b"") == _PAYLOAD
+        stored = bytes(chip.memory)
+        chip.fault.inject_fault("readinto", OSError(5, "chip read fault"), times=_FAULT_TIMES)
+        assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
+        chip.fault.clear()
+        assert bytes(chip.memory) == stored, "a faulted read changed the chip"
+        bus.rx_overrun = True
+        assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
+        bus.rx_overrun = False
+        assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (False, None, None)
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
+def test_every_chunk_operation_stays_silent_on_the_twin_while_the_chip_is_lost() -> None:
+    # While the driver's loss flag stands, no chunk operation reaches the bus, the chip or the log.
+    manager, bus, chip = _twin_manager()
+    chunk, ts_chunk = _chunks(manager)
+    assert run(chunk.write(_PAYLOAD)) is True
+    stored = bytes(chip.memory)
+    traffic = list(bus.log)
+    manager.fram.lost.set()
+    assert run(chunk.write(b"else")) is False
+    assert run(chunk.read_into(chunk.get_buffer())) is None
+    assert run(chunk.clear()) is False
+    assert run(chunk.invalidate()) is False
+    assert run(ts_chunk.write(b"else"))[0] is False
+    assert run(ts_chunk.read_into(ts_chunk.get_buffer())) == (None, None, None)
+    assert list(bus.log) == traffic, "a chunk operation reached the bus while the chip was lost"
+    assert bytes(chip.memory) == stored
+    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0
 
 
 if __name__ == "__main__":

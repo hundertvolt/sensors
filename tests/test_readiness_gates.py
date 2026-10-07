@@ -46,7 +46,8 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
     Check = Callable[[object], bool]
-    Calls = dict[str, tuple[tuple[object, ...], Check]]
+    Call = tuple[tuple[object, ...], Check] | tuple[tuple[object, ...], Check, dict[str, object]]  # (args, check[, kwargs])
+    Calls = dict[str, Call]
 
 _scratch = TmpScratch("readiness_gates")
 Meas = namedtuple("Meas", ["Temp", "TS"])
@@ -81,8 +82,10 @@ def _blocked_dir(name: str) -> str:
 def _answers(obj: object, calls: "Calls") -> "list[str]":
     # Calls each public method; returns the ones whose answer is not the documented one.
     wrong: list[str] = []
-    for name, (args, ok) in calls.items():
-        result = getattr(obj, name)(*args)
+    for name, call in calls.items():
+        args, ok = call[0], call[1]
+        kwargs = call[2] if len(call) == 3 else {}
+        result = getattr(obj, name)(*args, **kwargs)
         if hasattr(result, "send"):  # a coroutine: an async method
             result = run(result)
         if not ok(result):
@@ -171,7 +174,7 @@ def test_history_stores_answer_before_and_after_a_failed_setup() -> None:
         assert _answers(history, calls) == []
         assert history.level == 0  # the refused level left it unchanged
         run(history.err_s("still counted", errno=1))
-        assert history._err_count == 1
+        assert history._err_count == (1 if expected else 2)  # a failed store also counts its one LOG_RAM_ONLY entry
 
 
 _WRONG_CHIP_ID = bytes([0x05, 0x7F, 0x03, 0x02])  # a manufacturer ID no supported FRAM reports
@@ -248,7 +251,10 @@ def test_fram_manager_answers_before_and_after_a_setup_that_finds_no_chip() -> N
     manager = FRAMManager(_spi(), 1, max_size=0x2000)
     calls: Calls = {
         "get_pause": ((), _is(False)),
-        "get_chunk": ((8,), lambda r: r is not None),  # pure bookkeeping, safe before setup() (C.13)
+        "get_chunk": ((8,), lambda r: r is not None, {"owner": "GATE"}),  # pure bookkeeping, safe before setup() (C.13)
+        "get_task_starters": ((), lambda r: r == [manager.start_asy_watch_chip]),
+        "get_timer_starters": ((), lambda r: r == []),
+        "erase_ready": ((), _is(False)),
         "get_error_sources": ((), lambda r: r == [manager]),
         "get_loggers": ((), lambda r: r == [manager.pr]),
         "get_error_counter": ((), _is_log_of(manager.name)),

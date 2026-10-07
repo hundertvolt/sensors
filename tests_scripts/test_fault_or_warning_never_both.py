@@ -36,7 +36,7 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_bmp3xx_driver.py", "_read_bmp", ("W", "BMP_CHIP_RESET"), ("E", "READ_RANGE")): _CHIP_RESET,
     ("src/asy_isl29125_driver.py", "_check_divergence", ("W", "ISL_DIVERGED"), ("E", "CHIP_SET")): "the chip diverged from the shadow, then its re-apply failed: separate occurrences",
     ("src/asy_uart_comm.py", "_resync", ("W", "UART_DRAIN_BOUND"), ("E", "UART_LINK_UNINTELLIGIBLE")): "a drain that hit its bound and a link no frame ever validated on are separate conditions",
-    ("src/asy_fram_driver.py", "set_write_protected", ("W", "FRAM_WEL_STUCK"), ("E", "FRAM_WP_MISMATCH")): "the write-enable latch stuck after the write, then the protection read back wrong: two occurrences",
+    ("src/asy_fram_driver.py", "setup", ("W", "FRAM_ID_RETRIED"), ("E", "FRAM_WP_PARTIAL")): "the chip answered its identification only on a retry, then its status register read partly protected: two conditions",
     ("src/asy_fram_manager.py", "_read", ("W", "FRAM_BLOCK_INVALID"), ("E", "FRAM_BLOCK_WRITE")): "an invalid block, then a failed repair write",
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
     ("src/asy_base_classes.py", "_get_dict_cfg", ("E", "CFG_GET_RAISED"), ("W", "CALLBACK_KEYS")): _TWO_SOURCES,

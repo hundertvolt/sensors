@@ -211,7 +211,8 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
   SPECIFICATION.md Part C.3), not the `*_Reader`, whose `cfgmgr` writes the config file.
 - **A simulated restart takes a fresh `FRAMManager`.** It is a bump allocator (SPECIFICATION.md
   Part A.4): a fresh manager per restart lands each chunk back at the same base address, while a
-  second reader on one manager gets a second, non-overlapping chunk.
+  second reader on one manager gets a second, non-overlapping chunk. Ask for it under the same
+  `owner=` name: the name seeds the chunk's CRC, so another name reads the same bytes as blank.
 
 ## Environment variables
 
@@ -616,10 +617,11 @@ a live question:
   firmware evidence straight after one.** `FRAMManager` is a deterministic bump allocator (a
   required property, SPECIFICATION.md Part A.4), so a device script's own first chunk *is*
   production's first chunk. Usually the next boot's `_read()` just fails on the size/CRC mismatch
-  and the log honestly reads empty — but a script leaving a well-formed chunk behind fabricates a
-  plausible one. `fram_error_log_reset_race_seed_and_race.py` seeds three entries into what is
-  physically SystemService's chunk: a seeded entry read back as a plausible SYSTEM task end (test
-  data, not firmware evidence; chased down as real on 2026-09-11). CLAUDE.md's
+  (each chunk's CRC is seeded by its owner's name) and the log honestly reads empty — but a script
+  leaving a well-formed chunk behind under the production owner's name fabricates a plausible one.
+  `fram_error_log_reset_race_seed_and_race.py` seeds three entries into what is physically
+  SystemService's chunk; before the owner seed, a seeded entry read back as a plausible SYSTEM task
+  end (test data, not firmware evidence; chased down as real on 2026-09-11). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
 - **The UART crossover coverage is 5 flash-tier tests and 3 bench-tier tests, all passing as part
@@ -952,6 +954,13 @@ additions from that:
   SCD30 registers no `_push_callbacks`, but `PUT /sensors` reaches SCD30's NVM through its chip
   store (`_set_mgr_cfg()`, compare-before-write); a bench counterpart spends real NVM wear, so it is
   added behind `persistence_write` or its wear reason is listed.
+
+A later flash-tier FRAM entry in the same `flash/test_fram_storage.py`:
+
+- **FRAM command hold** (`device_scripts/fram_command_hold_timing.py`, flash tier): the command
+  hold time stays under its bound - the longest non-yielding FRAM stretch under one UART poll floor
+  (80 B of 8N1 at 115200 baud, 6,944 us, SPECIFICATION.md J.6 and F.5.8); the whole block hold is
+  reported beside it. It writes only its scratch region at 0x3FF00, never a chunk.
 
 **Still not automated even after this pass** (flagged honestly, not silently left implicit):
 real-hardware numerical-accuracy validation against a calibrated reference for any sensor (needs a

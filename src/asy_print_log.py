@@ -1,6 +1,6 @@
 """Leveled console logging (PrintLog), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore).
 A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints every call at its level.
-Never raises: a FRAM chunk operation raises only by allocation, counted as a failed write.
+Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or fails the write.
 """
 
 import asyncio
@@ -30,22 +30,22 @@ if TYPE_CHECKING:
 
     ErrorLog = dict[str, ErrEntry]
 
-    from asy_base_classes import LockableBuffer
+    from asy_base_classes import RegionBuffer
     from asy_crc_checks import CRCBase
 
     # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
     # asy_fram_manager.py is promoted to src/, avoiding a real runtime import cycle (it imports
     # PrintLogHistory from here) and decoupling from its concrete chunk shapes.
     class _FramChunk(Protocol):
-        def get_buffer(self) -> "LockableBuffer": ...
+        def get_buffer(self) -> "RegionBuffer": ...
 
-        async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool: ...
+        async def read_into(self, buf: "RegionBuffer") -> bool | None: ...
 
-        async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool: ...
+        async def write_into(self, buf: "RegionBuffer") -> bool: ...
 
     class _FramManager(Protocol):
         def get_chunk(
-            self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
+            self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
         ) -> "_FramChunk | None": ...
 
 
@@ -64,6 +64,9 @@ _NO_WRN = const(0x80)
 _MAX_WRN = const(0xFF)
 _MAX_CNT = const(0xFFFF)
 _WRITE_GEN_MAX = const(0x3FFFFFFF)  # wraps inside the small-int range; compared only for equality
+
+# Code from the global catalog (buildgen/error_catalog.json): a shared one.
+_ERR_LOG_RAM_ONLY = const(28)
 
 
 class PrintLog:
@@ -140,7 +143,7 @@ class PrintLogHistory(PrintLog):
         if self.level > _LOG_OFF:
             print(self.name, *args)
 
-    async def _read(self) -> bool:
+    async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
         return True
 
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
@@ -228,32 +231,37 @@ class PrintLogHistoryStore(PrintLogHistory):
         # this format string is cached once here instead of being rebuilt on every _write()/_read().
         self._history_fmt = "<" + "B" * len(self.history)
         size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
+        self._heap_failed = False  # the chunk's heap allocation raised; an allocator refusal (None) is not counted
         try:
-            self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
+            self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8(), owner=name)
         except MemoryError:
             self.fram = None
+            self._heap_failed = True
         if self.fram is None:
             self._diag("PrintLog: FRAM allocation failed!")
         self._write_lock = asyncio.Lock()
         self._write_gen = 0  # one step per _write() call
         self._written_gen = 0  # the _write_gen whose state the last successful write packed
 
-    async def _read(self) -> bool:
+    async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
+        # Applies nothing: (count, entries) when stored, False for a blank or invalid chunk, None when nothing was read.
         if self.fram is None:
-            return False
+            return None
         try:  # a chunk operation fails only by allocation (the module docstring)
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
             if dbuf is None:  # the buffer's own allocation failed
+                return None
+            valid = await self.fram.read_into(buf)
+            if valid is None:
+                return None
+            if not valid:
                 return False
-            if not await self.fram.read_into(buf):
-                return False
-            self._err_count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
-            self.history.extend(struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE))
+            count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
+            entries = struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE)
         except MemoryError:
-            return False
-        else:
-            return True
+            return None
+        return count, entries
 
     async def _write(self) -> bool:
         if self.fram is None:
@@ -280,16 +288,45 @@ class PrintLogHistoryStore(PrintLogHistory):
                 self._written_gen = gen
             return ok
 
-    async def setup(self) -> bool:  # False: no chunk, or it can be neither read nor written - RAM-only
-        if self.fram is None or self.initialized:
-            return self.initialized
-        if await self._read():
+    async def setup(self) -> bool:  # False: RAM-only until reboot, with one entry saying so in this module's own ring
+        if self.initialized:
+            return True
+        if self.fram is None:
+            # An allocator refusal records nothing (owner, 2026-09-16: 'we do not even add errno/wrnno for the out of
+            # FRAM memory … Handle via mpremote.'); a heap failure is runtime state and is recorded.
+            if self._heap_failed:
+                await self.err_s("FRAM history allocation failed - RAM-only until reboot", errno=_ERR_LOG_RAM_ONLY)
+            return False
+        stored = await self._read()
+        if self.initialized:  # a reset() or another setup() won during the read
+            return True  # type: ignore[unreachable]  # mypy can't see the mutation
+        if stored is None:  # never re-initialised: the stored history stays for the next boot
+            self._diag("PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot")
+            await self.err_s("FRAM history unreadable - RAM-only until reboot", errno=_ERR_LOG_RAM_ONLY)
+            return False
+        if isinstance(stored, tuple):  # the stored ring first, entries logged before setup() after it as the newest
+            count, entries = stored
             self.restored = True
+            if not (self._pre_setup_slots or self._err_count):  # the chunk already holds this state: no write back
+                self.history.extend(entries)
+                self._err_count = count
+                self.initialized = True
+                return True
+            tail = list(self.history)[len(self.history) - self._pre_setup_slots :]
+            self.history.extend(entries)
+            self.history.extend(tail)
+            self._err_count = count + self._err_count if self._err_count < _MAX_CNT - count else _MAX_CNT
+        self._pre_setup_slots = 0
+        count = self._err_count
+        if await self._write():
             self.initialized = True
-        elif await self._write():
-            self.initialized = True
+            if self._pre_setup_slots or self._err_count != count:  # logged during the write: in RAM only so far
+                self._pre_setup_slots = 0
+                if not await self._write():
+                    self._diag("PrintLog: History write failed!")
         else:
             self._diag("PrintLog: FRAM setup failed!")
+            await self.err_s("FRAM history setup write failed - RAM-only until reboot", errno=_ERR_LOG_RAM_ONLY)
         return self.initialized
 
 

@@ -538,7 +538,7 @@ def test_the_index_sequence_matches_the_c_reference() -> None:
 def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot() -> None:
     manager, _chip, spi_bus = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
     algo = VOCAlgorithm()
@@ -559,7 +559,7 @@ def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_rebo
     # VOCAlgorithm, never processed a single sample, must recover the exact converged state.
     manager2 = make_fram_manager_sharing(spi_bus)
     run(manager2.setup())
-    chunk2 = manager2.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    chunk2 = manager2.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk2 is not None
 
     async def read() -> bytearray:
@@ -591,7 +591,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
     # proven here directly against VOCAlgorithm, not inferred from that caller's short-circuit logic.
     manager, chip, _spi_bus = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
     async def write() -> None:
@@ -614,7 +614,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
     restored.vocalgorithm_init()
     before_state = dict(restored.params.__dict__)
 
-    async def read() -> bool:
+    async def read() -> "bool | None":
         buf = chunk.get_buffer()
         ok = await chunk.read_into(buf)
         if ok:
@@ -633,7 +633,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
     # untouched copy and still hand back the exact original state, not just "read succeeded".
     manager, chip, _spi_bus = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
     algo = VOCAlgorithm()
@@ -654,7 +654,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
     restored = VOCAlgorithm()
 
-    async def read() -> bool:
+    async def read() -> "bool | None":
         buf = chunk.get_buffer()
         ok = await chunk.read_into(buf)
         if ok:

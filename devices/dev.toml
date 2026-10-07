@@ -101,9 +101,7 @@ address = 0x77
 [instance.wiring]
 fram_target = "fram"
 
-# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ), bench-validated. Last among the sensor drivers
-# for FRAM chunk order (Part A.7); wozi has no such instance, so no byte-identity constraint
-# applies.
+# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ), bench-validated.
 #
 # irq_pull_up = false: the board carries its own external pull-up on GPIO6, so the driver's internal
 # one stays off.

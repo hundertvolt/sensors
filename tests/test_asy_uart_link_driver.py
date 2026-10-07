@@ -6,7 +6,7 @@ from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
 from rp2 import DMA
 
-from asy_base_classes import LockableBuffer
+from asy_base_classes import RegionBuffer
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
@@ -286,22 +286,22 @@ def test_get_error_counter_delegates_to_the_inner_comms_own_log() -> None:
 
 
 class _FakeFramChunk:
-    # One chunk's bytes, moved through the real LockableBuffer asy_print_log's _FramChunk Protocol names.
+    # One chunk's bytes, moved through the real RegionBuffer asy_print_log's _FramChunk Protocol names.
     def __init__(self) -> None:
         self.buf = bytearray(64)
-        self._buffer = LockableBuffer(64)
+        self._buffer = RegionBuffer(64)
 
-    def get_buffer(self) -> LockableBuffer:
+    def get_buffer(self) -> RegionBuffer:
         return self._buffer
 
-    async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
         self.buf[:] = data
         return True
 
-    async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
@@ -314,7 +314,7 @@ class _FakeFramManager:
         self._chunk = chunk if chunk is not None else _FakeFramChunk()
         self._fail = fail
 
-    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk | None":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk | None":
         if self._fail:
             return None  # the real allocator's refusal: no room left on the chip
         return self._chunk

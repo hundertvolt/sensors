@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from machine import WDT
 
     from asy_base_classes import SensorReader
+    from asy_fram_manager import FRAMChunk
     from asy_wifi_service import WifiService
 
     T = TypeVar("T")
@@ -371,7 +372,7 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
         manager = sensortask_wozi.fram
         bus = manager.fram._spidev.spi._spi
         assert bus is not None
-        chunk = manager.get_chunk(40, crc=CRC8())  # 41 B with the CRC byte - over the 32 B DMA threshold
+        chunk = manager.get_chunk(40, crc=CRC8(), owner="HAZARD_OVERRUN")  # 41 B with the CRC byte - over the 32 B DMA threshold
         assert chunk is not None
         payload = bytes(range(40))
         assert await chunk.write(payload)
@@ -449,32 +450,29 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
     run_timed(scenario(), timeout_s=_FLAP_RUN_BOUND_S)
 
 
-def test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_it() -> None:
+def test_wozi_storage_pause_gates_the_real_twin_chip() -> None:
     # Twin-tier parity for the chunk-level gating the mock tier proves against a fake bus and the flash tier
     # against the real chip: the same claims, through the real booted manager on the twin bus. The
-    # discriminating check reads the chip back with override_pause - a refused write would show new bytes.
+    # discriminating check unpauses and reads the chip back - a refused write would show new bytes.
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
         await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
         assert sensortask_wozi.fram is not None
         manager = sensortask_wozi.fram
-        chunk = manager.get_chunk(16, crc=CRC8())
+        chunk = manager.get_chunk(16, crc=CRC8(), owner="HAZARD_PAUSE")
         assert chunk is not None
         first, second = bytes(range(16)), bytes(range(100, 116))
         assert await chunk.write(first)
 
         manager.set_pause(value=True)
         assert await chunk.write(second) is False
-        assert bytes(await chunk.read(override_pause=True) or b"") == first, "the refused write still reached the twin chip"
         assert await chunk.read() is None
 
-        assert await chunk.write(second, override_pause=True) is True
-        assert bytes(await chunk.read(override_pause=True) or b"") == second
-
         manager.set_pause(value=False)
-        assert await chunk.write(first) is True
-        assert bytes(await chunk.read() or b"") == first
+        assert bytes(await chunk.read() or b"") == first, "the refused write still reached the twin chip"
+        assert await chunk.write(second) is True
+        assert bytes(await chunk.read() or b"") == second
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -492,7 +490,7 @@ def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
         await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
         assert sensortask_wozi.fram is not None
         manager = sensortask_wozi.fram
-        chunk = manager.get_chunk(16, crc=CRC8())
+        chunk = manager.get_chunk(16, crc=CRC8(), owner="HAZARD_WP")
         assert chunk is not None
         payload = bytes(range(16))
         assert await chunk.write(payload)
@@ -501,8 +499,6 @@ def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
         assert await manager.fram.get_write_protected() is True
         assert await chunk.write(bytes(range(100, 116))) is False
         assert await chunk.read() is None, "a write-protected chunk read succeeded - the busy-marker write cannot have happened"
-        # override_pause only bypasses the manager's own pause flag, never the chip's protection.
-        assert await chunk.read(override_pause=True) is None
 
         assert await manager.fram.set_write_protected(value=False) is True
         assert bytes(await chunk.read() or b"") == payload, "the refusal damaged the stored bytes - it is supposed to be an access gate only"
@@ -522,7 +518,7 @@ def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_s
         manager = sensortask_wozi.fram
         bus = manager.fram._spidev.spi._spi
         assert bus is not None
-        chunk = manager.get_chunk(40, crc=CRC8())  # over the 32 B DMA threshold, so an overrun is reachable
+        chunk = manager.get_chunk(40, crc=CRC8(), owner="HAZARD_PAUSE_FIRST")  # over the 32 B DMA threshold, so an overrun is reachable
         assert chunk is not None
         payload = bytes(range(40))
         assert await chunk.write(payload)
@@ -554,7 +550,7 @@ def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
         try:
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.fram is not None
-            chunk = sensortask_wozi.fram.get_chunk(16, crc=CRC8())
+            chunk = sensortask_wozi.fram.get_chunk(16, crc=CRC8(), owner="HAZARD_REBOOT")
             assert chunk is not None
             payload = bytes(range(16))
             assert await chunk.write(payload)
@@ -565,9 +561,42 @@ def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.fram is not None
             assert sensortask_wozi.fram.get_pause() is False, "the pause flag survived a reboot - it is supposed to be RAM-only"
-            chunk2 = sensortask_wozi.fram.get_chunk(16, crc=CRC8())
+            chunk2 = sensortask_wozi.fram.get_chunk(16, crc=CRC8(), owner="HAZARD_REBOOT")  # the same owner: its seed must match
             assert chunk2 is not None
             assert bytes(await chunk2.read() or b"") == payload, "the chunk bytes should survive the same reboot the pause flag does not"
+        finally:
+            machine.configure_fram_state_path(None)
+
+    run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
+
+
+def test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot() -> None:
+    # Chunks are found by address and CRC only, so the owner-seeded CRC is what keeps a reflash that moves
+    # another owner's chunk onto this address from loading it as this owner's history (SPECIFICATION.md A.4).
+    machine.configure_i2c_wiring("wozi")
+    payload = bytes(range(16))
+
+    async def chunk_after_boot(cfg_path: str, owner: str) -> "FRAMChunk":
+        await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+        assert sensortask_wozi.fram is not None
+        chunk = sensortask_wozi.fram.get_chunk(16, crc=CRC8(), owner=owner)
+        assert chunk is not None
+        return chunk
+
+    async def scenario() -> None:
+        cfg_path = _tmp_cfg_dir()
+        machine.configure_fram_state_path(cfg_path + "fram_state.json")
+        try:
+            assert await (await chunk_after_boot(cfg_path, "HAZARD_OWNER_A")).write(payload)
+            machine.flush_fram()
+
+            foreign = await chunk_after_boot(cfg_path, "HAZARD_OWNER_B")  # same address, another owner
+            assert await foreign.read_into(foreign.get_buffer()) is False, "another owner's chunk did not read blank or invalid"
+            assert await foreign.read() is None
+            machine.flush_fram()
+
+            own = await chunk_after_boot(cfg_path, "HAZARD_OWNER_A")  # control: the bytes were never damaged
+            assert bytes(await own.read() or b"") == payload, "the owner's own history did not survive the foreign read"
         finally:
             machine.configure_fram_state_path(None)
 

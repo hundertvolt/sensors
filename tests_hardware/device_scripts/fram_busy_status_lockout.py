@@ -43,7 +43,7 @@ async def _main() -> None:
         return
 
     crc = CRC8()
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=crc)
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=crc, owner="fram_busy_status_lockout")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None")
         return
