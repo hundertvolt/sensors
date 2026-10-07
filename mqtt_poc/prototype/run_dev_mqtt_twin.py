@@ -24,6 +24,7 @@ class HarnessArgs:
         self.wifi_drops: list[tuple[float, int]] = []  # (at_s, failed reconnect attempts before success)
         self.hammers: list[tuple[float, float, int]] = []  # (at_s, for_s, msgs per second)
         self.no_mqtt = False  # baseline: the same twin and samplers without the client
+        self.churn_ms = 0  # >0: sample gc.mem_alloc() WITHOUT collecting, for an allocation-rate estimate
 
 
 def _parse_own(argv: "list[str]") -> HarnessArgs:
@@ -45,6 +46,8 @@ def _parse_own(argv: "list[str]") -> HarnessArgs:
         elif arg == "--wifi-drop":
             t, k = next(it).split(":")
             a.wifi_drops.append((float(t), int(k)))
+        elif arg == "--churn-ms":
+            a.churn_ms = int(next(it))
         elif arg == "--no-mqtt":
             a.no_mqtt = True
         elif arg == "--hammer":
@@ -116,6 +119,13 @@ async def _mem_sampler(period_ms: int) -> None:
         print("MQTTMEM", "%.3f" % time.time(), gc.mem_alloc(), gc.mem_free())
 
 
+async def _churn_sampler(period_ms: int) -> None:
+    # No collect here: the rise between samples is what was allocated; a fall is a collection that ran on its own.
+    while True:
+        await asyncio.sleep_ms(period_ms)
+        print("MQTTCHURN", time.ticks_ms(), gc.mem_alloc())
+
+
 async def _wifi_drop(module: "object", at_s: float, failures: int) -> None:
     await asyncio.sleep(at_s)
     wlan = module.conn._wlan  # type: ignore[attr-defined]
@@ -157,7 +167,7 @@ async def main(base_argv: "list[str]", own: HarnessArgs) -> None:
     await rgi._wait_until_built(module)
     if own.no_mqtt:
         print("MQTTEVENT", "%.3f" % time.time(), "baseline run: no MQTT client")
-        sampler = asyncio.create_task(_mem_sampler(own.mem_ms))
+        sampler = asyncio.create_task(_churn_sampler(own.churn_ms) if own.churn_ms else _mem_sampler(own.mem_ms))
         try:
             await asyncio.sleep(own.duration_s)
         finally:
@@ -183,7 +193,7 @@ async def main(base_argv: "list[str]", own: HarnessArgs) -> None:
         asyncio.create_task(client.run()),
         asyncio.create_task(pub.run()),
         asyncio.create_task(_status_printer(client, inbound, pub, own.status_ms)),
-        asyncio.create_task(_mem_sampler(own.mem_ms)),
+        asyncio.create_task(_churn_sampler(own.churn_ms) if own.churn_ms else _mem_sampler(own.mem_ms)),
     ]
     tasks.extend(asyncio.create_task(_wifi_drop(module, t, k)) for t, k in own.wifi_drops)
     tasks.extend(asyncio.create_task(_hammer(client, t, d, r)) for t, d, r in own.hammers)

@@ -203,6 +203,23 @@ def scenario(tl: Timeline, broker: Broker, port: int) -> None:
     broker.start()
 
 
+def flood_scenario(tl: Timeline, broker: Broker, port: int) -> None:
+    # Phases for the churn estimate: idle, inbound flood, idle, outbound hammer (harness side), idle.
+    tl.at(60)
+    tl.mark("phase inbound flood: 20000 QoS0 echo + 2000 QoS1 values")
+    t = threading.Thread(target=pub, args=(port, f"{BASE}/cmd/value/flood"), kwargs={"lines": [str(i) for i in range(2000)], "qos": 1})
+    t.start()
+    pub(port, f"{BASE}/cmd/echo", lines=[f"f{i}" for i in range(20000)])
+    t.join()
+    tl.mark("phase inbound flood sent")
+    tl.at(120)
+    tl.mark("phase idle")
+    tl.at(150)
+    tl.mark("phase outbound hammer (harness, ~150 s after attach)")
+    tl.at(240)
+    tl.mark("phase end")
+
+
 def analyse(out: Path, events_t0: float) -> "dict[str, object]":
     twin = (out / "twin.log").read_text(errors="replace")
     stats = [(float(m.group(1)), json.loads(m.group(2))) for m in re.finditer(r"^MQTTSTAT (\S+) (.*)$", twin, re.M)]
@@ -245,6 +262,8 @@ def main() -> int:
     ap.add_argument("--heapsize", default="")
     ap.add_argument("--duration", type=float, default=720.0)
     ap.add_argument("--baseline", action="store_true", help="same twin, no MQTT client, no faults: heap reference")
+    ap.add_argument("--scenario", choices=("torture", "flood"), default="torture")
+    ap.add_argument("--churn-ms", type=int, default=0, help=">0: allocation-rate sampling without collects instead of live-heap samples")
     ap.add_argument("--out", required=True)
     ap.add_argument("--micropython", default=str(Path.home() / "pico-toolchain/micropython/ports/unix/build-standard/micropython"))
     args = ap.parse_args()
@@ -266,7 +285,14 @@ def main() -> int:
         "--device", "dev", "--host", "127.0.0.1", "--port", str(http_port), "--fram-state-path", "", "--scd30-state-path", "", "--gc-threshold", args.gc_threshold,
         "--", "--broker-port", str(port), "--duration", str(args.duration),
     ]
-    cmd += ["--no-mqtt"] if args.baseline else ["--hammer", "320:30:200", "--wifi-drop", "360:2"]
+    if args.churn_ms:
+        cmd += ["--churn-ms", str(args.churn_ms)]
+    if args.baseline:
+        cmd += ["--no-mqtt"]
+    elif args.scenario == "torture":
+        cmd += ["--hammer", "320:30:200", "--wifi-drop", "360:2"]
+    else:
+        cmd += ["--hammer", "180:30:200"]
     env = dict(os.environ, MICROPYPATH=MICROPYPATH, TZ="UTC")
     t0 = time.time()
     with open(out / "twin.log", "w") as tw:
@@ -280,7 +306,7 @@ def main() -> int:
             tl.mark("first 'online' seen" if seen else "no 'online' within 120 s - timeline starts anyway")
         try:
             if not args.baseline:
-                scenario(tl, broker, port)
+                (scenario if args.scenario == "torture" else flood_scenario)(tl, broker, port)
             twin.wait(timeout=args.duration + 120)
         except subprocess.TimeoutExpired:
             tl.mark("twin did not exit in time - SIGINT")
