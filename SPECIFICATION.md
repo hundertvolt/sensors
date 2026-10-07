@@ -6649,6 +6649,12 @@ accepted trade-off is that neither test would now catch a *latency* regression b
 assert completion and heap retention, not duration, and the CRC arm already carried exactly that
 trade-off.
 
+A wall-clock budget still failed both checks, and the faulted hammer's retention per failure, when one
+host stall inside the measured window outlasted it: reproduced with a planted 300 ms stall, and on the
+coverage build under a slow CI runner. All three therefore run on a poll-round clock: the protocol
+modules' `ticks_ms()` advances only through their own sleeps, plus 1 ms per read, so a host stall
+spends no budget. One planted-stall guard per check and CRC arm pins this (agent, 2026-10-07).
+
 **Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
 Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
 `tests/test_asy_uart_driver.py`'s `_StepPoller` exists, and the cause of a CI-only hang — CLAUDE.md's
