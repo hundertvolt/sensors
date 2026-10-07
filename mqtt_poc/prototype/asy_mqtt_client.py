@@ -301,6 +301,7 @@ class MQTTClient:
             if ticks_diff(now, self._last_link_check) >= cfg.link_poll_ms:
                 self._last_link_check = now
                 if not await self._link_still_up():  # once a second: the lock round trip allocates
+                    self._last_err = "link down"
                     return _R_LINK
             if not self._subscribed:
                 self._write(self._enc_subscribe())
