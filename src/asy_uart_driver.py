@@ -273,6 +273,8 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None:
             return None
+        if nbytes <= 0:
+            return bytearray()
         nbytes += self.crc.length()
         if self.framing.is_delimited():
             try:
@@ -323,6 +325,8 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None:
             return None
+        if nbytes <= 0:
+            return 0
         nbytes += self.crc.length()
         if self.framing.is_delimited():
             if self.framing.max_encoded(nbytes) > len(buf):
@@ -434,6 +438,9 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None:
             return False
+        # A zero-length payload is sent as nothing: no receiver can verify a CRC-only frame.
+        if not msg:
+            return True
         try:
             framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy
         except MemoryError:
@@ -453,6 +460,8 @@ class UART(Lockable):
             return False
         if size < 0 or size + self.crc.length() > len(buf):
             return False  # a short buffer is never a partial transfer reported as success
+        if size == 0:
+            return True
         crcsize = await self.crc.add_into(buf, size)
         if crcsize is None:
             return False

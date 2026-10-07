@@ -5,7 +5,7 @@ one lives with that driver. Runs alongside test_bus_hazard_generated.py, not a s
 import asyncio
 import struct
 
-from _bus_hazard_catalog import fake, make_i2c, seed_isl_ready
+from _bus_hazard_catalog import crc8, fake, make_i2c, seed_isl_ready
 from _bus_hazard_catalog import sgp_word as _sgp_word
 
 from asy_bmp3xx_driver import BMP3XX_I2C
@@ -348,32 +348,53 @@ def test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read() 
 
 # ---------------------------------------------------------------------------
 # 4. Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance, as opposed to
-# different devices sharing a bus above, must never scramble each other's reads. I2CDevice's session lock is
-# the shared bus lock, so this proves the same mechanism, serializing multiple callers of one device.
+# different devices sharing a bus above, must never scramble each other's commands or reads: the device
+# session serializes the callers, and each one's inputs are staged inside it (SPECIFICATION.md Part C.8).
 # ---------------------------------------------------------------------------
+
+
+def _sgp40_measure_command(temperature: int, relative_humidity: int) -> bytes:
+    # Independent oracle from the SGP40 datasheet, not the driver's tick helpers: command 0x260F, then the
+    # RH word and the T word each with its CRC-8 (Table 9); ticks per Table 10's formulas, rounded half up,
+    # which its own 50 % -> 0x8000 row requires; CRC-8 poly 0x31, init 0xFF (Table 7).
+    rh_ticks = (relative_humidity * 65535 * 2 + 100) // 200
+    t_ticks = ((temperature + 45) * 65535 * 2 + 175) // 350
+    rh_word = bytes([rh_ticks >> 8, rh_ticks & 0xFF])
+    t_word = bytes([t_ticks >> 8, t_ticks & 0xFF])
+    return b"\x26\x0f" + rh_word + bytes([crc8(rh_word)]) + t_word + bytes([crc8(t_word)])
 
 
 def test_three_concurrent_sessions_on_the_same_sgp40_instance_never_scramble_each_others_reads() -> None:
     i2c = make_i2c(1)
     sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
     fake_bus = fake(i2c)
-    session_count = 3
-    for _ in range(session_count):
-        fake_bus.read_queue.append(_sgp_word(0x8000))
+    assert crc8(b"\xbe\xef") == 0x92  # the oracle's CRC-8 against datasheet Table 7's own example
+    assert _sgp40_measure_command(25, 50) == b"\x26\x0f\x80\x00\xa2\x66\x66\x93"  # Table 9's default command
+    inputs = ((25, 50), (10, 30), (35, 80))
+    expected = {_sgp40_measure_command(t, rh) for t, rh in inputs}
+    assert len(expected) == len(inputs)
+    fake_bus.read_queue_by_address[_SGP_ADDR] = [_sgp_word(0x8000 + k) for k in range(len(inputs))]
+    results: dict[tuple[int, int], int | None] = {}
 
-    results: list[int | None] = []
-
-    async def session() -> None:
-        results.append(await sgp.measure_raw(temperature=25, relative_humidity=50))
+    async def session(temperature: int, relative_humidity: int) -> None:
+        results[(temperature, relative_humidity)] = await sgp.measure_raw(temperature=temperature, relative_humidity=relative_humidity)
 
     async def scenario() -> None:
-        await asyncio.gather(*(session() for _ in range(session_count)))
+        await asyncio.gather(*(session(t, rh) for t, rh in inputs))
 
     with _FastAsyncSleep():
         run(scenario())
 
-    assert len(results) == session_count
-    assert all(raw == 0x8000 for raw in results), f"a concurrent session scrambled another session's own read: {results}"
+    log = [entry for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into")]
+    assert [(entry[0], entry[1]) for entry in log] == [("writeto", _SGP_ADDR), ("readfrom_into", _SGP_ADDR)] * len(inputs), f"a session's write and read were not adjacent: {log}"
+    sent = [bytes(log[i][2]) for i in range(0, len(log), 2)]
+    for payload in sent:
+        assert crc8(payload[2:4]) == payload[4] and crc8(payload[5:7]) == payload[7], f"a sent command carries a bad CRC: {payload.hex()}"
+    assert set(sent) == expected, f"a session's command was overwritten by another's: sent {[p.hex() for p in sent]}"
+    word_after = {bytes(log[i][2]): (log[i + 1][2][0] << 8) | log[i + 1][2][1] for i in range(0, len(log), 2)}
+    for t, rh in inputs:
+        own = word_after[_sgp40_measure_command(t, rh)]
+        assert results[(t, rh)] == own, f"the session at {t} C/{rh} % got {results[(t, rh)]}, not the word read after its own write ({own:#x})"
 
 
 # ---------------------------------------------------------------------------

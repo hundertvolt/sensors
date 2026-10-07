@@ -11,6 +11,7 @@ sys.path.insert(0, "digital_twin")
 
 import _http_client
 import machine
+from _crc8 import crc8  # the twin's own CRC-8, independent of src/
 from _tmp_scratch import TmpScratch
 from unix_port_poll_prewarm import prewarm_poll_set
 
@@ -22,7 +23,9 @@ prewarm_poll_set()
 import sensortask_dev  # noqa: E402 - must follow the prewarm above, which is the point of it
 import sensortask_wozi  # noqa: E402
 
+import asy_i2c_driver  # noqa: E402 - same reason as the two device imports above
 from asy_crc_checks import CRC8  # noqa: E402 - same reason as the two device imports above
+from asy_sgp40_driver import SGP40_I2C  # noqa: E402 - same reason as the two device imports above
 
 try:
     from typing import TYPE_CHECKING
@@ -548,6 +551,46 @@ def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
             machine.configure_fram_state_path(None)
 
     run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
+
+
+def _sgp40_measure_command(temperature: int, relative_humidity: int) -> bytes:
+    # From the SGP40 datasheet, not the driver's tick helpers: 0x260F, then the RH and T words each with
+    # its CRC-8 (Table 9); ticks per Table 10's formulas rounded half up, as its 50 % -> 0x8000 row needs.
+    rh_ticks = (relative_humidity * 65535 * 2 + 100) // 200
+    t_ticks = ((temperature + 45) * 65535 * 2 + 175) // 350
+    rh_word = bytes([rh_ticks >> 8, rh_ticks & 0xFF])
+    t_word = bytes([t_ticks >> 8, t_ticks & 0xFF])
+    return b"\x26\x0f" + rh_word + bytes([crc8(rh_word)]) + t_word + bytes([crc8(t_word)])
+
+
+def test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words() -> None:
+    # The twin leg of the same-device race on the SGP40's shared measure command: three callers with
+    # distinct compensation inputs on one instance, on the real twin chip and bus log (Part C.8).
+    machine.configure_i2c_wiring("wozi")
+    machine.Pin.reset_registry()
+    bus = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)  # wozi's i2c1, as its generated module builds it
+    assert bus._i2c is not None
+    sgp = SGP40_I2C(bus)
+    assert _sgp40_measure_command(25, 50) == b"\x26\x0f\x80\x00\xa2\x66\x66\x93"  # Table 9's default command
+    inputs = ((25, 50), (10, 30), (35, 80))
+    results: dict[tuple[int, int], int | None] = {}
+
+    async def session(temperature: int, relative_humidity: int) -> None:
+        results[(temperature, relative_humidity)] = await sgp.measure_raw(temperature=temperature, relative_humidity=relative_humidity)
+
+    async def scenario() -> None:
+        await asyncio.gather(*(session(t, rh) for t, rh in inputs))
+
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+
+    log = [entry for entry in bus._i2c.log if entry[0] in ("writeto", "readfrom_into") and entry[1] == 0x59]
+    assert [entry[0] for entry in log] == ["writeto", "readfrom_into"] * len(inputs), f"a session's write and read were not adjacent: {log}"
+    sent = [bytes(log[i][2]) for i in range(0, len(log), 2)]
+    assert sorted(sent) == sorted(_sgp40_measure_command(t, rh) for t, rh in inputs), f"a session's command was overwritten by another's: {[p.hex() for p in sent]}"
+    word_after = {bytes(log[i][2]): (log[i + 1][2][0] << 8) | log[i + 1][2][1] for i in range(0, len(log), 2)}
+    for t, rh in inputs:
+        own = word_after[_sgp40_measure_command(t, rh)]
+        assert results[(t, rh)] == own, f"the session at {t} C/{rh} % got {results[(t, rh)]}, not the word read after its own write ({own:#x})"
 
 
 if __name__ == "__main__":

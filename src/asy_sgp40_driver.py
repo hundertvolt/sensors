@@ -551,7 +551,7 @@ class SGP40_Reader(SensorReaderConfig):
         return False
 
 
-class SGP40_DeviceSession(Lockable):  # lock for consecutive i2c communication and self._command_buffer
+class SGP40_DeviceSession(Lockable):  # lock for consecutive i2c communication, self._command_buffer and self._measure_command
     def __init__(self, i2c_device: I2CDevice) -> None:
         super().__init__()
         self.i2c_device = i2c_device
@@ -577,6 +577,16 @@ class SGP40_I2C:
         temp_ticks = int(((temperature + 45) * 65535) / 175 + 0.5) & 0xFFFF
         buf[0] = (temp_ticks >> 8) & 0xFF  # most significant byte
         buf[1] = temp_ticks & 0xFF  # least significant byte
+
+    async def _measure_in_session(self, sgp40: SGP40_DeviceSession) -> int | None:
+        # Caller holds self._i2c_sgp40.
+        self._command_buffer = self._measure_command  # recycle a single buffer
+        # 100ms: >3x margin over the datasheet's 30ms typ/max measurement duration (Table 8)
+        read_value = await self._read_word_from_command(sgp40, delay_ms=_MEASURE_WAIT_MS)
+        self._command_buffer = self._default_command_buffer
+        if read_value is None:
+            return None
+        return read_value[0]
 
     async def _read_word_from_command(
         self,
@@ -626,15 +636,8 @@ class SGP40_I2C:
         await asyncio.sleep(_GENERAL_CALL_RESET_WAIT_S)
 
     async def get_raw(self) -> int | None:
-        # recycle a single buffer
         async with self._i2c_sgp40 as sgp40:  # device session
-            self._command_buffer = self._measure_command
-            # 100ms: >3x margin over the datasheet's 30ms typ/max measurement duration (Table 8)
-            read_value = await self._read_word_from_command(sgp40, delay_ms=_MEASURE_WAIT_MS)
-            self._command_buffer = self._default_command_buffer
-        if read_value is None:
-            return None
-        return read_value[0]
+            return await self._measure_in_session(sgp40)
 
     async def initialize(self) -> None:
         # Only the serial-number read and self-test (datasheet Table 8) gate success - the legacy
@@ -695,16 +698,18 @@ class SGP40_I2C:
 
     async def measure_raw(self, temperature: float = 25, relative_humidity: float = 50) -> int | None:
         # Humidity/temperature-compensated raw gas value (datasheet Table 9, command 0x260F).
-        mv = memoryview(self._measure_command)
-        mv[0] = 0x26
-        mv[1] = 0x0F  # compensated read command
-        self._relative_humidity_to_ticks(relative_humidity, mv[2:4])
-        if await self.crc.add_into(self._measure_command, 2, start=2) is None:
-            return None
-        self._celsius_to_ticks(temperature, mv[5:7])
-        if await self.crc.add_into(self._measure_command, 2, start=5) is None:
-            return None
-        return await self.get_raw()
+        async with self._i2c_sgp40 as sgp40:  # device session
+            # Staged inside the session: an await before the hold would let another caller overwrite the shared command (owner, 2026-09-29: 'No races allowed').
+            mv = memoryview(self._measure_command)
+            mv[0] = 0x26
+            mv[1] = 0x0F  # compensated read command
+            self._relative_humidity_to_ticks(relative_humidity, mv[2:4])
+            if await self.crc.add_into(self._measure_command, 2, start=2) is None:
+                return None
+            self._celsius_to_ticks(temperature, mv[5:7])
+            if await self.crc.add_into(self._measure_command, 2, start=5) is None:
+                return None
+            return await self._measure_in_session(sgp40)
 
     async def setup(self) -> bool:
         async with self._i2c_sgp40 as sgp40, sgp40.i2c_device as i2c:

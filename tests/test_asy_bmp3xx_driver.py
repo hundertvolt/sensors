@@ -1388,7 +1388,7 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
     fallback = run(reader.get_data())
     assert fallback.Pres == results[0]  # PresOffset fell back to 0.0, not the stored 10.0
     assert fallback.Temp == results[1]  # TempOffset fell back to 0.0, not the stored 2.0
-    # SeaLevelOffset fell back to 0.0 too, and altitude_baro()'s height offset is then exactly zero,
+    # SeaLevelOffset fell back to 0.0 too, and pressure_at_height()'s height offset is then exactly zero,
     # so the sea-level-reduced pressure equals the local one (e^0 == 1) - which also means the
     # MeanAtmTemp fallback (15.0) has no observable effect at this height offset, by construction.
     assert fallback.SLPres == results[0]

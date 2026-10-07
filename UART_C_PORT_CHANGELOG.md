@@ -115,6 +115,9 @@ Status values: `proposed` (agreed in principle, not yet implemented), `applied-p
 | B44 | `UARTLinkDriver` carries an `initialized` flag that follows its inner `setup()` | Bench application state only; no protocol effect |
 | B45 | `reset_error_counter()` returns the history write's success (`bool`) | Nothing on the wire changes |
 | B46 | `reset_error_counter()` (`ResetErrors`) leaves the valid-frame count alone, clearing only the history and the blind-resync streak, so a reset never re-arms the link-unintelligible diagnostic on a link that has worked | A local diagnostic; no byte, acceptance rule or timing on the wire changes |
+| B47 | `CRCPass.add_into()`/`check_from()` refuse a zero, negative or overrunning size like the real CRCs, so a delimited frame decoding to zero bytes is a failed read, not an empty payload | No emitted byte changes; the dev wiring's `CRCPass` link sends fixed non-empty frames |
+| B48 | `UART.write()`/`writefrom()` send nothing and report success for a zero-length payload in every CRC and codec mode (with a CRC, `write()` used to send a CRC-only frame and `writefrom()` to fail; with COBS, the encoded empty frame `01 00`), and the `*_until_complete()` reads return an empty result for an `nbytes` of zero or less without reading | The protocol always sends non-empty fixed frames, so no protocol byte changes |
+| B49 | `FramingBase.allocations` removed (a test-only counter) | No wire effect |
 
 ## Questions answered by construction (agent, 2026-09-11; verified over 20,010 cases, below)
 

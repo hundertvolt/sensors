@@ -26,7 +26,6 @@ class FramingBase:
         self.max_frame = max(max_frame, 0)
         self._run_length = max(run_length, 0)
         self._trailer = max(trailer, 0)
-        self.allocations = 0  # long-lived scratch allocations; 1 at most, never per frame
 
     def _checked(self, buf: bytearray, size: int) -> bool:
         return self.ready() and 0 <= size <= len(buf)
@@ -82,7 +81,6 @@ class FramingCOBS(FramingBase):
         if max_frame > 0:
             try:
                 self._scratch = bytearray(self.max_encoded(self.max_frame))
-                self.allocations = 1
             except (MemoryError, OverflowError):
                 self._scratch = None
 

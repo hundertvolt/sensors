@@ -1689,8 +1689,9 @@ counters and bounded so the call is provably terminating. (It was an `asyncio.Ev
 which could both drop a request and hang the canceller forever; see `UART_C_PORT_CHANGELOG.md`
 B15.); **raise contract** (re-verified against `ports/rp2/machine_uart.c` at v1.29.0): a hardware
 framing/parity/overrun error is never raised — delivered corrupted, dropped, or skipped silently
-instead, and `write()` can short-write. **`any()` cannot raise either** (re-traced 2026-09-13, since
-every read in the driver now funnels through it): `mp_machine_uart_any()` calls
+instead, and `write()` can short-write. A zero-length payload is transferred as nothing, in every
+CRC and codec mode. **`any()` cannot raise either** (re-traced 2026-09-13, since every read in the
+driver now funnels through it): `mp_machine_uart_any()` calls
 `uart_drain_rx_fifo()`, which absorbs the OE/BE/PE bits with no error path, then returns
 `ringbuf_avail()`; the generic `extmod/machine_uart.c` wrapper only boxes that int. `_buffered()`'s
 `except (MemoryError, OSError)` is therefore defence in depth against a future port, not a reachable
@@ -2177,7 +2178,10 @@ without it, two coroutines could interleave and corrupt a shared scratch buffer 
 individual transaction is already serialized by lock 1. Pattern: `async with self._i2c_<sensor> as
 dev:` (lock 2) wrapping `async with dev.i2c_device as i2c:` (lock 1). **Lock ordering is fixed:
 always 2 before 1** — audited across every driver with no violation; reversing risks a real
-deadlock. A lock is taken with `async with`; an explicit `acquire()`/`release()` stays only where
+deadlock. Every per-call input a multi-step operation keeps in a shared buffer is written inside the
+device-session hold, never before it: an await before the hold (a CRC's per-byte yield included)
+lets another caller overwrite it (owner, 2026-09-29: 'No races allowed'). A lock is taken with
+`async with`; an explicit `acquire()`/`release()` stays only where
 `async with` cannot express the hold, its reason on the line (`FRAM_SPI.__aenter__`'s hold that
 spans `__aenter__`/`__aexit__`, `FRAM_SPI.verify_present()`'s bounded wait), besides the lock
 context managers' own `__aenter__`/`__aexit__` (`Lockable`, `SPIDevice`).
@@ -2817,9 +2821,9 @@ change it** — flag and ask before altering real output. Verify the coded valid
 source's *actual* domain, not whatever the code already had (found: `wet_bulb_temperature`'s
 humidity lower bound was `0.5%`; Stull (2011) only validates to `5%`). Where a formula's domain is
 wider than its use, cross-check against the real caller's hardware constraints instead
-(`altitude_baro`'s range comes from the BMP388/390 datasheet, not the formula). Look specifically
-for functions with **no validity range check at all**. A genuine quirk found on review (not a bug)
-gets a comment and a regression test matched to *measured* behavior, never a guessed fix.
+(`pressure_at_height()`'s range comes from the BMP388/390 datasheet, not the formula). Look
+specifically for functions with **no validity range check at all**. A genuine quirk found on review
+(not a bug) gets a comment and a regression test matched to *measured* behavior, never a guessed fix.
 
 ## D.2 No uncaught, unhandled exceptions
 
@@ -3288,14 +3292,13 @@ with no deterministic injection point under the Unix-port test heap. Kept, like 
 defence in depth in a module contracted never to raise is cheaper than the day the surrounding logic
 moves.
 
-Four more of the same class, enumerated on 2026-09-22 when the whole `src/` tier was re-read
+Three more of the same class, enumerated on 2026-09-22 when the whole `src/` tier was re-read
 against the report line by line, so a later pass does not re-chase them: `asy_config_manager.py`'s
 `except Exception` around `type(nt).__name__` (a namedtuple type always has one);
 `asy_wifi_service.py`'s `return None` after an `ifconfig()` length check (the real call is a fixed
-4-tuple per the stub, and its own comment says so); `asy_sgp40_driver.py`'s `readlen is None`
+4-tuple per the stub, and its own comment says so); and `asy_sgp40_driver.py`'s `readlen is None`
 early return (no caller passes it — the buffer above is sized for the one `readlen=1` the file
-uses); and `voc_algorithm.py`'s `_FIX16_OVERFLOW` return in the fixed-point divide, which mirrors
-Sensirion's own reference C and is unreachable for any input this driver produces. Six more:
+uses). Six more:
 `asy_fram_manager.py`'s four `None` returns after a buffer accessor (`LockableBuffer._buf` is fixed at
 construction, so once one accessor on it returned non-`None` every later one does), `asy_crc_checks.py`'s
 `_crc()` `poly is None` return (each caller checks `poly` first), and `asy_fram_driver.py`'s
@@ -4087,7 +4090,28 @@ N `loop.sync_wait_max_us` and `loop.uart_call_span_max_us`.
 literal, the opposite policy.** `voc_algorithm.py` is a direct port of Sensirion's fixed-point
 reference implementation — internal naming traces the original C source 1:1 so it stays diffable
 against Sensirion's own reference. A genuine bug fix or behavior-preserving optimization (D.8) is
-still in scope; a stylistic rewrite is not.
+still in scope; a stylistic rewrite is not. The port traces the archived `Sensirion/embedded-sgp`
+VOC algorithm; the reachable successor `Sensirion/gas-index-algorithm` (v3.x, BSD-3-Clause) maps by
+pattern — `_VOCALGORITHM_<X>` ↔ `GasIndexAlgorithm_<X>` (VOC variants carry a `_VOC` suffix there,
+`INITI_` is `INIT_`), `DFRobot_vocalgorithmParams` ↔ `GasIndexAlgorithmParams`,
+`m_mean_variance_estimator_<x>` ↔ `m_Mean_Variance_Estimator___<X>`, `_vocalgorithm__<part>__<fn>` ↔
+`GasIndexAlgorithm__<part>__<fn>`, `vocalgorithm_process/init/reset` ↔
+`GasIndexAlgorithm_process/init/reset` — but is not the same algorithm: v3.x adds NOx, splits the
+estimator's gamma into mean and variance terms with an 8× mean scaling
+(`sensirion_gas_index_algorithm_fixpoint/sensirion_gas_index_algorithm.c:477-522, 706`,
+`.h:121-123`). The four `fix16_*` helpers wrap to int32 as the C `fix16_t` does and compute the same
+int32 results (`fix16_mul` follows embedded-sgp's signed variant from before its `1f80d8e`, where
+gas-index-algorithm uses libfixmath's sign-magnitude one; both give the same int32 results). They are
+pinned against vectors from `Sensirion/gas-index-algorithm` at `2ef9f13`, and the whole index
+sequence (20,000 samples) against vectors from the archived `Sensirion/embedded-sgp` C source at
+`e9ecd60` (its HEAD `19fa58d` gives identical results), both in `tests/voc_reference_vectors.py` and
+checked by `tests/test_voc_algorithm.py` (agent, 2026-10-07). The port's constants, fixed-point arithmetic and
+operation order were checked against the archived C source at promotion (agent, 2026-07-21,
+`5ff8c0b`). One deliberate deviation: the uptime limit constant is 16383, not 32767, which keeps
+both uptime counters small ints and changes no output (agent, 2026-09-29). The literal-port rule is
+agent design (agent, 2026-07-21), the named exception to the Adafruit rule; the port keeps
+upstream's names, casing and order, the one exception to the naming and member-ordering rules (C.2,
+D.15; owner, 2026-10-05).
 
 ## F.5 MicroPython 1.29 delta (audited 2026-10-06, `v1.28.0..v1.29.0`)
 
@@ -4737,7 +4761,25 @@ backend-only or frontend-only validation/coercion policy change in this project.
   it: write order is build → CRC → encode → delimiter and read order the exact reverse, so a
   protocol layer above stays CRC- and framing-agnostic. A pass-through codec is the default and
   emits byte-for-byte what the driver emitted before the concept existed, which is what makes this
-  reusable by a future framed protocol rather than specific to this one.
+  reusable by a future framed protocol rather than specific to this one. A returned view aliases the
+  codec's scratch until its next `encode_into()`.
+- **Derived quantities** — `math_helpers.py`: each formula keeps its legacy form and returns `None`
+  outside the domain its published source validates; nothing clamps, and `rel_humidity()` accepts a
+  saturated reading's 0.001 % rounding step above 100 %. Domains: Stull wet bulb
+  −20..50 °C, 5..99 %RH minus the cold-dry corner below (−20 °C, 75 %)–(10 °C, 5 %), valid at
+  101.325 kPa only; Magnus dew point −40..50 °C; Magnus absolute and relative humidity over water
+  −30..40 °C, its water pair the published 7.5/237.3 (Tetens 1930, Murray 1967) where legacy had
+  237.4 (owner, 2026-10-07: 'Adapt the humidity to the verified range');
+  barometric reduction 300..1250 hPa, −40..85 °C (BMP3xx datasheet); McCamy CCT output 2000..12500 K
+  (its measured error: Part M.1.3); EMA off for a coefficient outside (0, 1]. `abs_humidity()` and
+  `rel_humidity()` stay in `math_helpers.py`, small and completing the functional suite (owner,
+  2026-10-02: 'useful, complete the functional suite, small, lightweight'), and follow the no-clamp
+  rule like the rest.
+- **CRCs** — `asy_crc_checks.py`: CRC8 = Sensirion CRC-8 (poly 0x31, init 0xFF), CRC16 =
+  CRC-16/CCITT-FALSE, CRC32 = CRC-32/MPEG-2, fixed because the chips and the UART peer depend on them;
+  a caller passes the buffer's true length (a zero register stays zero through trailing 0x00) and
+  never a zero-length payload; one incremental sequence per instance, closed by `check_inc()`; CRC32
+  runs as two 16-bit words (rp2 small ints); `_crc()` yields after every byte (owner, 2026-09-18).
 - **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
   simulates**; a `src/`-side policy change and its `js/` mirror are one change, not two. The
   mirrored pairs, each with its check: `js/mock-server.js` against the real `src/` endpoints, field
@@ -5440,8 +5482,10 @@ question in F.5.8.
 **Owner decisions from the heap-fragmentation work** (owner, 2026-09-18 and 2026-09-24; the method
 behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`):
 - **`src/asy_crc_checks.py` keeps its per-byte `await asyncio.sleep(0)`** (2026-09-18: "pure wall
-  clock time is not such an issue, don't touch"). Its allocation is a flat 160 B per `_crc()` call
-  whatever the length, so there is no memory in it; the ~5.8x wall-time cost is accepted, and the
+  clock time is not such an issue, don't touch"). Its allocation per call is flat whatever the
+  length: 160 B for CRC8/CRC16 and 416 B for CRC32, whose two-word path adds a second coroutine frame
+  (Unix port, `v1.29.0`, 2026-10-07; the rp2 figure is owed to the bench), so there is no memory in
+  it; the ~5.8x wall-time cost is accepted, and the
   yield's original reason (a 256 B CRC must not stall other tasks) stands.
 - **Each FRAM-backed logger's `PrintLogHistoryStore.setup()` stays first in its module's own
   `setup()`**, not deferred to one pass after the batch (2026-09-21). Deferring it would open a
@@ -5950,6 +5994,12 @@ framing calculation degrade to the no-CRC case automatically, so this layer is e
 The same is true of the frame codec that now sits alongside it (`asy_framing_codecs.py`, Part G.2):
 `FramingPass` is the default and adds nothing, so the fixed size stays the framing. Selecting a
 delimited codec is a wire change and a coordinated flag day (changelog A11), not a local decision.
+A delimited codec frames by construction, not convention: COBS's encoded output contains no `0x00`
+for any input, so its delimiter cannot collide with a `UID` of `0x00`, a zero CRC or a zero payload;
+checked over 20 010 cases, all-zero frames, 254-byte zero runs and 20 000 random buffers up to 600
+bytes, with zero delimiter bytes emitted and zero round-trip mismatches (agent, 2026-09-11). The
+codec's overhead is at most `n // 254 + 2` bytes including the delimiter (`FramingBase.overhead()`).
+The `0xFF` `UID` barrier is a counter property and holds under either codec.
 Without a CRC, the only integrity checking left is this layer's own structural validation (command,
 chunk index, size bounds, ACK `UID` match).
 
@@ -7312,7 +7362,9 @@ scaling truncates** (`65535 / 375` is 174 in integer arithmetic, not 174.76); th
   decimal and both pass a `1e-6` tolerance, so
   `test_rgb_to_xyz_coefficients_are_the_pinned_literals()` asserts the literals exactly.
 - **The two published McCamy forms are algebraically identical** (flipping the denominator's sign
-  flips `n` and the odd-power terms). Neither is a correction of the other.
+  flips `n` and the odd-power terms). Neither is a correction of the other. McCamy's measured error
+  on the Planckian locus: within 1 % to 9000 K, −1.2 % at 10000 K, −3.5 % at 12500 K (agent,
+  2026-09-29); a 2000 K blackbody reads 1981 K and is rejected.
 - **The matrix is a placeholder by the datasheet's own statement** (FN8424 p13 Eq. 1: coefficients
   "will be changed ... depending on the system setup"), so the reported colour is relative. There is
   **no gamma decode**: this sensor's output is linear in irradiance. The helpers take triples already
@@ -7521,7 +7573,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `uart.poll_jitter_ms` | 5 ms | `src/asy_uart_comm.py` — `5` | `uart.rxbuf_floor` (its scheduling-slack term) | estimated (agent, `c63ef97`) — measurement owed: the scheduling gap of a polling task under load on the dev bench, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.diag_resync_streak` | 2 | `src/asy_uart_comm.py` — `2` | the never-valid diagnostic (J.6); `tests/test_uart_comm_hazard.py`'s 4 exchanges in a row, several past the streak | estimated (agent, `c63ef97`) — measurement owed: resync streaks on a sound link under load, L3 | unknown until measured | any value change is logged in `UART_C_PORT_CHANGELOG.md` (Class A by definition for an `asy_uart_comm.py` const, CLAUDE.md UART rule) |
 | `uart.exercise_period_ms` | 1000 ms | `src/asy_uart_link_driver.py` — `1000` | the bench exerciser's transfer rate | estimated (agent, `4f8caf5`) — measurement owed: the link's sustained transfer rate on the dev bench, L3 | unknown until measured | the exerciser's traffic changes |
-| `wdt.timeout_ms` | 8000 ms | `buildgen/codegen.py` — `8000`; `digital_twin/launch.py` — `8000`; `tests_hardware/harness.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` — `8000`; `tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `8000`; `tests_hardware/device_scripts/isl29125_lighting_scenarios.py` — `8000`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py` — `8000`; `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` — `8000`; `tests_hardware/device_scripts/isl29125_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `8000`; `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/scd30_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/sgp40_fram_backup_restore.py` — `8000`; `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `8000`; `tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py` — `8000`; `tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `8000`; `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` — `8000`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `8000`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `8000`; `tests_hardware/device_scripts/unretrieved_task_exception_handler.py` — `8000` | `system.reset_delay_s` × 1000 < it; `system.task_check_s` × 1000 × 4 ≤ it (agent reading (agent, 2026-09-29): the source's 'keep << watchdog timeout', met at the source's own ratio; the real margin is the supervisor's scan budget); every inter-feed stretch — the two unfed boot stretches `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms` and the supervisor pass `system.scan_budget` (N.4) state their margins against it; `l2.twin_wdt_feed_interval_s`; `l2.wdt_overrun_wait_s` (just past it); `digital_twin/machine.py`'s `_WDT_TIMEOUT_MAX_MS = 8388` (fact); the device scripts' feed cadences stay under it (the iterations between two feeds × one iteration's real time, or one fed sleep's step): `l3.sgp40_fram_backup_restore_wdt_feed_interval_s`, `l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every`, `l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every`, `l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every`, `l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every`, `l3.fram_same_device_rw_concurrency_wdt_feed_every`, `l3.isl29125_cross_device_concurrency_wdt_feed_every`, `l3.scd30_same_device_rw_concurrency_wdt_feed_every`, `l3.sgp40_general_call_reset_hazard_wdt_feed_every`, `l3.fram_pause_unpause_and_gating_feed_step_s` | owner decision (owner, 2026-09-26); cap 8388 ms `ports/rp2/machine_wdt.c:32-38` | 388 ms under the rp2 cap | the pin moves (the cap re-read) or an inter-feed stretch grows |
+| `wdt.timeout_ms` | 8000 ms | `buildgen/codegen.py` — `8000`; `digital_twin/launch.py` — `8000`; `tests_hardware/harness.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` — `8000`; `tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `8000`; `tests_hardware/device_scripts/isl29125_lighting_scenarios.py` — `8000`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py` — `8000`; `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` — `8000`; `tests_hardware/device_scripts/isl29125_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `8000`; `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/scd30_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/sgp40_fram_backup_restore.py` — `8000`; `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `8000`; `tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py` — `8000`; `tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py` — `8000`; `tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `8000`; `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` — `8000`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `8000`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `8000`; `tests_hardware/device_scripts/unretrieved_task_exception_handler.py` — `8000` | `system.reset_delay_s` × 1000 < it; `system.task_check_s` × 1000 × 4 ≤ it (agent reading (agent, 2026-09-29): the source's 'keep << watchdog timeout', met at the source's own ratio; the real margin is the supervisor's scan budget); every inter-feed stretch — the two unfed boot stretches `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms` and the supervisor pass `system.scan_budget` (N.4) state their margins against it; `l2.twin_wdt_feed_interval_s`; `l2.wdt_overrun_wait_s` (just past it); `digital_twin/machine.py`'s `_WDT_TIMEOUT_MAX_MS = 8388` (fact); the device scripts' feed cadences stay under it (the iterations between two feeds × one iteration's real time, or one fed sleep's step): `l3.sgp40_fram_backup_restore_wdt_feed_interval_s`, `l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every`, `l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every`, `l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every`, `l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every`, `l3.fram_same_device_rw_concurrency_wdt_feed_every`, `l3.isl29125_cross_device_concurrency_wdt_feed_every`, `l3.scd30_same_device_rw_concurrency_wdt_feed_every`, `l3.sgp40_general_call_reset_hazard_wdt_feed_every`, `l3.fram_pause_unpause_and_gating_feed_step_s` | owner decision (owner, 2026-09-26); cap 8388 ms `ports/rp2/machine_wdt.c:32-38` | 388 ms under the rp2 cap | the pin moves (the cap re-read) or an inter-feed stretch grows |
 | `system.reset_delay_s` | 4 s | `src/asy_system_service.py` — `4` | × 1000 < `wdt.timeout_ms` (nothing feeds during the countdown); `system.scan_budget` (the countdown after an escalating pass) | estimated (agent, `c33e6db`) — measurement owed: the reset countdown's longest in-flight write, L3 | 4,000 ms against the 8,000 ms watchdog | a write that can be in flight during the countdown grows |
 | `system.task_check_s` | 2 s | `src/asy_system_service.py` — `2` | × 1000 × 4 ≤ `wdt.timeout_ms` (agent reading (agent, 2026-09-29)); `l2.sensortask_integration_restart_wait_timeout_s` and `l1.ntp_fram_system_integration_supervisor_scan_wait_s` cover one scan plus margin; `l3.system_service_restarts_a_real_dead_task_watch_step_s` watches the supervisor's restarts at its scan | estimated (agent, `c33e6db`) — measurement owed: the supervisor scan's duration on the board, L3 | a factor 4 under the watchdog | the supervisor's scan grows |
 | `system.ntp_wait_s` | 120 s | `src/asy_system_service.py` — `120` | — | legacy `legacy/firmware/python/CommonDrivers/system_service.py:10` | unknown until measured | the NTP client's first-sync path changes |
@@ -8219,6 +8271,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l3.sgp40_general_call_reset_hazard_run_bound_s` | 90.0 s | `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `90.0` | — | estimated (agent, `4837ca3`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.sgp40_general_call_reset_hazard_wdt_feed_every` | 10 | `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `10` | — | estimated (agent, `6c85588`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken; the real time between two feeds stays under `wdt.timeout_ms` | the code under test or the host class changes |
 | `l3.sgp40_general_call_reset_hazard_reset_cycles` | 8 | `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `8` | — | estimated (agent, `6c85588`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
+| `l3.sgp40_same_device_concurrent_sessions_run_bound_s` | 5.0 s | `tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py` — `5.0` | — | estimated (agent, 2026-10-07) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken; stays under `wdt.timeout_ms`, the script feeding only before and after the three sessions | the code under test or the host class changes |
 | `l3.isl29125_cross_device_concurrency_sibling_step_ms` | 20 ms | `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `20` | — | estimated (agent, `ab81b79`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.isl29125_cross_device_concurrency_run_bound_s` | 60.0 s | `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `60.0` | — | estimated (agent, `ab81b79`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.isl29125_cross_device_concurrency_wdt_feed_every` | 10 | `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `10` | — | estimated (agent, `ab81b79`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken; the real time between two feeds stays under `wdt.timeout_ms` | the code under test or the host class changes |

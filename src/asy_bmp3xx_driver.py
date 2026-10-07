@@ -282,7 +282,7 @@ class BMP3XX_Reader(SensorReaderConfig):
             BMP3XX(
                 p_comp,
                 t_comp,  # temperature - BMPTempOffset
-                math_helpers.altitude_baro(p_comp, -comp_values[2], comp_values[3]),
+                math_helpers.pressure_at_height(p_comp, -comp_values[2], comp_values[3]),
                 # local pressure, -BMPSeaLevelOffs, BMPMeanAtmTemp
                 results[2],  # timestamp
             ),

@@ -704,6 +704,14 @@ def test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused() -> None:
     assert run(locked_readinto_until_complete(uart, bytearray(4), 8, start_timeout_ms=50, timeout_ms=50)) is None
 
 
+def test_a_delimited_frame_that_decodes_to_nothing_is_a_failed_read() -> None:
+    # An encoded empty frame is no payload the caller asked for: the read fails, never reports 0 bytes.
+    uart = cobs_uart()
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(uart).feed_rx(b"\x01" + bytes([COBS_DELIMITER]))
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
+
+
 def test_a_codec_whose_allocation_failed_degrades_every_framed_call() -> None:
     # A driver that looks constructed but cannot frame must say so on every framed path.
     uart = make_uart(framing=FramingCOBS(-1))
@@ -1118,9 +1126,9 @@ def test_readline_until_complete_survives_an_empty_readline_without_crashing() -
 
 
 def test_write_empty_message_succeeds_without_touching_the_bus() -> None:
-    # _write_all()'s `while sent < total` never executes when total == 0 - mirrors
-    # test_read_until_complete_zero_nbytes_returns_empty_immediately on the read side; there's
-    # nothing to send, so it must not block waiting on ready(POLLOUT) for a write that never happens.
+    # write() returns before the CRC and codec when there is nothing to send - mirrors
+    # test_read_until_complete_zero_nbytes_returns_empty_immediately on the read side, so it must
+    # not block waiting on ready(POLLOUT) for a write that never happens.
     uart = make_uart()
 
     async def scenario() -> bool:
@@ -1893,12 +1901,36 @@ def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None
     assert turns[0] >= 2, turns[0]  # 40 bytes / 16 per yield, so the loop gave up the CPU twice
 
 
-def test_a_crc_framed_write_of_nothing_is_refused_rather_than_sent_as_a_bare_crc() -> None:
-    # add_into() refuses a zero-length payload, and writefrom() has to pass that refusal on: a
-    # frame of pure CRC is not a short write to retry, it is a frame the peer would have to parse.
+def test_a_crc_framed_write_of_nothing_succeeds_and_sends_nothing() -> None:
+    # A zero-length payload is nothing to transfer: writefrom() reports success and sends nothing, never a bare CRC.
     uart = make_uart(crc=CRC16())
-    assert run(locked_writefrom(uart, bytearray(8), 0)) is False
+    assert run(locked_writefrom(uart, bytearray(8), 0)) is True
     assert written(uart) == b""
+
+
+def test_a_crc_framed_read_of_nothing_returns_empty() -> None:
+    # Bytes already waiting stay unread: a read of nothing never consumes a frame as a bare CRC.
+    uart = make_uart(crc=CRC16())
+    fake(uart).feed_rx(b"abc")
+    assert run(locked_read_until_complete(uart, 0)) == bytearray()
+    assert run(locked_readinto_until_complete(uart, bytearray(8), 0)) == 0
+    assert fake(uart).log == []
+    assert fake(uart).any() == 3
+
+
+def test_a_zero_length_payload_is_nothing_to_transfer_in_every_crc_and_codec_mode() -> None:
+    # Every CRC and codec pairing: writes report success and send nothing, reads return an empty
+    # result without touching the bus, and a negative count reads nothing either.
+    for crc, framing in ((CRCPass(), FramingPass()), (CRC16(), FramingPass()), (CRCPass(), FramingCOBS(64)), (CRC16(), FramingCOBS(64))):
+        uart = make_uart(crc=crc, framing=framing)
+        fake(uart).feed_rx(b"\x01\x00")  # one encoded empty COBS frame, waiting unread
+        assert run(locked_write(uart, bytearray())) is True
+        assert run(locked_writefrom(uart, bytearray(8), 0)) is True
+        for nbytes in (0, -1):
+            assert run(locked_read_until_complete(uart, nbytes)) == bytearray()
+            assert run(locked_readinto_until_complete(uart, bytearray(8), nbytes)) == 0
+        assert fake(uart).log == []
+        assert fake(uart).any() == 2
 
 def test_a_readline_that_never_becomes_ready_returns_the_sentinel() -> None:
     # readline() has no count to clamp, so its only bound is ready()'s deadline - a line that never

@@ -14,6 +14,10 @@ _WB_T_MIN = const(-20.0)
 _WB_T_MAX = const(50.0)
 _WB_RH_MIN = const(5.0)
 _WB_RH_MAX = const(99.0)
+_WB_CORNER_T0 = const(-20.0)
+_WB_CORNER_RH0 = const(75.0)
+_WB_CORNER_T1 = const(10.0)
+_WB_CORNER_RH1 = const(5.0)
 _DP_T_MIN = const(-40.0)
 _DP_T_MAX = const(50.0)
 _DP_RH_MIN = const(0.1)
@@ -28,6 +32,8 @@ _MAGNUS_T_MIN = const(-30.0)
 _MAGNUS_T_MAX = const(40.0)
 _MAGNUS_RH_MAX = const(100.0)
 _MAGNUS_AH_MAX = const(100.0)
+# A saturated reading's inverse lands a rounding step above 100 % (rp2 floats carry ~1e-7 relative error per step).
+_MAGNUS_RH_ROUNDING = const(0.001)
 # Colour-chain domains. The RGB triples these take are already normalised 0-1 by the driver's own
 # scaling chain (SPECIFICATION.md Part M.1.3), so anything outside means that chain is
 # broken, not that the light was unusual - hence a reject rather than a clamp.
@@ -38,39 +44,27 @@ _COLOUR_IN_MAX = const(1.0)
 _CHROMA_SUM_MIN = const(1e-12)
 _CHROMA_SUM_MAX = const(1e9)
 _CCT_EPICENTRE_EPS = const(1e-9)  # McCamy's n diverges at y = 0.1858 - a plausible chromaticity
-_CCT_MIN = const(2000.0)  # McCamy (1992) fits the Planckian locus over roughly 2000-12500 K;
-_CCT_MAX = const(12500.0)  # outside it the cubic still returns a number, with nothing marking it meaningless
+# Output span 2000-12500 K. On the Planckian locus the cubic is within 1 % up to 9000 K, -1.2 % at 10000 K,
+# -3.5 % at 12500 K (Planck's law, CIE 1931 2-degree observer; agent, 2026-09-29).
+_CCT_MIN = const(2000.0)
+_CCT_MAX = const(12500.0)
 
 
 def abs_humidity(temperature: float | None, humidity: float | None) -> float | None:
-    # Magnus-type saturation-vapor-pressure formula; a/b pick the ice- vs water-phase constants.
+    # Legacy Magnus form over water, 6.1078 hPa * 10**(a T / (b + T)): a/b 7.5/237.3 at/above 0 degC (Tetens 1930,
+    # Murray 1967; legacy had 237.4) and 7.6/240.7 supercooled below (owner, 2026-10-07: 'Adapt the humidity to the verified range').
     if temperature is None or humidity is None:
         return None
     if not (_MAGNUS_T_MIN <= temperature <= _MAGNUS_T_MAX and 0.0 <= humidity <= _MAGNUS_RH_MAX):
         return None
     if temperature >= 0.0:
         a = 7.5
-        b = 237.4
+        b = 237.3
     else:
         a = 7.6
         b = 240.7
     try:
         return 13.23454 * humidity / (temperature + 273.15) * math.pow(10.0, (a * temperature) / (b + temperature))
-    except (ArithmeticError, ValueError):
-        return None
-
-
-def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
-    # Barometric formula: pressure at height offset dh from the p0 reference (callers pass a
-    # negative dh to reduce a station reading to sea-level-equivalent pressure, not an altitude).
-    # p0/tmean range matches the BMP388/390 datasheet (its only caller).
-    if p0 is None or dh is None or tmean is None:
-        return None
-    if not (_BARO_P_MIN <= p0 <= _BARO_P_MAX and _BARO_DH_MIN <= dh <= _BARO_DH_MAX and _BARO_T_MIN <= tmean <= _BARO_T_MAX):
-        return None
-    try:
-        # Inlined below: g 9.80665 m/s2, M 0.0289644 kg/mol, T0 273.15 K, R 8.31446261815324 J/(mol K)
-        return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
     except (ArithmeticError, ValueError):
         return None
 
@@ -140,8 +134,22 @@ def ema_step(previous: float | None, sample: float | None, coefficient: float | 
     return previous + coefficient * (sample - previous)
 
 
+def pressure_at_height(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
+    # Barometric formula: pressure at height offset dh above the p0 reference; a negative dh
+    # reduces a station reading to sea level. Range: BMP388/390 datasheet (its only caller).
+    if p0 is None or dh is None or tmean is None:
+        return None
+    if not (_BARO_P_MIN <= p0 <= _BARO_P_MAX and _BARO_DH_MIN <= dh <= _BARO_DH_MAX and _BARO_T_MIN <= tmean <= _BARO_T_MAX):
+        return None
+    try:
+        # Inlined below: g 9.80665 m/s2, M 0.0289644 kg/mol, T0 273.15 K, R 8.31446261815324 J/(mol K)
+        return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
+    except (ArithmeticError, ValueError):
+        return None
+
+
 def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | None:
-    # Inverse of abs_humidity's Magnus-type formula; result is clamped to the valid 0-100% range.
+    # Inverse of abs_humidity's Magnus form; a result outside 0-100 % is out of domain: None, never clamped.
     # abs_hum is upper-bounded generously above abs_humidity's own max output (~51 g/m3 at the
     # top of its domain, 40 degC/100% RH) purely to reject negative/nonsensical input.
     if temperature is None or abs_hum is None:
@@ -150,7 +158,7 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
         return None
     if temperature >= 0.0:
         a = 7.5
-        b = 237.4
+        b = 237.3
     else:
         a = 7.6
         b = 240.7
@@ -158,7 +166,9 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
         rh = abs_hum * (temperature + 273.15) / (13.23454 * math.pow(10.0, (a * temperature) / (b + temperature)))
     except (ArithmeticError, ValueError):
         return None
-    return max(0.0, min(100.0, rh))
+    if not (0.0 <= rh <= _MAGNUS_RH_MAX + _MAGNUS_RH_ROUNDING):
+        return None
+    return rh
 
 
 def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
@@ -198,11 +208,13 @@ def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> tu
 
 
 def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> float | None:
-    # Stull (2011) empirical wet-bulb approximation. Valid domain per the paper: -20-50 degC,
-    # 5-99% RH (errors grow sharply outside it, especially at low RH + low temperature together).
+    # Stull (2011) empirical wet bulb, valid at 101.325 kPa only: -20..50 degC
+    # and 5..99 %RH, minus the cold-dry corner below the line (-20 degC, 75 %) to (10 degC, 5 %) (Fig. 3).
     if temperature is None or humidity is None:
         return None
     if not (_WB_T_MIN <= temperature <= _WB_T_MAX and _WB_RH_MIN <= humidity <= _WB_RH_MAX):
+        return None
+    if humidity < _WB_CORNER_RH0 + (_WB_CORNER_RH1 - _WB_CORNER_RH0) * (temperature - _WB_CORNER_T0) / (_WB_CORNER_T1 - _WB_CORNER_T0):
         return None
     try:
         return (

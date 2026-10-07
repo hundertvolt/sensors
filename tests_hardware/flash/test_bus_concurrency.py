@@ -88,6 +88,14 @@ def test_isl29125_same_device_read_write_concurrency(board: Board) -> None:
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
+def test_sgp40_concurrent_sessions_each_get_a_tick(board: Board) -> None:
+    # Silicon proves only that the three sessions are serialised; the payload each one sends is pinned
+    # by the mock and twin tiers. No marker: nothing here writes a limited-endurance store.
+    output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_same_device_concurrent_sessions.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S)
+    _assert_pass(output, "SGP40 same-device concurrent-sessions check")
+
+
+# Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
 @pytest.mark.persistence_write
 def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # The SCD30 leg reads real measurements, so it needs the same session fixture the other

@@ -1899,7 +1899,7 @@ def test_measure_raw_add_into_failure_returns_none_not_raise() -> None:
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     raw = run(sgp.measure_raw())
     assert raw is None
-    assert fake_bus.log == []  # never even reached get_raw()'s own bus transaction
+    assert fake_bus.log == []  # the CRC failure returns inside the session, before any bus transaction
 
 
 # ---------------------------------------------------------------------------
@@ -2331,10 +2331,10 @@ def test_read_sgp_retries_deserialize_when_compensation_data_missing() -> None:
 
 class _TooSmallBuf:
     # A real FRAM-backed buffer is always exactly get_params_memsize() (256 bytes) and always
-    # deserialized at offset 0, so struct.unpack_from("32q", ...) can never see a size mismatch
+    # deserialized at offset 0, so struct.unpack_from("<32q", ...) can never see a size mismatch
     # through normal use - this fake is the only way to force the too-small-backup branch.
     def get_data_buf(self) -> bytearray:
-        return bytearray(8)  # far short of the 256 bytes "32q" needs
+        return bytearray(8)  # far short of the 256 bytes "<32q" needs
 
 
 def test_read_sgp_logs_sgp_algo_state_when_deserialize_fails() -> None:
@@ -2433,7 +2433,7 @@ def test_measure_raw_second_add_into_failure_returns_none_not_raise() -> None:
     fake_bus = bus(sgp._i2c_sgp40.i2c_device.i2c)
     raw = run(sgp.measure_raw())
     assert raw is None
-    assert fake_bus.log == []  # never even reached get_raw()'s own bus transaction
+    assert fake_bus.log == []  # the CRC failure returns inside the session, before any bus transaction
 
 
 def test_measure_index_and_raw_returns_none_index_when_raw_measurement_fails() -> None:

@@ -2,6 +2,7 @@ import asyncio
 import struct
 
 from _fram_chip_fake import FakeMB85RS64V
+from voc_reference_vectors import DIV, EXP, INDEX_CRC32, INDEX_EVERY_500, MUL, SQRT, SRAW_COUNT, sraw_sequence
 
 import asy_spi_driver
 from asy_crc_checks import CRC32
@@ -25,8 +26,26 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+# The 32 persisted fields in pack_into()'s order; F16(n) is n in the port's Q16.16.
+_FIELDS = (
+    "mvoc_index_offset", "mtau_mean_variance_hours", "mgating_max_duration_minutes", "msraw_std_initial", "muptime",
+    "msraw", "mvoc_index", "m_mean_variance_estimator_gating_max_duration_minutes",
+    "m_mean_variance_estimator_initialized", "m_mean_variance_estimator_mean", "m_mean_variance_estimator_sraw_offset",
+    "m_mean_variance_estimator_std", "m_mean_variance_estimator_gamma", "m_mean_variance_estimator_gamma_initial_mean",
+    "m_mean_variance_estimator_gamma_initial_variance", "m_mean_variance_estimator_gamma_mean",
+    "m_mean_variance_estimator__gamma_variance", "m_mean_variance_estimator_uptime_gamma",
+    "m_mean_variance_estimator_uptime_gating", "m_mean_variance_estimator_gating_duration_minutes",
+    "m_mean_variance_estimator_sigmoid_l", "m_mean_variance_estimator_sigmoid_k", "m_mean_variance_estimator_sigmoid_x0",
+    "m_mox_model_sraw_std", "m_mox_model_sraw_mean", "m_sigmoid_scaled_offset", "m_adaptive_lowpass_a1",
+    "m_adaptive_lowpass_a2", "m_adaptive_lowpass_initialized", "m_adaptive_lowpass_x1", "m_adaptive_lowpass_x2",
+    "m_adaptive_lowpass_x3",
+)
+_UPTIME_GAMMA = _FIELDS.index("m_mean_variance_estimator_uptime_gamma")
+_UPTIME_GATING = _FIELDS.index("m_mean_variance_estimator_uptime_gating")
+
+
+def _f16(n: int) -> int:
+    return n * 65536
 
 
 def make_fram_manager() -> "tuple[FRAMManager, FakeMB85RS64V, SPI]":
@@ -43,13 +62,17 @@ def make_fram_manager_sharing(spi_bus: SPI) -> FRAMManager:
     # data, matching the SGP40 and FRAM integration suites' pattern.
     return FRAMManager(spi_bus, 1, max_size=0x2000)
 
+
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
+    return asyncio.run(coro)
+
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
 # ---------------------------------------------------------------------------
 
 
 def test_get_params_memsize_matches_struct_size() -> None:
-    assert VOCAlgorithm.get_params_memsize() == 256 == struct.calcsize("32q")
+    assert VOCAlgorithm.get_params_memsize() == 256 == struct.calcsize("<32q")
 
 
 def test_fresh_instance_has_zeroed_dynamic_state() -> None:
@@ -296,6 +319,86 @@ def test_deserialize_with_malformed_buffer_leaves_algorithm_usable() -> None:
     assert isinstance(voc_index, int)  # processing still ran despite the failed deserialize
 
 
+def test_unpack_from_refuses_a_field_outside_int32() -> None:
+    source = VOCAlgorithm()
+    source.vocalgorithm_init()
+    for i in range(60):
+        source.vocalgorithm_process(30000 + i * 41)
+    target = VOCAlgorithm()
+    target.vocalgorithm_init()
+    before = dict(target.params.__dict__)
+    for field, value in ((0, 2**31), (len(_FIELDS) - 1, -(2**31) - 1)):
+        buf = bytearray(VOCAlgorithm.get_params_memsize())
+        assert source.params.pack_into(buf) is True
+        struct.pack_into("<q", buf, 8 * field, value)
+        assert target.params.unpack_from(buf) is False
+        assert dict(target.params.__dict__) == before
+
+
+def test_a_restored_uptime_above_the_small_int_limit_is_clamped() -> None:
+    # A backup from a build whose uptimes ran to F16(32766) restores at the limit, F16(16382).
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    algo.params.m_mean_variance_estimator_uptime_gamma = _f16(32766)
+    algo.params.m_mean_variance_estimator_uptime_gating = _f16(32766)
+    buf = bytearray(VOCAlgorithm.get_params_memsize())
+    assert algo.params.pack_into(buf) is True
+    restored = VOCAlgorithm()
+    assert restored.params.unpack_from(buf) is True
+    assert restored.params.m_mean_variance_estimator_uptime_gamma == _f16(16382)
+    assert restored.params.m_mean_variance_estimator_uptime_gating == _f16(16382)
+
+
+def test_pack_into_writes_little_endian() -> None:
+    algo = VOCAlgorithm()
+    expected = bytearray()
+    for position, name in enumerate(_FIELDS):
+        value = (position + 1) * 0x01020305 * (-1 if position % 3 == 0 else 1)
+        setattr(algo.params, name, value)
+        expected += value.to_bytes(8, "little", signed=True)
+    buf = bytearray(VOCAlgorithm.get_params_memsize())
+    assert algo.params.pack_into(buf) is True
+    assert buf == expected
+
+
+def test_the_ports_own_state_always_restores() -> None:
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    buf = bytearray(VOCAlgorithm.get_params_memsize())
+    for i, sraw in enumerate(sraw_sequence()):
+        algo.vocalgorithm_process(sraw)
+        if i % 500 == 0:
+            assert algo.params.pack_into(buf) is True
+            for value in struct.unpack_from("<32q", buf):
+                assert -0x80000000 <= value <= 0x7FFFFFFF, (i, value)
+            assert VOCAlgorithm().params.unpack_from(buf) is True
+
+
+def test_the_lowered_uptime_limit_leaves_the_output_unchanged() -> None:
+    # Both uptimes at the C reference's saturation (F16(32766)) or at the port's (F16(16382)): only
+    # sigmoids that are constant past 10223 s read them, so 2000 post-blackout samples agree.
+    samples = sraw_sequence(46 + 2000)
+    base = VOCAlgorithm()
+    base.vocalgorithm_init()
+    for _ in range(46):
+        base.vocalgorithm_process(next(samples))
+    buf = bytearray(VOCAlgorithm.get_params_memsize())
+    assert base.params.pack_into(buf) is True
+    old_limit, new_limit = VOCAlgorithm(), VOCAlgorithm()
+    for algo, uptime in ((old_limit, _f16(32766)), (new_limit, _f16(16382))):
+        assert algo.params.unpack_from(buf) is True
+        algo.params.m_mean_variance_estimator_uptime_gamma = uptime
+        algo.params.m_mean_variance_estimator_uptime_gating = uptime
+    old_buf, new_buf = bytearray(len(buf)), bytearray(len(buf))
+    for sraw in samples:
+        assert old_limit.vocalgorithm_process(sraw) == new_limit.vocalgorithm_process(sraw)
+    assert old_limit.params.pack_into(old_buf) is True
+    assert new_limit.params.pack_into(new_buf) is True
+    start, end = 8 * _UPTIME_GAMMA, 8 * (_UPTIME_GATING + 1)
+    assert old_buf[:start] == new_buf[:start]
+    assert old_buf[end:] == new_buf[end:]
+
+
 # ---------------------------------------------------------------------------
 # Fixed-point (fix16) helpers - the arithmetic primitives every formula above builds on
 # ---------------------------------------------------------------------------
@@ -337,7 +440,7 @@ def test_fix16_mul_with_a_negative_operand_takes_the_masking_branches() -> None:
 
 def test_fix16_div_by_zero_returns_minimum_sentinel() -> None:
     algo = VOCAlgorithm()
-    assert algo._fix16_div(algo._fix16_from_int(5), 0) == 0x80000000  # _FIX16_MINIMUM
+    assert algo._fix16_div(algo._fix16_from_int(5), 0) == -0x80000000  # _FIX16_MINIMUM
 
 
 def test_fix16_mul_overflow_returns_overflow_sentinel() -> None:
@@ -345,7 +448,7 @@ def test_fix16_mul_overflow_returns_overflow_sentinel() -> None:
     algo = VOCAlgorithm()
     a = algo._fix16_from_int(200)
     b = algo._fix16_from_int(200)  # 200*200 = 40000 > 32767
-    assert algo._fix16_mul(a, b) == 0x80000000  # _FIX16_OVERFLOW
+    assert algo._fix16_mul(a, b) == -0x80000000  # _FIX16_OVERFLOW
 
 
 def test_fix16_sqrt_matches_integer_square_root() -> None:
@@ -365,14 +468,9 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
 
 
 def test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch() -> None:
-    # Found via direct tracing against the real interpreter: dividing FIX16_MINIMUM, the one value whose
-    # absolute magnitude does not fit back into a signed 32-bit remainder, is what drives _fix16_div()'s
-    # internal divider through its `divider & 0x80000000` branch, never exercised by the divisions above.
-    #
-    # The raw return value here is not itself masked to 32 bits, unlike one built through _fix16_from_int(),
-    # so compare it mod 2**32 like every other bitwise fix16 sentinel check in this file.
+    # Dividing FIX16_MINIMUM by 2 drives divider to bit 31, the branch the divisions above never reach.
     algo = VOCAlgorithm()
-    assert algo._fix16_div(-2147483648, 1) & 0xFFFFFFFF == 0  # FIX16_MINIMUM / 1 == 0
+    assert algo._fix16_div(-2147483648, 0x20000) == -0x40000000
 
 
 def test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel() -> None:
@@ -380,7 +478,54 @@ def test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel() -> None:
     # FIX16_MINIMUM before the final sign flip - negating it would overflow right back to the same
     # bit pattern, so _fix16_div() reports it as an overflow rather than a real result.
     algo = VOCAlgorithm()
-    assert algo._fix16_div(-2147483648, 65536) == 0x80000000  # _FIX16_OVERFLOW
+    assert algo._fix16_div(-2147483648, 65536) == -0x80000000  # _FIX16_OVERFLOW
+
+
+def test_fix16_div_overflow_returns_the_overflow_sentinel() -> None:
+    # A quotient past 16 integer bits shifts bit out of its 32 bits: C's `if (!bit)` path.
+    algo = VOCAlgorithm()
+    assert algo._fix16_div(-2147483648, 1) == -0x80000000  # _FIX16_OVERFLOW
+    assert algo._fix16_div(0x7FFFFFFF, 1) == -0x80000000  # _FIX16_OVERFLOW
+
+
+def test_fix16_div_by_a_multiple_of_two_to_the_32_returns_at_once() -> None:
+    # Wrapped to int32 the divisor is 0, so the call returns the sentinel instead of shifting forever.
+    algo = VOCAlgorithm()
+    assert algo._fix16_div(algo._f16(1.0), -(1 << 32)) == -0x80000000  # _FIX16_MINIMUM
+
+
+# ---------------------------------------------------------------------------
+# Reference vectors - the C helpers and the whole C algorithm (tests/voc_reference_vectors.py)
+# ---------------------------------------------------------------------------
+
+
+def test_fix16_helpers_match_the_c_reference_vectors() -> None:
+    algo = VOCAlgorithm()
+    for a, b, expected in MUL:
+        assert algo._fix16_mul(a, b) == expected, ("mul", a, b)
+    for a, b, expected in DIV:
+        assert algo._fix16_div(a, b) == expected, ("div", a, b)
+    for x, expected in SQRT:
+        assert algo._fix16_sqrt(x) == expected, ("sqrt", x)
+    for x, expected in EXP:
+        assert algo._fix16_exp(x) == expected, ("exp", x)
+
+
+def test_the_index_sequence_matches_the_c_reference() -> None:
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    indices = bytearray(2 * SRAW_COUNT)
+    sampled = []
+    for i, sraw in enumerate(sraw_sequence()):
+        voc_index = algo.vocalgorithm_process(sraw)
+        indices[2 * i] = voc_index & 0xFF
+        indices[2 * i + 1] = voc_index >> 8
+        if i % 500 == 0:
+            sampled.append(voc_index)
+    assert tuple(sampled) == INDEX_EVERY_500
+    framed = run(CRC32().add(indices))
+    assert framed is not None
+    assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def test_crc8_matches_sgp40_datasheet_vectors() -> None:
-    # Table 10 of the SGP40 datasheet (also quoted in asy_sgp40_driver.py's docstring).
+    # SGP40 datasheet v1.2 Table 10: the CRC byte printed beside the default, minimum and maximum RH/T tick words.
     crc8 = CRC8()
     vectors = [
         (bytearray([0x66, 0x66]), 0x93),
@@ -33,13 +33,13 @@ def test_crc8_matches_sgp40_datasheet_vectors() -> None:
         (bytearray([0xFF, 0xFF]), 0xAC),
     ]
     for data, expected in vectors:
-        assert run(crc8._crc(data, crc8._all_set)) == expected
+        assert run(crc8._crc(data, crc8._all_set, 0x31)) == expected
 
 
 def test_crc8_matches_sensirion_example_vector() -> None:
-    # 0xBEEF -> 0x92 is Sensirion's other commonly-quoted worked example (e.g. SHT3x datasheet).
+    # SGP40 datasheet v1.2 Table 7's example, CRC(0xBE 0xEF) = 0x92; the SCD30 Interface Description §1.1.3 gives the same.
     crc8 = CRC8()
-    assert run(crc8._crc(bytearray([0xBE, 0xEF]), crc8._all_set)) == 0x92
+    assert run(crc8._crc(bytearray([0xBE, 0xEF]), crc8._all_set, 0x31)) == 0x92
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +203,20 @@ def test_crc_pass_add_into_and_check_from_are_size_identity() -> None:
     assert run(cp.add_into(buf, 3)) == 3
     assert run(cp.check_from(buf, 3)) == 3
     assert run(cp.check_from(buf)) == 3
+
+
+def test_pass_mode_add_into_and_check_from_refuse_bad_bounds() -> None:
+    # Pass mode refuses the same zero, negative and overrunning sizes the real CRCs refuse.
+    for crc in (CRCPass(), CRC8(poly=None)):
+        buf = bytearray(3)
+        assert run(crc.add_into(buf, 0)) is None
+        assert run(crc.add_into(buf, -1)) is None
+        assert run(crc.add_into(buf, 1, start=-1)) is None
+        assert run(crc.add_into(bytearray(2), 3)) is None
+        assert run(crc.check_from(buf, 0)) is None
+        assert run(crc.check_from(buf, -1)) is None
+        assert run(crc.check_from(buf, 1, start=-1)) is None
+        assert run(crc.check_from(bytearray(2), 3)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +634,55 @@ def test_add_check_round_trip_single_byte_payload_all_widths() -> None:
         assert run(crc.check(added)) == data
 
 
+def test_crc16_matches_the_ccitt_false_check_value() -> None:
+    # The CRC-16/CCITT-FALSE check value; the oracle is named in the CRC-32 test below.
+    crc16 = CRC16()
+    assert run(crc16._crc(bytearray(b"123456789"), crc16._all_set, 0x1021)) == 0x29B1
+
+
+def test_crc32_matches_the_mpeg2_check_value() -> None:
+    # Independent oracles computed on the host: CPython's binascii.crc_hqx(data, 0xFFFF) for CRC16, and zlib.crc32
+    # over bit-reversed bytes, reflected back and xor-ed, for CRC-32/MPEG-2 (agent, 2026-09-29).
+    crc32 = CRC32()
+    vectors = [
+        (bytearray(b"123456789"), 0x0376E6E7),
+        (bytearray(256), 0xE55E964F),
+        (bytearray(range(256)), 0x494A116A),
+    ]
+    for data, expected in vectors:
+        assert run(crc32._crc(data, 0xFFFFFFFF, 0x04C11DB7)) == expected
+
+
+def test_crc32_round_trips_at_a_non_default_init() -> None:
+    crc32 = CRC32()
+    data = bytearray(range(40))
+    added = run(crc32.add(data, init=0x12345678))
+    assert added is not None
+    assert added != run(crc32.add(data))
+    assert run(crc32.check(added, init=0x12345678)) == data
+    assert run(crc32.check(added)) is None
+
+
+def test_trailing_zero_padding_passes_every_check_so_callers_pass_the_true_length() -> None:
+    # A register at 0 stays 0 through further 0x00 bytes (the module comment's limitation): every
+    # check accepts the padded buffer and strips the wrong bytes, so callers must pass the true length.
+    for crc in (CRC8(), CRC16(), CRC32()):
+        added = run(crc.add(bytearray(b"payload")))
+        assert added is not None
+        width = crc.length()
+        for k in range(1, 4):
+            padded = added + bytearray(k)
+            assert run(crc.check(padded)) == padded[0 : len(padded) - width]
+            assert run(crc.check_from(padded, len(padded))) == len(padded) - width
+
+            async def incremental(buf: bytearray, crc: CRCBase = crc) -> int | None:
+                assert await crc.run_inc(buf[0:3])
+                assert await crc.run_inc(buf[3:])
+                return await crc.check_inc()
+
+            assert run(incremental(padded)) == len(padded) - width
+
+
 # ---------------------------------------------------------------------------
 # Forgotten/dangling incremental sequences
 # ---------------------------------------------------------------------------
@@ -718,10 +781,11 @@ def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> No
     # real interpreter to raise MemoryError - the same allocation-exhaustion technique
     # test_asy_base_classes.py's LockableBuffer tests use.
     #
-    # Everything _crc() itself needs was computed in the constructor and stays CRC8's, so the CRC is still
-    # computed normally and only the allocation fails - the shape a genuinely exhausted heap takes on-
-    # device.
+    # The widened width would route _crc() to the two-word path, so it is swapped for a pristine CRC8's: the
+    # CRC is still computed normally and only the allocation fails - the shape a genuinely exhausted heap
+    # takes on-device.
     crc8 = CRC8()
+    crc8._crc = CRC8()._crc  # type: ignore[method-assign]
     crc8._num_bytes = 2**62
     try:
         run(crc8.add(bytearray(b"hello world")))
@@ -777,31 +841,31 @@ def test_crc_over_a_large_buffer_lets_another_task_run_while_it_computes() -> No
     #
     # Observed under the real interpreter: exactly one tick per byte processed, asserted against half that,
     # so this pins "the yield happens and is not a no-op" without depending on the scheduler's exact
-    # fairness.
-    crc8 = CRC8()
+    # fairness. CRC32 runs the two-word loop, so both loops are pinned.
     payload = bytearray(range(200)) + bytearray(range(100))  # a few hundred bytes, one CRC yield each
-    framed = run(crc8.add(payload))
-    assert framed is not None
+    for crc in (CRC8(), CRC32()):
+        framed = run(crc.add(payload))
+        assert framed is not None
 
-    async def scenario() -> tuple[int | None, int]:
-        ticks = [0]
-        finished = [False]
+        async def scenario(crc: CRCBase = crc, framed: bytearray = framed) -> tuple[int | None, int]:
+            ticks = [0]
+            finished = [False]
 
-        async def counter() -> None:
-            while not finished[0]:
-                ticks[0] += 1
-                await asyncio.sleep(0)
+            async def counter() -> None:
+                while not finished[0]:
+                    ticks[0] += 1
+                    await asyncio.sleep(0)
 
-        task = asyncio.create_task(counter())
-        checked = await crc8.check(framed)
-        ticks_during_crc = ticks[0]  # sampled before the counter is stopped
-        finished[0] = True
-        await task  # let the counter observe the flag and exit, leaving nothing pending
-        return (None if checked is None else len(checked)), ticks_during_crc
+            task = asyncio.create_task(counter())
+            checked = await crc.check(framed)
+            ticks_during_crc = ticks[0]  # sampled before the counter is stopped
+            finished[0] = True
+            await task  # let the counter observe the flag and exit, leaving nothing pending
+            return (None if checked is None else len(checked)), ticks_during_crc
 
-    payload_len, ticks_during_crc = run(scenario())
-    assert payload_len == len(payload)  # the CRC still verified correctly while interleaving
-    assert ticks_during_crc >= len(framed) // 2
+        payload_len, ticks_during_crc = run(scenario())
+        assert payload_len == len(payload)  # the CRC still verified correctly while interleaving
+        assert ticks_during_crc >= len(framed) // 2
 
 
 def test_crc_yielding_is_not_a_side_effect_of_check_returning_early() -> None:

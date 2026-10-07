@@ -123,6 +123,32 @@ def test_cobs_never_emits_the_delimiter_over_a_fuzz_sweep() -> None:
         assert decoded(codec, frame[:-1]) == bytes(payload)
 
 
+def test_cobs_round_trips_every_length_up_to_the_frame_bound() -> None:
+    # Every length, not a stride: all-zero, zero-free and zero-every-third payloads.
+    codec = FramingCOBS(303)  # max_encoded(300)
+    for size in range(301):
+        for pattern in (0, 1, 3):
+            payload = bytearray(size)
+            for i in range(size):
+                payload[i] = 0 if pattern == 0 or (pattern == 3 and i % 3 == 2) else (i % 255) + 1
+            frame = encoded(codec, bytes(payload))
+            assert COBS_DELIMITER not in frame[:-1], f"inner 0x00 at size {size}, pattern {pattern}"
+            assert len(frame) <= codec.max_encoded(size), f"size {size} exceeded its own bound"
+            assert decoded(codec, frame[:-1]) == bytes(payload), f"round trip failed at size {size}, pattern {pattern}"
+
+
+def test_a_returned_view_aliases_the_scratch_until_the_next_encode() -> None:
+    # The contract: a caller finishes with a returned view before the next encode_into().
+    codec = FramingCOBS(64)
+    first = run(codec.encode_into(bytearray(b"abc"), 3))
+    assert first is not None
+    snapshot = bytes(first)
+    second = run(codec.encode_into(bytearray(b"defgh"), 5))
+    assert second is not None
+    assert bytes(first) != snapshot
+    assert bytes(first) == bytes(second)[0 : len(snapshot)]
+
+
 # ---------------------------------------------------------------------------
 # Malformed input and bounds
 # ---------------------------------------------------------------------------
@@ -176,7 +202,7 @@ def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
     # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
     # fragmented heap, rather than a caller typo - had no test of its own.
     codec = FramingCOBS(1 << 40)  # well-formed, and far past what any heap here can serve
-    assert codec.allocations == 0
+    assert codec._scratch is None
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
 
@@ -188,13 +214,16 @@ def test_cobs_reports_itself_as_delimited() -> None:
 
 
 def test_cobs_scratch_is_reused_across_frames() -> None:
-    # allocated once from the frame bound, never per frame.
+    # allocated once from the frame bound, never per frame: the second encode lands where the first did.
     codec = FramingCOBS(128)
+    scratch = codec._scratch
+    assert scratch is not None
     first = run(codec.encode_into(bytearray(b"abc"), 3))
     second = run(codec.encode_into(bytearray(b"defg"), 4))
     assert first is not None
     assert second is not None
-    assert codec.allocations == 1
+    assert codec._scratch is scratch
+    assert bytes(scratch[0 : len(second)]) == bytes(second) == b"\x05defg\x00"
 
 
 if __name__ == "__main__":
