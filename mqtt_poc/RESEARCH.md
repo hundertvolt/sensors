@@ -342,6 +342,57 @@ the documentation rows (SPEC C.7.1 catalog, C.8 locks, C.9 tasks, Part N, E.6.6 
   `maintenance_sensors` entry or a status section (question 8.7).
 - **Default off.** Empty broker host means disabled, so twin and bench "no new errors" baselines stay clean.
 
+### 7.1 Why `mqtt_as` cycles the WiFi, and the clean alternative
+
+The owner asked on 2026-10-07 whether cycling the radio is deliberate expert practice or an oversight, and
+whether a clean solution exists. The agent's reading of the sources (agent, 2026-10-07):
+
+**It is deliberate, and right for its context.** `mqtt_as` started in 2017 on the ESP8266, where it was the
+device's only network user, so it owns the link. Three reasons stand behind the radio cycle:
+- The author's "belt and braces" rule: on an outage, "down communications for long enough that every link in
+  the chain 'knows' the link is down", so that "re-establishing the link always starts from the same state"
+  (`FUTURE_DEVELOPMENT.md`). A client cannot tell which link failed.
+- WiFi stacks have stuck states that only a radio reset clears: `wifi_connect()` comments "might hang forever
+  awaiting dhcp lease renewal", and the CYW43 false positive this project already backstops is the same
+  class.
+- A 5 s stability check, so a flapping link near the range limit is not re-entered immediately.
+
+The same author treats it as an architectural limit, not a goal. His rewrite notes split the client from "a
+transport layer [that] would handle link outages", and `mqtt_as_eth`'s README leaves reconnecting the
+network to the application. Other MicroPython contributors argued the same in Discussion #9530: "global state
+like the connection to an AP needs to be handled by the application, not some communication/protocol
+library" (karfas). On a device whose radio also serves the webserver, NTP and DNS, the cycle stops being
+clean.
+
+**The clean form: each layer resets only what it owns.**
+- **Link (`WifiService`, unchanged).** It stays the radio's only owner, with its own recovery ladder and the
+  owner-decided backstop for the CYW43 false positive (power cycle; owner, 2026-09-04/26).
+- **Transport (the MQTT socket).** The PINGRESP deadline is the detector, since lwIP has no keepalive here
+  (section 4). Recovery is closing this socket and opening a fresh one after a capped exponential backoff.
+  A fresh socket gets a new local port, so no stale state anywhere on the LAN path matters.
+- **Session (the broker).** A new CONNECT with the same client id makes the broker drop the old, possibly
+  half-open connection ("session taken over" in mosquitto's `handle_connect.c`, from line 95 and lines
+  189-191), and a clean session discards its state; every CONNACK is followed by resubscribing.
+  This is the protocol-level version of "every link knows", reached without touching the radio.
+
+**Telling a broker outage from a link outage** needs no radio reset either:
+
+| Signal | Meaning | Response |
+|---|---|---|
+| `network_available_locked()` False | link or IP down, or hotspot mode | wait for the link; backoff does not grow |
+| `EHOSTUNREACH` at once on connect | no route | treat as link down |
+| `ECONNRESET` on connect | host up, broker process down | broker backoff |
+| `ECONNABORTED` after ~18.5 s | host unreachable | broker backoff |
+| PINGRESP deadline missed while the link reports up | broker host or the path is dead; the device alone cannot tell which | broker backoff; count it as "link up, transport dead" |
+
+**What this gives up compared with `mqtt_as`:** nothing the device currently has. The one failure only a radio
+reset cures, the CYW43 false positive, already has its owner-decided backstop. The MQTT client can expose the
+"link up, transport dead" count as evidence, readable in status. Feeding it into `WifiService` would be the
+reachability probe the owner declined, so it stays a counter unless question 8.9 is answered otherwise.
+Whether any other stuck state needs a radio reset is a bench question (section 6's L4 scenarios: broker
+killed, broker host unplugged, AP rebooted, DHCP renewal, TCP `REJECT`/`DROP`), not something to settle by
+assumption.
+
 ---
 
 ## 8. Questions for the owner (2026-10-07)
