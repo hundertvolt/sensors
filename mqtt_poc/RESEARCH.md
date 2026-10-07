@@ -2,7 +2,8 @@
 
 **Status: REQUIREMENTS RECORDED, 2026-10-07.** No code has been written yet. This file consolidates one
 research round; the owner answered its questions on 2026-10-07 (section 8.0 records the answers and what
-follows from them for the design). **Temporary**: like `PROJECT_AUDIT_PLAN.md`, it is deleted once the PoC's lasting outcomes
+follows from them for the design). A first prototype of the client was run against a real mosquitto on the dev
+digital twin under faults from both sides the same day: `mqtt_poc/prototype/RESULTS.md`. **Temporary**: like `PROJECT_AUDIT_PLAN.md`, it is deleted once the PoC's lasting outcomes
 (code, settled decisions, new rules) have migrated into `SPECIFICATION.md`, `CLAUDE.md` or `BACKLOG.md`.
 
 **Branch.** `claude/whole-project-audit-plan-followup`, branched from the audit branch at `1cff5a2` (U14). The

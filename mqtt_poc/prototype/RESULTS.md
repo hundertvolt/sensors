@@ -21,7 +21,8 @@ build. Everything ran on the MicroPython v1.29.0 Unix port (the twin), not on rp
 
 ## Results at a glance
 
-- **Zero** `MemoryError`, **zero** "memory allocation failed", **zero** tracebacks, clean exit, in every run.
+- **Zero** `MemoryError`, **zero** "memory allocation failed", **zero** tracebacks, clean exit, in every run, at
+  `gc.threshold(-1)` and at the shipped `gc.threshold(32768)`.
 - Every fault ended in a reconnect without any WiFi action, inside the backoff schedule.
 - No QoS 1 message the client accepted was lost; QoS 0 drops happen only at the bounded ring and are counted.
 - The live heap with the client is flat apart from a drift the twin shows **without** the client too (below).
@@ -74,6 +75,14 @@ bytes per received message and ~140 B per publish:
 | Inbound flood (21,127 messages) | ~180 KB/s | ~54 KB/s for ~15 s | ~38 B per received message |
 | Outbound hammer (~156 msg/s) | ~150 KB/s | ~22 KB/s | ~140 B per publish, harness loop included |
 | Twin **without** client (baseline, 180 s) | ~128 KB/s | — | — |
+
+## The same torture run at the shipped gc.threshold(32768)
+
+The project rule runs everything at both GC stages (CLAUDE.md memory-safety rule), so the full timeline ran a second
+time at the firmware's own threshold. Same outcome: zero `MemoryError`, zero "memory allocation failed", zero
+tracebacks, clean exit; 9 connects at 0.7, 86.7, 150.8, 230.9, 252.9, 258.9, 266.9, 475.1 and 601.2 s (the stall
+recovery landed 0.8 s after SIGCONT this time, because a backoff slot happened to fall there); 2 ping timeouts, 0
+protocol errors, 0 retransmissions, 0 give-ups; live-heap slope 22.5 B/s, the twin's own drift again.
 
 ## Heap: does it flood?
 
