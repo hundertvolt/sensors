@@ -14,7 +14,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, NoReturn, TypeVar
 
     from crc_checks import CRC_Base
@@ -55,7 +55,7 @@ class FakeValue:
     # A controllable NotificationSignal producer (Part C.14.2): get_data() returns self, exposing exactly
     # one attribute - whatever field the caller configures - at a fixed value, or raising once armed.
     # Mirrors a real *_Reader.get_data()'s "always available, field can be None" contract.
-    def __init__(self, value: "int | float | None" = None, field: str = "Value") -> None:
+    def __init__(self, value: object = None, field: str = "Value") -> None:
         self.value = value
         self.field = field
         self.raise_exc: Exception | None = None
@@ -91,6 +91,7 @@ class FakeSignalCb:
     def __init__(self) -> None:
         self.calls: list[tuple[int, int, int, float]] = []
         self.raise_exc: Exception | None = None
+        self.result = True  # what the sink answers: False is a dropped request
         self._release = asyncio.Event()
         self._release.set()  # unstalled by default - most tests don't care about fine-grained timing
 
@@ -105,7 +106,7 @@ class FakeSignalCb:
         self.calls.append((r, g, b, t))
         if self.raise_exc is not None:
             raise self.raise_exc
-        return True
+        return self.result
 
 
 class _FastAsyncSleep:
@@ -140,11 +141,33 @@ def make_coordinator(
 
 
 def make_signal(
-    name: str = "WarnCO2", *, above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
+    name: str = "WarnCO2", *, above: bool = True, value: object = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
 ) -> "tuple[NotificationSignal, FakeValue]":
     fv = FakeValue(value, field=name)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
     return NotificationSignal(name, ValueRef(fv, name), field_schema, color, above=above), fv
+
+
+# A hang guard in scheduler rounds, never waited out in real time: a condition here holds within a few dozen.
+# @tunable l1.asy_notification_service_max_rounds = 200
+_MAX_ROUNDS = 200
+
+
+async def _rounds_until(predicate: "Callable[[], bool]") -> bool:
+    # Yields one scheduler round at a time until predicate() holds; False once _MAX_ROUNDS pass without it.
+    for _ in range(_MAX_ROUNDS):
+        if predicate():
+            return True
+        await asyncio.sleep(0)
+    return predicate()
+
+
+async def _cancel(task: "asyncio.Task[None]") -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
@@ -637,6 +660,36 @@ def test_the_defaulted_signal_sink_accepts_a_request_and_reports_no_flash() -> N
     assert run(sink.request_signal(1, 2, 3, 0.5)) is False
 
 
+def test_a_refused_signal_persists_one_drop_warning() -> None:
+    cb = FakeSignalCb()
+    cb.result = False  # the LED answers every request with a drop
+    signal, _fv = make_signal("WarnCO2", value=2000)
+    coordinator, _clock, _cb = make_coordinator((signal,), signal_cb=cb)
+    run(coordinator.setup())
+    run(coordinator._trigger_signal(signal, 200, 0.5))
+    run(coordinator._trigger_signal(signal, 200, 0.5))
+    log = run(coordinator.get_error_counter())["NOTIFY"]
+    assert log["ErrCount"] == 2  # every drop counted...
+    assert log["ErrNum"][-2:] == [0, code("W", "NOTIFY_SIGNAL_DROPPED")]  # ...in one slot
+
+    async def scenario() -> bool:
+        task = coordinator.start_asy_notify_monitor()
+        stored = await _rounds_until(lambda: coordinator._datastruct[-1] is not None)  # TS, NOTIFY's last field
+        await _cancel(task)
+        return stored
+
+    with _FastAsyncSleep():
+        assert run(scenario()) is True
+    assert run(coordinator.get_data()).Triggered is True  # a threshold was crossed, dropped or not
+
+    for sink in (FakeSignalCb(), asy_notification_service._DefaultSignalSink.request_signal, asy_notification_service._DefaultSignalSink().request_signal):
+        service = NotificationCoordinator(sink, FakeClock().get, (signal,), cfg_path=_tmp_cfg_dir())
+        run(service.setup())
+        run(service._trigger_signal(signal, 200, 0.5))
+        # A delivered request, and the default sink's False ("no LED", not a drop), persist nothing.
+        assert run(service.get_error_counter())["NOTIFY"]["ErrCount"] == 0
+
+
 def test_two_signals_failures_share_one_code_and_one_slot() -> None:
     a, fv_a = make_signal("WarnCO2")
     b, fv_b = make_signal("WarnVOC")
@@ -802,12 +855,36 @@ def test_check_one_never_raises() -> None:
 
     async def scenario() -> None:
         await coordinator.pr.setup()
-        for value, exc in ((None, None), (0, None), (99999, None), (1, RuntimeError("x"))):
+        for value, exc in ((None, None), (0, None), (99999, None), (1, RuntimeError("x")), ("abc", None), ([1], None), ("1800", None)):
             fv.value = value
             fv.raise_exc = exc
             await coordinator._check_one(signal)  # must never raise, for any of the above
 
     run(scenario())  # would propagate and fail the test if _check_one() ever raised
+
+
+def test_a_non_numeric_value_logs_one_source_entry_and_never_triggers() -> None:
+    # "1800" is a string a float() cast would happily read as 1800 and compare; it must be refused.
+    cb = FakeSignalCb()
+    signal, fv = make_signal("WarnCO2", value="1800")
+    coordinator, _clock, _cb = make_coordinator((signal,), signal_cb=cb)
+    run(coordinator.setup())
+    assert run(coordinator._check_one(signal)) is False
+    assert coordinator.pr.err_count == 1
+    assert coordinator.pr.history[-1] == code("E", "SOURCE")
+
+    async def scenario() -> bool:
+        task = coordinator.start_asy_notify_monitor()
+        assert await _rounds_until(lambda: coordinator.pr.err_count >= 2)  # a cycle met the string too
+        fv.value = 2000  # numeric and above the 1600 default threshold
+        flashed = await _rounds_until(lambda: len(cb.calls) >= 1)
+        still_running = not task.done()
+        await _cancel(task)
+        return flashed and still_running
+
+    with _FastAsyncSleep():
+        assert run(scenario()) is True  # the loop kept cycling and its next cycle flashed
+    assert list(coordinator.pr.history).count(code("E", "SOURCE")) == 1  # every refusal counted, one slot
 
 
 # ---------------------------------------------------------------------------
@@ -938,7 +1015,7 @@ def test_sleep_window_boundaries_inclusive() -> None:
         clock.value = _FakeTime(hour, minute)
         cb.calls.clear()
         await coordinator._set_dict_cfg(
-            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema(),
+            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0}, coordinator.get_cfg_schema(),
         )
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
@@ -967,13 +1044,45 @@ def test_sleep_window_just_after_off_bound_is_excluded() -> None:
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg(
-            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema(),
+            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0}, coordinator.get_cfg_schema(),
         )
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
 
     run(scenario())
     assert len(cb.calls) == 0
+
+
+def test_in_window_handles_same_day_overnight_and_whole_day_windows() -> None:
+    in_window = asy_notification_service._in_window
+
+    def at(hour: int, minute: int) -> int:
+        return hour * 60 + minute
+
+    overnight = (at(22, 0), at(6, 0))
+    for cur, expected in ((at(21, 59), False), (at(22, 0), True), (at(23, 59), True), (at(0, 0), True), (at(6, 0), True), (at(6, 1), False), (at(12, 0), False)):
+        assert in_window(overnight[0], overnight[1], cur) is expected, cur
+    assert in_window(at(10, 0), at(10, 0), at(10, 0)) is True  # On == Off: a one-minute window
+    assert in_window(at(10, 0), at(10, 0), at(10, 1)) is False
+    for hour in range(24):
+        assert in_window(at(0, 0), at(23, 59), at(hour, 0)) is True, hour
+
+
+def test_an_overnight_window_flashes_at_23_30() -> None:
+    cb = FakeSignalCb()
+    signal, _fv = make_signal("WarnCO2", value=2000)
+    coordinator, _clock, _cb = make_coordinator((signal,), local_time=FakeClock(23, 30), signal_cb=cb)
+    run(coordinator.setup())
+
+    async def scenario() -> bool:
+        await coordinator._set_dict_cfg({"OnH": 22, "OnM": 0, "OffH": 6, "OffM": 0}, coordinator.get_cfg_schema())
+        task = coordinator.start_asy_notify_monitor()
+        flashed = await _rounds_until(lambda: len(cb.calls) >= 1)
+        await _cancel(task)  # inside its first cycle's settle sleep: the next cycle never starts
+        return flashed
+
+    assert run(scenario()) is True
+    assert len(cb.calls) == 1
 
 
 def test_local_time_callback_returns_none_no_checks_run_no_crash() -> None:
@@ -985,7 +1094,7 @@ def test_local_time_callback_returns_none_no_checks_run_no_crash() -> None:
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
-        await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
+        await coordinator._set_dict_cfg({"Interv": 3600.0}, coordinator.get_cfg_schema())
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
 
@@ -1002,7 +1111,7 @@ def test_local_time_callback_raises_treated_as_none() -> None:
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
-        await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
+        await coordinator._set_dict_cfg({"Interv": 3600.0}, coordinator.get_cfg_schema())
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
 
@@ -1020,7 +1129,7 @@ def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
     run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
-        await coordinator._set_dict_cfg({"AutoOn": False, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
+        await coordinator._set_dict_cfg({"AutoOn": False, "Interv": 3600.0}, coordinator.get_cfg_schema())
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
 

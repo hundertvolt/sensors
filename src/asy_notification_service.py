@@ -53,6 +53,7 @@ _ERR_CFG_READ = const(26)
 _WRN_CFG_READ = const(13)
 _WRN_NOTIFY_NAME_COLLISION = const(44)
 _WRN_NOTIFY_SCHEMA_SHAPE = const(45)
+_WRN_NOTIFY_SIGNAL_DROPPED = const(67)
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
@@ -77,7 +78,9 @@ class _DefaultSignalSink:
 
     # Signature and return-value contract match NeopixelDriver.request_signal exactly, so codegen's
     # existing attr-mode rendering (f"{var}.{wf.target}") needs no special-casing for a defaulted field.
-    async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
+    # Static, so an instance's attribute is this very function: the service recognises it by identity.
+    @staticmethod
+    async def request_signal(r: int, g: int, b: int, t: float) -> bool:
         return False
 
 # Own schema; config keys carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`): the new API is the
@@ -99,7 +102,7 @@ _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 # Literal submitGroup ("autoConfig"), not the "self" sentinel the sensors use: this is a singleton
 # service, so there is nothing to disambiguate, and the hand-written definitions established it.
 # @web-group section=notification submitGroup=autoConfig label="Automatic Notification Configuration" submit=true
-# @web AutoOn section=notification submitGroup=autoConfig label="Automatic Notifications" description="Auto On must be before Off, on the same day."
+# @web AutoOn section=notification submitGroup=autoConfig label="Automatic Notifications" description="Active from Auto On to Auto Off; an On time later than the Off time runs overnight (e.g. 22:00 to 06:00)."
 # @web OnH section=notification submitGroup=autoConfig label="Auto On Hour"
 # @web OnM section=notification submitGroup=autoConfig label="Auto On Minute"
 # @web OffH section=notification submitGroup=autoConfig label="Auto Off Hour"
@@ -119,6 +122,13 @@ _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 # `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
 NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
 _FIELDS = const(("Triggered", "TS"))  # kept in sync with NOTIFY's own fields above
+
+
+def _in_window(on_min: int, off_min: int, cur_min: int) -> bool:
+    # Minutes of the day, both bounds inclusive; an On later than Off runs over midnight (owner, 2026-09-26).
+    if on_min <= off_min:
+        return on_min <= cur_min <= off_min
+    return cur_min >= on_min or cur_min <= off_min
 
 
 class NotificationSignal:
@@ -188,6 +198,8 @@ class NotificationCoordinator(SensorReaderConfig):
         for msg, _wrnno in self._pending_wrn:
             self.pr.wrn(msg)
         self._request_signal_cb = request_signal_cb
+        # The default sink's False means "no LED", never a dropped signal.
+        self._sink_is_default = request_signal_cb is _DefaultSignalSink.request_signal
         self._local_time_callback = local_time_callback
         self.override_secs = LockedCounter(max_val=_MAX_OVERRIDE_TIME)
         self._auto_active = True
@@ -215,7 +227,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - get_data()
         # never raises, but the specific field can legitimately be None (not yet measured, or the
         # producer's own error streak gave up) - a normal, expected input here, not exceptional.
-        value: int | float | None
+        value: object
         source: _ValueSource = notif.value.source  # the annotated local narrows the namedtuple field (C.4.2)
         try:
             data = await source.get_data()
@@ -223,8 +235,17 @@ class NotificationCoordinator(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             value = None
-        notif.last_value = value
         if value is None:
+            notif.last_value = None
+            notif.triggered = False
+            return False
+        if not isinstance(value, (int, float, bool)):  # bool listed: MicroPython's bool is no int subclass
+            await self.pr.err_s(notif.name, "Value not numeric:", type(value).__name__, errno=_ERR_SOURCE)
+            notif.last_value = None
+            notif.triggered = False
+            return False
+        notif.last_value = value
+        if value != value:  # NaN never triggers
             notif.triggered = False
             return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
@@ -233,10 +254,7 @@ class NotificationCoordinator(SensorReaderConfig):
             notif.triggered = False
             return False
         threshold = thresholds[0]  # exactly one field - the constructor refuses any other shape
-        # float(value): getattr()'s own return is untyped even after the None-check above (the
-        # field name is dynamic, not a literal) - narrows to a real numeric comparison the same way
-        # every removed value_callback() used to explicitly cast its own return.
-        numeric_value = float(value)
+        numeric_value = float(value)  # float() cannot raise here: value is numeric.
         triggered = (numeric_value >= threshold) if notif.above else (numeric_value <= threshold)
         notif.triggered = triggered
         return triggered
@@ -244,7 +262,9 @@ class NotificationCoordinator(SensorReaderConfig):
     async def _trigger_signal(self, notif: NotificationSignal, flash_bri: int, flash_dur: float) -> None:
         r, g, b = notif.color
         try:  # caller-supplied callback, could legitimately misbehave
-            await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
+            ok = await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
+            if not ok and not self._sink_is_default:
+                await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
         except Exception as e:
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
 
@@ -340,7 +360,7 @@ class NotificationCoordinator(SensorReaderConfig):
                         on_min_of_day = (on_h * 60) + on_m
                         off_min_of_day = (off_h * 60) + off_m
                         cur_min_of_day = (cur_time.hour * 60) + cur_time.minute
-                        if on_min_of_day <= cur_min_of_day <= off_min_of_day:
+                        if _in_window(on_min_of_day, off_min_of_day, cur_min_of_day):
                             for notif in self._registered:
                                 if await self._check_one(notif):
                                     any_triggered = True

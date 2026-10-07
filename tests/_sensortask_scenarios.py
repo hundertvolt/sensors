@@ -6,6 +6,7 @@ import asyncio
 import json
 import struct
 import sys
+import time
 
 # Same convention as tests/test_asy_webserver_service.py: scripts/test.sh's MICROPYPATH excludes
 # ext/, and every generated sensortask_<device> transitively imports microdot - extending sys.path
@@ -31,6 +32,11 @@ from print_log import PrintLog, PrintLogHistoryStore
 # sync with asy_wifi_service.py's own definitions if those ever change.
 _PHASE_STA_SEEKING = 0
 _PHASE_HOTSPOT = 2
+
+# A refused LED command answers at once; the bound also ends a regression that waits instead of
+# letting it hang the file.
+# @tunable l1.sensortask_led_refusal_ms = 100
+_LED_REFUSAL_MS = 100
 
 try:
     from typing import TYPE_CHECKING
@@ -246,13 +252,16 @@ def _sensor_reader_owners(module: "Any") -> "list[Any]":
     return owners
 
 
-def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Response":
+def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] | None" = None, timeout_ms: "int | None" = None) -> "Response":
     assert module.webserver is not None
     app = module.webserver._app
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
     req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
-    return run(app.dispatch_request(req))  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
+    coro = app.dispatch_request(req)
+    if timeout_ms is not None:  # a request that must answer at once fails with TimeoutError, never hangs
+        coro = asyncio.wait_for_ms(coro, timeout_ms)
+    return run(coro)  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
 
 
 # ---------------------------------------------------------------------------
@@ -780,6 +789,31 @@ def _scenario_collect_timer_starters(device: str) -> None:
             assert expected in starters, f"no timer starter bound to {owner!r}"
 
 
+@_register("neopixel_empty_timer_list_reaches_the_generated_collector")
+def _scenario_neopixel_empty_timer_list_reaches_the_collector(device: str) -> None:
+    # The driver's kept-empty timer list is a seam (SPECIFICATION.md C.9 shape): the generated
+    # collector must call it and take its [] without error, not skip the module by name.
+    module = build(device)
+    assert _has(module, "neopixel")
+    pixel = module.neopixel
+    assert pixel.get_timer_starters() == []
+    calls: list[int] = []
+    real = pixel.get_timer_starters
+
+    def recording() -> "list[Callable[[], None]]":
+        calls.append(1)
+        result: list[Callable[[], None]] = real()
+        return result
+
+    pixel.get_timer_starters = recording  # an instance attribute shadows the method for this call only
+    try:
+        starters = module._collect_timer_starters()
+    finally:
+        del pixel.get_timer_starters
+    assert calls == [1], f"_collect_timer_starters() called the NeoPixel's get_timer_starters() {len(calls)} times"
+    assert all(callable(s) for s in starters)
+
+
 @_register("collect_task_starters_never_touches_start_and_check_tasks")
 def _scenario_collect_starters_never_blocks(device: str) -> None:
     # Collection is pure list-building from already-constructed objects - calling it must not
@@ -1079,8 +1113,8 @@ def _scenario_notification_light_cmd_led_rejects_out_of_range_t(device: str) -> 
 @_register("webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t")
 def _scenario_notification_light_cmd_led_lower_boundary(device: str) -> None:
     # Deliberately one dispatch per test: _dispatch() drives each call through its own fresh
-    # asyncio.run(), so NeopixelDriver's consumer task never runs here - a second request_signal()
-    # would find start_signal_event already set and never cleared, hanging in its own wait loop.
+    # asyncio.run(), so NeopixelDriver's consumer task never runs here - a second command would find
+    # the first still queued and be refused.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"lightCmdLED": {"r": 0, "g": 255, "b": 0, "t": 0.5}})
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
@@ -1091,6 +1125,21 @@ def _scenario_notification_light_cmd_led_upper_boundary(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"lightCmdLED": {"r": 255, "g": 0, "b": 255, "t": 60.0}})
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+@_register("webserver_notification_light_cmd_led_refuses_a_second_flash_at_once")
+def _scenario_notification_light_cmd_led_refuses_while_busy(device: str) -> None:
+    # Each dispatch is its own asyncio.run(), so the pixel's signal task never runs in between: the
+    # first flash stays queued and the second is refused at once, never queued (owner, 2026-09-29).
+    module = build(device)
+    flash = {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 1.0}}
+    first = _dispatch(module, "PUT", "/notification", flash)
+    assert json.loads(first.body)["result"]["lightCmdLED"] == "Valid"
+    t0 = time.ticks_ms()
+    second = _dispatch(module, "PUT", "/notification", flash, timeout_ms=_LED_REFUSAL_MS)
+    elapsed_ms = time.ticks_diff(time.ticks_ms(), t0)
+    assert json.loads(second.body)["result"]["lightCmdLED"] == "Failed"
+    assert elapsed_ms < _LED_REFUSAL_MS, f"the refusal took {elapsed_ms} ms; a busy LED is refused at once, not waited out"
 
 
 @_register("webserver_notification_put_pause_time_dispatches_to_the_real_coordinator")

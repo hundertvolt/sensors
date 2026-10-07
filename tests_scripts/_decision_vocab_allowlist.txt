@@ -72,7 +72,6 @@ SPECIFICATION.md	- `Request.max_content_length` — the largest body that is *ac
 SPECIFICATION.md	A change is protocol-level ("Class A") if it alters the bytes emitted, which rec
 SPECIFICATION.md	A mismatch desyncs the link outright, so an out-of-range value must never be sil
 SPECIFICATION.md	Because the final chunk's acknowledgement is deferred until after the responder'
-SPECIFICATION.md	Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`)
 SPECIFICATION.md	Confirmed deliberate by the project owner.
 SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a dire
 SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
@@ -481,7 +480,6 @@ tests/test_fram_integration.py	A shared physical chip does not mean shared bookk
 tests/test_fram_integration.py	And the chunk must still be usable afterwards - a wedged chunk that never takes
 tests/test_fram_integration.py	Deliberately not modeled: a raw-SPI-bus-level fault.
 tests/test_fram_integration.py	That loss is accepted behavior, not a defect (project owner, 2026-09-11): no rec
-tests/test_notification_neopixel_integration.py	accepted/queued, not rejected
 tests/test_notification_scd30_integration.py	Built outside scenario() deliberately: register_frame()/data_frame() call crc8_b
 tests/test_notification_scd30_sgp40_integration.py	scd_reader's real reading is deliberately not used: _settle_and_spike() below ne
 tests/test_notification_scd30_sgp40_integration.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch

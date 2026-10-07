@@ -11,6 +11,7 @@ _SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root
 _KNOWN_TICKS_USERS = (
     "asy_bmp3xx_driver.py",
     "asy_isl29125_driver.py",
+    "asy_neopixel_driver.py",
     "asy_notification_service.py",
     "asy_uart_comm.py",
     "asy_uart_driver.py",

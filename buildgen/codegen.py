@@ -574,7 +574,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append("        return False")
         lines.append("    if r_err or g_err or b_err or t_err:")
         lines.append("        return False")
-        lines.append("    return await neopixel.request_signal(r, g, b, t)")
+        lines.append("    return neopixel.led_signal(r, g, b, t)")
         lines.append("")
     if "notification" in have:
         lines.append("async def _notification_pause_callback(payload: int) -> bool:")

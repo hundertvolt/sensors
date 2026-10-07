@@ -213,13 +213,14 @@ const LIGHT_CMD_LED_T_MIN = 0.5;
 const LIGHT_CMD_LED_T_MAX = 60.0;
 
 /**
- * Dispatches lightCmdLED (SPECIFICATION.md Part A.8): a fire-and-forget flash command, never a
- * persisted setting. "Invalid" only when the payload isn't an object; "Failed" when r/g/b
- * (int, 0-255) or t (float, 0.5-60.0) is missing/wrong-typed/out-of-range.
+ * Dispatches lightCmdLED (SPECIFICATION.md Part A.8), never persisted: "Invalid" for a non-object;
+ * "Failed" for a bad r/g/b (int, 0-255) or t (float, 0.5-60.0), and for a well-formed flash arriving
+ * before the last started one's t has passed (the device refuses it while a signal runs); else "Valid".
  * @param {unknown} rawValue
+ * @param {{busyUntil: number}} led
  * @returns {string}
  */
-function dispatchLightCmdLed(rawValue) {
+function dispatchLightCmdLed(rawValue, led) {
     if (typeof rawValue !== "object" || rawValue === null || Array.isArray(rawValue)) {
         return "Invalid";
     }
@@ -240,6 +241,10 @@ function dispatchLightCmdLed(rawValue) {
     if (typeof t !== "number" || !Number.isFinite(t) || t < LIGHT_CMD_LED_T_MIN || t > LIGHT_CMD_LED_T_MAX) {
         return "Failed";
     }
+    if (Date.now() < led.busyUntil) {
+        return "Failed";
+    }
+    led.busyUntil = Date.now() + t * 1000;
     return "Valid";
 }
 
@@ -480,6 +485,7 @@ function composeGroup(data, samples, sectionKey, group, where) {
  */
 export function installMockFetch(defs, initialData, controls) {
     const state = structuredClone(initialData);
+    const led = { busyUntil: 0 }; // when the last lightCmdLED flash started here ends (Date.now() ms)
     const sensorFieldDefs = sensorFieldDefsFor(defs);
     const flatDefsByEndpoint = {
         networking: flatFieldDefsFor(defs, "networking"),
@@ -579,7 +585,7 @@ export function installMockFetch(defs, initialData, controls) {
                 results.PauseTime = dispatchRangedAction(PauseTime, 0, PAUSE_TIME_MAX, state.status.notification, "PauseTime");
             }
             if (path === "/notification" && "lightCmdLED" in rawBody) {
-                results.lightCmdLED = dispatchLightCmdLed(lightCmdLED);
+                results.lightCmdLED = dispatchLightCmdLed(lightCmdLED, led);
             }
             dropOneResultForPartialFailure(results, controls);
             return jsonResponse(envelope(results));

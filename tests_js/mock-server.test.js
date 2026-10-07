@@ -161,12 +161,21 @@ const DATA = {
     },
 };
 
+/**
+ * Moves the frozen mock clock forward; vi.setSystemTime() mocks Date only, so timers stay real.
+ * @param {number} ms
+ */
+function advanceMockClockMs(ms) {
+    vi.setSystemTime(Date.now() + ms);
+}
+
 describe("installMockFetch", () => {
     /** @type {(() => void) | undefined} */
     let uninstall;
 
     afterEach(() => {
         uninstall?.();
+        vi.useRealTimers(); // also ends a vi.setSystemTime() Date mock
     });
 
     it("answers GET /sensors from the fixture", async () => {
@@ -314,9 +323,10 @@ describe("installMockFetch", () => {
     });
 
     it("dispatches PUT /notification's lightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
-        // Mirrors the real behavior: "Invalid" only for a non-dict payload, while a missing,
-        // non-numeric, fractional or out-of-range subfield reports "Failed" through
-        // coerce_numeric() - legacy's led_cmd() bounds, not the old silent clamp (Part A.8).
+        // Mirrors the real behavior: "Invalid" only for a non-dict payload; a missing, non-numeric,
+        // fractional or out-of-range subfield reports "Failed" (legacy's led_cmd() bounds, Part A.8).
+        // Each started flash makes the next one wait out its t on the frozen mock clock.
+        vi.setSystemTime(Date.now());
         uninstall = installMockFetch(DEFS, DATA);
 
         const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: "not-a-dict" }) });
@@ -336,6 +346,7 @@ describe("installMockFetch", () => {
         // A fractional t is fine - it's float-typed, a blanket accept regardless of shape.
         const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1.5 } }) });
         expect((await fractionalT.json()).result.lightCmdLED).toBe("Valid");
+        advanceMockClockMs(1500);
 
         // Out-of-range r/g/b/t is now rejected, matching legacy's own led_cmd() bounds.
         const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 9999, g: -50, b: 30, t: 999 } }) });
@@ -345,8 +356,10 @@ describe("installMockFetch", () => {
         // outside the range is rejected.
         const lowerBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 0, g: 255, b: 0, t: 0.5 } }) });
         expect((await lowerBoundary.json()).result.lightCmdLED).toBe("Valid");
+        advanceMockClockMs(500);
         const upperBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 255, g: 0, b: 255, t: 60.0 } }) });
         expect((await upperBoundary.json()).result.lightCmdLED).toBe("Valid");
+        advanceMockClockMs(60000);
 
         // Never persisted - doesn't leak into GET /notification's flat settings...
         expect("lightCmdLED" in (await (await fetch("/notification")).json())).toBe(false);
@@ -355,6 +368,27 @@ describe("installMockFetch", () => {
         // fresh every call, exactly like SystemCmd/PauseTime).
         const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1 } }) });
         expect((await again.json()).result.lightCmdLED).toBe("Valid");
+    });
+
+    it("refuses PUT /notification's lightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed", async () => {
+        // Mirrors NeopixelDriver.led_signal(): a REST command arriving while a signal is queued or
+        // running is refused at once (owner, 2026-09-29), never queued behind it.
+        vi.setSystemTime(Date.now());
+        uninstall = installMockFetch(DEFS, DATA);
+        const flash = JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 2 } });
+
+        const first = await fetch("/notification", { method: "PUT", body: flash });
+        expect((await first.json()).result.lightCmdLED).toBe("Valid");
+        const second = await fetch("/notification", { method: "PUT", body: flash });
+        expect((await second.json()).result.lightCmdLED).toBe("Failed");
+
+        advanceMockClockMs(1999); // still inside the first flash
+        const stillBusy = await fetch("/notification", { method: "PUT", body: flash });
+        expect((await stillBusy.json()).result.lightCmdLED).toBe("Failed");
+
+        advanceMockClockMs(1); // the first flash's t has passed; neither refusal extended it
+        const afterward = await fetch("/notification", { method: "PUT", body: flash });
+        expect((await afterward.json()).result.lightCmdLED).toBe("Valid");
     });
 
     it("dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied", async () => {

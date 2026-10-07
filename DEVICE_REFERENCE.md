@@ -15,8 +15,10 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
 - **Notification signal** — a colored ramp-up/ramp-down flash, triggered per sensor threshold and
   fully overriding the WiFi overlay while it plays (the overlay's own value is restored once the
   flash finishes). Brightness (`FlashBri`, 1–255) and duration (`FlashDur`, 0.5–10s) are
-  configurable via `/notification`; each threshold's own **color** is fixed at build time, not
-  user-configurable:
+  configurable via `/notification`. It flashes only inside the notification window
+  `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual
+  flash (`lightCmdLED`) is refused ("Failed") while another flash is still playing. Each
+  threshold's own **color** is fixed at build time, not user-configurable:
 
   | Threshold | Color |
   |---|---|

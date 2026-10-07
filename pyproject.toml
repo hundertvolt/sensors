@@ -85,8 +85,8 @@ ignore = [
     "T20",
 
     # ---- Would change runtime behavior, which a lint pass does not ----
-    # asy_neopixel_driver.py's `while event.is_set(): await sleep(0)` is a yield handshake held
-    # inside start_signal_lock; an Event would change the protocol.
+    # tests/ and digital_twin/ poll a fake's plain state flag (`while not started: await
+    # asyncio.sleep(0)`); the fakes expose no Event to wait on.
     "ASYNC110",
     # `global` is how tests/ keeps its per-process port and scratch counters (one process per test
     # file); an object around one int buys nothing.
@@ -282,9 +282,9 @@ max-returns = 11
 # ANN401, category 5 - driver-agnostic fan-in seams (the `_ValueSource` Protocol, C.14/L.6.3): every
 # reader's get_data() returns its own NamedTuple, so no single element type fits every producer.
 #
-# ARG002: _DefaultSignalSink.request_signal() is a no-op sink whose signature mirrors
+# ARG004: _DefaultSignalSink.request_signal() is a no-op static sink whose signature mirrors
 # NeopixelDriver's exactly, so codegen needs no special case.
-"src/asy_notification_service.py" = ["ANN401", "ARG002"]
+"src/asy_notification_service.py" = ["ANN401", "ARG004"]
 "src/asy_sgp40_driver.py" = ["ANN401", "FBT001"]
 "tests/test_asy_sgp40_driver.py" = ["ANN401"]
 "tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]

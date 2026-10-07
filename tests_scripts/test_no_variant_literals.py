@@ -74,7 +74,6 @@ _NOT_YET_CLEANED: "dict[str, str]" = {
     "tests/test_digital_twin_webserver_concurrency_klkizi.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_webserver_concurrency_schlafzi.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_webserver_concurrency_wozi.py": _REASON_UNIT_TEST,
-    "tests/test_notification_neopixel_integration.py": _REASON_UNIT_TEST,
     "tests/test_notification_scd30_integration.py": _REASON_UNIT_TEST,
     "tests/test_notification_scd30_sgp40_integration.py": _REASON_UNIT_TEST,
     "tests/test_notification_sgp40_integration.py": _REASON_UNIT_TEST,

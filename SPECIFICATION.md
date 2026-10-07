@@ -254,18 +254,26 @@ features as today's deployed units, not a feature change.
   reads as *cleaner* air — the inverse of what "raw" suggests. Not a bug — how Sensirion's reference
   algorithm works; `asy_sgp40_driver.py` treats `VOC` as an opaque index throughout (F.4).
 - Legacy `neopixel_signal.py` (LED hardware + hardcoded threshold monitoring) was split:
-  `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware, unchanged mechanism —
-  `request_signal()` returns once queued, not once its ramp finishes; also serves
+  `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware; also serves
   `asy_wifi_service.py`'s `LEDControl` Protocol) and `asy_notification_service.py`'s
   `NotificationSignal` (plain data holder) + `NotificationCoordinator(SensorReaderConfig)` (generic
   threshold signalling — owns sleep-window/interval/`AutoOn`/global `FlashBri`/`FlashDur`, one
-  combined `ConfigManager`/logger). The notification signals are passed at construction
+  combined `ConfigManager`/logger). `led_signal()` (the REST command) is refused at once while a
+  signal is queued or running (owner, 2026-09-29): an external caller could flood the device into
+  exhaustion (owner, 2026-10-02); `request_signal()` (internal) waits for a running signal up to a
+  deadline, then queues and returns — never when its own ramp ends — because internal requests are
+  bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
+  bounded by number and frequency, they won't flood the device'; legacy queued them without a
+  bound). Values are sanitised when the request enters: colour bytes clamped to 0-255 (non-finite
+  → 0), the duration floored at 0.1 s and capped at 60 s, a non-numeric value refused; a cancelled
+  or failed ramp ends dark with the slot free. The notification signals are passed at construction
   (`signals=`, C.14.3): the constructor validates each in check order, prints a refusal at once and
-  builds the combined schema, and `setup()` persists each refusal once.
+  builds the combined schema, and `setup()` persists each refusal once. The active window runs
+  from On to Off, and an On time later than Off spans midnight (owner, 2026-09-26).
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
-  trigger time. Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) —
-  a deliberate wire-format change; only the legacy site, `legacy/firmware/html_raw/`, keeps the old
-  names: the legacy tree gets no work (owner, 2026-09-11; H.1).
+  trigger time. Config field names carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`); the new
+  API is the only reference and no legacy spelling or `legacy/firmware/html_raw/` compatibility is
+  kept (owner, 2026-09-26).
 - Deployed task supervisor is a hand-rolled loop duplicated per device file; every generated
   `sensortask_<device>.py`'s `main()` instead calls `system_service.py`'s real
   `start_and_check_tasks()`/`start_timers()`.
@@ -287,9 +295,6 @@ features as today's deployed units, not a feature change.
 - **`asy_uart_driver.py` exposes no hardware flow control** (owner, 2026-07-23, `c9006dc`).
 - **SCD30's `get_ambient_pressure()` reuses the set command word** — leave as-is, no alternate
   documented read-back exists to switch to (owner, 2026-07-22, `75f2e11`).
-- **The notification window does not yet wrap past midnight; it must** (owner, 2026-09-26: a window
-  spanning midnight, e.g. 22-6, is supported): `asy_notification_service.py`'s active-window check
-  still silently never triggers for `OnH=22`/`OffH=6`.
 
 ## A.5 Microdot / REST layer
 
@@ -646,8 +651,9 @@ settings.
   fields fire `reconnect_wifi()`, NTP fields fire `ntp_force_sync()`, `LedWifiOn` fires nothing —
   one `SettingsGroup` per subset keeps these independent. `/system` — settings +
   `"SystemCmd": "reboot"|"bootloader"|"mempause"` (enum-validated; `mempause` duration fixed 300s).
-  `/status` — `{"ResetErrors": true}` only. `/notification` — settings + `lightCmdLED` (r/g/b/t) +
-  `PauseTime` (range-checked 0-3600, rejected not clamped, before reaching
+  `/status` — `{"ResetErrors": true}` only. `/notification` — settings + `lightCmdLED` (r/g/b/t,
+  refused with "Failed" while a signal runs) + `PauseTime` (range-checked 0-3600, rejected not clamped,
+  before reaching
   `NotificationCoordinator.set_override_led()`).
 
 **Numeric coercion policy** (`config_manager.py`'s `coerce_numeric()`): a JSON int is always
@@ -1996,7 +2002,7 @@ alternating codes and reboots are outside the rule.
 | wifi | `asy_wifi_service.py` (`WIFI`) | 60-66 | 36-39 |
 | ntp | `asy_ntp_client.py` (`NTP`) | 67-74 | 40 |
 | dnssrv | `captive_dns.py` (`DNSSRV`) | — | 41-43 |
-| notify | `asy_notification_service.py` (`NOTIFY`) | — | 44-47 |
+| notify | `asy_notification_service.py` (`NOTIFY`) | — | 44-47, 67-68 |
 | webserver | `asy_webserver_service.py` (`WEBSERVER`) | — | 48-53 |
 | uart | `asy_uart_comm.py` (`UART`, or the instance name) | 75-99 | 54-59 |
 | bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared codes only) | — | — |
@@ -2627,7 +2633,9 @@ default (`[self]` / `[self.pr]`); `SensorReaderConfig` extends it with its own `
 self.cfgmgr]` / `[self.pr, self.cfgmgr.pr]`); `AsyConnTime` extends it once more with its
 independently-logged `self.dns_server`. A non-`SensorReader` singleton (`AsyFramManager`,
 `NeopixelDriver`, `SystemService`, `captive_dns.DNSServer`, `WebserverService`) implements the same
-two methods directly, matching the same shape without inheriting from `SensorReader`.
+two methods directly, matching the same shape without inheriting from `SensorReader`. Each LED and
+notification seam has an end-to-end test (`tests/test_notification_neopixel_integration.py` and
+siblings).
 
 This replaces `_collect_error_sources()`/`_collect_level_setters()`'s old hand-enumerated lists
 (every module *and* every module's own nested `.cfgmgr`/`.dns_server`, listed by a human who had to
@@ -4781,8 +4789,9 @@ groups, starts collapsed to a rollup + two filter buttons, wired entirely inside
 `lightCmdLED` (r/g/b/t, bounds matching legacy exactly, rejecting not clamping),
 `ResetErrors`, `ContMeas`, `SGPResetVOC`: `"Invalid"` only for a structurally wrong payload; a
 well-formed submission always reports `"Valid"`, including on an identical repeat (never
-`"Unchanged"`). `js/mock-server.js` mirrors this via dedicated dispatch functions — none ever
-persisted into the generic settings store. **Server-side settings-group failure**: if a
+`"Unchanged"`), except `lightCmdLED`, which reports `"Failed"` while a signal is still queued or
+running (owner, 2026-09-29). `js/mock-server.js` mirrors this via dedicated dispatch functions —
+none ever persisted into the generic settings store. **Server-side settings-group failure**: if a
 `SettingsGroup`'s post-write hook raises, every field that group attempted is reported `"Failed"` —
 never silently dropped — while the overall envelope still reports success.
 
@@ -7292,8 +7301,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `dns_server.recv_backoff_mult` | 2 | `src/captive_dns.py` — `2` | the doubled and quadrupled gap bands of `tests/test_captive_dns.py`: `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` and `l1.captive_dns_gap_quad_min_ms`/`_max_ms` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.error_retry_wait_s` | 3 s | `src/captive_dns.py` — `3` | `l1.captive_dns_no_backoff_elapsed_max_ms` stays well under it; `l1.captive_dns_backoff_wait_timeout_ms` covers it | legacy `legacy/firmware/python/CommonDrivers/captive_dns.py:37` | unknown until measured | the serve loop's error path changes |
 | `led.min_signal_s` | 0.1 s | `src/asy_neopixel_driver.py` — `0.1` | the shortest ramp a signal runs | estimated (agent, `454f6a2`) — measurement owed: none for the value, a floor for malformed input; the ramp's visible smoothness, L3 | unknown until measured | the ramp's step rate changes |
-| `led.refresh_hz_default` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | the ramp's step count per signal | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
+| `led.refresh_hz_default` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | the ramp's step count per signal; the frame period `neopixel_dt` (derived, 50 ms), also `request_signal()`'s poll interval while it waits for a running signal | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
 | `led.overlay_brightness_default` | 50 | `src/asy_neopixel_driver.py` — `50` | the overlay colour's brightness | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | of 255 | the overlay's appearance is reviewed |
+| `led.signal_wait_ms` | 120000 ms | `src/asy_neopixel_driver.py` — `120000` | `_MAX_SIGNAL_S` (60 s, the REST ceiling of `t`; the wait is twice it); the notification service's `_trigger_signal()` waits at most this long for a running signal | estimated (agent, 2026-10-06) — measurement owed: wall time of a t = 60 s ramp under bench API load, L4 | 2× the nominal 60 s | `_MAX_SIGNAL_S` changes, or the signal task's restart path changes |
 | `notify.loop_tick_s` | 1 s | `src/asy_notification_service.py` — `1` | the override countdown's resolution; `l4.sensor_config_push_over_real_hardware_override_poll_s` × `l4.sensor_config_push_over_real_hardware_override_poll_tries`: ten ticks over the bench's 3 s countdown; `l1.asy_notification_service_override_secs` leaves one full tick with the override active | estimated (agent, `da9b4ab`) — measurement owed: none for the value, the countdown's resolution; the loop share, L2 | unknown until measured | the pause loop changes |
 | `notify.min_sleep_s` | 0.1 s | `src/asy_notification_service.py` — `0.1` | the monitor loop's shortest sleep | estimated (agent, `454f6a2`) — measurement owed: the monitor loop's cycle cost, L2 | unknown until measured | the monitor loop changes |
 | `notify.cfg_fail_interval_s` | 600 s | `src/asy_notification_service.py` — `600.0` | the interval used while its config reads fail | estimated (agent, `da9b4ab`) — measurement owed: none: a fallback while the config is unreadable | twice the `Interv` default | the `Interv` range changes |
@@ -7398,6 +7408,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.webserver_leak_scenario_timeout_s` | 60.0 s | `tests/test_asy_webserver_service.py` — `60.0` | — | estimated (agent, `d49a0f7`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 30 → 60 s without a stated cause | against that measurement, once taken | the code under test or the host class changes |
 | `l1.fram_write_prompt_s` | 1.0 s | `tests/test_ntp_fram_system_integration.py` — `1.0` | stays well under `l1.fram_lock_fetch_timeout_ms` (2000 ms): the write completes promptly, not stuck behind the lock | estimated (agent, `c5478f0`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 0.2 → 1.0 s 'for scheduling-jitter headroom' | against that measurement, once taken | the code under test or the host class changes |
 | `l1.fram_lock_fetch_timeout_ms` | 2000 ms | `tests/test_ntp_fram_system_integration.py` — `2000` | `l1.fram_write_prompt_s` stays well under it | estimated (agent, `ce7b50d`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.sensortask_led_refusal_ms` | 100 ms | `tests/_sensortask_scenarios.py` — `100` | the second back-to-back `lightCmdLED` dispatch's own `timeout_ms` bound | estimated (agent, 2026-10-06) — measurement owed: elapsed of a refused dispatch at both GC stages on the slowest host, L1; the refusal is synchronous, so the bound sits far above it | against that measurement, once taken | the REST LED path or the host class changes |
+| `l1.asy_notification_service_max_rounds` | 200 | `tests/test_asy_notification_service.py` — `200` | a hang guard in scheduler rounds for the coordinator's waits | measured at most 2 rounds used (agent, 2026-10-06, single observation, x86 VM) | 100x the observed use | the coordinator's await structure changes |
+| `l1.notification_neopixel_wait_until_timeout_ms` | 10000 ms | `tests/test_notification_neopixel_integration.py` — `10000` | a hang guard; above the product's own 2 × FlashDur settle | measured longest wait 1004 ms (agent, 2026-10-06, single observation, x86 VM) | about 10x the observed wait | FlashDur's settle or the signal path changes |
 | `l1.captive_dns_wait_until_timeout_ms` | 1000 ms | `tests/test_captive_dns.py` — `1000` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_wait_until_poll_ms` | 10 ms | `tests/test_captive_dns.py` — `10` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_stray_reply_wait_ms` | 20 ms | `tests/test_captive_dns.py` — `20` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -7666,6 +7679,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_hammer_rounds` | 120 | `tests/test_digital_twin_uart_link.py` — `120` | the hammer's assertion and messages restate it | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_hammer_warmup_rounds` | 20 | `tests/test_digital_twin_uart_link.py` — `20` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_churn_transfers` | 10 | `tests/test_digital_twin_uart_link.py` — `10` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, `Triggered` or the window's absence in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
 
 **L3/L4 (real hardware)**
 

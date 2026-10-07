@@ -34,7 +34,8 @@ import sensortask_wozi  # noqa: E402
 from _shared_rest_roundtrip import assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
-from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
+import asy_ntp_client  # noqa: E402  # its `time` is swapped for rp2's 8-field gmtime() in the notification-window section
+from asy_scd30_driver import SCD30  # noqa: E402  # seeds a reading: the notification-window and reboot-survival sections below
 from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
 
 try:
@@ -180,6 +181,17 @@ async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> 
     # DNSQuery.response()'s fixed layout: the answer's 4 raw IPv4 bytes are always the last 4
     # bytes of the packet (tests/test_captive_dns.py confirms this byte-for-byte).
     return ".".join(str(b) for b in data[-4:])
+
+
+async def _wait_until_async(predicate: "Callable[[], Coroutine[Any, Any, bool]]", timeout_s: float, interval_s: float = _WAIT_POLL_S) -> bool:
+    # _wait_until() below for a predicate that must await (a module's get_data()).
+    elapsed = 0.0
+    while elapsed < timeout_s:
+        if await predicate():
+            return True
+        await asyncio.sleep(interval_s)
+        elapsed += interval_s
+    return await predicate()
 
 
 async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = _WAIT_POLL_S) -> bool:
@@ -431,6 +443,91 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
             await _cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+
+
+# ---------------------------------------------------------------------------
+# The notification window across midnight: the real coordinator, the real ntp.cettime() clock and the real
+# pixel, one monitor cycle per window; settings applied through the path PUT /notification calls.
+# ---------------------------------------------------------------------------
+
+# @tunable l2.sensortask_integration_window_wait_s = 10.0
+_WINDOW_WAIT_S = 10.0
+
+
+class _Rp2Gmtime:
+    # The NTP client's `time` here: cettime() checks for rp2's 8-field gmtime(), this Unix port's has 9, so
+    # without it the twin never has a local time (tests/test_asy_ntp_client.py's cettime() section).
+    def gmtime(self, *secs: int) -> "tuple[int, ...]":
+        return tuple(time.gmtime(*secs))[:8]
+
+    def mktime(self, t: "tuple[int, ...]") -> int:
+        return time.mktime(t)
+
+    def time(self) -> int:
+        return time.time()
+
+
+def _red_frames(frames: "list[list[tuple[int, ...]]]") -> "list[list[tuple[int, ...]]]":
+    return [frame for frame in frames if frame[0][0] > 0 and frame[0][1] == 0 and frame[0][2] == 0]
+
+
+def test_the_notification_window_spanning_midnight_flashes_red() -> None:
+    port = _next_test_port()
+    real_time = asy_ntp_client.time  # type: ignore[attr-defined]  # its imported `time`, read to restore it
+    asy_ntp_client.time = _Rp2Gmtime()  # type: ignore[attr-defined, assignment]  # a stand-in for the module's time
+
+    async def scenario() -> None:
+        await _boot(port)
+        notif, ntp, pixel = sensortask_wozi.notification, sensortask_wozi.ntp, sensortask_wozi.neopixel
+        scd30, webserver = sensortask_wozi.scd30, sensortask_wozi.webserver
+        assert notif is not None and ntp is not None and pixel is not None and scd30 is not None and webserver is not None
+        await ntp._set_synced(value=True)  # the twin has no NTP server; the clock itself is the host's
+        local = await ntp.cettime()
+        assert local is not None
+        hour = local.hour
+        # On later than Off, with the current hour (and the next) strictly inside, never on a bound.
+        on_h, off_h = (hour - 1, hour - 2) if hour >= 2 else (23, hour + 2)
+        cfg = await notif.cfgmgr.get_dict(["WarnCO2"])
+        assert cfg is not None
+        warn_co2 = cfg["WarnCO2"]
+        assert isinstance(warn_co2, int)
+        await scd30._set_meas_data(SCD30(warn_co2 + 100, 22.0, 45.0, None, None, None))
+
+        async def apply_window(on: int, off: int) -> None:
+            body = {"OnH": on, "OnM": 0, "OffH": off, "OffM": 0, "FlashDur": 0.5}
+            results = await webserver._apply_settings_groups("notification", body)
+            assert set(results.values()) <= {"Valid", "Unchanged"}, results
+            assert await notif.cfgmgr.get_dict(["OnH", "OffH"]) == {"OnH": on, "OffH": off}
+
+        async def triggered() -> bool:
+            return bool((await notif.get_data()).Triggered)
+
+        async def not_triggered() -> bool:
+            return not await triggered()
+
+        await apply_window(on_h, off_h)
+        tasks = [pixel.start_asy_neopixel_signal(), notif.start_asy_notify_monitor()]
+        try:
+            assert await _wait_until(lambda: len(_red_frames(list(pixel.pixel.writes))) > 0, _WINDOW_WAIT_S), (
+                f"no red frame with the window {on_h}:00-{off_h}:00 around local {hour}:{local.minute:02d}"
+            )
+            assert await _wait_until_async(triggered, _WINDOW_WAIT_S), "the cycle that flashed never reported Triggered"
+            await _cancel(tasks.pop())  # the monitor now sleeps its whole Interv; the next window gets a fresh cycle
+            assert await _wait_until(lambda: not pixel.start_signal_event.is_set(), _WINDOW_WAIT_S)
+            seen = len(pixel.pixel.writes)
+
+            await apply_window(off_h, on_h)  # the complementary, same-day window: the current hour is outside
+            tasks.append(notif.start_asy_notify_monitor())
+            assert await _wait_until_async(not_triggered, _WINDOW_WAIT_S), "a cycle outside the window reported Triggered"
+            assert _red_frames(list(pixel.pixel.writes)[seen:]) == [], "a cycle outside the window flashed"
+        finally:
+            for task in tasks:
+                await _cancel(task)
+
+    try:
+        run_timed(scenario(), timeout_s=3 * _WINDOW_WAIT_S)
+    finally:
+        asy_ntp_client.time = real_time  # type: ignore[attr-defined]
 
 
 # The real-bus-fault test moved into the "Construction across every real device" section near the end of

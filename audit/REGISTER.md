@@ -32,7 +32,7 @@ lease and resumption procedure.
 | U8 | `@tunable` scheme | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U8_close.md`; evidence `audit/artefacts/evidence/U8_close/` |
 | U8C | `@tunable` classification of tests | done 2026-10-07 | the unit's one commit; scan `audit/sweeps/scan_runs/20261007_U8C_close.md`; evidence `audit/artefacts/evidence/U8C_close/` |
 | U8C2 | search gaps of the test-tier classification | done 2026-10-07 | the unit's one commit; scan `audit/sweeps/scan_runs/20261007_U8C2_close.md`; open findings `audit/sweeps/open_findings.md`; evidence `audit/artefacts/evidence/U8_close/smoke_connections/ci_2593600.md` |
-| U9 | LED pilot | not started | — |
+| U9 | LED pilot | done 2026-10-07 | the unit's one commit; scan `audit/sweeps/scan_runs/20261007_U9_close.md`; evidence `audit/artefacts/evidence/U9_close/` |
 | U10 | XCUT: system-wide contracts | not started | — |
 | U11 | CORE | not started | — |
 | U12 | ALGO | not started | — |
@@ -227,6 +227,20 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U8 | Four `l4.*` rows cite the H.7.1 bench measurements as Basis, run counts unrecorded, re-measure owed | the code's own comments cite that measurement |
 | U8 | `fram.verify_present_lock_timeout_s` and the seconds-named IDs are U8-stage names | their end-state names arrive with later units |
 | U8 | The cross-browser smoke counts a page load's own connections by their first request, apart from the data requests that follow and from a speculative spare socket (at most one, `l0.smoke_speculative_connections_max`) | the page's footprint is the document and its script (H.7); the first data request and Chromium's spare socket made CI count 3 |
+| U9 | `NOTIFY_SIGNAL_DROPPED` is warning 67; notify gains a second warning band, 67-68 | the notify band 44-47 is full (46, 47 retired, never reused); FRAM's 63-64 and SGP40's 65-66 set the precedent |
+| U9 | The NeoPixel numeric guard lists `bool` explicitly (`(bool, int, float)`) | on MicroPython `isinstance(True, int)` is False (checked on the pinned interpreter) |
+| U9 | The notification guard is `isinstance(...)` rather than a `type()` set | mypy narrows only `isinstance` under `--strict`; same values accepted |
+| U9 | The NeoPixel and notification tests use local stand-ins (a driven clock, print recorder, source-constant reader, yield-bounded waits) until the shared ones land | U24/U35 bring the shared helpers; no fixed wall-clock sleep added |
+| U9 | `last_value`/`triggered` keep being written in the new None, non-numeric and NaN branches | the attributes go at U22; until then they reflect the latest call |
+| U9 | The dropped-signal warning is asserted in its own test | in the flipped test the REST command, not the notification, is refused |
+| U9 | The NTP seam test shims `gmtime()` to rp2's 8 fields | the Unix port returns 9; the same technique `test_asy_ntp_client.py` uses |
+| U9 | The ResetErrors test checks today's `{"res": "OK"}` envelope | the "Valid" answer arrives later |
+| U9 | The mock's busy state is a closure object, and the mock gives no `descr` yet | the server's "LED busy - retry later" arrives with a later unit; the typed state stays unchanged |
+| U9 | The overnight-window twin test picks its window from the twin's real clock and sets FlashDur 0.5 | the driven wall clock and the CO2 walk setter do not exist yet |
+| U9 | `_dispatch()` takes an optional `timeout_ms` | a regression that waits fails instead of hanging the file |
+| U9 | SPEC A.4's refusal sentence omits "try again later", DEVICE_REFERENCE's retry sentence waits | the retry message arrives with a later unit |
+| U9 | The LED test budgets have Part N rows (`l1.sensortask_led_refusal_ms`, `l1.asy_notification_service_max_rounds`, `l1.notification_neopixel_wait_until_timeout_ms`, `l2.sensortask_integration_window_wait_s`), two of them from single observations | every tuned test budget is registered; measurement owed where none exists |
+| U9 | OF-16 stays open: the register check cannot see a deleted second tag of one ID in one file, and closing it needs a per-file count in Part N's Sites format | the format is part of the specification in force; an extension is the owner's to accept |
 | U8C | A tag a lane placed on a real literal stays and gets its Part N row, though its merged text sits in U8C2 (`l1.asy_notification_service_elapsed_stimulus_ms`, the `*_wdt_feed_every` and feed-step tags, the A.U8C2.15 `l1.uart_comm_hazard_*` constants, `l1.asy_uart_comm_prompt_hold_ms`) | U8's ruling: a row with no tag, or a tag with no row, fails the register check; values unchanged |
 | U8C | Rows whose step depends on a later unit are removed until that step lands (`l2.webserver_concurrency_scenarios_*`, A.U8C.04, with U25; `l1.asy_wifi_service_no_reply_wait_s`) | the work order places those tags in the later step; a row with no tag fails the check |
 | U8C | Five rows are added for tags the lanes placed with no row (`l1.asy_ntp_client_serve_wait_s`, the heap-layout starter's grace and poll, `l3.isl29125_lighting_scenarios_step_ms`, `l3.scheduler_saturation_drop_busy_wait_ms`) | same ruling: the literal is real and tagged |

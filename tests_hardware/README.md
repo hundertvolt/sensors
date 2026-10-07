@@ -334,8 +334,8 @@ failure. What the rig needs:
   `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`.
 - Ambient excluded (enclosure or darkened room). Ambient above the low range puts the whole run on
   the high range and fails with "only range N was ever used" - a rig fault, not a driver one.
-- Nothing else driving the pixel: these scripts go through `request_signal()`'s real arbitration, and
-  a notification signal landing mid-scenario is indistinguishable from a bad reading.
+- Nothing else driving the pixel: these scripts write the pixel directly, past `request_signal()`'s
+  arbitration, so a notification signal landing mid-scenario is indistinguishable from a bad reading.
 
 Every assertion is **relative** - continuity across the switch, no chatter, hue/saturation invariance
 while the level moves, gain-ratio convergence. Absolute lux and CCT against a WS2812's three narrow
