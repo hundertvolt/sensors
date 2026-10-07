@@ -272,8 +272,8 @@ class _TimeoutStreamProxy:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
             raise
         except OSError:
-            # A read that saw a reset: modlwip has freed the pcb yet still accepts writes, which reach
-            # tcp_write(NULL) - so the 400 microdot answers a muted reset with is never sent.
+            # A read that saw a reset: modlwip has freed the pcb yet still accepts writes, which go through
+            # a NULL pcb (Part H.7.1) - so the 400 microdot answers a muted reset with is never sent.
             self._peer_gone[0] = True
             raise
 

@@ -45,12 +45,10 @@ SPECIFICATION.md	**CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/p
 SPECIFICATION.md	**Constraint — a loopback harness must never register a fake UART with a real `s
 SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a
 SPECIFICATION.md	**Deliberately never a symlink**: [MicroPython issue #12671](https://github.com/
-SPECIFICATION.md	**Deliberately not adopted** (project owner, 2026-09-11): there is no standing r
 SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
 SPECIFICATION.md	**Known structural gap, accepted risk (`SGP40_I2C._reset()`)**: `writeto(0x00, b
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
 SPECIFICATION.md	**Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_
-SPECIFICATION.md	**Specialty: raw hardware bus-transaction calls are the one deliberate exception
 SPECIFICATION.md	**The persistence counter** was settled with both thresholds parked at `0x0000`,
 SPECIFICATION.md	**This backstop is safe in practice, with one narrow, accepted residual window (
 SPECIFICATION.md	**Vitest in real-browser mode** (`@vitest/browser-playwright`, real Chromium, de
@@ -71,11 +69,9 @@ SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sg
 SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
 SPECIFICATION.md	Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a qu
 SPECIFICATION.md	It also pins each device's maximum, so a new driver or a widened string bound fa
-SPECIFICATION.md	It stays documented here as a tool to reach for *if* a severe, hard-to-debug res
 SPECIFICATION.md	No static `src/sensortask_*.py` file exists: `scripts/_generate_sensortask_modul
 SPECIFICATION.md	Nothing legitimate could provoke it — every accepted body is far smaller — but a
 SPECIFICATION.md	One section per chip whose behaviour needed more than its datasheet and its driv
-SPECIFICATION.md	Pico W's CYW43 firmware genuinely reduces usable heap versus a plain Pico (rough
 SPECIFICATION.md	Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s `# @requi
 SPECIFICATION.md	Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-co
 SPECIFICATION.md	Removing it (2026-09-14, auditing the now-retired in-process `_soak()`'s own ide

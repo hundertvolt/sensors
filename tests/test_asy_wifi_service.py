@@ -2400,7 +2400,7 @@ def make_addr() -> "tuple[str, int]":
     global _next_port
     _next_port += 1
     # Same Unix-port-only workaround as test_asy_ntp_client.py's own make_addr(): a plain
-    # (host, port) tuple is rejected by bind()/connect()/sendto() on this port's "standard" build.
+    # (host, port) tuple is rejected by bind()/connect()/sendto() on this port's "standard" build (SPECIFICATION.md F.7 row 1).
     return socket.getaddrinfo("127.0.0.1", _next_port)[0][-1]  # type: ignore[return-value]
 
 

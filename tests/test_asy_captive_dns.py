@@ -99,7 +99,7 @@ def make_port() -> int:
 def resolve_addr(host: str, port: int) -> tuple[str, int]:
     # This project's Unix-port "standard" build rejects a plain (host, port) tuple in bind()/sendto() with
     # "TypeError: object with buffer protocol required" (micropython/micropython#6924), which the real rp2
-    # target does not. Worked around the same way tests/test_asy_udp_socket.py does: resolve first.
+    # target does not. Worked around the same way tests/test_asy_udp_socket.py does: resolve first (SPECIFICATION.md F.7 row 1).
     return socket.getaddrinfo(host, port)[0][-1]  # type: ignore[return-value]
 
 

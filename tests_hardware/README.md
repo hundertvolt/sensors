@@ -575,8 +575,10 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
   `flash/test_watchdog_starvation.py` does.
 - After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
   `hard_reset()` recovers it, occasionally only on a second try.
-- After an unexpected reset, read `machine.reset_cause()` over `mpremote exec` before anything
-  flashes or reboots the board; `journalctl -k` times the USB disconnect.
+- After an unexpected reset, read the FRAM-backed error logs (CLAUDE.md) before anything flashes,
+  resets or clears the board; `journalctl -k` times the USB disconnect. `machine.reset_cause()`
+  reads `WDT_RESET` after a starvation, a `machine.reset()` and an `mpremote reset` alike
+  (SPECIFICATION.md Part F.5.4), so it only separates power-on from the rest.
 - A `pkill -f`/`pgrep -f` wait loop matches its own command line; list by PID or wait on a log marker.
 - A running process keeps its loaded code, while a new invocation of a host tool re-reads it and its
   device script — don't edit either between chained runs.
@@ -816,8 +818,9 @@ a live question:
   entirely - confirmed directly (a real `arping` probe got zero responses from the DUT while
   `iw station dump` showed it continuously "associated: yes" for hundreds of seconds spanning the
   whole outage) and confirmed as a long-standing, still-open upstream MicroPython characteristic,
-  not project-specific, via `micropython/micropython#9455`/`#9505`/`#18797` and independent field
-  reports. `asy_wifi_service.py`'s own `_wlan_isconnected_or_false()` is a bare pass-through to
+  not project-specific, via `micropython/micropython#9455`/`#9505` (`#18797`, a lookup blocking
+  indefinitely under the same condition, is fixed since v1.28.0). `asy_wifi_service.py`'s own
+  `_wlan_isconnected_or_false()` is a bare pass-through to
   `wlan.isconnected()` with no independent reachability check, so `_on_sta_disconnected()`'s retry
   logic structurally cannot fire if the firmware never reports the disconnect. Mitigated at the test
   level only: both tests now recover via a real `hard_reset()` if the graceful wait times out (the

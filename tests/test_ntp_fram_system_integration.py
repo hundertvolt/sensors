@@ -189,6 +189,7 @@ _next_port = 26000
 def make_addr() -> "tuple[str, int]":
     global _next_port
     _next_port += 1
+    # The Unix port's bind()/connect()/sendto() reject a plain (host, port) tuple: resolve first (SPECIFICATION.md F.7 row 1).
     return socket.getaddrinfo("127.0.0.1", _next_port)[0][-1]  # type: ignore[return-value]
 
 

@@ -708,8 +708,9 @@ information):
 - **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
   in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
   `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`
-  installs a fresh event loop and task queue; the outer loop's already-queued tasks then belong to
-  the replaced queue, and resuming the outer loop walks freed pointers. Reduced to a 12-line
+  is `run_until_complete(create_task(coro))` on the same task queue — no fresh loop is installed
+  (mechanism: SPECIFICATION.md Part F.1) — so the nested call re-enters the scheduler under the task
+  that is still running. Reduced to a 12-line
   reproducer (`create_task()` a parked sleeper, then `asyncio.run()` inside the running coroutine),
   and **not** load-, heap-size- or timing-dependent: it is deterministic and uncatchable, so
   `microtest.py`'s own `except Exception` never sees it and the file simply dies mid-run with no

@@ -794,7 +794,8 @@ only the separate digital-twin-e2e job.
 
 Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
-round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
+round trip (DNS, NTP) impossible under this harness, entirely from twin-side code (the divergence
+and its trigger: SPECIFICATION.md Part F.7):
 
 1. `bind()`/`connect()` reject `UDPSocket`'s own plain `(host: str, port: int)` tuple with
    `TypeError: object with buffer protocol required` — the Unix port's `socket` module
@@ -890,9 +891,10 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
 ## Harness pitfalls
 
 - **Unix-port facts that break a harness written by habit** (confirmed against the pinned build):
-  no `socket.getsockname()`; `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock`
-  and `Event` but no `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and
-  `micropython.mem_info()` with any argument prints the full block map.
+  no `socket.getsockname()`; `getaddrinfo()` returns a packed `sockaddr` (both: SPECIFICATION.md
+  Part F.7, with their trigger); `asyncio` offers `Lock` and `Event` but no `Semaphore`;
+  `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with any argument
+  prints the full block map.
 
 ## Known gaps / follow-ups for later sessions
 

@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 _ERR_CALLBACK = const(14)
 _ERR_CLOCK = const(16)
 _ERR_TIMER = const(17)
+_ERR_ALLOC = const(20)
 _ERR_BAD_ARG = const(21)
 _ERR_CFG_READ = const(26)
 _ERR_NTP_DNS = const(67)
@@ -179,9 +180,8 @@ class NTPClient(SensorReaderConfig):
         await self._set_meas_data(NTP(Synced=data.Synced, LastSyncAge=value, TS=data.TS))
 
     async def _set_synced(self, *, value: bool) -> None:
-        # Uncontended asyncio.Lock.acquire() never yields (extmod/asyncio/lock.py), so nothing can
-        # run between this get and the following set. Uses get_data() so the NTP fields are typed,
-        # not the base class's generic NamedTuple.
+        # Nothing runs between this get and the set below: an uncontended lock never yields (Part F.1).
+        # get_data() keeps the NTP fields typed, not the base class's generic NamedTuple.
         data = await self.get_data()
         await self._set_meas_data(NTP(Synced=value, LastSyncAge=data.LastSyncAge, TS=data.TS))
 
@@ -256,9 +256,12 @@ class NTPClient(SensorReaderConfig):
             self.pr.all("Received NTP time:", ntp_time)
             tm = time.gmtime(ntp_time)
             RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
-        except (IndexError, OSError, OverflowError, ValueError) as e:
+        except MemoryError as e:  # the shared allocation code (Part F.1), not the malformed-reply one
+            await self.pr.err_s("NTP reply could not be parsed, treating as no response:", e, errno=_ERR_ALLOC)
+            return None
+        except (IndexError, OSError, ValueError) as e:
             # malformed/truncated reply (MicroPython's struct raises plain ValueError, not
-            # struct.error) or an out-of-range timestamp - treat like no response.
+            # struct.error) - treat like no response.
             await self.pr.err_s("Malformed NTP response, treating as no response:", e, errno=_ERR_NTP_MALFORMED)
             return None
         else:
@@ -392,7 +395,7 @@ class NTPClient(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda _b: self._ntp_timer_trigger_event.set(),
             )
-        except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
+        except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM, Part F.1) - degrades gracefully;
             # NTP refresh scheduling just never starts rather than crashing the caller.
             self.pr.err("Could not start NTP timer:", e)
 
@@ -447,8 +450,8 @@ class NTPClient(SensorReaderConfig):
             else:  # we are after last sunday of october
                 cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
         except (OSError, OverflowError, ValueError) as e:
-            # rp2's mktime()/gmtime() raise OverflowError past its ~2037 32-bit epoch range - treat
-            # exactly like "not ready" instead of crashing the caller.
+            # No overflow is reachable on rp2 (Part F.1); allocation, the one failure there, is not
+            # caught here and propagates. A caught error is treated exactly like "not ready".
             await self.pr.err_s("Time calculation failed:", e, errno=_ERR_CLOCK)
             return None
         if len(cet) == _GMTIME_FIELDS:

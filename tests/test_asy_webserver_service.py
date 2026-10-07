@@ -1863,8 +1863,8 @@ class _ResetReader:
 
 
 def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
-    # microdot mutes the reset and answers 400 anyway; on silicon that write reaches tcp_write(NULL)
-    # (state 6 passes modlwip's error check), logs a spurious warning and can spin a slot for 5 s.
+    # microdot mutes the reset and answers 400 anyway; on silicon that write goes through a NULL pcb
+    # (state 6 passes modlwip's error check, Part H.7.1), logs a spurious warning and can spin a slot for 5 s.
     service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
     writer = _ScriptedWriter()
     run_timed(service._serve(_ResetReader(), writer), timeout_s=2.0)

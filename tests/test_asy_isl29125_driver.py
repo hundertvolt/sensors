@@ -4,12 +4,14 @@ import struct
 import time
 
 from _error_codes import code
+from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
 import asy_base_classes
+import asy_isl29125_driver
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import (
     ISL29125,
@@ -700,17 +702,22 @@ def test_cycle_time_follows_the_configured_resolution() -> None:
     assert isl.cycle_ms() == 19  # 3 x ~6.3ms, from p6's own n-bit-counter model
 
 
-def test_time_to_settle_stays_sane_across_a_ticks_wrap() -> None:
-    # ticks_ms() wraps, so this must use ticks_diff()/ticks_add(), never a subtraction. A deadline
-    # one second in the PAST discriminates: ticks_diff() reports it past wherever the counter sits,
-    # while a subtraction reports hugely positive time whenever the deadline crossed a wrap.
-    import time as _time
-
+def test_time_to_settle_crosses_the_ticks_wrap() -> None:
+    # A deadline armed 10 ms ahead, 5 ms before rp2's 2**30 ms wrap, lands past it: the whole wait reads before the
+    # wrap, its last ms after it, and none once it has passed. A subtraction reads it as long past from the start.
     _i2c, isl = make_protocol()
-    isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), -1000)
-    assert isl.time_to_settle_ms() == 0
-    isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 500)
-    assert 0 < isl.time_to_settle_ms() <= 500
+    clock = Ticks30Time(TICKS_PERIOD - 5)
+    asy_isl29125_driver.time = clock  # type: ignore[assignment]
+    try:
+        isl._settle_until_ms = clock.ticks_add(clock.ticks_ms(), 10)  # type: ignore[assignment]  # a ticks value from the fake
+        reads = [isl.time_to_settle_ms()]
+        clock.advance(9)
+        reads.append(isl.time_to_settle_ms())
+        clock.advance(2)
+        reads.append(isl.time_to_settle_ms())
+    finally:
+        asy_isl29125_driver.time = time
+    assert reads == [10, 1, 0], reads
 
 
 # ---------------------------------------------------------------------------
@@ -2487,7 +2494,7 @@ def test_base_trigger_produces_one_read_event_per_sample_interval() -> None:
 async def _cancel_and_join(task: "asyncio.Task[Any]") -> None:
     # Cancelling alone is not enough for a task parked on ThreadSafeFlag.wait(): the await is what
     # unwinds the cancellation through wait() and UNREGISTERS its poll object. Leaked registrations
-    # grow asyncio's pollfds array and segfault the process (unix_port_poll_prewarm.py).
+    # grow asyncio's pollfds array and segfault the process (SPECIFICATION.md F.7 row 12).
     task.cancel()
     try:
         await task
@@ -2496,9 +2503,8 @@ async def _cancel_and_join(task: "asyncio.Task[Any]") -> None:
 
 
 def _drain_flag(flag: "asyncio.ThreadSafeFlag") -> bool:
-    # Reads ThreadSafeFlag's own `state` and clears it rather than probing with wait_for_ms(): each
-    # probe registers and abandons a poll object, segfaulting this Unix port (see
-    # unix_port_poll_prewarm.py). A direct read is also the actual question - "was it set?".
+    # Reads ThreadSafeFlag's own state and clears it: a wait_for_ms() probe registers a poll object
+    # per call (SPECIFICATION.md F.7 row 12).
     was_set = bool(flag.state)
     flag.clear()
     return was_set

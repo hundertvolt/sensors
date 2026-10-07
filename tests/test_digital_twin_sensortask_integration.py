@@ -150,14 +150,14 @@ def _make_dns_query(labels: "list[str]", query_id: bytes = b"\x12\x34") -> bytes
 async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> str:
     # Genuine end-to-end DNS round trip against the real conn._dns_server_task's UDPSocket, bound at
     # ("0.0.0.0", 53). Uses the same non-blocking socket + select.poll() + bounded ticks_ms() shape as
-    # test_asy_udp_socket.py's AdversarialPeer, since this build's socket may not support settimeout().
+    # test_asy_udp_socket.py's AdversarialPeer, since a bounded non-blocking poll is what the rest of the file uses.
     peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     peer.setblocking(False)
     data: bytes = b""
     try:
         # sendto() rejects a plain (host, port) tuple here; the resolved getaddrinfo() address is
-        # required instead (same quirk tests/test_asy_udp_socket.py's make_addr() works around).
+        # required instead (same quirk tests/test_asy_udp_socket.py's make_addr() works around; SPECIFICATION.md F.7 row 1).
         addr = socket.getaddrinfo("127.0.0.1", 53)[0][-1]
         peer.sendto(query, addr)
         poller = select.poll()

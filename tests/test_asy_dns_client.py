@@ -56,9 +56,9 @@ def make_port() -> int:  # a fresh loopback port per call, so tests never conten
 
 
 def _resolved(host: str, port: int) -> "tuple[str, int]":
-    # Same Unix-port-only quirk as test_asy_udp_socket.py's make_addr(): this build's raw
-    # bind()/connect()/sendto() reject a plain (host, port) tuple, only getaddrinfo()'s resolved opaque
-    # object works. Used only by FakeDNSServer's raw socket and _ResolvingAsyUDPSocket.
+    # Same Unix-port-only quirk as test_asy_udp_socket.py's make_addr(): this build's raw bind()/connect()/
+    # sendto() reject a plain (host, port) tuple, only getaddrinfo()'s resolved opaque object works
+    # (SPECIFICATION.md F.7 row 1). Used only by FakeDNSServer's raw socket and _ResolvingAsyUDPSocket.
     #
     # cast, not a bare return: the stub types getaddrinfo()'s sockaddr slot as the IPv4 2-tuple or IPv6's
     # 4-tuple, and this project is IPv4-only - the same narrowing digital_twin's own address shim makes.

@@ -14,7 +14,7 @@ from unix_port_poll_prewarm import _PORT_SCAN_BASE, _PORT_SCAN_WINDOW, _bind_fre
 
 def _port_of(addr: "bytearray") -> int:
     # getaddrinfo() returns a packed sockaddr on this port, not the (host, port) tuple CPython
-    # gives: bytes 2-3 are the port in network order, after the AF_INET family word.
+    # gives: bytes 2-3 are the port in network order, after the AF_INET family word (SPECIFICATION.md F.7 row 3).
     return (addr[2] << 8) | addr[3]
 
 

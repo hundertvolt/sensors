@@ -2212,11 +2212,15 @@ FRAM is optional hardware anyway, so it could never be the guarantee.
 
 ### C.7.4 The radio's string bounds are bytes
 
-The schema bounds every `str` field in characters (and the web UI mirrors that), but the WiFi
-radio's own limits are UTF-8 bytes, checked in the pinned `extmod/modnetwork.c` and cyw43 driver:
-`network.country()` raises unless exactly 2 bytes, `network.hostname()` above 32 bytes, and
-`WLAN.connect()` raises `EINVAL` on a key over 64 bytes and copies an SSID over 32 bytes past its
-36-byte buffer unchecked. So a schema-valid `"ÄT"` or a 32-character SSID with umlauts used to raise
+The schema bounds every `str` field in characters (and the web UI mirrors that), but the radio's
+own limits are UTF-8 bytes: `network.country()` raises `ValueError` unless exactly 2 bytes and
+passes any 2 bytes to the radio unchecked (`extmod/modnetwork.c:134-146`; cyw43-driver
+`lib/cyw43-driver/src/cyw43_ll.c:1843-1865`), `network.hostname()` raises `ValueError` above 32
+bytes (`modnetwork.c:151-162`), `WLAN.connect()` raises `OSError(EINVAL)` on a key over 64 bytes
+and copies an SSID over 32 bytes past its 36-byte buffer unchecked (`cyw43_ll.c:2072-2077,
+2140-2141`), and the hotspot's `config()` truncates its SSID and key at 32/64 bytes without an
+error (`cyw43.h:431-448`), keeping WPA2-AES (`ports/rp2/main.c:196`) (MicroPython v1.29.0,
+cyw43-driver `055d642`). So a schema-valid `"ÄT"` or a 32-character SSID with umlauts used to raise
 on every connect, set `_hw_op_failed` and end the task after `max_module_error` cycles (`GIVE_UP` and `WLAN_GIVE_UP`) —
 a config value treated as a hardware fault (C.7.2). `asy_wifi_service.py` bounds SSID, PW,
 Country, Hostname and HotspotPW in bytes at both ends, and checks two shapes: `Hostname` is a host
@@ -2262,6 +2266,7 @@ FRAM driver's session and bus locks (levels 3, 2, 1).
 | `I2C.bus_lock`, `SPI.bus_lock` | 1 | the peripheral: one bus transaction | nothing |
 | `FRAM_SPI._bus_lock` | 1 | the FRAM's SPI bus (an alias of its `SPIDevice`'s bus lock) | nothing |
 | `ConfigManager._config_lock` | — | the config file and its staged snapshot | a FRAM-backed log write |
+| `PrintLogHistoryStore._write_lock` | — | one FRAM-backed log store's pack and write, so the newest state lands last (F.1) | a FRAM-backed log write |
 | `SensorReader._set_lock` | — | one module's config PUT end to end (stage, push, recovery, commit), so one PUT's recovery never overwrites another's accepted value | `ConfigManager._config_lock`, a device session and bus lock (2, 1), a FRAM-backed log write |
 | `WifiService.wifi_mode_lock` | — | the CYW43 radio mode (`NTPClient` holds the same lock for its sync attempt) | `UDPSocket._connect_lock` (the NTP attempt's DNS and NTP exchanges), a FRAM-backed log write |
 | `UDPSocket._connect_lock` | — | the socket object, its connect against its disconnect | nothing (the class has no logger) |
@@ -2634,8 +2639,9 @@ section, so Part C stays readable as the general specification.
 Covered fully by Part E.4: mock `tests/machine.py`'s raw bus transactions only, letting real logic
 (bit-packing, CRC, locking, error paths) run against a dict-of-registers fake. D.12's
 parameter-combination/boundary/NaN-inf coverage applies to any pure computation helper a new driver
-adds. For I2C fault injection: real hardware only raises `OSError(EIO)` or `OSError(ETIMEDOUT)` —
-never `ENODEV` (`SoftI2C`-specific).
+adds. For I2C fault injection, rp2 raises what F.1 lists: `EIO`/`ETIMEDOUT` from a transfer,
+`ENODEV` only from a NAKed zero-length probe, no `OSError` from `scan()`; UART faults arrive as
+sentinels, never exceptions.
 
 ## C.13 Readiness-gate scheme (sync `__init__` / async `setup()`)
 
@@ -2900,11 +2906,19 @@ failure (wrap only the computation, catch specific types, never bare `except:`).
 against out-of-contract input at runtime if static typing already enforces it (mypy)** — dead
 weight for a scenario that can't occur. Do verify `NaN`/`inf` (real sensor faults can produce them)
 degrade cleanly through range checks — confirm, don't assume, and test it. Walk the function line
-by line to confirm the exception net is complete. **Specialty: raw hardware bus-transaction calls
-are the one deliberate exception to "never raises"** — a real `OSError` is allowed to propagate out
-of a low-level bus driver; verify every upstream caller actually catches what it can raise. **The
-`OSError` surface differs per bus, so check the specific one** — I2C raises broadly; SPI raises
-only from a 32+ byte read (F.5.2), never from a write; UART never raises from a transfer at all.
+by line to confirm the exception net is complete. **Two kinds of raise are allowed.** A raw hardware
+bus transaction lets a real `OSError` propagate out of the low-level bus driver. And a raise the
+controlled-raise schema covers: raising is allowed only in a documented, controlled way, and only
+once every upstream caller is proven to handle it (owner, 2026-07-23, `500851c`, paraphrase) —
+`asy_crc_checks.py`'s `add()`/`check()` `MemoryError` (their only callers, `asy_uart_driver.py`'s
+`write()` and `read_until_complete()`, catch it) and a driver's one-time-setup `ValueError` or
+`RuntimeError` (`I2CDevice._probe_for_device()`: no device answers, or no bus), which every reader's
+init catches. For both, verify every upstream caller catches what it can raise; a new raise joins
+this list only with its callers named and their handling tested. **The `OSError` surface differs per
+bus, so check the specific one** — I2C raises `OSError(EIO)` or `OSError(ETIMEDOUT)` from a transfer
+and `ENODEV` from a NAKed zero-length probe, while `scan()` never raises (C.12); SPI raises only
+from a 32+ byte read (F.5.2), never from a write; UART never raises from a transfer at all; on every
+bus a wrapper whose bus is not initialised answers `None`/`False`, never a raise.
 
 ## D.3 Stability for indefinite, unattended operation
 
@@ -3183,7 +3197,8 @@ rather than extending it, and the default path is what makes frozen-in modules (
 importable. **`.frozen` is a literal MicroPython sentinel, not an ordinary directory** — any path
 starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, never the real
 filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
-too, since `sensortask_wozi.py`'s `import frozen_html` needs it.
+too, since `sensortask_wozi.py`'s `import frozen_html` needs it. Where the Unix-port rig differs
+from rp2 is F.7.
 
 Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`,
 `tests/_webserver_concurrency_scenarios.py`, and every `tests/test_digital_twin_*.py` that does the
@@ -3861,14 +3876,20 @@ The refactor runs on **Pico W (RP2040)** from **frozen bytecode**, not loaded fr
 runtime — CPython-only stdlib behaviour cannot be assumed. It pins **v1.29.0**
 (`toolchain/versions.toml`), which stays pinned to a chosen version that moves only on the owner's
 call (owner, 2026-09-26), and uses that version's features rather than reproducing legacy behaviour.
-F.5 records what the pin changed for this codebase. MicroPython 1.26 bundles pico-sdk 2.1.1; since
-pico-sdk 2.0.0, a standalone `picotool` must match its major.minor or the build fails. `machine.WDT`
-hard-caps at **8388 ms** (`ports/rp2/machine_wdt.c:32-38`); the boot entry arms 8000 ms (Part N
-`wdt.timeout_ms`, a 388 ms margin) — not raised without re-checking the cap. **USB
-(`mp_usbd_init()`) initializes only *after* the frozen `_boot.py` returns** — a `_boot.py` that
-blocks forever means USB never initializes on a real hard reset (B.11). RP2040: dual-core Cortex-M0+
-@ up to 133MHz, 264KB SRAM, 2×I2C, 2×SPI, 2×UART, 8×PIO. Pico W's littlefs partition (~848KB) is
-smaller than plain Pico's (~1.37MB) purely because the CYW43 firmware blobs make the image larger.
+F.5 records what the pin changed for this codebase. The pin bundles pico-sdk as its `lib/pico-sdk`
+submodule at `98a542c` (version 2.3.0, `lib/pico-sdk/pico_sdk_version.cmake:4-10`), which the
+firmware build compiles against. Since pico-sdk 2.0.0, a standalone `picotool` must match its
+major.minor or the build fails. `machine.WDT` hard-caps at **8388 ms**
+(`ports/rp2/machine_wdt.c:32-38`); the boot entry arms 8000 ms (Part N `wdt.timeout_ms`, a 388 ms
+margin) — not raised without re-checking the cap. **USB (`mp_usbd_init()`) initializes only *after*
+the frozen `_boot.py` returns** — a `_boot.py` that blocks forever means USB never initializes on a
+real hard reset (B.11). RP2040: two Cortex-M0+ cores at up to 133 MHz (200 MHz needs the core supply
+raised to 1.15 V; RP2040 datasheet §1.2 and §2.15.3), MicroPython running on one of them — nothing
+in this project starts the second; 264 KB SRAM; 2×I2C, 2×SPI, 2×UART; two PIO blocks with four state
+machines each (datasheet §3.1). The Pico W carries 2 MB of QSPI flash (Pico W datasheet §3.1),
+holding the firmware image with the littlefs partition behind it. Pico W's littlefs partition
+(~848KB) is smaller than plain Pico's (~1.37MB) purely because the CYW43 firmware blobs make the
+image larger.
 
 **Every import is a static `import`/`from … import` statement at module top** (agent, 2026-09-09,
 `3847c71`), AST-scannable without executing code — what lets a build derive a device's module set
@@ -3936,16 +3957,42 @@ written and removed again during the 2026-09-13 review). `asy_config_manager.py`
 `type(x) is not int` stays correct either way and is the form to copy; don't add the CPython-only
 guard on top of it.
 
-**`machine.Timer.init()` can raise `OSError(ENOMEM)`** if the RP2040's alarm pool is exhausted —
-every call site must handle it. **`MemoryError` is not an `OSError` subclass** — both are direct
-sibling `Exception` subclasses; catch `(MemoryError, OSError)` wherever both are plausible. A plain
-`except Exception:` *does* catch `MemoryError`.
+**`machine.Timer.init()` can raise `OSError(ENOMEM)`**: each armed soft Timer holds one alarm in
+pico-sdk's default alarm pool and `init()` raises `ENOMEM` when the pool has none left
+(`ports/rp2/machine_timer.c:107-110`, v1.29.0); a bare `Timer()` takes no alarm until `init()`
+(`:115-139`), and a re-`init()` cancels its own alarm before taking a new one (`:141-148`), so a
+re-arm can fail too. The pool holds 16 alarms (`PICO_TIME_DEFAULT_ALARM_POOL_MAX_TIMERS`,
+`lib/pico-sdk/src/common/pico_time/include/pico/time.h:352-363` at the submodule pin `98a542c`),
+shared with every other default-pool user in the image. **An armed Timer nothing references is
+disarmed by the GC**: its finaliser is `deinit()` (`:116`, `:151-158, 162`; finalisers are on at
+rp2's ROM level, `py/mpconfig.h:795-796`, `ports/rp2/mpconfigport.h:80-81`), so every Timer that
+must keep firing stays referenced from a long-lived object. Every call site must handle the raise.
+**`MemoryError` is not an `OSError` subclass** — both are direct sibling `Exception` subclasses;
+catch `(MemoryError, OSError)` wherever both are plausible. A plain `except Exception:` *does*
+catch `MemoryError`.
+
+**What rp2's buses raise, and what they answer instead** (v1.29.0). I2C: a transfer raises
+`OSError(ETIMEDOUT)` for a stalled or stretched bus and `OSError(EIO)` for a NAK or any other
+failure (`ports/rp2/machine_i2c.c:150-155`); a zero-length write — the presence probe — is not
+accepted by the hardware block and runs through the soft-I2C path, which raises `ENODEV` on a NAK
+and `ETIMEDOUT` on a held SCL (`:127-145`, `extmod/machine_i2c.c:52-64, 197-204`); `scan()` never
+raises an `OSError`: it only tests each probe's result, so a NAK, stall or wedged bus shortens the
+list (`extmod/machine_i2c.c:341-356`). SPI: F.5.2. UART: no transfer raises for a line fault —
+framing, parity and overrun errors deliver or lose the byte, a break byte is dropped
+(`ports/rp2/machine_uart.c:161-190`); `read()` answers `None` on an empty ring (`:593-623`,
+`EAGAIN` before the first byte); `write()` returns a short count or `None` (`:625-665`); `any()`
+has no raise site (`:504-508`); `machine.UART` has no getters, so the driver keeps its
+construction values.
 
 **RP2040's real firmware uses single-precision `float`** (24-bit mantissa, exact to `2**24`);
 **this project's Unix-port test rig uses double precision** (exact to `2**53`) — `float(int)`
 beyond either threshold silently rounds. The config validators' int→float direction relies on this
 (A.8) — accepted (owner, 2026-08-24, `3986be9`), since no real schema field's bounds go near it:
 every schema's float bounds are checked against 2**24 by `tests_scripts/test_config_schemas.py`.
+Float constants are folded in double on the host by `mpy-cross` and rounded to single precision
+once, when the frozen C is compiled (`mpy-cross/mpconfigport.h:59, 77`,
+`py/persistentcode.c:626-646`, `tools/mpy-tool.py:790-797`); a threshold that must compare exactly
+on the board is written as a value float32 represents, or as an int.
 
 **`struct` format codes with no byte-order prefix use the host's own native sizes**, so `'L'` is
 4 bytes on rp2 and 8 on the 64-bit Unix-port test interpreter — the same line reads a different
@@ -3956,7 +4003,9 @@ size of 8 is the shape to avoid, and anything porting it forward has to fix that
 **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a mismatch instead of raising**,
 unlike CPython — validate shape before packing if it matters. Still true on 1.29: the overflow
 checks added to `py/binary.c` are gated behind `MICROPY_PREVIEW_VERSION_2`, so they only turn on in
-a V2.0 preview build. Expect this fact to flip when upstream ships 2.0.
+a V2.0 preview build. Expect this fact to flip when upstream ships 2.0. **A `bytearray` item store
+keeps the low byte**: `b[i] = n` stores `n & 0xFF` without raising (`py/binary.c:512-522`), where
+CPython raises `ValueError`; a float raises `TypeError`.
 
 **Slice assignment has two different length contracts, and neither raises where you expect.** A
 `bytearray` destination *resizes* on a length mismatch exactly as CPython's does — `b[0:2] = <3
@@ -3969,29 +4018,75 @@ tell a writable destination from `memoryview(b"...")` without allocating or muta
 zero-length slice assignment (`buf[0:0] = b""`), which raises `TypeError` on a read-only view and
 succeeds on every writable one.
 
-**A `micropython.const()`-wrapped value does not survive as an importable module attribute in a
-frozen build** — `mpy-cross` inlines every `const()` value at each use site rather than leaving a
-real bound name. A one-off script needing a promoted driver's `const()`-wrapped schema tuple must
-hand-copy the literal, not import it.
+**An `_`-prefixed `micropython.const()` name is not a module attribute**: `mpy-cross` inlines its
+value at each use and replaces the assignment with `pass` (`py/parse.c:855-862`, v1.29.0), so it
+cannot be imported or read by `getattr`; a public `X = const(v)` keeps its store and stays
+importable (`:864-869`). A one-off script needing a promoted driver's private schema tuple
+hand-copies the literal.
 
 **`time.ticks_ms()` wraps every `2**30` ms (~12.4 days) on rp2**; `ticks_diff()` is correct for
 elapsed time under `2**29` ms (~6.2 days) regardless of wraparound — every real use in `src/` is a
 short bounded timeout well inside that window. `time` module attributes cannot be monkeypatched (a
 builtin C module's globals dict is fixed) — test rollover logic with synthetic ticks-space integers
 via `ticks_add()`/`ticks_diff()` instead. This project's own Unix-port rig has a much larger period
-(`2**62`, 64-bit) and cannot empirically exercise the real `2**30` rollover — verified by shared,
-period-parametric code identity instead.
+(`2**62`, 64-bit) and cannot empirically exercise the real `2**30` rollover — verified by a source
+scan of every tick user (`tests_scripts/test_ticks_wrap_scan.py`) and a 2**30-period fake `time` in
+L1 (`tests/_ticks30.py`), installed by crossing tests that run tick users' intervals across a real
+wrap (`tests/test_ticks_rollover.py` and the drivers' own test files).
+
+**The wall clock runs as unsigned 32-bit seconds since 1970 — to 2106, with calendar dates correct
+up to 2100-02-28 — and only after an NTP sync.** rp2 has `MICROPY_EPOCH_IS_1970` and a 32-bit
+`mp_uint_t` timestamp (`ports/rp2/mpconfigport.h:147, 297`, `py/mpconfig.h:1061-1094`);
+`time.mktime()` returns it without raising for every date up to 2106-02-07
+(`extmod/modtime.c:83-96`, `shared/timeutils/timeutils.h:38-42`), and `gmtime()`/`localtime()` of
+an argument raise `OverflowError` only for a negative value or one ≥ 2**32 and `TypeError` for a
+float (`shared/timeutils/timeutils.h:75-84`, `py/obj.c:318-327`, `py/objint_mpz.c:443-456`). There
+is no ~2037 boundary. rp2 leaves the post-2099 date support off, so every year divisible by 4 is a
+leap year and a date from 2100-03-01 on decodes one day off (`py/mpconfig.h:1061-1072`,
+`shared/timeutils/timeutils.c:68-74`); the NTP client's plausibility window ends at 2100-01-01
+(`asy_ntp_client.py`'s `_NTP_MAX_PLAUSIBLE_UNIX_TIME`), before it. Every timestamp since
+2004-01-10 exceeds rp2's small-int range (2**30 − 1), so it is a heap int, and `gmtime()` builds a
+heap tuple: the one way `time.mktime(time.gmtime())` fails on the board is allocation. At boot the
+clock reads 2021-01-01 (`ports/rp2/main.c:141-145`), so every `src/` UTC timestamp goes through
+`utc_now()` (`None` until the first sync, G.2) and the NTP client's `cettime()` answers `None`
+while unsynced; a persisted timestamp is 64-bit (`_TS_FMT = "<Q"`,
+`asy_fram_manager.py`). The Unix port differs — 64-bit, float-accepting `gmtime()` (F.7).
 
 **`globals()` does not preserve a module's top-level statement order** — a test starting a
 background task must keep an explicit reference and cancel it in its own `finally`, never relying
-on file position. **Nesting `asyncio.run()` inside a coroutine already running one segfaults the
-interpreter outright** — `await` directly instead. **`await` inside a comprehension is a
+on file position. **Nesting `asyncio.run()` inside a coroutine already running one crashes the
+Unix-port interpreter outright** instead of raising: `run()` is
+`run_until_complete(create_task(coro))` on the one module-level task queue
+(`extmod/asyncio/core.py:247-248`; `new_event_loop()` runs once, at import, `:314-324`), so the
+inner call runs the scheduler again under the task that is still executing (reproduced, agent,
+2026-09-05). `await` directly instead. **`await` inside a comprehension is a
 `SyntaxError`** — use a plain `for` loop. **`async def ... yield ...` ("async generator") parses
 but produces a broken runtime object** (`__next__` but no `__aiter__`/`__anext__`) that **segfaults
 the interpreter** the moment execution reaches a real `await` inside it, driven via plain `next()`
 — documented upstream as PEP 525 "not implemented." The fix for `/status`'s JSON-streaming
 (Part I): `await` everything up front inside an ordinary `async def`, collect into a list, hand
 Microdot `iter(that_list)`.
+
+**asyncio as this code relies on it** (v1.29.0; rp2 runs the C `Task`/`TaskQueue` of
+`extmod/modasyncio.c`, `extmod/asyncio/core.py:8-11`): an uncontended `Lock.acquire()` never yields
+(`extmod/asyncio/lock.py:33-49`), so nothing runs between a check and a set made under a freshly
+taken lock; a released lock goes to the waiter a pairing heap keyed by push time returns first
+(`lock.py:21-30`, `extmod/modasyncio.c:115-125`, `py/pairheap.h:86-90`) — FIFO in practice and
+never relied on: a deferred write checks under its lock that no newer snapshot superseded it
+(`ConfigManager._flush_staged()`, by snapshot identity) or that no earlier write already landed its
+state (`PrintLogHistoryStore._write()`, by count: `_write_gen`/`_written_gen`), and a cancelled or
+failed store write leaves the next queued call to write; a finished `Task` has no `exception()`,
+`result()` or `cancelled()` — the C task exposes `coro`, `data`, `state`, `done()`, `cancel()`,
+`ph_key` only (`modasyncio.c:242-271`), so the way to learn how a task ended is to await it again
+(at most once, below); `create_task()` needs a coroutine object, recognised by its `send` attribute
+(`core.py:143-148`, `TypeError` otherwise); a task cannot cancel itself (`modasyncio.c:204-207`,
+`RuntimeError`); `gather()` returns a list (`funcs.py:89, 145`); every accepted connection is its
+own task (`stream.py:172-174`); a task cancelled before its first step raises `CancelledError` to
+its awaiter without running any of its body — its first resume is a `throw()` instead of a
+`send(None)` (agent, 2026-07-22; `core.py:184-193`); a stream or `ThreadSafeFlag` takes one
+waiter per direction — a second `wait()` on the same flag fails `assert sm[idx] is None`
+(`core.py:82-83`); a task that ends with an exception nobody awaited goes to the loop's exception
+handler (the paragraph on it below).
 
 **A response streamed as many small pieces has a real per-piece cost**: every stream write wraps in
 its own `asyncio.wait_for()`, so splitting one response into N pieces multiplies that overhead by
@@ -4045,7 +4140,12 @@ is why the tests read retention after `asyncio.run()` returns.
 
 **MicroPython's `json.loads()` is not a JSON validator**: `extmod/modjson.c`'s tokenizer skips
 `,` and `:` exactly like whitespace, so `'{,"a":1 "b":2}'` parses as `{"a": 1, "b": 2}`. The browser's
-`JSON.parse()` rejects that, so a test of emitted JSON checks it with `tests/_strict_json.py`.
+`JSON.parse()` rejects that, so a test of emitted JSON checks it with `tests/_strict_json.py`. The
+same skip turns a missing value into a silent shift rather than an error: tokens pair up as key and
+value in order, and a key left without a value at the closing brace is dropped
+(`extmod/modjson.c:170-177, 288-301, 315-326`, v1.29.0), so `'{"Count": , "Offset": 1.5}'` loads as
+`{"Count": "Offset"}`. `ConfigManager` absorbs it through its per-key type check
+(`tests/test_asy_config_manager.py`).
 
 **And `json.dumps()` is not a JSON serializer either — it never raises** (measured against the
 pinned interpreter, 2026-09-24): `b"x"` dumps as `"x"`, a set as `{2, 1}`, an arbitrary object as
@@ -4057,7 +4157,8 @@ loudly — it will not fail at all — so a value's shape is the caller's obliga
 measurement would emit a body that breaks the whole web page with no error anywhere. Operators
 overflow to `inf` silently — at ~3.4e38 on rp2, whose floats are single precision
 (`MICROPY_FLOAT_IMPL_FLOAT`), not 1e308 as on the Unix port — while `0.0/0.0` raises and `math`
-functions raise `ValueError` rather than return `inf`/`nan` (`math.exp(1000)`, `math.log(0)`).
+functions raise `ValueError` rather than return `inf`/`nan` (`math.exp(1000)`, `math.log(0)`);
+`int()` of an infinite float raises `OverflowError` and of NaN `ValueError` (`py/objint.c:143-152`).
 **Every measurement source is gated at the driver, not in the response layer** (audited
 2026-09-24): BMP3xx range-checks its compensated output against the datasheet's operating range,
 which a NaN fails; ISL29125 and SGP40 compute from bounded integer counts; every `math_helpers`
@@ -4065,6 +4166,12 @@ derivation range-checks its inputs first; `ema_step()` gates on `math.isfinite()
 poison a filter's state; and SCD30, whose words are raw IEEE-754 that CRC-valid NaN/inf still
 decodes from, rejects a non-finite word as a failed read (`read_measurement()`). A new source
 decoding floats or computing without a range gate needs the same.
+
+The CYW43 driver reports its own faults (firmware load or verify, bus stalls) only as console text
+(`CYW43_WARN` through `CYW43_PRINTF` to `mp_printf`, `lib/cyw43-driver/src/cyw43_config.h:175-176`,
+`extmod/cyw43_config_common.h:45` at the pin): Python cannot read them, they are lost with no host
+attached, and a host holding the port open without reading stalls on them like on any console
+write (the exception-handler paragraph above).
 
 **Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
 never rely on training-data memory. **Whenever the pinned version changes (and periodically
@@ -4078,9 +4185,13 @@ every time `versions.toml`'s ref moves.
 **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop** (owner, 2026-09-25:
 'a stalled chip may recover by a reboot'; escalation up to a reboot is intended). MicroPython's
 cooperative scheduler can't preempt a synchronous `machine.I2C` call in progress.
-**`socket.getaddrinfo()` belongs in this same bucket** — a raw synchronous call with no coroutine
-boundary to attach a timeout to (confirmed against real MicroPython issue-tracker reports). Moot for
-DNS: `src/asy_dns_client.py` resolves via its own non-blocking UDP resolver instead. **One timeout
+`socket.getaddrinfo()` is not called from `src/`: `asy_dns_client.py` resolves over its own
+non-blocking UDP client. The one call left is inside `asyncio.start_server()`
+(`extmod/asyncio/stream.py:183`), once at server start, on the numeric bind host `0.0.0.0` (the
+generated device module's `web_host` default), which lwIP resolves without a DNS query
+(`lib/lwip/src/core/dns.c:1605-1606`, reached through `extmod/modlwip.c:1866`); the
+indefinite-block report against name lookups (micropython#18797) is fixed since v1.28.0
+(`bfc69dbe8`). **One timeout
 mechanism**: a wait that genuinely can be bounded is wrapped in `asyncio.wait_for_ms(<awaitable>,
 <timeout_ms>)` around the single awaitable that can wait (`extmod/asyncio/funcs.py:24-55`), the
 timeout a caller parameter in milliseconds and a timeout mapped to the owning function's documented
@@ -4219,7 +4330,19 @@ Two consequences the wrappers now state accurately:
   re-constructing reconfigures the same object rather than allocating a new one — nothing leaks on
   a re-`init()`, and nothing is reclaimable on a `deinit()`. `asy_i2c_driver.I2C.deinit()` /
   `asy_spi_driver.SPI.deinit()` still matter, but only because dropping `self._i2c`/`self._spi`
-  is what puts the wrapper into its documented "bus unavailable" state. Re-construction is also
+  is what puts the wrapper into its documented "bus unavailable" state. Re-construction is also a
+  re-configuration for every user of that bus id: any call with an argument beyond the id re-runs
+  `i2c_init()` and resets the frequency and the timeout, each omitted one falling back to 400 kHz /
+  50,000 µs (`ports/rp2/machine_i2c.c:37-38, 106-115`, v1.29.0); only a bare `machine.I2C(id)` on
+  an initialised bus leaves it as it is (`:106`). So every construction of a bus must pass the device
+  TOML's full parameter set (pins, `frequency`, `timeout`), as the generated `build_system()` does,
+  and `asy_i2c_driver.I2C.init()` passes no `timeout` it was not given. A bus carrying an SCD30
+  runs `timeout >= 200000` µs and at most 100 kHz (the chip stretches up to 30 ms per frame and
+  150 ms about once a day, 50 kHz recommended; SCD30 Interface Description p.2), enforced by the
+  driver's `@requires` tags (L.6.4); a bus without one keeps the 50 ms default.
+  `machine.SPI(id, …)` is the same: any argument beyond the id re-runs `spi_init()` and resets
+  baudrate, polarity, phase and bits to the given or default values (1 MHz, mode 0, 8 bits;
+  `ports/rp2/machine_spi.c:37-41, 196-214`). Re-construction is also
   the only controller re-init rp2 offers — `machine.I2C.init()` raises `OSError`
   (`extmod/machine_i2c.c:320-326`) — and a real one: pico-sdk's `i2c_init()` resets the whole I2C
   block first (F.2's controller rung, `I2C.recover()`).
@@ -4260,8 +4383,10 @@ unrelated tests share nothing. Their SPI hands back a fresh object per construct
 ### F.5.2 rp2 SPI reads can now raise `OSError(EIO)`
 
 `ports/rp2/machine_spi.c`'s `machine_spi_transfer()` gained an RX-overrun check (upstream #18471):
-after a DMA transfer it drains the FIFO, and if `SPI_SSPRIS_RORRIS` is set **and the transfer was
-reading**, it aborts the RX channel and ends with `mp_raise_OSError(MP_EIO)`.
+once the TX DMA has finished it waits until the bus is idle and the RX FIFO is empty — the RX DMA
+channel drains it, not the CPU; if `SPI_SSPRIS_RORRIS` is then set it clears the flag and aborts
+the RX channel whether or not the transfer was reading, and raises `OSError(EIO)` only when it was
+(`ports/rp2/machine_spi.c:302-319, 339-342`, v1.29.0).
 
 Two bounds make this precise, and both are modeled at the bus level in `tests/machine.py`'s SPI
 fake and in `digital_twin/machine.py`'s (`rx_overrun` for the blanket case, `rx_overrun_remaining`
@@ -4329,33 +4454,55 @@ FRAM entry has the full account.
   over REST, which is deliberately not done. The in-suite heap placement figure is closed on the
   flash-tier figure: `largest_block` 122,016 B at baseline → 84,112 B after `build_system()`,
   control and production arms identical (owner, 2026-09-26).
-- **`-fno-math-errno`** is now on for the rp2 port (verified in the build's CMake flags), so
-  `math.sqrt` compiles to the hardware instruction. `math_helpers.py` uses it twice;
-  `voc_algorithm.py`'s `_fix16_sqrt` is pure integer and unaffected.
+- **`-fno-math-errno`** is now on for the rp2 port (`ports/rp2/CMakeLists.txt:544-547`, v1.29.0).
+  Its comment names the `VSQRT` instruction, which is RP2350's: RP2040's Cortex-M0+ cores implement
+  ARMv6-M (RP2040 datasheet §2.4.1), which has no floating-point instructions, so `math.sqrt` stays
+  a call — to MicroPython's own software `sqrtf` (`lib/libm/ef_sqrt.c`), which the port builds into
+  its float library (`ports/rp2/CMakeLists.txt:280-289`) and does not route to the boot ROM's float
+  routines, since `sqrtf` is not among the functions it wraps (`:306-329`). On RP2040 the flag
+  changes only how the compiler treats that call, not what computes it. `math_helpers.py` uses it
+  twice; `voc_algorithm.py`'s `_fix16_sqrt` is pure integer and unaffected.
 
-### F.5.4 `machine.mem_backup()` — new, and adopted for the reset-reason record
+### F.5.4 `machine.mem_backup()` — the reset-reason record
 
 New in 1.29 and **enabled by default on rp2** (`MICROPY_PY_MACHINE_MEM_BACKUP`); confirmed present
 in this project's own built firmware (`strings firmware.elf | grep -x mem_backup`) and declared in
-the 1.29 stubs. Backed by the RP2040 watchdog scratch registers: **28 bytes** across two regions
-(`scratch[0..3]` and `scratch[5..7]`; `scratch[4]` is reserved by the pico-sdk), `itemsize=4`,
-returned as a writable `memoryview`. **Survives a WDT reset, `machine.reset()` and a deepsleep
-wake; lost on power-off.**
+the 1.29 stubs. Backed by the RP2040 watchdog scratch registers: **28 bytes** in two regions
+(`scratch[0..3]`, 16 B, and `scratch[5..7]`, 12 B; `scratch[4]` is reserved by the pico-sdk;
+`ports/rp2/machine_mem_backup.c:36-40`), `itemsize=4`, returned as a writable `memoryview`.
+**Survives a WDT reset, `machine.reset()` and a deepsleep wake; cleared by power-off and by the RUN
+pin** (RP2040 datasheet §4.7.4).
 
-That is exactly the reset class the 2026-09-08 `WDT_RESET` investigation could not diagnose (see
-CLAUDE.md's FRAM-log rule). A few bytes of last-phase/last-tick breadcrumb written on every
-supervisor tick would survive it at zero flash and zero FRAM wear. **Deliberately not adopted**
-(project owner, 2026-09-11): there is no standing reason to carry it, and a breadcrumb written
-every tick is cost with no current customer. It stays documented here as a tool to reach for *if* a
-severe, hard-to-debug reset appears that the FRAM logs cannot explain — deliberate, temporary
-instrumentation, never normal-path code. One record is adopted, written once per deliberate reset,
-never per tick (owner, 2026-09-26: 'Micropython 1.29 offers a special RAM storage area surviving
-reboots … integrate it into the system service'): `asy_system_service.py`'s `_reboot()` writes the
-reset's reason code into region 0 (`write_reset_record()`) before it arms the reset. The codes: 0 an
-invalid record, 1 power-on, 2 watchdog (no record, boot completed), 3 reboot command, 4 bootloader
-command, 5 supervisor task budget, 6 reset timer not armed (watchdog starved), 7 config reset, 8 FRAM
-erase, 9 command incomplete, 10 + p a boot failure in phase p (region 1's marker, phases 1-5).
-`begin_boot()` decodes them; no generated device calls it or publishes the code yet.
+**Adopted for the reset reason** (owner, 2026-09-26: 'Use this mechanism, integrate it into the
+system service and its endpoints'), in RAM only, never flash or FRAM (owner, 2026-09-29: 'for sure
+without flash writes and without FRAM'). `asy_system_service.py`'s `_reboot()` writes one record to
+region 0 (`write_reset_record()`) immediately before every intended reset, `boot_phase()` writes a
+boot-phase marker to region 1 at a boot-phase transition only, and `begin_boot()` decodes both with
+`machine.reset_cause()` once per boot and clears region 0. The codes: 0 an invalid record, 1
+power-on, 2 watchdog (no record, boot completed), 3 reboot command, 4 bootloader command, 5
+supervisor task budget, 6 reset timer not armed (watchdog starved), 7 config reset, 8 FRAM erase, 9
+command incomplete, 10 + p a boot failure in phase p (region 1's marker, phases 1-5). That is the
+reset class the 2026-09-08 `WDT_RESET` investigation could not diagnose (see CLAUDE.md's FRAM-log
+rule). The boot entry calls neither `begin_boot()` nor `boot_phase()` yet, so no device decodes or
+publishes the code yet. **A breadcrumb written on every supervisor tick stays not adopted**
+(project owner, 2026-09-11): a write per tick is cost with no current customer, and it stays a tool to
+reach for if a severe, hard-to-debug reset appears that the FRAM logs cannot explain - deliberate,
+temporary instrumentation, never normal-path code; the per-transition phase marker is all that is kept.
+
+**`machine.reset_cause()` separates power-on from everything else, nothing more.** It returns
+`WDT_RESET` (3) when the watchdog caused the last reboot and `PWRON_RESET` (1) otherwise
+(`ports/rp2/modmachine.c:57-58, 81-89`, v1.29.0), and on RP2040 the watchdog counts as the cause
+whenever either bit of its REASON register is set
+(`lib/pico-sdk/src/rp2_common/hardware_watchdog/watchdog.c:116-123`; RP2040 datasheet Table 548).
+`machine.reset()` is itself `watchdog_reboot(0, SRAM_END, 0)` (`ports/rp2/modmachine.c:74-79`),
+which sets the watchdog's force trigger and so the REASON register's FORCE bit (`watchdog.c:65-66,
+92-114`), and `mpremote reset` runs `machine.reset()` through a raw-REPL exec
+(`tools/mpremote/mpremote/main.py:406-414`). A starvation, a firmware `machine.reset()` and an
+`mpremote reset` therefore all read `WDT_RESET`, and no test or diagnosis may use `reset_cause()` to
+tell an intended reset from a starvation: the decoded reset record above is the discriminator. A
+harness `hard_reset()` writes no record: it decodes as "watchdog without a record" (2) after a
+completed boot and as a boot failure in phase p when it interrupted one; a test that needs an
+intended reset attributed issues it through the REST reboot path (agent, 2026-09-29).
 
 ### F.5.5 Two defects in the 1.29 stub package, repaired at install time
 
@@ -4379,10 +4526,11 @@ upstream re-ships:
 Repairing the stubs is preferred (agent, 2026-09-10, `90e8c17`) over `type: ignore` comments in
 `src/`/ `digital_twin/`: the code is correct on the real interpreter in both cases, and
 `warn_unused_ignores = true` would turn every such comment into a failure the day upstream fixes
-this. The one place a `type: ignore` *is* right is `asy_udp_socket.py`'s `recvfrom()` — there the
-1.29 stub got genuinely *more* precise (its address is now socket's full `_Address` union, IPv6's
-4-tuple and AF_UNIX's `str` included), and our AF_INET-only narrowing is the thing that needs
-declaring.
+this. A `type: ignore` in `src/` or `digital_twin/` is right only where the code is narrower than a
+correct stub — e.g. `asy_udp_socket.py`'s `recvfrom()`, whose 1.29 stub types the address as
+socket's full `_Address` union while this project is AF_INET-only — or where mypy cannot see a
+runtime fact (a mutation it does not track); each must name its reason and, for a stub gap, its
+removal trigger. A stub defect that can be repaired at install is repaired here, not suppressed.
 
 ### F.5.6 Smaller 1.29 facts, and the non-events
 
@@ -4390,21 +4538,27 @@ declaring.
   so a PEP 526-annotated `const()` no longer leaves a real module global behind. Verified
   empirically on both interpreters: `_A: int = const(60)` leaves `"_A" in globals()` `True` on
   1.28, `False` on 1.29. Buys nothing for typing (`const()`'s stub is already `Const_T -> Const_T`);
-  it removes a 1.28 footgun. This project's 21 `const()`-using files are all unannotated.
+  it removes a 1.28 footgun. This project's `const()` names are all unannotated.
 - `int.to_bytes(signed=True)` is new; the one `to_bytes` call in `src/` is always non-negative.
 - `MICROPY_C_HEAP_SIZE` is now settable from the make command line — a knob for trading C heap
   against Python heap without a custom board directory.
 - mpy-cross gained `-X no-source-lines`; it would shrink frozen bytecode at the cost of traceback
   line numbers. Not adopted at current flash headroom (agent, 2026-09-10).
 - **`extmod/asyncio/` is byte-identical between the two tags** (`git diff --stat` empty) — no new
-  primitives, and specifically **no timeout/cancellation support added to `socket.getaddrinfo()`**.
-  F.2's status is unchanged, which is exactly the check F.1's standing practice calls for.
+  primitives; `socket.getaddrinfo()` stays synchronous, and this project calls it only on a numeric
+  host (F.2).
 - **Zero commits** to `py/profile.c`, `py/modsys.c`, `extmod/modselect.c`, `shared/timeutils/`,
-  `ports/rp2/datetime_patch.c` or `ports/unix/modtime.c` — the E.3 `select.poll()` GH-Actions hang
-  cause and the `TZ=UTC` Unix-port fact both stand.
+  `ports/rp2/datetime_patch.c` or `ports/unix/modtime.c` — the `select.poll()` hang cause and the
+  `TZ=UTC` Unix-port fact (F.7 rows 12 and 6) both stand.
 - The upstream I2C `WRITE1` transfer fix is behind `MICROPY_PY_MACHINE_I2C_TRANSFER_WRITE1`, which
-  rp2 leaves at 0. DHCP's new `send_router` option defaults to `true` and isn't Python-visible, so
-  the captive portal is unaffected. `gc.mem_free()`/`mem_alloc()` still call the slow `gc_info()`
+  rp2 leaves at 0. DHCP's new `send_router` option defaults to `true` and isn't Python-visible
+  (`shared/netutils/dhcpserver.c:283-285, 300`). The same change made the DNS option advertise the
+  server's own address (`:286`) instead of a fixed 192.168.4.1 (`DEFAULT_DNS`, v1.28.0
+  `dhcpserver.c:68, 286`); `src/` never sets an AP address, so the AP keeps the cyw43 default
+  192.168.4.1 (cyw43 `055d642` `lib/cyw43-driver/src/cyw43_config.h:193-194`,
+  `lib/cyw43-driver/src/cyw43_lwip.c:186`) and the captive portal sees byte-identical leases. It
+  becomes a real difference only if an AP address is ever configured — then 1.29 advertises the
+  right DNS server. `gc.mem_free()`/`mem_alloc()` still call the slow `gc_info()`
   (`gc_info_fast()` is C-only). The RP2350 watchdog ~16 s fix is RP2350-only — the 8388 ms cap in
   F.1 stands.
 - `SOCK_RAW` is now default-on and present in the built firmware. Noted only; F.2 settles the
@@ -4588,13 +4742,14 @@ command is therefore under ~1 ms; the per-block hold stays (owner, 2026-09-26: '
 keep'): yielding per command would bring back the coroutine churn the 2026-09-18 remediation
 removed.
 
-The write side is the same shape but bounded: `mp_machine_uart_write()` short-writes rather than
-waiting once `timeout` (0 here) elapses, but `POLLOUT` means one free byte of the TX ring
-(`ports/rp2/machine_uart.c:676`), and a write longer than the free space waits per byte inside the
-call (`:625-661`). `_write_all()` therefore writes only into an empty TX ring (`txdone()`), at most
-`txbuf` bytes per call, and retries a short write: the C write never waits, and a frame that fits
-the ring still goes out in one call, measured at 171 us for a whole 53-byte frame, since the ring
-takes the lot in one copy and the wire drains by interrupt.
+**The write side blocks too once a write outgrows the free TX ring.** `mp_machine_uart_write()`
+copies what fits, then waits for each further byte — the first wait bounded by `timeout` (0 here),
+every later one by `timeout_char` inside `mp_event_wait_ms()` (`ports/rp2/machine_uart.c:625-665`,
+v1.29.0), and `POLLOUT` reports a single free byte (`:676-678`). A write larger than the free ring
+therefore holds the loop at wire speed (~87 us per byte at 115200 baud) for everything that did not
+fit. `_write_all()` asks only for what an empty ring takes (at most `txbuf` bytes, after `txdone()`),
+so no write waits (agent, 2026-09-29); a 53-byte frame into a ring with room measured 171 us, one
+copy with the wire draining by interrupt.
 
 ### F.5.9 An idle `ready()` poll is a permanent CPU cost, not a free wait
 
@@ -4724,6 +4879,89 @@ validation) no longer exercise the wedged-heap path at all now that they can't r
 still prove the *shutdown paths themselves* stay correct, just not this specific recovery branch
 within them.
 
+## F.7 The Unix-port rig: where it differs from rp2
+
+Every difference below is worked around in test or twin code, never in `src/`, except the one
+accommodation row 1 names; each row names where the rp2 behaviour is proven and the event that
+retires the workaround (agent, 2026-09-29). Sources are MicroPython v1.29.0 unless a row says
+otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` settings of the rp2
+`RPI_PICO_W` build and both Unix builds, compiled with the project's own build commands (agent,
+2026-10-07).
+
+| # | Difference | Unix port | rp2 | Workaround site | rp2 proven by | Removal trigger |
+|---|---|---|---|---|---|---|
+| 1 | socket address arguments | `bind()`/`connect()`/`sendto()` take a raw sockaddr buffer, raising `TypeError: object with buffer protocol required` for a tuple (`ports/unix/modsocket.c:198-201, 228-231, 364-376`; micropython#6924, closed with the port unchanged) | a `(host, port)` tuple (`extmod/modlwip.c` `lwip_socket_bind()`/`lwip_socket_sendto()`) | every `socket.getaddrinfo(host, port)[0][-1]` in `tests/` and `digital_twin/`, led by `digital_twin/_unix_port_udp_addr_shim.py`; `asy_udp_socket.UDPSocket` also accepts a pre-resolved sockaddr, which only tests pass | L3/L4: DNS and NTP on silicon | a pin re-check finds the Unix port accepting a tuple |
+| 2 | `recvfrom()` address | a raw 16-byte packed sockaddr (`ports/unix/modsocket.c:302-330`) | an `(ip, port)` tuple | the twin shim | L4: the captive DNS's subnet check | as row 1 |
+| 3 | `getsockname()` and `getaddrinfo()`'s address | `getaddrinfo()` returns a packed sockaddr; no `getsockname()` | `getaddrinfo()`'s address is an `(ip, port)` tuple (`extmod/modlwip.c:1892-1899`); no `getsockname()` either (`:1718-1740`) | harness only (`digital_twin/README.md`, harness pitfalls) | — (not a divergence for `src/`, listed so nothing relies on it) | none |
+| 4 | `time.gmtime()` width | 9 elements (`ports/unix/modtime.c:129-156`) | 8 (`extmod/modtime.c:65-75`) | `tests/test_asy_ntp_client.py` normalises to 8 | L3: `cettime()` on silicon | none (a documented port difference) |
+| 5 | `time.time()` and a float argument | a float; `gmtime()`/`localtime()` accept a float (`ports/unix/modtime.c:65-74, 129-135`, `shared/timeutils/timeutils.h:75-78`) | an int; a float argument raises `TypeError` (`ports/rp2/modtime.c:39-43`, `timeutils.h:79-80`, `py/obj.c:318-327`) | tests pass ints | every `src/` caller passes an int (F.1's wall-clock paragraph) | none |
+| 6 | `time.mktime()` and `$TZ` | the host libc's `mktime()`, which reads `$TZ` (`ports/unix/modtime.c:168-195`) | TZ-agnostic (`extmod/modtime.c:83-96`) | `scripts/test.sh` exports `TZ=UTC` (CLAUDE.md) | L3 | none |
+| 7 | word size, small ints, GC block | 64-bit words, 63-bit small ints, 32 B GC blocks | 32-bit words, 31-bit small ints (≤ 2**30 − 1), 16 B GC blocks (`py/smallint.h`, `py/mpconfig.h:251`): an allocation-free int on L1 can be a heap int on the board, and heap figures differ; `struct` native sizes differ (F.1) | tests state it | L3 device checks such as `float_boundary_2pow24.py` | none |
+| 8 | tick period | 2**62 | 2**30 (`py/mpconfig.h:1924-1925`) | `tests_scripts/test_ticks_wrap_scan.py` (every tick user) and `tests/_ticks30.py`'s 2**30-period fake `time`, which the crossing tests in `tests/test_ticks_rollover.py` and the drivers' test files install; the scan does not check a threshold compared with a `ticks_diff()` result | the scan and the fake (F.1) | none |
+| 9 | float model | double precision, exact float formatting (`ports/unix/variants/mpconfigvariant_common.h:40-41`, `py/mpconfig.h:997-1003`) | single precision, approximate formatting (`ports/rp2/mpconfigport.h:128-129`): a result, its rounding and its text can differ | tests use exactly representable floats | L3 float device scripts | none |
+| 10 | qstr hash width | 2 bytes | 1 byte (`py/mpconfig.h:373-380` vs `ports/rp2/mpconfigport.h:104`; `py/qstr.c:45-48, 70`), so a dict's iteration order can differ | no test may depend on dict order | L3 for any order-sensitive output | none |
+| 11 | emergency exception buffer | a static 256 B buffer (`ports/unix/variants/mpconfigvariant_common.h:69-70`): a `MemoryError` always keeps its message | enabled with size 0 until `micropython.alloc_emergency_exception_buf()` (`ports/rp2/mpconfigport.h:126`, `py/objexcept.c:81-89`): under heap exhaustion the message can be empty — when its 16 B str object or its 1-tuple cannot be allocated, the exception carries no arguments and `str(e)` is `''` (`py/objexcept.c:207-251, 395-416, 478-501`); a failed text buffer alone keeps the ROM text (`:503-509`) | — | L3 | none |
+| 12 | `select.poll()` over a Python stream object | a real poll asks each registered object for a file descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of the object's own `ioctl()` (`extmod/modselect.c:252-268, 302-306`, `py/modio.c:84-96`); a fake answering 0 makes the poll watch fd 0, stdin, which never turns ready on GitHub runners (CLAUDE.md, the known hang cause); growing the pollfd array by a fresh allocation also rewrites a non-fd entry's `NULL` pointer into a dangling one (`extmod/modselect.c:154-186`), which can segfault | no POSIX path (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` 0, `py/mpconfig.h:1891-1893`) | `tests/test_asy_uart_driver.py`'s bounded `_StepPoller` (every `uart.poller` double is bounded), `digital_twin/unix_port_poll_prewarm.py`, `_cancel_and_join()` and `_drain_flag()` in `tests/test_asy_isl29125_driver.py` | L2/L3 | a pin re-check that finds the POSIX path changed (owner, 2026-09-29, paraphrase: a known limitation, not filed upstream) |
+| 13 | `ipoll(0)` | returns an always-truthy iterator, so callers test the event flags (`tests/test_asy_ntp_client.py`; `src/asy_udp_socket.py` `ready()`) | the same | — | — | none (not a divergence; kept as the harness note it is) |
+| 14 | SIGINT delivery and the test heap | pointers only: F.6, E.3.1; `MICROPY_ASYNC_KBD_INTR` is 0 in rp2 and both Unix builds, the latter through B.14.1's override | — | — | — | — |
+| 15 | exception message detail | DETAILED error reporting: messages name objects and types (`ports/unix/variants/mpconfigvariant_common.h:86-87`) | NORMAL (the ROM-level default, `py/mpconfig.h:925-941`): a `TypeError`/`ValueError`/`AttributeError` text can name less | — | L3 for any log text a check reads | none |
+| 16 | `machine`, `rp2`, `neopixel` and `network` | the Unix `machine` has none of `I2C`, `SPI`, `UART`, `Pin`, `Timer`, `WDT`, `RTC`, `reset_cause()` or `mem_backup()`, its `mem32` maps `/dev/mem`, and there is no `rp2`, `neopixel` or `network`: L1/L2 run the same-named fakes in `tests/` and `digital_twin/`, found first on the search path | the real peripherals, the DMA engine, the NeoPixel bitstream and `network.WLAN` | the fakes | L3/L4 | none |
+| 17 | soft-callback queue | depth 4 (`py/mpconfig.h:1232-1234`) | depth 8 (`ports/rp2/mpconfigport.h:131`); every soft Timer and Pin IRQ callback is queued there and dropped when it is full (`shared/runtime/mpirq.c:103-106`, `py/scheduler.c:162-180`; F.1) | the unit fake's `Timer.drop()` stands in for a drop | L3/L4 | none |
+| 18 | module loading | `src/`, `ext/` and the generated modules are imported as `.py` source through `MICROPYPATH` (`scripts/test.sh`) | the same code runs frozen, compiled by `mpy-cross` from a comment-stripped copy (F.1): the parser is the same, but an on-board traceback's line numbers do not match the checked-in source | — | the firmware build, L3 | none |
+| 19 | filesystem | host files through the POSIX VFS, 4,096-byte paths (`ports/unix/mpconfigport.h:159`) | a littlefs2 partition of 868,352 B (`ports/rp2/boards/RPI_PICO_W/mpconfigboard.cmake:16-17`, `ports/rp2/mpconfigport.h:216`) with 128-byte paths (`ports/rp2/mpconfigport.h:103`), whose writes hold interrupts off (F.2) | — | L3, the persistence-write runs | none |
+| 20 | `random`'s boot seed | the host's randomness (`ports/unix/mpconfigport.h:190-196`) | `get_rand_32()` (`ports/rp2/mpconfigport.h:163`), used by the boot signature's `random.getrandbits(32)` | — | — | none |
+| 21 | C-stack limit | 80,000 B on the 64-bit host, no margin (`ports/unix/main.c:443-451`, `py/mpconfig.h:819-820`) | the 8 KB stack less a 256 B margin (`ports/rp2/CMakeLists.txt:661`, `ports/rp2/mpconfigport.h:125`): a call or await depth that passes on the rig can raise `RuntimeError` on the board | — | L3 | none |
+| 22 | `sys.settrace` | compiled into `build-settrace` only, with the three settings it implies (`MICROPY_PERSISTENT_CODE_SAVE`, `MICROPY_PY_BUILTINS_CODE` full, `MICROPY_EXPOSE_MP_COMPILE_TO_RAW_CODE`); `build-standard` differs from rp2 in none of them | none | only `scripts/test.sh --coverage` uses `build-settrace`; its allocation figures are inflated (E.5.2) | — | none |
+
+These further settings differ and are used by nothing here: `MICROPY_BANNER_MACHINE`,
+`MICROPY_BLUETOOTH_BTSTACK`, `MICROPY_BLUETOOTH_BTSTACK_CONFIG_FILE`, `MICROPY_BOARD_BUILD_NAME`,
+`MICROPY_BOARD_EARLY_INIT()`, `MICROPY_BOARD_END_SOFT_RESET()`,
+`MICROPY_BOARD_ENTER_BOOTLOADER(nargs,args)`, `MICROPY_BOARD_NETWORK_INTERFACES`,
+`MICROPY_BOARD_PENDSV_ENTRIES`, `MICROPY_BOARD_STARTUP()`, `MICROPY_BOARD_START_SOFT_RESET()`,
+`MICROPY_BUILD_TYPE`, `MICROPY_DEBUG_PRINTER`, `MICROPY_DEBUG_PRINTERS`, `MICROPY_EMIT_INLINE_ASM`,
+`MICROPY_EMIT_INLINE_THUMB`, `MICROPY_EMIT_THUMB`, `MICROPY_EMIT_X64`, `MICROPY_ERROR_PRINTER` (hard
+IRQ callbacks only), `MICROPY_FATFS_ENABLE_LFN`, `MICROPY_FATFS_MAX_SS`,
+`MICROPY_FROZEN_LIST_ITEM(name,file)`, `MICROPY_GC_STACK_ENTRY_TYPE`, `MICROPY_HW_BOARD_NAME`,
+`MICROPY_HW_BOOTSEL_DELAY_US`, `MICROPY_HW_ENABLE_PSRAM`, `MICROPY_HW_ENABLE_UART_REPL`,
+`MICROPY_HW_ENABLE_USBDEV`, `MICROPY_HW_ENABLE_USB_RUNTIME_DEVICE`,
+`MICROPY_HW_LIGHTSLEEP_ALARM_NUM`, `MICROPY_HW_MCU_NAME`, `MICROPY_HW_PIN_EXT_COUNT`,
+`MICROPY_HW_PIN_RESERVED(i)`, `MICROPY_HW_ROMFS_BYTES`, `MICROPY_HW_SOFT_TIMER_ALARM_NUM`,
+`MICROPY_HW_USB_CDC`, `MICROPY_HW_USB_MSC`, `MICROPY_HW_USB_PID`, `MICROPY_HW_USB_VID`,
+`MICROPY_INCLUDED_RP2_MPTHREADPORT_H`, `MICROPY_INCLUDED_RP2_MUTEX_EXTRA_H`,
+`MICROPY_MAKE_POINTER_CALLABLE(p)`, `MICROPY_MALLOC_USES_ALLOCATED_SIZE`, `MICROPY_MEM_STATS`,
+`MICROPY_MODULE_FROZEN_STR`, `MICROPY_MODULE_OVERRIDE_MAIN_IMPORT`, `MICROPY_NLR_NUM_REGS`,
+`MICROPY_NLR_THUMB`, `MICROPY_NLR_X64`, `MICROPY_PERSISTENT_CODE_TRACK_BSS_RODATA`,
+`MICROPY_PERSISTENT_CODE_TRACK_FUN_DATA`, `MICROPY_PORT_NETWORK_INTERFACES`,
+`MICROPY_PYEXEC_COMPILE_ONLY`, `MICROPY_PYEXEC_ENABLE_EXIT_CODE_HANDLING`, `MICROPY_PY_BLUETOOTH`,
+`MICROPY_PY_BLUETOOTH_CYW43`, `MICROPY_PY_BLUETOOTH_ENABLE_L2CAP_CHANNELS`,
+`MICROPY_PY_BLUETOOTH_ENTER`, `MICROPY_PY_BLUETOOTH_EXIT`, `MICROPY_PY_BLUETOOTH_USE_SYNC_EVENTS`,
+`MICROPY_PY_BTREE`, `MICROPY_PY_BUILTINS_HELP_TEXT`, `MICROPY_PY_FFI`,
+`MICROPY_PY_GC_COLLECT_RETVAL`, `MICROPY_PY_LWIP_SOCK_RAW`, `MICROPY_PY_MACHINE_ADC`,
+`MICROPY_PY_MACHINE_ADC_INCLUDEFILE`, `MICROPY_PY_MACHINE_BARE_METAL_FUNCS`,
+`MICROPY_PY_MACHINE_DHT_READINTO`, `MICROPY_PY_MACHINE_DISABLE_IRQ_ENABLE_IRQ`,
+`MICROPY_PY_MACHINE_FREQ_NUM_ARGS_MAX`, `MICROPY_PY_MACHINE_I2C_TARGET`,
+`MICROPY_PY_MACHINE_I2C_TARGET_HARD_IRQ`, `MICROPY_PY_MACHINE_I2C_TARGET_INCLUDEFILE`,
+`MICROPY_PY_MACHINE_I2C_TARGET_MAX`, `MICROPY_PY_MACHINE_I2S`, `MICROPY_PY_MACHINE_I2S_CONSTANT_RX`,
+`MICROPY_PY_MACHINE_I2S_CONSTANT_TX`, `MICROPY_PY_MACHINE_I2S_INCLUDEFILE`,
+`MICROPY_PY_MACHINE_I2S_RING_BUF`, `MICROPY_PY_MACHINE_PIN_BASE`, `MICROPY_PY_MACHINE_PIN_MAKE_NEW`,
+`MICROPY_PY_MACHINE_PWM`, `MICROPY_PY_MACHINE_PWM_INCLUDEFILE`, `MICROPY_PY_MACHINE_SOFTI2C`,
+`MICROPY_PY_MACHINE_SOFTSPI`, `MICROPY_PY_MACHINE_SPI_LSB`, `MICROPY_PY_MACHINE_UART_IRQ`,
+`MICROPY_PY_MACHINE_UART_SENDBREAK`, `MICROPY_PY_NETWORK_PPP_LWIP`, `MICROPY_PY_ONEWIRE`,
+`MICROPY_PY_OS_DUPTERM`, `MICROPY_PY_OS_DUPTERM_NOTIFY`, `MICROPY_PY_OS_ERRNO`,
+`MICROPY_PY_OS_GETENV_PUTENV_UNSETENV`, `MICROPY_PY_OS_INCLUDEFILE`, `MICROPY_PY_OS_SYNC`,
+`MICROPY_PY_OS_SYSTEM`, `MICROPY_PY_OS_UNAME`, `MICROPY_PY_RE_MATCH_GROUPS`,
+`MICROPY_PY_RE_MATCH_SPAN_START_END`, `MICROPY_PY_SELECT_SELECT`,
+`MICROPY_PY_SOCKET_DEFAULT_TIMEOUT_MS`, `MICROPY_PY_SOCKET_LISTEN_BACKLOG_DEFAULT`,
+`MICROPY_PY_STR_BYTES_CMP_WARN`, `MICROPY_PY_SYS_ATEXIT`, `MICROPY_PY_SYS_EXC_INFO`,
+`MICROPY_PY_SYS_EXECUTABLE`, `MICROPY_PY_SYS_PLATFORM`, `MICROPY_PY_TERMIOS`,
+`MICROPY_PY_TIME_CUSTOM_SLEEP`, `MICROPY_PY_WEBREPL`, `MICROPY_READLINE_HISTORY_SIZE`,
+`MICROPY_REPL_EMACS_EXTRA_WORDS_MOVE`, `MICROPY_REPL_EMACS_WORDS_MOVE`,
+`MICROPY_SELECT_REMAINING_TIME`, `MICROPY_STREAMS_POSIX_API`, `MICROPY_THREAD_YIELD()`,
+`MICROPY_UNIX_MACHINE_IDLE`, `MICROPY_USE_GCC_MUL_OVERFLOW_INTRINSIC`, `MICROPY_USE_INTERNAL_ERRNO`,
+`MICROPY_USE_READLINE`, `MICROPY_USE_READLINE_HISTORY`, `MICROPY_VFS_LFS1`, `MICROPY_VFS_ROM`,
+`MICROPY_WARNINGS`, `MP_ENCODE_UINT_MAX_BYTES`, `MP_OBJ_ARRAY_FREE_SIZE_BITS`,
+`MP_PLAT_ALLOC_EXEC(min_size,ptr,size)`, `MP_PLAT_FREE_EXEC(ptr,size)`.
+
 ---
 
 ## F.9 Standing workarounds for upstream defects, and what retires each
@@ -4744,11 +4982,11 @@ workaround.
 | Stub repair: `NotImplemented` declared | `scripts/typecheck.sh` | `builtins.pyi` declares it | F.5.5 |
 | Bare `Timer()` type-checked only through `tests/machine.py` | `src/` timer constructions | the board stub declares a zero-argument `Timer()` | B.15 |
 | Stub-gap `# type: ignore`s | the sites each names | the stub gains the missing precision; `warn_unused_ignores` then fails on each one | F.5.5 |
-| Poll-set prewarm (`modselect.c` rewrites a `NULL` `pollfd` while growing the poll array) | `digital_twin/unix_port_poll_prewarm.py` and its callers | `extmod/modselect.c` skips `NULL` entries on reallocation | `digital_twin/README.md` |
-| UDP address shim and `getaddrinfo()` pre-resolution in tests (micropython#6924) | `digital_twin/_unix_port_udp_addr_shim.py`, the pre-resolving tests | the Unix `modsocket.c` takes and returns `(host, port)` tuples | `digital_twin/README.md` |
-| Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double | none: a non-fd `select.poll()` never becomes ready on GitHub runners, and the bounded fake is the test design | CLAUDE.md |
-| `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | CLAUDE.md |
-| Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | `digital_twin/README.md` |
+| Poll-set prewarm (`modselect.c` rewrites a `NULL` `pollfd` while growing the poll array) | `digital_twin/unix_port_poll_prewarm.py` and its callers | `extmod/modselect.c` skips `NULL` entries on reallocation | F.7 |
+| UDP address shim and `getaddrinfo()` pre-resolution in tests (micropython#6924) | `digital_twin/_unix_port_udp_addr_shim.py`, the pre-resolving tests | the Unix `modsocket.c` takes and returns `(host, port)` tuples | F.7 |
+| Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double | none: a non-fd `select.poll()` never becomes ready on GitHub runners, and the bounded fake is the test design | F.7 |
+| `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | F.7 |
+| Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | F.7 |
 | Two Unix binaries, the test rig without `sys.settrace` | `toolchain/setup_toolchain.py` `build_unix_port()`, `scripts/test.sh` | an idle compiled-in `sys.settrace` stops allocating per call; merging the binaries is the owner's call (owner, 2026-09-21) | E.5.2 |
 | Never nest `asyncio.run()` (segfaults instead of raising) | test helpers' synchronous scope | `asyncio.run()` raises inside a running loop | F.1 |
 | Never await an ended task a second time (after a first await that raced its queued handler call, the second raises `None`) | `SystemService._supervise()` empties a slot right after logging its ended task; the twin integration test's cleanup skips ended tasks | `core.py` keeps `t.data` on the path where the task was already awaited | F.1 |
@@ -4771,7 +5009,7 @@ workaround.
 | Boot-confined `gc.collect()` placement reset and `gc.threshold(32768)` (micropython#2057) | the generated boot entry | the allocator gains a placement or long-lived heap section; any change is the owner's (owner, 2026-09-18) | I.4 |
 | Strict RFC 8259 check before decoding response bodies (`json.loads()` accepts a doubled or missing comma) | `tests/_strict_json.py` | `extmod/modjson.c` rejects malformed separators | `digital_twin/README.md` |
 | Twin HTTP client reads in fixed chunks, never `readexactly()`/`read(-1)` (`stream.py` re-concatenates) | `digital_twin/_http_client.py` | `extmod/asyncio/stream.py` reads without re-concatenating | `digital_twin/README.md` |
-| The Unix port's 9-element `gmtime()` normalised to 8 in the NTP tests | `tests/test_asy_ntp_client.py` | the Unix `modtime.c` returns 8 elements | `tests/test_asy_ntp_client.py` |
+| The Unix port's 9-element `gmtime()` normalised to 8 in the NTP tests | `tests/test_asy_ntp_client.py` | the Unix `modtime.c` returns 8 elements | F.7 |
 | 100 ms settle before `status("stations")` | `src/asy_wifi_service.py` | a hardware round shows the station count right without it | `src/asy_wifi_service.py` |
 
 # Part G — Shared Pattern & Primitive Reuse
@@ -5275,7 +5513,10 @@ relationship, not the number, is what this section fixes**: `MEMP_NUM_TCP_PCB` i
 (`check_lwip_ensemble()`'s `SPARE_TCP_PCBS`). Closing connections hold pcbs from the same pool after
 their slot is free, and keep-alive is unimplemented here, so every request closes one:
 `lib/lwip/src/core/tcp.c`'s `tcp_alloc()` reclaims TIME_WAIT, LAST_ACK and CLOSING pcbs when the
-pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has, and
+pool is empty, but a FIN_WAIT one only at a lower priority, which none of ours has (lwIP `77dcd25`,
+MicroPython v1.29.0's submodule pin, `lib/lwip/src/core/tcp.c:1837-1880`: first a FIN for every
+close-pending pcb, then the oldest TIME-WAIT, LAST-ACK and CLOSING, then `tcp_kill_prio()`,
+`:1709-1750`, which only takes a strictly lower priority), and
 `extmod/modlwip.c` aborts a close still unfinished only after 10 s
 (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`). Arrivals waiting in the `backlog` queue, and refused
 connections still closing, also hold pcbs from the same pool. Every limit measured on silicon ran
@@ -5383,9 +5624,11 @@ fails silently, not loudly.
   `MemoryError` on an exhausted heap, since a skipped release would refuse everyone until reboot.
   Measured drain after a full ceiling was released: **0.71–0.84 s**.
 - A client that resets mid-request is never written to. Once a read has returned its `ECONNRESET`,
-  `extmod/modlwip.c` has freed the pcb but its state (6) still passes the write path's error check,
-  so microdot's 400 would reach `tcp_write(NULL)`, log a spurious warning and could spin until the
-  per-call timeout; `_TimeoutStreamProxy` drops every write once a read of the pair raised `OSError`.
+  `extmod/modlwip.c` has freed the pcb but the socket's state (6) still passes the write path's
+  error check, so microdot's 400 goes through a NULL pcb: it raises an unmuted `OSError(EIO)` or,
+  depending on a boot-ROM word the NULL read lands on, spins the writer until the per-call timeout
+  (v1.29.0; agent, 2026-09-29); `_TimeoutStreamProxy` drops every write once a read of the pair
+  raised `OSError`.
 
 What follows for the instruments:
 
@@ -5547,11 +5790,14 @@ back-to-back collections checked too and ruled out (~10% of the cap worst-case).
 async-generator-shaped alternative exists anywhere** to this project's "await everything up front,
 hand Microdot a plain list" workaround — every MicroPython PEP 525 discussion converges on the same
 "not implemented" status; the existing workaround *is* the standard answer for this platform.
-**RP2040-specific findings checked and found not applicable**: a real upstream rp2-port
-heap-corruption report concerns a C++ module's `new`/`delete` competing with the GC heap — this
-project ships pure-`.py`/frozen-bytecode only. Pico W's CYW43 firmware genuinely reduces usable
-heap versus a plain Pico (roughly half the 264KB SRAM) — an accepted, unavoidable fact of this
-board choice.
+**RP2040-specific findings checked and found not applicable**: an rp2-port heap-corruption report
+(<https://github.com/micropython/micropython/issues/11116>) concerns a C++ module's heap competing
+with the GC heap for the same RAM — this project ships pure-`.py`/frozen-bytecode only. What this
+board leaves for Python is measured, not estimated: the CYW43 driver and, since 1.29, the
+SRAM-resident interpreter core (12,918 B, F.5.3) take RAM that is not GC heap, and the built image's
+GC heap — B.14.2's table gives it per lwIP ensemble (192,488 B at the one shipped today) — is about
+71 % of the 264 KB SRAM, not half. Every Part I budget starts from that measured figure, re-read
+from each build (agent, 2026-09-29); the RAM cost is a fact of this board (agent, 2026-09-07).
 
 **External prior art, and what it forecloses.** Checked against the pinned v1.29.0 source and the
 upstream trackers, and kept here because each item rules out a class of proposal rather than
@@ -5564,9 +5810,11 @@ takes `(size_t n_bytes, unsigned int alloc_flags)` and nothing else (`py/gc.c:89
 `gc.collect()`/`gc.threshold()`/`gc.disable()` as the only Python-visible knobs — all of which I.4
 forbids as remedies. **`MICROPY_GC_SPLIT_HEAP` is unavailable on this board**:
 `ports/rp2/mpconfigport.h:100-101` defines it as `MICROPY_HW_ENABLE_PSRAM`, and the Pico W has no
-PSRAM — it would add heap *areas* rather than lifetime separation in any case. **Upstream treats
-fragmentation as known and unfixed** (<https://github.com/micropython/micropython/issues/2057>: a
-compacting collector and a fixed-block allocator were both floated and rejected as too costly).
+PSRAM — it would add heap *areas* rather than lifetime separation in any case. **Upstream knows the
+failure and has not changed the allocator**: <https://github.com/micropython/micropython/issues/2057>
+("Failure to allocate when free memory is very large - severe fragmentation?", closed; its opening
+post floats defragmentation and block allocation) is the tracker's record, and the pinned `py/gc.c`
+is still a non-moving mark-sweep allocator — no collection pass moves a live block (v1.29.0).
 
 **CircuitPython solved exactly this, and measured it** — the closest prior art there is.
 <https://github.com/adafruit/circuitpython/pull/547> ("Introduce a long lived section of the heap",
@@ -5574,9 +5822,10 @@ merged 2018) allocates short-lived objects upward from the bottom and long-lived
 from the top**, confining churn to one end: "a test import into a 20k heap that leaves ~6k free
 previously had the largest continuous free space of ~400 bytes. After this change, the largest
 continuous free space is over 3400 bytes" — **8.5x**, the same symptom shape as this project's. It
-was removed in CircuitPython 9 (<https://github.com/adafruit/circuitpython/pull/8281>), but because
-their `gc_make_long_lived()` *promotion* step — which **moves** an existing object — collided with an
-upstream `const` field, plus the merge cost; **not** because lifetime separation failed, and the
+was removed when CircuitPython merged MicroPython v1.19.1
+(<https://github.com/adafruit/circuitpython/pull/8281>, merged 2023-08-21), because function objects
+gained a `const` `context` field that the `gc_make_long_lived()` *promotion* step — which **moves**
+an existing object — conflicted with; **not** because lifetime separation failed, and the
 maintainer's stated preference was to mark objects long-lived when they are allocated instead of
 moving them later. The C-level technique would need a fork of vendored MicroPython, which CLAUDE.md
 forbids; **the Python-level analogue needs no fork** — allocate the long-lived objects first, in a
@@ -5589,8 +5838,9 @@ or pool allocators grouped by lifetime, e.g. TensorFlow Lite Micro's fixed arena
 can be installed under MicroPython's GC, and an asyncio webserver allocates continuously.
 
 **No free-heap target is published.** No MicroPython maintainer, doc or web framework states one; the
-documented point is the largest free block (a Pico W forum case failed an allocation with 120 KB free
-and an 840 B largest block). The 20-30 % free at peak that H.7 uses is general embedded practice.
+documented point is contiguity: an allocation fails when no contiguous run is large enough, however
+much RAM is free (`docs/reference/constrained.rst:354-357`). The 20-30 % free at peak that H.7 uses
+is general embedded practice.
 
 ## I.2 Hotspot catalog — every `src/` file scanned, function by function
 

@@ -94,7 +94,7 @@ def make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests 
     _next_port += 1
     # The Unix port's "standard" build rejects a plain (host, port) tuple in bind()/connect()/
     # sendto() with "TypeError: object with buffer protocol required" (micropython/micropython#6924),
-    # unlike the real rp2 target, so getaddrinfo()'s resolved object is required instead.
+    # unlike the real rp2 target, so getaddrinfo()'s resolved object is required (SPECIFICATION.md F.7 row 1).
 
     # On this port that object is an opaque sockaddr bytearray rather than a tuple[str, int], but
     # UDPSocket only ever passes addr through untouched, so handing it through is safe despite

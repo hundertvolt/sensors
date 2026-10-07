@@ -128,9 +128,13 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    reflash with fresh setup, following the reflash runbook; no config migration code is written
    (owner, 2026-09-26). The refactor is where the version target moves forward. The full 1.28→1.29
    audit is in SPECIFICATION.md Part F.5 (two real findings, several free wins, the rest ruled out);
-   the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch with no patches. Earlier
-   1.27→1.28 rp2-port changes were RP2350-specific, not RP2040-breaking. Re-run F.1's standing
-   re-check whenever the pin moves again.
+   the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch without editing the MicroPython
+   tree (its out-of-tree overrides are `toolchain/micropython_overrides.py` and the GCC 14
+   `-Wno-array-bounds` workaround, SPECIFICATION.md B.7.1, B.14). The 1.27→1.28 rp2-port changes
+   were partly port-wide — the RNG source moved to `pico_rand` (`158cbd606`), the lwIP timer keeps
+   running while `poll_sockets()` is called (`bfc69dbe8`), and the linker scripts followed pico-sdk
+   2.2.0 (`2b4b05a42`) — with none known to break RP2040: 1.28 ran on the dev bench. Re-run F.1's
+   standing re-check whenever the pin moves again.
 4. Does `asy_config_manager.py`'s `write_config()` need long-block-lock-style coordination? **No**
    (owner, 2026-08-11, `acc4993`): the deferred flush (owner, 2026-09-16, `9ac59cf`) stages a write
    and flushes it later, so a write no longer holds a live request (SPECIFICATION.md F.2); and a
@@ -428,9 +432,17 @@ gates, traps).
   SDA low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction
   (pico-sdk's `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the
   constructor's boot clear. Expected: the held slave releases SDA within the nine pulses, the STOP
-  is on the wire, and no sibling sees a stray START while the controller is rebuilt. Zero wear; it
-  confirms the twin's bus-recovery case (`tests/test_digital_twin_bus_hazard_concurrency.py`). Needs
-  a device script that holds SDA, which the flash tier does not have.
+  is on the wire, and no sibling sees a stray START while the controller is rebuilt. Then, with SDA
+  held the same way, a `machine.reset()` and a watchdog reset: whether the bus comes back and
+  whether the next boot's clear frees it (constructing `machine.I2C` clocks nothing itself). Zero
+  wear; it confirms the twin's bus-recovery case
+  (`tests/test_digital_twin_bus_hazard_concurrency.py`). Needs a device script that holds SDA, which
+  the flash tier does not have.
+- **The free alarm count on silicon** —
+  `tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py` on `dev`: record its
+  `constructed=N` (the alarms free at that moment, not the pool size) with the image's other
+  default-pool users named. Expected: N at most the pool's 16 (SPECIFICATION.md F.1). Zero wear; no
+  twin row confirms it yet (neither machine fake models the pool's size).
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve feeds item 24's design fix and
   item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
   G6, a rollover method that leaves the board running (item 12, adapt now, measure later by

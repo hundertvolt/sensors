@@ -195,7 +195,7 @@ def make_addr() -> "tuple[str, int]":
     global _next_port
     _next_port += 1
     # Same Unix-port-only workaround as test_asy_udp_socket.py's make_addr(): a plain (host, port)
-    # tuple is rejected by bind()/connect()/sendto() on this port's "standard" build.
+    # tuple is rejected by bind()/connect()/sendto() on this port (SPECIFICATION.md F.7 row 1).
     return socket.getaddrinfo("127.0.0.1", _next_port)[0][-1]  # type: ignore[return-value]
 
 
@@ -932,9 +932,7 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
         poller = select.poll()
         poller.register(server, select.POLLIN)
         for _ in range(_RESPONDER_POLL_TRIES):
-            # ipoll(0) returns an always-truthy iterator on this port (confirmed directly) - must
-            # iterate and check the actual event flags, exactly like asy_udp_socket.py's own
-            # ready() does, not just truth-test the returned object itself.
+            # ipoll(0) returns an always-truthy iterator: test the event flags (SPECIFICATION.md F.7 row 13).
             ready = any(event & select.POLLIN for _fd, event in poller.ipoll(0))
             if ready:
                 try:
@@ -1028,30 +1026,45 @@ def test_parse_ntp_reply_zero_length_and_exact_boundary_lengths() -> None:
     assert run(client._parse_ntp_reply(_truncated(44), 0)) is not None  # exactly enough bytes - accepted
 
 
-def test_parse_ntp_reply_arbitrary_binary_content_never_raises() -> None:
+def test_parse_ntp_reply_decodes_arbitrary_bytes_as_their_transmit_timestamp() -> None:
     client = make_client()
-    garbage = bytes(range(48))  # a full 48 bytes, but not a real NTP reply at all
-    run(client._parse_ntp_reply(garbage, 0))  # must not raise - result (None or a valid tm) not asserted
+    garbage = bytes(range(48))  # a full 48 bytes, LI 0 and stratum 1, but not a real NTP reply at all
+    # Bytes 40-43 = 0x28292A2B = 673786411 s since 1900, below the floor, so next era: Unix 2759764907.
+    result = run(client._parse_ntp_reply(garbage, 0))
+    assert result is not None
+    assert tuple(result)[:8] == (2057, 6, 14, 17, 21, 47, 3, 165)  # a Thursday, day 165
 
 
-class _OverflowingTime:
+def _src_const(name: str) -> int:
+    # The shipped value, read from the source: a const() is not a module attribute on MicroPython.
+    with open("src/asy_ntp_client.py") as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                return int(line.split("const(", 1)[1].split(")", 1)[0])
+    raise AssertionError(name + " not found in src/asy_ntp_client.py")
+
+
+def test_the_plausibility_ceiling_fits_the_device_clock() -> None:
+    # The window's ceiling is below 2**32, so gmtime() of any reply time it lets through cannot overflow rp2's clock (Part F.1).
+    assert _src_const("_NTP_MAX_PLAUSIBLE_UNIX_TIME") < 2**32
+
+
+class _AllocFailingTime:
     def gmtime(self, *_a: int) -> "NoReturn":
-        raise OverflowError("past rp2's ~2037 32-bit epoch range")
-
-    def time(self) -> int:
-        return int(time.time())
+        raise MemoryError("injected for the parse path")
 
 
-def test_parse_ntp_reply_gmtime_overflow_returns_none_not_raise() -> None:
+def test_an_allocation_failure_while_parsing_returns_none() -> None:
     client = make_client()
     msg = make_ntp_reply(int(time.time()))
     original_time = ntpmod.time
-    ntpmod.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch
+    ntpmod.time = _AllocFailingTime()  # type: ignore[assignment]  # deliberate monkeypatch
     try:
         result = run(client._parse_ntp_reply(msg, 0))
     finally:
         ntpmod.time = original_time
     assert result is None
+    assert _slots(client) == (1, [code("E", "ALLOC")])
 
 
 def test_parse_ntp_reply_rtc_set_failure_returns_none_not_raise() -> None:
@@ -1077,8 +1090,8 @@ def _make_raw_ntp_reply(raw_s: int) -> bytes:
 
 
 def test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future_date() -> None:
-    # NTP's 32-bit "seconds since 1900" field wraps in 2036, distinct from the ~2037 Unix time_t
-    # OverflowError above, so a post-2036 server sends a small wrapped value. _parse_ntp_reply()
+    # NTP's 32-bit seconds-since-1900 field wraps in 2036, unrelated to the device clock, which runs
+    # to 2106 (Part F.1); a post-2036 server sends a small wrapped value. _parse_ntp_reply()
     # reinterprets a below-floor reading as the next NTP era (RFC 5905 7.3) and rechecks it.
     client = make_client()
     target_unix = 2185978496  # 2039-04-09ish - past the ~2036 wrap, well within the plausible ceiling
@@ -1477,13 +1490,8 @@ def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multi
 # rather than hand-computing the "last Sunday of March/October" formula, which is copied verbatim
 # from deployed production code. This only proves branch selection and exception safety.
 #
-# Real finding, flagged rather than silently fixed: this project's pinned Unix-port interpreter's
-# time.gmtime() returns a 9-element tuple (trailing isdst=0), not the 8-element shape MicroPython
-# documents for embedded ports including rp2 - the ambiguity typings' _TimeTuple anticipates.
-#
-# cettime()'s `if len(cet) == 8` check is correct for the real rp2 target but would return None
-# under this interpreter, so every test below normalizes gmtime()'s result to 8 elements through
-# a monkeypatched `time` shim.
+# This Unix port's gmtime() returns 9 elements (trailing isdst) where rp2 returns 8, so a shim
+# truncates it for cettime()'s length check (SPECIFICATION.md F.7 row 4).
 # ---------------------------------------------------------------------------
 
 
@@ -1492,8 +1500,7 @@ def test_this_interpreters_gmtime_returns_nine_elements_not_eight() -> None:
 
 
 class _FixedNowTime:
-    # Same monkeypatch technique as test_asy_system_service.py's _OverflowingTime/_RaisingGmtime -
-    # replaces this module's own `time` name, not the read-only builtin. gmtime()/mktime()
+    # Replaces this module's own `time` name, not the read-only builtin. gmtime()/mktime()
     # delegate to the real module; only time() is overridden and gmtime() truncated to 8 elements.
     def __init__(self, fixed_now: int, raise_exc: "Exception | None" = None) -> None:
         self._fixed_now = fixed_now
@@ -1598,7 +1605,7 @@ def test_cettime_mktime_or_gmtime_failure_returns_none_not_raise() -> None:
     client = _client_with_offsets(3600, 3600)
     run(client._set_synced(value=True))
     result = _run_cettime_with_fixed_now(
-        client, _mid_month_now(1), raise_exc=OverflowError("past rp2's ~2037 range"),
+        client, _mid_month_now(1), raise_exc=OverflowError("injected for the cettime path"),
     )
     assert result is None
 
@@ -2123,8 +2130,8 @@ class _RedirectNtpNetworking:
     #     Redirected to a real, already-bound ephemeral port instead.
     #
     # (2) _resolve_ntp_server() returns a plain (str, int) tuple - correct for real rp2 hardware -
-    #     which this Unix-port build's connect() rejects (micropython/micropython#6924), so
-    #     UDPSocket is wrapped to pre-resolve it, like test_asy_dns_client.py's own wrapper.
+    #     which this Unix-port build's connect() rejects (micropython/micropython#6924), so UDPSocket
+    #     is wrapped to pre-resolve it, like test_asy_dns_client.py's own wrapper (SPECIFICATION.md F.7 row 1).
     def __init__(self, port: int) -> None:
         self._port = port
 
@@ -2158,7 +2165,7 @@ class FakeNtpServer:
         self.port = make_port()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(socket.getaddrinfo("127.0.0.1", self.port)[0][-1])
+        self.sock.bind(socket.getaddrinfo("127.0.0.1", self.port)[0][-1])  # raw sockaddr (SPECIFICATION.md F.7 row 1)
         self.sock.setblocking(False)
         self.poller = select.poll()
         self.poller.register(self.sock, select.POLLIN)
@@ -2168,8 +2175,7 @@ class FakeNtpServer:
 
     async def serve_once(self, reply: "bytes | None") -> None:
         # Answers exactly one request with `reply` (None = drop it silently, never answer).
-        # ipoll(0) returns an always-truthy iterator on this port (confirmed directly) - must
-        # iterate and check the actual event flags, exactly like asy_udp_socket.py's own ready().
+        # ipoll(0) returns an always-truthy iterator: test the event flags (SPECIFICATION.md F.7 row 13).
         for _ in range(_FAKE_SERVER_POLL_TRIES):
             ready = any(event & select.POLLIN for _fd, event in self.poller.ipoll(0))
             if ready:

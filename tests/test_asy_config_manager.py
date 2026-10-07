@@ -1038,9 +1038,8 @@ def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
 
 
 def test_configmanager_value_omitted_json_quirk_self_heals() -> None:
-    # A genuine MicroPython json.load() leniency, re-confirmed against the pinned v1.29.0 interpreter and
-    # distinct from the "unterminated" case (fixed upstream in 2025, commit 9ef16b466, which only covers a
-    # missing closing brace or bracket).
+    # MicroPython's json.load() pairs tokens in order (Part F.1), re-confirmed on the pinned v1.29.0 interpreter; distinct from the "unterminated" case
+    # (fixed upstream in 2025, commit 9ef16b466, which only covers a missing closing brace or bracket).
     #
     # A value omitted before a comma or closing brace does not raise - it desyncs the parser into a mangled
     # dict instead. Not a bug in this file: every mangled key still goes through the normal per-key

@@ -1,7 +1,9 @@
 import asyncio
 import errno
 import struct
+import time
 
+from _ticks30 import TICKS_PERIOD, Ticks30Time
 from machine import I2C as FakeI2C
 from machine import Pin
 
@@ -38,6 +40,8 @@ _REC_SDA_STUCK = 2
 _REC_SCL_HELD = 4
 _REC_NO_CONTROLLER = 8
 _SCL, _SDA = 1, 0  # make_i2c()'s pins
+_LET_GO_READS = 5000  # a line "held for good" lets go this many reads in, so a wait that never ends fails, not hangs
+_WRAP_EDGE_MS = TICKS_PERIOD // 1000  # an uptime whose ticks_us() sits 824 us below rp2's 2**30 wrap
 
 
 def make_i2c(*, timeout: int | None = None) -> I2C:
@@ -1287,12 +1291,37 @@ def test_a_set_register_struct_above_the_scratch_still_writes_address_and_payloa
 # ---------------------------------------------------------------------------
 
 
+def _build(*, sda: "int | Callable[[int, object], int]" = 1, scl: "int | Callable[[int, object], int]" = 1, timeout: int | None = None) -> I2C:
+    FakeI2C.reset_id(0)
+    Pin.reset_registry()
+    Pin.set_external_level(_SDA, sda)
+    Pin.set_external_level(_SCL, scl)
+    return I2C(0, scl_pin=_SCL, sda_pin=_SDA, frequency=100000, timeout=timeout)
+
+
+def _pulses_then_stop(pulses: int) -> list[int]:
+    return [0, 1] * pulses + [0, 1]  # each pulse low then released, then the STOP's SCL low and release
+
+
 def _released_after(pulses: int) -> "Callable[[int, object], int]":
     # SDA held low by a slave until SCL has risen `pulses` times.
     def level(_pin: int, _log: object) -> int:
         return 1 if list(Pin.value_log(_SCL)).count(1) >= pulses else 0
 
     return level
+
+
+def _scl_on_the_fake_clock(clock: Ticks30Time, held_reads: int) -> "tuple[Callable[[int, object], int], list[int]]":
+    # SCL held low for `held_reads` reads, then released, and the reads counted; each read moves the fake clock
+    # 1 ms on, so a wait on the line lasts as many ms as it reads it.
+    reads = [0]
+
+    def level(_pin: int, _log: object) -> int:
+        reads[0] += 1
+        clock.advance(1)
+        return 0 if reads[0] <= held_reads else 1
+
+    return level, reads
 
 
 def _stretching(reads: int) -> "Callable[[int, object], int]":
@@ -1309,18 +1338,6 @@ def _stretching(reads: int) -> "Callable[[int, object], int]":
         return 1 if state[1] > reads else 0
 
     return level
-
-
-def _build(*, sda: "int | Callable[[int, object], int]" = 1, scl: "int | Callable[[int, object], int]" = 1, timeout: int | None = None) -> I2C:
-    FakeI2C.reset_id(0)
-    Pin.reset_registry()
-    Pin.set_external_level(_SDA, sda)
-    Pin.set_external_level(_SCL, scl)
-    return I2C(0, scl_pin=_SCL, sda_pin=_SDA, frequency=100000, timeout=timeout)
-
-
-def _pulses_then_stop(pulses: int) -> list[int]:
-    return [0, 1] * pulses + [0, 1]  # each pulse low then released, then the STOP's SCL low and release
 
 
 def test_the_boot_clear_leaves_a_free_bus_untouched() -> None:
@@ -1377,6 +1394,25 @@ def test_the_boot_clear_proceeds_once_scl_is_released_inside_the_timeout() -> No
     assert held == [0]
     assert list(Pin.value_log(_SCL)) == _pulses_then_stop(2)
     assert i2c.take_boot_clear_status() == _REC_SDA_LOW
+
+
+def test_the_boot_clear_ends_at_the_bus_timeout_on_the_fake_clock() -> None:
+    # The SCL lead-in across ticks_us()'s wrap: a held SCL is read once per ms up to the bus timeout, configured or
+    # rp2's 50 ms default; one let go a ms inside it costs those 20 reads, then one per pulse's release and the STOP's.
+    cases = ((20000, _LET_GO_READS, 20), (None, _LET_GO_READS, 50), (20000, 19, 20 + 9 + 1))
+    for timeout, held_reads, reads_expected in cases:
+        clock = Ticks30Time(_WRAP_EDGE_MS)
+        level, reads = _scl_on_the_fake_clock(clock, held_reads)
+        asy_i2c_driver.time = clock  # type: ignore[assignment]
+        try:
+            i2c = _build(sda=0, scl=level, timeout=timeout)
+        finally:
+            asy_i2c_driver.time = time
+        held = held_reads == _LET_GO_READS
+        assert reads[0] == reads_expected, (timeout, held_reads, reads[0])
+        assert list(Pin.value_log(_SCL)) == ([] if held else _pulses_then_stop(9))
+        assert i2c.take_boot_clear_status() == (_REC_SCL_HELD if held else _REC_SDA_LOW | _REC_SDA_STUCK)
+        assert fake(i2c).log == [("init", 100000, 50000 if timeout is None else timeout)]
 
 
 def test_a_later_init_never_clears() -> None:
@@ -1454,6 +1490,27 @@ def test_clear_with_scl_held_past_the_timeout_pulses_nothing() -> None:
     assert status == _REC_SCL_HELD
     assert list(Pin.value_log(_SCL)) == []
     assert made[-2:] == _HANDED_BACK  # handed back even so
+
+
+def test_clear_and_recover_end_a_held_scl_at_the_bus_timeout_on_the_fake_clock() -> None:
+    # The lead-in wait across ticks_us()'s wrap: a held SCL is read once per ms up to the bus timeout, then status 4
+    # with no pulse (recover() still re-constructs); a clock let go a ms inside the timeout is cleared as usual.
+    for recover in (False, True):
+        for held_reads, status, scl_log, reads_expected in ((_LET_GO_READS, _REC_SCL_HELD, [], 20), (19, _REC_SDA_LOW | _REC_SDA_STUCK, _pulses_then_stop(9), 20 + 10)):
+            i2c = _build(timeout=20000)
+            fake(i2c).log.clear()
+            clock = Ticks30Time(_WRAP_EDGE_MS)
+            level, reads = _scl_on_the_fake_clock(clock, held_reads)
+            Pin.set_external_level(_SDA, 0)
+            Pin.set_external_level(_SCL, level)
+            asy_i2c_driver.time = clock  # type: ignore[assignment]
+            try:
+                got, made = _clear(i2c, recover=recover)
+            finally:
+                asy_i2c_driver.time = time
+            assert (got, list(Pin.value_log(_SCL)), reads[0]) == (status, scl_log, reads_expected), (recover, held_reads)
+            assert all(pin in made for pin in _HANDED_BACK), made  # recover() constructs its own pins after these
+            assert fake(i2c).log == ([("deinit",), ("init", 100000, 20000)] if recover else [])
 
 
 def test_recover_clears_then_re_constructs_with_the_stored_frequency_and_timeout() -> None:

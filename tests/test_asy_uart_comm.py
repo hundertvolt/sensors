@@ -5,9 +5,11 @@ transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py."""
 import asyncio
 import select
 import struct
+import time
 
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
+from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _uart_comm_harness import PAYLOAD_SIZE, POLL_WAIT_MS, TIMEOUT_MS, Pair, accept_set, build_pair, echo_get, frames, run
 from machine import LinkPoller
 from rp2 import DMA
@@ -834,15 +836,30 @@ def test_the_hold_off_window_derives_from_timeout() -> None:
 
 
 def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
-    # A raw now - t0 subtraction is wrong at the 2**30 ms rollover - a fault that appears
-    # once per uptime period and cannot be found by waiting for it.
-    import time
-
+    # Armed 5 ms before rp2's 2**30 ms wrap, the deadline lands past it: still held one ms before it, released one
+    # ms after. A raw subtraction misreads exactly this, once per uptime period, and waiting never reaches it.
     comm = make_comm()
-    comm._holdoff_active = True
-    comm._holdoff_deadline = time.ticks_add(time.ticks_ms(), -1)  # just past, across any boundary
-    run(asyncio.wait_for(comm._await_write_gate(), _PAST_DEADLINE_BOUND_S))
-    assert comm._holdoff_active is False
+    clock = Ticks30Time(TICKS_PERIOD - 5)
+    asy_uart_comm.time = clock  # type: ignore[assignment]
+
+    async def scenario() -> "tuple[bool, bool, bool]":
+        comm._hold_off_writes()
+        window = comm._resync_window_ms()
+        assert clock.now + window > TICKS_PERIOD
+        gate = asyncio.create_task(comm._await_write_gate())
+        await asyncio.sleep_ms(5)  # the gate's first look, still before the wrap
+        held_before_the_wrap = not gate.done()
+        clock.advance(window - 1)
+        await asyncio.sleep_ms(5)  # several of the gate's rounds, each sleeping the 1 ms left
+        held_past_it = not gate.done()
+        clock.advance(2)
+        await asyncio.wait_for(gate, _PAST_DEADLINE_BOUND_S)
+        return held_before_the_wrap, held_past_it, comm._holdoff_active
+
+    try:
+        assert run(scenario()) == (True, True, False)
+    finally:
+        asy_uart_comm.time = time
 
 
 def test_listening_clears_the_hold_off() -> None:

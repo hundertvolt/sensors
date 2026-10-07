@@ -377,7 +377,7 @@ class ConfigManager:
             async with self._config_lock:
                 if self._staged is not staged:
                     # A newer snapshot was staged while this one waited for its commit or the lock: writing this one
-                    # would regress a replaced value.
+                    # would regress a replaced value (PrintLogHistoryStore._write() applies the same rule).
                     return
                 try:
                     if staged != self._cache:  # equal: the file already holds it, nothing to write

@@ -127,8 +127,8 @@ class _FRAMBaseChunk:
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, check_idle=False) is None:
                     return False
                 await asyncio.sleep(0)  # after the status-byte pair; the bus lock is held, CS is not asserted
-                # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
-                # building that list first - `[x] * n` can segfault uncatchably for large n (CLAUDE.md).
+                # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without building that list first
+                # `[x] * n` can segfault uncatchably for large n (Part F.1).
                 clear_status = fram.set_values_sync(bytearray(self.size + self.crc.length()), addr)
                 if clear_status and not await fram.report_set_values(clear_status):
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=_ERR_FRAM_CLEAR_WRITE)

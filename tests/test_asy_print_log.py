@@ -743,6 +743,115 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
     assert list(rebooted_store.history) == [0, 0, 0]
 
 
+class _GatedFramChunk(_CountingFramChunk):
+    # Holds every write_into() on a test-held gate, then records the payload it was handed; the write
+    # numbered in failing_writes (counted from 1) reports failure.
+    def __init__(self, size: int) -> None:
+        super().__init__(size)
+        self.gate = asyncio.Event()
+        self.payloads: list[bytes] = []
+        self.failing_writes: tuple[int, ...] = ()
+
+    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+        await self.gate.wait()
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        self.payloads.append(bytes(dbuf))
+        self.writes += 1
+        return len(self.payloads) not in self.failing_writes
+
+
+class _ResultRecordingStore(PrintLogHistoryStore):
+    # Records what each _write() call returned, in completion order.
+    def __init__(self, fram: "_CountingFramManager", history_length: int) -> None:
+        super().__init__(fram, history_length=history_length)
+        self.results: list[bool] = []
+
+    async def _write(self) -> bool:
+        ok = await PrintLogHistoryStore._write(self)
+        self.results.append(ok)
+        return ok
+
+
+def test_concurrent_writes_land_newest_last() -> None:
+    chunk = _GatedFramChunk(2 + 3)  # the "<H" header plus three history bytes
+    store = _ResultRecordingStore(_CountingFramManager(chunk), history_length=3)
+    chunk.gate.set()
+    assert run(store.setup()) is True  # a blank chunk: setup() writes the empty state through the open gate
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    store.results.clear()
+
+    async def scenario() -> None:
+        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
+        for _ in range(5):  # every call stores its entry and reaches its write before the gate opens
+            await asyncio.sleep(0)
+        chunk.gate.set()
+        await asyncio.gather(*tasks)
+
+    run(scenario())
+    # The first call's write and the newest one's; the middle call was superseded and skipped.
+    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", b"\x03\x00\x01\x02\x03"], chunk.payloads
+    assert store.results == [True, True, True], store.results  # a superseded call reports success: a newer write carries its state
+
+
+def test_a_cancelled_newest_write_leaves_no_entry_unwritten() -> None:
+    # The newest caller's task is cancelled while it waits for the write (a connection's outer cap does
+    # exactly this): the call queued before it must still write every entry, not skip on its account.
+    chunk = _GatedFramChunk(2 + 3)
+    store = _ResultRecordingStore(_CountingFramManager(chunk), history_length=3)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    store.results.clear()
+
+    async def scenario() -> None:
+        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
+        for _ in range(5):
+            await asyncio.sleep(0)
+        tasks[2].cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        chunk.gate.set()
+        await asyncio.gather(tasks[0], tasks[1])
+        try:
+            await tasks[2]
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("the cancelled call completed")
+
+    run(scenario())
+    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", b"\x03\x00\x01\x02\x03"], chunk.payloads
+    assert store.results == [True, True], store.results
+
+
+def test_a_failed_write_leaves_the_next_queued_call_to_write() -> None:
+    # The second write fails: the call queued behind it writes the same state again rather than skipping,
+    # so a skipped call's True always means its entry landed.
+    chunk = _GatedFramChunk(2 + 3)
+    store = _ResultRecordingStore(_CountingFramManager(chunk), history_length=3)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    store.results.clear()
+    chunk.failing_writes = (2,)
+
+    async def scenario() -> None:
+        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
+        for _ in range(5):
+            await asyncio.sleep(0)
+        chunk.gate.set()
+        await asyncio.gather(*tasks)
+
+    run(scenario())
+    full = b"\x03\x00\x01\x02\x03"
+    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", full, full], chunk.payloads
+    assert store.results == [True, False, True], store.results
+
+
 # ---------------------------------------------------------------------------
 # PrintLogHistoryStore - real FRAM failure modes injected at the simulated-chip level (the fault-injection
 # knobs in tests/_fram_chip_fake.py, covered in their own right by test_asy_fram_driver.py), plus the two

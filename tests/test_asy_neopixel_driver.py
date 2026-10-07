@@ -784,9 +784,8 @@ def test_clamp_byte_direct() -> None:
     assert _clamp_byte(300) == 255
     assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
     assert _clamp_byte(value=True) == 1  # bool is a legitimate int subtype for a byte value
-    # int(float('inf'))/int(float('-inf')) raise OverflowError specifically, not ValueError -
-    # confirmed directly against the real MicroPython 1.28.0 Unix-port interpreter. Regression test
-    # for the gap _clamp_byte()'s original except (TypeError, ValueError) clause missed entirely.
+    # int(inf) raises OverflowError, int(nan) ValueError (Part F.1, v1.29.0). Regression test for the gap
+    # _clamp_byte()'s original except (TypeError, ValueError) clause missed entirely.
     assert _clamp_byte(float("inf")) == 0
     assert _clamp_byte(float("-inf")) == 0
     assert _clamp_byte(float("nan")) == 0  # int(nan) raises ValueError - already covered, kept for completeness

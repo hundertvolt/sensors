@@ -3,6 +3,7 @@ A code equal to the history's newest entry is counted and written through but sp
 Never raises: a FRAM chunk operation raises only by allocation, counted as a failed write.
 """
 
+import asyncio
 import struct
 import sys
 from collections import deque, namedtuple
@@ -62,6 +63,7 @@ _MAX_ERR = const(0x7F)
 _NO_WRN = const(0x80)
 _MAX_WRN = const(0xFF)
 _MAX_CNT = const(0xFFFF)
+_WRITE_GEN_MAX = const(0x3FFFFFFF)  # wraps inside the small-int range; compared only for equality
 
 
 class PrintLog:
@@ -232,6 +234,9 @@ class PrintLogHistoryStore(PrintLogHistory):
             self.fram = None
         if self.fram is None:
             self._diag("PrintLog: FRAM allocation failed!")
+        self._write_lock = asyncio.Lock()
+        self._write_gen = 0  # one step per _write() call
+        self._written_gen = 0  # the _write_gen whose state the last successful write packed
 
     async def _read(self) -> bool:
         if self.fram is None:
@@ -253,16 +258,27 @@ class PrintLogHistoryStore(PrintLogHistory):
     async def _write(self) -> bool:
         if self.fram is None:
             return False
-        try:  # a chunk operation fails only by allocation (the module docstring)
-            buf = self.fram.get_buffer()
-            dbuf = buf.get_data_buf()
-            if dbuf is None:  # the buffer's own allocation failed
+        # The live state is packed and written under one lock, and a call whose state an earlier write already landed
+        # skips, so the newest state lands last without relying on asyncio's lock hand-off order; a cancelled or failed
+        # write leaves the next queued call to write (ConfigManager._flush_staged()'s rule, by count).
+        self._write_gen = self._write_gen + 1 if self._write_gen < _WRITE_GEN_MAX else 0
+        async with self._write_lock:
+            if self._written_gen == self._write_gen:
+                return True
+            gen = self._write_gen
+            try:  # a chunk operation fails only by allocation (the module docstring)
+                buf = self.fram.get_buffer()
+                dbuf = buf.get_data_buf()
+                if dbuf is None:  # the buffer's own allocation failed
+                    return False
+                struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
+                struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
+                ok = bool(await self.fram.write_into(buf))
+            except MemoryError:
                 return False
-            struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
-            struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
-            return bool(await self.fram.write_into(buf))
-        except MemoryError:
-            return False
+            if ok:
+                self._written_gen = gen
+            return ok
 
     async def setup(self) -> bool:  # False: no chunk, or it can be neither read nor written - RAM-only
         if self.fram is None or self.initialized:

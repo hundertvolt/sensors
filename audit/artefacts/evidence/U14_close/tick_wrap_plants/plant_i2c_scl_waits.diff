@@ -1,0 +1,20 @@
+--- src/asy_i2c_driver.py@f351490
++++ bite_i2c/asy_i2c_driver.py
+@@ -100,7 +100,7 @@
+     # A slave may stretch the clock: a released SCL that still reads low has clocked nothing yet.
+     start = time.ticks_us()
+     while not scl.value():
+-        if time.ticks_diff(time.ticks_us(), start) >= timeout_us:
++        if (time.ticks_us() - start) >= timeout_us:
+             return False
+         await asyncio.sleep_ms(1)
+     return True
+@@ -110,7 +110,7 @@
+     # _scl_released() for the boot clear, which runs before any task exists.
+     start = time.ticks_us()
+     while not scl.value():
+-        if time.ticks_diff(time.ticks_us(), start) >= timeout_us:
++        if (time.ticks_us() - start) >= timeout_us:
+             return False
+     return True
+ 
