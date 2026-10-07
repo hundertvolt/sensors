@@ -1,0 +1,12 @@
+(excerpt, job 112701423093 of run 37593765734, merge commit e7f84e2 of 41b47f1)
+2026-10-07T08:27:04.3323664Z ##[group]Run uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
+2026-10-07T08:27:06.7089885Z Generated 6 device module(s) + wiring plan(s) + definitions into /home/runner/work/sensors/sensors/build/generated_src
+2026-10-07T08:27:07.6442939Z tests/test_asy_udp_socket.py:5:1: error: Module "asyncio" has no attribute
+2026-10-07T08:27:07.6443509Z "core"  [attr-defined]
+2026-10-07T08:27:07.6443860Z     from asyncio import core as asyncio_core
+2026-10-07T08:27:10.3349867Z Found 1 error in 1 file (checked 158 source files)
+2026-10-07T08:27:11.4405361Z Success: no issues found in 49 source files
+2026-10-07T08:27:14.7788777Z Success: no issues found in 171 source files
+2026-10-07T08:27:15.1146275Z Counts (checks): passed 6 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+2026-10-07T08:27:15.1149008Z   - main pass: pyproject.toml [tool.mypy]
+2026-10-07T08:27:15.1152179Z Result: FAIL

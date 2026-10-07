@@ -1,8 +1,10 @@
 import asyncio
+
+# The stubs cover asyncio's public API only; this test reads the private core module's task queue.
+import asyncio.core as asyncio_core  # type: ignore[import-not-found]
 import select
 import socket
 import time
-from asyncio import core as asyncio_core
 
 import asy_udp_socket
 from asy_udp_socket import UDPSocket
