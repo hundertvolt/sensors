@@ -1,0 +1,392 @@
+version: 1
+things:
+  http:url:Luftsensor_dev:
+    label: Raumluftsensor Dev
+    config:
+      baseURL: http://192.168.85.57
+      refresh: 3
+      timeout: 3500
+      delay: 1000
+      bufferSize: 2048
+      authMode: BASIC
+      stateMethod: GET
+      commandMethod: PUT
+      contentType: application/json
+      ignoreSSLErrors: true
+    channels:
+      last-failure:
+        type: request-date-time
+        label: Letzter Fehler
+      last-success:
+        type: request-date-time
+        label: Letzter Erfolg
+      airsensor_dev_bme688_ts:
+        type: number
+        label: Timestamp BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_IAQ:
+        type: number
+        label: IAQ Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.IAQ
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_iaqA:
+        type: number
+        label: IAQ Accuracy BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.IAQAcc
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_iaqS:
+        type: number
+        label: Static IAQ Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.StIAQ
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_co2E:
+        type: number
+        label: CO2 Equivalent Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.CO2Eq
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_bVOCE:
+        type: number
+        label: Breath VOC Equivalent Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.bVOCEq
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_rawtemp:
+        type: number
+        label: Raw Temperature Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.RawTemp
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_press:
+        type: number
+        label: Pressure Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.Press
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_rawhum:
+        type: number
+        label: Raw Humidity Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.RawHum
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_gasres:
+        type: number
+        label: Gas Resistance Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.GasRes
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_StabSt:
+        type: number
+        label: Stab Status BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.StabSt
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_runinst:
+        type: number
+        label: Run In Status BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.RunInSt
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_comptemp:
+        type: number
+        label: Compensated Temperature Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.CompTemp
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_comphum:
+        type: number
+        label: Compensated Humidity Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.CompHum
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_bme688_gasperc:
+        type: number
+        label: Gas Percentage Messwert BME688
+        config:
+          stateTransformation:
+            - JSONPATH:$.BME688.GasPerc
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_CO2:
+        type: number
+        label: CO2 Messwert SCD30
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.CO2
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_Temperature:
+        type: number
+        label: Temperatur Messwert SCD30
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.Temp
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_Humidity:
+        type: number
+        label: Luftfeuchte Messwert SCD30
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.Hum
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_WetBulb:
+        type: number
+        label: Feuchtkugeltemperatur SCD30
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.WetBulb
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_DewPoint:
+        type: number
+        label: Taupunkt SCD30
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.DewPoint
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_TS:
+        type: number
+        label: Zeitstempel CO2 Sensor SCD30
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_VOC_IDX:
+        type: number
+        label: VOC Index
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40.VOC
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_VOC_Raw:
+        type: number
+        label: VOC Raw value
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40.Raw
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_VOC_TS:
+        type: number
+        label: Zeitstempel VOC Index
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_Pressure:
+        type: number
+        label: Luftdruck Messwert
+        config:
+          stateTransformation:
+            - JSONPATH:$.MPRLS.Pres
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_TS_Press:
+        type: number
+        label: Zeitstempel Drucksensor
+        config:
+          stateTransformation:
+            - JSONPATH:$.MPRLS.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_red:
+        type: number
+        label: ISL29125 Red
+        config:
+          stateTransformation:
+            - JSONPATH:$.ISL29125.Red
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_green:
+        type: number
+        label: ISL29125 Green
+        config:
+          stateTransformation:
+            - JSONPATH:$.ISL29125.Green
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_blue:
+        type: number
+        label: ISL29125 Blue
+        config:
+          stateTransformation:
+            - JSONPATH:$.ISL29125.Blue
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_rh_Temperature:
+        type: number
+        label: Temperatur Messwert SHTC3
+        config:
+          stateTransformation:
+            - JSONPATH:$.SHTC3.Temp
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_rh_Humidity:
+        type: number
+        label: Luftfeuchte Messwert SHTC3
+        config:
+          stateTransformation:
+            - JSONPATH:$.SHTC3.Hum
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_rh_WetBulb:
+        type: number
+        label: Feuchtkugeltemperatur SHTC3
+        config:
+          stateTransformation:
+            - JSONPATH:$.SHTC3.WetBulb
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_rh_DewPoint:
+        type: number
+        label: Taupunkt SHTC3
+        config:
+          stateTransformation:
+            - JSONPATH:$.SHTC3.DewPoint
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_dev_rh_TS:
+        type: number
+        label: Zeitstempel SHTC3
+        config:
+          stateTransformation:
+            - JSONPATH:$.SHTC3.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      system_Uptime_dev:
+        type: number
+        label: Sensor Uptime
+        config:
+          stateTransformation:
+            - JSONPATH:$.Sys_Uptime
+          stateExtension: system/status
+          mode: READWRITE
+      wifi_Uptime_dev:
+        type: number
+        label: WiFi Uptime
+        config:
+          stateTransformation:
+            - JSONPATH:$.Wifi_Uptime
+          stateExtension: system/status
+          mode: READWRITE
+      ntp_Last_Sync_dev:
+        type: number
+        label: Zeit seit letzem NTP Sync
+        config:
+          stateTransformation:
+            - JSONPATH:$.NTP_LastSync
+          stateExtension: system/status
+          mode: READWRITE
+      scd30_err_cnt_dev:
+        type: number
+        label: SCD30 Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      sgp40_err_cnt_dev:
+        type: number
+        label: SGP40 Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      mprls_err_cnt_dev:
+        type: number
+        label: MPRLS Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.MPRLS_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      shtc3_err_cnt_dev:
+        type: number
+        label: SHTC3 Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.SHTC3_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      isl29125_err_cnt_dev:
+        type: number
+        label: ISL29125 Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.ISL29125_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      task_err_cnt_dev:
+        type: number
+        label: Task Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.Task_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      task_last_err_dev:
+        type: number
+        label: Letzter Taskfehler
+        config:
+          stateTransformation:
+            - JSONPATH:$.Task_LastErr
+          stateExtension: system/status
+          mode: READWRITE
+      system_RTC_dev:
+        type: number
+        label: Sensor Unix Time
+        config:
+          stateTransformation:
+            - JSONPATH:$.System.Unix
+          stateExtension: /time/status
+          mode: READWRITE
+      ntp_sync_dev:
+        type: contact
+        label: NTP Synchronisiert
+        config:
+          stateTransformation:
+            - JSONPATH:$.System.Synced
+          stateExtension: /time/status
+          openValue: "Off"
+          closedValue: "On"
+          mode: READWRITE

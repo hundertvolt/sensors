@@ -1,0 +1,101 @@
+Thing http:url:Luftsensor_ArZi "Raumluftsensor Arbeitszimmer" [
+    baseURL="http://192.168.85.58",  //SensorNode IP
+    authMode="BASIC",
+    ignoreSSLErrors="true",
+    refresh=15,
+    commandMethod="PUT",
+    stateMethod="GET",
+    contentType="application/json",
+    timeout=3500,
+    bufferSize=2048,
+    delay=1000
+] 
+{
+    Channels:
+// -----------------------------------------------
+
+  Type number : airsensor_CO2 "CO2 Messwert" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SCD30.CO2"
+        ]
+  Type number : airsensor_Temperature "Temperatur Messwert" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SCD30.Temp"
+        ]
+  Type number : airsensor_Humidity "Luftfeuchte Messwert" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SCD30.Hum"
+        ]
+  Type number : airsensor_WetBulb "Feuchtkugeltemperatur" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SCD30.WetBulb"
+        ]
+  Type number : airsensor_DewPoint "Taupunkt" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SCD30.DewPoint"
+        ]
+  Type number : airsensor_TS "Zeitstempel CO2 Sensor" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SCD30.TS"
+        ]
+  Type number : airsensor_VOC_IDX "VOC Index" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SGP40.VOC"
+        ]
+  Type number : airsensor_VOC_Raw "VOC Raw value" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SGP40.Raw"
+        ]
+  Type number : airsensor_VOC_TS "Zeitstempel VOC Index" [
+            stateExtension="sensors/status",
+            stateTransformation="JSONPATH:$.SGP40.TS"
+        ]
+
+
+  Type number : system_Uptime "Sensor Uptime" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.Sys_Uptime"
+        ]
+  Type number : wifi_Uptime "WiFi Uptime" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.Wifi_Uptime"
+        ]
+  Type number : ntp_Last_Sync "Zeit seit letzem NTP Sync" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.NTP_LastSync"
+        ]
+  Type number : scd30_err_cnt "SCD30 Fehlerzähler" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.SCD30_ErrCnt"
+        ]
+  Type number : sgp40_err_cnt "SGP40 Fehlerzähler" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.SGP40_ErrCnt"
+        ]
+  Type number : task_err_cnt "Task Fehlerzähler" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.Task_ErrCnt"
+        ]
+  Type number : task_last_err "Letzter Taskfehler" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.Task_LastErr"
+        ]
+  Type contact : global_error "Globaler Fehlerstatus" [
+            stateExtension="system/status",
+            stateTransformation="JSONPATH:$.Error_Status",
+            closedValue="On",
+            openValue="Off"
+        ]
+
+
+  Type number : system_RTC "Sensor Unix Time" [
+            stateExtension="/time/status",
+            stateTransformation="JSONPATH:$.System.Unix"
+        ]
+  Type contact : ntp_sync "NTP Synchronisiert" [
+            stateExtension="/time/status",
+            stateTransformation="JSONPATH:$.System.Synced",
+            closedValue="On",
+            openValue="Off"
+        ]
+}

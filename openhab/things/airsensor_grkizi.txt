@@ -1,0 +1,178 @@
+version: 1
+things:
+  http:url:Luftsensor_GrKiZi:
+    label: Raumluftsensor Großes Kinderzimmer
+    config:
+      baseURL: http://192.168.85.55
+      refresh: 15
+      timeout: 3500
+      delay: 1000
+      bufferSize: 2048
+      authMode: BASIC
+      stateMethod: GET
+      commandMethod: PUT
+      contentType: application/json
+      ignoreSSLErrors: true
+    channels:
+      last-failure:
+        type: request-date-time
+        label: Letzter Fehler
+      last-success:
+        type: request-date-time
+        label: Letzter Erfolg
+      airsensor_CO2:
+        type: number
+        label: CO2 Messwert
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.CO2
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_Temperature:
+        type: number
+        label: Temperatur Messwert
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.Temp
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_Humidity:
+        type: number
+        label: Luftfeuchte Messwert
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.Hum
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_WetBulb:
+        type: number
+        label: Feuchtkugeltemperatur
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.WetBulb
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_DewPoint:
+        type: number
+        label: Taupunkt
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.DewPoint
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_TS:
+        type: number
+        label: Zeitstempel CO2 Sensor
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_VOC_IDX:
+        type: number
+        label: VOC Index
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40.VOC
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_VOC_Raw:
+        type: number
+        label: VOC Raw value
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40.Raw
+          stateExtension: sensors/status
+          mode: READWRITE
+      airsensor_VOC_TS:
+        type: number
+        label: Zeitstempel VOC Index
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40.TS
+          stateExtension: sensors/status
+          mode: READWRITE
+      system_Uptime:
+        type: number
+        label: Sensor Uptime
+        config:
+          stateTransformation:
+            - JSONPATH:$.Sys_Uptime
+          stateExtension: system/status
+          mode: READWRITE
+      wifi_Uptime:
+        type: number
+        label: WiFi Uptime
+        config:
+          stateTransformation:
+            - JSONPATH:$.Wifi_Uptime
+          stateExtension: system/status
+          mode: READWRITE
+      ntp_Last_Sync:
+        type: number
+        label: Zeit seit letzem NTP Sync
+        config:
+          stateTransformation:
+            - JSONPATH:$.NTP_LastSync
+          stateExtension: system/status
+          mode: READWRITE
+      scd30_err_cnt:
+        type: number
+        label: SCD30 Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.SCD30_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      sgp40_err_cnt:
+        type: number
+        label: SGP40 Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.SGP40_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      task_err_cnt:
+        type: number
+        label: Task Fehlerzähler
+        config:
+          stateTransformation:
+            - JSONPATH:$.Task_ErrCnt
+          stateExtension: system/status
+          mode: READWRITE
+      task_last_err:
+        type: number
+        label: Letzter Taskfehler
+        config:
+          stateTransformation:
+            - JSONPATH:$.Task_LastErr
+          stateExtension: system/status
+          mode: READWRITE
+      global_error:
+        type: contact
+        label: Globaler Fehlerstatus
+        config:
+          stateTransformation:
+            - JSONPATH:$.Error_Status
+          stateExtension: system/status
+          openValue: "Off"
+          closedValue: "On"
+          mode: READWRITE
+      system_RTC:
+        type: number
+        label: Sensor Unix Time
+        config:
+          stateTransformation:
+            - JSONPATH:$.System.Unix
+          stateExtension: /time/status
+          mode: READWRITE
+      ntp_sync:
+        type: contact
+        label: NTP Synchronisiert
+        config:
+          stateTransformation:
+            - JSONPATH:$.System.Synced
+          stateExtension: /time/status
+          openValue: "Off"
+          closedValue: "On"
+          mode: READWRITE
