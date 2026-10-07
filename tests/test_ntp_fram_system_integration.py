@@ -12,6 +12,7 @@ from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 
+import asy_base_classes
 import asy_ntp_client as ntpmod
 import asy_spi_driver
 from asy_base_classes import ValueRef
@@ -118,8 +119,42 @@ def connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> None:
     _wlan(conn)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
 
 
-async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1) -> None:
+_TICKS_PERIOD = 1 << 30  # rp2's ticks_ms() wrap: py/mpconfig.h's MICROPY_PY_TIME_TICKS_PERIOD on a 32-bit small int
+
+
+class _UptimeClock:
+    # Stands in for asy_base_classes' `time` so TickSeconds (SystemService's measured uptime) reads driven ticks;
+    # every other name reaches the real module. Installed before the service is built, restored on exit.
+    def __init__(self) -> None:
+        self.now = 0
+        self._saved: object = None
+
+    def ticks_ms(self) -> int:
+        return self.now
+
+    def ticks_add(self, a: int, b: int) -> int:
+        return (a + b) & (_TICKS_PERIOD - 1)
+
+    def ticks_diff(self, a: int, b: int) -> int:
+        return ((a - b + _TICKS_PERIOD // 2) & (_TICKS_PERIOD - 1)) - _TICKS_PERIOD // 2
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(time, name)
+
+    def __enter__(self) -> "Self":
+        self._saved = asy_base_classes.time
+        asy_base_classes.time = self  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asy_base_classes.time = self._saved  # type: ignore[assignment]
+
+
+async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1, clock: "_UptimeClock | None" = None) -> None:
+    # One uptime wake-up per call, the driven clock advanced one second before each: uptime is measured, not counted.
     for _ in range(times):
+        if clock is not None:
+            clock.now = clock.ticks_add(clock.now, 1000)
         flag.set()
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -371,16 +406,17 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
 def test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced() -> None:
     conn = make_conn()
     ntp = make_ntp(conn, "127.0.0.1")
-    svc = SystemService(ntp.ntp_issynced)
+    with _UptimeClock() as clock:
+        svc = SystemService(ntp.ntp_issynced)
 
-    async def scenario() -> int | float | None:
-        await sync_real_ntp_chain(conn, ntp)
-        task = asyncio.create_task(svc._status_loop())
-        await _tick(svc._uptime_event, 1)
-        await _cancel(task)
-        return await svc.get_boot_signature()
+        async def scenario() -> int | float | None:
+            await sync_real_ntp_chain(conn, ntp)
+            task = asyncio.create_task(svc._status_loop())
+            await _tick(svc._uptime_event, 1, clock)
+            await _cancel(task)
+            return await svc.get_boot_signature()
 
-    boot_signature = run(scenario())
+        boot_signature = run(scenario())
     assert boot_signature is not None
     assert abs(boot_signature - int(time.time())) < _UTC_TOLERANCE_S  # a real NTP-derived timestamp, not a random fallback
 
@@ -388,16 +424,17 @@ def test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_sync
 def test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_never_syncs() -> None:
     conn = make_conn()  # never connected
     ntp = make_ntp(conn, "127.0.0.1")
-    svc = SystemService(ntp.ntp_issynced)
+    with _UptimeClock() as clock:
+        svc = SystemService(ntp.ntp_issynced)
 
-    async def scenario() -> int | float | None:
-        task = asyncio.create_task(svc._status_loop())
-        await _tick(svc._uptime_event, 121)  # past _NTP_WAIT_TIME (120s, one tick per uptime second)
-        await _cancel(task)
-        assert await ntp.ntp_issynced() is False  # sanity: the real chain genuinely never synced
-        return await svc.get_boot_signature()
+        async def scenario() -> int | float | None:
+            task = asyncio.create_task(svc._status_loop())
+            await _tick(svc._uptime_event, 121, clock)  # 121 driven seconds: past _NTP_WAIT_TIME (120 s)
+            await _cancel(task)
+            assert await ntp.ntp_issynced() is False  # sanity: the real chain genuinely never synced
+            return await svc.get_boot_signature()
 
-    boot_signature = run(scenario())
+        boot_signature = run(scenario())
     assert boot_signature is not None  # random fallback resolved despite the real chain staying unsynced
 
 
@@ -407,22 +444,23 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
     # SGP40_Reader's _ts_storage - proving neither consumer's call corrupts or blocks the other's.
     conn = make_conn()
     ntp = make_ntp(conn, "127.0.0.1")
-    svc = SystemService(ntp.ntp_issynced)
     manager, _chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
     assert chunk is not None
+    with _UptimeClock() as clock:
+        svc = SystemService(ntp.ntp_issynced)
 
-    async def scenario() -> tuple[int | float | None, bool]:
-        await sync_real_ntp_chain(conn, ntp)
-        task = asyncio.create_task(svc._status_loop())
-        await _tick(svc._uptime_event, 1)
-        await _cancel(task)
-        boot_signature = await svc.get_boot_signature()
-        _ntp_synced, _utc, write_ok = await chunk.write(b"12345678", require_ntp=True)
-        return boot_signature, write_ok
+        async def scenario() -> tuple[int | float | None, bool]:
+            await sync_real_ntp_chain(conn, ntp)
+            task = asyncio.create_task(svc._status_loop())
+            await _tick(svc._uptime_event, 1, clock)
+            await _cancel(task)
+            boot_signature = await svc.get_boot_signature()
+            _ntp_synced, _utc, write_ok = await chunk.write(b"12345678", require_ntp=True)
+            return boot_signature, write_ok
 
-    boot_signature, write_ok = run(scenario())
+        boot_signature, write_ok = run(scenario())
     assert boot_signature is not None
     assert write_ok is True
 

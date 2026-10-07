@@ -209,7 +209,7 @@ async def _main() -> None:
     if len(started) < len(task_starters):
         print(f"RESULT: FAIL only {len(started)} of {len(task_starters)} starters ran within {_STARTER_LOOP_TIMEOUT_MS} ms")
         return
-    # The last starter has landed but the loop has not: one `await asyncio.sleep(1.0/len(starters))`
+    # The last starter has landed but the loop has not: one `await asyncio.sleep_ms(1000 // len(starters))`
     # and the collect after it are still to come, and the collect IS the thing being measured. A
     # collect counter would be exact but reads zero on the A-only arm, so wait that tail out instead.
     await asyncio.sleep_ms(1000 // len(task_starters) + _STARTER_LOOP_GRACE_MS)

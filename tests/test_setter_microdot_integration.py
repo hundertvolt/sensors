@@ -28,7 +28,6 @@ from _tmp_scratch import TmpScratch
 from microdot import Microdot, Request
 
 import asy_api_response as ar
-import asy_config_manager as cm
 from asy_base_classes import ValueRef
 from asy_bmp3xx_driver import BMP3XX_Reader
 from asy_crc_checks import CRC8
@@ -44,8 +43,11 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
+
+    import asy_config_manager as cm
+    from asy_base_classes import JsonValue
 
     T = TypeVar("T")
 
@@ -104,15 +106,20 @@ class _FakeRequest:
 # registration scopes them into two separate SettingsGroup entries - one for the four with
 # post_fct=conn.reconnect_wifi, one for LEDWifiOn alone with none.
 #
-# Passing the whole schema as one group would let a LEDWifiOn-only change spuriously reconnect, and let the
-# others reach LEDWifiOn's group with no reconnect at all. _wifi_field_schema() below mirrors that scoping
-# locally, this file never importing the generated device module.
+# Passing the whole field set as one group would let a LEDWifiOn-only change spuriously reconnect, and let
+# the others reach LEDWifiOn's group with no reconnect at all. _scoped_set() below mirrors that scoping
+# locally, the way the real SettingsGroup does, this file never importing the generated device module.
 # ---------------------------------------------------------------------------
 
 
-def _wifi_field_schema(client: WifiService, keys: "tuple[str, ...]") -> "cm.ConfigSchema":
-    fields = cm.schema_dict(client.get_cfg_schema())
-    return tuple(fields[k] for k in keys if k in fields)
+async def _scoped_set(
+    client: WifiService, fields: "dict[str, JsonValue]", keys: "tuple[str, ...]", post_fct: "Callable[[], None] | None" = None,
+) -> "dict[str, str]":
+    # The route's own keys go to handle_set_cmd() with the module's schema (the store validates against all of
+    # it); any other key answers Invalid, as a key outside every group of the real route does.
+    result: dict[str, str] = dict.fromkeys([k for k in fields if k not in keys], "Invalid")
+    result.update(await ar.handle_set_cmd(client, {k: v for k, v in fields.items() if k in keys}, client.get_cfg_schema(), post_fct=post_fct))
+    return result
 
 
 async def _simulated_set_network_endpoint(client: WifiService, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
@@ -121,10 +128,9 @@ async def _simulated_set_network_endpoint(client: WifiService, request: "ar._Req
         return err
     assert data is not None
     fields = {k: v for k, v in data.items() if k != "cmd"}
-    net_schema = _wifi_field_schema(client, ("SSID", "PW", "Country", "Hostname"))
-    return await ar.handle_set_cmd(
-        client, fields, net_schema, post_fct=client.reconnect_wifi, ok_descr="Network settings updated",
-    )
+    # The endpoint builds the one OK envelope around handle_set_cmd()'s per-field result, with its own text.
+    result = await _scoped_set(client, fields, ("SSID", "PW", "Country", "Hostname"), post_fct=client.reconnect_wifi)
+    return ar.make_response(0, descr="Network settings updated", result=result)
 
 
 async def _simulated_set_wifi_led_endpoint(client: WifiService, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
@@ -133,8 +139,7 @@ async def _simulated_set_wifi_led_endpoint(client: WifiService, request: "ar._Re
         return err
     assert data is not None
     fields = {k: v for k, v in data.items() if k != "cmd"}
-    led_schema = _wifi_field_schema(client, ("LEDWifiOn",))
-    return await ar.handle_set_cmd(client, fields, led_schema)
+    return ar.make_response(0, result=await _scoped_set(client, fields, ("LEDWifiOn",)))
 
 
 def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
@@ -354,7 +359,7 @@ def test_real_microdot_wrong_method_returns_405() -> None:
 
 
 def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch() -> None:
-    # Defense-in-depth proof at the opposite end from handle_set_cmd's own try/except: even a
+    # Defense-in-depth proof at the opposite end from handle_set_cmd's own hook guard: even a
     # handler that bypasses asy_api_response.py entirely and raises directly is still contained by
     # Microdot itself (see CLAUDE.md's "Microdot / REST layer" section) - the server never crashes.
     app = Microdot()
@@ -372,7 +377,7 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
 # ---------------------------------------------------------------------------
 # Real Microdot end to end with a real sensor driver (BMP3xx), not just the software-only readers above -
 # proving a genuine hardware fault (a wedged I2C bus, as a dead sensor produces) propagates through
-# _set_dict_cfg's push callback, handle_set_cmd's envelope and real dispatch as a per-field "Failed".
+# _set_dict_cfg's push callback, handle_set_cmd's per-field result and real dispatch as a per-field "Failed".
 #
 # Inside a normal 200 JSON response, never a raised exception or a bare Microdot 500. The one place
 # CLAUDE.md's blanket-catch guarantee and SPECIFICATION.md Part C.4's layer-3 "never raises" contract are
@@ -412,7 +417,7 @@ def _bmp_app(reader: BMP3XX_Reader) -> Microdot:
             return err
         assert data is not None
         fields = {k: v for k, v in data.items() if k != "cmd"}
-        return await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema())
+        return ar.make_response(0, result=await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema()))
 
     return app
 
@@ -527,7 +532,7 @@ def _ntp_setter_app(client: NTPClient) -> Microdot:
         fields = {k: v for k, v in data.items() if k != "cmd"}
         # post_asy_fct mirrors the real route: a changed NTP config must force an immediate resync
         # rather than waiting out the (up to 24h) NTPInterval window with the old settings.
-        return await ar.handle_set_cmd(client, fields, client.get_cfg_schema(), post_asy_fct=client.ntp_force_sync)
+        return ar.make_response(0, result=await ar.handle_set_cmd(client, fields, client.get_cfg_schema(), post_asy_fct=client.ntp_force_sync))
 
     return app
 
@@ -618,7 +623,7 @@ def _sgp_app(reader: SGP40_Reader) -> Microdot:
             return err
         assert data is not None
         fields = {k: v for k, v in data.items() if k != "cmd"}
-        return await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema())
+        return ar.make_response(0, result=await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema()))
 
     return app
 

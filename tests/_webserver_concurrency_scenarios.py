@@ -248,12 +248,13 @@ async def _slow_but_healthy_put(host: str, port: int, delay_s: float) -> int:
         await writer.wait_closed()
 
 
-async def _real_config_write(host: str, port: int, interval: int) -> int:
+async def _real_config_write(host: str, port: int, interval: int) -> "tuple[int, object]":
     """A real config write reaching ConfigManager.write_config() through the real object graph
     (SCD30 is on every device, Part L.3) - unlike _slow_but_healthy_put()'s no-op above. Proves
     concurrent GET polling survives a real write; bench and unit equivalents exist per tier."""
-    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}}, read_body=False)
-    return res.status_code
+    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"MeasInterval": interval}})
+    # The field's own answer, not just the status: an unknown key answers "Invalid" under a 200.
+    return res.status_code, res.json().get("result", {}).get("SCD30", {}).get("MeasInterval")
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +607,7 @@ async def _scenario_polling_and_config_write(device: str) -> None:
 
         openhab_result, write_results = await asyncio.gather(_openhab_poll("127.0.0.1", port), _writes())
         assert openhab_result == [200, 200], openhab_result
-        assert write_results == [200] * writes, write_results
+        assert write_results == [(200, "Valid")] * writes, write_results
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
@@ -800,7 +801,7 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
     task = await _start_webserver(module)
     try:
         results = await asyncio.gather(*(_real_config_write("127.0.0.1", port, 5 + i) for i in range(ceiling)))
-        assert list(results) == [200] * ceiling, results
+        assert list(results) == [(200, "Valid")] * ceiling, results
         # Then the same count again with bodies at the cap's own boundary: read at the cap (the
         # schema may still refuse the value), 413 one byte over - each a separate live allocation.
         assert Request.max_content_length == _BODY_CAP, Request.max_content_length

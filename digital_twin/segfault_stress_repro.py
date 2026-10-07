@@ -13,6 +13,7 @@ import _http_client
 import machine
 import sensortask_wozi
 from unix_port_poll_prewarm import prewarm_poll_set
+from unix_port_unretrieved_report import install
 
 _CONFIG_DIR = "digital_twin/config/"
 _ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
@@ -79,6 +80,7 @@ def _parse_args(argv: "list[str]") -> "dict[str, object]":
 
 
 async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: int) -> None:
+    install()  # before the firmware: start_and_check_tasks() keeps it, so every task death prints (Part I.4(e))
     # Must run before anything else in the process registers a poll object - see
     # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
     # section.

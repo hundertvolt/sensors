@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, NamedTuple, Protocol
 
-    from asy_base_classes import ErrorSource, TimerStarter
+    from asy_base_classes import ErrorSource, JsonMapping, TimerStarter
     from asy_config_manager import ConfigSchema, FieldSchema, WriteValidity
     from asy_print_log import ErrorLog, PrintLogHistory
 
@@ -271,9 +271,7 @@ class WifiService(SensorReaderConfig):
             else:
                 return stations  # type: ignore[return-value]  # stub types status(str) as int; real AP-mode "stations" returns a list per MicroPython docs
 
-    async def _set_mgr_cfg(
-        self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema",
-    ) -> "tuple[bool, WriteValidity]":
+    async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # Refuses a radio value outside its byte bound or shape before it is stored (C.7.4); the rest of the
         # request goes through ConfigManager as usual.
         fields = schema_dict(cfg_vals)

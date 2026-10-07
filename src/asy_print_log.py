@@ -1,9 +1,10 @@
 """Leveled console logging (PrintLog), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore).
 A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints every call at its level.
-Every method returns a well-defined value, never raises - PrintLogHistoryStore's FRAM calls are wrapped broadly, matching asy_fram_manager.py's own contract plus defense-in-depth against the _FramManager/_FramChunk Protocol below.
+Never raises: a FRAM chunk operation raises only by allocation, counted as a failed write.
 """
 
 import struct
+import sys
 from collections import deque, namedtuple
 
 from micropython import const
@@ -16,7 +17,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any, NamedTuple, Protocol, TypedDict, TypeVar
+    from asyncio.events import _Context  # asyncio's handler context, dict[str, Any] in the stub
+    from typing import NamedTuple, Protocol, TypedDict
 
     # The envelope get_log()/get_error_counter() return project-wide - one entry per module name.
     # Declared here (their only shared definition) and imported by every module that returns one.
@@ -30,25 +32,20 @@ if TYPE_CHECKING:
     from asy_base_classes import LockableBuffer
     from asy_crc_checks import CRCBase
 
-    # _BufT ties get_buffer()'s result to write_into()/read_into()'s parameter, which is all this
-    # file ever does with a buffer: each real chunk class pairs itself with its own LockableBuffer
-    # subclass, so a single shared buffer type here would be contravariantly incompatible with them.
-    _BufT = TypeVar("_BufT", bound="LockableBuffer")
-
     # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
     # asy_fram_manager.py is promoted to src/, avoiding a real runtime import cycle (it imports
     # PrintLogHistory from here) and decoupling from its concrete chunk shapes.
-    class _FramChunk(Protocol[_BufT]):
-        def get_buffer(self) -> "_BufT": ...
+    class _FramChunk(Protocol):
+        def get_buffer(self) -> "LockableBuffer": ...
 
-        async def read_into(self, buf: "_BufT", *, override_pause: bool = False) -> bool: ...
+        async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool: ...
 
-        async def write_into(self, buf: "_BufT", *, override_pause: bool = False) -> bool: ...
+        async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool: ...
 
     class _FramManager(Protocol):
         def get_chunk(
             self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
-        ) -> "_FramChunk[Any] | None": ...
+        ) -> "_FramChunk | None": ...
 
 
 # defs for PrintLog
@@ -69,86 +66,75 @@ _MAX_CNT = const(0xFFFF)
 
 class PrintLog:
     def __init__(self, level: int | None = None, name: str = "") -> None:
-        self.level = _LOG_OFF
-        self.set_level(level)
         self.name = name
+        self.level = _LOG_OFF
+        if level is not None:  # None: not given, off; any other invalid level is refused like set_level()'s
+            self.set_level(level)
 
-    def get_level(self) -> int:
-        return self.level
-
-    def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
-        if level is None or level < _LOG_OFF:
-            self.level = _LOG_OFF
-        elif level > _LOG_ALL:
-            self.level = _LOG_ALL
-        else:
+    def set_level(self, level: int | None) -> bool:
+        # Exact type, so bool, float and None are refused like an out-of-range int (on MicroPython bool is
+        # no int subclass); the shared validator cannot be imported here (asy_config_manager imports this).
+        if type(level) is int and _LOG_OFF <= level <= _LOG_ALL:
             self.level = level
+            return True
+        self.err("PrintLog: invalid level refused:", level)
+        return False
 
-    def all(self, *args: object, **kwargs: "Any") -> None:
+    def all(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         if self.level >= _LOG_ALL:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
-    # **kwargs is forwarded verbatim into print(), whose stub carries CPython's file=/flush=
-    # keywords: no non-Any element type can satisfy that overload set (PEP 692's Unpack needs 3.11,
-    # and typings/'s own typing.pyi declares TypedDict as a bare object). *args is plain `object`.
-    def err(self, *args: object, **kwargs: "Any") -> None:
+    def err(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         if self.level >= _LOG_ERR:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
-    def evt(self, *args: object, **kwargs: "Any") -> None:
+    def evt(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         if self.level >= _LOG_EVENT:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
-    @staticmethod
-    def level_err() -> int:
-        return _LOG_ERR
-
-    @staticmethod
-    def level_event() -> int:
-        return _LOG_EVENT
-
-    @staticmethod
-    def level_info() -> int:
-        return _LOG_ALL
-
-    @staticmethod
-    def level_off() -> int:
-        return _LOG_OFF
-
-    @staticmethod
-    def level_once() -> int:
-        return _LOG_ONCE
-
-    @staticmethod
-    def level_warn() -> int:
-        return _LOG_WARN
-
-    def one(self, *args: object, **kwargs: "Any") -> None:
+    def one(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         if self.level >= _LOG_ONCE:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
-    def wrn(self, *args: object, **kwargs: "Any") -> None:
+    def report_unretrieved(self, _loop: object, context: "_Context") -> None:
+        # asyncio's handler(loop, context) for a task that ended raising with nobody awaiting it (SPECIFICATION.md F.1).
+        # Fixed-argument print() and print_exception() take no heap, so it reports on an exhausted one too; nothing escapes
+        # into the loop, and the finally releases the dead task and exception asyncio's own context dict would keep.
+        try:
+            try:
+                if self.level >= _LOG_ERR:
+                    print(self.name, context["message"])
+                    sys.print_exception(context["exception"])
+            finally:
+                context["exception"] = None
+                context["future"] = None
+        except Exception:  # an escape would end asyncio.run(); the supervisor persists a supervised task's end
+            pass
+
+    def wrn(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         if self.level >= _LOG_WARN:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
 
 class PrintLogHistory(PrintLog):
     def __init__(self, history_length: int = 10, level: int | None = None, name: str = "") -> None:
         super().__init__(level=level, name=name)
-        # Clamp to [0, _MAX_CNT] (_err_count's own uint16 range) before allocating: `[x] * n` can
-        # segfault the interpreter uncatchably in a size range bytearray()'s own guards don't cover
-        # - see CLAUDE.md's list-repeat-segfault gotcha for the measured failure-size boundaries.
+        # Clamp to [0, _MAX_CNT] (err_count's own uint16 range) before allocating: `[x] * n` can segfault
+        # the interpreter uncatchably in a size range bytearray()'s guards don't cover - see SPECIFICATION.md
+        # Part F.1's `[x] * n` fact for the measured size boundaries.
         history_length = min(max(history_length, 0), _MAX_CNT)
         try:  # still reachable well below the overflow boundary on a genuinely memory-constrained device
             self.history = deque([_NO_ERR] * history_length, history_length)
-        except MemoryError:
+        except MemoryError as e:  # a 0-length ring: get_log() then reports no slot, every call still counts
             history_length = 0
             self.history = deque([], 0)
+            self._diag("PrintLog: history allocation failed:", e)
         self._err_count = 0
         self._pre_setup_slots = 0  # ring slots taken before setup(): RAM-only entries for setup() to keep
         self.initialized = False
+        self.restored = False  # True once setup() loaded what an earlier boot stored; a RAM-only history never does
 
-    def _diag(self, *args: object) -> None:  # internal-failure prints, gated on any logging being enabled at all
+    def _diag(self, *args: object) -> None:  # print-only: inside the logging layer itself; gated on any logging being enabled
         if self.level > _LOG_OFF:
             print(self.name, *args)
 
@@ -201,12 +187,12 @@ class PrintLogHistory(PrintLog):
                 err_type.append("W")
         return {name: {"ErrCount": self._err_count, "ErrNum": err_num, "ErrType": err_type}}
 
-    async def err_s(self, *args: object, errno: int = _NO_ERR, **kwargs: "Any") -> None:
+    async def err_s(self, *args: object, errno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
         if self.level >= _LOG_ERR:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
-    async def reset(self) -> None:
+    async def reset(self) -> bool:  # False when the cleared state could not be written (ResetErrors then answers "Failed")
         # No `not self.initialized` guard here, unlike _store_err(): a cleared ring is exactly what
         # the caller asked to persist, and claiming initialization once the write succeeds stops a
         # later setup() restoring over it (SPECIFICATION.md Part C.7). A failed write leaves it False.
@@ -216,17 +202,18 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             # Same "regardless of self.level" reasoning as _store_err() above.
             self._diag("PrintLog: History reset write failed!")
-            return
+            return False
         self.initialized = True
+        return True
 
     async def setup(self) -> bool:  # no persistence to load in the pure in-memory case
         self.initialized = True
         return True
 
-    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, **kwargs: "Any") -> None:
+    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, sep: str = " ", end: str = "\n") -> None:
         await self._store_err(_NO_WRN, _MAX_WRN, wrnno)
         if self.level >= _LOG_WARN:
-            print(self.name, *args, **kwargs)
+            print(self.name, *args, sep=sep, end=end)
 
 
 class PrintLogHistoryStore(PrintLogHistory):
@@ -237,12 +224,11 @@ class PrintLogHistoryStore(PrintLogHistory):
         super().__init__(history_length=history_length, level=level, name=name)
         # len(self.history) is fixed for this object's lifetime (deque maxlen never changes), so
         # this format string is cached once here instead of being rebuilt on every _write()/_read().
-        self._history_fmt = "B" * len(self.history)
+        self._history_fmt = "<" + "B" * len(self.history)
         size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
-        try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
-            # concrete, audited-to-never-raise implementation (see module docstring)
-            self.fram: _FramChunk[Any] | None = fram.get_chunk(size, crc=CRC8())
-        except Exception:
+        try:
+            self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
+        except MemoryError:
             self.fram = None
         if self.fram is None:
             self._diag("PrintLog: FRAM allocation failed!")
@@ -250,15 +236,16 @@ class PrintLogHistoryStore(PrintLogHistory):
     async def _read(self) -> bool:
         if self.fram is None:
             return False
-        try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
-            # concrete, audited-to-never-raise implementation (see module docstring)
+        try:  # a chunk operation fails only by allocation (the module docstring)
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
+            if dbuf is None:  # the buffer's own allocation failed
+                return False
             if not await self.fram.read_into(buf):
                 return False
             self._err_count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
             self.history.extend(struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE))
-        except Exception:
+        except MemoryError:
             return False
         else:
             return True
@@ -266,20 +253,24 @@ class PrintLogHistoryStore(PrintLogHistory):
     async def _write(self) -> bool:
         if self.fram is None:
             return False
-        try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
-            # concrete, audited-to-never-raise implementation (see module docstring)
+        try:  # a chunk operation fails only by allocation (the module docstring)
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
+            if dbuf is None:  # the buffer's own allocation failed
+                return False
             struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
             struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
             return bool(await self.fram.write_into(buf))
-        except Exception:
+        except MemoryError:
             return False
 
     async def setup(self) -> bool:  # False: no chunk, or it can be neither read nor written - RAM-only
         if self.fram is None or self.initialized:
             return self.initialized
-        if await self._read() or await self._write():
+        if await self._read():
+            self.restored = True
+            self.initialized = True
+        elif await self._write():
             self.initialized = True
         else:
             self._diag("PrintLog: FRAM setup failed!")

@@ -55,8 +55,8 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
-    from asy_base_classes import JsonDict
-    from asy_config_manager import ConfigSchema
+    from asy_base_classes import JsonDict, PushFct
+    from asy_config_manager import CfgValue, ConfigSchema
     from asy_isl29125_driver import ISLResults
     from asy_print_log import ErrorLog
 
@@ -65,6 +65,11 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+async def _push(callback: "PushFct", value: "CfgValue") -> bool:
+    # A push callback is typed to return an Awaitable (asy_base_classes' PushFct); run() takes a coroutine.
+    return await callback(value)
 
 
 class _FastAsyncSleep:
@@ -847,7 +852,7 @@ def test_the_log_config_sets_both_loggers_length_and_level() -> None:
     reader = ISL29125_Reader(make_i2c(), 6, cfg_path=_tmp_cfg_path("log_config"), log=LogConfig(None, 3, 2))
     for pr in (reader.pr, reader.cfgmgr.pr):
         assert len(pr.history) == 3
-        assert pr.get_level() == 2
+        assert pr.level == 2
     assert reader._isl._i2c_isl29125.i2c_device.device_address == _ADDR  # the chip's one fixed address
 
 
@@ -1220,7 +1225,7 @@ def test_output_filter_applies_only_when_filtcoeff_is_positive() -> None:
         assert abs(unfiltered - 2.0 * first) < 1e-9
         # Now with the filter on: one step must land a tenth of the way, not all the way.
         run(reader.set_filter_coefficient(0.1))
-        assert run(reader.cfgmgr.write_config({"FiltCoeff": 0.1}, reader.get_cfg_schema()))[0] is True
+        assert run(reader.cfgmgr.write_config({"FiltCoeff": 0.1}))[0] is True
         seed_cycle(i2c, 40000, 40000, 40000)
         run(reader._store_isl(run(reader._read_isl())))
         filtered = run(reader.get_data()).Lux
@@ -1878,14 +1883,14 @@ def test_each_push_rejects_the_wrong_type_without_touching_the_bus() -> None:
     }
     with _FastAsyncSleep():
         for field, value in wrong.items():
-            assert run(reader._push_callbacks[field](value)) is False, field
+            assert run(_push(reader._push_callbacks[field], value)) is False, field
     assert mem_writes(i2c) == []
 
 
 def test_pushing_resolution_reaches_the_chip_byte_exactly() -> None:
     i2c, reader = ready_reader("push_resolution")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["Resolution"](12)) is True
+        assert run(_push(reader._push_callbacks["Resolution"], 12)) is True
     config1 = next(payload for register, payload in mem_writes(i2c) if register == _REG_CONFIG1)
     assert config1[0] & _BITS_12
 
@@ -1893,8 +1898,8 @@ def test_pushing_resolution_reaches_the_chip_byte_exactly() -> None:
 def test_pushing_ir_compensation_reaches_config2_without_touching_config1() -> None:
     i2c, reader = ready_reader("push_ir")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["IRCompOffset"](1)) is True
-        assert run(reader._push_callbacks["IRCompAdjust"](63)) is True
+        assert run(_push(reader._push_callbacks["IRCompOffset"], 1)) is True
+        assert run(_push(reader._push_callbacks["IRCompAdjust"], 63)) is True
     writes = mem_writes(i2c)
     assert all(register == _REG_CONFIG2 for register, _payload in writes)
     assert writes[-1][1][0] == 0x80 | 63
@@ -2143,9 +2148,9 @@ def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
     # it, so changing it legitimately reaches CONFIG3. Its own test is below.
     i2c, reader = ready_reader("push_software")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["AutoRangeThresh"](90.0)) is True
-        assert run(reader._push_callbacks["AutoRangeDwell"](30.0)) is True
-        assert run(reader._push_callbacks["FiltCoeff"](0.25)) is True
+        assert run(_push(reader._push_callbacks["AutoRangeThresh"], 90.0)) is True
+        assert run(_push(reader._push_callbacks["AutoRangeDwell"], 30.0)) is True
+        assert run(_push(reader._push_callbacks["FiltCoeff"], 0.25)) is True
     assert reader._ar_thresh == 90.0
     assert reader._ar_dwell_s == 30.0
     assert mem_writes(i2c) == []
@@ -2158,7 +2163,7 @@ def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> Non
     i2c, reader = ready_reader("push_interval")
     assert reader._isl._persist == 2  # derived at init from the 1s default
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["SampleInterval"](7)) is True
+        assert run(_push(reader._push_callbacks["SampleInterval"], 7)) is True
     assert run(reader._trigger_period.get_value()) == 7
     assert reader._isl._persist == 8
     writes = mem_writes(i2c)
@@ -2969,9 +2974,8 @@ def test_configure_arms_and_disarms_the_threshold_interrupt_by_intent() -> None:
 
 
 def test_a_malformed_schema_record_is_refused_rather_than_returned_as_a_setting() -> None:
-    # Defence in depth (SPECIFICATION.md Part E.4): type_or_range_error() is typed to hand back
-    # Any, and no real schema in this driver can produce a non-numeric - but the narrowing guard
-    # is what stops one becoming a live setting if one ever could.
+    # Defence in depth (SPECIFICATION.md Part E.4): checked_numeric() answers None for a field kind
+    # that is not a number, so a malformed schema record is refused and logged, never a live setting.
     _i2c, reader = ready_reader("bad_schema")
     bogus = (("Bogus", "str", "x", 0, 8, None),)
 

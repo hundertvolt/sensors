@@ -31,10 +31,12 @@ patch_asy_udp_socket_for_unix_port()
 # this file's own reboot-survival section below.
 import machine  # noqa: E402
 import sensortask_wozi  # noqa: E402
+import unix_port_unretrieved_report  # noqa: E402
 from _shared_rest_roundtrip import assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
 import asy_ntp_client  # noqa: E402  # its `time` is swapped for rp2's 8-field gmtime() in the notification-window section
+import asy_system_service  # noqa: E402  # its asyncio is swapped for a fast-sleeping view in the unretrieved-exception section
 from asy_scd30_driver import SCD30  # noqa: E402  # seeds a reading: the notification-window and reboot-survival sections below
 from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
 
@@ -542,7 +544,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
 #
 # Deliberately does NOT drive this through main()/start_and_check_tasks(). MicroPython's globals() does not
 # preserve definition order, so "the last test in the file" is not the last test to run, and
-# start_and_check_tasks() keeps its started tasks in a local no caller can reach and cancel.
+# cancelling start_and_check_tasks() cancels only its supervisor, never the tasks it started.
 #
 # main_task.cancel() then only cancelled the outer wrapper, leaving every real task it had started running
 # for the rest of the process. Across the other tests' repeated build_system() calls, those orphaned
@@ -671,6 +673,164 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
 
 
 # ---------------------------------------------------------------------------
+# Unretrieved task exceptions on the twin: the PC tier's report, installed by microtest before this file ran,
+# stays installed over the real start_and_check_tasks(), and a supervised task's death reaches the console at
+# DebugLevel 0, death after death, with the heap where it was (SPECIFICATION.md Parts F.1 and I.4(e)).
+# ---------------------------------------------------------------------------
+
+_STATUS_DEATHS = 10
+_DECAY_PASSES = 110  # clean supervisor passes between two deaths: each decays the restart budget by one, a death adds 100
+_PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass costs a few with the supervisor's fast sleep
+# The collected heap across the deaths, in-loop with every real task live: measured within 1.1 KB at both GC stages,
+# while keeping each dead task and its exception measured 3.6 KB over the ten (2026-10-07).
+_HEAP_DRIFT_BYTES = 2048
+
+
+class _StatusFault:
+    # Stands in for SystemService._uptime: every read raises, so the status task dies at its next wake-up.
+    def read(self) -> int:
+        raise RuntimeError("injected status fault")
+
+
+class _FastSupervisorAsyncio:
+    # asy_system_service's view of asyncio, its sleeps reduced to one yield, so the supervisor's two-second pass
+    # takes one; every other module keeps the real sleeps. While `hold` is set the supervisor parks in its sleep.
+    def __init__(self) -> None:
+        self.hold = False
+        self.parked = False
+        self._release = asyncio.Event()
+
+    async def sleep(self, _seconds: float) -> None:
+        if self.hold:
+            self.parked = True
+            await self._release.wait()
+            self._release.clear()
+            self.parked = False
+        else:
+            await asyncio.sleep(0)
+
+    async def sleep_ms(self, _ms: int) -> None:
+        await asyncio.sleep(0)
+
+    def release(self) -> None:
+        self.hold = False
+        self._release.set()
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+
+class _ReportTap:
+    # Checks each of the PC report's two outputs and passes it on to the real console. Counts rather than keeps
+    # them: a kept exception or dead task would read as heap drift.
+    def __init__(self) -> None:
+        self.reported = 0
+        self.traced = 0
+        self.wrong: list[object] = []
+
+    def __enter__(self) -> "_ReportTap":
+        unix_port_unretrieved_report.print = self._print  # type: ignore[attr-defined]
+        unix_port_unretrieved_report.sys = self  # type: ignore[attr-defined, assignment]
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        del unix_port_unretrieved_report.print  # type: ignore[attr-defined]
+        unix_port_unretrieved_report.sys = sys  # type: ignore[attr-defined]
+
+    def _print(self, *args: object) -> None:
+        if args == (unix_port_unretrieved_report.MARKER, "Task exception wasn't retrieved"):
+            self.reported += 1
+        else:
+            self.wrong.append(args)
+        print(*args)
+
+    def print_exception(self, exc: BaseException) -> None:
+        if isinstance(exc, RuntimeError) and exc.args == ("injected status fault",):
+            self.traced += 1
+        else:
+            self.wrong.append(exc)
+        sys.print_exception(exc)
+
+
+async def _yield_until(predicate: "Callable[[], bool]") -> bool:
+    for _ in range(_PASS_YIELD_BOUND):
+        if predicate():
+            return True
+        await asyncio.sleep(0)
+    return predicate()
+
+
+async def _yield_until_above(read: "Callable[[], int]", floor: int) -> bool:
+    return await _yield_until(lambda: read() > floor)
+
+
+def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0() -> None:
+    port = _next_test_port()
+    tap = _ReportTap()
+    drift = [0] * _STATUS_DEATHS  # sized up front: a growing list would read as heap drift
+    resets = machine.reset_count
+
+    async def scenario() -> None:
+        await _boot(port)
+        sysfunct, watchdog = sensortask_wozi.sysfunct, sensortask_wozi.watchdog
+        assert sysfunct is not None and watchdog is not None
+        assert sysfunct.pr.set_level(0)
+        task_starters = sensortask_wozi._collect_task_starters()
+        status_idx = task_starters.index(sysfunct.start_asy_status)  # SYSTEM's own task: every device has it
+        starts = [0] * len(task_starters)
+        latest: list[asyncio.Task[Any] | None] = [None] * len(task_starters)  # only the live one: no dead task is kept
+        real_start_task, real_uptime = sysfunct._start_task, sysfunct._uptime
+
+        async def _tracking_start_task(starter: "Callable[[], asyncio.Task[Any]]", n: int) -> "asyncio.Task[Any] | None":
+            latest[n] = await real_start_task(starter, n)
+            starts[n] += 1
+            return latest[n]
+
+        sysfunct._start_task = _tracking_start_task  # type: ignore[method-assign]
+        fast = _FastSupervisorAsyncio()
+        asy_system_service.asyncio = fast  # type: ignore[attr-defined, assignment]
+        supervisor = asyncio.get_event_loop().create_task(sysfunct.start_and_check_tasks(task_starters))
+        try:
+            assert await _yield_until(lambda: all(starts)), starts
+            assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
+            sysfunct._uptime = _StatusFault()  # type: ignore[assignment]
+            with tap:
+                for death in range(_STATUS_DEATHS):
+                    # The death lands while the supervisor sleeps, as its two-second pass makes near certain on the
+                    # board: a pass awaiting the dead task first would retrieve the exception, and no handler runs.
+                    fast.hold = True
+                    assert await _yield_until(lambda: fast.parked), "the supervisor never reached its sleep"
+                    restarts, reported = starts[status_idx], tap.reported
+                    sysfunct._uptime_event.set()
+                    assert await _yield_until_above(lambda: tap.reported, reported), f"the death never reached the PC report: {tap.wrong}"
+                    fast.release()
+                    assert await _yield_until_above(lambda: starts[status_idx], restarts), "the dead status task was never restarted"
+                    fed = watchdog.feed_count
+                    assert await _yield_until_above(lambda: watchdog.feed_count, fed + _DECAY_PASSES - 1), "the supervisor stopped passing"
+                    gc.collect()
+                    drift[death] = gc.mem_alloc()
+            assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
+        finally:
+            sysfunct._uptime = real_uptime
+            del sysfunct._start_task
+            asy_system_service.asyncio = asyncio  # type: ignore[attr-defined]
+            await _cancel(supervisor)
+            for task in latest:
+                # A dead one stays: the supervisor awaited it already, and a second await of a task whose first
+                # one raced asyncio's pending handler entry raises None, a segfault (SPECIFICATION.md Part F.1).
+                if task is not None and not task.done():
+                    await _cancel(task)
+            if sensortask_wozi.conn is not None and sensortask_wozi.conn._dns_server_task is not None:
+                await _cancel(sensortask_wozi.conn._dns_server_task)
+            gc.collect()  # same reason as the restart test above: the full task list ran
+
+    run_timed(scenario(), timeout_s=_SUPERVISOR_RUN_BOUND_S)
+    assert (tap.reported, tap.traced, tap.wrong) == (_STATUS_DEATHS, _STATUS_DEATHS, []), (tap.reported, tap.traced, tap.wrong)
+    assert machine.reset_count == resets  # the restart budget never escalated to a reset
+    assert max(drift) - drift[0] <= _HEAP_DRIFT_BYTES, drift
+
+
+# ---------------------------------------------------------------------------
 # WiFi hotspot/DNS/LED chain, end to end: a real STA connect failure driving WifiService through a real STA
 # -> hotspot transition, starting a real CaptiveDNS task, with the real WiFi-status LED wired by
 # build_system() actually driven by the real state machine along the way.
@@ -689,7 +849,7 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         # A real configured SSID (not the "SSID==''" unconfigured shortcut) so this exercises a
         # genuine scripted STA connect failure through the real state machine, not just "never
         # configured".
-        persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"}, conn.get_cfg_schema())
+        persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
 
         import network  # digital_twin's own fake - see this file's own sys.path setup above
@@ -779,7 +939,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # WaitTimeNTP's schema default (30) would need 30 real backup cycles before _run_backup()'s
             # require_ntp gate clears without an NTP sync - set to its minimum positive value so the first
             # backup below completes without depending on NTP reachability here.
-            persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1}, sgp1.get_cfg_schema())
+            persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1})
             assert persisted
             task = sgp1.start_asy_read()
             try:
@@ -851,7 +1011,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             sgp1 = sensortask_wozi.sgp40
             await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
-            persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1}, sgp1.get_cfg_schema())
+            persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1})
             assert persisted
             task = sgp1.start_asy_read()
             try:

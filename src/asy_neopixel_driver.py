@@ -185,8 +185,8 @@ class NeopixelDriver:
         self._start_signal_event.set()
         return True
 
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
+    async def reset_error_counter(self) -> bool:
+        return await self.pr.reset()
 
     async def setup(self) -> bool:
         # The logger's own setup, in the boot batch before either task starts. True = ready: a logger

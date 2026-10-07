@@ -6,7 +6,7 @@ from _tmp_scratch import TmpScratch
 
 import asy_base_classes
 import asy_notification_service
-from asy_base_classes import ValueRef
+from asy_base_classes import LockableBuffer, ValueRef
 from asy_notification_service import NotificationService, NotificationSignal
 from asy_print_log import LogConfig
 
@@ -585,21 +585,26 @@ def test_all_fields_invalid_in_one_write_none_persist() -> None:
 
 def test_fram_backed_variant_survives_a_reboot() -> None:
     class _FakeFramChunk:
+        # One chunk's bytes, moved through the real LockableBuffer asy_print_log's _FramChunk Protocol names.
         def __init__(self) -> None:
             self.buf = bytearray(64)
+            self._buffer = LockableBuffer(64)
 
-        def get_buffer(self) -> "_FakeFramChunk":
-            return self
+        def get_buffer(self) -> LockableBuffer:
+            return self._buffer
 
-        def get_data_buf(self) -> bytearray:
-            return self.buf
-
-        async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
-            self.buf[:] = buf.get_data_buf()
+        async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+            data = buf.get_data_buf()
+            if data is None:
+                return False
+            self.buf[:] = data
             return True
 
-        async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
-            buf.get_data_buf()[:] = self.buf
+        async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+            data = buf.get_data_buf()
+            if data is None:
+                return False
+            data[:] = self.buf
             return True
 
     class _FakeFramManager:

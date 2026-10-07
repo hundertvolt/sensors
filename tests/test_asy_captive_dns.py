@@ -5,7 +5,7 @@ import time
 from _error_codes import code
 
 from asy_captive_dns import CaptiveDNS, DNSQuery, _ipv4_to_int
-from asy_print_log import LogConfig, PrintLog, PrintLogHistory
+from asy_print_log import LogConfig, PrintLogHistory
 from asy_udp_socket import UDPSocket
 
 try:
@@ -328,7 +328,7 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
 
 
 def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
-    server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_info()))
+    server = CaptiveDNS(log=LogConfig(None, 10, 5))  # DebugLevel 5, everything (SPEC A.8's level numbers)
     assert server._udps._addr == ("0.0.0.0", 53)
     assert server._udps._mode == "server"
     assert server._udps._sock is None  # lazy - no real bind attempted at construction
@@ -354,8 +354,8 @@ def test_dns_server_logger_is_named_dnssrv() -> None:
 
 
 def test_dns_server_debug_level_is_forwarded_to_the_logger() -> None:
-    server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_err()))
-    assert server.pr.get_level() == PrintLog.level_err()
+    server = CaptiveDNS(log=LogConfig(None, 10, 1))
+    assert server.pr.level == 1
 
 
 def test_dns_server_history_length_comes_from_the_log_config() -> None:
@@ -365,11 +365,11 @@ def test_dns_server_history_length_comes_from_the_log_config() -> None:
 
 def test_dns_server_debug_none_leaves_logger_at_off() -> None:
     server = CaptiveDNS(log=LogConfig(None, 10, None))
-    assert server.pr.get_level() == PrintLog.level_off()
+    assert server.pr.level == 0
 
 
 def test_dns_server_default_logger_is_off() -> None:
-    assert CaptiveDNS().pr.get_level() == PrintLog.level_off()
+    assert CaptiveDNS().pr.level == 0
 
 
 def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
@@ -380,9 +380,16 @@ def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
     server = CaptiveDNS()
-    run(server.pr.err_s("boom", errno=1))
+    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
     log = run(server.get_error_counter())
     assert log["DNSSRV"]["ErrCount"] == 1
+
+
+def test_reset_error_counter_returns_true_and_clears() -> None:
+    server = CaptiveDNS()
+    run(server.pr.err_s("boom", errno=code("E", "UNEXPECTED")))
+    assert run(server.reset_error_counter()) is True
+    assert run(server.get_error_counter())["DNSSRV"]["ErrCount"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +564,7 @@ def test_run_rejects_invalid_server_ip_or_netmask_without_raising() -> None:
 
 
 def test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error() -> None:
-    server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_err()))
+    server = CaptiveDNS(log=LogConfig(None, 10, 1))
 
     async def scenario() -> None:
         await server.run("not-an-ip", "255.255.255.0")
@@ -613,7 +620,7 @@ def test_run_sendto_failure_logs_a_persisted_warning() -> None:
     fake.sendto_results = [None, None]
 
     async def scenario() -> None:
-        server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_warn()))
+        server = CaptiveDNS(log=LogConfig(None, 10, 2))
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -631,7 +638,7 @@ def test_run_invalid_recvfrom_data_logs_a_persisted_warning() -> None:
     fake = _FakeUDPS([(None, None), (None, None)])
 
     async def scenario() -> None:
-        server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_warn()))
+        server = CaptiveDNS(log=LogConfig(None, 10, 2))
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -1002,7 +1009,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     async def scenario() -> "tuple[list[tuple[bytes, tuple[str, int]]], int]":
         captive_dns_module.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
         try:
-            server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_err()))
+            server = CaptiveDNS(log=LogConfig(None, 10, 1))
             server._udps = fake  # type: ignore[assignment]
             t0 = time.ticks_ms()
             task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
@@ -1036,7 +1043,7 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
     fake = _RaisingDisconnectUDPS(RuntimeError("simulated disconnect failure"))
 
     async def scenario() -> None:
-        server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_err()))
+        server = CaptiveDNS(log=LogConfig(None, 10, 1))
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(_REACH_RECV_MS)
@@ -1142,7 +1149,7 @@ def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() 
     fake = _RaisingDisconnectUDPS(asyncio.CancelledError())
 
     async def scenario() -> None:
-        server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_err()))
+        server = CaptiveDNS(log=LogConfig(None, 10, 1))
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(_REACH_RECV_MS)
@@ -1161,7 +1168,7 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
     fake.disconnect_ok = False
 
     async def scenario() -> None:
-        server = CaptiveDNS(log=LogConfig(None, 10, PrintLog.level_warn()))
+        server = CaptiveDNS(log=LogConfig(None, 10, 2))
         server._udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(_REACH_RECV_MS)

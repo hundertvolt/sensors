@@ -30,6 +30,11 @@ def _eval_literal(node: "ast.expr", consts: "dict[str, ast.expr]") -> object:
         raise ValueError(f"cannot resolve name {node.id!r} in schema literal")
     if isinstance(node, (ast.Tuple, ast.List)):
         return tuple(_eval_literal(elt, consts) for elt in node.elts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):  # a schema concatenation, `_VAL_A + _VAL_B`
+        left, right = _eval_literal(node.left, consts), _eval_literal(node.right, consts)
+        if not (isinstance(left, tuple) and isinstance(right, tuple)):
+            raise TypeError(f"cannot concatenate non-tuple schema literals {left!r} + {right!r}")
+        return left + right
     raise ValueError(f"unsupported schema literal node {ast.dump(node)}")
 
 

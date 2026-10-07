@@ -45,7 +45,6 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "STORED_DEFAULT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_KEYS_REMOVED"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
-    ("src/asy_config_manager.py", "setup", ("W", "CFG_NO_STORED"), ("E", "CFG_FILE_WRITE")): "a schema storing nothing, then writing its file failed: two occurrences",
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,

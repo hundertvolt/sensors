@@ -938,11 +938,11 @@ class UARTComm:
             self._cancel_unacked_seen = self._uart.cancel_unacknowledged
             await self.pr.wrn_s("Driver cancel was not acknowledged", wrnno=_WRN_UART_CANCEL_UNACKED)
 
-    async def reset_error_counter(self) -> None:
-        # Clears the history and the link diagnostic's state behind it (valid-frame count, blind-resync streak).
-        self._valid_frames = 0
+    async def reset_error_counter(self) -> bool:
+        # Clears the history and the blind-resync streak; the valid-frame count is link evidence, not error
+        # history, so a reset never re-arms the unintelligible-link diagnostic on a link that has worked.
         self._blind_resyncs = 0
-        await self.pr.reset()
+        return await self.pr.reset()
 
     async def setup(self) -> bool:
         await self.pr.setup()  # without this the FRAM history silently never persists

@@ -130,11 +130,11 @@ def test_system_service_answers_before_and_after_a_failed_setup() -> None:
         "get_loggers": ((), lambda r: r == [svc.pr, svc.cfgmgr.pr]),
         "get_error_counter": ((), _is_log_of(svc.name)),
         "get_cfg_schema": ((), lambda r: r == svc.get_cfg_schema() and isinstance(r, tuple) and r[0][0] == "DebugLevel"),
-        "get_dict_cfg": ((), lambda r: r == {"SYSTEM": {"DebugLevel": None}}),
-        "get_debug_level": ((), lambda r: r == 0),
-        "set_debug_level": ((3,), lambda r: r is False),
+        "get_dict_cfg": ((), lambda r: r == {"SYSTEM": {"error": "unavailable"}}),
+        "_set_dict_cfg": (({"DebugLevel": 3}, svc.get_cfg_schema()), lambda r: r == {"DebugLevel": "Failed"}),
+        "get_reset_reason": ((), lambda r: r == 0),
         "feed_watchdog": ((), lambda r: r is None),
-        "pause_permanent_storage": ((10,), lambda r: r is None),  # no storage wired: a no-op
+        "pause_permanent_storage": ((10,), lambda r: r is True),  # no storage wired: a no-op that answers True
     }
     assert _answers(svc, calls) == []
     assert run(svc.setup()) is False
@@ -148,7 +148,7 @@ def test_config_manager_is_gated_on_valid_before_and_after_a_failed_setup() -> N
     calls: Calls = {
         "get_dict": ((["Count"],), lambda r: r is None),
         "get_int_values": ((_VAL_COUNT,), lambda r: r is None),
-        "write_config": (({"Count": 3}, _VAL_COUNT), lambda r: r == (False, {})),
+        "write_config": (({"Count": 3},), lambda r: r == (False, {})),
         "get_error_counter": ((), _is_log_of(mgr.name)),
         "flush_pending": ((), lambda r: r is None),
     }
@@ -162,13 +162,14 @@ def test_history_stores_answer_before_and_after_a_failed_setup() -> None:
     for history in (PrintLogHistory(4, None, name="GATELOG"), PrintLogHistoryStore(_fram(writable=False), 4, None, name="GATELOG")):
         calls: Calls = {
             "get_log": ((), _is_log_of(history.name)),
-            "get_level": ((), lambda r: r == 0),
+            "set_level": ((9,), lambda r: r is False),  # refused: outside 0-5
         }
         assert _answers(history, calls) == []
         expected = type(history) is PrintLogHistory  # only the RAM history can always set up
         assert run(history.setup()) is expected
         assert history.initialized is expected
         assert _answers(history, calls) == []
+        assert history.level == 0  # the refused level left it unchanged
         run(history.err_s("still counted", errno=1))
         assert history._err_count == 1
 

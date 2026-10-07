@@ -1,6 +1,6 @@
 """Isolated-driver device script: the FRAM storage-pause gate against the real chip - a pause
 genuinely prevents the bus write rather than only returning False, override_pause still reaches the
-chip, and a real machine.Timer auto-unpause fires (hardware-only, per Part F.1's soft-Timer gotcha)."""
+chip, and the auto-unpause deadline ends a pause on SYSTEM's real uptime tick (Part F.1, C.9)."""
 
 import asyncio
 
@@ -24,7 +24,7 @@ _WDT_TIMEOUT_MS = 8000
 # @tunable l3.fram_pause_unpause_and_gating_feed_step_s = 1.0
 _FEED_STEP_S = 1.0
 # @tunable l3.fram_pause_unpause_and_gating_pause_margin_s = 1.5
-_PAUSE_MARGIN_S = 1.5
+_PAUSE_MARGIN_S = 1.5  # the unpause lands at most one 1 s uptime pass late, so 0.5 s of headroom is left
 # @tunable l3.fram_pause_unpause_and_gating_rearm_margin_s = 0.5
 _REARM_MARGIN_S = 0.5
 failures: list[str] = []
@@ -84,11 +84,11 @@ async def _check_gating(fram: FRAMManager, chunk: FRAMChunk) -> None:
 
 
 async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
-    # 6. The REAL auto-unpause timer. A mock Timer cannot prove this fires on an rp2 alarm pool.
-    sysfunct.pause_permanent_storage(PAUSE_SEC)
+    # 6. The auto-unpause deadline, tested by the uptime pass on the board's real tick timer.
+    check(f"pause_permanent_storage({PAUSE_SEC}) answered False", condition=sysfunct.pause_permanent_storage(PAUSE_SEC))
     check(f"pause_permanent_storage({PAUSE_SEC}) did not pause", condition=fram.get_pause() is True)
     await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)
-    check(f"real ONE_SHOT auto-unpause timer never fired after {PAUSE_SEC}s - storage stayed paused", condition=fram.get_pause() is False)
+    check(f"the auto-unpause deadline never ended the pause after {PAUSE_SEC}s - storage stayed paused", condition=fram.get_pause() is False)
     check("write after the real auto-unpause was still refused", condition=await chunk.write(PATTERN_B) is True)
 
     # 7. Zero duration unpauses immediately.
@@ -97,21 +97,21 @@ async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService,
     sysfunct.pause_permanent_storage(0)
     check("pause_permanent_storage(0) did not unpause immediately", condition=fram.get_pause() is False)
 
-    # 8. Re-arm: a second pause replaces the first pending timer rather than leaving it to fire
-    #    early (pause_permanent_storage() deinit()s _storage_timer before re-arming).
+    # 8. Re-arm: a second pause replaces the first pending deadline rather than leaving it to end
+    #    the pause early.
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     sysfunct.pause_permanent_storage(REARM_SEC)
     await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)  # the FIRST window has now elapsed
-    check(f"storage unpaused after the superseded {PAUSE_SEC}s window - re-arm did not cancel the first timer", condition=fram.get_pause() is True)
+    check(f"storage unpaused after the superseded {PAUSE_SEC}s window - the second pause did not replace the first deadline", condition=fram.get_pause() is True)
     await sleep_fed(REARM_SEC - PAUSE_SEC + _REARM_MARGIN_S)  # now past the SECOND window too
-    check(f"re-armed {REARM_SEC}s auto-unpause timer never fired", condition=fram.get_pause() is False)
+    check(f"the re-armed {REARM_SEC}s auto-unpause deadline never ended the pause", condition=fram.get_pause() is False)
 
 
 
 async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
-    # 9. Safety invariant under an exhausted alarm pool: storage is never left paused with
-    #    nothing able to unpause it. Whether the re-arm aborts on ENOMEM or finds the slot its own
-    #    deinit() just freed is an rp2 detail; both are fine, and that invariant is what is asserted.
+    # 9. Safety invariant under an exhausted alarm pool: storage is never left paused with nothing
+    #    able to unpause it. A pause arms no timer, so the pool cannot refuse it; the uptime tick
+    #    armed before the pool ran out ends it.
     hogged = []
     try:
         for _ in range(64):
@@ -123,9 +123,8 @@ async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService
     if not hogged:
         failures.append("could not construct any Timer to exhaust the alarm pool - safety check inconclusive")
     else:
-        sysfunct.pause_permanent_storage(PAUSE_SEC)
-        if fram.get_pause():  # not the abort path - then it must still auto-unpause on its own
-            await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)
+        check("pause_permanent_storage() answered False with the alarm pool exhausted", condition=sysfunct.pause_permanent_storage(PAUSE_SEC))
+        await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)
         check(
             "storage was left paused with no pending auto-unpause after the alarm pool was exhausted",
             condition=fram.get_pause() is False,
@@ -189,15 +188,18 @@ async def _main() -> None:
         return
 
     sysfunct = SystemService(_ntp_never_synced, storage=fram)
+    sysfunct.start_uptime_timer()  # the uptime pass that tests the auto-unpause deadline once a second
+    status_task = sysfunct.start_asy_status()
     await _check_gating(fram, chunk)
     await _check_auto_unpause_timers(fram, sysfunct, chunk)
     await _check_exhausted_alarm_pool(fram, sysfunct, chunk)
     await _check_clear_and_timestamped(fram, chunk)
+    status_task.cancel()
 
     if failures:
         print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:8])}")
     else:
-        print("RESULT: PASS pause gates real writes/reads/clears (plain and timestamped chunks), override_pause bypasses, and the real auto-unpause timer fires (immediate, delayed and re-armed)")
+        print("RESULT: PASS pause gates real writes/reads/clears (plain and timestamped chunks), override_pause bypasses, and the auto-unpause deadline ends a pause (immediate, delayed and re-armed)")
 
 
 asyncio.run(_main())

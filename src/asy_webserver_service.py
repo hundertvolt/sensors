@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     import asy_config_manager as cm
     from asy_api_response import _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement)
-    from asy_base_classes import ErrorSource, TimerStarter
+    from asy_base_classes import AsyncCallback, ErrorSource, JsonMapping, TimerStarter
     from asy_print_log import ErrorLog, PrintLogHistory
 
     _T = TypeVar("_T")
@@ -43,12 +43,12 @@ if TYPE_CHECKING:
         name: str
         pr: "Any"
 
-        async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> dict[str, str]: ...
+        async def _set_dict_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> dict[str, str]: ...
         def get_cfg_schema(self) -> "cm.ConfigSchema": ...
         async def get_dict_cfg(self) -> "dict[str, Any]": ...
         async def get_dict_data(self) -> "dict[str, Any]": ...
         async def get_error_counter(self) -> "ErrorLog": ...
-        async def reset_error_counter(self) -> None: ...
+        async def reset_error_counter(self) -> bool: ...
 
     class _ClosableStream(Protocol):
         # _close_writer()'s own narrower view of the stream below - exactly the two methods it
@@ -236,7 +236,7 @@ class SettingsGroup:
         module: "_ModuleLike",
         fields: "Sequence[str]",
         post_fct: "Callable[[], None] | None" = None,
-        post_asy_fct: "Callable[[], Coroutine[Any, Any, None]] | None" = None,
+        post_asy_fct: "AsyncCallback | None" = None,
     ) -> None:
         self.module = module
         self.fields = tuple(fields)
@@ -486,25 +486,18 @@ class WebserverService:
             subset = {k: v for k, v in body.items() if k in group.fields}
             if not subset:
                 continue
-            envelope = await ar.handle_set_cmd(
-                group.module,  # type: ignore[arg-type]  # structurally SensorReaderConfig-shaped
-                # (get_cfg_schema()/_set_dict_cfg()/.pr) - _ModuleLike is a narrower Protocol, not
-                # importable here without a real coupling to asy_base_classes.py's concrete class.
-                subset,
-                group.module.get_cfg_schema(),
-                group.post_fct,
-                group.post_asy_fct,
+            # handle_set_cmd() answers every key of the subset, a raising hook's group as "Failed" (Part H.6).
+            results.update(
+                await ar.handle_set_cmd(
+                    group.module,  # type: ignore[arg-type]  # structurally SensorReaderConfig-shaped
+                    # (get_cfg_schema()/_set_dict_cfg()/.pr) - _ModuleLike is a narrower Protocol, not
+                    # importable here without a real coupling to asy_base_classes.py's concrete class.
+                    subset,
+                    group.module.get_cfg_schema(),
+                    group.post_fct,
+                    group.post_asy_fct,
+                ),
             )
-            if envelope.get("res") == "ERR":
-                # handle_set_cmd()'s post-hook exception path returns an empty result dict, which
-                # used to drop every field in `subset` from the response with no signal anywhere.
-                # Nothing the group attempted can be trusted as applied, so report it all "Failed".
-                for key in subset:
-                    results[key] = "Failed"
-                continue
-            group_result = envelope.get("result")
-            if isinstance(group_result, dict):
-                results.update(group_result)
         return results
 
     async def _build_status_pieces(self) -> list[str]:
@@ -573,7 +566,7 @@ class WebserverService:
         if self._notification_pause is None or not isinstance(payload, (int, float)):
             return "Invalid"
         is_error, coerced_payload = type_or_range_error(payload, _PAUSE_TIME_FIELD)
-        if is_error:
+        if is_error or type(coerced_payload) is not int:  # an "int" field that passes is an int: type() only narrows it
             return "Invalid"
         try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
             # own comment on why this needs the same guard every comparable callback elsewhere in
@@ -643,11 +636,17 @@ class WebserverService:
         body = _body_as_dict(request)
         if body is None:
             return ar.make_response(1)
-        if body.get("ResetErrors") is True:
-            for module in self._error_sources.values():
-                await module.reset_error_counter()
-            await self.reset_error_counter()  # this service's own entry, see _build_status_pieces()
-        return ar.make_response(0)
+        result: dict[str, str] = {}
+        if "ResetErrors" in body:
+            if body["ResetErrors"] is True:
+                # Every source at once, this service's own entry included (_build_status_pieces()): "`ResetErrors`
+                # resets the FRAM-backed logs concurrently rather than one after another" (owner, 2026-09-26).
+                # One store whose write failed answers the whole key "Failed".
+                ok = await asyncio.gather(*(m.reset_error_counter() for m in self._error_sources.values()), self.reset_error_counter())
+                result["ResetErrors"] = "Valid" if all(ok) else "Failed"
+            else:
+                result["ResetErrors"] = "Invalid"  # {"ResetErrors": true} only (SPECIFICATION.md A.8)
+        return ar.make_response(0, result=result)
 
     async def _put_system(self, request: "_RequestLike") -> ar.ResponseEnvelope:
         body = _body_as_dict(request)
@@ -783,8 +782,8 @@ class WebserverService:
 
     # -- others ------------------------------------------------------------
 
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
+    async def reset_error_counter(self) -> bool:
+        return await self.pr.reset()
 
     async def setup(self) -> bool:
         await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task

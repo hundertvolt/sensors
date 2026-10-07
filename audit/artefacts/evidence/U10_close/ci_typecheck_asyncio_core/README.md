@@ -10,4 +10,4 @@ Open: the same tree passed locally four times (the gate on 798cc44 at about 07:1
 worktree at 41b47f1 between 08:27 and 08:28, one under Python 3.12); every run from about 08:29 on, in fresh and old
 worktrees, cold cache or warm, fails exactly as CI did. Same mypy (2.4.0), same stub versions (rp2 1.29.0.post1,
 stdlib 1.29.0.post2), no `asyncio/core*` on any search path found. The earlier passes are kept here with the failures;
-the cause is open finding OF-24.
+the cause, found at U11 (scope and cache, reproduced), is in `U11_close/of24_root_cause/` and OF-24.

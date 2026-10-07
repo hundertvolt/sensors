@@ -5,12 +5,14 @@ Parts I and F.3. The real-HTTP-soak variants live in bench/ - this tier has no n
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import heap_map
 import pytest
-from harness import MEMORY_ERROR_MARKERS
+from error_log_helpers import assert_no_new_task_raised, read_live_system_log
+from harness import MEMORY_ERROR_MARKERS, wait_until
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
@@ -34,6 +36,11 @@ WORST_CASE_ALLOCATION = 16_384
 _HEADROOM_SCRIPT_TIMEOUT_S = 120.0
 # @tunable l3.memory_stress_probe_map_tolerance_blocks = 2
 _PROBE_MAP_TOLERANCE_BLOCKS = 2
+# @tunable l3.memory_stress_presence_timeout_s = 30.0
+_PRESENCE_TIMEOUT_S = 30.0
+# Past the boot's one-time setup lines, so a DebugLevel at or above 3 cannot print them into the window as a reboot.
+# @tunable l3.memory_stress_boot_settle_s = 30.0
+_BOOT_SETTLE_S = 30.0
 
 
 def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
@@ -97,10 +104,19 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Bo
     if tier is None:
         pytest.skip("passive soak, one of three named duration tiers - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long}")
     duration_s = SOAK_TIER_SECONDS[tier]
+    # SYSTEM's task-end log is read before and after the window, each read interrupting the firmware, so each is
+    # followed by a hard reset: at DebugLevel 0 a task that died raising prints nothing (SPECIFICATION.md I.4(e)).
+    before = read_live_system_log(board)
+    board.hard_reset()
+    wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
+    time.sleep(_BOOT_SETTLE_S)
     # Passive observation only (tail_log(), never exec()/run_isolated() - see harness.Board's own
     # docstrings for why). Pass condition: no unexpected reboot (boot-time log lines reappearing
     # mid-window) and no raised exception/traceback over the soak window.
     lines = board.tail_log(duration_s=duration_s)
+    after = read_live_system_log(board)
+    board.hard_reset()
+    wait_until(board.is_device_present, timeout_s=_PRESENCE_TIMEOUT_S, description="board present again after hard_reset()")
     joined = "\n".join(lines)
     # "CFGMGR_" is a per-line module-tag prefix (fires on every routine config read), not a one-time
     # boot marker - use the two genuinely one-time-per-setup() ConfigManager/FRAM messages instead.
@@ -111,3 +127,4 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Bo
     traceback_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
     assert not reboot_markers, f"observed what looks like an unexpected mid-soak reboot (WDT starvation?) - boot markers: {reboot_markers}\nfull log:\n{joined}"
     assert not traceback_markers, "observed an unexpected traceback/MemoryError during the soak window:\n" + "\n".join(traceback_markers)
+    assert_no_new_task_raised(before, after, "the soak window")

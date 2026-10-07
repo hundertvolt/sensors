@@ -4,6 +4,7 @@ plus a map at the instant any GET route fails. Ends once the load has stopped (P
 
 import asyncio
 import gc
+import sys
 import time
 
 import micropython
@@ -17,6 +18,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from asyncio.events import _Context
     from collections.abc import Awaitable, Callable
 
     _Route = Callable[..., Awaitable[object]]
@@ -41,6 +43,20 @@ _WINDOW_S = 600  # hard bound, whatever the host does
 _MAX_FAILURE_MAPS = 3  # the first few are the evidence; more would only flood the console
 _ROUTES = ("_get_status", "_get_measurements", "_get_sensors", "_get_networking", "_get_system", "_get_notification", "_get_static_index", "_get_static")
 _failure_maps = [0]
+
+
+def _report_unretrieved(_loop: object, context: "_Context") -> None:
+    # The PC tiers' always-printing report, copied: this board-side script cannot import digital_twin/, the host gate
+    # greps its output for memory markers, and the firmware's own report is silent at DebugLevel 0 (Part I.4(e)).
+    try:
+        try:
+            print("UNRETRIEVED TASK EXCEPTION:", context["message"])
+            sys.print_exception(context["exception"])
+        finally:
+            context["exception"] = None
+            context["future"] = None
+    except Exception:  # an escape would end asyncio.run()
+        pass
 
 
 def _dump(label: str) -> None:
@@ -96,6 +112,7 @@ async def _observe(webserver: "WebserverService") -> None:
 
 
 async def _run() -> None:
+    asyncio.get_event_loop().set_exception_handler(_report_unretrieved)  # before main(): the firmware then keeps it
     print(f"GC_THRESHOLD={gc.threshold()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
     await asyncio.sleep(_BOOT_S)

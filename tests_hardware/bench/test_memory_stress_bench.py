@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import http_client
 import pytest
-from error_log_helpers import get_errcount, reset_all_error_logs
+from error_log_helpers import assert_no_new_task_raised, get_errcount, reset_all_error_logs
 from harness import MEMORY_ERROR_MARKERS, configured_max_connections
 from soak_tiers import SOAK_TIER_SECONDS
 
@@ -112,10 +112,19 @@ def _assert_no_crash_or_reboot(lines: list[str]) -> None:
     assert not reboot_markers, "observed an unexpected mid-hammer reboot (real memory exhaustion -> WDT reset?):\n" + "\n".join(reboot_markers) + f"\nfull log:\n{joined}"
 
 
+def _read_before_clearing(dut_ip: str) -> None:
+    # What the board logged before this test is evidence: read and shown before ResetErrors erases it (CLAUDE.md).
+    print(f"ERRCOUNT before ResetErrors: {get_errcount(dut_ip)!r}")
+
+
 def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: Board, dut_ip: str) -> None:
+    _read_before_clearing(dut_ip)
     reset_all_error_logs(dut_ip)
     lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
+    after = get_errcount(dut_ip)
     _assert_no_crash_or_reboot(lines)
+    # At DebugLevel 0 a task that died raising prints nothing: SYSTEM's log is where it shows (SPECIFICATION.md I.4(e)).
+    assert_no_new_task_raised({}, after, "max-speed hammer load")
     # A success here means the server accepted, processed and answered with valid JSON under load
     # - which a wedged-but-not-crashed server cannot fake, unlike an absent crash marker.
     # max_connections rejections do not count against it (_run_max_speed_hammer_load()).
@@ -132,12 +141,14 @@ def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnos
     if tier is None:
         pytest.skip("real extended max-speed hammer load - run via scripts/run_bench_soak_tests.sh --tier mid (600s, matching the original WDT-reset investigation's own duration)")
     duration_s = SOAK_TIER_SECONDS[tier]
+    _read_before_clearing(dut_ip)
     reset_all_error_logs(dut_ip)
     lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, duration_s)
     errcount_after = get_errcount(dut_ip)
     fram_errcount_after = {mod: errcount_after[mod] for mod in _FRAM_BACKED_MODULES if errcount_after.get(mod, {}).get("counter", 0) > 0}
     try:
         _assert_no_crash_or_reboot(lines)
+        assert_no_new_task_raised({}, errcount_after, "extended max-speed hammer load")
         assert not fram_errcount_after, f"a FRAM-backed module logged a real error during the hammer load - real diagnostic evidence, captured before any cleanup: {fram_errcount_after!r}"
         assert success_count > _MIN_ANSWERED, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     finally:
@@ -170,6 +181,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
                 request_errors.append(f"GET {path} -> {exc!r}")
             stop.wait(_SOAK_REQUEST_STEP_S)  # a modest, sustained request rate - not a flood (that's item 17's job)
 
+    before = get_errcount(dut_ip)
     hammer_thread = threading.Thread(target=_hammer, daemon=True)
     hammer_thread.start()
     try:
@@ -177,6 +189,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
     finally:
         stop.set()
         hammer_thread.join(timeout=_JOIN_TIMEOUT_S)
+    after = get_errcount(dut_ip)
 
     joined = "\n".join(lines)
     crash_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
@@ -187,3 +200,4 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
     assert not crash_markers, "observed a crash/MemoryError during the HTTP soak:\n" + "\n".join(crash_markers)
     assert not reboot_markers, "observed an unexpected mid-soak reboot (real memory exhaustion -> WDT reset?):\n" + "\n".join(reboot_markers) + f"\nfull log:\n{joined}"
     assert len(request_errors) < 5, f"too many failed/non-200 requests during the soak ({len(request_errors)}): {request_errors[:10]}"
+    assert_no_new_task_raised(before, after, "the HTTP soak")

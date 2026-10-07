@@ -270,7 +270,7 @@ def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
     print("(expected) debug=3 makes the fresh ConfigManager below log its normal first-use config-file creation")
     client = make_client(log=LogConfig(None, 10, 3))
-    assert client.pr.get_level() == 3
+    assert client.pr.level == 3
 
 
 def test_get_task_starters_returns_all_three_ntp_tasks() -> None:
@@ -2355,8 +2355,8 @@ def test_no_push_callbacks_are_registered_for_any_ntp_field() -> None:
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
     # Regression check for the integration bug where a shared REST helper needed each module's own
-    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - get_cfg_schema() gives
-    # an outside caller that schema, without reaching into a private const.
+    # schema to validate a write correctly - get_cfg_schema() gives an outside caller that schema,
+    # without reaching into a private const.
     client = make_client()
     assert client.get_cfg_schema() == (_VAL_NTP_HOST + _VAL_NTP_OFFSET + _VAL_NTP_INTERVAL + _VAL_GMT_OFFSET + _VAL_DST_OFFSET)
 
@@ -2367,7 +2367,7 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
     client = make_client()
 
     async def scenario() -> "tuple[bool, dict[str, int | float | str | bool | None] | None]":
-        written, _ = await client.cfgmgr.write_config({"NTPHost": "time.example.org"}, client.get_cfg_schema())
+        written, _ = await client.cfgmgr.write_config({"NTPHost": "time.example.org"})
         data = await client.cfgmgr.get_dict(["NTPHost"])
         return written, data
 

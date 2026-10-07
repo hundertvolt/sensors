@@ -50,9 +50,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   what's named-but-not-fixed (needing either a dedicated real-hardware session or a project-owner
   design decision): `tests_hardware/README.md`'s "Tenth pass". No second instance of the
   SGP40-shaped bug (a real hardware trigger silently substituted with a software-only one) turned
-  up, but several real tier-parity gaps did, most now closed. **Named follow-ons still open, tracked
-  in that section, not repeated here**: a real-hardware test for `_reboot()`'s alarm-pool-exhaustion
-  fallback. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
+  up, but several real tier-parity gaps did, most now closed. Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structural
   exception until injection hardware exists (2026-09-22, SPECIFICATION.md E.6.6 row
   `uart-fault-catalog`); the
   shipped-driver F.5.8 test exists (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test
@@ -196,8 +194,9 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     running, which is G6 under "Real-hardware work still owed", not this item.
 24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
     own request ceiling. Now measured on real hardware; one question left.**
-    `asy_webserver_service.py`'s `_put_status()` resets every registered error source sequentially
-    and each FRAM-backed one pays a real FRAM write; WP1/WP2/WP3 grew that set to 21 on `dev`. Two
+    `asy_webserver_service.py`'s `_put_status()` resets every registered error source, concurrently
+    since the owner chose it (owner, 2026-09-26; every figure below was measured while it still reset
+    them one after another), and each FRAM-backed one pays a real FRAM write; WP1/WP2/WP3 grew that set to 21 on `dev`. Two
     real ceilings bound it, both confirmed directly: the server aborts any request at
     `outer_cap_s = 15.0` (`asy_webserver_service.py:275`, via `asyncio.wait_for()` at `:667`), and
     the real web UI gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). A device whose
@@ -253,9 +252,10 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
     and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
     itself — but a backstop is not a budget. **Where to fix**: an explicit elapsed-time budget, sized
-    against the load case rather than the idle one; and if a future device's chunk count approaches
-    ~27, a design-level fix at the source (batched or concurrent reset, one shared chunk) rather than
-    a larger client timeout, per CLAUDE.md's root-cause-don't-raise-the-limit rule.
+    against the load case rather than the idle one, from the curve re-measured on silicon with the
+    concurrent reset (its design fix, done); and if a future device's chunk count approaches ~27, a
+    further design-level fix at the source (one shared chunk) rather than a larger client timeout,
+    per CLAUDE.md's root-cause-don't-raise-the-limit rule.
 
     Twin figures kept only as the harness baseline they are (5 reps, idle host, loopback): `dev`
     8.151s (7.901-8.259) / `wozi` 5.592s (5.534-5.746) at the shipped `gc.threshold(32768)`, and
@@ -295,8 +295,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     at the current design**: three readers already land at 13.2-14.7s against a 15s server abort, so
     any budget that never false-positives sits at or above the point where the server gives up
     first (R4 on 2026-09-25 measured 12.1-14.6s at three readers again, the worst 0.4s from the
-    abort). The owner chose the concurrent reset (owner, 2026-09-26); the bench budget is set once
-    it lands. Then add the bench analogue of the twin's own budget check to
+    abort). The owner chose the concurrent reset (owner, 2026-09-26), and it has landed; the bench
+    budget is set once the curve is re-measured on silicon with it. Then add the bench analogue of the twin's own budget check to
     `tests_hardware/error_log_helpers.py`.
 
 44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
@@ -589,6 +589,14 @@ gates, traps).
   function and class docstrings of `scripts/` and `toolchain/` became `#` comments, every file
   otherwise AST-identical (`OverrideError` gains a `pass`). Lint config, shell and host Python
   only, no new dependency and no build input changed, so nothing here moves either leg.
+  **2026-10-07, lint config only, no build impact**: `pyproject.toml`'s `T20` (print) leaves the
+  global ignore list for per-file entries on `tests/`, `digital_twin/`, `tests_scripts/`,
+  `tests_hardware/`, `buildgen/`, `scripts/` and `toolchain/`, and `src/asy_print_log.py`'s entry
+  becomes `T20` alone (its `ANN401` goes with the `**kwargs`); `asy_api_response`,
+  `asy_config_manager`, `asy_print_log` and `asy_system_service` leave the explicit-`Any` baseline.
+  `scripts/_digital_twin_ci_suite.py`: one comment. `tests_scripts/` gains two AST checks
+  (`test_device_script_config_schemas.py`, `test_stored_config_golden.py`): stdlib host Python, no
+  new dependency, so nothing here moves either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not

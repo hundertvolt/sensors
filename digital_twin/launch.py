@@ -19,6 +19,7 @@ import network
 from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, WDT, Pin
 from unix_port_gc_unwedge import unwedge_heap_after_interrupt
+from unix_port_unretrieved_report import install
 
 _FAULT_DEVICE_OPS = {
     "sgp40": ("writeto", "readfrom_into"),
@@ -348,6 +349,7 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
 
 
 async def main(config: "LaunchConfig") -> "dict[str, Any]":
+    install()  # every unretrieved task exception prints, at every level (Part I.4(e))
     injections = config.injections
     if injections.seed is not None:
         # MicroPython's `random` has no instantiable Random class, unlike CPython - but every

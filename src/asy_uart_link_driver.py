@@ -145,10 +145,11 @@ class UARTLinkDriver:
 
     # -- others ------------------------------------------------------------
 
-    async def reset_error_counter(self) -> None:
-        await self._comm.reset_error_counter()
+    async def reset_error_counter(self) -> bool:
+        ok = await self._comm.reset_error_counter()  # the link's history is the comm's
         self._transfers = 0
         self._failures = 0
+        return ok
 
     async def setup(self) -> bool:
         if await self._comm.setup():

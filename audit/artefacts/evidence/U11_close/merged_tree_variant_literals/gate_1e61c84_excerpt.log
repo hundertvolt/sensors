@@ -1,0 +1,40 @@
+5708-        found = collect_findings()
+5709-        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+5710:>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+5711:E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+5712-E           tests_scripts/test_stored_config_golden.py: [(126, 'wozi'), (134, 'dev.toml')]
+5713-E       assert not {'tests_scripts/test_stored_config_golden.py': [(126, 'wozi'), (134, 'dev.toml')]}
+5714-
+5715-tests_scripts/test_no_variant_literals.py:208: AssertionError
+5716-___________ test_every_not_yet_cleaned_entry_still_carries_a_literal ___________
+5717-
+5718-    def test_every_not_yet_cleaned_entry_still_carries_a_literal() -> None:
+5719-        found = collect_findings()
+5720-        stale = sorted(path for path in _NOT_YET_CLEANED if path not in found)
+5721:>       assert not stale, f"these files are clean now - remove their _NOT_YET_CLEANED entries: {stale}"
+5722:E       AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['tests/test_asy_config_manager.py', 'tests/test_asy_system_service.py']
+5723-E       assert not ['tests/test_asy_config_manager.py', 'tests/test_asy_system_service.py']
+5724-
+5725-tests_scripts/test_no_variant_literals.py:214: AssertionError
+5726-=============================== warnings summary ===============================
+5727-tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+5728-  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests_hardware/bench/test_bus_concurrency_under_api_load.py:289: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+5729-    @pytest.mark.persistence_write
+5730-
+5731-tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+5732-  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests_hardware/bench/test_bus_concurrency_under_api_load.py:459: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+5733-    @pytest.mark.persistence_write
+5734-
+--
+5742-2 failed, 2931 passed, 6 skipped, 3 warnings in 542.15s (0:09:02)
+5743-tests_scripts/ failed:
+5744:  - tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant: failed in call: AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+5745:  - tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal: failed in call: AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['tests/test_asy_config_manager.py', 'tests/test_asy_system_service.py']
+5746-tests_scripts/ skipped:
+5747-  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+5748-  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+5749-  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[grkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+5750-  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[klkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+5751-  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[schlafzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+5752-  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+5753-== Evidence archived in /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/build/archive/test_sh/20261007T095113Z

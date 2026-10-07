@@ -1979,7 +1979,7 @@ def test_the_log_config_and_the_backup_are_independent() -> None:
     log_only = SGP40_Reader(make_i2c(), ValueRef(_FakeCompSource(), "Temp"), ValueRef(_FakeCompSource(), "Hum"), cfg_path=_SHARED_CFG_DIR, log=LogConfig(manager, 4, 1))
     assert isinstance(log_only.pr, PrintLogHistoryStore)
     assert len(log_only.pr.history) == 4
-    assert log_only.pr.get_level() == 1
+    assert log_only.pr.level == 1
     assert log_only._ts_storage is None
 
 
@@ -2260,7 +2260,7 @@ def test_run_backup_updates_verify_when_backup_period_changes_after_init() -> No
     run(reader._init_sgp())
     verify_at_init = run(reader._ts_storage.get_verify())  # type: ignore[union-attr]
     # Change BackupPeriod after init already computed/stored its own verify value against the old one.
-    run(reader.cfgmgr.write_config({"BackupPeriod": 30}, _VAL_BACKUP_PERIOD + _VAL_BACKUP_MAX_AGE + _VAL_WAIT_TIME_NTP))
+    run(reader.cfgmgr.write_config({"BackupPeriod": 30}))
     reader._backup_counter = 1799  # one short of the *new* BackupPeriod=30's own 60*30 trigger threshold
     fake_bus.read_queue.append(_word(30000))
     buf, serialize, _deserialize, cfg_values = run(reader._check_storage())

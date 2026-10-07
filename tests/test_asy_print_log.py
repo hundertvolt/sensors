@@ -40,29 +40,30 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS6
 
 
 class _RaisingFramChunk:
-    # A minimal local fake, not a full FRAM simulation: proves PrintLogHistoryStore's defense in depth
-    # against the general _FramManager/_FramChunk Protocol contract still holds, independent of the concrete
-    # FRAMManager, whose wrapping try/except means write_into()/read_into() can no longer raise.
-    def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+    # Fails only by allocation, the one failure the real chunk documents (SPECIFICATION.md C.7); parameter names
+    # stay exact so mypy checks the fake against asy_print_log's Protocols. `error` swaps in another class.
+    def __init__(
+        self, *, raise_on_write: bool = False, raise_on_read: bool = False, none_buffer: bool = False, error: "Exception | None" = None,
+    ) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
+        self.none_buffer = none_buffer
+        self.error = MemoryError("simulated allocation failure") if error is None else error
 
-    # Every parameter below keeps its exact name (and stays unused): mypy checks this double
-    # structurally against asy_print_log.py's own _FramChunk/_FramManager Protocols at each
-    # PrintLogHistoryStore() call site, and an underscore prefix breaks that match outright.
     def get_buffer(self) -> "LockableBuffer":
-        from asy_base_classes import LockableBuffer
-
-        return LockableBuffer(6, data_start=0, data_length=6)
+        buf = LockableBuffer(6, data_start=0, data_length=6)
+        if self.none_buffer:
+            buf._buf = None  # the shape a failed buffer allocation leaves
+        return buf
 
     async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
         if self.raise_on_write:
-            raise RuntimeError("simulated write failure")
+            raise self.error
         return True
 
     async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
         if self.raise_on_read:
-            raise RuntimeError("simulated read failure")
+            raise self.error
         return True
 
 
@@ -71,14 +72,13 @@ class _RaisingFramManager:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
 
-    # Every parameter below keeps its exact name (and stays unused): mypy checks this double
-    # structurally against asy_print_log.py's own _FramChunk/_FramManager Protocols at each
-    # PrintLogHistoryStore() call site, and an underscore prefix breaks that match outright.
+    # Fails only by allocation, the one failure the real chunk documents (SPECIFICATION.md C.7); parameter names
+    # stay exact so mypy checks the fake against asy_print_log's Protocols.
     def get_chunk(
         self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
-            raise RuntimeError("simulated allocation failure")
+            raise MemoryError("simulated allocation failure")
         return self._chunk
 
 
@@ -94,56 +94,68 @@ class _CountingFramManager:
 
 
 # ---------------------------------------------------------------------------
-# PrintLog - level clamping and the level_* constant accessors
+# PrintLog - levels 0 (off) .. 5 (all), refused when invalid
 # ---------------------------------------------------------------------------
 
 
 def test_set_level_none_is_off() -> None:
-    pr = PrintLog(None)
-    assert pr.get_level() == PrintLog.level_off()
+    assert PrintLog(None).level == 0
 
 
-def test_set_level_clamps_below_off_and_above_all() -> None:
-    pr = PrintLog(PrintLog.level_off() - 5)
-    assert pr.get_level() == PrintLog.level_off()
-    pr.set_level(PrintLog.level_info() + 5)
-    assert pr.get_level() == PrintLog.level_info()
+def test_an_out_of_range_level_is_refused_not_clamped() -> None:
+    assert PrintLog(-5).level == 0
+    pr = PrintLog(2)
+    assert pr.set_level(10) is False
+    assert pr.level == 2
 
 
 def test_set_level_valid_value_passes_through() -> None:
-    pr = PrintLog(PrintLog.level_warn())
-    assert pr.get_level() == PrintLog.level_warn()
+    pr = PrintLog(2)
+    assert pr.level == 2
 
 
-def test_level_constants_are_ordered() -> None:
-    levels = [
-        PrintLog.level_off(),
-        PrintLog.level_err(),
-        PrintLog.level_warn(),
-        PrintLog.level_once(),
-        PrintLog.level_event(),
-        PrintLog.level_info(),
-    ]
-    assert levels == sorted(levels)
-    assert len(set(levels)) == len(levels)  # all distinct
+def test_set_level_refuses_non_int_and_out_of_range_values() -> None:
+    pr = PrintLog(2, name="P")
+    rec = _PrintRecorder()
+    try:
+        refused = [pr.set_level(v) for v in (True, 2.0, None, 6, -1)]  # type: ignore[arg-type]
+    finally:
+        rec.restore()
+    assert refused == [False] * 5
+    assert pr.level == 2
+    assert [line[:2] for line in rec.lines] == [("P", "PrintLog: invalid level refused:")] * 5  # each one says so at level 2
+    assert pr.set_level(3) is True
+    assert pr.level == 3
 
 
-def test_logging_methods_never_raise_at_any_level() -> None:
-    print("(expected) the single-letter lines below are every log level firing on purpose, not real errors")
-    for level in (PrintLog.level_off(), PrintLog.level_err(), PrintLog.level_info()):
+def test_each_level_prints_exactly_its_lines() -> None:
+    expected = {0: [], 1: ["e"], 5: ["e", "w", "o", "v", "a"]}
+    for level, lines in expected.items():
         pr = PrintLog(level)
-        pr.err("e")
-        pr.wrn("w")
-        pr.one("o")
-        pr.evt("v")
-        pr.all("a", sep="-")  # kwargs forwarded through to print() too
+        rec = _PrintRecorder()
+        try:
+            pr.err("e")
+            pr.wrn("w")
+            pr.one("o")
+            pr.evt("v")
+            pr.all("a", sep="-")
+        finally:
+            rec.restore()
+        assert [line[1] for line in rec.lines] == lines, level
+    pr = PrintLog(5)
+    rec = _PrintRecorder()
+    try:
+        pr.all("a", "b", sep="-", end="!")
+    finally:
+        rec.restore()
+    assert rec.kwargs == [{"sep": "-", "end": "!"}]  # the keywords reach print() as given
 
 
 def test_set_level_exact_boundary_values_pass_through_unclamped() -> None:
-    pr = PrintLog(PrintLog.level_off())
-    assert pr.get_level() == PrintLog.level_off()
-    pr.set_level(PrintLog.level_info())
-    assert pr.get_level() == PrintLog.level_info()
+    pr = PrintLog(0)
+    assert pr.level == 0
+    assert pr.set_level(5) is True
+    assert pr.level == 5
 
 
 def test_name_defaults_to_empty_string() -> None:
@@ -229,9 +241,12 @@ def test_history_is_bounded_and_drops_oldest() -> None:
 
 def test_err_count_saturates_at_max_and_never_wraps() -> None:
     hist = PrintLogHistory(history_length=2)
-    hist._err_count = 0xFFFF  # _MAX_CNT - whitebox-set to avoid 65535 real calls
+    hist._err_count = 0xFFFE  # one below _MAX_CNT - whitebox-set to avoid 65534 real calls
     run(hist.err_s("e", errno=1))
+    assert hist._err_count == 0xFFFF  # reaches the cap exactly, a normal step
+    run(hist.err_s("e", errno=2))  # a different code: the ring still takes it
     assert hist._err_count == 0xFFFF  # saturates, does not wrap to 0
+    assert list(hist.history) == [1, 2]
 
 
 def test_errno_beyond_its_sub_range_is_not_recorded() -> None:
@@ -247,7 +262,7 @@ def test_reset_clears_history_and_count() -> None:
     hist = PrintLogHistory(history_length=3)
     run(hist.setup())
     run(hist.err_s("e", errno=1))
-    run(hist.reset())
+    assert run(hist.reset()) is True
     assert hist._err_count == 0
     assert list(hist.history) == [0, 0, 0]
 
@@ -285,10 +300,12 @@ class _PrintRecorder:
     # console line a logger emits is captured with its arguments; restore() removes the shadow.
     def __init__(self) -> None:
         self.lines: list[tuple[object, ...]] = []
+        self.kwargs: list[dict[str, object]] = []
         print_log_module.print = self  # type: ignore[attr-defined]
 
-    def __call__(self, *args: object, **_kwargs: object) -> None:
+    def __call__(self, *args: object, **kwargs: object) -> None:
         self.lines.append(args)
+        self.kwargs.append(kwargs)
 
     def restore(self) -> None:
         del print_log_module.print  # type: ignore[attr-defined]
@@ -340,12 +357,12 @@ def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "
 
 
 def test_a_sustained_identical_code_spends_one_slot() -> None:
-    _sustained_identical_code_spends_one_slot(PrintLogHistory(history_length=4, level=PrintLog.level_err(), name="H"), None)
+    _sustained_identical_code_spends_one_slot(PrintLogHistory(history_length=4, level=1, name="H"), None)
 
 
 def test_a_sustained_identical_code_spends_one_slot_in_the_store() -> None:
     chunk = _CountingFramChunk(2 + 4)  # the store's "<H" header plus four history bytes
-    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4, level=PrintLog.level_err(), name="S")
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4, level=1, name="S")
     _sustained_identical_code_spends_one_slot(store, chunk)
     assert store.initialized is True
 
@@ -411,13 +428,6 @@ def test_wrn_s_wrnno_one_past_max_boundary_is_not_recorded() -> None:
     assert list(hist.history) == [0, 0]
 
 
-def test_err_count_increments_normally_right_below_the_cap() -> None:
-    hist = PrintLogHistory(history_length=2)
-    hist._err_count = 0xFFFE  # one below _MAX_CNT
-    run(hist.err_s("e", errno=1))
-    assert hist._err_count == 0xFFFF  # reaches the cap exactly, still a normal increment
-
-
 def test_history_length_zero_never_records_but_still_counts() -> None:
     # An unusual but typed-valid construction: a zero-length bounded deque. Empirically confirmed
     # under the real MicroPython interpreter that append()/extend() on it are silent no-ops, not
@@ -429,9 +439,7 @@ def test_history_length_zero_never_records_but_still_counts() -> None:
 
 
 def test_history_length_negative_is_clamped_to_zero_not_a_raise() -> None:
-    # deque(maxlen=...) raises ValueError on a negative maxlen (confirmed directly against the real
-    # MicroPython interpreter) - a typed-valid but unusual int input the constructor must clamp
-    # rather than propagate, matching set_level()'s own clamping convention.
+    # deque(maxlen=…) raises ValueError on a negative maxlen (pinned interpreter); the constructor clamps it to zero.
     hist = PrintLogHistory(history_length=-5)
     assert list(hist.history) == []
     run(hist.err_s("e", errno=1))
@@ -462,26 +470,31 @@ class _RaisingDeque:
     def __call__(self, iterable: "list[int]", maxlen: int) -> "deque[int]":
         if maxlen == 0:
             return deque(iterable, maxlen)
-        raise MemoryError("simulated allocation failure")
+        raise MemoryError("injected for the history ring")  # worded clear of the memory gates' markers
 
 
-def test_history_deque_allocation_failure_degrades_to_an_empty_bounded_history() -> None:
+def test_a_failed_history_allocation_prints_its_text_and_keeps_a_zero_ring() -> None:
     original_deque = print_log_module.deque
     print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
+    rec = _PrintRecorder()
     try:
-        hist = PrintLogHistory(history_length=10)
+        hist = PrintLogHistory(history_length=10, level=1, name="H")
     finally:
+        rec.restore()
         print_log_module.deque = original_deque  # type: ignore[misc]
-    assert list(hist.history) == []
+    assert len(hist.history) == 0
+    assert [line for line in rec.lines if any("injected for the history ring" in str(a) for a in line)] == [rec.lines[0]]
+    assert len(rec.lines) == 1  # the one diagnostic line, carrying the failure's own text
     run(hist.err_s("e", errno=1))
     assert hist._err_count == 1  # counting still works even though history recording can't
+    assert run(hist.get_log()) == {"H": {"ErrCount": 1, "ErrNum": [], "ErrType": []}}  # no slot reported
 
 
 def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
     # The "not initialized" guard's *return* must not depend on self.level - only the diagnostic
     # print does. PrintLogHistory's own _write() is a no-op either way, but this pins the contract
     # down at the base-class level too (PrintLogHistoryStore's own FRAM-visible version follows below).
-    hist = PrintLogHistory(history_length=4, level=PrintLog.level_off())
+    hist = PrintLogHistory(history_length=4, level=0)
     assert hist.initialized is False
     run(hist.err_s("e", errno=1))
     assert hist._err_count == 1  # counting still happens
@@ -491,10 +504,10 @@ def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
 def test_reset_before_setup_still_clears_even_with_logging_off() -> None:
     # The in-memory base has nothing to persist, so reset() is unconditional here either way -
     # what this pins down is that it never depends on the logging level to do its job.
-    hist = PrintLogHistory(history_length=3, level=PrintLog.level_off())
+    hist = PrintLogHistory(history_length=3, level=0)
     run(hist.err_s("e", errno=1))
     assert hist.initialized is False
-    run(hist.reset())
+    assert run(hist.reset()) is True
     assert hist._err_count == 0
     assert list(hist.history) == [0, 0, 0]
 
@@ -539,6 +552,7 @@ def test_printloghistorystore_setup_first_time_falls_back_to_writing_defaults() 
     store = PrintLogHistoryStore(manager, history_length=4)
     assert run(store.setup()) is True
     assert store.initialized is True
+    assert store.restored is False  # a blank chunk: nothing an earlier boot stored
 
 
 def test_printloghistorystore_setup_with_no_fram_returns_without_initializing() -> None:
@@ -580,6 +594,22 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
     run(rebooted_store.setup())
     assert rebooted_store._err_count == 1
     assert list(rebooted_store.history)[-1] == 3
+    assert rebooted_store.restored is True
+
+
+def test_restored_is_false_for_an_unreadable_chunk_and_a_ram_only_history() -> None:
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
+    chip.drop_wren = True  # blank and unwritable: setup() can neither read nor write it
+    assert run(store.setup()) is False
+    assert store.restored is False
+    no_chunk = PrintLogHistoryStore(make_fram_manager(max_size=1)[0], history_length=4)
+    assert run(no_chunk.setup()) is False
+    assert no_chunk.restored is False
+    ram = PrintLogHistory(history_length=4)
+    assert run(ram.setup()) is True
+    assert ram.restored is False  # a RAM-only history never restores
 
 
 def test_a_restored_0x80_byte_reads_back_as_no_entry() -> None:
@@ -623,7 +653,7 @@ def test_printloghistorystore_reset_before_setup_persists_the_cleared_state_anyw
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4, level=None)
     assert store.initialized is False
-    run(store.reset())
+    assert run(store.reset()) is True
     assert chip.memory != bytearray(len(chip.memory)), "the cleared ring never reached the chip"
     assert store.initialized is True, "a successful reset write means this logger is initialized by definition"
 
@@ -644,7 +674,7 @@ def test_printloghistorystore_reset_during_the_boot_window_is_not_undone_by_the_
     run(manager2.setup())
     rebooted = PrintLogHistoryStore(manager2, history_length=3)
     assert rebooted.initialized is False  # its task has not reached pr.setup() yet
-    run(rebooted.reset())  # the PUT lands in that window
+    assert run(rebooted.reset()) is True  # the PUT lands in that window
     run(rebooted.setup())  # ... and only now does the task get there
     assert rebooted._err_count == 0
     assert list(rebooted.history) == [0, 0, 0], "setup() restored the old history over a reset that had already been persisted"
@@ -657,7 +687,7 @@ def test_printloghistorystore_reset_that_cannot_reach_the_chip_stays_uninitializ
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     chip.drop_wren = True  # every chip write silently does nothing from here on
-    run(store.reset())
+    assert run(store.reset()) is False  # ResetErrors then answers "Failed" for this logger
     assert store.initialized is False
     assert run(store.setup()) is False  # the chip is blank and its write is dropped: RAM-only
     chip.drop_wren = False
@@ -688,6 +718,7 @@ def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None
     store = PrintLogHistoryStore(manager, history_length=2)
     store._err_count = 0x1234
     store.history.extend([5, 6])
+    assert store._history_fmt == "<BB"  # explicit little-endian, like the header's "<H"
     run(store._write())
     assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
     addr0 = store.fram._block_addr[0]
@@ -701,7 +732,7 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
     store = PrintLogHistoryStore(manager, history_length=3)
     run(store.setup())
     run(store.err_s("e", errno=1))
-    run(store.reset())
+    assert run(store.reset()) is True
 
     manager2, _chip2 = make_fram_manager()
     manager2.fram._spidev.spi._spi = chip
@@ -720,28 +751,54 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
 
 
 def test_printloghistorystore_get_chunk_raising_leaves_fram_none() -> None:
-    # FRAMManager.get_chunk() never actually raises (confirmed by its own src/ promotion
-    # audit) - this proves PrintLogHistoryStore's defensive catch still holds against the general
-    # _FramManager Protocol contract, not just this one concrete, well-behaved implementation.
+    # An allocation failure while the chunk is built (the one failure the real get_chunk() can meet) leaves the
+    # store RAM-only: no chunk, every write and read refused without raising.
     store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True), history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
     assert run(store._read()) is False
 
 
-def test_printloghistorystore_write_into_raising_is_caught() -> None:
-    # asy_fram_manager.py's _write_chunk wraps its entire body in try/except (confirmed by its own
-    # src/ promotion audit), so write_into() can no longer actually raise through the real class -
-    # this is the same Protocol-level defense-in-depth proof as the get_chunk case above.
-    chunk = _RaisingFramChunk(raise_on_write=True)
-    store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
-    assert run(store._write()) is False
-
-
 def test_printloghistorystore_read_into_raising_is_caught() -> None:
     chunk = _RaisingFramChunk(raise_on_read=True)
     store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
     assert run(store._read()) is False
+
+
+def test_a_none_data_buffer_fails_write_and_read_without_raising() -> None:
+    chunk = _RaisingFramChunk(none_buffer=True)
+    store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
+    assert run(store._write()) is False
+    assert run(store._read()) is False
+    run(store.reset())
+    run(store.err_s("e", errno=1))
+    assert store._err_count == 1  # the entry still counts in RAM
+
+
+def test_a_non_allocation_failure_from_a_chunk_propagates() -> None:
+    # The catch is allocation-only: any other exception is a defect that must surface, never read as a failed write.
+    for kwargs in ({"raise_on_write": True}, {"raise_on_read": True}):
+        chunk = _RaisingFramChunk(error=RuntimeError("not an allocation failure"), **kwargs)
+        store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
+        try:
+            run(store._write() if "raise_on_write" in kwargs else store._read())
+        except RuntimeError:
+            continue
+        raise AssertionError(f"a RuntimeError from the chunk was swallowed ({kwargs})")
+
+
+class _RefusingFramChunk(_RaisingFramChunk):
+    # A chunk whose every write reports failure, as the real one does for a chip it cannot reach.
+    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+        return False
+
+
+def test_a_store_whose_reset_cannot_write_returns_false() -> None:
+    store = PrintLogHistoryStore(_RaisingFramManager(_RefusingFramChunk()), history_length=4)
+    run(store.err_s("e", errno=1))
+    assert run(store.reset()) is False
+    assert store._err_count == 0  # cleared in RAM; only the persisting failed
+    assert store.initialized is False
 
 
 def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:

@@ -1,9 +1,7 @@
-"""REST response envelope + setter-dispatch orchestration for the Microdot layer -
-replaces the old, now-deleted improved-quality/api_helpers.py's ad hoc per-endpoint pipeline.
-"""
-# Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}. make_response() is a pure
-# envelope primitive (no I/O, can't raise); handle_set_cmd() drives one SensorReaderConfig's
-# _set_dict_cfg() plus an optional post-write hook (SPECIFICATION.md Parts A.5 and C.7).
+"""REST response envelope and settings-group setter dispatch for the Microdot layer; every function returns a well-defined value, never raises."""
+# Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}; make_response() is pure and total.
+# handle_set_cmd() drives one module's _set_dict_cfg() plus an optional post-write hook and returns the per-field
+# outcome, a hook failure included, which the endpoint's OK envelope carries (SPECIFICATION.md Parts A.5 and C.5.3).
 
 from micropython import const
 
@@ -13,13 +11,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, Protocol
+    from collections.abc import Callable
+    from typing import Protocol
 
-    from asy_base_classes import SensorReaderConfig
-    from asy_config_manager import ConfigSchema
+    from asy_base_classes import AsyncCallback, JsonMapping, JsonValue, SensorReaderConfig
+    from asy_config_manager import ConfigSchema, WriteValidity
 
-    ResponseEnvelope = dict[str, "str | int | dict[str, Any]"]
+    ResponseEnvelope = dict[str, "str | int | JsonMapping"]
 
     class _RequestLike(Protocol):
         # Structural stand-in for microdot.Request: typed via the vendored upstream stub (ext/typings/microdot/),
@@ -46,32 +44,28 @@ _STANDARD_CODES: dict[int, str] = {
 
 async def handle_set_cmd(
     reader: "SensorReaderConfig",
-    data: dict[str, int | float | str | bool | None],
+    data: "JsonMapping",
     cfg_vals: "ConfigSchema",
     post_fct: "Callable[[], None] | None" = None,
-    post_asy_fct: "Callable[[], Coroutine[Any, Any, None]] | None" = None,
-    ok_descr: str | None = None,
-) -> "ResponseEnvelope":
-    # Persist+push already happened per field inside reader._set_dict_cfg() (asy_base_classes.py) - a
-    # per-field failure is detail carried in "result", never a reason to report the overall request
-    # as ERR. The post-write hook fires at most once per call, only if a field actually changed.
-    try:
-        results = await reader._set_dict_cfg(data, cfg_vals)
-        if any(status == "Valid" for status in results.values()):
+    post_asy_fct: "AsyncCallback | None" = None,
+) -> "WriteValidity":
+    # Persist and push already ran per field in reader._set_dict_cfg(); a per-field outcome is detail in the endpoint's "result".
+    # The post-write hook runs once per call, only after a changed field: one hook per endpoint, not one
+    # per field, as legacy's post_fct/post_asy_fct (agent, 2026-08-03).
+    results = await reader._set_dict_cfg(data, cfg_vals)
+    if any(status == "Valid" for status in results.values()):
+        try:
             if post_fct is not None:
                 post_fct()
             if post_asy_fct is not None:
                 await post_asy_fct()
-        return make_response(0, descr=ok_descr, result=results)
-    except Exception as e:
-        # Defense-in-depth: reader._set_dict_cfg() already catches its own internal failure modes,
-        # so what reaches here is almost always a caller-supplied post_fct/post_asy_fct raising -
-        # produce a precise, on-brand reply rather than relying solely on Microdot's blanket catch.
-        await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=_ERR_CALLBACK)
-        return make_response(100)
+        except Exception as e:
+            await reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)
+            results = dict.fromkeys(results, "Failed")
+    return results
 
 
-def make_response(code: int, descr: str | None = None, result: "dict[str, Any] | None" = None) -> "ResponseEnvelope":
+def make_response(code: int, descr: str | None = None, result: "JsonMapping | None" = None) -> "ResponseEnvelope":
     # Pure and total: never raises, no I/O. code == 0 is the only "OK" outcome (matches every
     # existing endpoint's convention); everything else is "ERR", standard or caller-defined alike.
     if descr is None:
@@ -84,7 +78,7 @@ def make_response(code: int, descr: str | None = None, result: "dict[str, Any] |
     }
 
 
-def parse_cmd_request(request: "_RequestLike", keys: list[str]) -> "tuple[dict[str, Any] | None, ResponseEnvelope | None]":
+def parse_cmd_request(request: "_RequestLike", keys: list[str]) -> "tuple[dict[str, JsonValue] | None, ResponseEnvelope | None]":
     # Parse the request body, then validate a "cmd" field against the caller's own allowed-command
     # list. A syntactically valid but non-dict JSON body (e.g. a bare list or string) is treated as
     # a genuinely invalid request (code 1), not "cmd specifier missing" (code 2).

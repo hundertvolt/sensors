@@ -164,7 +164,7 @@ def test_the_reader_logger_follows_its_log_config() -> None:
     assert type(reader.pr) is PrintLogHistory
     assert reader.pr.name == "SCD30"
     assert len(reader.pr.history) == 3
-    assert reader.pr.get_level() == 2
+    assert reader.pr.level == 2
 
 
 def test_stop_continuous_measurement_matches_datasheet_example() -> None:

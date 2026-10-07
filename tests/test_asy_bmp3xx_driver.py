@@ -943,7 +943,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
-    ok, results = run(reader.cfgmgr.write_config({"SampleInterval": 7200}, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config({"SampleInterval": 7200}))
     assert ok is True
     assert results["SampleInterval"] == "Invalid"  # rejected by the schema too (max is 3600)
     # write_config() only accepts the update when the value clears the schema check, so a stale
@@ -1033,7 +1033,7 @@ def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint()
     _i2c, reader = make_clean_reader("cfg_valid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         for value in (lo, hi, _midpoint(kind, lo, hi)):
-            ok, results = run(reader.cfgmgr.write_config({name: value}, _FULL_SCHEMA))
+            ok, results = run(reader.cfgmgr.write_config({name: value}))
             assert ok is True
             assert results[name] in ("Valid", "Unchanged")
             stored = run(reader.cfgmgr.get_dict([name]))
@@ -1051,7 +1051,7 @@ def test_config_write_rejects_single_out_of_range_field() -> None:
         assert before_dict is not None
         before = before_dict[name]
         for bad in (below, above):
-            ok, results = run(reader.cfgmgr.write_config({name: bad}, _FULL_SCHEMA))
+            ok, results = run(reader.cfgmgr.write_config({name: bad}))
             assert ok is True  # the write call itself still succeeds; only the field is rejected
             assert results[name] == "Invalid"
         after_dict = run(reader.cfgmgr.get_dict([name]))
@@ -1066,11 +1066,11 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
     _i2c, reader = make_clean_reader("cfg_wrong_type")
     for name, (kind, _lo, _hi) in _FIELD_BOUNDS.items():
         if kind == "int":
-            ok, results = run(reader.cfgmgr.write_config({name: "nope"}, _FULL_SCHEMA))
+            ok, results = run(reader.cfgmgr.write_config({name: "nope"}))
             assert ok is True
             assert results[name] == "Invalid"
             continue
-        ok, results = run(reader.cfgmgr.write_config({name: 1}, _FULL_SCHEMA))
+        ok, results = run(reader.cfgmgr.write_config({name: 1}))
         assert ok is True
         assert results[name] == "Valid"
         stored = run(reader.cfgmgr.get_dict([name]))
@@ -1084,7 +1084,7 @@ def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subcl
     # holds on both runtimes for different reasons: bool subclasses int on CPython, while on
     # MicroPython it has no base type at all, so even isinstance() would reject it (Part F.1).
     _i2c, reader = make_clean_reader("cfg_bool_reject")
-    ok, results = run(reader.cfgmgr.write_config({"SampleInterval": True}, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config({"SampleInterval": True}))
     assert ok is True
     assert results["SampleInterval"] == "Invalid"
 
@@ -1103,7 +1103,7 @@ def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones()
         "SeaLevelOffset": 250.0,  # valid
         "MeanAtmTemp": 18.0,  # valid
     }
-    ok, results = run(reader.cfgmgr.write_config(mixed, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config(mixed))
     assert ok is True
     for name in ("PresOvers", "FiltCoeff", "TempOffset"):
         assert results[name] == "Invalid"
@@ -1134,7 +1134,7 @@ def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_do
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
-    ok, results = run(reader.cfgmgr.write_config({"PresOvers": 20}, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config({"PresOvers": 20}))
     assert ok is True
     assert results["PresOvers"] == "Invalid"  # now correctly rejected at the schema layer
     reader.cfgmgr._cache["PresOvers"] = 20  # simulate a stale value from before this fix existed
@@ -1152,7 +1152,7 @@ def test_config_write_accepts_every_legal_discrete_value() -> None:
     _i2c, reader = make_clean_reader("discrete_valid")
     for name, legal_values in _DISCRETE_FIELDS.items():
         for value in legal_values:
-            ok, results = run(reader.cfgmgr.write_config({name: value}, _FULL_SCHEMA))
+            ok, results = run(reader.cfgmgr.write_config({name: value}))
             assert ok is True
             assert results[name] in ("Valid", "Unchanged")
             stored = run(reader.cfgmgr.get_dict([name]))
@@ -1167,7 +1167,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_osr_domain() -> None:
     for name in ("PresOvers", "TempOvers"):
         before = run(reader.cfgmgr.get_dict([name]))
         assert before is not None
-        ok, results = run(reader.cfgmgr.write_config({name: 20}, _FULL_SCHEMA))
+        ok, results = run(reader.cfgmgr.write_config({name: 20}))
         assert ok is True
         assert results[name] == "Invalid"
         after = run(reader.cfgmgr.get_dict([name]))
@@ -1178,7 +1178,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
     # 100 is in the old [0, 127] range but not one of the real encoded IIR coefficients.
     _i2c, reader = make_clean_reader("discrete_invalid_iir")
     before = run(reader.cfgmgr.get_dict(["FiltCoeff"]))
-    ok, results = run(reader.cfgmgr.write_config({"FiltCoeff": 100}, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config({"FiltCoeff": 100}))
     assert ok is True
     assert results["FiltCoeff"] == "Invalid"
     assert run(reader.cfgmgr.get_dict(["FiltCoeff"])) == before
@@ -1186,7 +1186,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
 
 def test_write_config_rejects_wrong_type_for_a_discrete_field() -> None:
     _i2c, reader = make_clean_reader("discrete_wrong_type")
-    ok, results = run(reader.cfgmgr.write_config({"PresOvers": "8"}, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config({"PresOvers": "8"}))
     assert ok is True
     assert results["PresOvers"] == "Invalid"
 
@@ -1357,7 +1357,7 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     ok, results_valid = run(
         reader.cfgmgr.write_config(
-            {"PresOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffset": 100.0, "MeanAtmTemp": 25.0}, _FULL_SCHEMA,
+            {"PresOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffset": 100.0, "MeanAtmTemp": 25.0},
         ),
     )
     assert ok is True
@@ -1466,7 +1466,7 @@ def test_the_log_config_sets_both_loggers_length_and_level() -> None:
     reader = BMP3XX_Reader(make_i2c(), address=_ADDR, cfg_path=_tmp_cfg_path("log_config"), log=LogConfig(None, 3, 2))
     for pr in (reader.pr, reader.cfgmgr.pr):
         assert len(pr.history) == 3
-        assert pr.get_level() == 2
+        assert pr.level == 2
 
 
 def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:

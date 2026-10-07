@@ -29,6 +29,7 @@ from launch import (
 )
 from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 from unix_port_poll_prewarm import prewarm_poll_set
+from unix_port_unretrieved_report import install
 
 _CONFIG_DIR = "digital_twin/config/"
 _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status()'s two call sites -
@@ -320,6 +321,7 @@ def _ensure_dir(path: str) -> None:
 
 async def main(config: RunConfig) -> None:
     global _booted_module
+    install()  # before the firmware: start_and_check_tasks() keeps it, so every task death prints (Part I.4(e))
     # Must run before anything else in the process registers a poll object - see
     # unix_port_poll_prewarm.py's own module docstring.
     prewarm_poll_set()

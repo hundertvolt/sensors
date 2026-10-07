@@ -56,17 +56,6 @@ SPECIFICATION.md	Session 3
 SPECIFICATION.md	Session 3
 SPECIFICATION.md	Session 3
 SPECIFICATION.md	Session 8
-SPECIFICATION.md	Topic 11
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
-SPECIFICATION.md	WP2
 SPECIFICATION.md	WP2
 SPECIFICATION.md	WP2
 SPECIFICATION.md	WP2
@@ -77,7 +66,6 @@ SPECIFICATION.md	WP3
 SPECIFICATION.md	WP5
 SPECIFICATION.md	WP5
 SPECIFICATION.md	WP6
-SPECIFICATION.md	WP8
 SPECIFICATION.md	WP8
 SPECIFICATION.md	devices/zz_test_*.toml
 SPECIFICATION.md	devices/zz_test_*.toml
@@ -107,7 +95,6 @@ scripts/run_digital_twin_ci.sh	digital_twin/*.json
 scripts/run_digital_twin_ci.sh	src/sensortask_*.py
 scripts/run_unix_port_integration.sh	src/sensortask_*.py
 scripts/test.sh	devices/zz_test_*.toml
-src/asy_api_response.py	improved-quality/api_helpers.py
 src/asy_notification_service.py	improved-quality/neopixel_signal.py
 tests/_digital_twin_construction_scenarios.py	WP1
 tests/_digital_twin_construction_scenarios.py	WP1
@@ -122,7 +109,6 @@ tests/test_notification_scd30_sgp40_integration.py	src/sensortask_wozi.py
 tests/test_notification_sgp40_integration.py	src/sensortask_wozi.py
 tests/test_asy_print_log.py	tests/_fram_mock.py
 tests/test_setter_microdot_integration.py	WP5
-tests/test_asy_system_service.py	WP6
 tests_hardware/README.md	DEV_HARDWARE_BASELINE_PLAN.md
 tests_hardware/README.md	Topic 6
 tests_hardware/README.md	WP3

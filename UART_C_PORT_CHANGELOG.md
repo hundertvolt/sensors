@@ -113,6 +113,8 @@ Status values: `proposed` (agreed in principle, not yet implemented), `applied-p
 | B42 | Except tuples in alphabetical order and one raise-message case in `asy_uart_driver.py`/`asy_uart_comm.py` | No wire change |
 | B43 | `CRCBase`'s `msb_set`, `crc_shift`, `fmt` and `inc_count` become private (`_`-prefixed; none is read outside its class) | Values and the CRC arithmetic unchanged |
 | B44 | `UARTLinkDriver` carries an `initialized` flag that follows its inner `setup()` | Bench application state only; no protocol effect |
+| B45 | `reset_error_counter()` returns the history write's success (`bool`) | Nothing on the wire changes |
+| B46 | `reset_error_counter()` (`ResetErrors`) leaves the valid-frame count alone, clearing only the history and the blind-resync streak, so a reset never re-arms the link-unintelligible diagnostic on a link that has worked | A local diagnostic; no byte, acceptance rule or timing on the wire changes |
 
 ## Questions answered by construction (agent, 2026-09-11; verified over 20,010 cases, below)
 

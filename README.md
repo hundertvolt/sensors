@@ -569,8 +569,8 @@ open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the u
 ```
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
-`DebugLevel` is a persisted `/system` setting (0-5, see `asy_print_log.py`'s `PrintLog.level_*()`
-methods) — like every config write, it takes effect immediately (the accepted value is pushed live
+`DebugLevel` is a persisted `/system` setting (0 off … 5 all, the `level` every `PrintLog` reads) —
+like every config write, it takes effect immediately (the accepted value is pushed live
 the moment the request is validated) and is saved to disk shortly after, off the request's own
 critical path (`asy_config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
 `asy_system_service.py`'s `level_setters` provider/`_apply_level()` registry pushes any accepted
@@ -618,9 +618,10 @@ curl -s -X PUT -H "Content-Type: application/json" \
   http://127.0.0.1:8080/sensors
 ```
 
-Every field type is checked strictly against its schema — a JSON integer for a `"float"` field is
-accepted and coerced (`asy_config_manager.py:163-164`); a float for an `"int"` field only without a
-fractional part. Read each endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
+Every field is checked against its schema: a JSON integer for a `"float"` field (`60` for `WarnHum`)
+is allowed and stored as `60.0`; a float for an `"int"` field is allowed only without a fractional
+part (`5.0` → `5`, `5.7` is `"Invalid"`); `true`/`false` is never a number. Read each endpoint
+back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
 and boot once more without wiping `digital_twin/config/` (nor `digital_twin/scd30_state.json`, this
 entry point's own default persisted path) to confirm it survived the restart — including SCD30's
 own NVM-backed fields (`MeasInterval`, `TempOffset`, ...), which `digital_twin/_scd30_chip.py` persists the

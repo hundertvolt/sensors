@@ -63,6 +63,8 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from asy_base_classes import PushFct
+    from asy_config_manager import CfgValue
     from asy_print_log import ErrorLog
 
     T = TypeVar("T")
@@ -70,6 +72,11 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+async def _push(callback: "PushFct", value: "CfgValue") -> bool:
+    # A push callback is typed to return an Awaitable (asy_base_classes' PushFct); run() takes a coroutine.
+    return await callback(value)
 
 
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
@@ -348,7 +355,7 @@ def test_start_counter_timer_degrades_gracefully_on_a_memory_error() -> None:
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
     print("(expected) debug=3 makes the fresh ConfigManager below log its normal first-use config-file creation")
     client = make_client(debug=3)
-    assert client.pr.get_level() == 3
+    assert client.pr.level == 3
 
 
 # ---------------------------------------------------------------------------
@@ -793,7 +800,7 @@ def test_led_wifi_on_push_callback_applies_the_value_through_set_wifi_led() -> N
     led = FakeLED()
     client = make_client(ext_led=led)
     callback = client._push_callbacks["LEDWifiOn"]
-    assert run(callback(True)) is True
+    assert run(_push(callback, True)) is True
     assert client._led is led
 
 
@@ -803,8 +810,8 @@ def test_led_wifi_on_push_callback_rejects_a_non_bool_value_defensively() -> Non
     # because a real caller can reach it with the wrong type.
     client = make_client(ext_led=FakeLED())
     callback = client._push_callbacks["LEDWifiOn"]
-    assert run(callback("not a bool")) is False
-    assert run(callback(1)) is False
+    assert run(_push(callback, "not a bool")) is False
+    assert run(_push(callback, 1)) is False
 
 
 def test_set_dict_cfg_led_wifi_on_end_to_end_persists_and_pushes() -> None:
@@ -871,7 +878,7 @@ def test_pw_at_wpa2_minimum_length_is_accepted() -> None:
 
 def test_write_config_pw_below_minimum_is_marked_invalid_not_silently_dropped() -> None:
     client = make_client()
-    ok, results = run(client.cfgmgr.write_config({"PW": "short"}, client.get_cfg_schema()))
+    ok, results = run(client.cfgmgr.write_config({"PW": "short"}))
     assert ok is True
     assert results == {"PW": "Invalid"}
     assert run(client.cfgmgr.get_dict(["PW"])) == {"PW": ""}  # untouched default
@@ -879,7 +886,7 @@ def test_write_config_pw_below_minimum_is_marked_invalid_not_silently_dropped() 
 
 def test_write_config_pw_empty_string_is_valid_and_resets_to_open_network() -> None:
     client = make_client_with_json(_VALID_JSON)  # starts with a real "supersecret" password
-    ok, results = run(client.cfgmgr.write_config({"PW": ""}, client.get_cfg_schema()))
+    ok, results = run(client.cfgmgr.write_config({"PW": ""}))
     assert ok is True
     assert results == {"PW": "Valid"}
     assert run(client.cfgmgr.get_dict(["PW"])) == {"PW": ""}
@@ -1687,7 +1694,7 @@ def test_print_wlan_diagnostics_does_not_raise_on_success() -> None:
         "(expected) debug=5 makes the fresh ConfigManager below log its normal first-use config-file "
         "creation, then the real WLAN diagnostics dump below is the point of this test",
     )
-    client = make_client(debug=5)  # PrintLog.level_info() - pr.all() actually prints, not gated off
+    client = make_client(debug=5)  # DebugLevel 5 (SPEC A.8) - pr.all() actually prints, not gated off
     _wlan(client)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", "8.8.8.8")
     client._print_wlan_diagnostics()  # must not raise
 
@@ -2566,8 +2573,8 @@ def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> Non
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
     # Regression check for the integration bug where a shared REST helper needed each module's own
-    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - get_cfg_schema() gives an
-    # outside caller that schema, without reaching into a private const.
+    # schema to validate a write correctly - get_cfg_schema() gives an outside caller that schema,
+    # without reaching into a private const.
     client = make_client()
     assert client.get_cfg_schema() == (_VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME + _VAL_LED_WIFI_ON + _VAL_HOTSPOT_PW)
 
@@ -2585,7 +2592,7 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
     client = make_client()
 
     async def scenario() -> "tuple[bool, dict[str, int | float | str | bool | None] | None]":
-        written, _ = await client.cfgmgr.write_config({"Hostname": "NewName"}, client.get_cfg_schema())
+        written, _ = await client.cfgmgr.write_config({"Hostname": "NewName"})
         data = await client.cfgmgr.get_dict(["Hostname"])
         return written, data
 
@@ -2765,7 +2772,7 @@ def test_start_hotspot_uses_the_configured_hotspot_password_not_the_default() ->
     # non-default value written through cfgmgr actually reaches wlan.config(), not just that the
     # schema default happens to match every other test's hardcoded "12345678" expectation.
     client = make_client()
-    ok, results = run(client.cfgmgr.write_config({"HotspotPW": "customhotspotpw1"}, client.get_cfg_schema()))
+    ok, results = run(client.cfgmgr.write_config({"HotspotPW": "customhotspotpw1"}))
     assert ok is True
     assert results["HotspotPW"] == "Valid"
 
@@ -3195,7 +3202,7 @@ def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:
 
     with _FastAsyncSleep():  # _connect_loop() sleeps its 5 s refresh between cycles
         assert run(scenario()) is True
-    assert attempts[0] > 3 * client.max_module_error  # far past the old give-up streak
+    assert attempts[0] > 3 * client._max_module_error  # far past the old give-up streak
     kept = _used_slots(run(client.get_error_counter()))
     assert code("E", "GIVE_UP") not in kept and code("E", "WLAN_GIVE_UP") not in kept
 

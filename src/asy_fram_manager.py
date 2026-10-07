@@ -20,10 +20,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any
+    from collections.abc import Callable
 
-    from asy_base_classes import ErrorSource
+    from asy_base_classes import ErrorSource, NtpSyncFct
     from asy_print_log import ErrorLog, LogConfig
 
 _STATUS_UNINIT = const(0x00)
@@ -388,6 +387,12 @@ class _FRAMBaseChunk:
                 self.pr.evt("Block", n, "cleared")
             return True
 
+    async def wait_idle(self) -> None:
+        # Returns once this chunk's operation in flight, if any, has ended; one queued behind it then
+        # meets the pause FRAMManager.quiesce() set first.
+        async with self._op_lock:
+            pass
+
 
 class FRAMChunkBuffer(LockableBuffer):
     def __init__(self, data_size: int, crc_size: int) -> None:
@@ -421,7 +426,7 @@ class FRAMChunk(_FRAMBaseChunk):
             return None
         return bytearray(dbuf)
 
-    async def read_into(self, buf: FRAMChunkBuffer, *, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
             await self.pr.err_s("No buffer for the chunk read", errno=_ERR_ALLOC)
@@ -441,7 +446,7 @@ class FRAMChunk(_FRAMBaseChunk):
         del data  # free memory after using preallocated buffer
         return await self.write_into(buf, override_pause=override_pause)
 
-    async def write_into(self, buf: FRAMChunkBuffer, *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
             await self.pr.err_s("No buffer for the chunk write", errno=_ERR_ALLOC)
@@ -471,7 +476,7 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
         manager: "FRAMManager",
         base_addr: int,
         size: int,
-        ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        ntp_sync_callback: "NtpSyncFct",
         crc: CRCBase,
         verify: int = 0,
         check_length: int = 8,
@@ -597,6 +602,7 @@ class FRAMManager:
         self.size = max_size
         self._allocated_size = 0
         self._pause = False
+        self._chunks: list[_FRAMBaseChunk] = []  # one entry per allocation, all made during construction
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
     def get_chunk(
@@ -619,6 +625,7 @@ class FRAMManager:
             self.pr.err("FRAM out of memory!")
             return None  # out of memory
         chunk = FRAMChunk(self, self._allocated_size, size, crc, verify=verify, check_length=check_length)
+        self._chunks.append(chunk)
         self._allocated_size += full_size
         self.pr.one(
             "Allocation successful, FRAM now has",
@@ -645,7 +652,7 @@ class FRAMManager:
     def get_timestamped_chunk(
         self,
         size: int,
-        ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        ntp_sync_callback: "NtpSyncFct",
         crc: CRCBase | None = None,
         verify: int = 0,
         check_length: int = 8,
@@ -668,6 +675,7 @@ class FRAMManager:
             return None  # out of memory
 
         chunk = FRAMTimestampedChunk(self, self._allocated_size, size, ntp_sync_callback, crc, verify=verify, check_length=check_length)
+        self._chunks.append(chunk)
         self._allocated_size += full_size
         self.pr.one(
             "Allocation successful, FRAM now has",
@@ -681,8 +689,16 @@ class FRAMManager:
         self.pr.evt("Storage pause set to", value)
         self._pause = value
 
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
+    async def quiesce(self, step_done: "Callable[[], None]") -> None:
+        # Pauses the chunk layer, then waits out each chunk's operation in flight, calling step_done() after
+        # each (a reset sequence feeds the watchdog there): afterwards no chunk operation runs until unpaused.
+        self.set_pause(value=True)
+        for chunk in self._chunks:
+            await chunk.wait_idle()
+            step_done()
+
+    async def reset_error_counter(self) -> bool:
+        return await self.pr.reset()
 
     async def setup(self) -> bool:
         await self.pr.setup()  # required for all logged warnings and errors

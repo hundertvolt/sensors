@@ -4,6 +4,7 @@ Not a test file - register_for_device() is the export; SPECIFICATION.md Part E.2
 
 import asyncio
 import json
+import os
 import struct
 import sys
 import time
@@ -21,8 +22,10 @@ from _shared_rest_roundtrip import (
     drain_json_response_body,
 )
 from _tmp_scratch import TmpScratch
+from _write_counters import WriteCountingOpen
 from microdot import Request, Response
 
+import asy_config_manager
 import asy_spi_driver
 import asy_system_service
 from asy_base_classes import SensorReader, SensorReaderConfig
@@ -30,7 +33,7 @@ from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService
-from asy_print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+from asy_print_log import PrintLogHistory, PrintLogHistoryStore
 from asy_system_service import SystemService
 from asy_uart_link_driver import UARTLinkDriver
 from asy_webserver_service import WebserverService
@@ -57,7 +60,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Awaitable, Callable, Coroutine
     from typing import Any, TypeVar
 
     from asy_crc_checks import CRCBase
@@ -421,7 +424,7 @@ def _scenario_fram_chunk_order(device: str) -> None:
     def _tracking_get_timestamped_chunk(
         self: "FRAMManager",
         size: int,
-        ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        ntp_sync_callback: "Callable[[], Awaitable[bool]]",
         crc: "CRCBase | None" = None,
         verify: int = 0,
         check_length: int = 8,
@@ -624,7 +627,7 @@ def _scenario_boot_feeds_the_watchdog(device: str) -> None:
     expected_feeds = sum(1 for line in source_lines if line.strip().startswith("await ") and line.strip().endswith(".setup()"))
     assert expected_feeds > 0
     assert module.sysfunct is not None and module.watchdog is not None
-    assert module.sysfunct.watchdog is module.watchdog
+    assert module.sysfunct._watchdog is module.watchdog
     assert module.watchdog.feed_count == expected_feeds
 
 
@@ -651,6 +654,61 @@ def _scenario_notify_cfgmgr_exists(device: str) -> None:
     assert module.notification.cfgmgr.valid is True
 
 
+@_register("every_measurement_starts_none_on_every_sensor")
+def _scenario_measurements_start_none(device: str) -> None:
+    # Right after the boot setup and before any task runs, every registered sensor answers its whole map with
+    # None: "not yet measured" is the one starting value. No value is a tuple or list; a dict is only a
+    # documented nested group (ISL29125's RGB/HSB, SPECIFICATION.md Part M.1), itself all None.
+    module = build(device)
+    sensors = list(module.webserver._sensors.values())
+    assert sensors
+    for sensor in sensors:
+        data = run(sensor.get_dict_data())
+        assert len(data) == 1, data
+        for name, fields in data.items():
+            leaves = [v for value in fields.values() for v in (value.values() if isinstance(value, dict) else [value])]
+            assert fields and all(leaf is None for leaf in leaves), (name, fields)
+
+
+@_register("a_fresh_filesystem_boot_writes_each_config_file_once")
+def _scenario_fresh_filesystem_writes_once(device: str) -> None:
+    # A first boot over an empty config dir writes each store's file once, with its defaults; a store whose schema
+    # stores nothing writes none; a second boot over the same dir writes nothing; a rebuild writes only what is missing.
+    cfg_path = _tmp_cfg_dir()
+    first, second = _DirWrites(cfg_path), _DirWrites(cfg_path)
+    with first:
+        module = build(device, cfg_path=cfg_path)
+    owners = [obj for obj in _module_objects(module).values() if getattr(obj, "cfgmgr", None) is not None]
+    storing = [obj.cfgmgr for obj in owners if any(asy_config_manager.check_cfg_get_default(field)[0] for field in obj.get_cfg_schema())]
+    assert sorted(first.paths) == sorted(cfg_path + "config_" + store.name[len("CFGMGR_") :] + ".cfg" for store in storing), first.paths
+    with second:
+        build(device, cfg_path=cfg_path)
+    assert second.paths == []
+    # A config reset cut by a power loss after k removals: the rebuild writes each removed file once, with its
+    # defaults, and no other.
+    removed = sorted(first.paths)[::2]
+    for path in removed:
+        os.remove(path)
+    third = _DirWrites(cfg_path)
+    with third:
+        build(device, cfg_path=cfg_path)
+    assert sorted(third.paths) == removed
+
+
+class _DirWrites(WriteCountingOpen):
+    # Counts only the opens for writing inside one config dir: an earlier scenario's still-pending flush task may
+    # run during this boot's event loop, into its own dir.
+    def __init__(self, cfg_path: str) -> None:
+        super().__init__(asy_config_manager)
+        self.cfg_path = cfg_path
+        self.paths: list[str] = []
+
+    def __call__(self, path: str, mode: str = "r") -> object:
+        if "w" in mode and path.startswith(self.cfg_path):
+            self.paths.append(path)
+        return super().__call__(path, mode)
+
+
 # ---------------------------------------------------------------------------
 # Debug level - persisted on sysfunct, pushed live to every logger's own set_level() through a
 # registry collected once at boot (owner, 2026-08-11: system-wide, no shared mutable value).
@@ -668,48 +726,47 @@ def _scenario_collect_level_setters(device: str) -> None:
     # rather than identity (bound-method identity isn't guaranteed). Index-based, not zip() - that
     # avoids a silent length-mismatch footgun on top of the explicit length assert above.
     for i in range(len(loggers)):
-        loggers[i].set_level(PrintLog.level_off())
-        setters[i](PrintLog.level_info())
-        assert loggers[i].get_level() == PrintLog.level_info()
+        loggers[i].set_level(0)
+        setters[i](4)
+        assert loggers[i].level == 4
+
+
+def _system_debug_level(module: "Any") -> object:
+    return json.loads(status_body(_dispatch(module, "GET", "/system")))["DebugLevel"]
 
 
 @_register("debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one")
 def _scenario_debug_seed_value(device: str) -> None:
-    module = build(device, debug=PrintLog.level_warn())
-    assert module.sysfunct is not None
-    # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema
-    # default (0), then pushes it through the registry, overriding the debug= seed each logger was
-    # constructed with. Matches test_asy_system_service.py's own first-boot test.
-    assert module.sysfunct.get_debug_level() == 0
+    module = build(device, debug=2)
+    # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema default (0),
+    # then pushes it through the registry, overriding the debug= seed each logger was constructed with.
+    assert _system_debug_level(module) == 0
     for pr in _all_loggers(module):
-        assert pr.get_level() == 0, f"{pr.name!r} still shows the debug= seed, not the resolved default"
+        assert pr.level == 0, f"{pr.name!r} still shows the debug= seed, not the resolved default"
 
 
-@_register("sysfunct_set_debug_level_updates_every_logger_in_the_object_graph")
+@_register("system_put_debug_level_updates_every_logger_in_the_object_graph")
 def _scenario_set_debug_level_updates_every_logger(device: str) -> None:
-    # End-to-end: once a REST route wires to sysfunct.set_debug_level(), this is the whole
-    # observable effect a real request would have - every logger's own set_level() called directly,
-    # no shared mutable value anywhere.
+    # The whole observable effect of the /system setting: every logger's own set_level() called, no shared
+    # mutable value anywhere.
     module = build(device)
-    assert module.sysfunct is not None
-    ok = run(module.sysfunct.set_debug_level(PrintLog.level_err()))
-    assert ok is True
+    res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
+    assert json.loads(res.body)["result"]["DebugLevel"] == "Valid"
     for pr in _all_loggers(module):
-        assert pr.get_level() == PrintLog.level_err(), f"{pr.name!r} did not observe set_debug_level()"
+        assert pr.level == 1, f"{pr.name!r} did not observe the DebugLevel PUT"
 
 
 @_register("debug_level_survives_a_simulated_reboot_through_build_system")
 def _scenario_debug_level_survives_reboot(device: str) -> None:
     cfg_path = _tmp_cfg_dir()
     module = build(device, cfg_path=cfg_path)
-    assert module.sysfunct is not None
-    run(module.sysfunct.set_debug_level(PrintLog.level_once()))
+    assert json.loads(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
+    run(module.sysfunct.cfgmgr.flush_pending())
 
     module = build(device, cfg_path=cfg_path)  # simulated reboot - same cfg_path, fresh objects
-    assert module.sysfunct is not None
-    assert module.sysfunct.get_debug_level() == PrintLog.level_once()
+    assert _system_debug_level(module) == 1
     for pr in _all_loggers(module):
-        assert pr.get_level() == PrintLog.level_once(), f"{pr.name!r} did not get the persisted level on reboot"
+        assert pr.level == 1, f"{pr.name!r} did not get the persisted level on reboot"
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +833,11 @@ def _scenario_neopixel_empty_timer_list_reaches_the_collector(device: str) -> No
     assert all(callable(s) for s in starters)
 
 
+async def _cancel_reset_task(sysfunct: "Any") -> None:
+    sysfunct._reset_task.cancel()
+    await asyncio.sleep(0)
+
+
 def _system_const(name: str) -> int:
     # A const() of asy_system_service.py, read from its source (const() folds the name away on import).
     with open("src/asy_system_service.py") as f:
@@ -783,6 +845,15 @@ def _system_const(name: str) -> int:
             if line.startswith(name + " = const("):
                 return int(line.split("const(")[1].split(")")[0])
     raise AssertionError(name + " not found in src/asy_system_service.py")
+
+
+async def _reset_task_done(sysfunct: "Any") -> None:
+    # Yields until the reset task a fired reset timer woke has run the reset action.
+    for _ in range(50):
+        if sysfunct._reset_task is not None and sysfunct._reset_task.done():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("the reset task never ran")
 
 
 class _StaggerClock:
@@ -804,18 +875,20 @@ class _StaggerClock:
 class _AsyncioWaits:
     # Stands in for asy_system_service's asyncio: every other name reaches the real module; the service's
     # own sleeps are recorded in milliseconds and yield once instead of waiting.
-    def __init__(self) -> None:
+    def __init__(self, on_wait: "Callable[[int], None] | None" = None) -> None:
         self.waits_ms: list[int] = []
+        self._on_wait = on_wait  # called with the wait count as each wait is recorded, before it yields
 
     def __getattr__(self, name: str) -> "Any":
         return getattr(asyncio, name)
 
     async def sleep(self, seconds: float) -> None:
-        self.waits_ms.append(round(seconds * 1000))
-        await asyncio.sleep(0)
+        await self.sleep_ms(round(seconds * 1000))
 
     async def sleep_ms(self, ms: int) -> None:
         self.waits_ms.append(ms)
+        if self._on_wait is not None:
+            self._on_wait(len(self.waits_ms))
         await asyncio.sleep(0)
 
 
@@ -830,6 +903,7 @@ async def _fire_stagger_waits(sysfunct: "Any", task: "asyncio.Task[None]", clock
         if timer.callback is not None:
             periods.append(timer.period)
             clock.now += timer.period
+            machine.Timer.clock_ms = clock.now  # the Timer fake's clock follows: each arm records its time
             timer.trigger()
     assert task.done(), "start_timers() did not finish: a stagger wait was never armed or fired"
     await task
@@ -870,12 +944,16 @@ def _scenario_read_trigger_stagger(device: str) -> None:
         await _fire_stagger_waits(sysfunct, task, clock)
 
     asy_system_service.time = clock  # type: ignore[assignment]
+    machine.Timer.clock_ms = 0
     try:
         run(drive())
     finally:
         asy_system_service.time = time
+        machine.Timer.clock_ms = 0
     slot = _system_const("_TIMER_BASE_PERIOD") // (len(triggers) + 1)
     assert ran_at == [k * slot for k in range(len(triggers))]
+    # The sequencer's own arms, read off the Timer fake's clock: trigger k's one-shot armed when trigger k - 1 ran.
+    assert sysfunct._sequencer_timer.arms == [((k - 1) * slot, slot, machine.Timer.ONE_SHOT) for k in range(1, len(triggers))]
     n = len(triggers)
     base = _system_const("_TIMER_BASE_PERIOD")
 
@@ -964,7 +1042,7 @@ def _scenario_unfed_boot_stretch(device: str) -> None:
         del sysfunct.feed_watchdog
     assert first_feed, "the supervisor never reached its first feed"
     n = len(task_starters)
-    assert waits.waits_ms[: first_feed[0]] == [round(1000 / n)] * n  # the task-start spread, no other wait
+    assert waits.waits_ms[: first_feed[0]] == [1000 // n] * n  # the task-start spread, no other wait
     assert sum(periods) < 1000  # the read-trigger plan spans less than one second
     assert sum(periods) + sum(waits.waits_ms[: first_feed[0]]) <= 2000
 
@@ -988,20 +1066,23 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     def dead_starter() -> "asyncio.Task[None]":
         return asyncio.create_task(ends())
 
-    waits = _AsyncioWaits()
     marks: dict[str, int] = {}
+
+    def on_wait(count: int) -> None:
+        # The k-th wait is the start loop's last; the next one is the first pass's sleep, its end.
+        if count == k:
+            marks["start"], marks["entries"], marks["feeds"] = chip.write_transactions, sysfunct.pr._err_count, module.watchdog.feed_count
+        elif count == k + 1:
+            marks["end"], marks["entries_end"], marks["feeds_end"] = chip.write_transactions, sysfunct.pr._err_count, module.watchdog.feed_count
+
+    waits = _AsyncioWaits(on_wait)
 
     async def one_pass() -> None:
         sup = asyncio.create_task(sysfunct.start_and_check_tasks([dead_starter] * k))
         for _ in range(5000):
-            if "start" not in marks and len(waits.waits_ms) >= k:
-                marks["start"] = chip.write_transactions
-                marks["entries"] = sysfunct.pr._err_count
-            if sup.done() or len(waits.waits_ms) > k:
+            if sup.done() or "end" in marks:
                 break
             await asyncio.sleep(0)
-        marks["end"] = chip.write_transactions
-        marks["entries_end"] = sysfunct.pr._err_count
         if not sup.done():
             sup.cancel()
         await asyncio.sleep(0)
@@ -1011,16 +1092,20 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
         run(one_pass())
     finally:
         asy_system_service.asyncio = asyncio
+    if sysfunct._reset_task is not None:
+        run(_cancel_reset_task(sysfunct))
     entries = marks["entries_end"] - marks["entries"]
-    escalated = k * _system_const("_TASK_FAIL_INCREMENT") > _system_const("_TASK_FAIL_MAX")
-    assert entries <= k + (1 if escalated else 0)
-    assert marks["end"] - marks["start"] <= entries * entry_cost
+    increment, budget = _system_const("_TASK_FAIL_INCREMENT"), _system_const("_TASK_FAIL_MAX")
+    escalated = k * increment > budget
+    ends_logged = min(k, -(-(budget + 1) // increment))  # the scan stops at the first end past the budget
+    assert entries == ends_logged + (1 if escalated else 0), (entries, k)
+    assert marks["end"] - marks["start"] <= entries * entry_cost, (marks, entries, entry_cost)
+    assert marks["feeds_end"] - marks["feeds"] == 1  # one feed per pass: the pass end's, or the escalation's when starved
     pass_waits = waits.waits_ms[k:]
     if escalated:
-        assert pass_waits == []  # the reboot is armed instead of the next pass's sleep
-        assert sysfunct._reset_timer.callback is not None
-    else:
-        assert pass_waits == [_system_const("_TASK_CHECK_TIME") * 1000]
+        assert sysfunct._reset_timer.callback is not None  # the reboot is armed inside the pass
+        assert sysfunct._force_watchdog_starve is True
+    assert pass_waits[0] == _system_const("_TASK_CHECK_TIME") * 1000, waits.waits_ms  # the pass ends in one sleep, escalated or not
 
 
 @_register("every_module_and_logger_reaches_the_fan_in_collectors_exactly_once")
@@ -1281,10 +1366,10 @@ def _scenario_networking_put_ntp(device: str) -> None:
 def _scenario_system_put_debug_level(device: str) -> None:
     module = build(device)
     assert module.sysfunct is not None and module.conn is not None
-    res = _dispatch(module, "PUT", "/system", {"DebugLevel": PrintLog.level_err()})
+    res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
     assert json.loads(res.body)["result"]["DebugLevel"] == "Valid"
-    assert module.sysfunct.get_debug_level() == PrintLog.level_err()
-    assert module.conn.pr.get_level() == PrintLog.level_err()  # pushed via the registry
+    assert _system_debug_level(module) == 1
+    assert module.conn.pr.level == 1  # pushed via the registry
 
 
 @_register("webserver_system_put_gmt_dst_offset_applies_without_a_reconnect")
@@ -1304,8 +1389,11 @@ def _scenario_system_put_reboot(device: str) -> None:
     before = machine.reset_count
     res = _dispatch(module, "PUT", "/system", {"SystemCmd": "reboot"})
     assert json.loads(res.body)["result"]["SystemCmd"] == "Valid"
-    module.sysfunct._reset_timer.trigger()  # fake Timer - fires the armed callback synchronously
+    assert machine.reset_count == before  # armed, not yet fired
+    module.sysfunct._reset_timer.trigger()  # fake Timer - its callback only wakes the reset task
+    run(_reset_task_done(module.sysfunct))  # the woken task runs the reset
     assert machine.reset_count == before + 1
+    assert machine.reset_cause() == machine.WDT_RESET
 
 
 @_register("webserver_system_put_reboot_flushes_a_still_pending_config_write_first")
@@ -1315,7 +1403,7 @@ def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
     # this path can wait the flush out. One PUT with a settings change plus SystemCmd=reboot.
     module = build(device)
     assert module.sysfunct is not None
-    res = _dispatch(module, "PUT", "/system", {"DebugLevel": PrintLog.level_err(), "SystemCmd": "reboot"})
+    res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1, "SystemCmd": "reboot"})
     result = json.loads(res.body)["result"]
     assert result["DebugLevel"] == "Valid"
     assert result["SystemCmd"] == "Valid"
@@ -1340,7 +1428,7 @@ def _scenario_notification_put_light_cmd_led(device: str) -> None:
 
 @_register("webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced")
 def _scenario_notification_light_cmd_led_integral_float(device: str) -> None:
-    # asy_config_manager.py's coerce_numeric() policy applied to LightCmdLED too (SPECIFICATION.md
+    # asy_config_manager.py's checked_int()/checked_float() policy applied to LightCmdLED too (SPECIFICATION.md
     # Part A.8): an integral float R/G/B coerces to int, a plain int T coerces to float - both
     # directions a real client could plausibly send.
     module = build(device)
@@ -1361,7 +1449,7 @@ def _scenario_notification_light_cmd_led_rejects_fractional(device: str) -> None
 @_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_field")
 def _scenario_notification_light_cmd_led_rejects_non_numeric_field(device: str) -> None:
     # Another behavior change from the old raw int()/float() casts: those would parse a
-    # numeric-looking string ("10") via Python's lenient constructors, while coerce_numeric() only
+    # numeric-looking string ("10") via Python's lenient constructors, while the checked_*() validators only
     # coerces between the two numeric types, so this is now rejected too.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": "10", "G": 20, "B": 30, "T": 1.0}})
@@ -1530,6 +1618,7 @@ def _scenario_status_put_reset_errors(device: str) -> None:
     assert (run(module.conn.get_error_counter()))["WIFI"]["ErrCount"] == 1
     res = _dispatch(module, "PUT", "/status", {"ResetErrors": True})
     assert json.loads(res.body)["res"] == "OK"
+    assert json.loads(res.body)["result"]["ResetErrors"] == "Valid"
     assert (run(module.conn.get_error_counter()))["WIFI"]["ErrCount"] == 0
 
 
@@ -1547,6 +1636,7 @@ def _scenario_status_reset_errors_not_undone(device: str) -> None:
 
     res = _dispatch(module, "PUT", "/status", {"ResetErrors": True})
     assert json.loads(res.body)["res"] == "OK"
+    assert json.loads(res.body)["result"]["ResetErrors"] == "Valid"
     run(sgp.pr.setup())  # ... and only now does _init_sgp() get there
 
     log = run(sgp.get_error_counter())

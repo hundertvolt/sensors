@@ -1,6 +1,6 @@
-"""The machine-checkable code conventions (SPECIFICATION.md C.2, C.9, D.6, D.15) over src/ and every device's
-generated modules: the asy_ module marker, _NAME equal to the measurement type, starter and task names,
-the errno=/wrnno= keyword, no print() or assert, D.15 member order and quoting only TYPE_CHECKING names."""
+"""The machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15) over src/ and every device's
+generated modules: the asy_ module marker, _NAME equal to the measurement type, starter and task names, the errno=/wrnno=
+keyword, no print() or assert, config file names from one helper, D.15 member order and quoting only TYPE_CHECKING names."""
 
 import ast
 import re
@@ -24,6 +24,7 @@ _COLLECTOR_NAMES = {
 }
 _TASK_COROUTINE = re.compile(r"_\w+_loop")
 _NUMBER_NAME = re.compile(r"_?(?:ERR|WRN)_\w+")
+_CONFIG_NAME_HOME = "src/asy_config_manager.py"  # config_filename() there builds every config file name
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,30 @@ def no_print(module: Module) -> list[str]:
     if module.path == "src/asy_print_log.py":
         return []
     return [f"{module.path}:{n.lineno}: print()" for n in ast.walk(module.tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "print"]
+
+
+def _names_a_config_file(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, str) and "config_" in node.value
+
+
+def config_file_names(module: Module) -> list[str]:
+    # (9) a "config_" literal is never concatenated (+, %, an f-string, .format()) in src/ outside the one
+    # builder, asy_config_manager.config_filename() (SPECIFICATION.md C.14.1).
+    if module.generated or module.path == _CONFIG_NAME_HOME:
+        return []
+    found = []
+    for node in ast.walk(module.tree):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
+            parts = [node.left, node.right]
+        elif isinstance(node, ast.JoinedStr):
+            parts = list(node.values)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+            parts = [node.func.value]
+        else:
+            continue
+        if any(_names_a_config_file(part) for part in parts):
+            found.append(f"{module.path}:{node.lineno}: a config file name built by hand, not by config_filename()")
+    return found
 
 
 def _is_generated_narrowing(node: ast.Assert) -> bool:
@@ -296,6 +321,7 @@ RULES: dict[str, Rule] = {
     "log_keywords": log_keywords,
     "no_print": no_print,
     "no_assert": no_assert,
+    "config_file_names": config_file_names,
     "member_order": member_order,
 }
 
@@ -355,6 +381,7 @@ _NEGATIVE = {
     "no_print": ("src/asy_x.py", "async def f():\n    print('x')\n", "src/asy_x.py:2: print()"),
     "no_assert": ("build/generated_src/sensortask_x.py", "def f(a):\n    assert a is not None, 'kept'\n    assert a > 0\n", "build/generated_src/sensortask_x.py:2: assert"),
     "member_order": ("src/asy_x.py", "class C:\n    async def setup(self):\n        pass\n    def reset(self):\n        pass\n", "src/asy_x.py class C: setup sits where D.15 puts reset"),
+    "config_file_names": ("src/asy_x.py", "def f(p, n):\n    return p + 'config_' + n + '.cfg'\n", "src/asy_x.py:2: a config file name built by hand"),
 }
 
 

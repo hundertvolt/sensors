@@ -27,7 +27,7 @@ async def _main() -> None:
 
     backup_mgr = cm.ConfigManager(_BACKUP_PATH, _BACKUP_SCHEMA, "HWTEST")
     await backup_mgr.setup()
-    backup_ok, _validity = await backup_mgr.write_config({"PrevLevel": previous_level}, _BACKUP_SCHEMA)
+    backup_ok, _validity = await backup_mgr.write_config({"PrevLevel": previous_level})
     if not backup_ok:
         print(f"RESULT: FAIL could not back up the current DebugLevel={previous_level} before changing it")
         return
@@ -40,7 +40,7 @@ async def _main() -> None:
         print(f"RESULT: PASS DebugLevel already {previous_level} (>= {_VERBOSE_LEVEL}) - nothing to raise")
         return
 
-    ok, validity = await sys_mgr.write_config({"DebugLevel": _VERBOSE_LEVEL}, _SYS_SCHEMA)
+    ok, validity = await sys_mgr.write_config({"DebugLevel": _VERBOSE_LEVEL})
     await sys_mgr.flush_pending()  # same reason as the backup write above
     if ok and validity.get("DebugLevel") in ("Valid", "Unchanged"):
         print(f"RESULT: PASS DebugLevel raised from {previous_level} to {_VERBOSE_LEVEL}")

@@ -299,7 +299,7 @@ describe("installMockFetch", () => {
     it("validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting", async () => {
         // Mirrors _dispatch_notification_pause(): PauseTime is a runtime action, checked
         // 0-3600, never persisted or "Unchanged", read back from GET /status. It follows
-        // coerce_numeric(), so a fraction is rejected outright rather than truncated (Part A.8).
+        // checked_int(), so a fraction is rejected outright rather than truncated (Part A.8).
         uninstall = installMockFetch(DEFS, DATA);
 
         const tooLarge = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 3601 }) });

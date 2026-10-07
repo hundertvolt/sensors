@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, TypeVar
 
-    from asy_base_classes import TimerStarter
+    from asy_base_classes import JsonMapping, TimerStarter
     from asy_config_manager import CfgValue, ConfigSchema, WriteValidity
     from asy_print_log import ErrorLog
 
@@ -181,7 +181,7 @@ class SCD30_Reader(SensorReader):
             return None
         return {key: current[key] for key in cfg if key in current}
 
-    async def _set_mgr_cfg(self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
+    async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # Compare-before-write against a fresh chip snapshot, writes in _APPLY_ORDER, ContMeas last. "a PUT whose
         # get_config_snapshot() fails is refused as a whole, nothing written, the response reports the failure,
         # as legacy" (owner, 2026-09-29).

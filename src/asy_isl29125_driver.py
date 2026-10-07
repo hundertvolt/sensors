@@ -17,7 +17,7 @@ from micropython import const
 
 import math_helpers
 from asy_base_classes import Lockable, LockedValue, SensorReaderConfig, utc_now
-from asy_config_manager import name_cfg, type_or_range_error
+from asy_config_manager import checked_numeric, name_cfg
 from asy_i2c_driver import I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig
 
@@ -323,14 +323,11 @@ class ISL29125_Reader(SensorReaderConfig):
         # Part G.2's numeric primitive, not a second hand-rolled cast-and-compare: the bounds come
         # from the field's own schema record, so they cannot drift from the config path's, and the
         # int<->float coercion is the identical policy (a fractional 12.5 is rejected, not cut).
-        is_error, coerced = type_or_range_error(value, schema[0])
-        # isinstance() guard: type_or_range_error() is typed to hand back Any, and a malformed
-        # schema record is the one way something non-numeric could come back out of it - the same
-        # narrow-then-validate shape asy_webserver_service.py's _put_notification() applies.
-        if is_error or not isinstance(coerced, (int, float)):
+        checked = checked_numeric(value, schema[0])
+        if checked is None:
             await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value, errno=_ERR_BAD_ARG)
             return None
-        return coerced
+        return checked
 
     def _colour_temperature(self, green_counts: int, norm: list[float]) -> float | None:
         # A dark room is NOT a fault: below the floor the chromaticity denominator collapses and

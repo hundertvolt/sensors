@@ -398,7 +398,7 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
         # A real configured SSID, written before the task graph starts so the wifi task's first
         # connect attempt sees it (same technique as test_digital_twin_sensortask_integration.py's
         # test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led).
-        persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"}, module.conn.get_cfg_schema())
+        persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
 
         await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())

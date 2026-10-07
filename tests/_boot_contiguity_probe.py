@@ -9,6 +9,10 @@ import gc
 import sys
 
 sys.path.insert(0, "ext")  # same reason as tests/_sensortask_scenarios.py's own insert
+sys.path.append("digital_twin")  # the PC tiers' asyncio report; appended and dropped again, so tests/machine.py stays the one
+import unix_port_unretrieved_report  # type: ignore[import-not-found, unused-ignore]  # unresolved only in CI's narrowed mypy pass
+
+sys.path.pop()
 
 import asyncio
 import time
@@ -92,8 +96,8 @@ async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Calla
 
 
 async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]") -> bool:
-    # start_and_check_tasks() never returns - it falls into the supervisor - and its task list is a
-    # local, so the loop's own end is only observable by counting the starters as they land.
+    # start_and_check_tasks() never returns - it hands over to the supervisor task - so the loop's own
+    # end is only observable by counting the starters as they land.
     started: list[int] = []
     inner = sysfunct._start_task
 
@@ -120,6 +124,7 @@ async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Sta
 
 
 async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
+    unix_port_unretrieved_report.install()  # as microtest does for the suite this probe measures (Part I.4(e))
     # Checked, not assumed: an unrecognised arm would silently measure the suppressed one and
     # turn the live bound into a confusing failure rather than an obvious argument mistake.
     assert arm in (_ARM_LIVE, _ARM_SUPPRESSED), f"unknown arm {arm!r} - expected {_ARM_LIVE!r} or {_ARM_SUPPRESSED!r}"

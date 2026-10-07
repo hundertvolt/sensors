@@ -2,6 +2,7 @@
 reset timer and must fall back to starving the real watchdog. Feeds only through feed_watchdog(), as
 the supervisor does; never returns - the reset kills the connection, observed host-side."""
 
+import asyncio
 import errno
 import time
 
@@ -13,6 +14,9 @@ from asy_system_service import SystemService
 WATCHDOG_TIMEOUT_MS = 1500  # short, as watchdog_starvation_reset.py: the host bounds the whole run
 # @tunable l3.reboot_fallback_starves_the_watchdog_feed_attempt_ms = 250
 _FEED_ATTEMPT_MS = 250
+# asy_system_service.py's _RR_REBOOT: a const() whose name starts with "_" is no module global on
+# MicroPython, so it cannot be imported and is restated here.
+_RR_REBOOT = 3
 
 
 async def _never_synced() -> bool:
@@ -38,7 +42,7 @@ def main() -> None:
         return
     print(f"POOL exhausted after {len(timers)} timers")
     fired = []
-    svc._reboot("G3: reboot requested with the alarm pool exhausted", lambda: fired.append(True))
+    asyncio.run(svc._reboot(_RR_REBOOT, "reboot requested with the alarm pool exhausted", lambda: fired.append(True)))
     if not svc._force_watchdog_starve:
         for t in timers:  # release the pool so the board survives to report the failure
             t.deinit()

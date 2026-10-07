@@ -214,7 +214,7 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         button.disabled = true;
         try {
             // No decimal-point forcing for a float field's whole-number value: the backend
-            // accepts a JSON int for a float-typed field and coerces it (coerce_numeric(),
+            // accepts a JSON int for a float-typed field and coerces it (checked_float(),
             // Part A.8), so JSON.stringify() is sufficient on its own.
             const response = await pollManager.request(putPath, {
                 method: "PUT",

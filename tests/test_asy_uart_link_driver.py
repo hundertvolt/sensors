@@ -4,6 +4,7 @@ from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, awaited_wi
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
 
+from asy_base_classes import LockableBuffer
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
@@ -140,9 +141,21 @@ def test_reset_error_counter_also_resets_link_counters() -> None:
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     initiator._transfers = 5
     initiator._failures = 2
-    run(initiator.reset_error_counter())
+    assert run(initiator.reset_error_counter()) is True
     assert initiator._transfers == 0
     assert initiator._failures == 0
+
+
+def test_reset_error_counter_answers_the_comms_own_result() -> None:
+    # The link's history lives in its UARTComm: a failed history write there is this reset's answer.
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
+
+    async def refused() -> bool:
+        return False
+
+    initiator._comm.reset_error_counter = refused  # type: ignore[method-assign]
+    assert run(initiator.reset_error_counter()) is False
 
 
 async def _one_exercise_round(pair: Pair, *, listen: bool = True) -> None:
@@ -269,21 +282,26 @@ def test_get_error_counter_delegates_to_the_inner_comms_own_log() -> None:
 
 
 class _FakeFramChunk:
+    # One chunk's bytes, moved through the real LockableBuffer asy_print_log's _FramChunk Protocol names.
     def __init__(self) -> None:
         self.buf = bytearray(64)
+        self._buffer = LockableBuffer(64)
 
-    def get_buffer(self) -> "_FakeFramChunk":
-        return self
+    def get_buffer(self) -> LockableBuffer:
+        return self._buffer
 
-    def get_data_buf(self) -> bytearray:
-        return self.buf
-
-    async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
-        self.buf[:] = buf.get_data_buf()
+    async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+        data = buf.get_data_buf()
+        if data is None:
+            return False
+        self.buf[:] = data
         return True
 
-    async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
-        buf.get_data_buf()[:] = self.buf
+    async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+        data = buf.get_data_buf()
+        if data is None:
+            return False
+        data[:] = self.buf
         return True
 
 
@@ -292,9 +310,9 @@ class _FakeFramManager:
         self._chunk = chunk if chunk is not None else _FakeFramChunk()
         self._fail = fail
 
-    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk | None":
         if self._fail:
-            raise OSError("no room left on this fake chip")
+            return None  # the real allocator's refusal: no room left on the chip
         return self._chunk
 
 

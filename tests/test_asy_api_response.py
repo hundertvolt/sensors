@@ -179,9 +179,9 @@ def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
 
 
 # ---------------------------------------------------------------------------
-# handle_set_cmd - orchestrates SensorReader._set_dict_cfg + post-write hook + envelope,
-# with its own try/except as defense-in-depth on top of Microdot's own blanket per-request catch
-# (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
+# handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result;
+# a raising hook turns its group's fields "Failed", caught as defense in depth on top of Microdot's own
+# per-request catch (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
 # ---------------------------------------------------------------------------
 
 
@@ -193,32 +193,19 @@ def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[Sen
     return reader, path
 
 
-def test_handle_set_cmd_valid_change_returns_ok_with_per_field_result() -> None:
+def test_handle_set_cmd_valid_change_returns_its_per_field_result() -> None:
     reader, path = _make_reader("handleok")
     try:
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI))
-        assert resp == {"res": "OK", "code": 0, "descr": "Command executed", "result": {"SampleInterval": "Valid"}}
+        assert run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI)) == {"SampleInterval": "Valid"}
     finally:
         _remove(path)
 
 
-def test_handle_set_cmd_ok_descr_override() -> None:
-    reader, path = _make_reader("handleokdescr")
-    try:
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, ok_descr="Network settings updated"))
-        assert resp["descr"] == "Network settings updated"
-        assert resp["res"] == "OK"
-    finally:
-        _remove(path)
-
-
-def test_handle_set_cmd_partial_failure_stays_overall_ok() -> None:
+def test_handle_set_cmd_partial_failure_returns_the_mixed_result() -> None:
     reader, path = _make_reader("handlepartial")
     try:
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 9999, "Ghost": 1}, _VAL_SI))
-        assert resp["res"] == "OK"
-        assert resp["code"] == 0
-        assert resp["result"] == {"SampleInterval": "Invalid", "Ghost": "Invalid"}
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 9999, "Ghost": 1}, _VAL_SI))
+        assert result == {"SampleInterval": "Invalid", "Ghost": "Invalid"}
     finally:
         _remove(path)
 
@@ -227,8 +214,8 @@ def test_handle_set_cmd_sync_post_fct_fires_only_when_something_actually_changed
     reader, path = _make_reader("handlepostfct")
     try:
         calls = []
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: calls.append(1)))
-        assert resp["res"] == "OK"
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: calls.append(1)))
+        assert result == {"SampleInterval": "Valid"}
         assert calls == [1]
     finally:
         _remove(path)
@@ -238,8 +225,8 @@ def test_handle_set_cmd_sync_post_fct_does_not_fire_when_unchanged() -> None:
     reader, path = _make_reader("handlepostfctunchanged")
     try:
         calls = []
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 2}, _VAL_SI, post_fct=lambda: calls.append(1)))  # 2 is the default already
-        assert resp["result"] == {"SampleInterval": "Unchanged"}
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 2}, _VAL_SI, post_fct=lambda: calls.append(1)))  # 2 is the default already
+        assert result == {"SampleInterval": "Unchanged"}
         assert calls == []
     finally:
         _remove(path)
@@ -253,8 +240,8 @@ def test_handle_set_cmd_async_post_fct_fires_only_when_something_actually_change
         async def post() -> None:
             calls.append(1)
 
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=post))
-        assert resp["res"] == "OK"
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=post))
+        assert result == {"SampleInterval": "Valid"}
         assert calls == [1]
     finally:
         _remove(path)
@@ -269,52 +256,51 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
         async def post() -> None:
             async_calls.append(1)
 
-        run(
+        result = run(
             ar.handle_set_cmd(
                 reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
             ),
         )
+        assert result == {"SampleInterval": "Valid"}
         assert sync_calls == [1]
         assert async_calls == [1]
     finally:
         _remove(path)
 
 
-def _persisted(reader: "SensorReaderConfig") -> "list[int]":
+def _entries(reader: "SensorReaderConfig") -> "list[tuple[int, str]]":
     # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
     log = run(reader.pr.get_log())[reader.pr.name]
-    return [n for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
 
 
-def test_handle_set_cmd_sync_post_fct_raising_is_caught_and_reports_generic_error() -> None:
-    # Defense-in-depth: post_fct is caller-supplied and lives outside _set_dict_cfg's own
-    # try/except entirely - this is exactly the kind of escaping exception handle_set_cmd's own
-    # wrapper exists for.
+def test_handle_set_cmd_sync_post_fct_raising_fails_its_group() -> None:
+    # A raising post-write hook is caller-supplied code outside _set_dict_cfg(): its failure is its group's outcome.
     reader, path = _make_reader("handlepostfctraise")
     try:
 
         def bad_post() -> None:
             raise RuntimeError("reconnect failed")
 
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post))
-        assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post))
+        assert result == {"SampleInterval": "Failed"}
         assert reader.pr._err_count == 1
-        assert _persisted(reader) == [code("E", "CALLBACK")]
+        assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
     finally:
         _remove(path)
 
 
-def test_handle_set_cmd_async_post_fct_raising_is_caught_and_reports_generic_error() -> None:
+def test_handle_set_cmd_async_post_fct_raising_fails_its_group() -> None:
     reader, path = _make_reader("handleasyncpostfctraise")
     try:
 
         async def bad_post() -> None:
             raise RuntimeError("ntp sync failed")
 
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=bad_post))
-        assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=bad_post))
+        assert result == {"SampleInterval": "Failed"}
         assert reader.pr._err_count == 1
-        assert _persisted(reader) == [code("E", "CALLBACK")]
+        assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
     finally:
         _remove(path)
 
@@ -322,7 +308,7 @@ def test_handle_set_cmd_async_post_fct_raising_is_caught_and_reports_generic_err
 def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -> None:
     # Both hooks supplied at once, with the synchronous one raising: post_fct() fires first and the async
     # hook is only awaited afterwards, so it must never run, not even be scheduled. Pins that order as real
-    # behaviour, and confirms the response still degrades into the same generic envelope.
+    # behaviour, and the group's fields read Failed.
     reader, path = _make_reader("handlebothhooksraise")
     try:
         async_calls = []
@@ -333,34 +319,65 @@ def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -
         async def post() -> None:
             async_calls.append(1)
 
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post, post_asy_fct=post))
-        assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post, post_asy_fct=post))
+        assert result == {"SampleInterval": "Failed"}
         assert async_calls == []  # never invoked - post_fct raised before it could be awaited
         assert reader.pr._err_count == 1
-        assert _persisted(reader) == [code("E", "CALLBACK")]
+        assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
     finally:
         _remove(path)
 
 
-def test_handle_set_cmd_whole_persist_failure_still_returns_ok_envelope_with_failed_fields() -> None:
-    # A whole-operation persistence failure is per-field detail ("Failed" in result), not a
-    # top-level protocol error - the request itself was validly processed and dispatched.
+def test_handle_set_cmd_hook_raising_after_a_mixed_result_fails_every_key() -> None:
+    reader, path = _make_reader("handlemixedraise")
+    try:
+
+        def bad_post() -> None:
+            raise RuntimeError("reconnect failed")
+
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42, "Ghost": 1}, _VAL_SI, post_fct=bad_post))
+        assert result == {"SampleInterval": "Failed", "Ghost": "Failed"}
+        assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
+    finally:
+        _remove(path)
+
+
+def test_handle_set_cmd_never_calls_a_hook_when_nothing_is_valid() -> None:
+    reader, path = _make_reader("handlenovalid")
+    try:
+        sync_calls = []
+        async_calls = []
+
+        async def post() -> None:
+            async_calls.append(1)
+
+        result = run(
+            ar.handle_set_cmd(
+                reader, {"SampleInterval": 9999}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+            ),
+        )
+        assert result == {"SampleInterval": "Invalid"}
+        assert sync_calls == []
+        assert async_calls == []
+    finally:
+        _remove(path)
+
+
+def test_handle_set_cmd_whole_persist_failure_marks_every_field_failed() -> None:
+    # A whole-operation persistence failure is per-field detail ("Failed"), not a top-level protocol
+    # error - the request itself was validly processed and dispatched.
     reader, path = _make_reader("handlewholefail", cfg_vals=())
     try:
         assert reader.cfgmgr.valid is False
-        resp = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, ()))
-        assert resp["res"] == "OK"
-        assert resp["code"] == 0
-        assert resp["result"] == {"SampleInterval": "Failed"}
+        assert run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, ())) == {"SampleInterval": "Failed"}
     finally:
         _remove(path)
 
 
-def test_handle_set_cmd_empty_data_returns_ok_with_empty_result() -> None:
+def test_handle_set_cmd_empty_data_returns_an_empty_result() -> None:
     reader, path = _make_reader("handleempty")
     try:
-        resp = run(ar.handle_set_cmd(reader, {}, _VAL_SI))
-        assert resp == {"res": "OK", "code": 0, "descr": "Command executed", "result": {}}
+        assert run(ar.handle_set_cmd(reader, {}, _VAL_SI)) == {}
     finally:
         _remove(path)
 

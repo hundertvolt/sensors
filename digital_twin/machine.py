@@ -7,6 +7,7 @@ import io
 import json
 import select
 import time
+from array import array
 from collections import deque
 
 _SPI_DMA_MIN_SIZE = 32  # ports/rp2/machine_spi.c's own dma_min_size_threshold - see SPI._maybe_overrun()
@@ -20,7 +21,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any, Protocol
+    from typing import Any, Literal, Protocol, overload
 
     from _fram_chip import FramChip  # lazy-imported at runtime inside _wire_spi_device()
 
@@ -895,6 +896,46 @@ class WDT:
         self._arm()  # a real feed() resets the hardware countdown - restart ours the same way
 
 
+# rp2's reset causes (ports/rp2/modmachine.c:57-58 at v1.29.0); reset_cause() answers the module value.
+PWRON_RESET = 1
+WDT_RESET = 3
+reset_cause_value = PWRON_RESET
+# rp2's two backup regions, scratch[0..3] and scratch[5..7] (ports/rp2/machine_mem_backup.c:38-41): one static
+# view each, the same object on every call, kept across reset() as the watchdog scratch registers are.
+_REGIONS = (array("I", [0, 0, 0, 0]), array("I", [0, 0, 0]))
+_REGION_VIEWS = (memoryview(_REGIONS[0]), memoryview(_REGIONS[1]))
+
+if TYPE_CHECKING:
+    # -1 is also an int: mypy's documented form for a Literal overload ahead of its wider sibling.
+    @overload
+    def mem_backup(region: "Literal[-1]") -> "tuple[memoryview, memoryview]": ...  # type: ignore[overload-overlap]
+    @overload
+    def mem_backup(region: int = 0) -> memoryview: ...
+
+
+def mem_backup(region: int = 0) -> "memoryview | tuple[memoryview, memoryview]":
+    # extmod/machine_mem.c:135-148: one region's view, or (for -1) a tuple of every region's; any other index
+    # outside the table raises.
+    if region == -1:
+        return _REGION_VIEWS
+    if region < 0 or region >= len(_REGION_VIEWS):
+        raise ValueError("invalid region")
+    return _REGION_VIEWS[region]
+
+
+def reset_cause() -> int:
+    return reset_cause_value
+
+
+def power_on() -> None:
+    # Twin-only test knob: a power cycle clears both regions and reports PWRON_RESET.
+    global reset_cause_value
+    for region in _REGIONS:
+        for i in range(len(region)):
+            region[i] = 0
+    reset_cause_value = PWRON_RESET
+
+
 class RTC:
     # One physical peripheral - class-level shared state, matches real singleton hardware (and
     # tests/machine.py's own identical convention).
@@ -932,15 +973,16 @@ bootloader_count = 0
 
 
 def reset() -> None:
-    # Real machine.reset() never returns; this twin cannot restart anything, so it raises instead.
-    # The counter increments first, so a harness catching SimulatedResetError can still ask how many
-    # times this happened rather than only that it did.
-    global reset_count
+    # Real machine.reset() never returns; this twin cannot restart anything, so it raises instead. The counter
+    # and the cause (rp2 resets through the watchdog) step first, so a harness catching the error can read both.
+    global reset_count, reset_cause_value
     reset_count += 1
+    reset_cause_value = WDT_RESET
     raise SimulatedResetError("machine.reset() called - the twin does not actually restart the process")
 
 
 def bootloader() -> None:
-    global bootloader_count
+    global bootloader_count, reset_cause_value
     bootloader_count += 1
+    reset_cause_value = WDT_RESET
     raise SimulatedBootloaderEntryError("machine.bootloader() called - the twin does not actually restart the process")

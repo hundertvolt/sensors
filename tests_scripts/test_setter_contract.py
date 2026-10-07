@@ -20,9 +20,8 @@ _MUTATORS = frozenset({"update", "setdefault", "pop", "popitem", "clear", "__set
 _DOCUMENTED = {"_set_dict_cfg": "WriteValidity", "_set_mgr_cfg": "tuple[bool, WriteValidity]"}
 # Named out of the rule: chip-protocol classes answer the chip's own way, a Locked* setter only stores.
 _CHIP_OR_LOCKED_RE = re.compile(r"^(?:\w+_I2C|FRAM_SPI|Locked\w*)$")
-# Logging and wiring setters, each by name: none is a settings write, so none answers applied/rejected.
+# Wiring setters, each by name: none is a settings write, so none answers applied/rejected.
 _NAMED_OUT = {
-    ("PrintLog", "set_level"): "logging: every logger's level, pushed by SystemService's level setters",
     ("FRAMManager", "set_pause"): "wiring: the storage pause callable SystemService is constructed with",
     ("_FRAMBaseChunk", "set_verify"): "wiring: a chunk's verify mode, set by its owner after allocation",
 }
@@ -226,14 +225,14 @@ def test_a_setter_a_push_callback_reaches_must_answer_bool(src_copy: Path) -> No
 
 
 def test_a_settings_write_off_its_documented_answer_fails(src_copy: Path) -> None:
-    _edit(src_copy, "asy_system_service.py", ') -> "WriteValidity":', ") -> dict:")
+    _edit(src_copy, "asy_base_classes.py", 'cfg_vals: "ConfigSchema") -> "WriteValidity":', 'cfg_vals: "ConfigSchema") -> dict:')
     findings = all_findings(src_copy, {})
-    assert len(findings) == 1 and "SystemService._set_dict_cfg() -> dict: C.5.2 documents WriteValidity" in findings[0], findings
+    assert len(findings) == 1 and "SensorReader._set_dict_cfg() -> dict: C.5.2 documents WriteValidity" in findings[0], findings
 
 
 _PROBE_MODULE = """
 async def _cmd(cmd):
-    sysfunct.set_debug_level(1)
+    notify.set_override_led(1)
     fram.set_pause(value=True)
     neopixel.set_nothing()
     return True
@@ -246,11 +245,11 @@ RouteSources(system_cmd=_cmd, notification_pause=_pause, settings={"system": [Se
 
 
 def test_a_setter_a_generated_dispatcher_reaches_must_answer_bool(src_copy: Path) -> None:
-    _edit(src_copy, "asy_system_service.py", "async def set_debug_level(self, value: int) -> bool:", "async def set_debug_level(self, value: int) -> None:")
+    _edit(src_copy, "asy_notification_service.py", "async def set_override_led(self, secs: int) -> bool:", "async def set_override_led(self, secs: int) -> None:")
     _edit(src_copy, "asy_wifi_service.py", "async def set_wifi_led(self, *, status: bool) -> bool:", "async def set_wifi_led(self, *, status: bool) -> None:")
     findings = dispatcher_findings(Classes(src_copy), "probe", _PROBE_MODULE)
     assert [f.split(" ", 1)[1] for f in findings] == [
-        "SystemService.set_debug_level() -> None: reached by sensortask_probe._cmd(), so it answers bool",
+        "NotificationService.set_override_led() -> None: reached by sensortask_probe._cmd(), so it answers bool",
         "`neopixel.set_nothing` names no method in src/",
         "WifiService.set_wifi_led() -> None: reached by sensortask_probe SettingsGroup(...), so it answers bool",
     ], findings

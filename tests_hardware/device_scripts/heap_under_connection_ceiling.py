@@ -4,10 +4,19 @@ only mem_info(1) - the one value with no other way out (SPECIFICATION.md Part E.
 
 import asyncio
 import gc
+import sys
 import time
 
 import micropython
 import sensortask_dev
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from asyncio.events import _Context
 
 # Sampling only, never a collect before a dump: the ceiling question is what the allocator has to
 # work with while requests are in flight, garbage included. The threshold is the boot entry's own,
@@ -21,6 +30,20 @@ _SAMPLE_INTERVAL_MS = 1000
 _WINDOW_S = 90
 # @tunable l3.heap_under_connection_ceiling_boot_wait_s = 20
 _BOOT_WAIT_S = 20
+
+
+def _report_unretrieved(_loop: object, context: "_Context") -> None:
+    # The PC tiers' always-printing report, copied: this board-side script cannot import digital_twin/, the host gate
+    # greps its output for memory markers, and the firmware's own report is silent at DebugLevel 0 (Part I.4(e)).
+    try:
+        try:
+            print("UNRETRIEVED TASK EXCEPTION:", context["message"])
+            sys.print_exception(context["exception"])
+        finally:
+            context["exception"] = None
+            context["future"] = None
+    except Exception:  # an escape would end asyncio.run()
+        pass
 
 
 def _dump(label: str) -> None:
@@ -41,6 +64,7 @@ async def _sampler() -> None:
 
 
 async def _run() -> None:
+    asyncio.get_event_loop().set_exception_handler(_report_unretrieved)  # before main(): the firmware then keeps it
     print(f"GC_THRESHOLD={gc.threshold()}")
     main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
     # No readiness probe from in here: a request driven from this process would share the heap

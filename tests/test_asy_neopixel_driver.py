@@ -3,8 +3,9 @@ import time
 
 import asy_neopixel_driver
 import asy_print_log as print_log_module
+from asy_base_classes import LockableBuffer
 from asy_neopixel_driver import NeopixelDriver, _clamp_byte
-from asy_print_log import LogConfig, PrintLog
+from asy_print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -138,7 +139,7 @@ def _colours(driver: NeopixelDriver) -> "list[tuple[int, ...]]":
 
 
 def _event_driver() -> NeopixelDriver:
-    return make_driver(debug=PrintLog.level_event())  # event-level console lines reach _PrintRecorder
+    return make_driver(debug=4)  # DebugLevel 4 (events, SPEC A.8): event-level console lines reach _PrintRecorder
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +163,13 @@ def test_get_error_counter_reflects_a_real_logged_error() -> None:
     run(driver.pr.err_s("boom", errno=1))
     log = run(driver.get_error_counter())
     assert log["NEOPIXEL"]["ErrCount"] == 1
+
+
+def test_reset_error_counter_returns_true_and_clears() -> None:
+    driver = make_driver()
+    run(driver.pr.err_s("boom", errno=1))
+    assert run(driver.reset_error_counter()) is True
+    assert run(driver.get_error_counter())["NEOPIXEL"]["ErrCount"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -690,21 +698,26 @@ def test_setup_initialises_the_logger_and_the_driver_before_any_task() -> None:
 
 
 class _FakeFramChunk:
+    # One chunk's bytes, moved through the real LockableBuffer asy_print_log's _FramChunk Protocol names.
     def __init__(self) -> None:
         self.buf = bytearray(64)
+        self._buffer = LockableBuffer(64)
 
-    def get_buffer(self) -> "_FakeFramChunk":
-        return self
+    def get_buffer(self) -> LockableBuffer:
+        return self._buffer
 
-    def get_data_buf(self) -> bytearray:
-        return self.buf
-
-    async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
-        self.buf[:] = buf.get_data_buf()
+    async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+        data = buf.get_data_buf()
+        if data is None:
+            return False
+        self.buf[:] = data
         return True
 
-    async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
-        buf.get_data_buf()[:] = self.buf
+    async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+        data = buf.get_data_buf()
+        if data is None:
+            return False
+        data[:] = self.buf
         return True
 
 
@@ -739,7 +752,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 def test_the_log_config_sets_the_loggers_length_and_level() -> None:
     driver = NeopixelDriver(0, log=LogConfig(None, 3, 2))
     assert len(driver.pr.history) == 3
-    assert driver.pr.get_level() == 2
+    assert driver.pr.level == 2
 
 
 def test_in_memory_variant_works_without_fram() -> None:

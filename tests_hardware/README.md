@@ -467,6 +467,14 @@ that file's archived record ("archive §7R" below).
   caught-and-logged ones included. A reset before any response at the ceiling is a refusal and
   expected (`http_client.is_ceiling_close()`; owner, 2026-09-23, `84f3d57`/`399e2f0`); everything
   else — a short body, a 4xx/5xx, a timeout — is a failure.
+- **A task that died is a failure too, and at DebugLevel 0 the console does not show it.** The
+  firmware's unretrieved-exception report prints nothing at level 0 (SPECIFICATION.md Part F.1), so
+  every console-tail memory gate also reads SYSTEM's task-end log around its window and fails on a
+  new `TASK_RAISED` (`error_log_helpers.assert_no_new_task_raised()`): over `GET /status` on the bench,
+  over the REPL on the flash tier (`read_live_system_log()`, which interrupts the firmware, so the
+  flash soak hard-resets after each read). A test that clears the logs reads them first. A device
+  script running the firmware's `main()` installs an always-printing report before it, as the PC
+  tiers do; `tests_scripts/test_exception_handler_contract.py` pins all three.
 - **Peak is not rounds.** Rounds of N parallel requests with pauses are typical load and overstate
   free heap (archive §7R.4). Peak is as many back-to-back clients as the limit plus forced internal work (the
   hammer test's dispatch-only SGP40 reset PUT every 3 s), on the full task graph, over every path a
@@ -1437,13 +1445,8 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
   wiring a periodic SET into the live loop changes `src/` for the test alone, which `src/` never gets.
 - **The mock-tier UART hazard catalog (~20 fault-injection scenarios) has only two real-hardware
   equivalents (silence, baud desync)**: SPECIFICATION.md E.6.6 row `uart-fault-catalog`.
-- **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.**
-  The technique to exhaust a real alarm pool already exists on real hardware
-  (`fram_pause_unpause_and_gating.py`), so a flash-tier script is straightforward in principle - it
-  would deliberately trigger a real watchdog-starvation reset (safe, same shape as
-  `test_watchdog_starvation.py`), but getting the real timing right without a live board to verify
-  against is exactly the kind of thing worth doing in a dedicated real-hardware session rather than
-  blind.
+- **`_reboot()`'s alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) runs on silicon**:
+  `device_scripts/reboot_fallback_starves_the_watchdog.py` through `flash/test_watchdog_starvation.py`.
 - **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's
   (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`). Extending that
   ~5-minute, 3-real-hard-reset test to a second FRAM-backed module needs first identifying NOTIFY's

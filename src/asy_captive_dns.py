@@ -84,8 +84,8 @@ class CaptiveDNS:
     def get_loggers(self) -> list[PrintLogHistory]:
         return [self.pr]
 
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
+    async def reset_error_counter(self) -> bool:
+        return await self.pr.reset()
 
     async def run(self, server_ip: str, netmask: str) -> None:
         netmask_int = _ipv4_to_int(netmask)

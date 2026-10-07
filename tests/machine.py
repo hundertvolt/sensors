@@ -4,6 +4,7 @@
 import errno
 import io
 import select
+from array import array
 
 try:
     from typing import TYPE_CHECKING
@@ -617,6 +618,9 @@ class Timer:
     # a real alarm allocation being able to fail either way, so set this to MemoryError to prove the
     # sibling arm too. Shared class attribute as well; reset both.
     raise_on_arm_exc: "type[BaseException]" = OSError
+    # A fake clock only tests advance; each init() records (clock_ms, period, mode) in its own `arms`, so a test
+    # can read when the product armed a timer without patching any module's time source.
+    clock_ms: "ClassVar[int]" = 0
 
     def __init__(self, id: int = -1, **kwargs: "Any") -> None:
         self.id = id
@@ -624,6 +628,7 @@ class Timer:
         self.mode = self.PERIODIC
         self.callback: Callable[[Timer], None] | None = None
         self.deinit_called = False
+        self.arms: list[tuple[int, int, int]] = []
         if kwargs:
             self.init(**kwargs)  # may raise OSError - propagates before this instance is registered
         Timer.all_timers.append(self)
@@ -637,6 +642,7 @@ class Timer:
         self.mode = mode
         self.callback = callback
         self.deinit_called = False
+        self.arms.append((Timer.clock_ms, period, mode))
 
     def deinit(self) -> None:
         self.callback = None
@@ -690,17 +696,52 @@ class WDT:
         self.feed_count += 1
 
 
-# Real machine.reset()/machine.bootloader() reset the MCU and never return at all - this fake just
-# records the call so a test can assert a reboot was triggered, instead of ending the test process.
+# rp2's reset causes (ports/rp2/modmachine.c:57-58 at v1.29.0); reset_cause() answers the module value.
+PWRON_RESET = 1
+WDT_RESET = 3
+reset_cause_value = PWRON_RESET
+# rp2's two backup regions, scratch[0..3] and scratch[5..7] (ports/rp2/machine_mem_backup.c:38-41): one static
+# view each, the same object on every call, kept across reset() as the watchdog scratch registers are.
+_REGIONS = (array("I", [0, 0, 0, 0]), array("I", [0, 0, 0]))
+_REGION_VIEWS = (memoryview(_REGIONS[0]), memoryview(_REGIONS[1]))
+
+
+def mem_backup(region: int = 0) -> "Any":
+    # extmod/machine_mem.c:135-148: one region's view, or (for -1) a tuple of every region's; any other index
+    # outside the table raises. Typed Any because the real answer's type depends on the argument.
+    if region == -1:
+        return _REGION_VIEWS
+    if region < 0 or region >= len(_REGION_VIEWS):
+        raise ValueError("invalid region")
+    return _REGION_VIEWS[region]
+
+
+def reset_cause() -> int:
+    return reset_cause_value
+
+
+def power_on() -> None:
+    # Test-only: a power cycle clears both regions and reports PWRON_RESET.
+    global reset_cause_value
+    for region in _REGIONS:
+        for i in range(len(region)):
+            region[i] = 0
+    reset_cause_value = PWRON_RESET
+
+
+# Real machine.reset()/machine.bootloader() reset the MCU and never return at all - this fake records the call
+# and the cause rp2 then reports (watchdog_reboot(), so WDT_RESET), instead of ending the test process.
 reset_count = 0
 bootloader_count = 0
 
 
 def reset() -> None:
-    global reset_count
+    global reset_count, reset_cause_value
     reset_count += 1
+    reset_cause_value = WDT_RESET
 
 
 def bootloader() -> None:
-    global bootloader_count
+    global bootloader_count, reset_cause_value
     bootloader_count += 1
+    reset_cause_value = WDT_RESET

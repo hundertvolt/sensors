@@ -81,8 +81,6 @@ ignore = [
     # tests/ runs under the real MicroPython interpreter with microtest.py, not pytest (Part E.1),
     # so every PT rule reasons about fixtures that do not exist.
     "PT",
-    # `print()` is the log transport, not debug residue - asy_print_log.py is built on it.
-    "T20",
 
     # ---- Would change runtime behavior, which a lint pass does not ----
     # tests/ and digital_twin/ poll a fake's plain state flag (`while not started: await
@@ -220,13 +218,20 @@ max-returns = 11
 # ARG00x: a double must accept the real API's full signature, and mypy checks Protocol and
 # monkeypatch parameter NAMES, so `_buf` is a hard error. Every ARG finding here is that pattern;
 # src/ has none.
-"tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
-"digital_twin/**" = ["S101", "SLF001", "PLC0415", "PLR2004"]
+"tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "T20"]
+"digital_twin/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "T20"]
 # tests_scripts/ and tests_hardware/ are test suites with the same properties, so the same set. S603
 # on top for tests_scripts/: running the repo's own scripts as subprocesses IS what it verifies,
 # every argv in-repo.
-"tests_scripts/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "S603"]
-"tests_hardware/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
+"tests_scripts/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "S603", "T20"]
+"tests_hardware/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "T20"]
+# T20, here and in the four test scopes above: host tools and tests print as their output; src/
+# never calls print() directly, every console line going through a PrintLog level method.
+"buildgen/**" = ["T20"]
+"scripts/**" = ["T20"]
+"toolchain/**" = ["T20"]
+# `print()` is the log transport, not debug residue - asy_print_log.py is built on it.
+"src/asy_print_log.py" = ["T20"]
 # asy_api_response.py calls a reader's `_set_dict_cfg` across objects by design: Part C.5.2 publishes
 # that setter-dispatch contract by name.
 "src/asy_api_response.py" = ["SLF001"]
@@ -264,7 +269,6 @@ max-returns = 11
 #
 # PEP 692's Unpack[TypedDict] is the real fix and unavailable: typings/' typing.pyi declares
 # TypedDict as a plain object.
-"src/asy_print_log.py" = ["ANN401"]
 "tests/test_asy_uart_driver.py" = ["ANN401"]
 "tests/test_asy_uart_comm.py" = ["ANN401"]
 "tests/_uart_comm_harness.py" = ["ANN401"]
@@ -433,16 +437,11 @@ module = [
     "_uart_comm_harness",
     "_uart_link_contract",
     "allocation_need_per_source",
-    "asy_api_response",
     "asy_bmp3xx_driver",
-    "asy_captive_dns",
-    "asy_config_manager",
-    "asy_fram_manager",
     "asy_isl29125_driver",
     "asy_neopixel_driver",
     "asy_notification_service",
     "asy_ntp_client",
-    "asy_print_log",
     "asy_scd30_driver",
     "asy_sgp40_driver",
     "asy_system_service",

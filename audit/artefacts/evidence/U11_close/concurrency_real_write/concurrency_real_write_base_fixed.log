@@ -1,0 +1,69 @@
+PASS test_connections_at_each_count_from_one_to_max_connections_all_succeed
+PASS test_high_concurrency_burst_at_historical_segfault_repro_scale_survives
+PASS test_connections_beyond_max_connections_are_rejected_cleanly_not_crashed
+PASS test_realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully
+PASS test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly
+PASS test_the_accept_queue_is_never_shallower_than_the_admission_ceiling
+PASS test_realistic_mixed_polling_and_a_concurrent_real_config_write
+PASS test_every_admitted_connection_is_actually_served_a_complete_correct_response
+PASS test_n_healthy_concurrent_connections_up_to_max_connections_all_succeed
+PASS test_connection_count_fluctuating_in_real_time_server_stays_healthy
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 306, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 306, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 306, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 306, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 306, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+Traceback (most recent call last):
+  File "ext/microdot.py", line 1419, in handle_request
+  File "ext/microdot.py", line 403, in create
+  File "ext/microdot.py", line 534, in _safe_readline
+  File "src/asy_webserver_service.py", line 306, in readline
+  File "src/asy_webserver_service.py", line 270, in _bounded_read
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 
+PASS test_mixed_healthy_and_flaky_connections_dont_wedge_the_server
+PASS test_multiple_browser_like_sessions_concurrently_all_succeed
+PASS test_above_max_connections_all_flaky_survives
+PASS test_all_flaky_connections_dont_wedge_the_server
+PASS test_existing_connections_survive_an_overflow_burst_untouched
+PASS test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response
+PASS test_a_full_ceiling_of_real_page_loads_is_served_without_truncation
+PASS test_above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds
+PASS test_realistic_mixed_openhab_polling_and_browser_session_concurrently
+20/20 passed, 0 failed, 0 skipped

@@ -2,6 +2,13 @@ import sys
 
 import _tmp_scratch
 
+# The PC tiers' asyncio report lives with the twin's other Unix-port helpers; found from this file's own
+# place, so a run from any working directory reaches it, and the path entry goes again once it is loaded.
+sys.path.append((__file__.rsplit("/", 1)[0] if "/" in __file__ else ".") + "/../digital_twin")
+import unix_port_unretrieved_report  # type: ignore[import-not-found, unused-ignore]  # unresolved only in CI's narrowed mypy pass
+
+sys.path.pop()
+
 
 class Skip(Exception):  # noqa: N818 - the outcome's name, as microtest prints it
     """Raised by a test that cannot run here; the message is the reason microtest prints and counts."""
@@ -15,6 +22,7 @@ def run(namespace: dict[str, object]) -> None:
     # Takes a plain namespace dict (call as `microtest.run(globals())`), not a module object:
     # the MicroPython Unix port doesn't register the top-level script in `sys.modules["__main__"]`
     # the way CPython does, so there is no module object to look the test functions up on.
+    unix_port_unretrieved_report.install()  # first: every unretrieved task exception prints, at every level (Part I.4(e))
     total = 0
     failed = 0
     skipped = 0

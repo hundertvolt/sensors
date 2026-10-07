@@ -97,7 +97,7 @@ def test_the_manager_logs_ram_only_whatever_its_log_config_names() -> None:
     assert type(manager.pr) is PrintLogHistory
     assert manager.pr.name == "FRAM"
     assert len(manager.pr.history) == 4
-    assert manager.pr.get_level() == 2
+    assert manager.pr.level == 2
 
 
 def test_a_chunk_takes_its_fram_logger_and_pause_from_its_manager() -> None:
@@ -570,6 +570,69 @@ def test_a_commanded_mempause_spends_one_slot_across_chunks() -> None:
     errs = run(scenario())
     assert _entries(errs) == [(code("W", "FRAM_PAUSED"), "W")]
     assert errs["FRAM"]["ErrCount"] == 6
+
+
+def test_every_allocated_chunk_is_recorded_once_and_a_refused_one_never() -> None:
+    manager, _chip = make_manager(max_size=64)
+    plain = manager.get_chunk(4)
+    stamped = manager.get_timestamped_chunk(4, _synced)
+    assert plain is not None and stamped is not None
+    assert manager.get_chunk(0) is None  # a zero-size request is refused
+    assert manager.get_chunk(64) is None  # out of memory
+    assert manager.get_timestamped_chunk(64, _synced) is None
+    assert manager._chunks == [plain, stamped]
+
+
+def test_wait_idle_returns_at_once_on_an_idle_chunk_and_after_the_operation_in_flight() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4)
+    assert chunk is not None
+
+    async def scenario() -> "list[str]":
+        order: list[str] = []
+        await chunk.wait_idle()  # nothing in flight
+        order.append("idle at once")
+        await chunk._op_lock.acquire()  # an operation in flight
+
+        async def waiter() -> None:
+            await chunk.wait_idle()
+            order.append("idle")
+
+        task = asyncio.create_task(waiter())
+        for _ in range(3):
+            await asyncio.sleep(0)
+        order.append("released")
+        chunk._op_lock.release()
+        await task
+        return order
+
+    assert run(scenario()) == ["idle at once", "released", "idle"]
+
+
+def test_quiesce_pauses_first_then_waits_out_each_chunk_and_reports_each_step() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    first = manager.get_chunk(4)
+    second = manager.get_timestamped_chunk(4, _synced)
+    assert first is not None and second is not None
+    steps: list[bool] = []
+
+    async def scenario() -> "tuple[bool, list[bool], bool]":
+        await second._op_lock.acquire()  # the second chunk's operation is in flight
+        task = asyncio.create_task(manager.quiesce(lambda: steps.append(manager.get_pause())))
+        for _ in range(3):
+            await asyncio.sleep(0)
+        held = (task.done(), list(steps))
+        second._op_lock.release()
+        await task
+        assert held == (False, [True])  # paused before the first step; still waiting on the busy chunk
+        return task.done(), list(steps), await first.write(b"ab")
+
+    done, all_steps, written = run(scenario())
+    assert done is True
+    assert all_steps == [True, True]  # one step per chunk, the pause set before the first
+    assert written is False  # a new operation meets the pause
 
 
 # ---------------------------------------------------------------------------
@@ -2012,7 +2075,7 @@ def test_manager_reset_error_counter_clears_history() -> None:
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
         await chunk.write(b"toolongdata")  # BAD_ARG, oversized - just to populate some history
         before = await manager.get_error_counter()
-        await manager.reset_error_counter()
+        assert await manager.reset_error_counter() is True  # the RAM-only history's reset always lands
         after = await manager.get_error_counter()
         return before, after
 

@@ -293,9 +293,12 @@ information):
   clarification, 2026-09-18): a persisting write that *is* the thing under test is optional and
   belongs behind the marker, while one that is a shared **prerequisite** — a fixture forcing a mode
   many tests then exercise, a recovery path — stays unmarked and allowed, since gating it would
-  deselect the very tests it exists to enable. The choice the flag offers is therefore "test
-  everything and accept the higher wear" versus "test everything that matters and keep wear as low
-  as it can go", never "spend zero"; `tests_scripts/test_persistence_write_marker_completeness.py`
+  deselect the very tests it exists to enable. A boot on a fresh filesystem writes each config
+  file once with its defaults; a test that boots one reaches those writes as a prerequisite, never
+  as the write under test, so they stay unmarked (owner, 2026-10-01). The choice the flag offers is
+  therefore "test everything and accept the higher wear" versus "test everything that matters and
+  keep wear as low as it can go", never "spend zero";
+  `tests_scripts/test_persistence_write_marker_completeness.py`
   pins the prerequisite set by name so a new one is triaged against that rule rather than joining it
   silently. **The same lens applies to host I/O, where it had been missing**: a
   test must not generate mass filesystem churn, and an invariant gets proven *structurally* — assert

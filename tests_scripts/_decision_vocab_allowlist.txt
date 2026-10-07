@@ -34,7 +34,6 @@ HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build
 HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000
 README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
 README.md	# deliberate, dedicated invocation, one of three named tiers (see tests_hardware
-README.md	Every field type is checked strictly against its schema — a JSON integer for a `
 README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
 README.md	Set the log level to `all` (5) via the real API, then reboot to see a full start
 README.md	`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WI
@@ -51,7 +50,6 @@ SPECIFICATION.md	**Deliberately not adopted** (project owner, 2026-09-11): there
 SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
 SPECIFICATION.md	**Known structural gap, accepted risk (`SGP40_I2C._reset()`)**: `writeto(0x00, b
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
-SPECIFICATION.md	**Numeric coercion policy** (`asy_config_manager.py`'s `coerce_numeric()`): a JS
 SPECIFICATION.md	**Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_
 SPECIFICATION.md	**Specialty: raw hardware bus-transaction calls are the one deliberate exception
 SPECIFICATION.md	**The persistence counter** was settled with both thresholds parked at `0x0000`,
@@ -72,7 +70,6 @@ SPECIFICATION.md	Because the final chunk's acknowledgement is deferred until aft
 SPECIFICATION.md	Confirmed deliberate by the project owner.
 SPECIFICATION.md	Constructed before `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a dire
 SPECIFICATION.md	Deliberately narrow scope (not a second exhaustive PUT matrix — each real WebDri
-SPECIFICATION.md	Every deliberate system reset pauses FRAM first (`asy_system_service.py`'s `_reb
 SPECIFICATION.md	Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a qu
 SPECIFICATION.md	I2C deliberately has no equivalent (BACKLOG's deferred list).
 SPECIFICATION.md	It also pins each device's maximum, so a new driver or a widened string bound fa
@@ -101,13 +98,11 @@ SPECIFICATION.md	`SensorReaderConfig.__init__` captures `default_vals` as the pr
 SPECIFICATION.md	`TCP_SND_QUEUELEN` is per connection.** One connection can drain the pool, leavi
 SPECIFICATION.md	`_store_err()` does not.** The asymmetry is deliberate.
 SPECIFICATION.md	`asy_uart_comm.py` carries six statements of a third variant: a buffer or a boun
-SPECIFICATION.md	`bool` never accepted for int/float (`type()`, not `isinstance()`).
 SPECIFICATION.md	`disable_error_code = assignment` is deliberately not set.
 SPECIFICATION.md	`js/mock-server.js` is deliberately never staged at all — its `fetch` patching h
 SPECIFICATION.md	`run_project_dependency_install()` (`uv sync`/`npm ci`) runs with `env=None` (in
 SPECIFICATION.md	`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the one deliberate exception
 SPECIFICATION.md	`wozi` deliberately does not, since it is never physically flashed and would oth
-SPECIFICATION.md	a JSON float is accepted for an int field only with no fractional part (`5.0`→`5
 SPECIFICATION.md	a periodic timer self-heals next tick, a dropped one-shot never fires again.
 SPECIFICATION.md	a real device may never be named that way.
 SPECIFICATION.md	a single part's measured behaviour, reference-layer traps and settled requiremen
@@ -116,7 +111,6 @@ SPECIFICATION.md	a write under SCD30's one-shot budget fires at one deliberately
 SPECIFICATION.md	an empty result means a genuinely empty payload.** The two must never collapse,
 SPECIFICATION.md	both `setup`/`test` were run against a deliberately hostile environment (poisone
 SPECIFICATION.md	digital_twin/ Hardware simulator for I2C/SPI/WiFi under the MicroPython Unix-por
-SPECIFICATION.md	int→float has a known, accepted gap (every int representable as float only up to
 SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.per
 SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
 SPECIFICATION.md	the exact boundary values *accepted*;
@@ -426,7 +420,6 @@ tests/test_asy_config_manager.py	Deliberate, longstanding asymmetry.
 tests/test_asy_config_manager.py	Deliberately not asserting mgr._cache's exact value here: whether the deferred f
 tests/test_asy_config_manager.py	One write per accepted CHANGE, zero for an unchanged, invalid or unknown value -
 tests/test_asy_config_manager.py	bool must never be coerced into an int field even though `type(True) is bool` si
-tests/test_asy_config_manager.py	bool subclasses int in Python/MicroPython, but type() rather than isinstance() e
 tests/test_asy_config_manager.py	empty string accepted at the min=0 boundary
 tests/test_asy_config_manager.py	lower boundary accepted
 tests/test_asy_config_manager.py	type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON i
@@ -481,7 +474,6 @@ tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH delibera
 tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
 tests/test_asy_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
 tests/test_asy_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
-tests/test_asy_system_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_ticks_rollover.py	Re-derives the exact accepted/rejected boundary independently of the bisection a
 tests/test_ticks_rollover.py	largest accepted delta is in (lo, hi)
 tests/test_tmp_scratch.py	A deliberately cheap population - the invariant is independence from sibling COU
@@ -504,7 +496,6 @@ tests_hardware/README.md	**What counts as a limited-endurance store**: the SCD30
 tests_hardware/README.md	- **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` rea
 tests_hardware/README.md	- **Real socket-limit degradation** (`test_connections_at_and_above_the_real_soc
 tests_hardware/README.md	- **UART's sharpest invariant (`asy_uart_driver.py`/`asy_uart_comm.py` may never
-tests_hardware/README.md	- **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve =
 tests_hardware/README.md	- **`tests_hardware/manual/`'s files are deliberately named away from the `test_
 tests_hardware/README.md	A **dispatch-only** PUT is deliberately outside the gate, because it is never pe
 tests_hardware/README.md	At `DebugLevel=0` (this project's own production-quiet default — see DEVICE_REFE
@@ -541,8 +532,6 @@ tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py	Restore the d
 tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py	Deliberately discarded - see _SETTLE_S.
 tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py	this script must never be called more than once per opt-in run.
 tests_hardware/device_scripts/float_boundary_2pow24.py	Deliberately not `coerced == float(above)` - float(above) is recomputed on this
-tests_hardware/device_scripts/float_boundary_2pow24.py	Targets coerce_numeric()'s int->float path: always accepted, so the real check i
-tests_hardware/device_scripts/float_boundary_2pow24.py	coerce_numeric() always accepts this by design;
 tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	mpremote-only by design;
 tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from _ORIGINAL_PATTERN
 tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from every other pattern above

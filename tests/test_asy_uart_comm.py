@@ -301,9 +301,40 @@ def test_reset_clears_the_history_and_the_streak_state() -> None:
     comm._valid_frames = 5
     comm._blind_resyncs = 2
     assert run(comm.get_error_counter())["UART_X"]["ErrCount"] > 0
-    run(comm.reset_error_counter())
+    assert run(comm.reset_error_counter()) is True
     assert run(comm.get_error_counter())["UART_X"]["ErrCount"] == 0
     assert comm._blind_resyncs == 0
+
+
+_DIAG_RESYNC_STREAK = 2  # mirrors asy_uart_comm.py's const: blind resyncs before the link diagnostic fires
+
+
+def _noisy_resyncs(pair: Pair) -> None:
+    # Resyncs that each drain a few bytes no frame validates from: the diagnostic's own input.
+    async def scenario() -> None:
+        async with pair.driver_a as device:
+            for _ in range(_DIAG_RESYNC_STREAK):
+                pair.fake_a.feed_rx(b"xyz")
+                await pair.initiator._resync(device)
+
+    run(scenario(), limit=_RUN_BOUND_S)
+
+
+def test_reset_errors_keeps_the_valid_frame_count() -> None:
+    # The valid-frame count is link evidence, not error history: a reset on a link that has worked
+    # must not re-arm the unintelligible-link diagnostic; a fresh link still raises it (control).
+    worked = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    worked.initiator._note_valid_frame()
+    worked.initiator._blind_resyncs = 1
+    assert run(worked.initiator.reset_error_counter()) is True
+    assert worked.initiator._valid_frames == 1
+    assert worked.initiator._blind_resyncs == 0
+    _noisy_resyncs(worked)
+    assert _e("UART_LINK_UNINTELLIGIBLE") not in persisted(worked.initiator), persisted(worked.initiator)
+
+    fresh = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    _noisy_resyncs(fresh)
+    assert _e("UART_LINK_UNINTELLIGIBLE") in persisted(fresh.initiator), persisted(fresh.initiator)
 
 
 def test_a_repeated_identical_fault_spends_one_slot_and_counts_every_time() -> None:

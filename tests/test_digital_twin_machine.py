@@ -483,6 +483,69 @@ def test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot() -> Non
         pass  # caught via the base class, not the specific subclass
 
 
+def test_mem_backup_has_rp2s_two_regions_of_four_and_three_words() -> None:
+    machine.power_on()
+    assert len(machine.mem_backup(0)) == 4
+    assert len(machine.mem_backup(1)) == 3
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+    assert list(machine.mem_backup(1)) == [0, 0, 0]
+
+
+def test_mem_backup_returns_the_same_view_each_call_and_both_for_minus_one() -> None:
+    machine.power_on()
+    region0 = machine.mem_backup(0)
+    region0[1] = 7
+    assert machine.mem_backup(0) is region0
+    assert machine.mem_backup(0)[1] == 7
+    assert machine.mem_backup() is region0  # region 0 is the default (extmod/machine_mem.c at v1.29.0)
+    both = machine.mem_backup(-1)
+    assert isinstance(both, tuple)
+    assert both[0] is region0
+    assert both[1] is machine.mem_backup(1)
+    machine.power_on()
+
+
+def test_mem_backup_refuses_any_other_region() -> None:
+    for region in (2, -2):
+        try:
+            machine.mem_backup(region)
+            raise AssertionError("expected ValueError")
+        except ValueError as e:
+            assert str(e) == "invalid region"
+
+
+def test_reset_cause_reads_power_on_until_a_reset_then_watchdog() -> None:
+    machine.power_on()
+    assert machine.reset_cause() == machine.PWRON_RESET
+    try:
+        reset()
+        raise AssertionError("expected SimulatedResetError")
+    except SimulatedResetError:
+        pass
+    assert machine.reset_cause() == machine.WDT_RESET
+    machine.power_on()
+    assert machine.reset_cause() == machine.PWRON_RESET
+
+
+def test_bootloader_also_reads_back_as_a_watchdog_reset() -> None:
+    machine.power_on()
+    try:
+        bootloader()
+        raise AssertionError("expected SimulatedBootloaderEntryError")
+    except SimulatedBootloaderEntryError:
+        pass
+    assert machine.reset_cause() == machine.WDT_RESET
+    machine.power_on()
+
+
+def test_power_on_clears_both_regions() -> None:
+    machine.mem_backup(0)[0] = 1
+    machine.mem_backup(1)[2] = 2
+    machine.power_on()
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+    assert list(machine.mem_backup(1)) == [0, 0, 0]
+
+
 def test_rtc_datetime_round_trips() -> None:
     rtc = RTC()
     rtc.datetime((2026, 1, 1, 4, 12, 0, 0, 0))

@@ -14,7 +14,7 @@ _MARKER_VALUE = 424242
 async def _main() -> None:
     mgr = cm.ConfigManager(_PATH, _SCHEMA, "HWTEST")
     await mgr.setup()
-    ok, _validity = await mgr.write_config({"Marker": _MARKER_VALUE}, _SCHEMA)
+    ok, _validity = await mgr.write_config({"Marker": _MARKER_VALUE})
     if not ok:
         print(f"RESULT: FAIL write_config() reported failure for Marker={_MARKER_VALUE}")
         return

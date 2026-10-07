@@ -18,6 +18,7 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
 
 import asy_config_manager as cm
+import asy_webserver_service
 from asy_print_log import LogConfig
 from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
 
@@ -29,6 +30,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Iterable
     from typing import Any, TypeVar
+
+    from asy_base_classes import JsonMapping
 
     T = TypeVar("T")
 
@@ -84,10 +87,11 @@ class _FakeLogger:
             },
         }
 
-    async def reset(self) -> None:
+    async def reset(self) -> bool:
         self.reset_calls += 1
         self.err_count = 0
         self.history = []
+        return True
 
 
 _FAKE_SCHEMA: "cm.ConfigSchema" = (
@@ -123,7 +127,7 @@ class _FakeModule:
     async def get_dict_cfg(self) -> "dict[str, Any]":
         return {self.name: dict(self._values)}  # make_dict()'s nested shape, as every real module's
 
-    async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]":
+    async def _set_dict_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]":
         self.set_calls.append(dict(data))
         defaults = cm.schema_dict(cfg_vals)
         results: dict[str, str] = {}
@@ -142,8 +146,8 @@ class _FakeModule:
     async def get_error_counter(self) -> "dict[str, Any]":
         return await self.pr.get_log()
 
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
+    async def reset_error_counter(self) -> bool:
+        return await self.pr.reset()
 
 
 # ---------------------------------------------------------------------------
@@ -459,9 +463,7 @@ async def _record_async(sink: "list[int]") -> None:
 
 
 def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed() -> None:
-    # Regression test for SPECIFICATION.md Part H.6's "silent result-swallow": handle_set_cmd()
-    # discards its per-field results when post_fct/post_asy_fct raises, and _apply_settings_groups()
-    # used to .update() that empty dict in. Every field in `subset` must now come back "Failed".
+    # A raising post hook marks every field of its group "Failed" (handle_set_cmd(), SPEC H.6).
     wifi = _FakeModule(
         "WIFI",
         schema=(("SSID", "str", "", 0, 32, None), ("PW", "str", "", 0, 63, None)),
@@ -478,6 +480,7 @@ def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_gro
     body = json.loads(res.body)
     assert body["res"] == "OK"  # per-field detail carries the failure, not the overall envelope
     assert body["result"] == {"SSID": "Failed", "PW": "Failed"}
+    assert wifi.pr.history == [(code("E", "CALLBACK"), "E")]  # persisted on the group's own module
 
 
 def test_system_get_is_flat_debug_gmt_dst_only() -> None:
@@ -635,12 +638,14 @@ def test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered(
 
 
 def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
+    # Only {"ResetErrors": true} resets (SPEC A.8); any other value of the key answers Invalid.
     mod = _FakeModule("SGP40")
     run(mod.pr.err_s("boom", errno=1))
     _service, app = _make_service(error_sources=[mod])
-    for body_in in ({}, {"ResetErrors": False}):
+    for body_in, result in (({}, {}), ({"ResetErrors": False}, {"ResetErrors": "Invalid"})):
         res = run(app.dispatch_request(_make_request(app, "PUT", "/status", body_in)))
         assert res.status_code == 200
+        assert json.loads(res.body) == {"res": "OK", "code": 0, "descr": "Command executed", "result": result}
     assert mod.pr.reset_calls == 0
     assert mod.pr.err_count == 1
 
@@ -651,9 +656,61 @@ def test_status_put_reset_errors_true_resets_every_module_counter_and_history() 
     _service, app = _make_service(error_sources=[mod])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert res.status_code == 200
+    assert json.loads(res.body)["result"] == {"ResetErrors": "Valid"}
     assert mod.pr.reset_calls == 1
     assert mod.pr.err_count == 0
     assert mod.pr.history == []
+
+
+class _RefusingLogger(_FakeLogger):
+    # A store whose reset write failed: the history is cleared in RAM, the write reports False.
+    async def reset(self) -> bool:
+        await super().reset()
+        return False
+
+
+def test_a_failing_source_reset_answers_failed_and_the_others_still_reset() -> None:
+    good_a, bad, good_b = _FakeModule("A"), _FakeModule("B"), _FakeModule("C")
+    bad.pr = _RefusingLogger("B")
+    for m in (good_a, bad, good_b):
+        run(m.pr.err_s("x", errno=1))
+    _service, app = _make_service(error_sources=[good_a, bad, good_b])
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
+    assert json.loads(res.body)["result"] == {"ResetErrors": "Failed"}
+    for m in (good_a, bad, good_b):
+        assert m.pr.reset_calls == 1, m.name
+        assert m.pr.history == [], m.name
+
+
+class _SuspendingModule(_FakeModule):
+    # Its reset waits until every module's reset has started (or a bound passes), then records how many had.
+    def __init__(self, name: str, started: "list[str]", everyone: int, release: asyncio.Event) -> None:
+        super().__init__(name)
+        self._started = started
+        self._everyone = everyone
+        self._release = release
+        self.started_before_finish = 0
+
+    async def reset_error_counter(self) -> bool:
+        self._started.append(self.name)
+        if len(self._started) == self._everyone:
+            self._release.set()
+        try:
+            await asyncio.wait_for(self._release.wait(), 0.5)
+        except asyncio.TimeoutError:
+            pass  # a sequential reset never releases: the bound ends the wait, the count below shows it
+        self.started_before_finish = len(self._started)
+        return await self.pr.reset()
+
+
+def test_reset_errors_runs_every_source_at_once() -> None:
+    started: list[str] = []
+    release = asyncio.Event()
+    mods = [_SuspendingModule(n, started, 3, release) for n in ("A", "B", "C")]
+    _service, app = _make_service(error_sources=mods)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
+    assert json.loads(res.body)["result"] == {"ResetErrors": "Valid"}
+    assert [m.started_before_finish for m in mods] == [3, 3, 3]
 
 
 def test_notification_get_is_flat_settings_only_no_live_fields() -> None:
@@ -730,7 +787,7 @@ def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
 
 
 def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> None:
-    # Mirror of the fractional-rejected test above, in the accept direction: coerce_numeric()
+    # Mirror of the fractional-rejected test above, in the accept direction: the coercion
     # (SPECIFICATION.md Part A.8) accepts an integral float for PauseTime's synthetic int schema,
     # and the callback must receive the coerced int - notification_pause() expects int.
     pause_calls = []
@@ -1718,11 +1775,66 @@ def test_an_outer_cap_timeout_logs_the_request_cap_code() -> None:
     assert _newest_entry(service) == (code("W", "HTTP_REQUEST_CAP"), "W")
 
 
+class _VirtualClock:
+    # Stands in for the module's wait_for() timers: a deadline elapses only when the test advances
+    # the clock, so the order of two bounds is fixed by the test, never by host scheduling.
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    async def sleep(self, t: float) -> None:
+        # Yields rather than parking on an Event: wait_for()'s runner cancels its waiter only while
+        # that waiter's task data is None, which an Event wait would set (extmod/asyncio/funcs.py).
+        deadline = self.now + t
+        while self.now < deadline:
+            await asyncio.sleep_ms(0)
+
+    def wait_for(self, aw: "Coroutine[Any, Any, T]", timeout: float) -> "Coroutine[Any, Any, T]":
+        # MicroPython's wait_for() takes its sleep as a third argument (extmod/asyncio/funcs.py).
+        return asyncio.wait_for(aw, timeout, self.sleep)  # type: ignore[call-arg]
+
+
+class _Entered:
+    # Wraps a hanging stream double and sets `entered` once its first call has started, which is
+    # after the proxy registered that call's bound - the point the test may move the clock past.
+    def __init__(self, inner: "Any") -> None:
+        self._inner = inner
+        self.entered = asyncio.Event()
+
+    def __getattr__(self, name: str) -> "Any":
+        attr = getattr(self._inner, name)
+        if not name.startswith(("read", "awrite")):
+            return attr
+
+        async def call(*args: "Any") -> "Any":
+            self.entered.set()
+            return await attr(*args)
+
+        return call
+
+
 def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> None:
     # The read bound fires and is logged; microdot's 400 then hangs until the outer cap cuts it,
     # and that second reclaim is the cap's, not a per-call one the earlier read had flagged.
     service, _app = _make_service(per_call_timeout_s=0.2, outer_cap_s=0.3)
-    run_timed(service._serve(_HangingReader(), _HangingWriter()), timeout_s=2.0)
+    clock = _VirtualClock()
+    timers = type("VirtualTimers", (), {n: getattr(asyncio, n) for n in ("CancelledError", "Task", "TimeoutError", "gather", "get_event_loop", "start_server")})()
+    timers.wait_for = clock.wait_for
+    reader, writer = _Entered(_HangingReader()), _Entered(_HangingWriter())
+
+    async def scenario() -> None:
+        served = asyncio.create_task(service._serve(reader, writer))
+        await reader.entered.wait()
+        clock.now = 0.2  # the read's bound (0.2) is due; the cap (0.3) is not
+        await writer.entered.wait()
+        clock.now = 0.3  # the cap is due; the 400 write's own bound (0.2 + 0.2) is not
+        await served
+
+    real_asyncio = asy_webserver_service.asyncio
+    asy_webserver_service.asyncio = timers
+    try:
+        run_timed(scenario())  # the default bound; the virtual clock makes the pass itself instant
+    finally:
+        asy_webserver_service.asyncio = real_asyncio
     entry = run(service.get_error_counter())["WEBSERVER"]
     assert entry["ErrCount"] == 2, entry
     assert entry["ErrNum"][-2:] == [code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_REQUEST_CAP")], entry

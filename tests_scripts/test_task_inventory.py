@@ -109,7 +109,7 @@ def test_every_task_site_is_a_starter_or_a_tabled_row() -> None:
 
 
 def test_the_table_and_the_starters_both_carry_sites() -> None:
-    # Neither half is vacuous: the four rows match sites, and most sites are starters.
+    # Neither half is vacuous: every row matches a site, and most sites are starters.
     sites = task_sites(SRC)
     assert set(table_rows(_spec())) <= {site for site, _ in sites}
     assert len(sites) > len(table_rows(_spec())) + 10, sites

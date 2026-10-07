@@ -113,7 +113,7 @@ _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the 
 # here, deliberately - SPECIFICATION.md Part C.7.1.
 _WIFI_PERSISTED_WARNINGS = 1
 
-# ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it
+# ResetErrors resets every source at once, each FRAM-backed one still paying its own chunk write, so it
 # far exceeds _http()'s 5s default. The value below is DERIVED from the server's own _DEFAULT_OUTER_CAP_S;
 # README.md has the derivation and BACKLOG item 24 the real-hardware measurements.
 # @tunable web.outer_cap_s = 15.0

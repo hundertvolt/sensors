@@ -100,6 +100,14 @@ Kept completely separate so nothing here can accidentally affect the determinist
   SPECIFICATION.md Part F.6, whose amendment records that `toolchain/micropython_overrides.py`'s
   `unix_kbd_intr` override (Part B.14.1) has since closed the root SIGINT-safety gap this quirk
   came from — the calls stay wired in as defense in depth, not because the race is still reachable.
+- `unix_port_unretrieved_report.py` — the PC tiers' asyncio exception handler: every task that ends
+  raising with nobody awaiting it prints a fixed `UNRETRIEVED TASK EXCEPTION:` line and its
+  traceback at every DebugLevel, then the handler releases the dead task from asyncio's context dict.
+  `install()` is the first statement of every launcher's `main()` (`run_generic_integration.py`,
+  `launch.py`, `segfault_stress_repro.py`), of `tests/microtest.py`'s `run()` and of
+  `tests/_boot_contiguity_probe.py`'s `_main()`; the firmware's `start_and_check_tasks()` then keeps
+  it instead of installing SYSTEM's level-gated report, so the memory gates still see a task that
+  died of an exhausted heap at level 0 (SPECIFICATION.md Parts F.1 and I.4(e)).
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.
@@ -674,7 +682,7 @@ That is not old data surviving (BMP3XX/SCD30 correctly show 0) and not a defect:
 detecting real torn state is the driver working.
 
 **`_RESET_ERRORS_TIMEOUT_S` is derived, not chosen.** `PUT /status {"ResetErrors": true}` resets
-every registered source in turn, and each FRAM-backed one pays a real chunk write — 10+ of them on
+every registered source at once, and each FRAM-backed one still pays a real chunk write — 10+ of them on
 `dev`, which is why it exceeds `_http()`'s plain 5s default. The first two CI runs on `dev` failed
 on exactly that one call, at both gc thresholds, and nothing else.
 
