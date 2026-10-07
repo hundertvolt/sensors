@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
 _ADDR_TUPLE_LEN = const(2)  # a plain (host, port) address tuple
+# @tunable udp.retry_backoff_s = 0.5
 _RETRY_BACKOFF_S = const(0.5)  # pause between a failed connect()/bind() (or setup) attempt and the next
 
 
@@ -35,6 +36,7 @@ class AsyUDPSocket:
         self,
         addr: tuple[str, int],
         mode: 'Literal["client", "server"]' = "client",
+        # @tunable udp.conn_tries_default = 1
         conn_tries: int = 1,
     ) -> None:
         # Fail fast, at construction - see module docstring's __init__ exception.
@@ -123,6 +125,7 @@ class AsyUDPSocket:
             ok = False
         return ok
 
+    # @tunable udp.ready_poll_ms = 20
     async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
         # Busy-polls ipoll(0), yielding via sleep_ms(wait_time_ms) each cycle, until mask (or a
         # real POLLERR/POLLHUP, always reported) is satisfied or timeout_ms elapses (<=0 waits
@@ -184,6 +187,7 @@ class AsyUDPSocket:
         msg: bytes | bytearray,
         buf: int,
         timeout_ms: int = -1,
+        # @tunable udp.round_trip_tries_default = 1
         tries: int = 1,
     ) -> tuple[bytes | None, tuple[str, int] | None]:
         # Retries the full write+response round trip up to `tries` times, returning as soon as a

@@ -103,6 +103,8 @@ async def _boot(port: int, device: str) -> "Any":
 
 
 _BODY_CAP = 2048  # WebserverService's shipped max_content_length (Part I.6), stated, never read back
+# @tunable web.connections_per_page_load = 2
+_CONNECTIONS_PER_PAGE_LOAD = 2  # the real post-inlining footprint of one page load (Part H.7)
 
 
 def _ceiling(module: "Any") -> int:
@@ -691,7 +693,7 @@ async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
     ceiling = _ceiling(module)
     task = await _start_webserver(module)
     try:
-        tabs = max(2, ceiling // 2)  # 2 connections per page load, the real post-inlining footprint
+        tabs = max(2, ceiling // _CONNECTIONS_PER_PAGE_LOAD)
 
         async def _index() -> bytes:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/")

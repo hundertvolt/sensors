@@ -30,6 +30,7 @@ __all__ = [
 # Above the server's own 15.0s outer_cap_s, not below it: a legitimate sweep can never exceed the
 # cap, and the 10.0s this used to be made a slow-but-legitimate reset read as a network fault. The
 # headroom absorbs real WiFi latency the loopback twin has none of. Measurements: BACKLOG item 24.
+# @tunable l4.reset_errors_timeout_s = 30.0
 _RESET_ERRORS_TIMEOUT_S = 30.0
 
 

@@ -8,6 +8,7 @@ import machine
 
 from system_service import SystemService
 
+# @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
 call_count = 0
 

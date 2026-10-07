@@ -75,6 +75,16 @@ _FETCH_TIMEOUT_MS = 5000
 _RETRY_S = 10
 _RETRY_MAX_S = 600
 
+# The client's own compiled-away schedule constants (asy_ntp_client.py) - mirrored, not imported.
+# @tunable ntp.check_interval_s = 10
+_CHECK_INTERVAL_S = 10
+# @tunable ntp.retry_interval_s = 15
+_RETRY_INTERVAL_S = 15
+# @tunable ntp.sync_retries = 3
+_SYNC_RETRIES = 3
+# @tunable ntp.async_intervals = 3
+_ASYNC_INTERVALS = 3
+
 
 def _timing(
     dns_timeout_ms: int = _DNS_TIMEOUT_MS,
@@ -408,6 +418,7 @@ def test_now_returns_a_real_unix_timestamp() -> None:
     client = make_client()
     result = client._now()
     assert result is not None
+    # @tunable ntp.plausible_min_unix = 1735689600
     assert result >= 1735689600  # sane lower bound - _NTP_MIN_PLAUSIBLE_UNIX_TIME, compiled away
 
 
@@ -523,7 +534,7 @@ def test_start_ntp_timer_arms_periodic_with_the_documented_period() -> None:
     client = make_client()
     client.start_ntp_timer()
     assert client.ntp_timer.mode == Timer.PERIODIC
-    assert client.ntp_timer.period == 10 * 1000  # _NTP_CHECK_INTERV: const(), compiled away, hardcoded
+    assert client.ntp_timer.period == _CHECK_INTERVAL_S * 1000
 
 
 def test_start_ntp_timer_fires_the_trigger_event() -> None:
@@ -1181,7 +1192,7 @@ def test_handle_sync_failure_while_synced_arms_a_retry_and_increments_the_counte
     run(client._handle_ntp_sync_failure())
     assert client.ntp_retries == 1
     assert client.ntp_retry_timer.mode == Timer.ONE_SHOT
-    assert client.ntp_retry_timer.period == 15 * 1000  # _NTP_RETRY_INTERV: const(), compiled away
+    assert client.ntp_retry_timer.period == _RETRY_INTERVAL_S * 1000
 
 
 def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
@@ -1204,7 +1215,7 @@ def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
 def test_handle_sync_failure_gives_up_after_max_retries() -> None:
     client = make_client()
     run(client._set_synced(value=True))
-    client.ntp_retries = 3  # _NTP_SYNC_RETRIES: const(), compiled away
+    client.ntp_retries = _SYNC_RETRIES
     run(client._handle_ntp_sync_failure())
     assert client.ntp_retries == 0
     assert client.ntp_retry_timer.period == -1  # never (re)armed - past the retry budget
@@ -1254,7 +1265,7 @@ def test_repeated_retry_exhaustion_counts_each_and_keep_one_slot() -> None:
     run(client.pr.setup())
     run(client._set_synced(value=True))
     for _ in range(2):
-        client.ntp_retries = 3  # _NTP_SYNC_RETRIES: const(), compiled away
+        client.ntp_retries = _SYNC_RETRIES
         run(client._handle_ntp_sync_failure())
     assert _slots(client) == (2, [code("E", "NTP_RETRIES")])
 
@@ -1409,7 +1420,7 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
         await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await asyncio.sleep(0)  # let the task run past its own `self.ntp_sec_count = 0` reset first
-        client.ntp_sec_count = 3 * 1 * 60 * 60  # _NTP_ASYNC_INTERV(3) * 1h * 3600 - const(), compiled away
+        client.ntp_sec_count = _ASYNC_INTERVALS * 1 * 60 * 60  # x NTP_Interv_H (1) x 3600 s
         await _tick(client.ntp_timer_trigger_event, 1)
         synced = await client.ntp_issynced()
         task.cancel()

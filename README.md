@@ -143,10 +143,12 @@ find/build the toolchain, default `~/pico-toolchain`), `SKIP_APT=1` (skip apt pa
 the Unix port needs building and they're already present), `PER_FILE_TIMEOUT_S` (per-test-file
 timeout before a retry, a positive integer of seconds, default 240), `TEST_PARALLELISM` (how many
 test files run at once — by default autodetected, not a flat multiple of the core count: `test.sh`
-times a fixed loop in the very Unix-port interpreter the tests run under and picks 4x usable cores
-at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup CPU quota when one is set, because core
-*count* alone cannot tell a fast x86 runner from a slow host (the bench Pi4 probes at ~139 ms: 4x,
-16 jobs, green). The suite is sleep-bound rather than CPU-bound, so oversubscribing a fast host is
+times a fixed loop in the very Unix-port interpreter the tests run under, on a monotonic clock, and
+picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond or when the probe cannot run (the bands
+are SPECIFICATION.md Part N's `runner.*` rows), honouring a cgroup CPU quota when one is set,
+because core *count* alone cannot tell a fast x86 runner from a slow host (the bench Pi4 probes at
+~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than CPU-bound, so oversubscribing a
+fast host is
 close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, a positive integer of
 seconds, default 1200 — roughly 5x its real runtime, so it only fires on a genuine hang), and
@@ -676,9 +678,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
   catalog, the website's own architecture, the new-driver checklist, the device-TOML/`buildgen`
-  build chain and a per-chip reference — all in one place, organized into lettered Parts (A-M) for different needs. Produced by a first-pass doc-scatter cleanup that merged
-  `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
-  file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
+  build chain, a per-chip reference and the tunable-parameter register (Part N) — all in one place,
+  organized into lettered Parts (A-N) for different needs. Produced by a first-pass doc-scatter
+  cleanup that merged `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`,
+  `toolchain/README.md`, most of this file's former "Repository layout"/"Architecture at a
+  glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
   here for "how does this codebase actually work" or "what shape should a new driver's code take."
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and `toolchain/README.md` were deleted once

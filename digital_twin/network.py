@@ -30,6 +30,7 @@ STAT_WRONG_PASSWORD = -3
 # Real association plus DHCP takes low single-digit seconds in the field. This sits under
 # _poll_sta_connect_status()'s 5s budget while still being long enough for a poller to observe
 # one real STAT_CONNECTING first, rather than an instant flip.
+# @tunable l2.twin_wifi_connect_delay_s = 0.7
 _CONNECT_DELAY_S = 0.7
 
 _country_code = ["DE"]

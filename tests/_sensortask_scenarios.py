@@ -20,7 +20,7 @@ from _shared_rest_roundtrip import (
     drain_json_response_body,
 )
 from _tmp_scratch import TmpScratch
-from microdot import Request, Response  # type: ignore[import-not-found]
+from microdot import Request, Response
 
 import asy_spi_driver
 from crc_checks import CRC8
@@ -252,7 +252,7 @@ def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] 
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
     req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
-    return run(app.dispatch_request(req))
+    return run(app.dispatch_request(req))  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
 
 
 # ---------------------------------------------------------------------------

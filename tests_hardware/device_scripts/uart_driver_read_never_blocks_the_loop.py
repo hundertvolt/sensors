@@ -123,6 +123,7 @@ async def _idle_gap() -> int:
 
 
 async def main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     writer = UART(0, baudrate=BAUDRATE, tx=Pin(0), rx=Pin(1), rxbuf=512, txbuf=512, timeout=0, timeout_char=1)
     drv = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=512, txbuf=512, poll_wait_ms=POLL_WAIT_MS)

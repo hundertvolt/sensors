@@ -42,18 +42,26 @@ miso_pin = 4
 tx_pin = 0
 rx_pin = 1
 baudrate = 115200
+# @tunable dev.uart_rxbuf = 512
 rxbuf = 512
+# @tunable dev.uart_txbuf = 512
 txbuf = 512
+# @tunable dev.uart_poll_wait_ms = 2
 poll_wait_ms = 2
+# @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
 
 [bus.uart1]
 tx_pin = 8
 rx_pin = 9
 baudrate = 115200
+# @tunable dev.uart_rxbuf = 512
 rxbuf = 512
+# @tunable dev.uart_txbuf = 512
 txbuf = 512
+# @tunable dev.uart_poll_wait_ms = 2
 poll_wait_ms = 2
+# @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
 
 # --- sensor drivers ---------------------------------------------------------------------------

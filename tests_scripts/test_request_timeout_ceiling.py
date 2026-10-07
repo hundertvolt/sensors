@@ -15,6 +15,12 @@ from types import ModuleType
 import pytest
 from _script_loader import load_script_module
 
+# Join bounds on the loopback fixtures' threads below.
+# @tunable l0.request_timeout_ceiling_join_timeout_s = 5.0
+_JOIN_TIMEOUT_S = 5.0
+# @tunable l0.request_timeout_ceiling_hammer_join_timeout_s = 2.0
+_HAMMER_JOIN_TIMEOUT_S = 2.0
+
 
 def _default_for_parameter(source_path: Path, param: str) -> float:
     """The literal default of a keyword parameter, found anywhere in a module's function/method
@@ -249,7 +255,7 @@ def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, w
     stop.set()
     done.set()
     for thread in threads:
-        thread.join(timeout=5.0)
+        thread.join(timeout=_JOIN_TIMEOUT_S)
     for conn in accepted:
         conn.close()
     server.close()
@@ -302,7 +308,7 @@ def test_the_ceiling_holder_ends_as_soon_as_its_test_sets_stop(ceiling_holder: M
     hammer.start()
     time.sleep(0.2)
     stop.set()
-    hammer.join(timeout=2.0)
+    hammer.join(timeout=_HAMMER_JOIN_TIMEOUT_S)
     assert not hammer.is_alive(), "the holder outlived its test's stop"
     assert len(held_out) == 4
 

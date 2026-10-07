@@ -14,9 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPES = ("src", "buildgen", "digital_twin", "toolchain", "scripts", "tests", "tests_scripts", "tests_hardware")
 CAP = 3
 
-# Data, not commentary, so exempt - CLAUDE.md names the buildgen tags; PEP 723's inline script
-# metadata is the same case, one machine-read line per field, read by `uv run` itself.
-_TAGS = ("@web", "@web-group", "@wiring", "@value-wiring", "@limits", "@requires")
+# Data, not commentary, so exempt - CLAUDE.md names the buildgen tags and the tunable-register tag
+# tests_scripts/test_tunables_register.py reads; PEP 723's inline script metadata is the same case.
+_TAGS = ("@web", "@web-group", "@wiring", "@value-wiring", "@limits", "@requires", "@tunable")
 _PEP723 = re.compile(r"^#\s*(///|requires-python\s*=|dependencies\s*=)")
 # Punctuation between paragraphs, not prose: a banner rule, a bare `#`, and a docstring's own lone
 # delimiter line. Each is why a hand count and a naive line count disagree.

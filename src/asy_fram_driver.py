@@ -74,6 +74,7 @@ _ADDR_BUF_16BIT = const(3)
 # Generous headroom over a real transaction's low-single-digit-ms cost, while still bounding an
 # accidental lock-reentry to a finite wait. Not test-monkeypatchable: MicroPython inlines const()
 # at every use site regardless of name (verified directly), so the one test needing this waits it out.
+# @tunable fram.verify_present_lock_timeout_s = 1.0
 _VERIFY_PRESENT_LOCK_TIMEOUT_S = const(1.0)
 
 # Outcomes of the synchronous write bodies below, as a bit set. They decide what happened; the

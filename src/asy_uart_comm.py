@@ -89,11 +89,15 @@ _RESYNC_DEN = const(2)
 # The drain's own hard bound (changelog A5). A multiple of the quiet window, so it can never be
 # shorter than the peer's own drain - which is what would let this side transmit into it.
 _DRAIN_BOUND_MULT = const(4)
+# @tunable uart.gate_step_ms = 20
 _GATE_STEP_MS = const(20)  # longest single sleep inside the write gate, so a cancel lands promptly
+# @tunable uart.gc_pause_worst_ms = 21
 _GC_PAUSE_WORST_MS = const(21)  # measured worst-case collection pause, SPECIFICATION.md Part I
+# @tunable uart.poll_jitter_ms = 5
 _POLL_JITTER_MS = const(5)  # scheduling slack added to poll_wait_ms when sizing rxbuf
 _BACKOFF_MULT = const(2)
 _BACKOFF_MAX_MULT = const(5)  # cap = 5 x timeout, matching captive_dns.py's own 0.5s -> 5s shape
+# @tunable uart.diag_resync_streak = 2
 _DIAG_RESYNC_STREAK = const(2)  # resyncs with bytes seen but no frame ever valid before the diagnostic fires
 _MIN_CHUNKS = const(2)  # even a payload-less command carries one data chunk, so it can be confirmed
 _CALLBACK_PAIR_LEN = const(2)  # every callback returns exactly (valid, value)

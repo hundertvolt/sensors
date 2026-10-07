@@ -118,11 +118,12 @@ information):
   moves forward only by the owner's reflash with fresh setup, following the reflash runbook, never
   by editing this copy. **`ext/microdot.py` is the same policy applied to the refactor
   target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
-  verified byte-identical to it on 2026-10-06), replacing the
+  verified byte-identical to it on 2026-10-06), with upstream's own stubs vendored byte-identical at
+  `ext/typings/microdot/` under the same policy (owner, 2026-10-01), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
   edits, no restyling, ever (owner, 2026-09-25) — any behavior change needed is handled by
-  wrapping/calling it from our own code (see "Microdot / REST layer" below), never by touching this
-  file. `src/` and `ext/` are copied flat into one directory and frozen together for the refactored
+  wrapping/calling it from our own code (see "Microdot / REST layer" below), never by touching these
+  files. `src/` and `ext/` are copied flat into one directory and frozen together for the refactored
   firmware build, which is why they live at the same directory depth in the repo.
 - **The UART message protocol (`src/asy_uart_comm.py`, promoted) has a second
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
@@ -472,7 +473,8 @@ information):
   short comment right next to the code it explains otherwise — never dropped outright. **Machine-read
   tag lines are data, not commentary, and are exempt**: `# @web`, `# @web-group`, `# @wiring`,
   `# @value-wiring`, `# @limits` and `# @requires` are buildgen's input, one line per field by
-  construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. **JSDoc
+  construction (SPECIFICATION.md Part L.6.4), and `# @tunable` (`// @tunable` in JS) is the
+  tunable register's (Part N) — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
@@ -752,10 +754,11 @@ information):
   value is not fixed and has moved with the suite's own shape** (8M → 32M when WP1+WP2 made the
   monolithic `test_sensortask.py` build all 6 devices' graphs in one process, then back down to
   today's 16M once that file was split per device — root-caused, not overridden);
-  SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here.
-  Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
-  flag is still in place — and don't raise it as a fix (agent, 2026-09-17); a per-file heap
-  override hiding a symptom is never used (owner, 2026-09-17, `1e2c001`, paraphrase).
+  SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here,
+  and Part N's `l1.unix_heapsize` row holds the value. Don't re-diagnose a flaky `MemoryError` in a
+  heavy test file as a new code bug before checking the flag is still in place — and don't raise it
+  as a fix (agent, 2026-09-17); a per-file heap override hiding a symptom is never used (owner,
+  2026-09-17, `1e2c001`, paraphrase).
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
   **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose
@@ -779,6 +782,8 @@ information):
   (`_free_port()` binds port 0), and the one fixed port a booted twin also wants - captive DNS on
   53 - is `SO_REUSEADDR` and degrades to "not connected" after its retries rather than failing the
   boot (`asy_udp_socket.py`), so the two tiers overlap safely.
+- **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,
+  2026-09-25: 'updated on changing parameters or whenever such parameter is added').
 - **`ruff format` is not used anywhere** (agent, 2026-07-13) — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview

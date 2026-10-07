@@ -207,8 +207,8 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 class _FastAsyncSleep:
-    # _switch_wlan_mode()'s happy path makes several real asyncio.sleep() calls (2s+1s+1s of settle
-    # time) - far too slow for a plain test. Same technique as the _FastAsyncSleep in the bmp3xx/
+    # _switch_wlan_mode()'s happy path makes several real asyncio.sleep() calls (_WLAN_DOWN_SETTLE_S +
+    # _WLAN_DEINIT_SETTLE_S + _WLAN_MODE_SETTLE_S) - far too slow for a plain test. Same technique as the _FastAsyncSleep in the bmp3xx/
     # sgp40 suites; asyncio.sleep is process-wide, so it is restored however the block exits.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
@@ -658,7 +658,7 @@ def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
 
 def test_flash_led_off_cancelled_mid_off_phase_still_leaves_the_led_on() -> None:
     # _flash_led_off()'s real contract is its `except asyncio.CancelledError: self._led_on(); break`
-    # handler: whichever phase of the ~2.9s-on/0.1s-off cycle is interrupted, cancellation must
+    # handler: whichever phase of the _LED_FLASH_ON_S/_LED_FLASH_OFF_S cycle is interrupted, cancellation must
     # leave the LED lit, since the cancelling callers want a steadily-on LED back.
 
     # The other ledflash tests never drive an actual toggle; this one runs the cycle into the off
@@ -1161,7 +1161,7 @@ def test_wlan_isconnected_returns_the_real_value_when_unlocked() -> None:
 # check against a synthetically pre-acquired lock, not against a genuinely suspended competing
 # task. This drives the real case.
 
-# An established connection's own outage-retry (_on_sta_disconnected()'s asyncio.sleep(60) branch)
+# An established connection's own outage-retry (_on_sta_disconnected()'s _STA_RETRY_AFTER_LOSS_S branch)
 # genuinely holds wifi_mode_lock while a REST-facing getter runs in a second concurrently-scheduled
 # coroutine - the shape GET /status or GET /networking sees during a live 60s retry window.
 # ---------------------------------------------------------------------------
@@ -1544,7 +1544,7 @@ def test_disconnect_sta_and_wait_returns_immediately_when_already_disconnected()
 
 def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     # A driver that never confirms disconnection (isconnected() always True) must not hang
-    # wlan_connect() forever: this runs the full _STA_DISCONNECT_WAIT_ITERS(20) * 0.5s bound in real
+    # wlan_connect() forever: this runs the full _STA_DISCONNECT_WAIT_ITERS * _STA_DISCONNECT_POLL_S bound in real
     # time, since const() values are compiled away and can't be fast-forwarded (Part E.5.1).
 
     # The fake WLAN's disconnect() normally clears _connected as a side effect; overridden here to
@@ -1643,7 +1643,7 @@ def test_on_sta_disconnected_registers_failure_when_never_connected() -> None:
 
 def test_on_sta_disconnected_retries_after_a_minute_when_previously_connected() -> None:
     # _PHASE_STA_ESTABLISHED takes the "retry a previously-successful connection in one minute"
-    # branch, which asyncio.sleep(60)s for real - proven by observing the task still suspended there
+    # branch, which sleeps _STA_RETRY_AFTER_LOSS_S for real - proven by observing the task still suspended there
     # rather than paying the wait out, the same approach as the repeated-success test above.
     client = make_client(conn_fail_to_hotspot=2)
     client._conn_phase = _PHASE_STA_ESTABLISHED
@@ -3112,7 +3112,7 @@ def test_wlan_connect_never_gives_up_over_a_stored_radio_value() -> None:
         await real_attempt()
 
     async def no_mode_switch() -> None:
-        client.reconn_wifi = False  # the real one's mode switch sleeps ~4s; not under test here
+        client.reconn_wifi = False  # the real one's mode switch sleeps its three settle waits; not under test here
 
     client._attempt_sta_connect = counted_attempt  # type: ignore[method-assign]
     client._handle_reconnect_trigger = no_mode_switch  # type: ignore[method-assign]

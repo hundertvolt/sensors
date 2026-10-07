@@ -175,10 +175,12 @@ def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> N
 # 2,000 B = the pre-branch design's own MEM_SIZE 8000 over max_connections 4. A relationship, not a
 # tuning target: raising the ceiling may not quietly make each connection's share of the send arena
 # smaller than the configuration this project already ran in the field.
+# @tunable lwip.mem_size_per_connection_floor = 2000
 MEM_SIZE_BYTES_PER_CONNECTION_FLOOR = 2000
 # PCBs past the ceiling: a closed connection's FIN_WAIT pcb outlives its slot (tcp_alloc() never
 # reclaims one at equal priority; modlwip aborts it after 10 s), as do arrivals not yet accepted or
 # refused. The pattern every limit ever measured on silicon ran at (Part H.7).
+# @tunable lwip.spare_tcp_pcbs = 3
 SPARE_TCP_PCBS = 3
 # PBUF_LINK_HLEN 14 + PBUF_IP_HLEN 40 + PBUF_TRANSPORT_HLEN 20 + PBUF_LINK_ENCAPSULATION_HLEN 0.
 # IP_HLEN is 40, not 20: pbuf.h picks it on LWIP_IPV6, which ports/rp2/lwip_inc/lwipopts.h enables.
@@ -349,6 +351,7 @@ _FLAGS_MAKE_KEYS = ("C_DEFINES", "C_INCLUDES", "C_FLAGS")
 _LWIP_PROBE_MARK = "LWIPPROBE"
 _MAX_SHIFT = 64
 _DEFAULT_COMPILER = "arm-none-eabi-gcc"
+# @tunable tool.preprocess_timeout_s = 120
 _PREPROCESS_TIMEOUT_S = 120
 
 

@@ -16,12 +16,14 @@ from unix_port_poll_prewarm import prewarm_poll_set
 
 _CONFIG_DIR = "digital_twin/config/"
 _ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
+# @tunable l2.twin_ready_poll_ms = 20
+_READY_POLL_MS = 20
 
 
 async def _wait_until_built(timeout_s: float = 10.0) -> None:
     async def poll() -> None:
         while sensortask_wozi.webserver is None:
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_READY_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
 

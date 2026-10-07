@@ -81,6 +81,7 @@ async def _count_rounds(wdt: "machine.WDT", idle_ms: int) -> int:
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     failures = []
     # Interleaved: a single ordered pass cannot separate a real effect from drift (Part E.7).

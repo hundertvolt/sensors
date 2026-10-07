@@ -16,6 +16,7 @@ _STATUS_RESERVED_MASK = 0xC8  # B7:B6 and B3 read zero on a working part (p12, T
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     # Constructs the PROTOCOL layer directly, never ISL29125_Reader: Part C.8's standing rule for a
     # concurrency script exercising persisted config, so nothing here touches the RP2040's flash.

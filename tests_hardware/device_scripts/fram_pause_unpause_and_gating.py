@@ -17,6 +17,7 @@ PATTERN_B = bytes((i * 11 + 29) % 256 for i in range(CHUNK_SIZE))  # distinct, s
 
 PAUSE_SEC = 2
 REARM_SEC = 6
+# @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
 failures: list[str] = []
 wdt: "machine.WDT | None" = None

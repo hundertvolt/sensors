@@ -29,7 +29,7 @@ lease and resumption procedure.
 | U5 | config objects and `max-args` | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U5_close.md` |
 | U6 | one-source website definitions | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U6_close.md`; evidence `audit/artefacts/evidence/U6_close/`, `U5_neopixel_wakeup_latency/` |
 | U7 | tier ladder and runner summary block | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U7_close.md`; evidence `audit/artefacts/evidence/U7_close/` |
-| U8 | `@tunable` scheme | not started | — |
+| U8 | `@tunable` scheme | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U8_close.md`; evidence `audit/artefacts/evidence/U8_close/` |
 | U8C | `@tunable` classification of tests | not started | — |
 | U8C2 | search gaps of the test-tier classification | not started | — |
 | U9 | LED pilot | not started | — |
@@ -211,6 +211,21 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U7 | E.6.6's SCD30 sentence names the interim row instead of "is no row" | the containment check needs a row for a test with no counterpart; the row lists the gap until the bench write arm lands |
 | U7 | `build_device_websites.sh` answers `--help`, refuses an unknown option and more than one argument | it built into a directory named after the option; not in the step's tool list |
 | U7 | The live commands name a twin's spawn error or early exit through `tests_js/_twin_start_failure.js` | the spawn error was swallowed and an early exit waited out the 20 s timeout with no cause |
+| U8 | A tag a lane placed on a real literal stays and its Part N row lists every tagged site, though the site's own step lands later (the device scripts' and harness's `wdt.timeout_ms`, the `l4.ceiling_*` instrument, `l4.reset_errors_timeout_s`, the heap test's `web.max_content_length` mirror) | the work order registers these values at U8 while their sites' steps sit in U20/U25/U26; a row with no tag fails the register check, and the later units collapse or move the sites as planned |
+| U8 | An ID never stands for several literals: the cross-browser smoke's and the live commands' poll steps stay untagged | one row holds one value; values unchanged |
+| U8 | `l0.mock_latency_*` rows are not written | M.WEB.040's Resolved line drops the mock-latency half |
+| U8 | The captive-DNS test constants are tagged now (step 106's Unit is U8) | lane C read them as a later stage's |
+| U8 | `system.reset_delay_s`'s test mirror is not a site | its only step replaces the mirror with a source read at U11 |
+| U8 | Fourteen `l2.*` waits and polls in the twin suite, `l0.request_timeout_ceiling_hammer_join_timeout_s` and the generated-boot constants are named by the agent | A.U8.20 and M.TSC.121 ask for one named constant per purpose without naming them |
+| U8 | `l2.wifi_scripted_failures` is tagged | the merged M.SCR.046 lists it; A.U8.20's older text called it an untagged mirror |
+| U8 | Tags sit on their own line everywhere, including where merged texts show a trailing tag | the check rejects trailing tags; one grammar |
+| U8 | U8C/U8C2 tags wait for their own steps | the work order puts them in those steps |
+| U8 | Speed-band test edges sit at 260 and 910 ms | `/proc/uptime` has 10 ms resolution and 0 ms counts as a failed probe |
+| U8 | Findings through the vendored Microdot stub got their ignores back, each with its reason and removal trigger, including one in `src/` (`_pieces_response`'s streamed body) | the stub types a response body as `str | bytes` while Microdot streams an iterator; never an edit to the stub |
+| U8 | B.15 names Microdot v2.7.0 as the version whose stub leaves `route`/`get`/`put` unannotated | U0 re-vendored v2.7.0 |
+| U8 | M.SPEC.135 (5)'s Part N citations are not written | the values it names are UART contract constants, never tagged |
+| U8 | Four `l4.*` rows cite the H.7.1 bench measurements as Basis, run counts unrecorded, re-measure owed | the code's own comments cite that measurement |
+| U8 | `fram.verify_present_lock_timeout_s` and the seconds-named IDs are U8-stage names | their end-state names arrive with later units |
 
 ## Parked deltas (OR2.c, OR106.a)
 

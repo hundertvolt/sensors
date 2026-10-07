@@ -4,6 +4,7 @@ and confirms no two software-counter-driven sensors coincide for any whole-secon
 
 import math
 
+# @tunable system.timer_base_period_ms = 1000
 _TIMER_BASE_PERIOD_MS = 1000  # system_service.py's own _TIMER_BASE_PERIOD
 
 

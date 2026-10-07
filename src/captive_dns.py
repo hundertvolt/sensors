@@ -35,9 +35,14 @@ _WRN_DNS_TEARDOWN = const(43)
 # Backoff for a persistently-failing recvfrom() that returns (None, None) without raising - e.g. a
 # bind() that never succeeded. This path once looped at zero delay, measured at ~5 warning lines a
 # second in a real run (Part C.9's cascading-recovery-storm convention).
+# @tunable dns_server.recv_backoff_initial_s = 0.5
 _RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
+# @tunable dns_server.recv_backoff_max_s = 5.0
 _RECV_FAIL_BACKOFF_MAX_S = const(5.0)
+# @tunable dns_server.recv_backoff_mult = 2
 _RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
+# @tunable dns_server.error_retry_wait_s = 3
+_ERROR_RETRY_WAIT_S = const(3)  # the serve loop's pause after an unexpected exception
 
 _IPV4_OCTETS = const(4)  # RFC 791 section 3.2 dotted-quad shape, used by _ipv4_to_int() below
 _IPV4_OCTET_MAX = const(255)
@@ -133,7 +138,7 @@ class DNSServer:
             except Exception as e:
                 # nothing supervises this task - never let an unexpected exception here kill it.
                 await self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
-                await asyncio.sleep(3)
+                await asyncio.sleep(_ERROR_RETRY_WAIT_S)
 
         try:
             disconnect_ok = await self.udps.disconnect()

@@ -1233,6 +1233,7 @@ def _check_the_crc_appears_on_the_wire_big_endian_after_the_payload(crc: "CrcMak
 # CLAUDE.md's standing rule for a stress test: it must pass under gc.threshold(-1), MicroPython's
 # own default, BEFORE the project's chosen 32768 - one that only passes with proactive collection
 # hides the defect the rule exists to surface. gc.threshold() is global, so each body restores it.
+# @tunable gc.threshold_bytes = 32768
 _GC_THRESHOLDS = (("gcdefault", -1), ("gc32768", 32768))
 
 

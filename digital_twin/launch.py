@@ -39,8 +39,11 @@ _WIFI_OUTCOME_MAP = {
 
 _SSID = "digital-twin-ssid"
 _PASSWORD = "digital-twin-password"
+# @tunable l2.twin_wdt_feed_interval_s = 1.0
 _WDT_FEED_INTERVAL_S = 1.0  # comfortably under the WDT's own 8000ms timeout
+# @tunable l2.launch_sensor_poll_interval_s = 2.0
 _SENSOR_POLL_INTERVAL_S = 2.0
+# @tunable l2.launch_wifi_poll_interval_s = 0.1
 _WIFI_POLL_INTERVAL_S = 0.1
 
 
@@ -365,6 +368,7 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
         f"duration={config.duration!r} faults={injections.faults!r} hangs={injections.hangs!r} wifi_outcomes={injections.wifi_outcomes!r}",
     )
 
+    # @tunable wdt.timeout_ms = 8000
     watchdog = WDT(timeout=8000)
     i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
     i2c1 = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)

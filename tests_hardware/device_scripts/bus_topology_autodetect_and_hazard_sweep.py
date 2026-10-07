@@ -141,6 +141,7 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     findings: list[str] = []
     all_discovered: dict[int, dict[int, str]] = {}

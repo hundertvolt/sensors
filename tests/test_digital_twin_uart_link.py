@@ -487,6 +487,7 @@ def test_hammering_the_link_beside_the_graph_holds_at_the_gc_default() -> None:
 
 
 def test_hammering_the_link_beside_the_graph_holds_at_the_chosen_gc_threshold() -> None:
+    # @tunable gc.threshold_bytes = 32768
     _hammer_with_the_graph_running(32768)
 
 

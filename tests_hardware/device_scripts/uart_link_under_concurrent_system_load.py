@@ -119,6 +119,7 @@ async def _heap_floor() -> int:
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     failures = []
     load = Load()

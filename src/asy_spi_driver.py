@@ -17,6 +17,7 @@ from base_classes import Lockable
 # Blocking CS settle. Both parts specify tCSU/tCSH >= 10 ns and tD >= 40 ns (MB85RS2MTA) / 60 ns
 # (MB85RS64V), so 2 us is orders of magnitude clear of them; rp2's sleep_us() busy-waits on
 # time_us_64(), where sleep_us(1) only promises an elapsed time in (0, 1] us and 2 promises >= 1.
+# @tunable spi.cs_settle_us = 2
 _CS_SETTLE_US = const(2)
 
 try:

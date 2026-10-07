@@ -221,7 +221,7 @@ def test_main_runs_end_to_end_and_returns_a_summary() -> None:
     summary = run(asyncio.wait_for(main(config), 10))
     assert summary["readings"] >= 1  # at least one real bus-level read happened
     assert summary["wifi_status"] is not None
-    assert summary["would_have_triggered_count"] == 0  # only 0.5s, well under the 8000ms WDT timeout
+    assert summary["would_have_triggered_count"] == 0  # only 0.5s, well under wdt.timeout_ms (8000 ms)
 
 
 def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
@@ -261,7 +261,7 @@ def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driv
     config = LaunchConfig(_IN_MEMORY, Injections(55, [], [], []), no_wdt_feed=False, duration=4.5)
     summary = run(asyncio.wait_for(main(config), 15))
     assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
-    assert summary["would_have_triggered_count"] == 0  # fed for real, well under the 8000ms timeout
+    assert summary["would_have_triggered_count"] == 0  # fed for real, well under wdt.timeout_ms (8000 ms)
 
 
 # ---------------------------------------------------------------------------

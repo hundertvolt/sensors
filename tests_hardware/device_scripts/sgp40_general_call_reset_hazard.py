@@ -40,6 +40,7 @@ def _failures(scd_errors: "list[str]", isl_errors: "list[str]", sgp_errors: "lis
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)

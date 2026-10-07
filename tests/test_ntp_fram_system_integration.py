@@ -302,6 +302,12 @@ def test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock() 
     assert age is not None and age >= 0  # age.is computed via a second real ntp.ntp_issynced() call
 
 
+# @tunable l1.fram_lock_fetch_timeout_ms = 2000
+_LOCK_HOLD_FETCH_TIMEOUT_MS = 2000
+# @tunable l1.fram_write_prompt_s = 1.0
+_WRITE_PROMPT_S = 1.0
+
+
 def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync() -> None:
     # Proves the "no cross-lock contention" assumption asy_fram_manager.py's comments rely on:
     # ntp_issynced() only touches SensorReader's private _datalock, never conn's or ntp's shared
@@ -312,7 +318,7 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
     conn = make_conn()
     connect_wlan(conn)
     unreachable_addr = make_addr()  # nobody listens here
-    ntp = make_ntp(conn, unreachable_addr[0], ntp_fetch_timeout_ms=2000)  # long enough to observe the lock held
+    ntp = make_ntp(conn, unreachable_addr[0], ntp_fetch_timeout_ms=_LOCK_HOLD_FETCH_TIMEOUT_MS)  # long enough to observe the lock held
     manager, _chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
@@ -328,7 +334,7 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
             # 1.0s, not a razor-thin 0.2s: still a fraction of ntp_fetch_timeout_ms=2000 above, the "stuck
             # behind the lock" case this guards against, but with margin enough that scheduling jitter
             # cannot produce a false failure. It checks "did it complete promptly", not an exact latency.
-            _ntp_synced, _utc, write_ok = await asyncio.wait_for(chunk.write(b"12345678"), 1.0)
+            _ntp_synced, _utc, write_ok = await asyncio.wait_for(chunk.write(b"12345678"), _WRITE_PROMPT_S)
         except asyncio.TimeoutError:
             await _cancel(task)
             return False  # would mean ntp_issynced() got stuck behind the shared lock - a real bug

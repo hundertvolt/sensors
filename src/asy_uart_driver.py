@@ -30,11 +30,13 @@ _LF = const(0x0A)  # b"\n"[0] - readline_until_complete's own-line terminator
 # How long cancel_read_timeout() waits for its request to be acknowledged before reporting the
 # un-acknowledged case instead of waiting on. A healthy holder acknowledges within one poll round;
 # only a genuinely wedged one reaches this bound, and it is what makes the call provably terminating.
+# @tunable uart.cancel_ack_timeout_ms = 1000
 _CANCEL_ACK_TIMEOUT_MS = const(1000)
 
 # How many bytes _read_delimited() consumes between yields. It must read one byte per call (a wider
 # read would swallow the next frame's head), so yielding per byte would cost a task switch every
 # ~87us of wire time at 115200 baud; 16 bounds the loop's hold at ~1.4ms instead.
+# @tunable uart.delimited_yield_bytes = 16
 _DELIMITED_YIELD_BYTES = const(16)
 
 
@@ -48,11 +50,14 @@ class UART(Lockable):
         bits: int = 8,
         parity: int | None = None,
         stop: int = 1,
+        # @tunable uart.rxbuf_default = 256
         rxbuf: int = 256,
+        # @tunable uart.txbuf_default = 256
         txbuf: int = 256,
         timeout: int = 0,
         timeout_char: int = 1,
         invert: int = 0,
+        # @tunable uart.poll_wait_ms_default = 20
         poll_wait_ms: int = 20,
         poll_idle_ms: int | None = None,
         crc: CRC_Base | None = None,
@@ -189,7 +194,9 @@ class UART(Lockable):
         bits: int = 8,
         parity: int | None = None,
         stop: int = 1,
+        # @tunable uart.rxbuf_default = 256
         rxbuf: int = 256,
+        # @tunable uart.txbuf_default = 256
         txbuf: int = 256,
         timeout: int = 0,
         timeout_char: int = 1,

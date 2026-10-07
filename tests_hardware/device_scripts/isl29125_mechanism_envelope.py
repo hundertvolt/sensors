@@ -198,6 +198,7 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     pixel = NeopixelDriver(18)

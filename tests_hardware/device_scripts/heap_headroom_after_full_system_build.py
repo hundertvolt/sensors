@@ -114,6 +114,7 @@ async def _main() -> None:
     # Control first at the unchanged threshold, so the next line's difference cannot be confused
     # with a difference between two probe runs at the same position (MEASUREMENTS M2.2).
     _report_checked("after_build_system_control")
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     print(f"GC_THRESHOLD={gc.threshold()}")
     _report_checked("after_build_system_production_threshold")

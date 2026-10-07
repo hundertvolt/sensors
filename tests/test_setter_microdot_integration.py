@@ -22,11 +22,10 @@ from collections import namedtuple
 # reaches the same real ext/microdot.py without touching any of that.
 sys.path.insert(0, "ext")
 
-# ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
-# as src/asy_webserver_service.py's own import of this module.
+# microdot is typed via the vendored upstream stub (ext/typings/microdot/).
 from _error_codes import code
 from _tmp_scratch import TmpScratch
-from microdot import Microdot, Request  # type: ignore[import-not-found]
+from microdot import Microdot, Request
 
 import api_response as ar
 import config_manager as cm
@@ -329,8 +328,8 @@ def test_real_microdot_setter_end_to_end_garbage_body() -> None:
     client = make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(app, "PUT", "/net/cmd", {"cmd": "setNetwork"})
-    req._body = b"{not valid json"  # force a real malformed body past Request's own parsing
-    req.content_length = len(req._body)
+    req._body = b"{not valid json"  # type: ignore[attr-defined]  # force a real malformed body past Request's own parsing; the upstream stub omits _body - removal trigger: SPECIFICATION.md B.15
+    req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200  # our own precise 200+ERR-envelope reply, not Microdot's bare 500
     body = json.loads(res.body)

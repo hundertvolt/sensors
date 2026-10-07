@@ -5,10 +5,8 @@ import asyncio
 import json
 from collections import namedtuple
 
-# Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
-# real device firmware freezes ext/ and src/ flat together, so this resolves fine at runtime; see
-# CLAUDE.md's vendoring hard rule.
-from microdot import Request, Response, abort, redirect, send_file  # type: ignore[import-not-found]
+# Typed via the vendored upstream stub (ext/typings/microdot/); firmware freezes ext/ and src/ flat together.
+from microdot import Request, Response, abort, redirect, send_file
 from micropython import const
 
 import api_response as ar
@@ -66,9 +64,8 @@ if TYPE_CHECKING:
     # of them, and passes url_args through as keyword arguments only some routes declare.
 
     class _MicrodotApp(Protocol):
-        # Structural stand-in for the ext/microdot.py Microdot instance routes are registered onto -
-        # not on this project's mypy search path either (see the microdot import comment above, and
-        # api_response.py's _RequestLike; SPECIFICATION.md Part C.10's typing convention).
+        # The subset of the Microdot instance routes are registered onto; the vendored stub
+        # (ext/typings/microdot/) leaves get/put/route unannotated (v2.7.0).
         def get(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
         def put(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
         def after_request(self, f: "RouteHandler") -> "RouteHandler": ...
@@ -113,14 +110,19 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
+# @tunable web.max_pending_fragments = 16
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
 # Shipped defaults: buildgen reads each from here and passes it in ServingLimits/StaticSite.
+# @tunable web.max_content_length = 2048
 _DEFAULT_MAX_CONTENT_LENGTH = const(2048)  # 1.56x the largest schema-permitted body, ~9x real traffic (I.6)
+# @tunable web.chunk_bytes = 256
 _DEFAULT_CHUNK_BYTES = const(256)  # chunk_bytes' default: one bound for JSON pieces and static reads,
 # sized to the holes a fragmented heap still has at gc.threshold(-1), not to its one large run -
 # under load that run is gone and ~870 B pieces fail with ~100 KB free (SPECIFICATION.md Part I.3).
 _DEFAULT_MAX_CONNECTIONS = const(6)  # three below the firmware's MEMP_NUM_TCP_PCB (toolchain/versions.toml), Part H.7
+# @tunable web.per_call_timeout_s = 5.0
 _DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)
+# @tunable web.outer_cap_s = 15.0
 _DEFAULT_OUTER_CAP_S = const(15.0)
 _DEFAULT_STATIC_INDEX = const("index.html")
 
@@ -214,7 +216,9 @@ def _pieces_response(pieces: "list[str]") -> "Response":
     # Never an `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
     encoded = [p.encode() for p in pieces]
     return Response(
-        iter(encoded),
+        # The vendored stub types body as str | bytes (microdot.pyi:165), yet Microdot streams a sync
+        # iterator (ext/microdot.py:734). Remove the ignore when the stub accepts one (warn_unused_ignores).
+        iter(encoded),  # type: ignore[arg-type]
         headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in encoded))},
     )
 

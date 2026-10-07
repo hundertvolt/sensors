@@ -53,6 +53,9 @@ HELD_REQUEST_LINE = b"HOLD / HTTP/1.0\r\n"
 HELD_PAD_LINE = b"X-Pad: y\r\n"  # one header line, which resets the server's per-call read timeout
 
 
+# @tunable l4.ceiling_probe_limit = 40
+# @tunable l4.ceiling_settle_s = 1.0
+# @tunable l4.ceiling_dwell_s = 0.3
 def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
     """The ceiling the BOARD actually holds, found by holding connections open one at a time until
     one is refused. The only figure that is silicon's own rather than the tree's, and the one a
@@ -110,6 +113,7 @@ def _close_all(socks: list[socket.socket]) -> None:
         sock.close()
 
 
+# @tunable l4.ceiling_probe_connect_timeout_s = 2.0
 def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> socket.socket | None:
     """A connected socket, or None when the connect itself fails - its own timeout, apart from the
     probe's read timeout, so a slow handshake is never mistaken for a held-open connection."""
@@ -135,6 +139,9 @@ def _still_open(sock: socket.socket) -> bool:
     return False  # data or EOF: answered or refused
 
 
+# @tunable l4.ceiling_drain_timeout_s = 10.0
+# @tunable l4.ceiling_drain_release_s = 1.0
+# @tunable l4.ceiling_drain_hold_s = 0.3
 def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: float = 10.0, release_s: float = 1.0, hold_s: float = 0.3) -> None:
     """Block until `admitted` connections are held at once again - the whole ceiling, not one slot -
     then give that check's own connections `release_s` to free theirs: a slot outlives its client's
@@ -441,6 +448,7 @@ class Board:
         """Isolated-driver mode: `mpremote run <script>` against the real frozen src/ drivers,
         re-arming the watchdog first, never leaving main.py running (tests_hardware/README.md).
         allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured."""
+        # @tunable wdt.timeout_ms = 8000
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")
@@ -455,6 +463,7 @@ class Board:
         """Like run_isolated(), but for a script that deliberately triggers a real machine.reset()
         mid-run - the device disappearing is the expected, successful outcome, not a failure.
         Re-arms the watchdog first; caller must wait_until(is_device_present) then issue a fresh call."""
+        # @tunable wdt.timeout_ms = 8000
         self._mpremote("exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path), timeout_s=timeout_s)
         # Deliberately ignore the return code/output - see this method's own docstring.
 

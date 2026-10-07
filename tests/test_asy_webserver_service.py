@@ -15,7 +15,7 @@ sys.path.insert(0, "ext")
 from _error_codes import code
 from _shared_rest_roundtrip import drain_json_response_body
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
-from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
+from microdot import Microdot, Request, Response
 
 import config_manager as cm
 from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
@@ -27,7 +27,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Coroutine, Iterable
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -260,7 +260,9 @@ def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # An
     app = Microdot()
     routes = RouteSources(*(kwargs.pop(f, _ROUTE_DEFAULTS.get(f)) for f in _ROUTE_FIELDS))
     serving = ServingLimits(
+        # @tunable web.max_content_length = 2048
         kwargs.pop("max_content_length", 2048),  # tracks the shipped default, so these tests exercise it
+        # @tunable web.chunk_bytes = 256
         kwargs.pop("chunk_bytes", 256),
         kwargs.pop("max_connections", 3),
         kwargs.pop("backlog", None),
@@ -273,7 +275,7 @@ def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # An
     static = None if mount is None else StaticSite(mount, index, hotspot)
     log = LogConfig(kwargs.pop("fram", None), kwargs.pop("history_length", 10), kwargs.pop("debug", None))
     assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
-    service = WebserverService(app, routes, serving, static, log)
+    service = WebserverService(app, routes, serving, static, log)  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
     return service, app
 
 
@@ -392,8 +394,8 @@ def test_sensors_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> N
     scd = _FakeModule("SCD30")
     _service, app = _make_service(sensors=[scd])
     req = _make_request(app, "PUT", "/sensors", {})
-    req._body = b"{not valid json"
-    req.content_length = len(req._body)
+    req._body = b"{not valid json"  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
+    req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
     assert json.loads(res.body) == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
@@ -875,8 +877,8 @@ def test_b_wrong_top_level_json_type_is_a_clean_rejection_on_every_settings_endp
         _service, app, _mod = _settings_service(endpoint)
         for bad_body in ([1, 2, 3], "a string", 42, None):
             req = _make_request(app, "PUT", "/" + endpoint, None)
-            req._body = json.dumps(bad_body).encode()
-            req.content_length = len(req._body)
+            req._body = json.dumps(bad_body).encode()  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
+            req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
             res = run(app.dispatch_request(req))
             assert res.status_code == 200, (endpoint, bad_body)  # our own precise ERR envelope, not a raised exception
             assert json.loads(res.body)["res"] == "ERR", (endpoint, bad_body)
@@ -895,8 +897,8 @@ def test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path() 
     for endpoint in _SETTINGS_ENDPOINTS:
         _service, app, _mod = _settings_service(endpoint)
         req = _make_request(app, "PUT", "/" + endpoint, {})
-        req._body = b"{not valid json"
-        req.content_length = len(req._body)
+        req._body = b"{not valid json"  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
+        req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
         res = run(app.dispatch_request(req))
         assert res.status_code == 200, endpoint
         assert json.loads(res.body) == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}, endpoint
@@ -907,8 +909,8 @@ def test_b_duplicate_keys_in_raw_json_text_last_wins() -> None:
     # object literal - confirmed directly against the pinned interpreter, not assumed.
     _service, app, mod = _settings_service("networking")
     req = _make_request(app, "PUT", "/networking", {})
-    req._body = b'{"Interval": 1, "Interval": 10}'
-    req.content_length = len(req._body)
+    req._body = b'{"Interval": 1, "Interval": 10}'  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
+    req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
     assert run(mod.get_dict_cfg())["Interval"] == 10
@@ -927,8 +929,8 @@ def test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_faul
     # this - measured false against the pinned interpreter, which parses depth 3,000 fine. What the
     # test really pins is the non-dict top level taking _body_as_dict()'s clean ERR path.
     req = _make_request(app, "PUT", "/system", {})
-    req._body = b"[" * depth + b"1" + b"]" * depth
-    req.content_length = len(req._body)
+    req._body = b"[" * depth + b"1" + b"]" * depth  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
+    req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200  # our own ERR envelope, never a raised exception escaping to Microdot's bare 500
     assert json.loads(res.body)["res"] == "ERR"
@@ -941,7 +943,7 @@ def test_b_body_at_and_over_max_content_length_boundary() -> None:
     _service, app, _mod = _settings_service("networking")
     limit = Request.max_content_length
     under = _make_request(app, "PUT", "/networking", {"Interval": 5})
-    assert len(under.body) < limit
+    assert len(under.body) < limit  # type: ignore[arg-type]  # the stub's Request.body is bytes | None; this request carries one - removal trigger: SPECIFICATION.md B.15
     res_under = run(app.dispatch_request(under))
     assert res_under.status_code == 200
 
@@ -1089,8 +1091,8 @@ def test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> 
     module = _FakeModule("SGP40")
     _service, app = _make_service(error_sources=[module])
     req = _make_request(app, "PUT", "/status", {})
-    req._body = b"{not valid json"
-    req.content_length = len(req._body)
+    req._body = b"{not valid json"  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
+    req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
     assert json.loads(res.body) == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
@@ -1284,6 +1286,10 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
 # F.2 - mid-request, headers/request-line
 
 
+# @tunable l1.serve_backstop_cap_mult = 20
+_SERVE_BACKSTOP_CAP_MULT = 20  # run_timed()'s backstop over the outer cap under test
+
+
 def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout() -> None:
     # Each header LINE arrives as one atomic chunk, paced so no single readline() approaches the
     # per-call timeout - the outer per-connection wall-clock cap is what must bound the connection
@@ -1298,7 +1304,7 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
     service, _app = _make_service(per_call_timeout_s=per_call, outer_cap_s=outer_cap)
     reader = _ScriptedReader(chunks)
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=outer_cap * 20)
+    run_timed(service._serve(reader, writer), timeout_s=outer_cap * _SERVE_BACKSTOP_CAP_MULT)
     assert run(service._open_conns.get_value()) == 0
     assert writer.written == b""  # reclaimed before a response could ever be produced
 
@@ -1375,6 +1381,7 @@ class _BodySizeReader(_ScriptedReader):
         return max(self.body_reads) if self.body_reads else 0
 
 
+# @tunable web.max_content_length = 2048
 _BODY_CAP = 2048  # what _make_service() sets, matching the shipped default
 
 
@@ -1497,6 +1504,7 @@ def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> 
 
 def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
     orig_threshold = gc.threshold()
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)  # and again at the shipped threshold, as H.3 does for its own pair
     try:
         service, _app, mod = _body_service_with_connections(64)
@@ -1775,7 +1783,7 @@ def test_serve_absorbs_an_eoferror_raised_directly_by_handle_request() -> None:
     async def _raise_eof(_reader: object, _writer: object) -> None:
         raise EOFError
 
-    app.handle_request = _raise_eof
+    app.handle_request = _raise_eof  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert run(service._open_conns.get_value()) == 0
 
@@ -1788,7 +1796,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
     async def _raise_os(_reader: object, _writer: object) -> None:
         raise OSError("simulated socket failure")
 
-    app.handle_request = _raise_os
+    app.handle_request = _raise_os  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert run(service._open_conns.get_value()) == 0
 
@@ -1799,7 +1807,7 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
     async def _raise_boom(_reader: object, _writer: object) -> None:
         raise RuntimeError("simulated unexpected bug")
 
-    app.handle_request = _raise_boom
+    app.handle_request = _raise_boom  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert run(service._open_conns.get_value()) == 0
     log = run(service.get_error_counter())
@@ -1893,6 +1901,10 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
 # F.9 - supervisor integration / soak (capstone)
 
 
+# @tunable l1.webserver_leak_scenario_timeout_s = 60.0
+_LEAK_SCENARIO_TIMEOUT_S = 60.0
+
+
 def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat() -> None:
     # The real 100+-cycle soak test this service's finish criteria calls for
     # ("gc.mem_free() flat") - not just the connection-counter invariant, mixing wedged and
@@ -1922,7 +1934,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
         # (not scaled per-cycle) catches that while tolerating ordinary allocator fragmentation.
         assert after >= baseline - 4096, f"gc.mem_free() dropped from {baseline} to {after} over 120 cycles"
 
-    run_timed(scenario(), timeout_s=60.0)
+    run_timed(scenario(), timeout_s=_LEAK_SCENARIO_TIMEOUT_S)
 
 
 # ---------------------------------------------------------------------------
@@ -2058,6 +2070,7 @@ def test_g_static_index_filename_is_configurable() -> None:
 # mount and a stub sensor whose sizes span many far-below-chunk objects, every edge of the 256 B
 # chunk, and objects that take many chunks - read back write by write, as a socket would see them.
 
+# @tunable web.chunk_bytes = 256
 _WIRE_CHUNK_BYTES = 256  # WebserverService's chunk_bytes default, as observed from outside
 _TINY_SIZES = tuple(range(64))
 _EDGE_SIZES = (127, 128, 129, 255, 256, 257, 511, 512, 513, 767, 768, 769)
@@ -2574,6 +2587,7 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
+# @tunable web.chunk_bytes = 256
 _HAMMER_PIECE_BUDGET = 256  # the firmware's chunk_bytes default, restated: a const() is not a
 # module attribute, so it cannot be imported. No margin - pieces are bounded by the cap itself.
 
@@ -2606,6 +2620,7 @@ def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") 
     return {name: {"ErrCount": count, "ErrNum": nums, "ErrType": types}}
 
 
+# @tunable web.chunk_bytes = 256
 def _written(value: object, max_bytes: int = 256) -> "list[str]":
     pieces: list[str] = []
     writer = _PieceWriter(pieces, max_bytes=max_bytes)
@@ -2742,6 +2757,7 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset
 
 def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
     orig_threshold = gc.threshold()
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)  # the project owner's chosen value, see this section's own comment above
     try:
         _, app = _make_hammer_service()
@@ -2768,7 +2784,7 @@ def test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path() -
     # holding one buffer sized to the full aggregate (see _stream_dict_response()'s own comment).
     result = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
     streamed = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
-    plain = Response(result)  # Microdot's own dict path - one json.dumps() over the whole thing
+    plain = Response(result)  # type: ignore[arg-type]  # Microdot's own dict path (one json.dumps() over the whole thing); the stub types the body str | bytes - removal trigger: SPECIFICATION.md B.15
     assert json.loads(status_body(streamed)) == json.loads(plain.body)
 
 
@@ -2785,7 +2801,7 @@ def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing
     result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
     # chunk_bytes if joined into one piece
     res = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
-    chunks = list(res.body)
+    chunks: list[bytes | str] = list(res.body)  # type: ignore[arg-type]  # a streamed body yields pieces; the stub types Response.body as bytes - removal trigger: SPECIFICATION.md B.15
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
     assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
     assert len(chunks) > 1  # proof it really did split into multiple pieces
@@ -2810,7 +2826,7 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
     body = json.loads(status_body(run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))))
     assert body == result
     assert isinstance(body["ISL29125"]["RGB"], dict)  # a dict, not the string '{"R": 0.1234, ...}'
-    assert body == json.loads(Response(result).body)  # byte-for-byte Microdot's own dict path
+    assert body == json.loads(Response(result).body)  # type: ignore[arg-type]  # byte-for-byte Microdot's own dict path; the stub types the body str | bytes - removal trigger: SPECIFICATION.md B.15
 
 
 def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated() -> None:
@@ -2828,7 +2844,7 @@ def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
 
     # res.body must be a real streamed iterator, never a plain str/bytes, and every piece it yields
     # must stay under the same per-piece budget _stream_dict_response() itself enforces.
-    body = res.body
+    body: Iterable[bytes | str] = res.body  # type: ignore[assignment]  # a streamed body yields pieces; the stub types Response.body as bytes - removal trigger: SPECIFICATION.md B.15
     assert not isinstance(body, (str, bytes)), f"{path}: response body is not a streamed iterator (regressed to a single json.dumps() aggregate)"
     chunks = []
     for chunk in body:
@@ -2873,6 +2889,7 @@ def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold
 
 def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
     orig_threshold = gc.threshold()
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)  # the project owner's chosen value, see H.3's own comment above
     try:
         _, app = _make_sensor_hammer_service()
@@ -2893,6 +2910,7 @@ def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_gc_threshold_unse
 
 def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
     orig_threshold = gc.threshold()
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)
     try:
         _, app = _make_sensor_hammer_service()
@@ -2942,6 +2960,7 @@ def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_gc_threshold_
 
 
 def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    # @tunable gc.threshold_bytes = 32768
     _run_settings_hammer("networking", "/networking", 32768)
 
 
@@ -2950,6 +2969,7 @@ def test_i2b_hammer_concurrent_system_requests_stay_valid_with_gc_threshold_unse
 
 
 def test_i2b_hammer_concurrent_system_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    # @tunable gc.threshold_bytes = 32768
     _run_settings_hammer("system", "/system", 32768)
 
 
@@ -2958,6 +2978,7 @@ def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_gc_threshol
 
 
 def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    # @tunable gc.threshold_bytes = 32768
     _run_settings_hammer("notification", "/notification", 32768)
 
 
@@ -3016,6 +3037,7 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_gc_threshold
 
 def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_gc_threshold() -> None:
     orig_threshold = gc.threshold()
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)
     try:
         _, app = _make_combined_hammer_service()
@@ -3066,6 +3088,7 @@ def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_writ
 
 def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold() -> None:
     orig_threshold = gc.threshold()
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)
     try:
         _, app = _make_write_hammer_service()
@@ -3165,7 +3188,7 @@ def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slo
     async def _hang(_reader: object, _writer: object) -> None:
         await asyncio.Event().wait()
 
-    app.handle_request = _hang
+    app.handle_request = _hang  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
     writer = _ScriptedWriter()
 
     async def scenario() -> bool:

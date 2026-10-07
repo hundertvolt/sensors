@@ -32,6 +32,7 @@ export default defineConfig({
         reporters: ["default", "./tests_js/_summary_reporter.js"],
         // Backstop, not a fix for a known hang (CLAUDE.md "Code quality tooling": hanging tests
         // are never allowed); covers the longest explicit wait (5000ms, render.test.js) with margin.
+        // @tunable l0.vitest_test_timeout_ms = 20000
         testTimeout: 20000,
         coverage: {
             // A `coverage/` directory at the repo root is importable as a namespace package and

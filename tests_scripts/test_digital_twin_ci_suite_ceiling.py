@@ -14,6 +14,8 @@ import pytest
 from buildgen.validate import device_max_connections
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+# @tunable l0.ci_suite_ceiling_get_timeout_s = 5.0
+_GET_TIMEOUT_S = 5.0
 
 
 class _JsonHandler(BaseHTTPRequestHandler):
@@ -102,13 +104,13 @@ def test_the_ceiling_is_buildgen_s_own_value(ci_suite: ModuleType) -> None:
 
 @pytest.mark.usefixtures("json_server")
 def test_concurrent_get_returns_status_and_parsed_body_for_every_request(ci_suite: ModuleType) -> None:
-    results = ci_suite._concurrent_get(["/status", "/sensors", "/system"], timeout=5.0)
+    results = ci_suite._concurrent_get(["/status", "/sensors", "/system"], timeout=_GET_TIMEOUT_S)
     assert results == [(200, {"ok": True})] * 3
 
 
 @pytest.mark.usefixtures("hang_up_server")
 def test_concurrent_get_records_a_refused_request_as_its_error_repr(ci_suite: ModuleType) -> None:
-    results = ci_suite._concurrent_get(["/status", "/sensors"], timeout=5.0)
+    results = ci_suite._concurrent_get(["/status", "/sensors"], timeout=_GET_TIMEOUT_S)
     assert all(isinstance(r, str) for r in results), results
     assert all("RemoteDisconnected" in r for r in results), results
 

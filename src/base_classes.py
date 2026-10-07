@@ -180,6 +180,7 @@ class SensorReader:
         self,
         init_data: "NamedTuple",
         name: str,
+        # @tunable module.max_error = 5
         max_module_error: int = 5,
         name_ext: str = "",
         log: LogConfig = DEFAULT_LOG,
@@ -399,6 +400,7 @@ class SensorReaderConfig(SensorReader):
         init_data: "NamedTuple",
         name: str,
         default_vals: "ConfigSchema",
+        # @tunable module.max_error = 5
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",

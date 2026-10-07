@@ -2,13 +2,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 import { renderSection } from "../js/render.js";
 
+// @tunable l0.render_wait_timeout_ms = 2000
+const WAIT_TIMEOUT_MS = 2000;
+// @tunable l0.render_poll_ms = 10
+const WAIT_POLL_MS = 10;
+// @tunable l0.render_banner_wait_ms = 5000
+const BANNER_WAIT_MS = 5000;
+
 // Polls `check` instead of a fixed sleep - the mock server's fetch has randomized latency
 // (js/mock-server.js) and some flows chain two calls, so a fixed wait would be flaky or slow.
 /**
  * @param {() => unknown} check
  * @param {number} [timeoutMs]
  */
-async function waitFor(check, timeoutMs = 2000) {
+async function waitFor(check, timeoutMs = WAIT_TIMEOUT_MS) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         if (check()) {
@@ -17,7 +24,7 @@ async function waitFor(check, timeoutMs = 2000) {
         // Intentionally sequential: each retry must wait out the previous delay before rechecking.
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, WAIT_POLL_MS);
         });
     }
     throw new Error("waitFor timed out");
@@ -681,7 +688,7 @@ describe("renderSection", () => {
         // Stale data from before the failure is still on screen, not wiped out.
         expect(main.querySelector('[data-field-key="CO2"]')).not.toBeNull();
 
-        await waitFor(() => banner.classList.contains("hidden"), 5000);
+        await waitFor(() => banner.classList.contains("hidden"), BANNER_WAIT_MS);
     });
 
     it("shows a visible error banner when a settings section's one-shot GET fails", async () => {

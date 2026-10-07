@@ -69,6 +69,7 @@ _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _OPTIONAL_DEVICE_INT_FIELDS = ("max_connections", "backlog", "ntp_retry_s", "ntp_retry_max_s")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | frozenset(_OPTIONAL_DEVICE_INT_FIELDS) | {"wiring"}
 _MAX_CONNECTIONS_FLOOR = 1  # a webserver admitting no connection serves nothing
+# @tunable ntp.check_interval_s = 10
 _NTP_CHECK_TICK_S = 10  # asy_ntp_client._NTP_CHECK_INTERV: a shorter retry interval cannot be honoured
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair

@@ -30,8 +30,10 @@ if TYPE_CHECKING:
 # measures. The heap size is deliberately NOT calibrated to a fill fraction: every bound below is
 # an absolute offset from the seam, and those proved heap-size independent at 8M and 16M.
 _MICROPYPATH = "build/generated_src:src:tests:frozen_modules:.frozen"
+# @tunable l1.unix_heapsize = 16M
 _HEAPSIZE = "16M"
 _PROBE = "tests/_boot_contiguity_probe.py"
+# @tunable l0.boot_contiguity_probe_timeout_s = 120
 _PROBE_TIMEOUT_S = 120
 
 _ARM_LIVE = "collects"
@@ -69,16 +71,20 @@ _BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 356,576 (1.36x); best suppress
 # device, 703 (wozi) and 1,510 (dev) suppressed. A band near the suppressed reach counts only its edge; the
 # slack is for one future large allocation that genuinely cannot fit a low hole, not for a drift in placement.
 _HIGH_BAND = 32 * 1024
+# @tunable l0.boot_contiguity_high_band_blocks_max = 32
 _HIGH_BAND_BLOCKS_MAX = 32
 
 # How much deeper the live arm must place than the suppressed one. A ratio between the two arms of
 # the same run, so it needs no absolute bound and no unit - the strictest thing this file asserts.
 # Measured: batch depth 2.36x (wozi) and 4.64x (dev); cumulative reach 12.96x and 13.93x.
+# @tunable l0.boot_contiguity_arm_depth_ratio_min = 1.5
 _ARM_DEPTH_RATIO_MIN = 1.5
+# @tunable l0.boot_contiguity_arm_reach_ratio_min = 4.0
 _ARM_REACH_RATIO_MIN = 4.0
 
 # Retention must be arm-independent: the collects change WHERE the next survivor is born, never how
 # much survives (MEASUREMENTS archive 7A.1's finding, which reproduces here at 0.05%). 1% is 19x that.
+# @tunable l0.boot_contiguity_retention_tolerance = 0.01
 _RETENTION_TOLERANCE = 0.01
 
 # The allocation-failure markers every gate shares, from the hardware tier's harness

@@ -22,6 +22,7 @@ _SETTLE_S = 12.0
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)

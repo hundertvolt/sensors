@@ -64,7 +64,7 @@ async def _settle(n: int = 5) -> None:
 
 
 class _FastAsyncSleep:
-    # I2CDevice.setup()'s _probe_for_device() makes two real 0.1s asyncio.sleep() calls - fine for
+    # I2CDevice.setup()'s _probe_for_device() makes two real asyncio.sleep(_PROBE_SETTLE_S) calls - fine for
     # a directly-awaited coroutine, far too slow for a test driving read_loop() through a bounded
     # sleep(0) pump. asyncio.sleep is process-wide, so it is restored however the block exits.
     def __enter__(self) -> "Self":
@@ -1969,7 +1969,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
 
     async def scenario() -> BMP3XX:
         task = asyncio.create_task(reader.read_loop())
-        await _settle(10)  # let _init_bmp() (real, but small: 2ms) settle-sleeps complete
+        await _settle(10)  # let _init_bmp()'s reset settle (_RESET_SETTLE_S, real but small) pass
         reader.read_event.set()
         await _settle(10)
         task.cancel()

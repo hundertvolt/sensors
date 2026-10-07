@@ -22,6 +22,7 @@ const NO_DATA = /** @type {import("../js/definitions.js").MockDeviceData} */ ({
 // Generous per-case ceiling: one real nav-drawer click, one real fill/select/toggle, one real
 // Apply click, a data-apply-status poll, and (for most cases) a second real remount+read - all
 // against a local twin, but under real browser/event-loop scheduling.
+// @tunable l0.put_matrix_case_timeout_ms = 15000
 const CASE_TIMEOUT_MS = 15000;
 
 /**

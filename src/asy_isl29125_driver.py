@@ -103,22 +103,33 @@ _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one
 # Device/maths constants, not config fields (agent, 2026-09-14) - requirement 1 (SPECIFICATION.md
 # Part M.1.1) governs preferences, and none of these is one.
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
+# @tunable isl29125.cct_floor_counts = 64
 _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-count additive error
 # moves a channel ratio by more than ~8%, and chromaticity noise grows far faster than hue noise.
 _GAIN_RATIO_NOMINAL = const(26.666666666666668)  # 10000/375 - the ratio a fresh unit starts from
+# @tunable isl29125.gain_ratio_min = 20.0
 _GAIN_RATIO_MIN = const(20.0)  # a plausibility gate around nominal, applied where an untrusted
+# @tunable isl29125.gain_ratio_max = 34.0
 _GAIN_RATIO_MAX = const(34.0)  # value enters (on load and on learn), never in the hot path
 # Calibration is a bounded, user-started run, never a background schedule (owner, 2026-09-13): the driver only ever
 # READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part M.1.5).
+# @tunable isl29125.cal_window_ms = 120000
 _CAL_WINDOW_MS = const(120000)  # hard stop on a run that never converges - ~100 attempts at 16 bit
+# @tunable isl29125.cal_hold_ms = 600000
 _CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readable before it clears
+# @tunable isl29125.cal_converge_n = 3
 _CAL_CONVERGE_N = const(3)  # consecutive stable ratios that must agree before the run stops early
+# @tunable isl29125.cal_converge_tol = 0.01
 _CAL_CONVERGE_TOL = const(0.01)  # 1%: one bench scene measured 28.11/28.01/28.09, a 0.4% spread
+# @tunable isl29125.cal_stability_tol = 0.02
 _CAL_STABILITY_TOL = const(0.02)  # 2% between the sandwich's first and third reading of one range
 _AR_DOWN_DIVISOR = const(53.333333333333336)  # 2 x the NOMINAL range ratio - see _down_thresh()
+# @tunable isl29125.settle_cycles = 2
 _SETTLE_CYCLES = const(2)  # conversions discarded after a range switch, fixed - see configure()
+# @tunable isl29125.settle_wait_max_rounds = 2
 _SETTLE_WAIT_MAX_ROUNDS = const(2)  # one extra cycle past the deadline, so a stream of concurrent
 # config writes can extend the settle but can never starve the read loop indefinitely.
+# @tunable isl29125.periodic_only_warn_at = 5
 _PERIODIC_ONLY_WARN_AT = const(5)  # consecutive periodic-path switches with no preceding interrupt
 
 _MIN_TRIGGER_SECS = const(1)
@@ -215,6 +226,7 @@ class ISL29125_Reader(SensorReaderConfig):
         *,
         trigger_sec: int = 1,
         irq_pull_up: bool = True,
+        # @tunable module.max_error = 5
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",

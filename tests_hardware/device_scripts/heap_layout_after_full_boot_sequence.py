@@ -210,6 +210,7 @@ async def _main() -> None:
     # told from a difference between two probe runs at the same position - which is exactly how
     # archive 7F.2's 49,152 was misread as a layout figure (MEASUREMENTS M2.2).
     _report_checked("after_starter_list_control")
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     print(f"GC_THRESHOLD={gc.threshold()}")
     _report_checked("after_starter_list_production_threshold")

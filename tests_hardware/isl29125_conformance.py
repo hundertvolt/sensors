@@ -63,6 +63,7 @@ def run_probe_against_twin(timeout_s: float = 180.0) -> dict[str, str]:
     try:
         env = dict(os.environ, TZ="UTC", MICROPYPATH="digital_twin:src:frozen_modules:.frozen:.")
         proc = subprocess.run(  # noqa: S603 - every argument is a repo-controlled path, no shell
+            # @tunable l0.isl29125_conformance_heapsize = 8M
             [str(binary), "-X", "heapsize=8M", entry, str(PROBE)],
             cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s, check=False, env=env,
         )

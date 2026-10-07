@@ -364,9 +364,10 @@ follow_imports = "silent"
 # Extends `silent` to the (upstream-Beta) stub package itself: its types are used, its own issues
 # not reported.
 follow_imports_for_stubs = true
-# build/generated_src for device_scripts' one static `import sensortask_dev`; typecheck.sh generates
-# it first (B.15).
-mypy_path = ["typings", "src", "build/generated_src"]
+# typings/ is the board stub tree, ext/typings/ the vendored upstream Microdot stub;
+# build/generated_src for device_scripts' one static `import sensortask_dev`, which typecheck.sh
+# generates first (B.15).
+mypy_path = ["typings", "ext/typings", "src", "build/generated_src"]
 custom_typeshed_dir = "typings"
 # Keeps the venv's own packages out: they need the real stdlib, not typings/' MicroPython subset.
 no_site_packages = true
@@ -401,6 +402,7 @@ pretty = true
 # Full --strict, spelled `strict` so a mypy bump surfaces new strict checks; `assignment` is
 # deliberately not disabled. The one exemption follows (B.15, CLAUDE.md).
 strict = true
+disallow_any_explicit = true
 # Not part of --strict; kept from the pre-strict config because both remain useful here.
 no_implicit_optional = true
 warn_unreachable = true
@@ -410,11 +412,94 @@ warn_unreachable = true
 no_implicit_reexport = false
 
 [[tool.mypy.overrides]]
-# Vendored, unannotated microdot's @app.get()/@app.put() make every handler "untyped" under
-# --strict; this is the one file registering real routes (CLAUDE.md). Revisit if Microdot ships
-# hints.
+# Upstream's stub leaves route/get/put unannotated (v2.7.0): every handler they decorate is untyped
+# under --strict; this is the one file registering real routes.
 module = "test_setter_microdot_integration"
 disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+# baseline: a module leaves this list once its explicit-`Any` findings are cleared; the list ends
+# empty (owner, 2026-09-28).
+module = [
+    "_boot_contiguity_probe",
+    "_bus_hazard_catalog",
+    "_coverage_runner",
+    "_http_client",
+    "_sensortask_scenarios",
+    "_shared_rest_roundtrip",
+    "_uart_comm_harness",
+    "_uart_link_contract",
+    "allocation_need_per_source",
+    "api_response",
+    "asy_bmp3xx_driver",
+    "asy_fram_manager",
+    "asy_isl29125_driver",
+    "asy_neopixel_driver",
+    "asy_notification_service",
+    "asy_ntp_client",
+    "asy_scd30_driver",
+    "asy_sgp40_driver",
+    "asy_uart_comm",
+    "asy_uart_link_driver",
+    "asy_webserver_service",
+    "asy_wifi_service",
+    "base_classes",
+    "captive_dns",
+    "config_manager",
+    "machine",
+    "print_log",
+    "serving_at_default_gc",
+    "system_service",
+    "test_api_response",
+    "test_asy_bmp3xx_driver",
+    "test_asy_dns_client",
+    "test_asy_fram_allocation_budget",
+    "test_asy_fram_driver",
+    "test_asy_fram_manager",
+    "test_asy_fram_wire_trace",
+    "test_asy_i2c_driver",
+    "test_asy_isl29125_driver",
+    "test_asy_neopixel_driver",
+    "test_asy_notification_service",
+    "test_asy_ntp_client",
+    "test_asy_scd30_driver",
+    "test_asy_sgp40_driver",
+    "test_asy_spi_driver",
+    "test_asy_uart_comm",
+    "test_asy_uart_driver",
+    "test_asy_uart_link_driver",
+    "test_asy_udp_socket",
+    "test_asy_webserver_service",
+    "test_asy_wifi_service",
+    "test_base_classes",
+    "test_bus_hazard_generated",
+    "test_bus_hazard_multi_device",
+    "test_captive_dns",
+    "test_config_manager",
+    "test_crc_checks",
+    "test_fake_timer_and_network",
+    "test_fram_integration",
+    "test_framing_codecs",
+    "test_neopixel_wifi_integration",
+    "test_notification_fram_integration",
+    "test_notification_neopixel_integration",
+    "test_notification_scd30_integration",
+    "test_notification_scd30_sgp40_integration",
+    "test_notification_sgp40_integration",
+    "test_ntp_fram_system_integration",
+    "test_ntp_wifi_dns_integration",
+    "test_print_log",
+    "test_setter_microdot_integration",
+    "test_system_service",
+    "test_uart_comm_hazard",
+    "test_voc_algorithm",
+    "test_website_build_integration",
+    "uart_crossover_exchange",
+    "uart_crossover_recovery",
+    "uart_driver_read_never_blocks_the_loop",
+    "unix_port_poll_prewarm",
+]
+disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 # pytest runs tests_scripts/ only, the host build chain's CPython suite; tests/ runs under the real

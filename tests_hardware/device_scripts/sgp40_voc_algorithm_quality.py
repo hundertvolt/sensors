@@ -43,6 +43,7 @@ async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     reader = SGP40_Reader(i2c1, ValueRef(_FixedSource(25.0), "value"), ValueRef(_FixedSource(50.0), "value"), max_module_error=999)

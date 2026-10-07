@@ -67,8 +67,14 @@ _OP_PRESS_MAX_HPA = const(1250.0)
 _OP_TEMP_MIN_C = const(-40.0)
 _OP_TEMP_MAX_C = const(85.0)
 
+# @tunable bmp3xx.cmd_rdy_timeout_ms = 50
 _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy clears near-instantly outside an in-flight command
+# @tunable bmp3xx.meas_timeout_ms = 300
 _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr; generous margin
+# @tunable bmp3xx.status_poll_s = 0.002
+_STATUS_POLL_S = const(0.002)  # the STATUS poll step, setup()'s wait_time default
+# @tunable bmp3xx.reset_settle_s = 0.002
+_RESET_SETTLE_S = const(0.002)  # the settle after a soft reset
 
 _OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure/temperature oversampling settings -
 # const()-wrapped so it can embed in _VAL_POV/_VAL_TOV's own const() schema tuples below.
@@ -136,6 +142,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         i2c: I2C,
         address: int = 0x77,
         trigger_sec: int = 1,
+        # @tunable module.max_error = 5
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
@@ -409,7 +416,7 @@ class BMP3XX_I2C:
 
     def __init__(self, i2c: I2C, address: int = 0x77) -> None:
         self.i2c_bmp3xx = BMP3xx_DeviceSession(I2CDevice(i2c, address))
-        self._wait_time = 0.002  # just init with default here, set in setup()
+        self._wait_time = _STATUS_POLL_S  # just init with default here, set in setup()
         self.sea_level_pressure = 1013.25  # just init with default here, set in setup()
 
     async def _get_osr_setting(self, start_bit: int) -> int:
@@ -624,7 +631,7 @@ class BMP3XX_I2C:
         async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
             await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
 
-    async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = 0.002) -> None:
+    async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = _STATUS_POLL_S) -> None:
         async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
             await i2c.setup()
         chip_id = await self._read_byte(_REGISTER_CHIPID)
@@ -643,7 +650,7 @@ class BMP3XX_I2C:
             await self._wait_status_bits(bmp3xx, _STATUS_CMD_RDY, _CMD_RDY_TIMEOUT_MS)
             async with bmp3xx.i2c_device as i2c:  # bus session
                 await i2c.set_register_struct(_REGISTER_CMD, "B", 0xB6)
-            await asyncio.sleep(0.002)  # datasheet-confirmed 2ms post-reset settle time
+            await asyncio.sleep(_RESET_SETTLE_S)  # datasheet-confirmed 2ms post-reset settle time
             async with bmp3xx.i2c_device as i2c:  # bus session
                 err = await i2c.get_register_struct(_REGISTER_ERR, "B")
         if isinstance(err, int) and err & _REG_ERR_CMD_BIT:

@@ -14,6 +14,7 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     reader = BMP3xx_Reader(i2c0, max_module_error=999)

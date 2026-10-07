@@ -13,8 +13,10 @@ from micropython import const
 from asy_udp_socket import AsyUDPSocket
 
 _DNS_PORT = const(53)
+# @tunable dns.timeout_ms = 500
 _DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - a standalone default only; real
 # callers are expected to override it explicitly with a value suited to their own timing budget.
+# @tunable dns.tries = 1
 _DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
 _DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size.
 _FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried after caller-supplied

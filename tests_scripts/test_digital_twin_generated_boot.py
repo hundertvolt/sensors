@@ -29,8 +29,16 @@ if TYPE_CHECKING:
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
+# @tunable l0.generated_boot_boot_timeout_s = 30.0
 _BOOT_TIMEOUT_S = 30.0
+# @tunable l0.generated_boot_shutdown_timeout_s = 15.0
 _SHUTDOWN_TIMEOUT_S = 15.0
+# @tunable l0.generated_boot_poll_timeout_s = 1.0
+_POLL_TIMEOUT_S = 1.0  # one readiness GET
+# @tunable l0.generated_boot_poll_step_s = 0.25
+_POLL_STEP_S = 0.25
+# @tunable l0.generated_boot_exit_wait_s = 5
+_EXIT_WAIT_S = 5  # a signalled twin's exit, before the next, harder signal
 # Must outlast real boot-to-serving latency plus the smoke loop's sequential round trips. The
 # old `3` passed only on unintentional slack in a slower shutdown sequence; removing that slack
 # exposed the budget as always having been too tight, not a new regression.
@@ -42,6 +50,7 @@ _SHUTDOWN_TIMEOUT_S = 15.0
 # Measured, not estimated: boot-to-first-200 lands between ~4.5s and ~6.3s across the six real
 # devices, dev slowest. A boot-time-only, self-resolving cost that leaves steady-state serving
 # untouched - and boot latency is not a thing to optimise for its own sake (CLAUDE.md).
+# @tunable l0.generated_boot_twin_duration_s = 15
 _TWIN_DURATION_S = 15
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
@@ -104,12 +113,12 @@ def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float
         if proc.poll() is not None:
             raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its output in the failures below")
         try:
-            status, _ = _http_get(port, "/system", timeout=1.0)
+            status, _ = _http_get(port, "/system", timeout=_POLL_TIMEOUT_S)
             if status == _HTTP_OK:
                 return
         except OSError:
             pass
-        time.sleep(0.25)
+        time.sleep(_POLL_STEP_S)
     raise TimeoutError(f"generated device never started serving on {_HOST}:{port} within {timeout_s}s")
 
 
@@ -207,10 +216,10 @@ def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: Callable[
         except subprocess.TimeoutExpired:
             proc.terminate()
             try:
-                proc.wait(timeout=5)
+                proc.wait(timeout=_EXIT_WAIT_S)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.wait(timeout=5)
+                proc.wait(timeout=_EXIT_WAIT_S)
             failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
         reader.join(timeout=shutdown_timeout_s)
         if reader.is_alive():

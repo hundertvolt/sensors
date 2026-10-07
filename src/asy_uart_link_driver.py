@@ -37,6 +37,7 @@ _BANNER = b"dev-uart-crossover"
 # How often the initiator drives one real transfer across the jumper - nothing else on a live
 # system ever initiates one, so without this the link would sit idle and every claim about it
 # coexisting with the webserver would be a claim about an idle link (SPECIFICATION.md Part A.7).
+# @tunable uart.exercise_period_ms = 1000
 _EXERCISE_PERIOD_MS = const(1000)
 
 

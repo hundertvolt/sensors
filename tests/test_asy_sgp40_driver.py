@@ -1509,9 +1509,9 @@ def test_init_sgp_applies_custom_wait_time_ntp_from_valid_config() -> None:
 
 
 class _FastAsyncSleep:
-    # _init_sgp()/initialize()/_reset() make several real asyncio.sleep() calls (3ms/500ms/100ms
-    # command delays, plus _reset()'s 1s settle) - far too slow for a test driving read_loop()
-    # through several full cycles. asyncio.sleep is process-wide, restored however the block exits.
+    # _init_sgp()/initialize()/_reset() make several real asyncio.sleep() calls (_SERIAL_READ_WAIT_MS/
+    # _SELF_TEST_WAIT_MS/_MEASURE_WAIT_MS command delays, plus _reset()'s _GENERAL_CALL_RESET_WAIT_S
+    # settle) - too slow for a read_loop() test; asyncio.sleep is process-wide, restored on any exit.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
@@ -2008,7 +2008,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
 def test_init_sgp_fails_and_logs_when_setup_raises() -> None:
     # No fake_bus.read_queue seeded at all - initialize()'s own serial-number read gets back an
     # all-zero reply, whose CRC check fails, raising RuntimeError before sgp.setup() ever reaches
-    # _reset()'s own real 1s settle sleep.
+    # _reset()'s own real _GENERAL_CALL_RESET_WAIT_S settle sleep.
     reader = make_reader()
     ok = run(reader._init_sgp())
     assert ok is False
@@ -2316,9 +2316,9 @@ def test_read_sgp_completes_a_pending_reset_even_when_the_i2c_read_fails() -> No
 
 
 def test_read_loop_returns_false_when_init_fails() -> None:
-    # No fake_bus.read_queue seeded - same fast-failing setup as
-    # test_init_sgp_fails_and_logs_when_setup_raises above, so no real 1s _reset() sleep is ever
-    # reached and this doesn't need a background task / cancellation dance at all.
+    # No fake_bus.read_queue seeded - same fast-failing setup as test_init_sgp_fails_and_logs_when_setup_raises
+    # above, so no real _GENERAL_CALL_RESET_WAIT_S _reset() sleep is ever reached and this doesn't need a
+    # background task / cancellation dance at all.
     reader = make_reader()
     assert run(reader.read_loop()) is False
 
@@ -2352,6 +2352,7 @@ def test_initialize_raises_when_self_test_read_returns_none() -> None:
     real_read_word = sgp._read_word_from_command
 
     async def fake_read_word(sgp40: object, delay_ms: int = 10, readlen: "int | None" = 1) -> "list[int] | None":
+        # @tunable sgp40.self_test_wait_ms = 500
         if delay_ms == 500:  # the self-test read's own distinguishing delay_ms
             return None
         return await real_read_word(sgp40, delay_ms=delay_ms, readlen=readlen)  # type: ignore[arg-type]

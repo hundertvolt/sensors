@@ -114,6 +114,7 @@ async def _exchange(wdt: "machine.WDT", responder: UART_Comm, work: "Coroutine[A
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     failures = []
 

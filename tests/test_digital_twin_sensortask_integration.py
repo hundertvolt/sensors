@@ -440,6 +440,10 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
 # ---------------------------------------------------------------------------
 
 
+# @tunable l2.wdt_overrun_wait_s = 9.0
+_WDT_OVERRUN_WAIT_S = 9.0
+
+
 async def _feed_watchdog_periodically(watchdog: "machine.WDT") -> None:
     while True:
         watchdog.feed()
@@ -458,7 +462,7 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
         tasks = [starter() for starter in sensortask_wozi._collect_task_starters()]
         tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(sensortask_wozi.watchdog)))
         try:
-            await asyncio.sleep(9.0)  # just over the hardcoded 8000ms WDT timeout - long enough that
+            await asyncio.sleep(_WDT_OVERRUN_WAIT_S)  # just over wdt.timeout_ms (8000 ms) - long enough that
             # a real, unintended stall (not just this test's own feed loop existing) is what keeps
             # the count at 0, not merely "not enough wall-clock time has passed yet".
             assert sensortask_wozi.watchdog.would_have_triggered_count == 0

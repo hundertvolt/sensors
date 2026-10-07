@@ -4,6 +4,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import net from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,9 +28,20 @@ const HOST = "127.0.0.1";
 // tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19481,
 // 19482 already taken by that file and _live_matrix_command.js).
 const PORT = 19420;
+// Every browser loads the site through a counting proxy on the next port up, never the twin directly.
+const PROXY_PORT = 19421;
 const TWIN_URL = `http://${HOST}:${PORT}/`;
+const SITE_URL = `http://${HOST}:${PROXY_PORT}/`;
+// @tunable l0.live_twin_ready_timeout_ms = 20000
 const READY_TIMEOUT_MS = 20000;
+// @tunable l0.live_twin_shutdown_timeout_ms = 15000
 const SHUTDOWN_TIMEOUT_MS = 15000;
+// @tunable l0.smoke_h1_wait_ms = 10000
+const H1_WAIT_MS = 10000;
+// The connections one page load may open, counted per engine at the proxy (SPECIFICATION.md H.7):
+// a higher count, or none at all, fails that engine's check.
+// @tunable web.connections_per_page_load = 2
+const CONNECTIONS_PER_PAGE_LOAD = 2;
 
 const CROSS_BROWSER_DIR = process.env.CROSS_BROWSER_TOOLCHAIN_DIR || path.join(homedir(), "cross-browser-toolchain");
 const FIREFOX_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff", "bin", "firefox");
@@ -106,6 +118,59 @@ async function waitUntilServing(url, timeoutMs) {
         await sleep(250);
     }
     throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
+}
+
+/** @typedef {{reset: () => void, count: () => number, close: () => Promise<void>}} CountingProxy */
+
+/** A TCP proxy in front of the twin that counts every connection a browser opens through it. @returns {Promise<CountingProxy>} */
+function startCountingProxy() {
+    let opened = 0;
+    /** @type {Set<net.Socket>} */
+    const sockets = new Set();
+    const server = net.createServer((client) => {
+        opened += 1;
+        const upstream = net.connect(PORT, HOST);
+        const close = () => {
+            client.destroy();
+            upstream.destroy();
+            sockets.delete(client);
+            sockets.delete(upstream);
+        };
+        sockets.add(client);
+        sockets.add(upstream);
+        for (const socket of [client, upstream]) {
+            socket.on("error", close);
+            socket.on("close", close);
+        }
+        client.pipe(upstream);
+        upstream.pipe(client);
+    });
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(PROXY_PORT, HOST, () => {
+            resolve({
+                reset: () => {
+                    opened = 0;
+                },
+                count: () => opened,
+                close: () => new Promise((done) => {
+                    for (const socket of sockets) {
+                        socket.destroy();
+                    }
+                    server.close(() => done());
+                }),
+            });
+        });
+    });
+}
+
+/** Fails a check whose page load opened more connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {CountingProxy} proxy */
+function checkPageLoadConnections(device, engine, proxy) {
+    const opened = proxy.count();
+    console.log(`connections per page load (${device} ${engine}): ${opened}`);
+    if (opened === 0 || opened > CONNECTIONS_PER_PAGE_LOAD) {
+        throw new Error(`the page load opened ${opened} connection(s) through the proxy; 1 to ${CONNECTIONS_PER_PAGE_LOAD} are registered for it`);
+    }
 }
 
 // Every spawned child is tracked from creation until stopProcess() or a signal handler reaps it:
@@ -191,7 +256,7 @@ async function waitForVirtualDisplay(display, timeoutMs) {
         if (existsSync(lockFile)) {
             return;
         }
-        // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+        // eslint-disable-next-line no-await-in-loop -- sequential polling
         await sleep(100);
     }
     throw new Error(`Xvfb never created ${lockFile} within ${timeoutMs}ms`);
@@ -316,9 +381,9 @@ async function pollUntil(readFn, isReady, timeoutMs, timeoutMessage) {
 }
 
 /**
- * @param {{device: string, engine: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, driverProcessFactory: (display: string) => import("node:child_process").ChildProcess, driverBase: string, driverPort: number, capabilities: object}} opts
+ * @param {{device: string, engine: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy, driverProcessFactory: (display: string) => import("node:child_process").ChildProcess, driverBase: string, driverPort: number, capabilities: object}} opts
  */
-async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue, driverProcessFactory, driverBase, driverPort, capabilities }) {
+async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue, proxy, driverProcessFactory, driverBase, driverPort, capabilities }) {
     const label = `${device} ${engine} (${viewport})`;
     const { display, xvfbProc } = spawnVirtualDisplay();
     let driverProc;
@@ -336,7 +401,9 @@ async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue,
 
         const target = viewport === "mobile" ? MOBILE_VIEWPORT : DESKTOP_VIEWPORT;
         await wdSetWindowRect(driverBase, sid, target.width, target.height);
-        await wdNavigate(driverBase, sid, TWIN_URL);
+        proxy.reset();
+        await wdNavigate(driverBase, sid, SITE_URL);
+        checkPageLoadConnections(device, engine, proxy);
         const readyTitle = await pollUntil(
             () => /** @type {Promise<string>} */ (wdExecute(driverBase, /** @type {string} */ (sid), "return document.title;")),
             (t) => typeof t === "string" && t.includes("Sensor Station"),
@@ -386,14 +453,15 @@ async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue,
     }
 }
 
-/** @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue */
-function runWebKit(device, viewport, probe, probeValue) {
+/** @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue @param {CountingProxy} proxy */
+function runWebKit(device, viewport, probe, probeValue, proxy) {
     return runViaRawWebDriver({
         device,
         engine: "WebKit",
         viewport,
         probe,
         probeValue,
+        proxy,
         driverProcessFactory: (display) => trackProcess(spawn(WEBKIT_DRIVER_BIN, [`--port=${WEBKIT_DRIVER_PORT}`], { env: { ...process.env, DISPLAY: display }, stdio: ["ignore", "ignore", "pipe"] }), "WebKitWebDriver"),
         driverBase: `http://127.0.0.1:${WEBKIT_DRIVER_PORT}`,
         driverPort: WEBKIT_DRIVER_PORT,
@@ -401,14 +469,15 @@ function runWebKit(device, viewport, probe, probeValue) {
     });
 }
 
-/** @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue */
-function runFirefox(device, viewport, probe, probeValue) {
+/** @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue @param {CountingProxy} proxy */
+function runFirefox(device, viewport, probe, probeValue, proxy) {
     return runViaRawWebDriver({
         device,
         engine: "Firefox",
         viewport,
         probe,
         probeValue,
+        proxy,
         // Given a real DISPLAY, `-headless` Firefox still uses it rather than requiring it be
         // unset - confirmed directly (harmless either way; kept for consistency with the WebKit
         // path above rather than special-casing Firefox's own process/env setup).
@@ -444,9 +513,10 @@ async function pollForAppliedResult(wrapperLocator, captionLocator, expectedCapt
     throw new Error(`apply status/caption never settled within ${timeoutMs}ms (last seen: status=${JSON.stringify(lastStatus)} caption=${JSON.stringify(lastCaption)})`);
 }
 
-/** @param {"chromium" | "edge"} which @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue */
-async function runChromiumFamily(which, device, viewport, probe, probeValue) {
-    const label = `${device} ${which === "edge" ? "Edge" : "Chromium"} (${viewport})`;
+/** @param {"chromium" | "edge"} which @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue @param {CountingProxy} proxy */
+async function runChromiumFamily(which, device, viewport, probe, probeValue, proxy) {
+    const engine = which === "edge" ? "Edge" : "Chromium";
+    const label = `${device} ${engine} (${viewport})`;
     /** @type {string | undefined} */
     let executablePath;
     if (which === "edge") {
@@ -459,8 +529,10 @@ async function runChromiumFamily(which, device, viewport, probe, probeValue) {
         browser = await playwright.chromium.launch(executablePath ? { executablePath } : {});
         const context = await browser.newContext(viewport === "mobile" ? { ...playwright.devices["iPhone 15"] } : {});
         const page = await context.newPage();
-        await page.goto(TWIN_URL);
-        await page.waitForSelector("h1", { timeout: 10000 });
+        proxy.reset();
+        await page.goto(SITE_URL);
+        checkPageLoadConnections(device, engine, proxy);
+        await page.waitForSelector("h1", { timeout: H1_WAIT_MS });
 
         const clickOrTap = viewport === "mobile" ? "tap" : "click";
         await page.locator("#hamburger-button")[clickOrTap]();
@@ -504,7 +576,7 @@ for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
  * Boots one device's twin and runs every available (engine, viewport) check against it.
  * @param {string} device
  * @param {Probe} probe
- * @param {{name: string, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number) => Promise<{label: string, ok: boolean, detail?: string}>}[]} engines
+ * @param {{name: string, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<{label: string, ok: boolean, detail?: string}>}[]} engines
  * @param {{value: number}} counter
  * @param {{label: string, ok: boolean, detail?: string}[]} results
  */
@@ -513,8 +585,11 @@ async function smokeDevice(device, probe, engines, counter, results) {
     const twin = spawnTwin(device);
     const output = drainChildOutput(twin);
     let failed = false;
+    /** @type {CountingProxy | undefined} */
+    let proxy;
     try {
         await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
+        proxy = await startCountingProxy();
         for (const engine of engines) {
             for (const viewport of /** @type {const} */ (["desktop", "mobile"])) {
                 // One counter across every device and check, so no two checks against a twin ever
@@ -522,7 +597,7 @@ async function smokeDevice(device, probe, engines, counter, results) {
                 const probeValue = probe.min + 1 + (counter.value % (probe.max - probe.min - 1));
                 counter.value += 1;
                 // eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a time
-                const result = await engine.run(device, viewport, probe, probeValue);
+                const result = await engine.run(device, viewport, probe, probeValue, proxy);
                 results.push(result);
                 console.log(`${result.ok ? "PASS" : "FAIL"} ${result.label}`);
                 if (!result.ok) {
@@ -537,6 +612,7 @@ async function smokeDevice(device, probe, engines, counter, results) {
         results.push({ label: `${device} twin`, ok: false, detail: message });
         console.error(`FAIL ${device} twin: ${message}`);
     } finally {
+        await proxy?.close();
         await stopProcess(twin);
     }
     // The memory gate (SPECIFICATION.md Part I.4(e)): a marker fails the device even when every check passed.
@@ -581,12 +657,12 @@ async function main() {
         plan.push({ device, probe: pickProbe(/** @type {ProbeDefinitions} */ (JSON.parse(readFileSync(definitionsPath(device), "utf8")))) });
     }
 
-    /** @type {{name: string, available: boolean, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number) => Promise<{label: string, ok: boolean, detail?: string}>}[]} */
+    /** @type {{name: string, available: boolean, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<{label: string, ok: boolean, detail?: string}>}[]} */
     const engines = [
         { name: "WebKit", available: existsSync(WEBKIT_DRIVER_BIN), run: runWebKit },
         { name: "Firefox", available: existsSync(FIREFOX_BIN) && existsSync(GECKODRIVER_BIN), run: runFirefox },
-        { name: "Edge", available: existsSync(EDGE_BIN), run: (device, viewport, probe, probeValue) => runChromiumFamily("edge", device, viewport, probe, probeValue) },
-        { name: "Chromium", available: true, run: (device, viewport, probe, probeValue) => runChromiumFamily("chromium", device, viewport, probe, probeValue) },
+        { name: "Edge", available: existsSync(EDGE_BIN), run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("edge", device, viewport, probe, probeValue, proxy) },
+        { name: "Chromium", available: true, run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("chromium", device, viewport, probe, probeValue, proxy) },
     ];
     for (const engine of engines.filter((e) => !e.available)) {
         console.warn(`SKIP ${engine.name}: binary not found (run scripts/setup_cross_browser_toolchain.sh)`);

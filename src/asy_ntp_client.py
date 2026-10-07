@@ -46,13 +46,20 @@ _ERR_NTP_RETRIES = const(70)
 _ERR_NTP_NO_REPLY = const(71)
 _WRN_NTP_UNSYNC_REPLY = const(40)
 
+# @tunable ntp.async_intervals = 3
 _NTP_ASYNC_INTERV = const(3)  # 3 times interval considered as out of sync
+# @tunable ntp.check_interval_s = 10
 _NTP_CHECK_INTERV = const(10)  # seconds to count for NTP status update
+# @tunable ntp.sync_retries = 3
 _NTP_SYNC_RETRIES = const(3)  # try 3 times to connect to NTP server before stopping
+# @tunable ntp.retry_interval_s = 15
 _NTP_RETRY_INTERV = const(15)  # wait 15 secs before retrying to sync
+# @tunable ntp.backoff_mult = 2
 _NTP_BACKOFF_MULT = const(2)  # unsynced retry interval doubles per failed attempt, up to its cap
 # unsynced retry: first interval and its cap; both round up to the 10 s check tick (Part C.7.2)
+# @tunable ntp.retry_s_default = 10
 _DEFAULT_RETRY_S = const(10)
+# @tunable ntp.retry_max_s_default = 600
 _DEFAULT_RETRY_MAX_S = const(600)
 
 # The client's timing, passed whole by the generated module: the resolver's DNS bounds, the fetch
@@ -76,7 +83,9 @@ _NTP_ERA_SECONDS = const(4294967296)  # 2**32 - one full NTP era (32-bit seconds
 # Plausibility window for a parsed reply - floor+ceiling together reject implausible/corrupt data
 # even after era-reinterpretation (a floor alone can't). Bump both forward occasionally to stay
 # "recent enough"/"far enough out".
+# @tunable ntp.plausible_min_unix = 1735689600
 _NTP_MIN_PLAUSIBLE_UNIX_TIME = const(1735689600)  # 2025-01-01T00:00:00Z - predates this file itself
+# @tunable ntp.plausible_max_unix = 4102444800
 _NTP_MAX_PLAUSIBLE_UNIX_TIME = const(4102444800)  # 2100-01-01T00:00:00Z - past the ~2036 era wrap
 
 _NTP_LI_UNSYNCHRONIZED = const(3)  # RFC 5905 Leap Indicator top-2-bits: 3 = server's own clock is

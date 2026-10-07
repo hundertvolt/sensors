@@ -17,6 +17,8 @@ from base_classes import Lockable
 # Covers every read the drivers actually make (BMP3XX's 21-byte calibration block is the largest;
 # the hot paths are 1-6 bytes). A larger read still works - it falls back to the allocating call.
 _SCRATCH_SIZE = const(32)
+# @tunable i2c.probe_settle_s = 0.1
+_PROBE_SETTLE_S = const(0.1)  # the settle before and after _probe_for_device()'s zero-byte write
 
 
 class I2C:
@@ -259,12 +261,12 @@ class I2CDevice(Lockable):
         # writeto() returning None (bus not initialized, e.g. deinit() was called on the shared
         # I2C instance) is a distinct failure from "no device" and gets its own message.
         try:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(_PROBE_SETTLE_S)
             acked = self.i2c.writeto(self.device_address, b"")
         except OSError:
             raise ValueError(f"No I2C device at address: {self.device_address:#x}") from None
         finally:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(_PROBE_SETTLE_S)
         if acked is None:
             raise RuntimeError("I2C bus not initialized")
 

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from print_log import ErrorLog
 
 _NAME = const("NEOPIXEL")
+# @tunable led.min_signal_s = 0.1
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN/garbage fallback
 
 # One optional live cross-instance dependency (SPECIFICATION.md Parts C.14 and L.4): the FRAM store its logger writes to, passed as log=.
@@ -42,7 +43,9 @@ class NeopixelDriver:
     def __init__(
         self,
         neopixel_pin: int,
+        # @tunable led.refresh_hz_default = 20
         neopixel_freq: int = 20,
+        # @tunable led.overlay_brightness_default = 50
         led_overl_bri: int = 50,
         log: LogConfig = DEFAULT_LOG,
     ) -> None:

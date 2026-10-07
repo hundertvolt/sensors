@@ -22,6 +22,11 @@ _GENERATE_LINE = "uv run scripts/_generate_sensortask_modules.py"
 # The `(` opening the subshell that backgrounds the pytest job - matched on the pytest invocation
 # itself rather than the bare paren, which appears all over a shell script.
 _PYTEST_LINE = "uv run pytest tests_scripts -q"
+# Bounds on the subprocesses below: a nested scripts/test.sh run or probe, and a bash snippet.
+# @tunable l0.test_sh_nested_run_timeout_s = 60
+_NESTED_RUN_TIMEOUT_S = 60
+# @tunable l0.test_sh_snippet_timeout_s = 30
+_SNIPPET_TIMEOUT_S = 30
 
 
 def _test_sh_text(repo_root: Path) -> str:
@@ -84,7 +89,7 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
 # ---------------------------------------------------------------------------
 # TEST_PARALLELISM autodetection. Executed for real rather than asserted structurally: the point of
 # the probe is what it DOES on a slow host, and no slow host is reachable from here. The band
-# choice runs against a stubbed clock - see _run_detector_with_clock.
+# choice runs against a stubbed clock - see _run_detector_with_uptime.
 # ---------------------------------------------------------------------------
 
 
@@ -102,49 +107,72 @@ def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tupl
     return jobs, cores, multiplier, probe_ms
 
 
-def _run_detector_with_clock(repo_root: Path, tmp_path: Path, elapsed_ms: int) -> tuple[int, int, int, int]:
-    """Same detector, with `date` stubbed so probe_ms is EXACTLY elapsed_ms rather than measured.
-    A sleeping stub cannot carry the band assertions: backgrounded alongside the MicroPython tier,
-    a mid-band 0.7s stub read 919-963ms under 96 spinners on 2026-09-22 and chose the 1x band here."""
+def _run_detector_with_uptime(repo_root: Path, tmp_path: Path, elapsed_ms: int, *, uptime_readable: bool = True, stepped_date: bool = False) -> tuple[tuple[int, int, int, int], str]:
+    """Same detector, with /proc/uptime replaced by a canned file the stub interpreter advances by
+    exactly elapsed_ms, so probe_ms is set rather than measured. A sleeping stub cannot carry the band
+    assertions: beside the MicroPython tier, a mid-band 0.7s stub read 919-963ms on 2026-09-22."""
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
-    bin_dir = tmp_path / f"bin_{elapsed_ms}"
-    bin_dir.mkdir()
-    start_ns = 1_000_000_000_000
-    # Two successive readings, counted through a file: `date` is called once on each side of the
-    # probe, and each call is its own $(...) subshell, so the stub can keep state no other way.
-    stub_date = (
-        "#!/bin/sh\n"
-        'c="$0.calls"\n'
-        'n=$(cat "$c" 2>/dev/null || echo 0)\n'
-        'n=$((n + 1)); echo "$n" > "$c"\n'
-        f'if [ "$n" -eq 1 ]; then echo {start_ns}; else echo {start_ns + elapsed_ms * 1_000_000}; fi\n'
-    )
-    (bin_dir / "date").write_text(stub_date)
-    (bin_dir / "date").chmod(0o755)
-    stub = tmp_path / f"stub_{elapsed_ms}"
-    stub.write_text("#!/bin/sh\nexit 0\n")
+    case_dir = tmp_path / f"uptime_{elapsed_ms}"
+    case_dir.mkdir()
+    uptime = case_dir / "uptime"
+    start_cs = 100_000
+    if uptime_readable:
+        uptime.write_text(f"{start_cs // 100}.{start_cs % 100:02d} 4000.00\n")
+    end_cs = start_cs + elapsed_ms // 10
+    stub = case_dir / "stub_interpreter"
+    stub.write_text(f'#!/bin/sh\n[ -f "{uptime}" ] && echo "{end_cs // 100}.{end_cs % 100:02d} 4000.10" >"{uptime}"\nexit 0\n')
     stub.chmod(0o755)
-    script = tmp_path / f"probe_clock_{elapsed_ms}.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{body.group(0)}\n_detect_parallelism\n')
-    env = dict(os.environ, PATH=f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}")
-    out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=True).stdout.split()
-    jobs, cores, multiplier, probe_ms = (int(v) for v in out)
-    assert probe_ms == elapsed_ms, f"the clock stub did not take effect: asked for {elapsed_ms}ms, detector measured {probe_ms}ms"
-    return jobs, cores, multiplier, probe_ms
+    # Asserted rather than assumed: a no-op replacement would time the host's real uptime instead.
+    redirected = body.group(0).replace("/proc/uptime", str(uptime))
+    assert redirected != body.group(0), "scripts/test.sh no longer reads /proc/uptime - update this redirection with it"
+    path = os.environ.get("PATH", "/usr/bin:/bin")
+    if stepped_date:
+        # A realtime clock stepped by an hour between any two reads, as an NTP correction would.
+        bin_dir = case_dir / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "date").write_text('#!/bin/sh\nc="$0.calls"\nn=$(cat "$c" 2>/dev/null || echo 0)\nn=$((n + 1)); echo "$n" > "$c"\necho $((n * 3600000000000))\n')
+        (bin_dir / "date").chmod(0o755)
+        path = f"{bin_dir}:{path}"
+    script = case_dir / "probe.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n')
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=dict(os.environ, PATH=path), check=True)
+    jobs, cores, multiplier, probe_ms = (int(v) for v in done.stdout.split())
+    return (jobs, cores, multiplier, probe_ms), done.stderr
 
 
 @pytest.mark.parametrize(
     ("probe_ms", "expected"),
-    [(0, 4), (250, 4), (251, 2), (900, 2), (901, 1)],
+    [(10, 4), (250, 4), (260, 2), (900, 2), (910, 1)],
 )
 def test_each_speed_band_picks_its_own_multiplier(repo_root: Path, tmp_path: Path, probe_ms: int, expected: int) -> None:
-    # Both inclusive edges as well as the middles: 250/900 are the boundaries scripts/test.sh
-    # compares with -le, and an edge silently flipping to -lt is the realistic way to break this.
+    # Both inclusive edges and the next 10ms step past each (the uptime clock's resolution): 250/900
+    # are compared with -le, and an edge silently flipping to -lt is the realistic way to break this.
     # 2x is the bench Pi4's class - 4 cores, but slow enough that 16 processes starve a twin test.
-    jobs, cores, multiplier, _ = _run_detector_with_clock(repo_root, tmp_path, probe_ms)
+    (jobs, cores, multiplier, measured), _ = _run_detector_with_uptime(repo_root, tmp_path, probe_ms)
+    assert measured == probe_ms, f"the uptime stub did not take effect: asked for {probe_ms}ms, detector measured {measured}ms"
     assert multiplier == expected, f"a {probe_ms}ms probe must pick {expected}x"
     assert jobs == cores * expected
+
+
+def test_a_stepped_realtime_clock_leaves_the_band_unchanged(repo_root: Path, tmp_path: Path) -> None:
+    # The probe times a monotonic clock: a wall-clock step during the probe (NTP, a suspended VM)
+    # must not move the reading, which a `date +%s%N` difference would turn into hours.
+    (_, _, multiplier, measured), _ = _run_detector_with_uptime(repo_root, tmp_path, 130, stepped_date=True)
+    assert (measured, multiplier) == (130, 4), f"a stepped realtime clock changed the probe: {measured}ms, {multiplier}x"
+
+
+def test_an_unreadable_uptime_file_runs_at_one_times_and_says_so(repo_root: Path, tmp_path: Path) -> None:
+    (_, _, multiplier, _), stderr = _run_detector_with_uptime(repo_root, tmp_path, 130, uptime_readable=False)
+    assert multiplier == 1, "a probe with no clock must fall to the safe 1x setting"
+    assert "== speed probe failed - running at 1x" in stderr
+
+
+def test_a_zero_reading_is_a_failed_probe(repo_root: Path, tmp_path: Path) -> None:
+    # No real run of the probe takes under one 10ms tick, so a zero reading is a clock fault.
+    (_, _, multiplier, _), stderr = _run_detector_with_uptime(repo_root, tmp_path, 0)
+    assert multiplier == 1
+    assert "== speed probe failed - running at 1x" in stderr
 
 
 def test_a_genuinely_slow_host_drops_to_one_times_on_the_real_clock(repo_root: Path, tmp_path: Path) -> None:
@@ -229,15 +257,16 @@ def test_a_valid_override_is_honoured_verbatim(repo_root: Path, tmp_path: Path) 
     assert _resolved_parallelism(repo_root, tmp_path, "3") == 3
 
 
-def test_a_broken_probe_falls_back_to_the_previous_behaviour_rather_than_going_slow(repo_root: Path, tmp_path: Path) -> None:
-    # A missing/unusable interpreter must not silently halve everyone's parallelism - the probe is an
-    # optimisation, and its own failure is never allowed to change the answer from what it was before.
+def test_a_broken_probe_runs_at_one_times_and_says_so(repo_root: Path, tmp_path: Path) -> None:
+    # A probe that cannot run says nothing about the host, so it takes the setting known never to
+    # starve a slow one; the line on stderr keeps the slower run from going unexplained.
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None
     script = tmp_path / "probe_broken.sh"
     script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{tmp_path}/does_not_exist"\n{body.group(0)}\n_detect_parallelism\n')
-    out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split()
-    assert int(out[2]) == 4, f"a broken probe must fall back to 4x, got {out}"
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True)
+    assert int(done.stdout.split()[2]) == 1, f"a broken probe must fall to 1x, got {done.stdout.split()}"
+    assert "== speed probe failed - running at 1x" in done.stderr
 
 
 def test_the_speed_probe_runs_before_the_pytest_job_loads_the_host(repo_root: Path) -> None:
@@ -304,7 +333,7 @@ def _run_cleanup_probe(repo_root: Path, tmp_path: Path, *, arm_trap: bool) -> bo
         'until [ -s "$tests_scripts_inner_pidfile" ]; do sleep 0.05; done\n'
         "false  # the abort under test: `set -e` takes the parent down mid-run\n",
     )
-    done = subprocess.run(["/bin/bash", str(script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=60)
+    done = subprocess.run(["/bin/bash", str(script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=_NESTED_RUN_TIMEOUT_S)
     assert done.returncode != 0, "the probe parent must actually abort - otherwise neither arm proves anything"
     inner = observed.read_text().strip()
     deadline = time.monotonic() + 5.0
@@ -450,7 +479,7 @@ def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_ro
         text=True,
         env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "GC_THRESHOLD": "32k"},
         cwd=repo_root,
-        timeout=60,
+        timeout=_NESTED_RUN_TIMEOUT_S,
         check=False,
     )
     assert completed.returncode == 2, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
@@ -468,7 +497,7 @@ def test_an_out_of_range_gc_threshold_is_rejected_too(repo_root: Path, value: st
         text=True,
         env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "GC_THRESHOLD": value},
         cwd=repo_root,
-        timeout=60,
+        timeout=_NESTED_RUN_TIMEOUT_S,
         check=False,
     )
     assert completed.returncode == 2, f"expected a fast rejection, got {completed.returncode}:\n{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}"
@@ -544,7 +573,7 @@ def _nested_run_with_sentinels(repo_root: Path, tmp_path: Path, args: list[str],
             text=True,
             env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), **env},
             cwd=repo_root,
-            timeout=60,
+            timeout=_NESTED_RUN_TIMEOUT_S,
             check=False,
         )
         return completed, sentinel.is_file(), fixture.is_file()
@@ -713,7 +742,7 @@ def _run_annotation_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
         f'results_dir="{tmp_path}"\nannotation_tag="test_x"\n'
         f'{_annotation_detail_line(repo_root)}\necho "::error title=tests/test_x.py::$annotation_detail"\n',
     )
-    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=30)
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
     return done.returncode, done.stdout
 
 
@@ -762,7 +791,7 @@ def _run_memerr_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
         f'results_dir="{tmp_path}"\nannotation_tag="test_x"\n'
         f'{_memerr_detail_line(repo_root)}\nprintf "%s" "$annotation_detail"\n',
     )
-    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=30)
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
     return done.returncode, done.stdout
 
 
@@ -800,7 +829,7 @@ def _run_annotation_block(repo_root: Path, tmp_path: Path, failed: int, memory: 
         f"failed_files=({' '.join(failed_files)})\nmemory_error_files=({' '.join(memory_files)})\n"
         f"{_annotation_block(repo_root)}\n",
     )
-    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, timeout=30)
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
     return [line for line in done.stdout.splitlines() if line.startswith("::error")]
 
 

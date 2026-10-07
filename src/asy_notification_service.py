@@ -56,6 +56,12 @@ _WRN_NOTIFY_SCHEMA_SHAPE = const(45)
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
+# @tunable notify.loop_tick_s = 1
+_LOOP_TICK_S = const(1)  # auto_led_override()'s countdown step
+# @tunable notify.min_sleep_s = 0.1
+_MIN_SLEEP_S = const(0.1)  # floor of monitor_loop()'s sleep to its next cycle
+# @tunable notify.cfg_fail_interval_s = 600.0
+_CFG_FAIL_INTERVAL_S = const(600.0)  # cycle interval while the own configuration cannot be read
 
 # This driver's live cross-instance dependencies (Parts C.14 and L.4): the LED it signals through,
 # required, in "attr" mode - the resolved NeopixelDriver's own request_signal bound method is passed
@@ -190,7 +196,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
         # a real elapsed time close to Interv's own 60.0s schema floor to observe the floor kick in.
         rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
-        return max(rem_interv, 0.1)
+        return max(rem_interv, _MIN_SLEEP_S)
 
     def _now(self) -> int | None:
         try:
@@ -300,7 +306,7 @@ class NotificationCoordinator(SensorReaderConfig):
             elif not self._auto_active:
                 self._auto_active = True
                 self.pr.evt("LED Override off.")
-            await asyncio.sleep(1)
+            await asyncio.sleep(_LOOP_TICK_S)
 
     async def monitor_loop(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors
@@ -320,7 +326,7 @@ class NotificationCoordinator(SensorReaderConfig):
                 or len(cfg_float) != len(_VAL_FLOAT_FIELDS)
                 or len(cfg_bool) != 1
             ):
-                interv = 600.0
+                interv = _CFG_FAIL_INTERVAL_S
                 # Persisted every failing cycle; a repeat spends no slot (the newest-entry rule).
                 await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
             else:

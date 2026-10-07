@@ -90,7 +90,9 @@ fi
 
 # Both timeouts are checked here, before any sweep: 0 would disable `timeout` altogether (coreutils),
 # turning the standing hang backstop off without a word.
+# @tunable runner.per_file_timeout_s = 240
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+# @tunable runner.tests_scripts_timeout_s = 1200
 tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
 _require_seconds() {
     if [[ ! "$2" =~ ^[1-9][0-9]{0,5}$ ]]; then
@@ -197,7 +199,8 @@ fi
 # run writes ~46MB and spends ~8.7s of system time today, and CLAUDE.md's rule against avoidable
 # wear on the host's own disk is what retired the one file that made it ~10x that.
 _detect_parallelism() {
-    local cores quota period probe_start probe_end probe_ms multiplier
+    local cores quota period up_start="" up_end="" probe_iterations probe_ms=0 multiplier failed=0
+    # @tunable runner.nproc_fallback = 4
     cores="$(nproc 2>/dev/null || echo 4)"
     # A container's CPU quota bounds real parallelism far below what nproc reports (cgroup v2; v1
     # and "max" both fall through to the nproc value unchanged).
@@ -208,30 +211,31 @@ _detect_parallelism() {
             [ "$quota_cores" -ge 1 ] && [ "$quota_cores" -lt "$cores" ] && cores="$quota_cores"
         fi
     fi
-    # Speed probe. Never allowed to fail the run: any error, and we fall through to the fast-host
-    # multiplier, i.e. exactly the previous behaviour.
-    probe_start="$(date +%s%N 2>/dev/null || echo 0)"
-    "$micropython_bin" -c 'x=0
-for i in range(500000):
-    x+=i' >/dev/null 2>&1 || true
-    probe_end="$(date +%s%N 2>/dev/null || echo 0)"
-    # An unusable clock resolves to 0, never to whatever the arithmetic produces: a failed FIRST
-    # `date` would otherwise leave probe_start at 0 and make probe_ms the epoch, picking the SLOWEST
-    # branch from a failure that is meant to always pick the fastest.
-    #
-    # The -gt guards also absorb a `date` printing a literal "%N" rather than nanoseconds, which is
-    # the realistic way to get here at all - GNU coreutils never fails outright.
-    if [ "$probe_start" -gt 0 ] 2>/dev/null && [ "$probe_end" -gt "$probe_start" ] 2>/dev/null; then
-        probe_ms=$(( (probe_end - probe_start) / 1000000 ))
-    else
-        probe_ms=0
+    # Speed probe, timed on /proc/uptime (CLOCK_BOOTTIME: monotonic, 10ms steps), so a wall-clock step
+    # cannot move it and the bands keep measuring interpreter start to exit. Integer arithmetic on the
+    # two-decimal fields; 10# keeps a leading zero from reading as octal.
+    { read -r up_start _ </proc/uptime; } 2>/dev/null || failed=1
+    # @tunable runner.probe_iterations = 500000
+    probe_iterations=500000
+    "$micropython_bin" -c "x=0
+for i in range($probe_iterations):
+    x+=i" >/dev/null 2>&1 || failed=1
+    { read -r up_end _ </proc/uptime; } 2>/dev/null || failed=1
+    if [ "$failed" -eq 0 ] && [[ "$up_start" =~ ^[0-9]+\.[0-9]{2}$ && "$up_end" =~ ^[0-9]+\.[0-9]{2}$ ]]; then
+        probe_ms=$(( (10#${up_end/./} - 10#${up_start/./}) * 10 ))
     fi
-    # A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which picks the
-    # fast-host multiplier, i.e. exactly the behaviour this autodetection replaced. Never silently
-    # slower than before because the probe itself broke.
-    if [ "$probe_ms" -le 250 ]; then
+    # A failed probe (no clock, an interpreter that did not run, no time elapsed) says nothing about
+    # the host, so it takes 1x, the setting known never to starve a slow one, and says so.
+    if [ "$probe_ms" -le 0 ]; then
+        echo "== speed probe failed - running at 1x" >&2
+        multiplier=1
+    # @tunable runner.band_fast_ms = 250
+    elif [ "$probe_ms" -le 250 ]; then
+        # @tunable runner.mult_fast = 4
         multiplier=4            # fast host (measured: 131-141ms on this project's own x86 sandbox)
+    # @tunable runner.band_mid_ms = 900
     elif [ "$probe_ms" -le 900 ]; then
+        # @tunable runner.mult_mid = 2
         multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
     else                        # that starved a twin test's real-time budget at 4x
         multiplier=1
@@ -326,6 +330,7 @@ trap _cleanup EXIT
 # cannot mutate a bash array the parent would see.
 results_dir="$(mktemp -d)"
 (
+    # @tunable runner.kill_after_s = 10
     PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
     inner_pid=$!
     echo "$inner_pid" >"$tests_scripts_inner_pidfile"
@@ -375,6 +380,7 @@ fi
 # per-device splits, and deliberately not solved by raising everyone's default, which would make a
 # genuine future hang 2-3x slower to detect. Measured figures: Part E.3.1.
 declare -A per_file_timeout_overrides_s=()
+# @tunable runner.per_file_attempts = 3
 max_attempts=3
 
 # SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged included - a caught
@@ -434,6 +440,8 @@ run_test_file() {
         # 2>&1 | sed, not two streams: these run concurrently, so per-line tagging is what keeps
         # a multi-file log readable. `set -o pipefail` makes the pipeline's status the interpreter's
         # own, so sed can never mask a real 124/1 from the command it pipes.
+        # @tunable runner.kill_after_s = 10
+        # @tunable l1.unix_heapsize = 16M
         if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else

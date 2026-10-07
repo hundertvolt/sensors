@@ -38,6 +38,7 @@ _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status(
 # The same value and one-time placement the real firmware boot entry uses, so a twin run models
 # production's memory-safety configuration and not just its allocation code. --gc-threshold
 # overrides it, since Part I.4(e) requires the whole suite to pass at -1 first.
+# @tunable gc.threshold_bytes = 32768
 _GC_THRESHOLD_DEFAULT = 32768
 
 if TYPE_CHECKING:
@@ -235,13 +236,17 @@ def _require_wired(device: str, chips: "dict[str, Any]") -> None:
         raise ValueError(f"--fault/--hang device {device!r} is not wired on this device - wired here: {sorted(chips)}")
 
 
+# @tunable l2.twin_ready_poll_ms = 20
+_READY_POLL_MS = 20
+
+
 async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
     async def poll() -> None:
         # webserver is the last module build_system() assigns before its own grouped await
         # x.setup() batch - see tests/test_digital_twin_sensortask_integration.py's own identical
         # poll for why this (not watchdog, assigned first) is the right readiness signal.
         while getattr(module, "webserver", None) is None:
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_READY_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
 
@@ -282,6 +287,7 @@ async def _mem_sampler(interval_ms: int) -> None:
         print(f"MEM_SAMPLE {time.time():.3f} {gc.mem_free()}")
 
 
+# @tunable l2.twin_wire_log_clear_interval_ms = 5000
 _WIRE_LOG_CLEAR_INTERVAL_MS = 5000
 
 

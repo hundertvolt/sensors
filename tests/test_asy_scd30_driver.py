@@ -104,7 +104,7 @@ async def _settle(n: int = 5) -> None:
 
 
 class _FastAsyncSleep:
-    # _read_dev_register()/_send_dev_command() each make real 0.05s asyncio.sleep() calls - fine for a
+    # _read_dev_register()/_send_dev_command() each make a real asyncio.sleep(_CMD_RESPONSE_WAIT_S) - fine for a
     # directly awaited coroutine, far too slow for a test driving get_config_snapshot() through a bounded
     # sleep(0) pump. asyncio.sleep is process-wide, restored however the block exits.
     def __enter__(self) -> "_FastAsyncSleep":
@@ -633,7 +633,7 @@ def test_fault_injected_read_half_failure_after_a_successful_write_half() -> Non
 
 
 # ---------------------------------------------------------------------------
-# Module level: setup()/reset() - identity check, then soft reset with the real ~2.5s documented
+# Module level: setup()/reset() - identity check, then soft reset with the real _SOFT_RESET_WAIT_S
 # delay. Kept to two tests (the delay is real elapsed time, not simulated) rather than exercised
 # from every angle at this layer.
 # ---------------------------------------------------------------------------
@@ -1353,7 +1353,7 @@ def test_get_error_counter_forwards_to_the_real_print_log() -> None:
 # ---------------------------------------------------------------------------
 # Integration: _init_scd() / read_loop() - real base_classes.SensorReader plus print_log wiring.
 # scd.setup()'s own I2C behavior is covered above; here it is monkeypatched to a fast no-op so these focus
-# on read_loop()'s orchestration without re-paying its real ~2.5s reset delay each time.
+# on read_loop()'s orchestration without re-paying its real _SOFT_RESET_WAIT_S reset delay each time.
 # ---------------------------------------------------------------------------
 
 

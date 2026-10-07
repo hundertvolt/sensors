@@ -18,6 +18,7 @@ WRITE_ITERATIONS = 6
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     bmp = BMP3XX_I2C(i2c0)

@@ -22,9 +22,11 @@ runs:
     - name: Sync dev dependencies (retried - third-party build downloads are not always up)
       shell: bash
       run: |
+        # @tunable tool.uv_sync_attempts = 3
         for attempt in 1 2 3; do
             uv sync && exit 0
             echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+            # @tunable tool.uv_sync_backoff_step_s = 10
             sleep $((attempt * 10))
         done
         uv sync

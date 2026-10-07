@@ -17,9 +17,13 @@ from buildgen.wiring import WiringField
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+# @tunable module.max_error = 5
 _MAX_MODULE_ERROR = 5
+# @tunable dns.timeout_ms = 500
 _DNS_TIMEOUT_MS = 500
+# @tunable dns.tries = 1
 _DNS_TRIES = 1
+# @tunable ntp.fetch_timeout_ms = 5000
 _NTP_FETCH_TIMEOUT_MS = 5000
 
 # The generator's fixed catalog for notification's per-signal getters (Part L.4). Every real
@@ -293,7 +297,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("")
     lines.append("import frozen_html  # type: ignore[import-not-found]  # noqa: F401")
     lines.append("from machine import WDT")
-    lines.append("from microdot import Microdot  # type: ignore[import-not-found]")
+    lines.append("from microdot import Microdot")
     lines.append("from micropython import const")
     lines.append("")
     lines.append("import asy_i2c_driver")
@@ -376,6 +380,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     global_names = ["watchdog"] + all_vars + ["webserver", "timers_running"]
     lines.append("    global " + ", ".join(global_names))
     lines.append("")
+    # @tunable wdt.timeout_ms = 8000
     lines.append("    watchdog = WDT(timeout=8000)")
     for bus_id, bus_table in model.doc["bus"].items():
         var = ctx.bus_var(bus_id)
@@ -716,6 +721,7 @@ def generate_boot_entry_source(device: str) -> str:
         "import asyncio\n"
         "import gc\n\n"
         f"from {module} import main\n\n"
+        # @tunable gc.threshold_bytes = 32768
         "gc.threshold(32768)\n\n"
         "try:\n"
         "    asyncio.run(main())\n"

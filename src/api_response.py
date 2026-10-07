@@ -22,9 +22,8 @@ if TYPE_CHECKING:
     ResponseEnvelope = dict[str, "str | int | dict[str, Any]"]
 
     class _RequestLike(Protocol):
-        # Structural stand-in for microdot.Request - not on this project's mypy search path
-        # (SPECIFICATION.md Part C.10's typing convention). Shared with asy_webserver_service.py,
-        # which reaches for the same one member; `object` is the parsed body's real static shape.
+        # Structural stand-in for microdot.Request: typed via the vendored upstream stub (ext/typings/microdot/),
+        # which leaves get/put/route unannotated (v2.7.0); shared with asy_webserver_service.py.
         @property
         def json(self) -> object: ...
 

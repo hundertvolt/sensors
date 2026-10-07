@@ -118,9 +118,11 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
     return result.stdout
 
 
+# @tunable tool.uv_sync_attempts = 3
 UV_SYNC_ATTEMPTS = 3  # mirrors ci.yml's unit-tests job: a third party's momentary outage is not a failed install
 
 
+# @tunable tool.uv_sync_backoff_step_s = 10.0
 def run_retried(cmd: list[str], cwd: Path | None = None, *, attempts: int = UV_SYNC_ATTEMPTS, backoff_s: float = 10.0) -> str:
     """run(), retried with a growing pause - for a step that downloads from a third party (uv sync
     builds actionlint-py, which fetches its binary from a release URL; a 502 there once failed a clean install)."""

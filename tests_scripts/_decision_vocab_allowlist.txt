@@ -205,11 +205,9 @@ scripts/build_website.sh	Part H.7 owns why bundling and inlining exist at all, a
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
 scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
-scripts/test.sh	A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
 src/asy_bmp3xx_driver.py	A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionErro
 src/asy_bmp3xx_driver.py	PressOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not cont

@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _RUNNER = "tests/_coverage_runner.py"
+# @tunable l0.coverage_runner_timeout_s = 60
+_RUN_TIMEOUT_S = 60
 
 
 def _probe(tmp_path: Path, body: str) -> Path:
@@ -65,7 +67,7 @@ def _run(repo_root: Path, micropython_bin: Path, probe: Path, out: Path) -> "sub
         env={"MICROPYPATH": "build/generated_src:src:tests:frozen_modules:.frozen", "TZ": "UTC"},
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=_RUN_TIMEOUT_S,
         check=False,
     )
 

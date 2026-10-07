@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_changes_timeout_min = 5
     timeout-minutes: 5
     outputs:
       web: ${{ steps.filter.outputs.web }}
@@ -68,6 +69,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_lint_and_typecheck_timeout_min = 10
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -97,6 +99,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_unit_tests_timeout_min = 20
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -145,6 +148,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_put_matrix_timeout_min = 20
     timeout-minutes: 20
     strategy:
       fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
@@ -193,6 +197,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_coverage_timeout_min = 20
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -267,6 +272,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_cross_browser_smoke_timeout_min = 25
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -320,6 +326,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.lint_and_typecheck_timeout_min = 15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -332,9 +339,11 @@ jobs:
       # where nothing is wrong - HTTP 500 on 2026-09-13, 504 on 2026-09-14, on shell-free lanes.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -349,6 +358,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.shellcheck_timeout_min = 5
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -359,9 +369,11 @@ jobs:
       # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -375,6 +387,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.actionlint_timeout_min = 5
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -385,9 +398,11 @@ jobs:
       # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -400,6 +415,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.zizmor_timeout_min = 5
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -410,9 +426,11 @@ jobs:
       # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -432,6 +450,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.unit_tests_timeout_min = 45
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -444,9 +463,11 @@ jobs:
       # then rebuilds nothing.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -463,6 +484,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.unit_tests_gc_threshold_timeout_min = 45
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -471,6 +493,7 @@ jobs:
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests at the shipped gc.threshold
+        # @tunable gc.threshold_bytes = 32768
         run: GC_THRESHOLD=32768 scripts/test.sh
 
   # Split from unit-tests for the same reason web-coverage is; needs: unit-tests only to reuse its
@@ -486,6 +509,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.unit_tests_coverage_timeout_min = 45
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -498,9 +522,11 @@ jobs:
       # why this sync is here and retried).
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -576,6 +602,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.digital_twin_e2e_timeout_min = 20
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -609,6 +636,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.firmware_build_verify_timeout_min = 15
     timeout-minutes: 15
     strategy:
       fail-fast: false

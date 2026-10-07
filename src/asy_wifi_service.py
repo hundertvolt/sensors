@@ -146,6 +146,30 @@ def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
+# @tunable wifi.sta_disconnect_poll_s = 0.5
+_STA_DISCONNECT_POLL_S = const(0.5)  # one step of that wait
+# @tunable wifi.sta_connect_poll_s = 0.5
+_STA_CONNECT_POLL_S = const(0.5)  # one step of _poll_sta_connect_status()'s wait for a verdict
+# @tunable wifi.sta_connect_poll_iters = 10
+_STA_CONNECT_POLL_ITERS = const(10)  # its bound: 10 * 0.5s = 5s
+# @tunable wifi.hotspot_stations_settle_s = 0.1
+_HOTSPOT_STATIONS_SETTLE_S = const(0.1)  # before the stations query
+# @tunable wifi.wlan_down_settle_s = 2
+_WLAN_DOWN_SETTLE_S = const(2)  # after disconnect() + active(False), before deinit()
+# @tunable wifi.wlan_deinit_settle_s = 1
+_WLAN_DEINIT_SETTLE_S = const(1)  # after deinit(), before the new interface
+# @tunable wifi.wlan_mode_settle_s = 1
+_WLAN_MODE_SETTLE_S = const(1)  # after the new interface is created
+# @tunable wifi.sta_retry_after_loss_s = 60
+_STA_RETRY_AFTER_LOSS_S = const(60)  # retry a previously successful connection after one minute
+# @tunable wifi.led_flash_on_s = 2.9
+_LED_FLASH_ON_S = const(2.9)  # _flash_led_off()'s on phase
+# @tunable wifi.led_flash_off_s = 0.1
+_LED_FLASH_OFF_S = const(0.1)  # and its off phase
+# @tunable wifi.reconnect_caller_grace_s = 5
+_RECONNECT_CALLER_GRACE_S = const(5)  # lets the triggering caller's own final tasks finish
+# @tunable wifi.reconnect_settle_s = 3
+_RECONNECT_SETTLE_S = const(3)  # after the reconnect, once, for whatever else to settle
 
 # Expected field counts of the config reads and of WLAN.ifconfig()'s fixed 4-tuple, checked before
 # unpacking so a short/missing config degrades instead of raising.
@@ -162,6 +186,7 @@ _PHASE_STA_ESTABLISHED = const(1)  # STA mode, connected at least once since the
 _PHASE_HOTSPOT = const(2)  # AP/hotspot fallback mode active
 _PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated, needs a task/device restart
 
+# @tunable wifi.refresh_s = 5
 _WIFI_REFRESH_S = const(5)  # wlan_connect()'s loop period between connection checks
 
 _STAT_OBTAINING_IP = const(2)  # network.STAT_* value seen mid-connect, between STAT_CONNECTING and
@@ -186,6 +211,7 @@ class AsyConnTime(SensorReaderConfig):
         self,
         wifi: WifiConfig,
         ext_led: "LEDControl | None" = None,
+        # @tunable module.max_error = 5
         max_module_error: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
         # task supervisor restart this task - same _error_check() contract every Reader uses,
         # inherited from SensorReaderConfig (no I2C bus here, just the shared generic mechanism).
@@ -272,7 +298,7 @@ class AsyConnTime(SensorReaderConfig):
     async def _get_hotspot_stations(self) -> "list[Any]":
         await self.wifi_mode_lock.acquire()
         try:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(_HOTSPOT_STATIONS_SETTLE_S)
             # stations command needs no other status commands close before (and does not support "async with"!)
             stations = self.wlan.status("stations")
             self.pr.all("Connected stations:", stations)
@@ -320,14 +346,14 @@ class AsyConnTime(SensorReaderConfig):
             self.wlan.disconnect()
             self.wlan.active(False)
             self.pr.all("Wifi inactive")
-            await asyncio.sleep(2)
+            await asyncio.sleep(_WLAN_DOWN_SETTLE_S)
             self.wlan.deinit()
             self.pr.all("Wifi off")
-            await asyncio.sleep(1)
+            await asyncio.sleep(_WLAN_DEINIT_SETTLE_S)
             await self.wifi_uptime.set_value(0)
             self.wlan = network.WLAN(mode)
             self.pr.all("Wifi mode set")
-            await asyncio.sleep(1)
+            await asyncio.sleep(_WLAN_MODE_SETTLE_S)
         except Exception as e:
             self.hw_op_failed = True
             await self.pr.err_s("Error switching WLAN mode:", e, errno=_ERR_WLAN_MODE_SWITCH)
@@ -382,7 +408,7 @@ class AsyConnTime(SensorReaderConfig):
                 if not self.wlan.isconnected():
                     break
                 self._led_toggle()
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(_STA_DISCONNECT_POLL_S)
             else:
                 self.hw_op_failed = True
                 await self.pr.err_s("Timed out waiting for STA disconnect", errno=_ERR_TIMEOUT)
@@ -509,7 +535,7 @@ class AsyConnTime(SensorReaderConfig):
         self.pr.evt("No WLAN connection")
         if self._conn_phase == _PHASE_STA_ESTABLISHED:
             self.pr.evt("WLAN connection was previously successful, retrying in 1 minute...")
-            await asyncio.sleep(60)  # retry previously successful connecion in one minute
+            await asyncio.sleep(_STA_RETRY_AFTER_LOSS_S)
         else:
             await self._register_sta_connection_failure()
         self._led_off()
@@ -533,7 +559,7 @@ class AsyConnTime(SensorReaderConfig):
         try:
             self.wlan.disconnect()
             self.wlan.active(False)
-            await asyncio.sleep(2)
+            await asyncio.sleep(_WLAN_DOWN_SETTLE_S)
             self.wlan.deinit()
         except Exception as e:
             self.hw_op_failed = True
@@ -567,9 +593,9 @@ class AsyConnTime(SensorReaderConfig):
         while True:
             try:
                 self._led_on()
-                await asyncio.sleep(2.9)
+                await asyncio.sleep(_LED_FLASH_ON_S)
                 self._led_off()
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(_LED_FLASH_OFF_S)
             except asyncio.CancelledError:
                 self._led_on()
                 break
@@ -587,12 +613,12 @@ class AsyConnTime(SensorReaderConfig):
             # only the plain-STA-reconnect path needs it set here.
             self._conn_phase = _PHASE_STA_SEEKING
         self.pr.evt("WLAN reconnect triggered!")
-        await asyncio.sleep(5)  # allow final tasks of calling function
+        await asyncio.sleep(_RECONNECT_CALLER_GRACE_S)  # allow final tasks of calling function
         if leaving_hotspot:  # mode switch
             await self._leave_hotspot_mode()
         else:  # plain reconnect
             await self._wait_for_sta_disconnect()
-        await asyncio.sleep(3)  # wait once for whatever else to settle
+        await asyncio.sleep(_RECONNECT_SETTLE_S)  # wait once for whatever else to settle
 
     async def _wait_for_sta_disconnect(self) -> None:
         self.pr.evt("Reconnecting WLAN...")
@@ -629,7 +655,7 @@ class AsyConnTime(SensorReaderConfig):
             self._release_wifi_lock()
 
     async def _poll_sta_connect_status(self) -> None:
-        for _i in range(10):
+        for _i in range(_STA_CONNECT_POLL_ITERS):
             self._led_toggle()
             try:
                 status = self.wlan.status()
@@ -657,7 +683,7 @@ class AsyConnTime(SensorReaderConfig):
             else:
                 await self.pr.wrn_s("WLAN undefined state:", status, wrnno=_WRN_WLAN_STATUS_UNKNOWN)
                 return
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(_STA_CONNECT_POLL_S)
 
     async def _handle_sta_connection_result(self) -> None:
         if self._wlan_isconnected_or_false():

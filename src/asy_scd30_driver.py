@@ -92,6 +92,15 @@ _WORD_BYTES = const(2)
 _WORD_CRC_BYTES = const(3)
 # The order a PUT's chip writes are applied in, whatever the body's key order.
 _APPLY_ORDER = const(("TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))
+# Waits between a command and its result, after a soft reset, and the start-trigger timer's period.
+# @tunable scd30.cmd_response_wait_s = 0.05
+_CMD_RESPONSE_WAIT_S = const(0.05)
+# @tunable scd30.asc_enable_wait_s = 0.01
+_ASC_ENABLE_WAIT_S = const(0.01)
+# @tunable scd30.soft_reset_wait_s = 2.5
+_SOFT_RESET_WAIT_S = const(2.5)
+# @tunable scd30.start_trigger_period_ms = 500
+_START_TRIGGER_PERIOD_MS = const(500)
 
 
 def _temp_offset_ticks(offset: float) -> int:
@@ -149,6 +158,7 @@ class SCD30_Reader(SensorReader):
         i2c: I2C,
         irq_pin: int,
         trigger_sec: int = 3,
+        # @tunable module.max_error = 5
         max_module_error: int = 5,
         name_ext: str = "",
         log: LogConfig = DEFAULT_LOG,
@@ -281,7 +291,7 @@ class SCD30_Reader(SensorReader):
     def start_timer(self) -> None:
         try:
             self.start_trigger_timer.init(
-                period=500,
+                period=_START_TRIGGER_PERIOD_MS,
                 mode=Timer.PERIODIC,
                 callback=lambda _b: self.base_trigger_event.set(),
             )
@@ -490,7 +500,7 @@ class SCD30_I2C:
                 raise RuntimeError("CRC generation failed!")
             end_byte = 5
         await i2c.write(self._buffer, end=end_byte)
-        await asyncio.sleep(0.05)  # delay for response
+        await asyncio.sleep(_CMD_RESPONSE_WAIT_S)  # delay for response
 
     async def _read_register(self, reg_addr: int) -> int:
         async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
@@ -502,7 +512,7 @@ class SCD30_I2C:
         await i2c.write(self._buffer, end=2)
         # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
         # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(_CMD_RESPONSE_WAIT_S)
         await i2c.readinto(self._buffer, end=3)
         if await self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
             raise RuntimeError("CRC check failed while reading data")
@@ -563,7 +573,7 @@ class SCD30_I2C:
         # NVM-persisted - survives reset() and power cycles.
         await self._send_command(_CMD_AUTOMATIC_SELF_CALIBRATION, enabled)
         if enabled:
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(_ASC_ENABLE_WAIT_S)
 
     async def set_ambient_pressure(self, pressure_mbar: float) -> None:
         # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
@@ -608,7 +618,7 @@ class SCD30_I2C:
         await self._send_command(_CMD_SOFT_RESET)
         # Boot-up is documented as <2s (Interface Description 1.1); wait the full bound since this
         # also runs on every failure-triggered restart, not just cold boot.
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(_SOFT_RESET_WAIT_S)
 
     async def stop_continuous_measurement(self) -> None:
         # Turn off continuous measurement (turn on with ambient pressure command)

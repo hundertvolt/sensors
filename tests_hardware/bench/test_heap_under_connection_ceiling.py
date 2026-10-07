@@ -24,21 +24,27 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # The worst-case body: microdot reads one only when Content-Length > 0, up to max_content_length
 # (2048), contiguously - so it must be PLACEABLE N times over. heap_map.placeable() counts that;
 # gaps_at_least() counts RUNS, so one large free run reads as 1 however many buffers fit in it.
+# @tunable web.max_content_length = 2048
 PER_CONNECTION_ALLOCATION = 2048
 # The script's own window is 90s and it prints READY about 20s in; this bounds the hold, not it.
+# @tunable l4.ceiling_hold_s = 55.0
 _HOLD_S = 55.0
 # No connection can be held past the server's own outer_cap_s (15.0), and one that says nothing is
 # closed after per_call_timeout_s (5.0) - measured on silicon at 5.12-5.16s plain, 15.1s dripping
 # (SPECIFICATION.md Part H.7.1). A full ceiling is therefore SUSTAINED by recycling, never held.
+# @tunable l4.ceiling_drip_interval_s = 2.0
 _DRIP_INTERVAL_S = 2.0
 # Recycled well inside the 15s cap, and STAGGERED: workers started together would also expire
 # together, so the live count would collapse to zero every 15s instead of staying at the ceiling.
+# @tunable l4.ceiling_recycle_s = 10.0
 _RECYCLE_S = 10.0
 # Recycling means one worker is always between connections, so the count sits at ceiling or one
 # below it. What makes the heap dumps a peak reading is that it is at the ceiling nearly always.
+# @tunable l4.ceiling_min_fraction_at_ceiling = 0.55
 _MIN_FRACTION_AT_CEILING = 0.55
 # A refusal is a FIN ~6 ms after connect, or an RST once the request bytes have arrived, so a
 # connection counts as held only once a read of it has stayed silent this long (Part H.7).
+# @tunable l4.ceiling_admission_wait_s = 0.3
 _ADMISSION_WAIT_S = 0.3
 
 

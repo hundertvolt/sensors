@@ -82,6 +82,7 @@ async def _assert_recovery(fram: FRAM_SPI, addr: int, wdt: machine.WDT) -> list[
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMCSHIJACK"), max_size=0x40000)

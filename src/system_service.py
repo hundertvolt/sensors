@@ -46,12 +46,18 @@ _ERR_TASK_RAISED = const(42)
 _ERR_TASK_CANCELLED = const(43)
 _ERR_TASK_RETURNED = const(44)
 
+# @tunable system.reset_delay_s = 4
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
+# @tunable system.ntp_wait_s = 120
 _NTP_WAIT_TIME = const(120)  # 2 mins until random boot signature is used
+# @tunable system.timer_base_period_ms = 1000
 _TIMER_BASE_PERIOD = const(1000)  # milliseconds for sensor triggers base period
+# @tunable system.task_check_s = 2
 _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << watchdog timeout!)
+# @tunable system.task_fail_increment = 100
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
+# @tunable system.task_fail_max = 300
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
 

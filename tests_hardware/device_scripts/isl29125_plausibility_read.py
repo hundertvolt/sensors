@@ -19,6 +19,7 @@ ROOM_LIGHT_MIN_LUX = 5.0  # with the board lighting ITSELF (below), anything thi
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     # The board lights its OWN scene rather than trusting the bench: depending on ambient made this
     # result depend on test ORDER - it passed with the pixel latched white, then failed once a

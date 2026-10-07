@@ -26,6 +26,10 @@ _CATALOG_PATH = Path(__file__).resolve().parent / "error_catalog.json"
 # never conflate the two (Part L.7).
 SCHEMA_VERSION = "1.0.0"
 
+# The page's poll interval: the status section's own and the default every other polled section takes.
+# @tunable web.poll_interval_ms = 3000
+_POLL_INTERVAL_MS = 3000
+
 # Fixed, generator-owned REST-endpoint skeleton (H.4: "Nav grouping: Mirrors the 6 REST endpoints
 # 1:1") - never per-device data, so never tag-derived (SPECIFICATION.md Part H.5.1). "groups" is
 # filled in per device below; "notification" is appended only when a `notification` instance exists.
@@ -34,7 +38,7 @@ _SECTION_SKELETON: "tuple[dict[str, Any], ...]" = (
     {"key": "sensors", "label": "Sensors", "description": "Per-sensor configuration. Each card applies independently.", "rest": {"get": "/sensors", "put": "/sensors"}, "pollGroup": "settings"},
     {"key": "networking", "label": "Networking", "description": "Wi-Fi credentials, identity, and NTP time sync. Live status (IP, RSSI, uptime, sync age) is on the Status page.", "rest": {"get": "/networking", "put": "/networking"}, "pollGroup": "settings"},
     {"key": "system", "label": "System", "rest": {"get": "/system", "put": "/system"}, "pollGroup": "settings"},
-    {"key": "status", "label": "Status", "description": "Live system/network/error state. Error counts are always visible; click a module to see its history.", "rest": {"get": "/status", "put": "/status"}, "pollGroup": "live", "pollIntervalMs": 3000},
+    {"key": "status", "label": "Status", "description": "Live system/network/error state. Error counts are always visible; click a module to see its history.", "rest": {"get": "/status", "put": "/status"}, "pollGroup": "live", "pollIntervalMs": _POLL_INTERVAL_MS},
 )
 _NOTIFICATION_SECTION_SKELETON: "dict[str, Any]" = {
     "key": "notification", "label": "Notification", "rest": {"get": "/notification", "put": "/notification"}, "pollGroup": "settings",
@@ -604,7 +608,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
         "websiteVersion": WEBSITE_VERSION,
         "device": {"id": model.device, "displayName": model.device},
         "landingSection": "measurements",
-        "defaultPollIntervalMs": 3000,
+        "defaultPollIntervalMs": _POLL_INTERVAL_MS,
         "sections": sections,
     }
 

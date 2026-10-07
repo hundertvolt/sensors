@@ -18,6 +18,7 @@ E_TEST_SEED_B = 126
 SEEDS = [E_TEST_SEED_A, E_TEST_SEED_B, E_TEST_SEED_A]
 E_TEST_SEED_C = 127  # the fourth entry, whose write is what the reset interrupts
 LOG_NAME = "ERRRACE"
+# @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
 
 

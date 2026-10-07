@@ -52,6 +52,7 @@ async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float, wdt: mac
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)

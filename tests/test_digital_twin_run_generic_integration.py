@@ -58,6 +58,7 @@ def test_parse_args_minimal_valid_config() -> None:
     assert config.device == "sensortask_novel_combo"  # defaults to the module name, unset --device
     assert config.state == StatePaths(None, None)
     assert config.injections == Injections(None, [], [], [])
+    # @tunable gc.threshold_bytes = 32768
     assert config.run == RunLimits(None, 32768, None)
 
 
@@ -121,6 +122,7 @@ def test_parse_args_gc_threshold_defaults_to_matching_real_firmware() -> None:
     # an ordinary twin run should model production's real memory-safety configuration by default,
     # not just its allocation code. See _GC_THRESHOLD_DEFAULT's own module-level comment.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
+    # @tunable gc.threshold_bytes = 32768
     assert config.run.gc_threshold == 32768
 
 

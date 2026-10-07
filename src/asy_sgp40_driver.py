@@ -61,10 +61,21 @@ _WRN_SGP_NO_BACKUP = const(65)
 
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
+# @tunable sgp40.fram_verify_mins = 60
 _FRAM_VERIFY_MINS = const(60)
 _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
+# @tunable sgp40.backup_counter_max = 100000
 _BACKUP_COUNTER_MAX = const(100000)  # see _check_storage()'s own note on the 86400s = 1 day margin
 _SELF_TEST_PASS = const(0xD4)  # datasheet Table 13, high byte only (the low byte is "ignore")
+# Waits between a command and its result, and after the general-call reset.
+# @tunable sgp40.measure_wait_ms = 100
+_MEASURE_WAIT_MS = const(100)
+# @tunable sgp40.serial_read_wait_ms = 3
+_SERIAL_READ_WAIT_MS = const(3)
+# @tunable sgp40.self_test_wait_ms = 500
+_SELF_TEST_WAIT_MS = const(500)
+# @tunable sgp40.general_call_reset_wait_s = 1
+_GENERAL_CALL_RESET_WAIT_S = const(1)
 
 _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
 _VAL_BMAX = const((("BackupMaxAge", "int", 7200, 0, 10080, None),))
@@ -149,6 +160,7 @@ class SGP40_Reader(SensorReaderConfig):
         temperature: "ValueRef",
         humidity: "ValueRef",
         backup: SgpBackup | None = None,
+        # @tunable module.max_error = 5
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
@@ -594,7 +606,7 @@ class SGP40_I2C:
                 i2c.i2c.writeto(0x00, b"\x06")
             except OSError:
                 pass
-        await asyncio.sleep(1)
+        await asyncio.sleep(_GENERAL_CALL_RESET_WAIT_S)
 
     @staticmethod
     def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
@@ -616,7 +628,7 @@ class SGP40_I2C:
         async with self.i2c_sgp40 as sgp40:  # device session
             self._command_buffer = self._measure_command
             # 100ms: >3x margin over the datasheet's 30ms typ/max measurement duration (Table 8)
-            read_value = await self._read_word_from_command(sgp40, delay_ms=100)
+            read_value = await self._read_word_from_command(sgp40, delay_ms=_MEASURE_WAIT_MS)
             self._command_buffer = self._default_command_buffer
         if read_value is None:
             return None
@@ -676,7 +688,7 @@ class SGP40_I2C:
         async with self.i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x36
             self._command_buffer[1] = 0x82
-            serialnumber = await self._read_word_from_command(sgp40, delay_ms=3)
+            serialnumber = await self._read_word_from_command(sgp40, delay_ms=_SERIAL_READ_WAIT_MS)
         if serialnumber is None:
             raise RuntimeError("No sensor response!")
         if serialnumber[0] != 0x0000:
@@ -688,7 +700,7 @@ class SGP40_I2C:
         async with self.i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x28
             self._command_buffer[1] = 0x0E
-            self_test = await self._read_word_from_command(sgp40, delay_ms=500)
+            self_test = await self._read_word_from_command(sgp40, delay_ms=_SELF_TEST_WAIT_MS)
         if self_test is None:
             raise RuntimeError("No sensor response!")
         # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4/0x4B); the low

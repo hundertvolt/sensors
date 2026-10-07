@@ -20,12 +20,16 @@ const HOST = "127.0.0.1";
 // Clear of every fixed port this repo binds - see tests_js/_live_twin_command.js's own PORT comment;
 // this harness's twin runs alongside that file's (19481) in one `npm test` run.
 const PORT = 19482;
+// @tunable l0.live_twin_ready_timeout_ms = 20000
 const READY_TIMEOUT_MS = 20000;
+// @tunable l0.live_twin_shutdown_timeout_ms = 15000
 const SHUTDOWN_TIMEOUT_MS = 15000;
 /** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
 const spawnErrors = new WeakMap();
+// @tunable l0.put_matrix_apply_status_timeout_ms = 5000
 const APPLY_STATUS_TIMEOUT_MS = 5000;
 // Generous bound for pollForText() - see SPECIFICATION.md Part H.8.1 ("Testing an async DOM refresh").
+// @tunable l0.put_matrix_caption_poll_timeout_ms = 3000
 const CAPTION_POLL_TIMEOUT_MS = 3000;
 
 /** @param {number} ms */

@@ -304,6 +304,7 @@ def _scenarios() -> "list[tuple[str, tuple[int, int, int], list[tuple[str, tuple
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     pixel = NeoPixel(Pin(_PIN_PIXEL, Pin.OUT), 1)

@@ -20,6 +20,53 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 
+# The suite's waits, bounds and backoff-gap bands, one constant each (SPECIFICATION.md Part N).
+# @tunable l1.captive_dns_wait_until_timeout_ms = 1000
+_WAIT_UNTIL_TIMEOUT_MS = 1000
+# @tunable l1.captive_dns_wait_until_poll_ms = 10
+_WAIT_UNTIL_POLL_MS = 10
+# @tunable l1.captive_dns_stray_reply_wait_ms = 20
+_STRAY_REPLY_WAIT_MS = 20
+# @tunable l1.captive_dns_no_backoff_elapsed_max_ms = 1000
+_NO_BACKOFF_ELAPSED_MAX_MS = 1000
+# @tunable l1.captive_dns_reach_recv_ms = 20
+_REACH_RECV_MS = 20
+# @tunable l1.captive_dns_bind_wait_ms = 50
+_BIND_WAIT_MS = 50
+# @tunable l1.captive_dns_reply_wait_ms = 200
+_REPLY_WAIT_MS = 200
+# @tunable l1.captive_dns_cycle_wait_ms = 100
+_CYCLE_WAIT_MS = 100
+# @tunable l1.captive_dns_cleanup_tick_ms = 10
+_CLEANUP_TICK_MS = 10
+# @tunable l1.captive_dns_cleanup_tick_count = 10
+_CLEANUP_TICK_COUNT = 10
+# @tunable l1.captive_dns_backoff_wait_timeout_ms = 5000
+_BACKOFF_WAIT_TIMEOUT_MS = 5000
+# @tunable l1.captive_dns_backoff_series_timeout_ms = 15000
+_BACKOFF_SERIES_TIMEOUT_MS = 15000
+# @tunable l1.captive_dns_gap_initial_min_ms = 400
+_GAP_INITIAL_MIN_MS = 400
+# @tunable l1.captive_dns_gap_initial_max_ms = 800
+_GAP_INITIAL_MAX_MS = 800
+# @tunable l1.captive_dns_gap_doubled_min_ms = 900
+_GAP_DOUBLED_MIN_MS = 900
+# @tunable l1.captive_dns_gap_doubled_max_ms = 1400
+_GAP_DOUBLED_MAX_MS = 1400
+# @tunable l1.captive_dns_gap_quad_min_ms = 1900
+_GAP_QUAD_MIN_MS = 1900
+# @tunable l1.captive_dns_gap_quad_max_ms = 2600
+_GAP_QUAD_MAX_MS = 2600
+# @tunable l1.captive_dns_gap_no_backoff_max_ms = 300
+_GAP_NO_BACKOFF_MAX_MS = 300
+# @tunable l1.captive_dns_backoff_cap_timeout_ms = 20000
+_BACKOFF_CAP_TIMEOUT_MS = 20000
+# @tunable l1.captive_dns_gap_cap_min_ms = 4700
+_GAP_CAP_MIN_MS = 4700
+# @tunable l1.captive_dns_gap_cap_max_ms = 5400
+_GAP_CAP_MAX_MS = 5400
+
+
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
@@ -384,12 +431,12 @@ class _FakeUDPS:
         return self.disconnect_ok
 
 
-async def _wait_until(predicate: "Callable[[], bool]", timeout_ms: int = 1000) -> bool:
+async def _wait_until(predicate: "Callable[[], bool]", timeout_ms: int = _WAIT_UNTIL_TIMEOUT_MS) -> bool:
     t0 = time.ticks_ms()
     while not predicate():
         if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
             return False
-        await asyncio.sleep_ms(10)
+        await asyncio.sleep_ms(_WAIT_UNTIL_POLL_MS)
     return True
 
 
@@ -437,7 +484,7 @@ def test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request() ->
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
             assert await _wait_until(lambda: len(fake.sent) >= 1)
-            await asyncio.sleep_ms(20)  # give a stray second reply a chance to show up, if any
+            await asyncio.sleep_ms(_STRAY_REPLY_WAIT_MS)  # give a stray second reply a chance to show up, if any
             return fake.sent
         finally:
             await _cancel(task)
@@ -496,7 +543,7 @@ def test_run_ignores_malformed_query_without_stalling() -> None:
     # A regression here (the malformed DNSQuery raising into run()'s broad except-Exception
     # handler) would incur its 3s backoff before answering the next request - well under that
     # margin proves the guard is actually what's preventing it, not just fast test scheduling.
-    assert elapsed_ms < 1000
+    assert elapsed_ms < _NO_BACKOFF_ELAPSED_MAX_MS
 
 
 def test_run_rejects_invalid_server_ip_or_netmask_without_raising() -> None:
@@ -527,7 +574,7 @@ def test_run_cancellation_disconnects_cleanly() -> None:
         server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(20)  # let it reach the pending recvfrom()
+        await asyncio.sleep_ms(_REACH_RECV_MS)  # let it reach the pending recvfrom()
         await _cancel(task)  # run() catches CancelledError internally and returns normally
 
     run(scenario())
@@ -614,9 +661,9 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
         peer.bind(peer_addr)
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(50)  # let the server bind
+            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let the server bind
             peer.sendto(make_query(["a", "io"]), server_addr)
-            await asyncio.sleep_ms(200)
+            await asyncio.sleep_ms(_REPLY_WAIT_MS)
             return not task.done()  # still running - no uncaught exception killed it
         finally:
             peer.close()
@@ -666,7 +713,7 @@ def _run_once_expect_clean_return(server: "DNSServer", server_ip: str, netmask: 
     run(scenario())
 
 
-def _run_briefly_and_cancel(server: "DNSServer", server_ip: str, netmask: str, wait_ms: int = 20) -> None:
+def _run_briefly_and_cancel(server: "DNSServer", server_ip: str, netmask: str, wait_ms: int = _REACH_RECV_MS) -> None:
     async def scenario() -> None:
         task = asyncio.create_task(server.run(server_ip, netmask))
         await asyncio.sleep_ms(wait_ms)
@@ -843,10 +890,10 @@ def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() ->
         peer.bind(peer_addr)
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(50)  # let it bind
+            await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind
             assert server.udps.sock is not None  # real bind succeeded this cycle
             peer.sendto(make_query(["cycle"]), server_addr)
-            await asyncio.sleep_ms(100)
+            await asyncio.sleep_ms(_CYCLE_WAIT_MS)
             return not task.done()  # still alive - no uncaught exception killed it
         finally:
             peer.close()
@@ -873,11 +920,11 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
         peer.bind(peer_addr)
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            await asyncio.sleep_ms(50)
+            await asyncio.sleep_ms(_BIND_WAIT_MS)
             for bad in malformed_query_cases():
                 peer.sendto(bad, server_addr)
             peer.sendto(make_query(["a", "io"]), server_addr)
-            await asyncio.sleep_ms(200)
+            await asyncio.sleep_ms(_REPLY_WAIT_MS)
             return not task.done()  # still alive after the whole burst
         finally:
             peer.close()
@@ -903,13 +950,13 @@ def test_integration_survives_async_connects_fire_and_forget_cancel_pattern() ->
         server.udps = AsyUDPSocket(server_addr, mode="server")
         evtloop = asyncio.get_event_loop()
         task = evtloop.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(50)  # let it bind and reach the pending recvfrom()
+        await asyncio.sleep_ms(_BIND_WAIT_MS)  # let it bind and reach the pending recvfrom()
         task.cancel()  # exactly async_connect.py's own pattern - never awaited by the caller
         # Nothing observes `task` from here on, matching the real caller exactly. Only give the
         # event loop a few ticks so the cancelled task's own cleanup actually gets to run, the way
         # it naturally would on a live device between this point and the next scheduler pass.
-        for _ in range(10):
-            await asyncio.sleep_ms(10)
+        for _ in range(_CLEANUP_TICK_COUNT):
+            await asyncio.sleep_ms(_CLEANUP_TICK_MS)
         return server
 
     server = run(scenario())
@@ -960,7 +1007,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
             t0 = time.ticks_ms()
             task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
             try:
-                assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=5000)
+                assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_WAIT_TIMEOUT_MS)
                 assert server.pr.err_count == 1  # the flaky first attempt logged a real, persisted error
                 assert await _newest_entry(server) == (code("E", "UNEXPECTED"), "E")
                 return fake.sent, time.ticks_diff(time.ticks_ms(), t0)
@@ -992,7 +1039,7 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
         server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(20)
+        await asyncio.sleep_ms(_REACH_RECV_MS)
         await _cancel(task)  # disconnect()'s own exception must not escape cancellation either
         assert fake.disconnect_called is True
         assert server.pr.err_count == 1
@@ -1020,7 +1067,7 @@ def test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom() -> Non
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=15000)
+            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_SERIES_TIMEOUT_MS)
             return fake.recv_call_times_ms
         finally:
             await _cancel(task)
@@ -1033,9 +1080,9 @@ def test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom() -> Non
     gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(3)]
     # gaps[i] is the pause *after* recvfrom() call i's (None, None) result, before call i+1 fires -
     # must grow across consecutive failures, not stay at the previous zero-delay spin.
-    assert 400 <= gaps[0] < 800  # ~0.5s initial backoff
-    assert 900 <= gaps[1] < 1400  # ~1.0s (doubled)
-    assert 1900 <= gaps[2] < 2600  # ~2.0s (doubled again)
+    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # ~0.5s initial backoff
+    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # ~1.0s (doubled)
+    assert _GAP_QUAD_MIN_MS <= gaps[2] < _GAP_QUAD_MAX_MS  # ~2.0s (doubled again)
 
 
 def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
@@ -1055,17 +1102,17 @@ def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            assert await _wait_until(lambda: len(fake.recv_call_times_ms) >= 5, timeout_ms=15000)
+            assert await _wait_until(lambda: len(fake.recv_call_times_ms) >= 5, timeout_ms=_BACKOFF_SERIES_TIMEOUT_MS)
             return fake.recv_call_times_ms
         finally:
             await _cancel(task)
 
     call_times = run(scenario())
     gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(4)]
-    assert 400 <= gaps[0] < 800  # first empty result -> ~0.5s
-    assert 900 <= gaps[1] < 1400  # second empty result -> ~1.0s (doubled)
-    assert gaps[2] < 300  # real data received - no backoff sleep before the next recvfrom()
-    assert 400 <= gaps[3] < 800  # backoff restarted from the initial value, not continuing from ~2.0s
+    assert _GAP_INITIAL_MIN_MS <= gaps[0] < _GAP_INITIAL_MAX_MS  # first empty result -> ~0.5s
+    assert _GAP_DOUBLED_MIN_MS <= gaps[1] < _GAP_DOUBLED_MAX_MS  # second empty result -> ~1.0s (doubled)
+    assert gaps[2] < _GAP_NO_BACKOFF_MAX_MS  # real data received - no backoff sleep before the next recvfrom()
+    assert _GAP_INITIAL_MIN_MS <= gaps[3] < _GAP_INITIAL_MAX_MS  # backoff restarted from the initial value, not continuing from ~2.0s
 
 
 def test_run_recv_backoff_caps_at_the_ceiling() -> None:
@@ -1080,7 +1127,7 @@ def test_run_recv_backoff_caps_at_the_ceiling() -> None:
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=20000)
+            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=_BACKOFF_CAP_TIMEOUT_MS)
             return fake.recv_call_times_ms
         finally:
             await _cancel(task)
@@ -1088,7 +1135,7 @@ def test_run_recv_backoff_caps_at_the_ceiling() -> None:
     call_times = run(scenario())
     assert len(call_times) >= 6  # 5 empty results + the one that finally returns real data
     gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(5)]
-    assert 4700 <= gaps[4] < 5400  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
+    assert _GAP_CAP_MIN_MS <= gaps[4] < _GAP_CAP_MAX_MS  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
 
 
 def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() -> None:
@@ -1098,7 +1145,7 @@ def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() 
         server = DNSServer(log=LogConfig(None, 10, PrintLog.level_err()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(20)
+        await asyncio.sleep_ms(_REACH_RECV_MS)
         await _cancel(task)
         assert fake.disconnect_called is True
         assert server.pr.err_count == 0  # a second CancelledError during cleanup isn't a real error
@@ -1117,7 +1164,7 @@ def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardow
         server = DNSServer(log=LogConfig(None, 10, PrintLog.level_warn()))
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        await asyncio.sleep_ms(20)
+        await asyncio.sleep_ms(_REACH_RECV_MS)
         await _cancel(task)
         assert fake.disconnect_called is True
         assert server.pr.err_count == 1

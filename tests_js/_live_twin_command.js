@@ -18,8 +18,14 @@ const HOST = "127.0.0.1";
 // full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
 // would otherwise refuse this one's bind. 19482 is _live_matrix_command.js's, in one `npm test` run.
 const PORT = 19481;
+// @tunable l0.live_twin_ready_timeout_ms = 20000
 const READY_TIMEOUT_MS = 20000;
+// @tunable l0.live_twin_shutdown_timeout_ms = 15000
 const SHUTDOWN_TIMEOUT_MS = 15000;
+// @tunable l0.live_twin_section_wait_ms = 10000
+const SECTION_WAIT_MS = 10000;
+// @tunable l0.live_twin_tab_wait_ms = 20000
+const TAB_WAIT_MS = 20000;
 /** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
 const spawnErrors = new WeakMap();
 
@@ -207,7 +213,7 @@ export async function runLiveBackendSmoke({ context }, device) {
         const gotoRes = await livePage.goto(`http://${HOST}:${PORT}/`);
         consoleMessages.push(`[goto] status=${gotoRes?.status()} url=${gotoRes?.url()}`);
         try {
-            await livePage.waitForSelector('[data-section-key="system"]', { timeout: 10000 });
+            await livePage.waitForSelector('[data-section-key="system"]', { timeout: SECTION_WAIT_MS });
         } catch (err) {
             const html = await livePage.content();
             throw new Error(`${err instanceof Error ? err.message : String(err)}\n--- console ---\n${consoleMessages.join("\n")}\n--- html (first 2000 chars) ---\n${html.slice(0, 2000)}`, { cause: err });
@@ -292,7 +298,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device) {
         }
         deviceNames = await Promise.all(pages.map(async (page) => {
             await page.goto(`http://${HOST}:${PORT}/`);
-            await page.waitForSelector('[data-section-key="system"]', { timeout: 20000 });
+            await page.waitForSelector('[data-section-key="system"]', { timeout: TAB_WAIT_MS });
             return (await page.locator("#device-name").textContent())?.trim() ?? "";
         }));
     } catch (err) {

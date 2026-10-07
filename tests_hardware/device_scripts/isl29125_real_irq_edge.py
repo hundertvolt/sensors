@@ -66,6 +66,7 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     # Park the pixel dark FIRST. A WS2812 latches its last value, and `mpremote run` leaves it
     # wherever the WiFi signalling service last wrote it - often full white, ~2000 lx here. A static
