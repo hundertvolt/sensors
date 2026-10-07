@@ -3164,7 +3164,8 @@ pytest tier is backgrounded so its single-process runtime overlaps the whole Mic
 instead of serializing in front of it, and reports its counts through a run record that
 `scripts/test.sh` reads into its summary block (E.10); both are reaped by one `wait` at the end (it
 counts against the same `TEST_PARALLELISM` budget as any test file — a monotonic speed probe picks
-it, falling back to the slow-host value when the probe cannot run — and carries its own `timeout`
+it, falling back to the slow-host value when the probe cannot run, and a `--coverage` run takes one
+file per usable core, the settrace binary making the suite CPU-bound — and carries its own `timeout`
 for the standing "hanging tests are never allowed" rule). One ordering constraint follows from that
 concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before** the
 background launch, because one `tests_scripts/` test necessarily writes a throwaway

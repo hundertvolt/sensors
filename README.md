@@ -149,7 +149,8 @@ are SPECIFICATION.md Part N's `runner.*` rows), honouring a cgroup CPU quota whe
 because core *count* alone cannot tell a fast x86 runner from a slow host (the bench Pi4 probes at
 ~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than CPU-bound, so oversubscribing a
 fast host is
-close to free; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
+close to free; a `--coverage` run is the exception, CPU-bound under the settrace binary, and takes one
+file per usable core; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, a positive integer of
 seconds, default 1200 — roughly 5x its real runtime, so it only fires on a genuine hang), and
 `GC_THRESHOLD` (run the MicroPython tier with that `gc.threshold()` set instead of the interpreter's

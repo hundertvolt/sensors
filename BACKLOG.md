@@ -630,6 +630,9 @@ gates, traps).
   `src/asy_sgp40_driver.py` entry drops `ANN401` (its explicit `Any` is gone), and the four sensor
   drivers (`asy_bmp3xx_driver`, `asy_isl29125_driver`, `asy_scd30_driver`, `asy_sgp40_driver`) leave
   the explicit-`Any` baseline. No new dependency and no build input changed, so nothing here moves either leg.
+  **2026-10-07, `scripts/test.sh`, shell only, no build impact**: a `--coverage` run takes one test file per
+  usable core (`_coverage_parallelism()`), since the settrace binary makes the suite CPU-bound; a chroot run of
+  `--coverage` is slower in wall clock and otherwise unchanged.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
