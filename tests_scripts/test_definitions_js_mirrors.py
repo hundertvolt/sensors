@@ -12,7 +12,7 @@ _DEFINITIONS_JS = Path(__file__).resolve().parent.parent / "js" / "definitions.j
 
 
 def _js_int_const(text: str, name: str) -> int:
-    """A top-level `const NAME = <int>;` or `export const NAME = <int>;` in the module's text."""
+    # A top-level `const NAME = <int>;` or `export const NAME = <int>;` in the module's text.
     found = re.findall(rf"^(?:export )?const {name} = (\d+);$", text, re.MULTILINE)
     assert len(found) == 1, f"js/definitions.js declares {name} {len(found)} times as an integer constant - expected exactly once"
     return int(found[0])

@@ -34,9 +34,9 @@ def _remove_tree(path: str) -> None:
 
 
 class TmpScratch:
-    """One test file's own scratch directory (tests/_tmp/<key>/). Construct once at module level
-    with a key unique to that file (its old sweep prefix works fine); dir()/path() then hand out
-    fresh, isolated locations for that process's own test functions."""
+    # One test file's own scratch directory (tests/_tmp/<key>/). Construct once at module level
+    # with a key unique to that file (its old sweep prefix works fine); dir()/path() then hand out
+    # fresh, isolated locations for that process's own test functions.
 
     def __init__(self, key: str) -> None:
         self._dir = _ROOT + "/" + key
@@ -55,7 +55,7 @@ class TmpScratch:
             pass
 
     def dir(self, label: str = "") -> str:
-        """A fresh, numbered subdirectory - the _tmp_cfg_dir()-style shape most callers need."""
+        # A fresh, numbered subdirectory - the _tmp_cfg_dir()-style shape most callers need.
         self._ensure_dir()
         self._next += 1
         name = str(self._next) + ("_" + label if label else "")
@@ -67,8 +67,8 @@ class TmpScratch:
         return path + "/"
 
     def path(self, name: str) -> str:
-        """A single, guaranteed-fresh file path (not a directory) - the _tmp_path()-style shape
-        the files writing one flat config file per test need instead."""
+        # A single, guaranteed-fresh file path (not a directory) - the _tmp_path()-style shape
+        # the files writing one flat config file per test need instead.
         self._ensure_dir()
         full = self._dir + "/" + name
         try:

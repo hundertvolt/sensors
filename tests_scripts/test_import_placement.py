@@ -14,22 +14,37 @@ from _repo_scan import REPO_ROOT, exit_on_new, repo_files
 SCOPES = ("src/", "buildgen/", "digital_twin/", "tests/", "tests_scripts/", "tests_hardware/", "scripts/", "toolchain/")
 # tests/_tmp/ is scratch; this file's own fixtures are the patterns themselves.
 _SKIPPED = ("tests/_tmp/", "tests_scripts/test_import_placement.py")
-# Builtins count only as a bare call (board.exec() is mpremote's); importlib's names in any spelling.
-_BUILTIN_LOADS = frozenset({"__import__", "exec"})
+# The import-graph check plants dynamic loads as string fixtures; its code is still checked, its strings are not launchers.
+_FIXTURE_LITERALS = frozenset({"tests_scripts/test_import_graph.py"})
+# __import__ counts only as a bare call, importlib's names in any spelling. Executing a file by path
+# (exec) is not an import (F.1): ruff's S102 and its per-file ignores govern it.
+_BUILTIN_LOADS = frozenset({"__import__"})
 _IMPORTLIB_LOADS = frozenset({"import_module", "spec_from_file_location", "module_from_spec", "exec_module"})
 _EMBEDDED_TRIGGERS = tuple(f"{name}(" for name in (*_BUILTIN_LOADS, *_IMPORTLIB_LOADS))
 
 Site = tuple[str, str, str]
 
-# (path, enclosing qualname, module or call) -> the reason SPECIFICATION.md F.1 gives for keeping it.
-_NAMED_EXCEPTIONS: dict[Site, str] = {}
+# SPECIFICATION.md F.1's named host and test sites, each with the reason F.1 gives: a dynamic load in one
+# of these files passes; a function-level import there does not.
+_NAMED_EXCEPTIONS: dict[str, str] = {
+    "buildgen/validate.py": "loads toolchain/micropython_overrides.py by path: it is no package",
+    "digital_twin/run_generic_integration.py": "the module its device config names",
+    "ext/freezefs/ffsextract.py": "vendored, build-time only; its extract mode is never used",
+    "tests/_boot_contiguity_probe.py": "a device module by its derived name",
+    "tests/_digital_twin_construction_scenarios.py": "a device module by its derived name",
+    "tests/_sensortask_scenarios.py": "a device module by its derived name",
+    "tests/_webserver_concurrency_scenarios.py": "a device module by its derived name",
+    "tests/test_asy_isl29125_driver.py": '__import__("time") inside two test statements',
+    "tests_scripts/_script_loader.py": "a scripts/ file by path",
+    "tests_scripts/conftest.py": "sets the path that loader relies on; names importlib in a comment",
+    "tests_scripts/test_buildgen_validate.py": "a test of the named loader in buildgen/validate.py",
+    "tests_scripts/test_js_coverage_report_dir.py": "names importlib in a comment; reads import statements by AST",
+}
+_DYNAMIC_LOADS = _BUILTIN_LOADS | _IMPORTLIB_LOADS
 
 # Sites present when this check landed, each moved to module level or named above by the unit owning
 # its file. Rebuilt only by --regenerate; the second test fails on an entry that no longer occurs.
 _PENDING: tuple[Site, ...] = (
-    ("buildgen/validate.py", "_lwip_ensemble_problems", "exec_module"),
-    ("buildgen/validate.py", "_lwip_ensemble_problems", "module_from_spec"),
-    ("buildgen/validate.py", "_lwip_ensemble_problems", "spec_from_file_location"),
     ("digital_twin/_bmp3xx_chip.py", "Bmp3xxChip.__init__", "random"),
     ("digital_twin/_http_client.py", "HttpResponse.json", "_strict_json"),
     ("digital_twin/_isl29125_chip.py", "Isl29125Chip.__init__", "random"),
@@ -44,37 +59,16 @@ _PENDING: tuple[Site, ...] = (
     ("digital_twin/machine.py", "_wire_spi_device", "_fram_chip"),
     ("digital_twin/run_generic_integration.py", "_apply_fault", "errno"),
     ("digital_twin/run_generic_integration.py", "_ensure_dir", "os"),
-    ("digital_twin/run_generic_integration.py", "main", "__import__"),
     ("digital_twin/run_generic_integration.py", "main", "random"),
     ("scripts/_digital_twin_ci_suite.py", "_configured_max_connections", "buildgen.validate"),
-    ("tests/_boot_contiguity_probe.py", "_main", "__import__"),
-    ("tests/_boot_contiguity_probe.py", "_main", "system_service"),
-    ("tests/_coverage_runner.py", "_run", "compile"),
-    ("tests/_coverage_runner.py", "_run", "exec"),
-    ("tests/_digital_twin_construction_scenarios.py", "_boot_device", "__import__"),
+    ("tests/_boot_contiguity_probe.py", "_main", "asy_system_service"),
     ("tests/_digital_twin_construction_scenarios.py", "_scenario_bus_fault_degrades.scenario", "errno"),
-    ("tests/_sensortask_scenarios.py", "_boot", "__import__"),
     ("tests/_sensortask_scenarios.py", "_scenario_fram_chunk_order", "asy_fram_manager"),
-    ("tests/_sensortask_scenarios.py", "_scenario_fram_never_required", "__import__"),
-    ("tests/_sensortask_scenarios.py", "_scenario_main_call_order", "__import__"),
     ("tests/_sensortask_scenarios.py", "_scenario_main_call_order", "asy_ntp_client"),
-    ("tests/_sensortask_scenarios.py", "_scenario_main_call_order", "system_service"),
-    ("tests/_sensortask_scenarios.py", "_scenario_main_forwards_web_host_port", "__import__"),
+    ("tests/_sensortask_scenarios.py", "_scenario_main_call_order", "asy_system_service"),
     ("tests/_sensortask_scenarios.py", "_scenario_main_forwards_web_host_port", "asy_ntp_client"),
-    ("tests/_sensortask_scenarios.py", "_scenario_main_forwards_web_host_port", "system_service"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_bmp3xx_driver"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_bmp3xx_driver"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_bmp3xx_driver"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_fram_manager"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_notification_service"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_ntp_client"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_sgp40_driver"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "asy_wifi_service"),
-    ("tests/_sensortask_scenarios.py", "_scenario_setup_batch_order", "system_service"),
-    ("tests/_threshold_runner.py", "_run", "compile"),
-    ("tests/_threshold_runner.py", "_run", "exec"),
-    ("tests/_webserver_concurrency_scenarios.py", "_boot", "__import__"),
-    ("tests/test_asy_bmp3xx_driver.py", "test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written", "config_manager"),
+    ("tests/_sensortask_scenarios.py", "_scenario_main_forwards_web_host_port", "asy_system_service"),
+    ("tests/test_asy_bmp3xx_driver.py", "test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written", "asy_config_manager"),
     ("tests/test_asy_fram_manager.py", "_RaisingPackInto.calcsize", "struct"),
     ("tests/test_asy_fram_manager.py", "_RaisingPackInto.unpack_from", "struct"),
     ("tests/test_asy_fram_manager.py", "_RaisingUnpackFrom.calcsize", "struct"),
@@ -87,33 +81,27 @@ _PENDING: tuple[Site, ...] = (
     ("tests/test_asy_isl29125_driver.py", "test_switch_down_is_suppressed_inside_the_dwell_window", "time"),
     ("tests/test_asy_isl29125_driver.py", "test_the_run_ends_once_consecutive_readings_agree", "time"),
     ("tests/test_asy_isl29125_driver.py", "test_the_run_gives_up_when_its_window_closes", "time"),
-    ("tests/test_asy_isl29125_driver.py", "test_the_settle_wait_is_bounded_against_a_stream_of_config_writes", "__import__"),
-    ("tests/test_asy_isl29125_driver.py", "test_the_settle_wait_is_bounded_against_a_stream_of_config_writes", "__import__"),
-    ("tests/test_asy_isl29125_driver.py", "test_the_settle_wait_is_bounded_against_a_stream_of_config_writes.extending", "__import__"),
-    ("tests/test_asy_isl29125_driver.py", "test_the_settle_wait_is_bounded_against_a_stream_of_config_writes.extending", "__import__"),
     ("tests/test_asy_isl29125_driver.py", "test_time_to_settle_stays_sane_across_a_ticks_wrap", "time"),
-    ("tests/test_asy_notification_service.py", "_OverflowingTime.gmtime", "time"),
-    ("tests/test_asy_notification_service.py", "test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv", "time"),
-    ("tests/test_asy_notification_service.py", "test_next_sleep_secs_subtracts_elapsed_time", "time"),
+    ("tests/test_asy_notification_service.py", "test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv", "time"),
+    ("tests/test_asy_notification_service.py", "test_next_sleep_s_subtracts_elapsed_time", "time"),
     ("tests/test_asy_sgp40_driver.py", "_OldTime.gmtime", "time"),
     ("tests/test_asy_sgp40_driver.py", "_OldTime.mktime", "time"),
     ("tests/test_asy_uart_comm.py", "test_the_hold_off_deadline_survives_the_ticks_rollover", "time"),
     ("tests/test_asy_uart_comm.py", "test_the_next_uid_prediction_is_correct_at_the_wrap_boundary", "asy_uart_comm"),
     ("tests/test_asy_uart_comm.py", "test_the_uid_cycle_covers_every_legal_value_and_never_0xff", "asy_uart_comm"),
     ("tests/test_asy_webserver_service.py", "test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat", "gc"),
-    ("tests/test_asy_wifi_service.py", "_OverflowingTime.gmtime", "time"),
     ("tests/test_asy_wifi_service.py", "_client_with_stored", "json"),
     ("tests/test_asy_wifi_service.py", "test_radio_bytes_ok_passes_through_everything_the_schema_check_owns", "asy_wifi_service"),
-    ("tests/test_base_classes.py", "_RaisingFramChunk.get_buffer", "base_classes"),
-    ("tests/test_captive_dns.py", "test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers", "captive_dns"),
-    ("tests/test_config_manager.py", "test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_explicit_name_overrides_type_introspection", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_name_none_falls_back_to_type_introspection", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_nested_tuple_field_no_longer_confuses_field_extraction", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_none_valued_field_passes_through", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_normal_namedtuple", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_single_field_namedtuple", "collections"),
-    ("tests/test_config_manager.py", "test_make_dict_zero_field_namedtuple", "collections"),
+    ("tests/test_asy_base_classes.py", "_RaisingFramChunk.get_buffer", "asy_base_classes"),
+    ("tests/test_asy_captive_dns.py", "test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers", "asy_captive_dns"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_explicit_name_overrides_type_introspection", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_name_none_falls_back_to_type_introspection", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_nested_tuple_field_no_longer_confuses_field_extraction", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_none_valued_field_passes_through", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_normal_namedtuple", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_single_field_namedtuple", "collections"),
+    ("tests/test_asy_config_manager.py", "test_make_dict_zero_field_namedtuple", "collections"),
     ("tests/test_digital_twin_fram.py", "test_load_state_handles_a_hex_byte_pair_straddling_a_chunk_boundary", "_fram_chip"),
     ("tests/test_digital_twin_fram.py", "test_save_state_round_trips_correctly_across_chunk_boundaries", "_fram_chip"),
     ("tests/test_digital_twin_machine.py", "test_configure_scd30_state_path_and_flush_scd30_round_trip_settings", "_crc8"),
@@ -127,7 +115,7 @@ _PENDING: tuple[Site, ...] = (
     ("tests/test_digital_twin_network_neopixel.py", "test_wlan_connect_calls_stays_bounded_across_many_calls", "network"),
     ("tests/test_digital_twin_real_website_integration.py", "_decompress", "deflate"),
     ("tests/test_digital_twin_real_website_integration.py", "_decompress", "io"),
-    ("tests/test_digital_twin_sensortask_integration.py", "test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list.scenario", "system_service"),
+    ("tests/test_digital_twin_sensortask_integration.py", "test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list.scenario", "asy_system_service"),
     ("tests/test_digital_twin_sensortask_integration.py", "test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led.scenario", "network"),
     ("tests/test_digital_twin_uart_link.py", "_hammer_with_the_graph_running", "gc"),
     ("tests/test_digital_twin_uart_link.py", "test_a_forced_collection_mid_transfer_does_not_break_the_link", "gc"),
@@ -136,12 +124,11 @@ _PENDING: tuple[Site, ...] = (
     ("tests/test_machine_uart_link.py", "test_a_long_run_keeps_the_fake_log_from_growing_without_bound", "machine"),
     ("tests/test_machine_uart_link.py", "test_the_call_log_is_bounded_and_says_when_it_dropped", "machine"),
     ("tests/test_ntp_wifi_dns_integration.py", "test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12", "asy_dns_client"),
-    ("tests/test_print_log.py", "_RaisingFramChunk.get_buffer", "base_classes"),
+    ("tests/test_asy_print_log.py", "_RaisingFramChunk.get_buffer", "asy_base_classes"),
     ("tests/test_setter_microdot_integration.py", "_fault_i2c_write", "machine"),
     ("tests/test_setter_microdot_integration.py", "_fault_next_i2c_write", "machine"),
     ("tests/test_setter_microdot_integration.py", "_nak_i2c_address", "machine"),
     ("tests/test_setter_microdot_integration.py", "_scd_writes", "machine"),
-    ("tests/test_system_service.py", "_OverflowingTime.gmtime", "time"),
     ("tests/test_uart_comm_hazard.py", "_check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction", "asy_uart_comm"),
     ("tests/test_uart_comm_hazard.py", "_check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction", "asy_uart_driver"),
     ("tests/test_uart_comm_hazard.py", "_hammer_clean", "gc"),
@@ -156,15 +143,11 @@ _PENDING: tuple[Site, ...] = (
     ("tests_hardware/harness.py", "configured_max_connections", "buildgen.validate"),
     ("tests_hardware/harness.py", "restore_board_to_serving", "http_client"),
     ("tests_hardware/harness.py", "wait_for_script_server", "http_client"),
-    ("tests_hardware/isl29125_conformance.py", "<module>", "exec"),
     ("tests_hardware/manual/runner.py", "main", "manual_bus_electrical"),
     ("tests_hardware/manual/runner.py", "main", "manual_persistence"),
     ("tests_hardware/manual/runner.py", "main", "manual_sensor_accuracy"),
     ("tests_hardware/manual/runner.py", "main", "manual_toolchain"),
     ("tests_hardware/manual/runner.py", "main", "manual_wifi"),
-    ("tests_scripts/_script_loader.py", "load_script_module", "exec_module"),
-    ("tests_scripts/_script_loader.py", "load_script_module", "module_from_spec"),
-    ("tests_scripts/_script_loader.py", "load_script_module", "spec_from_file_location"),
     ("tests_scripts/test_bench_harness_helpers.py", "test_configured_max_connections_is_the_builds_own_ceiling_for_every_device", "buildgen.validate"),
     ("tests_scripts/test_build_firmware.py", "test_build_stage_dir_rejects_a_frozen_module_colliding_with_a_reserved_staging_name", "types"),
     ("tests_scripts/test_build_firmware.py", "test_build_stage_dir_rejects_a_frozen_module_resolving_to_neither_src_nor_ext", "types"),
@@ -252,19 +235,17 @@ def _call_name(node: ast.Call) -> str | None:
     if isinstance(func, ast.Attribute):
         return func.attr if func.attr in _IMPORTLIB_LOADS else None
     bare = func.id if isinstance(func, ast.Name) else None
-    if bare in _BUILTIN_LOADS or bare in _IMPORTLIB_LOADS:
-        return bare
-    if bare == "compile":
-        mode = node.args[2] if len(node.args) > 2 else next((kw.value for kw in node.keywords if kw.arg == "mode"), None)
-        if isinstance(mode, ast.Constant) and mode.value == "exec":
-            return "compile"
-    return None
+    return bare if bare in _BUILTIN_LOADS or bare in _IMPORTLIB_LOADS else None
+
+
+def is_named(site: Site) -> bool:
+    return site[2] in _DYNAMIC_LOADS and site[0] in _NAMED_EXCEPTIONS
 
 
 def sites_in_source(path: str, source: str) -> list[Site]:
-    """Every function-level import (by module) and every dynamic load (by call), with the dotted name
-    of what encloses it - "<module>" at module level, where only a dynamic load counts. Source held in a
-    string literal (a launcher another interpreter runs) is parsed and checked the same way."""
+    # Every function-level import (by module) and every dynamic load (by call), with the dotted name
+    # of what encloses it - "<module>" at module level, where only a dynamic load counts. Source held in a
+    # string literal (a launcher another interpreter runs) is parsed and checked the same way.
     sites: list[Site] = []
 
     def visit(node: ast.AST, scope: tuple[str, ...], *, in_function: bool) -> None:
@@ -279,7 +260,7 @@ def sites_in_source(path: str, source: str) -> list[Site]:
                 sites.append((path, qualname, "." * child.level + (child.module or "")))
             elif isinstance(child, ast.Call) and (call := _call_name(child)):
                 sites.append((path, qualname, call))
-            elif isinstance(child, ast.Constant) and isinstance(child.value, str) and any(t in child.value for t in _EMBEDDED_TRIGGERS):
+            elif isinstance(child, ast.Constant) and isinstance(child.value, str) and path not in _FIXTURE_LITERALS and any(t in child.value for t in _EMBEDDED_TRIGGERS):
                 sites.extend((path, qualname, name) for _, _, name in _embedded_sites(path, child.value))
             visit(child, scope, in_function=in_function)
 
@@ -304,7 +285,7 @@ def collect_sites() -> Counter[Site]:
 
 def test_no_function_level_or_dynamic_import_outside_the_named_lists() -> None:
     unexpected = collect_sites() - Counter(_PENDING)
-    new = sorted(site for site in unexpected.elements() if site not in _NAMED_EXCEPTIONS)
+    new = sorted(site for site in unexpected.elements() if not is_named(site))
     assert not new, "imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:\n" + "\n".join(f"  {s}" for s in new)
 
 
@@ -332,9 +313,37 @@ def test_each_kind_of_site_is_caught(tmp_path: Path) -> None:
         ("probe.py", "h", "module_from_spec"),
         ("probe.py", "<module>", "__import__"),
         ("probe.py", "<module>", "import_module"),
-        ("probe.py", "<module>", "exec"),
-        ("probe.py", "<module>", "compile"),
     ])
+
+
+def test_a_named_file_passes_only_its_dynamic_loads() -> None:
+    named = next(iter(_NAMED_EXCEPTIONS))
+    source = "def f():\n    import json\n    return __import__('time')\n"
+    sites = sites_in_source(named, source)
+    assert [is_named(site) for site in sites] == [False, True], sites
+    assert not any(is_named(site) for site in sites_in_source("src/unnamed.py", source))
+
+
+def f1_named_paths() -> set[str]:
+    # The files F.1's list names: code spans at parenthesis depth 0 between its colon and the exec
+    # sentence (a reason's own code spans sit inside its parentheses).
+    spec = (REPO_ROOT / "SPECIFICATION.md").read_text(encoding="utf-8")
+    listed = re.search(r"judges every listed one harmless \(owner, 2026-10-05\):\n(.*?)Executing a file by path", spec, re.DOTALL)
+    assert listed is not None, "SPECIFICATION.md F.1's named list moved - re-anchor f1_named_paths()"
+    paths, depth = set(), 0
+    for index, part in enumerate(listed.group(1).split("`")):
+        if index % 2:
+            if depth == 0 and part.endswith(".py"):
+                paths.add(part)
+        else:
+            depth += part.count("(") - part.count(")")
+    return paths
+
+
+def test_the_named_exceptions_mirror_specification_f1() -> None:
+    assert set(_NAMED_EXCEPTIONS) == f1_named_paths(), "_NAMED_EXCEPTIONS and SPECIFICATION.md F.1's named list differ - one of them moved"
+    missing = sorted(path for path in _NAMED_EXCEPTIONS if not (REPO_ROOT / path).is_file())
+    assert not missing, f"named in F.1 but no such file: {missing}"
 
 
 def test_module_level_and_type_checking_imports_pass() -> None:
@@ -358,12 +367,12 @@ def test_regenerate_keeps_only_pending_sites_still_present_and_refuses_new_ones(
 
 
 def _regenerate(this: Path = Path(__file__)) -> None:
-    """Keeps the _PENDING sites still present (the list only shrinks) and exits 1 naming any new one."""
+    # Keeps the _PENDING sites still present (the list only shrinks) and exits 1 naming any new one.
     current, previous = collect_sites(), Counter(_PENDING)
     body = "".join(f'    ("{path}", "{qualname}", "{name}"),\n' for path, qualname, name in sorted((previous & current).elements()))
     text = re.sub(r"(?m)^(_PENDING: tuple\[Site, \.\.\.\] = \(\n)(?:.*\n)*?(\)\n)", lambda m: m.group(1) + body + m.group(2), this.read_text(encoding="utf-8"), count=1)
     this.write_text(text, encoding="utf-8")
-    exit_on_new(f"_PENDING in {this.relative_to(REPO_ROOT)}", sorted(s for s in (current - previous).elements() if s not in _NAMED_EXCEPTIONS))
+    exit_on_new(f"_PENDING in {this.relative_to(REPO_ROOT)}", sorted(s for s in (current - previous).elements() if not is_named(s)))
 
 
 if __name__ == "__main__":

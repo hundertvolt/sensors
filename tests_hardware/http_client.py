@@ -59,6 +59,6 @@ HTTP_ERROR = http.client.HTTPException
 
 
 def is_ceiling_close(exc: BaseException) -> bool:
-    """True if exc is a connection-ceiling refusal, not a real transport failure. urllib wraps it
-    in URLError.reason; RemoteDisconnected subclasses ConnectionResetError, so the tuple covers it."""
+    # True if exc is a connection-ceiling refusal, not a real transport failure. urllib wraps it
+    # in URLError.reason; RemoteDisconnected subclasses ConnectionResetError, so the tuple covers it.
     return isinstance(exc, CEILING_CLOSE) or isinstance(getattr(exc, "reason", None), CEILING_CLOSE)

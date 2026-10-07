@@ -22,12 +22,12 @@ _POLL_TRIES = 30
 
 async def _main() -> None:
     # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=999)
+    reader = SCD30_Reader(i2c1, 11, trigger_s=3, max_module_error=999)
     reader.start_timer()  # wires the real GPIO IRQ + the 500ms self-healing poll timer
-    read_task = asyncio.create_task(reader.read_loop())
-    init_irq_task = asyncio.create_task(reader.scd_init_irq())
+    read_task = asyncio.create_task(reader._read_loop())
+    init_irq_task = asyncio.create_task(reader._irq_loop())
 
     # Let the sensor's own post-reset response-time settle (see module docstring) before trusting
     # any reading - readings seen during this window are deliberately discarded.

@@ -61,7 +61,7 @@ async def _main() -> None:
                 await bmp.set_pressure_oversampling(oversample)
                 readback = await bmp.get_pressure_oversampling()
                 if readback != oversample:
-                    write_errors.append(f"iter {i}: wrote PressOvers={oversample}, read back {readback} - torn/corrupted write")
+                    write_errors.append(f"iter {i}: wrote PresOvers={oversample}, read back {readback} - torn/corrupted write")
             except Exception as e:
                 write_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             write_completed += 1

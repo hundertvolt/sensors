@@ -41,7 +41,7 @@ def _in_scope(path: str) -> bool:
 
 
 def _sentences(block: Block) -> list[str]:
-    """Split at ". " and "; " outside parentheses, so a tag's own "(owner, date; source)" stays whole."""
+    # Split at ". " and "; " outside parentheses, so a tag's own "(owner, date; source)" stays whole.
     text, sentences, start, depth = " ".join(block.lines), [], 0, 0
     for i, ch in enumerate(text):
         depth += (ch == "(") - (ch == ")")
@@ -64,7 +64,7 @@ def _prefix(sentence: str) -> str:
 
 
 def block_findings(block: Block) -> list[str]:
-    """One entry per hit sentence, so a repeat counts against the allow-list again."""
+    # One entry per hit sentence, so a repeat counts against the allow-list again.
     if block.path == _LICENCE_FILE and block.lines[0].startswith((">", "```")):
         return []
     head_tagged = _carries_actor(block.lines[0])

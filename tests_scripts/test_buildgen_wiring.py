@@ -39,15 +39,15 @@ def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
 @pytest.mark.parametrize("mode", _MODES)
 @pytest.mark.parametrize("word,required", _REQUIREDNESS)
 def test_parse_wiring_requiredness_mode_cross_product(tmp_path: Path, word: str, *, required: bool, mode: str) -> None:
-    (field,) = _parse(tmp_path, f"# @wiring fram_target AsyFramManager fram {word} {mode}\n")
-    assert field == WiringField("fram_target", "AsyFramManager", "fram", required, mode)
+    (field,) = _parse(tmp_path, f"# @wiring fram_target FRAMManager fram {word} {mode}\n")
+    assert field == WiringField("fram_target", "FRAMManager", "fram", required, mode)
 
 
 @pytest.mark.parametrize(
     "toml_field,producer,target",
     [
-        ("fram_target", "AsyFramManager", "fram"),
-        ("fram_target", "AsyFramManager", "fram_storage"),
+        ("fram_target", "FRAMManager", "fram"),
+        ("fram_target", "FRAMManager", "fram_storage"),
         ("signal_sink", "NeopixelDriver", "request_signal"),
         ("led_target", "NeopixelDriver", "ext_led"),
         ("x", "A", "b"),  # single-character names are still names
@@ -66,13 +66,13 @@ def test_parse_wiring_accepts_every_name_shape(tmp_path: Path, toml_field: str, 
 @pytest.mark.parametrize(
     "source",
     [
-        "# @wiring fram_target AsyFramManager fram optional kwarg\n",
-        "#@wiring fram_target AsyFramManager fram optional kwarg\n",
-        "## @wiring fram_target AsyFramManager fram optional kwarg\n",
-        "#   @wiring   fram_target   AsyFramManager   fram   optional   kwarg\n",
-        "# @wiring fram_target AsyFramManager fram optional kwarg   \n",
+        "# @wiring fram_target FRAMManager fram optional kwarg\n",
+        "#@wiring fram_target FRAMManager fram optional kwarg\n",
+        "## @wiring fram_target FRAMManager fram optional kwarg\n",
+        "#   @wiring   fram_target   FRAMManager   fram   optional   kwarg\n",
+        "# @wiring fram_target FRAMManager fram optional kwarg   \n",
         "#\t@wiring\tfram_target\tAsyFramManager\tfram\toptional\tkwarg\n",
-        "X = 1  # @wiring fram_target AsyFramManager fram optional kwarg\n",
+        "X = 1  # @wiring fram_target FRAMManager fram optional kwarg\n",
     ],
 )
 def test_parse_wiring_accepts_every_legal_spacing_variant(tmp_path: Path, source: str) -> None:
@@ -86,11 +86,11 @@ def test_parse_wiring_accepts_every_legal_spacing_variant(tmp_path: Path, source
 @pytest.mark.parametrize(
     "source",
     [
-        "# @wiring fram_target AsyFramManager fram optional kwarg\nX = 1\n",  # above a statement
-        "X = 1\n# @wiring fram_target AsyFramManager fram optional kwarg\n",  # below one
-        "import os\n\n# @wiring fram_target AsyFramManager fram optional kwarg\n\n\nclass Foo:\n    pass\n",
-        "_SCHEMA = (\n    # @wiring fram_target AsyFramManager fram optional kwarg\n)\n",  # bracketed continuation
-        "def f():\n    pass\n# @wiring fram_target AsyFramManager fram optional kwarg\n",  # after a body
+        "# @wiring fram_target FRAMManager fram optional kwarg\nX = 1\n",  # above a statement
+        "X = 1\n# @wiring fram_target FRAMManager fram optional kwarg\n",  # below one
+        "import os\n\n# @wiring fram_target FRAMManager fram optional kwarg\n\n\nclass Foo:\n    pass\n",
+        "_SCHEMA = (\n    # @wiring fram_target FRAMManager fram optional kwarg\n)\n",  # bracketed continuation
+        "def f():\n    pass\n# @wiring fram_target FRAMManager fram optional kwarg\n",  # after a body
     ],
 )
 def test_parse_wiring_accepts_every_module_level_location(tmp_path: Path, source: str) -> None:
@@ -109,7 +109,7 @@ def test_parse_wiring_several_tags_keep_source_order(tmp_path: Path) -> None:
     fields = _parse(
         tmp_path,
         "# @wiring signal_sink NeopixelDriver request_signal required attr\n"
-        "# @wiring fram_target AsyFramManager fram optional kwarg\n"
+        "# @wiring fram_target FRAMManager fram optional kwarg\n"
         "# @wiring led_target NeopixelDriver ext_led optional kwarg\n",
     )
     assert [f.toml_field for f in fields] == ["signal_sink", "fram_target", "led_target"]
@@ -119,7 +119,7 @@ def test_parse_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> None:
     # Two tags for one field is ambiguous, not additive - the second would silently win.
     _parse_expecting(
         tmp_path,
-        "# @wiring fram_target AsyFramManager fram optional kwarg\n# @wiring fram_target AsyFramManager other required attr\n",
+        "# @wiring fram_target FRAMManager fram optional kwarg\n# @wiring fram_target FRAMManager other required attr\n",
         "two @wiring tags for 'fram_target'",
     )
 
@@ -130,12 +130,12 @@ def test_parse_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "source,match",
     [
-        ("# @wirng fram_target AsyFramManager fram optional kwarg\n", "misspelled @wiring tag"),  # deletion
-        ("# @wiiring fram_target AsyFramManager fram optional kwarg\n", "misspelled @wiring tag"),  # insertion
-        ("# @wiribg fram_target AsyFramManager fram optional kwarg\n", "misspelled @wiring tag"),  # substitution
-        ("# @wiirng fram_target AsyFramManager fram optional kwarg\n", "misspelled @wiring tag"),  # transposition
-        ("# @WIRING fram_target AsyFramManager fram optional kwarg\n", "malformed @wiring tag"),  # mis-cased
-        ("# wiring fram_target AsyFramManager fram optional kwarg\n", "leading '@' missing"),  # sigil dropped
+        ("# @wirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # deletion
+        ("# @wiiring fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # insertion
+        ("# @wiribg fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # substitution
+        ("# @wiirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # transposition
+        ("# @WIRING fram_target FRAMManager fram optional kwarg\n", "malformed @wiring tag"),  # mis-cased
+        ("# wiring fram_target FRAMManager fram optional kwarg\n", "leading '@' missing"),  # sigil dropped
     ],
 )
 def test_parse_wiring_rejects_each_wording_mistake(tmp_path: Path, source: str, match: str) -> None:
@@ -146,7 +146,7 @@ def test_parse_wiring_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Pa
     # "wired" is three edits from "wiring" - past tolerance, so ordinary prose, not an attempt.
     # ("warning"/"writing"/"winning" are all only two edits away and DO get flagged, which is the
     # intended trade: inside the boundary, the "@" sigil plus a tag-shaped payload is enough.)
-    assert _parse(tmp_path, "# @wired fram_target AsyFramManager fram optional kwarg\n") == ()
+    assert _parse(tmp_path, "# @wired fram_target FRAMManager fram optional kwarg\n") == ()
 
 
 # --- D2 reject side: each grammar element wrong, then each one dropped ---------------------------
@@ -155,11 +155,11 @@ def test_parse_wiring_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Pa
 @pytest.mark.parametrize(
     "source",
     [
-        "# @wiring fram_target AsyFramManager fram maybe kwarg\n",  # requiredness not required/optional
-        "# @wiring fram_target AsyFramManager fram optional bogus\n",  # mode outside the two
+        "# @wiring fram_target FRAMManager fram maybe kwarg\n",  # requiredness not required/optional
+        "# @wiring fram_target FRAMManager fram optional bogus\n",  # mode outside the two
         "# @wiring led_target NeopixelDriver set_ext_led optional setter\n",  # the retired setter mode
-        "# @wiring fram-target AsyFramManager fram optional kwarg\n",  # non-identifier field name
-        "# @wiring fram_target AsyFramManager fram optional kwarg extra\n",  # a sixth element
+        "# @wiring fram-target FRAMManager fram optional kwarg\n",  # non-identifier field name
+        "# @wiring fram_target FRAMManager fram optional kwarg extra\n",  # a sixth element
     ],
 )
 def test_parse_wiring_rejects_each_element_being_wrong(tmp_path: Path, source: str) -> None:
@@ -169,11 +169,11 @@ def test_parse_wiring_rejects_each_element_being_wrong(tmp_path: Path, source: s
 @pytest.mark.parametrize(
     "source",
     [
-        "# @wiring AsyFramManager fram optional kwarg\n",  # toml_field dropped
+        "# @wiring FRAMManager fram optional kwarg\n",  # toml_field dropped
         "# @wiring fram_target fram optional kwarg\n",  # producer_class dropped
-        "# @wiring fram_target AsyFramManager optional kwarg\n",  # target dropped
-        "# @wiring fram_target AsyFramManager fram kwarg\n",  # requiredness dropped
-        "# @wiring fram_target AsyFramManager fram optional\n",  # mode dropped
+        "# @wiring fram_target FRAMManager optional kwarg\n",  # target dropped
+        "# @wiring fram_target FRAMManager fram kwarg\n",  # requiredness dropped
+        "# @wiring fram_target FRAMManager fram optional\n",  # mode dropped
     ],
 )
 def test_parse_wiring_rejects_each_element_being_dropped(tmp_path: Path, source: str) -> None:
@@ -195,9 +195,9 @@ def test_parse_wiring_bare_tag_name_with_no_payload_at_all_is_prose(tmp_path: Pa
 @pytest.mark.parametrize(
     "source",
     [
-        "class Foo:\n    # @wiring fram_target AsyFramManager fram optional kwarg\n    X = 1\n",
-        "def f():\n    # @wiring fram_target AsyFramManager fram optional kwarg\n    pass\n",
-        "def f():\n    x = (\n        # @wiring fram_target AsyFramManager fram optional kwarg\n    )\n",
+        "class Foo:\n    # @wiring fram_target FRAMManager fram optional kwarg\n    X = 1\n",
+        "def f():\n    # @wiring fram_target FRAMManager fram optional kwarg\n    pass\n",
+        "def f():\n    x = (\n        # @wiring fram_target FRAMManager fram optional kwarg\n    )\n",
     ],
 )
 def test_parse_wiring_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
@@ -212,8 +212,8 @@ def test_parse_wiring_rejects_locations_inside_a_body(tmp_path: Path, source: st
     [
         "# wiring is handled by the generator, see SPECIFICATION.md Part L\n",  # prose, no sigil, no payload
         "# @wiring\n".replace("@wiring", "@webhook"),  # an unrelated @-word
-        'X = "# @wiring fram_target AsyFramManager fram optional kwarg"\n',  # inside a string literal
-        '"""Doc.\n# @wiring fram_target AsyFramManager fram optional kwarg\n"""\nX = 1\n',  # inside a docstring
+        'X = "# @wiring fram_target FRAMManager fram optional kwarg"\n',  # inside a string literal
+        '"""Doc.\n# @wiring fram_target FRAMManager fram optional kwarg\n"""\nX = 1\n',  # inside a docstring
     ],
 )
 def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None:
@@ -226,27 +226,27 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 @pytest.mark.parametrize(
     "driver,expected",
     [
-        ("asy_bmp3xx_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("asy_isl29125_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("asy_neopixel_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("asy_scd30_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("asy_sgp40_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_bmp3xx_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_isl29125_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_neopixel_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_scd30_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_sgp40_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         (
             "asy_wifi_service.py",
             (
                 WiringField("led_target", "NeopixelDriver", "ext_led", False, "kwarg"),
-                WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),
+                WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),
             ),
         ),
-        ("asy_ntp_client.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("asy_webserver_service.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("system_service.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
-        ("asy_uart_link_driver.py", (WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),)),
+        ("asy_ntp_client.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_webserver_service.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_system_service.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
+        ("asy_uart_link_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         (
             "asy_notification_service.py",
             (
                 WiringField("signal_sink", "NeopixelDriver", "request_signal", True, "attr"),
-                WiringField("fram_target", "AsyFramManager", "log", False, "kwarg"),
+                WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),
             ),
         ),
     ],
@@ -269,5 +269,5 @@ def test_no_other_src_module_declares_an_unnoticed_wiring_tag(src_dir: Path) -> 
         "asy_uart_link_driver.py",
         "asy_webserver_service.py",
         "asy_wifi_service.py",
-        "system_service.py",
+        "asy_system_service.py",
     }

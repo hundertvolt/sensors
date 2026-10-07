@@ -20,7 +20,7 @@ const DEFS = {
                     label: "SCD30",
                     submit: true,
                     fields: [
-                        { key: "MeasInt", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
+                        { key: "MeasInterval", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
                         {
                             key: "AmbPres", label: "Ambient Pressure", kind: "number", min: 700, max: 1400, alwaysExecuted: true,
                             specialValues: [{ value: 0, meaning: "Compensation off / use Altitude" }],
@@ -33,15 +33,15 @@ const DEFS = {
                     key: "SGP40",
                     label: "SGP40",
                     submit: true,
-                    fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle", dispatch: true }],
+                    fields: [{ key: "ResetVOC", label: "Reset VOC Index", kind: "toggle", dispatch: true }],
                 },
                 {
                     key: "ISL29125",
                     label: "ISL29125",
                     submit: true,
                     fields: [
-                        { key: "IrCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
-                        { key: "ISLCalibrate", label: "Calibrate Gain Ratio", kind: "toggle", dispatch: true },
+                        { key: "IRCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
+                        { key: "Calibrate", label: "Calibrate Gain Ratio", kind: "toggle", dispatch: true },
                     ],
                 },
             ],
@@ -125,15 +125,15 @@ const DEFS = {
                     submit: true,
                     fields: [
                         {
-                            key: "lightCmdLED",
+                            key: "LightCmdLED",
                             label: "LED Flash",
                             kind: "composite",
                             dispatch: true,
                             subFields: [
-                                { key: "r", label: "Red", kind: "number", min: 0, max: 255 },
-                                { key: "g", label: "Green", kind: "number", min: 0, max: 255 },
-                                { key: "b", label: "Blue", kind: "number", min: 0, max: 255 },
-                                { key: "t", label: "Time (s)", kind: "number", min: 0.5, max: 60.0 },
+                                { key: "R", label: "Red", kind: "number", min: 0, max: 255 },
+                                { key: "G", label: "Green", kind: "number", min: 0, max: 255 },
+                                { key: "B", label: "Blue", kind: "number", min: 0, max: 255 },
+                                { key: "T", label: "Time (s)", kind: "number", min: 0.5, max: 60.0 },
                             ],
                         },
                     ],
@@ -148,7 +148,7 @@ const DATA = {
         SCD30: { CO2: 600, TS: 1000, Model: "SCD30" },
         ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
     },
-    sensorsConfig: { SCD30: { MeasInt: 5, AmbPres: 1013, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IrCompAdjust: 40 } },
+    sensorsConfig: { SCD30: { MeasInterval: 5, AmbPres: 1013, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IRCompAdjust: 40 } },
     networkingConfig: { Hostname: "fixture-host", PW: "hunter2hunter2" },
     systemConfig: {},
     notificationConfig: {},
@@ -182,7 +182,7 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/sensors");
         const body = await response.json();
-        expect(body.SCD30.MeasInt).toBe(5);
+        expect(body.SCD30.MeasInterval).toBe(5);
     });
 
     it("passes non-REST paths through to the real fetch", async () => {
@@ -195,20 +195,20 @@ describe("installMockFetch", () => {
 
     it("validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const invalid = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 3000 } }) });
-        expect((await invalid.json()).result.SCD30.MeasInt).toBe("Invalid"); // 3000 > max 1800
+        const invalid = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 3000 } }) });
+        expect((await invalid.json()).result.SCD30.MeasInterval).toBe("Invalid"); // 3000 > max 1800
 
-        const unchanged = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 5 } }) });
-        expect((await unchanged.json()).result.SCD30.MeasInt).toBe("Unchanged"); // fixture already has MeasInt: 5
+        const unchanged = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 5 } }) });
+        expect((await unchanged.json()).result.SCD30.MeasInterval).toBe("Unchanged"); // fixture already has MeasInterval: 5
     });
 
     it("marks an in-range changed value as Valid and persists it for the next GET", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const put = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 10 } }) });
-        expect((await put.json()).result.SCD30.MeasInt).toBe("Valid");
+        const put = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 10 } }) });
+        expect((await put.json()).result.SCD30.MeasInterval).toBe("Valid");
 
         const get = await fetch("/sensors");
-        expect((await get.json()).SCD30.MeasInt).toBe(10);
+        expect((await get.json()).SCD30.MeasInterval).toBe(10);
     });
 
     it("resets error counters and refills history with no-error placeholders (real reset() never shrinks it)", async () => {
@@ -322,73 +322,73 @@ describe("installMockFetch", () => {
         expect((await again.json()).result.PauseTime).toBe("Valid");
     });
 
-    it("dispatches PUT /notification's lightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
+    it("dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
         // Mirrors the real behavior: "Invalid" only for a non-dict payload; a missing, non-numeric,
         // fractional or out-of-range subfield reports "Failed" (legacy's led_cmd() bounds, Part A.8).
         // Each started flash makes the next one wait out its t on the frozen mock clock.
         vi.setSystemTime(Date.now());
         uninstall = installMockFetch(DEFS, DATA);
 
-        const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: "not-a-dict" }) });
-        expect((await notADict.json()).result.lightCmdLED).toBe("Invalid");
+        const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: "not-a-dict" }) });
+        expect((await notADict.json()).result.LightCmdLED).toBe("Invalid");
 
-        const missingSubfield = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30 } }) });
-        expect((await missingSubfield.json()).result.lightCmdLED).toBe("Failed");
+        const missingSubfield = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30 } }) });
+        expect((await missingSubfield.json()).result.LightCmdLED).toBe("Failed");
 
-        const nonNumeric = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: "abc", g: 20, b: 30, t: 1 } }) });
-        expect((await nonNumeric.json()).result.lightCmdLED).toBe("Failed");
+        const nonNumeric = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: "abc", G: 20, B: 30, T: 1 } }) });
+        expect((await nonNumeric.json()).result.LightCmdLED).toBe("Failed");
 
-        // A fractional r/g/b is rejected outright, not truncated - the int<->float coercion policy
-        // applied to lightCmdLED too (superseding the old raw int()/float() truncating casts).
-        const fractionalRgb = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10.5, g: 20, b: 30, t: 1 } }) });
-        expect((await fractionalRgb.json()).result.lightCmdLED).toBe("Failed");
+        // A fractional R/G/B is rejected outright, not truncated - the int<->float coercion policy
+        // applied to LightCmdLED too (superseding the old raw int()/float() truncating casts).
+        const fractionalRgb = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10.5, G: 20, B: 30, T: 1 } }) });
+        expect((await fractionalRgb.json()).result.LightCmdLED).toBe("Failed");
 
         // A fractional t is fine - it's float-typed, a blanket accept regardless of shape.
-        const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1.5 } }) });
-        expect((await fractionalT.json()).result.lightCmdLED).toBe("Valid");
+        const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1.5 } }) });
+        expect((await fractionalT.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(1500);
 
-        // Out-of-range r/g/b/t is now rejected, matching legacy's own led_cmd() bounds.
-        const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 9999, g: -50, b: 30, t: 999 } }) });
-        expect((await outOfRange.json()).result.lightCmdLED).toBe("Failed");
+        // Out-of-range R/G/B/T is now rejected, matching legacy's own led_cmd() bounds.
+        const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 9999, G: -50, B: 30, T: 999 } }) });
+        expect((await outOfRange.json()).result.LightCmdLED).toBe("Failed");
 
-        // Boundary values (0/255 for r/g/b, 0.5/60.0 for t) are still accepted - only genuinely
+        // Boundary values (0/255 for R/G/B, 0.5/60.0 for T) are still accepted - only genuinely
         // outside the range is rejected.
-        const lowerBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 0, g: 255, b: 0, t: 0.5 } }) });
-        expect((await lowerBoundary.json()).result.lightCmdLED).toBe("Valid");
+        const lowerBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 0, G: 255, B: 0, T: 0.5 } }) });
+        expect((await lowerBoundary.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(500);
-        const upperBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 255, g: 0, b: 255, t: 60.0 } }) });
-        expect((await upperBoundary.json()).result.lightCmdLED).toBe("Valid");
+        const upperBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 255, G: 0, B: 255, T: 60.0 } }) });
+        expect((await upperBoundary.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(60000);
 
         // Never persisted - doesn't leak into GET /notification's flat settings...
-        expect("lightCmdLED" in (await (await fetch("/notification")).json())).toBe(false);
+        expect("LightCmdLED" in (await (await fetch("/notification")).json())).toBe(false);
 
         // ...and a repeat identical submission still reports Valid, never Unchanged (dispatched
         // fresh every call, exactly like SystemCmd/PauseTime).
-        const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1 } }) });
-        expect((await again.json()).result.lightCmdLED).toBe("Valid");
+        const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1 } }) });
+        expect((await again.json()).result.LightCmdLED).toBe("Valid");
     });
 
-    it("refuses PUT /notification's lightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed", async () => {
+    it("refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed", async () => {
         // Mirrors NeopixelDriver.led_signal(): a REST command arriving while a signal is queued or
         // running is refused at once (owner, 2026-09-29), never queued behind it.
         vi.setSystemTime(Date.now());
         uninstall = installMockFetch(DEFS, DATA);
-        const flash = JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 2 } });
+        const flash = JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 2 } });
 
         const first = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await first.json()).result.lightCmdLED).toBe("Valid");
+        expect((await first.json()).result.LightCmdLED).toBe("Valid");
         const second = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await second.json()).result.lightCmdLED).toBe("Failed");
+        expect((await second.json()).result.LightCmdLED).toBe("Failed");
 
         advanceMockClockMs(1999); // still inside the first flash
         const stillBusy = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await stillBusy.json()).result.lightCmdLED).toBe("Failed");
+        expect((await stillBusy.json()).result.LightCmdLED).toBe("Failed");
 
         advanceMockClockMs(1); // the first flash's t has passed; neither refusal extended it
         const afterward = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await afterward.json()).result.lightCmdLED).toBe("Valid");
+        expect((await afterward.json()).result.LightCmdLED).toBe("Valid");
     });
 
     it("dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied", async () => {
@@ -443,22 +443,22 @@ describe("installMockFetch", () => {
         expect("ContMeas" in (await (await fetch("/sensors")).json()).SCD30).toBe(false);
     });
 
-    it("dispatches PUT /sensors' SGPResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all", async () => {
+    it("dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all", async () => {
         uninstall = installMockFetch(DEFS, DATA);
 
-        const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { SGPResetVOC: "not-a-bool" } }) });
-        expect((await wrongType.json()).result.SGP40.SGPResetVOC).toBe("Invalid");
+        const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { ResetVOC: "not-a-bool" } }) });
+        expect((await wrongType.json()).result.SGP40.ResetVOC).toBe("Invalid");
 
         // A command-only, repeatable trigger (SPECIFICATION.md C.5.2.1): every request re-fires it,
         // reported Valid every time, never Unchanged.
-        const first = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { SGPResetVOC: true } }) });
-        expect((await first.json()).result.SGP40.SGPResetVOC).toBe("Valid");
-        const again = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { SGPResetVOC: true } }) });
-        expect((await again.json()).result.SGP40.SGPResetVOC).toBe("Valid");
+        const first = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { ResetVOC: true } }) });
+        expect((await first.json()).result.SGP40.ResetVOC).toBe("Valid");
+        const again = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { ResetVOC: true } }) });
+        expect((await again.json()).result.SGP40.ResetVOC).toBe("Valid");
 
-        // SGPResetVOC is a special-alone schema field, deliberately excluded from get_dict_cfg() -
+        // ResetVOC is a special-alone schema field, deliberately excluded from get_dict_cfg() -
         // never in ConfigManager's cache, so never shows up in GET /sensors at all.
-        expect("SGPResetVOC" in (await (await fetch("/sensors")).json()).SGP40).toBe(false);
+        expect("ResetVOC" in (await (await fetch("/sensors")).json()).SGP40).toBe(false);
     });
 
     it("masks PW on every GET /networking like the real backend's _mask_pw(), regardless of what was actually applied", async () => {
@@ -536,25 +536,25 @@ describe("installMockFetch", () => {
         }
     });
 
-    it("omits the command-only ISLCalibrate from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
+    it("omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLCalibrate: true } }) });
-        expect((await accepted.json()).result.ISL29125.ISLCalibrate).toBe("Valid");
+        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { Calibrate: true } }) });
+        expect((await accepted.json()).result.ISL29125.Calibrate).toBe("Valid");
 
         const body = await (await fetch("/sensors")).json();
-        expect("ISLCalibrate" in body.ISL29125).toBe(false); // never echoed back as if persisted
-        expect(body.ISL29125.IrCompAdjust).toBe(40); // its neighbours are unaffected
+        expect("Calibrate" in body.ISL29125).toBe(false); // never echoed back as if persisted
+        expect(body.ISL29125.IRCompAdjust).toBe(40); // its neighbours are unaffected
     });
 
-    it("accepts ISLCalibrate repeatedly - it is a trigger, not a one-shot", async () => {
+    it("accepts Calibrate repeatedly - it is a trigger, not a one-shot", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         for (let attempt = 0; attempt < 3; attempt += 1) {
             // Sequential is the point: each PUT must be accepted after the previous one already
             // fired, which running them in parallel would not show.
             // eslint-disable-next-line no-await-in-loop -- see the comment above
-            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLCalibrate: true } }) });
+            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { Calibrate: true } }) });
             // eslint-disable-next-line no-await-in-loop -- same reasoning as above
-            expect((await res.json()).result.ISL29125.ISLCalibrate).toBe("Valid");
+            expect((await res.json()).result.ISL29125.Calibrate).toBe("Valid");
         }
     });
 
@@ -562,12 +562,12 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/sensors", {
             method: "PUT",
-            body: JSON.stringify({ BOGUS: { SomeField: 1 }, SCD30: { MeasInt: 10 } }),
+            body: JSON.stringify({ BOGUS: { SomeField: 1 }, SCD30: { MeasInterval: 10 } }),
         });
         const body = await response.json();
 
         expect(body.result.BOGUS).toBeUndefined();
-        expect(body.result.SCD30.MeasInt).toBe("Valid");
+        expect(body.result.SCD30.MeasInterval).toBe("Valid");
     });
 
     it("rejects an unsupported HTTP method with a 405", async () => {
@@ -632,7 +632,7 @@ describe("installMockFetch", () => {
         const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("partial-result") };
         uninstall = installMockFetch(DEFS, DATA, controls);
 
-        const response = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 10, ContMeas: false } }) });
+        const response = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 10, ContMeas: false } }) });
         const body = await response.json();
         expect(body.res).toBe("OK"); // the real backend's own gap: overall envelope still reports OK
         expect(Object.keys(body.result.SCD30)).toHaveLength(1); // one of the two submitted fields is missing

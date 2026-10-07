@@ -95,7 +95,7 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
 # ---------------------------------------------------------------------------
 # The FRAM storage-pause gate end to end over the real HTTP stack. The mock tier covers the
 # clamp/re-arm/abort logic and the flash tier the real chip gating and auto-unpause timer; only
-# this tier proves the REST command reaches AsyFramManager and shows up in GET /status.
+# this tier proves the REST command reaches FRAMManager and shows up in GET /status.
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +136,7 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 @pytest.mark.persistence_write
 def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
-    # dispatch-only ISLCalibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
+    # dispatch-only Calibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
     # tests_scripts/test_persistence_write_marker_completeness.py would fail without the marker.
     before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"

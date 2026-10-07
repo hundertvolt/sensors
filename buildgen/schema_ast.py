@@ -9,9 +9,9 @@ from pathlib import Path
 # `extract_field_schemas()` returns it under.
 FieldSchema = tuple[object, object, object, object, object]
 
-# config_manager.py's own FieldSchema width: (name, type, default, min, max, special).
+# asy_config_manager.py's own FieldSchema width: (name, type, default, min, max, special).
 _FIELD_SCHEMA_LEN = 6
-_FIELD_TYPES = ("int", "float", "str", "bool")  # config_manager.py's type_or_range_error() branches
+_FIELD_TYPES = ("int", "float", "str", "bool")  # asy_config_manager.py's type_or_range_error() branches
 
 
 def _eval_literal(node: "ast.expr", consts: "dict[str, ast.expr]") -> object:
@@ -35,16 +35,16 @@ def _eval_literal(node: "ast.expr", consts: "dict[str, ast.expr]") -> object:
 
 def _field_schema_from_tuple(tup: "tuple[object, ...]") -> "tuple[str, FieldSchema] | None":
     # Both real shapes in src/ are a 6-tuple (name, type, default, min, max, special): a string name
-    # and one of config_manager.py's four type names, so a tuple of six key names is not one.
+    # and one of asy_config_manager.py's four type names, so a tuple of six key names is not one.
     if len(tup) == _FIELD_SCHEMA_LEN and isinstance(tup[0], str) and tup[1] in _FIELD_TYPES:
         return tup[0], (tup[1], tup[2], tup[3], tup[4], tup[5])
     return None
 
 
 def extract_field_schemas(source_path: Path) -> "dict[str, FieldSchema]":
-    """Every `ConfigSchema`-of-one or bare `FieldSchema` assignment in `source_path`, keyed by
-    field name (not the constant's own Python name). Anything else is silently skipped - a
-    best-effort pass over already-validated code, not a comment tag."""
+    # Every `ConfigSchema`-of-one or bare `FieldSchema` assignment in `source_path`, keyed by
+    # field name (not the constant's own Python name). Anything else is silently skipped - a
+    # best-effort pass over already-validated code, not a comment tag.
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
     consts: dict[str, ast.expr] = {}
     for node in tree.body:
@@ -57,7 +57,7 @@ def extract_field_schemas(source_path: Path) -> "dict[str, FieldSchema]":
     for value_node in consts.values():
         try:
             literal = _eval_literal(value_node, consts)
-        except (ValueError, TypeError):
+        except (TypeError, ValueError):
             continue
         if not isinstance(literal, tuple):
             continue

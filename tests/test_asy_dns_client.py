@@ -66,7 +66,7 @@ def _resolved(host: str, port: int) -> "tuple[str, int]":
 
 
 class _ResolvingAsyUDPSocket:
-    # Substitutes for asy_dns_client.py's AsyUDPSocket import in these integration tests only.
+    # Substitutes for asy_dns_client.py's UDPSocket import in these integration tests only.
     # resolve_ipv4() constructs it with a plain (host, port) tuple, the correct shape for real rp2 hardware,
     # which this Unix-port build's connect() rejects.
     #
@@ -76,14 +76,14 @@ class _ResolvingAsyUDPSocket:
         self._real = _RealAsyUDPSocket(_resolved(addr[0], addr[1]), mode=mode, conn_tries=conn_tries)
 
     # `object`, not Any: every attribute reached through this wrapper is used by
-    # asy_dns_client.py's own production code, which type-checks against the real AsyUDPSocket
+    # asy_dns_client.py's own production code, which type-checks against the real UDPSocket
     # class it was monkeypatched over - nothing in this file touches the delegated result.
     def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
 
-_RealAsyUDPSocket = asy_dns_client.AsyUDPSocket  # captured before the module attribute below is overwritten
-asy_dns_client.AsyUDPSocket = _ResolvingAsyUDPSocket  # type: ignore[misc, assignment]  # permanent for this test file's whole process - see _ResolvingAsyUDPSocket's own comment
+_RealAsyUDPSocket = asy_dns_client.UDPSocket  # captured before the module attribute below is overwritten
+asy_dns_client.UDPSocket = _ResolvingAsyUDPSocket  # type: ignore[misc, assignment]  # permanent for this test file's whole process - see _ResolvingAsyUDPSocket's own comment
 
 # resolve_ipv4() always also tries asy_dns_client's own _FALLBACK_DNS_SERVERS (the real 8.8.8.8/1.1.1.1)
 # after whatever dns_servers a caller passes. Overridden here, for this whole process, to a loopback-only
@@ -188,9 +188,9 @@ def test_build_query_accepts_a_label_at_the_exact_63_octet_rfc_limit() -> None:
 
 
 def test_build_query_raises_value_error_for_a_label_over_the_63_octet_rfc_limit() -> None:
-    # A single dot-free label of 64+ octets - a plausible REST-configured NTP_Host paste error, that schema
-    # allowing 1024 characters with no per-label check - used to reach `query[pos] = n` with n > 63, which
-    # does not raise until n > 255, so a 64-254 octet label silently produced a wire-invalid query.
+    # A dot-free label of 64+ octets: RFC 1035 SS3.1's 63-octet limit refuses it here, whatever the caller
+    # checked (the NTPHost schema bounds a name at 253 characters with no per-label check). Unguarded,
+    # `query[pos] = n` does not raise until n > 255, so a 64-254 octet label made a wire-invalid query.
     #
     # Enforcing the real RFC limit catches the whole invalid range, not just the crash-causing tail.
     try:
@@ -215,7 +215,7 @@ def test_build_query_raises_value_error_for_a_label_past_the_bytearray_byte_rang
 
 # ---------------------------------------------------------------------------
 # _parse_response - test fixture helpers build a realistic response by echoing the query's own
-# header/question section, matching how a real DNS server (and captive_dns.py's own
+# header/question section, matching how a real DNS server (and asy_captive_dns.py's own
 # DNSQuery.response()) builds a reply.
 # ---------------------------------------------------------------------------
 
@@ -352,7 +352,7 @@ def test_resolve_ipv4_literal_ip_returns_immediately_without_touching_the_networ
 
 # ---------------------------------------------------------------------------
 # resolve_ipv4 - real UDP loopback fake DNS server, mirroring test_asy_udp_socket.py's own
-# AdversarialPeer pattern (a genuine independent socket, not a mock of AsyUDPSocket).
+# AdversarialPeer pattern (a genuine independent socket, not a mock of UDPSocket).
 # ---------------------------------------------------------------------------
 
 
@@ -549,37 +549,36 @@ def test_resolve_ipv4_memoryerror_building_the_query_returns_none() -> None:
 
 
 def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None:
-    # A real, reachable REST-configurable input - NTP_Host allows 1024 characters with no per-label check -
-    # that used to reach _build_query()'s `query[pos] = n` with n > 255 and raise ValueError uncaught out of
-    # resolve_ipv4(), through the NTP sync attempt and out of the whole task loop.
+    # A 300-octet name cannot come from the NTPHost PUT (253 characters); resolve_ipv4() is public and
+    # refuses it itself, never raising out through the NTP sync attempt.
     result = run(resolve_ipv4("a" * 300, dns_servers=(), timeout_ms=50, tries=1))
     assert result is None
 
 
 class _RaisingAsyUDPSocket:
-    # Simulates AsyUDPSocket's own construction-time TypeError/ValueError directly rather than via a real
+    # Simulates UDPSocket's own construction-time TypeError/ValueError directly rather than via a real
     # malformed port: this file's _ResolvingAsyUDPSocket wrapper resolves the address through getaddrinfo()
-    # before AsyUDPSocket's real type check, which would raise a different exception at a different layer.
+    # before UDPSocket's real type check, which would raise a different exception at a different layer.
     #
     # mode and conn_tries keep their names, and stay unused: resolve_ipv4() constructs this double by
-    # keyword, so the spelling must keep impersonating AsyUDPSocket's real constructor exactly.
+    # keyword, so the spelling must keep impersonating UDPSocket's real constructor exactly.
     def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
         raise TypeError(f"simulated malformed addr: {addr!r}")
 
 
 def test_resolve_ipv4_malformed_port_construction_returns_none_not_an_exception() -> None:
     # resolve_ipv4()'s docstring promises "never raises" - previously true only because every real caller's
-    # port happened to be well-typed, the AsyUDPSocket construction here being unguarded, unlike the
+    # port happened to be well-typed, the UDPSocket construction here being unguarded, unlike the
     # structurally identical one in asy_ntp_client.py's _fetch_ntp_reply().
     #
     # A malformed port now degrades cleanly to trying the next server or fallback, exactly like an
     # unreachable one, instead of letting the TypeError propagate.
-    current = asy_dns_client.AsyUDPSocket
-    asy_dns_client.AsyUDPSocket = _RaisingAsyUDPSocket  # type: ignore[assignment,misc]
+    current = asy_dns_client.UDPSocket
+    asy_dns_client.UDPSocket = _RaisingAsyUDPSocket  # type: ignore[assignment,misc]
     try:
         result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=100, tries=1))
     finally:
-        asy_dns_client.AsyUDPSocket = current  # type: ignore[misc]
+        asy_dns_client.UDPSocket = current  # type: ignore[misc]
     assert result is None
 
 

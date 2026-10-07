@@ -4,9 +4,9 @@ import struct
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
+from asy_crc_checks import CRC32
+from asy_fram_manager import FRAMManager
 from asy_spi_driver import SPI
-from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
 
 # Same one-process-per-test-file FRAM chip swap as tests/test_asy_sgp40_driver.py and every other
@@ -29,19 +29,19 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def make_fram_manager() -> "tuple[AsyFramManager, FakeMB85RS64V, SPI]":
+def make_fram_manager() -> "tuple[FRAMManager, FakeMB85RS64V, SPI]":
     spi_bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(spi_bus, 1, max_size=0x2000)
+    manager = FRAMManager(spi_bus, 1, max_size=0x2000)
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip, spi_bus
 
 
-def make_fram_manager_sharing(spi_bus: SPI) -> AsyFramManager:
-    # A second, independently-allocating AsyFramManager sharing the first's spi_bus and so its chip memory -
+def make_fram_manager_sharing(spi_bus: SPI) -> FRAMManager:
+    # A second, independently-allocating FRAMManager sharing the first's spi_bus and so its chip memory -
     # simulating a reboot's fresh manager object replaying the identical get_chunk() call against surviving
     # data, matching the SGP40 and FRAM integration suites' pattern.
-    return AsyFramManager(spi_bus, 1, max_size=0x2000)
+    return FRAMManager(spi_bus, 1, max_size=0x2000)
 
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
@@ -385,7 +385,7 @@ def test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel() -> None:
 
 # ---------------------------------------------------------------------------
 # Real-FRAM integration and fault propagation - VOCAlgorithm's own pack_into()/unpack_from() through a real
-# AsyFramManager plus simulated chip, decoupled from asy_sgp40_driver.py entirely, whose own FRAM tests
+# FRAMManager plus simulated chip, decoupled from asy_sgp40_driver.py entirely, whose own FRAM tests
 # exercise the same mechanism but always coupled to a full sensor read cycle. Part E.4's mocking boundary.
 # ---------------------------------------------------------------------------
 
@@ -461,7 +461,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
         assert await chunk.write_into(buf) is True
 
     run(write())
-    addr0, addr1 = chunk.block_addr
+    addr0, addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF  # both copies corrupted - a real, unrecoverable hardware fault
     chip.memory[addr1] ^= 0xFF
 
@@ -484,7 +484,7 @@ def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_
 
 def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -> None:
     # Mirror of the hard-failure test above, but only one of the two redundant copies is
-    # corrupted - _AsyBaseFramChunk's own dual-copy redundancy must recover from the other,
+    # corrupted - _FRAMBaseChunk's own dual-copy redundancy must recover from the other,
     # untouched copy and still hand back the exact original state, not just "read succeeded".
     manager, chip, _spi_bus = make_fram_manager()
     run(manager.setup())
@@ -504,7 +504,7 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
         assert await chunk.write_into(buf) is True
 
     run(write())
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF  # only block 0 corrupted
 
     restored = VOCAlgorithm()

@@ -57,8 +57,8 @@ _DRIVER_JOIN_S = 90.0
 
 
 def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: list[str], index: int) -> None:
-    """One real socket, body DRAINED rather than materialised - the drain rule, so the host measures
-    the board and never its own buffering (tests/test_digital_twin_http_client.py)."""
+    # One real socket, body DRAINED rather than materialised - the drain rule, so the host measures
+    # the board and never its own buffering (tests/test_digital_twin_http_client.py).
     try:
         sock = socket.create_connection((dut_ip, 80), timeout=_CONNECT_TIMEOUT_S)
     except OSError as e:
@@ -102,8 +102,8 @@ def _burst(dut_ip: str, n: int) -> list[str]:
 
 
 def sweep_levels(dut_ip: str, levels: list[int], stop: threading.Event, tallies: dict[int, dict[str, int]]) -> None:
-    """Waits for the device script's own boot, idles, then _ROUNDS bursts per level in ascending
-    order. `stop` guarantees it cannot outlive its test - a driver that did took 37 tests down once."""
+    # Waits for the device script's own boot, idles, then _ROUNDS bursts per level in ascending
+    # order. `stop` guarantees it cannot outlive its test - a driver that did took 37 tests down once.
     if not wait_for_script_server(dut_ip, stop, "/networking") or stop.wait(_PRE_IDLE_S):
         return
     for n in levels:

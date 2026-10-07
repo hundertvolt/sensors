@@ -7,8 +7,8 @@ import asyncio
 from _error_codes import code
 from _uart_comm_harness import Pair, accept_set, echo_get, frames, run
 
-from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UART_Comm
-from crc_checks import CRC16
+from asy_crc_checks import CRC16
+from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -19,12 +19,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from crc_checks import CRC_Base
+    from asy_crc_checks import CRCBase
 
     # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end. A factory, not
-    # an instance, CRC_Base carrying state the two ends must not share. Not type[CRC_Base], which would
+    # an instance, CRCBase carrying state the two ends must not share. Not type[CRCBase], which would
     # demand a three-argument constructor the concrete widths do not take.
-    CrcMaker = Callable[[], CRC_Base] | None
+    CrcMaker = Callable[[], CRCBase] | None
 
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
@@ -87,8 +87,8 @@ _RETENTION_PER_FAILURE_MAX_BYTES = 16.0
 
 
 # Every check runs both with and without a CRC (agent, 2026-09-12) - the dev wiring selects
-# CRC_Pass, but a CRC changes which corruptions are detectable at all
-# (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRC_Base carries state.
+# CRCPass, but a CRC changes which corruptions are detectable at all
+# (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRCBase carries state.
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))
 
 
@@ -585,14 +585,14 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
 # ---------------------------------------------------------------------------
 
 
-def errnos(comm: UART_Comm) -> "list[int]":
+def errnos(comm: UARTComm) -> "list[int]":
     # Errors only: ErrNum holds both kinds and ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=.
     entry = run(comm.get_error_counter())[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
 
 
-def last_errno(comm: UART_Comm) -> int:
+def last_errno(comm: UARTComm) -> int:
     codes = errnos(comm)
     return codes[-1] if codes else 0
 
@@ -735,7 +735,7 @@ def _check_a_frame_delivered_in_two_fragments_still_assembles(crc: "CrcMaker") -
 
 
 # ---------------------------------------------------------------------------
-# The integrity envelope. The dev wiring selects CRC_Pass, so structural field validation is the
+# The integrity envelope. The dev wiring selects CRCPass, so structural field validation is the
 # *only* check (SPECIFICATION.md Part J). These pin exactly where that boundary falls: "corruption
 # is handled" is true of the header and false of the payload.
 # ---------------------------------------------------------------------------
@@ -816,10 +816,10 @@ def _check_with_a_crc_configured_the_same_payload_corruption_is_caught(crc: "Crc
 def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc: "CrcMaker") -> None:
     # The silent-tail-loss failure: a frame that does not fit rxbuf loses its end, and the result is
     # indistinguishable from a link fault. The module refuses the configuration instead (B17).
-    from asy_uart_comm import ROLE_INITIATOR, UART_Comm
+    from asy_uart_comm import ROLE_INITIATOR, UARTComm
     from asy_uart_driver import UART as Driver
     too_small = Driver(0, tx_pin=0, rx_pin=1, rxbuf=32, txbuf=256, poll_wait_ms=1)
-    comm = UART_Comm(too_small, ROLE_INITIATOR, payload_size=255, timeout=_TIMEOUT_MS, name="UART_TINY")
+    comm = UARTComm(too_small, ROLE_INITIATOR, payload_size=255, timeout=_TIMEOUT_MS, name="UART_TINY")
     assert comm._init_errno == code("E", "UART_RXBUF"), "an rxbuf below one whole frame was accepted"
     assert run(comm.setup()) is False, "a refused construction still opened its readiness gate"
 
@@ -832,12 +832,12 @@ def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc:
 # ---------------------------------------------------------------------------
 
 
-def _mismatched_responder(pair: Pair, payload_size: int) -> UART_Comm:
+def _mismatched_responder(pair: Pair, payload_size: int) -> UARTComm:
     # Same link, same wire, a responder that disagrees about the frame size. Every frame the
     # initiator sends is then the wrong length for it, which is exactly what a wrong payload_size,
     # a wrong baud rate or a different CRC algorithm all look like from the receiving end.
-    return UART_Comm(
-        pair.driver_b, ROLE_RESPONDER, payload_size=payload_size, timeout=pair.responder.timeout,
+    return UARTComm(
+        pair.driver_b, ROLE_RESPONDER, payload_size=payload_size, timeout=pair.responder._timeout,
         callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_MISMATCH",
     )
 
@@ -1144,8 +1144,8 @@ def _check_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted(crc: "C
     delivered: list[bytes] = []
     # The payload is read off uart_listen()'s own ListenResult, not a message_callback: that
     # callback is dispatched by the owned _listen_loop(), which this test does not run.
-    responder = UART_Comm(
-        pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder.timeout,
+    responder = UARTComm(
+        pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder._timeout,
         callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_LOSTACK",
     )
     assert run(responder.setup()) is True
@@ -1200,8 +1200,8 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
 
     # The peer returns as a brand-new instance: no UID history, no half-read frame, nothing.
     to_initiator.silent = False
-    reborn = UART_Comm(
-        pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder.timeout,
+    reborn = UARTComm(
+        pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder._timeout,
         callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_REBORN",
     )
     assert run(reborn.setup()) is True  # setup() drains whatever the old instance left behind

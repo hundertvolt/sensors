@@ -43,7 +43,7 @@ def unix_port_binary() -> Path:
 
 
 def parse(output: str) -> dict[str, str]:
-    """KEY=VALUE lines only - a device-side traceback or an mpremote banner is ignored, not parsed."""
+    # KEY=VALUE lines only - a device-side traceback or an mpremote banner is ignored, not parsed.
     parsed: dict[str, str] = {}
     for raw in output.splitlines():
         line = raw.strip()
@@ -80,7 +80,7 @@ def run_probe_against_twin(timeout_s: float = _TWIN_PROBE_TIMEOUT_S) -> dict[str
 
 
 def compare(real: dict[str, str], twin: dict[str, str]) -> list[str]:
-    """Returns one human-readable line per protocol-key divergence; empty means the mock is faithful."""
+    # Returns one human-readable line per protocol-key divergence; empty means the mock is faithful.
     divergences = []
     for key in sorted(set(real) | set(twin)):
         if key in PHYSICAL_KEYS:

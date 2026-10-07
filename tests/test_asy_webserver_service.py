@@ -1,5 +1,5 @@
 """Test suite for src/asy_webserver_service.py's WebserverService/SettingsGroup - see SPECIFICATION.md Part A.8 for the full endpoint design and the real class signatures for the current API contract (this file predates the implementation and no longer mirrors it exactly).
-GET routes return the bare shaped dict; PUT routes return the existing api_response.py envelope - see SPECIFICATION.md Part A.8 for the PUT-shapes decision. Connection-lifecycle internals are exercised with hand-scripted fake reader/writer doubles, never a real select.poll()."""
+GET routes return the bare shaped dict; PUT routes return the existing asy_api_response.py envelope - see SPECIFICATION.md Part A.8 for the PUT-shapes decision. Connection-lifecycle internals are exercised with hand-scripted fake reader/writer doubles, never a real select.poll()."""
 
 import asyncio
 import gc
@@ -17,9 +17,9 @@ from _shared_rest_roundtrip import drain_json_response_body
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
 
-import config_manager as cm
+import asy_config_manager as cm
+from asy_print_log import LogConfig
 from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
-from print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -54,7 +54,7 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
 # ---------------------------------------------------------------------------
 # Fakes - registered-module doubles. Deliberately lightweight: sections A-E test the webserver's
 # own dispatch/aggregation/registration logic, not sensor behavior. _set_dict_cfg() mirrors
-# config_manager.write_config()'s per-field Invalid/Valid semantics closely enough to stand in.
+# asy_config_manager.write_config()'s per-field Invalid/Valid semantics closely enough to stand in.
 # ---------------------------------------------------------------------------
 
 
@@ -121,7 +121,7 @@ class _FakeModule:
         return dict(self._data)
 
     async def get_dict_cfg(self) -> "dict[str, Any]":
-        return dict(self._values)
+        return {self.name: dict(self._values)}  # make_dict()'s nested shape, as every real module's
 
     async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]":
         self.set_calls.append(dict(data))
@@ -292,7 +292,7 @@ def _make_request(app: "Microdot", method: str, path: str, json_body: "dict[str,
 
 def test_measurements_get_returns_merged_per_sensor_dict() -> None:
     # _NestedCfgModule, not _FakeModule - the real drivers' get_dict_data() always returns the
-    # self-wrapped {name: {...}} shape (config_manager.make_dict()), never _FakeModule's flat one,
+    # self-wrapped {name: {...}} shape (asy_config_manager.make_dict()), never _FakeModule's flat one,
     # and that distinction is the whole point of this test.
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     sgp = _NestedCfgModule("SGP40", values={}, data={"VOC": 120})
@@ -355,7 +355,7 @@ def test_sensors_put_single_field_for_one_sensor() -> None:
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"SCD30": {"Interval": 10}})))
     body = json.loads(res.body)
     assert body["result"] == {"SCD30": {"Interval": "Valid"}}
-    assert run(scd.get_dict_cfg())["Interval"] == 10
+    assert run(scd.get_dict_cfg())[scd.name]["Interval"] == 10
     assert sgp.set_calls == []  # untouched sensor never dispatched to
 
 
@@ -409,17 +409,11 @@ def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
     res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
     body = json.loads(status_body(res))
     assert body == {"SSID": "MyNet"}
-    assert "Connected" not in body and "IP" not in body and "Rssi" not in body
+    assert "Connected" not in body and "IP" not in body and "RSSI" not in body
 
 
 class _NestedCfgModule:
-    # Reproduces config_manager.make_dict()'s real {type_name: {field: value}} shape - what
-    # AsyConnTime/AsyNtpClient/NotificationCoordinator and the real sensor drivers return, unlike
-    # _FakeModule's flat convention above (which matches SystemService's own flat override).
-    #
-    # Guards two real production bugs of one class: _get_settings_flat() never unwrapping this
-    # shape (so /networking and /notification returned {}), and _get_measurements()/_get_sensors()
-    # indexing an already-wrapped result again into {"SCD30": {"SCD30": {...}}}.
+    # make_dict()'s {name: {field: value}} shape, what every module's get_dict_cfg()/get_dict_data() returns.
     def __init__(self, type_name: str, values: "dict[str, Any]", data: "dict[str, Any] | None" = None) -> None:
         self.name = type_name
         self._type_name = type_name
@@ -446,18 +440,18 @@ def test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape() ->
 def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() -> None:
     wifi = _FakeModule(
         "WIFI",
-        schema=(("SSID", "str", "", 0, 32, None), ("NTP_Host", "str", "pool.ntp.org", 0, 64, None)),
-        values={"SSID": "", "NTP_Host": "pool.ntp.org"},
+        schema=(("SSID", "str", "", 0, 32, None), ("NTPHost", "str", "pool.ntp.org", 0, 64, None)),
+        values={"SSID": "", "NTPHost": "pool.ntp.org"},
     )
     reconnect_calls = []
     resync_calls: list[int] = []
     net_group = SettingsGroup(wifi, ("SSID",), post_fct=lambda: reconnect_calls.append(1))
-    ntp_group = SettingsGroup(wifi, ("NTP_Host",), post_asy_fct=lambda: _record_async(resync_calls))
+    ntp_group = SettingsGroup(wifi, ("NTPHost",), post_asy_fct=lambda: _record_async(resync_calls))
     _service, app = _make_service(settings={"networking": [net_group, ntp_group]})
     res = run(app.dispatch_request(_make_request(app, "PUT", "/networking", {"SSID": "NewNet"})))
     assert res.status_code == 200
     assert reconnect_calls == [1]
-    assert resync_calls == []  # NTP_Host wasn't in this body - its own post_asy_fct must not fire
+    assert resync_calls == []  # NTPHost wasn't in this body - its own post_asy_fct must not fire
 
 
 async def _record_async(sink: "list[int]") -> None:
@@ -507,7 +501,7 @@ def test_system_get_reports_build_info_verbatim_when_supplied() -> None:
     # SPECIFICATION.md Part L.7: buildgen supplies this dict at construction time (firmware/
     # website version + a real build timestamp) - WebserverService never computes any of it itself,
     # just relays it under one "build" sub-entry alongside the ordinary flat settings fields.
-    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    build_info = {"FirmwareVersion": "2.0b0", "WebsiteVersion": "2.0b0", "BuildDate": "2026-09-12T10:00:00Z"}
     _service, app = _make_service(build_info=build_info)
     res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
     assert json.loads(status_body(res)) == {"build": build_info}
@@ -524,7 +518,7 @@ def test_system_get_combines_flat_settings_and_build_info_together() -> None:
     # SettingsGroup-sourced fields alongside the one nested "build" sub-entry, neither one
     # clobbering the other.
     sysm = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
-    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    build_info = {"FirmwareVersion": "2.0b0", "WebsiteVersion": "2.0b0", "BuildDate": "2026-09-12T10:00:00Z"}
     _service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, build_info=build_info)
     res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
     assert json.loads(status_body(res)) == {"DebugLevel": 2, "build": build_info}
@@ -600,12 +594,12 @@ def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception()
     assert res.status_code == 200  # the overall request still succeeds - failure detail is per-field
     body = json.loads(res.body)
     assert body["result"]["SystemCmd"] == "Failed"
-    assert service.pr.err_count == 1
+    assert service.pr._err_count == 1
 
 
 def test_status_get_returns_exact_substructure_no_settings_fields_anywhere() -> None:
     async def net_status() -> "dict[str, Any]":
-        return {"Connected": True, "Rssi": -50}
+        return {"Connected": True, "RSSI": -50}
 
     async def sys_status() -> "dict[str, Any]":
         return {"SysUptime": 123}
@@ -619,7 +613,7 @@ def test_status_get_returns_exact_substructure_no_settings_fields_anywhere() -> 
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "sensors", "notification", "errcount"}
-    assert body["networking"] == {"Connected": True, "Rssi": -50}
+    assert body["networking"] == {"Connected": True, "RSSI": -50}
     assert body["system"] == {"SysUptime": 123}
     assert body["notification"] == {"Triggered": False}
 
@@ -686,12 +680,12 @@ def test_notification_put_light_cmd_led_round_trips_independently_of_flat_fields
     )
     res = run(
         app.dispatch_request(
-            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}}),
+            _make_request(app, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 5}}),
         ),
     )
     assert res.status_code == 200
-    assert led_calls == [{"r": 10, "g": 20, "b": 30, "t": 5}]
-    assert run(notif.get_dict_cfg())["OnH"] == 8  # flat field never touched by this body
+    assert led_calls == [{"R": 10, "G": 20, "B": 30, "T": 5}]
+    assert run(notif.get_dict_cfg())[notif.name]["OnH"] == 8  # flat field never touched by this body
 
 
 def test_notification_put_pause_time_only_leaves_schedule_fields_untouched() -> None:
@@ -758,8 +752,8 @@ def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> 
 
 def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> None:
     # Legacy's own pauseAutoLED rejects an out-of-range pauseTime as Invalid rather than clamping (the
-    # legacy firmware's sensortask module, legacy/firmware/modules/), but LockedCounter.set_value()
-    # would clamp silently - so this dispatcher must range-check server-side itself before the callback.
+    # legacy firmware's sensortask module, legacy/firmware/modules/), but set_override_led() clamps
+    # silently - so this dispatcher must range-check server-side itself before the callback.
     pause_calls = []
 
     async def notification_pause(secs: int) -> bool:
@@ -791,7 +785,7 @@ def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exce
     assert res.status_code == 200
     body = json.loads(res.body)
     assert body["result"]["PauseTime"] == "Failed"
-    assert service.pr.err_count == 1
+    assert service.pr._err_count == 1
 
 
 def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registered() -> None:
@@ -799,11 +793,11 @@ def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registe
     _service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_led=None
     res = run(
         app.dispatch_request(
-            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}}),
+            _make_request(app, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 5}}),
         ),
     )
     body = json.loads(res.body)
-    assert body["result"]["lightCmdLED"] == "Invalid"
+    assert body["result"]["LightCmdLED"] == "Invalid"
 
 
 def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_dict() -> None:
@@ -814,9 +808,9 @@ def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_d
     _service, app = _make_service(
         settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led,
     )
-    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"lightCmdLED": "not-a-dict"})))
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"LightCmdLED": "not-a-dict"})))
     body = json.loads(res.body)
-    assert body["result"]["lightCmdLED"] == "Invalid"
+    assert body["result"]["LightCmdLED"] == "Invalid"
 
 
 def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_exception() -> None:
@@ -832,13 +826,13 @@ def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_e
     )
     res = run(
         app.dispatch_request(
-            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}}),
+            _make_request(app, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 5}}),
         ),
     )
     assert res.status_code == 200
     body = json.loads(res.body)
-    assert body["result"]["lightCmdLED"] == "Failed"
-    assert service.pr.err_count == 1
+    assert body["result"]["LightCmdLED"] == "Failed"
+    assert service.pr._err_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -860,7 +854,7 @@ def test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint
         _service, app, mod = _settings_service(endpoint)
         res = run(app.dispatch_request(_make_request(app, "PUT", "/" + endpoint, {"Interval": 10})))
         assert res.status_code == 200, endpoint
-        assert run(mod.get_dict_cfg())["Offset"] == 0, endpoint  # untouched, not reset to default
+        assert run(mod.get_dict_cfg())[mod.name]["Offset"] == 0, endpoint  # untouched, not reset to default
 
 
 def test_b_unknown_top_level_key_silently_ignored_on_every_settings_endpoint() -> None:
@@ -890,7 +884,7 @@ def test_b_wrong_type_for_a_known_field_is_a_per_field_rejection_others_still_ap
         res = run(app.dispatch_request(_make_request(app, "PUT", "/" + endpoint, {"Interval": "not-an-int", "Offset": 5})))
         body = json.loads(res.body)
         assert body["result"] == {"Interval": "Invalid", "Offset": "Valid"}, endpoint
-        assert run(mod.get_dict_cfg())["Offset"] == 5, endpoint
+        assert run(mod.get_dict_cfg())[mod.name]["Offset"] == 5, endpoint
 
 
 def test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path() -> None:
@@ -913,7 +907,7 @@ def test_b_duplicate_keys_in_raw_json_text_last_wins() -> None:
     req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    assert run(mod.get_dict_cfg())["Interval"] == 10
+    assert run(mod.get_dict_cfg())[mod.name]["Interval"] == 10
 
 
 def test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_fault() -> None:
@@ -1032,7 +1026,13 @@ def test_d_get_error_sources_reports_the_service_itself_for_a_uniform_caller() -
     # Part C.14's fan-in accessor. The generated _collect_error_sources() does not consult it - this
     # service's /status entry is added directly - but D.10 keeps the shape so no caller special-cases it.
     service, _app = _make_service()
-    assert service.get_error_sources() == [service]
+    sources = service.get_error_sources()
+    assert len(sources) == 1 and sources[0] is service
+    # The entry it offers answers as every other error source does: its name and its own log.
+    run(service.pr.err_s("x", errno=1))
+    source = sources[0]
+    assert source.name == "WEBSERVER", source.name
+    assert run(source.get_error_counter()) == run(service.pr.get_log())
 
 
 def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -> None:
@@ -1126,14 +1126,14 @@ def test_e_concurrent_put_during_get_never_produces_a_torn_response() -> None:
 def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_a_regression() -> None:
     # Characterizes the known, already-flagged gap (SPECIFICATION.md Part A.8's GET-shapes note)
     # rather than asserting it fixed, so a future fix has a red test to turn green. The fake's
-    # get_dict_cfg() awaits mid-construction, the real SCD30_Reader/BMP3xx_Reader shape.
+    # get_dict_cfg() awaits mid-construction, the real SCD30_Reader/BMP3XX_Reader shape.
     class _LiveReadbackModule(_FakeModule):
         async def get_dict_cfg(self) -> "dict[str, Any]":
             result: dict[str, Any] = {}
             for key in ("Interval", "Offset"):
                 await asyncio.sleep(0)  # a real await - the torn-read window
                 result[key] = self._values[key]
-            return result
+            return {self.name: result}
 
     mod = _LiveReadbackModule("SCD30", values={"Interval": 1, "Offset": 0})
     _service, _app = _make_service(settings={"sensors_live": [SettingsGroup(mod, ("Interval", "Offset"))]})
@@ -1151,7 +1151,7 @@ def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_
     result = run(scenario())
     # A torn read: Interval read before the mutation, Offset read after it - exactly the documented,
     # accepted gap, not something this test suite is meant to fail on.
-    assert result == {"Interval": 1, "Offset": 99}
+    assert result == {"SCD30": {"Interval": 1, "Offset": 99}}
 
 
 def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state() -> None:
@@ -1618,7 +1618,7 @@ def test_close_writer_logs_a_persisted_warning_when_close_raises() -> None:
     service, _app = _make_service()
     writer = _RaisingCloseWriter()
     run_timed(service._close_writer(writer))
-    assert service.pr.err_count == 1
+    assert service.pr._err_count == 1
 
 
 class _RaisingWaitClosedWriter(_ScriptedWriter):
@@ -1632,7 +1632,7 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     writer = _RaisingWaitClosedWriter()
     run_timed(service._close_writer(writer))
     assert writer.close_called is True
-    assert service.pr.err_count == 1
+    assert service.pr._err_count == 1
 
 
 class _RaisingCloseAndWaitWriter(_RaisingCloseWriter):
@@ -1758,7 +1758,7 @@ def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
     run_timed(service._serve(_ResetReader(), writer), timeout_s=2.0)
     assert writer.written == b"", writer.written
     assert writer.close_called is True
-    assert service.pr.err_count == 0, service.pr.err_count
+    assert service.pr._err_count == 0, service.pr._err_count
     assert run(service._open_conns.get_value()) == 0
 
 
@@ -1878,8 +1878,30 @@ def test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor() -
     assert len(starters) == 1
 
 
+def test_setup_readies_the_logger_and_the_serve_task_never_does() -> None:
+    # The boot batch's setup() readies this service's logger; the serve task leaves it alone (SPECIFICATION.md A.7).
+    service, _app = _make_service()
+    before = service.pr.initialized
+    assert run(service.setup()) is True
+    assert (before, service.pr.initialized) == (False, True)
+    unset, _app2 = _make_service(host="127.0.0.1", port=0)
+
+    async def scenario() -> bool:
+        task = unset.start_asy_serve()
+        await asyncio.sleep(0.05)  # let _serve_loop() reach start_server()/wait_closed()
+        initialized = unset.pr.initialized
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return initialized
+
+    assert run_timed(scenario(), timeout_s=3.0) is False
+
+
 def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None:
-    # The one test exercising _run()/_start_serving() themselves - the real asyncio.start_server()
+    # The one test exercising _serve_loop()/start_asy_serve() themselves - the real asyncio.start_server()
     # composition, never app.start_server()/app.shutdown(). Bound to an ephemeral loopback port,
     # never the real host/port=0.0.0.0:80 default.
     service, _app = _make_service(host="127.0.0.1", port=0)
@@ -1887,7 +1909,7 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
     async def scenario() -> None:
         starters = service.get_task_starters()
         task = starters[0]()
-        await asyncio.sleep(0.05)  # let _run() actually reach start_server()/wait_closed()
+        await asyncio.sleep(0.05)  # let _serve_loop() actually reach start_server()/wait_closed()
         assert not task.done()  # server.wait_closed() blocks forever until explicitly closed/cancelled
         task.cancel()
         try:
@@ -2188,17 +2210,15 @@ def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it
     assert json.loads(b"".join(body)) == {"STUB": {"small": 1, "scalar": "y" * 600, "after": 2}}
 
 
-def test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece() -> None:
-    # The longest string any schema permits: asy_ntp_client's NTP_Host, 1,024 characters. Mirrored
-    # as a literal because const() leaves no module attribute to read - test_asy_ntp_client.py
-    # pins the bound itself, and BACKLOG's NTP_Host entry lists every file a change must touch.
-    longest = 1024
+def test_g3_a_scalar_at_ntp_hosts_own_bound_fits_one_piece() -> None:
+    # The longest string any schema permits (NTPHost, RFC 1035's 253), mirrored as a literal because
+    # const() leaves no module attribute to read; test_asy_ntp_client.py pins the bound itself.
+    longest = 253
     stub = _NestedCfgModule("STUB", values={}, data={"host": "y" * longest})
     service, _app = _make_service(sensors=[stub])
     _status, _headers, body = _get_on_the_wire(service, "/measurements")
-    over = [chunk for chunk in body if len(chunk) > _WIRE_CHUNK_BYTES]
-    assert over == [json.dumps("y" * longest).encode()], [len(c) for c in over]
-    assert len(over[0]) == longest + 2, len(over[0])  # the two quotes; no escaping in this value
+    assert [len(c) for c in body if len(c) > _WIRE_CHUNK_BYTES] == []  # the value and its quotes, 255 B, fit the cap
+    assert any(json.dumps("y" * longest).encode() in chunk for chunk in body)  # the piece holding it is whole
 
 
 # G.2 - hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).
@@ -2344,7 +2364,7 @@ def test_h1_unhandled_exception_in_a_route_handler_gets_the_shaped_500_response(
 
 
 def test_h1_unhandled_exception_is_logged_via_pr_err_s_not_just_swallowed() -> None:
-    # ErrNum/ErrType include print_log.py's pre-filled "N" padding ahead of the one real entry
+    # ErrNum/ErrType include asy_print_log.py's pre-filled "N" padding ahead of the one real entry
     # (PrintLogHistory.__init__), matching every other get_error_counter()-reading test here
     # rather than being a list-equality check against the raw history.
     sensor = _RaisingSensorModule("SCD30")
@@ -2648,6 +2668,16 @@ def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
     )
     for value in values:
         assert "".join(_written(value)) == json.dumps(value), value
+
+
+def test_h2_a_non_finite_float_is_written_as_null() -> None:
+    # json.dumps() writes bare nan/inf, which JSON rejects: the writer emits null, alone or nested.
+    for value in (float("nan"), float("inf"), float("-inf")):
+        assert "".join(_written(value)) == "null", value
+    nested = {"Lux": float("nan"), "RGB": [1.5, float("inf")], "T": (float("-inf"),)}
+    text = "".join(_written(nested))
+    assert "nan" not in text and "inf" not in text, text
+    assert json.loads(text) == {"Lux": None, "RGB": [1.5, None], "T": [None]}
 
 
 def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
@@ -3141,7 +3171,7 @@ def test_the_server_passes_its_own_backlog_to_start_server() -> None:
     real_start_server = asyncio.start_server
     asyncio.start_server = fake_start_server  # type: ignore[assignment]
     try:
-        asyncio.run(service._run())
+        asyncio.run(service._serve_loop())
     finally:
         asyncio.start_server = real_start_server
     assert recorded["backlog"] == 8, recorded

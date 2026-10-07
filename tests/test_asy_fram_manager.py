@@ -3,12 +3,13 @@ import asyncio
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
+import asy_base_classes
 import asy_fram_manager
 import asy_spi_driver
-from asy_fram_manager import AsyFramChunk, AsyFramChunkBuffer, AsyFramChunkTimestampedBuffer, AsyFramManager
+from asy_crc_checks import CRC8, CRC16, CRC32, CRCPass
+from asy_fram_manager import FRAMChunk, FRAMChunkBuffer, FRAMChunkTimestampedBuffer, FRAMManager
+from asy_print_log import LogConfig, PrintLogHistory
 from asy_spi_driver import SPI
-from crc_checks import CRC8, CRC16, CRC32, CRC_Pass
-from print_log import LogConfig, PrintLogHistory
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py - see its own comment.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
 # Real on-chip constant values (asy_fram_manager.py's own _STATUS_* are micropython.const() and
 # compiled away - not importable - so these are hardcoded, matching test_asy_fram_driver.py's own
@@ -49,15 +50,15 @@ def make_bus() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
 
-def make_manager(max_size: int = 0x2000, history_length: int = 10) -> tuple[AsyFramManager, FakeMB85RS64V]:
+def make_manager(max_size: int = 0x2000, history_length: int = 10) -> tuple[FRAMManager, FakeMB85RS64V]:
     bus = make_bus()
-    manager = AsyFramManager(bus, 1, max_size=max_size, log=LogConfig(None, history_length, None))
+    manager = FRAMManager(bus, 1, max_size=max_size, log=LogConfig(None, history_length, None))
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip
 
 
-async def setup_manager(manager: AsyFramManager) -> bool:
+async def setup_manager(manager: FRAMManager) -> bool:
     return await manager.setup()
 
 
@@ -73,6 +74,16 @@ async def _raising_callback() -> bool:
     raise RuntimeError("ntp callback exploded")
 
 
+class _UTCValid:
+    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit.
+    def __enter__(self) -> "_UTCValid":
+        asy_base_classes.set_utc_valid()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
 # ---------------------------------------------------------------------------
 # Construction - the manager's own RAM-only log, and chunks bound to their manager
 # ---------------------------------------------------------------------------
@@ -82,7 +93,7 @@ def test_the_manager_logs_ram_only_whatever_its_log_config_names() -> None:
     # The one module that never logs into FRAM is the FRAM module itself: log.fram is ignored,
     # its length and level are taken.
     other, _chip = make_manager()
-    manager = AsyFramManager(make_bus(), 1, max_size=0x2000, log=LogConfig(other, 4, 2))
+    manager = FRAMManager(make_bus(), 1, max_size=0x2000, log=LogConfig(other, 4, 2))
     assert type(manager.pr) is PrintLogHistory
     assert manager.pr.name == "FRAM"
     assert len(manager.pr.history) == 4
@@ -112,13 +123,13 @@ def test_a_chunk_takes_its_fram_logger_and_pause_from_its_manager() -> None:
 def test_get_chunk_sequential_allocation_offsets_match_bump_pointer_math() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk1 = manager.get_chunk(4)  # default crc is CRC_Pass, length 0
+    chunk1 = manager.get_chunk(4)  # default crc is CRCPass, length 0
     chunk2 = manager.get_chunk(8)
     assert chunk1 is not None and chunk2 is not None
-    # block_addr[1] is where block 1 (the 2nd redundant copy) starts within the chunk, not the
+    # _block_addr[1] is where block 1 (the 2nd redundant copy) starts within the chunk, not the
     # end of the chunk's whole 2-block allocation - that end is base_addr + full_size (2*block).
-    assert chunk1.block_addr == (0, 6)  # block 0 at [0,6), block 1 at [6,12) - 4 data+0 crc+2 status each
-    assert chunk2.block_addr == (12, 22)  # starts at chunk1's full 2*(4+0+2)=12; block length 8+0+2=10
+    assert chunk1._block_addr == (0, 6)  # block 0 at [0,6), block 1 at [6,12) - 4 data+0 crc+2 status each
+    assert chunk2._block_addr == (12, 22)  # starts at chunk1's full 2*(4+0+2)=12; block length 8+0+2=10
 
 
 def test_allocation_order_not_chunk_size_determines_offsets() -> None:
@@ -129,11 +140,11 @@ def test_allocation_order_not_chunk_size_determines_offsets() -> None:
     small_first = manager.get_chunk(2)
     big_second = manager.get_chunk(50)
     assert small_first is not None and big_second is not None
-    assert small_first.block_addr[0] < big_second.block_addr[0]
-    # small_first's own full 2-block span ends at block_addr[1] + one block's length (block 1
-    # starts at block_addr[1] and is the same length as block 0, i.e. block_addr[1]-block_addr[0]).
-    small_first_end = small_first.block_addr[1] + (small_first.block_addr[1] - small_first.block_addr[0])
-    assert big_second.block_addr[0] == small_first_end  # immediately follows, no gap
+    assert small_first._block_addr[0] < big_second._block_addr[0]
+    # small_first's own full 2-block span ends at _block_addr[1] + one block's length (block 1
+    # starts at _block_addr[1] and is the same length as block 0, i.e. _block_addr[1]-_block_addr[0]).
+    small_first_end = small_first._block_addr[1] + (small_first._block_addr[1] - small_first._block_addr[0])
+    assert big_second._block_addr[0] == small_first_end  # immediately follows, no gap
 
 
 def test_get_chunk_returns_none_when_request_exceeds_remaining_capacity() -> None:
@@ -147,7 +158,7 @@ def test_get_timestamped_chunk_size_includes_the_8_byte_timestamp() -> None:
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced)
     assert chunk is not None
-    assert chunk.block_addr == (0, 4 + 8 + 0 + 2)  # size(4) + ts(8) + crc(0) + status(2) = 14
+    assert chunk._block_addr == (0, 4 + 8 + 0 + 2)  # size(4) + ts(8) + crc(0) + status(2) = 14
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +181,7 @@ def test_read_before_any_write_returns_none() -> None:
 def test_write_then_read_round_trip_no_crc() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(5, crc=CRC_Pass())
+    chunk = manager.get_chunk(5, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> bytearray | None:
@@ -196,7 +207,7 @@ def test_write_then_read_round_trip_with_crc8() -> None:
 def test_write_rejects_data_larger_than_chunk_size() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> bool:
@@ -208,9 +219,9 @@ def test_write_rejects_data_larger_than_chunk_size() -> None:
 def test_write_into_rejects_a_buffer_of_the_wrong_size() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
-    wrong_buf = AsyFramChunkBuffer(8, 0)  # this chunk expects 4 payload bytes, not 8
+    wrong_buf = FRAMChunkBuffer(8, 0)  # this chunk expects 4 payload bytes, not 8
 
     async def scenario() -> bool:
         return await chunk.write_into(wrong_buf)
@@ -252,12 +263,12 @@ def test_preallocated_buffer_write_into_read_into_round_trip() -> None:
 def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() -> None:
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         await chunk.write(b"good")
-        addr0, _addr1 = chunk.block_addr
+        addr0, _addr1 = chunk._block_addr
         # Simulate power loss mid-write: block 0 left with status BUSY (never reached the final
         # "set IDLE" step) - the same on-chip state a real torn write leaves behind.
         chip.memory[addr0 + 4] = _STATUS_BUSY
@@ -269,7 +280,7 @@ def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() ->
     result, errs = run(scenario())
     assert result == bytearray(b"good")  # recovered from block 1
     assert code("E", "FRAM_STATUS_BYTE") in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Read status byte is not IDLE but X"
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     assert chip.memory[addr0 + 4] == _STATUS_IDLE  # block 0 healed back to IDLE...
     assert bytes(chip.memory[addr0 : addr0 + 4]) == b"good"  # ...with the correct data
 
@@ -277,19 +288,19 @@ def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() ->
 def test_corrupted_block1_status_leaves_block0_valid_and_self_heals_block1() -> None:
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> bytearray | None:
         await chunk.write(b"good")
-        _addr0, addr1 = chunk.block_addr
+        _addr0, addr1 = chunk._block_addr
         chip.memory[addr1 + 4] = _STATUS_BUSY
         chip.memory[addr1 + 5] = _STATUS_BUSY
         return await chunk.read()
 
     result = run(scenario())
     assert result == bytearray(b"good")
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     assert chip.memory[addr1 + 4] == _STATUS_IDLE
     assert bytes(chip.memory[addr1 : addr1 + 4]) == b"good"
 
@@ -302,10 +313,10 @@ def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_a
     assert garbage not in (_STATUS_UNINIT, _STATUS_IDLE, _STATUS_BUSY)
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     chip.memory[addr0 + 4] = garbage
     chip.memory[addr0 + 5] = garbage
 
@@ -328,7 +339,7 @@ def test_crc8_detects_corrupted_payload_byte_and_falls_back_to_other_block() -> 
 
     async def scenario() -> bytearray | None:
         await chunk.write(b"good")
-        addr0, _addr1 = chunk.block_addr
+        addr0, _addr1 = chunk._block_addr
         # Flip a payload byte directly on the "chip", bypassing the driver entirely - raw SPI has
         # no way to detect this (see test_asy_fram_driver.py); this is exactly the corruption
         # class CRC8 + dual-copy redundancy exist to catch one layer up.
@@ -347,7 +358,7 @@ def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     crc_byte_addr = addr0 + chunk.size + chunk.crc.length() - 1  # the trailer byte itself
     chip.memory[crc_byte_addr] ^= 0xFF
 
@@ -363,13 +374,13 @@ def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
 
 def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -> None:
     # Simulates a write torn between finishing block 0 and starting block 1: both blocks look
-    # fine independently (CRC_Pass never checks content, both status bytes IDLE) but hold
+    # fine independently (CRCPass never checks content, both status bytes IDLE) but hold
     # different data - no generation counter can say which is right, so this must fail, not guess.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
-    addr0, addr1 = chunk.block_addr
+    addr0, addr1 = chunk._block_addr
     chip.memory[addr0 : addr0 + 4] = b"AAAA"
     chip.memory[addr0 + 4] = _STATUS_IDLE
     chip.memory[addr0 + 5] = _STATUS_IDLE
@@ -391,7 +402,7 @@ def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -
 def test_get_verify_set_verify_round_trip() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[int, int]:
@@ -439,7 +450,7 @@ def test_manager_get_pause_reflects_set_pause_directly() -> None:
 def test_manager_pause_blocks_chunk_operations_without_override() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
     manager.set_pause(value=True)
@@ -464,7 +475,7 @@ def test_manager_pause_blocks_chunk_operations_without_override() -> None:
 def test_override_pause_bypasses_manager_pause() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     manager.set_pause(value=True)
 
@@ -487,7 +498,7 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
     # matching the real rp2 write-only path's own inability to fail (Part F.5.2).
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
     chip.inject_fault("readinto", OSError(5, "SPI RX overrun"), times=1)
@@ -525,12 +536,12 @@ def test_unpausing_restores_a_genuinely_working_bus_not_just_a_cleared_flag() ->
     # mistake for a fresh one.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"aaaa"))
     manager.set_pause(value=True)
     assert run(chunk.write(b"bbbb")) is False
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     assert bytes(chip.memory[addr0 : addr0 + 4]) == b"aaaa"  # the refused write never reached the chip
 
     manager.set_pause(value=False)
@@ -544,7 +555,7 @@ def test_a_commanded_mempause_spends_one_slot_across_chunks() -> None:
     # chunks is still one repeated code: one slot, with ErrCount counting every refusal.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk_a = manager.get_chunk(4, crc=CRC_Pass())
+    chunk_a = manager.get_chunk(4, crc=CRCPass())
     chunk_b = manager.get_chunk(4, crc=CRC8())
     assert chunk_a is not None and chunk_b is not None
     manager.set_pause(value=True)
@@ -569,7 +580,7 @@ def test_a_commanded_mempause_spends_one_slot_across_chunks() -> None:
 def test_clear_resets_chunk_to_reading_as_uninitialized() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
     assert run(chunk.read()) == bytearray(b"data")
@@ -592,7 +603,7 @@ def test_clear_resets_chunk_to_reading_as_uninitialized() -> None:
 def test_timestamped_write_without_ntp_sync_stores_uninit_timestamp() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[bool, int | None, bool, int | None, int | None, bytearray | None]:
@@ -611,7 +622,7 @@ def test_timestamped_write_without_ntp_sync_stores_uninit_timestamp() -> None:
 def test_timestamped_write_with_ntp_sync_stores_and_reads_back_valid_timestamp() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[bool, int | None, int | None, int | None, bytearray | None]:
@@ -620,7 +631,8 @@ def test_timestamped_write_with_ntp_sync_stores_and_reads_back_valid_timestamp()
         ts, age, data = await chunk.read()
         return ntp_synced, utc, ts, age, data
 
-    ntp_synced, utc, ts, age, data = run(scenario())
+    with _UTCValid():
+        ntp_synced, utc, ts, age, data = run(scenario())
     assert ntp_synced is True
     assert utc is not None and utc != 0
     assert ts == utc
@@ -636,8 +648,9 @@ def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() ->
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8())
     assert chunk is not None
-    run(chunk.write(b"data"))
-    addr0, _addr1 = chunk.block_addr
+    with _UTCValid():
+        run(chunk.write(b"data"))
+    addr0, _addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF  # first byte of the on-chip timestamp field itself
 
     async def scenario() -> "tuple[int | None, bytearray | None, ErrorLog]":
@@ -651,15 +664,15 @@ def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() ->
 
 
 def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
-    # With crc=CRC_Pass() (no checksum at all), a single corrupted copy is still caught - not by
+    # With crc=CRCPass() (no checksum at all), a single corrupted copy is still caught - not by
     # any CRC but by the cross-block byte comparison every read() does: block 0 looks fine alone
     # yet disagrees with block 1, the same "which is right?" hard failure, not a silent answer.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF
 
     async def scenario() -> "tuple[int | None, int | None, bytearray | None, ErrorLog]":
@@ -675,14 +688,15 @@ def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
 def test_timestamped_read_skips_age_when_currently_not_synced() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    write_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    write_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert write_chunk is not None
-    run(write_chunk.write(b"data"))
+    with _UTCValid():
+        run(write_chunk.write(b"data"))
 
     # A second handle onto the same chunk, synced at write time but not at read time.
-    read_chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRC_Pass())
+    read_chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRCPass())
     assert read_chunk is not None
-    read_chunk.block_addr = write_chunk.block_addr  # same on-chip storage, different callback
+    read_chunk._block_addr = write_chunk._block_addr  # same on-chip storage, different callback
 
     async def scenario() -> tuple[int | None, int | None]:
         ts, age, _data = await read_chunk.read()
@@ -696,7 +710,7 @@ def test_timestamped_read_skips_age_when_currently_not_synced() -> None:
 def test_timestamped_write_require_ntp_refuses_when_not_synced_and_persists_nothing() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[bool, int | None, bool, tuple[int | None, int | None, bytearray | None]]:
@@ -707,6 +721,40 @@ def test_timestamped_write_require_ntp_refuses_when_not_synced_and_persists_noth
     ntp_synced, utc, write_ok, read_result = run(scenario())
     assert (ntp_synced, utc, write_ok) == (False, None, False)
     assert read_result == (None, None, None)
+
+
+def test_a_synced_write_before_the_first_clock_set_stores_no_timestamp() -> None:
+    # The NTP callback answers synced, but utc_now() is None until the NTP client sets the clock:
+    # the write takes the not-synced path, and a write that requires NTP is refused.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
+    assert chunk is not None
+
+    async def scenario() -> tuple[tuple[bool, int | None, bool], tuple[bool, int | None, bool], int | None]:
+        refused = await chunk.write(b"data", require_ntp=True)
+        written = await chunk.write(b"data")
+        ts, _age, _data = await chunk.read()
+        return refused, written, ts
+
+    refused, written, ts = run(scenario())
+    assert refused == (False, None, False)
+    assert written[0] is False and written[2] is True
+    assert ts is None
+    assert run(manager.get_error_counter())["FRAM"]["ErrCount"] == 0  # no clock is no fault
+
+
+def test_a_read_before_the_first_clock_set_reports_no_age() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
+    assert chunk is not None
+    with _UTCValid():
+        run(chunk.write(b"data"))
+    ts, age, data = run(chunk.read())
+    assert ts is not None  # stored while the clock was valid...
+    assert age is None  # ...but no age without a valid clock now
+    assert data == bytearray(b"data")
 
 
 # ---------------------------------------------------------------------------
@@ -720,7 +768,7 @@ def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() ->
     # tests/test_ntp_fram_system_integration.py for the same guard against the real object.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _raising_callback, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _raising_callback, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[bool, int | None, bool]:
@@ -732,60 +780,17 @@ def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() ->
     assert code("E", "CALLBACK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]  # the console line tells it from the read path
 
 
-def test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating() -> None:
-    # Confirmed against current MicroPython docs: mktime() genuinely raises OverflowError past
-    # ~2037 on the rp2 port (32-bit signed epoch) - was called unguarded before this promotion, a
-    # real crash risk for a device meant to run unattended for years.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
-    assert chunk is not None
-
-    class _OverflowingTime:
-        # Patches the `time` name inside asy_fram_manager.py's own namespace, not the real
-        # builtin module (which rejects attribute assignment on this interpreter) - the same
-        # "patch the name where it is looked up" technique used for asy_spi_driver._SPI above.
-        @staticmethod
-        def gmtime() -> tuple[int, ...]:
-            return (2038, 1, 1, 0, 0, 0, 0, 1)
-
-        @staticmethod
-        def mktime(_t: tuple[int, ...]) -> int:
-            raise OverflowError("simulated rp2 epoch overflow")
-
-    original_time = asy_fram_manager.time
-    asy_fram_manager.time = _OverflowingTime  # type: ignore[assignment]
-    try:
-
-        async def scenario() -> tuple[bool, int | None, bool]:
-            return await chunk.write(b"data")
-
-        ntp_synced, _utc, write_ok = run(scenario())
-    finally:
-        asy_fram_manager.time = original_time
-
-    assert ntp_synced is False
-    assert write_ok is True
-    assert code("E", "CLOCK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
-
-    async def read_back() -> int | None:
-        ts, _age, _data = await chunk.read()
-        return ts
-
-    assert run(read_back()) is None
-
-
 def test_compare_with_huge_check_length_self_heals_instead_of_crashing() -> None:
     # _compare_with's `bytearray(self.check_length)` was unguarded against MemoryError/
     # OverflowError - check_length is caller-supplied, not hardware-bounded like the allocation
-    # asy_fram_driver.py guards. Magnitude matches test_base_classes.py's confirmed boundary.
+    # asy_fram_driver.py guards. Magnitude matches test_asy_base_classes.py's confirmed boundary.
 
     # The allocation failure makes _compare_with report block 1 "not verifiably valid", which
     # _read() heals from block 0 like any other block-1 problem - so the fix integrates with the
     # existing self-healing rather than merely avoiding a crash.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=2**62)
+    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62)
     assert chunk is not None
     run(chunk.write(b"data"))
 
@@ -801,7 +806,7 @@ def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever
     # position never advances and the loop runs forever. wait_for turns that into a clear timeout.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=0)
+    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=0)
     assert chunk is not None
     run(chunk.write(b"data"))
 
@@ -820,7 +825,7 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
     # False (real data was physically written, but that can't be confirmed) rather than crashing.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=2**62, verify=1)
+    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, verify=1)
     assert chunk is not None
 
     async def scenario() -> bool:
@@ -830,11 +835,11 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
 
 
 def test_oversized_write_persists_a_bad_arg_entry() -> None:
-    # AsyFramChunk.write's "data too large" refusal and _AsyBaseFramChunk.clear()'s failure log into the one
+    # FRAMChunk.write's "data too large" refusal and _FRAMBaseChunk.clear()'s failure log into the one
     # PrintLogHistory every chunk of a manager shares, so they carry two different catalog codes.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "ErrorLog":
@@ -858,7 +863,7 @@ def test_write_fails_cleanly_when_chip_drops_wren_latch() -> None:
     # FRAM-level failure this suite exercises through the manager.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     chip.drop_wren = True
 
@@ -879,7 +884,7 @@ def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
     # breaks that step for both blocks, so read() reports total failure instead of stale/no data.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
     chip.drop_wren = True
@@ -899,7 +904,7 @@ def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
 def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
     chip.drop_wren = True
@@ -922,7 +927,7 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     # protection is a supported driver feature), not just a simulated bus glitch.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "tuple[bool, bool, ErrorLog]":
@@ -945,7 +950,7 @@ def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -
     # read() as it gates write() - yet the stored bytes come back intact once protection clears.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "tuple[bytearray | None, bytearray | None, ErrorLog]":
@@ -973,7 +978,7 @@ def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> Non
     # inside FRAM_SPI._write(), after _set_check_sb() already clocked the status byte off the chip.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     reads = 0
     real_readinto = chip.readinto
@@ -1012,7 +1017,7 @@ def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> 
     # WREN-drop case: reads fail at the status-byte read, not the later status write.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
     manager.fram.initialized = False
@@ -1044,7 +1049,7 @@ def test_read_fails_when_both_blocks_have_crc_invalid_payloads() -> None:
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, addr1 = chunk.block_addr
+    addr0, addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF
     chip.memory[addr1] ^= 0xFF
 
@@ -1069,14 +1074,14 @@ def test_block1_invalid_while_block0_valid_self_heals_block1() -> None:
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     chip.memory[addr1] ^= 0xFF
 
     async def scenario() -> bytearray | None:
         return await chunk.read()
 
     assert run(scenario()) == bytearray(b"good")
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     assert bytes(chip.memory[addr1 : addr1 + 4]) == b"good"  # block 1 healed
 
 
@@ -1089,7 +1094,7 @@ def test_read_fails_when_self_heal_write_to_block0_fails() -> None:
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF
     original_write_chunk = chunk._write_chunk
 
@@ -1117,7 +1122,7 @@ def test_read_fails_when_self_heal_write_to_block1_fails() -> None:
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     chip.memory[addr1] ^= 0xFF
     original_write_chunk = chunk._write_chunk
 
@@ -1143,9 +1148,9 @@ def test_read_into_rejects_a_buffer_of_the_wrong_size() -> None:
     # Mirror of the existing write_into size-mismatch test - _read()'s own BAD_ARG guard.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
-    wrong_buf = AsyFramChunkBuffer(8, 0)  # this chunk expects 4 payload bytes, not 8
+    wrong_buf = FRAMChunkBuffer(8, 0)  # this chunk expects 4 payload bytes, not 8
 
     async def scenario() -> bool:
         return await chunk.read_into(wrong_buf)
@@ -1156,7 +1161,7 @@ def test_read_into_rejects_a_buffer_of_the_wrong_size() -> None:
 def test_clear_while_paused_is_refused_without_override() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
     manager.set_pause(value=True)
@@ -1174,7 +1179,7 @@ def test_clear_while_paused_is_refused_without_override() -> None:
 def test_clear_override_pause_bypasses_manager_pause() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
     manager.set_pause(value=True)
@@ -1191,7 +1196,7 @@ def test_clear_override_pause_bypasses_manager_pause() -> None:
 
 # ---------------------------------------------------------------------------
 # CRC width, check_length, and verify-counter configuration variety (cross-dependency with
-# crc_checks.py's other concrete CRC widths, only CRC8/CRC_Pass exercised above)
+# asy_crc_checks.py's other concrete CRC widths, only CRC8/CRCPass exercised above)
 # ---------------------------------------------------------------------------
 
 
@@ -1200,7 +1205,7 @@ def test_write_then_read_round_trip_with_crc16() -> None:
     run(setup_manager(manager))
     chunk = manager.get_chunk(5, crc=CRC16())
     assert chunk is not None
-    assert chunk.block_addr == (0, 9)  # 5 data + 2 crc + 2 status per block
+    assert chunk._block_addr == (0, 9)  # 5 data + 2 crc + 2 status per block
 
     async def scenario() -> bytearray | None:
         await chunk.write(b"hello")
@@ -1214,7 +1219,7 @@ def test_write_then_read_round_trip_with_crc32() -> None:
     run(setup_manager(manager))
     chunk = manager.get_chunk(5, crc=CRC32())
     assert chunk is not None
-    assert chunk.block_addr == (0, 11)  # 5 data + 4 crc + 2 status per block
+    assert chunk._block_addr == (0, 11)  # 5 data + 4 crc + 2 status per block
 
     async def scenario() -> bytearray | None:
         await chunk.write(b"world")
@@ -1229,7 +1234,7 @@ def test_check_length_of_1_still_verifies_the_whole_chunk_across_many_iterations
     # a correct, fully-verified result, not a partial one.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(10, crc=CRC_Pass(), check_length=1, verify=1)
+    chunk = manager.get_chunk(10, crc=CRCPass(), check_length=1, verify=1)
     assert chunk is not None
 
     async def scenario() -> tuple[bool, bytearray | None]:
@@ -1245,26 +1250,26 @@ def test_check_length_of_1_still_verifies_the_whole_chunk_across_many_iterations
 def test_verify_counter_only_triggers_every_nth_write() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=2)
+    chunk = manager.get_chunk(4, crc=CRCPass(), verify=2)
     assert chunk is not None
 
     run(chunk.write(b"one!"))
-    assert chunk.verify_counter == 1  # below threshold, no verification ran yet
+    assert chunk._verify_counter == 1  # below threshold, no verification ran yet
     run(chunk.write(b"two!"))
-    assert chunk.verify_counter == 0  # threshold hit, verification ran and counter reset
+    assert chunk._verify_counter == 0  # threshold hit, verification ran and counter reset
 
 
 def test_get_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() -> None:
     manager, _chip = make_manager(max_size=12)
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())  # full_size = 2*(4+0+2) = 12, exact fit
+    chunk = manager.get_chunk(4, crc=CRCPass())  # full_size = 2*(4+0+2) = 12, exact fit
     assert chunk is not None
     assert manager.get_chunk(1) is None  # nothing left at all
 
 
 # ---------------------------------------------------------------------------
-# AsyFramTimestampedChunk shares _AsyBaseFramChunk behavior (inheritance) - pause/clear/verify
-# were only ever exercised through AsyFramChunk above; confirm the shared base actually behaves
+# FRAMTimestampedChunk shares _FRAMBaseChunk behavior (inheritance) - pause/clear/verify
+# were only ever exercised through FRAMChunk above; confirm the shared base actually behaves
 # the same way through the timestamped subclass too, not just by inheritance on paper.
 # ---------------------------------------------------------------------------
 
@@ -1272,7 +1277,7 @@ def test_get_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() ->
 def test_timestamped_chunk_clear_resets_to_reading_as_uninitialized() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
     _ts, _age, data = run(chunk.read())
@@ -1291,7 +1296,7 @@ def test_timestamped_chunk_clear_resets_to_reading_as_uninitialized() -> None:
 def test_timestamped_chunk_respects_manager_pause_and_override() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
     manager.set_pause(value=True)
 
@@ -1301,7 +1306,7 @@ def test_timestamped_chunk_respects_manager_pause_and_override() -> None:
         return write_ok, read_result
 
     write_ok, read_result = run(scenario())
-    assert write_ok is False  # _write's own pause guard refuses, same as AsyFramChunk
+    assert write_ok is False  # _write's own pause guard refuses, same as FRAMChunk
     assert read_result == (None, None, None)
 
     manager.set_pause(value=False)
@@ -1319,7 +1324,7 @@ def test_timestamped_chunk_respects_manager_pause_and_override() -> None:
 def test_timestamped_chunk_write_with_verify_enabled_succeeds() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass(), verify=1)
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), verify=1)
     assert chunk is not None
 
     async def scenario() -> bool:
@@ -1336,11 +1341,11 @@ def test_timestamped_chunk_write_with_verify_enabled_succeeds() -> None:
 
 def test_get_chunk_rejects_zero_size_regardless_of_crc() -> None:
     # A chunk storing nothing is never a sensible request - rejected unconditionally at the top of
-    # get_chunk(), before any CRC/capacity logic, not just for the CRC_Pass() case that used to
+    # get_chunk(), before any CRC/capacity logic, not just for the CRCPass() case that used to
     # reproduce the old spurious-CRC-error-on-read quirk (now gone, replaced by this rejection).
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    assert manager.get_chunk(0, crc=CRC_Pass()) is None
+    assert manager.get_chunk(0, crc=CRCPass()) is None
     assert manager.get_chunk(0, crc=CRC8()) is None
     assert manager.get_chunk(0) is None  # default crc
 
@@ -1351,7 +1356,7 @@ def test_get_timestamped_chunk_rejects_zero_size_regardless_of_crc() -> None:
     # zero-payload request is just as senseless, so it is rejected the same way for consistency.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    assert manager.get_timestamped_chunk(0, _synced, crc=CRC_Pass()) is None
+    assert manager.get_timestamped_chunk(0, _synced, crc=CRCPass()) is None
     assert manager.get_timestamped_chunk(0, _synced, crc=CRC8()) is None
     assert manager.get_timestamped_chunk(0, _synced) is None  # default crc
 
@@ -1362,8 +1367,8 @@ def test_get_chunk_rejects_zero_size_even_with_abundant_remaining_capacity() -> 
     # manager with its entire 8KB untouched, and doesn't disturb the allocator's own bookkeeping.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    assert manager.get_chunk(0, crc=CRC_Pass()) is None
-    assert manager.allocated_size == 0  # rejected before touching the bump pointer
+    assert manager.get_chunk(0, crc=CRCPass()) is None
+    assert manager._allocated_size == 0  # rejected before touching the bump pointer
 
 
 def test_all_zero_and_all_0xff_payloads_round_trip_without_sentinel_collision() -> None:
@@ -1393,7 +1398,7 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
     # deployed design, not introduced here - locked down as real, documented behavior.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
 
     class _EpochZeroTime:
@@ -1405,16 +1410,17 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
         def mktime(_t: tuple[int, ...]) -> int:
             return 0
 
-    original_time = asy_fram_manager.time
-    asy_fram_manager.time = _EpochZeroTime  # type: ignore[assignment]
+    original_time = asy_base_classes.time
+    asy_base_classes.time = _EpochZeroTime  # type: ignore[assignment]
     try:
 
         async def scenario() -> tuple[bool, int | None, bool]:
             return await chunk.write(b"data")
 
-        ntp_synced, utc, write_ok = run(scenario())
+        with _UTCValid():
+            ntp_synced, utc, write_ok = run(scenario())
     finally:
-        asy_fram_manager.time = original_time
+        asy_base_classes.time = original_time
 
     assert ntp_synced is True
     assert utc == 0
@@ -1430,17 +1436,17 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
 # ---------------------------------------------------------------------------
 # Deliberately-allowed exceptions propagating through this file's own composition points -
 # confirms the "caught here" / "allowed to raise" boundary asy_fram_driver.py's docstring
-# documents holds one layer up too, through AsyFramManager's public API.
+# documents holds one layer up too, through FRAMManager's public API.
 # ---------------------------------------------------------------------------
 
 
 def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() -> None:
-    # AsyFramManager.__init__ constructs FRAM_SPI(...) with no try/except - a bad spi_cs is a
+    # FRAMManager.__init__ constructs FRAM_SPI(...) with no try/except - a bad spi_cs is a
     # one-time at-boot misconfiguration allowed to raise loudly rather than silently produce a
     # permanently nonfunctional manager, and that carve-out must still hold through __init__.
     bus = make_bus()
     try:
-        AsyFramManager(bus, 99, max_size=0x2000)
+        FRAMManager(bus, 99, max_size=0x2000)
         raised = False
     except ValueError:
         raised = True
@@ -1449,7 +1455,7 @@ def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() ->
 
 def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
     # Real device-not-found path (asy_fram_driver.py's FRAM_SPI.setup() raises OSError) - caught
-    # by AsyFramManager.setup()'s own try/except, turned into a clean False + an INIT entry, not left
+    # by FRAMManager.setup()'s own try/except, turned into a clean False + an INIT entry, not left
     # to propagate. A different, driver-owned RDID mismatch, not a caller misconfiguration.
     manager, chip = make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
@@ -1467,10 +1473,10 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
 def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_mid_run() -> None:
     # asy_spi_driver.py's contract says a mid-operation bus deinit raises an uncaught RuntimeError
     # at that layer. This confirms the other half: one layer up, the broad `except Exception` in
-    # _write_chunk/_read_chunk/_clear_chunk catches it before it leaves AsyFramChunk's API.
+    # _write_chunk/_read_chunk/_clear_chunk catches it before it leaves FRAMChunk's API.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
     manager.fram._spidev.spi.deinit()
@@ -1500,12 +1506,12 @@ def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_
 
 
 def test_get_chunk_negative_size_degrades_to_an_unusable_but_non_crashing_chunk() -> None:
-    # A negative size flows straight into AsyFramChunkBuffer/LockableBuffer, whose own guard
-    # (base_classes.py) already turns any negative size into buf=None - confirmed here at this
+    # A negative size flows straight into FRAMChunkBuffer/LockableBuffer, whose own guard
+    # (asy_base_classes.py) already turns any negative size into buf=None - confirmed here at this
     # file's own boundary that the degradation is clean end to end, not just at that lower layer.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(-4, crc=CRC_Pass())
+    chunk = manager.get_chunk(-4, crc=CRCPass())
     assert chunk is not None  # allocation bookkeeping itself doesn't reject a negative size
 
     async def scenario() -> tuple[bool, bytearray | None]:
@@ -1519,19 +1525,19 @@ def test_get_chunk_negative_size_degrades_to_an_unusable_but_non_crashing_chunk(
 
 
 def test_get_chunk_negative_verify_triggers_verification_on_every_single_write() -> None:
-    # Surprising but harmless: verify_counter starts at 0 and is compared with `>=` against
+    # Surprising but harmless: _verify_counter starts at 0 and is compared with `>=` against
     # `verify` after incrementing, so a negative verify makes (1 >= negative) true on the first
     # write and verification runs every time. Locked down as real, non-crashing behavior.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=-5)
+    chunk = manager.get_chunk(4, crc=CRCPass(), verify=-5)
     assert chunk is not None
 
     async def scenario() -> bool:
         return await chunk.write(b"data")
 
     assert run(scenario()) is True
-    assert chunk.verify_counter == 0  # verification ran and reset the counter, not left at 1
+    assert chunk._verify_counter == 0  # verification ran and reset the counter, not left at 1
 
 
 def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> None:
@@ -1540,7 +1546,7 @@ def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> Non
     # MemoryError here too, the negative count being reinterpreted as a huge unsigned request.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=-1)
+    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1)
     assert chunk is not None
     run(chunk.write(b"data"))
 
@@ -1561,7 +1567,7 @@ def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
     # of these interact to produce anything worse than each one's own individual degradation.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(-4, crc=CRC_Pass(), verify=-1, check_length=-1)
+    chunk = manager.get_chunk(-4, crc=CRCPass(), verify=-1, check_length=-1)
     assert chunk is not None
 
     async def scenario() -> tuple[bool, bytearray | None]:
@@ -1589,10 +1595,10 @@ def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_se
     # flag is not hardcoded False. Previously untested.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     chip.memory[addr0 + 4] = _STATUS_UNINIT
     chip.memory[addr0 + 5] = _STATUS_IDLE
 
@@ -1612,9 +1618,9 @@ def test_write_verify_fails_when_only_block_1_fails_verification() -> None:
     # patch, the same technique as the self-heal-write-failure tests, so block 0 genuinely passes.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=1)
+    chunk = manager.get_chunk(4, crc=CRCPass(), verify=1)
     assert chunk is not None
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     original_compare_with = chunk._compare_with
 
     async def failing_compare_with(buf: bytearray, addr: int) -> tuple[bool, bool, bool]:
@@ -1675,7 +1681,7 @@ def test_manager_setup_is_idempotent_when_called_twice() -> None:
     ok2 = run(manager.setup())
     assert ok1 is True
     assert ok2 is True
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[bool, bytearray | None]:
@@ -1693,9 +1699,9 @@ def test_get_chunk_size_1_still_needs_status_byte_overhead_at_the_capacity_bound
     # overhead on top of it - a manager with no room left must refuse even the smallest request.
     manager, _chip = make_manager(max_size=6)
     run(setup_manager(manager))
-    chunk = manager.get_chunk(1, crc=CRC_Pass())  # full_size = 2*(1+0+2) = 6, exact fit
+    chunk = manager.get_chunk(1, crc=CRCPass())  # full_size = 2*(1+0+2) = 6, exact fit
     assert chunk is not None
-    assert manager.get_chunk(1, crc=CRC_Pass()) is None  # no room left, even for another tiny chunk
+    assert manager.get_chunk(1, crc=CRCPass()) is None  # no room left, even for another tiny chunk
 
 
 # ---------------------------------------------------------------------------
@@ -1711,7 +1717,7 @@ def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     original_write_chunk = chunk._write_chunk
 
     async def failing_write_chunk(buf: bytearray, addr: int) -> bool:
@@ -1737,10 +1743,10 @@ def test_read_self_heals_block_1_when_it_reads_back_as_uninitialized() -> None:
     # uninit=True path) previously unexercised.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"good"))
-    _addr0, addr1 = chunk.block_addr
+    _addr0, addr1 = chunk._block_addr
     chip.memory[addr1 + 4] = _STATUS_UNINIT
     chip.memory[addr1 + 5] = _STATUS_UNINIT
 
@@ -1759,9 +1765,9 @@ def test_handle_status_bytes_fails_cleanly_when_only_the_second_byte_write_fails
     # set_values() itself, since both bytes normally succeed or fail together under drop_wren.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     byte2_addr = addr0 + chunk.size + chunk.crc.length() + 1
     fail_set_values_at(chunk, byte2_addr)
 
@@ -1806,7 +1812,7 @@ def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     fail_set_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
@@ -1828,7 +1834,7 @@ def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fa
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     fail_get_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bytearray | None, ErrorLog]":
@@ -1874,7 +1880,7 @@ def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails(
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     status_byte1_addr = addr0 + chunk.size + chunk.crc.length()
     fail_set_values_at(chunk, status_byte1_addr, on_call=2)
 
@@ -1895,7 +1901,7 @@ def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> No
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
     run(chunk.write(b"good"))
-    addr0, _addr1 = chunk.block_addr
+    addr0, _addr1 = chunk._block_addr
     fail_set_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
@@ -1910,10 +1916,10 @@ def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> No
 
 def test_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
     # write_into()'s own guard, only reachable when called directly (bypassing write()'s own
-    # pre-check) - the real production call shape print_log.py's PrintLogHistoryStore actually uses.
+    # pre-check) - the real production call shape asy_print_log.py's PrintLogHistoryStore actually uses.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(-4, crc=CRC_Pass())  # negative size - buffer allocation fails
+    chunk = manager.get_chunk(-4, crc=CRCPass())  # negative size - buffer allocation fails
     assert chunk is not None
     buf = chunk.get_buffer()
 
@@ -1926,7 +1932,7 @@ def test_write_into_called_directly_with_an_unallocated_buffer_returns_false() -
 def test_timestamped_write_returns_false_tuple_for_a_negative_size_chunk() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[bool, int | None, bool]:
@@ -1938,7 +1944,7 @@ def test_timestamped_write_returns_false_tuple_for_a_negative_size_chunk() -> No
 def test_timestamped_write_data_larger_than_buffer_fails_with_bad_arg() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(2, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(2, _synced, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "tuple[tuple[bool, int | None, bool], ErrorLog]":
@@ -1956,7 +1962,7 @@ def test_timestamped_write_into_called_directly_with_an_unallocated_buffer_retur
     # variant's tbuf-None guard (also exercises get_ts_buf()'s own None-check as a side effect).
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass())
     assert chunk is not None
     buf = chunk.get_buffer()
 
@@ -1969,7 +1975,7 @@ def test_timestamped_write_into_called_directly_with_an_unallocated_buffer_retur
 def test_timestamped_read_returns_none_tuple_for_a_negative_size_chunk() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> tuple[int | None, int | None, bytearray | None]:
@@ -1981,10 +1987,11 @@ def test_timestamped_read_returns_none_tuple_for_a_negative_size_chunk() -> None
 def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
-    run(chunk.write(b"data"))
-    chunk.ntp_sync_callback = _raising_callback  # swap for the read-side NTP check only
+    with _UTCValid():
+        run(chunk.write(b"data"))
+    chunk._ntp_sync_callback = _raising_callback  # swap for the read-side NTP check only
 
     async def scenario() -> tuple[int | None, int | None, bytearray | None]:
         return await chunk.read()
@@ -1996,45 +2003,10 @@ def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught(
     assert code("E", "CALLBACK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
 
 
-def test_timestamped_read_age_computation_overflow_degrades_cleanly() -> None:
-    # Mirrors test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating, but for
-    # read_into()'s own age computation rather than write_into()'s timestamp computation.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
-    assert chunk is not None
-    run(chunk.write(b"data"))  # real timestamp via real time, so read() has a valid ts to age
-
-    class _OverflowingTime:
-        @staticmethod
-        def gmtime() -> tuple[int, ...]:
-            return (2038, 1, 1, 0, 0, 0, 0, 1)
-
-        @staticmethod
-        def mktime(_t: tuple[int, ...]) -> int:
-            raise OverflowError("simulated rp2 epoch overflow")
-
-    original_time = asy_fram_manager.time
-    asy_fram_manager.time = _OverflowingTime  # type: ignore[assignment]
-    try:
-
-        async def scenario() -> tuple[int | None, int | None, bytearray | None]:
-            return await chunk.read()
-
-        ts, age, data = run(scenario())
-    finally:
-        asy_fram_manager.time = original_time
-
-    assert ts is not None  # timestamp itself decoded fine
-    assert age is None  # age computation failed cleanly, not propagated
-    assert data == bytearray(b"data")
-    assert code("E", "CLOCK") in run(manager.get_error_counter())["FRAM"]["ErrNum"]
-
-
 def test_manager_reset_error_counter_clears_history() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
@@ -2058,7 +2030,7 @@ def test_manager_reset_error_counter_clears_history() -> None:
 def test_chunk_get_pause_reflects_the_manager_wide_pause_flag() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     assert run(chunk.get_pause()) is False
     manager.set_pause(value=True)
@@ -2069,7 +2041,7 @@ def test_chunk_get_pause_reflects_the_manager_wide_pause_flag() -> None:
 def test_chunk_get_size_returns_the_requested_payload_size() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(6, crc=CRC_Pass())
+    chunk = manager.get_chunk(6, crc=CRCPass())
     assert chunk is not None
     assert run(chunk.get_size()) == 6
 
@@ -2077,7 +2049,7 @@ def test_chunk_get_size_returns_the_requested_payload_size() -> None:
 def test_timestamped_chunk_get_size_excludes_the_timestamp_field() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(6, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(6, _synced, crc=CRCPass())
     assert chunk is not None
     assert run(chunk.get_size()) == 6  # timestamp bytes are internal, not part of the caller's payload
 
@@ -2106,21 +2078,21 @@ def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -
 
 # ---------------------------------------------------------------------------
 # The same accessors and both chunks' entry points on a buffer whose allocation FAILED. That is
-# LockableBuffer's documented MemoryError degrade (base_classes.py sets buf=None), so these are
+# LockableBuffer's documented MemoryError degrade (asy_base_classes.py sets buf=None), so these are
 # the branches a real allocation failure reaches - they must degrade, never raise.
 # ---------------------------------------------------------------------------
 
 
-def _degraded_buffer() -> AsyFramChunkBuffer:
+def _degraded_buffer() -> FRAMChunkBuffer:
     # A negative size takes the same buf=None path bytearray(size) raising MemoryError takes, with
-    # no injection needed - base_classes.py guards both together for exactly that reason.
-    buf = AsyFramChunkBuffer(-1, 0)
+    # no injection needed - asy_base_classes.py guards both together for exactly that reason.
+    buf = FRAMChunkBuffer(-1, 0)
     assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
     return buf
 
 
-def _degraded_timestamped_buffer() -> AsyFramChunkTimestampedBuffer:
-    buf = AsyFramChunkTimestampedBuffer(-1, 0, 0)
+def _degraded_timestamped_buffer() -> FRAMChunkTimestampedBuffer:
+    buf = FRAMChunkTimestampedBuffer(-1, 0, 0)
     assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
     return buf
 
@@ -2142,7 +2114,7 @@ def test_every_accessor_on_an_unallocated_timestamped_buffer_returns_none() -> N
 
 def test_the_timestamped_entry_points_degrade_on_a_foreign_unallocated_buffer() -> None:
     # Distinct from the negative-size-chunk tests above, which degrade a chunk's OWN buffer: here
-    # a healthy chunk is handed someone else's failed allocation, the shape print_log.py's store
+    # a healthy chunk is handed someone else's failed allocation, the shape asy_print_log.py's store
     # really uses. Documented tuples, not just falsy - each caller unpacks three values.
     manager, _chip = make_manager()
     run(setup_manager(manager))
@@ -2181,8 +2153,8 @@ def test_a_missing_chunk_buffer_logs_alloc() -> None:
     run(setup_manager(manager))
     plain = manager.get_chunk(4, crc=CRC8())
     stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8())
-    plain_unalloc = manager.get_chunk(-4, crc=CRC_Pass())  # allocated last: a negative size moves the bump pointer back
-    stamped_unalloc = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    plain_unalloc = manager.get_chunk(-4, crc=CRCPass())  # allocated last: a negative size moves the bump pointer back
+    stamped_unalloc = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass())
     assert plain is not None and plain_unalloc is not None
     assert stamped is not None and stamped_unalloc is not None
     calls: tuple[Callable[[], Awaitable[object]], ...] = (
@@ -2236,7 +2208,7 @@ class _RaisingPackInto:
 def test_write_into_degrades_to_uninit_timestamp_when_pack_into_fails() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
     buf = chunk.get_buffer()
     dbuf = buf.get_data_buf()
@@ -2246,7 +2218,8 @@ def test_write_into_degrades_to_uninit_timestamp_when_pack_into_fails() -> None:
     original_struct = asy_fram_manager.struct
     asy_fram_manager.struct = _RaisingPackInto()  # type: ignore[assignment]
     try:
-        result = run(chunk.write_into(buf))
+        with _UTCValid():
+            result = run(chunk.write_into(buf))
     finally:
         asy_fram_manager.struct = original_struct
     # pack_into's own failure is swallowed (UNEXPECTED logged) - the write itself still proceeds
@@ -2273,7 +2246,7 @@ class _RaisingUnpackFrom:
 def test_read_into_treats_unpack_from_failure_as_an_uninitialized_timestamp() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass())
     assert chunk is not None
     buf = chunk.get_buffer()
     dbuf = buf.get_data_buf()
@@ -2324,7 +2297,7 @@ def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recove
 def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_caller() -> None:
     # Both copies unreadable is the genuinely unrecoverable case - it must still degrade to a
     # None result rather than propagate, since an escaping OSError would take the reader task
-    # down and leave system_service.py's supervisor to restart it.
+    # down and leave asy_system_service.py's supervisor to restart it.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(40, crc=CRC8())
@@ -2378,8 +2351,8 @@ def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> N
 
     async def scenario() -> "tuple[bytearray | None, bool, bool, bytearray | None]":
         failed = await broken.read()
-        cs_released = bool(spidev.cs_pin.value()) == (not spidev.cs_active_value)
-        lock_released = not spidev.asy_lock.locked()
+        cs_released = bool(spidev._cs_pin.value()) == (not spidev._cs_active_value)
+        lock_released = not spidev.session_lock.locked()
         chip.rx_overrun = False  # bus recovers
         return failed, cs_released, lock_released, await other.read()
 
@@ -2400,7 +2373,7 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
     assert chunk is not None
     payload = bytes(range(40))
     run(chunk.write(payload))
-    addr0, addr1 = chunk.block_addr
+    addr0, addr1 = chunk._block_addr
     status0 = addr0 + 41  # layout is [data][crc][status 1][status 2]; 40 payload + 1 CRC8 byte
     status1 = addr1 + 41
     assert (chip.memory[status0], chip.memory[status1]) == (_STATUS_IDLE, _STATUS_IDLE)
@@ -2430,12 +2403,12 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
 # failure reaches keeps its own entry (owner, 2026-10-02).
 
 
-def status_byte_addrs(chunk: "AsyFramChunk") -> tuple[int, int]:
-    base = chunk.block_addr[0] + chunk.size + chunk.crc.length()
+def status_byte_addrs(chunk: "FRAMChunk") -> tuple[int, int]:
+    base = chunk._block_addr[0] + chunk.size + chunk.crc.length()
     return base, base + 1
 
 
-def fail_set_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) -> None:
+def fail_set_values_at(chunk: "FRAMChunk", addr: int, *, on_call: int = 1) -> None:
     # Address- and occurrence-selective: the same status byte is written once for the BUSY mark and
     # once for the IDLE mark, so the BUSY and IDLE marks need different occurrences. Injected at
     # set_values_sync(), the seam the chunk layer actually calls; the sentinel is an unused status bit.
@@ -2459,7 +2432,7 @@ def fail_set_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) ->
     chunk.fram.report_set_values = reporting  # type: ignore[method-assign]
 
 
-def fail_get_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) -> None:
+def fail_get_values_at(chunk: "FRAMChunk", addr: int, *, on_call: int = 1) -> None:
     # The read-side mirror of fail_set_values_at above; same seam, same sentinel.
     original_sync = chunk.fram.get_values_sync
     original_report = chunk.fram.report_get_values
@@ -2481,16 +2454,16 @@ def fail_get_values_at(chunk: "AsyFramChunk", addr: int, *, on_call: int = 1) ->
     chunk.fram.report_get_values = reporting  # type: ignore[method-assign]
 
 
-def make_written_chunk(check_length: int = 8) -> "tuple[AsyFramManager, FakeMB85RS64V, AsyFramChunk]":
+def make_written_chunk(check_length: int = 8) -> "tuple[FRAMManager, FakeMB85RS64V, FRAMChunk]":
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=check_length)
+    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=check_length)
     assert chunk is not None
     assert run(chunk.write(b"data")) is True
     return manager, chip, chunk
 
 
-def errnums(manager: AsyFramManager) -> list[int]:
+def errnums(manager: FRAMManager) -> list[int]:
     async def scenario() -> "ErrorLog":
         return await manager.get_error_counter()
 
@@ -2572,7 +2545,7 @@ def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
     # IDLE again. A block operation that never yielded would show only one of the two.
     manager, chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     byte1, _byte2 = status_byte_addrs(chunk)
     seen: set[int] = set()
@@ -2604,7 +2577,7 @@ def test_every_block_operation_yields_even_when_it_returns_early() -> None:
     # commands per block with no scheduling point. Counted for uninit read, valid read, write, clear.
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     passes = [0]
 
@@ -2663,7 +2636,7 @@ def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
     # rewrites block 1 from block 0 and still returns the data (the self-heals test pins it).
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=-1)
+    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1)
     assert chunk is not None
     assert chunk._check_buf is None  # the allocation failed at construction, once, not per call
     run(chunk.write(b"data"))
@@ -2675,7 +2648,7 @@ def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The central newest-entry rule (print_log.py, SPECIFICATION.md C.7.1): a repeated identical code spends no
+# The central newest-entry rule (asy_print_log.py, SPECIFICATION.md C.7.1): a repeated identical code spends no
 # new slot; ErrCount counts every event.
 # ---------------------------------------------------------------------------
 
@@ -2696,7 +2669,7 @@ def test_a_block_0_that_keeps_failing_keeps_each_layers_entry_on_every_read() ->
 
     async def scenario() -> "ErrorLog":
         await chunk.write(b"good")
-        addr0, _addr1 = chunk.block_addr
+        addr0, _addr1 = chunk._block_addr
         for _read in range(5):
             # Re-corrupted each time: _read() heals block 0 from block 1, so one flip is one event.
             chip.memory[addr0] ^= 0xFF
@@ -2714,7 +2687,7 @@ def test_a_block_0_that_keeps_failing_keeps_each_layers_entry_on_every_read() ->
 def test_a_recurrence_after_recovery_stays_one_slot() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
 
     async def scenario() -> "ErrorLog":
@@ -2735,7 +2708,7 @@ def test_a_recurrence_after_recovery_stays_one_slot() -> None:
 def test_a_held_mempause_spends_one_slot_for_paused_writes_and_reads() -> None:
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    chunk = manager.get_chunk(4, crc=CRCPass())
     assert chunk is not None
     run(chunk.write(b"data"))
     manager.set_pause(value=True)

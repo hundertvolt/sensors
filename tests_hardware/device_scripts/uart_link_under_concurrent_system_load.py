@@ -13,10 +13,10 @@ import machine
 import asy_i2c_driver
 import asy_spi_driver
 import asy_uart_driver
-from asy_fram_manager import AsyFramManager
+from asy_fram_manager import FRAMManager
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
 BAUDRATE = 115200
 PAYLOAD_SIZE = 48
@@ -103,7 +103,7 @@ async def _scd_load_loop(scd: SCD30_I2C, load: Load) -> None:
         await asyncio.sleep_ms(_SENSOR_LOAD_STEP_MS)
 
 
-async def _fram_read_loop(fram: AsyFramManager, load: Load) -> None:
+async def _fram_read_loop(fram: FRAMManager, load: Load) -> None:
     while not load.stop:
         if await fram.fram.verify_present():
             load.spi_reads += 1
@@ -154,8 +154,8 @@ async def _main() -> None:
 
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UART_Comm(
+    initiator = UARTComm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
+    responder = UARTComm(
         uart1, ROLE_RESPONDER, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS,
         callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_RESP",
     )
@@ -165,7 +165,7 @@ async def _main() -> None:
     # the bench device TOML's wiring: i2c0 (13, 12), i2c1 (15, 14), SPI0 (2, 3, 4) with FRAM CS=5.
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     await fram.setup()
     # SCD30 and SGP40 both sit on i2c1 on this bench; the SCD30 getters below are reads, so the
     # loop labelled i2c0 is really "the other device on the shared bus" - both contend for i2c1,

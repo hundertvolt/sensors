@@ -1,4 +1,4 @@
-"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into print_log.py/base_classes.py's real consumers - mocked down to SPI bus interaction, not just AsyFramManager's own boundary.
+"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into asy_print_log.py/asy_base_classes.py's real consumers - mocked down to SPI bus interaction, not just FRAMManager's own boundary.
 See SPECIFICATION.md Part E.4 for the mocking-boundary plan."""
 # Deliberately not modeled: a raw-SPI-bus-level fault. Real RP2040 SPI write()/readinto() cannot raise or
 # report a fault at all once constructed, unlike I2C's NAK/timeout surface, so tests/_fram_chip_fake.py's
@@ -12,11 +12,11 @@ from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramChunk, AsyFramManager
+from asy_base_classes import SensorReader
+from asy_crc_checks import CRC32, CRCPass
+from asy_fram_manager import FRAMChunk, FRAMManager
+from asy_print_log import LogConfig, PrintLogHistoryStore
 from asy_spi_driver import SPI
-from base_classes import SensorReader
-from crc_checks import CRC32, CRC_Pass
-from print_log import LogConfig, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
 Meas = namedtuple("Meas", ["temp", "hum"])
 
@@ -44,9 +44,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def make_manager(max_size: int = 0x2000) -> tuple[AsyFramManager, FakeMB85RS64V]:
+def make_manager(max_size: int = 0x2000) -> tuple[FRAMManager, FakeMB85RS64V]:
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=max_size)
+    manager = FRAMManager(bus, 1, max_size=max_size)
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip
@@ -57,9 +57,9 @@ async def _synced() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Real multi-consumer topology, matching the generated device modules' production shape: one AsyFramManager
+# Real multi-consumer topology, matching the generated device modules' production shape: one FRAMManager
 # backs both a driver's own PrintLogHistoryStore (error persistence, CRC8, allocated first by
-# SensorReader.__init__) and a separate value-backup chunk (allocated second, CRC32, as ts_storage is).
+# SensorReader.__init__) and a separate value-backup chunk (allocated second, CRC32, as _ts_storage is).
 #
 # Confirms the shared bump-pointer allocator gives both non-overlapping storage, and that both operate
 # correctly and independently off the one manager.
@@ -70,18 +70,18 @@ def test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager
     manager, _chip = make_manager()
     run(manager.setup())
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
-    run(reader.pr.setup())
+    run(reader.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert isinstance(reader.pr.fram, AsyFramChunk)
+    assert isinstance(reader.pr.fram, FRAMChunk)
     value_chunk = manager.get_timestamped_chunk(8, _synced, crc=CRC32())
     assert value_chunk is not None
 
     # The PrintLogHistoryStore chunk's full 2-block span must end exactly where the next
     # allocation starts - the same non-overlap invariant tests/test_asy_fram_manager.py's own
     # allocator tests check, now proven across two structurally different real chunk types.
-    pr_block0, pr_block1 = reader.pr.fram.block_addr
+    pr_block0, pr_block1 = reader.pr.fram._block_addr
     pr_full_end = pr_block1 + (pr_block1 - pr_block0)
-    assert value_chunk.block_addr[0] == pr_full_end
+    assert value_chunk._block_addr[0] == pr_full_end
 
     async def scenario() -> "tuple[ErrorLog, bool, bytearray | None]":
         await reader.pr.err_s("integration test error", errno=code("E", "CALLBACK"))
@@ -104,25 +104,25 @@ def test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager
 
 # ---------------------------------------------------------------------------
 # Real chip-level faults propagating through SensorReader's FRAM-backed error logging - one layer
-# further than tests/test_print_log.py's own PrintLogHistoryStore-focused fault tests, going
-# through the full real SensorReader -> PrintLogHistoryStore -> AsyFramChunk -> FRAM_SPI chain.
+# further than tests/test_asy_print_log.py's own PrintLogHistoryStore-focused fault tests, going
+# through the full real SensorReader -> PrintLogHistoryStore -> FRAMChunk -> FRAM_SPI chain.
 # ---------------------------------------------------------------------------
 
 
 def test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tracking_correct() -> None:
     # A real chip.drop_wren fault, not a Protocol-level fake, breaks the underlying FRAM write - confirming
-    # print_log.py's "err_count and history update in memory regardless of persistence success" contract
+    # asy_print_log.py's "_err_count and history update in memory regardless of persistence success" contract
     # holds when the failure is genuinely hardware-level, not a hypothetical misbehaving _FramManager.
     manager, chip = make_manager()
     run(manager.setup())
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
-    run(reader.pr.setup())
+    run(reader.setup())
     chip.drop_wren = True
 
     async def scenario() -> "tuple[int, ErrorLog]":
         await reader.pr.err_s("boom", errno=code("E", "UNEXPECTED"))
         log = await reader.pr.get_log("sensor")
-        return reader.pr.err_count, log
+        return reader.pr._err_count, log
 
     err_count, log = run(scenario())
     assert err_count == 1  # in-memory counting is unaffected by the underlying FRAM fault
@@ -138,13 +138,13 @@ def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() ->
     setup_ok = run(manager.setup())
     assert setup_ok is False
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3, log=LogConfig(manager, 10, None))
-    run(reader.pr.setup())
+    run(reader.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is not None  # allocated fine, just backed by a chip that never came up
 
     async def scenario() -> int:
         await reader.pr.err_s("boom", errno=code("E", "BAD_ARG"))
-        return reader.pr.err_count
+        return reader.pr._err_count
 
     assert run(scenario()) == 1  # still tracked in memory, no crash despite the dead chip
 
@@ -161,7 +161,7 @@ def test_many_write_read_cycles_with_crc32_and_verify_show_no_state_leak() -> No
     # heap after ~7 cycles with a plain MemoryError - a test-environment GC-timing artifact, diagnosed
     # directly, not an asy_fram_manager.py bug.
     #
-    # The loop is the regression check for state leaking across cycles (stale CRC, verify_counter or lock
+    # The loop is the regression check for state leaking across cycles (stale CRC, _verify_counter or lock
     # state carrying over), not for the unrelated heap ceiling.
     manager, _chip = make_manager()
     run(manager.setup())
@@ -196,11 +196,11 @@ def test_two_sensorreaders_sharing_one_manager_keep_independent_error_histories(
     run(manager.setup())
     reader_a = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager, 10, None))
     reader_b = SensorReader(Meas(2.0, 2), "", max_module_error=3, log=LogConfig(manager, 10, None))
-    run(reader_a.pr.setup())
-    run(reader_b.pr.setup())
+    run(reader_a.setup())
+    run(reader_b.setup())
     assert isinstance(reader_a.pr, PrintLogHistoryStore) and isinstance(reader_b.pr, PrintLogHistoryStore)
-    assert isinstance(reader_a.pr.fram, AsyFramChunk) and isinstance(reader_b.pr.fram, AsyFramChunk)
-    assert reader_a.pr.fram.block_addr != reader_b.pr.fram.block_addr
+    assert isinstance(reader_a.pr.fram, FRAMChunk) and isinstance(reader_b.pr.fram, FRAMChunk)
+    assert reader_a.pr.fram._block_addr != reader_b.pr.fram._block_addr
 
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
         await reader_a.pr.err_s("err in a", errno=code("E", "CALLBACK"))
@@ -223,7 +223,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
     manager1, chip = make_manager()
     run(manager1.setup())
     reader1 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager1, 10, None))
-    run(reader1.pr.setup())
+    run(reader1.setup())
     value_chunk1 = manager1.get_timestamped_chunk(8, _synced, crc=CRC32())
     assert value_chunk1 is not None
 
@@ -241,7 +241,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
     run(manager2.setup())
     reader2 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager2, 10, None))
-    run(reader2.pr.setup())
+    run(reader2.setup())
     value_chunk2 = manager2.get_timestamped_chunk(8, _synced, crc=CRC32())
     assert value_chunk2 is not None
 
@@ -258,7 +258,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
 
 
 # ---------------------------------------------------------------------------
-# Fault injection through the full real chain, not just at AsyFramManager's boundary - each mirrors a
+# Fault injection through the full real chain, not just at FRAMManager's boundary - each mirrors a
 # failure mode already proven at the module level in tests/test_asy_fram_manager.py, now confirmed to hold
 # when driven through the actual production consumer chain rather than calling chunk.write()/read().
 # ---------------------------------------------------------------------------
@@ -267,15 +267,15 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
 def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_reboot() -> None:
     # Simulates power loss mid-write, one block left BUSY, on a production consumer's own persisted chunk,
     # then a fresh boot - proving self-heal holds through the actual SensorReader -> PrintLogHistoryStore ->
-    # AsyFramChunk -> FRAM_SPI chain, not just when a test pokes a directly-allocated chunk.
+    # FRAMChunk -> FRAM_SPI chain, not just when a test pokes a directly-allocated chunk.
     manager1, chip = make_manager()
     run(manager1.setup())
     reader1 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager1, 10, None))
-    run(reader1.pr.setup())
+    run(reader1.setup())
     run(reader1.pr.err_s("before reboot", errno=code("E", "LOCK_TIMEOUT")))
     assert isinstance(reader1.pr, PrintLogHistoryStore)
-    assert isinstance(reader1.pr.fram, AsyFramChunk)
-    addr0, _addr1 = reader1.pr.fram.block_addr
+    assert isinstance(reader1.pr.fram, FRAMChunk)
+    addr0, _addr1 = reader1.pr.fram._block_addr
     status_addr = addr0 + reader1.pr.fram.size + reader1.pr.fram.crc.length()
     chip.memory[status_addr] = _STATUS_BUSY
     chip.memory[status_addr + 1] = _STATUS_BUSY
@@ -284,7 +284,7 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
     run(manager2.setup())
     reader2 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager2, 10, None))
-    run(reader2.pr.setup())
+    run(reader2.setup())
 
     async def scenario() -> "ErrorLog":
         return await reader2.pr.get_log("y")
@@ -307,11 +307,11 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
     manager1, chip = make_manager()
     run(manager1.setup())
     reader1 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager1, 10, None))
-    run(reader1.pr.setup())
+    run(reader1.setup())
     run(reader1.pr.err_s("before reboot", errno=code("E", "LOCK_TIMEOUT")))
     assert isinstance(reader1.pr, PrintLogHistoryStore)
-    assert isinstance(reader1.pr.fram, AsyFramChunk)
-    addr0, addr1 = reader1.pr.fram.block_addr
+    assert isinstance(reader1.pr.fram, FRAMChunk)
+    addr0, addr1 = reader1.pr.fram._block_addr
     payload_len = reader1.pr.fram.size + reader1.pr.fram.crc.length()
     for base in (addr0, addr1):
         chip.memory[base + payload_len] = _STATUS_BUSY
@@ -321,7 +321,7 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
     run(manager2.setup())
     reader2 = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager2, 10, None))
-    run(reader2.pr.setup())
+    run(reader2.setup())
 
     async def scenario() -> "ErrorLog":
         return await reader2.pr.get_log("y")
@@ -341,8 +341,8 @@ def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partial
 
 def test_value_chunk_crc_trailer_corruption_self_heals_through_the_full_chain() -> None:
     # A directly corrupted CRC trailer byte (not payload) on a real CRC32 value chunk, matching
-    # asy_sgp40_driver.py's own ts_storage shape - proves the checksum's own on-chip storage is
-    # covered end to end, not just when tested via AsyFramManager's own boundary.
+    # asy_sgp40_driver.py's own _ts_storage shape - proves the checksum's own on-chip storage is
+    # covered end to end, not just when tested via FRAMManager's own boundary.
     manager, chip = make_manager()
     run(manager.setup())
     value_chunk = manager.get_timestamped_chunk(8, _synced, crc=CRC32())
@@ -356,7 +356,7 @@ def test_value_chunk_crc_trailer_corruption_self_heals_through_the_full_chain() 
         await value_chunk.write_into(buf)
 
     run(write_data())
-    addr0, _addr1 = value_chunk.block_addr
+    addr0, _addr1 = value_chunk._block_addr
     crc_byte_addr = addr0 + value_chunk.size + value_chunk.crc.length() - 1
     chip.memory[crc_byte_addr] ^= 0xFF
 
@@ -371,11 +371,11 @@ def test_value_chunk_crc_trailer_corruption_self_heals_through_the_full_chain() 
 
 def test_value_chunk_timestamp_corruption_hard_fails_without_crc_through_the_full_chain() -> None:
     # Mirrors the same finding from tests/test_asy_fram_manager.py through the full chain: with
-    # crc=CRC_Pass(), a corrupted timestamp byte isn't silently returned wrong - the independent
+    # crc=CRCPass(), a corrupted timestamp byte isn't silently returned wrong - the independent
     # cross-block comparison still catches it as "both blocks valid but different data".
     manager, chip = make_manager()
     run(manager.setup())
-    value_chunk = manager.get_timestamped_chunk(8, _synced, crc=CRC_Pass())
+    value_chunk = manager.get_timestamped_chunk(8, _synced, crc=CRCPass())
     assert value_chunk is not None
 
     async def write_data() -> None:
@@ -386,7 +386,7 @@ def test_value_chunk_timestamp_corruption_hard_fails_without_crc_through_the_ful
         await value_chunk.write_into(buf)
 
     run(write_data())
-    addr0, _addr1 = value_chunk.block_addr
+    addr0, _addr1 = value_chunk._block_addr
     chip.memory[addr0] ^= 0xFF  # first byte of the on-chip timestamp field itself
 
     async def read_data() -> tuple[int | None, int | None, bytearray | None]:
@@ -396,19 +396,19 @@ def test_value_chunk_timestamp_corruption_hard_fails_without_crc_through_the_ful
 
 
 def test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works() -> None:
-    # print_log.py's "in-memory count and history update regardless of persistence success" contract, proven
+    # asy_print_log.py's "in-memory count and history update regardless of persistence success" contract, proven
     # here for the pause fault mode specifically, previously only for a real drop_wren fault - and, unlike
     # that test, verified by confirming no byte anywhere on the simulated chip changed while paused.
     manager, chip = make_manager()
     run(manager.setup())
     reader = SensorReader(Meas(1.0, 1), "", max_module_error=3, log=LogConfig(manager, 10, None))
-    run(reader.pr.setup())
+    run(reader.setup())
     before = bytes(chip.memory)
     manager.set_pause(value=True)
 
     async def scenario() -> int:
         await reader.pr.err_s("paused write", errno=code("E", "READ"))
-        return reader.pr.err_count
+        return reader.pr._err_count
 
     err_count = run(scenario())
     assert err_count == 1  # in-memory tracking unaffected by pause

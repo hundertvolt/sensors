@@ -125,7 +125,7 @@ def _int_value(node: "ast.expr | None") -> "int | None":
 
 
 def _binding(stmt: ast.stmt) -> "tuple[ast.expr | None, ast.expr | None]":
-    """(target, value) of a single-target assignment; (None, None) for any other statement."""
+    # (target, value) of a single-target assignment; (None, None) for any other statement.
     if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
         return stmt.targets[0], stmt.value
     if isinstance(stmt, ast.AnnAssign):
@@ -134,7 +134,7 @@ def _binding(stmt: ast.stmt) -> "tuple[ast.expr | None, ast.expr | None]":
 
 
 def _code_constants(tree: ast.Module) -> "Iterator[tuple[str, str, int | None, int]]":
-    """(kind, name, value, line) of every module-level _ERR_/_WRN_ binding; value None when not a literal int."""
+    # (kind, name, value, line) of every module-level _ERR_/_WRN_ binding; value None when not a literal int.
     for stmt in tree.body:
         target, value = _binding(stmt)
         if isinstance(target, ast.Name):
@@ -229,7 +229,7 @@ def _params(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "list[str]":
 
 
 def _assignments(tree: ast.AST, matches: "Callable[[ast.expr], bool]") -> "Iterator[tuple[ast.expr | None, int | None]]":
-    """(value, tuple index) for every binding whose target `matches`; value None for a binding it cannot follow."""
+    # (value, tuple index) for every binding whose target `matches`; value None for a binding it cannot follow.
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
@@ -261,7 +261,7 @@ def _returns(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "Iterator[ast.expr
 
 
 def _feeder_ok(scope: _Scope, node: "ast.expr | None", index: "int | None", seen: "set[str]") -> bool:
-    """A carrier's source: a catalog name, 0, or a call/attribute whose own sources are those (transitively)."""
+    # A carrier's source: a catalog name, 0, or a call/attribute whose own sources are those (transitively).
     if index is not None:
         if isinstance(node, ast.Tuple):
             return index < len(node.elts) and _feeder_ok(scope, node.elts[index], None, seen)
@@ -292,7 +292,7 @@ def _call_feeds(scope: _Scope, call: ast.Call, index: "int | None", seen: "set[s
 
 
 def _container_ok(scope: _Scope, attr: str, index: "int | None", seen: "set[str]") -> bool:
-    """A container attribute feeds through every item appended to it or written into its initial literal."""
+    # A container attribute feeds through every item appended to it or written into its initial literal.
     key = f"items:{attr}:{index}"
     if key in seen:
         return True
@@ -333,7 +333,7 @@ def _attribute_ok(scope: _Scope, attr: str, seen: "set[str]") -> bool:
 
 
 def _expression_ok(scope: _Scope, node: ast.expr, kind: str) -> bool:
-    """The shape of a code argument: catalog names, parameters, locals, attributes, `or` - no literal or arithmetic."""
+    # The shape of a code argument: catalog names, parameters, locals, attributes, `or` - no literal or arithmetic.
     if isinstance(node, ast.Name):
         if node.id.startswith(tuple(_PREFIX.values())):
             return node.id.startswith(_PREFIX[kind])
@@ -348,7 +348,7 @@ def _expression_ok(scope: _Scope, node: ast.expr, kind: str) -> bool:
 
 
 def _code_arguments(scope: _Scope) -> "Iterator[tuple[ast.Call, str, ast.expr]]":
-    """Every argument in this function bound to a code: an err_s/wrn_s keyword, or a helper's errno/wrnno parameter."""
+    # Every argument in this function bound to a code: an err_s/wrn_s keyword, or a helper's errno/wrnno parameter.
     for node in ast.walk(scope.function):
         if not isinstance(node, ast.Call):
             continue
@@ -475,7 +475,7 @@ def _copy_bindings(m: _Module) -> "Iterator[tuple[str, int]]":
 
 
 def _literal_codes(node: ast.AST) -> "set[int]":
-    """Literals a code could be: ints and "E21"-style strings in the catalog's range; a list repeat count is not one."""
+    # Literals a code could be: ints and "E21"-style strings in the catalog's range; a list repeat count is not one.
     low, high = _catalog()["range"]
     counts = {id(n.right) for n in ast.walk(node) if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mult)}
     found = set()
@@ -495,7 +495,7 @@ def _reads_logged_code(node: ast.expr) -> bool:
 
 
 def _seeded(fn: ast.AST) -> "set[int]":
-    """Codes an err_s()/wrn_s() call in this function writes itself, directly or from a literal loop."""
+    # Codes an err_s()/wrn_s() call in this function writes itself, directly or from a literal loop.
     loops = {t.id: n.iter for n in ast.walk(fn) if isinstance(n, (ast.For, ast.AsyncFor)) and isinstance(t := n.target, ast.Name)}
     seeds = set()
     for _kind, call in _log_calls(fn):

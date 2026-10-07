@@ -203,7 +203,7 @@ Each was caught only by an explicit audit, and each is re-enterable. Occurrences
     must pass through every keyword Microdot passes (`_get_static` takes `filename`); an `await`-less
     `get_value()` is a coroutine object, always truthy — read `.value`.
 14. **Read the FRAM `errcount` before anything clears it**, and remember that a device script
-    building its own `AsyFramManager` writes production's first chunk (CLAUDE.md's FRAM-log rule).
+    building its own `FRAMManager` writes production's first chunk (CLAUDE.md's FRAM-log rule).
 15. **Re-derive a tool's printed summary from its raw output** when a label looks wrong.
 
 ---

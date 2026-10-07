@@ -26,7 +26,7 @@ def _looks_like_requires_payload(text: str) -> bool:
 
 
 def _payload_words(text: str) -> "tuple[bool, list[str]]":
-    """Whether the comment carried the "@" sigil, plus whatever follows its leading word."""
+    # Whether the comment carried the "@" sigil, plus whatever follows its leading word.
     stripped = text.lstrip("#").strip()
     at_sign = stripped.startswith("@")
     if at_sign:
@@ -181,9 +181,9 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[CommentToken]":
-    """Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
-    string/docstring is never mistaken for a real comment. Each token also carries whether it sits
-    inside a class/function body rather than at module level."""
+    # Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
+    # string/docstring is never mistaken for a real comment. Each token also carries whether it sits
+    # inside a class/function body rather than at module level.
     tokens = []
     # Bracket depth plus whether the statement that opened it was indented: inside brackets a
     # comment is always indented by style, so only the enclosing statement says whether this is
@@ -203,15 +203,15 @@ def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[C
                     depth += 1 if tok.string in "([{" else -1
                 elif not depth and tok.type not in _NON_STATEMENT_TOKENS:
                     stmt_indented = tok.line[:1].isspace()
-    except (tokenize.TokenError, SyntaxError, IndentationError) as e:
+    except (IndentationError, SyntaxError, tokenize.TokenError) as e:
         raise BuildError(device, f"{path} has a syntax error: {e}", instance=instance_label) from e
     return tokens
 
 
 def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
-    """The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
-    dimensions a typo can drop, so the two are reported separately rather than the sigil being a
-    precondition for seeing the word at all."""
+    # The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
+    # dimensions a typo can drop, so the two are reported separately rather than the sigil being a
+    # precondition for seeing the word at all.
     stripped = comment_text.lstrip("#").strip()
     at_sign = stripped.startswith("@")
     if at_sign:
@@ -223,18 +223,19 @@ def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
 
 
 def looks_like_tag_payload(comment_text: str, spec: "TagSpec | None"=None) -> bool:
-    """Whether a comment carries the rough payload shape of a real tag - the gate that keeps
-    ordinary prose merely *mentioning* a tag name from being treated as a broken tag. Defaults to
-    @requires' own shape when no family is named."""
+    # Whether a comment carries the rough payload shape of a real tag - the gate that keeps
+    # ordinary prose merely *mentioning* a tag name from being treated as a broken tag. Defaults to
+    # @requires' own shape when no family is named.
     if spec is None:
         return _looks_like_requires_payload(comment_text)
     return spec.looks_like_payload(comment_text)
 
 
 def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: str, instance_label: str, exact_matches: "set[tuple[int, int]]", specs: "tuple[TagSpec, ...] | None"=None) -> None:
-    """Raises BuildError for a comment that looks like a typo'd/malformed attempt at a
-    KNOWN_TAG_NAMES tag not already in `exact_matches`. `specs` narrows which families are policed -
-    each grammar module passes its own, so a valid tag of another family isn't misreported."""
+    # Raises BuildError for a comment that looks like a typo'd/malformed attempt at a
+    # KNOWN_TAG_NAMES tag not already in `exact_matches`. `specs` narrows which families are policed -
+    # each grammar module passes its own, so a valid tag of another family isn't misreported.
+    #
     # The failure mode this guards against is real: a driver signature change once silently broke
     # two tests_hardware/device_scripts/ call sites for a full day because nothing validated the
     # comment that should have caught it - see SPECIFICATION.md Part L.5 for the incident.

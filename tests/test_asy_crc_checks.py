@@ -1,6 +1,6 @@
 import asyncio
 
-from crc_checks import CRC8, CRC16, CRC32, CRC_Base, CRC_Pass
+from asy_crc_checks import CRC8, CRC16, CRC32, CRCBase, CRCPass
 
 try:
     from typing import TYPE_CHECKING
@@ -33,13 +33,13 @@ def test_crc8_matches_sgp40_datasheet_vectors() -> None:
         (bytearray([0xFF, 0xFF]), 0xAC),
     ]
     for data, expected in vectors:
-        assert run(crc8._crc(data, crc8.all_set)) == expected
+        assert run(crc8._crc(data, crc8._all_set)) == expected
 
 
 def test_crc8_matches_sensirion_example_vector() -> None:
     # 0xBEEF -> 0x92 is Sensirion's other commonly-quoted worked example (e.g. SHT3x datasheet).
     crc8 = CRC8()
-    assert run(crc8._crc(bytearray([0xBE, 0xEF]), crc8.all_set)) == 0x92
+    assert run(crc8._crc(bytearray([0xBE, 0xEF]), crc8._all_set)) == 0x92
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def test_check_rejects_corrupted_data() -> None:
 
 
 def test_check_rejects_data_no_longer_than_crc_itself() -> None:
-    crc8 = CRC8()  # num_bytes == 1
+    crc8 = CRC8()  # _num_bytes == 1
     assert run(crc8.check(bytearray([0x00]))) is None
     assert run(crc8.check(bytearray())) is None
 
@@ -99,37 +99,37 @@ def test_check_boundary_just_above_crc_length_accepted() -> None:
 
 
 # ---------------------------------------------------------------------------
-# CRC_Pass - zero-length no-op
+# CRCPass - zero-length no-op
 # ---------------------------------------------------------------------------
 
 
 def test_crc_pass_length_is_zero() -> None:
-    assert CRC_Pass().length() == 0
+    assert CRCPass().length() == 0
 
 
 def test_crc_pass_add_and_check_are_identity() -> None:
-    cp = CRC_Pass()
+    cp = CRCPass()
     data = bytearray(b"unchanged")
     assert run(cp.add(data)) == data
     assert run(cp.check(data)) == data
 
 
 def test_crc_pass_accepts_empty_buffer() -> None:
-    cp = CRC_Pass()
+    cp = CRCPass()
     assert run(cp.check(bytearray())) == bytearray()
 
 
 def test_crc_pass_ignores_explicit_poly() -> None:
-    # poly is forwarded to CRC_Base for constructor-shape consistency with CRC8/16/32, but
-    # num_bytes == 0 always nullifies it back to None (CRC_Base's own existing invariant).
-    cp = CRC_Pass(poly=0x31)
-    assert cp.poly is None
+    # poly is forwarded to CRCBase for constructor-shape consistency with CRC8/16/32, but
+    # _num_bytes == 0 always nullifies it back to None (CRCBase's own existing invariant).
+    cp = CRCPass(poly=0x31)
+    assert cp._poly is None
     assert cp.length() == 0
 
 
 def test_crc8_with_poly_none_degrades_to_pass_mode() -> None:
     c8 = CRC8(poly=None)
-    assert c8.poly is None
+    assert c8._poly is None
     assert c8.length() == 0
     data = bytearray(b"unchanged")
     assert run(c8.add(data)) == data
@@ -198,7 +198,7 @@ def test_add_into_and_check_from_with_start_offset() -> None:
 
 
 def test_crc_pass_add_into_and_check_from_are_size_identity() -> None:
-    cp = CRC_Pass()
+    cp = CRCPass()
     buf = bytearray(b"XYZ")
     assert run(cp.add_into(buf, 3)) == 3
     assert run(cp.check_from(buf, 3)) == 3
@@ -255,7 +255,7 @@ def test_check_inc_resets_state_after_call() -> None:
         return await crc8.check_inc()
 
     assert run(first_pass()) == len(b"first message")
-    assert crc8.inc_crc is None
+    assert crc8._inc_crc is None
     # A fresh sequence starts clean rather than continuing stale state.
     assert run(crc8.check_inc()) is None
 
@@ -279,7 +279,7 @@ def test_run_inc_rejects_invalid_init() -> None:
         return await crc8.run_inc(bytearray(b"x"), init=-1)
 
     assert run(feed()) is False
-    assert crc8.inc_crc is None  # left in a clean state, not stuck mid-sequence
+    assert crc8._inc_crc is None  # left in a clean state, not stuck mid-sequence
 
 
 def test_run_inc_recovers_after_invalid_init() -> None:
@@ -325,7 +325,7 @@ def test_run_inc_accepts_memoryview() -> None:
 
 
 def test_crc_pass_incremental_accepts_empty() -> None:
-    cp = CRC_Pass()
+    cp = CRCPass()
 
     async def feed() -> int | None:
         await cp.run_inc(bytearray())
@@ -343,13 +343,13 @@ def test_explicit_init_matches_default() -> None:
     crc8 = CRC8()
     data = bytearray(b"hello world")
     added_default = run(crc8.add(data, init=None))
-    added_explicit = run(crc8.add(data, init=crc8.all_set))
+    added_explicit = run(crc8.add(data, init=crc8._all_set))
     assert added_default == added_explicit
 
 
 def test_init_above_all_set_rejected() -> None:
     crc8 = CRC8()
-    assert run(crc8.add(bytearray(b"x"), init=crc8.all_set + 1)) is None
+    assert run(crc8.add(bytearray(b"x"), init=crc8._all_set + 1)) is None
 
 
 def test_init_negative_rejected() -> None:
@@ -360,7 +360,7 @@ def test_init_negative_rejected() -> None:
 def test_init_boundary_values_accepted() -> None:
     crc8 = CRC8()
     assert run(crc8.add(bytearray(b"x"), init=0)) is not None
-    assert run(crc8.add(bytearray(b"x"), init=crc8.all_set)) is not None
+    assert run(crc8.add(bytearray(b"x"), init=crc8._all_set)) is not None
 
 
 def test_check_rejects_invalid_init() -> None:
@@ -370,7 +370,7 @@ def test_check_rejects_invalid_init() -> None:
     added = run(crc8.add(bytearray(b"hello world")))
     assert added is not None
     assert run(crc8.check(added, init=-1)) is None
-    assert run(crc8.check(added, init=crc8.all_set + 1)) is None
+    assert run(crc8.check(added, init=crc8._all_set + 1)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -379,20 +379,20 @@ def test_check_rejects_invalid_init() -> None:
 
 
 def test_poly_above_all_set_degrades_to_pass_mode() -> None:
-    base = CRC_Base(1, 0x1FF, ">B")  # poly wider than a single byte can hold
-    assert base.poly is None
+    base = CRCBase(1, 0x1FF, ">B")  # poly wider than a single byte can hold
+    assert base._poly is None
     assert run(base.add(bytearray(b"x"))) == bytearray(b"x")
 
 
 def test_poly_negative_degrades_to_pass_mode() -> None:
-    base = CRC_Base(1, -1, ">B")
-    assert base.poly is None
+    base = CRCBase(1, -1, ">B")
+    assert base._poly is None
 
 
 def test_num_bytes_negative_degrades_to_pass_mode() -> None:
-    base = CRC_Base(-1, 0x31, ">B")
-    assert base.num_bytes == 0
-    assert base.poly is None
+    base = CRCBase(-1, 0x31, ">B")
+    assert base._num_bytes == 0
+    assert base._poly is None
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +410,7 @@ def test_crc16_check_rejects_corrupted_data() -> None:
 
 
 def test_crc16_check_rejects_data_no_longer_than_crc_itself() -> None:
-    crc16 = CRC16()  # num_bytes == 2
+    crc16 = CRC16()  # _num_bytes == 2
     assert run(crc16.check(bytearray(2))) is None
 
 
@@ -459,7 +459,7 @@ def test_crc32_check_rejects_corrupted_data() -> None:
 
 
 def test_crc32_check_rejects_data_no_longer_than_crc_itself() -> None:
-    crc32 = CRC32()  # num_bytes == 4
+    crc32 = CRC32()  # _num_bytes == 4
     assert run(crc32.check(bytearray(4))) is None
 
 
@@ -531,12 +531,12 @@ def test_incremental_many_single_byte_calls_matches_bulk() -> None:
 
 
 def test_check_inc_rejects_exactly_crc_length_fed() -> None:
-    # inc_count == num_bytes (not > num_bytes) must be rejected regardless of content, since
+    # inc_count == _num_bytes (not > _num_bytes) must be rejected regardless of content, since
     # that leaves no room for any actual payload.
-    crc8 = CRC8()  # num_bytes == 1
+    crc8 = CRC8()  # _num_bytes == 1
 
     async def feed() -> int | None:
-        await crc8.run_inc(bytearray(1))  # exactly num_bytes fed, zero payload bytes
+        await crc8.run_inc(bytearray(1))  # exactly _num_bytes fed, zero payload bytes
         return await crc8.check_inc()
 
     assert run(feed()) is None
@@ -573,7 +573,7 @@ def test_check_from_rejects_invalid_init() -> None:
     buf = bytearray(b"XY\x00")
     run(crc8.add_into(buf, 2))
     assert run(crc8.check_from(buf, 3, init=-1)) is None
-    assert run(crc8.check_from(buf, 3, init=crc8.all_set + 1)) is None
+    assert run(crc8.check_from(buf, 3, init=crc8._all_set + 1)) is None
 
 
 def test_check_from_rejects_non_positive_size() -> None:
@@ -628,7 +628,7 @@ def test_add_check_round_trip_single_byte_payload_all_widths() -> None:
 def test_forgotten_check_inc_continues_stale_sequence_instead_of_resetting() -> None:
     # Documents a sharp edge in the API contract: if a caller starts feeding a new logical
     # buffer via run_inc() without finalizing the previous sequence via check_inc() first, the
-    # old bytes are still folded into inc_crc/inc_count - it does NOT silently start fresh.
+    # old bytes are still folded into _inc_crc/inc_count - it does NOT silently start fresh.
     crc8 = CRC8()
     first = run(crc8.add(bytearray(b"first")))
     assert first is not None
@@ -691,7 +691,7 @@ def test_run_inc_empty_chunk_between_real_chunks_is_a_noop() -> None:
 # ---------------------------------------------------------------------------
 # Empty-payload asymmetry between add() and check() - flagged, not silently fixed (see PR
 # discussion): add() happily encodes a zero-byte payload, but no check* method can ever verify
-# the result back, since all three require strictly more than num_bytes total.
+# the result back, since all three require strictly more than _num_bytes total.
 # ---------------------------------------------------------------------------
 
 
@@ -699,7 +699,7 @@ def test_add_on_empty_payload_produces_buffer_check_cannot_verify() -> None:
     crc8 = CRC8()
     added = run(crc8.add(bytearray()))
     assert added is not None
-    assert len(added) == crc8.num_bytes  # just the CRC, no payload bytes
+    assert len(added) == crc8._num_bytes  # just the CRC, no payload bytes
     assert run(crc8.check(added)) is None  # ...and check() can never validate it
 
 
@@ -714,15 +714,15 @@ def test_add_on_empty_payload_produces_buffer_check_cannot_verify() -> None:
 
 
 def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> None:
-    # add()'s new buffer is bytearray(self.num_bytes), whitebox-widened here to a size confirmed against the
+    # add()'s new buffer is bytearray(self._num_bytes), whitebox-widened here to a size confirmed against the
     # real interpreter to raise MemoryError - the same allocation-exhaustion technique
-    # test_base_classes.py's LockableBuffer tests use.
+    # test_asy_base_classes.py's LockableBuffer tests use.
     #
     # Everything _crc() itself needs was computed in the constructor and stays CRC8's, so the CRC is still
     # computed normally and only the allocation fails - the shape a genuinely exhausted heap takes on-
     # device.
     crc8 = CRC8()
-    crc8.num_bytes = 2**62
+    crc8._num_bytes = 2**62
     try:
         run(crc8.add(bytearray(b"hello world")))
         raise AssertionError("expected MemoryError to propagate out of add()")
@@ -733,11 +733,11 @@ def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> No
 class _MemoryErrorOnCopyBuffer:
     # check()'s own allocation is its payload copy, and no real bytearray can force that to fail: a buffer
     # large enough for the copy to exhaust the heap cannot itself be allocated, unlike add(), whose size
-    # comes from num_bytes rather than the input.
+    # comes from _num_bytes rather than the input.
     #
     # Substituted instead by a minimal stand-in behaving exactly like the real buffer for len() and
     # iteration, so _crc() computes the true CRC and check() genuinely reaches the copy, which then raises
-    # MemoryError. The same substitution technique the UART driver and print_log suites use.
+    # MemoryError. The same substitution technique the UART driver and asy_print_log suites use.
     def __init__(self, real: bytearray) -> None:
         self._real = real
 
@@ -747,7 +747,7 @@ class _MemoryErrorOnCopyBuffer:
     def __iter__(self) -> "Iterator[int]":
         return iter(self._real)
 
-    # check()'s only indexing is the trailing-CRC strip, bytearr[0 : len(bytearr) - num_bytes] -
+    # check()'s only indexing is the trailing-CRC strip, bytearr[0 : len(bytearr) - _num_bytes] -
     # a slice, returning a bytearray on the real type this stands in for.
     def __getitem__(self, item: slice) -> bytearray:
         raise MemoryError("simulated allocation failure")

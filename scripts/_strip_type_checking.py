@@ -8,9 +8,9 @@ import ast
 
 
 def _is_bare_type_checking_test(test: ast.expr) -> bool:
-    """Matches only a bare `TYPE_CHECKING` or `mod.TYPE_CHECKING` test - never a compound
-    condition (`if TYPE_CHECKING and x:`), which is left untouched rather than guessed at, per
-    BACKLOG.md's original prototype note."""
+    # Matches only a bare `TYPE_CHECKING` or `mod.TYPE_CHECKING` test - never a compound
+    # condition (`if TYPE_CHECKING and x:`), which is left untouched rather than guessed at, per
+    # BACKLOG.md's original prototype note.
     if isinstance(test, ast.Name):
         return bool(test.id == "TYPE_CHECKING")
     if isinstance(test, ast.Attribute):
@@ -19,9 +19,9 @@ def _is_bare_type_checking_test(test: ast.expr) -> bool:
 
 
 def _is_type_checking_import_guard(node: ast.Try) -> bool:
-    """Matches exactly this codebase's `try: from typing import TYPE_CHECKING / except
-    ImportError: TYPE_CHECKING = False` convention - never a general try/except guarding
-    something else, which is left alone."""
+    # Matches exactly this codebase's `try: from typing import TYPE_CHECKING / except
+    # ImportError: TYPE_CHECKING = False` convention - never a general try/except guarding
+    # something else, which is left alone.
     if node.orelse or node.finalbody or len(node.body) != 1 or len(node.handlers) != 1:
         return False
     (stmt,) = node.body
@@ -68,9 +68,9 @@ class _TypeCheckingStripper(ast.NodeTransformer):
 
 
 def strip_type_checking_blocks(source: str) -> str:
-    """Returns `source` with every bare `if TYPE_CHECKING:` block (an `elif`/`else` branch kept in
-    its place) and its try/except ImportError header removed, re-parsing the output to fail loudly on a bad
-    transform. Source with no such blocks is returned byte-for-byte unchanged."""
+    # Returns `source` with every bare `if TYPE_CHECKING:` block (an `elif`/`else` branch kept in
+    # its place) and its try/except ImportError header removed, re-parsing the output to fail loudly on a bad
+    # transform. Source with no such blocks is returned byte-for-byte unchanged.
     tree = ast.parse(source)
     stripper = _TypeCheckingStripper()
     stripped_tree = stripper.visit(tree)

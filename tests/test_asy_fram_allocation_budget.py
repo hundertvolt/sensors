@@ -11,9 +11,9 @@ import sys
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
+from asy_fram_manager import FRAMManager
+from asy_print_log import PrintLogHistoryStore
 from asy_spi_driver import SPI
-from print_log import PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -54,9 +54,9 @@ async def _priced(logger: PrintLogHistoryStore) -> "tuple[int, int]":
     return alloc_after - alloc_before, free_before - free_after
 
 
-async def _rig() -> "tuple[AsyFramManager, PrintLogHistoryStore]":
+async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore]":
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=0x2000)
+    manager = FRAMManager(bus, 1, max_size=0x2000)
     assert await manager.setup()
     return manager, PrintLogHistoryStore(manager, 10, None, name="BUDGET")
 

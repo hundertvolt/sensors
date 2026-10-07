@@ -22,9 +22,9 @@ from unix_port_poll_prewarm import prewarm_poll_set
 # already in it, a segfault rather than a failure (digital_twin/README.md "Known gaps").
 prewarm_poll_set()
 
-# Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__ below): this
+# Must run before UDPSocket is constructed (CaptiveDNS, inside WifiService.__init__ below): this
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto() (SPECIFICATION.md
-# Part A.10), a twin-side workaround since AsyUDPSocket's own addr is correct production code.
+# Part A.10), a twin-side workaround since UDPSocket's own addr is correct production code.
 patch_asy_udp_socket_for_unix_port()
 
 # digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
@@ -118,7 +118,7 @@ async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
     # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
-    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # FRAM, so _serve_loop() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
     # not the instant no-op a RAM-only logger's setup() was.
     #
     # Measured directly against this file's real twin fakes: consistently ready within ~400ms, so 1.0s keeps
@@ -137,7 +137,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 def _make_dns_query(labels: "list[str]", query_id: bytes = b"\x12\x34") -> bytes:
-    # Mirrors tests/test_captive_dns.py's own make_query(): a minimal, well-formed standard-query
+    # Mirrors tests/test_asy_captive_dns.py's own make_query(): a minimal, well-formed standard-query
     # datagram DNSQuery.__init__ accepts (RFC 1035 section 4.1.1/4.1.2).
     question = b"".join(bytes([len(label)]) + label.encode("ascii") for label in labels)
     question += b"\x00\x00\x01\x00\x01"
@@ -146,7 +146,7 @@ def _make_dns_query(labels: "list[str]", query_id: bytes = b"\x12\x34") -> bytes
 
 
 async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> str:
-    # Genuine end-to-end DNS round trip against the real conn.dns_server_task's AsyUDPSocket, bound at
+    # Genuine end-to-end DNS round trip against the real conn._dns_server_task's UDPSocket, bound at
     # ("0.0.0.0", 53). Uses the same non-blocking socket + select.poll() + bounded ticks_ms() shape as
     # test_asy_udp_socket.py's AdversarialPeer, since this build's socket may not support settimeout().
     peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -174,12 +174,12 @@ async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> 
                 data, _ = peer.recvfrom(512)
                 break
             if time.ticks_diff(time.ticks_ms(), t0) > int(timeout_s * 1000):
-                raise OSError("DNS query timed out waiting for a reply from the real DNSServer")
+                raise OSError("DNS query timed out waiting for a reply from the real CaptiveDNS")
             await asyncio.sleep_ms(5)
     finally:
         peer.close()
     # DNSQuery.response()'s fixed layout: the answer's 4 raw IPv4 bytes are always the last 4
-    # bytes of the packet (tests/test_captive_dns.py confirms this byte-for-byte).
+    # bytes of the packet (tests/test_asy_captive_dns.py confirms this byte-for-byte).
     return ".".join(str(b) for b in data[-4:])
 
 
@@ -241,17 +241,17 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/networking")
             assert res.status_code == 200
             # Regression coverage for a real bug this file's own testing found and
-            # src/asy_webserver_service.py's _flatten_cfg_values() now fixes: every /networking
+            # src/asy_webserver_service.py's _cfg_values() now fixes: every /networking
             # field is sourced from a nested-shaped module (conn/ntp), so this used to come back {}.
             assert res.json() == {
                 "SSID": "",
                 "PW": "********",
                 "Country": "DE",
                 "Hostname": "SensorStationWozi",  # devices/wozi.toml's own [device].hostname, injected by buildgen
-                "LedWifiOn": True,
-                "NTP_Host": "pool.ntp.org",
-                "NTP_Offset_S": 0,
-                "NTP_Interv_H": 12,
+                "LEDWifiOn": True,
+                "NTPHost": "pool.ntp.org",
+                "NTPOffset": 0,
+                "NTPInterval": 12,
             }
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/system")
@@ -265,9 +265,9 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
             system_body = res.json()
             build_info = system_body.pop("build")
             assert system_body == {"DebugLevel": 0, "GMTOffset": 3600, "DSTOffset": 3600}
-            assert isinstance(build_info["firmwareVersion"], str) and build_info["firmwareVersion"]
-            assert isinstance(build_info["websiteVersion"], str) and build_info["websiteVersion"]
-            assert isinstance(build_info["buildDate"], str) and build_info["buildDate"]
+            assert isinstance(build_info["FirmwareVersion"], str) and build_info["FirmwareVersion"]
+            assert isinstance(build_info["WebsiteVersion"], str) and build_info["WebsiteVersion"]
+            assert isinstance(build_info["BuildDate"], str) and build_info["BuildDate"]
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/notification")
             assert res.status_code == 200
@@ -384,7 +384,7 @@ def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
     # /status reports its current value. PauseTime is deliberately excluded from GET /notification's flat
     # settings, so it stays in the same polling/non-polling split every other live field follows.
     #
-    # Exercises the real auto_led_override() background task decrementing the value over real wall-clock
+    # Exercises the real _pause_loop() background task decrementing the value over real wall-clock
     # time, not just the value being stored.
     port = _next_test_port()
 
@@ -407,7 +407,7 @@ def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
 
             last = first
             reached_zero = False
-            for _ in range(20):  # bounded poll, well past the real ~1s-per-tick auto_led_override() loop
+            for _ in range(20):  # bounded poll, well past the real ~1s-per-tick _pause_loop() loop
                 await asyncio.sleep(0.5)
                 res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
                 current = res.json()["notification"]["PauseTime"]
@@ -416,7 +416,7 @@ def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
                 if current == 0:
                     reached_zero = True
                     break
-            assert reached_zero, "PauseTime never reached 0 - the real auto_led_override() task isn't decrementing it"
+            assert reached_zero, "PauseTime never reached 0 - the real _pause_loop() task isn't decrementing it"
         finally:
             for task in tasks:
                 await _cancel(task)
@@ -436,9 +436,9 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
         await _boot(port)
         task = await _start_webserver()
         try:
-            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/sensors", {"SCD30": {"MeasInt": 4}})
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/sensors", {"SCD30": {"MeasInterval": 4}})
             assert res.status_code == 200
-            assert res.json()["result"] == {"SCD30": {"MeasInt": "Valid"}}
+            assert res.json()["result"] == {"SCD30": {"MeasInterval": "Valid"}}
         finally:
             await _cancel(task)
 
@@ -506,20 +506,20 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
             return not await triggered()
 
         await apply_window(on_h, off_h)
-        tasks = [pixel.start_asy_neopixel_signal(), notif.start_asy_notify_monitor()]
+        tasks = [pixel.start_asy_signal(), notif.start_asy_monitor()]
         try:
-            assert await _wait_until(lambda: len(_red_frames(list(pixel.pixel.writes))) > 0, _WINDOW_WAIT_S), (
+            assert await _wait_until(lambda: len(_red_frames(list(pixel._pixel.writes))) > 0, _WINDOW_WAIT_S), (
                 f"no red frame with the window {on_h}:00-{off_h}:00 around local {hour}:{local.minute:02d}"
             )
             assert await _wait_until_async(triggered, _WINDOW_WAIT_S), "the cycle that flashed never reported Triggered"
-            await _cancel(tasks.pop())  # the monitor now sleeps its whole Interv; the next window gets a fresh cycle
-            assert await _wait_until(lambda: not pixel.start_signal_event.is_set(), _WINDOW_WAIT_S)
-            seen = len(pixel.pixel.writes)
+            await _cancel(tasks.pop())  # the monitor now sleeps its whole FlashInterval; the next window gets a fresh cycle
+            assert await _wait_until(lambda: not pixel._start_signal_event.is_set(), _WINDOW_WAIT_S)
+            seen = len(pixel._pixel.writes)
 
             await apply_window(off_h, on_h)  # the complementary, same-day window: the current hour is outside
-            tasks.append(notif.start_asy_notify_monitor())
+            tasks.append(notif.start_asy_monitor())
             assert await _wait_until_async(not_triggered, _WINDOW_WAIT_S), "a cycle outside the window reported Triggered"
-            assert _red_frames(list(pixel.pixel.writes)[seen:]) == [], "a cycle outside the window flashed"
+            assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a cycle outside the window flashed"
         finally:
             for task in tasks:
                 await _cancel(task)
@@ -553,7 +553,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
 # them.
 #
 # It runs its own small watchdog-feed loop rather than start_and_check_tasks()'s, which
-# tests/test_system_service.py already covers: the job here is only whether the real concurrent tasks ever
+# tests/test_asy_system_service.py already covers: the job here is only whether the real concurrent tasks ever
 # block the event loop long enough to starve a feed loop running alongside them.
 # ---------------------------------------------------------------------------
 
@@ -574,8 +574,8 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
     async def scenario() -> None:
         await _boot(port)
         assert sensortask_wozi.watchdog is not None and sensortask_wozi.sysfunct is not None
-        await sensortask_wozi.sysfunct.start_timers(sensortask_wozi._collect_timer_starters())
-        # Each starter already returns its own asyncio.Task (system_service.py's own _start_task()
+        await sensortask_wozi.sysfunct.start_timers(sensortask_wozi._collect_trigger_starters(), sensortask_wozi._collect_timer_starters())
+        # Each starter already returns its own asyncio.Task (asy_system_service.py's own _start_task()
         # calls them exactly this way - `return starter()`, no extra create_task() wrapping).
         tasks = [starter() for starter in sensortask_wozi._collect_task_starters()]
         tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(sensortask_wozi.watchdog)))
@@ -612,7 +612,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
         # constructed module's own get_task_starters(), exactly what main() itself would use.
 
         started: dict[int, list[Any]] = {}  # values are asyncio.Task[Any] | None - real _start_task()'s own return type
-        from system_service import SystemService
+        from asy_system_service import SystemService
 
         real_start_task = SystemService._start_task
 
@@ -657,11 +657,11 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
                 for task in tasks:
                     if task is not None:
                         await _cancel(task)
-            # Defensive: the real wlan_connect task can independently reach hotspot activation and start its
-            # own DNSServer task within this window. The loop above does not cancel it, being spawned inside
-            # AsyConnTime, and left running it would hold UDP port 53 into the next section.
-            if sensortask_wozi.conn is not None and sensortask_wozi.conn.dns_server_task is not None:
-                await _cancel(sensortask_wozi.conn.dns_server_task)
+            # Defensive: the real _connect_loop task can independently reach hotspot activation and start its
+            # own CaptiveDNS task within this window. The loop above does not cancel it, being spawned inside
+            # WifiService, and left running it would hold UDP port 53 into the next section.
+            if sensortask_wozi.conn is not None and sensortask_wozi.conn._dns_server_task is not None:
+                await _cancel(sensortask_wozi.conn._dns_server_task)
             # This starts the REAL full task list, twice for the one restarted - a known failure mode on
             # this file's shared heap otherwise, where orphaned task references starved a later
             # build_system() with a real MemoryError before this collect() was added.
@@ -671,8 +671,8 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
 
 
 # ---------------------------------------------------------------------------
-# WiFi hotspot/DNS/LED chain, end to end: a real STA connect failure driving AsyConnTime through a real STA
-# -> hotspot transition, starting a real DNSServer task, with the real WiFi-status LED wired by
+# WiFi hotspot/DNS/LED chain, end to end: a real STA connect failure driving WifiService through a real STA
+# -> hotspot transition, starting a real CaptiveDNS task, with the real WiFi-status LED wired by
 # build_system() actually driven by the real state machine along the way.
 # ---------------------------------------------------------------------------
 
@@ -697,43 +697,44 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         # Eight, not one, so the transition does not depend on WHEN the seeding below lands. A
         # single scripted failure made the test hinge on a timing window that measure A's ~9x
         # cheaper FRAM path closed, 2 of 2 runs (MEASUREMENTS archive 7C); a deeper queue removes it.
-        conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)
+        conn._wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND] * 8)
 
-        pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
+        pixel_task = pixel.start_asy_overlay()  # the one real pixel task that turns
         # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
-        wifi_task = conn.start_asy_wlan_connect()
+        wifi_task = conn.start_asy_connect()
         webserver_task = await _start_webserver()  # real is_hotspot_active=conn.is_hotspot_active
         # wiring (SPECIFICATION.md Part A.5) - free coverage once this test drives real hotspot mode.
         try:
-            await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
+            await asyncio.sleep(0.2)  # let _connect_loop()'s own synchronous prefix
             # Set after _reset_wlan_connect_state() has run, since that unconditionally zeroes
-            # connection_failures and would immediately overwrite a value set before the task started.
+            # _connection_failures and would immediately overwrite a value set before the task started.
             #
             # Fast-forwards the real conn_fail_to_hotspot=5 streak to one scripted failure from hotspot
             # fallback - the same direct-attribute seam _sensortask_scenarios.py uses, not a fake of the
             # failure registrar. Waiting out 5 real cycles exercises the identical transition, slower.
-            conn.connection_failures = 4
-            started = await _wait_until(lambda: conn.dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S)
-            assert started, "real hotspot activation never started the real DNSServer task"
-            assert not conn.dns_server_task.done()  # started == True above; `conn` types as Any
-            # The task existing is not the port being bound (AsyUDPSocket binds lazily in run()), and a
+            conn._connection_failures = 4
+            started = await _wait_until(lambda: conn._dns_server_task is not None, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S)
+            assert started, "real hotspot activation never started the real CaptiveDNS task"
+            dns_task = conn._dns_server_task
+            assert dns_task is not None and not dns_task.done()
+            # The task existing is not the port being bound (UDPSocket binds lazily in run()), and a
             # datagram sent to an unbound UDP port is silently dropped - the query below sends only once.
-            bound = await _wait_until(lambda: conn.dns_server.udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
-            assert bound, "the real DNSServer never bound its port 53 socket"
+            bound = await _wait_until(lambda: conn._dns_server._udps.connected, timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
+            assert bound, "the real CaptiveDNS never bound its port 53 socket"
             # The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rather than the
-            # hand-written file's precise "AsyConnTime | None" (buildgen/codegen.py's deliberate choice), so
+            # hand-written file's precise "WifiService | None" (buildgen/codegen.py's deliberate choice), so
             # this attribute access needs no type: ignore any more.
             #
             # The real WiFi-status LED wiring did not just exist - it drove real hardware-facing calls
             # during the transition, landing as real committed frames on the twin NeoPixel.
-            assert conn.led is pixel
-            assert len(pixel.pixel.writes) > 0, "the real status LED never actually wrote a frame"
+            assert conn._led is pixel
+            assert len(pixel._pixel.writes) > 0, "the real status LED never actually wrote a frame"
             assert conn.is_hotspot_active() is True
-            # A genuine DNS query against the real, already-running conn.dns_server_task resolves
-            # to the AP's own IP, read live from conn.wlan.ifconfig() (currently "0.0.0.0" - a
+            # A genuine DNS query against the real, already-running conn._dns_server_task resolves
+            # to the AP's own IP, read live from conn._wlan.ifconfig() (currently "0.0.0.0" - a
             # twin-fidelity gap, see digital_twin/README.md - not a real product bug).
             answer_ip = await _query_dns_and_get_answer_ip(_make_dns_query(["captive", "example"]))
-            assert answer_ip == conn.wlan.ifconfig()[0]
+            assert answer_ip == conn._wlan.ifconfig()[0]
             # Real end-to-end captive-portal redirect through the real webserver, consulting the
             # real conn.is_hotspot_active() - not a unit-level fake callback. Combined with the DNS
             # query above, proves the full captive-portal mechanism end-to-end.
@@ -744,8 +745,8 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             await _cancel(wifi_task)
             await _cancel(pixel_task)
             await _cancel(webserver_task)
-            if conn.dns_server_task is not None:
-                await _cancel(conn.dns_server_task)
+            if conn._dns_server_task is not None:
+                await _cancel(conn._dns_server_task)
             gc.collect()  # see the task-supervisor-restart section's own comment above - this test
             # starts several real background tasks (wifi, pixel, hotspot DNS, webserver) too.
 
@@ -786,12 +787,12 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
                 # number, self-test, general-call reset), where the reset alone sleeps a real 1s. No public
                 # "init done" flag exists to poll, so this is a plain, generously-bounded sleep.
                 await asyncio.sleep(2.5)
-                sgp1.backup_counter = 59  # BackupPeriod defaults to 1 (minute) -> a real 60-cycle
+                sgp1._backup_counter = 59  # BackupPeriod defaults to 1 (minute) -> a real 60-cycle
                 # threshold (asy_sgp40_driver.py's own _check_storage()) - forces the very next real
                 # trigger cycle to reach it, exercising the same real _run_backup() 60 real cycles
                 # would, just without waiting through 59 of them for the same real code path.
-                sgp1.read_event.set()
-                assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), (
+                sgp1._read_event.set()
+                assert await _wait_until(lambda: sgp1._last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), (
                     "the real VOC backup write never completed"
                 )
             finally:
@@ -814,8 +815,8 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             task2 = sgp2.start_asy_read()
             try:
                 await asyncio.sleep(2.5)  # same real init delay as boot 1 above
-                sgp2.read_event.set()
-                assert await _wait_until(lambda: sgp2.restored_from is not None, timeout_s=_WAIT_TIMEOUT_S), (
+                sgp2._read_event.set()
+                assert await _wait_until(lambda: sgp2._restored_from is not None, timeout_s=_WAIT_TIMEOUT_S), (
                     "the real VOC backup restore never completed after the simulated reboot"
                 )
             finally:
@@ -855,9 +856,9 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             task = sgp1.start_asy_read()
             try:
                 await asyncio.sleep(2.5)
-                sgp1.backup_counter = 59
-                sgp1.read_event.set()
-                assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), "the first real VOC backup write never completed"
+                sgp1._backup_counter = 59
+                sgp1._read_event.set()
+                assert await _wait_until(lambda: sgp1._last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), "the first real VOC backup write never completed"
             finally:
                 await _cancel(task)
             machine.flush_fram()
@@ -869,9 +870,9 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             # before the next flush to persistent storage ever runs.
             task2 = sgp1.start_asy_read()
             try:
-                sgp1.backup_counter = 59
-                sgp1.read_event.set()
-                assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), "the second real VOC backup write never completed"
+                sgp1._backup_counter = 59
+                sgp1._read_event.set()
+                assert await _wait_until(lambda: sgp1._last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), "the second real VOC backup write never completed"
             finally:
                 await _cancel(task2)
             with open(state_path) as f:
@@ -892,8 +893,8 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             task3 = sgp2.start_asy_read()
             try:
                 await asyncio.sleep(2.5)
-                sgp2.read_event.set()
-                assert await _wait_until(lambda: sgp2.restored_from is not None, timeout_s=_WAIT_TIMEOUT_S), "the real VOC backup restore never completed after the simulated crash-reboot"
+                sgp2._read_event.set()
+                assert await _wait_until(lambda: sgp2._restored_from is not None, timeout_s=_WAIT_TIMEOUT_S), "the real VOC backup restore never completed after the simulated crash-reboot"
             finally:
                 await _cancel(task3)
         finally:
@@ -904,7 +905,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
 
 
 def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() -> None:
-    # The REST -> SystemService.pause_permanent_storage() -> AsyFramManager.set_pause() wiring, through the
+    # The REST -> SystemService.pause_permanent_storage() -> FRAMManager.set_pause() wiring, through the
     # real booted object graph and a real HTTP request. The mock tier proves the pause logic and the flash
     # tier the real chip gating; what this tier adds is that the wiring holds in CI, on every push.
     #

@@ -133,9 +133,9 @@ class TestApplyUnixKbdIntrOverride:
 
 
 class TestBuildUnixPortAppliesTheOverride:
-    """Guards the wiring, not just the override function: an edit that drops build_unix_port()'s
-    call to apply_unix_kbd_intr_override(), or stops threading its make variables into the real
-    command, must fail a test rather than silently ship an unpatched binary again."""
+    # Guards the wiring, not just the override function: an edit that drops build_unix_port()'s
+    # call to apply_unix_kbd_intr_override(), or stops threading its make variables into the real
+    # command, must fail a test rather than silently ship an unpatched binary again.
 
     @pytest.fixture
     def setup_toolchain(self, repo_root: Path) -> ModuleType:
@@ -171,7 +171,7 @@ class TestBuildUnixPortAppliesTheOverride:
     def _recorded_make_cmd(
         self, setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, settrace: bool,
     ) -> list[str]:
-        """Builds one variant against a fake tree and returns the make command it constructed."""
+        # Builds one variant against a fake tree and returns the make command it constructed.
         fake_mp_dir = _write_fake_micropython_tree(tmp_path / "toolchain" / "micropython")
         toolchain_dir = tmp_path / "toolchain"
         expected_dir = setup_toolchain.UNIX_SETTRACE_BUILD_DIR if settrace else setup_toolchain.UNIX_BUILD_DIR
@@ -272,8 +272,8 @@ _LWIP_MACROS = {
 
 
 def _write_fake_lwip_tree(root: Path, *, drop: str | None = None, board: str = _REAL_BOARD) -> Path:
-    """A synthetic tree carrying every anchor the override checks; `drop` removes exactly one, so a
-    test can prove that anchor is really load-bearing rather than decorative."""
+    # A synthetic tree carrying every anchor the override checks; `drop` removes exactly one, so a
+    # test can prove that anchor is really load-bearing rather than decorative.
     opt_h = root / "lib" / "lwip" / "src" / "include" / "lwip"
     opt_h.mkdir(parents=True)
     guards = "\n".join(f"#if !defined {m} || defined __DOXYGEN__\n#define {m} 1\n#endif" for m in ("MEMP_NUM_TCP_PCB", "MEMP_NUM_TCP_PCB_LISTEN", "MEMP_NUM_PBUF", "PBUF_POOL_SIZE") if m != drop)
@@ -451,7 +451,7 @@ class TestApplyLwipConnectionCountsOverride:
 
 
 def _pinned() -> "dict[str, int]":
-    """MicroPython's own pinned block, which is itself a tuned set - see the test below."""
+    # MicroPython's own pinned block, which is itself a tuned set - see the test below.
     return {
         "MEMP_NUM_TCP_PCB": 5, "MEMP_NUM_TCP_PCB_LISTEN": 8, "MEMP_NUM_PBUF": 16,
         "PBUF_POOL_SIZE": 16, "MEMP_NUM_UDP_PCB": 5, "LWIP_STATS": 0, "MEM_SIZE": 8000,
@@ -802,8 +802,8 @@ class TestEvalMacroExpression:
 
 
 class TestBuildFirmwareAppliesTheLwipOverride:
-    """Guards build_firmware()'s wiring the way TestBuildUnixPortAppliesTheOverride guards the Unix
-    port's: the override's make variables reach `make`, and the readback runs on the real build."""
+    # Guards build_firmware()'s wiring the way TestBuildUnixPortAppliesTheOverride guards the Unix
+    # port's: the override's make variables reach `make`, and the readback runs on the real build.
 
     @pytest.fixture
     def setup_toolchain(self, repo_root: Path) -> ModuleType:

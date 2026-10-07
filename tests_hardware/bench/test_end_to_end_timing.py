@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
 
 # ---------------------------------------------------------------------------
-# Real SystemService._reboot() sequencing: storage_pause()-then-wait genuinely completes before
+# Real SystemService._reboot() sequencing: _storage_pause()-then-wait genuinely completes before
 # the real reset fires, WDT isn't starved mid-sequence, on real timing.
 # ---------------------------------------------------------------------------
 
@@ -66,7 +66,7 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
     # tier (see conftest.py's dut_ip docstring for the full account).
     bench.kick_all_stations()
 
-    # The real reset_timer fires after SystemService's own configured delay (not this test's to
+    # The real _reset_timer fires after SystemService's own configured delay (not this test's to
     # assume a specific value for) - poll for the board actually going unreachable, then coming
     # back, rather than sleeping a guessed duration.
     wait_until(lambda: not board.is_device_present(), timeout_s=_REBOOT_PHASE_TIMEOUT_S, poll_interval_s=_DOWN_POLL_S, description="board to go unreachable (real reboot firing)")

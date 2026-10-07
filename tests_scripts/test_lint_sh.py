@@ -15,7 +15,7 @@ _BUILDGEN_COLLECT = "gc.collect() in buildgen/"
 
 
 def _guard_block(repo_root: Path, needle: str) -> str:
-    """The one `if grep ...; then ... fi` block of scripts/lint.sh whose message contains `needle`."""
+    # The one `if grep ...; then ... fi` block of scripts/lint.sh whose message contains `needle`.
     text = (repo_root / "scripts" / "lint.sh").read_text()
     blocks = [b for b in re.findall(r"^if grep .*?^fi$", text, re.MULTILINE | re.DOTALL) if needle in b]
     assert len(blocks) == 1, f"expected exactly one lint.sh guard mentioning {needle!r}, found {len(blocks)}"
@@ -35,11 +35,11 @@ def _run_guard(repo_root: Path, tree: Path, needle: str, script_home: Path | Non
 
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
-    """A minimal stand-in repo: both scopes present and both clean, so every case below adds
-    exactly one file and the guard's verdict is attributable to it."""
+    # A minimal stand-in repo: both scopes present and both clean, so every case below adds
+    # exactly one file and the guard's verdict is attributable to it.
     (tmp_path / "src").mkdir()
     (tmp_path / "buildgen").mkdir()
-    (tmp_path / "src" / "system_service.py").write_text("import gc\n\n\nasync def start_and_check_tasks() -> None:\n    gc.collect()\n")
+    (tmp_path / "src" / "asy_system_service.py").write_text("import gc\n\n\nasync def start_and_check_tasks() -> None:\n    gc.collect()\n")
     (tmp_path / "src" / "asy_fram_driver.py").write_text("x = 1\n")
     (tmp_path / "buildgen" / "codegen.py").write_text('lines.append("    gc.collect()")\n')
     (tmp_path / "buildgen" / "driver_registry.py").write_text("y = 2\n")
@@ -84,15 +84,15 @@ def test_a_gc_collect_outside_its_one_allowed_file_fails_the_gate(repo_root: Pat
     assert "I.4(f.1)" in result.stderr
 
 
-@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "not_system_service.py", _SRC_COLLECT), ("src", "system_service_helper.py", _SRC_COLLECT), ("buildgen", "codegen_helpers.py", _BUILDGEN_COLLECT)])
+@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "not_asy_system_service.py", _SRC_COLLECT), ("src", "asy_system_service_helper.py", _SRC_COLLECT), ("buildgen", "codegen_helpers.py", _BUILDGEN_COLLECT)])
 def test_a_filename_that_merely_contains_the_allowed_one_is_not_excused(repo_root: Path, tree: Path, scope: str, filename: str, needle: str) -> None:
-    # The bite: the exclusion is `grep -v "^src/system_service.py:"`, anchored and with the colon.
+    # The bite: the exclusion is `grep -v "^src/asy_system_service.py:"`, anchored and with the colon.
     # Unanchored, every one of these names would inherit the exception silently.
     (tree / scope / filename).write_text("import gc\ngc.collect()\n")
     assert _run_guard(repo_root, tree, needle).returncode == 1, f"{scope}/{filename} must not inherit {needle}'s single-file exception"
 
 
-@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "system_service.py", _SRC_COLLECT), ("buildgen", "codegen.py", _BUILDGEN_COLLECT)])
+@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "asy_system_service.py", _SRC_COLLECT), ("buildgen", "codegen.py", _BUILDGEN_COLLECT)])
 def test_the_allowed_file_may_hold_several_collects(repo_root: Path, tree: Path, scope: str, filename: str, needle: str) -> None:
     # Both allowed sites genuinely hold two: one before the list and one per unit inside it.
     (tree / scope / filename).write_text("import gc\ngc.collect()\nfor _ in range(2):\n    gc.collect()\n")
@@ -121,8 +121,8 @@ _CHECKS = ("ruff", "shellcheck", "actionlint", "zizmor", "method-assign guard", 
 
 
 def _run_lint(repo_root: Path, tmp_path: Path, *args: str, failing_tool: str | None = None) -> subprocess.CompletedProcess[str]:
-    """scripts/lint.sh with its four external tools stubbed on PATH (one may fail); the grep guards
-    run for real against the live tree, which the test above holds clean."""
+    # scripts/lint.sh with its four external tools stubbed on PATH (one may fail); the grep guards
+    # run for real against the live tree, which the test above holds clean.
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir(exist_ok=True)
     for tool in ("ruff", "shellcheck", "actionlint", "zizmor"):

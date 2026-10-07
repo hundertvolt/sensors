@@ -7,7 +7,7 @@ import asyncio
 import machine
 
 import asy_i2c_driver
-from asy_bmp3xx_driver import BMP3xx_Reader
+from asy_bmp3xx_driver import BMP3XX_Reader
 
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
@@ -19,14 +19,14 @@ _POLL_TRIES = 30
 
 async def _main() -> None:
     # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
-    reader = BMP3xx_Reader(i2c0, max_module_error=999)
+    reader = BMP3XX_Reader(i2c0, max_module_error=999)
     # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Derived from
     # the driver's own schema, so a new field can't leave this reading a default that no longer exists.
     reader.cfgmgr.valid = True
-    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
-    reader.start_timer()  # wires the real 1s hardware timer driving _base_trigger()
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
+    reader.start_timer()  # wires the real 1s hardware timer driving _trigger_loop()
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()
 

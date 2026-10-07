@@ -1,4 +1,4 @@
-"""Shared harness for the UART_Comm tests: two real instances over tests/machine.py's crossover
+"""Shared harness for the UARTComm tests: two real instances over tests/machine.py's crossover
 link, driven as concurrent tasks the way the dev bench drives them across its jumper.
 Kept out of the test files themselves so the mock and hazard tiers build the pair identically."""
 
@@ -7,7 +7,7 @@ import asyncio
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
 
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
 from asy_uart_driver import UART
 
 try:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, Protocol, TypeVar
 
-    from crc_checks import CRC_Base
+    from asy_crc_checks import CRCBase
 
     T = TypeVar("T")
 
@@ -62,8 +62,8 @@ class Pair:
         get_callback: "CommCallback | None" = None,
         set_callback: "CommCallback | None" = None,
         message_callback: "MessageCallback | None" = None,
-        crc_a: "CRC_Base | None" = None,
-        crc_b: "CRC_Base | None" = None,
+        crc_a: "CRCBase | None" = None,
+        crc_b: "CRCBase | None" = None,
         **comm_kwargs: "Any",
     ) -> None:
         # crc_a/crc_b are per-bus, not per-Comm: the CRC sits on the UART object below the protocol
@@ -78,10 +78,10 @@ class Pair:
         # Python object's ioctl() after registration (CLAUDE.md's known CI hang).
         self.driver_a.poller = LinkPoller(self.fake_a)  # type: ignore[assignment]
         self.driver_b.poller = LinkPoller(self.fake_b)  # type: ignore[assignment]
-        self.initiator = UART_Comm(
+        self.initiator = UARTComm(
             self.driver_a, ROLE_INITIATOR, payload_size=payload_size, timeout=timeout, name="UART_A", **comm_kwargs,
         )
-        self.responder = UART_Comm(
+        self.responder = UARTComm(
             self.driver_b,
             ROLE_RESPONDER,
             payload_size=payload_size,

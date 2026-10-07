@@ -69,9 +69,9 @@ _RAW_SOCKET_TIMEOUT_S = 10.0
 
 
 def _join_dut_hotspot_with_reverify_retry(bench: BenchBridge, ssid: str, password: str, *, attempts: int = _JOIN_ATTEMPTS) -> None:
-    """Shared by every real `join_dut_hotspot()` call site: `is_ssid_visible()`==True doesn't
-    guarantee nmcli's own internal rescan still sees it a moment later, and this can persist
-    across several attempts - each retry re-confirms fresh visibility (see tests_hardware/README.md)."""
+    # Shared by every real `join_dut_hotspot()` call site: `is_ssid_visible()`==True doesn't
+    # guarantee nmcli's own internal rescan still sees it a moment later, and this can persist
+    # across several attempts - each retry re-confirms fresh visibility (see tests_hardware/README.md).
     for attempt in range(attempts):
         try:
             bench.join_dut_hotspot(ssid, password, timeout_s=_JOIN_HOTSPOT_TIMEOUT_S)
@@ -89,8 +89,8 @@ _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _config
 
 @pytest.fixture(scope="module")
 def hotspot_ssid(board: Board, dut_ip: str) -> str:
-    """The DUT's current Hostname, read over the normal bridge connection before anything flips -
-    a fully deterministic SSID derivation, with no scan/discovery needed."""
+    # The DUT's current Hostname, read over the normal bridge connection before anything flips -
+    # a fully deterministic SSID derivation, with no scan/discovery needed.
     res = http_client.fetch(dut_ip, 80, "GET", "/networking")
     assert res.status_code == 200, f"GET /networking failed before starting the scenario: {res.status_code}"
     hostname: str | None = res.json().get("Hostname")
@@ -100,9 +100,10 @@ def hotspot_ssid(board: Board, dut_ip: str) -> str:
 
 @pytest.fixture(scope="module")
 def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: str) -> Iterator[str]:
-    """Stages 0-2 in setup, stages 7-8 in teardown, module-scoped - each join/leave costs a real
-    ~15-30s association. Yields the DUT's gateway IP. Its own persisting writes stay UNMARKED per
-    CLAUDE.md's owns-vs-reached-through rule: mark a test that spends a write, never this fixture."""
+    # Stages 0-2 in setup, stages 7-8 in teardown, module-scoped - each join/leave costs a real
+    # ~15-30s association. Yields the DUT's gateway IP. Its own persisting writes stay UNMARKED per
+    # CLAUDE.md's owns-vs-reached-through rule: mark a test that spends a write, never this fixture.
+    #
     # Stage 0 - precondition: force hotspot mode rather than waiting for organic failure. Read
     # the real SSID first, because this fixture destroys it and so owns restoring it in stage 7.
 
@@ -243,7 +244,7 @@ def test_arbitrary_hostname_resolves_to_the_aps_own_ip(joined_hotspot: str) -> N
 
 
 def test_devices_own_hostname_resolves_the_same_way(joined_hotspot: str, hotspot_ssid: str) -> None:
-    # src/captive_dns.py answers every query identically regardless of the queried name - the
+    # src/asy_captive_dns.py answers every query identically regardless of the queried name - the
     # device's own real Hostname must not be special-cased differently from an arbitrary one.
     response = dns_probe.query(joined_hotspot, hotspot_ssid)
     assert response is not None
@@ -252,7 +253,7 @@ def test_devices_own_hostname_resolves_the_same_way(joined_hotspot: str, hotspot
 
 def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) -> None:
     # A root query (QNAME = the zero-length root label alone) - the `_parsed_ok` real-vs-malformed
-    # distinction src/captive_dns.py's own code comments call out.
+    # distinction src/asy_captive_dns.py's own code comments call out.
     txn_id = b"\x99\x99"
     header = txn_id + bytes([0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
     question = b"\x00" + bytes([0, 1, 0, 1])  # root label, then QTYPE=A QCLASS=IN packed as raw bytes
@@ -262,13 +263,13 @@ def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) ->
 
 
 def test_malformed_truncated_packet_is_silently_dropped(joined_hotspot: str) -> None:
-    # A truncated packet (fewer than 12 header bytes) - src/captive_dns.py's response() returns
+    # A truncated packet (fewer than 12 header bytes) - src/asy_captive_dns.py's response() returns
     # None for this (confirmed by reading the module), i.e. no response should ever arrive.
     reset_all_error_logs(joined_hotspot)
     response = dns_probe.query(joined_hotspot, "", raw_query=b"\x01\x02\x03")
     assert response is None, f"expected no response to a malformed/truncated packet, got {response!r}"
     # The datagram itself arrives fine at the socket layer (UDP has no content validation) -
-    # captive_dns.py's own "response() returned None" path logs via pr.evt() (an ordinary event),
+    # asy_captive_dns.py's own "response() returned None" path logs via pr.evt() (an ordinary event),
     # not err_s()/wrn_s(), so the module's real errcount log should stay empty.
     assert_module_error_log_empty(joined_hotspot, "DNSSRV")
 

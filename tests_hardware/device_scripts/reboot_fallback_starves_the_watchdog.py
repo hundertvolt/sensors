@@ -7,7 +7,7 @@ import time
 
 import machine
 
-from system_service import SystemService
+from asy_system_service import SystemService
 
 # @tunable l3.starvation_wdt_ms = 1500
 WATCHDOG_TIMEOUT_MS = 1500  # short, as watchdog_starvation_reset.py: the host bounds the whole run

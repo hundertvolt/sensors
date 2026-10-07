@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, Protocol
 
-    from base_classes import SensorReaderConfig
-    from config_manager import ConfigSchema
+    from asy_base_classes import SensorReaderConfig
+    from asy_config_manager import ConfigSchema
 
     ResponseEnvelope = dict[str, "str | int | dict[str, Any]"]
 
@@ -33,7 +33,7 @@ _ERR_CALLBACK = const(14)
 # Standard code -> default message catalog. A caller can override any standard code's text (pass
 # descr=...) or use an entirely different code with its own text (any code not listed here) -
 # generalizes the legacy special_err closed Literal enum into an open set, same envelope shape.
-_STANDARD_CODES: "dict[int, str]" = {
+_STANDARD_CODES: dict[int, str] = {
     0: "Command executed",
     1: "Invalid JSON request",
     2: "Command specifier missing",
@@ -44,46 +44,15 @@ _STANDARD_CODES: "dict[int, str]" = {
 }
 
 
-def make_response(code: int, descr: "str | None" = None, result: "dict[str, Any] | None" = None) -> "ResponseEnvelope":
-    # Pure and total: never raises, no I/O. code == 0 is the only "OK" outcome (matches every
-    # existing endpoint's convention); everything else is "ERR", standard or caller-defined alike.
-    if descr is None:
-        descr = _STANDARD_CODES.get(code, "Unknown error")
-    return {
-        "res": "OK" if code == 0 else "ERR",
-        "code": code,
-        "descr": descr,
-        "result": {} if result is None else result,
-    }
-
-
-def parse_cmd_request(request: "_RequestLike", keys: "list[str]") -> "tuple[dict[str, Any] | None, ResponseEnvelope | None]":
-    # Parse the request body, then validate a "cmd" field against the caller's own allowed-command
-    # list. A syntactically valid but non-dict JSON body (e.g. a bare list or string) is treated as
-    # a genuinely invalid request (code 1), not "cmd specifier missing" (code 2).
-    try:
-        req_json = request.json
-    except Exception:  # request.json has no internal guarding (see CLAUDE.md) - a malformed body
-        # or bad encoding raises straight out of the property access.
-        req_json = None
-    if not isinstance(req_json, dict):
-        return None, make_response(1)
-    if "cmd" not in req_json:
-        return None, make_response(2)
-    if req_json["cmd"] not in keys:
-        return None, make_response(3)
-    return req_json, None
-
-
 async def handle_set_cmd(
     reader: "SensorReaderConfig",
-    data: "dict[str, int | float | str | bool | None]",
+    data: dict[str, int | float | str | bool | None],
     cfg_vals: "ConfigSchema",
     post_fct: "Callable[[], None] | None" = None,
     post_asy_fct: "Callable[[], Coroutine[Any, Any, None]] | None" = None,
-    ok_descr: "str | None" = None,
+    ok_descr: str | None = None,
 ) -> "ResponseEnvelope":
-    # Persist+push already happened per field inside reader._set_dict_cfg() (base_classes.py) - a
+    # Persist+push already happened per field inside reader._set_dict_cfg() (asy_base_classes.py) - a
     # per-field failure is detail carried in "result", never a reason to report the overall request
     # as ERR. The post-write hook fires at most once per call, only if a field actually changed.
     try:
@@ -100,3 +69,34 @@ async def handle_set_cmd(
         # produce a precise, on-brand reply rather than relying solely on Microdot's blanket catch.
         await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=_ERR_CALLBACK)
         return make_response(100)
+
+
+def make_response(code: int, descr: str | None = None, result: "dict[str, Any] | None" = None) -> "ResponseEnvelope":
+    # Pure and total: never raises, no I/O. code == 0 is the only "OK" outcome (matches every
+    # existing endpoint's convention); everything else is "ERR", standard or caller-defined alike.
+    if descr is None:
+        descr = _STANDARD_CODES.get(code, "Unknown error")
+    return {
+        "res": "OK" if code == 0 else "ERR",
+        "code": code,
+        "descr": descr,
+        "result": {} if result is None else result,
+    }
+
+
+def parse_cmd_request(request: "_RequestLike", keys: list[str]) -> "tuple[dict[str, Any] | None, ResponseEnvelope | None]":
+    # Parse the request body, then validate a "cmd" field against the caller's own allowed-command
+    # list. A syntactically valid but non-dict JSON body (e.g. a bare list or string) is treated as
+    # a genuinely invalid request (code 1), not "cmd specifier missing" (code 2).
+    try:
+        req_json = request.json
+    except Exception:  # request.json has no internal guarding (see CLAUDE.md) - a malformed body
+        # or bad encoding raises straight out of the property access.
+        req_json = None
+    if not isinstance(req_json, dict):
+        return None, make_response(1)
+    if "cmd" not in req_json:
+        return None, make_response(2)
+    if req_json["cmd"] not in keys:
+        return None, make_response(3)
+    return req_json, None

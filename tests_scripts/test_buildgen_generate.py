@@ -8,6 +8,7 @@ the full validate -> sort -> generate pipeline from one TOML file, no code chang
 
 import ast
 import re
+import shutil
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
@@ -16,8 +17,10 @@ import pytest
 from _devices import DEVICE_NAMES
 from _toml_fixtures import base_doc, write_doc
 
+from buildgen.codegen import trigger_spread
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
+from buildgen.model import instance_label
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 
 
@@ -116,10 +119,10 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo
     assert f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})" in result.module_source
     assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
     assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
-    assert 'build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE}' in result.module_source
+    assert 'build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE}' in result.module_source
     # Regression guard against an earlier, corrected design: the version no longer
-    # lives on GET /status's "system" section.
-    assert '"FirmwareVersion": _FIRMWARE_VERSION' not in result.module_source
+    # lives on GET /status's "system" section, so build_info above is its only key.
+    assert result.module_source.count('"FirmwareVersion": _FIRMWARE_VERSION') == 1
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -128,6 +131,109 @@ def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(re
     match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", result.module_source)
     assert match is not None
     datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
+
+
+def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
+    tree = ast.parse(source)
+    return next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+
+
+def _awaited_setups(source: str) -> "list[str]":
+    return re.findall(r"^\s*await (\w+)\.setup\(\)\s*$", source, re.MULTILINE)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_main_starts_read_triggers_apart_from_the_timer_starters(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    main = ast.unparse(_function(result.module_source, "main"))
+    assert "await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())" in main
+    # start_timers() awaits its own stagger inline, so the old completion flag has no reader left.
+    assert "timers_running" not in result.module_source
+    assert "ThreadSafeFlag" not in result.module_source
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_sets_up_every_sensor_reader_and_the_webserver_last(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # Every logger store is set up in the boot batch, first in its module's setup(): a plain SensorReader
+    # (SCD30) included, and the webserver, constructed last, set up last.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    setups = _awaited_setups(result.module_source)
+    sensors = [instance_label(spec.key) for spec in result.model.instances.values() if spec.driver_info is not None and spec.driver_info.kind == "sensor"]
+    assert sensors
+    assert set(sensors) <= set(setups)
+    assert setups[-1] == "webserver"
+    assert setups.count("webserver") == 1
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_types_every_global_by_the_class_build_system_constructs(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    tree = ast.parse(result.module_source)
+    declared = {n.target.id: ast.unparse(n.annotation) for n in tree.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and isinstance(n.value, ast.Constant) and n.value.value is None}
+    built = _function(result.module_source, "build_system")
+    constructed = {
+        n.targets[0].id: ast.unparse(n.value.func)
+        for n in ast.walk(built)
+        if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Call) and n.targets[0].id in declared
+    }
+    assert constructed, device
+    for var, class_expr in constructed.items():
+        assert declared[var] == f"{class_expr} | None", (var, declared[var])
+    assert not [var for var, annotation in declared.items() if "Any" in annotation]
+
+
+def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
+    # A src/ copy in which exactly the named drivers' reader classes declare their own read triggers.
+    copy = tmp_path / "src"
+    shutil.copytree(src_dir, copy)
+    for path in copy.glob("asy_*_driver.py"):
+        text = path.read_text()
+        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE))
+    for driver in drivers:
+        path = copy / f"asy_{driver}_driver.py"
+        text = path.read_text()
+        match = re.search(r"^class \w+_Reader\(SensorReader(?:Config)?\):\n", text, re.MULTILINE)
+        assert match is not None, driver
+        method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
+        path.write_text(text[: match.end()] + method + text[match.end() :])
+    return copy
+
+
+def _trigger_modules(source: str) -> "list[str]":
+    func = _function(source, "_collect_trigger_starters")
+    loops = [n for n in ast.walk(func) if isinstance(n, ast.For)]
+    if not loops:
+        return []
+    assert isinstance(loops[0].iter, ast.Tuple)
+    return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
+
+
+@pytest.mark.parametrize(
+    ("device", "expected"),
+    # dev: sgp40 and isl29125 share i2c1, bmp3xx sits alone on i2c0 - slots 0, 250, 500 ms;
+    # wozi: sgp40 and bmp3xx share i2c1 (scd30 keeps its own tick) - slots 0, 333 ms.
+    [("dev", ["sgp40", "bmp3xx", "isl29125"]), ("wozi", ["sgp40", "bmp3xx"])],
+)
+def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str, expected: "list[str]") -> None:
+    src = _src_with_read_triggers(src_dir, tmp_path, ("bmp3xx", "isl29125", "sgp40"))
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src, ext_dir)
+    assert _trigger_modules(result.module_source) == expected
+    assert "scd30" not in _trigger_modules(result.module_source)
+
+
+def test_bus_spread_takes_the_largest_group_first_and_keeps_construction_order_on_ties() -> None:
+    order = trigger_spread([("a", "i2c0"), ("b", "i2c1"), ("c", "i2c1"), ("d", "i2c0"), ("e", "i2c1"), ("f", "spi0")])
+    assert order == ["b", "a", "f", "c", "d", "e"]
+    assert trigger_spread([]) == []
+
+
+def test_a_device_whose_readers_declare_no_read_triggers_collects_none(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path) -> None:
+    src = _src_with_read_triggers(src_dir, tmp_path, ())
+    for path in src.glob("asy_*_driver.py"):
+        assert "def get_trigger_starters" not in path.read_text(), path.name
+    result = generate_device(repo_root / "devices" / "dev.toml", src, ext_dir)
+    assert _trigger_modules(result.module_source) == []
+    assert ast.unparse(_function(result.module_source, "_collect_trigger_starters")).rstrip().endswith("return []")
 
 
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -148,7 +254,7 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     # ISL29125 on i2c0 with no fram_target - proves the driver generalizes beyond dev.toml's own
     # i2c1/GPIO6/fram-wired instance.
     isl_call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
-    assert "ISL29125_Reader(i2c0, 3, trigger_sec=5" in isl_call
+    assert "ISL29125_Reader(i2c0, 3, trigger_s=5" in isl_call
     assert "log=log_ram" in isl_call
 
 
@@ -225,8 +331,8 @@ def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserve
     doc = base_doc()
     result = generate_device(write_doc(tmp_path, "device_fram_present", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
-    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
-    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = NTPClient("))
     sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
     assert "log=log_fram" in conn_line
     assert "log=log_fram" in ntp_line
@@ -235,7 +341,7 @@ def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserve
     assert "log=log_fram," in result.module_source.split("webserver = WebserverService(")[1].split("\n    )\n")[0]
     # fram must actually be constructed before all three consume it - a real NameError on device,
     # not just a codegen-shape check.
-    fram_pos = result.module_source.index("fram = AsyFramManager(")
+    fram_pos = result.module_source.index("fram = FRAMManager(")
     assert fram_pos < result.module_source.index(conn_line)
     assert fram_pos < result.module_source.index(ntp_line)
     assert fram_pos < result.module_source.index(sysfunct_line)
@@ -245,7 +351,7 @@ def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path,
     # Regression (C.7.2): both constructors dropped max_module_error, so emitting it again would be a
     # TypeError at boot on every device - caught here rather than by a bench flash.
     source = generate_device(write_doc(tmp_path, "no_streak", base_doc()), src_dir, ext_dir).module_source
-    calls = [line for line in source.splitlines() if "AsyNtpClient(" in line or "NotificationCoordinator(" in line]
+    calls = [line for line in source.splitlines() if "NTPClient(" in line or "NotificationService(" in line]
     assert len(calls) == 2, calls
     assert all("max_module_error" not in line for line in calls), calls
 
@@ -254,7 +360,7 @@ def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: 
     def ntp_line(doc: "dict[str, object]", name: str) -> str:
         source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
         ast.parse(source)
-        return next(line for line in source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+        return next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
 
     doc = base_doc()
     unstated = ntp_line(doc, "ntp_backoff_unstated")
@@ -275,8 +381,8 @@ def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_o
     del doc["device"]["wiring"]["led_target"]  # its FRAM-logged NeoPixel would rightly precede conn
     result = generate_device(write_doc(tmp_path, "device_fram_absent", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
-    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
-    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = NTPClient("))
     sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
     assert "log=log_ram" in conn_line
     assert "log=log_ram" in ntp_line
@@ -352,14 +458,14 @@ def test_device_level_led_target_unwired_passes_no_led(tmp_path: Path, src_dir: 
     del doc["device"]["wiring"]["led_target"]
     result = generate_device(write_doc(tmp_path, "no_led_target", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
-    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
     assert "ext_led=None" in conn_line
 
 
 def test_a_device_with_led_target_builds_the_neopixel_first_and_passes_it_to_conn(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(write_doc(tmp_path, "led_target", base_doc()), src_dir, ext_dir)
     source = result.module_source
-    conn_line = next(line for line in source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    conn_line = next(line for line in source.splitlines() if line.strip().startswith("conn = WifiService("))
     assert "ext_led=neopixel" in conn_line
     assert source.index("neopixel = NeopixelDriver(") < source.index(conn_line)
     assert "set_ext_led" not in source
@@ -373,8 +479,8 @@ def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Pa
     source = generate_device(write_doc(tmp_path, "log_configs", doc), src_dir, ext_dir).module_source
     lines = [line.strip() for line in source.splitlines()]
     assert "log_ram = LogConfig(None, DEFAULT_LOG.history_length, debug)" in lines
-    fram_line, after = next((line, nxt) for line, nxt in pairwise(lines) if line.startswith("fram = AsyFramManager("))
-    assert fram_line == "fram = AsyFramManager(spi0, 1, max_size=0x2000, log=log_ram)"
+    fram_line, after = next((line, nxt) for line, nxt in pairwise(lines) if line.startswith("fram = FRAMManager("))
+    assert fram_line == "fram = FRAMManager(spi0, 1, max_size=0x2000, log=log_ram)"
     assert after == "log_fram = LogConfig(fram, DEFAULT_LOG.history_length, debug)"
     calls = {line.split(" = ")[0]: line for line in lines if re.match(r"\w+ = [A-Z]\w*\(", line) and not line.startswith(("log_", "watchdog", "app"))}
     for var in ("scd30", "sgp40", "neopixel", "conn", "ntp", "sysfunct"):
@@ -438,42 +544,42 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
 def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     # The inverse of the tripwire this replaces: hostname and hotspot_password were validated
     # and then reached nothing, so every device booted as the shared "SensorNode". They are
-    # passed to AsyConnTime now, as the two persisted fields' per-device defaults.
+    # passed to WifiService now, as the two persisted fields' per-device defaults.
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     assert "WifiConfig('SensorStationWozi', '12345678', " in result.module_source
     ast.parse(result.module_source)
 
 
-def test_bmp3xx_trigger_sec_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # trigger_sec is declared only on scd30 in every real device and fixture, so bmp3xx's own
-    # trigger_sec rendering had never been exercised - despite Phase 3 giving bmp3xx a
-    # `@limits trigger_sec 1..3600` domain specifically. Found by an error-path coverage sweep.
+def test_bmp3xx_trigger_s_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # trigger_s is declared only on scd30 in every real device and fixture, so bmp3xx's own
+    # trigger_s rendering had never been exercised - despite Phase 3 giving bmp3xx a
+    # `@limits trigger_s 1..3600` domain specifically. Found by an error-path coverage sweep.
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": 42, "wiring": {"fram_target": "fram"}})
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_s": 42, "wiring": {"fram_target": "fram"}})
     result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
-    assert "trigger_sec=42" in result.module_source
+    assert "trigger_s=42" in result.module_source
     ast.parse(result.module_source)
 
 
-def test_isl29125_irq_pin_and_trigger_sec_are_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # irq_pin is a required positional arg (like scd30's own shape); trigger_sec is optional (like
+def test_isl29125_irq_pin_and_trigger_s_are_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # irq_pin is a required positional arg (like scd30's own shape); trigger_s is optional (like
     # bmp3xx's own shape) - ISL29125_Reader is the one driver combining both.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6, "trigger_sec": 5, "wiring": {"fram_target": "fram"}})
+    doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6, "trigger_s": 5, "wiring": {"fram_target": "fram"}})
     result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
-    assert "ISL29125_Reader(i2c0, 6, trigger_sec=5" in result.module_source
+    assert "ISL29125_Reader(i2c0, 6, trigger_s=5" in result.module_source
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "log=log_fram" in call
     ast.parse(result.module_source)
 
 
-def test_isl29125_without_trigger_sec_or_fram_target_omits_both(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+def test_isl29125_without_trigger_s_or_fram_target_omits_both(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # Both are optional - a device wiring neither must still generate a valid, minimal call.
     doc = base_doc()
     doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6})
     result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
-    assert "trigger_sec" not in call
+    assert "trigger_s" not in call
     assert "log=log_ram" in call
     assert "irq_pull_up" not in call
     ast.parse(result.module_source)

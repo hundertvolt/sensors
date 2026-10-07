@@ -3,12 +3,12 @@ from collections import deque
 
 from _fram_chip_fake import FakeMB85RS64V
 
+import asy_print_log as print_log_module
 import asy_spi_driver
-import print_log as print_log_module
-from asy_fram_manager import AsyFramChunk, AsyFramManager
+from asy_base_classes import LockableBuffer
+from asy_fram_manager import FRAMChunk, FRAMManager
+from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_spi_driver import SPI
-from base_classes import LockableBuffer
-from print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, make_logger
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
-    from crc_checks import CRC_Base
+    from asy_crc_checks import CRCBase
 
     T = TypeVar("T")
 
@@ -31,9 +31,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+def make_fram_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS64V]":
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=max_size)
+    manager = FRAMManager(bus, 1, max_size=max_size)
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip
@@ -42,16 +42,16 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85
 class _RaisingFramChunk:
     # A minimal local fake, not a full FRAM simulation: proves PrintLogHistoryStore's defense in depth
     # against the general _FramManager/_FramChunk Protocol contract still holds, independent of the concrete
-    # AsyFramManager, whose wrapping try/except means write_into()/read_into() can no longer raise.
+    # FRAMManager, whose wrapping try/except means write_into()/read_into() can no longer raise.
     def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
 
     # Every parameter below keeps its exact name (and stays unused): mypy checks this double
-    # structurally against print_log.py's own _FramChunk/_FramManager Protocols at each
+    # structurally against asy_print_log.py's own _FramChunk/_FramManager Protocols at each
     # PrintLogHistoryStore() call site, and an underscore prefix breaks that match outright.
     def get_buffer(self) -> "LockableBuffer":
-        from base_classes import LockableBuffer
+        from asy_base_classes import LockableBuffer
 
         return LockableBuffer(6, data_start=0, data_length=6)
 
@@ -72,10 +72,10 @@ class _RaisingFramManager:
         self.raise_on_get_chunk = raise_on_get_chunk
 
     # Every parameter below keeps its exact name (and stays unused): mypy checks this double
-    # structurally against print_log.py's own _FramChunk/_FramManager Protocols at each
+    # structurally against asy_print_log.py's own _FramChunk/_FramManager Protocols at each
     # PrintLogHistoryStore() call site, and an underscore prefix breaks that match outright.
     def get_chunk(
-        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise RuntimeError("simulated allocation failure")
@@ -88,7 +88,7 @@ class _CountingFramManager:
 
     # Parameter names kept exact for the structural _FramManager Protocol match (see _RaisingFramManager).
     def get_chunk(
-        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_CountingFramChunk":
         return self._chunk
 
@@ -163,15 +163,33 @@ def test_name_is_stored_verbatim_when_given() -> None:
 
 def test_initial_state_is_all_clear() -> None:
     hist = PrintLogHistory(history_length=4)
-    assert hist.err_count == 0
+    assert hist._err_count == 0
     assert hist.initialized is False
     assert list(hist.history) == [0, 0, 0, 0]
 
 
 def test_setup_marks_initialized() -> None:
     hist = PrintLogHistory()
-    run(hist.setup())
+    assert run(hist.setup()) is True
     assert hist.initialized is True
+
+
+def test_entries_logged_before_setup_count_their_ram_slots() -> None:
+    # The pre-setup slot count: appends made while not initialised, capped at the ring's length; a repeat
+    # of the newest entry takes no slot; reset() clears it, and nothing counts once set up.
+    hist = PrintLogHistory(history_length=3)
+    assert hist._pre_setup_slots == 0
+    run(hist.err_s("a", errno=1))
+    run(hist.err_s("a", errno=1))  # the newest-entry rule: counted, no slot
+    run(hist.wrn_s("b", wrnno=2))
+    assert hist._pre_setup_slots == 2
+    for errno in (3, 4, 5):
+        run(hist.err_s("c", errno=errno))
+    assert hist._pre_setup_slots == 3  # never above the ring's own length
+    run(hist.reset())
+    assert hist._pre_setup_slots == 0
+    run(hist.err_s("d", errno=6))  # reset() initialised it: no longer pre-setup
+    assert hist._pre_setup_slots == 0
 
 
 def test_read_stub_always_true_on_the_in_memory_class() -> None:
@@ -182,14 +200,14 @@ def test_read_stub_always_true_on_the_in_memory_class() -> None:
 def test_err_s_increments_count_and_records_history() -> None:
     hist = PrintLogHistory(history_length=4)
     run(hist.err_s("boom", errno=3))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history)[-1] == 3  # _NO_ERR (0) + errno (3)
 
 
 def test_wrn_s_records_in_the_warning_sub_range() -> None:
     hist = PrintLogHistory(history_length=4)
     run(hist.wrn_s("careful", wrnno=2))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history)[-1] == 0x80 + 2  # _NO_WRN + wrnno
 
 
@@ -198,7 +216,7 @@ def test_err_s_default_errno_increments_count_but_not_history() -> None:
     # appending anything to history - a real, easy-to-miss asymmetry worth pinning down.
     hist = PrintLogHistory(history_length=4)
     run(hist.err_s("just counting"))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history) == [0, 0, 0, 0]
 
 
@@ -211,9 +229,9 @@ def test_history_is_bounded_and_drops_oldest() -> None:
 
 def test_err_count_saturates_at_max_and_never_wraps() -> None:
     hist = PrintLogHistory(history_length=2)
-    hist.err_count = 0xFFFF  # _MAX_CNT - whitebox-set to avoid 65535 real calls
+    hist._err_count = 0xFFFF  # _MAX_CNT - whitebox-set to avoid 65535 real calls
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 0xFFFF  # saturates, does not wrap to 0
+    assert hist._err_count == 0xFFFF  # saturates, does not wrap to 0
 
 
 def test_errno_beyond_its_sub_range_is_not_recorded() -> None:
@@ -221,7 +239,7 @@ def test_errno_beyond_its_sub_range_is_not_recorded() -> None:
     # sub-range, so the count still increments but nothing is appended to history.
     hist = PrintLogHistory(history_length=2)
     run(hist.err_s("e", errno=200))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history) == [0, 0]
 
 
@@ -230,7 +248,7 @@ def test_reset_clears_history_and_count() -> None:
     run(hist.setup())
     run(hist.err_s("e", errno=1))
     run(hist.reset())
-    assert hist.err_count == 0
+    assert hist._err_count == 0
     assert list(hist.history) == [0, 0, 0]
 
 
@@ -257,13 +275,13 @@ def test_a_negative_code_is_counted_diagnosed_and_takes_no_slot() -> None:
     hist = _DiagRecordingHistory(history_length=2)
     run(hist.err_s("e", errno=-3))
     run(hist.wrn_s("w", wrnno=-1))
-    assert hist.err_count == 2
+    assert hist._err_count == 2
     assert list(hist.history) == [0, 0]
     assert [d[:3] for d in hist.diags if "is invalid!" in d] == [("PrintLog: Error number", -3, "is invalid!"), ("PrintLog: Error number", -1, "is invalid!")]
 
 
 class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside print_log only, so every
+    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, so every
     # console line a logger emits is captured with its arguments; restore() removes the shadow.
     def __init__(self) -> None:
         self.lines: list[tuple[object, ...]] = []
@@ -307,7 +325,7 @@ def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "
     finally:
         rec.restore()
     assert list(hist.history) == [0, 3, 0x80 + 2, 5]  # the earlier entries intact, one slot for the ten
-    assert hist.err_count == 12
+    assert hist._err_count == 12
     assert [line for line in rec.lines if "sustained" in line] == [(hist.name, "sustained")] * 10  # console unfiltered
     if writes is not None:
         assert writes.writes - writes_before == 12  # one write-through per call, a repeat included
@@ -318,7 +336,7 @@ def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "
     assert list(hist.history) == [0x80 + 2, 5, 6, 5]
     run(hist.wrn_s("same number as a warning", wrnno=5))  # the other kind is a different code
     assert list(hist.history) == [5, 6, 5, 0x80 + 5]
-    assert hist.err_count == 16
+    assert hist._err_count == 16
 
 
 def test_a_sustained_identical_code_spends_one_slot() -> None:
@@ -376,7 +394,7 @@ def test_err_s_errno_at_exact_max_err_boundary_is_recorded() -> None:
 def test_err_s_errno_one_past_max_err_boundary_is_not_recorded() -> None:
     hist = PrintLogHistory(history_length=2)
     run(hist.err_s("e", errno=0x80))  # one past _MAX_ERR - falls into the warning sub-range instead
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history) == [0, 0]
 
 
@@ -389,15 +407,15 @@ def test_wrn_s_wrnno_at_exact_max_boundary_is_recorded() -> None:
 def test_wrn_s_wrnno_one_past_max_boundary_is_not_recorded() -> None:
     hist = PrintLogHistory(history_length=2)
     run(hist.wrn_s("w", wrnno=0x80))  # _NO_WRN + 0x80 == 0x100, past _MAX_WRN (0xFF)
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history) == [0, 0]
 
 
 def test_err_count_increments_normally_right_below_the_cap() -> None:
     hist = PrintLogHistory(history_length=2)
-    hist.err_count = 0xFFFE  # one below _MAX_CNT
+    hist._err_count = 0xFFFE  # one below _MAX_CNT
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 0xFFFF  # reaches the cap exactly, still a normal increment
+    assert hist._err_count == 0xFFFF  # reaches the cap exactly, still a normal increment
 
 
 def test_history_length_zero_never_records_but_still_counts() -> None:
@@ -406,7 +424,7 @@ def test_history_length_zero_never_records_but_still_counts() -> None:
     # a crash.
     hist = PrintLogHistory(history_length=0)
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
     assert list(hist.history) == []
 
 
@@ -417,7 +435,7 @@ def test_history_length_negative_is_clamped_to_zero_not_a_raise() -> None:
     hist = PrintLogHistory(history_length=-5)
     assert list(hist.history) == []
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
 
 
 def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> None:
@@ -431,13 +449,13 @@ def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> 
     hist = PrintLogHistory(history_length=2**62)
     assert len(hist.history) <= 0xFFFF
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 1
+    assert hist._err_count == 1
 
 
 class _RaisingDeque:
     # PrintLogHistory.__init__()'s except MemoryError fallback cannot be forced deterministically through a
     # real allocation at any size small enough to be safe in a test, so it is faked by substituting
-    # print_log's own module-level `deque` name, as this project's other suites do for unreachable guards.
+    # asy_print_log's own module-level `deque` name, as this project's other suites do for unreachable guards.
     #
     # Only the first, nonzero-maxlen call raises: the except block's own deque([], 0) fallback must still
     # succeed normally, matching what a memory-constrained device's tiny recovery allocation would do.
@@ -456,7 +474,7 @@ def test_history_deque_allocation_failure_degrades_to_an_empty_bounded_history()
         print_log_module.deque = original_deque  # type: ignore[misc]
     assert list(hist.history) == []
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 1  # counting still works even though history recording can't
+    assert hist._err_count == 1  # counting still works even though history recording can't
 
 
 def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
@@ -466,7 +484,7 @@ def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
     hist = PrintLogHistory(history_length=4, level=PrintLog.level_off())
     assert hist.initialized is False
     run(hist.err_s("e", errno=1))
-    assert hist.err_count == 1  # counting still happens
+    assert hist._err_count == 1  # counting still happens
     assert list(hist.history)[-1] == 1  # in-memory recording still happens
 
 
@@ -477,12 +495,12 @@ def test_reset_before_setup_still_clears_even_with_logging_off() -> None:
     run(hist.err_s("e", errno=1))
     assert hist.initialized is False
     run(hist.reset())
-    assert hist.err_count == 0
+    assert hist._err_count == 0
     assert list(hist.history) == [0, 0, 0]
 
 
 # ---------------------------------------------------------------------------
-# PrintLogHistoryStore - FRAM-backed persistence, against the real, now-promoted AsyFramManager
+# PrintLogHistoryStore - FRAM-backed persistence, against the real, now-promoted FRAMManager
 # driven by tests/_fram_chip_fake.py's simulated MB85RS64V chip (see BACKLOG.md - tests/_fram_mock.py
 # and its flat, non-redundant abstraction are retired now that asy_fram_manager.py itself is in src/).
 # ---------------------------------------------------------------------------
@@ -519,7 +537,7 @@ def test_printloghistorystore_setup_first_time_falls_back_to_writing_defaults() 
     manager, _chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
-    run(store.setup())
+    assert run(store.setup()) is True
     assert store.initialized is True
 
 
@@ -527,7 +545,7 @@ def test_printloghistorystore_setup_with_no_fram_returns_without_initializing() 
     manager, _chip = make_fram_manager(max_size=1)
     store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is None
-    run(store.setup())
+    assert run(store.setup()) is False
     assert store.initialized is False  # nothing to set up - allocation already failed in __init__
 
 
@@ -538,10 +556,10 @@ def test_printloghistorystore_setup_is_idempotent_once_initialized() -> None:
     run(store.setup())
     assert store.initialized is True
     run(store.err_s("boom", errno=1))
-    assert store.err_count == 1
-    run(store.setup())  # second call must be a no-op, not re-read stale state over the live count
+    assert store._err_count == 1
+    assert run(store.setup()) is True  # second call must be a no-op, not re-read stale state over the live count
     assert store.initialized is True
-    assert store.err_count == 1
+    assert store._err_count == 1
 
 
 def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -> None:
@@ -550,7 +568,7 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     run(store.err_s("boom", errno=3))
-    assert store.err_count == 1
+    assert store._err_count == 1
 
     # Simulate a reboot: a fresh manager/store pair attached to the SAME underlying chip memory,
     # replaying the same get_chunk() call sequence - genuinely round-trips through the real
@@ -560,7 +578,7 @@ def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -
     run(manager2.setup())
     rebooted_store = PrintLogHistoryStore(manager2, history_length=4)
     run(rebooted_store.setup())
-    assert rebooted_store.err_count == 1
+    assert rebooted_store._err_count == 1
     assert list(rebooted_store.history)[-1] == 3
 
 
@@ -593,7 +611,7 @@ def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
     store = PrintLogHistoryStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
     assert store.initialized is False
     run(store.err_s("boom", errno=3))
-    assert store.err_count == 1  # in-memory state still updates
+    assert store._err_count == 1  # in-memory state still updates
     assert chip.memory == bytearray(len(chip.memory))  # but nothing was ever written to FRAM
 
 
@@ -628,7 +646,7 @@ def test_printloghistorystore_reset_during_the_boot_window_is_not_undone_by_the_
     assert rebooted.initialized is False  # its task has not reached pr.setup() yet
     run(rebooted.reset())  # the PUT lands in that window
     run(rebooted.setup())  # ... and only now does the task get there
-    assert rebooted.err_count == 0
+    assert rebooted._err_count == 0
     assert list(rebooted.history) == [0, 0, 0], "setup() restored the old history over a reset that had already been persisted"
 
 
@@ -641,8 +659,9 @@ def test_printloghistorystore_reset_that_cannot_reach_the_chip_stays_uninitializ
     chip.drop_wren = True  # every chip write silently does nothing from here on
     run(store.reset())
     assert store.initialized is False
+    assert run(store.setup()) is False  # the chip is blank and its write is dropped: RAM-only
     chip.drop_wren = False
-    run(store.setup())
+    assert run(store.setup()) is True
     assert store.initialized is True
 
 
@@ -655,23 +674,23 @@ def test_printloghistorystore_zero_length_history_survives_write_and_read() -> N
     run(store.setup())
     assert store.initialized is True
     run(store.err_s("e", errno=1))
-    assert store.err_count == 1
+    assert store._err_count == 1
     assert list(store.history) == []
     assert run(store._read()) is True
 
 
 def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None:
-    # Pins the on-the-wire format explicitly now that print_log.py uses "<H"/"B"*n instead of a bare one -
+    # Pins the on-the-wire format explicitly now that asy_print_log.py uses "<H"/"B"*n instead of a bare one -
     # confirmed directly that MicroPython's struct defaults a no-prefix format to "@", native alignment and
     # padding, not "<", though it made no observable difference for this field order.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=2)
-    store.err_count = 0x1234
+    store._err_count = 0x1234
     store.history.extend([5, 6])
     run(store._write())
-    assert isinstance(store.fram, AsyFramChunk)  # whitebox: narrows to the real chunk's own block layout
-    addr0 = store.fram.block_addr[0]
+    assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
+    addr0 = store.fram._block_addr[0]
     raw = bytes(chip.memory[addr0 : addr0 + 4])
     assert list(raw) == [0x34, 0x12, 5, 6]  # little-endian u16, then 2 raw history bytes
 
@@ -689,7 +708,7 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
     run(manager2.setup())
     rebooted_store = PrintLogHistoryStore(manager2, history_length=3)
     run(rebooted_store.setup())
-    assert rebooted_store.err_count == 0
+    assert rebooted_store._err_count == 0
     assert list(rebooted_store.history) == [0, 0, 0]
 
 
@@ -701,7 +720,7 @@ def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> 
 
 
 def test_printloghistorystore_get_chunk_raising_leaves_fram_none() -> None:
-    # AsyFramManager.get_chunk() never actually raises (confirmed by its own src/ promotion
+    # FRAMManager.get_chunk() never actually raises (confirmed by its own src/ promotion
     # audit) - this proves PrintLogHistoryStore's defensive catch still holds against the general
     # _FramManager Protocol contract, not just this one concrete, well-behaved implementation.
     store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True), history_length=4)
@@ -728,7 +747,7 @@ def test_printloghistorystore_read_into_raising_is_caught() -> None:
 def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
     # A real hardware-reported failure (not a raise): WREN never latches, so every write the real
     # chunk attempts fails cleanly - write_into() already turns this into a clean False return,
-    # without print_log.py needing to catch anything.
+    # without asy_print_log.py needing to catch anything.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
@@ -739,13 +758,13 @@ def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
 def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
     # A real double fault: both of the chunk's redundant blocks are corrupted, torn-write status left BUSY
     # on each, so the dual-copy self-healing has nothing left to recover from - a stronger proof than a flat
-    # "read fails" flag, showing print_log.py degrades cleanly even once that redundancy is exhausted.
+    # "read fails" flag, showing asy_print_log.py degrades cleanly even once that redundancy is exhausted.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store._write())  # something real is persisted first
-    assert isinstance(store.fram, AsyFramChunk)  # whitebox: narrows to the real chunk's own block layout
-    addr0, addr1 = store.fram.block_addr
+    assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
+    addr0, addr1 = store.fram._block_addr
     status_offset = 2 + len(store.history) + 1  # _HDR_SIZE("<H") + history bytes + CRC8's 1 byte
     for addr in (addr0, addr1):
         chip.memory[addr + status_offset] = 0x02  # _STATUS_BUSY, mirrors a torn write on both copies
@@ -767,10 +786,10 @@ def test_printloghistorystore_self_heals_from_a_single_corrupted_copy_across_a_r
     run(store.setup())
     run(store.err_s("boom", errno=3))
     run(store.err_s("bang", errno=7))
-    assert store.err_count == 2
+    assert store._err_count == 2
 
-    assert isinstance(store.fram, AsyFramChunk)  # whitebox: narrows to the real chunk's own block layout
-    addr0, _addr1 = store.fram.block_addr
+    assert isinstance(store.fram, FRAMChunk)  # whitebox: narrows to the real chunk's own block layout
+    addr0, _addr1 = store.fram._block_addr
     block_len = 2 + len(store.history) + 1  # _HDR_SIZE("<H") + history bytes + CRC8's 1 byte
     original_block0 = bytes(chip.memory[addr0 : addr0 + block_len])
     chip.memory[addr0 + 2] ^= 0xFF  # a single flipped history byte in copy 0 only - copy 1 is intact
@@ -784,7 +803,7 @@ def test_printloghistorystore_self_heals_from_a_single_corrupted_copy_across_a_r
     rebooted_store = PrintLogHistoryStore(manager2, history_length=4)
     run(rebooted_store.setup())
     assert rebooted_store.initialized is True
-    assert rebooted_store.err_count == 2  # recovered from the surviving copy, not from the flipped one
+    assert rebooted_store._err_count == 2  # recovered from the surviving copy, not from the flipped one
     assert list(rebooted_store.history) == list(store.history) == [0, 0, 3, 7]
     # ...and the damaged copy was repaired on-chip in the process, not just read around.
     assert bytes(chip.memory[addr0 : addr0 + block_len]) == original_block0
@@ -810,7 +829,7 @@ def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -
     run(store.setup())
     chip.drop_wren = True
     run(store.err_s("boom", errno=3))
-    assert store.err_count == 1
+    assert store._err_count == 1
     assert list(store.history)[-1] == 3
 
 
@@ -822,7 +841,7 @@ def test_make_logger_builds_a_store_or_a_ram_history_by_config() -> None:
     assert store.name == "SGP40"
     assert store.level == 2
     assert len(store.history) == 4
-    assert isinstance(store.fram, AsyFramChunk)
+    assert isinstance(store.fram, FRAMChunk)
     ram = make_logger(DEFAULT_LOG, "X")
     assert type(ram) is PrintLogHistory
     assert ram.name == "X"

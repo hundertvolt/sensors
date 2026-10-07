@@ -8,7 +8,7 @@ from pathlib import Path
 # The whole allowance. src/ is checked structurally (a real call node attributed to its enclosing
 # function, so a rename of the allowed site fails too); buildgen/ textually, the call existing only
 # inside codegen.py's emitted-source strings. scripts/lint.sh greps the same rule as a fast path.
-_ALLOWED_SRC_SITES = {("system_service.py", "start_and_check_tasks")}
+_ALLOWED_SRC_SITES = {("asy_system_service.py", "start_and_check_tasks")}
 _ALLOWED_BUILDGEN_FILES = {"codegen.py"}
 
 
@@ -23,9 +23,9 @@ def _is_gc_collect(node: ast.AST) -> bool:
 
 
 def _collect_call_sites(tree: ast.Module) -> "list[str]":
-    """Every `gc.collect(...)` call in this module, labelled with the nearest enclosing function -
-    "<module>" for one at import time, which would run on every boot. Explicit descent, not
-    ast.walk(): a walk from the module reaches calls inside functions too and would double-count."""
+    # Every `gc.collect(...)` call in this module, labelled with the nearest enclosing function -
+    # "<module>" for one at import time, which would run on every boot. Explicit descent, not
+    # ast.walk(): a walk from the module reaches calls inside functions too and would double-count.
     sites: list[str] = []
 
     def visit(node: ast.AST, owner: str) -> None:

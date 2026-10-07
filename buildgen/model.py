@@ -29,7 +29,7 @@ MAINTENANCE_NAMES = {"uart_link": "UARTLINK"}
 def instance_key(inst: "TomlDoc") -> tuple[str, str]:
     # The TOML's own driver/name_ext identity, never instance_name()/_NAME - a separate naming
     # space (Part C.14.1). Part L.5 records the real bug the distinction closes:
-    # NotificationCoordinator's _NAME is "NOTIFY", not "NOTIFICATION".
+    # NotificationService's _NAME is "NOTIFY", not "NOTIFICATION".
     return (inst["driver"], inst.get("name_ext", ""))
 
 
@@ -131,12 +131,12 @@ VERSIONS_PATH = Path(__file__).resolve().parent.parent / "toolchain" / "versions
 
 
 def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
-    """versions.toml's whole [lwip] table. The values are an ensemble, so the connection-ceiling
-    check reads all of them, not just the PCB count (SPECIFICATION.md Part B.14.2)."""
+    # versions.toml's whole [lwip] table. The values are an ensemble, so the connection-ceiling
+    # check reads all of them, not just the PCB count (SPECIFICATION.md Part B.14.2).
     try:
         with path.open("rb") as f:
             table = tomllib.load(f)["lwip"]
-    except (OSError, KeyError, tomllib.TOMLDecodeError) as e:
+    except (KeyError, OSError, tomllib.TOMLDecodeError) as e:
         raise BuildError("<toolchain>", f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
     if not isinstance(table, dict):
         raise BuildError("<toolchain>", f"[lwip] in {path} must be a table, got {table!r}", field="max_connections")

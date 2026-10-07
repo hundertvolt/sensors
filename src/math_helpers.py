@@ -42,23 +42,67 @@ _CCT_MIN = const(2000.0)  # McCamy (1992) fits the Planckian locus over roughly 
 _CCT_MAX = const(12500.0)  # outside it the cubic still returns a number, with nothing marking it meaningless
 
 
-def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> float | None:
-    # Stull (2011) empirical wet-bulb approximation. Valid domain per the paper: -20-50 degC,
-    # 5-99% RH (errors grow sharply outside it, especially at low RH + low temperature together).
+def abs_humidity(temperature: float | None, humidity: float | None) -> float | None:
+    # Magnus-type saturation-vapor-pressure formula; a/b pick the ice- vs water-phase constants.
     if temperature is None or humidity is None:
         return None
-    if not (_WB_T_MIN <= temperature <= _WB_T_MAX and _WB_RH_MIN <= humidity <= _WB_RH_MAX):
+    if not (_MAGNUS_T_MIN <= temperature <= _MAGNUS_T_MAX and 0.0 <= humidity <= _MAGNUS_RH_MAX):
+        return None
+    if temperature >= 0.0:
+        a = 7.5
+        b = 237.4
+    else:
+        a = 7.6
+        b = 240.7
+    try:
+        return 13.23454 * humidity / (temperature + 273.15) * math.pow(10.0, (a * temperature) / (b + temperature))
+    except (ArithmeticError, ValueError):
+        return None
+
+
+def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
+    # Barometric formula: pressure at height offset dh from the p0 reference (callers pass a
+    # negative dh to reduce a station reading to sea-level-equivalent pressure, not an altitude).
+    # p0/tmean range matches the BMP388/390 datasheet (its only caller).
+    if p0 is None or dh is None or tmean is None:
+        return None
+    if not (_BARO_P_MIN <= p0 <= _BARO_P_MAX and _BARO_DH_MIN <= dh <= _BARO_DH_MAX and _BARO_T_MIN <= tmean <= _BARO_T_MAX):
         return None
     try:
-        return (
-            temperature * math.atan(0.151977 * math.sqrt(humidity + 8.313659))
-            + math.atan(temperature + humidity)
-            - math.atan(humidity - 1.676331)
-            + 0.00391838 * humidity * math.sqrt(humidity) * math.atan(0.023101 * humidity)
-            - 4.686035
-        )
-    except (ValueError, ArithmeticError):
+        # Inlined below: g 9.80665 m/s2, M 0.0289644 kg/mol, T0 273.15 K, R 8.31446261815324 J/(mol K)
+        return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
+    except (ArithmeticError, ValueError):
         return None
+
+
+def cct_mccamy(chroma_x: float | None, chroma_y: float | None) -> float | None:
+    # McCamy (1992) cubic CCT from CIE 1931 chromaticity. The circulated sign-flipped form -
+    # n = (x - 0.3320)/(y - 0.1858) with -449/+3525/-6823.3 - is algebraically the same function.
+    # Out-of-span results are REJECTED, not clamped: a clamped 12500 would look like a real one.
+    if chroma_x is None or chroma_y is None:
+        return None
+    if not (_COLOUR_IN_MIN <= chroma_x <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= chroma_y <= _COLOUR_IN_MAX):
+        return None
+    denominator = 0.1858 - chroma_y
+    if abs(denominator) < _CCT_EPICENTRE_EPS:  # the epicentre is a real division by zero here
+        return None
+    n_val = (chroma_x - 0.3320) / denominator
+    cct = 449.0 * n_val**3 + 3525.0 * n_val**2 + 6823.3 * n_val + 5520.33
+    if not (_CCT_MIN <= cct <= _CCT_MAX):
+        return None
+    return cct
+
+
+def chromaticity_xy(x_val: float | None, y_val: float | None, z_val: float | None) -> tuple[float, float] | None:
+    # CIE 1931 chromaticity, the step that makes CCT range- and resolution-invariant: any common
+    # scale factor cancels. The single windowed sum test rejects darkness, a negative sum, +-inf and
+    # NaN at once. The low-light POLICY floor is a device fact and lives in the driver, in counts.
+    if x_val is None or y_val is None or z_val is None:
+        return None
+    total = x_val + y_val + z_val
+    if not (_CHROMA_SUM_MIN <= total <= _CHROMA_SUM_MAX):
+        return None
+    return x_val / total, y_val / total
 
 
 def dew_point(temperature: float | None, humidity: float | None) -> float | None:
@@ -79,41 +123,21 @@ def dew_point(temperature: float | None, humidity: float | None) -> float | None
         loghum = math.log(humidity * 0.01)
         coeff2 = 1.0 / (toffs + temperature)
         return toffs * ((coeff1 * temperature) * coeff2 + loghum) / ((coeff1 * toffs) * coeff2 - loghum)
-    except (ValueError, ArithmeticError):
+    except (ArithmeticError, ValueError):
         return None
 
 
-def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
-    # Barometric formula: pressure at height offset dh from the p0 reference (callers pass a
-    # negative dh to reduce a station reading to sea-level-equivalent pressure, not an altitude).
-    # p0/tmean range matches the BMP388/390 datasheet (its only caller).
-    if p0 is None or dh is None or tmean is None:
+def ema_step(previous: float | None, sample: float | None, coefficient: float | None) -> float | None:
+    # The project's single first-order EMA (Part G.2), promoted from the legacy SHTC3/MPRLS
+    # readers. A coefficient outside (0, 1] means "filter off", the convention FiltCoeff = -1.0
+    # relies on. isfinite(), not a range gate: one NaN would poison the caller's state for good.
+    if sample is None or not math.isfinite(sample):
         return None
-    if not (_BARO_P_MIN <= p0 <= _BARO_P_MAX and _BARO_DH_MIN <= dh <= _BARO_DH_MAX and _BARO_T_MIN <= tmean <= _BARO_T_MAX):
-        return None
-    try:
-        # Inlined below: g 9.80665 m/s2, M 0.0289644 kg/mol, T0 273.15 K, R 8.31446261815324 J/(mol K)
-        return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
-    except (ValueError, ArithmeticError):
-        return None
-
-
-def abs_humidity(temperature: float | None, humidity: float | None) -> float | None:
-    # Magnus-type saturation-vapor-pressure formula; a/b pick the ice- vs water-phase constants.
-    if temperature is None or humidity is None:
-        return None
-    if not (_MAGNUS_T_MIN <= temperature <= _MAGNUS_T_MAX and 0.0 <= humidity <= _MAGNUS_RH_MAX):
-        return None
-    if temperature >= 0.0:
-        a = 7.5
-        b = 237.4
-    else:
-        a = 7.6
-        b = 240.7
-    try:
-        return 13.23454 * humidity / (temperature + 273.15) * math.pow(10.0, (a * temperature) / (b + temperature))
-    except (ValueError, ArithmeticError):
-        return None
+    if coefficient is None or not (0.0 < coefficient <= 1.0):  # a NaN coefficient lands here too
+        return sample
+    if previous is None or not math.isfinite(previous):  # unseeded, or an already-poisoned state
+        return sample
+    return previous + coefficient * (sample - previous)
 
 
 def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | None:
@@ -132,12 +156,12 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
         b = 240.7
     try:
         rh = abs_hum * (temperature + 273.15) / (13.23454 * math.pow(10.0, (a * temperature) / (b + temperature)))
-    except (ValueError, ArithmeticError):
+    except (ArithmeticError, ValueError):
         return None
     return max(0.0, min(100.0, rh))
 
 
-def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "tuple[float, float, float] | None":
+def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
     # Standard HSV/HSB hexcone over a normalised 0-1 triple: hue in [0, 360), S and B in [0, 1].
     # Returns a tuple, unlike the rest of this file, because all three derive from one max/min and
     # separate entry points could disagree. The range gate also catches NaN, which compares false.
@@ -159,7 +183,7 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "t
     return hue, chroma / bri, bri
 
 
-def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> "tuple[float, float, float] | None":
+def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> tuple[float, float, float] | None:
     # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the
     # 6th decimal, and neither corrects the other (agent, 2026-09-12; Part M.1.3). No gamma decode - this sensor is
     # linear in irradiance. A documented PLACEHOLDER: p13 Eq. 1 says the coefficients are per-setup.
@@ -173,44 +197,20 @@ def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> "t
     return x_val, y_val, z_val
 
 
-def chromaticity_xy(x_val: float | None, y_val: float | None, z_val: float | None) -> "tuple[float, float] | None":
-    # CIE 1931 chromaticity, the step that makes CCT range- and resolution-invariant: any common
-    # scale factor cancels. The single windowed sum test rejects darkness, a negative sum, +-inf and
-    # NaN at once. The low-light POLICY floor is a device fact and lives in the driver, in counts.
-    if x_val is None or y_val is None or z_val is None:
+def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> float | None:
+    # Stull (2011) empirical wet-bulb approximation. Valid domain per the paper: -20-50 degC,
+    # 5-99% RH (errors grow sharply outside it, especially at low RH + low temperature together).
+    if temperature is None or humidity is None:
         return None
-    total = x_val + y_val + z_val
-    if not (_CHROMA_SUM_MIN <= total <= _CHROMA_SUM_MAX):
+    if not (_WB_T_MIN <= temperature <= _WB_T_MAX and _WB_RH_MIN <= humidity <= _WB_RH_MAX):
         return None
-    return x_val / total, y_val / total
-
-
-def cct_mccamy(chroma_x: float | None, chroma_y: float | None) -> float | None:
-    # McCamy (1992) cubic CCT from CIE 1931 chromaticity. The circulated sign-flipped form -
-    # n = (x - 0.3320)/(y - 0.1858) with -449/+3525/-6823.3 - is algebraically the same function.
-    # Out-of-span results are REJECTED, not clamped: a clamped 12500 would look like a real one.
-    if chroma_x is None or chroma_y is None:
+    try:
+        return (
+            temperature * math.atan(0.151977 * math.sqrt(humidity + 8.313659))
+            + math.atan(temperature + humidity)
+            - math.atan(humidity - 1.676331)
+            + 0.00391838 * humidity * math.sqrt(humidity) * math.atan(0.023101 * humidity)
+            - 4.686035
+        )
+    except (ArithmeticError, ValueError):
         return None
-    if not (_COLOUR_IN_MIN <= chroma_x <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= chroma_y <= _COLOUR_IN_MAX):
-        return None
-    denominator = 0.1858 - chroma_y
-    if abs(denominator) < _CCT_EPICENTRE_EPS:  # the epicentre is a real division by zero here
-        return None
-    n_val = (chroma_x - 0.3320) / denominator
-    cct = 449.0 * n_val**3 + 3525.0 * n_val**2 + 6823.3 * n_val + 5520.33
-    if not (_CCT_MIN <= cct <= _CCT_MAX):
-        return None
-    return cct
-
-
-def ema_step(previous: float | None, sample: float | None, coefficient: float | None) -> float | None:
-    # The project's single first-order EMA (Part G.2), promoted from the legacy SHTC3/MPRLS
-    # readers. A coefficient outside (0, 1] means "filter off", the convention FiltCoeff = -1.0
-    # relies on. isfinite(), not a range gate: one NaN would poison the caller's state for good.
-    if sample is None or not math.isfinite(sample):
-        return None
-    if coefficient is None or not (0.0 < coefficient <= 1.0):  # a NaN coefficient lands here too
-        return sample
-    if previous is None or not math.isfinite(previous):  # unseeded, or an already-poisoned state
-        return sample
-    return previous + coefficient * (sample - previous)

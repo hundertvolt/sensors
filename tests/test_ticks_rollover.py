@@ -9,13 +9,14 @@ _SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root
 # explicitly so a module that silently stops using ticks - or a new one that starts - is visible
 # here rather than quietly dropping out of the audit's coverage.
 _KNOWN_TICKS_USERS = (
+    "asy_base_classes.py",
     "asy_bmp3xx_driver.py",
     "asy_isl29125_driver.py",
     "asy_neopixel_driver.py",
     "asy_notification_service.py",
+    "asy_system_service.py",
     "asy_uart_comm.py",
     "asy_uart_driver.py",
-    "asy_udp_socket.py",
 )
 
 

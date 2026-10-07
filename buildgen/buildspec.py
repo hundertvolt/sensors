@@ -21,15 +21,15 @@ REQUIRED_TOML_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 # TOML fields a driver's instances *may* declare, beyond the required ones above - present because
-# the underlying constructor param has its own default (e.g. BMP3xx_Reader's own address=0x77).
+# the underlying constructor param has its own default (e.g. BMP3XX_Reader's own address=0x77).
 OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
-    "scd30": ("trigger_sec",),
+    "scd30": ("trigger_s",),
     "sgp40": (),
-    "bmp3xx": ("address", "trigger_sec"),
+    "bmp3xx": ("address", "trigger_s"),
     # No "address": 0x44 is hard-wired (no address-select pin, datasheet p15), so this belongs in
     # FIXED_ADDRESS_DRIVERS. irq_pull_up exists because the INT line is open-drain (p6): a board
     # with its own external pull-up sets it false so the internal one is not engaged too.
-    "isl29125": ("trigger_sec", "irq_pull_up"),
+    "isl29125": ("trigger_s", "irq_pull_up"),
     "fram": (),
     "neopixel": (),
     "notification": (),
@@ -48,7 +48,7 @@ BUS_ATTACHED_DRIVERS = frozenset(REQUIRED_TOML_FIELDS) - {"neopixel", "notificat
 
 # Which bus kind each bus-attached driver's "bus" field must resolve to. Without it a TOML typo
 # pairing a uart_link with an i2c bus built cleanly - the bus only had to exist - and failed at
-# boot inside UART_Comm with a raw AttributeError. Every BUS_ATTACHED_DRIVERS member belongs here.
+# boot inside UARTComm with a raw AttributeError. Every BUS_ATTACHED_DRIVERS member belongs here.
 BUS_KIND_BY_DRIVER: dict[str, str] = {
     "scd30": "i2c",
     "sgp40": "i2c",

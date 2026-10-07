@@ -31,7 +31,7 @@ def _literal_tuple(node: ast.AST) -> tuple[str, ...] | None:
 
 
 def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...] | None]:
-    """Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any."""
+    # Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any.
     tuples: dict[str, tuple[str, ...]] = {}
     fields: tuple[str, ...] | None = None
     for node in ast.parse(path.read_text()).body:

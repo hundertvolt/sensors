@@ -46,9 +46,10 @@ def build_request(method: str, path: str, host: str, json_body: "dict[str, objec
 
 
 class CeilingRefusedError(OSError):
-    """The server closed without writing any response at all - asy_webserver_service.py's
-    reject-when-full branch. An OSError subclass because that is what a refusal is to every caller,
-    and whether the peer sees FIN or RST is kernel TCP state that src/ does not choose."""
+    # The server closed without writing any response at all - asy_webserver_service.py's
+    # reject-when-full branch. An OSError subclass because that is what a refusal is to every caller,
+    # and whether the peer sees FIN or RST is kernel TCP state that src/ does not choose.
+    pass
 
 
 def parse_status_line(line: bytes) -> int:

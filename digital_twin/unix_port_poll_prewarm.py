@@ -28,9 +28,9 @@ _PORT_SCAN_WINDOW = 64
 
 
 def _bind_free_listener(port: int, ceiling: int, window: int = _PORT_SCAN_WINDOW) -> "tuple[Any, Any]":
-    """The first free loopback port at or above `port`, already listening. A fresh socket per
-    attempt, because a bind that failed leaves nothing worth reusing - and the Unix port exposes no
-    getsockname(), so an ephemeral bind to port 0 could never be read back to connect to."""
+    # The first free loopback port at or above `port`, already listening. A fresh socket per
+    # attempt, because a bind that failed leaves nothing worth reusing - and the Unix port exposes no
+    # getsockname(), so an ephemeral bind to port 0 could never be read back to connect to.
     for candidate in range(port, port + window):
         addr = socket.getaddrinfo("127.0.0.1", candidate)[0][-1]
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -46,8 +46,8 @@ def _bind_free_listener(port: int, ceiling: int, window: int = _PORT_SCAN_WINDOW
 
 
 def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = _PORT_SCAN_BASE) -> "Any":  # noqa: ANN401 - a packed sockaddr here, a tuple under CPython
-    """Grow asyncio's shared `select.poll()` pollfds array to `ceiling` slots via real loopback connections, then release them. Must run before any other code registers a poll object.
-    `port` is the first of _PORT_SCAN_WINDOW candidates tried and only has to be free while this runs; returns the packed sockaddr it actually bound."""
+    # Grow asyncio's shared `select.poll()` pollfds array to `ceiling` slots via real loopback connections, then release them. Must run before any other code registers a poll object.
+    # `port` is the first of _PORT_SCAN_WINDOW candidates tried and only has to be free while this runs; returns the packed sockaddr it actually bound.
     _core.get_event_loop()  # idempotent - ensures _io_queue exists without assuming it already does
     poller = _core._io_queue.poller
     listener, addr = _bind_free_listener(port, ceiling)

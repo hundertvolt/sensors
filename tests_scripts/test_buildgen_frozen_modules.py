@@ -32,12 +32,12 @@ def test_frozen_modules_include_core_set(repo_root: Path, src_dir: Path, ext_dir
 
 
 def test_frozen_modules_include_transitive_dependency(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    # asy_sgp40_driver.py imports voc_algorithm.py and crc_checks.py directly - neither is in
+    # asy_sgp40_driver.py imports voc_algorithm.py and asy_crc_checks.py directly - neither is in
     # CORE_MODULES nor a driver module itself, so this only passes if the transitive closure
     # actually walks imports, not just the seed set.
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     assert "voc_algorithm" in result.frozen_modules
-    assert "crc_checks" in result.frozen_modules
+    assert "asy_crc_checks" in result.frozen_modules
 
 
 def test_frozen_modules_include_ext_microdot(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -48,19 +48,19 @@ def test_frozen_modules_include_ext_microdot(repo_root: Path, src_dir: Path, ext
 def test_frozen_modules_exclude_type_checking_only_import(tmp_path: Path) -> None:
     # A module only reachable through an `if TYPE_CHECKING:` block never executes on-device
     # (MicroPython has no runtime typing module) - it must not be pulled into the closure.
-    (tmp_path / "config_manager.py").write_text("")
-    (tmp_path / "base_classes.py").write_text("")
-    (tmp_path / "print_log.py").write_text("")
-    (tmp_path / "api_response.py").write_text("")
+    (tmp_path / "asy_config_manager.py").write_text("")
+    (tmp_path / "asy_base_classes.py").write_text("")
+    (tmp_path / "asy_print_log.py").write_text("")
+    (tmp_path / "asy_api_response.py").write_text("")
     (tmp_path / "asy_i2c_driver.py").write_text("")
     (tmp_path / "asy_spi_driver.py").write_text("")
     (tmp_path / "asy_webserver_service.py").write_text("")
     (tmp_path / "asy_wifi_service.py").write_text("")
     (tmp_path / "asy_ntp_client.py").write_text("")
     (tmp_path / "asy_dns_client.py").write_text("")
-    (tmp_path / "captive_dns.py").write_text("")
-    (tmp_path / "system_service.py").write_text("")
-    (tmp_path / "crc_checks.py").write_text("")
+    (tmp_path / "asy_captive_dns.py").write_text("")
+    (tmp_path / "asy_system_service.py").write_text("")
+    (tmp_path / "asy_crc_checks.py").write_text("")
     (tmp_path / "type_only_dep.py").write_text("")
     (tmp_path / "asy_typechecked_driver.py").write_text(
         "try:\n    from typing import TYPE_CHECKING\nexcept ImportError:\n    TYPE_CHECKING = False\n\nif TYPE_CHECKING:\n    import type_only_dep\n",
@@ -78,19 +78,19 @@ def test_frozen_modules_exclude_type_checking_only_import(tmp_path: Path) -> Non
 
 
 def test_frozen_modules_real_import_is_included(tmp_path: Path) -> None:
-    (tmp_path / "config_manager.py").write_text("")
-    (tmp_path / "base_classes.py").write_text("")
-    (tmp_path / "print_log.py").write_text("")
-    (tmp_path / "api_response.py").write_text("")
+    (tmp_path / "asy_config_manager.py").write_text("")
+    (tmp_path / "asy_base_classes.py").write_text("")
+    (tmp_path / "asy_print_log.py").write_text("")
+    (tmp_path / "asy_api_response.py").write_text("")
     (tmp_path / "asy_i2c_driver.py").write_text("")
     (tmp_path / "asy_spi_driver.py").write_text("")
     (tmp_path / "asy_webserver_service.py").write_text("")
     (tmp_path / "asy_wifi_service.py").write_text("")
     (tmp_path / "asy_ntp_client.py").write_text("")
     (tmp_path / "asy_dns_client.py").write_text("")
-    (tmp_path / "captive_dns.py").write_text("")
-    (tmp_path / "system_service.py").write_text("")
-    (tmp_path / "crc_checks.py").write_text("")
+    (tmp_path / "asy_captive_dns.py").write_text("")
+    (tmp_path / "asy_system_service.py").write_text("")
+    (tmp_path / "asy_crc_checks.py").write_text("")
     (tmp_path / "real_dep.py").write_text("")
     (tmp_path / "asy_realdep_driver.py").write_text("import real_dep\n")
 

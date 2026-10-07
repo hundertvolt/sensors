@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 # Scratch addresses, disjoint from every other device script's own regions (CS-hijack uses
 # 0x9000-0x93ff).

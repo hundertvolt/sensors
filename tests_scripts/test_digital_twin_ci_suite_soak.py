@@ -183,7 +183,7 @@ def test_an_aborted_pass_is_recorded_and_the_error_still_raised(ci_suite: Module
 
 
 def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]") -> "tuple[object, list[Path]]":
-    """Runs _run_11_soak() over stubbed boots: boot k's cycle sample i reads boots[k](i) free bytes."""
+    # Runs _run_11_soak() over stubbed boots: boot k's cycle sample i reads boots[k](i) free bytes.
     summary = _fresh_summary(ci_suite, monkeypatch)
     monkeypatch.setattr(ci_suite, "_SOAK_WARMUP_CYCLES", 1)
     monkeypatch.setattr(ci_suite, "_SOAK_CYCLES", 8)

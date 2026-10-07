@@ -16,7 +16,7 @@ from microdot import Microdot, Request, Response
 
 from asy_neopixel_driver import NeopixelDriver
 from asy_webserver_service import RouteSources, ServingLimits, WebserverService
-from asy_wifi_service import AsyConnTime, WifiConfig
+from asy_wifi_service import WifiConfig, WifiService
 
 try:
     from typing import TYPE_CHECKING
@@ -62,15 +62,15 @@ async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0, neopixel_freq=100)
-    conn = AsyConnTime(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
-        return lambda: pixel.pixel.writes[-1:] == [[colour]]
+        return lambda: pixel._pixel.writes[-1:] == [[colour]]
 
     async def scenario() -> "tuple[bool, bool, bool]":
-        overlay_task = pixel.start_asy_neopixel_led_overl()
+        overlay_task = pixel.start_asy_overlay()
         await asyncio.sleep(0)
-        await conn.set_wifi_led(status=True)  # self.led becomes self.ext_led (pixel)
+        await conn.set_wifi_led(status=True)  # self._led becomes self._ext_led (pixel)
         conn._led_on()
         on_seen = await _run_until(last_is((50, 50, 50)), 10)  # default led_overl_bri
         conn._led_off()
@@ -86,7 +86,7 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
 def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     pixel = NeopixelDriver(0)
     app = Microdot()
-    routes = RouteSources((), None, None, None, None, None, None, (), [pixel])  # type: ignore[list-item]  # error_sources reads only name, pr and the error-counter pair, all present
+    routes = RouteSources((), None, None, None, None, None, None, (), [pixel])
     serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
     WebserverService(app, routes, serving)  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
 

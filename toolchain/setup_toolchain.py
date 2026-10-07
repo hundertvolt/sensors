@@ -124,8 +124,8 @@ UV_SYNC_ATTEMPTS = 3  # mirrors ci.yml's unit-tests job: a third party's momenta
 
 # @tunable tool.uv_sync_backoff_step_s = 10.0
 def run_retried(cmd: list[str], cwd: Path | None = None, *, attempts: int = UV_SYNC_ATTEMPTS, backoff_s: float = 10.0) -> str:
-    """run(), retried with a growing pause - for a step that downloads from a third party (uv sync
-    builds actionlint-py, which fetches its binary from a release URL; a 502 there once failed a clean install)."""
+    # run(), retried with a growing pause - for a step that downloads from a third party (uv sync
+    # builds actionlint-py, which fetches its binary from a release URL; a 502 there once failed a clean install).
     for attempt in range(1, attempts):
         try:
             return run(cmd, cwd=cwd)
@@ -144,9 +144,9 @@ VERSIONS_PATH = Path(__file__).parent / "versions.toml"
 
 
 def load_lwip_macros(path: Path = VERSIONS_PATH) -> dict[str, int]:
-    """versions.toml's [lwip] table - the single source of truth for the firmware's lwIP options,
-    so one file drives a build and the connection-scaling sweep is reproducible rather than a
-    sequence of hand edits (SPECIFICATION.md Part B.14.2)."""
+    # versions.toml's [lwip] table - the single source of truth for the firmware's lwIP options,
+    # so one file drives a build and the connection-scaling sweep is reproducible rather than a
+    # sequence of hand edits (SPECIFICATION.md Part B.14.2).
     table = load_versions(path).get("lwip")
     if not isinstance(table, dict):
         raise SetupError(f"{path} has no [lwip] table - the rp2 firmware's lwIP options are pinned there, not in the fetched checkout (SPECIFICATION.md Part B.14.2)")
@@ -176,9 +176,9 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
 
 
 def is_sha(ref: str) -> bool:
-    """True for a raw commit hash rather than a tag/branch name. The two need different checkout
-    handling: `git fetch --tags` always reaches a tag, but an arbitrary commit may not be reachable
-    that way and has to be fetched by its hash."""
+    # True for a raw commit hash rather than a tag/branch name. The two need different checkout
+    # handling: `git fetch --tags` always reaches a tag, but an arbitrary commit may not be reachable
+    # that way and has to be fetched by its hash.
     return bool(re.fullmatch(r"[0-9a-f]{7,40}", ref))
 
 
@@ -209,8 +209,8 @@ def checkout_ref(repo: Path, ref: str) -> None:
 
 
 def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
-    """Clone-or-update: the same call handles both "doesn't exist yet" (setup) and "already
-    exists, may be pinned to something else" (update) — there's no separate update codepath."""
+    # Clone-or-update: the same call handles both "doesn't exist yet" (setup) and "already
+    # exists, may be pinned to something else" (update) — there's no separate update codepath.
     if not dest.exists():
         log(f"Cloning {url} -> {dest}")
         clone_full(url, dest)
@@ -224,9 +224,9 @@ LS_TREE_FIELDS_BEFORE_PATH = 3
 
 
 def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
-    """Never chosen independently - read straight out of MicroPython's own submodule pin at
-    lib/pico-sdk, which is the commit the firmware actually compiles against. This is what makes
-    "only pin MicroPython" (versions.toml) possible instead of two hand-tracked versions."""
+    # Never chosen independently - read straight out of MicroPython's own submodule pin at
+    # lib/pico-sdk, which is the commit the firmware actually compiles against. This is what makes
+    # "only pin MicroPython" (versions.toml) possible instead of two hand-tracked versions.
     out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env())
     # git ls-tree prints one line shaped "160000 commit <sha>\tlib/pico-sdk"
     fields = out.split()
@@ -236,9 +236,9 @@ def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
 
 
 def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> str:
-    """Picotool need only match pico-sdk's major.minor, but that match is enforced at build time
-    ("Incompatible picotool installation found" since pico-sdk 2.0.0), so a mismatch is a build
-    failure. Resolves the derived commit to its nearest tag, then takes the newest matching tag."""
+    # Picotool need only match pico-sdk's major.minor, but that match is enforced at build time
+    # ("Incompatible picotool installation found" since pico-sdk 2.0.0), so a mismatch is a build
+    # failure. Resolves the derived commit to its nearest tag, then takes the newest matching tag.
     described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env()).strip()
     match = re.match(r"^(\d+)\.(\d+)\.", described)
     if not match:
@@ -321,9 +321,9 @@ def fetch_unix_submodules(micropython_dir: Path) -> None:
 
 
 def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None, *, toolchain_dir: Path | None = None, lwip_macros: dict[str, int] | None = None) -> Path:
-    """Builds the RP2 firmware, optionally with an extra FROZEN_MANIFEST=. Always applies and then
-    verifies the lwip_connection_counts override (lwip_macros defaults to versions.toml's [lwip],
-    toolchain_dir to micropython_dir's parent); full contract in SPECIFICATION.md Part B.14.2."""
+    # Builds the RP2 firmware, optionally with an extra FROZEN_MANIFEST=. Always applies and then
+    # verifies the lwip_connection_counts override (lwip_macros defaults to versions.toml's [lwip],
+    # toolchain_dir to micropython_dir's parent); full contract in SPECIFICATION.md Part B.14.2.
     rp2_dir = micropython_dir / "ports" / "rp2"
     label = "with the frozen verification module (build-only check)" if frozen_manifest else "board manifest, pinned lwIP options"
     log(f"Building firmware for BOARD={board} ({label})")
@@ -360,9 +360,9 @@ UNIX_SETTRACE_BUILD_DIR = "build-settrace"
 
 
 def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None, *, settrace: bool = False) -> Path:
-    """Builds a Unix port variant; needs mpy-cross, takes frozen_manifest like build_firmware().
-    settrace=False is the test rig, True is --coverage's own binary (see the constants above).
-    Always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1)."""
+    # Builds a Unix port variant; needs mpy-cross, takes frozen_manifest like build_firmware().
+    # settrace=False is the test rig, True is --coverage's own binary (see the constants above).
+    # Always apply_unix_kbd_intr_override() for the safe SIGINT path (Part B.14.1).
     variant = "settrace, for --coverage" if settrace else "settrace-free, the test rig"
     label = f"{variant}, with the frozen verification module" if frozen_manifest else variant
     log(f"Building the MicroPython Unix port ({label})")
@@ -400,9 +400,9 @@ def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, froze
 
 
 def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
-    """Wipes every build-artifact directory but no git clone, so the setup that follows rebuilds
-    from scratch without re-cloning multi-gigabyte trees. The firmware/Unix-port/picotool steps
-    already clear their own; this extends that to mpy-cross's build/, which nothing else clears."""
+    # Wipes every build-artifact directory but no git clone, so the setup that follows rebuilds
+    # from scratch without re-cloning multi-gigabyte trees. The firmware/Unix-port/picotool steps
+    # already clear their own; this extends that to mpy-cross's build/, which nothing else clears.
     log("Cleaning all build-artifact directories")
     targets = [
         toolchain_dir / "picotool" / "build",
@@ -426,8 +426,8 @@ FROZEN_MODULE_SUBDIR = "frozen_module"
 
 
 def write_frozen_verify_test(test_dir: Path) -> Path:
-    """Step 1 of run_verification_sequence(): the one .py file cross-compiled/frozen/imported at
-    every later step - see FROZEN_VERIFY_PY."""
+    # Step 1 of run_verification_sequence(): the one .py file cross-compiled/frozen/imported at
+    # every later step - see FROZEN_VERIFY_PY.
     module_dir = test_dir / FROZEN_MODULE_SUBDIR
     module_dir.mkdir()
     test_file = module_dir / f"{FROZEN_VERIFY_MODULE}.py"
@@ -436,9 +436,9 @@ def write_frozen_verify_test(test_dir: Path) -> Path:
 
 
 def cross_compile_frozen_verify_test(mpy_cross_binary: Path, test_file: Path) -> Path:
-    """Step 3: cross-compiles the test file standalone (invoking mpy-cross directly, not via a
-    manifest's freeze()) to prove mpy-cross itself works, independently of the freeze/build
-    pipeline exercised by steps 4 and 6."""
+    # Step 3: cross-compiles the test file standalone (invoking mpy-cross directly, not via a
+    # manifest's freeze()) to prove mpy-cross itself works, independently of the freeze/build
+    # pipeline exercised by steps 4 and 6.
     log("Cross-compiling the verification test file to prove mpy-cross works standalone")
     run([str(mpy_cross_binary), str(test_file)], env=build_env())
     compiled = test_file.with_suffix(".mpy")
@@ -449,18 +449,18 @@ def cross_compile_frozen_verify_test(mpy_cross_binary: Path, test_file: Path) ->
 
 
 def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> None:
-    """Mirrors this repo's manifest convention (legacy/firmware/python/Manifest/manifest.py): the
-    port's own manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves relative to this file, so
-    manifest_path is written as a sibling of that subdir - never inside it, never freezing itself."""
+    # Mirrors this repo's manifest convention (legacy/firmware/python/Manifest/manifest.py): the
+    # port's own manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves relative to this file, so
+    # manifest_path is written as a sibling of that subdir - never inside it, never freezing itself.
     manifest_path.write_text(
         f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n',
     )
 
 
 def run_frozen_verify_on_unix(unix_binary: Path) -> None:
-    """Step 5: imports the frozen module *by name*, with no source .py file anywhere on disk for
-    the interpreter to find - the only way this can succeed is if the module was actually baked
-    into the binary as frozen bytecode, not merely compiled and left on disk somewhere."""
+    # Step 5: imports the frozen module *by name*, with no source .py file anywhere on disk for
+    # the interpreter to find - the only way this can succeed is if the module was actually baked
+    # into the binary as frozen bytecode, not merely compiled and left on disk somewhere.
     log("Importing the frozen verification module inside the Unix port and checking its result")
     out = run(
         [str(unix_binary), "-c", f"import {FROZEN_VERIFY_MODULE}; print({FROZEN_VERIFY_MODULE}.RESULT)"],
@@ -472,9 +472,9 @@ def run_frozen_verify_on_unix(unix_binary: Path) -> None:
 
 
 def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> None:
-    """Step 7: removes the two outputs the frozen-bytecode verification chain (steps 4-6) leaves -
-    the Unix port and RP2 firmware carrying the frozen test module, neither of which is kept. Leaves
-    mpy-cross/build and picotool alone: those are real deliverables, not verification artifacts."""
+    # Step 7: removes the two outputs the frozen-bytecode verification chain (steps 4-6) leaves -
+    # the Unix port and RP2 firmware carrying the frozen test module, neither of which is kept. Leaves
+    # mpy-cross/build and picotool alone: those are real deliverables, not verification artifacts.
     log("Cleaning up the frozen-bytecode verification build artifacts")
     targets = [
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
@@ -491,8 +491,8 @@ def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> Non
 
 
 def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board: str, jobs: int) -> tuple[Path, Path]:
-    """The 8-step frozen-bytecode verification chain, each step gating the next (SPECIFICATION.md
-    Part B.6 has the full account, including why no separate vanilla RP2 build is also kept)."""
+    # The 8-step frozen-bytecode verification chain, each step gating the next (SPECIFICATION.md
+    # Part B.6 has the full account, including why no separate vanilla RP2 build is also kept).
     with tempfile.TemporaryDirectory() as tmp:
         test_dir = Path(tmp)
 
@@ -522,9 +522,9 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
 
 def latest_stable_micropython_ref() -> str:
-    """Backs --latest. The only hand-tracked version is the MicroPython ref (versions.toml), so
-    "upgrade everything" reduces to writing the newest tag back there and letting
-    derive_pico_sdk_commit()/derive_picotool_ref() do the rest."""
+    # Backs --latest. The only hand-tracked version is the MicroPython ref (versions.toml), so
+    # "upgrade everything" reduces to writing the newest tag back there and letting
+    # derive_pico_sdk_commit()/derive_picotool_ref() do the rest.
     out = run(["git", "ls-remote", "--tags", MICROPYTHON_URL], env=network_env())
     candidates = []
     for line in out.splitlines():
@@ -550,9 +550,9 @@ def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: 
 
 
 def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
-    """Install or update - the steps are "How it works" in SPECIFICATION.md Part B.3. There is no
-    separate update branch: ensure_repo_at_ref() clones if missing and fetches otherwise, so
-    re-running against an existing --toolchain-dir *is* the update."""
+    # Install or update - the steps are "How it works" in SPECIFICATION.md Part B.3. There is no
+    # separate update branch: ensure_repo_at_ref() clones if missing and fetches otherwise, so
+    # re-running against an existing --toolchain-dir *is* the update.
     mpy_ref = args.micropython_ref
     if args.latest:
         mpy_ref = latest_stable_micropython_ref()
@@ -601,9 +601,9 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict[str,
 
 
 def run_test(args: argparse.Namespace, versions: dict[str, Any]) -> int:
-    """Re-verify an existing install, offline: just run_verification_sequence() again against
-    whatever is already checked out — see the module docstring and SPECIFICATION.md Part B.3's "How it
-    works" for why apt/git network access is never needed here."""
+    # Re-verify an existing install, offline: just run_verification_sequence() again against
+    # whatever is already checked out — see the module docstring and SPECIFICATION.md Part B.3's "How it
+    # works" for why apt/git network access is never needed here.
     board = versions["toolchain"]["board"]
     toolchain_dir = args.toolchain_dir.expanduser().resolve()
     micropython_dir = toolchain_dir / "micropython"
@@ -635,9 +635,9 @@ PICO_USB_VENDOR_ID = "2e8a"
 
 
 def _read_usb_id_vendor(tty_name: str, sys_tty_dir: Path) -> str | None:
-    """Walks up from <sys_tty_dir>/<name>/device (a USB *interface* node) to find the
-    idVendor file on its parent USB *device* node - pure /sys introspection, no lsusb/udevadm
-    binary needed (neither is guaranteed present on a minimal host)."""
+    # Walks up from <sys_tty_dir>/<name>/device (a USB *interface* node) to find the
+    # idVendor file on its parent USB *device* node - pure /sys introspection, no lsusb/udevadm
+    # binary needed (neither is guaranteed present on a minimal host).
     device_link = sys_tty_dir / tty_name / "device"
     if not device_link.exists():
         return None
@@ -650,9 +650,9 @@ def _read_usb_id_vendor(tty_name: str, sys_tty_dir: Path) -> str | None:
 
 
 def detect_pico_serial_devices(sys_tty_dir: Path = Path("/sys/class/tty"), dev_dir: Path = Path("/dev")) -> list[Path]:
-    """Every <dev_dir>/ttyACM*/ttyUSB* whose USB idVendor (read under sys_tty_dir) matches
-    PICO_USB_VENDOR_ID. Order is sorted-by-name for determinism, not connection order.
-    sys_tty_dir/dev_dir default to the real /sys and /dev but are overridable for tests."""
+    # Every <dev_dir>/ttyACM*/ttyUSB* whose USB idVendor (read under sys_tty_dir) matches
+    # PICO_USB_VENDOR_ID. Order is sorted-by-name for determinism, not connection order.
+    # sys_tty_dir/dev_dir default to the real /sys and /dev but are overridable for tests.
     if not sys_tty_dir.is_dir():
         return []
     found = []
@@ -667,9 +667,9 @@ def detect_pico_serial_devices(sys_tty_dir: Path = Path("/sys/class/tty"), dev_d
 
 
 def resolve_pico_device(explicit: str | None) -> Path:
-    """--device always wins over auto-detection. Otherwise requires exactly one vendor-ID match
-    - ambiguous (multiple boards plugged in) or absent (nothing plugged in / permissions issue)
-    is a hard error naming the escape hatch, never a silent guess at which device to use."""
+    # --device always wins over auto-detection. Otherwise requires exactly one vendor-ID match
+    # - ambiguous (multiple boards plugged in) or absent (nothing plugged in / permissions issue)
+    # is a hard error naming the escape hatch, never a silent guess at which device to use.
     if explicit:
         return Path(explicit)
     candidates = detect_pico_serial_devices()
@@ -686,8 +686,8 @@ def resolve_pico_device(explicit: str | None) -> Path:
 
 
 def ensure_dialout_group(*, skip: bool) -> None:
-    """Non-root USB serial access needs group membership, not a one-off chmod - see README.md's
-    "Real hardware access" section. Idempotent: does nothing if already a member."""
+    # Non-root USB serial access needs group membership, not a one-off chmod - see README.md's
+    # "Real hardware access" section. Idempotent: does nothing if already a member.
     if skip:
         log("Skipping dialout group check (--skip-apt)")
         return
@@ -721,9 +721,9 @@ def ensure_network_manager(*, skip_apt: bool) -> None:
 
 
 def ensure_iproute2(*, skip_apt: bool) -> None:
-    """detect_uplink_interface() needs the real `ip` command - present on essentially every real
-    Linux host but not on a stripped-down one, so it is checked/installed the same way
-    ensure_network_manager() handles nmcli rather than assumed."""
+    # detect_uplink_interface() needs the real `ip` command - present on essentially every real
+    # Linux host but not on a stripped-down one, so it is checked/installed the same way
+    # ensure_network_manager() handles nmcli rather than assumed.
     if shutil.which("ip"):
         return
     log("'ip' command not found - installing iproute2")
@@ -733,9 +733,9 @@ def ensure_iproute2(*, skip_apt: bool) -> None:
 
 
 def ensure_iptables(*, skip_apt: bool) -> None:
-    """bench_control.py's fault injection all shells out to `sudo iptables`, which Raspberry Pi OS
-    does not install by default - confirmed on the real bench Pi4 as a run failing with "sudo:
-    iptables: command not found" instead of injecting anything. Installed, never assumed."""
+    # bench_control.py's fault injection all shells out to `sudo iptables`, which Raspberry Pi OS
+    # does not install by default - confirmed on the real bench Pi4 as a run failing with "sudo:
+    # iptables: command not found" instead of injecting anything. Installed, never assumed.
     if shutil.which("iptables"):
         return
     log("'iptables' command not found - installing iptables")
@@ -745,9 +745,9 @@ def ensure_iptables(*, skip_apt: bool) -> None:
 
 
 def detect_uplink_interface() -> str:
-    """The network interface currently carrying the default route - i.e. "has internet" -
-    parsed from `ip route get`, which reports the real interface the kernel would actually
-    route a packet through rather than just reading static config."""
+    # The network interface currently carrying the default route - i.e. "has internet" -
+    # parsed from `ip route get`, which reports the real interface the kernel would actually
+    # route a packet through rather than just reading static config.
     out = run(["ip", "-o", "route", "get", "1.1.1.1"], env=build_env())
     match = re.search(r"\bdev\s+(\S+)", out)
     if not match:
@@ -756,9 +756,9 @@ def detect_uplink_interface() -> str:
 
 
 def get_interface_mac(iface: str) -> str:
-    """The real, permanent hardware MAC of an interface, straight from the kernel - never a
-    NetworkManager-synthesized or bridge-inherited one. Why pinning `bridge.mac-address` to it
-    matters: ensure_bench_bridge()'s own note, and CLAUDE.md's "Hard rules"."""
+    # The real, permanent hardware MAC of an interface, straight from the kernel - never a
+    # NetworkManager-synthesized or bridge-inherited one. Why pinning `bridge.mac-address` to it
+    # matters: ensure_bench_bridge()'s own note, and CLAUDE.md's "Hard rules".
     out = run(["ip", "-o", "link", "show", iface], env=build_env())
     match = re.search(r"link/ether\s+(\S+)", out)
     if not match:
@@ -771,8 +771,8 @@ NMCLI_DEVICE_STATUS_FIELDS = 2
 
 
 def detect_free_wifi_interface(exclude: str) -> str:
-    """A WiFi adapter not already acting as the uplink - requires exactly one candidate for the
-    same reason resolve_pico_device() does: an ambiguous pick is a hard error, not a guess."""
+    # A WiFi adapter not already acting as the uplink - requires exactly one candidate for the
+    # same reason resolve_pico_device() does: an ambiguous pick is a hard error, not a guess.
     out = run(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"], env=build_env())
     candidates = []
     for line in out.strip().splitlines():
@@ -807,17 +807,17 @@ def existing_bench_ap_ssid() -> str:
 
 
 def generate_bench_ap_credentials() -> tuple[str, str]:
-    """A fresh, random, test-only SSID/password per bridge creation - never a fixed default, never a
-    committed one (CLAUDE.md credential rule; tests_hardware/README.md's recipe)."""
+    # A fresh, random, test-only SSID/password per bridge creation - never a fixed default, never a
+    # committed one (CLAUDE.md credential rule; tests_hardware/README.md's recipe).
     ssid = f"sensors-bench-{secrets.token_hex(3)}"
     password = secrets.token_urlsafe(12)
     return ssid, password
 
 
 def ensure_br_netfilter() -> None:
-    """Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, without which
-    bench_control.py's fault injection is a silent no-op (SPECIFICATION.md Part B.13). Ungated by
-    bench_ap_exists(), being a host-kernel setting independent of the bridge profile."""
+    # Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, without which
+    # bench_control.py's fault injection is a silent no-op (SPECIFICATION.md Part B.13). Ungated by
+    # bench_ap_exists(), being a host-kernel setting independent of the bridge profile.
     run(["sudo", "modprobe", "br_netfilter"])
     run(["sudo", "sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"])
 
@@ -843,9 +843,9 @@ def ensure_br_netfilter() -> None:
 
 
 def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: str | None, password: str | None) -> str:
-    """Idempotent: an existing br0-wifi-ap is reported, never recreated, but br_netfilter and the
-    fixed 2.4GHz channel are re-enforced regardless since it could be missing either. A bridge MAC
-    mismatch is flagged, never auto-repaired (SPECIFICATION.md Part B.13)."""
+    # Idempotent: an existing br0-wifi-ap is reported, never recreated, but br_netfilter and the
+    # fixed 2.4GHz channel are re-enforced regardless since it could be missing either. A bridge MAC
+    # mismatch is flagged, never auto-repaired (SPECIFICATION.md Part B.13).
     ensure_br_netfilter()
 
     if bench_ap_exists():
@@ -929,8 +929,8 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
 
 
 def pinned_node_major(repo_root: Path) -> str | None:
-    """The Node major this project pins, read from .nvmrc - the same file README tells a human to
-    point `nvm use` at, so there is exactly one pin rather than a second one living here."""
+    # The Node major this project pins, read from .nvmrc - the same file README tells a human to
+    # point `nvm use` at, so there is exactly one pin rather than a second one living here.
     nvmrc = repo_root / ".nvmrc"
     if not nvmrc.exists():
         return None
@@ -951,9 +951,9 @@ def node_on_path_matches(major: str) -> bool:
 
 
 def node_tarball_name(major: str, env: dict[str, str]) -> str:
-    """The exact release filename for this host's architecture, resolved from the Node dist
-    SHASUMS for the pinned major. Resolved rather than assembled: the patch version moves, and
-    guessing it would make this installer fail every time upstream publishes a new one."""
+    # The exact release filename for this host's architecture, resolved from the Node dist
+    # SHASUMS for the pinned major. Resolved rather than assembled: the patch version moves, and
+    # guessing it would make this installer fail every time upstream publishes a new one.
     machine = os.uname().machine
     arch = {"aarch64": "arm64", "arm64": "arm64", "x86_64": "x64"}.get(machine)
     if arch is None:
@@ -969,9 +969,9 @@ def node_tarball_name(major: str, env: dict[str, str]) -> str:
 
 
 def ensure_node(toolchain_dir: Path, repo_root: Path) -> Path | None:
-    """Installs the .nvmrc-pinned Node into the managed toolchain directory and returns its bin dir;
-    None when a matching Node is already on PATH. Deliberately not an apt package - see README.md's
-    "Website tooling" for why, and for what a matching Node on PATH means."""
+    # Installs the .nvmrc-pinned Node into the managed toolchain directory and returns its bin dir;
+    # None when a matching Node is already on PATH. Deliberately not an apt package - see README.md's
+    # "Website tooling" for why, and for what a matching Node on PATH means.
     major = pinned_node_major(repo_root)
     if major is None:
         log("No .nvmrc - leaving Node to the caller")
@@ -1014,9 +1014,9 @@ def ensure_node(toolchain_dir: Path, repo_root: Path) -> Path | None:
 
 
 def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip_npm: bool, skip_apt: bool) -> None:
-    """The Python (`uv sync`) and website (`npm ci`) dev-tooling installs every tier needs. Runs with
-    env=None (inherit the caller's), unlike every other subprocess here: build_env()'s fixed PATH
-    would hide the caller's own uv/npm install."""
+    # The Python (`uv sync`) and website (`npm ci`) dev-tooling installs every tier needs. Runs with
+    # env=None (inherit the caller's), unlike every other subprocess here: build_env()'s fixed PATH
+    # would hide the caller's own uv/npm install.
     log("Installing Python project dependencies (uv sync)")
     run_retried(["uv", "sync"], cwd=repo_root)
     if skip_npm:
@@ -1042,9 +1042,9 @@ def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip
 
 
 def ensure_playwright_browser(repo_root: Path, env: dict[str, str] | None, *, skip_apt: bool) -> None:
-    """Vitest drives a real Chromium, not jsdom (SPECIFICATION.md Part H), so `npm ci` alone leaves
-    `npm test` unable to start. Only the OS-level libraries need root, hence the separate
-    `install-deps` call; non-fatal throughout, so a Python-only machine still finishes `env`."""
+    # Vitest drives a real Chromium, not jsdom (SPECIFICATION.md Part H), so `npm ci` alone leaves
+    # `npm test` unable to start. Only the OS-level libraries need root, hence the separate
+    # `install-deps` call; non-fatal throughout, so a Python-only machine still finishes `env`.
     log("Installing the Playwright Chromium build vitest runs against")
     # try/except rather than check=False: run() returns stdout either way, so an exception is the
     # only signal it gives - and this must stay non-fatal without silently swallowing a failure.
@@ -1063,9 +1063,9 @@ def ensure_playwright_browser(repo_root: Path, env: dict[str, str] | None, *, sk
 
 
 def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
-    """Tiered dev-environment setup, each tier a strict superset of the one before it: generic
-    (project deps + the firmware/Unix-port toolchain), flash (+ USB serial access and a real board),
-    bench (+ a WiFi bridge/AP on this host). Per-tier detail: README.md's environment-tiers table."""
+    # Tiered dev-environment setup, each tier a strict superset of the one before it: generic
+    # (project deps + the firmware/Unix-port toolchain), flash (+ USB serial access and a real board),
+    # bench (+ a WiFi bridge/AP on this host). Per-tier detail: README.md's environment-tiers table.
     run_setup(args, versions_path, versions)
     run_project_dependency_install(REPO_ROOT, args.toolchain_dir, skip_npm=args.skip_npm, skip_apt=args.skip_apt)
 

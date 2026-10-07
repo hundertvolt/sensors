@@ -10,19 +10,19 @@ from asy_scd30_driver import SCD30_Reader
 
 # @tunable l3.scd30_real_irq_edge_fast_path_deadline_s = 5.0
 FAST_PATH_DEADLINE_S = 5.0  # comfortably above the SCD30's own ~2s natural interval + IRQ latency,
-# comfortably below the self-healing fallback's own ~10s worst case (TRIGGER_SEC below).
-TRIGGER_SEC = 10
+# comfortably below the self-healing fallback's own ~10s worst case (TRIGGER_S below).
+TRIGGER_S = 10
 # @tunable l3.scd30_real_irq_edge_poll_ms = 100
 _POLL_MS = 100
 
 
 async def _main() -> None:
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c1, 11, trigger_sec=TRIGGER_SEC, max_module_error=999)
+    reader = SCD30_Reader(i2c1, 11, trigger_s=TRIGGER_S, max_module_error=999)
     reader.start_timer()  # wires the real GPIO IRQ (rising edge) + the 500ms self-healing poll timer
 
-    read_task = asyncio.create_task(reader.read_loop())
-    init_irq_task = asyncio.create_task(reader.scd_init_irq())
+    read_task = asyncio.create_task(reader._read_loop())
+    init_irq_task = asyncio.create_task(reader._irq_loop())
 
     start = time.ticks_ms()
     data = None
@@ -49,7 +49,7 @@ async def _main() -> None:
 
     if data is not None and data.CO2 is not None:
         elapsed_s = time.ticks_diff(time.ticks_ms(), start) / 1000.0
-        print(f"RESULT: PASS real reading arrived after {elapsed_s:.2f}s (self-heal fallback threshold was ~{TRIGGER_SEC}s)")
+        print(f"RESULT: PASS real reading arrived after {elapsed_s:.2f}s (self-heal fallback threshold was ~{TRIGGER_S}s)")
     else:
         print(f"RESULT: FAIL no reading arrived within {FAST_PATH_DEADLINE_S}s - neither the real IRQ nor the self-healing fallback appears to have driven a read")
 

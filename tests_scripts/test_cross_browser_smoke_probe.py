@@ -31,8 +31,8 @@ def _pick(definitions_path: Path) -> "subprocess.CompletedProcess[str]":
 
 
 def _expected_probe(definitions: "dict[str, Any]") -> "dict[str, Any] | None":
-    """The rule restated independently: the first number field, not float, with finite bounds at least
-    _MIN_SPAN apart, in a submitting group, in definitions order."""
+    # The rule restated independently: the first number field, not float, with finite bounds at least
+    # _MIN_SPAN apart, in a submitting group, in definitions order.
     for section in definitions["sections"]:
         for group in section["groups"]:
             if group.get("submit") is not True:

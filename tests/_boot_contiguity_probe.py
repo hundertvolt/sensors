@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from system_service import SystemService
+    from asy_system_service import SystemService
 
     _Starter = Callable[[], asyncio.Task[Any]]
 
@@ -53,9 +53,9 @@ def _dump(label: str) -> None:
 
 
 class _ProbeGc:
-    """Stands in for the `gc` module at the emitted collect sites: dumps a map at the positions
-    asked for, then forwards to the real collect only on the live arm. Module-attribute
-    reassignment is this project's mocking mechanism (MicroPython has no unittest.mock)."""
+    # Stands in for the `gc` module at the emitted collect sites: dumps a map at the positions
+    # asked for, then forwards to the real collect only on the live arm. Module-attribute
+    # reassignment is this project's mocking mechanism (MicroPython has no unittest.mock).
 
     # A dumped position collects on BOTH arms, via _dump() - the seam map has to be post-collect or
     # the two arms anchor at different places and nothing is comparable. So the suppressed arm keeps
@@ -75,17 +75,18 @@ class _ProbeGc:
         self.calls += 1
 
 
-async def _drive_timers(sysfunct: "SystemService", timer_starters: "list[Callable[[], None]]") -> bool:
-    # main()'s own next step. tests/machine.py's Timer fake never fires by itself, so the chain is
-    # advanced with the same sequencer_timer.trigger() tests/test_system_service.py uses.
-    task = asyncio.create_task(sysfunct.start_timers(timer_starters))
-    for _ in range(max(len(timer_starters) - 1, 0)):
+async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Callable[[], None]]", timer_starters: "list[Callable[[], None]]") -> bool:
+    # main()'s own next step. tests/machine.py's Timer fake never fires by itself, so each armed stagger
+    # wait is fired with the same _sequencer_timer.trigger() tests/test_asy_system_service.py uses.
+    task = asyncio.create_task(sysfunct.start_timers(trigger_starters, timer_starters))
+    deadline = time.ticks_add(time.ticks_ms(), int(_TIMERS_TIMEOUT_S * 1000))
+    while not task.done() and time.ticks_diff(deadline, time.ticks_ms()) > 0:
         await asyncio.sleep(0)
-        sysfunct.sequencer_timer.trigger()
-    try:
-        await asyncio.wait_for(task, _TIMERS_TIMEOUT_S)
-    except asyncio.TimeoutError:
+        if sysfunct._sequencer_timer.callback is not None:
+            sysfunct._sequencer_timer.trigger()
+    if not task.done():
         print(f"NOTE start_timers did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
+        task.cancel()
         return False
     return True
 
@@ -125,12 +126,12 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
     live = arm == _ARM_LIVE
     asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
     module: Any = __import__(f"sensortask_{device}")
-    import system_service
+    import asy_system_service
 
     batch_gc = _ProbeGc("batch", live=live, dump_at=(0,))
     starter_gc = _ProbeGc("starter", live=live, dump_at=())
     module.gc = batch_gc
-    system_service.gc = starter_gc  # type: ignore[assignment]
+    asy_system_service.gc = starter_gc  # type: ignore[assignment]
 
     _dump("baseline")
     started_ms = time.ticks_ms()
@@ -143,10 +144,11 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
         print("RESULT: FAIL build_system() completed but left sysfunct unset")
         return 1
     task_starters = module._collect_task_starters()
+    trigger_starters = module._collect_trigger_starters()
     timer_starters = module._collect_timer_starters()
-    print(f"LISTS starters={len(task_starters)} timers={len(timer_starters)} batch_collects={batch_gc.calls}")
+    print(f"LISTS starters={len(task_starters)} triggers={len(trigger_starters)} timers={len(timer_starters)} batch_collects={batch_gc.calls}")
 
-    if not await _drive_timers(sysfunct, timer_starters):
+    if not await _drive_timers(sysfunct, trigger_starters, timer_starters):
         return 1
     if not await _run_starter_loop(sysfunct, task_starters):
         return 1

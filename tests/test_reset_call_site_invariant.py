@@ -12,12 +12,12 @@ def _src_files() -> "list[str]":
 
 
 def test_reset_and_bootloader_calls_confined_to_system_service() -> None:
-    # machine.reset()/machine.bootloader() are imported in system_service.py as system_reset/
+    # machine.reset()/machine.bootloader() are imported in asy_system_service.py as system_reset/
     # system_bootloader and called only from _reboot()'s own action callbacks - any other call site
-    # would bypass storage_pause()/the _RESET_DELAY wait this invariant relies on.
+    # would bypass _storage_pause()/the _RESET_DELAY wait this invariant relies on.
     offenders = []
     for filename in _src_files():
-        if filename == "system_service.py":
+        if filename == "asy_system_service.py":
             continue
         with open(_SRC_DIR + "/" + filename) as f:
             source = f.read()

@@ -173,8 +173,8 @@ def test_bash_and_python_render_the_same_input_byte_for_byte(emitter: ModuleType
 
 
 def _js_input(runner: str, exit_code: int, items: list[tuple[str, str, str]], commit: str, kwargs: Opts) -> str:
-    """The canned-input contract of `node tests_js/_summary_layout.js <json>`: one JSON argument, the
-    block on stdout. `commit` is passed in because the layout is pure (no git, no Node built-ins)."""
+    # The canned-input contract of `node tests_js/_summary_layout.js <json>`: one JSON argument, the
+    # block on stdout. `commit` is passed in because the layout is pure (no git, no Node built-ins).
     extra = kwargs.get("extra") or []
     return json.dumps(
         {

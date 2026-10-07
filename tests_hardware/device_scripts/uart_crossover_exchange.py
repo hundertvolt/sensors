@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -73,7 +73,7 @@ async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bo
     return task.done()
 
 
-async def _join_listener(wdt: "machine.WDT", responder: UART_Comm, listener: "asyncio.Task[ListenResult]") -> None:
+async def _join_listener(wdt: "machine.WDT", responder: UARTComm, listener: "asyncio.Task[ListenResult]") -> None:
     # clear() is the module's own documented unstick for a listener parked in that unbounded read
     # (SPECIFICATION.md Part J.5) - it cannot finish on its own once its frame never arrived.
     if await _settled(wdt, listener):
@@ -89,8 +89,8 @@ async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UART_Comm(
+    initiator = UARTComm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
+    responder = UARTComm(
         uart1,
         ROLE_RESPONDER,
         payload_size=PAYLOAD_SIZE,

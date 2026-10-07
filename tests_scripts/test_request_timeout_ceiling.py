@@ -23,9 +23,9 @@ _HAMMER_JOIN_TIMEOUT_S = 2.0
 
 
 def _default_for_parameter(source_path: Path, param: str) -> float:
-    """The literal default of a keyword parameter, found anywhere in a module's function/method
-    signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it is
-    read with ast, never imported - same posonlyargs+args/defaults idiom as buildgen/defaults.py."""
+    # The literal default of a keyword parameter, found anywhere in a module's function/method
+    # signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it is
+    # read with ast, never imported - same posonlyargs+args/defaults idiom as buildgen/defaults.py.
     tree = ast.parse(source_path.read_text())
     # Collected rather than short-circuited on the first hit: a second signature declaring the same
     # parameter with a different default would make "the" ceiling ambiguous, and silently pinning
@@ -52,7 +52,7 @@ def _default_for_parameter(source_path: Path, param: str) -> float:
 
 
 def _module_constant(source_path: Path, name: str) -> float:
-    """A module-level numeric constant's literal value, plain (`NAME = 5.0`) or `const()`-wrapped (`NAME = const(5.0)`)."""
+    # A module-level numeric constant's literal value, plain (`NAME = 5.0`) or `const()`-wrapped (`NAME = const(5.0)`).
     tree = ast.parse(source_path.read_text())
     for node in tree.body:
         if not (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)):

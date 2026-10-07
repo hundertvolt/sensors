@@ -117,7 +117,7 @@ def _value(text: str, i: int) -> int:
 
 
 def check_strict_json(body: "bytes | bytearray | str") -> None:
-    """Raises ValueError naming the offset unless `body` is exactly one strict JSON value."""
+    # Raises ValueError naming the offset unless `body` is exactly one strict JSON value.
     text = body if isinstance(body, str) else bytes(body).decode()
     end = _ws(text, _value(text, _ws(text, 0)))
     if end != len(text):

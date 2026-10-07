@@ -16,7 +16,7 @@ _INLINED = re.compile(r'<script type="application/json" id="inlined-definitions"
 
 
 def _frozen_file(module_text: str, served_path: str) -> bytes:
-    """One file's gzipped bytes out of a freezefs module, read with ast (the module mounts on import)."""
+    # One file's gzipped bytes out of a freezefs module, read with ast (the module mounts on import).
     table = re.search(rf"\(\s*'{re.escape(served_path)}',\s*\(\s*(_f\d+),", module_text)
     assert table is not None, f"{served_path} is not served by this frozen module"
     for node in ast.parse(module_text).body:

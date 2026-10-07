@@ -85,7 +85,7 @@ const DEFS = {
                     label: "SCD30",
                     submit: true,
                     fields: [
-                        { key: "MeasInt", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
+                        { key: "MeasInterval", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
                         // min: 0 deliberately, to catch a form input coerced to the number 0 by
                         // accident (e.g. non-numeric text) rather than one genuinely submitted as 0.
                         { key: "COffset", label: "Calibration Offset", kind: "number", min: 0, max: 500 },
@@ -133,14 +133,14 @@ const DEFS = {
                     submitLabel: "Flash LED",
                     fields: [
                         {
-                            key: "lightCmdLED",
+                            key: "LightCmdLED",
                             label: "LED Flash",
                             kind: "composite",
                             subFields: [
-                                { key: "r", label: "Red", kind: "number", min: 0, max: 255 },
-                                { key: "g", label: "Green", kind: "number", min: 0, max: 255 },
-                                { key: "b", label: "Blue", kind: "number", min: 0, max: 255 },
-                                { key: "t", label: "Time (s)", kind: "number", min: 0.5, max: 60.0 },
+                                { key: "R", label: "Red", kind: "number", min: 0, max: 255 },
+                                { key: "G", label: "Green", kind: "number", min: 0, max: 255 },
+                                { key: "B", label: "Blue", kind: "number", min: 0, max: 255 },
+                                { key: "T", label: "Time (s)", kind: "number", min: 0.5, max: 60.0 },
                             ],
                         },
                     ],
@@ -165,7 +165,7 @@ const DATA = {
         // A lit scene, and a coherent one: HSB.B is max(R, G, B) as the real driver computes it.
         COLOUR: { Lux: 337.4219, RGB: { R: 0.2814159, G: 0.6337, B: 0.151 }, HSB: { H: 78.4, S: 0.552, B: 0.6337 }, CCT: null },
     },
-    sensorsConfig: { SCD30: { MeasInt: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } },
+    sensorsConfig: { SCD30: { MeasInterval: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } },
     networkingConfig: {},
     systemConfig: {},
     notificationConfig: {},
@@ -256,9 +256,9 @@ describe("renderSection", () => {
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
 
-        await waitFor(() => main.querySelector('[data-current-value-for="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-current-value-for="MeasInterval"]') !== null);
 
-        const caption = mustQuery(main, '[data-current-value-for="MeasInt"]');
+        const caption = mustQuery(main, '[data-current-value-for="MeasInterval"]');
         expect(caption.textContent).toContain("5");
 
         const toggle = mustQuery(main, '[data-field-key="MeasEnabled"]');
@@ -270,9 +270,9 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]'));
         input.value = "3000"; // out of range (max 1800)
         mustQuery(main, ".apply-button").click();
 
@@ -280,19 +280,19 @@ describe("renderSection", () => {
 
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("invalid");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInt: Invalid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInterval: Invalid");
         // The field's own box carries its own result too, not just the card-level worst status
         // (legacy per-field granularity, restored alongside the new accent-stripe presentation).
-        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInterval"]').dataset.applyStatus).toBe("invalid");
     });
 
     it("colors each individual field's own box by its own result, not just the card's worst status", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "3000"; // out of range
+        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]')).value = "3000"; // out of range
         // COffset and MeasEnabled are left untouched on purpose: the sparse-PUT convention omits
         // a blank number input, and collectGroupBody() omits a non-dispatch toggle or enum the
         // same way once it matches its current value.
@@ -303,7 +303,7 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("invalid"); // worst-first across the whole group
 
-        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInterval"]').dataset.applyStatus).toBe("invalid");
         // Neither COffset nor MeasEnabled was part of this submission at all (both sparse-omitted) -
         // no per-field result to show, matching the legacy behavior this restores: only fields
         // present in the response's own result get colored.
@@ -318,8 +318,8 @@ describe("renderSection", () => {
         await waitFor(() => main.querySelector('[data-field-key="MeasEnabled"]') !== null);
 
         // MeasEnabled/Oversampling both start at their real current value (DATA.sensorsConfig.SCD30)
-        // and are never touched - only MeasInt is genuinely changed.
-        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "10";
+        // and are never touched - only MeasInterval is genuinely changed.
+        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]')).value = "10";
         mustQuery(main, ".apply-button").click();
 
         await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
@@ -327,7 +327,7 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("valid");
         // Only the field that actually changed shows up in the result text.
-        expect(mustQuery(card, ".apply-result").textContent).toBe("OK — MeasInt: Valid");
+        expect(mustQuery(card, ".apply-result").textContent).toBe("OK — MeasInterval: Valid");
     });
 
     it("still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change)", async () => {
@@ -349,7 +349,7 @@ describe("renderSection", () => {
 
     it("submits a numeric-valued enum field as a number, not a stringified one (regression)", async () => {
         // A <select>'s DOM .value is always a string, even where the real value is a number
-        // (BMP3XX's PressOvers). render.js must coerce it back before PUTing and mock-server.js
+        // (BMP3XX's PresOvers). render.js must coerce it back before PUTing and mock-server.js
         // must not force a string compare, or every numeric enum PUT reads back "Invalid".
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
@@ -731,34 +731,34 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
-        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="LightCmdLED"]') !== null);
 
-        const grid = mustQuery(main, '[data-field-key="lightCmdLED"]');
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="r"]')).value = "abc";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="g"]')).value = "50";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="b"]')).value = "50";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="t"]')).value = "1";
+        const grid = mustQuery(main, '[data-field-key="LightCmdLED"]');
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="R"]')).value = "abc";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="G"]')).value = "50";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="B"]')).value = "50";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="T"]')).value = "1";
         mustQuery(main, ".apply-button").click();
 
         await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
         expect(card.dataset.applyStatus).toBe("failed");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Failed");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Failed");
     });
 
     it("reports Failed (not Invalid) for a composite field submitted with only some subfields filled", async () => {
-        // collectGroupBody() sends only the subfields the visitor filled in, and lightCmdLED's
+        // collectGroupBody() sends only the subfields the visitor filled in, and LightCmdLED's
         // callback indexes them directly - so a missing one raises KeyError there and reports
         // "Failed". "Invalid" is reserved for a payload that is not a dict at all (Part A.8).
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
-        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="LightCmdLED"]') !== null);
 
-        const grid = mustQuery(main, '[data-field-key="lightCmdLED"]');
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="r"]')).value = "100";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="g"]')).value = "50";
+        const grid = mustQuery(main, '[data-field-key="LightCmdLED"]');
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="R"]')).value = "100";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="G"]')).value = "50";
         // b and t left blank on purpose.
         mustQuery(main, ".apply-button").click();
 
@@ -766,37 +766,37 @@ describe("renderSection", () => {
 
         const card = mustQuery(main, '[data-group-key="flash"]');
         expect(card.dataset.applyStatus).toBe("failed");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Failed");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Failed");
     });
 
-    it("reports Valid for a fully-specified composite lightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)", async () => {
+    it("reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
-        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="LightCmdLED"]') !== null);
 
-        const grid = mustQuery(main, '[data-field-key="lightCmdLED"]');
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="r"]')).value = "10";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="g"]')).value = "20";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="b"]')).value = "30";
-        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="t"]')).value = "1";
+        const grid = mustQuery(main, '[data-field-key="LightCmdLED"]');
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="R"]')).value = "10";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="G"]')).value = "20";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="B"]')).value = "30";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="T"]')).value = "1";
         mustQuery(main, ".apply-button").click();
 
         await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
         expect(card.dataset.applyStatus).toBe("valid");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Valid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Valid");
     });
 
-    it("skips the PUT and shows a neutral message when lightCmdLED's Apply is clicked with every subfield left blank", async () => {
-        // The "flash" group holds only the composite lightCmdLED, which collectGroupBody() omits
+    it("skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank", async () => {
+        // The "flash" group holds only the composite LightCmdLED, which collectGroupBody() omits
         // entirely when no subfield was touched - the same sparse-PUT convention every other kind
         // follows. The composite instance of the "nothing to submit" path SSID and SystemCmd cover.
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
-        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="LightCmdLED"]') !== null);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
         mustQuery(card, ".apply-button").click();
@@ -960,9 +960,9 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]'));
         input.value = "10";
         controls.nextFailure = "network";
         mustQuery(main, ".apply-button").click();
@@ -975,7 +975,7 @@ describe("renderSection", () => {
         // The whole request never got a per-field breakdown at all, so every submitted field's own
         // box shows the same "internal or communication error" purple as the card, not silently
         // nothing (legacy's own PUT catch handler never colored anything - console.error only).
-        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("failed");
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInterval"]').dataset.applyStatus).toBe("failed");
         // The Apply button is re-enabled afterward, not left permanently stuck.
         expect(/** @type {HTMLButtonElement} */ (mustQuery(main, ".apply-button")).disabled).toBe(false);
     });
@@ -988,9 +988,9 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]'));
         input.value = "10";
         controls.nextFailure = "malformed-body";
         mustQuery(main, ".apply-button").click();
@@ -1007,9 +1007,9 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]'));
         input.value = "10";
         controls.nextFailure = 500;
         mustQuery(main, ".apply-button").click();
@@ -1026,9 +1026,9 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]'));
         input.value = "10";
         controls.nextFailure = "empty-body";
         mustQuery(main, ".apply-button").click();
@@ -1046,9 +1046,9 @@ describe("renderSection", () => {
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
-        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInterval"]') !== null);
 
-        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInterval"]'));
         input.value = "10"; // in range - would normally read back Valid
         controls.nextFailure = "partial-result";
         mustQuery(main, ".apply-button").click();
@@ -1057,8 +1057,8 @@ describe("renderSection", () => {
 
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("failed"); // worst-first: Failed beats whatever the other fields say
-        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInt: Failed");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInterval: Failed");
         // The reconciled Failed status reaches the field's own box too, not just the card border.
-        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("failed");
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInterval"]').dataset.applyStatus).toBe("failed");
     });
 });

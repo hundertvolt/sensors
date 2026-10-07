@@ -404,8 +404,8 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
 
     def both_asserted() -> bool:
         return (
-            async_device.cs_pin.value() == async_device.cs_active_value
-            and sync_device.cs_pin.value() == sync_device.cs_active_value
+            async_device._cs_pin.value() == async_device._cs_active_value
+            and sync_device._cs_pin.value() == sync_device._cs_active_value
         )
 
     async def async_worker() -> None:
@@ -421,7 +421,7 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
         # whole CS cycle synchronously, release, then yield - never yielding with CS asserted.
         nonlocal overlap_observed, sync_done
         for _ in range(rounds):
-            await bus.async_lock.acquire()
+            await bus.bus_lock.acquire()
             try:
                 sync_device.session_begin()
                 try:
@@ -430,7 +430,7 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
                 finally:
                     sync_device.session_end()
             finally:
-                bus.async_lock.release()
+                bus.bus_lock.release()
             sync_done += 1
             await asyncio.sleep(0)
 
@@ -441,9 +441,9 @@ def test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap() -
     assert not overlap_observed
     assert async_done == rounds
     assert sync_done == rounds
-    assert async_device.cs_pin.value() == 1  # both back to inactive afterwards
-    assert sync_device.cs_pin.value() == 1
-    assert not bus.async_lock.locked()
+    assert async_device._cs_pin.value() == 1  # both back to inactive afterwards
+    assert sync_device._cs_pin.value() == 1
+    assert not bus.bus_lock.locked()
 
 
 def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_raises() -> None:
@@ -459,7 +459,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
 
     async def scenario() -> bool:
         raised = False
-        await bus.async_lock.acquire()
+        await bus.bus_lock.acquire()
         try:
             faulting.session_begin()
             try:
@@ -469,7 +469,7 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
             finally:
                 faulting.session_end()
         finally:
-            bus.async_lock.release()
+            bus.bus_lock.release()
         nonlocal neighbour_ok
         async with neighbour:
             neighbour_ok = True
@@ -478,8 +478,8 @@ def test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_rai
 
     assert run(scenario())
     assert neighbour_ok
-    assert not bus.async_lock.locked()
-    assert faulting.cs_pin.value() == 1
+    assert not bus.bus_lock.locked()
+    assert faulting._cs_pin.value() == 1
 
 if __name__ == "__main__":
     import microtest

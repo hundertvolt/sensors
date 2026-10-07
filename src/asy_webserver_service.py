@@ -3,16 +3,17 @@
 
 import asyncio
 import json
+import math
 from collections import namedtuple
 
 # Typed via the vendored upstream stub (ext/typings/microdot/); firmware freezes ext/ and src/ flat together.
 from microdot import Request, Response, abort, redirect, send_file
 from micropython import const
 
-import api_response as ar
-from base_classes import LockedCounter
-from config_manager import type_or_range_error
-from print_log import DEFAULT_LOG, LogConfig, make_logger
+import asy_api_response as ar
+from asy_base_classes import LockedCounter
+from asy_config_manager import type_or_range_error
+from asy_print_log import DEFAULT_LOG, LogConfig, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -23,23 +24,29 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Coroutine, Iterable, Sequence
     from typing import Any, NamedTuple, Protocol, TypeVar
 
-    import config_manager as cm
-    from api_response import _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement)
-    from print_log import ErrorLog, PrintLogHistory
+    import asy_config_manager as cm
+    from asy_api_response import _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement)
+    from asy_base_classes import ErrorSource, TimerStarter
+    from asy_print_log import ErrorLog, PrintLogHistory
 
     _T = TypeVar("_T")
 
+    class _HasName(Protocol):
+        name: str
+
+    _Named = TypeVar("_Named", bound=_HasName)
+
     class _ModuleLike(Protocol):
-        # Structural stand-in for a registered sensor/settings/error-source module - every
-        # SensorReaderConfig subclass, NeopixelDriver, DNSServer and ConfigManager satisfies it
-        # (SPECIFICATION.md Part C.10). Only the subset a registration group calls is ever used.
+        # Structural stand-in for a registered sensor/settings module - every SensorReaderConfig
+        # subclass and ConfigManager satisfies it (SPECIFICATION.md Part C.10). Error sources are
+        # typed by ErrorSource instead. Only the subset a registration group calls is ever used.
         name: str
         pr: "Any"
 
+        async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> dict[str, str]: ...
         def get_cfg_schema(self) -> "cm.ConfigSchema": ...
-        async def get_dict_data(self) -> "dict[str, Any]": ...
         async def get_dict_cfg(self) -> "dict[str, Any]": ...
-        async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]": ...
+        async def get_dict_data(self) -> "dict[str, Any]": ...
         async def get_error_counter(self) -> "ErrorLog": ...
         async def reset_error_counter(self) -> None: ...
 
@@ -53,11 +60,11 @@ if TYPE_CHECKING:
         # The single asyncio Stream object MicroPython hands a start_server() callback as both
         # reader and writer; typings/'s CPython-derived StreamReader/StreamWriter split models
         # neither half of it completely (no aclose() at all), so this is the real surface.
-        async def readline(self) -> bytes: ...
-        async def readexactly(self, n: int) -> bytes: ...
-        async def awrite(self, data: bytes) -> None: ...
-        async def aclose(self) -> None: ...
         def get_extra_info(self, name: str) -> object: ...
+        async def aclose(self) -> None: ...
+        async def awrite(self, data: bytes) -> None: ...
+        async def readexactly(self, n: int) -> bytes: ...
+        async def readline(self) -> bytes: ...
 
     RouteHandler = Callable[..., Any]  # per-route handler shapes differ by design - Microdot's own
     # dispatch_request() accepts a Response, a dict, a (body, status) tuple or a bare int from any
@@ -66,14 +73,14 @@ if TYPE_CHECKING:
     class _MicrodotApp(Protocol):
         # The subset of the Microdot instance routes are registered onto; the vendored stub
         # (ext/typings/microdot/) leaves get/put/route unannotated (v2.7.0).
-        def get(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
-        def put(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
-        def after_request(self, f: "RouteHandler") -> "RouteHandler": ...
         def after_error_request(self, f: "RouteHandler") -> "RouteHandler": ...
-        def errorhandler(self, status_code_or_exception_class: "int | type[Exception]") -> "Callable[[RouteHandler], RouteHandler]": ...
-        async def handle_request(self, reader: "_StreamLike", writer: "_StreamLike") -> None: ...
-        async def dispatch_request(self, req: "_RequestLike | None") -> "Response": ...  # not called
+        def after_request(self, f: "RouteHandler") -> "RouteHandler": ...
+        async def dispatch_request(self, req: "_RequestLike | None") -> Response: ...  # not called
         # from this module - part of the surface because tests drive routes through it directly.
+        def errorhandler(self, status_code_or_exception_class: int | type[Exception]) -> "Callable[[RouteHandler], RouteHandler]": ...
+        def get(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
+        async def handle_request(self, reader: "_StreamLike", writer: "_StreamLike") -> None: ...
+        def put(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
 
     StatusSourceFct = Callable[[], Coroutine[Any, Any, dict[str, Any]]]
     MaintenanceFct = Callable[[], Coroutine[Any, Any, dict[str, Any]]]
@@ -95,19 +102,19 @@ _WRN_HTTP_WAIT_CLOSED = const(53)
 
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its FRAM
 # error-log target, resolved from [device.wiring].fram_target implicitly because this is mandatory
-# infra, never an [[instance]] entry - the same tag system_service/wifi/ntp carry.
-# @wiring fram_target AsyFramManager log optional kwarg
+# infra, never an [[instance]] entry - the same tag asy_system_service/wifi/ntp carry.
+# @wiring fram_target FRAMManager log optional kwarg
 
-_SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
+_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause"))  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
 _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
 # legacy's own pauseAutoLED command range and asy_notification_service.py's own
-# LockedCounter(max_val=_MAX_OVERRIDE_TIME) clamp ceiling, kept here as its own constant (not
+# set_override_led() clamp ceiling (_MAX_OVERRIDE_TIME), kept here as its own constant (not
 # imported) since this module has no other coupling to asy_notification_service.py.
 _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX, None)  # dispatch-only, not schema-
 # backed by a real ConfigManager - a synthetic FieldSchema record so _dispatch_notification_pause()
-# can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
+# can reuse asy_config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
 # @tunable web.max_pending_fragments = 16
@@ -126,33 +133,38 @@ _DEFAULT_PER_CALL_TIMEOUT_S = const(5.0)
 _DEFAULT_OUTER_CAP_S = const(15.0)
 _DEFAULT_STATIC_INDEX = const("index.html")
 
-_ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
+_ERROR_SHAPES = const((  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # the five shaped statuses SPECIFICATION.md A.5 names.
     (400, "Bad request"),
     (404, "Not found"),
     (405, "Method not allowed"),
     (413, "Payload too large"),
     (500, "Internal server error"),
-)
+))
 
 
-def _index_by_name(items: "Iterable[_ModuleLike]") -> "dict[str, _ModuleLike]":
-    # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
-    # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
-    result: dict[str, _ModuleLike] = {}
-    for item in items:
-        result[item.name] = item
-    return result
+def _body_as_dict(request: "_RequestLike") -> "dict[str, Any] | None":
+    # None covers both a request.json access raising (malformed/undecodable JSON, matches
+    # asy_api_response.py's parse_cmd_request() precedent) and a syntactically valid but non-dict body
+    # (array/string/number/null) - both degrade to the same clean ERR envelope at the call site.
+    try:
+        data = request.json
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
 
 
-def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, MaintenanceFct]":
-    return dict(items)
+def _cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
+    # Every module's get_dict_cfg() returns make_dict()'s {name: {field: value}}; this takes the one inner dict.
+    for inner in values.values():
+        return inner  # type: ignore[no-any-return]  # the inner dict of a JSON-shaped mapping
+    return {}
 
 
 class _PieceWriter:
     # Concatenates adjacent JSON text fragments into pieces of at most max_bytes, never splitting
     # one - so the largest allocation is bounded by the largest fragment, not by the response.
-    def __init__(self, pieces: "list[str]", max_bytes: int) -> None:
+    def __init__(self, pieces: list[str], max_bytes: int) -> None:
         self._pieces = pieces
         self._group: list[str] = []
         self._size = 0
@@ -167,12 +179,6 @@ class _PieceWriter:
             # Collapsed, never left to grow: a piece of tiny fragments would otherwise need a list
             # array as large as the piece itself - the very block this writer exists to avoid.
             self._group = ["".join(self._group)]
-
-    def flush(self) -> None:
-        if self._group:
-            self._pieces.append("".join(self._group))
-            self._group = []
-            self._size = 0
 
     def add_value(self, value: object) -> None:
         # Exactly json.dumps(value)'s text, never built as one string: dicts, lists and tuples are
@@ -191,49 +197,37 @@ class _PieceWriter:
                     self.add(", ")
                 self.add_value(item)
             self.add("]")
+        elif isinstance(value, float) and not math.isfinite(value):
+            self.add("null")  # json.dumps() writes bare nan/inf, which JSON rejects (Part G.2)
         else:
             self.add(json.dumps(value))
 
-
-async def _stream_dict_response(result: "dict[str, Any]", chunk_bytes: int) -> "Response":
-    # Memory-bounded streaming for any GET route whose response scales with device configuration
-    # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
-    # written value by value, so no allocation is a whole key's value, let alone the response.
-    pieces: list[str] = []
-    writer = _PieceWriter(pieces, chunk_bytes)
-    writer.add("{")
-    for index, (key, value) in enumerate(result.items()):
-        writer.add(("," if index else "") + json.dumps(key) + ":")
-        writer.add_value(value)
-    writer.add("}")
-    writer.flush()
-    return _pieces_response(pieces)
+    def flush(self) -> None:
+        if self._group:
+            self._pieces.append("".join(self._group))
+            self._group = []
+            self._size = 0
 
 
-def _pieces_response(pieces: "list[str]") -> "Response":
-    # A plain sync iterator with an exact Content-Length, never Response.complete()'s bytes-only
-    # default: without it a client reads to EOF, which real-socket soak testing timed out against.
-    # Never an `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
-    encoded = [p.encode() for p in pieces]
-    return Response(
-        # The vendored stub types body as str | bytes (microdot.pyi:165), yet Microdot streams a sync
-        # iterator (ext/microdot.py:734). Remove the ignore when the stub accepts one (warn_unused_ignores).
-        iter(encoded),  # type: ignore[arg-type]
-        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in encoded))},
-    )
+def _index_by_name(items: "Iterable[_Named]") -> "dict[str, _Named]":
+    # Last-registration-wins, by construction (owner, 2026-08-12; SPEC A.8): the
+    # simplest per-item loop already behaves this way; no dedup/guard code on top (agent, 2026-08-12).
+    result: dict[str, _Named] = {}
+    for item in items:
+        result[item.name] = item
+    return result
 
 
-def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
-    # get_dict_cfg() returns either a flat dict or config_manager.make_dict()'s nested
-    # {type_name: {field: value}} shape - flattens to always give _get_settings_flat() top-level
-    # keys either way. See digital_twin/README.md for the real production bug this fixed.
-    flat: dict[str, Any] = {}
-    for key, value in values.items():
-        if isinstance(value, dict):
-            flat.update(value)
-        else:
-            flat[key] = value
-    return flat
+def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, MaintenanceFct]":
+    return dict(items)
+
+
+def _mark_connection_close(_request: "_RequestLike", response: Response) -> Response:
+    # ext/microdot.py speaks HTTP/1.0, whose default is already non-persistent, but RFC 7230 SS6.6
+    # recommends saying so explicitly - added through Microdot's own supported hook, never by
+    # editing the vendored file.
+    response.headers["Connection"] = "close"
+    return response
 
 
 class SettingsGroup:
@@ -254,7 +248,7 @@ class _TimeoutStreamProxy:
     # Forwards every stream method ext/microdot.py calls, each bounded by timeout_s (a plain
     # asyncio.TimeoutError, not an OSError subclass - Part F.1). Microdot's read-phase catch
     # swallows it (Part A.5), so this proxy is the only place a read timeout is observable.
-    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory", peer_gone: "list[bool] | None" = None, timed_out: "list[bool] | None" = None) -> None:
+    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory", peer_gone: list[bool] | None = None, timed_out: list[bool] | None = None) -> None:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
@@ -283,11 +277,11 @@ class _TimeoutStreamProxy:
             self._peer_gone[0] = True
             raise
 
-    async def readline(self) -> bytes:
-        return await self._bounded_read(self._stream.readline())
+    def get_extra_info(self, name: str) -> object:
+        return self._stream.get_extra_info(name)
 
-    async def readexactly(self, n: int) -> bytes:
-        return await self._bounded_read(self._stream.readexactly(n))
+    async def aclose(self) -> None:
+        await self._bounded(self._stream.aclose())
 
     async def awrite(self, data: bytes) -> None:
         if self._peer_gone[0]:
@@ -302,17 +296,17 @@ class _TimeoutStreamProxy:
             self._head = None
         await self._bounded(self._stream.awrite(data))
 
-    async def aclose(self) -> None:
-        await self._bounded(self._stream.aclose())
-
     def close(self) -> None:
         self._stream.close()
 
+    async def readexactly(self, n: int) -> bytes:
+        return await self._bounded_read(self._stream.readexactly(n))
+
+    async def readline(self) -> bytes:
+        return await self._bounded_read(self._stream.readline())
+
     async def wait_closed(self) -> None:
         await self._bounded(self._stream.wait_closed())
-
-    def get_extra_info(self, name: str) -> object:
-        return self._stream.get_extra_info(name)
 
 
 # Three config objects the generated module builds whole (every field passed): what the routes
@@ -327,7 +321,7 @@ if TYPE_CHECKING:
         notification_pause: NotificationPauseFct | None
         status_sources: dict[str, StatusSourceFct] | None
         maintenance_sensors: Sequence[tuple[str, MaintenanceFct]]
-        error_sources: Sequence[_ModuleLike]
+        error_sources: Sequence[ErrorSource]
 
     class ServingLimits(NamedTuple):
         max_content_length: int  # request body cap (Part I.6)
@@ -365,6 +359,7 @@ class WebserverService:
         static: StaticSite | None = None,  # None registers no static routes at all
         log: LogConfig = DEFAULT_LOG,
     ) -> None:
+        self.name = _NAME
         self.pr: PrintLogHistory = make_logger(log, _NAME)
         self._app = app
         self._sensors = _index_by_name(routes.sensors)
@@ -387,7 +382,7 @@ class WebserverService:
         self._outer_cap_s = serving.outer_cap_s
         self._host = serving.host
         self._port = serving.port
-        self._open_conns = LockedCounter(init_value=0, max_val=0xFFFFFFFF)
+        self._open_conns = LockedCounter(init_value=0)  # the shared COUNTER_CAP; a gauge bounded by the backlog
         self._static_mount = None if static is None else static.mount
         self._static_index = _DEFAULT_STATIC_INDEX if static is None else static.index_file
         self._is_hotspot_active = None if static is None else static.is_hotspot_active
@@ -432,9 +427,7 @@ class WebserverService:
             app.get("/")(self._get_static_index)
             app.get("/<path:filename>")(self._get_static)
 
-    # -- /measurements, /sensors --------------------------------------------------------------
-
-    async def _get_measurements(self, _request: "_RequestLike") -> "Response":
+    async def _get_measurements(self, _request: "_RequestLike") -> Response:
         # Plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside one.
         # .update(), not result[name] = ... - see SPECIFICATION.md Part A.8 for the real
         # double-wrap production bug this avoids.
@@ -443,39 +436,48 @@ class WebserverService:
             result.update(await module.get_dict_data())
         return await _stream_dict_response(result, self._chunk_bytes)
 
-    async def _get_sensors(self, _request: "_RequestLike") -> "Response":
+    async def _get_networking(self, _request: "_RequestLike") -> Response:
+        # Streamed via _stream_dict_response() - see that function's own comment: this scales with
+        # however many SettingsGroup entries this device variant's own build wires up (CLAUDE.md's
+        # memory-safety hard rule).
+        return await _stream_dict_response(await self._get_settings_flat("networking"), self._chunk_bytes)
+
+    async def _get_notification(self, _request: "_RequestLike") -> Response:
+        return await _stream_dict_response(await self._get_settings_flat("notification"), self._chunk_bytes)  # see _get_networking()'s own comment
+
+    async def _get_sensors(self, _request: "_RequestLike") -> Response:
         # .update(), not result[name] = ... - see _get_measurements()'s own comment above.
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_cfg())
         return await _stream_dict_response(result, self._chunk_bytes)  # see _get_measurements()'s own comment above
 
-    async def _put_sensors(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
-        body = _body_as_dict(request)
-        if body is None:
-            return ar.make_response(1)
-        results: dict[str, Any] = {}
-        for name, fields in body.items():
-            module = self._sensors.get(name)
-            if module is None or not isinstance(fields, dict):
-                continue  # unknown sensor key, or a malformed per-sensor sub-object - silently
-                # ignored, matches ConfigManager.write_config()'s own per-key "Invalid" convention
-                # extended to the HTTP layer (see SPECIFICATION.md Part A.8, section B).
-            results[name] = await module._set_dict_cfg(fields, module.get_cfg_schema())
-        return ar.make_response(0, result=results)
-
-    # -- flat settings endpoints (/networking, /system, /notification) ------------------------
-
     async def _get_settings_flat(self, endpoint: str) -> "dict[str, Any]":
         result: dict[str, Any] = {}
         for group in self._settings.get(endpoint, []):
-            values = _flatten_cfg_values(await group.module.get_dict_cfg())
+            values = _cfg_values(await group.module.get_dict_cfg())
             for field in group.fields:
                 if field in values:
                     result[field] = values[field]
         return result
 
-    async def _apply_settings_groups(self, endpoint: str, body: "dict[str, Any]") -> "dict[str, str]":
+    async def _get_static(self, _request: "_RequestLike", filename: str) -> Response:
+        return self._serve_static(filename)
+
+    async def _get_static_index(self, _request: "_RequestLike") -> Response:
+        return self._serve_static(self._static_index)
+
+    async def _get_status(self, _request: "_RequestLike") -> Response:
+        # Streamed like every configuration-sized route (Part I.3), its pieces built below.
+        return _pieces_response(await self._build_status_pieces())
+
+    async def _get_system(self, _request: "_RequestLike") -> Response:
+        result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
+        if self._build_info is not None:
+            result["build"] = self._build_info
+        return await _stream_dict_response(result, self._chunk_bytes)
+
+    async def _apply_settings_groups(self, endpoint: str, body: "dict[str, Any]") -> dict[str, str]:
         # Only a group whose field subset intersects the request body is dispatched: one with no
         # matching keys must never fire its post_fct/post_asy_fct, which is what "a partial-field
         # update triggers only the relevant post-write hook" means (SPECIFICATION.md Part A.8).
@@ -487,7 +489,7 @@ class WebserverService:
             envelope = await ar.handle_set_cmd(
                 group.module,  # type: ignore[arg-type]  # structurally SensorReaderConfig-shaped
                 # (get_cfg_schema()/_set_dict_cfg()/.pr) - _ModuleLike is a narrower Protocol, not
-                # importable here without a real coupling to base_classes.py's concrete class.
+                # importable here without a real coupling to asy_base_classes.py's concrete class.
                 subset,
                 group.module.get_cfg_schema(),
                 group.post_fct,
@@ -505,105 +507,7 @@ class WebserverService:
                 results.update(group_result)
         return results
 
-    async def _get_networking(self, _request: "_RequestLike") -> "Response":
-        # Streamed via _stream_dict_response() - see that function's own comment: this scales with
-        # however many SettingsGroup entries this device variant's own build wires up (CLAUDE.md's
-        # memory-safety hard rule).
-        return await _stream_dict_response(await self._get_settings_flat("networking"), self._chunk_bytes)
-
-    async def _put_networking(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
-        body = _body_as_dict(request)
-        if body is None:
-            return ar.make_response(1)
-        results = await self._apply_settings_groups("networking", body)
-        return ar.make_response(0, result=results)
-
-    async def _get_system(self, _request: "_RequestLike") -> "Response":
-        result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
-        if self._build_info is not None:
-            result["build"] = self._build_info
-        return await _stream_dict_response(result, self._chunk_bytes)
-
-    async def _put_system(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
-        body = _body_as_dict(request)
-        if body is None:
-            return ar.make_response(1)
-        results: dict[str, Any] = dict(await self._apply_settings_groups("system", body))
-        if "SystemCmd" in body:
-            results["SystemCmd"] = await self._dispatch_system_cmd(body["SystemCmd"])
-        return ar.make_response(0, result=results)
-
-    async def _dispatch_system_cmd(self, cmd: object) -> str:
-        # object, not a narrower type: cmd is whatever JSON value the client put in "SystemCmd".
-        # The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTEM_CMDS)
-        # and only states that contract - same shape as the other two dispatchers below.
-        if self._system_cmd is None or not isinstance(cmd, str) or cmd not in _SYSTEM_CMDS:
-            return "Invalid"
-        try:  # caller-supplied callback, could legitimately misbehave - same defensive shape every
-            # other caller-supplied-callback site uses (Part G.2). Unguarded, a raise escaped
-            # through the route handler instead of degrading to "Failed" with a persisted errno,
-            # the way every comparable callback failure does.
-            ok = await self._system_cmd(cmd)
-        except Exception as e:
-            await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
-            return "Failed"
-        return "Valid" if ok else "Failed"
-
-    async def _get_notification(self, _request: "_RequestLike") -> "Response":
-        return await _stream_dict_response(await self._get_settings_flat("notification"), self._chunk_bytes)  # see _get_networking()'s own comment
-
-    async def _put_notification(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
-        body = _body_as_dict(request)
-        if body is None:
-            return ar.make_response(1)
-        results: dict[str, Any] = dict(await self._apply_settings_groups("notification", body))
-        if "lightCmdLED" in body:
-            results["lightCmdLED"] = await self._dispatch_notification_led(body["lightCmdLED"])
-        if "PauseTime" in body:
-            results["PauseTime"] = await self._dispatch_notification_pause(body["PauseTime"])
-        return ar.make_response(0, result=results)
-
-    async def _dispatch_notification_led(self, payload: object) -> str:
-        if self._notification_led is None or not isinstance(payload, dict):
-            return "Invalid"
-        try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
-            # own comment on why this needs the same guard every comparable callback elsewhere in
-            # this codebase already has.
-            ok = await self._notification_led(payload)
-        except Exception as e:
-            await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
-            return "Failed"
-        return "Valid" if ok else "Failed"
-
-    async def _dispatch_notification_pause(self, payload: object) -> str:
-        # Reuses type_or_range_error() against a synthetic FieldSchema rather than a second
-        # hand-rolled check, so this field gets the same int<->float policy as every schema-backed
-        # one (Part A.8): bool rejected, an integral float accepted and coerced.
-
-        # LockedCounter.set_value() clamps out of range rather than raising, but legacy rejected an
-        # out-of-range pauseTime as Invalid - so reject it here too, before the callback sees it,
-        # rather than reporting a clamped value as a successful "Valid".
-        if self._notification_pause is None or not isinstance(payload, (int, float)):
-            return "Invalid"
-        is_error, coerced_payload = type_or_range_error(payload, _PAUSE_TIME_FIELD)
-        if is_error:
-            return "Invalid"
-        try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
-            # own comment on why this needs the same guard every comparable callback elsewhere in
-            # this codebase already has.
-            ok = await self._notification_pause(coerced_payload)
-        except Exception as e:
-            await self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
-            return "Failed"
-        return "Valid" if ok else "Failed"
-
-    # -- /status ---------------------------------------------------------------------------------
-
-    async def _get_status(self, _request: "_RequestLike") -> "Response":
-        # Streamed like every configuration-sized route (Part I.3), its pieces built below.
-        return _pieces_response(await self._build_status_pieces())
-
-    async def _build_status_pieces(self) -> "list[str]":
+    async def _build_status_pieces(self) -> list[str]:
         # One _PieceWriter, flushed at every top-level section: each section starts its own piece
         # and no piece exceeds the cap, whatever a section holds - one entry per registered error
         # source, for "errcount" (Part I.3). Values are written, never json.dumps()'d whole.
@@ -626,89 +530,13 @@ class WebserverService:
             writer.add(json.dumps(name) + ":")
             await self._write_errcount_entry(writer, module.get_error_counter, name)
             writer.add(",")
-        # This service's own entry (Part A.8's registration contract). WebserverService satisfies
-        # only the error-counter subset of _ModuleLike, not the full sensor/settings surface, so it
-        # is added here directly rather than registered into self._error_sources.
+        # This service's own entry (Part A.8's registration contract), added here directly rather
+        # than registered into self._error_sources: this service builds the routes that list them.
         writer.add(json.dumps(_NAME) + ":")
         await self._write_errcount_entry(writer, self.pr.get_log, _NAME)
         writer.add("}}")
         writer.flush()
         return pieces
-
-    async def _write_status_source(self, writer: "_PieceWriter", key: str) -> None:
-        source = self._status_sources.get(key)
-        if source is None:
-            writer.add("{}")
-            return
-        await self._write_guarded(writer, source, key)
-
-    async def _write_guarded(self, writer: "_PieceWriter", fct: "Callable[[], Coroutine[Any, Any, dict[str, Any]]]", name: str) -> None:
-        try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
-            # one failing source discard every other section's already-fetched data.
-            value = await fct()
-        except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
-            writer.add('{"error":"unavailable"}')
-            return
-        writer.add_value(value)
-
-    async def _write_errcount_entry(self, writer: "_PieceWriter", get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> None:
-        try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
-            raw = await get_log_fct()
-        except Exception as e:
-            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
-            writer.add('{"error":"unavailable"}')
-            return
-        writer.add_value(_shape_errcount_entry(raw, name))
-
-    async def _put_status(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
-        body = _body_as_dict(request)
-        if body is None:
-            return ar.make_response(1)
-        if body.get("ResetErrors") is True:
-            for module in self._error_sources.values():
-                await module.reset_error_counter()
-            await self.reset_error_counter()  # this service's own entry, see _build_status_pieces()
-        return ar.make_response(0)
-
-    # -- static content (see SPECIFICATION.md Part A.9) ----------------------------------------
-
-    async def _get_static_index(self, _request: "_RequestLike") -> "Response":
-        return self._serve_static(self._static_index)
-
-    async def _get_static(self, _request: "_RequestLike", filename: str) -> "Response":
-        return self._serve_static(filename)
-
-    def _serve_static(self, filename: str) -> "Response":
-        if ".." in filename:
-            abort(404)  # guard-clause before touching the mounted filesystem - cheap and uniform
-            # even though freezefs's own VfsFrozen already refuses to escape its mount root.
-        assert self._static_mount is not None  # only ever registered as a route when it isn't
-        try:
-            stream = open(self._static_mount + "/" + filename + ".gz", "rb")
-        except OSError:  # no such file in the mounted filesystem
-            if self._is_hotspot_active is not None and self._is_hotspot_active():
-                # Captive-portal redirect fallback, triggering phones' "Sign in to network" popup -
-                # see SPECIFICATION.md Part A.5 for the full mechanism and why no try/except is needed.
-                return redirect("/")
-            abort(404)
-        size = stream.seek(0, 2)  # sent as Content-Length: without it this HTTP/1.0 body ends only at FIN,
-        stream.seek(0)  # so a write that fails after the 200 would reach the client as a complete page
-        response = send_file(filename, compressed=True, stream=stream)
-        response.headers["Content-Length"] = str(size)
-        response.send_file_buffer_size = self._chunk_bytes  # microdot's own per-response knob
-        return response
-
-    # -- error handling ----------------------------------------------------------------------------
-
-    async def _handle_unhandled_exception(self, _request: "_RequestLike", exc: Exception) -> "tuple[dict[str, Any], int]":
-        # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
-        # into FRAM history - never to shape the reply. The 500 status-code handler already does
-        # that on its own, whether or not this one is registered (Part A.5).
-        await self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
-        return ar.make_response(500, descr="Internal server error"), 500
-
-    # -- connection lifecycle ---------------------------------------------------------------------
 
     async def _close_writer(self, writer: "_ClosableStream") -> None:
         try:
@@ -721,6 +549,114 @@ class WebserverService:
             await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)
         except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
             await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
+
+    async def _dispatch_notification_led(self, payload: object) -> str:
+        if self._notification_led is None or not isinstance(payload, dict):
+            return "Invalid"
+        try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
+            # own comment on why this needs the same guard every comparable callback elsewhere in
+            # this codebase already has.
+            ok = await self._notification_led(payload)
+        except Exception as e:
+            await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
+            return "Failed"
+        return "Valid" if ok else "Failed"
+
+    async def _dispatch_notification_pause(self, payload: object) -> str:
+        # Reuses type_or_range_error() against a synthetic FieldSchema rather than a second
+        # hand-rolled check, so this field gets the same int<->float policy as every schema-backed
+        # one (Part A.8): bool rejected, an integral float accepted and coerced.
+
+        # set_override_led() clamps out of range rather than raising, but legacy rejected an
+        # out-of-range pauseTime as Invalid - so reject it here too, before the callback sees it,
+        # rather than reporting a clamped value as a successful "Valid".
+        if self._notification_pause is None or not isinstance(payload, (int, float)):
+            return "Invalid"
+        is_error, coerced_payload = type_or_range_error(payload, _PAUSE_TIME_FIELD)
+        if is_error:
+            return "Invalid"
+        try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
+            # own comment on why this needs the same guard every comparable callback elsewhere in
+            # this codebase already has.
+            ok = await self._notification_pause(coerced_payload)
+        except Exception as e:
+            await self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
+            return "Failed"
+        return "Valid" if ok else "Failed"
+
+    async def _dispatch_system_cmd(self, cmd: object) -> str:
+        # object, not a narrower type: cmd is whatever JSON value the client put in "SystemCmd".
+        # The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTEM_CMDS)
+        # and only states that contract - same shape as the two _dispatch_notification_*() dispatchers.
+        if self._system_cmd is None or not isinstance(cmd, str) or cmd not in _SYSTEM_CMDS:
+            return "Invalid"
+        try:  # caller-supplied callback, could legitimately misbehave - same defensive shape every
+            # other caller-supplied-callback site uses (Part G.2). Unguarded, a raise escaped
+            # through the route handler instead of degrading to "Failed" with a persisted errno,
+            # the way every comparable callback failure does.
+            ok = await self._system_cmd(cmd)
+        except Exception as e:
+            await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
+            return "Failed"
+        return "Valid" if ok else "Failed"
+
+    async def _handle_unhandled_exception(self, _request: "_RequestLike", exc: Exception) -> "tuple[dict[str, Any], int]":
+        # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
+        # into FRAM history - never to shape the reply. The 500 status-code handler already does
+        # that on its own, whether or not this one is registered (Part A.5).
+        await self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
+        return ar.make_response(500, descr="Internal server error"), 500
+
+    async def _put_networking(self, request: "_RequestLike") -> ar.ResponseEnvelope:
+        body = _body_as_dict(request)
+        if body is None:
+            return ar.make_response(1)
+        results = await self._apply_settings_groups("networking", body)
+        return ar.make_response(0, result=results)
+
+    async def _put_notification(self, request: "_RequestLike") -> ar.ResponseEnvelope:
+        body = _body_as_dict(request)
+        if body is None:
+            return ar.make_response(1)
+        results: dict[str, Any] = dict(await self._apply_settings_groups("notification", body))
+        if "LightCmdLED" in body:
+            results["LightCmdLED"] = await self._dispatch_notification_led(body["LightCmdLED"])
+        if "PauseTime" in body:
+            results["PauseTime"] = await self._dispatch_notification_pause(body["PauseTime"])
+        return ar.make_response(0, result=results)
+
+    async def _put_sensors(self, request: "_RequestLike") -> ar.ResponseEnvelope:
+        body = _body_as_dict(request)
+        if body is None:
+            return ar.make_response(1)
+        results: dict[str, Any] = {}
+        for name, fields in body.items():
+            module = self._sensors.get(name)
+            if module is None or not isinstance(fields, dict):
+                continue  # unknown sensor key, or a malformed per-sensor sub-object - silently
+                # ignored, matches ConfigManager.write_config()'s own per-key "Invalid" convention
+                # extended to the HTTP layer (see SPECIFICATION.md Part A.8, section B).
+            results[name] = await module._set_dict_cfg(fields, module.get_cfg_schema())
+        return ar.make_response(0, result=results)
+
+    async def _put_status(self, request: "_RequestLike") -> ar.ResponseEnvelope:
+        body = _body_as_dict(request)
+        if body is None:
+            return ar.make_response(1)
+        if body.get("ResetErrors") is True:
+            for module in self._error_sources.values():
+                await module.reset_error_counter()
+            await self.reset_error_counter()  # this service's own entry, see _build_status_pieces()
+        return ar.make_response(0)
+
+    async def _put_system(self, request: "_RequestLike") -> ar.ResponseEnvelope:
+        body = _body_as_dict(request)
+        if body is None:
+            return ar.make_response(1)
+        results: dict[str, Any] = dict(await self._apply_settings_groups("system", body))
+        if "SystemCmd" in body:
+            results["SystemCmd"] = await self._dispatch_system_cmd(body["SystemCmd"])
+        return ar.make_response(0, result=results)
 
     async def _serve(self, reader: "Any", writer: "Any") -> None:
         # Any, not _StreamLike: asyncio.start_server() types its callback as
@@ -764,28 +700,79 @@ class WebserverService:
             finally:  # and a slot skipped here would be lost until reboot
                 await self._open_conns.decrement()
 
-    async def _run(self) -> None:
-        await self.pr.setup()  # required for all logged warnings and errors, matches every other
-        # module's own main-loop convention (see e.g. asy_wifi_service.py's wlan_connect()).
+    async def _serve_loop(self) -> None:
         # backlog is explicit, never MicroPython's own default of 5 (extmod/asyncio/stream.py):
         # inherited, a burst of a raised max_connections would be reset past its fifth arrival.
         server = await asyncio.start_server(self._serve, self._host, self._port, backlog=self._backlog)
         await server.wait_closed()
 
-    def _start_serving(self) -> "asyncio.Task[None]":
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._run())
+    def _serve_static(self, filename: str) -> Response:
+        # Static content: SPECIFICATION.md Part A.9.
+        if ".." in filename:
+            abort(404)  # guard-clause before touching the mounted filesystem - cheap and uniform
+            # even though freezefs's own VfsFrozen already refuses to escape its mount root.
+        assert self._static_mount is not None  # only ever registered as a route when it isn't
+        try:
+            stream = open(self._static_mount + "/" + filename + ".gz", "rb")
+        except OSError:  # no such file in the mounted filesystem
+            if self._is_hotspot_active is not None and self._is_hotspot_active():
+                # Captive-portal redirect fallback, triggering phones' "Sign in to network" popup -
+                # see SPECIFICATION.md Part A.5 for the full mechanism and why no try/except is needed.
+                return redirect("/")
+            abort(404)
+        size = stream.seek(0, 2)  # sent as Content-Length: without it this HTTP/1.0 body ends only at FIN,
+        stream.seek(0)  # so a write that fails after the 200 would reach the client as a complete page
+        response = send_file(filename, compressed=True, stream=stream)
+        response.headers["Content-Length"] = str(size)
+        response.send_file_buffer_size = self._chunk_bytes  # microdot's own per-response knob
+        return response
+
+    async def _write_errcount_entry(self, writer: _PieceWriter, get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> None:
+        try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
+            raw = await get_log_fct()
+        except Exception as e:
+            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
+            writer.add('{"error":"unavailable"}')
+            return
+        writer.add_value(_shape_errcount_entry(raw, name))
+
+    async def _write_guarded(self, writer: _PieceWriter, fct: "Callable[[], Coroutine[Any, Any, dict[str, Any]]]", name: str) -> None:
+        try:  # caller-supplied callback, could misbehave - degrades this one key instead of letting
+            # one failing source discard every other section's already-fetched data.
+            value = await fct()
+        except Exception as e:
+            await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
+            writer.add('{"error":"unavailable"}')
+            return
+        writer.add_value(value)
+
+    async def _write_status_source(self, writer: _PieceWriter, key: str) -> None:
+        source = self._status_sources.get(key)
+        if source is None:
+            writer.add("{}")
+            return
+        await self._write_guarded(writer, source, key)
+
+    # -- starters ----------------------------------------------------------
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
-        return [self._start_serving]
+        return [self.start_asy_serve]
 
-    def get_timer_starters(self) -> "list[Callable[[], None]]":
+    def get_timer_starters(self) -> "list[TimerStarter]":
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver/service uniformly - matches
-        # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent; found
-        # missing entirely during the Step 7 audit, unlike those two).
+        # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent).
 
-    def get_error_sources(self) -> "list[Any]":
+    def start_asy_serve(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self._serve_loop())
+
+    # -- getters -----------------------------------------------------------
+
+    async def get_error_counter(self) -> "ErrorLog":
+        return await self.pr.get_log()
+
+    def get_error_sources(self) -> "list[ErrorSource]":
         # Fan-in primitive (Part C.14/G.2), duck-typed rather than inherited. Not consulted by the
         # generated _collect_error_sources() - this service's /status entry is added directly in
         # _build_status_pieces() - but kept so no caller has to special-case this one module (D.10).
@@ -794,11 +781,27 @@ class WebserverService:
     def get_loggers(self) -> "list[PrintLogHistory]":
         return [self.pr]
 
-    async def get_error_counter(self) -> "ErrorLog":
-        return await self.pr.get_log()
+    # -- others ------------------------------------------------------------
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
+
+    async def setup(self) -> bool:
+        await self.pr.setup()  # the logger is set up in the boot batch, never by the serve task
+        return True
+
+
+def _pieces_response(pieces: list[str]) -> Response:
+    # A plain sync iterator with an exact Content-Length, never Response.complete()'s bytes-only
+    # default: without it a client reads to EOF, which real-socket soak testing timed out against.
+    # Never an `async def ... yield` generator - that syntax segfaults the interpreter (Part F.1).
+    encoded = [p.encode() for p in pieces]
+    return Response(
+        # The vendored stub types body as str | bytes (microdot.pyi:165), yet Microdot streams a sync
+        # iterator (ext/microdot.py:734). Remove the ignore when the stub accepts one (warn_unused_ignores).
+        iter(encoded),  # type: ignore[arg-type]
+        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(sum(len(p) for p in encoded))},
+    )
 
 
 def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "dict[str, Any]":
@@ -815,27 +818,23 @@ def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "dict[str, Any]":
     }
 
 
-def _body_as_dict(request: "_RequestLike") -> "dict[str, Any] | None":
-    # None covers both a request.json access raising (malformed/undecodable JSON, matches
-    # api_response.py's parse_cmd_request() precedent) and a syntactically valid but non-dict body
-    # (array/string/number/null) - both degrade to the same clean ERR envelope at the call site.
-    try:
-        data = request.json
-    except Exception:
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def _mark_connection_close(_request: "_RequestLike", response: "Response") -> "Response":
-    # ext/microdot.py speaks HTTP/1.0, whose default is already non-persistent, but RFC 7230 SS6.6
-    # recommends saying so explicitly - added through Microdot's own supported hook, never by
-    # editing the vendored file.
-    response.headers["Connection"] = "close"
-    return response
-
-
 def _shaped_error_handler(status_code: int, descr: str) -> "Callable[[_RequestLike], tuple[dict[str, Any], int]]":
     def handler(_request: "_RequestLike") -> "tuple[dict[str, Any], int]":
         return ar.make_response(status_code, descr=descr), status_code
 
     return handler
+
+
+async def _stream_dict_response(result: "dict[str, Any]", chunk_bytes: int) -> Response:
+    # Memory-bounded streaming for any GET route whose response scales with device configuration
+    # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
+    # written value by value, so no allocation is a whole key's value, let alone the response.
+    pieces: list[str] = []
+    writer = _PieceWriter(pieces, chunk_bytes)
+    writer.add("{")
+    for index, (key, value) in enumerate(result.items()):
+        writer.add(("," if index else "") + json.dumps(key) + ":")
+        writer.add_value(value)
+    writer.add("}")
+    writer.flush()
+    return _pieces_response(pieces)

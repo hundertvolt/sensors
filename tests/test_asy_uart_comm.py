@@ -12,20 +12,20 @@ from machine import LinkPoller
 
 import asy_spi_driver
 import asy_uart_comm
-from asy_fram_manager import AsyFramManager
+from asy_base_classes import COUNTER_CAP, LockableBuffer
+from asy_crc_checks import CRC16
+from asy_fram_manager import FRAMManager
+from asy_framing_codecs import FramingCOBS
+from asy_print_log import LogConfig, PrintLogHistoryStore, make_logger
 from asy_spi_driver import SPI
 from asy_uart_comm import (
     ROLE_INITIATOR,
     ROLE_RESPONDER,
     ListenResult,
     ResponderCallbacks,
-    UART_Comm,
+    UARTComm,
 )
 from asy_uart_driver import UART
-from base_classes import LockableBuffer
-from crc_checks import CRC16
-from framing_codecs import Framing_COBS
-from print_log import LogConfig, PrintLogHistoryStore, make_logger
 
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]  # one process per test file: the FRAM-backed log case
 
@@ -83,7 +83,7 @@ _PROMPT_HOLD_MS = 5
 _PAST_CANCEL_ACK_HOLD_MS = 1300
 
 
-def persisted(comm: UART_Comm) -> "list[str]":
+def persisted(comm: UARTComm) -> "list[str]":
     # ErrNum holds errnos and wrnnos in one ring and they share the number space, so ErrType is
     # what tells them apart; "N" is an unused slot. Indexed rather than zip()ed - MicroPython's
     # zip() has no strict= parameter to satisfy B905.
@@ -100,7 +100,7 @@ def _w(name: str) -> str:  # persisted()'s form of a catalog wrnno
     return f"W{code('W', name)}"
 
 
-def make_comm(**kwargs: "Any") -> UART_Comm:
+def make_comm(**kwargs: "Any") -> UARTComm:
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     params: dict[str, Any] = {"payload_size": PAYLOAD_SIZE, "timeout": TIMEOUT_MS}
@@ -110,12 +110,12 @@ def make_comm(**kwargs: "Any") -> UART_Comm:
     names = ("get_callback", "set_callback", "message_callback")
     if any(n in params for n in names):
         params["callbacks"] = ResponderCallbacks(*(params.pop(n, None) for n in names))
-    return UART_Comm(bus, role, **params)
+    return UARTComm(bus, role, **params)
 
 
-def _make_fram_manager(chip: "FakeMB85RS64V | None" = None) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+def _make_fram_manager(chip: "FakeMB85RS64V | None" = None) -> "tuple[FRAMManager, FakeMB85RS64V]":
     # A fresh manager, over the given chip's memory when one is passed (a simulated reboot).
-    manager = AsyFramManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
+    manager = FRAMManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
     if chip is not None:
         manager.fram._spidev.spi._spi = chip
     own = manager.fram._spidev.spi._spi
@@ -154,7 +154,7 @@ def test_payload_size_is_never_silently_clamped() -> None:
     # A clamp turns a loud configuration error into a link that desyncs intermittently in the
     # field - the one fault J.6 says the self-healing design cannot heal.
     comm = make_comm(payload_size=500)
-    assert comm.payload_size == 500  # kept as given, and refused; not quietly rewritten to 255
+    assert comm._payload_size == 500  # kept as given, and refused; not quietly rewritten to 255
     assert comm.initialized is False
 
 
@@ -168,8 +168,8 @@ def test_timeout_below_the_gc_pause_floor_is_refused() -> None:
     # continuously under memory pressure for no reason.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=10)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
-    assert UART_Comm(driver, ROLE_INITIATOR, payload_size=8, timeout=30)._init_errno != 0
-    assert UART_Comm(driver, ROLE_INITIATOR, payload_size=8, timeout=200)._init_errno == 0
+    assert UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=30)._init_errno != 0
+    assert UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=200)._init_errno == 0
 
 
 def test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused() -> None:
@@ -181,8 +181,8 @@ def test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused() -> None:
         driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
         return driver
 
-    assert UART_Comm(bus(5000), ROLE_INITIATOR, payload_size=8, timeout=1000)._init_errno != 0
-    assert UART_Comm(bus(50), ROLE_INITIATOR, payload_size=8, timeout=1000)._init_errno == 0
+    assert UARTComm(bus(5000), ROLE_INITIATOR, payload_size=8, timeout=1000)._init_errno != 0
+    assert UARTComm(bus(50), ROLE_INITIATOR, payload_size=8, timeout=1000)._init_errno == 0
 
 
 def test_invalid_role_is_refused_and_has_no_default() -> None:
@@ -206,7 +206,7 @@ def test_construction_performs_no_bus_call() -> None:
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     before = len(driver._uart.log)  # type: ignore[union-attr]
-    UART_Comm(driver, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS)
+    UARTComm(driver, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS)
     assert len(driver._uart.log) == before  # type: ignore[union-attr]
 
 
@@ -216,11 +216,11 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
     # from a link fault unless it is caught at construction.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)  # rxbuf defaults to 256
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
-    refused = UART_Comm(driver, ROLE_INITIATOR, payload_size=255, timeout=TIMEOUT_MS)
+    refused = UARTComm(driver, ROLE_INITIATOR, payload_size=255, timeout=TIMEOUT_MS)
     assert refused._init_errno != 0
     roomy = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024)
     roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]
-    assert UART_Comm(roomy, ROLE_INITIATOR, payload_size=255, timeout=TIMEOUT_MS)._init_errno == 0
+    assert UARTComm(roomy, ROLE_INITIATOR, payload_size=255, timeout=TIMEOUT_MS)._init_errno == 0
 
 
 def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
@@ -228,22 +228,22 @@ def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
     # ~288 bytes, so a 64-byte rxbuf loses the tail of anything sustained even though a frame fits.
     driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=20, rxbuf=64)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
-    assert UART_Comm(driver, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno != 0
+    assert UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno != 0
 
 
 def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
     # Every codec has a ready() to report a failed scratch allocation, and nothing read it.
     # A dead codec constructed cleanly, passed setup() and then failed every single write with
     # _ERR_UART_WRITE_FAILED - the link looking broken instead of the configuration being refused.
-    dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024, framing=Framing_COBS(-1))
+    dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(-1))
     dead.poller = LinkPoller(dead._uart)  # type: ignore[assignment,arg-type]
     assert dead.framing.ready() is False
-    comm = UART_Comm(dead, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)
+    comm = UARTComm(dead, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup()) is False
-    live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024, framing=Framing_COBS(128))
+    live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(128))
     live.poller = LinkPoller(live._uart)  # type: ignore[assignment,arg-type]
-    assert UART_Comm(live, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno == 0
+    assert UARTComm(live, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno == 0
 
 
 def test_every_public_method_is_gated_before_setup() -> None:
@@ -266,7 +266,7 @@ def test_logger_injection_uses_both_routes() -> None:
     assert own.name == "UART_X"
     assert own.pr.name == own.name  # registration keys on one and the history on the other
     shared = make_comm(logger=own.pr)
-    assert shared.pr is own.pr  # the AsyFramManager-style reach-through
+    assert shared.pr is own.pr  # the FRAMManager-style reach-through
 
 
 def test_a_fram_backed_log_reads_back_through_a_second_logger() -> None:
@@ -328,6 +328,15 @@ def test_a_single_transient_fault_leaves_one_entry_not_a_pair() -> None:
     assert run(comm.get_error_counter())["UART_X"]["ErrCount"] == 1
 
 
+def test_the_valid_frame_count_saturates() -> None:
+    # Read only for its zero test (the blind-resync diagnostic), so it stops at the shared cap rather
+    # than growing without bound; one more validated frame leaves it there.
+    comm = make_comm(name="UART_X")
+    comm._valid_frames = COUNTER_CAP
+    comm._note_valid_frame()
+    assert comm._valid_frames == COUNTER_CAP
+
+
 def test_a_repeatedly_declined_command_does_not_refill_the_history() -> None:
     # A declined command persists W56 each time; identical codes share one slot under the central rule
     # (C.7.1), whatever the id.
@@ -365,8 +374,8 @@ def test_a_failed_buffer_allocation_degrades_every_entry_point() -> None:
     # check for it.
     comm = make_comm()
     run(comm.setup())
-    comm._tx.buf = None
-    comm._rx.buf = None
+    comm._tx._buf = None
+    comm._rx._buf = None
     assert run(comm.uart_set(1, b"x")) is False
     assert run(comm.uart_get(1)) is None
 
@@ -375,17 +384,17 @@ def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
     # _allocate() guards the three scratch buffers as one group, so a heap exhausted after the two
     # frame buffers returns zero-length ones. Checking only the TX frame let that object open the
     # gate: padding then shrank the TX buffer and the id write raised out of a never-raise module.
-    real_allocate = UART_Comm._allocate
+    real_allocate = UARTComm._allocate
 
-    def starved(self: UART_Comm) -> "Any":
+    def starved(self: UARTComm) -> "Any":
         tx, rx, _ack, _zero, _cmd = real_allocate(self)
         return tx, rx, bytearray(0), bytearray(0), bytearray(0)
 
-    UART_Comm._allocate = starved  # type: ignore[method-assign]
+    UARTComm._allocate = starved  # type: ignore[method-assign]
     try:
         comm = make_comm()
     finally:
-        UART_Comm._allocate = real_allocate  # type: ignore[method-assign]
+        UARTComm._allocate = real_allocate  # type: ignore[method-assign]
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup()) is False, "the gate must stay shut, so nothing reaches the short buffers"
     assert run(comm.uart_set(1, b"x")) is False
@@ -450,7 +459,7 @@ def test_a_responder_without_callbacks_is_refused_at_construction() -> None:
 
 
 def test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success() -> None:
-    # A zero-delay retry is captive_dns.py's measured recovery storm; a backoff that
+    # A zero-delay retry is asy_captive_dns.py's measured recovery storm; a backoff that
     # never resets leaves a recovered link throttled at the cap forever.
     comm = make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
     assert comm._backoff_initial_ms == TIMEOUT_MS // 2
@@ -916,7 +925,7 @@ def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
 
     async def flood() -> None:
         while True:
-            comm.uart._uart.feed_rx(b"\xff" * 32)  # type: ignore[union-attr]
+            comm._uart._uart.feed_rx(b"\xff" * 32)  # type: ignore[union-attr]
             await asyncio.sleep_ms(_FLOOD_STEP_MS)
 
     async def scenario() -> bool:
@@ -1008,7 +1017,7 @@ def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
     # bounded-history churn Part C.7.1 exists to prevent, on a link that had already recovered.
     pair = Pair()
     run(pair.setup())
-    bus = pair.initiator.uart
+    bus = pair.initiator._uart
     assert bus is not None
 
     async def hold(ms: int) -> None:
@@ -1263,7 +1272,7 @@ def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
         outcome.append(await pair.responder.uart_set(9, b"nested"))
         return True, b"v"
 
-    pair.responder.get_callback = reentrant
+    pair.responder._get_callback = reentrant
 
     async def scenario() -> "bytearray | None":
         listener = asyncio.create_task(pair.responder.uart_listen())
@@ -1481,13 +1490,13 @@ def test_a_refused_argument_is_logged_with_its_own_errno() -> None:
 
 
 def test_a_non_integer_payload_size_is_refused_instead_of_raising() -> None:
-    # _validate_config() already caught the type - but frame_size was derived from the raw value
+    # _validate_config() already caught the type - but _frame_size was derived from the raw value
     # first, so `5 + "48"` raised TypeError out of __init__ itself. The constructor is the one
     # entry point that cannot answer with a sentinel: there is no object yet to ask.
     for bad in ("48", None, 1.5):
         comm = make_comm(payload_size=bad)
         assert comm._init_errno != 0, bad
-        assert comm.payload_size == bad, "the caller's own value stays on self, for the log to name"
+        assert comm._payload_size == bad, "the caller's own value stays on self, for the log to name"
         assert run(comm.setup()) is False
 
 
@@ -1641,7 +1650,7 @@ def test_a_responder_without_a_message_callback_is_still_constructible() -> None
     # Optional by design: a GET-only responder has nothing to deliver, so its absence is not the
     # unanswerable-request case construction refuses outright.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
-    assert pair.responder.message_callback is None
+    assert pair.responder._message_callback is None
     assert pair.responder.initialized is True
 
 
@@ -1667,8 +1676,8 @@ def test_a_bus_cleared_after_construction_is_refused_at_every_entry_point() -> N
 
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     initiator, responder = pair.initiator, pair.responder
-    initiator.uart = None
-    responder.uart = None
+    initiator._uart = None
+    responder._uart = None
     assert run(initiator.uart_set(1, b"x")) is False
     assert run(initiator.uart_set_into(1, bytearray(4), 4)) is False
     assert run(initiator.uart_set_stream(1, 4, pull)) is False
@@ -1772,7 +1781,7 @@ def test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching(
     # Construction refuses a responder with no callbacks, but they are plain attributes an
     # owner can reassign, so uart_listen() re-checks what it is about to dispatch to.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
-    pair.responder.get_callback = None
+    pair.responder._get_callback = None
     assert run(pair.responder.uart_listen()).cmd_id is None
     assert persisted(pair.responder) == [_e("BAD_ARG")], persisted(pair.responder)
 
@@ -1996,10 +2005,10 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
 
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     comm = pair.responder
-    bus = comm.uart
+    bus = comm._uart
     assert bus is not None
-    comm._tx.buf = None
-    comm._rx.buf = None
+    comm._tx._buf = None
+    comm._rx._buf = None
     comm._ack = bytearray(0)
 
     async def internals() -> "tuple[Any, Any, Any, Any]":
@@ -2029,7 +2038,7 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
 
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     initiator = pair.initiator
-    bus = initiator.uart
+    bus = initiator._uart
     assert bus is not None
     pair.link.direction_from(pair.fake_b).silent = True  # nothing answers, so every call parks
 
@@ -2038,7 +2047,7 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
         await asyncio.sleep_ms(_INSIDE_LOCK_MS)  # long enough to be inside the transaction, not before it
         # Asserted rather than assumed: cancelling a task that had not started yet would leave
         # _busy False for the trivial reason and read as a pass without testing anything.
-        assert bus.asy_lock.locked() is True, "the transaction was not in flight when cancelled"
+        assert bus.session_lock.locked() is True, "the transaction was not in flight when cancelled"
         task.cancel()
         try:
             await task
@@ -2055,7 +2064,7 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
         assert initiator._busy is False, work
         # The lock is the more serious of the two: a leaked one is a permanently dead link, and it
         # would otherwise show only as the next iteration timing out rather than as a named failure.
-        assert bus.asy_lock.locked() is False, work
+        assert bus.session_lock.locked() is False, work
 
 def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None:
     # Alternating declined ids are one code, W56: one slot, every refusal counted (C.7.1).
@@ -2234,10 +2243,10 @@ def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
     # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's
     # 27-byte whole-frame floor but not its 80-byte per-poll floor. Kept rather than relaxed (agent, 2026-09-13), a
     # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
-    def deployed(rxbuf: int) -> UART_Comm:
+    def deployed(rxbuf: int) -> UARTComm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())
         bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]
-        return UART_Comm(bus, ROLE_INITIATOR, payload_size=_BSEC_PAYLOAD_SIZE, timeout=1000)
+        return UARTComm(bus, ROLE_INITIATOR, payload_size=_BSEC_PAYLOAD_SIZE, timeout=1000)
 
     assert deployed(256)._min_rxbuf() == 80
     assert deployed(32)._init_errno == code("E", "UART_RXBUF"), "the deployed value is refused, not accepted quietly"
@@ -2245,7 +2254,7 @@ def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
     assert deployed(128)._init_errno == 0
     # Everything else the legacy link declared is accepted unchanged: 115200 baud, a 1000ms reply
     # budget, payload_size 20, and a CRC16 underneath the protocol.
-    assert deployed(128).payload_size == _BSEC_PAYLOAD_SIZE
+    assert deployed(128)._payload_size == _BSEC_PAYLOAD_SIZE
 
 
 def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
@@ -2256,7 +2265,7 @@ def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
     comm._drain_bound_hit = True
     comm._rx = LockableBuffer(-1)  # a failed allocation, which is what hands its owner None
     assert comm._rx.get_buf() is None  # the early return really is the path taken
-    assert run(comm._drain(comm.uart)) == 0  # type: ignore[arg-type]
+    assert run(comm._drain(comm._uart)) == 0  # type: ignore[arg-type]
     assert comm._drain_bound_hit is False
 
 

@@ -63,7 +63,7 @@ def test_wedged_i2c_bus_watchdog_backstop() -> None:
 )
 def test_real_ws2812_neopixel_signal_timing() -> None:
     print_instruction("If you have a scope/logic analyzer, connect its probe to the Neopixel data line now.")
-    print_instruction("The board will be triggered to show a red-green-blue-off sequence, ~1s per color, via the real /notification lightCmdLED endpoint, one command per color, each sent only after the previous flash has finished.")
+    print_instruction("The board will be triggered to show a red-green-blue-off sequence, ~1s per color, via the real /notification LightCmdLED endpoint, one command per color, each sent only after the previous flash has finished.")
     state_expected_outcome("four distinct, clean colors in sequence (red, green, blue, off) with no visible flicker/glitching; on a scope, WS2812 bit timing within the datasheet's own tolerance (verify against the real WS2812B datasheet directly if you have access to one - this repo's datasheets/ folder does not include it).")
-    confirm("Trigger the sequence now via PUT /notification lightCmdLED calls from another terminal, sending each color only after the previous flash has finished (a command sent during a flash answers \"Failed\"), then press Enter once you've observed it")
+    confirm("Trigger the sequence now via PUT /notification LightCmdLED calls from another terminal, sending each color only after the previous flash has finished (a command sent during a flash answers \"Failed\"), then press Enter once you've observed it")
     confirm_pass()

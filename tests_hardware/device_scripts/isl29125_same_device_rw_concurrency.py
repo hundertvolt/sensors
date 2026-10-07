@@ -67,7 +67,7 @@ async def _main() -> None:
                 snapshot = await isl.get_config_snapshot()
                 readback = snapshot[1] & 0x3F
                 if readback != wanted:
-                    write_errors.append(f"iter {i}: wrote IrCompAdjust={wanted}, read back {readback}")
+                    write_errors.append(f"iter {i}: wrote IRCompAdjust={wanted}, read back {readback}")
             except Exception as e:
                 write_errors.append(f"iter {i}: write raised {e!r}")
             else:

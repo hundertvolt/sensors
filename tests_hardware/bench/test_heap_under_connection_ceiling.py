@@ -65,8 +65,8 @@ _SAMPLE_STEP_S = 0.25
 
 
 def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float, port: int = 80) -> None:
-    """Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
-    the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test."""
+    # Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
+    # the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test.
     stop.wait(offset_s)  # stagger, so the whole set does not expire in lockstep
     while not stop.is_set():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -108,9 +108,9 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
 
 
 def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list[int], stop: threading.Event) -> None:
-    """Sustains `ceiling` real connections parked mid-request for the whole window and records the
-    count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Host-driven,
-    so nothing here shares the DUT's heap (Part E.9); `stop` is its test's way to end it early."""
+    # Sustains `ceiling` real connections parked mid-request for the whole window and records the
+    # count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Host-driven,
+    # so nothing here shares the DUT's heap (Part E.9); `stop` is its test's way to end it early.
     deadline = time.monotonic() + seconds
     if not wait_for_script_server(dut_ip, stop, timeout_s=seconds):  # the script's own boot, not main.py's
         return  # nothing reported: the test's own "did not report" assert names it

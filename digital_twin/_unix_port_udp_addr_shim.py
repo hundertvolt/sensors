@@ -1,6 +1,6 @@
 """Workaround for three confirmed MicroPython-Unix-port-only `socket` quirks that would otherwise break a real UDP round trip (DNS, NTP) here - entirely from twin-side code, `src/` untouched and correct for real hardware.
 Full account: digital_twin/README.md's "`_unix_port_udp_addr_shim.py`" section.
-Call `patch_asy_udp_socket_for_unix_port()` once, early, before constructing any `AsyUDPSocket`."""
+Call `patch_asy_udp_socket_for_unix_port()` once, early, before constructing any `UDPSocket`."""
 
 import socket
 import struct
@@ -22,22 +22,22 @@ if TYPE_CHECKING:
     # so each is typed "same type in, plus the normalized (host, port) tuple it may return instead".
     T = TypeVar("T")
 
-_real_connect = asy_udp_socket.AsyUDPSocket._connect
-_real_recvfrom = asy_udp_socket.AsyUDPSocket.recvfrom
-_real_sendto = asy_udp_socket.AsyUDPSocket.sendto
+_real_connect = asy_udp_socket.UDPSocket._connect
+_real_recvfrom = asy_udp_socket.UDPSocket.recvfrom
+_real_sendto = asy_udp_socket.UDPSocket.sendto
 _patched = False
 
 
 def _resolve_plain_addr(addr: "T") -> "T | tuple[str, int]":
     if isinstance(addr, tuple) and len(addr) == 2 and isinstance(addr[0], str):
         # getaddrinfo()'s stub-declared sockaddr slot is (host, port) or IPv6's 4-tuple; this
-        # project is IPv4-only (AsyUDPSocket's own addr type), and on this build it is in fact the
+        # project is IPv4-only (UDPSocket's own addr type), and on this build it is in fact the
         # opaque sockaddr bytes object src/asy_udp_socket.py already documents accepting.
         return cast("tuple[str, int]", socket.getaddrinfo(addr[0], addr[1])[0][-1])
     return addr
 
 
-async def _patched_connect(self: "asy_udp_socket.AsyUDPSocket") -> None:
+async def _patched_connect(self: "asy_udp_socket.UDPSocket") -> None:
     # Every real call site already hands over a numeric (host, port) tuple, so this getaddrinfo()
     # is always local and never a DNS query. It also resolves once: afterwards self._addr is a
     # sockaddr bytes object, which the isinstance check skips on every later reconnect.
@@ -45,7 +45,7 @@ async def _patched_connect(self: "asy_udp_socket.AsyUDPSocket") -> None:
     await _real_connect(self)
 
 
-async def _patched_sendto(self: "asy_udp_socket.AsyUDPSocket", msg: "bytes | bytearray", addr: "tuple[str, int]", timeout_ms: int = -1) -> "int | None":
+async def _patched_sendto(self: "asy_udp_socket.UDPSocket", msg: "bytes | bytearray", addr: "tuple[str, int]", timeout_ms: int = -1) -> "int | None":
     return await _real_sendto(self, msg, _resolve_plain_addr(addr), timeout_ms=timeout_ms)
 
 
@@ -62,7 +62,7 @@ def _normalize_recvfrom_addr(addr: "T") -> "T | tuple[str, int]":
     return addr
 
 
-async def _patched_recvfrom(self: "asy_udp_socket.AsyUDPSocket", buf: int, timeout_ms: int = -1) -> "tuple[bytes | None, tuple[str, int] | None]":
+async def _patched_recvfrom(self: "asy_udp_socket.UDPSocket", buf: int, timeout_ms: int = -1) -> "tuple[bytes | None, tuple[str, int] | None]":
     data, addr = await _real_recvfrom(self, buf, timeout_ms=timeout_ms)
     return data, _normalize_recvfrom_addr(addr)
 
@@ -71,7 +71,7 @@ def patch_asy_udp_socket_for_unix_port() -> None:
     global _patched
     if _patched:
         return
-    asy_udp_socket.AsyUDPSocket._connect = _patched_connect  # type: ignore[method-assign]
-    asy_udp_socket.AsyUDPSocket.sendto = _patched_sendto  # type: ignore[method-assign]
-    asy_udp_socket.AsyUDPSocket.recvfrom = _patched_recvfrom  # type: ignore[method-assign]
+    asy_udp_socket.UDPSocket._connect = _patched_connect  # type: ignore[method-assign]
+    asy_udp_socket.UDPSocket.sendto = _patched_sendto  # type: ignore[method-assign]
+    asy_udp_socket.UDPSocket.recvfrom = _patched_recvfrom  # type: ignore[method-assign]
     _patched = True

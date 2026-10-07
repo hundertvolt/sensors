@@ -69,15 +69,15 @@ if grep -rn "type: ignore\[[^]]*method-assign" src/; then
 fi
 _check_end "method-assign guard"
 
-# `gc.collect()` is confined to the two one-time boot lists - system_service.py's task-starter loop
+# `gc.collect()` is confined to the two one-time boot lists - asy_system_service.py's task-starter loop
 # and the setup batch buildgen/codegen.py emits - and nothing else (SPECIFICATION.md Part I.4(f.1);
 # digital_twin/ and tests/ are out of scope there, per I.4(e) and Part F.6).
 #
 # tests_scripts/test_gc_collect_sites.py asserts the same thing structurally, by enclosing function;
 # this grep is the fast path that fails the gate before the suite runs.
 _check_begin
-if grep -rn --include="*.py" "gc\.collect(" src/ | grep -v "^src/system_service.py:"; then
-    echo "error: gc.collect() in src/ is confined to system_service.py's task-starter list (SPECIFICATION.md Part I.4(f.1))." >&2
+if grep -rn --include="*.py" "gc\.collect(" src/ | grep -v "^src/asy_system_service.py:"; then
+    echo "error: gc.collect() in src/ is confined to asy_system_service.py's task-starter list (SPECIFICATION.md Part I.4(f.1))." >&2
     status=1
 fi
 if grep -rn --include="*.py" "gc\.collect(" buildgen/ | grep -v "^buildgen/codegen.py:"; then

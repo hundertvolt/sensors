@@ -32,8 +32,8 @@ def _compute_uart_wiring(model: DeviceModel) -> "dict[str, str] | None":
 
 
 def compute_twin_wiring(model: DeviceModel) -> "dict[str, Any]":
-    """A JSON-serializable wiring plan - which chip fake sits at which I2C address/bus, which FRAM chip on which SPI bus, and which two UART instances are the crossover pair - covering everything `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()`/`configure_wiring()` need, derived straight from `model`'s own validated facts rather than a second hand-maintained table.
-    Shape: {"device": str, "buses": {"i2cN": [{"driver", "name_ext", "address", ["irq_pin"]}, ...]}, "spi": {"spiN": {"driver": "fram", "name_ext", "max_size"}}, "uart": {"initiator_var", "responder_var"} | None}. Trusts an already-`build_model()`-validated `model` (no duplicate address within one bus, no more than one initiator/responder pair)."""
+    # A JSON-serializable wiring plan - which chip fake sits at which I2C address/bus, which FRAM chip on which SPI bus, and which two UART instances are the crossover pair - covering everything `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()`/`configure_wiring()` need, derived straight from `model`'s own validated facts rather than a second hand-maintained table.
+    # Shape: {"device": str, "buses": {"i2cN": [{"driver", "name_ext", "address", ["irq_pin"]}, ...]}, "spi": {"spiN": {"driver": "fram", "name_ext", "max_size"}}, "uart": {"initiator_var", "responder_var"} | None}. Trusts an already-`build_model()`-validated `model` (no duplicate address within one bus, no more than one initiator/responder pair).
     buses: dict[str, list[dict[str, Any]]] = {}
     spi: dict[str, dict[str, Any]] = {}
     uart = _compute_uart_wiring(model)

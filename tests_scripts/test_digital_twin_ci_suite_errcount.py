@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def _entry(*history: tuple[int, str], counter: int | None = None) -> dict[str, object]:
-    """One GET /status errcount entry, in asy_webserver_service.py's own published shape."""
+    # One GET /status errcount entry, in asy_webserver_service.py's own published shape.
     items = [{"num": num, "type": kind} for num, kind in history]
     return {"counter": len(items) if counter is None else counter, "history": items}
 
@@ -41,7 +41,7 @@ def test_error_type_count_selects_warnings_when_asked(ci_suite: ModuleType) -> N
 
 
 def test_error_type_count_ignores_the_empty_ring_slots(ci_suite: ModuleType) -> None:
-    # print_log.py pre-fills the history deque with its own "nothing recorded" sentinel, published
+    # asy_print_log.py pre-fills the history deque with its own "nothing recorded" sentinel, published
     # as type "N" - a full ten-slot ring with one real entry must still count as one, never ten.
     entry = _entry(*([(0, "N")] * 9), (5, "W"))
     assert ci_suite._error_type_count(entry, "W") == 1
@@ -66,7 +66,7 @@ def test_error_type_count_is_never_satisfied_by_the_raw_counter(ci_suite: Module
 
 
 # ---------------------------------------------------------------------------
-# _failure_events() - under print_log.py's newest-entry rule a repeated code spends no slot, so a
+# _failure_events() - under asy_print_log.py's newest-entry rule a repeated code spends no slot, so a
 # failure is an ErrCount step not backed by a warning slot.
 # ---------------------------------------------------------------------------
 
@@ -167,7 +167,7 @@ def test_run_5c_faults_every_bus_attached_driver_but_never_the_store_itself(ci_s
 
 def test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself(ci_suite: ModuleType) -> None:
     # Everything else in errcount is FRAM-backed and must come back across a commanded reboot.
-    # AsyFramManager cannot persist its own history through the store that failed, the one
+    # FRAMManager cannot persist its own history through the store that failed, the one
     # legitimate exemption, which _sensortask_scenarios.py pins from the real object graph too.
     assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["FRAM"]
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME.values()) >= ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES
@@ -179,7 +179,7 @@ def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci
     # check: the real device set decides who belongs.
 
     # Scoped to i2c/spi, the buses the twin's chip fakes can fault. uart_link's peer is a second
-    # UART_Comm rather than a faultable fake, so it is out by mechanism, not by an allowlist.
+    # UARTComm rather than a faultable fake, so it is out by mechanism, not by an allowlist.
     attached = set()
     for device in DEVICE_NAMES:
         doc = tomllib.loads(device_toml(device).read_text())
@@ -323,7 +323,7 @@ def test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry(ci_suite: Modu
 
 
 def _drive_timed_reset(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, elapsed_s: float, status: int = 200) -> "tuple[int, list[str], list[str]]":
-    """Runs _put_reset_errors_timed() with a scripted elapsed time; returns (status, oks, failures)."""
+    # Runs _put_reset_errors_timed() with a scripted elapsed time; returns (status, oks, failures).
     clock = iter([1000.0, 1000.0 + elapsed_s])
     monkeypatch.setattr(ci_suite.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, None))
@@ -398,7 +398,7 @@ def test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate(ci_suit
 
 
 def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -> "list[str]":
-    """Runs the check over one captured run log and returns whatever failures it recorded."""
+    # Runs the check over one captured run log and returns whatever failures it recorded.
     log = tmp_path / "run.log"
     log.write_text(log_text)
     saved = list(ci_suite._FAILURES)  # module-level and session-shared: never left mutated

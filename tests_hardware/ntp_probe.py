@@ -10,8 +10,8 @@ _NTP_EPOCH_DELTA = 2208988800  # 1900 -> 1970, matches src/asy_ntp_client.py's o
 
 
 def build_reply(unix_time: int) -> bytes:
-    """A standard 48-byte NTP server reply (stratum 1) whose Transmit Timestamp encodes `unix_time` -
-    the only fields src/asy_ntp_client.py's _parse_ntp_reply() actually reads."""
+    # A standard 48-byte NTP server reply (stratum 1) whose Transmit Timestamp encodes `unix_time` -
+    # the only fields src/asy_ntp_client.py's _parse_ntp_reply() actually reads.
     header = bytes([0x24, 0x01, 0x06, 0xEC])  # LI=0, VN=4, Mode=4 (server); stratum=1; poll=6; precision=0xEC
     root_delay = b"\x00\x00\x00\x00"
     root_dispersion = b"\x00\x00\x00\x00"

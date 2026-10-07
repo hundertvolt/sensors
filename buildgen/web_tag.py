@@ -31,7 +31,7 @@ _VALID_KINDS = frozenset({"readonly", "number", "string", "enum", "toggle"})
 # The values each enumerated key takes; format and codes describe a readonly value, bytes and shape a
 # string one (a string's kind is inferred from its schema, so the generator checks that half).
 _FORMATS = frozenset({"epoch", "gmtimestruct"})
-_SHAPES = frozenset({"hostLabel", "countryCode"})
+_SHAPES = frozenset({"hostLabel", "countryCode", "hostName"})
 _READONLY_ONLY_KEYS = ("format", "codes")
 _STRING_ONLY_KEYS = ("bytes", "shape")
 # js/definitions.js's own validateFieldHints() ceiling (Number#toFixed()'s real RangeError
@@ -42,8 +42,9 @@ SELF_GROUP = "self"
 
 
 class _WebGrammarError(Exception):
-    """Internal: a malformed key=value payload. Always caught and re-raised as a BuildError with
-    the tag's own file/line/field context, never allowed to escape this module."""
+    # Internal: a malformed key=value payload. Always caught and re-raised as a BuildError with
+    # the tag's own file/line/field context, never allowed to escape this module.
+    pass
 
 
 @dataclass(frozen=True)

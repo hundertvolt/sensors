@@ -61,7 +61,7 @@ import { fetchWithTimeout } from "./poll-manager.js";
 // int default (SPECIFICATION.md Part A.8) - tells coerceAndValidate() when a fractional value is
 // actually valid.
 
-// errcount history shape matches print_log.py/asy_webserver_service.py exactly: no per-entry
+// errcount history shape matches asy_print_log.py/asy_webserver_service.py exactly: no per-entry
 // timestamp exists; "type" ("N"/"E"/"W") only colors "num" (a raw errno), never shown as text.
 
 // dispatch?: true and alwaysExecuted?: true mark the two never-"Unchanged" classes

@@ -1,6 +1,6 @@
 """Unit + integration tests for asy_scd30_driver.py (src/).
 Module-level tests exercise SCD30_I2C against tests/machine.py's fake I2C/Pin, cross-checked byte-for-byte against the Interface Description's own worked examples (datasheets/scd30/).
-Integration-level tests wire SCD30_Reader to the real asy_i2c_driver.py/base_classes.py/print_log.py - no mocking above the raw I2C bus.
+Integration-level tests wire SCD30_Reader to the real asy_i2c_driver.py/asy_base_classes.py/asy_print_log.py - no mocking above the raw I2C bus.
 """
 # Integration tests cover how a real OSError (bus fault) or RuntimeError (CRC mismatch) propagates
 # up through the Reader's never-raises wrapper contract and into the real error counter/log.
@@ -14,11 +14,12 @@ from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
-import config_manager as cm
+import asy_base_classes
+import asy_config_manager as cm
+from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
+from asy_print_log import LogConfig, PrintLogHistory
 from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
-from crc_checks import CRC8
-from print_log import LogConfig, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -30,8 +31,8 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
-    from config_manager import CfgValue, WriteValidity
-    from print_log import ErrorLog
+    from asy_config_manager import CfgValue, WriteValidity
+    from asy_print_log import ErrorLog
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -59,12 +60,12 @@ def make_scd() -> "tuple[SCD30_I2C, FakeI2C]":
     return scd, fake(i2c)
 
 
-def make_reader(trigger_sec: int = 3, max_module_error: int = 5) -> SCD30_Reader:
-    return SCD30_Reader(make_i2c(), irq_pin=5, trigger_sec=trigger_sec, max_module_error=max_module_error)
+def make_reader(trigger_s: int = 3, max_module_error: int = 5) -> SCD30_Reader:
+    return SCD30_Reader(make_i2c(), irq_pin=5, trigger_s=trigger_s, max_module_error=max_module_error)
 
 
 def reader_fake_i2c(reader: SCD30_Reader) -> FakeI2C:
-    return reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
+    return reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
 
 
 def crc8_byte(data: bytes) -> int:
@@ -107,6 +108,16 @@ async def _settle(n: int = 5) -> None:
         await asyncio.sleep(0)
 
 
+class _UTCValid:
+    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit.
+    def __enter__(self) -> "_UTCValid":
+        asy_base_classes.set_utc_valid()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
 class _FastAsyncSleep:
     # _read_dev_register()/_send_dev_command() each make a real asyncio.sleep(_CMD_RESPONSE_WAIT_S) - fine for a
     # directly awaited coroutine, far too slow for a test driving get_config_snapshot() through a bounded
@@ -125,7 +136,7 @@ class _FastAsyncSleep:
 
 
 class _RaiseOnArm:
-    # Same technique as the _RaiseOnArm in the system_service/wifi suites - toggles tests/machine.py's
+    # Same technique as the _RaiseOnArm in the asy_system_service/wifi suites - toggles tests/machine.py's
     # shared Timer.raise_on_arm for the `with` block, simulating an rp2 Timer.init() that cannot arm. `exc`
     # picks which of start_timer()'s guarded arms runs: the OSError(ENOMEM) alarm-pool one, or MemoryError.
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
@@ -646,7 +657,7 @@ def test_fault_injected_read_half_failure_after_a_successful_write_half() -> Non
 def test_setup_probes_reads_firmware_version_then_soft_resets() -> None:
     scd, i2c = make_scd()
     i2c.read_queue.append(register_frame(0x0301))
-    run(scd.setup())
+    assert run(scd.setup()) is True
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "writeto", "readfrom_into", "writeto"]
     assert i2c.log[0][2] == b""  # I2CDevice.setup()'s device-presence probe
@@ -660,7 +671,7 @@ def test_setup_probe_failure_never_reaches_firmware_read_or_reset() -> None:
     try:
         run(scd.setup())
         raised = False
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         raised = True
     assert raised
     assert len(i2c.log) == 0  # probe failed before any command bytes were even written
@@ -668,45 +679,44 @@ def test_setup_probe_failure_never_reaches_firmware_read_or_reset() -> None:
 
 # ===========================================================================
 # Integration level: SCD30_Reader wired to the real asy_i2c_driver.I2C/I2CDevice,
-# base_classes.SensorReader, and print_log.PrintLogHistory - only the raw I2C bus is mocked.
+# asy_base_classes.SensorReader, and asy_print_log.PrintLogHistory - only the raw I2C bus is mocked.
 # ===========================================================================
 
 
 def test_reader_init_constructs_a_real_input_pin_and_leaves_timer_unarmed() -> None:
     reader = make_reader()
-    assert reader.irq_pin.mode == FakePin.IN
-    assert reader.start_trigger_timer.deinit_called is False
+    assert reader._irq_pin.mode == FakePin.IN
+    assert reader._start_trigger_timer.deinit_called is False
 
 
 def test_reader_start_timer_arms_periodic_timer_and_pin_irq() -> None:
     FakeTimer.all_timers.clear()
     reader = make_reader()
     reader.start_timer()
-    assert reader.start_trigger_timer.period == _START_TRIGGER_PERIOD_MS
-    assert reader.start_trigger_timer.mode == FakeTimer.PERIODIC
-    assert reader.irq_pin._irq_trigger == FakePin.IRQ_RISING
+    assert reader._start_trigger_timer.period == _START_TRIGGER_PERIOD_MS
+    assert reader._start_trigger_timer.mode == FakeTimer.PERIODIC
+    assert reader._irq_pin._irq_trigger == FakePin.IRQ_RISING
 
-    reader.start_trigger_timer.trigger()
-    reader.irq_pin.trigger_irq()
+    reader._start_trigger_timer.trigger()
+    reader._irq_pin.trigger_irq()
 
     async def scenario() -> None:
-        await asyncio.wait_for(reader.base_trigger_event.wait(), _EVENT_WAIT_S)
-        await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
+        await asyncio.wait_for(reader._base_trigger_event.wait(), _EVENT_WAIT_S)
+        await asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)
 
     run(scenario())
     FakeTimer.all_timers.clear()
 
 
 def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed() -> None:
-    # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (confirmed against
-    # ports/rp2/machine_timer.c) - start_timer() must log and return normally, since raising into
-    # system_service.py's synchronous start_timers() would take down the whole chain over one sensor.
+    # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (ports/rp2/machine_timer.c);
+    # start_timer() runs inside SystemService's timer start and must not raise into it.
     FakeTimer.all_timers.clear()
     reader = make_reader()
     with _RaiseOnArm():
         reader.start_timer()  # must not raise despite the timer failing to arm
-    assert reader.start_trigger_timer.period == -1  # never actually armed
-    assert reader.start_trigger_timer.callback is None  # nothing wired to base_trigger_event
+    assert reader._start_trigger_timer.period == -1  # never actually armed
+    assert reader._start_trigger_timer.callback is None  # nothing wired to _base_trigger_event
     # start_timer() is synchronous, so it logs via the plain, non-counting pr.err() rather than
     # awaiting pr.err_s() - this failure prints but is deliberately never recorded as a numbered
     # error in the counter, unlike every err_s() call site in this driver.
@@ -714,12 +724,12 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
 
     # The pin IRQ is wired after the guarded try/except, so a timer that failed to arm must not
     # cost the sensor its data-ready interrupt as well - that IRQ, not the timer, is what actually
-    # triggers a measurement read (the timer only drives scd_init_irq()'s stuck-pin watchdog).
-    assert reader.irq_pin._irq_trigger == FakePin.IRQ_RISING
-    reader.irq_pin.trigger_irq()
+    # triggers a measurement read (the timer only drives _irq_loop()'s stuck-pin watchdog).
+    assert reader._irq_pin._irq_trigger == FakePin.IRQ_RISING
+    reader._irq_pin.trigger_irq()
 
     async def scenario() -> None:
-        await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
+        await asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)
 
     run(scenario())
     FakeTimer.all_timers.clear()
@@ -733,9 +743,9 @@ def test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming()
     reader = make_reader()
     with _RaiseOnArm(MemoryError):
         reader.start_timer()  # must not raise despite the timer failing to arm
-    assert reader.start_trigger_timer.period == -1  # never actually armed
-    assert reader.start_trigger_timer.callback is None
-    assert reader.irq_pin._irq_trigger == FakePin.IRQ_RISING
+    assert reader._start_trigger_timer.period == -1  # never actually armed
+    assert reader._start_trigger_timer.callback is None
+    assert reader._irq_pin._irq_trigger == FakePin.IRQ_RISING
     FakeTimer.all_timers.clear()
 
 
@@ -744,7 +754,7 @@ def test_reader_stop_timer_deinits_the_periodic_timer_only() -> None:
     reader = make_reader()
     reader.start_timer()
     reader.stop_timer()
-    assert reader.start_trigger_timer.deinit_called is True
+    assert reader._start_trigger_timer.deinit_called is True
     FakeTimer.all_timers.clear()
 
 
@@ -752,30 +762,31 @@ def test_reader_get_task_starters_and_timer_starters_shape() -> None:
     reader = make_reader()
     task_starters = reader.get_task_starters()
     timer_starters = reader.get_timer_starters()
-    assert task_starters == [reader.start_asy_read, reader.start_asy_init]
+    assert task_starters == [reader.start_asy_read, reader.start_asy_irq]
     assert timer_starters == [reader.start_timer]
+    assert reader.get_trigger_starters() == []  # reads on its own data-ready edge: nothing to stagger
 
 
 def test_scd_init_irq_sets_irq_trigger_after_enough_consecutive_stuck_ticks() -> None:
-    reader = make_reader(trigger_sec=3)  # trigger_half_sec = 2*3 = 6
-    reader.irq_pin.value(1)  # IRQ pin stuck HIGH - sensor never actually got read
+    reader = make_reader(trigger_s=3)  # _trigger_half_ticks = 2*3 = 6
+    reader._irq_pin.value(1)  # IRQ pin stuck HIGH - sensor never actually got read
 
     async def scenario() -> "tuple[bool, bool]":
-        task = asyncio.create_task(reader.scd_init_irq())
+        task = asyncio.create_task(reader._irq_loop())
         for _ in range(5):
-            reader.base_trigger_event.set()
+            reader._base_trigger_event.set()
             await _settle(3)
         not_yet = True
         try:
-            await asyncio.wait_for(reader.read_event.wait(), 0)
+            await asyncio.wait_for(reader._read_event.wait(), 0)
             not_yet = False
         except asyncio.TimeoutError:
             pass
-        reader.base_trigger_event.set()
+        reader._base_trigger_event.set()
         await _settle(3)
         triggered = False
         try:
-            await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)
             triggered = True
         except asyncio.TimeoutError:
             pass
@@ -792,17 +803,17 @@ def test_scd_init_irq_sets_irq_trigger_after_enough_consecutive_stuck_ticks() ->
 
 
 def test_scd_init_irq_never_triggers_while_pin_reads_low() -> None:
-    reader = make_reader(trigger_sec=1)  # trigger_half_sec = 2
-    reader.irq_pin.value(0)  # sensor is being read normally - pin never stuck high
+    reader = make_reader(trigger_s=1)  # _trigger_half_ticks = 2
+    reader._irq_pin.value(0)  # sensor is being read normally - pin never stuck high
 
     async def scenario() -> bool:
-        task = asyncio.create_task(reader.scd_init_irq())
+        task = asyncio.create_task(reader._irq_loop())
         for _ in range(10):
-            reader.base_trigger_event.set()
+            reader._base_trigger_event.set()
             await _settle(3)
         triggered = True
         try:
-            await asyncio.wait_for(reader.read_event.wait(), 0)
+            await asyncio.wait_for(reader._read_event.wait(), 0)
         except asyncio.TimeoutError:
             triggered = False
         task.cancel()
@@ -816,7 +827,7 @@ def test_scd_init_irq_never_triggers_while_pin_reads_low() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Integration: every public getter/setter, real fault propagation through print_log/base_classes -
+# Integration: every public getter/setter, real fault propagation through asy_print_log/asy_base_classes -
 # an OSError (bus NAK), a RuntimeError (CRC), and a ValueError (bad range) must all surface as
 # None (getters) / False (setters), never leak past the Reader.
 # ---------------------------------------------------------------------------
@@ -1034,13 +1045,13 @@ def test_set_dict_cfg_dispatches_a_valid_value_to_the_real_setter_and_reports_va
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
     _queue_snapshot(i2c)
-    result = run(reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema()))
-    assert result == {"TempOffs": "Valid"}
+    result = run(reader._set_dict_cfg({"TempOffset": 4.5}, reader.get_cfg_schema()))
+    assert result == {"TempOffset": "Valid"}
     assert scd30_nvm_writes(i2c) == {0x5403: 1}
 
 
 def test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_before_dispatch() -> None:
-    # TempOffs is float-typed, so a plain int PUT value must be coerced to float by type_or_range_error()
+    # TempOffset is float-typed, so a plain int PUT value must be coerced to float by type_or_range_error()
     # before reaching set_temperature_offset(). Both are structurally acceptable to the setter's int|float
     # signature, so only inspecting the actual argument received, via this spy, proves coercion really ran.
     reader = make_reader()
@@ -1053,14 +1064,14 @@ def test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_be
 
     reader.set_temperature_offset = spy  # type: ignore[method-assign]
     _queue_snapshot(reader_fake_i2c(reader))
-    result = run(reader._set_dict_cfg({"TempOffs": 5}, reader.get_cfg_schema()))
-    assert result == {"TempOffs": "Valid"}
+    result = run(reader._set_dict_cfg({"TempOffset": 5}, reader.get_cfg_schema()))
+    assert result == {"TempOffset": "Valid"}
     assert received == [5.0]
     assert type(received[0]) is float
 
 
 def test_set_dict_cfg_integral_float_value_for_the_int_typed_measint_field_is_coerced_before_dispatch() -> None:
-    # Mirror of the test above, in the other direction: MeasInt is int-typed - an integral float PUT
+    # Mirror of the test above, in the other direction: MeasInterval is int-typed - an integral float PUT
     # value must be coerced to int before reaching set_measurement_interval().
     reader = make_reader()
     reader_fake_i2c(reader)
@@ -1072,8 +1083,8 @@ def test_set_dict_cfg_integral_float_value_for_the_int_typed_measint_field_is_co
 
     reader.set_measurement_interval = spy  # type: ignore[method-assign]
     _queue_snapshot(reader_fake_i2c(reader))
-    result = run(reader._set_dict_cfg({"MeasInt": 10.0}, reader.get_cfg_schema()))
-    assert result == {"MeasInt": "Valid"}
+    result = run(reader._set_dict_cfg({"MeasInterval": 10.0}, reader.get_cfg_schema()))
+    assert result == {"MeasInterval": "Valid"}
     assert received == [10]
     assert type(received[0]) is int
 
@@ -1089,8 +1100,8 @@ def test_set_dict_cfg_fractional_value_for_an_int_typed_field_rejected_before_di
 
     reader.set_measurement_interval = spy  # type: ignore[method-assign]
     _queue_snapshot(reader_fake_i2c(reader))
-    result = run(reader._set_dict_cfg({"MeasInt": 10.5}, reader.get_cfg_schema()))
-    assert result == {"MeasInt": "Invalid"}
+    result = run(reader._set_dict_cfg({"MeasInterval": 10.5}, reader.get_cfg_schema()))
+    assert result == {"MeasInterval": "Invalid"}
     assert received == []  # never dispatched - rejected before the setter is ever called
 
 
@@ -1100,11 +1111,11 @@ def test_set_dict_cfg_out_of_range_value_rejected_before_dispatch() -> None:
     _queue_snapshot(i2c)
 
     async def scenario() -> "tuple[WriteValidity, ErrorLog]":
-        result = await reader._set_dict_cfg({"TempOffs": 9999.0}, reader.get_cfg_schema())
+        result = await reader._set_dict_cfg({"TempOffset": 9999.0}, reader.get_cfg_schema())
         return result, await reader.get_error_counter()
 
     result, log = run(scenario())
-    assert result == {"TempOffs": "Invalid"}
+    assert result == {"TempOffset": "Invalid"}
     assert scd30_nvm_writes(i2c) == {}
     assert log["SCD30"]["ErrNum"][-1] == code("E", "BAD_ARG")
 
@@ -1112,8 +1123,8 @@ def test_set_dict_cfg_out_of_range_value_rejected_before_dispatch() -> None:
 def test_set_dict_cfg_wrong_type_value_rejected_before_dispatch() -> None:
     reader = make_reader()
     _queue_snapshot(reader_fake_i2c(reader))
-    result = run(reader._set_dict_cfg({"TempOffs": "not a number"}, reader.get_cfg_schema()))
-    assert result == {"TempOffs": "Invalid"}
+    result = run(reader._set_dict_cfg({"TempOffset": "not a number"}, reader.get_cfg_schema()))
+    assert result == {"TempOffset": "Invalid"}
 
 
 def test_set_dict_cfg_unknown_key_reported_invalid_without_dispatch() -> None:
@@ -1132,33 +1143,33 @@ def test_set_dict_cfg_setter_reports_failed_on_bus_fault() -> None:
     async def stored() -> "tuple[float, int, int, int, int, bool]":
         return 0.0, 2, 0, 0, 400, False
 
-    reader.scd.get_config_snapshot = stored  # type: ignore[method-assign]
+    reader._scd.get_config_snapshot = stored  # type: ignore[method-assign]
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
     async def scenario() -> "tuple[WriteValidity, ErrorLog]":
-        result = await reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema())
+        result = await reader._set_dict_cfg({"TempOffset": 4.5}, reader.get_cfg_schema())
         return result, await reader.get_error_counter()
 
     result, log = run(scenario())
-    assert result == {"TempOffs": "Failed"}
+    assert result == {"TempOffset": "Failed"}
     assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_SET")
 
 
 def test_set_dict_cfg_multiple_fields_in_one_call_including_ambpres_special_sentinel() -> None:
-    # Exercises several dispatch fields together (not just TempOffs in isolation), including
+    # Exercises several dispatch fields together (not just TempOffset in isolation), including
     # AmbPres's own special-value sentinel (0 - deactivate ambient pressure compensation).
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
     _queue_snapshot(i2c)
-    result = run(reader._set_dict_cfg({"TempOffs": 5, "AmbPres": 0, "SelfCal": True}, reader.get_cfg_schema()))
-    assert result == {"TempOffs": "Valid", "AmbPres": "Valid", "SelfCal": "Valid"}
-    assert _arg_words(i2c) == [0x5403, 0x0010, 0x5306]  # _APPLY_ORDER: TempOffs, AmbPres, SelfCal
+    result = run(reader._set_dict_cfg({"TempOffset": 5, "AmbPres": 0, "SelfCal": True}, reader.get_cfg_schema()))
+    assert result == {"TempOffset": "Valid", "AmbPres": "Valid", "SelfCal": "Valid"}
+    assert _arg_words(i2c) == [0x5403, 0x0010, 0x5306]  # _APPLY_ORDER: TempOffset, AmbPres, SelfCal
 
 
 def test_a_repeated_put_of_a_stored_chip_value_is_unchanged_and_writes_nothing() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    body: dict[str, CfgValue] = {"TempOffs": 4.5, "MeasInt": 10, "Altitude": 200, "SelfCal": True}
+    body: dict[str, CfgValue] = {"TempOffset": 4.5, "MeasInterval": 10, "Altitude": 200, "SelfCal": True}
     _queue_snapshot(i2c)
     first = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
     assert first == dict.fromkeys(body, "Valid")
@@ -1184,7 +1195,7 @@ def test_a_reversed_body_writes_in_the_fixed_order() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
     _queue_snapshot(i2c)
-    body: dict[str, CfgValue] = {"SelfCal": True, "ForceCalRef": 450, "Altitude": 200, "AmbPres": 1000, "MeasInt": 10, "TempOffs": 4.5}
+    body: dict[str, CfgValue] = {"SelfCal": True, "ForceCalRef": 450, "Altitude": 200, "AmbPres": 1000, "MeasInterval": 10, "TempOffset": 4.5}
     result = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
     assert result == dict.fromkeys(body, "Valid")
     assert _arg_words(i2c) == [0x5403, 0x4600, 0x0010, 0x5102, 0x5204, 0x5306]
@@ -1206,7 +1217,7 @@ def test_a_failing_snapshot_fails_every_key_and_writes_nothing() -> None:
     # Nothing queued: the first register reply reads as zeros with a wrong CRC, so the snapshot fails on a live bus.
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    body: dict[str, CfgValue] = {"TempOffs": 4.5, "MeasInt": 10, "AmbPres": 1000, "ContMeas": False, "NoSuchField": 1}
+    body: dict[str, CfgValue] = {"TempOffset": 4.5, "MeasInterval": 10, "AmbPres": 1000, "ContMeas": False, "NoSuchField": 1}
 
     async def scenario() -> "tuple[WriteValidity, ErrorLog]":
         result = await reader._set_dict_cfg(body, reader.get_cfg_schema())
@@ -1225,20 +1236,20 @@ def test_tempoffset_compares_at_tick_resolution() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
     _queue_snapshot(i2c, temp_offset=1235)
-    assert run(reader._set_dict_cfg({"TempOffs": 12.345}, reader.get_cfg_schema())) == {"TempOffs": "Unchanged"}
+    assert run(reader._set_dict_cfg({"TempOffset": 12.345}, reader.get_cfg_schema())) == {"TempOffset": "Unchanged"}
     assert scd30_nvm_writes(i2c) == {}
 
 
 # ---------------------------------------------------------------------------
-# Integration: get_dict_cfg()/get_dict_data() through the real config_manager.make_dict/name_cfg
+# Integration: get_dict_cfg()/get_dict_data() through the real asy_config_manager.make_dict/name_cfg
 # ---------------------------------------------------------------------------
 
 
 def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    i2c.read_queue.append(register_frame(450))  # TempOffs
-    i2c.read_queue.append(register_frame(10))  # MeasInt
+    i2c.read_queue.append(register_frame(450))  # TempOffset
+    i2c.read_queue.append(register_frame(10))  # MeasInterval
     i2c.read_queue.append(register_frame(1000))  # AmbPres
     i2c.read_queue.append(register_frame(200))  # Altitude
     i2c.read_queue.append(register_frame(400))  # ForceCalRef
@@ -1246,8 +1257,8 @@ def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
 
     result = run(reader.get_dict_cfg())
     fields = result["SCD30"]
-    assert fields["TempOffs"] == 4.5
-    assert fields["MeasInt"] == 10
+    assert fields["TempOffset"] == 4.5
+    assert fields["MeasInterval"] == 10
     assert fields["AmbPres"] == 1000
     assert fields["Altitude"] == 200
     assert fields["ForceCalRef"] == 400
@@ -1258,7 +1269,7 @@ def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
     # _put_sensors() calls get_cfg_schema() on every sensor; SCD30's covers its six chip keys.
     reader = make_reader()
     names = cm.schema_names(reader.get_cfg_schema())
-    assert set(names) == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"}
+    assert set(names) == {"TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"}
 
 
 def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> None:
@@ -1274,8 +1285,8 @@ def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> N
     assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
     fields = result["SCD30"]
     assert fields == {
-        "TempOffs": None,
-        "MeasInt": None,
+        "TempOffset": None,
+        "MeasInterval": None,
         "AmbPres": None,
         "Altitude": None,
         "ForceCalRef": None,
@@ -1292,7 +1303,7 @@ def test_get_dict_cfg_after_a_failing_snapshot_shows_none_and_one_entry() -> Non
         return result, await reader.get_error_counter()
 
     result, log = run(scenario())
-    assert result == {"SCD30": {"TempOffs": None, "MeasInt": None, "AmbPres": None, "Altitude": None, "ForceCalRef": None, "SelfCal": None}}
+    assert result == {"SCD30": {"TempOffset": None, "MeasInterval": None, "AmbPres": None, "Altitude": None, "ForceCalRef": None, "SelfCal": None}}
     assert log["SCD30"]["ErrCount"] == 1
     assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
 
@@ -1307,7 +1318,7 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
     # ops per register: a writeto for the address, a readfrom_into for the reply).
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    for value in (450, 10, 1000, 200, 400, 1):  # TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal
+    for value in (450, 10, 1000, 200, 400, 1):  # TempOffset, MeasInterval, AmbPres, Altitude, ForceCalRef, SelfCal
         i2c.read_queue.append(register_frame(value))
 
     async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[tuple[Any, ...]]]":
@@ -1316,7 +1327,7 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
             await _settle(3)  # let the read task acquire the lock and begin its first register read
             assert not read_task.done()
 
-            write_task = asyncio.create_task(reader.scd.set_temperature_offset(9.99))
+            write_task = asyncio.create_task(reader._scd.set_temperature_offset(9.99))
             await _settle(3)  # give the write every chance to run if it weren't blocked by the lock
             assert not write_task.done()  # still blocked - proves the lock is held for the whole batch
 
@@ -1326,10 +1337,10 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
 
     result, log = run(scenario())
     fields = result["SCD30"]
-    assert fields["TempOffs"] == 4.5  # the pre-write value, not the concurrent write's 9.99
+    assert fields["TempOffset"] == 4.5  # the pre-write value, not the concurrent write's 9.99
     read_ops = 12  # 6 registers x (writeto register address, readfrom_into reply)
     # The write's command frame is 5 bytes (2-byte command, 2-byte data, 1-byte CRC), distinct from the
-    # read's 2-byte register-address probe for the same command code - TempOffs is read first in the batch,
+    # read's 2-byte register-address probe for the same command code - TempOffset is read first in the batch,
     # so a length-agnostic match would find that probe at index 0 instead.
     write_index = next(
         i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[2][:2] == bytes([0x54, 0x03]) and len(entry[2]) == 5
@@ -1355,14 +1366,18 @@ def test_get_error_counter_forwards_to_the_real_print_log() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Integration: _init_scd() / read_loop() - real base_classes.SensorReader plus print_log wiring.
+# Integration: _init_scd() / _read_loop() - real asy_base_classes.SensorReader plus asy_print_log wiring.
 # scd.setup()'s own I2C behavior is covered above; here it is monkeypatched to a fast no-op so these focus
-# on read_loop()'s orchestration without re-paying its real _SOFT_RESET_WAIT_S reset delay each time.
+# on _read_loop()'s orchestration without re-paying its real _SOFT_RESET_WAIT_S reset delay each time.
 # ---------------------------------------------------------------------------
 
 
 async def _fake_setup() -> None:
     return None
+
+
+async def _fake_chip_setup() -> bool:
+    return True
 
 
 def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() -> None:
@@ -1373,11 +1388,11 @@ def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() 
 
 def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> None:
     reader = make_reader(max_module_error=1)
-    reader.scd.setup = _fake_setup  # type: ignore[method-assign]
+    reader._scd.setup = _fake_chip_setup  # type: ignore[method-assign]
     # read_measurement() is the one call that can raise post-fix; the three getters are pure cache reads
     # (see src/asy_scd30_driver.py on why they must never re-check data-ready) - faked as a no-op success
     # plus fixed cache values, matching that shape, not the pre-fix "each getter fetches" one.
-    reader.scd.read_measurement = _fake_setup  # type: ignore[method-assign]
+    reader._scd.read_measurement = _fake_setup  # type: ignore[method-assign]
 
     async def fake_co2() -> float:
         return 500.0
@@ -1388,14 +1403,14 @@ def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> N
     async def fake_hum() -> float:
         return 40.0
 
-    reader.scd.get_CO2 = fake_co2  # type: ignore[method-assign]
-    reader.scd.get_temperature = fake_temp  # type: ignore[method-assign]
-    reader.scd.get_relative_humidity = fake_hum  # type: ignore[method-assign]
+    reader._scd.get_CO2 = fake_co2  # type: ignore[method-assign]
+    reader._scd.get_temperature = fake_temp  # type: ignore[method-assign]
+    reader._scd.get_relative_humidity = fake_hum  # type: ignore[method-assign]
 
     async def scenario() -> SCD30:
-        task = asyncio.create_task(reader.read_loop())
+        task = asyncio.create_task(reader._read_loop())
         await _settle(5)
-        reader.read_event.set()
+        reader._read_event.set()
         await _settle(5)
         data = await reader.get_data()
         task.cancel()
@@ -1405,7 +1420,8 @@ def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> N
             pass
         return data
 
-    data = run(scenario())
+    with _UTCValid():
+        data = run(scenario())
     assert data.CO2 == 500.0
     assert data.Temp == 21.0
     assert data.Hum == 40.0
@@ -1414,9 +1430,71 @@ def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> N
     assert data.DewPoint is not None
 
 
+def test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak() -> None:
+    # utc_now() is None until the NTP client sets the clock: the sample is published with TS None,
+    # and the read loop's condition counts only a cycle whose measured values are gone.
+    reader = make_reader(max_module_error=1)
+    reader._scd.setup = _fake_chip_setup  # type: ignore[method-assign]
+    reader._scd.read_measurement = _fake_setup  # type: ignore[method-assign]
+
+    async def fake_value() -> float:
+        return 21.0
+
+    reader._scd.get_CO2 = fake_value  # type: ignore[method-assign]
+    reader._scd.get_temperature = fake_value  # type: ignore[method-assign]
+    reader._scd.get_relative_humidity = fake_value  # type: ignore[method-assign]
+
+    async def scenario() -> "tuple[SCD30, bool]":
+        task = asyncio.create_task(reader._read_loop())
+        await _settle(5)
+        for _ in range(3):  # three good cycles: past max_module_error had TS counted as a failure
+            reader._read_event.set()
+            await _settle(5)
+        running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return await reader.get_data(), running
+
+    data, running = run(scenario())
+    assert running is True
+    assert data.CO2 == 21.0
+    assert data.TS is None
+    assert reader._err_cnt_internal == 0
+
+
+def test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp() -> None:
+    reader = make_reader()
+    fail = [False]
+
+    async def read_measurement() -> None:
+        if fail[0]:
+            raise OSError(5, "nak")
+
+    async def fake_value() -> float:
+        return 21.0
+
+    reader._scd.read_measurement = read_measurement  # type: ignore[method-assign]
+    reader._scd.get_CO2 = fake_value  # type: ignore[method-assign]
+    reader._scd.get_temperature = fake_value  # type: ignore[method-assign]
+    reader._scd.get_relative_humidity = fake_value  # type: ignore[method-assign]
+    with _UTCValid():
+        run(reader._store_scd(run(reader._read_scd())))
+        good = run(reader.get_data())
+        fail[0] = True
+        failed = run(reader._read_scd())
+        run(reader._store_scd(failed))
+    assert good.TS is not None
+    assert failed[:3] == (None, None, None)
+    assert run(reader.get_data()) == good  # the last good sample, its TS unchanged
+    assert run(reader.get_error_counter())["SCD30"]["ErrNum"][-1] == code("E", "READ")  # only the read error
+
+
 def test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs_via_real_print_log() -> None:
     reader = make_reader(max_module_error=1)
-    reader.scd.setup = _fake_setup  # type: ignore[method-assign]
+    reader._scd.setup = _fake_chip_setup  # type: ignore[method-assign]
 
     async def fake_fail() -> None:
         raise OSError(5, "nak")
@@ -1424,15 +1502,15 @@ def test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs
     # Faked on read_measurement() itself, the real single fault point post-fix - the getters are
     # never reached once it raises, so they're left as the real (pure cache-read) implementation;
     # read_measurement()'s own protocol-level fault handling is covered separately above.
-    reader.scd.read_measurement = fake_fail  # type: ignore[method-assign]
+    reader._scd.read_measurement = fake_fail  # type: ignore[method-assign]
 
     async def scenario() -> bool:
-        task = asyncio.create_task(reader.read_loop())
+        task = asyncio.create_task(reader._read_loop())
         await _settle(5)
         for _ in range(4):
             if task.done():
                 break
-            reader.read_event.set()
+            reader._read_event.set()
             await _settle(5)
         return await task
 
@@ -1446,14 +1524,14 @@ def test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs
 
 def test_read_loop_recovers_error_counter_after_a_good_read_following_failures() -> None:
     reader = make_reader(max_module_error=5)
-    reader.scd.setup = _fake_setup  # type: ignore[method-assign]
+    reader._scd.setup = _fake_chip_setup  # type: ignore[method-assign]
     fail_next = [True, True, False]
 
     async def flaky_read_measurement() -> None:
         if fail_next.pop(0):
             raise OSError(5, "nak")
 
-    reader.scd.read_measurement = flaky_read_measurement  # type: ignore[method-assign]
+    reader._scd.read_measurement = flaky_read_measurement  # type: ignore[method-assign]
 
     async def fake_co2() -> float:
         return 500.0
@@ -1461,15 +1539,15 @@ def test_read_loop_recovers_error_counter_after_a_good_read_following_failures()
     async def fake_ok() -> float:
         return 1.0
 
-    reader.scd.get_CO2 = fake_co2  # type: ignore[method-assign]
-    reader.scd.get_temperature = fake_ok  # type: ignore[method-assign]
-    reader.scd.get_relative_humidity = fake_ok  # type: ignore[method-assign]
+    reader._scd.get_CO2 = fake_co2  # type: ignore[method-assign]
+    reader._scd.get_temperature = fake_ok  # type: ignore[method-assign]
+    reader._scd.get_relative_humidity = fake_ok  # type: ignore[method-assign]
 
     async def scenario() -> "SCD30 | None":
-        task = asyncio.create_task(reader.read_loop())
+        task = asyncio.create_task(reader._read_loop())
         await _settle(5)
         for _ in range(3):
-            reader.read_event.set()
+            reader._read_event.set()
             await _settle(5)
         data = await reader.get_data()
         task.cancel()
@@ -1511,7 +1589,7 @@ def test_start_asy_init_returns_a_real_task() -> None:
     reader = make_reader()
 
     async def scenario() -> bool:
-        task = reader.start_asy_init()
+        task = reader.start_asy_irq()
         await asyncio.sleep(0)
         is_task = isinstance(task, asyncio.Task)
         task.cancel()
@@ -1527,7 +1605,7 @@ def test_start_asy_init_returns_a_real_task() -> None:
 def test_read_loop_returns_false_when_init_fails() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
-    assert run(reader.read_loop()) is False
+    assert run(reader._read_loop()) is False
 
 
 # ---------------------------------------------------------------------------

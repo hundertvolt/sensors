@@ -59,7 +59,7 @@ class Summary:
     notes: list[tuple[str, str]] = field(default_factory=list)
 
     def add(self, kind: str, name: str, detail: str = "") -> None:
-        """Files one item; an empty kind is a missing verdict and files it failed (E.10)."""
+        # Files one item; an empty kind is a missing verdict and files it failed (E.10).
         if not kind:
             kind, detail = "failed", "no verdict"
         if kind not in KINDS:
@@ -67,7 +67,7 @@ class Summary:
         self._items(kind).append((name, detail))
 
     def note(self, name: str, text: str = "") -> None:
-        """Lists one note under Notes:; a note is never counted and never changes the result."""
+        # Lists one note under Notes:; a note is never counted and never changes the result.
         self.notes.append((name, text))
 
     def _items(self, kind: str) -> list[tuple[str, str]]:
@@ -78,8 +78,8 @@ class Summary:
         return Counts(*(len(self._items(kind)) for kind in KINDS))
 
     def exit_code(self, given: int) -> int:
-        """The code the block prints and the caller exits with: a failed or vacuous item raises a passing
-        code (0, 3, 4) to 1; a failure code (1, 2, any other) is kept."""
+        # The code the block prints and the caller exits with: a failed or vacuous item raises a passing
+        # code (0, 3, 4) to 1; a failure code (1, 2, any other) is kept.
         counts = self.counts()
         if (counts.failed or counts.vacuous) and given in _PASSING_EXITS:
             return 1
@@ -119,7 +119,7 @@ class Summary:
         return "\n".join(lines) + "\n"
 
     def print(self, exit_code: int) -> int:
-        """Prints the block and returns the code it printed; the caller exits with that code."""
+        # Prints the block and returns the code it printed; the caller exits with that code.
         sys.stdout.write(self.render(exit_code))
         sys.stdout.flush()
         return self.exit_code(exit_code)
@@ -156,7 +156,7 @@ def _commit() -> str:
 
 
 def _props(props: object) -> list[tuple[str, str]]:
-    """Every user_properties (key, value) pair, the value as text."""
+    # Every user_properties (key, value) pair, the value as text.
     pairs = props if isinstance(props, list) else []
     return [(str(p[0]), str(p[1])) for p in pairs if isinstance(p, list) and len(p) == 2]  # noqa: PLR2004 - a (key, value) pair
 
@@ -185,13 +185,13 @@ def _add_test(summary: Summary, entry: dict[str, object]) -> None:
 
 
 def from_run_record(path: Path) -> Summary:
-    """The pytest run record as a Summary (unit tests); a missing or unreadable record is one failed item."""
+    # The pytest run record as a Summary (unit tests); a missing or unreadable record is one failed item.
     summary = Summary("pytest")
     try:
         record = json.loads(path.read_text())
         if not isinstance(record, dict):
             raise TypeError("not a JSON object")
-    except (OSError, ValueError, TypeError):
+    except (OSError, TypeError, ValueError):
         summary.add("failed", str(path), _NO_RECORD)
         return summary
     for entry in record.get("tests") or []:
@@ -219,7 +219,7 @@ def from_run_record(path: Path) -> Summary:
 
 
 def _add_session_status(summary: Summary, exitstatus: object) -> None:
-    """A session that ended without a verdict, or failed with no failed test recorded, is never clean."""
+    # A session that ended without a verdict, or failed with no failed test recorded, is never clean.
     if not isinstance(exitstatus, int) or isinstance(exitstatus, bool):
         summary.add("failed", "pytest session", "no exit status recorded")
     elif exitstatus in _ABORTED_EXITS:

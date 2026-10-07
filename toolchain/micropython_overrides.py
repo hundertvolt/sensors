@@ -13,9 +13,10 @@ from pathlib import Path
 
 
 class OverrideError(RuntimeError):
-    """A pinned MicroPython source no longer matches what an override expects, so the override was
-    NOT applied. Re-verify against the new source and update the override's anchor/generated
-    content (SPECIFICATION.md Part B.14) - never silence this by removing the check."""
+    # A pinned MicroPython source no longer matches what an override expects, so the override was
+    # NOT applied. Re-verify against the new source and update the override's anchor/generated
+    # content (SPECIFICATION.md Part B.14) - never silence this by removing the check.
+    pass
 
 
 def _read_anchor_source(path: Path, override_name: str) -> str:
@@ -58,9 +59,9 @@ def verify_unix_kbd_intr_anchor(micropython_dir: Path) -> Path:
 
 
 def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
-    """Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the
-    real variant files and forces MICROPY_ASYNC_KBD_INTR to 0, selecting MicroPython's safe,
-    deferred SIGINT path. Returns build_unix_port()'s extra `make` variables; see Part B.14.1."""
+    # Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the
+    # real variant files and forces MICROPY_ASYNC_KBD_INTR to 0, selecting MicroPython's safe,
+    # deferred SIGINT path. Returns build_unix_port()'s extra `make` variables; see Part B.14.1.
     verify_unix_kbd_intr_anchor(micropython_dir)
     real_variant_dir = micropython_dir / "ports" / "unix" / "variants" / "standard"
     override_dir = overrides_dir / "unix_kbd_intr_variant"
@@ -140,9 +141,9 @@ def _require_anchor(text: str, anchor: str, where: Path, what: str) -> None:
 
 
 def verify_lwip_connection_counts_anchor(micropython_dir: Path, board: str) -> None:
-    """Checks every pinned-source fact this override depends on: lwIP's own `#if !defined` guards,
-    MicroPython's atomic MEM_SIZE block and its plain #defines, the rp2 CMake include order, and
-    the board directory's own shape. Raises OverrideError naming the drift; see Part B.14.2."""
+    # Checks every pinned-source fact this override depends on: lwIP's own `#if !defined` guards,
+    # MicroPython's atomic MEM_SIZE block and its plain #defines, the rp2 CMake include order, and
+    # the board directory's own shape. Raises OverrideError naming the drift; see Part B.14.2.
     opt_h = micropython_dir / "lib" / "lwip" / "src" / "include" / "lwip" / "opt.h"
     opt_text = _read_anchor_source(opt_h, "lwip_connection_counts")
     for macro in LWIP_MACROS_GUARDED_IN_OPT_H:
@@ -190,9 +191,9 @@ _U16_MAX = 0xFFFF
 
 
 def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
-    """The four values lwIP's own opt.h computes from the ones this override sets, by the same
-    formulas (TCP_SND_QUEUELEN / TCP_SNDLOWAT / TCP_SNDQUEUELOWAT / PBUF_POOL_BUFSIZE). They are
-    what most of init.c's sanity checks are really about, and none of them is settable here."""
+    # The four values lwIP's own opt.h computes from the ones this override sets, by the same
+    # formulas (TCP_SND_QUEUELEN / TCP_SNDLOWAT / TCP_SNDQUEUELOWAT / PBUF_POOL_BUFSIZE). They are
+    # what most of init.c's sanity checks are really about, and none of them is settable here.
     mss, snd_buf = macros["TCP_MSS"], macros["TCP_SND_BUF"]
     snd_queuelen = (4 * snd_buf + (mss - 1)) // mss
     return {
@@ -205,9 +206,9 @@ def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
 
 
 def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = None) -> list[str]:
-    """Every init.c relationship over the options set or derived here, plus the three it does NOT
-    check: it sizes the shared pools for ONE connection, while this firmware admits max_connections.
-    Returns the violated relationships; empty means the set is coherent."""
+    # Every init.c relationship over the options set or derived here, plus the three it does NOT
+    # check: it sizes the shared pools for ONE connection, while this firmware admits max_connections.
+    # Returns the violated relationships; empty means the set is coherent.
     d = derive_lwip_dependents(macros)
     mss, snd_buf, wnd = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["TCP_WND"]
     seg, pool, pool_buf = macros["MEMP_NUM_TCP_SEG"], macros["PBUF_POOL_SIZE"], d["PBUF_POOL_BUFSIZE"]
@@ -256,7 +257,7 @@ def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = No
 
 
 def _per_connection_problems(macros: dict[str, int], max_connections: int) -> list[str]:
-    """The three relationships lwIP does not check, because it sizes for one connection and we admit N."""
+    # The three relationships lwIP does not check, because it sizes for one connection and we admit N.
     mss, snd_buf, seg = macros["TCP_MSS"], macros["TCP_SND_BUF"], macros["MEMP_NUM_TCP_SEG"]
     problems: list[str] = []
     want_pcb = max_connections + SPARE_TCP_PCBS
@@ -306,9 +307,9 @@ def validate_lwip_macros(macros: dict[str, int]) -> None:
 
 
 def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: Path, board: str, macros: dict[str, int]) -> dict[str, str]:
-    """Generates an out-of-tree board directory whose own lwipopts.h #includes the real one and then
-    redefines every lwIP option, reached through MicroPython's documented BOARD_DIR redirect.
-    Returns build_firmware()'s extra `make` variables; full mechanism in Part B.14.2."""
+    # Generates an out-of-tree board directory whose own lwipopts.h #includes the real one and then
+    # redefines every lwIP option, reached through MicroPython's documented BOARD_DIR redirect.
+    # Returns build_firmware()'s extra `make` variables; full mechanism in Part B.14.2.
     verify_lwip_connection_counts_anchor(micropython_dir, board)
     validate_lwip_macros(macros)
     rp2_dir = micropython_dir / "ports" / "rp2"
@@ -356,8 +357,8 @@ _PREPROCESS_TIMEOUT_S = 120
 
 
 def _eval_macro_expression(text: str) -> int:
-    """Evaluates a preprocessed integer constant expression (e.g. `(8 * (800))`) with no eval() -
-    lwIP options are arithmetic over literals, and anything else must fail loudly, not guess."""
+    # Evaluates a preprocessed integer constant expression (e.g. `(8 * (800))`) with no eval() -
+    # lwIP options are arithmetic over literals, and anything else must fail loudly, not guess.
 
     def walk(node: ast.AST) -> int:
         if isinstance(node, ast.Expression):
@@ -392,8 +393,8 @@ def _eval_macro_expression(text: str) -> int:
 
 
 def _recorded_c_compiler(build_dir: Path, flags_text: str) -> str:
-    """The C compiler CMake itself chose for this build: flags.make's own header line, else
-    CMakeCache.txt's CMAKE_C_COMPILER, else the toolchain's usual name on PATH."""
+    # The C compiler CMake itself chose for this build: flags.make's own header line, else
+    # CMakeCache.txt's CMAKE_C_COMPILER, else the toolchain's usual name on PATH.
     match = re.search(r"^# compile C with (\S.*)$", flags_text, re.MULTILINE)
     if match is not None:
         return match.group(1).strip()
@@ -406,9 +407,9 @@ def _recorded_c_compiler(build_dir: Path, flags_text: str) -> str:
 
 
 def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
-    """Preprocesses lwIP's own opt.h with the exact flags (and, unless `compiler` is given, the
-    compiler) CMake built the firmware with, returning each option's resolved value - proof the
-    override landed rather than an assumption the generated header was found (Part B.14.2)."""
+    # Preprocesses lwIP's own opt.h with the exact flags (and, unless `compiler` is given, the
+    # compiler) CMake built the firmware with, returning each option's resolved value - proof the
+    # override landed rather than an assumption the generated header was found (Part B.14.2).
     flags_make = build_dir / "CMakeFiles" / "firmware.dir" / "flags.make"
     if not flags_make.is_file():
         raise OverrideError(f"lwip_connection_counts: no compile flags at {flags_make} - the firmware build did not get as far as configuring, so nothing can be verified.")
@@ -449,8 +450,8 @@ def read_lwip_macros_from_build(build_dir: Path, macros: dict[str, int], compile
 
 
 def verify_lwip_macros_in_build(build_dir: Path, macros: dict[str, int], compiler: str | None = None) -> dict[str, int]:
-    """read_lwip_macros_from_build() plus the assertion. Raises OverrideError naming every option
-    whose resolved value differs from what was asked for."""
+    # read_lwip_macros_from_build() plus the assertion. Raises OverrideError naming every option
+    # whose resolved value differs from what was asked for.
     found = read_lwip_macros_from_build(build_dir, macros, compiler)
     if found.get(LWIP_OVERRIDE_SENTINEL) != 1:
         raise OverrideError(

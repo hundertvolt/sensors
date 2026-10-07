@@ -12,10 +12,10 @@ from buildgen.model import DeviceModel
 # necessarily transitively reachable from any one driver).
 CORE_MODULES = frozenset(
     {
-        "config_manager",
-        "base_classes",
-        "print_log",
-        "api_response",
+        "asy_config_manager",
+        "asy_base_classes",
+        "asy_print_log",
+        "asy_api_response",
         "asy_i2c_driver",
         "asy_spi_driver",
         "asy_uart_driver",
@@ -23,9 +23,9 @@ CORE_MODULES = frozenset(
         "asy_wifi_service",
         "asy_ntp_client",
         "asy_dns_client",
-        "captive_dns",
-        "system_service",
-        "crc_checks",
+        "asy_captive_dns",
+        "asy_system_service",
+        "asy_crc_checks",
     },
 )
 

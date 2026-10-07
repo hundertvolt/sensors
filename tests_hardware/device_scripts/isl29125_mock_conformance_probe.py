@@ -11,7 +11,7 @@ _WDT = None
 try:
     # @tunable wdt.timeout_ms = 8000
     _WDT = machine.WDT(timeout=8000)  # real hardware: mpremote's own arming call already started one
-except (AttributeError, ValueError, OSError):
+except (AttributeError, OSError, ValueError):
     _WDT = None  # the twin's machine.py has no real watchdog to feed
 
 ADDR = 0x44

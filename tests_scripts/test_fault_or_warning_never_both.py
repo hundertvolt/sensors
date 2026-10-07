@@ -36,22 +36,22 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_uart_comm.py", "_resync", ("W", "UART_DRAIN_BOUND"), ("E", "UART_LINK_UNINTELLIGIBLE")): "a drain that hit its bound and a link no frame ever validated on are separate conditions",
     ("src/asy_fram_driver.py", "set_write_protected", ("W", "FRAM_WEL_STUCK"), ("E", "FRAM_WP_MISMATCH")): "the write-enable latch stuck after the write, then the protection read back wrong: two occurrences",
     ("src/asy_fram_manager.py", "_read", ("W", "FRAM_BLOCK_INVALID"), ("E", "FRAM_BLOCK_WRITE")): "an invalid block, then a failed repair write",
-    ("src/base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
-    ("src/base_classes.py", "_get_dict_cfg", ("E", "CFG_GET_RAISED"), ("W", "CALLBACK_KEYS")): _TWO_SOURCES,
-    ("src/base_classes.py", "_get_dict_cfg", ("W", "CALLBACK_KEYS"), ("E", "CFG_CALLBACK_RAISED")): "the callback's unknown keys, then merging its result raised: two occurrences",
-    ("src/captive_dns.py", "run", ("E", "UNEXPECTED"), ("W", "DNS_TEARDOWN")): "never in one run: the raising disconnect sets disconnect_ok, which the teardown warning tests",
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
-    ("src/config_manager.py", "setup", ("W", "STORED_DEFAULT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
-    ("src/config_manager.py", "setup", ("W", "CFG_KEYS_REMOVED"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
-    ("src/config_manager.py", "setup", ("W", "CFG_NO_STORED"), ("E", "CFG_FILE_WRITE")): "a schema storing nothing, then writing its file failed: two occurrences",
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_BAD_DEFAULT")): _FILE_THEN_SCHEMA,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_BAD_DEFAULT")): _FILE_THEN_SCHEMA,
-    ("src/config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_BAD_DEFAULT")): _FILE_THEN_SCHEMA,
+    ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
+    ("src/asy_base_classes.py", "_get_dict_cfg", ("E", "CFG_GET_RAISED"), ("W", "CALLBACK_KEYS")): _TWO_SOURCES,
+    ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CALLBACK_KEYS"), ("E", "CFG_CALLBACK_RAISED")): "the callback's unknown keys, then merging its result raised: two occurrences",
+    ("src/asy_captive_dns.py", "run", ("E", "UNEXPECTED"), ("W", "DNS_TEARDOWN")): "never in one run: the raising disconnect sets disconnect_ok, which the teardown warning tests",
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
+    ("src/asy_config_manager.py", "setup", ("W", "STORED_DEFAULT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_KEYS_REMOVED"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_NO_STORED"), ("E", "CFG_FILE_WRITE")): "a schema storing nothing, then writing its file failed: two occurrences",
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_NO_DEFAULTS")): _FILE_THEN_SCHEMA,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_BAD_DEFAULT")): _FILE_THEN_SCHEMA,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_BAD_DEFAULT")): _FILE_THEN_SCHEMA,
+    ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_BAD_DEFAULT")): _FILE_THEN_SCHEMA,
 }
 
 
@@ -66,7 +66,7 @@ def _callee(call: ast.Call) -> str:
 
 
 def _bound(call: ast.Call, fn: "ast.FunctionDef | ast.AsyncFunctionDef", param: str) -> "ast.expr | None":
-    """The argument this call binds to `fn`'s parameter `param`, or None when it is left at its default."""
+    # The argument this call binds to `fn`'s parameter `param`, or None when it is left at its default.
     keyword = next((k.value for k in call.keywords if k.arg == param), None)
     if keyword is not None:
         return keyword
@@ -81,7 +81,7 @@ def _bound(call: ast.Call, fn: "ast.FunctionDef | ast.AsyncFunctionDef", param: 
 
 @dataclass
 class _Module:
-    """One parsed module and its persisting wrappers: function name -> {code parameter: kind}."""
+    # One parsed module and its persisting wrappers: function name -> {code parameter: kind}.
 
     path: str
     tree: ast.Module
@@ -101,7 +101,7 @@ class _Module:
         self.wrappers = {name: params for name, params in self.wrappers.items() if params}
 
     def _forwarded(self, fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "dict[str, str]":
-        """The parameters `fn` persists a caller's code through: passed as the code of err_s()/wrn_s() or a wrapper."""
+        # The parameters `fn` persists a caller's code through: passed as the code of err_s()/wrn_s() or a wrapper.
         params = {a.arg for a in (*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs)}
         forwarded = {}
         for node in ast.walk(fn):
@@ -111,7 +111,7 @@ class _Module:
         return forwarded
 
     def events(self, call: ast.Call) -> "list[tuple[str, ast.expr | None]]":
-        """The persisted entries this one call writes: (kind, code expression)."""
+        # The persisted entries this one call writes: (kind, code expression).
         if isinstance(call.func, ast.Attribute) and call.func.attr in _METHOD_KIND:
             kind = _METHOD_KIND[call.func.attr]
             return [(kind, next((k.value for k in call.keywords if k.arg == _KEYWORD[kind]), None))]
@@ -121,7 +121,7 @@ class _Module:
 
 @dataclass
 class _Walk:
-    """The straight-line path walk of one function: `pending` holds the entries the last persisted call left."""
+    # The straight-line path walk of one function: `pending` holds the entries the last persisted call left.
 
     module: _Module
     function: str

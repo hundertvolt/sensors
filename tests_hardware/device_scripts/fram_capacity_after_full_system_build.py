@@ -47,7 +47,7 @@ async def _main() -> None:
         return
     print(
         f"RESULT: PASS every FRAM-wired module's own chunk allocated successfully "
-        f"(fram.allocated_size={sensortask_dev.fram.allocated_size}, fram.size={sensortask_dev.fram.size})",
+        f"(fram._allocated_size={sensortask_dev.fram._allocated_size}, fram.size={sensortask_dev.fram.size})",
     )
 
 

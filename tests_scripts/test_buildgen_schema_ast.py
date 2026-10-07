@@ -111,7 +111,7 @@ def test_extract_field_schemas_wrong_shaped_tuple_is_not_a_field_schema(tmp_path
 
 def test_extract_field_schemas_six_string_tuple_is_not_a_field_schema(tmp_path: Path) -> None:
     # A plain tuple of six names (a key order, say) is no schema: the second item must be a type.
-    fields = _extract(tmp_path, '_ORDER = const(("TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))\n')
+    fields = _extract(tmp_path, '_ORDER = const(("TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))\n')
     assert fields == {}
 
 
@@ -153,7 +153,7 @@ def test_extract_field_schemas_last_assignment_wins_on_a_name_collision(tmp_path
 
 def test_extract_field_schemas_real_bmp3xx_resolves_named_choice_sets(src_dir: Path) -> None:
     fields = extract_field_schemas(src_dir / "asy_bmp3xx_driver.py")
-    assert fields["PressOvers"] == ("int", 1, None, None, (1, 2, 4, 8, 16, 32))
+    assert fields["PresOvers"] == ("int", 1, None, None, (1, 2, 4, 8, 16, 32))
     assert fields["TempOvers"] == ("int", 1, None, None, (1, 2, 4, 8, 16, 32))
     assert fields["FiltCoeff"] == ("int", 0, None, None, (0, 1, 3, 7, 15, 31, 63, 127))
 

@@ -129,7 +129,7 @@ async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     assert module.webserver is not None
     task: asyncio.Task[None] = module.webserver.get_task_starters()[0]()
     # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
-    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # FRAM, so _serve_loop() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
     # not the instant no-op a RAM-only logger's setup() was.
     #
     # A polling readiness check was tried instead and made things measurably worse: a real fetch() probe
@@ -804,10 +804,10 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
         # Then the same count again with bodies at the cap's own boundary: read at the cap (the
         # schema may still refuse the value), 413 one byte over - each a separate live allocation.
         assert Request.max_content_length == _BODY_CAP, Request.max_content_length
-        padding = _BODY_CAP - len(json.dumps({"NTP_Host": ""}))
+        padding = _BODY_CAP - len(json.dumps({"NTPHost": ""}))
 
         async def _sized(nbytes: int) -> "int | str":
-            body = {"NTP_Host": "x" * nbytes}
+            body = {"NTPHost": "x" * nbytes}
             try:
                 res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", body, read_body=False)
             except OSError:

@@ -569,11 +569,11 @@ open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the u
 ```
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
-`DebugLevel` is a persisted `/system` setting (0-5, see `print_log.py`'s `PrintLog.level_*()`
+`DebugLevel` is a persisted `/system` setting (0-5, see `asy_print_log.py`'s `PrintLog.level_*()`
 methods) — like every config write, it takes effect immediately (the accepted value is pushed live
 the moment the request is validated) and is saved to disk shortly after, off the request's own
-critical path (`config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
-`system_service.py`'s `level_setters` provider/`_apply_level()` registry pushes any accepted
+critical path (`asy_config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
+`asy_system_service.py`'s `level_setters` provider/`_apply_level()` registry pushes any accepted
 `DebugLevel` write straight out to every other already-constructed module's own
 `PrintLog.set_level()`, live, no reboot required (confirmed directly — a running twin's console
 starts emitting full per-cycle event traces the instant the PUT below lands). The reboot that
@@ -614,16 +614,16 @@ curl -s -X PUT -H "Content-Type: application/json" -d '{"GMTOffset": 3600, "DSTO
 curl -s -X PUT -H "Content-Type: application/json" \
   -d '{"WarnCO2": 1500, "WarnVOC": 300, "WarnHum": 60.0}' http://127.0.0.1:8080/notification
 curl -s -X PUT -H "Content-Type: application/json" \
-  -d '{"SCD30": {"MeasInt": 4}, "SGP40": {"BackupPeriod": 2}, "BMP3XX": {"SampleInterv": 3}}' \
+  -d '{"SCD30": {"MeasInterval": 4}, "SGP40": {"BackupPeriod": 2}, "BMP3XX": {"SampleInterval": 3}}' \
   http://127.0.0.1:8080/sensors
 ```
 
 Every field type is checked strictly against its schema — a JSON integer for a `"float"` field is
-accepted and coerced (`config_manager.py:163-164`); a float for an `"int"` field only without a
+accepted and coerced (`asy_config_manager.py:163-164`); a float for an `"int"` field only without a
 fractional part. Read each endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
 and boot once more without wiping `digital_twin/config/` (nor `digital_twin/scd30_state.json`, this
 entry point's own default persisted path) to confirm it survived the restart — including SCD30's
-own NVM-backed fields (`MeasInt`, `TempOffs`, ...), which `digital_twin/_scd30_chip.py` persists the
+own NVM-backed fields (`MeasInterval`, `TempOffset`, ...), which `digital_twin/_scd30_chip.py` persists the
 same explicit-flush way `_fram_chip.py` does (see `digital_twin/README.md`'s "SCD30 persistence"
 section).
 
@@ -641,7 +641,7 @@ scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 \
 Watch `/status`'s `errcount` section for each affected module's counter to tick up, then confirm
 `/measurements` still returns plausible readings from every sensor once the run has been up for a
 few seconds — that's the fault having fired, been logged, and recovered from. A device-wide
-task-failure streak beyond `system_service.py`'s own threshold triggers a real reboot request too
+task-failure streak beyond `asy_system_service.py`'s own threshold triggers a real reboot request too
 (logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this actually
 restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedResetError` instead, which
 is expected and harmless - see `SimulatedRebootError`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
@@ -734,7 +734,7 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 - **[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)** — every piece of vendored or
   attribution-derived third-party code in one place (Microdot, freezefs, the Adafruit-derived
   sensor drivers, the DFRobot-derived VOC algorithm port), plus the one area where a specific
-  source couldn't be established (`captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
+  source couldn't be established (`asy_captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
   disclosure that parts of this codebase were written with AI assistance.
 
 **`digital_twin/README.md`** (permanent, kept current):

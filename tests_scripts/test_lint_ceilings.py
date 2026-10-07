@@ -49,9 +49,9 @@ _MAX_ARGS_EXEMPT = frozenset({
 _TAIL = ("max_module_error", "name_ext", "cfg_path")
 # The classes whose test-only `logger=` reach-through stays for now (C.7): no other constructor takes one.
 _LOGGER_ALLOWED = frozenset({
-    ("src/asy_uart_comm.py", "UART_Comm"),
-    ("src/asy_uart_link_driver.py", "UartLinkExerciser"),
-    ("src/base_classes.py", "SensorReader"),
+    ("src/asy_uart_comm.py", "UARTComm"),
+    ("src/asy_uart_link_driver.py", "UARTLinkDriver"),
+    ("src/asy_base_classes.py", "SensorReader"),
 })
 
 # ruff's default dummy-variable-rgx: a parameter matching it is not counted by PLR0913.
@@ -66,7 +66,7 @@ def _ruff() -> str:
 
 
 def _lint_tables(repo_root: Path) -> "dict[str, dict[str, object]]":
-    """pyproject.toml's [tool.ruff.lint.*] tables by name."""
+    # pyproject.toml's [tool.ruff.lint.*] tables by name.
     with (repo_root / "pyproject.toml").open("rb") as f:
         lint = tomllib.load(f)["tool"]["ruff"]["lint"]
     return {name: table for name, table in lint.items() if isinstance(table, dict)}
@@ -79,7 +79,7 @@ def _configured(repo_root: Path, ceiling: _Ceiling) -> int:
 
 
 def _findings(repo_root: Path, ceiling: _Ceiling, value: int, paths: "tuple[str, ...]" = _SCOPES) -> "list[str]":
-    """Ruff's findings for one ceiling at `value` - per-file ignores applied, no cache written."""
+    # Ruff's findings for one ceiling at `value` - per-file ignores applied, no cache written.
     cmd = [_ruff(), "check", "--no-cache", "--quiet", "--output-format", "concise", "--select", ceiling.rule,
            "--config", f"lint.{ceiling.section}.{ceiling.option}={value}", *paths]
     result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
@@ -92,7 +92,7 @@ def _findings(repo_root: Path, ceiling: _Ceiling, value: int, paths: "tuple[str,
 
 
 def _ceiling_problem(repo_root: Path, ceiling: _Ceiling, value: int) -> "str | None":
-    """Why `value` is not the measured maximum for this ceiling, or None when it is."""
+    # Why `value` is not the measured maximum for this ceiling, or None when it is.
     at_value = _findings(repo_root, ceiling, value)
     if at_value:
         return f"{ceiling.option} = {value} is exceeded: {at_value}"
@@ -102,7 +102,7 @@ def _ceiling_problem(repo_root: Path, ceiling: _Ceiling, value: int) -> "str | N
 
 
 def _linted_files(repo_root: Path, paths: "tuple[str, ...]" = _SCOPES) -> "list[Path]":
-    """The exact file set ruff checks (its own exclusions and .gitignore applied)."""
+    # The exact file set ruff checks (its own exclusions and .gitignore applied).
     result = subprocess.run([_ruff(), "check", "--no-cache", "--show-files", *paths], cwd=repo_root, capture_output=True, text=True, check=True)
     root = repo_root.resolve()
     return sorted(Path(line.strip()).resolve().relative_to(root) for line in result.stdout.splitlines() if line.strip().endswith(".py"))
@@ -120,7 +120,7 @@ def _decorator_names(node: "ast.FunctionDef | ast.AsyncFunctionDef") -> "set[str
 
 
 def _functions(tree: ast.Module) -> "Iterator[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, bool]]":
-    """(qualified name, node, is_method) for every function, nested ones included."""
+    # (qualified name, node, is_method) for every function, nested ones included.
     def walk(node: ast.AST, prefix: str, *, in_class: bool) -> "Iterator[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, bool]]":
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -134,7 +134,7 @@ def _functions(tree: ast.Module) -> "Iterator[tuple[str, ast.FunctionDef | ast.A
 
 
 def _arg_count(node: "ast.FunctionDef | ast.AsyncFunctionDef", *, is_method: bool) -> "int | None":
-    """PLR0913's count: non-variadic parameters, dummies excluded, self/cls excluded; None = not counted."""
+    # PLR0913's count: non-variadic parameters, dummies excluded, self/cls excluded; None = not counted.
     decorators = _decorator_names(node)
     if decorators & _UNCOUNTED_DECORATORS:
         return None
@@ -157,7 +157,7 @@ def _over_max_args(repo_root: Path, files: "list[Path]", limit: int) -> "set[tup
 
 
 def _tail_problem(params: "list[str]", *, logger_allowed: bool) -> "str | None":
-    """Why a constructor's parameter list breaks `(…[, max_module_error][, name_ext][, cfg_path], log[, logger])`."""
+    # Why a constructor's parameter list breaks `(…[, max_module_error][, name_ext][, cfg_path], log[, logger])`.
     rest = list(params)
     if rest and rest[-1] == "logger":
         if not logger_allowed:
@@ -254,10 +254,10 @@ def test_a_ninth_parameter_on_a_non_exempt_function_fails_the_check(repo_root: P
     ("params", "owner", "fragment"),
     [
         (["i2c", "max_module_error", "name_ext", "cfg_path", "log"], ("src/x.py", "X"), None),
-        (["uart", "role", "name", "log", "logger"], ("src/asy_uart_comm.py", "UART_Comm"), None),
+        (["uart", "role", "name", "log", "logger"], ("src/asy_uart_comm.py", "UARTComm"), None),
         (["i2c", "name_ext", "max_module_error", "log"], ("src/x.py", "X"), "order"),
         (["i2c", "log", "max_module_error"], ("src/x.py", "X"), "last parameter"),
-        (["i2c", "cfg_path", "trigger_sec", "log"], ("src/x.py", "X"), "followed by a non-tail one"),
+        (["i2c", "cfg_path", "trigger_s", "log"], ("src/x.py", "X"), "followed by a non-tail one"),
         (["i2c", "log", "logger"], ("src/x.py", "X"), "only the classes"),
     ],
 )

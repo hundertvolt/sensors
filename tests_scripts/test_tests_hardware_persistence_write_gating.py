@@ -74,11 +74,11 @@ def test_the_bench_tier_deselects_exactly_its_persistence_writers_by_default(rep
 
 
 def test_the_dispatch_only_fields_are_not_treated_as_persistence_writes(repo_root: Path) -> None:
-    # SGPResetVOC/ISLCalibrate carry `dispatch=true` in their own @web schema tag and are never in
+    # ResetVOC/Calibrate carry `dispatch=true` in their own @web schema tag and are never in
     # ConfigManager's cache, so a test whose only PUT is one of those spends no flash cycle and must
     # stay selected by default. test_memory_stress_bench.py is exactly that case.
     gated = _collect(repo_root, target=_BENCH)
-    assert "test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot" in gated, "a SGPResetVOC-only test must not be gated - it persists nothing"
+    assert "test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot" in gated, "a ResetVOC-only test must not be gated - it persists nothing"
 
 
 _FLASH = "tests_hardware/flash"

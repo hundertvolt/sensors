@@ -70,11 +70,11 @@ _SYSTEM_COMMAND_GROUP: "dict[str, Any]" = {
 }
 _NOTIFICATION_FLASH_GROUP: "dict[str, Any]" = {
     "key": "flash", "label": "Manual Flash Command", "submit": True, "submitLabel": "Flash LED",
-    "fields": [{"key": "lightCmdLED", "label": "LED Flash", "kind": "composite", "dispatch": True, "subFields": [
-        {"key": "r", "label": "Red", "kind": "number", "min": 0, "max": 255},
-        {"key": "g", "label": "Green", "kind": "number", "min": 0, "max": 255},
-        {"key": "b", "label": "Blue", "kind": "number", "min": 0, "max": 255},
-        {"key": "t", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0, "float": True},
+    "fields": [{"key": "LightCmdLED", "label": "LED Flash", "kind": "composite", "dispatch": True, "subFields": [
+        {"key": "R", "label": "Red", "kind": "number", "min": 0, "max": 255},
+        {"key": "G", "label": "Green", "kind": "number", "min": 0, "max": 255},
+        {"key": "B", "label": "Blue", "kind": "number", "min": 0, "max": 255},
+        {"key": "T", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0, "float": True},
     ]}],
 }
 _NOTIFICATION_PAUSE_GROUP: "dict[str, Any]" = {
@@ -96,9 +96,9 @@ _RESET_ERRORS_GROUP: "dict[str, Any]" = {
 _BUILD_GROUP: "dict[str, Any]" = {
     "key": "build", "label": "Build",
     "fields": [
-        {"key": "firmwareVersion", "label": "Firmware Version", "kind": "readonly", "path": ["build", "firmwareVersion"]},
-        {"key": "websiteVersion", "label": "Website Version", "kind": "readonly", "path": ["build", "websiteVersion"]},
-        {"key": "buildDate", "label": "Build Date", "kind": "readonly", "path": ["build", "buildDate"]},
+        {"key": "FirmwareVersion", "label": "Firmware Version", "kind": "readonly", "path": ["build", "FirmwareVersion"]},
+        {"key": "WebsiteVersion", "label": "Website Version", "kind": "readonly", "path": ["build", "WebsiteVersion"]},
+        {"key": "BuildDate", "label": "Build Date", "kind": "readonly", "path": ["build", "BuildDate"]},
     ],
 }
 
@@ -118,7 +118,7 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("isl29125", "ISL29125", True),
     ("neopixel", "Neopixel LED", False),
     ("notification", "Notification Service", True),
-    ("uart_link", "UART Link", False),  # no CFGMGR_ companion: UART_Comm has no config schema - its
+    ("uart_link", "UART Link", False),  # no CFGMGR_ companion: UARTComm has no config schema - its
     # parameters are an out-of-band two-implementation wire contract, never runtime-writable (Part J.6)
     ("webserver", "Web Server", False),
 )
@@ -158,9 +158,9 @@ def _errcount_codes(catalog: "dict[str, Any]") -> "dict[str, dict[str, str]]":
 
 
 class _DriverTags:
-    """Parsed `@web`/`@web-group` tags plus real `ConfigSchema` literals for one source file,
-    cached so a file scanned by more than one instance (two SCD30s, or WiFi/NTP/System, which are
-    scanned once per device regardless of instance count) is only ever tokenized/AST-parsed once."""
+    # Parsed `@web`/`@web-group` tags plus real `ConfigSchema` literals for one source file,
+    # cached so a file scanned by more than one instance (two SCD30s, or WiFi/NTP/System, which are
+    # scanned once per device regardless of instance count) is only ever tokenized/AST-parsed once.
 
     def __init__(self, path: Path, device: str, instance_label: str) -> None:
         self.field_tags: tuple[WebFieldTag, ...] = parse_web_tags(path, device, instance_label)
@@ -269,7 +269,7 @@ def _number_field(tag: WebFieldTag, field_type: "str | None", min_v: object, max
     elif tag.special:
         # No schema-declared sentinel, but the tag documents one or more values anyway (e.g.
         # SGP40's BackupPeriod=0 - a perfectly ordinary in-range value that also has a special UI
-        # meaning, never a bypass config_manager.py's own validation needs to know about).
+        # meaning, never a bypass asy_config_manager.py's own validation needs to know about).
         out["specialValues"] = [{"value": _coerce_special_value(raw, field_type), "meaning": meaning} for raw, meaning in tag.special]
     return out
 
@@ -422,7 +422,7 @@ def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTa
 
 
 def _system_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]") -> "dict[str, Any]":
-    system_path = src_dir / "system_service.py"
+    system_path = src_dir / "asy_system_service.py"
     ntp_path = src_dir / "asy_ntp_client.py"
     system_tags = _load_driver_tags(cache, system_path, device, "system")
     ntp_tags = _load_driver_tags(cache, ntp_path, device, "ntp")
@@ -504,11 +504,11 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {"key": "Subnet", "label": "Subnet Mask", "kind": "readonly"},
         {"key": "Gateway", "label": "Gateway", "kind": "readonly"},
         {"key": "DNS", "label": "Name Server", "kind": "readonly"},
-        {"key": "Rssi", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly"},
+        {"key": "RSSI", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly"},
         {"key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly"},
-        {"key": "NtpSynced", "label": "NTP Synced", "kind": "readonly"},
-        {"key": "NtpLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
-        {"key": "NtpLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
+        {"key": "NTPSynced", "label": "NTP Synced", "kind": "readonly"},
+        {"key": "NTPLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
+        {"key": "NTPLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
     ]
     system_fields = [
         {"key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly"},
@@ -521,7 +521,7 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         system_fields.append({"key": "MemPaused", "label": "Backups Paused", "kind": "readonly"})
     system_fields += [
         {"key": "LocalTime", "label": "Local Time", "kind": "readonly", "format": "gmtimestruct"},
-        {"key": "UtcTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct"},
+        {"key": "UTCTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct"},
     ]
     groups = [
         {"key": "networking", "label": "Networking Status", "fields": networking_fields},
@@ -567,7 +567,7 @@ def _notification_section(model: DeviceModel, cache: "dict[Path, _DriverTags]", 
         raise BuildError(model.device, "internal: driver_info unresolved before definitions generation", instance=spec.label)
     path = spec.driver_info.source_path
     tags = _load_driver_tags(cache, path, model.device, spec.label)
-    # Literal "autoConfig" key, not spec.resolved_name: NotificationCoordinator is a singleton
+    # Literal "autoConfig" key, not spec.resolved_name: NotificationService is a singleton
     # service (driver_registry.SERVICE_DRIVERS), so there is no multi-instance disambiguation need
     # the way scd30/sgp40/bmp3xx have.
     auto_group = _mandatory_group("notification", "autoConfig", "autoConfig", [(tags, path)], model.device)
@@ -585,9 +585,9 @@ def _notification_section(model: DeviceModel, cache: "dict[Path, _DriverTags]", 
 
 
 def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
-    """The full `definitions.json`-shaped dict for `model` (already `buildgen.validate.build_model()`-
-    validated). Every scanned `@web`/`@web-group` tag is re-parsed once per distinct source path
-    (`_DriverTags` cache), regardless of how many instances/sections reference it."""
+    # The full `definitions.json`-shaped dict for `model` (already `buildgen.validate.build_model()`-
+    # validated). Every scanned `@web`/`@web-group` tag is re-parsed once per distinct source path
+    # (`_DriverTags` cache), regardless of how many instances/sections reference it.
     have = {spec.driver for spec in model.instances.values()}
     cache: dict[Path, _DriverTags] = {}
 
@@ -614,8 +614,8 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
 
 
 def definitions_for_toml(toml_path: Path, src_dir: Path) -> "dict[str, Any]":
-    """The one entry point from a device TOML to its definitions: validated model, construction
-    order (`buildgen.graph`), then `generate_definitions()` - every caller gets the build's order."""
+    # The one entry point from a device TOML to its definitions: validated model, construction
+    # order (`buildgen.graph`), then `generate_definitions()` - every caller gets the build's order.
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
     return generate_definitions(model, src_dir)

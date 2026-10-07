@@ -12,12 +12,12 @@ from neopixel import NeoPixel
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
 
-# TRIGGER_SEC=30 affords the largest PRST the part offers - 8 RGB cycles, ~2424ms at 16 bit -
+# TRIGGER_S=30 affords the largest PRST the part offers - 8 RGB cycles, ~2424ms at 16 bit -
 # before RGBTHF may rise at all, plus the fixed 2-cycle settle: ~3030ms worst case, so the old 3.0s
 # no longer clears it. 6.0s is still 5x under the periodic fallback, so a pass means the INT line.
 # @tunable l3.isl29125_real_irq_edge_fast_path_deadline_s = 6.0
 FAST_PATH_DEADLINE_S = 6.0
-TRIGGER_SEC = 30  # deliberately long: only a real interrupt can beat it
+TRIGGER_S = 30  # deliberately long: only a real interrupt can beat it
 _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101ms typ (p3)
 _MODE_RGB = 0x05
 # @tunable l3.isl29125_real_irq_edge_int_poll_ms = 50
@@ -95,13 +95,13 @@ async def _main() -> None:
 
     # Part B: the real fast path, through the real reader. A 30s periodic interval means a
     # reading inside 3s can only have come from the interrupt.
-    reader = ISL29125_Reader(i2c1, 6, trigger_sec=TRIGGER_SEC, max_module_error=999)
+    reader = ISL29125_Reader(i2c1, 6, trigger_s=TRIGGER_S, max_module_error=999)
     reader.cfgmgr.valid = True
     # Seeded from the driver's own schema, never a hand-copied list - a key added there
     # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
     # starts the read chain. Command-only entries have no default and are skipped.
-    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
-    reader.cfgmgr._cache["SampleInterv"] = TRIGGER_SEC  # deliberately long: only a real interrupt can beat it
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
+    reader.cfgmgr._cache["SampleInterval"] = TRIGGER_S  # deliberately long: only a real interrupt can beat it
     reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression while the INT edge is under test
     reader.start_timer()
     trigger_task = reader.start_asy_trigger()
@@ -137,7 +137,7 @@ async def _main() -> None:
         print(f"RESULT: FAIL {persist_note} - persist_for_interval() assumes whole RGB cycles | {restart_note}")
     elif data is not None and data.Lux is not None:
         elapsed_s = time.ticks_diff(time.ticks_ms(), start) / 1000.0
-        print(f"RESULT: PASS interrupt-driven reading arrived after {elapsed_s:.2f}s (periodic fallback was {TRIGGER_SEC}s) | {restart_note} | {persist_note}")
+        print(f"RESULT: PASS interrupt-driven reading arrived after {elapsed_s:.2f}s (periodic fallback was {TRIGGER_S}s) | {restart_note} | {persist_note}")
     else:
         print(f"RESULT: FAIL no reading within {FAST_PATH_DEADLINE_S}s - the INT line does not appear to reach GP6 | {restart_note} | {persist_note}")
 

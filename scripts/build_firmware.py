@@ -168,6 +168,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (subprocess.CalledProcessError, st.SetupError, RuntimeError) as exc:
+    except (RuntimeError, st.SetupError, subprocess.CalledProcessError) as exc:
         print(f"\nFAILED: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -1,4 +1,4 @@
-"""Cross-module integration: a real SGP40_Reader feeding a real NotificationCoordinator, driving a real NeopixelDriver - fills the WarnVOC gap test_notification_scd30_integration.py leaves (it only exercises WarnCO2).
+"""Cross-module integration: a real SGP40_Reader feeding a real NotificationService, driving a real NeopixelDriver - fills the WarnVOC gap test_notification_scd30_integration.py leaves (it only exercises WarnCO2).
 Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction runs for real."""
 # VOC index calibration note, verified directly against voc_algorithm.py: a single raw reading never moves
 # the index - the 45-interval initial blackout must elapse first - and the index then settles toward 100,
@@ -13,11 +13,12 @@ from collections import namedtuple
 
 from _tmp_scratch import TmpScratch
 
+import asy_base_classes
+from asy_base_classes import ValueRef
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
-from asy_notification_service import NotificationCoordinator, NotificationSignal
+from asy_notification_service import NotificationService, NotificationSignal
 from asy_sgp40_driver import SGP40_Reader
-from base_classes import ValueRef
 
 try:
     from typing import TYPE_CHECKING
@@ -94,6 +95,17 @@ class _FakeCompSource:
         return _CompReading(25.0, 50.0)
 
 
+class _UTCValid:
+    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit: a good
+    # direct read cycle then carries a real TS, as the read loop's own cycles do after the sync.
+    def __enter__(self) -> "_UTCValid":
+        asy_base_classes.set_utc_valid()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     comp = _FakeCompSource()
@@ -104,18 +116,19 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
         max_module_error=2,
         cfg_path=_tmp_cfg_dir(),
     )
-    run(reader.pr.setup())
-    return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
+    run(reader.setup())
+    return reader, reader._sgp._i2c_sgp40.i2c_device.i2c._i2c
 
 
-def make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+def make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
     # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), mirrors
     # src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
     signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
-    run(notify.cfgmgr.setup())
+    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
+    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
+    run(notify.setup())
     return pixel, notify
 
 
@@ -139,12 +152,13 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
 
 
 def _drive_one_cycle(reader: SGP40_Reader, fake_bus: "_MachineI2C", raw: int) -> "SGP40":
-    # Exactly what read_loop() itself does per cycle when no FRAM backup is configured (see
+    # Exactly what _read_loop() itself does per cycle when no FRAM backup is configured (see
     # asy_sgp40_driver.py) - driven directly instead of through the full trigger/timer machinery,
     # which is already exhaustively covered by test_asy_sgp40_driver.py's own tests.
     fake_bus.read_queue.append(_word(raw))
-    data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
-    run(reader._error_check(data, condition=compensated))
+    with _UTCValid():
+        data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
+    run(reader._error_check(data, condition=compensated and data[0] is None))  # the read loop's condition
     run(reader._store_sgp(data))
     return data
 
@@ -173,13 +187,13 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
     pixel, notify = make_stack(sgp_reader)
 
     async def scenario() -> None:
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
         await asyncio.sleep(1.3)  # one triggered cycle's real settle time (2*0.5=1.0s) + margin
         await _cancel_all(tasks)
 
     run(scenario())
-    writes = [w[0] for w in pixel.pixel.writes]
+    writes = [w[0] for w in pixel._pixel.writes]
     assert (0, 200, 0) in writes  # scaled by the default FlashBri=200, pure green channel (WarnVOC's color)
     assert writes[-1] == (0, 0, 0)
     log = run(sgp_reader.get_error_counter())
@@ -200,12 +214,12 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
         # runs under the file's top-level asyncio.run(), and a nested one segfaults the interpreter - found
         # the hard way while writing this test, not copied defensively.
         data, compensated, _serialized = await sgp_reader._read_sgp(None, serialize=False, deserialize=False)  # the fault happens inside here
-        await sgp_reader._error_check(data, condition=compensated)
+        await sgp_reader._error_check(data, condition=compensated and data[0] is None)
         await sgp_reader._store_sgp(data)
 
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(0.2)  # one monitor_loop() pass - nothing to settle, nothing was triggered
+        await asyncio.sleep(0.2)  # one _monitor_loop() pass - nothing to settle, nothing was triggered
         await _cancel_all(tasks)
 
         sgp_log = await sgp_reader.get_error_counter()
@@ -218,10 +232,10 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
     assert isinstance(err_count, int)
     assert err_count >= 1
     assert notify_log["NOTIFY"]["ErrCount"] == 0
-    # neopixel_signal()'s startup sets a defined (0,0,0) off state once, unconditionally, and nothing beyond
+    # _signal_loop()'s startup sets a defined (0,0,0) off state once, unconditionally, and nothing beyond
     # that single boot-time write, no signal ever having been triggered: data.VOC is None on a faulted
     # cycle, so _check_one()'s getattr reads None, never counted as above threshold.
-    assert [w[0] for w in pixel.pixel.writes] == [(0, 0, 0)]
+    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0)]
 
 
 def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
@@ -247,13 +261,13 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     pixel, notify = make_stack(sgp_reader)
 
     async def scenario() -> None:
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
         await asyncio.sleep(1.3)
         await _cancel_all(tasks)
 
     run(scenario())
-    writes = [w[0] for w in pixel.pixel.writes]
+    writes = [w[0] for w in pixel._pixel.writes]
     assert (0, 200, 0) in writes  # the prior fault didn't permanently poison later good reads
     sgp_log = run(sgp_reader.get_error_counter())
     # the earlier fault's log entry is still on record - a later success doesn't erase history.

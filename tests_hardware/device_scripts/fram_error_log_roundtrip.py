@@ -1,12 +1,12 @@
-"""Isolated-driver device script: PrintLogHistoryStore (print_log.py), the FRAM-backed error/
+"""Isolated-driver device script: PrintLogHistoryStore (asy_print_log.py), the FRAM-backed error/
 warning history every FRAM-chunk-owning module uses, against the real MB85RS2MTA chip. Records an
-error via err_s(), simulates a fresh boot (a new AsyFramManager), and confirms get_log() reads it back from the chip."""
+error via err_s(), simulates a fresh boot (a new FRAMManager), and confirms get_log() reads it back from the chip."""
 
 import asyncio
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from print_log import LogConfig, make_logger
+from asy_fram_manager import FRAMManager
+from asy_print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 5
 TEST_ERRNO = 42
@@ -16,7 +16,7 @@ LOG_NAME = "TEST"
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 
-    fram_a = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram_a = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram_a.setup():
         print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
@@ -30,9 +30,9 @@ async def _main() -> None:
     await pr1.reset()  # deterministic starting state regardless of what a prior run left behind
     await pr1.err_s("test error for fram_error_log_roundtrip.py", errno=TEST_ERRNO)
 
-    # Simulate a fresh boot: a brand new AsyFramManager Python object against the same real chip,
+    # Simulate a fresh boot: a brand new FRAMManager Python object against the same real chip,
     # allocating its own chunk 0 at the same physical address pr1's did.
-    fram_b = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram_b = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram_b.setup():
         print("RESULT: FAIL fram_b.setup() failed - real FRAM chip not responding on second probe")
         return
@@ -49,7 +49,7 @@ async def _main() -> None:
         print(f"RESULT: FAIL get_log() returned no entry for {LOG_NAME!r}: {log!r}")
         return
 
-    # print_log.py's ErrEntry types all three fields exactly (ErrCount int, ErrNum list[int],
+    # asy_print_log.py's ErrEntry types all three fields exactly (ErrCount int, ErrNum list[int],
     # ErrType list[str]), so the shape needs no isinstance re-check before use here.
     err_count = entry["ErrCount"]
     err_num = entry["ErrNum"]

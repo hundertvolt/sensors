@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -77,11 +77,11 @@ def set_callback(cmd_id: int) -> "tuple[bool, int | None]":
     return (cmd_id == _CMD_ECHO), None
 
 
-def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UART_Comm, UART_Comm]":
+def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UARTComm, UARTComm]":
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UART_Comm(
+    initiator = UARTComm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
+    responder = UARTComm(
         uart1,
         ROLE_RESPONDER,
         payload_size=payload_size_b,
@@ -103,7 +103,7 @@ async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bo
     return task.done()
 
 
-async def _exchange(wdt: "machine.WDT", responder: UART_Comm, work: "Coroutine[Any, Any, T]") -> "T":
+async def _exchange(wdt: "machine.WDT", responder: UARTComm, work: "Coroutine[Any, Any, T]") -> "T":
     listener = asyncio.create_task(responder.uart_listen())
     try:
         return await work

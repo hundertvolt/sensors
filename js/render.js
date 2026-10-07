@@ -31,7 +31,7 @@ function readInputValue(rawInputValue, field) {
     }
     if (field.kind === "enum") {
         // A <select>'s own .value is always a string (DOM behavior), even when the option's real
-        // value is numeric (e.g. BMP3XX's PressOvers) - look the matching option back up so the
+        // value is numeric (e.g. BMP3XX's PresOvers) - look the matching option back up so the
         // submitted PUT body carries the same type definitions.json declared, not a stringified one.
         const match = (field.options ?? []).find((option) => String(option.value) === rawInputValue);
         return match ? match.value : rawInputValue;
@@ -96,7 +96,7 @@ function collectGroupBody(card, group, currentValues) {
                 const key = input.dataset.subFieldKey;
                 if (key !== undefined && input.value !== "") {
                     // Same NaN -> null -> 0 gap as readInputValue() above; every real subField
-                    // today is numeric (e.g. lightCmdLED's r/g/b/t), so this doesn't yet need
+                    // today is numeric (e.g. LightCmdLED's R/G/B/T), so this doesn't yet need
                     // readInputValue()'s own per-kind dispatch.
                     const num = Number(input.value);
                     sub[key] = Number.isFinite(num) ? num : input.value;

@@ -348,8 +348,8 @@ class BusOccupant:
 
 
 def build_bus_occupants(i2c: I2C, attachments: "list[dict[str, Any]]") -> "list[BusOccupant]":
-    """One BusOccupant per `attachments` entry (buildgen.twin_wiring.compute_twin_wiring()'s own
-    per-bus list shape) - fails loud, not silently, if a real occupant has no catalog adapter yet."""
+    # One BusOccupant per `attachments` entry (buildgen.twin_wiring.compute_twin_wiring()'s own
+    # per-bus list shape) - fails loud, not silently, if a real occupant has no catalog adapter yet.
     occupants = []
     for attachment in attachments:
         driver = attachment["driver"]
@@ -366,9 +366,9 @@ def _touched_addresses(fake_bus: FakeI2C) -> "set[int]":
 
 
 async def scenario_all_occupants_concurrent_reads_stay_correct(fake_bus: FakeI2C, occupants: "list[BusOccupant]", iterations: int = 6) -> None:
-    """Every real occupant of one bus reads concurrently, not pairwise - the "all sharers at once"
-    half of SPECIFICATION.md Part C.8. Each read_once() already asserts its own correctness; the
-    switch-count floor below additionally rules out silent full serialization."""
+    # Every real occupant of one bus reads concurrently, not pairwise - the "all sharers at once"
+    # half of SPECIFICATION.md Part C.8. Each read_once() already asserts its own correctness; the
+    # switch-count floor below additionally rules out silent full serialization.
     for occ in occupants:
         occ.adapter.seed(fake_bus, occ.address, iterations)
 
@@ -412,9 +412,9 @@ async def scenario_a_write_does_not_disturb_concurrent_sibling_reads(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """One occupant's own config write concurrent with every sibling's read loop - the N-way form
-    of the pairwise cross-device tests. A no-op, not a skip, if nothing here has a safe write.
-    Swept across timing offsets on fresh state per offset: SPECIFICATION.md Part C.8 says why."""
+    # One occupant's own config write concurrent with every sibling's read loop - the N-way form
+    # of the pairwise cross-device tests. A no-op, not a skip, if nothing here has a safe write.
+    # Swept across timing offsets on fresh state per offset: SPECIFICATION.md Part C.8 says why.
     offsets = list(range(iterations)) if offsets is None else offsets
     failures: list[str] = []
     for offset in offsets:
@@ -457,9 +457,9 @@ async def scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read loop must
-    never tear it. Proven through read_once()'s corruption assertion, not a per-driver wire-byte
-    parser, so it stays generic. Offsets swept as above (SPECIFICATION.md Part C.8)."""
+    # Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read loop must
+    # never tear it. Proven through read_once()'s corruption assertion, not a per-driver wire-byte
+    # parser, so it stays generic. Offsets swept as above (SPECIFICATION.md Part C.8).
     offsets = list(range(iterations)) if offsets is None else offsets
     _fake_bus, occupants = build_fresh_bus_and_occupants()
     writers = [occ.adapter.driver for occ in occupants if occ.adapter.write_once is not None]
@@ -504,9 +504,9 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """A real general-call broadcast (SPECIFICATION.md Part C.8's known structural gap) concurrent
-    with every non-broadcasting sibling's read loop, across swept timing offsets.
-    A no-op if no real occupant of this bus ever broadcasts."""
+    # A real general-call broadcast (SPECIFICATION.md Part C.8's known structural gap) concurrent
+    # with every non-broadcasting sibling's read loop, across swept timing offsets.
+    # A no-op if no real occupant of this bus ever broadcasts.
     offsets = list(range(iterations)) if offsets is None else offsets
     failures: list[str] = []
     for offset in offsets:
@@ -521,9 +521,9 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
 
 
 async def scenario_each_occupant_never_touches_an_unexpected_address(attachments: "list[dict[str, Any]]") -> None:
-    """Generic form of each driver's own address sweep: every real bus occupant, constructed alone
-    on its own private fake bus, must touch no address but its own bar a documented general call -
-    and its TOML-declared address must not fall in a reserved I2C range to begin with."""
+    # Generic form of each driver's own address sweep: every real bus occupant, constructed alone
+    # on its own private fake bus, must touch no address but its own bar a documented general call -
+    # and its TOML-declared address must not fall in a reserved I2C range to begin with.
     for attachment in attachments:
         driver = attachment["driver"]
         adapter = I2C_HAZARD_CATALOG.get(driver)

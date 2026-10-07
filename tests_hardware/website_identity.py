@@ -44,8 +44,8 @@ def foreign_device_ids(device: str) -> list[str]:
 
 
 def assert_page_is_this_devices_build(res: HttpResponse, link: str, device: str = "dev") -> None:
-    """The one check that the image's website half matches its firmware half: a build for another
-    device, or one predating generated definitions, passes `200`/non-empty but fails every line here."""
+    # The one check that the image's website half matches its firmware half: a build for another
+    # device, or one predating generated definitions, passes `200`/non-empty but fails every line here.
     body = decoded_body(res)
     assert body, f"GET / returned an empty body over {link}"
 

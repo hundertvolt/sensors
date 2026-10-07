@@ -17,7 +17,7 @@ from unix_port_poll_prewarm import prewarm_poll_set
 # already in it, a segfault rather than a failure (digital_twin/README.md "Known gaps").
 prewarm_poll_set()
 
-# Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__, built for
+# Must run before UDPSocket is constructed (CaptiveDNS, inside WifiService.__init__, built for
 # every device below) - same reasoning as tests/test_digital_twin_sensortask_integration.py's own
 # identical call.
 patch_asy_udp_socket_for_unix_port()
@@ -146,7 +146,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
         module = await _boot_device(port, device)
         task = module.webserver.get_task_starters()[0]()
         # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
-        # made webserver.pr real-FRAM-backed on every real device, so _run() now awaits a real
+        # made webserver.pr real-FRAM-backed on every real device, so _serve_loop() now awaits a real
         # self.pr.setup() before start_server()/bind - measured at ~400ms here too.
         await asyncio.sleep(1.0)
         try:
@@ -192,7 +192,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
         task = module.webserver.get_task_starters()[0]()
         # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
-        # made webserver.pr real-FRAM-backed on every real device, so _run() now awaits a real
+        # made webserver.pr real-FRAM-backed on every real device, so _serve_loop() now awaits a real
         # self.pr.setup() before start_server()/bind - measured at ~400ms here too.
         await asyncio.sleep(1.0)
         try:

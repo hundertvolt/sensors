@@ -11,7 +11,7 @@ from collections import deque
 
 _SPI_DMA_MIN_SIZE = 32  # ports/rp2/machine_spi.c's own dma_min_size_threshold - see SPI._maybe_overrun()
 _LOG_MAXLEN = 200  # I2C.log/SPI.log's own bound - see digital_twin/README.md for the real memory
-# leak this avoids; same "keep last N" convention print_log.py's own PrintLogHistory uses.
+# leak this avoids; same "keep last N" convention asy_print_log.py's own PrintLogHistory uses.
 
 try:
     from typing import TYPE_CHECKING
@@ -314,7 +314,7 @@ def flush_fram() -> None:
         _current_fram_chip.save_state()
 
 
-_DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramManager(spi0, 5, max_size=0x40000, ...)
+_DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own FRAMManager(spi0, 5, max_size=0x40000, ...)
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
 # Real chip-model identity (the RDID bytes) isn't a TOML/DeviceModel fact - only max_size is - so

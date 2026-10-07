@@ -5,8 +5,8 @@ the restored history is ALL-OR-NOTHING (never partial, never garbage) and the ch
 import asyncio
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from print_log import LogConfig, make_logger
+from asy_fram_manager import FRAMManager
+from asy_print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 10
 E_TEST_SEED_A = 125
@@ -24,7 +24,7 @@ _ACCEPTED: "tuple[list[int], ...]" = ([], SEEDS, SEEDS + [E_TEST_SEED_C])
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() did not succeed after the reset - device not found?")
         return

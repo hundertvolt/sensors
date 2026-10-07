@@ -22,7 +22,7 @@ prewarm_poll_set()
 import sensortask_dev  # noqa: E402 - must follow the prewarm above, which is the point of it
 import sensortask_wozi  # noqa: E402
 
-from crc_checks import CRC8  # noqa: E402 - same reason as the two device imports above
+from asy_crc_checks import CRC8  # noqa: E402 - same reason as the two device imports above
 
 try:
     from typing import TYPE_CHECKING
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
     from machine import WDT
 
-    from asy_wifi_service import AsyConnTime
+    from asy_wifi_service import WifiService
 
     T = TypeVar("T")
 
@@ -105,9 +105,9 @@ _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "b
 
 
 async def _api_burst_at_the_ceiling(module: "ModuleType", host: str, port: int) -> "list[object]":
-    """A full ceiling's worth of concurrent REST requests, derived from the build under test.
-    CLAUDE.md's four-tier bus-hazard rule wants API load and bus traffic together, and a raised
-    max_connections means more of both at once - so the burst scales with the ceiling."""
+    # A full ceiling's worth of concurrent REST requests, derived from the build under test.
+    # CLAUDE.md's four-tier bus-hazard rule wants API load and bus traffic together, and a raised
+    # max_connections means more of both at once - so the burst scales with the ceiling.
     assert module.webserver is not None
     ceiling: int = module.webserver._max_connections
 
@@ -132,7 +132,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
     assert module.watchdog is not None and module.sysfunct is not None
     assert module.sgp40 is not None and module.bmp3xx is not None and module.scd30 is not None
     assert module.fram is not None
-    await module.sysfunct.start_timers(module._collect_timer_starters())
+    await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
     tasks = [starter() for starter in module._collect_task_starters()]
     tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
     try:
@@ -271,7 +271,7 @@ def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:
                 raised = e
         # FRAM_SPI._write() has no try/except of its own (unlike the I2C drivers); a SPI-level
         # failure propagates raw from set_values(). Protection lives one layer up in
-        # AsyFramManager (see SPECIFICATION.md Part A.4), so this test catches it itself.
+        # FRAMManager (see SPECIFICATION.md Part A.4), so this test catches it itself.
         assert raised is not None, "expected the injected SPI fault to propagate as a raised exception from set_values()"
 
         # Recovery: the fault fires before any simulated chip state is touched, so the chip was
@@ -366,14 +366,14 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
-async def _wait_established_then_flap_once(conn: "AsyConnTime") -> None:
+async def _wait_established_then_flap_once(conn: "WifiService") -> None:
     # A single disconnect, not repeated flapping: the ESTABLISHED retry branch is a genuine, non-fast-
     # forwardable 60s sleep (Part E.5.1), so repeated flapping is not CI-time-reasonable here.
     # tests_hardware/bench/test_network_resilience.py covers that on real hardware instead.
-    while not conn.wlan.isconnected():
+    while not conn._wlan.isconnected():
         await asyncio.sleep(_ESTABLISHED_POLL_S)
-    conn.wlan.disconnect()
-    while not conn.wlan.isconnected():
+    conn._wlan.disconnect()
+    while not conn._wlan.isconnected():
         await asyncio.sleep(_RECONNECT_POLL_S)
 
 
@@ -401,7 +401,7 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"}, module.conn.get_cfg_schema())
         assert persisted
 
-        await module.sysfunct.start_timers(module._collect_timer_starters())
+        await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
         tasks = [starter() for starter in module._collect_task_starters()]
         tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
         flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn))
@@ -416,7 +416,7 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
             assert scd_data.CO2 is not None, "SCD30 never produced real data under concurrent bus load + a real wifi disconnect"
             assert module.fram.fram.initialized is True
             assert await module.fram.fram.verify_present()
-            assert module.conn.wlan.isconnected() is True, "WiFi never recovered from the real established-connection disconnect within the real 60s retry window"
+            assert module.conn._wlan.isconnected() is True, "WiFi never recovered from the real established-connection disconnect within the real 60s retry window"
         finally:
             await _cancel(flap_task)
             for task in tasks:
@@ -516,7 +516,7 @@ def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_s
 
 
 def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
-    # AsyFramManager.__init__ sets _pause = False and nothing restores it from FRAM, so the pause is RAM-
+    # FRAMManager.__init__ sets _pause = False and nothing restores it from FRAM, so the pause is RAM-
     # only. The bench tier proves this against a real reboot; this is the CI-gated counterpart, using the
     # same state-file reboot mechanism the SGP40 backup-survival test uses.
     #

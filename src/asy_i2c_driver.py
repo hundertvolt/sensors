@@ -12,7 +12,7 @@ from machine import I2C as _I2C
 from machine import Pin
 from micropython import const
 
-from base_classes import Lockable
+from asy_base_classes import Lockable
 
 # Covers every read the drivers actually make (BMP3XX's 21-byte calibration block is the largest;
 # the hot paths are 1-6 bytes). A larger read still works - it falls back to the allocating call.
@@ -31,7 +31,7 @@ class I2C:
         timeout: int | None = None,
     ) -> None:
         self._i2c: _I2C | None = None
-        self.async_lock = asyncio.Lock()
+        self.bus_lock = asyncio.Lock()  # serialises the I2C peripheral: every device session on this bus holds it
         # One long-lived read buffer per bus, not a fresh bytes per register read (Part I). Sharing
         # it across this bus's devices is sound only because every method fills and decodes it with
         # no await between, and no Timer/Pin.irq callback here touches I2C - both checked (Part G.2).
@@ -48,7 +48,7 @@ class I2C:
         return ((1 << num_bits) - 1) << start_bit
 
     @staticmethod
-    def _bytes_to_int(mem_value: "bytes | memoryview", *, lsb_first: bool) -> int:
+    def _bytes_to_int(mem_value: bytes | memoryview, *, lsb_first: bool) -> int:
         # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
         # mem_value[0] is the least- or most-significant byte.
         reg = 0
@@ -158,9 +158,17 @@ class I2C:
             return
         try:
             packed = struct.pack(reg_format, value)
-        except (ValueError, TypeError):
+        except (TypeError, ValueError):
             return
         self._writeto_mem(self._i2c, address, reg_addr, packed, addrsize)
+
+    def deinit(self) -> None:
+        # machine.I2C.deinit() does NOT deactivate the rp2 bus - it is forwarded for portability
+        # only, and dropping self._i2c is what puts this wrapper into "bus unavailable". Why, plus
+        # the hard MicroPython 1.29 floor this call carries: SPECIFICATION.md Part F.5.
+        if self._i2c is not None:
+            self._i2c.deinit()
+            self._i2c = None
 
     def init(
         self,
@@ -179,20 +187,6 @@ class I2C:
         else:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency, timeout=timeout)
 
-    def deinit(self) -> None:
-        # machine.I2C.deinit() does NOT deactivate the rp2 bus - it is forwarded for portability
-        # only, and dropping self._i2c is what puts this wrapper into "bus unavailable". Why, plus
-        # the hard MicroPython 1.29 floor this call carries: SPECIFICATION.md Part F.5.
-        if self._i2c is not None:
-            self._i2c.deinit()
-            self._i2c = None
-
-    def scan(self) -> list[int] | None:
-        # machine.I2C.scan(): every ACKing address in 0x08-0x77.
-        if self._i2c is None:
-            return None
-        return self._i2c.scan()
-
     def readfrom_into(
         self,
         address: int,
@@ -208,6 +202,12 @@ class I2C:
         if end is None:
             end = len(buf)
         self._i2c.readfrom_into(address, memoryview(buf)[start:end], stop)
+
+    def scan(self) -> list[int] | None:
+        # machine.I2C.scan(): every ACKing address in 0x08-0x77.
+        if self._i2c is None:
+            return None
+        return self._i2c.scan()
 
     def writeto(
         self,
@@ -253,7 +253,7 @@ class I2CDevice(Lockable):
     # transactions from different devices on the same bus can't interleave.
     def __init__(self, i2c: I2C, device_address: int) -> None:
         self.i2c = i2c
-        super().__init__(asy_lock=self.i2c.async_lock)
+        super().__init__(session_lock=self.i2c.bus_lock)
         self.device_address = device_address
 
     async def _probe_for_device(self) -> None:
@@ -264,7 +264,7 @@ class I2CDevice(Lockable):
             await asyncio.sleep(_PROBE_SETTLE_S)
             acked = self.i2c.writeto(self.device_address, b"")
         except OSError:
-            raise ValueError(f"No I2C device at address: {self.device_address:#x}") from None
+            raise ValueError(f"no I2C device at address: {self.device_address:#x}") from None
         finally:
             await asyncio.sleep(_PROBE_SETTLE_S)
         if acked is None:
@@ -320,10 +320,6 @@ class I2CDevice(Lockable):
     ) -> None:
         self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
 
-    async def setup(self, *, probe: bool = True) -> None:
-        if probe:
-            await self._probe_for_device()
-
     async def readinto(
         self,
         buf: bytearray,
@@ -332,6 +328,10 @@ class I2CDevice(Lockable):
     ) -> None:
         # end=None passes straight through; I2C.readfrom_into() already defaults it to len(buf).
         self.i2c.readfrom_into(self.device_address, buf, start=start, end=end)
+
+    async def setup(self) -> bool:
+        await self._probe_for_device()
+        return True
 
     async def write(
         self,

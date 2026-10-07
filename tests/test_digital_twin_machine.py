@@ -507,9 +507,9 @@ def test_timer_deinit_stops_further_callbacks() -> None:
 
 
 def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
-    # Regression test: self-rearming chained timers - system_service.py's _timer_sequencer(), fixed to reuse
-    # one preallocated Timer via repeated .init() calls rather than constructing a fresh one per step (Part
-    # F.1) - re-.init() the SAME Timer object from inside that object's currently-firing callback.
+    # Regression test: a self-rearming chain that reuses one preallocated Timer through repeated .init()
+    # calls rather than constructing a fresh one per step (Part F.1) - re-.init() the SAME Timer object
+    # from inside that object's currently-firing callback.
     #
     # Timer.init()'s internal deinit() used to unconditionally call self._task.cancel(), cancelling the task
     # that is at that moment running the very callback doing the re-init, which MicroPython's asyncio

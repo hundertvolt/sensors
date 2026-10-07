@@ -9,7 +9,15 @@ import time
 import micropython
 import sensortask_dev
 
-import system_service
+import asy_system_service
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from asy_base_classes import TaskStarter
 
 # Explicit, never inherited - same reason as heap_headroom_after_full_system_build.py: until
 # 2026-09-24 this script's first arm ran at whatever it inherited (MEASUREMENTS M3.8).
@@ -39,8 +47,8 @@ _STARTER_LOOP_TIMEOUT_MS = 20000
 # and its final collect - ~41 ms on the RP2040 (MEASUREMENTS archive 7F.7), so 250 ms is ample.
 # @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms = 250
 _STARTER_LOOP_GRACE_MS = 250
-# start_timers() waits on every timer's first fire. Guarded rather than awaited bare so a timer that
-# never fires fails this script honestly instead of hanging the suite (CLAUDE.md's known hang #2).
+# start_timers() waits on its stagger timer once per read trigger. Guarded rather than awaited bare so a
+# timer that never fires fails this script honestly instead of hanging the suite (CLAUDE.md's known hang #2).
 # @tunable l3.heap_layout_after_full_boot_sequence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
 # @tunable l3.heap_layout_after_full_boot_sequence_starter_poll_ms = 20
@@ -62,9 +70,9 @@ def _selected_arm() -> str:
 
 
 class _ProbeGc:
-    """Stands in for `gc` at the emitted collect sites: dumps a map at the positions asked for, then
-    forwards to the real collect only on the live arm. Ported from tests/_boot_contiguity_probe.py
-    so the board and the twin measure the same sequence at the same positions."""
+    # Stands in for `gc` at the emitted collect sites: dumps a map at the positions asked for, then
+    # forwards to the real collect only on the live arm. Ported from tests/_boot_contiguity_probe.py
+    # so the board and the twin measure the same sequence at the same positions.
 
     # A dumped position collects on BOTH arms, via _dump_map() - the seam map has to be post-collect
     # or the arms anchor at different places and nothing is comparable. The suppressed arm therefore
@@ -145,7 +153,7 @@ async def _main() -> None:
     batch_gc = _ProbeGc("batch", live=live, dump_at=(0,))
     starter_gc = _ProbeGc("starter", live=live, dump_at=())
     sensortask_dev.gc = batch_gc  # type: ignore[assignment]
-    system_service.gc = starter_gc  # type: ignore[assignment]
+    asy_system_service.gc = starter_gc  # type: ignore[assignment]
     print(f"ARM {arm}")
 
     _report_checked("baseline")
@@ -165,14 +173,15 @@ async def _main() -> None:
         return
     task_starters = sensortask_dev._collect_task_starters()
     timer_starters = sensortask_dev._collect_timer_starters()
-    print(f"LISTS starters={len(task_starters)} timers={len(timer_starters)} batch_collects={batch_gc.calls}")
+    trigger_starters = sensortask_dev._collect_trigger_starters()
+    print(f"LISTS starters={len(task_starters)} timers={len(timer_starters)} triggers={len(trigger_starters)} batch_collects={batch_gc.calls}")
 
     # main()'s own order, minus ntp_force_sync(): that one needs a reachable NTP server, and a
     # network-dependent wait in the middle would put the measurement at the mercy of the bench LAN.
     # It allocates during the gap between the two lists either way - stated, not measured here.
     t1 = time.ticks_ms()
     try:
-        await asyncio.wait_for(sysfunct.start_timers(timer_starters), _TIMERS_TIMEOUT_S)
+        await asyncio.wait_for(sysfunct.start_timers(trigger_starters, timer_starters), _TIMERS_TIMEOUT_S)
     except asyncio.TimeoutError:
         print(f"RESULT: FAIL start_timers() did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
         return
@@ -185,12 +194,12 @@ async def _main() -> None:
     started = []
     inner_start_task = sysfunct._start_task
 
-    async def _counting_start_task(starter: object, n: int) -> object:
+    async def _counting_start_task(starter: "TaskStarter", n: int) -> "asyncio.Task[None] | None":
         task = await inner_start_task(starter, n)
         started.append(n)
         return task
 
-    sysfunct._start_task = _counting_start_task
+    sysfunct._start_task = _counting_start_task  # type: ignore[method-assign]
 
     t2 = time.ticks_ms()
     supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(task_starters))

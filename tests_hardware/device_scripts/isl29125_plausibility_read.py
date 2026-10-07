@@ -25,7 +25,7 @@ _POLL_TRIES = 30
 
 async def _main() -> None:
     # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     # The board lights its OWN scene rather than trusting the bench: depending on ambient made this
     # result depend on test ORDER - it passed with the pixel latched white, then failed once a
     # preceding test parked it dark. Lit and still dark now means a real fault.
@@ -40,7 +40,7 @@ async def _main() -> None:
     # Seeded from the driver's own schema, never a hand-copied list - a key added there
     # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
     # starts the read chain. Command-only entries have no default and are skipped.
-    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
     reader.start_timer()  # wires the real 1s hardware timer and the falling-edge INT handler
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()

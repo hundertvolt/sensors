@@ -1,6 +1,6 @@
 """Guard for SPECIFICATION.md Part I.6: the largest body any device's own schema can legitimately
 produce must still fit under `max_content_length`. Nothing else checks this, and every new driver
-grows it - dev's `/sensors` is 338 B larger than wozi's purely for carrying one more sensor."""
+grows it - dev's `/sensors` is 337 B larger than wozi's purely for carrying one more sensor."""
 
 # Derived, never hardcoded, on both sides: the cap is read out of src/ and the schema out of the
 # real buildgen model, so a cap change and a schema change are each caught by the same assertion.
@@ -31,17 +31,17 @@ _NESTED_ROUTES = frozenset({"/sensors"})
 # The measured maximum per device, pinned so that growth is deliberate and visible rather than
 # silent. A new driver or a widened string bound SHOULD fail this - update it and read the margin.
 _EXPECTED_LARGEST = {
-    "arzi": 1312,
-    "dev": 1312,
-    "grkizi": 1312,
-    "klkizi": 1312,
-    "schlafzi": 1312,
-    "wozi": 1312,
+    "arzi": 536,
+    "dev": 972,
+    "grkizi": 536,
+    "klkizi": 536,
+    "schlafzi": 536,
+    "wozi": 635,
 }
 
 
 def _cap_from_src(repo_root: Path) -> int:
-    """`ServingLimits`' shipped `max_content_length`: `_DEFAULT_MAX_CONTENT_LENGTH = const(<int>)`, read out of the source."""
+    # `ServingLimits`' shipped `max_content_length`: `_DEFAULT_MAX_CONTENT_LENGTH = const(<int>)`, read out of the source.
     tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text())
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_DEFAULT_MAX_CONTENT_LENGTH" for t in node.targets):
@@ -73,7 +73,7 @@ def _field_bound(field: "Mapping[str, Any]") -> int:
 
 
 def _largest_put_body(section: "Mapping[str, Any]") -> int:
-    """Bytes of the largest body this section's PUT route can legitimately be sent."""
+    # Bytes of the largest body this section's PUT route can legitimately be sent.
     groups = section.get("groups", [])
     assert isinstance(groups, list)
     per_group: dict[str, int] = {}

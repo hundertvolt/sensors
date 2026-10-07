@@ -42,6 +42,7 @@ class FakeMB85RS64V(FakeSPI):
         # datasheet's WRITING PROTECT table via the wel property below: WRSR is accepted only when WEL=1 and
         # (WPEN=0 or WP=1). None models WP tied high, the driver's assumption without a wp_pin.
         self.wp_pin: Pin | None = None
+        self.write_transactions = 0  # WRITE commands that reached their data phase, WEL set or not
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
 
@@ -56,6 +57,7 @@ class FakeMB85RS64V(FakeSPI):
         data = bytes(buf)  # type: ignore[call-overload]
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
             # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
+            self.write_transactions += 1
             if self.wel:
                 stored = data if self.corrupt_next_write_data is None else self.corrupt_next_write_data
                 end = self._pending_addr + len(stored)

@@ -29,7 +29,7 @@ _CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text
 _SHAPE_CASES = json.loads((_REPO_ROOT / "tests_scripts" / "definitions_shape_cases.json").read_text())
 # The files every device's mandatory networking/system groups are tagged in; instance files come from
 # the model (each instance's driver_info.source_path).
-_MANDATORY_TAG_FILES = ("asy_wifi_service.py", "asy_ntp_client.py", "system_service.py")
+_MANDATORY_TAG_FILES = ("asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py")
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def _generate(repo_root: Path, src_dir: Path, device: str) -> "dict[str, Any]":
 
 
 def _field_groups(definitions: "dict[str, Any]") -> "list[tuple[str, dict[str, Any]]]":
-    """(section key, group) for every field group - errcount groups carry modules, not fields."""
+    # (section key, group) for every field group - errcount groups carry modules, not fields.
     return [(s["key"], g) for s in definitions["sections"] for g in s["groups"] if "fields" in g]
 
 
@@ -61,8 +61,8 @@ def _errcount_groups(definitions: "dict[str, Any]") -> "list[tuple[str, dict[str
 
 
 def _tag_place(tag: WebFieldTag, spec: "InstanceSpec | None") -> "tuple[str, str, str]":
-    """(section, group key, field key) a tag must land at: an instance's own card for `self`, the
-    Status page's Sensor Maintenance group keyed `<instance>_<field>` for a status tag, else its group."""
+    # (section, group key, field key) a tag must land at: an instance's own card for `self`, the
+    # Status page's Sensor Maintenance group keyed `<instance>_<field>` for a status tag, else its group.
     if spec is not None and tag.submit_group == SELF_GROUP:
         assert spec.resolved_name is not None
         return tag.section, spec.resolved_name, tag.field_name
@@ -84,7 +84,7 @@ def _expected_tagged_fields(model: DeviceModel, src_dir: Path) -> "Counter[tuple
 
 
 def _tag_placement_problems(expected: "Counter[tuple[str, str, str, str, str | None]]", definitions: "dict[str, Any]") -> "list[str]":
-    """Every generated field whose key some tag of its section names, counted against where the tags put it."""
+    # Every generated field whose key some tag of its section names, counted against where the tags put it.
     tagged = {(section, key) for section, _group, key, _label, _unit in expected}
     actual: Counter[tuple[str, str, str, str, str | None]] = Counter(
         (section, group["key"], f["key"], f["label"], f.get("unit"))
@@ -191,7 +191,7 @@ def test_every_errcount_codes_block_equals_the_catalogs_live_codes(repo_root: Pa
 
 
 def _tagged_code_tables(src_dir: Path) -> "dict[str, str]":
-    """Field key -> the status table its `codes=` tag names, over every tagged src/ file."""
+    # Field key -> the status table its `codes=` tag names, over every tagged src/ file.
     return {t.field_name: t.codes for p in sorted(src_dir.glob("*.py")) for t in parse_web_tags(p, "fixture", "x") if t.codes is not None}
 
 
@@ -216,14 +216,14 @@ def test_every_codes_tag_names_a_present_table(src_dir: Path) -> None:
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_timestamp_is_an_epoch_with_no_unit(repo_root: Path, src_dir: Path, device: str) -> None:
     # An instant, not a duration: the page shows its age, so a seconds unit would mislabel it.
-    stamps = [f for _section, group in _field_groups(_generate(repo_root, src_dir, device)) for f in group["fields"] if f["key"].endswith("TS") or f["key"] == "NtpLastSync"]
+    stamps = [f for _section, group in _field_groups(_generate(repo_root, src_dir, device)) for f in group["fields"] if f["key"].endswith("TS") or f["key"] == "NTPLastSync"]
     assert stamps, f"{device} carries no timestamp field - the check found nothing to hold"
     wrong = [f["key"] for f in stamps if f.get("format") != "epoch" or "unit" in f]
     assert not wrong, f"timestamps without format epoch, or with a unit: {wrong}"
 
 
 def _sgp_maintenance_keys(module_source: str) -> "set[str]":
-    """The keys the generated module's SGP40 maintenance adapter(s) return."""
+    # The keys the generated module's SGP40 maintenance adapter(s) return.
     bodies = re.findall(r"async def _sgp_maintenance_status\w*\(\)[^\n]*\n((?:    .*\n)+)", module_source)
     assert bodies, "the generated module defines no _sgp_maintenance_status adapter - re-point this check"
     return {key for body in bodies for key in re.findall(r'"(\w+)":', body)}
@@ -383,7 +383,7 @@ def _section_problems(s: "dict[str, Any]", where: str) -> "list[str]":
 
 
 def _shape_problems(defs: object) -> "list[str]":
-    """js/definitions.js's validateDefinitions(), rule for rule: empty means the document loads."""
+    # js/definitions.js's validateDefinitions(), rule for rule: empty means the document loads.
     if not isinstance(defs, dict):
         return ["definitions.json is not a JSON object"]
     problems = _top_level_problems(defs)
@@ -489,14 +489,14 @@ def test_missing_web_field_tag_for_a_schema_field_is_tolerated_but_field_is_abse
     generated = generate_definitions(model, src_dir)
     sensors_fields = {f["key"] for g in next(s for s in generated["sections"] if s["key"] == "sensors")["groups"] for f in g["fields"]}
     assert "AmbPres" not in sensors_fields
-    assert "MeasInt" in sensors_fields
+    assert "MeasInterval" in sensors_fields
 
 
 def test_missing_special_label_for_an_enum_schema_value_fails_loud(tmp_path: Path, src_dir: Path) -> None:
     mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_bmp3xx_driver.py", ' special:127="127"', "")
     spec = InstanceSpec(
         driver="bmp3xx", name_ext="", fields={}, wiring={}, order_index=0,
-        driver_info=DriverInfo(driver="bmp3xx", module="asy_bmp3xx_driver", class_name="BMP3xx_Reader", kind="sensor", source_path=mutated, needs_setup=True),
+        driver_info=DriverInfo(driver="bmp3xx", module="asy_bmp3xx_driver", class_name="BMP3XX_Reader", kind="sensor", source_path=mutated, needs_setup=True),
         resolved_name="BMP3XX",
     )
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("bmp3xx", ""): spec}, construction_order=[("bmp3xx", "")])
@@ -506,7 +506,7 @@ def test_missing_special_label_for_an_enum_schema_value_fails_loud(tmp_path: Pat
 
 def test_duplicate_mandatory_group_across_two_files_fails_loud(tmp_path: Path, src_dir: Path) -> None:
     # asy_ntp_client.py deliberately never declares its own @web-group for section=system
-    # submitGroup=settings (system_service.py is the sole owner) - inject a second declaration to
+    # submitGroup=settings (asy_system_service.py is the sole owner) - inject a second declaration to
     # prove the cross-file collision check actually runs.
     ntp_original = (src_dir / "asy_ntp_client.py").read_text(encoding="utf-8")
     mutated_ntp = tmp_path / "asy_ntp_client.py"
@@ -560,7 +560,7 @@ def test_web_tag_declares_extra_special_label_not_in_schema_choice_set_fails_lou
     mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_bmp3xx_driver.py", ' special:127="127"', ' special:127="127" special:999="Extra"')
     spec = InstanceSpec(
         driver="bmp3xx", name_ext="", fields={}, wiring={}, order_index=0,
-        driver_info=DriverInfo(driver="bmp3xx", module="asy_bmp3xx_driver", class_name="BMP3xx_Reader", kind="sensor", source_path=mutated, needs_setup=True),
+        driver_info=DriverInfo(driver="bmp3xx", module="asy_bmp3xx_driver", class_name="BMP3XX_Reader", kind="sensor", source_path=mutated, needs_setup=True),
         resolved_name="BMP3XX",
     )
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("bmp3xx", ""): spec}, construction_order=[("bmp3xx", "")])
@@ -580,14 +580,14 @@ def test_web_tag_schema_sentinel_value_with_no_matching_special_label_fails_loud
 
 def test_mandatory_group_never_declared_anywhere_fails_loud(tmp_path: Path, src_dir: Path) -> None:
     # _mandatory_group()'s "none declaring" branch, distinct from the "declared twice" one above.
-    # system_service.py is the sole owner of that group, so dropping it rather than duplicating
+    # asy_system_service.py is the sole owner of that group, so dropping it rather than duplicating
     # it leaves no scanned file declaring the mandatory group at all.
     patched_src = tmp_path / "src"
     patched_src.mkdir()
     for existing in src_dir.glob("*.py"):
         (patched_src / existing.name).write_bytes(existing.read_bytes())
-    mutated = _copy_driver_without(tmp_path, src_dir, "system_service.py", '# @web-group section=system submitGroup=settings label="System Settings"')
-    (patched_src / "system_service.py").write_bytes(mutated.read_bytes())
+    mutated = _copy_driver_without(tmp_path, src_dir, "asy_system_service.py", '# @web-group section=system submitGroup=settings label="System Settings"')
+    (patched_src / "asy_system_service.py").write_bytes(mutated.read_bytes())
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={}, construction_order=[])
     with pytest.raises(BuildError, match=r"no @web-group tag declares section='system' submitGroup='settings' in any scanned file"):
         generate_definitions(model, patched_src)
@@ -597,7 +597,7 @@ def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path
     # _mandatory_group()'s own "declared but empty" branch: the @web-group tag survives, but every
     # @web field tag that would normally reference notification/autoConfig is stripped, so the
     # group has nothing to show. Uses a synthetic notification instance (driver_registry.py's own
-    # NotificationCoordinator mapping) since _mandatory_group("notification", "autoConfig", ...) is
+    # NotificationService mapping) since _mandatory_group("notification", "autoConfig", ...) is
     # only reached when the model actually has one.
     original = (src_dir / "asy_notification_service.py").read_text(encoding="utf-8")
     lines = [line for line in original.splitlines(keepends=True) if not line.lstrip().startswith("# @web ")]
@@ -605,7 +605,7 @@ def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path
     mutated.write_text("".join(lines), encoding="utf-8")
     spec = InstanceSpec(
         driver="notification", name_ext="", fields={}, wiring={}, order_index=0, resolved_name="NOTIFY",  # errcount rows are per instance now, so this must be filled as validate.py always fills it
-        driver_info=DriverInfo(driver="notification", module="asy_notification_service", class_name="NotificationCoordinator", kind="service", source_path=mutated, needs_setup=True),
+        driver_info=DriverInfo(driver="notification", module="asy_notification_service", class_name="NotificationService", kind="service", source_path=mutated, needs_setup=True),
     )
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])
     with pytest.raises(BuildError, match=r"section='notification' submitGroup='autoConfig' has an @web-group declaration but no @web field tags reference it"):

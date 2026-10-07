@@ -99,8 +99,8 @@ def _catches(handler: ast.ExceptHandler) -> set[str]:
 
 
 def _unguarded_fetches(source: str) -> list[str]:
-    """Thread-target functions whose try around http_client.fetch() names OSError but not HTTP_ERROR:
-    a cut-off answer is an HTTPException, which then kills the thread and silently stops its load."""
+    # Thread-target functions whose try around http_client.fetch() names OSError but not HTTP_ERROR:
+    # a cut-off answer is an HTTPException, which then kills the thread and silently stops its load.
     tree = ast.parse(source)
     targets = {ast.unparse(kw.value) for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("Thread") for kw in node.keywords if kw.arg == "target"}
     found = []

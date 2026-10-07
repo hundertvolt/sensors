@@ -1,12 +1,12 @@
-"""Isolated-driver device script: AsyFramManager/FRAM_SPI against the real MB85RS2MTA SPI FRAM chip
+"""Isolated-driver device script: FRAMManager/FRAM_SPI against the real MB85RS2MTA SPI FRAM chip
 - exercises the real chunk-owner chain (fram.setup()'s RDID probe, get_chunk()'s dual-copy/CRC
 allocator, chunk.write()/read()) with a deterministic non-trivial byte pattern."""
 
 import asyncio
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from crc_checks import CRC8
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
 
 CHUNK_SIZE = 32
 PATTERN = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))  # non-trivial, not all-zero/all-0xFF
@@ -14,7 +14,7 @@ PATTERN = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))  # non-trivial, no
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5 (RDID probe failed)")
         return

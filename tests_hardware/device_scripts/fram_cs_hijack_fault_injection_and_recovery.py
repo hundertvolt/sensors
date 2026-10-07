@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 _WRITE_RACE_ADDR = 0x9000  # scratch addresses, disjoint from every other device script's own regions
 _READ_RACE_ADDR = 0x9100
@@ -24,9 +24,9 @@ _VICTIM_BOUND_S = 30.0
 
 
 class _CsHijack:
-    """Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam. The
-    earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
-    window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS archive §7D.5)."""
+    # Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam. The
+    # earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
+    # window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS archive §7D.5).
 
     def __init__(self, fram: FRAM_SPI, payload_len: int) -> None:
         self._spidev = fram._spidev
@@ -36,7 +36,7 @@ class _CsHijack:
         self.injected_with_cs_asserted = False
 
     def _yank(self) -> None:
-        cs, active = self._spidev.cs_pin, self._spidev.cs_active_value
+        cs, active = self._spidev._cs_pin, self._spidev._cs_active_value
         # Reading an output pin back gives its driven level on rp2, so this is real proof the
         # injection landed while the victim held CS rather than before or after its envelope.
         self.injected_with_cs_asserted = cs.value() == active

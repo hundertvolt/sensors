@@ -2,9 +2,9 @@ import asyncio
 import time
 
 import asy_neopixel_driver
-import print_log as print_log_module
+import asy_print_log as print_log_module
 from asy_neopixel_driver import NeopixelDriver, _clamp_byte
-from print_log import LogConfig, PrintLog
+from asy_print_log import LogConfig, PrintLog
 
 try:
     from typing import TYPE_CHECKING
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     import neopixel
 
-    from crc_checks import CRC_Base
+    from asy_crc_checks import CRCBase
 
     T = TypeVar("T")
 
@@ -29,14 +29,16 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
     # tests/neopixel.py's fake, reached through the driver's own attribute - that fake is what
     # `neopixel` resolves to here (it is not excluded from mypy, unlike tests/network.py).
-    return driver.pixel
+    return driver._pixel
 
 
 def make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int | None" = None) -> NeopixelDriver:
     # freq=100, against the real 20 default, keeps every ramp's step count high enough - 5 per direction at
     # the t=0.1 floor - to observe mid-ramp state. A test outside _DrivenClock drives real asyncio.sleep(),
     # so fast ramps keep its runtime short.
-    return NeopixelDriver(0, neopixel_freq=neopixel_freq, led_overl_bri=led_overl_bri, log=LogConfig(None, 10, debug))
+    driver = NeopixelDriver(0, neopixel_freq=neopixel_freq, led_overl_bri=led_overl_bri, log=LogConfig(None, 10, debug))
+    run(driver.setup())  # the boot batch's setup(), before any task starts
+    return driver
 
 
 async def _start_all_tasks(driver: NeopixelDriver) -> "list[asyncio.Task[None]]":
@@ -109,7 +111,7 @@ async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
 
 
 class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside print_log only, so every
+    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, so every
     # console line a logger emits is captured with its arguments; restore() removes the shadow.
     def __init__(self) -> None:
         self.lines: list[tuple[object, ...]] = []
@@ -205,7 +207,7 @@ def test_toggle_flips_from_off_to_on() -> None:
         await _cancel_all(tasks)
 
     run(scenario())
-    assert driver.led_overl_on is True
+    assert driver._overlay_on is True
     assert _pixel(driver).writes[-1][0] == (42, 42, 42)
 
 
@@ -221,7 +223,7 @@ def test_toggle_flips_from_on_to_off() -> None:
         await _cancel_all(tasks)
 
     run(scenario())
-    assert driver.led_overl_on is False
+    assert driver._overlay_on is False
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
 
 
@@ -252,8 +254,8 @@ def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
         # finishes - create_task here only keeps the scenario reading top-to-bottom; awaiting it
         # directly would return just as fast.
         ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.1))
-        await asyncio.sleep(0.02)  # ramp has started, is mid-animation, holds led_overl_lock
-        assert driver.led_overl_lock.locked() is True
+        await asyncio.sleep(0.02)  # ramp has started, is mid-animation, holds _overlay_lock
+        assert driver._overlay_lock.locked() is True
         driver.on()  # queued, must not write yet - the lock is still held by the ramp
         await asyncio.sleep(0)
         assert (99, 99, 99) not in [w[0] for w in _pixel(driver).writes]
@@ -422,7 +424,7 @@ def test_led_signal_returns_false_for_a_second_call_before_the_first_dispatches(
     driver = make_driver()
 
     async def scenario() -> "tuple[bool, bool]":
-        # No task started: led_signal() decides on start_signal_event alone, with no await.
+        # No task started: led_signal() decides on _start_signal_event alone, with no await.
         r1 = driver.led_signal(30, 0, 0, 0.1)
         r2 = driver.led_signal(0, 30, 0, 0.1)  # zero `await` since r1 - must already see it pending
         return r1, r2
@@ -433,7 +435,7 @@ def test_led_signal_returns_false_for_a_second_call_before_the_first_dispatches(
 
 
 def test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued() -> None:
-    # The busy signal is start_signal_event, set for the whole ramp; an external request while it is set is
+    # The busy signal is _start_signal_event, set for the whole ramp; an external request while it is set is
     # refused, never queued (owner, 2026-10-02).
     driver = _event_driver()
     recorder = _PrintRecorder()
@@ -442,10 +444,10 @@ def test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued()
         tasks = await _start_all_tasks(driver)
         await driver.request_signal(10, 0, 0, 0.1)
         assert await _run_until(lambda: any(c[0] > 0 for c in _colours(driver)), 20)
-        busy = driver.start_signal_event.is_set()
+        busy = driver._start_signal_event.is_set()
         result = driver.led_signal(0, 10, 0, 0.1)
-        ended = await _run_until(lambda: not driver.start_signal_event.is_set(), 40)
-        await _run_until(driver.start_signal_event.is_set, 40)  # a queued request would start here
+        ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
+        await _run_until(driver._start_signal_event.is_set, 40)  # a queued request would start here
         await _cancel_all(tasks)
         return busy, result, ended
 
@@ -468,9 +470,9 @@ def test_led_signal_is_refused_while_an_internal_request_is_queued_and_no_task_r
         queued = await driver.request_signal(10, 0, 0, 0.1)  # no signal task yet: the request stays queued
         refused = driver.led_signal(0, 10, 0, 0.1)  # no await since: the check reads the event, not a task
         tasks = await _start_all_tasks(driver)
-        ended = await _run_until(lambda: not driver.start_signal_event.is_set(), 40)
+        ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
         accepted = driver.led_signal(0, 10, 0, 0.1)
-        await _run_until(lambda: not driver.start_signal_event.is_set(), 40)
+        await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
         await _cancel_all(tasks)
         return queued, refused, ended, accepted
 
@@ -561,8 +563,8 @@ def test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs
     recorder = _PrintRecorder()
 
     async def scenario(clock: _DrivenClock) -> "tuple[bool, bool, bool]":
-        driver.start_signal_event.set()  # a signal is queued and its task never runs
-        rgbt_before = driver.rgbt
+        driver._start_signal_event.set()  # a signal is queued and its task never runs
+        rgbt_before = driver._rgbt
         waiter = asyncio.create_task(driver.request_signal(0, 10, 0, 0.1))
         await asyncio.sleep(0)  # one yield: the waiter takes its deadline at now = 0
         clock.now = wait_ms - frame_ms
@@ -576,7 +578,7 @@ def test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs
             result = await waiter
         except asyncio.CancelledError:
             result = True
-        return pending_before, gave_up and result is False, driver.rgbt is rgbt_before
+        return pending_before, gave_up and result is False, driver._rgbt is rgbt_before
 
     with _DrivenClock() as clock:
         try:
@@ -586,7 +588,7 @@ def test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs
     assert pending_before is True
     assert gave_up_false is True
     assert untouched is True  # the dropped request never replaced the queued values
-    assert driver.start_signal_event.is_set() is True
+    assert driver._start_signal_event.is_set() is True
     assert _pixel(driver).writes == []
     assert ("NEOPIXEL", "Internal LED command dropped: signal still busy.") in recorder.lines
 
@@ -602,7 +604,7 @@ def test_request_signal_behind_a_running_ramp_returns_true_only_after_it_ends() 
         assert await _run_until(second.done, 40)
         frames_at_return = len(_pixel(driver).writes)
         result = await second
-        await _run_until(lambda: not driver.start_signal_event.is_set(), 40)
+        await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
         await _cancel_all(tasks)
         return result, frames_at_return
 
@@ -626,9 +628,9 @@ def test_cancelling_the_signal_task_mid_ramp_leaves_the_pixel_dark_and_the_slot_
         assert await _run_until(lambda: any(c[0] > 0 for c in _colours(driver)), 20)
         await _cancel_all([signal])
         last = _colours(driver)[-1]
-        busy = driver.start_signal_event.is_set()
+        busy = driver._start_signal_event.is_set()
         n = len(_pixel(driver).writes)
-        restarted = driver.start_asy_neopixel_signal()
+        restarted = driver.start_asy_signal()
         await _run_until(lambda: False, 60)  # a replayed ramp of 0.5 s at 100 Hz would show within these steps
         await _cancel_all([t for t in tasks if t is not signal] + [restarted])
         return last, busy, _colours(driver)[n:]
@@ -672,16 +674,19 @@ def test_a_frame_write_failing_mid_ramp_ends_the_task_with_the_slot_free() -> No
 # ---------------------------------------------------------------------------
 
 
-def test_pr_setup_runs_before_any_ramp_is_committed() -> None:
-    driver = make_driver()
+def test_setup_initialises_the_logger_and_the_driver_before_any_task() -> None:
+    driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
     assert driver.pr.initialized is False
 
-    async def scenario() -> None:
+    async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
-        assert driver.pr.initialized is True  # neopixel_signal() calls pr.setup() before its first wait
+        started_uninitialised = driver.pr.initialized is False  # no task sets the logger up
         await _cancel_all(tasks)
+        return started_uninitialised
 
-    run(scenario())
+    assert run(scenario()) is True
+    assert run(driver.setup()) is True
+    assert driver.pr.initialized is True
 
 
 class _FakeFramChunk:
@@ -707,18 +712,17 @@ class _FakeFramManager:
     def __init__(self, chunk: "_FakeFramChunk") -> None:
         self.chunk = chunk
 
-    def get_chunk(self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
         return self.chunk
 
 
 def test_fram_backed_variant_survives_a_reboot() -> None:
     chunk = _FakeFramChunk()
     fram = _FakeFramManager(chunk)
-    driver1 = NeopixelDriver(0, log=LogConfig(fram, 10, None))  # the fake structurally satisfies print_log's _FramManager Protocol
+    driver1 = NeopixelDriver(0, log=LogConfig(fram, 10, None))  # the fake structurally satisfies asy_print_log's _FramManager Protocol
 
     async def scenario1() -> None:
-        await driver1.pr.setup()  # FRAM persistence is inert until setup() runs - matches every
-        # other module's real main-loop convention (see base_classes.py's module docstring)
+        await driver1.setup()
         await driver1.pr.err_s("boom", errno=1)
 
     run(scenario1())
@@ -726,10 +730,10 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
     driver2 = NeopixelDriver(0, log=LogConfig(fram, 10, None))
 
     async def scenario2() -> None:
-        await driver2.pr.setup()
+        await driver2.setup()
 
     run(scenario2())
-    assert driver2.pr.err_count == driver1.pr.err_count
+    assert driver2.pr._err_count == driver1.pr._err_count
 
 
 def test_the_log_config_sets_the_loggers_length_and_level() -> None:
@@ -888,7 +892,7 @@ def test_a_non_numeric_signal_value_is_refused_without_a_frame() -> None:
 
         with _DrivenClock():
             assert run(scenario()) == (False, False), (r, g, b, t)
-        assert driver.start_signal_event.is_set() is False
+        assert driver._start_signal_event.is_set() is False
         assert _colours(driver) == [(0, 0, 0)]  # only the signal task's own start frame
 
 
@@ -897,9 +901,9 @@ def _single_signal_frames(t: float) -> "list[tuple[int, ...]]":
     driver = make_driver(neopixel_freq=20)
 
     async def scenario() -> bool:
-        signal = driver.start_asy_neopixel_signal()
+        signal = driver.start_asy_signal()
         await driver.request_signal(255, 0, 0, t)
-        ended = await _run_until(lambda: not driver.start_signal_event.is_set(), 4000)
+        ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 4000)
         await _cancel_all([signal])
         return ended
 
@@ -924,17 +928,13 @@ def test_a_negative_duration_takes_the_floor() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_task_starters_returns_two_callables() -> None:
+def test_get_task_starters_returns_the_overlay_and_signal_starters() -> None:
     driver = make_driver()
-    starters = driver.get_task_starters()
-    assert len(starters) == 2
-    for s in starters:
-        assert callable(s)
+    assert [s.__name__ for s in driver.get_task_starters()] == ["start_asy_overlay", "start_asy_signal"]
 
 
 def test_get_timer_starters_returns_empty_list() -> None:
     driver = make_driver()
-    assert driver.get_task_starters is not None
     assert driver.get_timer_starters() == []
 
 

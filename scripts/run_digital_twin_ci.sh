@@ -48,7 +48,7 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-# Run 7's captive-portal DNSServer binds the real privileged port 53, which a non-root runner
+# Run 7's CaptiveDNS binds the real privileged port 53, which a non-root runner
 # cannot do without this capability on the interpreter binary. Granted fresh every invocation
 # because a cached toolchain archive does not carry xattrs (digital_twin/README.md has the account).
 echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for Run 7's real port-53 DNS server)"

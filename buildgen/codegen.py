@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from buildgen.defaults import default_class_name
+from buildgen.driver_registry import class_has_read_triggers
 from buildgen.errors import BuildError
 from buildgen.model import MAINTENANCE_NAMES, DeviceModel, InstanceSpec, TomlDoc, instance_label, resolve_instance_key
 from buildgen.validate import module_float_const, module_int_const, module_str_const, ntp_backoff
@@ -145,8 +146,8 @@ def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[t
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
     kw: list[tuple[str, str]] = []
-    if "trigger_sec" in f:
-        kw.append(("trigger_sec", str(f["trigger_sec"])))
+    if "trigger_s" in f:
+        kw.append(("trigger_s", str(f["trigger_s"])))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
@@ -175,8 +176,8 @@ def _build_args_bmp3xx(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[
     kw: list[tuple[str, str]] = []
     if "address" in f:
         kw.append(("address", hex(f["address"])))
-    if "trigger_sec" in f:
-        kw.append(("trigger_sec", str(f["trigger_sec"])))
+    if "trigger_s" in f:
+        kw.append(("trigger_s", str(f["trigger_s"])))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
@@ -186,14 +187,14 @@ def _build_args_bmp3xx(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[
 
 
 def _build_args_isl29125(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
-    # irq_pin positional, like _build_args_scd30's own shape; cfg_path/optional trigger_sec kwargs,
+    # irq_pin positional, like _build_args_scd30's own shape; cfg_path/optional trigger_s kwargs,
     # like _build_args_bmp3xx's own shape - ISL29125_Reader is a SensorReaderConfig (needs cfg_path)
     # wired to a real interrupt pin (needs irq_pin), the one driver combining both facts.
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
     kw: list[tuple[str, str]] = []
-    if "trigger_sec" in f:
-        kw.append(("trigger_sec", str(f["trigger_sec"])))
+    if "trigger_s" in f:
+        kw.append(("trigger_s", str(f["trigger_s"])))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
@@ -293,7 +294,6 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("import asyncio")
     lines.append("import gc")
     lines.append("import time")
-    lines.append("from asyncio import ThreadSafeFlag")
     lines.append("")
     lines.append("import frozen_html  # type: ignore[import-not-found]  # noqa: F401")
     lines.append("from machine import WDT")
@@ -303,7 +303,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("import asy_i2c_driver")
     lines.append("import asy_spi_driver")
     lines.append("import asy_uart_driver")
-    lines.append("import config_manager as cm")
+    lines.append("import asy_config_manager as cm")
     # One import line per module, not per instance - two instances of the same driver (e.g. a
     # multi-scd30 device) share one module and must share one import line, merging whichever
     # _Default* extras either instance's own wiring needs rather than importing the class twice.
@@ -326,14 +326,14 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     if "notification" in have:
         notif_extra_spec = next(s for s in instances.values() if s.driver == "notification")
         notif_extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(notif_extra_spec))
-        lines.append(f"from asy_notification_service import NotificationCoordinator, NotificationSignal{notif_extra}")
-    lines.append("from asy_ntp_client import AsyNtpClient, NtpTiming")
+        lines.append(f"from asy_notification_service import NotificationService, NotificationSignal{notif_extra}")
+    lines.append("from asy_ntp_client import NTPClient, NtpTiming")
     lines.append("from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService")
-    lines.append("from asy_wifi_service import AsyConnTime, WifiConfig")
+    lines.append("from asy_wifi_service import WifiService, WifiConfig")
     if have & {"sgp40", "notification"}:
-        lines.append("from base_classes import ValueRef")
-    lines.append("from print_log import DEFAULT_LOG, LogConfig")
-    lines.append("from system_service import SystemService")
+        lines.append("from asy_base_classes import ValueRef")
+    lines.append("from asy_print_log import DEFAULT_LOG, LogConfig")
+    lines.append("from asy_system_service import SystemService")
     lines.append("")
     lines.append("try:")
     lines.append("    from typing import TYPE_CHECKING")
@@ -343,6 +343,8 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("if TYPE_CHECKING:")
     lines.append("    from collections.abc import Callable")
     lines.append("    from typing import Any")
+    lines.append("")
+    lines.append("    from asy_base_classes import ErrorSource, TimerStarter")
     lines.append("")
     lines.append(f"_MAX_MODULE_ERROR = const({_MAX_MODULE_ERROR})")
     lines.append(f"_DNS_TIMEOUT_MS = const({_DNS_TIMEOUT_MS})")
@@ -354,7 +356,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("")
 
 
-def _emit_globals(lines: "list[str]", instances: "dict[tuple[str, str], InstanceSpec]", have: "set[str]", all_vars: "list[str]") -> None:
+def _emit_globals(lines: "list[str]", instances: "dict[tuple[str, str], InstanceSpec]", have: "set[str]", global_types: "dict[str, str]") -> None:
     if "notification" in have:
         notif_spec = next(s for s in instances.values() if s.driver == "notification")
         for toml_field in notif_spec.wiring:
@@ -363,10 +365,10 @@ def _emit_globals(lines: "list[str]", instances: "dict[tuple[str, str], Instance
                 lines.append(f'{const_name}: "cm.ConfigSchema" = {schema_literal}')
         lines.append("")
 
-    lines.append('watchdog: "WDT | None" = None')
-    lines.extend(f'{name}: "Any | None" = None' for name in all_vars)
-    lines.append('webserver: "WebserverService | None" = None')
-    lines.append('timers_running: "ThreadSafeFlag | None" = None')
+    # Bare annotations: every class named here is imported at runtime (quoted only for TYPE_CHECKING names).
+    lines.append("watchdog: WDT | None = None")
+    lines.extend(f"{name}: {class_expr} | None = None" for name, class_expr in global_types.items())
+    lines.append("webserver: WebserverService | None = None")
     lines.append("")
 
 
@@ -377,7 +379,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append(") -> None:")
     lines.append('    """Construct every module and run the grouped setup() batch - generated, mirrors build_system()\'s')
     lines.append('    documented shape in every hand-written sensortask_*.py (SPECIFICATION.md Part A.7)."""')
-    global_names = ["watchdog"] + all_vars + ["webserver", "timers_running"]
+    global_names = ["watchdog", *all_vars, "webserver"]
     lines.append("    global " + ", ".join(global_names))
     lines.append("")
     # @tunable wdt.timeout_ms = 8000
@@ -412,13 +414,13 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             # hostname/hotspot_password are [device]'s values, passed as the DEFAULTS of the two
             # ConfigManager-persisted fields (_with_default). The status LED is built first (graph.py).
             wifi = f"WifiConfig({dev['hostname']!r}, {dev['hotspot_password']!r}, {dev['conn_fail_to_hotspot']}, {dev['hotspot_time_min']})"
-            lines.append(f"    conn = AsyConnTime({wifi}, ext_led={led_var}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
+            lines.append(f"    conn = WifiService({wifi}, ext_led={led_var}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
             continue
         if node == "ntp":
             # The backoff pair is always the effective one: [device]'s stated keys, else the src/ defaults.
             retry_s, retry_max_s = ntp_backoff(dev, ctx.src_dir)
             timing = f"NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, {retry_s}, {retry_max_s})"
-            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
+            lines.append(f"    ntp = NTPClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, {timing}, cfg_path=cfg_path, {_device_log_arg(model, ctx)})")
             continue
         if node == "sysfunct":
             storage = _device_fram_var(model, ctx)
@@ -445,10 +447,9 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         maintenance_entries.append(f'("{MAINTENANCE_NAMES["uart_link"]}", {uart_initiator_var}.get_link_status)')
     _emit_webserver(lines, have, sensor_vars, maintenance_entries, _device_log_arg(model, ctx), dev, ctx.src_dir)
 
-    lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("")
     # fram must precede sysfunct: sysfunct.setup() reaches its cfgmgr's FRAM-backed logger, which
-    # needs AsyFramManager initialized. The other order left CFGMGR_SYSTEM degrading every boot,
+    # needs FRAMManager initialized. The other order left CFGMGR_SYSTEM degrading every boot,
     # 0ms against ~170ms, and is safe to reverse (Part A.7's boot-latency note).
     setup_order = []
     if "fram" in have:
@@ -462,6 +463,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
+    setup_order.append("webserver")  # constructed last, set up last
     # Measure B (SPECIFICATION.md Part I.4(f.1)): one collect before the batch and one after each
     # module, nowhere else. A placement reset, not hygiene and not compaction - it puts the
     # allocator's free-scan index back to zero so the next module takes the lowest fitting holes.
@@ -481,11 +483,30 @@ def _emit_main(lines: "list[str]") -> None:
     lines.append("    await build_system(cfg_path=cfg_path, debug=debug, web_host=web_host, web_port=web_port)")
     lines.append("    assert sysfunct is not None and ntp is not None")
     lines.append("    task_starters = _collect_task_starters()")
-    lines.append("    timer_starters = _collect_timer_starters()")
-    lines.append("    await sysfunct.start_timers(timer_starters)")
+    lines.append("    await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())")
     lines.append("    await ntp.ntp_force_sync()")
     lines.append("    await sysfunct.start_and_check_tasks(task_starters)")
     lines.append("")
+
+
+_BUS_CLASSES = {"i2c": "asy_i2c_driver.I2C", "spi": "asy_spi_driver.SPI", "uart": "asy_uart_driver.UART"}
+_SERVICE_CLASSES = {"conn": "WifiService", "ntp": "NTPClient", "sysfunct": "SystemService"}
+
+
+def _global_types(model: DeviceModel, construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> "dict[str, str]":
+    # Every module global typed by the class build_system() constructs into it, in declaration order.
+    types = {ctx.bus_var(bus_id): _BUS_CLASSES[bus_id.rstrip("0123456789")] for bus_id in model.doc["bus"]}
+    for node in construction_order:
+        if isinstance(node, tuple):
+            info = model.instances[node].driver_info
+            if info is None:
+                raise BuildError(model.device, "internal: driver_info unresolved by codegen time", instance=model.instances[node].label)
+            types[ctx.instance_var(node)] = info.class_name
+        elif node in _SERVICE_CLASSES:
+            types[node] = _SERVICE_CLASSES[node]
+        else:
+            raise BuildError(model.device, f"internal: construction_order entry {node!r} is not a known bare node or an instance key")
+    return types
 
 
 def generate_module_source(model: DeviceModel, construction_order: "list[str | tuple[str, str]]", build_date: str, src_dir: Path) -> str:
@@ -502,10 +523,11 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
 
     lines: list[str] = []
     _emit_header_and_imports(lines, model, ctx, instances, have, build_date)
-    _emit_globals(lines, instances, have, all_vars)
+    _emit_globals(lines, instances, have, _global_types(model, construction_order, ctx))
     _emit_callbacks(lines, have, construction_order, ctx)
     _emit_build_system(lines, model, ctx, instances, have, construction_order, all_vars, sensor_vars)
     _emit_collectors(lines, construction_order, ctx)
+    _emit_trigger_collector(lines, sensor_specs, ctx)
     _emit_main(lines)
     return "\n".join(lines) + "\n"
 
@@ -537,10 +559,10 @@ def _sgp40_status_vars(construction_order: "list[str | tuple[str, str]]", ctx: _
 
 
 def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
-    lines.append('def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":')
+    lines.append('def _gmtimestruct_to_dict(t: "Any") -> dict[str, int] | None:')
     lines.append("    if t is None:")
     lines.append("        return None")
-    lines.append('    return {"year": t[0], "month": t[1], "mday": t[2], "hour": t[3], "minute": t[4], "second": t[5], "weekday": t[6], "yearday": t[7]}')
+    lines.append('    return {"Year": t[0], "Month": t[1], "MDay": t[2], "Hour": t[3], "Minute": t[4], "Second": t[5], "Weekday": t[6], "Yearday": t[7]}')
     lines.append("")
     _emit_flush_pending_configs(lines, construction_order, ctx)
     lines.append("async def _system_cmd_callback(cmd: str) -> bool:")
@@ -558,18 +580,18 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.append("    return True")
     lines.append("")
     if "neopixel" in have:
-        lines.append('_FIELD_LED_R: "cm.FieldSchema" = ("r", "int", None, 0, 255, None)')
-        lines.append('_FIELD_LED_G: "cm.FieldSchema" = ("g", "int", None, 0, 255, None)')
-        lines.append('_FIELD_LED_B: "cm.FieldSchema" = ("b", "int", None, 0, 255, None)')
-        lines.append('_FIELD_LED_T: "cm.FieldSchema" = ("t", "float", None, 0.5, 60.0, None)')
+        lines.append('_FIELD_LED_R: "cm.FieldSchema" = ("R", "int", None, 0, 255, None)')
+        lines.append('_FIELD_LED_G: "cm.FieldSchema" = ("G", "int", None, 0, 255, None)')
+        lines.append('_FIELD_LED_B: "cm.FieldSchema" = ("B", "int", None, 0, 255, None)')
+        lines.append('_FIELD_LED_T: "cm.FieldSchema" = ("T", "float", None, 0.5, 60.0, None)')
         lines.append("")
         lines.append('async def _notification_led_callback(payload: "dict[str, Any]") -> bool:')
         lines.append("    assert neopixel is not None")
         lines.append("    try:")
-        lines.append('        r_err, r = cm.type_or_range_error(payload["r"], _FIELD_LED_R)')
-        lines.append('        g_err, g = cm.type_or_range_error(payload["g"], _FIELD_LED_G)')
-        lines.append('        b_err, b = cm.type_or_range_error(payload["b"], _FIELD_LED_B)')
-        lines.append('        t_err, t = cm.type_or_range_error(payload["t"], _FIELD_LED_T)')
+        lines.append('        r_err, r = cm.type_or_range_error(payload["R"], _FIELD_LED_R)')
+        lines.append('        g_err, g = cm.type_or_range_error(payload["G"], _FIELD_LED_G)')
+        lines.append('        b_err, b = cm.type_or_range_error(payload["B"], _FIELD_LED_B)')
+        lines.append('        t_err, t = cm.type_or_range_error(payload["T"], _FIELD_LED_T)')
         lines.append("    except KeyError:")
         lines.append("        return False")
         lines.append("    if r_err or g_err or b_err or t_err:")
@@ -579,8 +601,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     if "notification" in have:
         lines.append("async def _notification_pause_callback(payload: int) -> bool:")
         lines.append("    assert notification is not None")
-        lines.append("    await notification.set_override_led(payload)")
-        lines.append("    return True")
+        lines.append("    return await notification.set_override_led(payload)")
         lines.append("")
     for _name, var in _sgp40_status_vars(construction_order, ctx):
         lines.append(f'async def _sgp_maintenance_status_{var}() -> "dict[str, Any]":')
@@ -596,19 +617,19 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.append("    return {")
     lines.append('        "WifiUptime": await conn.get_wifi_uptime(), "Mode": wifi_data.Mode, "Connected": wifi_data.Connected, "IP": wifi_data.IP,')
     lines.append('        "IPv4": None if ifcfg is None else ifcfg[0], "Subnet": None if ifcfg is None else ifcfg[1],')
-    lines.append('        "Gateway": None if ifcfg is None else ifcfg[2], "DNS": None if ifcfg is None else ifcfg[3], "Rssi": conn.get_wlan_rssi(),')
-    lines.append('        "NtpSynced": ntp_data.Synced, "NtpLastSyncAge": ntp_data.LastSyncAge, "NtpLastSync": ntp_data.TS,')
+    lines.append('        "Gateway": None if ifcfg is None else ifcfg[2], "DNS": None if ifcfg is None else ifcfg[3], "RSSI": conn.get_wlan_rssi(),')
+    lines.append('        "NTPSynced": ntp_data.Synced, "NTPLastSyncAge": ntp_data.LastSyncAge, "NTPLastSync": ntp_data.TS,')
     lines.append("    }")
     lines.append("")
     lines.append('async def _system_status() -> "dict[str, Any]":')
     lines.append("    assert sysfunct is not None and ntp is not None")
-    # UtcTime waits for the first NTP sync as LocalTime does: rp2's RTC starts at its reset epoch.
+    # UTCTime waits for the first NTP sync as LocalTime does: rp2's RTC starts at its reset epoch.
     lines.extend(("    local_time = await ntp.cettime()", "    utc = time.gmtime() if await ntp.ntp_issynced() else None"))
     lines.append("    return {")
     lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(),')
     if "fram" in have:
         lines.append('        "MemPaused": fram.get_pause(),')
-    lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UtcTime": _gmtimestruct_to_dict(utc),')
+    lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc),')
     lines.append("    }")
     lines.append("")
     if "notification" in have:
@@ -632,8 +653,8 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("            settings={")
     lines.append('                "networking": [')
     lines.append('                    SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname"), post_fct=conn.reconnect_wifi),  # type: ignore[arg-type]')
-    lines.append('                    SettingsGroup(conn, ("LedWifiOn",)),  # type: ignore[arg-type]')
-    lines.append('                    SettingsGroup(ntp, ("NTP_Host", "NTP_Offset_S", "NTP_Interv_H"), post_asy_fct=ntp.ntp_force_sync),  # type: ignore[arg-type]')
+    lines.append('                    SettingsGroup(conn, ("LEDWifiOn",)),  # type: ignore[arg-type]')
+    lines.append('                    SettingsGroup(ntp, ("NTPHost", "NTPOffset", "NTPInterval"), post_asy_fct=ntp.ntp_force_sync),  # type: ignore[arg-type]')
     lines.append("                ],")
     lines.append('                "system": [')
     lines.append('                    SettingsGroup(sysfunct, ("DebugLevel",)),  # type: ignore[arg-type]')
@@ -642,7 +663,7 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     if "notification" in have:
         lines.append('                "notification": [SettingsGroup(notification, cm.schema_names(notification.get_cfg_schema()))],  # type: ignore[arg-type]')
     lines.append("            },")
-    lines.append('            build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE},')
+    lines.append('            build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE},')
     lines.append("            system_cmd=_system_cmd_callback,")
     lines.append(f"            notification_led={'_notification_led_callback' if 'neopixel' in have else None},")
     lines.append(f"            notification_pause={'_notification_pause_callback' if 'notification' in have else None},")
@@ -682,10 +703,10 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     # Getting it wrong was AttributeError on every FRAM-wired device, caught only by Part L.4.
     fram_var = next((ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and n[0] == "fram"), None)
     task_timer_modules = [m for m in modules if m != fram_var] if fram_var is not None else modules
-    lines.append('def _collect_error_sources() -> "list[Any]":')
+    lines.append('def _collect_error_sources() -> "list[ErrorSource]":')
     for name in modules:
         lines.append(f"    assert {name} is not None")
-    lines.append("    sources: list[Any] = []")
+    lines.append('    sources: "list[ErrorSource]" = []')
     lines.append(f"    for module in ({', '.join(modules)},):")
     lines.append("        sources.extend(module.get_error_sources())")
     lines.append("    return sources")
@@ -704,11 +725,40 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append("        starters.extend(module.get_task_starters())")
     lines.append("    return starters")
     lines.append("")
-    lines.append('def _collect_timer_starters() -> "list[Callable[[], None]]":')
+    lines.append('def _collect_timer_starters() -> "list[TimerStarter]":')
     lines.append("    assert webserver is not None")
-    lines.append("    starters: list[Callable[[], None]] = []")
+    lines.append('    starters: "list[TimerStarter]" = []')
     lines.append(f"    for module in ({', '.join(task_timer_modules)}, webserver):")
     lines.append("        starters.extend(module.get_timer_starters())")
+    lines.append("    return starters")
+    lines.append("")
+
+
+def trigger_spread(readers: "list[tuple[str, str]]") -> "list[str]":
+    # (instance var, bus) pairs in construction order -> stagger-slot order: one reader from each bus
+    # group in turn, the largest group first and ties by construction order, so readers sharing a bus
+    # sit furthest apart in the one-second plan (SPECIFICATION.md Part C.9.1).
+    groups: dict[str, list[str]] = {}
+    for var, bus in readers:
+        groups.setdefault(bus, []).append(var)
+    ordered = sorted(groups.values(), key=len, reverse=True)
+    return [group[i] for i in range(max(map(len, ordered), default=0)) for group in ordered if i < len(group)]
+
+
+def _emit_trigger_collector(lines: "list[str]", sensor_specs: "list[InstanceSpec]", ctx: _Ctx) -> None:
+    readers = [(ctx.instance_var(spec.key), str(spec.fields["bus"])) for spec in sensor_specs if spec.driver_info is not None and class_has_read_triggers(spec.driver_info)]
+    order = trigger_spread(readers)
+    lines.append('def _collect_trigger_starters() -> "list[TimerStarter]":')
+    if not order:
+        lines.append("    return []")
+        lines.append("")
+        return
+    lines.append("    # In stagger-slot order: readers sharing a bus sit furthest apart (SPECIFICATION.md Part C.9.1).")
+    for name in order:
+        lines.append(f"    assert {name} is not None")
+    lines.append('    starters: "list[TimerStarter]" = []')
+    lines.append(f"    for module in ({', '.join(order)},):")
+    lines.append("        starters.extend(module.get_trigger_starters())")
     lines.append("    return starters")
     lines.append("")
 

@@ -35,9 +35,9 @@ def _is_punctuation(line: str) -> bool:
 
 
 def _comment_blocks(lines: list[str]) -> list[tuple[int, int]]:
-    """Over-cap runs of comment-ONLY lines. A trailing comment on a code line annotates that line,
-    so it never starts a block - which is what keeps a column of annotated data entries from
-    reading as one long block."""
+    # Over-cap runs of comment-ONLY lines. A trailing comment on a code line annotates that line,
+    # so it never starts a block - which is what keeps a column of annotated data entries from
+    # reading as one long block.
     over: list[tuple[int, int]] = []
     run = start = 0
     for number, raw in enumerate(lines, 1):

@@ -37,8 +37,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
 
 def configured_max_connections(device: str = "dev") -> int:
-    """The admission ceiling this repo's config would build for `device`. It describes the TREE, not
-    necessarily the image on the board, so a test that cares asserts the two agree."""
+    # The admission ceiling this repo's config would build for `device`. It describes the TREE, not
+    # necessarily the image on the board, so a test that cares asserts the two agree.
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
     from buildgen.validate import device_max_connections
@@ -57,9 +57,9 @@ HELD_PAD_LINE = b"X-Pad: y\r\n"  # one header line, which resets the server's pe
 # @tunable l4.ceiling_settle_s = 1.0
 # @tunable l4.ceiling_dwell_s = 0.3
 def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, settle_s: float = 1.0, dwell_s: float = 0.3) -> int:
-    """The ceiling the BOARD actually holds, found by holding connections open one at a time until
-    one is refused. The only figure that is silicon's own rather than the tree's, and the one a
-    raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2)."""
+    # The ceiling the BOARD actually holds, found by holding connections open one at a time until
+    # one is refused. The only figure that is silicon's own rather than the tree's, and the one a
+    # raised lwIP PCB count has to be confirmed against (SPECIFICATION.md Part B.14.2).
     time.sleep(settle_s)  # _serve()'s slot release outlives the response (Part I.6), so start clean
     held: list[socket.socket] = []
     try:
@@ -78,9 +78,9 @@ def discover_max_connections(host: str, port: int = 80, probe_limit: int = 40, s
 
 
 def _walk_to_the_wall(host: str, port: int, probe_limit: int, dwell_s: float, held: list[socket.socket]) -> int:
-    """discover_max_connections()'s walk. Every held connection is sent a request line, then a header
-    line per step, so the per-call read timeout never frees a slot mid-walk; only the outer cap bounds
-    it, which is why probe_limit * dwell_s stays under it (SPECIFICATION.md Part H.7.1)."""
+    # discover_max_connections()'s walk. Every held connection is sent a request line, then a header
+    # line per step, so the per-call read timeout never frees a slot mid-walk; only the outer cap bounds
+    # it, which is why probe_limit * dwell_s stays under it (SPECIFICATION.md Part H.7.1).
     started = time.monotonic()
     for admitted in range(probe_limit):
         for index, open_sock in enumerate(held):
@@ -115,8 +115,8 @@ def _close_all(socks: list[socket.socket]) -> None:
 
 # @tunable l4.ceiling_probe_connect_timeout_s = 2.0
 def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> socket.socket | None:
-    """A connected socket, or None when the connect itself fails - its own timeout, apart from the
-    probe's read timeout, so a slow handshake is never mistaken for a held-open connection."""
+    # A connected socket, or None when the connect itself fails - its own timeout, apart from the
+    # probe's read timeout, so a slow handshake is never mistaken for a held-open connection.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(connect_timeout_s)
     try:
@@ -128,7 +128,7 @@ def _open_probe(host: str, port: int, connect_timeout_s: float = 2.0) -> socket.
 
 
 def _still_open(sock: socket.socket) -> bool:
-    """True while the server has neither answered nor closed: a read would still block."""
+    # True while the server has neither answered nor closed: a read would still block.
     sock.setblocking(False)
     try:
         sock.recv(4096)
@@ -143,9 +143,9 @@ def _still_open(sock: socket.socket) -> bool:
 # @tunable l4.ceiling_drain_release_s = 1.0
 # @tunable l4.ceiling_drain_hold_s = 0.3
 def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: float = 10.0, release_s: float = 1.0, hold_s: float = 0.3) -> None:
-    """Block until `admitted` connections are held at once again - the whole ceiling, not one slot -
-    then give that check's own connections `release_s` to free theirs: a slot outlives its client's
-    close by 0.71-0.84 s (SPECIFICATION.md Part H.7.1), which no probe observes without taking one."""
+    # Block until `admitted` connections are held at once again - the whole ceiling, not one slot -
+    # then give that check's own connections `release_s` to free theirs: a slot outlives its client's
+    # close by 0.71-0.84 s (SPECIFICATION.md Part H.7.1), which no probe observes without taking one.
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         probes: list[socket.socket] = []
@@ -170,8 +170,8 @@ _HOLD_CHECK_TIMEOUT_S = 0.05
 
 
 def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
-    """Every connection the probe counted must still be open at the moment the refusal landed,
-    or they were never held simultaneously and the count is an artefact of the walk's own pace."""
+    # Every connection the probe counted must still be open at the moment the refusal landed,
+    # or they were never held simultaneously and the count is an artefact of the walk's own pace.
     for index, sock in enumerate(admitted_socks):
         sock.settimeout(_HOLD_CHECK_TIMEOUT_S)
         try:
@@ -196,9 +196,10 @@ _USB_REBIND_CMD_TIMEOUT_S = 10.0
 
 
 def _usb_reset_device(device: str) -> bool:
-    """Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
-    physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
-    Returns True if a reset was attempted, False if the device path couldn't be resolved."""
+    # Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
+    # physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
+    # Returns True if a reset was attempted, False if the device path couldn't be resolved.
+    #
     # .resolve() first: `device` is normally the /dev/serial/by-id symlink resolve_board_device()
     # returns, and that name has no /sys/class/tty entry - without this the whole unbind/rebind
     # recovery below silently no-ops (returns False) on the default device path.
@@ -217,20 +218,22 @@ def _usb_reset_device(device: str) -> bool:
         time.sleep(2.0)
         subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=_USB_REBIND_CMD_TIMEOUT_S, check=False)
         time.sleep(3.0)
-    except (subprocess.TimeoutExpired, OSError):
+    except (OSError, subprocess.TimeoutExpired):
         return False
     return True
 
 
 class HardwareNotAvailableError(RuntimeError):
-    """Raised when a real board/bench isn't reachable - conftest.py turns it into a skip, so this
-    tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware raise
-    is the deliberate exception: two attached boards must error naming both, never skip."""
+    # Raised when a real board/bench isn't reachable - conftest.py turns it into a skip, so this
+    # tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware raise
+    # is the deliberate exception: two attached boards must error naming both, never skip.
+    pass
 
 
 class HardwareTestFailureError(AssertionError):
-    """Raised for a genuine real-hardware assertion failure - deliberately a plain AssertionError
-    subclass so pytest reports it like any other failed assertion, not a framework-level error."""
+    # Raised for a genuine real-hardware assertion failure - deliberately a plain AssertionError
+    # subclass so pytest reports it like any other failed assertion, not a framework-level error.
+    pass
 
 
 # @tunable l4.harness_wait_until_poll_s = 1.0
@@ -243,9 +246,9 @@ def wait_until(
     poll_interval_s: float = _WAIT_UNTIL_POLL_S,
     description: str = "condition",
 ) -> bool:
-    """Bounded poll-until-condition wait, test-harness-only (never used to change src/'s own real
-    timing - SPECIFICATION.md Part F.3). Polls `check_fn()` until truthy or `timeout_s` elapses,
-    treating a raising check as not-yet-ready; always returns True or raises TimeoutError."""
+    # Bounded poll-until-condition wait, test-harness-only (never used to change src/'s own real
+    # timing - SPECIFICATION.md Part F.3). Polls `check_fn()` until truthy or `timeout_s` elapses,
+    # treating a raising check as not-yet-ready; always returns True or raises TimeoutError.
     deadline = time.monotonic() + timeout_s
     last_exc: BaseException | None = None
     while time.monotonic() < deadline:
@@ -273,9 +276,9 @@ _SERVING_RESTORE_POLL_S = 3.0
 
 
 def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    """run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
-    test that runs a device script calls this in a finally or a fixture's teardown, or every network test
-    after it fails on a refused connection (tests_scripts/test_bench_restores_serving.py pins it)."""
+    # run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
+    # test that runs a device script calls this in a finally or a fixture's teardown, or every network test
+    # after it fails on a refused connection (tests_scripts/test_bench_restores_serving.py pins it).
     import http_client
 
     bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
@@ -301,9 +304,9 @@ _SCRIPT_SERVER_POLL_S = 1.0
 
 
 def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = _SCRIPT_SERVER_TIMEOUT_S, handover_s: float = _SCRIPT_SERVER_HANDOVER_S) -> bool:
-    """True once a device script's own server answers `path` with a 200. main.py's server may still
-    be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
-    `stop` ends the wait early, so it never outlives its test."""
+    # True once a device script's own server answers `path` with a 200. main.py's server may still
+    # be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
+    # `stop` ends the wait early, so it never outlives its test.
     import http_client
 
     def serves() -> bool:
@@ -359,9 +362,9 @@ _LOG_TAIL_READ_TIMEOUT_S = 0.5
 
 
 def _stable_name_for(dev_path: Path, by_id_dir: Path) -> str:
-    """The `/dev/serial/by-id` symlink pointing at `dev_path`, or `dev_path` itself if none does.
-    Matching by target rather than by name drops the old hardcoded product string, so a board whose
-    USB descriptor reads differently still resolves to a stable name."""
+    # The `/dev/serial/by-id` symlink pointing at `dev_path`, or `dev_path` itself if none does.
+    # Matching by target rather than by name drops the old hardcoded product string, so a board whose
+    # USB descriptor reads differently still resolves to a stable name.
     if by_id_dir.is_dir():
         for link in sorted(by_id_dir.iterdir()):
             if link.resolve() == dev_path.resolve():
@@ -374,9 +377,9 @@ def resolve_board_device(
     sys_tty_dir: Path = Path("/sys/class/tty"),
     dev_dir: Path = Path("/dev"),
 ) -> str:
-    """The board's current serial node, found by setup_toolchain.py's vendor-ID detection (never a
-    bare ttyACM scan, which could pick the bench's Arduino) and named by its by-id symlink, which
-    survives the re-enumeration a hard reset causes. Two matches is a hard error, not sorted()[0]."""
+    # The board's current serial node, found by setup_toolchain.py's vendor-ID detection (never a
+    # bare ttyACM scan, which could pick the bench's Arduino) and named by its by-id symlink, which
+    # survives the re-enumeration a hard reset causes. Two matches is a hard error, not sorted()[0].
     candidates = detect_pico_serial_devices(sys_tty_dir, dev_dir)
     if not candidates and by_id_dir.is_dir():
         candidates = [link.resolve() for link in sorted(by_id_dir.glob(_BOARD_BY_ID_GLOB))]
@@ -392,9 +395,9 @@ def resolve_board_device(
 
 
 class Board:
-    """Wraps `uv run mpremote connect <device> ...`, the one generic isolated-driver mechanism,
-    so individual test files never shell out to mpremote themselves. Also where
-    `machine.bootloader()` re-flash and hard-reset live, for tests_hardware/flash/test_toolchain_flash_boot.py."""
+    # Wraps `uv run mpremote connect <device> ...`, the one generic isolated-driver mechanism,
+    # so individual test files never shell out to mpremote themselves. Also where
+    # `machine.bootloader()` re-flash and hard-reset live, for tests_hardware/flash/test_toolchain_flash_boot.py.
 
     def __init__(self, device: str | None = None, default_timeout_s: float = _MPREMOTE_DEFAULT_TIMEOUT_S) -> None:
         self._pinned_device = device or os.environ.get("MPREMOTE_DEVICE")
@@ -402,9 +405,9 @@ class Board:
         self.default_timeout_s = default_timeout_s
 
     def _rebind_device_if_moved(self) -> bool:
-        """Re-resolves the serial node when the current one has vanished; True if it moved. A hard
-        reset re-enumerates the CDC-ACM device with no index guarantee (observed ttyACM0 -> ttyACM1
-        mid-suite). An explicitly pinned device is never second-guessed."""
+        # Re-resolves the serial node when the current one has vanished; True if it moved. A hard
+        # reset re-enumerates the CDC-ACM device with no index guarantee (observed ttyACM0 -> ttyACM1
+        # mid-suite). An explicitly pinned device is never second-guessed.
         if self._pinned_device is not None or Path(self.device).exists():
             return False
         rebound = resolve_board_device()
@@ -414,9 +417,9 @@ class Board:
         return True
 
     def _mpremote(self, *args: str, timeout_s: float | None = None, allow_recovery: bool = True) -> MpremoteResult:
-        """Runs one `uv run mpremote connect <device> ...` call, retrying past known transient
-        USB-settle-race connection failures (see tests_hardware/README.md). `allow_recovery=False`
-        (is_reachable()'s own use) skips retry, so a real expected disconnect isn't masked."""
+        # Runs one `uv run mpremote connect <device> ...` call, retrying past known transient
+        # USB-settle-race connection failures (see tests_hardware/README.md). `allow_recovery=False`
+        # (is_reachable()'s own use) skips retry, so a real expected disconnect isn't masked.
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + _USB_GRACE_S
@@ -470,9 +473,9 @@ class Board:
         return result.returncode == 0 and "mpremote-ok" in result.stdout
 
     def is_device_present(self) -> bool:
-        """Passive, non-disruptive USB-presence check - opens/closes the CDC-ACM serial port
-        without writing a byte, unlike is_reachable()'s raw-REPL entry (see its comment).
-        Correctly reports False during a hard_reset()'s USB re-enumeration window."""
+        # Passive, non-disruptive USB-presence check - opens/closes the CDC-ACM serial port
+        # without writing a byte, unlike is_reachable()'s raw-REPL entry (see its comment).
+        # Correctly reports False during a hard_reset()'s USB re-enumeration window.
         try:
             probe = serial.Serial(self.device, baudrate=115200, timeout=_PRESENCE_PROBE_TIMEOUT_S)
         except (OSError, serial.SerialException):
@@ -481,9 +484,9 @@ class Board:
         return True
 
     def exec(self, expr: str, timeout_s: float | None = None) -> str:
-        """`mpremote exec "<expr>"` - like run_isolated(), this always interrupts whatever's
-        running first (see tail_log()'s docstring), then evaluates `expr` in a fresh raw-REPL
-        session. Never use for passive live-system observation - use tail_log() instead."""
+        # `mpremote exec "<expr>"` - like run_isolated(), this always interrupts whatever's
+        # running first (see tail_log()'s docstring), then evaluates `expr` in a fresh raw-REPL
+        # session. Never use for passive live-system observation - use tail_log() instead.
         result = self._mpremote("exec", expr, timeout_s=timeout_s)
         if result.returncode != 0:
             # Both streams included: a device-side traceback prints on mpremote's stdout, not
@@ -492,9 +495,9 @@ class Board:
         return result.stdout
 
     def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None, allow_recovery: bool = True) -> str:
-        """Isolated-driver mode: `mpremote run <script>` against the real frozen src/ drivers,
-        re-arming the watchdog first, never leaving main.py running (tests_hardware/README.md).
-        allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured."""
+        # Isolated-driver mode: `mpremote run <script>` against the real frozen src/ drivers,
+        # re-arming the watchdog first, never leaving main.py running (tests_hardware/README.md).
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
         # @tunable wdt.timeout_ms = 8000
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
@@ -507,9 +510,9 @@ class Board:
         return result.stdout
 
     def run_isolated_expect_reset(self, script_path: str | Path, timeout_s: float | None = None) -> None:
-        """Like run_isolated(), but for a script that deliberately triggers a real machine.reset()
-        mid-run - the device disappearing is the expected, successful outcome, not a failure.
-        Re-arms the watchdog first; caller must wait_until(is_device_present) then issue a fresh call."""
+        # Like run_isolated(), but for a script that deliberately triggers a real machine.reset()
+        # mid-run - the device disappearing is the expected, successful outcome, not a failure.
+        # Re-arms the watchdog first; caller must wait_until(is_device_present) then issue a fresh call.
         # @tunable wdt.timeout_ms = 8000
         self._mpremote("exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path), timeout_s=timeout_s)
         # Deliberately ignore the return code/output - see this method's own docstring.
@@ -520,25 +523,26 @@ class Board:
             raise HardwareTestFailureError(f"mpremote soft-reset failed (exit {result.returncode}):\n{result.stderr}")
 
     def hard_reset(self) -> None:
-        """The `reset` shortcut (DTR-line hardware reset, never a flash) - used for genuine
-        full-boot-cycle tests (config-survives-reboot, cold-boot timing) where a soft reset
-        wouldn't exercise the real boot path."""
+        # The `reset` shortcut (DTR-line hardware reset, never a flash) - used for genuine
+        # full-boot-cycle tests (config-survives-reboot, cold-boot timing) where a soft reset
+        # wouldn't exercise the real boot path.
         result = self._mpremote("reset", timeout_s=_MPREMOTE_RESET_TIMEOUT_S)
         if result.returncode != 0:
             raise HardwareTestFailureError(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")
 
     def enter_bootloader(self) -> None:
-        """`machine.bootloader()` triggered remotely - drops the board into BOOTSEL mode for
-        picotool to re-flash. Counts as a flash cycle if followed by a picotool write - not
-        called by any routine test, only the explicit re-provisioning helper in test_toolchain_flash_boot.py."""
+        # `machine.bootloader()` triggered remotely - drops the board into BOOTSEL mode for
+        # picotool to re-flash. Counts as a flash cycle if followed by a picotool write - not
+        # called by any routine test, only the explicit re-provisioning helper in test_toolchain_flash_boot.py.
+        #
         # exec(), not run_isolated(): the device never comes back to answer a chained soft-reset
         # once dropped into the bootloader - a non-zero/timeout exit here is expected, not a failure.
         self._mpremote("exec", "import machine; machine.bootloader()", timeout_s=_MPREMOTE_SHORT_TIMEOUT_S)
 
     def tail_log(self, duration_s: float, baudrate: int = 115200) -> list[str]:
-        """Passively captures what the live system prints over `duration_s`, without interrupting
-        it (unlike exec()/run_isolated(), which always Ctrl-C first - see tests_hardware/README.md).
-        Retries a transient post-hard_reset() USB-settle failure before raising HardwareNotAvailableError."""
+        # Passively captures what the live system prints over `duration_s`, without interrupting
+        # it (unlike exec()/run_isolated(), which always Ctrl-C first - see tests_hardware/README.md).
+        # Retries a transient post-hard_reset() USB-settle failure before raising HardwareNotAvailableError.
         grace_deadline = time.monotonic() + _USB_GRACE_S
         overall_deadline = time.monotonic() + duration_s
         lines: list[str] = []

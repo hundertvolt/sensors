@@ -78,6 +78,6 @@ UART_ROLE = _build_uart_role()
 
 
 def gpio_exists(pin: int) -> bool:
-    """Is this a real, usable Pico W GPIO number - in range and not wireless-reserved? Doesn't
-    imply any particular peripheral function is available on it (see I2C_ROLE/SPI_ROLE for that)."""
+    # Is this a real, usable Pico W GPIO number - in range and not wireless-reserved? Doesn't
+    # imply any particular peripheral function is available on it (see I2C_ROLE/SPI_ROLE for that).
     return _GPIO_MIN <= pin <= _GPIO_MAX and pin not in WIRELESS_RESERVED_GPIOS

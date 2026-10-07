@@ -161,8 +161,8 @@ information):
   as `const()` values; a change to any of them is Class A by definition. **Construction is
   buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
   `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
-  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UartLinkExerciser` wraps one
-  role's `UART_Comm` plus the bench-only banner/echo application logic and transfer/failure counters
+  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one
+  role's `UARTComm` plus the bench-only banner/echo application logic and transfer/failure counters
   (none of which belong in the standalone protocol module itself); resolved via
   `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
   isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
@@ -282,7 +282,7 @@ information):
   against the 'no extra flash cycles' constraint"), `persistence_write`
   (`--allow-persistence-writes`) for any real write to a limited-endurance store — the SCD30's own
   on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
-  writes through `config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
+  writes through `asy_config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
   deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
   `scd30_extra_write` AND-gated on top for a *second* SCD30 NVM write beyond the routine
   per-session one, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
@@ -344,7 +344,7 @@ information):
   unavoidable, uncontrollable conditions, not an accepted outcome of ordinary or hammering load — a
   caught `MemoryError` that merely didn't crash anything is still a design defect to fix at its
   source, never a passing test result; never let it bubble into an unguarded crash of an otherwise-
-  healthy request/task; trust `system_service.py`'s task supervisor to restart a task that still
+  healthy request/task; trust `asy_system_service.py`'s task supervisor to restart a task that still
   dies (already confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not
   nested under `OSError`); let the hardware watchdog be the final backstop once restarts alone
   aren't keeping up. **Standing rule, every test, not only new stress/hammer ones, digital-twin runs
@@ -417,7 +417,7 @@ information):
   check applies inside the digital twin (`digital_twin/_fram_chip.py` models the same chunked FRAM
   layout) — check before clearing there too, not just on real hardware. **One caveat, found the hard
   way (2026-09-11): this rule assumes a board that has been running normally.** An isolated-driver
-  device script builds its own `AsyFramManager` over the same chip, and the allocator is
+  device script builds its own `FRAMManager` over the same chip, and the allocator is
   deterministic, so its first chunk *is* production's first chunk — a flash/bench-tier run
   overwrites the real error logs, and a script leaving a well-formed chunk behind fabricates a
   plausible-looking one (a seeded entry read back as a plausible SYSTEM task end (test data, not
@@ -693,10 +693,10 @@ information):
   relying on the interpreter's own idle-detection ever reaching zero pending tasks. This is exactly
   the same "explicit tracked-task-list + cancel-all in `finally`" shape `digital_twin/launch.py`'s
   own `main()` already used for its own (much smaller, self-spawned) task list — the one difference
-  is the generic entry point drives the real, much larger `system_service.py`-supervised task
+  is the generic entry point drives the real, much larger `asy_system_service.py`-supervised task
   graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
   more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
-  the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
+  the `asy_system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
   hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
   existed to leak — the soak test's own bounded-completion path was previously unreachable.
 - **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
@@ -879,7 +879,7 @@ information):
   — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
   class has no zero-argument constructor overload (every overload requires a positional `id: int`
   first argument), so an `src`-only run raises 13 `call-overload` errors (stubs `1.29.0.post1`, re-checked
-  2026-10-06) across `system_service.py` (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2),
+  2026-10-06) across `asy_system_service.py` (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2),
   `asy_sgp40_driver.py`, `asy_scd30_driver.py`, `asy_bmp3xx_driver.py` and `asy_isl29125_driver.py` that never surface in the actual, documented
   `mypy src tests` invocation. Bare `Timer()` allocate-now/`init()`-later **is** valid runtime
   usage, so this one is a genuine **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`

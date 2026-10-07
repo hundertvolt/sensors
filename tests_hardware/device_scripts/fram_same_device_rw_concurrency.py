@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 READ_REGION = (0x0000, 32)  # never touched by the writer below
 WRITE_REGION = (0x8000, 32)  # disjoint scratch region, well within the real 256KB chip's range

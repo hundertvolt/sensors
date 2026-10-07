@@ -24,11 +24,11 @@ export function formatFieldValue(field, value) {
         return match ? match.label : String(value);
     }
     if (field.format === "gmtimestruct") {
-        // Real shape: the generated sensortask_<device> module's _gmtimestruct_to_dict() - {year, month,
-        // mday, hour, minute, second, weekday, yearday} (the last two unused here), never a pre-formatted string.
-        const t = /** @type {{year: number, month: number, mday: number, hour: number, minute: number, second: number}} */ (value);
+        // Real shape: the generated sensortask_<device> module's _gmtimestruct_to_dict() - {Year, Month,
+        // MDay, Hour, Minute, Second, Weekday, Yearday} (the last two unused here), never a pre-formatted string.
+        const t = /** @type {{Year: number, Month: number, MDay: number, Hour: number, Minute: number, Second: number}} */ (value);
         const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
-        return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;
+        return `${t.Year}-${pad(t.Month)}-${pad(t.MDay)} ${pad(t.Hour)}:${pad(t.Minute)}:${pad(t.Second)}`;
     }
     // The `decimals` display hint, and the one place in the stack that rounds an emitted value: no
     // driver in src/ rounds anything, so without this a declared precision is an aspiration.

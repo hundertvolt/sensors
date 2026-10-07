@@ -98,9 +98,9 @@ async def _read_isl29125_once(isl: "ISL29125_I2C") -> "str | None":
 
 
 async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: int) -> "list[str]":
-    """A lone known device on a bus, read repeatedly while general-call broadcasts race those
-    reads. A module-level function rather than an inline block so no closure here captures the
-    caller's bus-loop variables (ruff B023) - everything it needs is a parameter."""
+    # A lone known device on a bus, read repeatedly while general-call broadcasts race those
+    # reads. A module-level function rather than an inline block so no closure here captures the
+    # caller's bus-loop variables (ruff B023) - everything it needs is a parameter.
     name = KNOWN_ADDRESSES[address]
     # Constructed and set up once, outside the read loop: a fresh object per call never runs
     # setup(), and then crashes on its own cached calibration state (BMP3xx's _temp_calib/

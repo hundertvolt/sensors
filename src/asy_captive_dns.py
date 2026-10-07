@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # DNSQuery derives from its main.py - changes per Apache-2.0 SS4(b): THIRD_PARTY_LICENSES.md.
 
-"""Captive-portal DNS spoofer for hotspot/AP mode. DNSServer.run() runs while the device broadcasts
+"""Captive-portal DNS spoofer for hotspot/AP mode. CaptiveDNS.run() runs while the device broadcasts
 its fallback hotspot; every on-subnet query gets a canned A-record pointing back at the AP's own IP, landing any client on the config page.
 Malformed/off-subnet/truncated input is dropped, never raised.
 """
@@ -11,8 +11,8 @@ import asyncio
 
 from micropython import const
 
-from asy_udp_socket import AsyUDPSocket
-from print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_udp_socket import UDPSocket
 
 try:
     from typing import TYPE_CHECKING
@@ -20,9 +20,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
 
-    from print_log import ErrorLog, LogConfig
+    from asy_base_classes import ErrorSource
+    from asy_print_log import ErrorLog, LogConfig
 
 _NAME = const("DNSSRV")
 
@@ -63,26 +63,26 @@ def _ipv4_to_int(ip: str) -> int | None:
     return (a << 24) | (b << 16) | (c << 8) | d
 
 
-class DNSServer:
+class CaptiveDNS:
     def __init__(self, log: "LogConfig" = DEFAULT_LOG) -> None:
         self.pr: PrintLogHistory = make_logger(log, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
-        self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
-
-    def get_error_sources(self) -> "list[Any]":
-        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as base_classes.py's
-        # SensorReader.get_error_sources() - duck-typed, not inherited (see this module's own
-        # docstring: it's owned by AsyConnTime, not itself a SensorReader subclass).
-        return [self]
-
-    def get_loggers(self) -> "list[PrintLogHistory]":
-        return [self.pr]
+        self._udps = UDPSocket(("0.0.0.0", 53), mode="server")
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
+
+    def get_error_sources(self) -> "list[ErrorSource]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as asy_base_classes.py's
+        # SensorReader.get_error_sources() - duck-typed, not inherited (see this module's own
+        # docstring: it's owned by WifiService, not itself a SensorReader subclass).
+        return [self]
+
+    def get_loggers(self) -> list[PrintLogHistory]:
+        return [self.pr]
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
@@ -100,7 +100,7 @@ class DNSServer:
         while True:
             try:
                 self.pr.evt("Waiting for DNS request...")
-                data, addr = await self.udps.recvfrom(4096)
+                data, addr = await self._udps.recvfrom(4096)
                 if data is not None and addr is not None:
                     recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S  # socket is receiving fine again
                     try:
@@ -119,7 +119,7 @@ class DNSServer:
                     if packet is None:
                         self.pr.evt("Empty DNS query, not sending response.")
                     else:
-                        sent = await self.udps.sendto(packet, addr)
+                        sent = await self._udps.sendto(packet, addr)
                         if sent is None:
                             await self.pr.wrn_s(f"Reply to {addr[0]:s}:{addr[1]} dropped by sendto().", wrnno=_WRN_DNS_REPLY_DROPPED)
                         else:
@@ -141,7 +141,7 @@ class DNSServer:
                 await asyncio.sleep(_ERROR_RETRY_WAIT_S)
 
         try:
-            disconnect_ok = await self.udps.disconnect()
+            disconnect_ok = await self._udps.disconnect()
         except asyncio.CancelledError:
             # A second cancellation delivered while this cleanup await is in flight - already
             # shutting down, nothing more to do.
@@ -152,7 +152,7 @@ class DNSServer:
             await self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
             disconnect_ok = True  # already logged above via the except-Exception branch
         if not disconnect_ok:
-            # Part C.7's silent-failure-masking convention: disconnect() never raises (AsyUDPSocket
+            # Part C.7's silent-failure-masking convention: disconnect() never raises (UDPSocket
             # owns no logger), but its bool says whether unregister()/close() succeeded - logged here
             # so a real socket or poll-slot leak over a long uptime leaves a trail.
             await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=_WRN_DNS_TEARDOWN)

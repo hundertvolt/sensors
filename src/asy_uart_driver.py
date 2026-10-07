@@ -1,6 +1,6 @@
 """Async wrapper around machine.UART: select.poll-driven non-blocking read/write, lock-scoped via
-base_classes.Lockable so an exchange runs atomically under `async with`. Optional per-instance CRC
-framing (crc_checks.py) plus a pluggable frame codec (framing_codecs.py) on the read/write paths."""
+asy_base_classes.Lockable so an exchange runs atomically under `async with`. Optional per-instance CRC
+framing (asy_crc_checks.py) plus a pluggable frame codec (asy_framing_codecs.py) on the read/write paths."""
 # Whoever wires it in: GPIO24/25 (UART1) and GPIO28/29 (UART0) are valid pin-mux pairs, but the Pico
 # W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip, so each pair has a taken half.
 # A framing/parity/overrun fault on rp2 never raises (C.3.2); every method returns a sentinel.
@@ -13,9 +13,9 @@ from machine import UART as _UART
 from machine import Pin
 from micropython import const
 
-from base_classes import Lockable
-from crc_checks import CRC_Base, CRC_Pass
-from framing_codecs import Framing_Base, Framing_Pass
+from asy_base_classes import Lockable
+from asy_crc_checks import CRCBase, CRCPass
+from asy_framing_codecs import FramingBase, FramingPass
 
 try:
     from typing import TYPE_CHECKING
@@ -60,8 +60,8 @@ class UART(Lockable):
         # @tunable uart.poll_wait_ms_default = 20
         poll_wait_ms: int = 20,
         poll_idle_ms: int | None = None,
-        crc: CRC_Base | None = None,
-        framing: Framing_Base | None = None,
+        crc: CRCBase | None = None,
+        framing: FramingBase | None = None,
     ) -> None:
         self._uart: _UART | None = None
         self.poller: select.poll | None = None
@@ -74,15 +74,15 @@ class UART(Lockable):
         # A cancel request is latched and acknowledged by publishing the request number it served.
         # Two monotonic counters rather than an Event: one acknowledgement stays visible to every
         # waiting canceller, and a second request cannot re-clear one nobody has observed yet.
-        self.cancel = False
+        self._cancel = False
         self.cancel_unacknowledged = 0  # bumped when a holder never acknowledged within the bound
         self._cancel_req = 0
         self._cancel_ack = 0
-        self.crc = CRC_Pass() if crc is None else crc
+        self.crc = CRCPass() if crc is None else crc
         # Write order is build -> CRC -> encode -> delimiter, read the exact reverse, so the CRC
         # keeps its position underneath the codec. The pass-through default is byte-for-byte what
         # this driver emitted before; selecting a delimited one is a wire change (changelog A11).
-        self.framing = Framing_Pass() if framing is None else framing
+        self.framing = FramingPass() if framing is None else framing
         self._skip_to_delimiter = False
         self.init(port_id, tx_pin, rx_pin, baudrate, bits, parity, stop, rxbuf, txbuf, timeout, timeout_char, invert)
 
@@ -101,52 +101,30 @@ class UART(Lockable):
     def _ack_cancel(self) -> None:
         # Consumes a latched request exactly once. Never called speculatively: acknowledgement
         # means the read path has genuinely left the loop, so nothing reads after it.
-        if self.cancel:
-            self.cancel = False
+        if self._cancel:
+            self._cancel = False
             self._cancel_ack = self._cancel_req
 
-    def resync_framing(self) -> None:
-        # After a resync the read path is somewhere inside a frame, so the bytes up to the
-        # next delimiter are a fragment - discarded, never decoded, since a delimiter means "end of
-        # something" and only the one after it bounds a whole frame. Inert for an undelimited codec.
-        self._skip_to_delimiter = self.framing.is_delimited()
-
-    def _active_uart(self) -> "_UART | None":
+    def _active_uart(self) -> _UART | None:
         # Shared entry guard for every read/write method - None unless called inside `async with
         # self:` on a live bus. Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout()
-        # infers "a read is in flight" purely from asy_lock.locked() - a lock-less caller is invisible to it.
-        if not self.asy_lock.locked():
+        # infers "a read is in flight" purely from session_lock.locked() - a lock-less caller is invisible to it.
+        if not self.session_lock.locked():
             return None
         return self._uart
 
     @staticmethod
-    def _buffered(uart: "_UART", want: int) -> int:
+    def _buffered(uart: _UART, want: int) -> int:
         # Every read below goes through here. machine.UART.read/readinto wait out timeout_char per
         # byte asked for that has not arrived, synchronously - 4.4ms of held loop for one 53-byte
         # frame at 115200 baud. any() is documented as what reads without blocking (F.5.8).
         try:
             return min(want, uart.any())
-        except (OSError, MemoryError):  # never-raises contract - see the module docstring
+        except (MemoryError, OSError):  # never-raises contract - see the module docstring
             return 0
 
-    async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
-        # rp2 uart.write() can short-write instead of raising, so retry with what is left - the
-        # write-side counterpart of read_until_complete()'s loop. The view is re-sliced only after a
-        # short write, so the normal complete write allocates no memoryview at all.
-        sent = 0
-        total = len(buf)
-        view = memoryview(buf)
-        while sent < total:
-            if not await self.ready(select.POLLOUT):
-                return False
-            n = uart.write(view if sent == 0 else view[sent:])
-            if n is None:
-                return False
-            sent += n
-        return True
-
     async def _read_delimited(
-        self, uart: "_UART", buf: bytearray, nbytes: int, start_timeout_ms: int, timeout_ms: int,
+        self, uart: _UART, buf: bytearray, nbytes: int, start_timeout_ms: int, timeout_ms: int,
     ) -> int | None:
         # Reads one delimiter-terminated frame into buf, decodes in place and verifies its CRC. One
         # byte per readinto() on purpose: a wider read would swallow the head of the next frame,
@@ -184,6 +162,56 @@ class UART(Lockable):
         if decoded is None:
             return None
         return await self.crc.check_from(buf, size=decoded)
+
+    async def _write_all(self, uart: _UART, buf: bytearray | memoryview) -> bool:
+        # rp2 uart.write() can short-write instead of raising, so retry with what is left - the
+        # write-side counterpart of read_until_complete()'s loop. The view is re-sliced only after a
+        # short write, so the normal complete write allocates no memoryview at all.
+        sent = 0
+        total = len(buf)
+        view = memoryview(buf)
+        while sent < total:
+            if not await self.ready(select.POLLOUT):
+                return False
+            n = uart.write(view if sent == 0 else view[sent:])
+            if n is None:
+                return False
+            sent += n
+        return True
+
+    async def cancel_read_timeout(self, timeout_ms: int = _CANCEL_ACK_TIMEOUT_MS) -> bool:
+        # Lets another task abort this instance's in-flight ready()/read wait from the outside.
+        # False means "nothing was in flight" (the lock is free), which is what lets a caller take
+        # the lock and drain itself; True means a cancel is outstanding, so it must not.
+        if not self.session_lock.locked():  # nothing to cancel if not in use
+            return False
+        self._cancel_req += 1
+        my_req = self._cancel_req
+        self._cancel = True
+        t0 = time.ticks_ms()
+        while self._cancel_ack < my_req:
+            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
+                self.cancel_unacknowledged += 1  # a wedged holder; the request stays latched
+                return True
+            await asyncio.sleep_ms(self.poll_wait_ms)
+        return True
+
+    def deinit(self) -> bool:
+        # machine.UART.deinit() turns the hardware bus off and never raises; poller.unregister()
+        # can, and False is returned only in that case - this class has no logger of its own, so the
+        # caller logs a failed teardown with its own (SPECIFICATION.md Part C.7).
+        if self._uart is None:
+            return True
+        ok = True
+        if self.poller is not None:
+            try:
+                self.poller.unregister(self._uart)
+            except (MemoryError, OSError):
+                ok = False
+        self._uart.deinit()
+        self._uart = None
+        self.poller = None
+        return ok
 
     def init(
         self,
@@ -227,79 +255,6 @@ class UART(Lockable):
         )
         self.poller = select.poll()
         self.poller.register(self._uart, select.POLLIN | select.POLLOUT)
-
-    def deinit(self) -> bool:
-        # machine.UART.deinit() turns the hardware bus off and never raises; poller.unregister()
-        # can, and False is returned only in that case - this class has no logger of its own, so the
-        # caller logs a failed teardown with its own (SPECIFICATION.md Part C.7).
-        if self._uart is None:
-            return True
-        ok = True
-        if self.poller is not None:
-            try:
-                self.poller.unregister(self._uart)
-            except (OSError, MemoryError):
-                ok = False
-        self._uart.deinit()
-        self._uart = None
-        self.poller = None
-        return ok
-
-    async def cancel_read_timeout(self, timeout_ms: int = _CANCEL_ACK_TIMEOUT_MS) -> bool:
-        # Lets another task abort this instance's in-flight ready()/read wait from the outside.
-        # False means "nothing was in flight" (the lock is free), which is what lets a caller take
-        # the lock and drain itself; True means a cancel is outstanding, so it must not.
-        if not self.asy_lock.locked():  # nothing to cancel if not in use
-            return False
-        self._cancel_req += 1
-        my_req = self._cancel_req
-        self.cancel = True
-        t0 = time.ticks_ms()
-        while self._cancel_ack < my_req:
-            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
-                self.cancel_unacknowledged += 1  # a wedged holder; the request stays latched
-                return True
-            await asyncio.sleep_ms(self.poll_wait_ms)
-        return True
-
-    async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
-        # Busy-polls ipoll(0), sleeping between rounds, until mask is satisfied, a cancel is
-        # requested, or timeout_ms elapses (<=0 waits forever). Defensive against a concurrent
-        # deinit() nulling self.poller mid-loop.
-        if self._uart is None or self.poller is None:
-            return False
-        # A deadline-less wait is an idle listener; one with a deadline is inside a transaction
-        # whose latency budget is that deadline. Polling both at poll_wait_ms is what made an idle
-        # responder cost a third of the event loop with nothing on the wire at all (F.5.9).
-        wait_ms = self.poll_wait_ms if timeout_ms > 0 else self.poll_idle_ms
-        t0 = time.ticks_ms()
-        while True:
-            if self.poller is None:  # a concurrent deinit() can null this mid-loop
-                return False  # type: ignore[unreachable]  # mypy can't see the mutation
-            # Checked before polling, and never cleared on entry: a request that arrived between
-            # two reads must abort the next one rather than be erased by it, and a latched cancel
-            # outranks readiness so that nothing is read after the acknowledgement.
-            if self.cancel:
-                self._ack_cancel()
-                return False
-            try:
-                got = 0
-                for _, event in self.poller.ipoll(0):
-                    got |= event
-                if got & mask:
-                    break
-                if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
-                    return False
-                await asyncio.sleep_ms(wait_ms)
-            except (OSError, MemoryError, TypeError):
-                # TypeError: a malformed mask/timeout_ms - not caught by callers' own except
-                # clauses, since those only wrap the real UART call, not this await.
-                return False
-        # The one yield every read loop relies on: ipoll() reports the mask with no await of its
-        # own, so a caller looping ready()->read()->ready() over a frame still in flight would hold
-        # the event loop for the whole transmission - the clamp above alone made that worse (F.5.8).
-        await asyncio.sleep_ms(0)
-        return True
 
     async def read(self, nbytes: int | None = None, timeout_ms: int = -1) -> bytes | None:
         uart = self._active_uart()
@@ -429,6 +384,51 @@ class UART(Lockable):
             else:
                 return None  # ready() timed out or was cancelled
         return msg
+
+    async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
+        # Busy-polls ipoll(0), sleeping between rounds, until mask is satisfied, a cancel is
+        # requested, or timeout_ms elapses (<=0 waits forever). Defensive against a concurrent
+        # deinit() nulling self.poller mid-loop.
+        if self._uart is None or self.poller is None:
+            return False
+        # A deadline-less wait is an idle listener; one with a deadline is inside a transaction
+        # whose latency budget is that deadline. Polling both at poll_wait_ms is what made an idle
+        # responder cost a third of the event loop with nothing on the wire at all (F.5.9).
+        wait_ms = self.poll_wait_ms if timeout_ms > 0 else self.poll_idle_ms
+        t0 = time.ticks_ms()
+        while True:
+            if self.poller is None:  # a concurrent deinit() can null this mid-loop
+                return False  # type: ignore[unreachable]  # mypy can't see the mutation
+            # Checked before polling, and never cleared on entry: a request that arrived between
+            # two reads must abort the next one rather than be erased by it, and a latched cancel
+            # outranks readiness so that nothing is read after the acknowledgement.
+            if self._cancel:
+                self._ack_cancel()
+                return False
+            try:
+                got = 0
+                for _, event in self.poller.ipoll(0):
+                    got |= event
+                if got & mask:
+                    break
+                if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
+                    return False
+                await asyncio.sleep_ms(wait_ms)
+            except (MemoryError, OSError, TypeError):
+                # TypeError: a malformed mask/timeout_ms - not caught by callers' own except
+                # clauses, since those only wrap the real UART call, not this await.
+                return False
+        # The one yield every read loop relies on: ipoll() reports the mask with no await of its
+        # own, so a caller looping ready()->read()->ready() over a frame still in flight would hold
+        # the event loop for the whole transmission - the clamp above alone made that worse (F.5.8).
+        await asyncio.sleep_ms(0)
+        return True
+
+    def resync_framing(self) -> None:
+        # After a resync the read path is somewhere inside a frame, so the bytes up to the
+        # next delimiter are a fragment - discarded, never decoded, since a delimiter means "end of
+        # something" and only the one after it bounds a whole frame. Inert for an undelimited codec.
+        self._skip_to_delimiter = self.framing.is_delimited()
 
     async def write(self, msg: bytearray) -> bool:  # write msg (+ CRC, if configured), retrying until it's all sent
         uart = self._active_uart()

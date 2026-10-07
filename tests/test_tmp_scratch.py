@@ -88,7 +88,7 @@ def test_constructing_a_new_scratch_wipes_a_stale_directory_left_by_an_earlier_p
         pass
     os.mkdir(_ROOT + "/scratchtest_stale")
     os.mkdir(stale)
-    _write(stale + "/config_NTP.cfg", '{"NTP_Host": "stale.example.org"}')
+    _write(stale + "/config_NTP.cfg", '{"NTPHost": "stale.example.org"}')
 
     scratch = TmpScratch("scratchtest_stale")
     try:

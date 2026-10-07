@@ -4,7 +4,7 @@ confirms it survived. Must flush before returning - write_config() only stages (
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SCHEMA: "cm.ConfigSchema" = (("Marker", "int", 0, 0, 999999999, None),)
 _PATH = "config_HWTEST_REBOOT.cfg"

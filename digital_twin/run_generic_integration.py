@@ -323,7 +323,7 @@ async def main(config: RunConfig) -> None:
     # Must run before anything else in the process registers a poll object - see
     # unix_port_poll_prewarm.py's own module docstring.
     prewarm_poll_set()
-    # Must also run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer,
+    # Must also run before anything constructs a real UDPSocket (asy_captive_dns.py's CaptiveDNS,
     # asy_ntp_client.py's NTP fetch, asy_dns_client.py's own resolver).
     patch_asy_udp_socket_for_unix_port()
     injections, run = config.injections, config.run
@@ -367,11 +367,11 @@ async def main(config: RunConfig) -> None:
         assert module.conn is not None and module.watchdog is not None
         chips = _collect_chips(module, plan)
         for device, op, times in injections.faults:
-            _apply_fault(device, op, times, chips, module.conn.wlan)
+            _apply_fault(device, op, times, chips, module.conn._wlan)
         for device, op, seconds, times in injections.hangs:
             _apply_hang(device, op, seconds, times, chips)
         if injections.wifi_outcomes:
-            module.conn.wlan.script_connect_outcomes(injections.wifi_outcomes)
+            module.conn._wlan.script_connect_outcomes(injections.wifi_outcomes)
 
         if run.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
@@ -395,7 +395,7 @@ async def main(config: RunConfig) -> None:
         main_task.cancel()
         try:
             await main_task
-        except (asyncio.CancelledError, KeyboardInterrupt):
+        except (KeyboardInterrupt, asyncio.CancelledError):
             # A real SIGINT can be re-delivered while this cleanup await is still in flight.
             # Already shutting down either way; a second wedge from this one is caught by the
             # outer except KeyboardInterrupt: handler's own unwedge call below.

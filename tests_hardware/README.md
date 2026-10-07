@@ -72,7 +72,7 @@ paraphrase), unless a line says otherwise:
   breakout itself carries R4 = 10 kΩ from `!INT` to 3V3, per SparkFun's schematic (agent,
   2026-09-12, `7890e2b`).
 - **UART crossover jumper**, permanent and bench-only: GP0 (pin 1) ↔ GP9 (pin 12) and GP1 (pin 2)
-  ↔ GP8 (pin 11), a TX↔RX crossover between the board's own UART0 and UART1, so two `UART_Comm`
+  ↔ GP8 (pin 11), a TX↔RX crossover between the board's own UART0 and UART1, so two `UARTComm`
   instances talk to each other on one board (confirmed by the owner on the board, as recorded by the
   agent, 2026-08-28, `7f6bdaa`). The UART pairs themselves are `devices/dev.toml`'s `[bus.uart0]`
   and `[bus.uart1]`.
@@ -204,12 +204,12 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
 - **Prime a reader's config in RAM.** `cfgmgr.setup()` reads the config file and can write it back
   (creating or repairing it). Set the cache from the schema instead, as
   `tests_hardware/device_scripts/bmp3xx_plausibility_read.py` does: `reader.cfgmgr.valid = True;
-  reader.cfgmgr._cache = {f[0]: f[2] for f in reader.cfg_schema if f[2] is not None}`. A later
+  reader.cfgmgr._cache = {f[0]: f[2] for f in reader.get_cfg_schema() if f[2] is not None}`. A later
   `_set_dict_cfg()` still writes unless its persist is diverted (the "Restore or side-step every
   piece of shared state you touch" habit in "Writing a new device script: four habits").
 - **Exercise persisted settings through the protocol-layer driver** (the `*_I2C`/`*_SPI` class,
   SPECIFICATION.md Part C.3), not the `*_Reader`, whose `cfgmgr` writes the config file.
-- **A simulated restart takes a fresh `AsyFramManager`.** It is a bump allocator (SPECIFICATION.md
+- **A simulated restart takes a fresh `FRAMManager`.** It is a bump allocator (SPECIFICATION.md
   Part A.4): a fresh manager per restart lands each chunk back at the same base address, while a
   second reader on one manager gets a second, non-overlapping chunk.
 
@@ -378,7 +378,7 @@ Measured 2026-09-13, six forced crossings per setting. The chip cannot raise `RG
 whole RGB cycles have passed (303 ms each at 16 bit), while the driver re-checks the same condition
 in software every sample with no persistence requirement. **The shorter window decides every switch.**
 
-| `PRST` | window at 16 bit | against `SampleInterv = 1` | measured |
+| `PRST` | window at 16 bit | against `SampleInterval = 1` | measured |
 |---|---|---|---|
 | 4 | 1212 ms | longer - software wins | 5 of 6 periodic-led, latency ~1000 ms |
 | 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
@@ -395,7 +395,7 @@ INT line looks dead rather than that a setting is wrong.
   with the light's own change. One run proves a live read chain at every level, `Bri == max(R, G, B)`
   with every field in domain, monotonic response across the envelope, both ranges used, hysteresis
   with no chatter, the return to the low range, fixed-range pinning at both ends, 12-bit and 16-bit
-  agreeing on one static scene (which is what proves the `<< 4` normalisation), `ISLCalibrate`
+  agreeing on one static scene (which is what proves the `<< 4` normalisation), `Calibrate`
   starting a run without moving the applied ratio, `Overrange` true at full white (this rig really
   does exceed 10000 lx at ~20 mm), no `ISL_PERIODIC_ONLY` (`W32`), and zero `E` entries.
 - **Lighting scenarios** (`isl29125_lighting_scenarios.py`, ~8.5 min of real segments): ten scenarios
@@ -504,7 +504,7 @@ handler`), so lines ÷ 2 = host 500s.
 **Verify the image before its figures count.** Read every lwIP macro back out of the firmware
 (`micropython_overrides.read_lwip_macros_from_build()`), run `check_lwip_ensemble()` at the image's
 limit, and check the linker heap against §M6.2's per-connection formula. On the board: `/system`'s
-`build.buildDate`, static `Content-Length`, `gzip -t`. Local-only images (a
+`build.BuildDate`, static `Content-Length`, `gzip -t`. Local-only images (a
 `max_connections`/`[lwip]` edit) are built, recorded by recipe and reverted at once; keep each
 `.uf2` aside so a later level can reflash without a rebuild.
 
@@ -603,7 +603,7 @@ a live question:
   RX-overrun raise site and the `deinit()` no-ops (both in BACKLOG.md's "Deferred" list), and the
   SRAM-placement change, now measured rather than inferred (SPECIFICATION.md Part F.5.3).
 - **A hardware run overwrites the production modules' FRAM chunks — never read an error log as
-  firmware evidence straight after one.** `AsyFramManager` is a deterministic bump allocator (a
+  firmware evidence straight after one.** `FRAMManager` is a deterministic bump allocator (a
   required property, SPECIFICATION.md Part A.4), so a device script's own first chunk *is*
   production's first chunk. Usually the next boot's `_read()` just fails on the size/CRC mismatch
   and the log honestly reads empty — but a script leaving a well-formed chunk behind fabricates a
@@ -626,8 +626,8 @@ a live question:
   longer is: `sensortask_dev.py` runs a link exerciser and publishes a transfer/failure count
   through `/status`'s `sensors.UARTLINK`, which the bench tier asserts advancing during the load
   window. A later session should also know the board may need reflashing before any of this runs —
-  a firmware predating a `src/` change simply won't carry it, and the tier's skip guards name that
-  rather than failing obscurely.
+  a firmware predating a `src/` change simply won't carry it, and a build without the UART modules
+  fails the tier naming that, never skips.
 - **A device script's every wait must stay inside its own watchdog window, or a link fault reports
   as a reset instead of a result.** `tests_hardware/device_scripts/uart_crossover_*.py` arm an 8s
   `machine.WDT` and used to join their responder task with `asyncio.wait_for(listener, 10/12)`.
@@ -636,7 +636,7 @@ a live question:
   `mpremote` I/O error and no `RESULT:` line at all. Found (2026-09-11) by running the exchange
   script with UART1 deliberately moved to unjumpered pins, i.e. by simulating the exact wiring fault
   this tier exists to catch. Both scripts now poll `task.done()` in bounded steps, feeding as they
-  go, and use `UART_Comm.clear()` - the module's own documented unstick - to free a parked listener.
+  go, and use `UARTComm.clear()` - the module's own documented unstick - to free a parked listener.
   The same run now reports `GET returned None ... ` with `UART_NO_ACK` (`errno` 81, initiator) and
   `TIMEOUT` (`errno` 22, responder read timeout), which is the diagnosis a bench session actually
   needs.
@@ -705,7 +705,7 @@ a live question:
   `bench_control.BenchBridge.own_ip_on()`/`gateway_ip()`'s own docstrings.
 - **A permanent-WLAN-deactivation risk in the role-reversal scenario's own stage 6, found during a
   second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
-  DUT has necessarily already been in hotspot mode since stage 0 (`hotspot_started_once == True`),
+  DUT has necessarily already been in hotspot mode since stage 0 (`_hotspot_started_once == True`),
   so a failed real credential PUT (5 failed STA attempts) leads to `_PHASE_DEACTIVATED` - a terminal
   state only a real power-cycle clears (SPECIFICATION.md Part A.4; owner, 2026-07-13, `368fa83`) -
   NOT a graceful fall-back to hotspot the way an *earlier* failure in the scenario would.
@@ -736,7 +736,7 @@ a live question:
   2026-09-03, Samsung Galaxy A54 5G / One UI 8.5): connecting showed Android's "No internet" badge
   in the WiFi list, with no sign-in popup, despite a direct check confirming the DUT answered every
   captive-portal probe host with a real `302`/`Location: /` and DNS-spoofed every hostname to its
-  own IP exactly as `SPECIFICATION.md` Part A.5/`captive_dns.py` describe. Not a `src/` bug — this
+  own IP exactly as `SPECIFICATION.md` Part A.5/`asy_captive_dns.py` describe. Not a `src/` bug — this
   is almost certainly phone-side: (1) **Private DNS (DNS-over-HTTPS)**, when enabled in Android's
   network settings, bypasses the DUT's local DNS spoofing entirely for the connectivity-check
   request, so on an isolated hotspot with no real internet the check simply times out with no
@@ -753,7 +753,7 @@ a live question:
   failures + 48 errors, none of them a real regression.** `tests_hardware/conftest.py`'s `dut_ip`
   fixture (every bench test depends on it) passively watches serial for `asy_wifi_service.py`'s own
   `self.pr.one("WLAN connection established")`/`self.pr.one("Permanently no WLAN connection -
-  activating hotspot!")` lines — both gated on `DebugLevel >= 3` (`print_log.py`'s `_LOG_ONCE`).
+  activating hotspot!")` lines — both gated on `DebugLevel >= 3` (`asy_print_log.py`'s `_LOG_ONCE`).
   `test_real_ntp_sync_succeeds_over_genuine_udp` needs `asy_ntp_client.py`'s own
   `self.pr.all("Received NTP time:", ...)`, gated at `_LOG_ALL` (5) — the single highest level. At
   `DebugLevel=0` (this project's own production-quiet default — see DEVICE_REFERENCE.md/CLAUDE.md
@@ -829,7 +829,7 @@ a live question:
   plain `curl` of both endpoints side by side would have caught this in under a minute.
 - **SCD30's RDY pin is real and wired**: `SCD30_Reader`'s `irq_pin` constructor parameter (GPIO 8 in
   production), a real `irq_pin.irq(trigger=IRQ_RISING, ...)` in `start_timer()`, plus a staged
-  500ms software self-healing fallback in `scd_init_irq()` if the real IRQ is ever missed.
+  500ms software self-healing fallback in `_irq_loop()` if the real IRQ is ever missed.
   `test_scd30_real_irq_edge_drives_a_real_read` (`device_scripts/scd30_real_irq_edge.py`) exercises
   it - its one genuine, disclosed limit: software alone can't fully distinguish a genuine hardware
   IRQ firing from the self-healing fallback firing instead; only a scope on the pin itself could.
@@ -850,7 +850,7 @@ a live question:
   largest that succeeds - `gc.mem_free()` alone can't distinguish contiguous from scattered free
   space). Reuse this pattern for any future real-hardware memory/timing investigation rather than
   re-deriving it; SPECIFICATION.md Part I.1/I.3/I.5 has the results this technique already produced.
-  The same technique applied to `AsyUDPSocket.ready()` (a one-line `print()` on a real
+  The same technique applied to `UDPSocket.ready()` (a one-line `print()` on a real
   `POLLERR`/`POLLHUP` event) found that real rp2/lwIP does not appear to propagate ICMP errors onto
   a connected UDP socket's poll state at all (BACKLOG.md open question 5) - zero such events
   observed across 6 real retry cycles against a target with no listener (the condition that
@@ -878,7 +878,7 @@ working, website working... (all of which are tests of the twin, partially simul
 running for real)?" Answer at the time, honestly: no - only SCD30 had any automated real-hardware
 value check at all, and several real mechanisms (FRAM, the VOC algorithm, website-over-the-normal-
 network, multi-sensor REST value sanity) had zero automated coverage. Confirmed by grep before
-writing anything (`grep -rln "AsyFramManager\|asy_fram" tests_hardware/` etc. all came back with
+writing anything (`grep -rln "FRAMManager\|asy_fram" tests_hardware/` etc. all came back with
 nothing but this README/manual-test references). Ten tests closed these gaps (44 -> 54):
 
 - **BMP3xx/SGP40 standalone plausibility** (`flash/test_sensor_accuracy.py`, `device_scripts/
@@ -894,9 +894,9 @@ nothing but this README/manual-test references). Ten tests closed these gaps (44
 - **FRAM backup working** (`device_scripts/fram_manager_roundtrip.py`,
   `sgp40_fram_backup_restore.py`, `flash/test_fram_storage.py`): a real chunk write/read/CRC/dual-
   copy round trip against the physical MB85RS64V chip, plus the real SGP40 VOC-state backup/restore
-  pathway specifically, driven through `SGP40_Reader`'s own real production `read_loop()` (natural
+  pathway specifically, driven through `SGP40_Reader`'s own real production `_read_loop()` (natural
   ~60s `BackupPeriod` schedule) rather than synthetic internal calls. A "fresh boot" is simulated by
-  constructing a brand-new `AsyFramManager` Python object against the same physical chip (allocator
+  constructing a brand-new `FRAMManager` Python object against the same physical chip (allocator
   state is per-object, so this lands on the identical chunk address a real reboot's own fresh
   `build_system()` call would) rather than requiring an actual `hard_reset()` - the real chip's
   bytes are untouched by a plain object-level restart either way.
@@ -930,7 +930,7 @@ additions from that:
   BMP3xx's oversampling/filter-coefficient fields are pushed to non-default values over a real REST
   call, confirmed `"Valid"` (proof the real I2C write succeeded), then read back via a second real
   REST call and restored to their original values in a `finally` block (this mutates the bench
-  board's real persisted config). SGP40's `SGPResetVOC` command-only field is pushed the same way.
+  board's real persisted config). SGP40's `ResetVOC` command-only field is pushed the same way.
   SCD30 registers no `_push_callbacks`, but `PUT /sensors` reaches SCD30's NVM through its chip
   store (`_set_mgr_cfg()`, compare-before-write); a bench counterpart spends real NVM wear, so it is
   added behind `persistence_write` or its wear reason is listed.
@@ -942,7 +942,7 @@ manual); WS2812/Neopixel notification-signal validation beyond the manual qualit
 datasheet in this repo to assert real timing values against, and no scope/logic-analyzer in this
 bench rig's own automated toolchain); a genuine power-loss test of the FRAM backup/restore or
 error-log mechanisms specifically (only `manual/manual_persistence.py`'s raw-persistence power-loss
-tests touch real power loss at all, and those don't drive `AsyFramManager`'s own chunk logic).
+tests touch real power loss at all, and those don't drive `FRAMManager`'s own chunk logic).
 
 ## Fourth pass - real networking-robustness gaps against the API/website/internals
 
@@ -957,7 +957,7 @@ GET-only, hotspot-mode-only, and never checked the response was actually shaped 
 checked the real `max_connections=4` ceiling under genuine concurrency (the pre-existing 8-client
 burst test in `test_end_to_end_timing.py` never holds a connection open long enough to occupy more
 than a couple of real slots); and BACKLOG.md's own open question #5 ("real-hardware verification
-gap for `asy_udp_socket.py`/`captive_dns.py`") was still open - every existing NTP/DNS fault test
+gap for `asy_udp_socket.py`/`asy_captive_dns.py`") was still open - every existing NTP/DNS fault test
 only ever *dropped* traffic (`block_udp_ports()`), never fed the DUT a real garbage response. Eleven
 tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
 `bench_control.BenchBridge` primitives and a shared `rogue_udp_responder.py` helper):
@@ -966,7 +966,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   `src/asy_wifi_service.py`'s `_on_sta_disconnected()` - once `_conn_phase` is
   `_PHASE_STA_ESTABLISHED` (which it necessarily already is, since these tests depend on `dut_ip`),
   a disconnect takes the "retrying previously successful connection in one minute" branch, which
-  never increments `connection_failures` and never reaches the hotspot-fallback path at all. This is
+  never increments `_connection_failures` and never reaches the hotspot-fallback path at all. This is
   a structurally *different, safer* branch than the one SPECIFICATION.md Part E.6.4's role-reversal
   scenario exercises (a never-yet-connected DUT) - confirmed by reading the real source before
   designing these tests, specifically to rule out accidentally tripping that scenario's own disclosed
@@ -993,7 +993,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   genuinely malformed raw JSON body (needs a raw socket - `http_client.fetch()` can only ever
   serialize valid JSON), a real 413 over `max_content_length=2048`, and syntactically valid but
   nonsensical field values (wrong type, out-of-range, an entirely unknown sensor key) - each
-  confirmed against `_body_as_dict()`/`base_classes.py`'s `_set_dict_cfg()` to land exactly where the
+  confirmed against `_body_as_dict()`/`asy_base_classes.py`'s `_set_dict_cfg()` to land exactly where the
   real source says it should, including confirming none of these paths ever reach
   `ConfigManager.write_config()` (so nothing needed restoring afterward, unlike the third pass's
   BMP3xx config-push test).
@@ -1027,7 +1027,7 @@ error history is never left showing a test's own deliberately-provoked faults - 
 (`tests/_error_codes.py`, read from `buildgen/error_catalog.json`) is how a test names the expected
 entry. `/status`'s own `errcount` shape (`asy_webserver_service.py`'s
 `_shape_errcount_entry()`: `{"counter": int, "history": [{"num": int,
-"type": "E"|"W"}, ...]}`) is *not* the same shape as `print_log.py`'s raw `get_log()` several
+"type": "E"|"W"}, ...]}`) is *not* the same shape as `asy_print_log.py`'s raw `get_log()` several
 `device_scripts/` files already consume directly - confirmed directly before writing the helper,
 not assumed from that other shape. Applied to every fault-injecting test in
 `test_network_resilience.py`, the two `test_sensor_config_push_over_real_hardware.py` tests (confirming
@@ -1054,13 +1054,13 @@ this pass.
 `test_malformed_truncated_packet_is_silently_dropped` and
 `test_malformed_http_request_over_real_wireless_degrades_cleanly` now assert the module log stays
 empty too (`DNSSRV`/`WEBSERVER` respectively - both grounded directly against source: a
-garbage-but-present UDP datagram never reaches `captive_dns.py`'s own `DNS_BAD_REQUEST` (`W42`)
+garbage-but-present UDP datagram never reaches `asy_captive_dns.py`'s own `DNS_BAD_REQUEST` (`W42`)
 backoff branch, which only fires on a genuine `(None, None)` `recvfrom()` failure, and an
 unparseable HTTP request line fails entirely inside vendored `ext/microdot.py` before this
 project's own code is ever reached). **Real finding while doing this, since corrected (2026-09-08)**:
 `test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment used to claim its flood
-"triggers the backoff path" - checked directly against `captive_dns.py`'s `run()` and that was not
-what happens: `AsyUDPSocket.recvfrom()` returns real `(data, addr)` for any received-but-garbage UDP
+"triggers the backoff path" - checked directly against `asy_captive_dns.py`'s `run()` and that was not
+what happens: `UDPSocket.recvfrom()` returns real `(data, addr)` for any received-but-garbage UDP
 payload (UDP has no content validation), so the flood actually takes the *same* `pr.evt()`-only path
 as the truncated-packet test above, never the `recv_fail_backoff_s`-growing branch the old comment
 described. The test's own assertions (a legitimate query still answered promptly once the flood
@@ -1333,7 +1333,7 @@ genuine, surprising miscoverage plus two closeable gaps:
 
 - **SGP40's general-call hazard has ZERO real bench-tier coverage, despite `test_bus_concurrency_
   under_api_load.py` appearing to exercise it.** Every one of that file's four tests already runs a
-  `sgp40_reset_trigger_worker()` PUTting `SGPResetVOC` concurrently with GET load - reasonable to
+  `sgp40_reset_trigger_worker()` PUTting `ResetVOC` concurrently with GET load - reasonable to
   assume, from the name and the pattern, that this re-triggers the same general-call broadcast the
   flash tier's `sgp40_general_call_reset_hazard.py` proves survives concurrent reads. **It does not.**
   Read the real call chain directly: `reset_voc()` only sets a flag consumed by the next
@@ -1353,7 +1353,7 @@ genuine, surprising miscoverage plus two closeable gaps:
   SCD30) BMP3xx has real REST-pushable fields already exercised elsewhere
   (`test_sensor_config_push_over_real_hardware.py`). Closed:
   `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load` - alternates
-  `PressOvers` between both real valid settings concurrently with this same sensor's own GET reads,
+  `PresOvers` between both real valid settings concurrently with this same sensor's own GET reads,
   restoring the original value afterward.
 - **SCD30's own same-device write-vs-own-read** has no bench-tier counterpart yet either, for the
   same reason as its write-vs-siblings hazard: `PUT /sensors` reaches SCD30's NVM through its chip
@@ -1380,8 +1380,8 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   `test_sensor_accuracy.py`, so it never actually ran as part of this suite. Closed:
   `test_isl29125_real_reading_is_within_datasheet_plausible_bounds`.
 - **ISL29125's entire real REST config-push surface had zero bench-tier coverage** - ISL29125
-  has four hardware-backed, read-back-able fields (`Resolution`/`Range`/`IrCompOffset`/
-  `IrCompAdjust`) with no exclusion comment, suggesting oversight rather than a decision. Closed:
+  has four hardware-backed, read-back-able fields (`Resolution`/`Range`/`IRCompOffset`/
+  `IRCompAdjust`) with no exclusion comment, suggesting oversight rather than a decision. Closed:
   `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback` in
   `test_sensor_config_push_over_real_hardware.py` - also pushes `RangeAuto: False` alongside `Range`,
   since under real auto-ranging (the driver's own default) the chip's own range bit is the state
@@ -1394,7 +1394,7 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   neither method has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
 - **`SystemService.start_and_check_tasks()`'s own real restart-a-dead-task mechanism had no
   real-hardware test at all** - the exact recovery rung CLAUDE.md's memory-safety-discipline rule
-  leans on ("trust `system_service.py`'s task supervisor to restart a task that still dies"), proven
+  leans on ("trust `asy_system_service.py`'s task supervisor to restart a task that still dies"), proven
   only at the mock/twin tiers. New: `device_scripts/system_service_restarts_a_real_dead_task.py` +
   `tests_hardware/flash/test_task_supervisor.py`'s
   `test_start_and_check_tasks_restarts_a_real_dead_task` - a starter that dies immediately, checked
@@ -1410,11 +1410,11 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   `test_put_pause_time_round_trips_and_counts_down_over_real_http` already reads. Closed (once
   found, not left as the wrong "exception"):
   `test_notification_pause_time_push_counts_down_over_real_rest` in
-  `test_sensor_config_push_over_real_hardware.py` - proves the real `auto_led_override()` background
-  task actually decrements the pushed value to 0 on real hardware, not just that the PUT stuck.
+  `test_sensor_config_push_over_real_hardware.py` - proves the pushed pause counts down to 0 on
+  real hardware, not just that the PUT stuck.
 
 **Exceptions this pass confirmed** are rows of SPECIFICATION.md E.6.6: `ws2812-no-readback`
-(`lightCmdLED` and the WS2812 timing) and `scd30-rdy-irq-vs-fallback` (the SCD30 IRQ-pin edge).
+(`LightCmdLED` and the WS2812 timing) and `scd30-rdy-irq-vs-fallback` (the SCD30 IRQ-pin edge).
 
 **Named, not fixed this pass** (real, credible findings from the domain sweeps below, each requiring
 either a dedicated real-hardware session to get right or a project-owner decision this pass
@@ -1430,7 +1430,7 @@ shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLO
   real-driver-object proof (`uart_idle_poll_rate.py`). **Closed 2026-09-25** by
   `uart_driver_read_never_blocks_the_loop.py` (flash tier), which times the shipped driver's own
   UART calls rather than probing loop gaps — the latter swing with scheduler noise (F.5.8).
-- **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UartLinkExerciser.
+- **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UARTLinkDriver.
   _exercise_loop()` only ever calls `uart_get(_CMD_BANNER)`, so "bench ⊇ flash" (E.6.1) doesn't hold
   for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
   already has `_CMD_ECHO`/`_set_callback` wired for exactly this. **Scratched (owner, 2026-09-25)**:
@@ -1459,7 +1459,7 @@ wedged-WiFi `isconnected()` backstop has real, automated bench coverage with rea
 and idle-poll-rate scripts, and mock/twin/flash parity for the core happy-path and one-sided-silence
 scenarios, are all genuine; BMP3xx/SGP40's REST config-push is proven end-to-end via real
 GET-after-PUT readback; the bench mempause test and the flash/bench memory-stress split are both
-honestly and correctly scoped, not wrongly-trusted; SGP40's `SGPResetVOC` push is a thin test (it
+honestly and correctly scoped, not wrongly-trusted; SGP40's `ResetVOC` push is a thin test (it
 never asserts the reset's own effect) but says so in its own comment - not a new instance of the
 Ninth pass's bug, just worth naming.
 
@@ -1478,7 +1478,7 @@ flags/markers, deliberately not one, in a strict hierarchy —
   real config through `ConfigManager.write_config()`, and every bench-tier test issuing a
   config-persisting PUT. A `PUT /sensors` to SCD30 spends one NVM write per field whose value
   changed, one per `AmbPres`/`ForceCalRef` sent and one per `ContMeas=false`, none for an identical
-  TempOffs/MeasInt/Altitude/SelfCal.
+  TempOffset/MeasInterval/Altitude/SelfCal.
 - `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write` is a **narrower** opt-in, carried
   ALONGSIDE `@pytest.mark.persistence_write` (never in place of it) on the one test that spends a second
   write beyond the routine one. It is AND-gated with the global flag in code, not just by
@@ -1496,11 +1496,11 @@ higher write wear" versus "test everything that matters and keep wear as low as 
 set by name, so a new one has to be triaged against this rule rather than silently joining it.
 
 **What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and the RP2040's flash
-filesystem — which every accepted *config-persisting* PUT writes through `config_manager.py`'s own
+filesystem — which every accepted *config-persisting* PUT writes through `asy_config_manager.py`'s own
 `json.dump()`, so a REST write is a flash cycle, not just a network round trip. A **dispatch-only**
 PUT is deliberately outside the gate, because it is never persisted at all: `SystemCmd`,
-`PauseTime`, `lightCmdLED`, `ResetErrors`, plus any schema field carrying `dispatch=true` in its own
-`@web` tag (`SGPResetVOC`, `ISLCalibrate` today — derive that set from the tags, never from this
+`PauseTime`, `LightCmdLED`, `ResetErrors`, plus any schema field carrying `dispatch=true` in its own
+`@web` tag (`ResetVOC`, `Calibrate` today — derive that set from the tags, never from this
 list going stale). FRAM is **not** in scope: its endurance is effectively unbounded at this
 project's write rates.
 
@@ -1562,25 +1562,25 @@ boot-time console print nobody's watching. Builds the real `dev` object graph
 have inherited a real FRAM chunk (its own `pr`, plus its own `cfgmgr` where one exists) actually
 got one rather than silently degrading to RAM-only.
 
-**Deliberately not `fram.allocated_size <= fram.size`** - `AsyFramManager.get_chunk()` checks
-capacity *before* incrementing `allocated_size`, never after, so that comparison can never be
+**Deliberately not `fram._allocated_size <= fram.size`** - `FRAMManager.get_chunk()` checks
+capacity *before* incrementing `_allocated_size`, never after, so that comparison can never be
 false by construction and would be a tautology, not a check. A `None` chunk reference on a module
 that should have gotten one is the real, observable signal that capacity ran out; the mock-tier
 equivalent (`tests/_sensortask_scenarios.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
 run for every real device) uses the same shape, and
-`tests/test_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
+`tests/test_asy_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
 is the negative case proving it can actually fail.
 
 **mpremote-only by design (owner, 2026-09-16: 'we do not even add errno/wrnno for the out of FRAM
 memory … Handle via mpremote.')**: no new `/status` field - this is a one-time, build-deterministic
-build-validity fact (`AsyFramManager` is a bump-pointer allocator with no deallocation, so "does
+build-validity fact (`FRAMManager` is a bump-pointer allocator with no deallocation, so "does
 everything fit" is fully decided once construction finishes, and stays true for that build's entire
 life), not live operational state a client needs to query.
 
 **Extended by WP3**: `_CANDIDATE_MODULE_NAMES` now also checks `uart_link_init`/`uart_link_resp` -
 `dev.toml`'s only two `uart_link` instances, both wired with `fram_target = "fram"` - so this same
 real-hardware check covers the UART crossover link's own errno/wrnno history getting a real chunk,
-not just the sensor/infra modules it already covered. `UartLinkExerciser`'s own `log=`/`logger=`
+not just the sensor/infra modules it already covered. `UARTLinkDriver`'s own `log=`/`logger=`
 forwarding is otherwise covered by `tests/test_asy_uart_link_driver.py` (mock tier: functionality,
 the RAM-only default `log`, the allocation-failure fallback, the `logger=` reach-through, and a
 simulated-reboot roundtrip) and `tests/test_digital_twin_uart_link.py`'s

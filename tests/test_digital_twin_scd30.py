@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
-    from config_manager import CfgValue
+    from asy_config_manager import CfgValue
 
     T = TypeVar("T")
 
@@ -325,15 +325,15 @@ def test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands
     machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
     machine.Pin.reset_registry()
     reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8)
-    chip = reader.scd.i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    chip = reader._scd._i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
     assert chip._timer is not None
     chip._timer.deinit()
     chip._timer = None  # no measurements needed, and the interval write must not re-arm one
-    body: dict[str, CfgValue] = {"TempOffs": 1.5, "MeasInt": 10, "AmbPres": 1000, "Altitude": 200, "ForceCalRef": 450, "SelfCal": True}
+    body: dict[str, CfgValue] = {"TempOffset": 1.5, "MeasInterval": 10, "AmbPres": 1000, "Altitude": 200, "ForceCalRef": 450, "SelfCal": True}
     assert run(reader._set_dict_cfg(body, reader.get_cfg_schema())) == dict.fromkeys(body, "Valid")
     assert chip.nvm_writes == 6
     second = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
-    assert second == {"TempOffs": "Unchanged", "MeasInt": "Unchanged", "AmbPres": "Valid", "Altitude": "Unchanged", "ForceCalRef": "Valid", "SelfCal": "Unchanged"}
+    assert second == {"TempOffset": "Unchanged", "MeasInterval": "Unchanged", "AmbPres": "Valid", "Altitude": "Unchanged", "ForceCalRef": "Valid", "SelfCal": "Unchanged"}
     assert chip.nvm_writes == 8
 
 

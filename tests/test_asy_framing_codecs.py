@@ -1,10 +1,10 @@
-"""Unit tests for src/framing_codecs.py - the pluggable frame codec asy_uart_driver.py writes
+"""Unit tests for src/asy_framing_codecs.py - the pluggable frame codec asy_uart_driver.py writes
 through (SPECIFICATION.md Part G.2). Covers the pass-through default's byte-identity guarantee, COBS
 round-trips including every shape the protocol can emit, and each malformed-input rejection."""
 
 import asyncio
 
-from framing_codecs import COBS_DELIMITER, Framing_COBS, Framing_Pass
+from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass
 
 try:
     from typing import TYPE_CHECKING
@@ -25,14 +25,14 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(asyncio.wait_for(coro, _RUN_BOUND_S))
 
 
-def encoded(codec: "Framing_Pass | Framing_COBS", payload: bytes) -> bytes:
+def encoded(codec: "FramingPass | FramingCOBS", payload: bytes) -> bytes:
     buf = bytearray(payload)
     view = run(codec.encode_into(buf, len(payload)))
     assert view is not None
     return bytes(view)
 
 
-def decoded(codec: "Framing_Pass | Framing_COBS", frame: bytes) -> "bytes | None":
+def decoded(codec: "FramingPass | FramingCOBS", frame: bytes) -> "bytes | None":
     buf = bytearray(frame)
     size = run(codec.decode_from(buf, len(frame)))
     if size is None:
@@ -46,14 +46,14 @@ def decoded(codec: "Framing_Pass | Framing_COBS", frame: bytes) -> "bytes | None
 
 
 def test_pass_through_is_byte_identical() -> None:
-    codec = Framing_Pass()
+    codec = FramingPass()
     for payload in (b"", b"\x00", b"\x00\x01\xff", bytes(range(64))):
         assert encoded(codec, payload) == payload
         assert decoded(codec, payload) == payload
 
 
 def test_pass_through_has_no_overhead_and_no_delimiter() -> None:
-    codec = Framing_Pass()
+    codec = FramingPass()
     assert codec.overhead(0) == 0
     assert codec.overhead(255) == 0
     assert codec.max_encoded(48) == 48
@@ -62,14 +62,14 @@ def test_pass_through_has_no_overhead_and_no_delimiter() -> None:
 
 def test_pass_through_is_always_ready() -> None:
     # ready()'s counterpart: a codec that allocates nothing can never fail to construct.
-    assert Framing_Pass().ready() is True
+    assert FramingPass().ready() is True
 
 
 def test_pass_through_still_bounds_every_size_against_the_buffer() -> None:
-    # Framing_Pass overrides nothing, so the base class's own bound check is what holds here: a
+    # FramingPass overrides nothing, so the base class's own bound check is what holds here: a
     # pass-through codec may still not hand out a view past the end of the caller's buffer, nor
     # report a decoded length longer than what actually arrived.
-    codec = Framing_Pass()
+    codec = FramingPass()
     assert codec.delimiter() is None
     assert run(codec.encode_into(bytearray(4), 5)) is None
     assert run(codec.encode_into(bytearray(4), -1)) is None
@@ -83,7 +83,7 @@ def test_pass_through_still_bounds_every_size_against_the_buffer() -> None:
 
 
 def test_cobs_round_trips_every_protocol_frame_shape() -> None:
-    codec = Framing_COBS(262)
+    codec = FramingCOBS(262)
     shapes = (
         b"",
         b"\x00",
@@ -102,7 +102,7 @@ def test_cobs_round_trips_every_protocol_frame_shape() -> None:
 
 
 def test_cobs_overhead_matches_the_documented_bound() -> None:
-    codec = Framing_COBS(600)
+    codec = FramingCOBS(600)
     for size in (0, 1, 48, 55, 253, 254, 255, 508, 600):
         payload = bytes((i % 251) + 1 for i in range(size))  # no zeros: the worst case for overhead
         assert len(encoded(codec, payload)) <= codec.max_encoded(size), f"size {size} exceeded its own bound"
@@ -111,7 +111,7 @@ def test_cobs_overhead_matches_the_documented_bound() -> None:
 def test_cobs_never_emits_the_delimiter_over_a_fuzz_sweep() -> None:
     # A deterministic sweep, not unseeded randomness: a linear-congruential walk over
     # buffers of every length up to the maximum frame.
-    codec = Framing_COBS(300)
+    codec = FramingCOBS(300)
     state = 12345
     for size in range(0, 300, 7):
         payload = bytearray(size)
@@ -130,26 +130,26 @@ def test_cobs_never_emits_the_delimiter_over_a_fuzz_sweep() -> None:
 
 def test_cobs_rejects_a_code_byte_pointing_past_the_frame_end() -> None:
     # The decoder must validate every offset before following it, not walk off the buffer.
-    codec = Framing_COBS(64)
+    codec = FramingCOBS(64)
     assert decoded(codec, b"\x20\x01\x02") is None
 
 
 def test_cobs_rejects_a_zero_code_byte_inside_a_frame() -> None:
-    codec = Framing_COBS(64)
+    codec = FramingCOBS(64)
     assert decoded(codec, b"\x03\x01\x02\x00\x01") is None
 
 
 def test_cobs_rejects_an_oversized_frame() -> None:
     # The maximum frame length bounds the codec, so an over-long input is a decode
     # failure rather than an out-of-range write into a buffer sized for the worst legal case.
-    codec = Framing_COBS(16)
+    codec = FramingCOBS(16)
     buf = bytearray(64)
     assert run(codec.encode_into(buf, 40)) is None
     assert run(codec.decode_from(buf, 40)) is None
 
 
 def test_cobs_rejects_a_negative_or_oversized_size() -> None:
-    codec = Framing_COBS(64)
+    codec = FramingCOBS(64)
     buf = bytearray(64)
     assert run(codec.encode_into(buf, -1)) is None
     assert run(codec.decode_from(buf, -1)) is None
@@ -159,13 +159,13 @@ def test_cobs_rejects_a_negative_or_oversized_size() -> None:
 def test_cobs_decode_of_an_empty_frame_is_empty_not_a_failure() -> None:
     # The other half: the codec itself round-trips a zero-length payload; skipping *empty
     # frames on the wire* is the read loop's job, not this layer's.
-    codec = Framing_COBS(64)
+    codec = FramingCOBS(64)
     assert decoded(codec, b"\x01") == b""
 
 
 def test_cobs_failed_allocation_degrades_to_not_ready() -> None:
     # A codec that could not allocate its scratch reports it instead of looking constructed.
-    codec = Framing_COBS(-1)  # an impossible frame bound, the same guard LockableBuffer applies
+    codec = FramingCOBS(-1)  # an impossible frame bound, the same guard LockableBuffer applies
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
     assert run(codec.decode_from(bytearray(8), 4)) is None
@@ -175,21 +175,21 @@ def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
     # The other half of ready(). A negative bound never reaches the allocation at all, so the except
     # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
     # fragmented heap, rather than a caller typo - had no test of its own.
-    codec = Framing_COBS(1 << 40)  # well-formed, and far past what any heap here can serve
+    codec = FramingCOBS(1 << 40)  # well-formed, and far past what any heap here can serve
     assert codec.allocations == 0
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
 
 
 def test_cobs_reports_itself_as_delimited() -> None:
-    codec = Framing_COBS(64)
+    codec = FramingCOBS(64)
     assert codec.is_delimited() is True
     assert codec.delimiter() == COBS_DELIMITER
 
 
 def test_cobs_scratch_is_reused_across_frames() -> None:
     # allocated once from the frame bound, never per frame.
-    codec = Framing_COBS(128)
+    codec = FramingCOBS(128)
     first = run(codec.encode_into(bytearray(b"abc"), 3))
     second = run(codec.encode_into(bytearray(b"defg"), 4))
     assert first is not None

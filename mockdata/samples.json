@@ -6,17 +6,17 @@
         "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "Overrange": false, "GainMeas": null, "TS": 1755000000 }
     },
     "sensorsConfig": {
-        "SCD30": { "MeasInt": 5, "TempOffs": 2.5, "AmbPres": 0, "Altitude": 180, "ForceCalRef": 400, "SelfCal": true },
+        "SCD30": { "MeasInterval": 5, "TempOffset": 2.5, "AmbPres": 0, "Altitude": 180, "ForceCalRef": 400, "SelfCal": true },
         "SGP40": { "BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30 },
-        "BMP3XX": { "SampleInterv": 5, "PressOvers": 4, "PressOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0, "FiltCoeff": 3, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0 },
-        "ISL29125": { "SampleInterv": 1, "Resolution": 16, "RangeAuto": true, "Range": 10000, "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0, "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667 }
+        "BMP3XX": { "SampleInterval": 5, "PresOvers": 4, "PresOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0, "FiltCoeff": 3, "SeaLevelOffset": 0.0, "MeanAtmTemp": 15.0 },
+        "ISL29125": { "SampleInterval": 1, "Resolution": 16, "RangeAuto": true, "Range": 10000, "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0, "IRCompOffset": 0, "IRCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667 }
     },
-    "networkingConfig": { "SSID": "sensor-net", "PW": "hunter2hunter2", "Country": "DE", "Hostname": "SensorNode", "LedWifiOn": true, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 4 },
-    "systemConfig": { "DebugLevel": 1, "GMTOffset": 3600, "DSTOffset": 3600, "build": { "firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z" } },
-    "notificationConfig": { "AutoOn": true, "OnH": 7, "OnM": 0, "OffH": 22, "OffM": 0, "FlashBri": 120, "Interv": 900.0, "FlashDur": 2.0, "WarnCO2": 1200, "WarnVOC": 250, "WarnHum": 65.0 },
+    "networkingConfig": { "SSID": "sensor-net", "PW": "hunter2hunter2", "Country": "DE", "Hostname": "SensorNode", "LEDWifiOn": true, "NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 4 },
+    "systemConfig": { "DebugLevel": 1, "GMTOffset": 3600, "DSTOffset": 3600, "build": { "FirmwareVersion": "2.0b0", "WebsiteVersion": "2.0b0", "BuildDate": "2026-09-12T10:00:00Z" } },
+    "notificationConfig": { "AutoOn": true, "OnH": 7, "OnM": 0, "OffH": 22, "OffM": 0, "FlashBri": 120, "FlashInterval": 900.0, "FlashDur": 2.0, "WarnCO2": 1200, "WarnVOC": 250, "WarnHum": 65.0 },
     "status": {
-        "networking": { "WifiUptime": 431200, "Mode": "STA", "Connected": true, "IP": "192.168.1.42", "IPv4": "192.168.1.42", "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.1", "Rssi": -58, "NtpSynced": true, "NtpLastSyncAge": 812, "NtpLastSync": 1754999188 },
-        "system": { "SysUptime": 431260, "BootSignature": 1754568003, "MemPaused": false, "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 }, "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 } },
+        "networking": { "WifiUptime": 431200, "Mode": "STA", "Connected": true, "IP": "192.168.1.42", "IPv4": "192.168.1.42", "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.1", "RSSI": -58, "NTPSynced": true, "NTPLastSyncAge": 812, "NTPLastSync": 1754999188 },
+        "system": { "SysUptime": 431260, "BootSignature": 1754568003, "MemPaused": false, "LocalTime": { "Year": 2025, "Month": 8, "MDay": 12, "Hour": 9, "Minute": 14, "Second": 3, "Weekday": 1 }, "UTCTime": { "Year": 2025, "Month": 8, "MDay": 12, "Hour": 8, "Minute": 14, "Second": 3, "Weekday": 1 } },
         "sensors": { "SGP40": { "BackupTS": 1754996400, "RestoreTS": 0 }, "UARTLINK": { "Transfers": 1842, "Failures": 3 } },
         "notification": { "Triggered": false, "TS": 1754912400, "PauseTime": 0 }
     },

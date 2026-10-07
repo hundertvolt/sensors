@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("uart_link",)
 
-_UART_MODULES = ("UART_init", "UART_resp")  # asy_uart_link_driver.UartLinkExerciser's own
+_UART_MODULES = ("UART_init", "UART_resp")  # asy_uart_link_driver.UARTLinkDriver's own
 # name_ext="init"/"resp" -> instance_name() resolution (buildgen/definitions.py's errcount catalog)
 # GET only: every worker below hits a read-only endpoint, so nothing here can persist to flash in a
 # loop. A PUT belongs in this tier only where it is documented command-only and never persisted.

@@ -36,7 +36,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def add_session_note(config: pytest.Config, text: str, *, recovery: bool = False, source: str = "") -> None:
-    """Records a session-level note (a recovery when `recovery`), written under session_notes."""
+    # Records a session-level note (a recovery when `recovery`), written under session_notes.
     note: JSONValue = {"text": text, "recovery": recovery, "source": source}
     config.stash.setdefault(_NOTES, []).append(note)
 
@@ -58,7 +58,7 @@ def _markers(item: pytest.Item) -> list[JSONValue]:
 
 
 class _Recorder:
-    """The session's record; an entry whose outcome stays null reads as "no verdict" downstream."""
+    # The session's record; an entry whose outcome stays null reads as "no verdict" downstream.
 
     def __init__(self, config: pytest.Config) -> None:
         self.config = config

@@ -14,10 +14,10 @@ _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 # 1): none defines a SensorReader/SensorReaderConfig subclass. The naming convention alone was
 # never sufficient either - asy_uart_link_driver.py fits it and still needs the override.
 _OVERRIDES: dict[str, tuple[str, str]] = {
-    "fram": ("asy_fram_manager", "AsyFramManager"),
+    "fram": ("asy_fram_manager", "FRAMManager"),
     "neopixel": ("asy_neopixel_driver", "NeopixelDriver"),
-    "notification": ("asy_notification_service", "NotificationCoordinator"),
-    "uart_link": ("asy_uart_link_driver", "UartLinkExerciser"),
+    "notification": ("asy_notification_service", "NotificationService"),
+    "uart_link": ("asy_uart_link_driver", "UARTLinkDriver"),
 }
 
 # Every driver resolved through the override table, singleton or not: "needs an override" and
@@ -59,17 +59,24 @@ def _find_reader_classes(tree: ast.Module) -> "list[str]":
 
 
 def _class_needs_setup(tree: ast.Module, class_name: str) -> bool:
-    # SensorReaderConfig subclasses always need it (their async setup() reads ConfigManager);
-    # bare SensorReader subclasses never do. Neither base applies to a service override, so those
-    # fall back to whether the class defines an `async def setup` of its own at all.
+    # Every SensorReader/SensorReaderConfig subclass needs it: its setup() sets its own logger up first
+    # (SPECIFICATION.md Part A.7). A service override needs it when it defines an `async def setup` itself.
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == class_name:
             bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
-            if "SensorReaderConfig" in bases:
+            if bases & _READER_BASES:
                 return True
-            if "SensorReader" in bases:
-                return False
             return any(isinstance(item, ast.AsyncFunctionDef) and item.name == "setup" for item in node.body)
+    return False
+
+
+def class_has_read_triggers(info: DriverInfo) -> bool:
+    # Whether the class declares get_trigger_starters() itself, overriding SensorReader's empty default:
+    # its read triggers then join the system service's stagger (SPECIFICATION.md Part C.9.1).
+    tree = _parse(info.source_path, "", info.driver)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == info.class_name:
+            return any(isinstance(item, ast.FunctionDef) and item.name == "get_trigger_starters" for item in node.body)
     return False
 
 

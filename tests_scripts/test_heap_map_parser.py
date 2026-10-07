@@ -204,7 +204,7 @@ _EMITTERS = (
 
 
 def _emitted_envelope(source: str, label: str) -> tuple[str, str]:
-    """The open/close lines one emitter would actually print for `label`, from its own f-strings."""
+    # The open/close lines one emitter would actually print for `label`, from its own f-strings.
     opens = re.findall(r'print\(f"(=== MAP \{label\} ===)"\)', source)
     closes = re.findall(r'print\(f"(=== ENDMAP \{label\} ===)"\)', source)
     assert len(opens) == 1 and len(closes) == 1, f"expected one MAP and one ENDMAP print, found {len(opens)}/{len(closes)}"

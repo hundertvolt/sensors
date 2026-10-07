@@ -91,7 +91,7 @@ function coerceAndValidate(field, rawValue) {
     }
     if (field.kind === "enum") {
         // Compare as-sent, not string-coerced: an enum's real value can be numeric (e.g. BMP3XX's
-        // PressOvers), and needs the same int-only strictness as an ordinary int field (unlike
+        // PresOvers), and needs the same int-only strictness as an ordinary int field (unlike
         // SystemCmd's string-valued options, dispatched separately via SYSTEM_CMDS.includes()).
         if (typeof rawValue === "number" && !Number.isInteger(rawValue)) {
             return { valid: false, value: rawValue };
@@ -213,9 +213,9 @@ const LIGHT_CMD_LED_T_MIN = 0.5;
 const LIGHT_CMD_LED_T_MAX = 60.0;
 
 /**
- * Dispatches lightCmdLED (SPECIFICATION.md Part A.8), never persisted: "Invalid" for a non-object;
- * "Failed" for a bad r/g/b (int, 0-255) or t (float, 0.5-60.0), and for a well-formed flash arriving
- * before the last started one's t has passed (the device refuses it while a signal runs); else "Valid".
+ * Dispatches LightCmdLED (SPECIFICATION.md Part A.8), never persisted: "Invalid" for a non-object;
+ * "Failed" for a bad R/G/B (int, 0-255) or T (float, 0.5-60.0), and for a well-formed flash arriving
+ * before the last started one's T has passed (the device refuses it while a signal runs); else "Valid".
  * @param {unknown} rawValue
  * @param {{busyUntil: number}} led
  * @returns {string}
@@ -225,7 +225,7 @@ function dispatchLightCmdLed(rawValue, led) {
         return "Invalid";
     }
     const payload = /** @type {Record<string, unknown>} */ (rawValue);
-    for (const key of ["r", "g", "b"]) {
+    for (const key of ["R", "G", "B"]) {
         const num = payload[key];
         if (
             typeof num !== "number" ||
@@ -237,7 +237,7 @@ function dispatchLightCmdLed(rawValue, led) {
             return "Failed";
         }
     }
-    const { t } = payload;
+    const { T: t } = payload;
     if (typeof t !== "number" || !Number.isFinite(t) || t < LIGHT_CMD_LED_T_MIN || t > LIGHT_CMD_LED_T_MAX) {
         return "Failed";
     }
@@ -277,7 +277,7 @@ function applySensorQuirksForGet(sensorsConfig) {
     const result = {};
     for (const [sensorKey, fields] of Object.entries(sensorsConfig)) {
         const rest = Object.fromEntries(
-            Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "SGPResetVOC" && key !== "ISLCalibrate"),
+            Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "ResetVOC" && key !== "Calibrate"),
         );
         result[sensorKey] = "ForceCalRef" in rest ? { ...rest, ForceCalRef: 400 } : rest;
     }
@@ -485,7 +485,7 @@ function composeGroup(data, samples, sectionKey, group, where) {
  */
 export function installMockFetch(defs, initialData, controls) {
     const state = structuredClone(initialData);
-    const led = { busyUntil: 0 }; // when the last lightCmdLED flash started here ends (Date.now() ms)
+    const led = { busyUntil: 0 }; // when the last LightCmdLED flash started here ends (Date.now() ms)
     const sensorFieldDefs = sensorFieldDefsFor(defs);
     const flatDefsByEndpoint = {
         networking: flatFieldDefsFor(defs, "networking"),
@@ -573,10 +573,10 @@ export function installMockFetch(defs, initialData, controls) {
             const endpointKey = /** @type {"networking" | "system" | "notification"} */ (path.slice(1));
             const configKey = /** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${endpointKey}Config`);
             const rawBody = body();
-            // SystemCmd/PauseTime/lightCmdLED are dispatched actions, never persisted settings
+            // SystemCmd/PauseTime/LightCmdLED are dispatched actions, never persisted settings
             // (Part A.8). Excluded before the generic sparse-PUT path so none reaches
             // state[configKey], which is what keeps a later GET matching _get_settings_flat().
-            const { SystemCmd, PauseTime, lightCmdLED, ...persistableBody } = rawBody;
+            const { SystemCmd, PauseTime, LightCmdLED, ...persistableBody } = rawBody;
             const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey]);
             if (path === "/system" && "SystemCmd" in rawBody) {
                 results.SystemCmd = typeof SystemCmd === "string" && SYSTEM_CMDS.includes(SystemCmd) ? "Valid" : "Invalid";
@@ -584,8 +584,8 @@ export function installMockFetch(defs, initialData, controls) {
             if (path === "/notification" && "PauseTime" in rawBody) {
                 results.PauseTime = dispatchRangedAction(PauseTime, 0, PAUSE_TIME_MAX, state.status.notification, "PauseTime");
             }
-            if (path === "/notification" && "lightCmdLED" in rawBody) {
-                results.lightCmdLED = dispatchLightCmdLed(lightCmdLED, led);
+            if (path === "/notification" && "LightCmdLED" in rawBody) {
+                results.LightCmdLED = dispatchLightCmdLed(LightCmdLED, led);
             }
             dropOneResultForPartialFailure(results, controls);
             return jsonResponse(envelope(results));
@@ -594,7 +594,7 @@ export function installMockFetch(defs, initialData, controls) {
             if (body().ResetErrors === true) {
                 for (const entry of Object.values(state.status.errcount)) {
                     entry.counter = 0;
-                    // Real reset() (src/print_log.py) refills the fixed-length history with "no
+                    // Real reset() (src/asy_print_log.py) refills the fixed-length history with "no
                     // error" placeholders, it never shrinks/empties the array.
                     entry.history = (entry.history ?? []).map(() => ({ num: 0, type: "N" }));
                 }

@@ -45,8 +45,8 @@ def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
     ],
 )
 def test_parse_limits_accepts_every_range_shape(tmp_path: Path, payload: str, low: object, high: object) -> None:
-    (field,) = _parse(tmp_path, f"# @limits trigger_sec {payload}\n")
-    assert (field.toml_field, field.choices, field.min, field.max) == ("trigger_sec", None, low, high)
+    (field,) = _parse(tmp_path, f"# @limits trigger_s {payload}\n")
+    assert (field.toml_field, field.choices, field.min, field.max) == ("trigger_s", None, low, high)
 
 
 @pytest.mark.parametrize(
@@ -68,12 +68,12 @@ def test_parse_limits_accepts_every_choice_set_shape(tmp_path: Path, payload: st
 @pytest.mark.parametrize(
     "source",
     [
-        "#@limits trigger_sec 1..3600\n",
-        "## @limits trigger_sec 1..3600\n",
-        "#   @limits   trigger_sec   1..3600\n",
-        "#\t@limits\ttrigger_sec\t1..3600\n",
-        "X = 1  # @limits trigger_sec 1..3600\n",
-        "_SCHEMA = (\n    # @limits trigger_sec 1..3600\n)\n",
+        "#@limits trigger_s 1..3600\n",
+        "## @limits trigger_s 1..3600\n",
+        "#   @limits   trigger_s   1..3600\n",
+        "#\t@limits\ttrigger_s\t1..3600\n",
+        "X = 1  # @limits trigger_s 1..3600\n",
+        "_SCHEMA = (\n    # @limits trigger_s 1..3600\n)\n",
     ],
 )
 def test_parse_limits_accepts_every_legal_spacing_and_placement(tmp_path: Path, source: str) -> None:
@@ -89,13 +89,13 @@ def test_parse_limits_no_tags_is_not_an_error(tmp_path: Path) -> None:
 
 
 def test_parse_limits_several_tags_keep_source_order(tmp_path: Path) -> None:
-    fields = _parse(tmp_path, "# @limits address in {1, 2}\n# @limits trigger_sec 1..3600\n")
-    assert [f.toml_field for f in fields] == ["address", "trigger_sec"]
+    fields = _parse(tmp_path, "# @limits address in {1, 2}\n# @limits trigger_s 1..3600\n")
+    assert [f.toml_field for f in fields] == ["address", "trigger_s"]
 
 
 def test_parse_limits_duplicate_field_rejected(tmp_path: Path) -> None:
     # One domain per field: two tags would silently let the second win.
-    _parse_expecting(tmp_path, "# @limits trigger_sec 1..10\n# @limits trigger_sec 1..3600\n", "two @limits tags for 'trigger_sec'")
+    _parse_expecting(tmp_path, "# @limits trigger_s 1..10\n# @limits trigger_s 1..3600\n", "two @limits tags for 'trigger_s'")
 
 
 # --- reject side: wording -----------------------------------------------------------------------
@@ -104,12 +104,12 @@ def test_parse_limits_duplicate_field_rejected(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "source,match",
     [
-        ("# @limts trigger_sec 1..3600\n", "misspelled @limits tag"),  # deletion
-        ("# @limiits trigger_sec 1..3600\n", "misspelled @limits tag"),  # insertion
-        ("# @limats trigger_sec 1..3600\n", "misspelled @limits tag"),  # substitution
-        ("# @limtis trigger_sec 1..3600\n", "misspelled @limits tag"),  # transposition
-        ("# @LIMITS trigger_sec 1..3600\n", "malformed @limits tag"),  # mis-cased
-        ("# limits trigger_sec 1..3600\n", "leading '@' missing"),  # sigil dropped
+        ("# @limts trigger_s 1..3600\n", "misspelled @limits tag"),  # deletion
+        ("# @limiits trigger_s 1..3600\n", "misspelled @limits tag"),  # insertion
+        ("# @limats trigger_s 1..3600\n", "misspelled @limits tag"),  # substitution
+        ("# @limtis trigger_s 1..3600\n", "misspelled @limits tag"),  # transposition
+        ("# @LIMITS trigger_s 1..3600\n", "malformed @limits tag"),  # mis-cased
+        ("# limits trigger_s 1..3600\n", "leading '@' missing"),  # sigil dropped
     ],
 )
 def test_parse_limits_rejects_each_wording_mistake(tmp_path: Path, source: str, match: str) -> None:
@@ -122,14 +122,14 @@ def test_parse_limits_rejects_each_wording_mistake(tmp_path: Path, source: str, 
 @pytest.mark.parametrize(
     "source,match",
     [
-        ("# @limits trigger_sec\n", "malformed @limits tag"),  # the whole domain dropped
-        ("# @limits trigger_sec 1..\n", "missing one of its bounds"),  # max dropped
-        ("# @limits trigger_sec ..3600\n", "missing one of its bounds"),  # min dropped
-        ("# @limits trigger_sec 1.3600\n", "malformed @limits tag"),  # the ".." itself dropped
-        ("# @limits trigger_sec *..*\n", "checks nothing"),  # both bounds unbounded
-        ("# @limits trigger_sec 3600..1\n", "inverted"),  # bounds swapped
-        ("# @limits trigger_sec x..3600\n", "min 'x' is not a number"),
-        ("# @limits trigger_sec 1..x\n", "max 'x' is not a number"),
+        ("# @limits trigger_s\n", "malformed @limits tag"),  # the whole domain dropped
+        ("# @limits trigger_s 1..\n", "missing one of its bounds"),  # max dropped
+        ("# @limits trigger_s ..3600\n", "missing one of its bounds"),  # min dropped
+        ("# @limits trigger_s 1.3600\n", "malformed @limits tag"),  # the ".." itself dropped
+        ("# @limits trigger_s *..*\n", "checks nothing"),  # both bounds unbounded
+        ("# @limits trigger_s 3600..1\n", "inverted"),  # bounds swapped
+        ("# @limits trigger_s x..3600\n", "min 'x' is not a number"),
+        ("# @limits trigger_s 1..x\n", "max 'x' is not a number"),
         ("# @limits address in {}\n", "empty choice set"),  # the values dropped
         ("# @limits address in {0x76\n", "is neither a range"),  # the closing brace dropped
         ("# @limits address in 0x76, 0x77}\n", "is neither a range"),  # the opening brace dropped
@@ -158,8 +158,8 @@ def test_parse_limits_bare_tag_name_with_no_payload_at_all_is_prose(tmp_path: Pa
 @pytest.mark.parametrize(
     "source",
     [
-        "class Foo:\n    # @limits trigger_sec 1..3600\n    X = 1\n",
-        "def f():\n    # @limits trigger_sec 1..3600\n    pass\n",
+        "class Foo:\n    # @limits trigger_s 1..3600\n    X = 1\n",
+        "def f():\n    # @limits trigger_s 1..3600\n    pass\n",
     ],
 )
 def test_parse_limits_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
@@ -174,8 +174,8 @@ def test_parse_limits_rejects_locations_inside_a_body(tmp_path: Path, source: st
     [
         "# limits are checked elsewhere in this file\n",
         "# @limits are described in the matrix doc, section 5.2\n",
-        'X = "# @limits trigger_sec 1..3600"\n',
-        '"""Doc.\n# @limits trigger_sec 1..3600\n"""\nX = 1\n',
+        'X = "# @limits trigger_s 1..3600"\n',
+        '"""Doc.\n# @limits trigger_s 1..3600\n"""\nX = 1\n',
     ],
 )
 def test_parse_limits_leaves_non_tags_alone(tmp_path: Path, source: str) -> None:
@@ -188,14 +188,14 @@ def test_parse_limits_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 def test_parse_limits_real_bmp3xx_driver(src_dir: Path) -> None:
     assert parse_limits(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx") == (
         LimitField("address", frozenset({0x76, 0x77}), None, None),
-        LimitField("trigger_sec", None, 1, 3600),
+        LimitField("trigger_s", None, 1, 3600),
     )
 
 
 def test_parse_limits_real_isl29125_driver(src_dir: Path) -> None:
     # No "address" limit, unlike bmp3xx - 0x44 is hard-wired with no address-select pin at all, so
     # this driver has no TOML-configurable address field for a @limits tag to describe.
-    assert parse_limits(src_dir / "asy_isl29125_driver.py", "dev", "isl29125") == (LimitField("trigger_sec", None, 1, 3600),)
+    assert parse_limits(src_dir / "asy_isl29125_driver.py", "dev", "isl29125") == (LimitField("trigger_s", None, 1, 3600),)
 
 
 def test_no_other_src_module_declares_an_unnoticed_limits_tag(src_dir: Path) -> None:

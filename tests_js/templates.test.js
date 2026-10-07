@@ -39,8 +39,8 @@ describe("formatFieldValue", () => {
 
     it("formats a gmtimestruct field from its real structured shape, not a pre-formatted string", () => {
         // Real shape: the generated module's _gmtimestruct_to_dict() (buildgen/codegen.py).
-        const field = { key: "UtcTime", label: "UTC Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("gmtimestruct") };
-        const value = { year: 2025, month: 8, mday: 2, hour: 8, minute: 4, second: 3, weekday: 6 };
+        const field = { key: "UTCTime", label: "UTC Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("gmtimestruct") };
+        const value = { Year: 2025, Month: 8, MDay: 2, Hour: 8, Minute: 4, Second: 3, Weekday: 6 };
         expect(formatFieldValue(field, value)).toBe("2025-08-02 08:04:03");
     });
 
@@ -133,7 +133,7 @@ describe("buildField", () => {
     }
 
     it("shows a min/max range hint for an editable number field", () => {
-        const el = mount(buildField({ key: "MeasInt", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
+        const el = mount(buildField({ key: "MeasInterval", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
         expect(hintText(el)).toContain("Valid values: 2 to 1800 s");
     });
 
@@ -153,7 +153,7 @@ describe("buildField", () => {
     });
 
     it("adds neither cue to a string with no byte bound and no shape", () => {
-        const el = mount(buildField({ key: "NTP_Host", label: "NTP Server", kind: "string", minLength: 3, maxLength: 64 }, "pool.ntp.org", true));
+        const el = mount(buildField({ key: "NTPHost", label: "NTP Server", kind: "string", minLength: 3, maxLength: 64 }, "pool.ntp.org", true));
         expect(hintText(el)).toBe("Length: 3 to 64 characters");
     });
 
@@ -173,7 +173,7 @@ describe("buildField", () => {
 
     it("includes field.description in the hint text, alongside a range hint", () => {
         const field = {
-            key: "MeasInt",
+            key: "MeasInterval",
             label: "Measurement Interval",
             kind: /** @type {const} */ ("number"),
             min: 2,
@@ -239,32 +239,32 @@ describe("buildField", () => {
 
     it("renders an editable composite field with one input per sub-field", () => {
         const field = {
-            key: "lightCmdLED",
+            key: "LightCmdLED",
             label: "LED Flash",
             kind: /** @type {const} */ ("composite"),
             subFields: [
-                { key: "r", label: "Red", kind: /** @type {const} */ ("number") },
-                { key: "g", label: "Green", kind: /** @type {const} */ ("number") },
+                { key: "R", label: "Red", kind: /** @type {const} */ ("number") },
+                { key: "G", label: "Green", kind: /** @type {const} */ ("number") },
             ],
         };
         const el = mount(buildField(field, undefined, true));
-        const grid = mustQuery(el, '[data-field-key="lightCmdLED"]');
+        const grid = mustQuery(el, '[data-field-key="LightCmdLED"]');
         expect(grid.querySelectorAll("input")).toHaveLength(2);
-        expect(mustQuery(grid, '[data-sub-field-key="r"]')).not.toBeNull();
+        expect(mustQuery(grid, '[data-sub-field-key="R"]')).not.toBeNull();
     });
 
     it("renders an editable composite field with no subFields as an empty, non-crashing grid", () => {
-        const field = { key: "lightCmdLED", label: "LED Flash", kind: /** @type {const} */ ("composite") };
+        const field = { key: "LightCmdLED", label: "LED Flash", kind: /** @type {const} */ ("composite") };
         const el = mount(buildField(field, undefined, true));
-        const grid = mustQuery(el, '[data-field-key="lightCmdLED"]');
+        const grid = mustQuery(el, '[data-field-key="LightCmdLED"]');
         expect(grid.querySelectorAll("input")).toHaveLength(0);
     });
 
     it("renders an editable number field pre-filled via a current-value caption, not the input's value", () => {
-        const el = mount(buildField({ key: "MeasInt", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
-        const input = /** @type {HTMLInputElement} */ (mustQuery(el, '[data-field-key="MeasInt"]'));
+        const el = mount(buildField({ key: "MeasInterval", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
+        const input = /** @type {HTMLInputElement} */ (mustQuery(el, '[data-field-key="MeasInterval"]'));
         expect(input.value).toBe(""); // sparse-PUT convention: starts empty, not pre-filled with the current value
-        expect(mustQuery(el, '[data-current-value-for="MeasInt"]').textContent).toContain("5");
+        expect(mustQuery(el, '[data-current-value-for="MeasInterval"]').textContent).toContain("5");
     });
 
     // Distinct from data-field-key, which must keep pointing at the control itself for
@@ -280,14 +280,14 @@ describe("buildField", () => {
 
     it("tags a composite field's own wrapper with data-field-wrapper-key too, distinct from the grid's data-field-key", () => {
         const fieldDef = {
-            key: "lightCmdLED",
+            key: "LightCmdLED",
             label: "LED Flash",
             kind: /** @type {const} */ ("composite"),
-            subFields: [{ key: "r", label: "Red", kind: /** @type {const} */ ("number") }],
+            subFields: [{ key: "R", label: "Red", kind: /** @type {const} */ ("number") }],
         };
         const field = buildField(fieldDef, undefined, true);
-        expect(field.dataset.fieldWrapperKey).toBe("lightCmdLED");
-        expect(field).not.toBe(mustQuery(field, '[data-field-key="lightCmdLED"]'));
+        expect(field.dataset.fieldWrapperKey).toBe("LightCmdLED");
+        expect(field).not.toBe(mustQuery(field, '[data-field-key="LightCmdLED"]'));
         mount(field);
     });
 });
@@ -298,9 +298,9 @@ describe("buildFieldGroupCard", () => {
             key: "SCD30",
             label: "SCD30",
             submit: true,
-            fields: [{ key: "MeasInt", label: "Measurement Interval", kind: /** @type {const} */ ("number"), min: 2, max: 1800 }],
+            fields: [{ key: "MeasInterval", label: "Measurement Interval", kind: /** @type {const} */ ("number"), min: 2, max: 1800 }],
         };
-        const card = buildFieldGroupCard(group, { MeasInt: 5 });
+        const card = buildFieldGroupCard(group, { MeasInterval: 5 });
         expect(card.dataset.groupKey).toBe("SCD30");
         const button = mustQuery(card, ".apply-button");
         expect(() => button.click()).not.toThrow();
@@ -410,7 +410,7 @@ describe("buildErrcountGroup", () => {
     });
 
     it("renders each entry's raw errno, colored by type via data-err-type only - never the type itself as text", () => {
-        // Real backend shape (src/print_log.py's get_log()): no per-entry timestamp exists, and
+        // Real backend shape (src/asy_print_log.py's get_log()): no per-entry timestamp exists, and
         // "type" is never meant to be shown as text - only to color "num" (owner,
         // 2026-08-21, `9fd2a28`). html/style.css's .history-entry[data-err-type] rules pick the color.
         const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "BMP3XX", label: "BMP388" }] };

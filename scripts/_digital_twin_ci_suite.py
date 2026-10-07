@@ -42,7 +42,7 @@ MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen"
 HOST = "127.0.0.1"
 PORT = 18080  # a fixed, non-privileged, non-8080-default port - avoids colliding with a real
 # manual `scripts/run_unix_port_integration.sh` run on the same machine.
-DNS_PORT = 53  # captive_dns.py's DNSServer binds ("0.0.0.0", 53) unconditionally, real port only.
+DNS_PORT = 53  # asy_captive_dns.py's CaptiveDNS binds ("0.0.0.0", 53) unconditionally, real port only.
 
 # Per-module PrintLog `name=` values. A verbose log line is `print(name, *args)`, so a line
 # starting with one of these plus a space is real module output, not the runner's own banners.
@@ -68,10 +68,10 @@ _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9 - past the old NTP give-up (~60s), see 
 # @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source. They all happen to
-# equal driver.upper() here, which is NOT a general rule - NotificationCoordinator's is "NOTIFY",
+# equal driver.upper() here, which is NOT a general rule - NotificationService's is "NOTIFY",
 # not "NOTIFICATION" (Part L.3). A verified narrow table, never generic _NAME resolution.
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
-# The one registered error source deliberately not FRAM-backed: AsyFramManager builds a plain
+# The one registered error source deliberately not FRAM-backed: FRAMManager builds a plain
 # PrintLogHistory, the store being unable to persist its own failure history through itself. Run
 # 5c's loss sweep exempts it; _sensortask_scenarios.py pins the set from the real object graph.
 _IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM"})
@@ -108,7 +108,7 @@ _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40'
 # deliberately small: each one ends the driver's read task, and three is the supervisor's budget.
 # @tunable l2.wifi_scripted_failures = 5
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
-# All five are the same verdict, so the central newest-entry rule (print_log.py) spends ONE history
+# All five are the same verdict, so the central newest-entry rule (asy_print_log.py) spends ONE history
 # slot on them while still counting all five. Counter and slot count are therefore different numbers
 # here, deliberately - SPECIFICATION.md Part C.7.1.
 _WIFI_PERSISTED_WARNINGS = 1
@@ -186,7 +186,7 @@ _JOIN_MARGIN_S = 5.0  # past a burst's own timeout, so a thread is joined only o
 # @tunable l2.slot_release_wait_s = 1.0
 _SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections slot, the property under test
 
-# A fixed, recognizable DNS transaction ID, so a real answer from the captive DNSServer can be told
+# A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
 _DNS_QUERY_ID = 0x1234
 _DNS_RESPONSE_HEADER_LEN = 4
@@ -200,9 +200,9 @@ _CHECKS_PER_PASS: dict[str, int] = {}
 
 @dataclass(frozen=True)
 class RunContext:
-    """Everything one device's run of this suite needs, computed once in main(): which Unix-port
-    binary to launch, which generated module/wiring-plan pair to boot, and which bus-attached
-    drivers that device declares - so the fault matrix never hardcodes who has a bmp3xx."""
+    # Everything one device's run of this suite needs, computed once in main(): which Unix-port
+    # binary to launch, which generated module/wiring-plan pair to boot, and which bus-attached
+    # drivers that device declares - so the fault matrix never hardcodes who has a bmp3xx.
 
     micropython_bin: str
     logs_dir: Path
@@ -266,8 +266,8 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
 
 
 def _configured_max_connections(device: str) -> int:
-    """The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
-    a device's ceiling makes this run drive more concurrency instead of a stale literal."""
+    # The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
+    # a device's ceiling makes this run drive more concurrency instead of a stale literal.
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))  # buildgen sits beside scripts/, as for _generate_sensortask_modules.py
     from buildgen.validate import device_max_connections  # noqa: PLC0415 - needs the path entry above
@@ -276,8 +276,8 @@ def _configured_max_connections(device: str) -> int:
 
 
 def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
-    """One real socket per request, all in flight together from THIS process, behind a barrier so the
-    burst is truly simultaneous. Each result is (status, parsed JSON body), or the error's repr."""
+    # One real socket per request, all in flight together from THIS process, behind a barrier so the
+    # burst is truly simultaneous. Each result is (status, parsed JSON body), or the error's repr.
     results: list[object] = [None] * len(paths)
     barrier = threading.Barrier(len(paths))
 
@@ -358,7 +358,7 @@ def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
 
 
 def _failure_events(entry: dict[str, Any]) -> int:
-    # print_log.py's newest-entry rule folds a repeated code into one slot while "counter" counts
+    # asy_print_log.py's newest-entry rule folds a repeated code into one slot while "counter" counts
     # every call, so a failure is a counter step not backed by a "W" slot (exact while no warning repeats).
     counter = entry.get("counter", 0)
     return (counter if isinstance(counter, int) else 0) - _error_type_count(entry, "W")
@@ -447,7 +447,7 @@ def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples
 
 
 def _mem_paused() -> bool | None:
-    # system_service.py's own permanent-storage pause, as GET /status reports it. None means the
+    # asy_system_service.py's own permanent-storage pause, as GET /status reports it. None means the
     # field wasn't readable at all, which is not the same answer as False.
     status, body = _http("GET", "/status")
     if status != _HTTP_OK or not isinstance(body, dict):
@@ -749,8 +749,8 @@ def _run_1_baseline(ctx: RunContext) -> None:
         status, body = _http("PUT", "/notification", {"WarnCO2": _TEST_WARN_CO2})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("WarnCO2") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /notification WarnCO2={_TEST_WARN_CO2} accepted")
 
-        status, body = _http("PUT", "/sensors", {"SCD30": {"MeasInt": _TEST_SCD30_MEAS_INT}})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SCD30", {}).get("MeasInt") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /sensors SCD30.MeasInt={_TEST_SCD30_MEAS_INT} accepted")
+        status, body = _http("PUT", "/sensors", {"SCD30": {"MeasInterval": _TEST_SCD30_MEAS_INT}})
+        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SCD30", {}).get("MeasInterval") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /sensors SCD30.MeasInterval={_TEST_SCD30_MEAS_INT} accepted")
 
         status, body = _http("PUT", "/networking", {"Hostname": "ci-digital-twin"})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
@@ -776,7 +776,7 @@ def _run_2_reboot_settings_persistence(ctx: RunContext) -> None:
         status, body = _http("GET", "/notification")
         _check(condition=status == _HTTP_OK and body.get("WarnCO2") == _TEST_WARN_CO2, msg="Run 2: WarnCO2 survived a real process restart")
         status, body = _http("GET", "/sensors")
-        _check(condition=status == _HTTP_OK and body.get("SCD30", {}).get("MeasInt") == _TEST_SCD30_MEAS_INT, msg="Run 2: SCD30 MeasInt survived a real process restart")
+        _check(condition=status == _HTTP_OK and body.get("SCD30", {}).get("MeasInterval") == _TEST_SCD30_MEAS_INT, msg="Run 2: SCD30 MeasInterval survived a real process restart")
         status, body = _http("GET", "/networking")
         _check(condition=status == _HTTP_OK and body.get("Hostname") == "ci-digital-twin", msg="Run 2: Hostname survived a real process restart")
         time.sleep(3.0)  # let a bootup/sensor-read cycle actually happen under the now-persisted DebugLevel=5
@@ -1042,7 +1042,7 @@ def _run_6_configure_ssid(ctx: RunContext) -> None:
 
 def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     # ---- Run 7: reboot with scripted repeated STA-connect failures. Drives the real hotspot
-    # fallback state machine, then confirms the real DNSServer answers a real UDP query rather
+    # fallback state machine, then confirms the real CaptiveDNS answers a real UDP query rather
     # than merely that internal state flipped. Mandatory infrastructure, so no device logic.
 
     # Only possible because of _unix_port_udp_addr_shim.py, which works around three Unix-port
@@ -1057,7 +1057,7 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         # Waits for the FULL scripted failure count, not just the first: hotspot activation, and
-        # so the DNSServer, only starts on the fifth. Waiting for all five and then giving DNS
+        # so the CaptiveDNS, only starts on the fifth. Waiting for all five and then giving DNS
         # its own budget beats one guessed timeout covering both phases, as a real runner showed.
         entry = _wait_for_errcount_above("WIFI", _WIFI_SCRIPTED_FAILURES - 1, timeout_s=_LONG_WAIT_S)
         _check(condition=entry.get("counter", 0) >= _WIFI_SCRIPTED_FAILURES, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
@@ -1070,7 +1070,7 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         # Left at 90s with the real fix in: this is a fallback path, not a hot one, so the slack
         # costs nothing when the answer arrives early.
         answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
-        _check(condition=answered, msg="Run 7: the real captive DNSServer answered a real UDP DNS query after WiFi hotspot fallback")
+        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback")
         status, _ = _http("GET", "/status")
         _check(condition=status == _HTTP_OK, msg="Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
     except Exception as exc:
@@ -1103,8 +1103,8 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _check(condition=entry.get("counter", 0) in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: and the counter came back with it, still naming all {_WIFI_SCRIPTED_FAILURES} attempts rather than the one slot they share ({entry!r})")
         # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
         # "unreachable" address rather than relying on incidental CI sandbox network policy.
-        status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("NTP_Host") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTP_Host (unreachable) accepted")
+        status, body = _http("PUT", "/networking", {"NTPHost": "192.0.2.1"})
+        _check(condition=status == _HTTP_OK and body.get("result", {}).get("NTPHost") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTPHost (unreachable) accepted")
     except Exception as exc:
         _fail(f"Run 8 (WIFI persistence check + configure unreachable NTP): {exc!r}")
     finally:
@@ -1202,7 +1202,7 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 @dataclass
 class _SoakRun:
-    """One boot's Run 11 raw results."""
+    # One boot's Run 11 raw results.
 
     http_failures: list[str]
     wdt_count: int | None

@@ -5,8 +5,8 @@ Reads being gated too is intended, accepted behavior - SPECIFICATION.md Part A.4
 import asyncio
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from crc_checks import CRC8
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
 
 try:
     from typing import TYPE_CHECKING
@@ -14,7 +14,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from asy_fram_manager import AsyFramChunk
+    from asy_fram_manager import FRAMChunk
 
 CHUNK_SIZE = 16
 PATTERN_A = bytes((i * 3 + 1) % 256 for i in range(CHUNK_SIZE))
@@ -23,7 +23,7 @@ PATTERN_B = bytes((i * 5 + 2) % 256 for i in range(CHUNK_SIZE))
 
 # Each phase returns a failure reason, or None on success - keeps the phases individually readable
 # and _main() a plain sequence, rather than one function with a dozen early prints.
-async def _while_protected(fram: AsyFramManager, chunk: "AsyFramChunk") -> "str | None":
+async def _while_protected(fram: FRAMManager, chunk: "FRAMChunk") -> "str | None":
     if not await fram.fram.set_write_protected(value=True):
         return "set_write_protected(True) failed against the real chip"
     if not await fram.fram.get_write_protected():
@@ -44,7 +44,7 @@ async def _while_protected(fram: AsyFramManager, chunk: "AsyFramChunk") -> "str 
     return None
 
 
-async def _chip_itself_refuses(fram: AsyFramManager, chunk: "AsyFramChunk") -> None:
+async def _chip_itself_refuses(fram: FRAMManager, chunk: "FRAMChunk") -> None:
     # The checks above stop at FRAM_SPI._write()'s software guard, so they prove the DRIVER
     # refuses, not the silicon. Lying to the driver (_wp is only a cached status-register copy)
     # sends a real WREN+WRITE at a chip whose BP0|BP1 still protect the whole array.
@@ -59,7 +59,7 @@ async def _chip_itself_refuses(fram: AsyFramManager, chunk: "AsyFramChunk") -> N
         fram.fram._wp = True  # back in sync with the still-protected chip
 
 
-async def _after_clearing(fram: AsyFramManager, chunk: "AsyFramChunk") -> "str | None":
+async def _after_clearing(fram: FRAMManager, chunk: "FRAMChunk") -> "str | None":
     if not await fram.fram.set_write_protected(value=False):
         return "set_write_protected(False) failed against the real chip"
     if await fram.fram.get_write_protected():
@@ -80,7 +80,7 @@ async def _after_clearing(fram: AsyFramManager, chunk: "AsyFramChunk") -> "str |
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return

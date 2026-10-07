@@ -223,7 +223,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
             const step = wholeRange ? 1 : 0.5;
             const specialMagnitudes = new Set((field.specialValues ?? []).map((s) => s.value));
 
-            // Rounded to 2 decimal places: SCD30's TempOffs is stored in 0.01° ticks, rounding to the
+            // Rounded to 2 decimal places: SCD30's TempOffset is stored in 0.01° ticks, rounding to the
             // nearest 0.01 (SPECIFICATION.md, near the ForceCalRef/AmbPres notes), which an unrounded mid
             // value would silently fail against; harmless for every other field.
             const validValues = [...new Set([min, mid, max].map((v) => (wholeRange ? Math.round(v) : Math.round(v * 100) / 100)))];
@@ -308,7 +308,7 @@ describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
             );
 
             // Parametrised over LENGTHS, not the generated strings: `%s` goes into the test
-            // name, from which vitest derives a screenshot filename - and NTP_Host's maxLength
+            // name, from which vitest derives a screenshot filename - and NTPHost's maxLength
             // 1024 made that ENAMETOOLONG, wedging a run until the job's own cap killed it.
             it.each(validLengths)(
                 "accepts a %s-char string (a valid value distributed across the length range), rendered correctly",

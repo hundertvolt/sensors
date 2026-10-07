@@ -7,8 +7,8 @@ import asyncio
 import machine
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from print_log import LogConfig, make_logger
+from asy_fram_manager import FRAMManager
+from asy_print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 10
 E_TEST_SEED_A = 125
@@ -25,7 +25,7 @@ _WDT_TIMEOUT_MS = 8000
 async def _main() -> None:
     wdt = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
@@ -58,7 +58,7 @@ async def _main() -> None:
     wdt.feed()
 
     async def victim_writer() -> None:
-        # err_s() is write-through (print_log.py's _store_err()), so this is a real chunk write:
+        # err_s() is write-through (asy_print_log.py's _store_err()), so this is a real chunk write:
         # both status bytes to _STATUS_BUSY, payload + CRC, then both back to _STATUS_IDLE.
         await store.err_s("raced", errno=E_TEST_SEED_C)
 

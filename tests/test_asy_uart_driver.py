@@ -4,9 +4,9 @@ import time
 
 from machine import UART as FakeUART
 
+from asy_crc_checks import CRC16, CRCBase, CRCPass
+from asy_framing_codecs import COBS_DELIMITER, FramingBase, FramingCOBS, FramingPass
 from asy_uart_driver import UART
-from crc_checks import CRC16, CRC_Base, CRC_Pass
-from framing_codecs import COBS_DELIMITER, Framing_Base, Framing_COBS, Framing_Pass
 
 try:
     from typing import TYPE_CHECKING
@@ -138,8 +138,8 @@ def test_non_positive_baudrate_does_not_raise() -> None:
 
 def test_valid_crc_configurations() -> None:
     default = make_uart()
-    assert isinstance(default.crc, CRC_Pass)
-    explicit_pass = CRC_Pass()
+    assert isinstance(default.crc, CRCPass)
+    explicit_pass = CRCPass()
     with_pass = make_uart(crc=explicit_pass)
     assert with_pass.crc is explicit_pass
     explicit_crc16 = CRC16()
@@ -375,12 +375,12 @@ def test_operations_after_deinit_return_none_or_false() -> None:
 
 def test_async_with_acquires_and_releases_lock() -> None:
     uart = make_uart()
-    assert uart.asy_lock.locked() is False
+    assert uart.session_lock.locked() is False
 
     async def scenario() -> None:
         async with uart:
-            assert uart.asy_lock.locked() is True
-        assert uart.asy_lock.locked() is False
+            assert uart.session_lock.locked() is True
+        assert uart.session_lock.locked() is False
 
     run(scenario())
 
@@ -542,7 +542,7 @@ def test_into_methods_move_the_same_bytes_as_their_allocating_siblings() -> None
 
 
 def cobs_uart(max_frame: int = 64, **kwargs: "Any") -> UART:
-    return make_uart(framing=Framing_COBS(max_frame), **kwargs)
+    return make_uart(framing=FramingCOBS(max_frame), **kwargs)
 
 
 async def locked_write(uart: UART, msg: bytearray) -> bool:
@@ -573,7 +573,7 @@ def test_pass_through_codec_emits_exactly_what_it_always_did() -> None:
     # The regression that proves the default changed nothing: identical bytes, with and without
     # the codec named explicitly.
     default_uart = make_uart()
-    explicit = make_uart(framing=Framing_Pass())
+    explicit = make_uart(framing=FramingPass())
     assert run(locked_write(default_uart, bytearray(b"\x01\x00\x02"))) is True
     assert run(locked_write(explicit, bytearray(b"\x01\x00\x02"))) is True
     assert written(default_uart) == b"\x01\x00\x02"
@@ -628,10 +628,10 @@ def test_cobs_round_trips_through_the_allocating_read() -> None:
 
 def test_cobs_round_trips_with_a_crc_underneath_it() -> None:
     # The ordering claim itself: build -> CRC -> encode on write, the exact reverse on read.
-    sender = make_uart(crc=CRC16(), framing=Framing_COBS(64))
+    sender = make_uart(crc=CRC16(), framing=FramingCOBS(64))
     payload = bytearray(b"\x01\x02\x00\x03")
     assert run(locked_write(sender, bytearray(payload))) is True
-    receiver = make_uart(crc=CRC16(), framing=Framing_COBS(64))
+    receiver = make_uart(crc=CRC16(), framing=FramingCOBS(64))
     receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(receiver).feed_rx(written(sender))
     buf = bytearray(64)
@@ -706,7 +706,7 @@ def test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused() -> None:
 
 def test_a_codec_whose_allocation_failed_degrades_every_framed_call() -> None:
     # A driver that looks constructed but cannot frame must say so on every framed path.
-    uart = make_uart(framing=Framing_COBS(-1))
+    uart = make_uart(framing=FramingCOBS(-1))
     assert uart.framing.ready() is False
     assert run(locked_write(uart, bytearray(b"abc"))) is False
     assert run(locked_writefrom(uart, bytearray(b"abcd"), 4)) is False
@@ -749,7 +749,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
 
 
 def test_cancel_between_two_reads_is_not_lost() -> None:
-    # ready() used to begin with `self.cancel = False`, erasing a request that arrived
+    # ready() used to begin with `self._cancel = False`, erasing a request that arrived
     # between two reads - the canceller then blocked on an acknowledgement that never came.
     uart = make_uart()
     uart.poller = _StepPoller([select.POLLIN, select.POLLIN, 0])  # type: ignore[assignment]
@@ -867,9 +867,9 @@ def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
     # At the unit level: entering ready() must not consume a request it did not serve.
     uart = make_uart()
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
-    uart.cancel = True
+    uart._cancel = True
     assert run(one_shot_ready(uart)) is False  # the latched cancel wins over readiness
-    assert uart.cancel is False  # and is consumed exactly once
+    assert uart._cancel is False  # and is consumed exactly once
 
 
 async def one_shot_ready(uart: UART) -> bool:
@@ -995,7 +995,7 @@ def test_read_until_complete_assembles_across_multiple_rounds() -> None:
 
 def test_read_until_complete_default_crc_is_pass_through() -> None:
     uart = make_uart()
-    assert isinstance(uart.crc, CRC_Pass)
+    assert isinstance(uart.crc, CRCPass)
     fake(uart).feed_rx(b"raw")
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
@@ -1280,7 +1280,7 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
 
 
 # ---------------------------------------------------------------------------
-# base_classes.Lockable integration - real inheritance (UART(Lockable)), not
+# asy_base_classes.Lockable integration - real inheritance (UART(Lockable)), not
 # mocked - mirrors test_asy_i2c_driver.py's own Lockable integration coverage
 # ---------------------------------------------------------------------------
 
@@ -1297,7 +1297,7 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
                 boom()
         except RuntimeError:
             pass
-        assert not uart.asy_lock.locked()
+        assert not uart.session_lock.locked()
         async with uart:  # must still be acquirable - not left stuck locked
             pass
 
@@ -1324,11 +1324,11 @@ def test_aexit_tolerates_a_lock_already_released_inside_the_block() -> None:
 
     async def scenario() -> None:
         async with uart:
-            uart.asy_lock.release()  # released early by hand
+            uart.session_lock.release()  # released early by hand
         # __aexit__'s own release() must swallow the resulting RuntimeError, not propagate it
 
     run(scenario())  # must not raise
-    assert not uart.asy_lock.locked()
+    assert not uart.session_lock.locked()
 
 
 def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
@@ -1348,13 +1348,13 @@ def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
         task = asyncio.create_task(holder())
         while not started:
             await asyncio.sleep(0)
-        assert uart.asy_lock.locked()
+        assert uart.session_lock.locked()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        assert not uart.asy_lock.locked()
+        assert not uart.session_lock.locked()
 
     run(scenario())
 
@@ -1407,21 +1407,21 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
             return False
 
     assert run(scenario())
-    assert not uart.asy_lock.locked()
+    assert not uart.session_lock.locked()
 
 
 # ---------------------------------------------------------------------------
-# crc_checks.py integration - real CRC_Base subclasses (not mocked), plus
+# asy_crc_checks.py integration - real CRCBase subclasses (not mocked), plus
 # MemoryError fault injection at the guarded call sites (module docstring's
 # "MemoryError guarding" section)
 # ---------------------------------------------------------------------------
 
 
 class _MemoryErrorCRC:
-    # Wraps a real CRC_Base so length(), which read_until_complete() needs, keeps working while
+    # Wraps a real CRCBase so length(), which read_until_complete() needs, keeps working while
     # add()/check() raise MemoryError instead of doing real work - the UDP socket suite's own technique,
     # proving asy_uart_driver.py's try/except around these two calls actually catches it.
-    def __init__(self, real: "CRC_Base") -> None:
+    def __init__(self, real: "CRCBase") -> None:
         self._real = real
 
     def length(self) -> int:
@@ -1447,7 +1447,7 @@ def test_write_returns_false_on_crc_add_memoryerror() -> None:
 
 
 class _NoneCRC:
-    # A real CRC_Base's add() only ever returns None via its own _validate_init() rejecting an explicit init
+    # A real CRCBase's add() only ever returns None via its own _validate_init() rejecting an explicit init
     # argument, which write() never passes, so this path is unreachable through any real CRC object. A
     # minimal fake matching just the add()/length() surface write() calls, like _MemoryErrorCRC above.
     def length(self) -> int:
@@ -1748,7 +1748,7 @@ def test_a_whole_frame_read_never_asks_for_a_byte_that_has_not_arrived() -> None
 # ---------------------------------------------------------------------------
 
 
-class _NamelessDelimiter(Framing_Base):
+class _NamelessDelimiter(FramingBase):
     # Reports itself delimited but names no delimiter byte - inconsistent by construction, which is
     # precisely what the read path's own guard is for: there is nothing to frame on.
     def is_delimited(self) -> bool:

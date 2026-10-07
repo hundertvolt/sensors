@@ -365,7 +365,7 @@ def test_set_register_struct_type_mismatch_returns_none_instead_of_raising() -> 
 def test_device_shares_the_bus_lock() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
-    assert device.asy_lock is i2c.async_lock
+    assert device.session_lock is i2c.bus_lock
 
 
 def test_device_context_manager_acquires_and_releases_lock() -> None:
@@ -373,10 +373,10 @@ def test_device_context_manager_acquires_and_releases_lock() -> None:
     device = I2CDevice(i2c, 0x50)
 
     async def scenario() -> None:
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
         async with device:
-            assert i2c.async_lock.locked()
-        assert not i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
+        assert not i2c.bus_lock.locked()
 
     run(scenario())
 
@@ -384,7 +384,7 @@ def test_device_context_manager_acquires_and_releases_lock() -> None:
 def test_probe_succeeds_when_device_acks() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
-    run(device.setup())  # must not raise
+    assert run(device.setup()) is True
 
 
 def test_probe_raises_value_error_when_device_missing() -> None:
@@ -393,10 +393,10 @@ def test_probe_raises_value_error_when_device_missing() -> None:
     device = I2CDevice(i2c, 0x50)
     try:
         run(device.setup())
-        raised = False
-    except ValueError:
-        raised = True
-    assert raised
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert message == f"no I2C device at address: {0x50:#x}"
 
 
 def test_probe_raises_runtime_error_when_bus_uninitialized() -> None:
@@ -626,7 +626,7 @@ def test_single_op_session_releases_lock_immediately_after() -> None:
     async def scenario() -> None:
         async with device:
             await device.write(b"x")
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
 
     run(scenario())
 
@@ -638,12 +638,12 @@ def test_multi_transfer_session_holds_the_lock_across_every_transfer() -> None:
     async def scenario() -> None:
         async with device:
             await device.write(b"cmd1")
-            assert i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
             await device.readinto(bytearray(2))
-            assert i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
             await device.write(b"cmd2")
-            assert i2c.async_lock.locked()
-        assert not i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
+        assert not i2c.bus_lock.locked()
         ops = [entry[0] for entry in fake(i2c).log]
         assert ops == ["writeto", "readfrom_into", "writeto"]
 
@@ -658,14 +658,14 @@ def test_sequential_sessions_do_not_leak_lock_state_between_them() -> None:
         for _ in range(3):
             async with device:
                 await device.write(b"x")
-            assert not i2c.async_lock.locked()
+            assert not i2c.bus_lock.locked()
 
     run(scenario())
     assert len(fake(i2c).log) == 3
 
 
 def test_device_operations_do_not_self_lock_caller_must_wrap_in_async_with() -> None:
-    # I2CDevice's read and write methods never acquire self.asy_lock themselves - by design, every real
+    # I2CDevice's read and write methods never acquire self.session_lock themselves - by design, every real
     # caller wraps them in `async with device:`. This makes an easy-to-miss division of responsibility
     # explicit: locking is the caller's job, not something write()/readinto() provide.
     i2c = make_i2c()
@@ -673,7 +673,7 @@ def test_device_operations_do_not_self_lock_caller_must_wrap_in_async_with() -> 
 
     async def scenario() -> None:
         await device.write(b"x")  # no `async with device:` wrapper at all
-        assert not i2c.async_lock.locked()  # never touched: write() itself doesn't lock
+        assert not i2c.bus_lock.locked()  # never touched: write() itself doesn't lock
 
     run(scenario())
 
@@ -768,7 +768,7 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
                 boom()
         except RuntimeError:
             pass
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
         async with device:  # must still be acquirable - not left stuck locked
             pass
 
@@ -797,11 +797,11 @@ def test_aexit_tolerates_a_lock_already_released_inside_the_block() -> None:
 
     async def scenario() -> None:
         async with device:
-            device.asy_lock.release()  # released early by hand
+            device.session_lock.release()  # released early by hand
         # __aexit__'s own release() must swallow the resulting RuntimeError, not propagate it
 
     run(scenario())  # must not raise
-    assert not i2c.async_lock.locked()
+    assert not i2c.bus_lock.locked()
 
 
 def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
@@ -822,13 +822,13 @@ def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
         task = asyncio.create_task(holder())
         while not started:
             await asyncio.sleep(0)
-        assert i2c.async_lock.locked()
+        assert i2c.bus_lock.locked()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
 
     run(scenario())
 
@@ -853,7 +853,7 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
             return False
 
     assert run(scenario())
-    assert not i2c.async_lock.locked()
+    assert not i2c.bus_lock.locked()
 
 
 def test_aenter_returns_the_device_itself() -> None:

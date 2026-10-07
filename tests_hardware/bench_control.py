@@ -62,9 +62,9 @@ class BenchBridge:
         return self.ap_conn in out.splitlines()
 
     def wifi_iface(self) -> str:
-        """The physical WiFi adapter hosting `br0-wifi-ap`, read from the connection profile
-        itself rather than duplicating auto-detection logic (see toolchain/setup_toolchain.py's
-        detect_free_wifi_interface(), which chose it at `env --tier bench` setup time)."""
+        # The physical WiFi adapter hosting `br0-wifi-ap`, read from the connection profile
+        # itself rather than duplicating auto-detection logic (see toolchain/setup_toolchain.py's
+        # detect_free_wifi_interface(), which chose it at `env --tier bench` setup time).
         out = _nmcli("-g", "connection.interface-name", "connection", "show", self.ap_conn)
         iface = out.strip()
         if not iface:
@@ -78,9 +78,9 @@ class BenchBridge:
         return _nmcli("--escape", "no", "-g", "802-11-wireless.ssid", "connection", "show", self.ap_conn).strip()
 
     def ap_password(self) -> str:
-        """The real, current WPA2 PSK for this bridge's AP - needs `--show-secrets` (nmcli
-        withholds it otherwise, even as root; ap_ssid()'s plain `-g` query doesn't need this).
-        Lets conftest.py's `dut_ip` fixture recover stale DUT WiFi credentials automatically."""
+        # The real, current WPA2 PSK for this bridge's AP - needs `--show-secrets` (nmcli
+        # withholds it otherwise, even as root; ap_ssid()'s plain `-g` query doesn't need this).
+        # Lets conftest.py's `dut_ip` fixture recover stale DUT WiFi credentials automatically.
         return _nmcli("--show-secrets", "--escape", "no", "-g", "802-11-wireless-security.psk", "connection", "show", self.ap_conn).strip()
 
     # -- fault injection: attacking the DUT's *uplink* (the bridge is the AP the DUT connects to) --
@@ -99,26 +99,26 @@ class BenchBridge:
         _nmcli("connection", "up", self.ap_conn)
 
     def kick_client(self, mac_address: str) -> None:
-        """Forcibly clears one associated station's table entry by MAC via `iw` (this bench's AP
-        has no per-client kick command). Fixes the dominant cause of WiFi reconnection flakiness -
-        a stale AP-side entry surviving a hard_reset() power-cycle (see tests_hardware/README.md)."""
+        # Forcibly clears one associated station's table entry by MAC via `iw` (this bench's AP
+        # has no per-client kick command). Fixes the dominant cause of WiFi reconnection flakiness -
+        # a stale AP-side entry surviving a hard_reset() power-cycle (see tests_hardware/README.md).
         iface = self.wifi_iface()
         proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
         if proc.returncode != 0:
             raise HardwareTestFailureError(f"iw dev {iface} station del {mac_address} failed: {proc.stderr.strip()}")
 
     def kick_all_stations(self) -> None:
-        """Clears every currently-associated station's table entry on this AP interface - call
-        immediately before a real hard_reset() that expects a genuine STA reconnect (see
-        kick_client()). Clears whatever is actually there, not just an assumed single DUT MAC."""
+        # Clears every currently-associated station's table entry on this AP interface - call
+        # immediately before a real hard_reset() that expects a genuine STA reconnect (see
+        # kick_client()). Clears whatever is actually there, not just an assumed single DUT MAC.
         iface = self.wifi_iface()
         for mac in bench_associated_station_macs(iface):
             self.kick_client(mac)
 
     def block_udp_ports(self, ports: Iterable[int], comment: str = "sensors-bench-fault-injection") -> None:
-        """Scoped, temporary iptables DROP rules on the bridge's OUTPUT/FORWARD chains for the
-        given UDP ports (53 DNS, 123 NTP) - simulates network jitter/loss without touching the
-        DUT's flash. Always paired with unblock_udp_ports() in a test's own teardown."""
+        # Scoped, temporary iptables DROP rules on the bridge's OUTPUT/FORWARD chains for the
+        # given UDP ports (53 DNS, 123 NTP) - simulates network jitter/loss without touching the
+        # DUT's flash. Always paired with unblock_udp_ports() in a test's own teardown.
         for port in ports:
             _run_iptables(["-A", "FORWARD", "-p", "udp", "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", comment])
 
@@ -129,9 +129,9 @@ class BenchBridge:
             _run_iptables(["-D", "FORWARD", "-p", "udp", "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", comment], allow_missing=True)
 
     def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
-        """Redirects UDP traffic for `port` to a local rogue responder on 127.0.0.1:<local_port> -
-        simulates a garbage-response server, unlike block_udp_ports()'s "silently unreachable"
-        fault (BACKLOG.md open question #5). A standard `nat` PREROUTING DNAT-to-loopback pattern."""
+        # Redirects UDP traffic for `port` to a local rogue responder on 127.0.0.1:<local_port> -
+        # simulates a garbage-response server, unlike block_udp_ports()'s "silently unreachable"
+        # fault (BACKLOG.md open question #5). A standard `nat` PREROUTING DNAT-to-loopback pattern.
         _run_iptables(["-t", "nat", "-A", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment])
 
     def clear_udp_port_redirect(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
@@ -140,9 +140,9 @@ class BenchBridge:
         _run_iptables(["-t", "nat", "-D", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment], allow_missing=True)
 
     def start_udp_source_capture(self, src_host: str, dst_port: int, iface: str | None = None) -> subprocess.Popen[str]:
-        """Starts a real `tcpdump -c 1` on `iface`, filtered to the first UDP datagram from
-        `src_host` to `dst_port` - works around a local-delivery gap in redirect_udp_port_to_local()
-        (see tests_hardware/README.md). Pair with read_captured_udp_source_port()."""
+        # Starts a real `tcpdump -c 1` on `iface`, filtered to the first UDP datagram from
+        # `src_host` to `dst_port` - works around a local-delivery gap in redirect_udp_port_to_local()
+        # (see tests_hardware/README.md). Pair with read_captured_udp_source_port().
         target_iface = iface or self.wifi_iface()
         return subprocess.Popen(
             ["sudo", "timeout", str(_TCPDUMP_TIMEOUT_S), "tcpdump", "-i", target_iface, "-nn", "-l", "-c", "1", "udp", "and", "src", "host", src_host, "and", "dst", "port", str(dst_port)],
@@ -152,9 +152,9 @@ class BenchBridge:
         )
 
     def read_captured_udp_source_port(self, proc: subprocess.Popen[str], timeout_s: float = _UDP_CAPTURE_TIMEOUT_S) -> int | None:
-        """Blocks for the one packet line start_udp_source_capture()'s tcpdump is watching for,
-        returning `src_port` - or None if nothing matched within `timeout_s` (bounded either way
-        by the process's own `-c 1`/`timeout 60`)."""
+        # Blocks for the one packet line start_udp_source_capture()'s tcpdump is watching for,
+        # returning `src_port` - or None if nothing matched within `timeout_s` (bounded either way
+        # by the process's own `-c 1`/`timeout 60`).
         try:
             line = proc.stdout.readline() if proc.stdout is not None else ""
         finally:
@@ -176,9 +176,9 @@ class BenchBridge:
         duplicate_pct: float | None = None,
         reorder_pct: float | None = None,
     ) -> None:
-        """Real packet loss/latency/corruption/duplication/reordering via `tc netem` on
-        `wifi_iface()` only (doesn't affect eth0/br0). Uses `qdisc replace`, not `add` - a second
-        call replaces prior impairments rather than stacking with them."""
+        # Real packet loss/latency/corruption/duplication/reordering via `tc netem` on
+        # `wifi_iface()` only (doesn't affect eth0/br0). Uses `qdisc replace`, not `add` - a second
+        # call replaces prior impairments rather than stacking with them.
         if loss_pct is None and delay_ms is None and corrupt_pct is None and duplicate_pct is None and reorder_pct is None:
             raise ValueError("inject_network_degradation() needs at least one impairment")
         netem_args = []
@@ -207,17 +207,17 @@ class BenchBridge:
     # Sequential flip, not simultaneous AP+client - the bench Pi4 has a single WiFi radio (owner, 2026-09-01).
 
     def is_ssid_visible(self, ssid: str) -> bool:
-        """A real, fresh (`--rescan yes`) scan for `ssid` on the AP radio - confirms a DUT-hosted
-        hotspot is actually beaconing before joining it, instead of racing a fixed sleep. Requires
-        ap_down() already called - this single-radio bench can't scan while still hosting an AP."""
+        # A real, fresh (`--rescan yes`) scan for `ssid` on the AP radio - confirms a DUT-hosted
+        # hotspot is actually beaconing before joining it, instead of racing a fixed sleep. Requires
+        # ap_down() already called - this single-radio bench can't scan while still hosting an AP.
         iface = self.wifi_iface()
         output = _nmcli("-t", "-f", "SSID", "device", "wifi", "list", "ifname", iface, "--rescan", "yes", timeout_s=_NMCLI_SHORT_TIMEOUT_S)
         return ssid in output.splitlines()
 
     def join_dut_hotspot(self, ssid: str, password: str, *, timeout_s: float = _JOIN_HOTSPOT_TIMEOUT_S) -> None:
-        """Stops hosting `br0-wifi-ap` and joins the DUT's own hotspot as a client, via a fresh
-        temporary connection profile bound to the same radio. Deletes any leftover profile of the
-        same name first - a stale one makes a retry fail more confusingly (see tests_hardware/README.md)."""
+        # Stops hosting `br0-wifi-ap` and joins the DUT's own hotspot as a client, via a fresh
+        # temporary connection profile bound to the same radio. Deletes any leftover profile of the
+        # same name first - a stale one makes a retry fail more confusingly (see tests_hardware/README.md).
         iface = self.wifi_iface()
         self.ap_down()
         try:
@@ -231,9 +231,9 @@ class BenchBridge:
         )
 
     def own_ip_on(self, iface: str | None = None) -> str:
-        """The bench radio's own DHCP-leased IP while joined to the DUT's hotspot. The DUT's own
-        IP is the AP's gateway address, not derived here - see gateway_ip(). Defends against
-        nmcli's CIDR-suffixed output (e.g. "192.168.1.5/24") via `.split("/")`."""
+        # The bench radio's own DHCP-leased IP while joined to the DUT's hotspot. The DUT's own
+        # IP is the AP's gateway address, not derived here - see gateway_ip(). Defends against
+        # nmcli's CIDR-suffixed output (e.g. "192.168.1.5/24") via `.split("/")`.
         iface = iface or self.wifi_iface()
         out = _nmcli("-g", "IP4.ADDRESS", "device", "show", iface).strip()
         if not out:
@@ -241,9 +241,9 @@ class BenchBridge:
         return out.split("/")[0].splitlines()[0]
 
     def gateway_ip(self, iface: str | None = None) -> str:
-        """The DUT's own IP as seen by the bench radio while it's a client of the DUT's hotspot -
-        the address every stage-3+ REST/DNS check talks to. IP4.GATEWAY is a plain address, not
-        CIDR-suffixed, so no `.split("/")` is needed here."""
+        # The DUT's own IP as seen by the bench radio while it's a client of the DUT's hotspot -
+        # the address every stage-3+ REST/DNS check talks to. IP4.GATEWAY is a plain address, not
+        # CIDR-suffixed, so no `.split("/")` is needed here.
         iface = iface or self.wifi_iface()
         out = _nmcli("-g", "IP4.GATEWAY", "device", "show", iface).strip()
         if not out:
@@ -251,9 +251,9 @@ class BenchBridge:
         return out
 
     def leave_dut_hotspot_and_restore_bridge(self) -> None:
-        """Tears down the temporary client profile and brings `br0-wifi-ap` back up. Tolerant of
-        the profile already being gone (e.g. the DUT's own reconnect_wifi() already dropped the
-        association) - restoring the bridge is what matters, not who noticed first."""
+        # Tears down the temporary client profile and brings `br0-wifi-ap` back up. Tolerant of
+        # the profile already being gone (e.g. the DUT's own reconnect_wifi() already dropped the
+        # association) - restoring the bridge is what matters, not who noticed first.
         try:
             _nmcli("connection", "delete", ROLE_REVERSAL_CLIENT_CONN)
         except HardwareTestFailureError:
@@ -281,9 +281,9 @@ def is_valid_mac(value: str) -> bool:
 
 
 def bench_associated_station_macs(iface: str) -> list[str]:
-    """MAC addresses currently associated to `iface` while it's hosting the AP (`iw dev <iface>
-    station dump`) - used by kick_client() callers to find a real MAC, and to confirm the DUT's
-    own station list reflects reality."""
+    # MAC addresses currently associated to `iface` while it's hosting the AP (`iw dev <iface>
+    # station dump`) - used by kick_client() callers to find a real MAC, and to confirm the DUT's
+    # own station list reflects reality.
     proc = subprocess.run(["iw", "dev", iface, "station", "dump"], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
     if proc.returncode != 0:
         raise HardwareTestFailureError(f"iw dev {iface} station dump failed: {proc.stderr.strip()}")
@@ -291,7 +291,7 @@ def bench_associated_station_macs(iface: str) -> list[str]:
 
 
 def wait_for_link_local_teardown(iface: str, timeout_s: float = 10.0) -> None:
-    """Best-effort settle delay after ap_down()/connection deletion - nmcli's "down" completes
-    once the D-Bus call returns, not once the kernel fully tears down IP state, and the
-    immediately-following wifi-connect call was found racy without this."""
+    # Best-effort settle delay after ap_down()/connection deletion - nmcli's "down" completes
+    # once the D-Bus call returns, not once the kernel fully tears down IP state, and the
+    # immediately-following wifi-connect call was found racy without this.
     time.sleep(min(2.0, timeout_s))

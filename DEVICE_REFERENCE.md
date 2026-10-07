@@ -8,7 +8,7 @@ elsewhere, when a new user-facing behavior needs explaining.
 
 One physical LED serves two independent purposes, arbitrated by `asy_neopixel_driver.py`:
 
-- **WiFi status overlay** — a dim white glow, on/off only, driven by `/networking`'s `LedWifiOn`
+- **WiFi status overlay** — a dim white glow, on/off only, driven by `/networking`'s `LEDWifiOn`
   config field. This is a static preference ("is the indicator enabled"), not a live connectivity
   signal — it's (re)applied whenever the WiFi service (re)establishes its state, not continuously
   tied to connection health.
@@ -17,7 +17,7 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
   flash finishes). Brightness (`FlashBri`, 1–255) and duration (`FlashDur`, 0.5–10s) are
   configurable via `/notification`. It flashes only inside the notification window
   `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual
-  flash (`lightCmdLED`) is refused ("Failed") while another flash is still playing. Each
+  flash (`LightCmdLED`) is refused ("Failed") while another flash is still playing. Each
   threshold's own **color** is fixed at build time, not user-configurable:
 
   | Threshold | Color |
@@ -52,8 +52,8 @@ changed. `Hue`/`Sat`/`Bri` are derived from those same three numbers and inherit
 2000–12500 K and is `—` (nothing) in light too dim to say anything meaningful about. A missing CCT
 is normal in a dark room, not a fault.
 
-**The IR-compensation settings move the brightness, not just the colour.** `IrCompOffset` and
-`IrCompAdjust` exist because the sensor's filters also see infrared, which indoor lighting and
+**The IR-compensation settings move the brightness, not just the colour.** `IRCompOffset` and
+`IRCompAdjust` exist because the sensor's filters also see infrared, which indoor lighting and
 sunlight carry in very different amounts. Changing either one changes the reported **lux** as well
 as the colour balance — they are not a colour-only tint control. Change them deliberately, one at a
 time, and expect the lux scale to shift with them; the defaults (offset off, adjust 40) are a

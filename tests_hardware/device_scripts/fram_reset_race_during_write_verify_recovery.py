@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 _GUARD_BEFORE_ADDR = 0xA000
 _TARGET_ADDR = 0xA010

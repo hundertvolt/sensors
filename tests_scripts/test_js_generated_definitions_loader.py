@@ -16,7 +16,7 @@ _JSON_GLOB = re.compile(r'import\.meta\.glob\(\s*"\.\./([^"*]+)/\*\.json"')
 
 
 def _helper_definitions_dirs(text: str) -> "set[str]":
-    """Every `definitions` directory the helper globs `*.json` from, relative to the repo root."""
+    # Every `definitions` directory the helper globs `*.json` from, relative to the repo root.
     return {d for d in _JSON_GLOB.findall(text) if d.rsplit("/", 1)[-1] == "definitions"}
 
 

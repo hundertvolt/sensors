@@ -7,9 +7,9 @@ import asyncio
 import machine
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramChunk, AsyFramManager
-from crc_checks import CRC8
-from system_service import SystemService
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMChunk, FRAMManager
+from asy_system_service import SystemService
 
 CHUNK_SIZE = 32
 PATTERN_A = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))
@@ -32,9 +32,9 @@ wdt: "machine.WDT | None" = None
 
 
 async def sleep_fed(seconds: float) -> None:
-    """asyncio.sleep() that keeps the watchdog fed. Load-bearing: mpremote's soft reset does NOT
-    disarm an armed rp2 watchdog, so a script running past the ~8s timeout resets the board mid-run,
-    presenting as a bare serial EIO. tests_hardware/README.md has the full account."""
+    # asyncio.sleep() that keeps the watchdog fed. Load-bearing: mpremote's soft reset does NOT
+    # disarm an armed rp2 watchdog, so a script running past the ~8s timeout resets the board mid-run,
+    # presenting as a bare serial EIO. tests_hardware/README.md has the full account.
     remaining = seconds
     while remaining > 0:
         step = min(remaining, _FEED_STEP_S)
@@ -53,7 +53,7 @@ async def _ntp_never_synced() -> bool:
     return False
 
 
-async def _check_gating(fram: AsyFramManager, chunk: AsyFramChunk) -> None:
+async def _check_gating(fram: FRAMManager, chunk: FRAMChunk) -> None:
     # 1. Baseline: unpaused round trip. Without this every later "blocked" result is ambiguous.
     check("baseline write while unpaused returned False", condition=await chunk.write(PATTERN_A))
     check("baseline read did not return the written pattern", condition=bytes(await chunk.read() or b"") == PATTERN_A)
@@ -83,7 +83,7 @@ async def _check_gating(fram: AsyFramManager, chunk: AsyFramChunk) -> None:
 
 
 
-async def _check_auto_unpause_timers(fram: AsyFramManager, sysfunct: SystemService, chunk: AsyFramChunk) -> None:
+async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
     # 6. The REAL auto-unpause timer. A mock Timer cannot prove this fires on an rp2 alarm pool.
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     check(f"pause_permanent_storage({PAUSE_SEC}) did not pause", condition=fram.get_pause() is True)
@@ -98,7 +98,7 @@ async def _check_auto_unpause_timers(fram: AsyFramManager, sysfunct: SystemServi
     check("pause_permanent_storage(0) did not unpause immediately", condition=fram.get_pause() is False)
 
     # 8. Re-arm: a second pause replaces the first pending timer rather than leaving it to fire
-    #    early (pause_permanent_storage() deinit()s storage_timer before re-arming).
+    #    early (pause_permanent_storage() deinit()s _storage_timer before re-arming).
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     sysfunct.pause_permanent_storage(REARM_SEC)
     await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)  # the FIRST window has now elapsed
@@ -108,7 +108,7 @@ async def _check_auto_unpause_timers(fram: AsyFramManager, sysfunct: SystemServi
 
 
 
-async def _check_exhausted_alarm_pool(fram: AsyFramManager, sysfunct: SystemService, chunk: AsyFramChunk) -> None:
+async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
     # 9. Safety invariant under an exhausted alarm pool: storage is never left paused with
     #    nothing able to unpause it. Whether the re-arm aborts on ENOMEM or finds the slot its own
     #    deinit() just freed is an rp2 detail; both are fine, and that invariant is what is asserted.
@@ -139,7 +139,7 @@ async def _check_exhausted_alarm_pool(fram: AsyFramManager, sysfunct: SystemServ
 
 
 
-async def _check_clear_and_timestamped(fram: AsyFramManager, chunk: AsyFramChunk) -> None:
+async def _check_clear_and_timestamped(fram: FRAMManager, chunk: FRAMChunk) -> None:
     # 10. clear() honours the same gate as write()/read() (mock tier covers this; the real chip
     #     never has). Proven against real bytes: a refused clear leaves the payload readable.
     fram.set_pause(value=True)
@@ -151,7 +151,7 @@ async def _check_clear_and_timestamped(fram: AsyFramManager, chunk: AsyFramChunk
     check("the cleared chunk could not be rewritten", condition=await chunk.write(PATTERN_A) is True)
 
     # 11. The timestamped chunk variant honours the gate too - this is the shape SGP40's real VOC
-    #     backup uses (AsyFramTimestampedChunk), so covering only the plain chunk above would leave
+    #     backup uses (FRAMTimestampedChunk), so covering only the plain chunk above would leave
     #     the production-relevant one unproven on real hardware.
     ts_chunk = fram.get_timestamped_chunk(CHUNK_SIZE, _ntp_never_synced, crc=CRC8())
     if ts_chunk is None:
@@ -178,7 +178,7 @@ async def _main() -> None:
     global wdt
     wdt = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return

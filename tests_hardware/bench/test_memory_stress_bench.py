@@ -24,7 +24,7 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 _FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "ISL29125", "NEOPIXEL", "NOTIFY")
 
 # 4 GET threads at true max speed (unlike the modest, soak-gated test below) plus 1 thread
-# PUTting SGP40.SGPResetVOC every 3s - reproduces the request density that originally found real
+# PUTting SGP40.ResetVOC every 3s - reproduces the request density that originally found real
 # MemoryErrors within 45s. Not soak-tier gated - 120s needs no --soak-tier flag to run.
 # @tunable l4.memory_stress_bench_hammer_duration_s = 120.0
 _HAMMER_DURATION_S = 120.0
@@ -75,15 +75,15 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
         nonlocal success_count
         while not stop.wait(_VOC_RESET_INTERVAL_S):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"ResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
                 with lock:
                     if res.status_code == 200:
                         success_count += 1
                     else:
-                        request_errors.append(f"PUT /sensors SGPResetVOC -> {res.status_code}")
+                        request_errors.append(f"PUT /sensors ResetVOC -> {res.status_code}")
             except (OSError, http_client.HTTP_ERROR) as exc:
                 with lock:
-                    request_errors.append(f"PUT /sensors SGPResetVOC -> {exc!r}")
+                    request_errors.append(f"PUT /sensors ResetVOC -> {exc!r}")
 
     threads = [threading.Thread(target=_get_hammer, args=(i,), daemon=True) for i in range(_HAMMER_THREAD_COUNT)]
     threads.append(threading.Thread(target=_reset_voc_periodically, daemon=True))
@@ -125,9 +125,9 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
 
 @pytest.mark.long_soak
 def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
-    """Long-duration form (--soak-tier mid = 600s, matching the one real WDT_RESET this project
-    has observed) of the bounded test above - captures FRAM-backed errcount in the assertion
-    message before any cleanup clears it (CLAUDE.md's standing rule)."""
+    # Long-duration form (--soak-tier mid = 600s, matching the one real WDT_RESET this project
+    # has observed) of the bounded test above - captures FRAM-backed errcount in the assertion
+    # message before any cleanup clears it (CLAUDE.md's standing rule).
     tier = request.config.getoption("--soak-tier")
     if tier is None:
         pytest.skip("real extended max-speed hammer load - run via scripts/run_bench_soak_tests.sh --tier mid (600s, matching the original WDT-reset investigation's own duration)")

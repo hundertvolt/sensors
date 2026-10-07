@@ -95,7 +95,7 @@ _COUNTER_LINE = re.compile(r"^(?:LISTS|COUNTS) (.*)$", re.MULTILINE)
 
 
 class _ProbeRun(NamedTuple):
-    """One boot of one device on one arm: the maps it dumped and the counters it printed."""
+    # One boot of one device on one arm: the maps it dumped and the counters it printed.
 
     maps: dict[str, HeapMap]
     counters: dict[str, int]
@@ -111,8 +111,8 @@ def _parse_counters(stdout: str) -> dict[str, int]:
 
 
 def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
-    """One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
-    (SPECIFICATION.md Part I.4(e)), and every map the bounds read."""
+    # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+    # (SPECIFICATION.md Part I.4(e)), and every map the bounds read.
     tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
     assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
     assert "RESULT: PASS" in completed.stdout, f"the probe never reached its own PASS line for {device}/{arm}:\n{tail}"
@@ -141,8 +141,8 @@ def boot_probe(
     generated_src: Path,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Callable[[str, str], _ProbeRun]:
-    """Runs tests/_boot_contiguity_probe.py once per (device, arm) and caches the result: several
-    assertions over one boot rather than one boot each."""
+    # Runs tests/_boot_contiguity_probe.py once per (device, arm) and caches the result: several
+    # assertions over one boot rather than one boot each.
     assert generated_src.is_dir()  # the fixture above already failed if not; this keeps the dependency explicit
     cache: dict[tuple[str, str], _ProbeRun] = {}
 
@@ -167,8 +167,8 @@ def boot_probe(
 
 
 def _offsets_above_seam(before: HeapMap, after: HeapMap) -> list[int]:
-    """Every block newly allocated between the two maps, as a signed byte offset from the top of
-    what `before` already had allocated. Negative means it went into a hole further down."""
+    # Every block newly allocated between the two maps, as a signed byte offset from the top of
+    # what `before` already had allocated. Negative means it went into a hole further down.
     change = delta(before, after)
     assert change.new_offsets, "no block was newly allocated between the two maps, so there is nothing to measure"
     seam_top = before.total_bytes - before.free_above_top_survivor

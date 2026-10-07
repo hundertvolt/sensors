@@ -14,7 +14,7 @@ _INI_PASSES = ("digital_twin/typecheck.ini", "host_typecheck.ini")
 
 
 def _pyproject_pass(root: Path) -> "tuple[object, list[str], list[str]]":
-    """(the flag's value, the search bases, the exempted modules) of pyproject.toml's main pass."""
+    # (the flag's value, the search bases, the exempted modules) of pyproject.toml's main pass.
     with (root / "pyproject.toml").open("rb") as f:
         mypy = tomllib.load(f)["tool"]["mypy"]
     exempt: list[str] = []
@@ -26,7 +26,7 @@ def _pyproject_pass(root: Path) -> "tuple[object, list[str], list[str]]":
 
 
 def _ini_pass(root: Path, name: str) -> "tuple[object, list[str], list[str]]":
-    """The same three facts of one .ini pass; its own directories count as bases too."""
+    # The same three facts of one .ini pass; its own directories count as bases too.
     parser = configparser.ConfigParser()
     parser.read(root / name)
     main = parser["mypy"]

@@ -30,7 +30,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `digital_twin/` was not re-measured, previously 45. Plus `disallow_any_unimported` (54, main
   pass only). Explicit `Any` appears 107 times in `src/` and 213 in `tests/`. A large share of the
   test-side uses are monkeypatch/wrapper classes duck-typing a real MicroPython object; the `src/`
-  side is largely legitimate (`print_log.py`'s variadic logging methods, `config_manager.py`'s
+  side is largely legitimate (`asy_print_log.py`'s variadic logging methods, `asy_config_manager.py`'s
   generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
   on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
   delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
@@ -41,21 +41,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   correct under real fault injection (CLAUDE.md's bus-hazard hard rule). The project owner has
   decided this more than once; it is not an open design question, and no future session should
   re-propose removing them or ask again who is supposed to call them.
-- **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
-  timeout-wrapped. PRIORITIZED (project owner, 2026-09-11): to be done soon** — ahead of the other
-  items in this section, not whenever it next comes up. The calls in question: FRAM SPI
-  transactions and `src/asy_udp_socket.py`'s own `select.poll`-driven
-  `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
-  mid-transaction, which can't be interrupted regardless; see CLAUDE.md's "wedged I2C bus" hard
-  rule for why that case is different). Each
-  remaining call currently uses its own bespoke approach rather than one consistent mechanism
-  applied everywhere.
-- **The task-supervisor error-budget counter** is behaviorally correct and intentional (owner,
-  2026-07-13, `368fa83`; its decay still intended, owner, 2026-09-26), but flagged by the owner as
-  implementable more efficiently — worth a cleaner implementation in the refactor without changing
-  observed behavior. (Neopixel warning-flash sequencing was the other half of this item - resolved
-  by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py` promotion, see
-  `SPECIFICATION.md` Part A.4.)
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
   (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
   terms of order now, it's only highly important to be applied.') has now run once, beyond
@@ -72,7 +57,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   `uart-fault-catalog`); the
   shipped-driver F.5.8 test exists (2026-09-25); the exerciser SET and the NOTIFY FRAM-recovery test
   are scratched, each needing a `src/` change for the test alone (owner, 2026-09-25). Re-running
-  this sweep against other domains (it did not touch e.g. sensortask/system_service integration
+  this sweep against other domains (it did not touch e.g. sensortask/asy_system_service integration
   beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
@@ -86,7 +71,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   ...) *before* it ever acquired the per-sensor device-session lock that SPECIFICATION.md Part C.8
   documents as what serializes "a multi-transaction sequence against another coroutine starting its
   own sequence on the same sensor" — only the actual wire write was ever inside that lock. Under
-  real concurrent load (`read_loop()`'s own background reads/`_switch_range()` calls, or a second
+  real concurrent load (`_read_loop()`'s own background reads/`_switch_range()` calls, or a second
   concurrent request) that lock does get contended, so a `configure()` call could be suspended
   *after* mutating the shadow but *before* its write reached the chip, letting a concurrent `GET`'s
   `get_config_snapshot()` + `matches_shadow()` observe the shadow already showing the new value
@@ -148,7 +133,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch with no patches. Earlier
    1.27→1.28 rp2-port changes were RP2350-specific, not RP2040-breaking. Re-run F.1's standing
    re-check whenever the pin moves again.
-4. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? **No**
+4. Does `asy_config_manager.py`'s `write_config()` need long-block-lock-style coordination? **No**
    (owner, 2026-08-11, `acc4993`): the deferred flush (owner, 2026-09-16, `9ac59cf`) stages a write
    and flushes it later, so a write no longer holds a live request (SPECIFICATION.md F.2); and a
    write never happens on its own (only ever triggered by a real user interaction via the REST
@@ -156,12 +141,12 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    coordination mechanism needed. **Note**: `get_long_block_lock()` itself was already removed
    entirely before this was decided (see CLAUDE.md's "Long-blocking operations" hard rule) — this
    decision doesn't resurrect it.
-5. ~~Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`~~ - **closed
+5. ~~Real-hardware verification gap for `asy_udp_socket.py`/`asy_captive_dns.py`~~ - **closed
    (2026-09-08, real bench hardware).** Kept as a stub because `tests_hardware/README.md`,
    `bench_control.py` and two bench test files cite this number. All three UDP-layer claims are
    confirmed on real rp2/lwIP: garbage-response robustness and truncation; connected-socket
    source-address filtering (**holds** - real OS/lwIP enforcement, a forged reply never corrupts the
-   DUT's RTC); and POLLERR/POLLHUP delivery (**never observed** - `AsyUDPSocket.ready()`'s handling
+   DUT's RTC); and POLLERR/POLLHUP delivery (**never observed** - `UDPSocket.ready()`'s handling
    is correct but effectively dead code on this platform). Technique, results, and the bench-harness
    gap the pass also closed (`start_udp_source_capture()`, a real `tcpdump` capture, replacing a
    DNAT redirect that does not deliver locally at `route_localnet=0`): `tests_hardware/README.md`'s
@@ -319,7 +304,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     USB serial dropped mid-upload of `uart_idle_poll_rate.py`; later resets overwrote
     `reset_cause()`, an isolated re-run passed, and two later full bench tiers did not reproduce it.
     - One silent reset in 1 of 9 instrumented peak-load boots, cause lost. Watchdog starvation is the
-      first candidate to rule out: the supervisor loop is the only feed site (`system_service.py`'s
+      first candidate to rule out: the supervisor loop is the only feed site (`asy_system_service.py`'s
       `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
     - Hotspot fallback after a reset, three times. `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is
       the mechanism that would take it there. **One instance is now measured (2026-09-25, F17)**: a watchdog reset with no `kick_all_stations()` before it gave `reset_cause()` =
@@ -345,14 +330,14 @@ gates, traps).
   light rig is in place. D3 — always a `dev` build of the tree under test, never `wozi` — is
   CLAUDE.md's WoZi hard rule; confirming it at each sitting, and the order below, are the run sheet
   (agent, 2026-09-22): read and save `errcount` before anything writes (CLAUDE.md), build and flash,
-  confirm `/system`'s `build.buildDate`, flash tier, bench tier, then the gated run
+  confirm `/system`'s `build.BuildDate`, flash tier, bench tier, then the gated run
   (`scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`), reading each verdict's
   deselected count, not only "clean". **Board state at the fold**: `dev` image
-  `buildDate 2026-09-25T12:54:13Z` (tree `851e816`), `max_connections = 6`, `DebugLevel` 5; its last
+  built 2026-09-25T12:54:13Z (tree `851e816`), `max_connections = 6`, `DebugLevel` 5; its last
   runs were two clean default bench tiers and one clean gated run (2026-09-25).
 - **Not yet confirmed on silicon.** (1) SGP40 `SGP_WRITTEN_NO_TS` (`W35`) spends one slot per run
   of untimestamped backups (`83c9920`'s episode rule on the board's image, the central newest-entry
-  rule in `print_log.py` since): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged
+  rule in `asy_print_log.py` since): no run since has kept NTP away past `SGPWaitTimeNTP`, so none logged
   one. Zero-wear check: block UDP 123 longer than that, expect one `W35` with `ErrCount` rising per
   backup. (2) The flash tier's watchdog-starvation test ending with `hard_reset()` (`79eb41b`,
   test-only, no reflash needed): no full flash-tier run since. Before it, the flash tier always left
@@ -385,12 +370,12 @@ gates, traps).
   import time
 
   import asy_spi_driver
-  from asy_fram_manager import AsyFramManager
+  from asy_fram_manager import FRAMManager
 
 
   async def _main() -> None:
       spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-      fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+      fram = FRAMManager(spi0, 5, max_size=0x40000, debug=None)
       if not await fram.setup():
           print("RESULT: FAIL fram.setup() failed - real chip not responding on spi0/cs5")
           return
@@ -434,6 +419,11 @@ gates, traps).
 - **Give ad-hoc bench scripts one helper that kicks the AP's stations and then resets.** Every
   hotspot fallback of the 2026-09-25 sitting was a reset without `kick_all_stations()` *immediately*
   before it; kicking 50 s early does not help, since the board re-associates in between.
+- **The two unfed boot stretches, measured** — a `dev` boot log with a `ticks_ms()` stamp at every
+  watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first setup
+  feed, and from the last setup feed to the supervisor's first, each expected well inside the 8,000 ms
+  timeout. It replaces the estimates in Part N `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms`
+  (SPECIFICATION.md) and checks the L1 boot-stretch scenario's sleep sum.
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve feeds item 24's design fix and
   item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
   G6, a rollover method that leaves the board running (item 12, adapt now, measure later by
@@ -454,36 +444,6 @@ gates, traps).
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the
   BME688/BSEC material with its licensing. Nothing here tracks work on it.
-- **`NTP_Host`'s 1024-character bound is re-decided when the REST API's key names are harmonised to
-  one scheme before the release, together with the other string bounds** (owner, 2026-09-26;
-  earlier 'keep it', owner 2026-09-21, `6acc9c0`). The analysis below is kept because
-  it is what the decision was made on, and because it names the four files a future change would
-  have to touch together.
-  **Original framing:** `NTP_Host`'s 1024-character bound mirrors the deployed handler; tightening
-  it to DNS's real 253 was the owner's call. `src/asy_ntp_client.py`'s `_VAL_NH` declares `("NTP_Host", "str",
-  "pool.ntp.org", 3, 1024, None)`, and the comment above it says the bounds mirror the fielded
-  pre-refactor REST handler — confirmed: `legacy/firmware/modules/sensortask-*.py` does
-  `update_valid_json(req_json, "NTP_Host", "str", res, 3, 1024, debug=debug)` on every deployed
-  device. A DNS name cannot exceed **253** characters in presentation format (255 octets on the
-  wire, minus the length and root bytes), so 1024 is ~4x over-permissive — but changing it is a
-  deliberate divergence from fielded behaviour, which the "same features, not a feature change"
-  working agreement makes a decision rather than a fix. **Why it is worth deciding**: that one
-  field is the sole reason the largest schema-permitted PUT body is **1,312 B** — `NTP_Host` alone
-  costs 1,038 B of it, and the next-largest route is `/sensors` at 967 B on `dev`. Real traffic
-  measures 232 B. **At 253 the route maximum drops to 541 B**, which would take
-  `max_content_length`'s margin from **1.56x to 3.79x** (SPECIFICATION.md Part I.6; the older
-  1,132 B / 1.8x figures were the NTP group alone, not the whole route).
-  `tests_scripts/test_request_body_cap_headroom.py` derives all of this, so a change here is
-  re-measured rather than re-estimated.
-  **Not a one-token change**: every device's generated definitions carry the bound as
-  `"maxLength": 1024` (regenerated from the schema on every build, nothing to edit there),
-  `tests/test_asy_ntp_client.py:53` mirrors the tuple verbatim, and
-  `tests/test_asy_webserver_service.py`'s
-  `test_g3_a_scalar_at_ntp_hosts_own_bound_still_makes_exactly_one_whole_piece` mirrors the number
-  as the largest response piece any schema permits (SPECIFICATION.md Part I.3). **Unchecked**: whether a stored
-  value outside a tightened bound is rejected on the next write or silently falls back to the
-  default — trace the read path before changing it.
-
 - **CLAUDE.md's two-target clean-chroot verification is an owner-run periodic check, not a blocking
   per-push gate - settled (owner decision, 2026-09-18).** The recipe, both targets and the separate
   installer verification all stand exactly as CLAUDE.md documents them; what changed is who runs
@@ -616,6 +576,19 @@ gates, traps).
   the lower levels first (`scripts/_run_lower_levels.sh`) and judge through
   `scripts/_hardware_verdict.py`. Bash and stdlib host Python with no new dependency: the chroot's
   `scripts/test.sh` leg exercises the block and the archive, and nothing new is installed.
+  **2026-10-07, renames, lint config and comment-only conversions, no build impact**:
+  `pyproject.toml`'s per-file ignores and mypy override list follow the `asy_` module renames
+  (`src/asy_api_response.py`, `src/asy_print_log.py`, `asy_system_service`, …); `N801` leaves the
+  global ignore list for per-file entries on the C.2 compound and Sensirion-port files
+  (`asy_bmp3xx_driver.py`, `asy_fram_driver.py`, `asy_isl29125_driver.py`, `asy_scd30_driver.py`,
+  `asy_sgp40_driver.py`, `voc_algorithm.py`); `FBT001` joins `src/asy_isl29125_driver.py`'s entry
+  (its `_push_*` family, as in its siblings'); `max-statements` 78 → 77 (the measured maximum once the
+  generated pause callback returns its setter's answer); `asy_base_classes` leaves the explicit-`Any`
+  baseline. `scripts/lint.sh`'s `gc.collect()` guard names `src/asy_system_service.py`;
+  `scripts/_digital_twin_ci_suite.py` sends the renamed REST keys (`MeasInterval`, `NTPHost`); the
+  function and class docstrings of `scripts/` and `toolchain/` became `#` comments, every file
+  otherwise AST-identical (`OverrideError` gains a `pass`). Lint config, shell and host Python
+  only, no new dependency and no build input changed, so nothing here moves either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
   `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
@@ -664,12 +637,12 @@ gates, traps).
   2026-09-24): they stay a hand-maintained catalog beside the `@web`-derived per-driver sections.
 - **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
   decision, 2026-09-18).** Every device really did boot as `SensorNode` whatever its TOML said; the
-  three fields were validated and then reached nothing. `AsyConnTime.__init__` takes `hostname=`/
+  three fields were validated and then reached nothing. `WifiService.__init__` takes `hostname=`/
   `hotspot_password=` and substitutes them as the **defaults** of the two ConfigManager-persisted
   fields (`_with_default()`), so a user rename through the web UI still wins on a later boot, and
   every existing test that asserts the literal `"SensorNode"`/`"12345678"` keeps passing untouched -
   `None` means "keep the shared default", which is what a bare construction asks for.
-  `buildgen/codegen.py` passes `devices/*.toml`'s own values into the generated `AsyConnTime(...)`
+  `buildgen/codegen.py` passes `devices/*.toml`'s own values into the generated `WifiService(...)`
   call; the `test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code` tripwire is
   replaced by its inverse, and `validate.py`'s long gap comment by two lines of current fact.
   **One new failure mode, closed at both ends**: ConfigManager treats a default it cannot satisfy as
@@ -705,17 +678,17 @@ gates, traps).
   - **The peer-sized `_accept_set()` allocation is to be chunked and capped** (owner, 2026-10-05).
   - **`asy_uart_driver.UART.deinit()`/`init()` do not respect the session lock.** Calling either
     while a read is in flight would leave the in-flight code holding a reference to a deinit'd
-    peripheral. No caller does: `UART_Comm` never deinits, and the one place that does
+    peripheral. No caller does: `UARTComm` never deinits, and the one place that does
     (`tests_hardware/device_scripts/uart_crossover_recovery.py`'s injector) does it between
     exchanges. A guard was not added because `init()` calls `deinit()` itself, so refusing while
     locked would change construction semantics for a hazard nothing currently reaches.
-  - **`UART_Comm.setup()` called a second time while its own listen loop is running would
+  - **`UARTComm.setup()` called a second time while its own listen loop is running would
     deadlock** on the bus lock the loop holds during its unbounded read. Nothing calls it twice -
-    `system_service.py` runs the setup batch before any task starts - so no guard was invented for
+    `asy_system_service.py` runs the setup batch before any task starts - so no guard was invented for
     a caller that does not exist. Re-checked against the supervisor itself (2026-09-12): its restart
     ladder re-calls a dead task's *starter*, never a module's `setup()`, so the unreachability is a
     property of the code rather than of today's call sites.
-  - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
+  - **One `FramingCOBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
 - **A device-script loose end from the 2026-09-25 sitting — owner's call.** Two stale scratch
@@ -752,7 +725,7 @@ gates, traps).
     copied flat alongside `ext/` and frozen into firmware. Both workarounds were tried and both
     produce a **false green**: wrapping `src/` in a shadow package (or letting it resolve as an
     implicit namespace package) reports `Analyzed 27 files, 0 dependencies` and marks every
-    contract KEPT, because each intra-`src/` import is a bare absolute `from base_classes import
+    contract KEPT, because each intra-`src/` import is a bare absolute `from asy_base_classes import
     ...` that resolves outside the package. Making it work would mean rewriting every import in
     `src/` to package-relative form - an operational change to frozen firmware code, not a tooling
     change. Note also that Part C's Layer 2/3 split lives *inside* one module per driver, so
@@ -848,12 +821,6 @@ gates, traps).
   entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
   entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
   is small: extracting a shared helper is a minor simplification, not a correctness fix.
-- **`asy_wifi_service.py`'s locking-contract inconsistency and 60s-retry priority-inversion cost** —
-  see SPECIFICATION.md Part C.8 for the full account. Still not picked up: a rename to make
-  `network_available()`'s already-held-lock contract visible in its own name (e.g.
-  `network_available_locked()`) was considered but not done — nothing blocks it now that
-  `improved-quality/sensortask-wozi.py` is deleted, but `buildgen/codegen.py` itself still generates
-  a call to it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` now read through
   `readfrom_mem_into()` - done (owner decision, 2026-09-18).** Not the way this entry assumed,
   which is why it is worth a line: it predicted "a changed signature on three shared methods every
@@ -900,16 +867,16 @@ gates, traps).
   SPECIFICATION.md Part I.1's prior-art note explains why the `__init__`/`setup()` split is the
   structural answer wherever such a case is found.
 - **SystemService's settings store grows with device-wide settings** — the timezone offsets
-  (`GMTOffset`/`DSTOffset`) now held by `AsyNtpClient`'s config, future rsyslog settings;
-  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/system_service.py:59, :101`).
+  (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
+  `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py:59, :101`).
   Owner-deferred goal (owner-confirmed, 2026-08-11, `249f2ae`: 'per the owner's explicit intent,
   this is meant to grow into a general, module-independent system-settings store', paraphrase).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
   one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
   permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by
   the hardware watchdog (SPECIFICATION.md F.2): a `machine.I2C` transfer on a wedged bus; a single
-  `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`, v1.29.0; the
-  multi-transfer FRAM transaction around it can be timeout-wrapped, SPECIFICATION.md F.2).
+  `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`, v1.29.0; the FRAM's
+  waits around it wait only on other coroutines, SPECIFICATION.md F.2).
   `socket.getaddrinfo()` is not called from `src/` (`asy_dns_client.py` resolves over its own
   non-blocking UDP client). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
   target').

@@ -40,14 +40,14 @@ def test_real_fram_persistence_across_power_cycle() -> None:
 )
 def test_real_scd30_nvm_persistence_across_power_cycle() -> None:
     marker = 7
-    print_instruction(f'Read the current SCD30 MeasInt first (GET /sensors against {_DUT_IP_HINT}), then set MeasInt to a value different from the current one, e.g. PUT /sensors {{"SCD30": {{"MeasInt": {marker}}}}} ({marker + 1} if it already reads {marker}), and confirm it returns 200 and "Valid" - "Unchanged" means the value was already stored and nothing was written.')
+    print_instruction(f'Read the current SCD30 MeasInterval first (GET /sensors against {_DUT_IP_HINT}), then set MeasInterval to a value different from the current one, e.g. PUT /sensors {{"SCD30": {{"MeasInterval": {marker}}}}} ({marker + 1} if it already reads {marker}), and confirm it returns 200 and "Valid" - "Unchanged" means the value was already stored and nothing was written.')
     confirm('Press Enter once the write has completed and returned a real 200 response with "Valid"')
     print_instruction(f"Now physically disconnect the board's power supply entirely (removes power to the SCD30 too, not just the RP2040). You have {_POWER_CUT_WINDOW_S:g} seconds.")
     countdown(_POWER_CUT_WINDOW_S, "Cut power to the board (and SCD30) now")
     countdown(_POWER_OFF_S, "Keep power off")
     print_instruction("Now restore power.")
     confirm("Press Enter once power is restored")
-    state_expected_outcome("GET /sensors reports SCD30 MeasInt equal to the value written before the power cycle - confirms it round-tripped through the sensor's own onboard NVM, not just the RP2040's own config file.")
+    state_expected_outcome("GET /sensors reports SCD30 MeasInterval equal to the value written before the power cycle - confirms it round-tripped through the sensor's own onboard NVM, not just the RP2040's own config file.")
     confirm("Press Enter once you've confirmed the value survived")
 
 

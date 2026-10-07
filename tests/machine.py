@@ -605,9 +605,8 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    # Class-level registry, not per-instance: records every real Timer() construction, so a test can assert
-    # none happened - system_service.py's _timer_sequencer() reusing one preallocated Timer via .init()
-    # instead (Part F.1). Tests must clear it between functions, since it persists for the whole process.
+    # Records every construction, so a test can assert the product reuses one preallocated Timer through init()
+    # (SPECIFICATION.md F.1). Class-level, so it persists for the whole process: compare against a snapshot.
     all_timers: "ClassVar[list[Timer]]" = []
 
     # Test-only, off by default: real rp2 Timer.init() raises OSError(ENOMEM) on an exhausted alarm

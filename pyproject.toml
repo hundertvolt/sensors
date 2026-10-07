@@ -72,7 +72,7 @@ ignore = [
     # No `pathlib` in the rp2 port at all, so every "use pathlib instead of os.path/open" finding
     # is unimplementable rather than merely unwanted.
     "PTH",
-    # No async file I/O either: config_manager.py's flash writes have no non-blocking form. The
+    # No async file I/O either: asy_config_manager.py's flash writes have no non-blocking form. The
     # exposure is already structurally bounded - every real flash write is reachable only through
     # the REST PUT path (CLAUDE.md hard rule) - and SPECIFICATION.md Part F.3 records the finding.
     "ASYNC230",
@@ -81,7 +81,7 @@ ignore = [
     # tests/ runs under the real MicroPython interpreter with microtest.py, not pytest (Part E.1),
     # so every PT rule reasons about fixtures that do not exist.
     "PT",
-    # `print()` is the log transport, not debug residue - print_log.py is built on it.
+    # `print()` is the log transport, not debug residue - asy_print_log.py is built on it.
     "T20",
 
     # ---- Would change runtime behavior, which a lint pass does not ----
@@ -169,9 +169,8 @@ ignore = [
     # three known sites, accepted permanently (owner, 2026-09-26), are exempted per file below.
 
     # ---- Identifiers deliberately mirror the datasheet / reference algorithm ----
-    # Part D.1/C.2: BMP3xx's T1/P1..P11 as printed in BST-BMP388-DS001 9.2/9.3, the VOC algorithm's
-    # L/X0/K, CO2, and C.2's acronym class names.
-    "N801",  # class name (SGP40_I2C, CRC8, VOC_Algorithm)
+    # Part D.1: BMP3xx's T1/P1..P11 as printed in BST-BMP388-DS001 9.2/9.3, the VOC algorithm's
+    # L/X0/K, CO2. N801 (class names) is exempted per file below.
     "N802",  # function name (get_CO2)
     "N803",  # argument name (L, X0, K)
     "N806",  # variable in function (T1..T3, P1..P11)
@@ -208,7 +207,7 @@ max-complexity = 20
 [tool.ruff.lint.pylint]
 max-args = 8
 max-branches = 20
-max-statements = 78
+max-statements = 77
 max-returns = 11
 
 # Per-file exemptions live HERE, centrally and with a reason, rather than as `# noqa` comments
@@ -228,9 +227,9 @@ max-returns = 11
 # every argv in-repo.
 "tests_scripts/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "S603"]
 "tests_hardware/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
-# api_response.py calls a reader's `_set_dict_cfg` across objects by design: Part C.5.2 publishes
+# asy_api_response.py calls a reader's `_set_dict_cfg` across objects by design: Part C.5.2 publishes
 # that setter-dispatch contract by name.
-"src/api_response.py" = ["SLF001"]
+"src/asy_api_response.py" = ["SLF001"]
 # S106 below marks one of the three sites of the hotspot fallback password, accepted permanently
 # (owner, 2026-09-26; CLAUDE.md); exempted per file so S105/S106 still catch a new one anywhere
 # else.
@@ -249,19 +248,23 @@ max-returns = 11
 # PLR0913/PLR0917: UART.__init__/init() take machine.UART's twelve parameters plus the wrapper's own four;
 # ISL29125_I2C.configure() takes one keyword per CONFIG1-3 field (FN8424 p10-11).
 "src/asy_uart_driver.py" = ["PLR0913", "PLR0917"]
-"src/asy_isl29125_driver.py" = ["PLR0913"]
+"src/asy_isl29125_driver.py" = ["FBT001", "N801", "PLR0913"]
 # The `_push_*` dispatch family takes the config-VALUE union, where bool is a JSON value, not a
 # flag, through Part C.5.2's single-positional-argument contract that D.10 forbids splitting.
-"src/asy_bmp3xx_driver.py" = ["FBT001"]
-"src/asy_scd30_driver.py" = ["FBT001"]
+"src/asy_bmp3xx_driver.py" = ["FBT001", "N801"]
+"src/asy_scd30_driver.py" = ["FBT001", "N801"]
 "src/asy_wifi_service.py" = ["S106", "FBT001"]
+# N801, here and in the four sensor drivers' entries: C.2's `<CHIP>_<Role>` compounds; the Sensirion
+# port's names.
+"src/asy_fram_driver.py" = ["N801"]
+"src/voc_algorithm.py" = ["N801"]
 # ANN401, category 1 - heterogeneous **kwargs forwarded into a callee whose keywords have DIFFERENT
 # types (print()'s sep/end/file/flush; constructors with up to 21 keywords): object, str and str |
 # None all fail at 3.10-3.12.
 #
 # PEP 692's Unpack[TypedDict] is the real fix and unavailable: typings/' typing.pyi declares
 # TypedDict as a plain object.
-"src/print_log.py" = ["ANN401"]
+"src/asy_print_log.py" = ["ANN401"]
 "tests/test_asy_uart_driver.py" = ["ANN401"]
 "tests/test_asy_uart_comm.py" = ["ANN401"]
 "tests/_uart_comm_harness.py" = ["ANN401"]
@@ -285,7 +288,7 @@ max-returns = 11
 # ARG004: _DefaultSignalSink.request_signal() is a no-op static sink whose signature mirrors
 # NeopixelDriver's exactly, so codegen needs no special case.
 "src/asy_notification_service.py" = ["ANN401", "ARG004"]
-"src/asy_sgp40_driver.py" = ["ANN401", "FBT001"]
+"src/asy_sgp40_driver.py" = ["ANN401", "FBT001", "N801"]
 "tests/test_asy_sgp40_driver.py" = ["ANN401"]
 "tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
 "tests/test_notification_sgp40_integration.py" = ["ANN401"]
@@ -309,7 +312,7 @@ max-returns = 11
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
-# api_response.py above, and asserts its static mount is non-None purely to narrow the type for
+# asy_api_response.py above, and asserts its static mount is non-None purely to narrow the type for
 # mypy (the route is only ever registered when it isn't None).
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
 "digital_twin/_http_client.py" = ["ANN401"]  # ANN401: category 2 above, the reader-side half of the same one-Stream-for-both-directions seam - readinto() has no clean non-Any type either
@@ -430,56 +433,57 @@ module = [
     "_uart_comm_harness",
     "_uart_link_contract",
     "allocation_need_per_source",
-    "api_response",
+    "asy_api_response",
     "asy_bmp3xx_driver",
+    "asy_captive_dns",
+    "asy_config_manager",
     "asy_fram_manager",
     "asy_isl29125_driver",
     "asy_neopixel_driver",
     "asy_notification_service",
     "asy_ntp_client",
+    "asy_print_log",
     "asy_scd30_driver",
     "asy_sgp40_driver",
+    "asy_system_service",
     "asy_uart_comm",
     "asy_uart_link_driver",
     "asy_webserver_service",
     "asy_wifi_service",
-    "base_classes",
-    "captive_dns",
-    "config_manager",
     "machine",
-    "print_log",
     "serving_at_default_gc",
-    "system_service",
-    "test_api_response",
+    "test_asy_api_response",
+    "test_asy_base_classes",
     "test_asy_bmp3xx_driver",
+    "test_asy_captive_dns",
+    "test_asy_config_manager",
+    "test_asy_crc_checks",
     "test_asy_dns_client",
     "test_asy_fram_allocation_budget",
     "test_asy_fram_driver",
     "test_asy_fram_manager",
     "test_asy_fram_wire_trace",
+    "test_asy_framing_codecs",
     "test_asy_i2c_driver",
     "test_asy_isl29125_driver",
     "test_asy_neopixel_driver",
     "test_asy_notification_service",
     "test_asy_ntp_client",
+    "test_asy_print_log",
     "test_asy_scd30_driver",
     "test_asy_sgp40_driver",
     "test_asy_spi_driver",
+    "test_asy_system_service",
     "test_asy_uart_comm",
     "test_asy_uart_driver",
     "test_asy_uart_link_driver",
     "test_asy_udp_socket",
     "test_asy_webserver_service",
     "test_asy_wifi_service",
-    "test_base_classes",
     "test_bus_hazard_generated",
     "test_bus_hazard_multi_device",
-    "test_captive_dns",
-    "test_config_manager",
-    "test_crc_checks",
     "test_fake_timer_and_network",
     "test_fram_integration",
-    "test_framing_codecs",
     "test_neopixel_wifi_integration",
     "test_notification_fram_integration",
     "test_notification_neopixel_integration",
@@ -488,9 +492,7 @@ module = [
     "test_notification_sgp40_integration",
     "test_ntp_fram_system_integration",
     "test_ntp_wifi_dns_integration",
-    "test_print_log",
     "test_setter_microdot_integration",
-    "test_system_service",
     "test_uart_comm_hazard",
     "test_voc_algorithm",
     "test_website_build_integration",

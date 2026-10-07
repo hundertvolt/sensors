@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from _isl29125_chip import Isl29125Chip
 
     from asy_isl29125_driver import ISL29125
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -84,7 +84,7 @@ def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) ->
 
 async def cycle(chip: "Isl29125Chip", reader: ISL29125_Reader, lux: float, tint: "tuple[float, float, float] | None" = None) -> "ISL29125":
     # One complete real cycle: the chip converts at its current gain, the driver reads, decides
-    # the range, and stores - exactly the sequence read_loop() runs, minus the trigger wait.
+    # the range, and stores - exactly the sequence _read_loop() runs, minus the trigger wait.
     chip.set_illumination(lux, tint=tint)
     results = await reader._read_isl()
     await reader._store_isl(results)
@@ -247,18 +247,18 @@ def test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
     # sets the read event. Nothing between here and real hardware is stubbed.
     chip, reader = make_dev_reader("int_path")
     reader.start_timer()  # this is what wires the falling-edge handler
-    reader.read_event.clear()
+    reader._read_event.clear()
     assert reader._active_range == _RANGE_HIGH_LUX  # so the armed threshold is the DOWN crossing
 
     async def scenario() -> "tuple[bool, int]":
         # Two conversions with no driver read between: the derived PRST is 2, so the chip holds the
         # interrupt off until a change has persisted that long. Two cycles (606ms at 16 bit) keeps
-        # the window inside the 1s SampleInterv, so the interrupt can lead the re-check (M.1.4).
+        # the window inside the 1s SampleInterval, so the interrupt can lead the re-check (M.1.4).
         for index in range(2):
             chip.set_illumination(5.0)  # far below the down threshold: the window is crossed
             if index < 1:
-                assert reader.read_event.state == 0, "the persistence counter released too early"
-        fired = bool(reader.read_event.state)
+                assert reader._read_event.state == 0, "the persistence counter released too early"
+        fired = bool(reader._read_event.state)
         # The destructive status read is what clears the flag and releases the line again.
         # Pin(6) is the same registry singleton object the chip fake drives and the driver
         # listens on, which is exactly what makes the whole mechanism work.
@@ -283,7 +283,7 @@ def test_the_range_still_tracks_when_the_interrupt_line_never_asserts() -> None:
         for lux in (40.0, 900.0, 40.0, 900.0):
             await cycle(chip, reader, lux)
             ranges.append(reader._active_range)
-        return ranges, bool(reader.read_event.state)
+        return ranges, bool(reader._read_event.state)
 
     ranges, interrupt_fired = run(scenario())
     assert interrupt_fired is False  # the line really never moved

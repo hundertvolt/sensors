@@ -1,0 +1,55 @@
+=================================== FAILURES ===================================
+_____ test_each_ruff_ceiling_sits_at_its_measured_maximum[max-statements] ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8')
+ceiling = _Ceiling(rule='PLR0915', section='pylint', option='max-statements')
+
+    @pytest.mark.parametrize("ceiling", _CEILINGS, ids=[c.option for c in _CEILINGS])
+    def test_each_ruff_ceiling_sits_at_its_measured_maximum(repo_root: Path, ceiling: _Ceiling) -> None:
+        problem = _ceiling_problem(repo_root, ceiling, _configured(repo_root, ceiling))
+>       assert problem is None, problem
+E       AssertionError: max-statements = 78 sits above the measured maximum: lower it (nothing reaches 78)
+E       assert 'max-statements = 78 sits above the measured maximum: lower it (nothing reaches 78)' is None
+
+tests_scripts/test_lint_ceilings.py:200: AssertionError
+____________ test_an_unread_flag_on_a_class_that_carries_none_fails ____________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-4827/test_an_unread_flag_on_a_class0/src')
+
+    def test_an_unread_flag_on_a_class_that_carries_none_fails(src_copy: Path) -> None:
+        _edit(src_copy, "asy_neopixel_driver.py", "        self._overlay_bri = led_overl_bri\n", "        self._overlay_bri = led_overl_bri\n        self.initialized = False\n")
+>       _edit(src_copy, "asy_neopixel_driver.py", "        return await self.pr.setup()\n", "        self.initialized = True\n        return await self.pr.setup()\n")
+
+tests_scripts/test_readiness_gates.py:171: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+src = PosixPath('/tmp/pytest-of-root/pytest-4827/test_an_unread_flag_on_a_class0/src')
+name = 'asy_neopixel_driver.py', old = '        return await self.pr.setup()\n'
+new = '        self.initialized = True\n        return await self.pr.setup()\n'
+
+    def _edit(src: Path, name: str, old: str, new: str) -> None:
+        path = src / name
+        text = path.read_text(encoding="utf-8")
+>       assert text.count(old) == 1, f"{name}: the anchor is not unique: {old!r}"
+E       AssertionError: asy_neopixel_driver.py: the anchor is not unique: '        return await self.pr.setup()\n'
+E       assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0x567b830>('        return await self.pr.setup()\n')
+E        +    where <built-in method count of str object at 0x567b830> = '"""Pure NeoPixel LED hardware service: overlay switch/toggle, a dimmed ramp-up/ramp-down signal, and internal\n(`requ...n\n    def toggle(self) -> None:\n        self._overlay_on = not self._overlay_on\n        self._overlay_start.set()\n'.count
+
+tests_scripts/test_readiness_gates.py:154: AssertionError
+=============================== warnings summary ===============================
+  - tests_scripts/test_lint_ceilings.py::test_each_ruff_ceiling_sits_at_its_measured_maximum[max-statements]: failed in call: AssertionError: max-statements = 78 sits above the measured maximum: lower it (nothing reaches 78)
+  - tests_scripts/test_readiness_gates.py::test_an_unread_flag_on_a_class_that_carries_none_fails: failed in call: AssertionError: asy_neopixel_driver.py: the anchor is not unique: '        return await self.pr.setup()\n'
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[grkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[klkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[schlafzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+Levels: L0 FAIL · L1 PASS · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+Counts (files): passed 89 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 2896 · failed 2 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 3981 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_scripts/ (pytest): pytest exited nonzero or timed out; 2 failed (listed above)
+Result: FAIL

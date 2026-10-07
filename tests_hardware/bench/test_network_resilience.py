@@ -35,7 +35,7 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 # ---------------------------------------------------------------------------
 # WiFi outage or flap inside an already-established STA connection. Per
 # _on_sta_disconnected(), that case takes the safe "retry in 60s" branch and never increments
-# connection_failures or reaches hotspot fallback - read out of the source, not assumed.
+# _connection_failures or reaches hotspot fallback - read out of the source, not assumed.
 # ---------------------------------------------------------------------------
 
 
@@ -205,12 +205,12 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
 
 
 def _assert_wifi_log_has_only_benign_outage_warnings(dut_ip: str) -> None:
-    """Tolerates the two warnings a real outage logs: WLAN_NO_AP (a retry poll landing mid-outage) and
-    WLAN_AUTH_FAILED (cyw43's BADAUTH, also raised when the AP drops mid-handshake - BACKLOG item 29).
-    Anything else still fails; the password never changes here, so WLAN_AUTH_FAILED cannot be real."""
+    # Tolerates the two warnings a real outage logs: WLAN_NO_AP (a retry poll landing mid-outage) and
+    # WLAN_AUTH_FAILED (cyw43's BADAUTH, also raised when the AP drops mid-handshake - BACKLOG item 29).
+    # Anything else still fails; the password never changes here, so WLAN_AUTH_FAILED cannot be real.
     entry = get_errcount(dut_ip).get("WIFI", {})
     history = entry.get("history", [])
-    # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
+    # "N" entries are asy_print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
     # always present, filling out the fixed-size ring, and not a real log line at all.
     benign = (code("W", "WLAN_AUTH_FAILED"), code("W", "WLAN_NO_AP"))
     unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") in benign)]
@@ -347,25 +347,25 @@ def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_r
     # netem loss, so the outage outlasts the 5s NTP fetch timeout (NtpTiming.fetch_timeout_ms) but clears inside the 15s retry.
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
-    original_host = get_before.json()["NTP_Host"]
+    original_host = get_before.json()["NTPHost"]
 
     def _synced() -> bool:
         status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).json()
-        return status.get("networking", {}).get("NtpSynced") is True
+        return status.get("networking", {}).get("NTPSynced") is True
 
     # dut_ip only waits for HTTP reachability, not specifically for NTP sync to finish - confirmed
-    # directly (NtpLastSyncAge showed sync completing only ~12s after dut_ip returned), so this is
+    # directly (NTPLastSyncAge showed sync completing only ~12s after dut_ip returned), so this is
     # a real precondition worth waiting for, not asserting instantly.
     wait_until(_synced, timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts")
     reset_all_error_logs(dut_ip)
 
     bench.block_udp_ports([123])
     try:
-        # Re-triggers a real resync without a reboot: PUT-ing NTP_Host back to its current value
+        # Re-triggers a real resync without a reboot: PUT-ing NTPHost back to its current value
         # still fires post_asy_fct, which runs if ANY field in the call validated (the garbage-
-        # NTP_Host test below has the full account).
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=_PROBE_TIMEOUT_S)
-        assert put_res.status_code == 200 and put_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"re-triggering PUT /networking NTP_Host={original_host!r} was rejected: {put_res.status_code} {put_res.body!r}"
+        # NTPHost test below has the full account).
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": original_host}, timeout_s=_PROBE_TIMEOUT_S)
+        assert put_res.status_code == 200 and put_res.json()["result"].get("NTPHost") in ("Valid", "Unchanged"), f"re-triggering PUT /networking NTPHost={original_host!r} was rejected: {put_res.status_code} {put_res.body!r}"
         time.sleep(8.0)  # longer than the real 5s fetch timeout, so this attempt genuinely fails, not just races a lucky window
     finally:
         bench.unblock_udp_ports([123])
@@ -463,14 +463,14 @@ _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - decades fro
 
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
-    # a reply from anywhere else - checkable via GET /status's UtcTime, since an accepted reply's
+    # a reply from anywhere else - checkable via GET /status's UTCTime, since an accepted reply's
     # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
     get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
-    utc_before = get_before.json()["system"]["UtcTime"]
-    assert utc_before is not None, "GET /status's UtcTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
+    utc_before = get_before.json()["system"]["UTCTime"]
+    assert utc_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
     year_before = utc_before["year"]
-    assert 2020 < year_before < 2049, f"DUT's own UtcTime is already outside a sane pre-test range, can't use it as this test's own signal: {year_before}"
+    assert 2020 < year_before < 2049, f"DUT's own UTCTime is already outside a sane pre-test range, can't use it as this test's own signal: {year_before}"
 
     reset_all_error_logs(dut_ip)
     try:
@@ -496,9 +496,9 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
         time.sleep(_RTC_WRITE_WAIT_S)  # generous relative to _parse_ntp_reply()'s own synchronous RTC().datetime() write, if it were ever reached
         get_after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
         assert get_after.status_code == 200, f"GET /status failed: {get_after.status_code} {get_after.body!r}"
-        utc = get_after.json()["system"]["UtcTime"]
+        utc = get_after.json()["system"]["UTCTime"]
         year_after = None if utc is None else utc["year"]  # None = not synced, which is still not 2050
-        assert year_after != 2050, f"the DUT's RTC was set to this test's own spoofed reply's injected date (2050-01-01) - AsyUDPSocket accepted a reply from an unexpected source on a connected socket:\n{get_after.body!r}"
+        assert year_after != 2050, f"the DUT's RTC was set to this test's own spoofed reply's injected date (2050-01-01) - UDPSocket accepted a reply from an unexpected source on a connected socket:\n{get_after.body!r}"
         assert_no_task_ended(dut_ip, "a spoofed NTP reply")
     finally:
         # Always runs, even on a failed assertion above - this test's own last hard_reset() must
@@ -514,7 +514,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
 # ---------------------------------------------------------------------------
 # A config-level NTP fault rather than a network-level one (owner's suggestion, 2026-09-02): PUT a
-# garbage NTP_Host on a live link, watch the DNS failure degrade cleanly, restore, confirm recovery.
+# garbage NTPHost on a live link, watch the DNS failure degrade cleanly, restore, confirm recovery.
 # Starting synced reaches _handle_ntp_sync_failure()'s ntp_issynced() branch, which nothing else does.
 # ---------------------------------------------------------------------------
 
@@ -527,20 +527,20 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
-    original_host = get_before.json()["NTP_Host"]
+    original_host = get_before.json()["NTPHost"]
     # An earlier run aborted before its own restore leaves the board already on the garbage value.
     # The PUT below is then reported "Unchanged" and fires no post_asy_fct, so name that cause here
     # rather than let it surface as "rejected at the schema level", which it would not have been.
-    assert original_host != _GARBAGE_NTP_HOST, f"the board is already on {_GARBAGE_NTP_HOST!r} - an earlier run aborted before restoring; put NTP_Host back before rerunning"
+    assert original_host != _GARBAGE_NTP_HOST, f"the board is already on {_GARBAGE_NTP_HOST!r} - an earlier run aborted before restoring; put NTPHost back before rerunning"
 
     try:
         reset_all_error_logs(dut_ip)
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": _GARBAGE_NTP_HOST}, timeout_s=_PROBE_TIMEOUT_S)
-        assert put_res.status_code == 200, f"PUT /networking NTP_Host={_GARBAGE_NTP_HOST!r} failed: {put_res.status_code} {put_res.body!r}"
-        # _VAL_NH bounds string length (3-1024) and nothing else, so a syntactically garbage but
-        # length-valid host is accepted as "Valid". The failure surfaces later, in the DNS
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": _GARBAGE_NTP_HOST}, timeout_s=_PROBE_TIMEOUT_S)
+        assert put_res.status_code == 200, f"PUT /networking NTPHost={_GARBAGE_NTP_HOST!r} failed: {put_res.status_code} {put_res.body!r}"
+        # _VAL_NTP_HOST bounds string length (3-253) and nothing else, so a syntactically garbage but
+        # length-valid host answers "Valid". The failure surfaces later, in the DNS
         # resolution that this field's own post_asy_fct triggers.
-        assert put_res.json()["result"].get("NTP_Host") == "Valid", f"garbage NTP_Host was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
+        assert put_res.json()["result"].get("NTPHost") == "Valid", f"garbage NTPHost was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
 
         # post_asy_fct resyncs asynchronously, so poll for the DNS failure to land:
         # _resolve_ntp_server() logs "No valid NTP server:" as NTP_DNS - the same path the
@@ -549,39 +549,39 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
             lambda: _ntp_error_log_contains(dut_ip, code("E", "NTP_DNS")),
             timeout_s=_WAIT_TIMEOUT_S,
             poll_interval_s=_WAIT_POLL_S,
-            description="NTP module to log NTP_DNS (No valid NTP server) for the garbage NTP_Host",
+            description="NTP module to log NTP_DNS (No valid NTP server) for the garbage NTPHost",
         )
         # The rest of the system must stay fully healthy throughout - a bad NTP host degrading
         # gracefully means exactly this, not just "the error got logged".
-        assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive while NTP_Host was garbage"
-        assert_no_task_ended(dut_ip, "a garbage NTP_Host")
+        assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive while NTPHost was garbage"
+        assert_no_task_ended(dut_ip, "a garbage NTPHost")
     finally:
-        # Restore the real, original NTP_Host regardless of outcome - this PUT mutates the board's
+        # Restore the real, original NTPHost regardless of outcome - this PUT mutates the board's
         # real, persisted config on a shared bench rig.
         reset_all_error_logs(dut_ip)
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=_PROBE_TIMEOUT_S)
-        assert restore_res.status_code == 200, f"failed to restore original NTP_Host {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": original_host}, timeout_s=_PROBE_TIMEOUT_S)
+        assert restore_res.status_code == 200, f"failed to restore original NTPHost {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
         # "Unchanged" counts as restored, as in _restore_ssid_over() and the sensor-config files:
         # if the body failed before its PUT landed the board is still on original_host, and
         # insisting on "Valid" would replace the real failure with a cleanup assertion.
-        assert restore_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
+        assert restore_res.json()["result"].get("NTPHost") in ("Valid", "Unchanged"), f"restoring the original NTPHost was rejected: {restore_res.json()!r}"
 
     # Recovery: the restore PUT fires post_asy_fct too, and that resync must succeed. Read from
-    # NtpSynced under GET /status's nested "networking" object - GET /networking is config schema
+    # NTPSynced under GET /status's nested "networking" object - GET /networking is config schema
     # only and has no such field, which was a real test bug (tests_hardware/README.md).
     def _synced() -> bool:
         status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).json()
-        return status.get("networking", {}).get("NtpSynced") is True
+        return status.get("networking", {}).get("NTPSynced") is True
 
     # hard_reset() fallback is a defensive measure against a rare real WiFi hiccup - a resync is
     # expected well inside the first 30s in the overwhelming majority of runs; needing this
     # fallback at all is worth a second look, not an expected outcome.
     try:
-        wait_until(_synced, timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description=f"NTP to report synced again after restoring a real NTP_Host ({original_host!r})")
+        wait_until(_synced, timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description=f"NTP to report synced again after restoring a real NTPHost ({original_host!r})")
     except TimeoutError:
         bench.kick_all_stations()
         board.hard_reset()
-        wait_until(_synced, timeout_s=_NTP_RESYNC_AFTER_RESET_TIMEOUT_S, poll_interval_s=_RECONNECT_POLL_S, description=f"NTP to report synced again (after one recovery hard_reset() retry, real NTP_Host={original_host!r})")
+        wait_until(_synced, timeout_s=_NTP_RESYNC_AFTER_RESET_TIMEOUT_S, poll_interval_s=_RECONNECT_POLL_S, description=f"NTP to report synced again (after one recovery hard_reset() retry, real NTPHost={original_host!r})")
     assert_module_error_log_empty(dut_ip, "NTP")
 
 
@@ -594,7 +594,7 @@ def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
 
 # ---------------------------------------------------------------------------
 # A real-format SSID no AP here broadcasts; _VAL_SSID bounds length only, the same gap as
-# NTP_Host. It aims to finish inside the ~50s before hotspot fallback takes dut_ip away, and when
+# NTPHost. It aims to finish inside the ~50s before hotspot fallback takes dut_ip away, and when
 # jitter blows that budget it joins the DUT's own hotspot instead - a recovery path is a pass.
 # ---------------------------------------------------------------------------
 
@@ -608,7 +608,7 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_ssid = get_before.json()["SSID"]
     original_hostname = get_before.json()["Hostname"]
-    # Same as the garbage-NTP_Host test above: an aborted earlier run leaves the board already on
+    # Same as the garbage-NTPHost test above: an aborted earlier run leaves the board already on
     # the garbage SSID, making the PUT below "Unchanged" - no reconnect_wifi() post_fct fires, and
     # the failure would blame schema validation for what is a board-state problem.
     assert original_ssid != _GARBAGE_SSID, f"the board is already on {_GARBAGE_SSID!r} - an earlier run aborted before restoring; put SSID back before rerunning"
@@ -631,7 +631,7 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
 
     # dut_ip cannot come back while the garbage SSID is configured - a reconnect is impossible by
     # construction, not merely unlikely - so this snapshot check is correct rather than racy about
-    # whether the DUT has started its connection_failures streak toward hotspot fallback.
+    # whether the DUT has started its _connection_failures streak toward hotspot fallback.
     if http_client_is_ok(dut_ip):
         # Happy path: still reachable over the normal bridge network - restore directly. Not
         # actually expected to trigger (see comment above), kept only as a defensive fallback.
@@ -864,13 +864,13 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 
 _BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
 _OLD_CONTENT_CAP = 4096  # what it was before Part I.6; the 2048..4096 band is the discriminator
-_SCHEMA_MAX_BODY = 1312  # largest schema-permitted PUT body, dominated by NTP_Host's 1024 (I.6)
+_SCHEMA_MAX_BODY = 972  # largest schema-permitted PUT body on the bench's dev: its /sensors route (I.6)
 
 
 def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:
-    """A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers. Unknown keys
-    are ignored silently, so nothing validates, persists or logs: the size is the whole subject, which
-    keeps every test below outside the persistence_write gate."""
+    # A PUT /sensors body of exactly total_bytes, under a sensor key no driver registers. Unknown keys
+    # are ignored silently, so nothing validates, persists or logs: the size is the whole subject, which
+    # keeps every test below outside the persistence_write gate.
     envelope = len(json.dumps({"HWTESTNoSuchSensor": {"Padding": ""}}).encode())
     body = {"HWTESTNoSuchSensor": {"Padding": "x" * (total_bytes - envelope)}}
     assert len(json.dumps(body).encode()) == total_bytes, "padding arithmetic drifted from json.dumps()"
@@ -908,17 +908,17 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
 
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str) -> None:
     # The direction that matters when a cap is LOWERED: the regression would be refusing something
-    # legitimate. 1312 B is the largest body any route's own schema can produce, so a real maximal
-    # config push must still be served - 1.56x headroom, derived in tests_scripts/ and asserted here.
+    # legitimate. 972 B is the largest body any route's own schema can produce on dev, so a real
+    # maximal config push must still be served - 2.1x headroom, derived in tests_scripts/ and asserted here.
     reset_all_error_logs(dut_ip)
     assert _SCHEMA_MAX_BODY < _BODY_CAP, "the schema maximum no longer fits under the cap - Part I.6's premise has moved"
     assert _put_sized(dut_ip, _SCHEMA_MAX_BODY) == 200, f"the largest schema-permitted body ({_SCHEMA_MAX_BODY} B) was rejected"
-    # And the real field that dominates that maximum, not just padding. ONE character over
-    # _VAL_NH's own 3..1024 bound, so the handler marks it Invalid and nothing is written: at
-    # exactly 1024 it is valid, and an accepted NTP_Host is a flash write this test must not own.
-    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": "z" * 1025}, timeout_s=_PROBE_TIMEOUT_S)
-    assert res.status_code == 200, f"a body carrying a maximal NTP_Host was rejected at the TRANSPORT level, which is the cap's doing: {res.status_code} {res.body!r}"
-    assert res.json()["result"].get("NTP_Host") == "Invalid", f"a 1025-char NTP_Host was not marked Invalid, so it may have PERSISTED: {res.body!r}"
+    # And the largest string field any schema permits, not just padding. ONE character over
+    # _VAL_NTP_HOST's own 3..253 bound (RFC 1035), so the handler marks it Invalid and nothing is written:
+    # at exactly 253 it is valid, and an NTPHost the handler takes is a flash write this test must not own.
+    res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": "z" * 254}, timeout_s=_PROBE_TIMEOUT_S)
+    assert res.status_code == 200, f"a body carrying a maximal NTPHost was rejected at the TRANSPORT level, which is the cap's doing: {res.status_code} {res.body!r}"
+    assert res.json()["result"].get("NTPHost") == "Invalid", f"a 254-char NTPHost was not marked Invalid, so it may have PERSISTED: {res.body!r}"
 
 
 def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_ip: str) -> None:
@@ -936,9 +936,9 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
 
 
 def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, result_note: Callable[..., None]) -> None:
-    """The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
-    bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
-    connections x 2048 now, connections x 16384 while the band was open."""
+    # The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
+    # bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
+    # connections x 2048 now, connections x 16384 while the band was open.
     reset_all_error_logs(dut_ip)
     # The same settle the connection-ceiling test above takes, and for the same reason: _serve()
     # releases its slot in a finally that runs after _close_writer(), so the PUT just made can
@@ -1001,14 +1001,14 @@ def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(du
 def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     # Wrong type, out-of-range, and an entirely unknown sensor key, all in one real REST call -
-    # asy_bmp3xx_driver.py's own _VAL_POV only accepts _OSR_SETTINGS=(1,2,4,8,16,32).
+    # asy_bmp3xx_driver.py's own _VAL_PRES_OVERS only accepts _OSR_SETTINGS=(1,2,4,8,16,32).
     res = http_client.fetch(
         dut_ip,
         80,
         "PUT",
         "/sensors",
         {
-            "BMP3XX": {"PressOvers": "banana", "FiltCoeff": 999},
+            "BMP3XX": {"PresOvers": "banana", "FiltCoeff": 999},
             "TotallyUnknownSensor": {"Whatever": 1},
         },
         timeout_s=_PROBE_TIMEOUT_S,
@@ -1016,7 +1016,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
     assert res.status_code == 200, f"a syntactically valid but nonsensical PUT body crashed the request instead of being marked Invalid: {res.status_code} {res.body!r}"
     body = res.json()
     bmp_result = body["result"].get("BMP3XX", {})
-    assert bmp_result.get("PressOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
+    assert bmp_result.get("PresOvers") == "Invalid", f"a wrong-typed field was not marked Invalid: {bmp_result!r}"
     assert bmp_result.get("FiltCoeff") == "Invalid", f"an out-of-range field was not marked Invalid: {bmp_result!r}"
     assert "TotallyUnknownSensor" not in body["result"], f"an entirely unknown sensor key was not silently ignored: {body['result']!r}"
 
@@ -1024,7 +1024,7 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after nonsense PUT field values"
 
     # A rejected key logs BAD_ARG on its own separate "CFGMGR_<NAME>" logger, not "BMP3XX" itself
-    # (config_manager.py's write_config()) - in-RAM only, but still real and REST-visible.
+    # (asy_config_manager.py's write_config()) - in-RAM only, but still real and REST-visible.
     try:
         errcount = get_errcount(dut_ip)
         cfgmgr_entry = errcount.get("CFGMGR_BMP3XX", {})

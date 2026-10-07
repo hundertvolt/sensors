@@ -25,8 +25,8 @@ def setup_toolchain(repo_root: Path) -> ModuleType:
 
 @pytest.fixture
 def recorded_run(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType) -> list[list[str]]:
-    """Replaces module.run with a recorder returning "" by default - lets a test inspect exactly
-    which commands would have been executed without running any of them for real."""
+    # Replaces module.run with a recorder returning "" by default - lets a test inspect exactly
+    # which commands would have been executed without running any of them for real.
     calls: list[list[str]] = []
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
@@ -41,8 +41,8 @@ def recorded_run(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType) -
 
 
 def _make_usb_tty(tmp_path: Path, sys_tty_dir: Path, dev_dir: Path, tty_name: str, id_vendor: str, *, create_dev_node: bool = True) -> None:
-    """Builds a minimal fake /sys/class/tty/<tty_name>/device -> .../<usb-device>/idVendor tree,
-    mirroring the real kernel layout closely enough for detect_pico_serial_devices() to walk."""
+    # Builds a minimal fake /sys/class/tty/<tty_name>/device -> .../<usb-device>/idVendor tree,
+    # mirroring the real kernel layout closely enough for detect_pico_serial_devices() to walk.
     usb_device_dir = tmp_path / "sys_bus" / f"usb-device-{tty_name}"
     usb_interface_dir = usb_device_dir / f"{tty_name}:1.0"
     usb_interface_dir.mkdir(parents=True)
@@ -266,9 +266,9 @@ def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain: Mod
 
 
 def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = "6", eth_iface: str = "eth0", bridge_mac: str = "aa:bb:cc:dd:ee:ff", real_mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
-    r"""A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch: each `nmcli -g`
-    query and the `ip -o link show` lookup answered by its actual field, and `nmcli -g`'s own ':'
-    escaping modelled - without either, the MAC check passes here while never matching on hardware."""
+    # A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch: each `nmcli -g`
+    # query and the `ip -o link show` lookup answered by its actual field, and `nmcli -g`'s own ':'
+    # escaping modelled - without either, the MAC check passes here while never matching on hardware.
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
@@ -378,9 +378,9 @@ def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain: M
 
 
 def _fake_run_with_real_eth0_mac(recorded_run: list[list[str]], mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
-    r"""A fake_run() that also answers get_interface_mac(uplink_iface) with a real `ip -o link show`
-    line, close enough for its own `link/ether\s+(\S+)` regex. The plain fixture's blanket "" makes
-    SetupError propagate through the bridge-creation path instead of exercising it."""
+    # A fake_run() that also answers get_interface_mac(uplink_iface) with a real `ip -o link show`
+    # line, close enough for its own `link/ether\s+(\S+)` regex. The plain fixture's blanket "" makes
+    # SetupError propagate through the bridge-creation path instead of exercising it.
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)

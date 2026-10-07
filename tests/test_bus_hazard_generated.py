@@ -45,9 +45,9 @@ def _generated_src_dir() -> str:
 
 
 def _all_device_wiring_plans() -> "list[tuple[str, dict[str, Any]]]":
-    """(device, plan) for every real devices/*.toml - discovered from whichever wiring-plan JSONs
-    scripts/_generate_sensortask_modules.py already wrote, not a hand-kept device list, so a 7th
-    device is picked up with zero edits here."""
+    # (device, plan) for every real devices/*.toml - discovered from whichever wiring-plan JSONs
+    # scripts/_generate_sensortask_modules.py already wrote, not a hand-kept device list, so a 7th
+    # device is picked up with zero edits here.
     src_dir = _generated_src_dir()
     # os.listdir() + manual filtering, not glob - MicroPython's Unix-port test build has no glob
     # module (confirmed by grep: nothing under tests/ imports it, every existing directory scan

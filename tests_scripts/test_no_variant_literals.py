@@ -53,7 +53,7 @@ _NOT_YET_CLEANED: "dict[str, str]" = {
     "tests/test_asy_isl29125_driver.py": _REASON_UNIT_TEST,
     "tests/test_asy_wifi_service.py": _REASON_UNIT_TEST,
     "tests/test_bus_hazard_multi_device.py": _REASON_UNIT_TEST,
-    "tests/test_config_manager.py": _REASON_UNIT_TEST,
+    "tests/test_asy_config_manager.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_bus_hazard_concurrency.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_construction_arzi.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_construction_dev.py": _REASON_UNIT_TEST,
@@ -85,7 +85,7 @@ _NOT_YET_CLEANED: "dict[str, str]" = {
     "tests/test_sensortask_klkizi.py": _REASON_UNIT_TEST,
     "tests/test_sensortask_schlafzi.py": _REASON_UNIT_TEST,
     "tests/test_sensortask_wozi.py": _REASON_UNIT_TEST,
-    "tests/test_system_service.py": _REASON_UNIT_TEST,
+    "tests/test_asy_system_service.py": _REASON_UNIT_TEST,
     "tests/test_website_build_integration.py": _REASON_UNIT_TEST,
     "tests_hardware/bench/test_network_resilience.py": _REASON_BENCH,
     "tests_hardware/conftest.py": _REASON_BENCH,
@@ -153,7 +153,7 @@ def _homonym_patterns(name: str) -> "list[re.Pattern[str]]":
 
 
 def _quoted_is_exempt(line: str, start: int) -> bool:
-    """A quoted homonym that is a path join's right operand or a device argv element of `iw`/`tc`."""
+    # A quoted homonym that is a path join's right operand or a device argv element of `iw`/`tc`.
     before = line[:start].rstrip()
     if before.endswith("/"):
         return True
@@ -173,7 +173,7 @@ def _homonym_hits(name: str, line: str, others: "list[str]") -> "list[str]":
 
 
 def line_hits(line: str, names: "list[str]", homonyms: "frozenset[str]") -> "list[str]":
-    """Every variant literal on one line: a plain name anywhere, a homonym only in variant-shaped forms."""
+    # Every variant literal on one line: a plain name anywhere, a homonym only in variant-shaped forms.
     hits: list[str] = []
     for name in names:
         if name in homonyms:
@@ -220,7 +220,7 @@ def test_every_not_yet_cleaned_reason_names_a_change() -> None:
 
 
 def _named(text: str) -> str:
-    """A self-test line with `{V}` as a plain device name and `{H}` as a homonym, both from the data."""
+    # A self-test line with `{V}` as a plain device name and `{H}` as a homonym, both from the data.
     plain = next(n for n in DEVICE_NAMES if n not in _homonyms(DEVICE_NAMES, ""))
     homonym = next(iter(_homonyms(DEVICE_NAMES, "") or _ENGLISH_HOMONYMS))
     return text.replace("{V}", plain).replace("{Vc}", plain.capitalize()).replace("{H}", homonym).replace("{Hc}", homonym.capitalize())

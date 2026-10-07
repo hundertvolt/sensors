@@ -445,7 +445,7 @@ def test_instance_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 def test_instance_optional_field_is_allowed(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"][0]["trigger_sec"] = 7  # scd30's own optional field
+    doc["instance"][0]["trigger_s"] = 7  # scd30's own optional field
     _build(tmp_path, src_dir, doc)  # no raise
 
 
@@ -501,7 +501,7 @@ def test_instance_bus_field_wrong_type_rejected(tmp_path: Path, src_dir: Path) -
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,bad_value", [("max_size", "8192"), ("trigger_sec", "3")])
+@pytest.mark.parametrize("field,bad_value", [("max_size", "8192"), ("trigger_s", "3")])
 def test_instance_int_field_wrong_type_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: str) -> None:
     doc = base_doc()
     if field == "max_size":
@@ -519,7 +519,7 @@ def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Pat
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_sec", True), ("trigger_sec", 3.0)])
+@pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_s", True), ("trigger_s", 3.0)])
 def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: object) -> None:
     # The same isinstance guard as test_instance_int_field_wrong_type_rejected above,
     # but for bool/float (both plausible copy-paste mistakes) rather than a quoted string.
@@ -763,7 +763,7 @@ def test_two_fixed_address_instances_same_driver_same_bus_collide(tmp_path: Path
     # Neither declares an explicit address - both scd30's, hardware address is fixed, so they
     # can't be told apart on the same bus at all.
     doc = base_doc()
-    doc["instance"].append({"driver": "scd30", "name_ext": "second", "bus": "i2c0", "irq_pin": 21, "trigger_sec": 3})
+    doc["instance"].append({"driver": "scd30", "name_ext": "second", "bus": "i2c0", "irq_pin": 21, "trigger_s": 3})
     with pytest.raises(BuildError, match="can't be told apart"):
         _build(tmp_path, src_dir, doc)
 
@@ -793,17 +793,17 @@ def test_bmp3xx_address_in_legal_set_is_fine(tmp_path: Path, src_dir: Path, lega
 
 
 @pytest.mark.parametrize("bad_trigger", [0, 3601, -1])
-def test_bmp3xx_trigger_sec_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
+def test_bmp3xx_trigger_s_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": bad_trigger})
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_s": bad_trigger})
     with pytest.raises(BuildError, match="outside this driver's legal range"):
         _build(tmp_path, src_dir, doc)
 
 
 @pytest.mark.parametrize("legal_trigger", [1, 3600, 60])
-def test_bmp3xx_trigger_sec_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
+def test_bmp3xx_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": legal_trigger})
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_s": legal_trigger})
     _build(tmp_path, src_dir, doc)  # no raise
 
 
@@ -853,7 +853,7 @@ def test_wiring_reference_unresolved(tmp_path: Path, src_dir: Path) -> None:
 
 def test_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"][4]["wiring"]["signal_sink"] = "fram"  # fram is AsyFramManager, not NeopixelDriver
+    doc["instance"][4]["wiring"]["signal_sink"] = "fram"  # fram is FRAMManager, not NeopixelDriver
     with pytest.raises(BuildError, match="requires a NeopixelDriver"):
         _build(tmp_path, src_dir, doc)
 
@@ -958,7 +958,7 @@ def test_device_wiring_reference_unresolved(tmp_path: Path, src_dir: Path) -> No
 
 def test_device_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["device"]["wiring"]["led_target"] = "fram"  # fram is AsyFramManager, not NeopixelDriver
+    doc["device"]["wiring"]["led_target"] = "fram"  # fram is FRAMManager, not NeopixelDriver
     with pytest.raises(BuildError, match="requires a NeopixelDriver"):
         _build(tmp_path, src_dir, doc)
 
@@ -981,18 +981,18 @@ def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir:
 
 def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not AsyFramManager
-    with pytest.raises(BuildError, match="requires a AsyFramManager"):
+    doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not FRAMManager
+    with pytest.raises(BuildError, match="requires a FRAMManager"):
         _build(tmp_path, src_dir, doc)
 
 
 @pytest.mark.parametrize(
     "filename,tag",
     [
-        ("system_service.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
-        ("asy_wifi_service.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
-        ("asy_ntp_client.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
-        ("asy_webserver_service.py", "# @wiring fram_target AsyFramManager log optional kwarg"),
+        ("asy_system_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
+        ("asy_wifi_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
+        ("asy_ntp_client.py", "# @wiring fram_target FRAMManager log optional kwarg"),
+        ("asy_webserver_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
     ],
 )
 def test_device_wiring_fram_target_checks_every_consumers_own_tag(tmp_path: Path, src_dir: Path, filename: str, tag: str) -> None:
@@ -1032,7 +1032,7 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "NotificationCoordinator", "signal_sink"),))
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "NotificationService", "signal_sink"),))
     model = DeviceModel("dev", tmp_path / "dev.toml", {"device": {"wiring": {}}})
     with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)
@@ -1059,8 +1059,8 @@ def test_requires_tag_satisfied(tmp_path: Path, src_dir: Path) -> None:
 
 
 def _staged_src_with_scd30_tag(tmp_path: Path, src_dir: Path, replacement: str) -> Path:
-    """A writable copy of src/ whose scd30 driver carries `replacement` in place of its real
-    `# @requires` tag - the only way to exercise a broken tag end-to-end through build_model()."""
+    # A writable copy of src/ whose scd30 driver carries `replacement` in place of its real
+    # `# @requires` tag - the only way to exercise a broken tag end-to-end through build_model().
     staged = tmp_path / "staged_src"
     shutil.copytree(src_dir, staged)
     driver = staged / "asy_scd30_driver.py"
@@ -1138,7 +1138,7 @@ def test_requires_tag_removed_entirely_still_builds(tmp_path: Path, src_dir: Pat
 
 
 def _staged_src(tmp_path: Path, src_dir: Path, filename: str, old: str, new: str) -> Path:
-    """A writable copy of src/ with one substitution applied to one driver file."""
+    # A writable copy of src/ with one substitution applied to one driver file.
     staged = tmp_path / "staged_src"
     if not staged.exists():
         shutil.copytree(src_dir, staged)
@@ -1303,7 +1303,7 @@ def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
     # and dev.toml are independently-evolved fixtures whose pin claims were never meant to meet.
     next(i for i in doc["instance"] if i["driver"] == "scd30")["irq_pin"] = 6
     # dev.toml's bus knobs too: at 115200 baud the driver's default rxbuf (256) and 20ms poll
-    # cannot hold one poll's arrivals, which UART_Comm.setup() refuses (_check_uart_link_buses()).
+    # cannot hold one poll's arrivals, which UARTComm.setup() refuses (_check_uart_link_buses()).
     knobs = {"baudrate": 115200, "rxbuf": 512, "txbuf": 512, "poll_wait_ms": 2, "poll_idle_ms": 50}
     doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, **knobs}
     doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, **knobs}
@@ -1313,8 +1313,8 @@ def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
 
 
 def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # 2 x 2 + poll_idle_ms + 21ms GC pause against UartLinkExerciser's 1000ms timeout: 975 is the
-    # last idle poll that fits, 976 the first UART_Comm.setup() refuses with UART_TIMEOUT_PARAM.
+    # 2 x 2 + poll_idle_ms + 21ms GC pause against UARTLinkDriver's 1000ms timeout: 975 is the
+    # last idle poll that fits, 976 the first UARTComm.setup() refuses with UART_TIMEOUT_PARAM.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart1"]["poll_idle_ms"] = 975
     _build(tmp_path, src_dir, doc)
@@ -1408,7 +1408,7 @@ def test_uart_link_pair_on_its_own_uart_buses_is_valid(tmp_path: Path, src_dir: 
 
 def test_uart_link_pointed_at_an_i2c_bus_is_rejected(tmp_path: Path, src_dir: Path) -> None:
     # The exact real-world typo this check exists for: a device TOML naming an existing bus of the
-    # wrong kind used to build clean and only fail at firmware boot, deep inside UART_Comm's own
+    # wrong kind used to build clean and only fail at firmware boot, deep inside UARTComm's own
     # construction, with a raw AttributeError - not here, at the build-time BuildError this asserts.
     doc = base_doc()
     doc["instance"].append({"driver": "uart_link", "name_ext": "init", "bus": "i2c0", "role": "initiator"})
@@ -1696,19 +1696,19 @@ def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_
 
 
 def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path: Path) -> None:
-    # Generalised off webserver_init_default() for AsyNtpClient's backoff pair: the class name and
+    # Generalised off webserver_init_default() for NTPClient's backoff pair: the class name and
     # file both scope the lookup, and a miss names both rather than falling back to a guess.
     from buildgen.validate import init_int_default
 
-    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass AsyNtpClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
-    assert init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "retry_s") == 10
-    assert init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s") == 600
-    with pytest.raises(BuildError, match=r"AsyNtpClient\.__init__ no longer has a readable int default for 'gone'"):
-        init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "gone")
+    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass NTPClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
+    assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_s") == 10
+    assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_max_s") == 600
+    with pytest.raises(BuildError, match=r"NTPClient\.__init__ no longer has a readable int default for 'gone'"):
+        init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "gone")
     with pytest.raises(BuildError, match=r"Missing\.__init__ no longer has"):
         init_int_default(tmp_path, "asy_ntp_client.py", "Missing", "retry_s")
-    with pytest.raises(BuildError, match=r"cannot read .*nope\.py to resolve AsyNtpClient's own retry_s default"):
-        init_int_default(tmp_path, "nope.py", "AsyNtpClient", "retry_s")
+    with pytest.raises(BuildError, match=r"cannot read .*nope\.py to resolve NTPClient's own retry_s default"):
+        init_int_default(tmp_path, "nope.py", "NTPClient", "retry_s")
 
 
 def test_the_shipped_ntp_backoff_defaults_are_readable_from_the_real_source(src_dir: Path) -> None:
@@ -1751,7 +1751,7 @@ def test_ntp_backoff_keys_are_optional_and_their_src_defaults_pass_the_check(tmp
 
 
 def test_an_ntp_retry_interval_below_the_check_tick_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # AsyNtpClient would silently round it up to its 10s tick; the build says so instead.
+    # NTPClient would silently round it up to its 10s tick; the build says so instead.
     doc = base_doc()
     doc["device"]["ntp_retry_s"] = 9
     with pytest.raises(BuildError, match="every 10s") as info:

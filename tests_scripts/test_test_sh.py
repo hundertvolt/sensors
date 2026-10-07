@@ -94,7 +94,7 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
 
 
 def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tuple[int, int, int, int]:
-    """Runs scripts/test.sh's own _detect_parallelism() against a stub interpreter of chosen speed."""
+    # Runs scripts/test.sh's own _detect_parallelism() against a stub interpreter of chosen speed.
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
     stub = tmp_path / "stub_interpreter"
@@ -108,9 +108,9 @@ def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tupl
 
 
 def _run_detector_with_uptime(repo_root: Path, tmp_path: Path, elapsed_ms: int, *, uptime_readable: bool = True, stepped_date: bool = False) -> tuple[tuple[int, int, int, int], str]:
-    """Same detector, with /proc/uptime replaced by a canned file the stub interpreter advances by
-    exactly elapsed_ms, so probe_ms is set rather than measured. A sleeping stub cannot carry the band
-    assertions: beside the MicroPython tier, a mid-band 0.7s stub read 919-963ms on 2026-09-22."""
+    # Same detector, with /proc/uptime replaced by a canned file the stub interpreter advances by
+    # exactly elapsed_ms, so probe_ms is set rather than measured. A sleeping stub cannot carry the band
+    # assertions: beside the MicroPython tier, a mid-band 0.7s stub read 919-963ms on 2026-09-22.
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
     case_dir = tmp_path / f"uptime_{elapsed_ms}"
@@ -185,8 +185,8 @@ def test_a_genuinely_slow_host_drops_to_one_times_on_the_real_clock(repo_root: P
 
 
 def _run_detector_with_cgroup(repo_root: Path, tmp_path: Path, cpu_max: str) -> tuple[int, int, int, int]:
-    """Same probe, with the cgroup v2 quota file redirected at a canned one - the real
-    /sys/fs/cgroup/cpu.max is whatever this run happens to sit in and cannot be varied."""
+    # Same probe, with the cgroup v2 quota file redirected at a canned one - the real
+    # /sys/fs/cgroup/cpu.max is whatever this run happens to sit in and cannot be varied.
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None
     cpu_file = tmp_path / "cpu.max"
@@ -227,7 +227,7 @@ def test_an_unlimited_or_malformed_quota_leaves_the_core_count_alone(repo_root: 
 
 
 def _resolved_parallelism(repo_root: Path, tmp_path: Path, env_value: str | None) -> int:
-    """Runs the real override/clamp block with _detect_parallelism() stubbed to a known answer."""
+    # Runs the real override/clamp block with _detect_parallelism() stubbed to a known answer.
     text = _test_sh_text(repo_root)
     start = text.index('if [ -n "${TEST_PARALLELISM:-}" ]; then')
     end = text.index("    max_parallel=1\nfi\n", start) + len("    max_parallel=1\nfi\n")
@@ -302,8 +302,8 @@ def test_the_env_override_still_wins_over_autodetection(repo_root: Path) -> None
 
 
 def _cleanup_body(repo_root: Path) -> str:
-    """scripts/test.sh's own _cleanup(), source text only - comments stripped, since this function's
-    own comment names the very mechanisms (pkill) the checks below require it not to USE."""
+    # scripts/test.sh's own _cleanup(), source text only - comments stripped, since this function's
+    # own comment names the very mechanisms (pkill) the checks below require it not to USE.
     body = re.search(r"^_cleanup\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _cleanup() - update this test with it"
     return body.group(0)
@@ -314,9 +314,9 @@ def _without_comments(shell_source: str) -> str:
 
 
 def _run_cleanup_probe(repo_root: Path, tmp_path: Path, *, arm_trap: bool) -> bool:
-    """Reproduces the launch-then-abort pattern; returns True if the inner child survived. Output
-    is discarded, not piped: a captured pipe is inherited by the background job, so the parent's
-    exit would not be observable until that job ended - which is the survival being measured."""
+    # Reproduces the launch-then-abort pattern; returns True if the inner child survived. Output
+    # is discarded, not piped: a captured pipe is inherited by the background job, so the parent's
+    # exit would not be observable until that job ended - which is the survival being measured.
     pidfile = tmp_path / "inner.pid"
     # A second copy, outside the set the trap removes: _cleanup() deletes its own pidfile, so the
     # armed arm would otherwise leave the probe with no pid left to ask about.
@@ -417,7 +417,7 @@ def test_the_session_start_reclamation_is_a_no_op_on_a_clean_tree(repo_root: Pat
 
 
 def _variant_of(repo_root: Path, tmp_path: Path, binary: Path) -> str:
-    """Runs scripts/test.sh's own unix_port_variant() against one binary, whatever it is."""
+    # Runs scripts/test.sh's own unix_port_variant() against one binary, whatever it is.
     body = re.search(r"^unix_port_variant\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines unix_port_variant() - update this test with it"
     script = tmp_path / "variant.sh"
@@ -505,9 +505,9 @@ def test_an_out_of_range_gc_threshold_is_rejected_too(repo_root: Path, value: st
 
 
 def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subprocess.CompletedProcess[str]":
-    """Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source -
-    not the whole script, since an ACCEPTED value carries on into the live-tree sweeps while this
-    file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp."""
+    # Runs scripts/test.sh's GC_THRESHOLD validation block alone, extracted from the real source -
+    # not the whole script, since an ACCEPTED value carries on into the live-tree sweeps while this
+    # file's tests run concurrently with 85 test files holding scratch dirs under tests/_tmp.
     text = _test_sh_text(repo_root)
     lines = text.split("\n")
     start = next((i for i, line in enumerate(lines) if line.startswith('if [ -n "${GC_THRESHOLD:-}"')), None)
@@ -558,8 +558,8 @@ def test_argument_validation_happens_before_anything_in_the_live_tree_is_touched
 
 
 def _nested_run_with_sentinels(repo_root: Path, tmp_path: Path, args: list[str], env: dict[str, str], key: str) -> tuple["subprocess.CompletedProcess[str]", bool, bool]:
-    """Runs a nested scripts/test.sh with sentinels in both sweep targets, on a scratch key of the
-    caller's own; returns the run and whether each sentinel survived."""
+    # Runs a nested scripts/test.sh with sentinels in both sweep targets, on a scratch key of the
+    # caller's own; returns the run and whether each sentinel survived.
     scratch = repo_root / "tests" / "_tmp" / f"zz_test_sh_{key}_sentinel"
     scratch.mkdir(parents=True, exist_ok=True)
     sentinel = scratch / "in_use.txt"
@@ -630,8 +630,8 @@ def test_help_prints_every_option_and_variable_and_touches_nothing(repo_root: Pa
 
 
 def _flag_markers(repo_root: Path, tmp_path: Path, output: str | None, path_prefix: Path | None = None) -> tuple[str, str]:
-    """Runs scripts/test.sh's own _flag_memory_errors() over one file's captured output (None: no log
-    at all) with only results_dir set; returns its .memerr and .noverdict markers' text."""
+    # Runs scripts/test.sh's own _flag_memory_errors() over one file's captured output (None: no log
+    # at all) with only results_dir set; returns its .memerr and .noverdict markers' text.
     body = re.search(r"^_flag_memory_errors\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _flag_memory_errors() - update this test with it"
     results = tmp_path / "results"
@@ -727,9 +727,9 @@ def test_the_gate_is_wired_into_the_run_and_into_the_verdict(repo_root: Path) ->
 
 
 def _annotation_detail_line(repo_root: Path) -> str:
-    """The one line with real logic in the annotation block: it folds a failing file's captured
-    output into a single GitHub-escaped annotation body. Extracted rather than reimplemented, for
-    the same reason _verdict_block() is."""
+    # The one line with real logic in the annotation block: it folds a failing file's captured
+    # output into a single GitHub-escaped annotation body. Extracted rather than reimplemented, for
+    # the same reason _verdict_block() is.
     match = re.search(r'^\s*annotation_detail="\$\(\{ tail.*$', _test_sh_text(repo_root), re.MULTILINE)
     assert match is not None, "scripts/test.sh no longer builds an annotation body from a failing file's log"
     return match.group(0).strip()
@@ -777,8 +777,8 @@ def test_every_way_the_suite_goes_red_gets_an_annotation_and_only_under_actions(
 
 
 def _memerr_detail_line(repo_root: Path) -> str:
-    """The allocation-failure annotation's body line, extracted exactly as _annotation_detail_line()
-    extracts the failing-file one: the same escaping, but over the .memerr marker, read whole."""
+    # The allocation-failure annotation's body line, extracted exactly as _annotation_detail_line()
+    # extracts the failing-file one: the same escaping, but over the .memerr marker, read whole.
     match = re.search(r'^\s*annotation_detail="\$\(\{ cat.*\.memerr.*$', _test_sh_text(repo_root), re.MULTILINE)
     assert match is not None, "scripts/test.sh no longer builds an annotation body from a file's .memerr marker"
     return match.group(0).strip()
@@ -809,7 +809,7 @@ def test_a_missing_memerr_marker_cannot_abort_the_summary_either(repo_root: Path
 
 
 def _annotation_block(repo_root: Path) -> str:
-    """The whole GITHUB_ACTIONS-gated annotation block: from its gate to the first top-level `fi`."""
+    # The whole GITHUB_ACTIONS-gated annotation block: from its gate to the first top-level `fi`.
     match = re.search(r'^if \[ -n "\$\{GITHUB_ACTIONS:-\}" \]; then\n.*?^fi$', _test_sh_text(repo_root), re.MULTILINE | re.DOTALL)
     assert match is not None, "scripts/test.sh no longer emits its annotations from one top-level GITHUB_ACTIONS block"
     return match.group(0)
@@ -857,15 +857,15 @@ def test_an_all_green_run_under_actions_prints_no_annotation_at_all(repo_root: P
 
 
 def _verdict_tail(repo_root: Path) -> str:
-    """scripts/test.sh from its summary-block source line to the end: the collector, the renders,
-    the annotations, the archive and the exit. Extracted rather than reimplemented, so a rewrite of
-    the logic has to keep mapping the outcomes onto the block and the codes."""
+    # scripts/test.sh from its summary-block source line to the end: the collector, the renders,
+    # the annotations, the archive and the exit. Extracted rather than reimplemented, so a rewrite of
+    # the logic has to keep mapping the outcomes onto the block and the codes.
     text = _test_sh_text(repo_root)
     return text[text.index("source scripts/_summary_block.sh") :].rstrip("\n")
 
 
 def _fake_repo(repo_root: Path, tmp_path: Path) -> Path:
-    """A stand-in repo root holding the helpers the tail calls, so its archive lands under tmp_path."""
+    # A stand-in repo root holding the helpers the tail calls, so its archive lands under tmp_path.
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     for name in ("_summary_block.sh", "_summary_block.py", "_archive_evidence.py"):
@@ -877,8 +877,8 @@ _GREEN_RECORD = '{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outco
 
 
 def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None, str | None, str | None]], *, pytest_status: str = "PASS", record: str | None = _GREEN_RECORD, coverage: int = 0, render_fails: bool = False, extra: dict[str, str] | None = None) -> tuple[int, str, Path]:
-    """Runs the verdict tail over a fixture results dir: jobs maps a test file to its (status, log,
-    memerr) contents, None meaning that file is absent; extra plants further result files."""
+    # Runs the verdict tail over a fixture results dir: jobs maps a test file to its (status, log,
+    # memerr) contents, None meaning that file is absent; extra plants further result files.
     root = _fake_repo(repo_root, tmp_path)
     results = tmp_path / "results"
     results.mkdir()
@@ -1041,8 +1041,8 @@ def test_nothing_follows_the_block_on_stdout(repo_root: Path, tmp_path: Path) ->
 
 
 def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str) -> Path:
-    """Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose
-    first call runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir."""
+    # Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose
+    # first call runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir.
     text = _test_sh_text(repo_root)
     bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_flag_memory_errors", "run_test_file")]
     assert all(bodies), "scripts/test.sh no longer defines _flag_memory_errors() and run_test_file()"
@@ -1066,7 +1066,7 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
 
 
 def _job_files(results: Path) -> tuple[str | None, str | None, str | None]:
-    """The (status, log, memerr) a run_test_file() job left, in _run_tail()'s jobs form."""
+    # The (status, log, memerr) a run_test_file() job left, in _run_tail()'s jobs form.
     return tuple(  # type: ignore[return-value]
         (results / f"test_x.{suffix}").read_text() if (results / f"test_x.{suffix}").exists() else None for suffix in ("status", "log", "memerr")
     )

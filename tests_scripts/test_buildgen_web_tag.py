@@ -46,7 +46,7 @@ def _parse_group_expecting(tmp_path: Path, source: str, match: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("field", ["AmbPres", "r", "pin0", "_reserved", "SGPResetVOC"])
+@pytest.mark.parametrize("field", ["AmbPres", "r", "pin0", "_reserved", "ResetVOC"])
 def test_parse_web_tags_field_name_shapes(tmp_path: Path, field: str) -> None:
     (tag,) = _parse(tmp_path, f'# @web {field} section=sensors submitGroup=self label="Label"\n')
     assert tag.field_name == field
@@ -494,7 +494,7 @@ def test_parse_web_tags_real_scd30_measurement_fields(src_dir: Path) -> None:
     measurement_fields = {t.field_name for t in tags if t.section == "measurements"}
     assert measurement_fields == {"CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"}
     config_fields = {t.field_name for t in tags if t.section == "sensors"}
-    assert config_fields == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal", "ContMeas"}
+    assert config_fields == {"TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal", "ContMeas"}
 
 
 def test_parse_web_tags_real_scd30_ambpres_special(src_dir: Path) -> None:
@@ -519,7 +519,7 @@ def test_parse_web_tags_real_bmp3xx_enum_specials(src_dir: Path) -> None:
 def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
     assert {t.field_name for t in tags if t.section == "sensors"} == {
-        "SampleInterv", "PressOvers", "TempOvers", "FiltCoeff", "PressOffset", "TempOffset", "SeaLevelOffs", "MeanAtmTemp",
+        "SampleInterval", "PresOvers", "TempOvers", "FiltCoeff", "PresOffset", "TempOffset", "SeaLevelOffset", "MeanAtmTemp",
     }
     assert {t.field_name for t in tags if t.section == "measurements"} == {"Pres", "Temp", "SLPres", "TS"}
 
@@ -527,8 +527,8 @@ def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
 def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
     assert {t.field_name for t in tags if t.section == "sensors"} == {
-        "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeThresh", "AutoRangeDwell",
-        "IrCompOffset", "IrCompAdjust", "FiltCoeff", "GainRatio", "ISLCalibrate",
+        "SampleInterval", "Resolution", "RangeAuto", "Range", "AutoRangeThresh", "AutoRangeDwell",
+        "IRCompOffset", "IRCompAdjust", "FiltCoeff", "GainRatio", "Calibrate",
     }
     assert {t.field_name for t in tags if t.section == "measurements"} == {
         "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS",
@@ -566,13 +566,13 @@ def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> No
     # these three fields has a documented "0 means X" meaning despite an ordinary (special=None)
     # schema tuple, so the tag's own special: entries - not the schema - must survive parsing.
     tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
-    assert {t.field_name for t in tags if t.section == "sensors"} == {"BackupPeriod", "BackupMaxAge", "WaitTimeNTP", "SGPResetVOC"}
+    assert {t.field_name for t in tags if t.section == "sensors"} == {"BackupPeriod", "BackupMaxAge", "WaitTimeNTP", "ResetVOC"}
     assert {t.field_name for t in tags if t.section == "measurements"} == {"VOC", "Raw", "TS"}
     by_name = {t.field_name: t for t in tags}
     assert dict(by_name["BackupPeriod"].special) == {"0": "Backups off"}
     assert dict(by_name["BackupMaxAge"].special) == {"0": "Use all found backups"}
     assert dict(by_name["WaitTimeNTP"].special) == {"0": "Never wait for NTP sync"}
-    assert by_name["SGPResetVOC"].dispatch is True
+    assert by_name["ResetVOC"].dispatch is True
 
 
 def test_parse_web_tags_real_scd30_always_executed_fields(src_dir: Path) -> None:
@@ -604,26 +604,26 @@ def test_parse_web_tags_real_wifi_byte_bounds_and_shapes(src_dir: Path) -> None:
 def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")
     assert {t.field_name for t in tags if t.submit_group == "identity"} == {"SSID", "PW", "Country", "Hostname"}
-    assert {t.field_name for t in tags if t.submit_group == "wifiLed"} == {"LedWifiOn"}
+    assert {t.field_name for t in tags if t.submit_group == "wifiLed"} == {"LEDWifiOn"}
     assert next(t for t in tags if t.field_name == "PW").mask is True
 
 
 def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_ntp_client.py", "dev", "ntp")
-    assert {t.field_name for t in tags if t.section == "networking"} == {"NTP_Host", "NTP_Offset_S", "NTP_Interv_H"}
+    assert {t.field_name for t in tags if t.section == "networking"} == {"NTPHost", "NTPOffset", "NTPInterval"}
     # GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System page instead
     # (a deliberate cross-file section/group assignment, not a mistake to "fix").
     assert {t.field_name for t in tags if t.section == "system"} == {"GMTOffset", "DSTOffset"}
 
 
 def test_parse_web_tags_real_system_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "system_service.py", "dev", "system")
+    tags = parse_web_tags(src_dir / "asy_system_service.py", "dev", "system")
     assert {t.field_name for t in tags} == {"DebugLevel"}
 
 
 def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_notification_service.py", "dev", "notification")
-    assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "Interv", "FlashDur"}
+    assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur"}
 
 
 @pytest.mark.parametrize(
@@ -635,7 +635,7 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
         ("asy_isl29125_driver.py", ("measurements", "self")),
         ("asy_wifi_service.py", ("networking", "identity")),
         ("asy_ntp_client.py", ("networking", "ntp")),
-        ("system_service.py", ("system", "settings")),
+        ("asy_system_service.py", ("system", "settings")),
         ("asy_notification_service.py", ("notification", "autoConfig")),
     ],
 )
@@ -648,5 +648,5 @@ def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> Non
     tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_web_tags(p, "dev", "x")}
     assert tagged == {
         "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
-        "asy_wifi_service.py", "asy_ntp_client.py", "system_service.py", "asy_notification_service.py",
+        "asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py", "asy_notification_service.py",
     }

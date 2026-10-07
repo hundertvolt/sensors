@@ -62,7 +62,7 @@ _UART_LINK_ROLES = frozenset({"initiator", "responder"})  # asy_uart_comm.ROLE_I
 # AST-only-parsing rule exists to avoid), so the two string literals are the contract instead.
 _UART_OPTIONAL_INT_FIELDS = ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms")
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
-_HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_HOST carries the same number
+_HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_HOSTNAME carries the same number
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 # Optional: absent, each falls back to its class's own __init__ default, and the checks below run
 # against that EFFECTIVE value - so no device can outrun its firmware by simply saying nothing.
@@ -80,11 +80,11 @@ _WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW
 _ConstT = TypeVar("_ConstT", int, float, str)
 
 _DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str, str], ...]]" = {
-    "led_target": (("asy_wifi_service.py", "AsyConnTime", "conn"),),
+    "led_target": (("asy_wifi_service.py", "WifiService", "conn"),),
     "fram_target": (
-        ("system_service.py", "SystemService", "sysfunct"),
-        ("asy_wifi_service.py", "AsyConnTime", "conn"),
-        ("asy_ntp_client.py", "AsyNtpClient", "ntp"),
+        ("asy_system_service.py", "SystemService", "sysfunct"),
+        ("asy_wifi_service.py", "WifiService", "conn"),
+        ("asy_ntp_client.py", "NTPClient", "ntp"),
         ("asy_webserver_service.py", "WebserverService", "webserver"),
     ),
 }
@@ -105,7 +105,7 @@ def _host_label_ok(label: str) -> bool:
 
 def _check_device_table(model: DeviceModel) -> None:
     # These three are validated here AND wired into generated code since 2026-09-18: codegen
-    # passes hostname/hotspot_password to AsyConnTime, which uses them as the defaults of the two
+    # passes hostname/hotspot_password to WifiService, which uses them as the defaults of the two
     # persisted fields. Before that they were checked and reached nothing.
     dev = model.doc.get("device")
     if not isinstance(dev, dict):
@@ -133,7 +133,7 @@ def _check_device_table(model: DeviceModel) -> None:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
     if not _host_label_ok(dev["hostname"]):
         raise BuildError(model.device, f"[device].hostname {dev['hostname']!r} is not a host label (letters, digits, '-'; not starting or ending with '-'), so [device].name may use only those characters", field="hostname")
-    # network.hostname()'s cap, mirrored from _VAL_HOST's upper bound. Now that the value really
+    # network.hostname()'s cap, mirrored from _VAL_HOSTNAME's upper bound. Now that the value really
     # is injected, an over-long one would be dropped back to "SensorNode" by _with_default() and
     # the device would quietly not answer to its own name. In practice a cap on [device].name.
     if len(dev["hostname"]) > _HOSTNAME_MAX_LEN:
@@ -147,9 +147,9 @@ def _check_device_table(model: DeviceModel) -> None:
 
 
 def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -> int:
-    """One `<class_name>.__init__` int keyword default, read out of the real source. buildgen never
-    imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one
-    tests_scripts/test_request_body_cap_headroom.py uses for max_content_length."""
+    # One `<class_name>.__init__` int keyword default, read out of the real source. buildgen never
+    # imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one
+    # tests_scripts/test_request_body_cap_headroom.py uses for max_content_length.
     path = src_dir / filename
     try:
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -188,37 +188,37 @@ def _module_const(src_dir: Path, filename: str, name: str, kind: "type[_ConstT]"
 
 
 def module_int_const(src_dir: Path, filename: str, name: str) -> int:
-    """One module-level `NAME = const(<int>)` of a src/ file, by AST like init_int_default()."""
+    # One module-level `NAME = const(<int>)` of a src/ file, by AST like init_int_default().
     return _module_const(src_dir, filename, name, int)
 
 
 def module_float_const(src_dir: Path, filename: str, name: str) -> float:
-    """module_int_const()'s float sibling: `NAME = const(<float>)`."""
+    # module_int_const()'s float sibling: `NAME = const(<float>)`.
     return _module_const(src_dir, filename, name, float)
 
 
 def module_str_const(src_dir: Path, filename: str, name: str) -> str:
-    """module_int_const()'s str sibling: `NAME = const("<str>")`."""
+    # module_int_const()'s str sibling: `NAME = const("<str>")`.
     return _module_const(src_dir, filename, name, str)
 
 
 def webserver_init_default(src_dir: Path, name: str) -> int:
-    """One shipped ServingLimits default: asy_webserver_service.py's `_DEFAULT_<NAME>` constant."""
+    # One shipped ServingLimits default: asy_webserver_service.py's `_DEFAULT_<NAME>` constant.
     return module_int_const(src_dir, "asy_webserver_service.py", "_DEFAULT_" + name.upper())
 
 
 def device_max_connections(toml_path: Path, src_dir: Path) -> int:
-    """The admission ceiling `toml_path` builds: its own [device].max_connections, else
-    WebserverService's default. Host-side instruments size their load with this, never a literal."""
+    # The admission ceiling `toml_path` builds: its own [device].max_connections, else
+    # WebserverService's default. Host-side instruments size their load with this, never a literal.
     with toml_path.open("rb") as f:
         ceiling = tomllib.load(f).get("device", {}).get("max_connections")
     return ceiling if isinstance(ceiling, int) else webserver_init_default(src_dir, "max_connections")
 
 
 def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "list[str]":
-    """toolchain/micropython_overrides.py owns the relationships (they are lwIP's, not buildgen's).
-    Loaded by path because buildgen is a package and toolchain/ is a flat script directory - the
-    same bare-sibling shape tests_hardware/harness.py already uses for setup_toolchain."""
+    # toolchain/micropython_overrides.py owns the relationships (they are lwIP's, not buildgen's).
+    # Loaded by path because buildgen is a package and toolchain/ is a flat script directory - the
+    # same bare-sibling shape tests_hardware/harness.py already uses for setup_toolchain.
     spec = importlib.util.spec_from_file_location("micropython_overrides", Path(__file__).resolve().parent.parent / "toolchain" / "micropython_overrides.py")
     if spec is None or spec.loader is None:
         raise BuildError("<toolchain>", "cannot load toolchain/micropython_overrides.py, which owns lwIP's own option relationships", field="max_connections")
@@ -233,9 +233,9 @@ def _lwip_ensemble_problems(macros: "dict[str, int]", max_connections: int) -> "
 
 
 def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
-    """The device's EFFECTIVE admission ceiling against the firmware it ships in. Config that
-    outruns its build refuses connections it says it admits, which reads as an application bug -
-    so the PCB, segment and send-arena shares per connection (Part H.7) are build errors."""
+    # The device's EFFECTIVE admission ceiling against the firmware it ships in. Config that
+    # outruns its build refuses connections it says it admits, which reads as an application bug -
+    # so the PCB, segment and send-arena shares per connection (Part H.7) are build errors.
     dev = model.doc["device"]
     max_connections = dev["max_connections"] if "max_connections" in dev else webserver_init_default(src_dir, "max_connections")
     if max_connections < _MAX_CONNECTIONS_FLOOR:
@@ -257,16 +257,16 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
 
 
 def ntp_backoff(dev: "TomlDoc", src_dir: Path) -> "tuple[int, int]":
-    """The effective (retry_s, retry_max_s) pair: [device]'s stated keys, else asy_ntp_client.py's
-    _DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S - what the generated NtpTiming carries."""
+    # The effective (retry_s, retry_max_s) pair: [device]'s stated keys, else asy_ntp_client.py's
+    # _DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S - what the generated NtpTiming carries.
     retry_s = dev["ntp_retry_s"] if "ntp_retry_s" in dev else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S")
     retry_max_s = dev["ntp_retry_max_s"] if "ntp_retry_max_s" in dev else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S")
     return retry_s, retry_max_s
 
 
 def _check_ntp_backoff(model: DeviceModel, src_dir: Path) -> None:
-    """The unsynced NTP retry backoff (Part C.7.2), checked as the effective pair: AsyNtpClient
-    would quietly clamp an interval below its check tick or a cap below the interval."""
+    # The unsynced NTP retry backoff (Part C.7.2), checked as the effective pair: NTPClient
+    # would quietly clamp an interval below its check tick or a cap below the interval.
     dev = model.doc["device"]
     if "ntp_retry_s" not in dev and "ntp_retry_max_s" not in dev:
         return  # the shipped defaults, pinned coherent by tests_scripts/test_buildgen_validate.py
@@ -288,16 +288,16 @@ def _uart_bus_value(src_dir: Path, table: TomlDoc, name: str) -> int:
 
 
 def _check_uart_link_buses(model: DeviceModel, src_dir: Path) -> None:
-    """UART_Comm.setup() refuses a link whose bus cannot carry its protocol (UART_TIMEOUT_PARAM, UART_RXBUF) - a config
-    mismatch out of runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24).
-    Mirrors _min_timeout()/_min_rxbuf(); generated code wires no CRC or framing, so both add 0."""
+    # UARTComm.setup() refuses a link whose bus cannot carry its protocol (UART_TIMEOUT_PARAM, UART_RXBUF) - a config
+    # mismatch out of runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24).
+    # Mirrors _min_timeout()/_min_rxbuf(); generated code wires no CRC or framing, so both add 0.
     links = [spec for spec in model.instances.values() if spec.driver == "uart_link"]
     if not links:
         return
     comm = "asy_uart_comm.py"
     header, gc_pause, jitter = (module_int_const(src_dir, comm, n) for n in ("_HEADER_LEN", "_GC_PAUSE_WORST_MS", "_POLL_JITTER_MS"))
-    payload = init_int_default(src_dir, "asy_uart_link_driver.py", "UartLinkExerciser", "payload_size")
-    timeout = init_int_default(src_dir, "asy_uart_link_driver.py", "UartLinkExerciser", "timeout")
+    payload = init_int_default(src_dir, "asy_uart_link_driver.py", "UARTLinkDriver", "payload_size")
+    timeout = init_int_default(src_dir, "asy_uart_link_driver.py", "UARTLinkDriver", "timeout")
     buses = model.doc.get("bus", {})
     for spec in links:
         bus_name = spec.fields["bus"]
@@ -416,9 +416,9 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
         if spec.driver == "uart_link" and spec.fields.get("role") not in _UART_LINK_ROLES:
             raise BuildError(model.device, f"{spec.label}.role must be one of {sorted(_UART_LINK_ROLES)}, got {spec.fields.get('role')!r}", instance=spec.label, field="role")
         # These three reach codegen's hex()/str() argument-building unvalidated otherwise: a
-        # quoted "0x77" raises a raw TypeError from hex(), and trigger_sec, which only goes
+        # quoted "0x77" raises a raw TypeError from hex(), and trigger_s, which only goes
         # through str(), renders as a bare identifier token ast.parse() cannot tell from an int.
-        for f in ("address", "max_size", "trigger_sec"):
+        for f in ("address", "max_size", "trigger_s"):
             if f in spec.fields and not (isinstance(spec.fields[f], int) and not isinstance(spec.fields[f], bool)):
                 raise BuildError(model.device, f"{spec.label}.{f} must be an int, got {spec.fields[f]!r}", instance=spec.label, field=f)
         # Catch-all: any field beyond driver/name_ext and this driver's own set is a copy-paste

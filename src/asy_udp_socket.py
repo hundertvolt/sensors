@@ -3,7 +3,7 @@
 # THIRD_PARTY_LICENSES.md carries the full account and what was changed or added here.
 
 """Async, non-blocking UDP wrapper around one socket.socket, driven by a hand-rolled select.poll
-loop. Two modes: mode="client" for a one-shot outbound request/response exchange, mode="server" for a bound socket answering inbound datagrams; also usable as `async with AsyUDPSocket(...) as sock:`.
+loop. Two modes: mode="client" for a one-shot outbound request/response exchange, mode="server" for a bound socket answering inbound datagrams; also usable as `async with UDPSocket(...) as sock:`.
 """
 # Every I/O method returns its documented None-shaped sentinel, never raises (__init__ excepted).
 # Content-agnostic: never inspects datagram contents; mode="server" source-address trust is the
@@ -12,7 +12,6 @@ loop. Two modes: mode="client" for a one-shot outbound request/response exchange
 import asyncio
 import select
 import socket
-import time
 
 from micropython import const
 
@@ -31,7 +30,7 @@ _ADDR_TUPLE_LEN = const(2)  # a plain (host, port) address tuple
 _RETRY_BACKOFF_S = const(0.5)  # pause between a failed connect()/bind() (or setup) attempt and the next
 
 
-class AsyUDPSocket:
+class UDPSocket:
     def __init__(
         self,
         addr: tuple[str, int],
@@ -53,12 +52,12 @@ class AsyUDPSocket:
             raise TypeError(f"conn_tries must be an int, got {conn_tries!r}")
 
         self._addr = addr
-        self.sock: socket.socket | None = None
+        self._sock: socket.socket | None = None
         self.poller: select.poll | None = None
         self._mode = mode
         self.connected = False
         self._conn_tries = conn_tries
-        self._connect_lock = asyncio.Lock()
+        self._connect_lock = asyncio.Lock()  # serialises setup and teardown of the one socket object
 
     async def __aenter__(self) -> "Self":
         return self
@@ -76,27 +75,27 @@ class AsyUDPSocket:
         # Lazy, one-shot-per-socket setup, serialized against disconnect() via self._connect_lock.
         # Self-heals via _disconnect_locked() on any failure so the next call gets a fresh attempt.
         async with self._connect_lock:
-            if self.sock is None:
+            if self._sock is None:
                 try:
-                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    self.sock.setblocking(False)
+                    self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    self._sock.setblocking(False)
                     self.poller = select.poll()
-                    self.poller.register(self.sock, select.POLLIN | select.POLLOUT)
+                    self.poller.register(self._sock, select.POLLIN | select.POLLOUT)
 
                     tries = 0
                     while (not self.connected) and (tries < self._conn_tries):
                         try:
                             if self._mode == "client":
-                                self.sock.connect(self._addr)
+                                self._sock.connect(self._addr)
                             else:
-                                self.sock.bind(self._addr)
+                                self._sock.bind(self._addr)
                             self.connected = True
-                        except (OSError, MemoryError, TypeError):
+                        except (MemoryError, OSError, TypeError):
                             tries += 1
                             await asyncio.sleep(_RETRY_BACKOFF_S)
                             self.connected = False
-                except (OSError, MemoryError, TypeError):
+                except (MemoryError, OSError, TypeError):
                     # setup itself failed, or a non-int conn_tries raised from the while condition.
                     await asyncio.sleep(_RETRY_BACKOFF_S)
 
@@ -107,48 +106,69 @@ class AsyUDPSocket:
         # Actual teardown, assuming self._connect_lock is already held - split out so _connect()'s
         # self-heal path can call this directly without deadlocking on the same non-reentrant lock.
         # State is cleared eagerly so a failure partway through can't leave it half-connected.
-        if self.sock is None:
+        if self._sock is None:
             return True
-        sock, poller = self.sock, self.poller
-        self.sock = None
+        sock, poller = self._sock, self.poller
+        self._sock = None
         self.poller = None
         self.connected = False
         ok = True
         try:
             if poller is not None:
                 poller.unregister(sock)
-        except (OSError, MemoryError):
+        except (MemoryError, OSError):
             ok = False
         try:
             sock.close()
-        except (OSError, MemoryError):
+        except (MemoryError, OSError):
             ok = False
         return ok
 
+    async def _poll(self, mask: int, wait_time_ms: int) -> bool:
+        # ipoll(0), then sleep_ms(wait_time_ms), until mask (or a real POLLERR/POLLHUP) is set; no
+        # deadline of its own - ready() bounds it with asyncio.wait_for_ms() (SPECIFICATION.md F.2).
+        while True:
+            if self.poller is None:  # a concurrent disconnect() can null this mid-loop
+                return False
+            for _, event in self.poller.ipoll(0):
+                if event & (mask | select.POLLERR | select.POLLHUP):
+                    return True
+            await asyncio.sleep_ms(wait_time_ms)
+
+    async def disconnect(self) -> bool:
+        # Serialized against _connect() through the same lock - a concurrent disconnect() could
+        # otherwise crash an in-flight retry. Returns False if teardown raised (state is cleared
+        # either way): this class owns no logger, so the caller logs it (Part C.7's bool rule).
+        async with self._connect_lock:
+            return await self._disconnect_locked()
+
     # @tunable udp.ready_poll_ms = 20
     async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
-        # Busy-polls ipoll(0), yielding via sleep_ms(wait_time_ms) each cycle, until mask (or a
-        # real POLLERR/POLLHUP, always reported) is satisfied or timeout_ms elapses (<=0 waits
-        # forever). Returning True on an error lets the caller's real socket call surface it.
+        # Polls until mask (or a real POLLERR/POLLHUP, always reported: the caller's socket call surfaces it)
+        # is set; timeout_ms > 0 bounds the wait through wait_for_ms(), <= 0 waits forever. A malformed mask,
+        # timeout_ms or wait_time_ms returns False: callers' excepts wrap only their own socket call.
         await self._connect()
         if not self.connected or self.poller is None:
             return False
-        t0 = time.ticks_ms()
-        while True:
-            if self.poller is None:  # a concurrent disconnect() can null this mid-loop
-                return False  # type: ignore[unreachable]  # mypy can't see the mutation
+        try:
+            if timeout_ms <= 0:
+                return await self._poll(mask, wait_time_ms)
+            return await asyncio.wait_for_ms(self._poll(mask, wait_time_ms), timeout_ms)
+        except asyncio.TimeoutError:
+            return False
+        except (MemoryError, OSError, TypeError):
+            return False
+
+    async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
+        if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self._sock is not None:
             try:
-                res = self.poller.ipoll(0)
-                for _, event in res:
-                    if event & (mask | select.POLLERR | select.POLLHUP):
-                        return True
-                if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
-                    return False
-                await asyncio.sleep_ms(wait_time_ms)
-            except (OSError, MemoryError, TypeError):
-                # TypeError: a malformed mask/timeout_ms/wait_time_ms - not caught by callers' own
-                # except clauses, since those only wrap the real socket call, not this await.
-                return False
+                # The 1.29 stub types recvfrom()'s address as socket's full _Address union
+                # (AF_INET6's 4-tuple and AF_UNIX's str included). This socket is always
+                # AF_INET/SOCK_DGRAM (see _open()), so the 2-tuple is the only reachable shape.
+                return self._sock.recvfrom(buf)  # type: ignore[return-value]
+            except (MemoryError, OSError, TypeError):  # TypeError: a malformed buf (e.g. a str)
+                pass
+        return None, None
 
     async def sendto(
         self,
@@ -156,31 +176,20 @@ class AsyUDPSocket:
         addr: tuple[str, int],
         timeout_ms: int = -1,
     ) -> int | None:
-        if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self.sock is not None:
+        if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self._sock is not None:
             try:
-                return self.sock.sendto(msg, addr)
-            except (OSError, MemoryError, TypeError):  # TypeError: a malformed addr/msg, not just this instance's own _addr
+                return self._sock.sendto(msg, addr)
+            except (MemoryError, OSError, TypeError):  # TypeError: a malformed addr/msg, not just this instance's own _addr
                 pass
         return None
 
     async def write(self, msg: bytes | bytearray, timeout_ms: int = -1) -> int | None:
-        if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self.sock is not None:
+        if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self._sock is not None:
             try:
-                return self.sock.write(msg)
-            except (OSError, MemoryError, TypeError):  # TypeError: a malformed msg, matching sendto()'s reasoning
+                return self._sock.write(msg)
+            except (MemoryError, OSError, TypeError):  # TypeError: a malformed msg, matching sendto()'s reasoning
                 pass
         return None
-
-    async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
-        if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self.sock is not None:
-            try:
-                # The 1.29 stub types recvfrom()'s address as socket's full _Address union
-                # (AF_INET6's 4-tuple and AF_UNIX's str included). This socket is always
-                # AF_INET/SOCK_DGRAM (see _open()), so the 2-tuple is the only reachable shape.
-                return self.sock.recvfrom(buf)  # type: ignore[return-value]
-            except (OSError, MemoryError, TypeError):  # TypeError: a malformed buf (e.g. a str)
-                pass
-        return None, None
 
     async def write_and_recvfrom(
         self,
@@ -203,10 +212,3 @@ class AsyUDPSocket:
             if data is not None:
                 return data, addr
         return None, None
-
-    async def disconnect(self) -> bool:
-        # Serialized against _connect() through the same lock - a concurrent disconnect() could
-        # otherwise crash an in-flight retry. Returns False if teardown raised (state is cleared
-        # either way): this class owns no logger, so the caller logs it (Part C.7's bool rule).
-        async with self._connect_lock:
-            return await self._disconnect_locked()

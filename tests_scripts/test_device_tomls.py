@@ -245,9 +245,10 @@ def check_device_infra_fields_present_and_valid(doc: _TomlDoc, label: str) -> No
 
 
 def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_root: Path) -> None:
-    """The MicroPython tier cannot discover devices the way DEVICE_NAMES does, so it is checked
-    against them instead: tests/ runs one process per test FILE, and no import-time glob conjures
-    a file. Replaces an older devices/-holds-exactly-DEVICE_NAMES check, tautological since."""
+    # The MicroPython tier cannot discover devices the way DEVICE_NAMES does, so it is checked
+    # against them instead: tests/ runs one process per test FILE, and no import-time glob conjures
+    # a file. Replaces an older devices/-holds-exactly-DEVICE_NAMES check, tautological since.
+    #
     # Each scenario library's `_DEVICES` tuple stays hand-written deliberately: its ORDER assigns
     # the twin's TCP port bases. What must not stay silent is a device added to devices/ while
     # these are not - it would ship uncovered, with every one of those suites still passing.
@@ -269,9 +270,10 @@ def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_
     assert not problems, "the MicroPython tier does not cover every real device:\n  " + "\n  ".join(problems)
 
 def test_every_device_is_in_the_ci_workflow_matrices(repo_root: Path) -> None:
-    """A GitHub Actions matrix is a literal - no expression can glob devices/ at parse time, so the
-    two lists stay hand-written and are checked here instead. Without this a seventh device would
-    generate, build and pass locally while CI silently kept exercising the old six."""
+    # A GitHub Actions matrix is a literal - no expression can glob devices/ at parse time, so the
+    # two lists stay hand-written and are checked here instead. Without this a seventh device would
+    # generate, build and pass locally while CI silently kept exercising the old six.
+    #
     # Regex rather than a YAML parse: pyyaml is not a dependency of this repo, and the matrix line
     # is a fixed one-line flow sequence. A reshaped matrix fails the count assert below, loudly.
     text = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
@@ -454,7 +456,7 @@ _BASE_DOC: _TomlDoc = {
         "spi0": {"sck_pin": 2, "mosi_pin": 3, "miso_pin": 4},
     },
     "instance": [
-        {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
+        {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_s": 3, "wiring": {"fram_target": "fram"}},
         {
             "driver": "sgp40",
             "name_ext": "",
@@ -710,14 +712,14 @@ def test_allows_the_same_address_on_two_different_buses() -> None:
 
 def test_detects_two_instances_resolving_to_the_same_name() -> None:
     doc = _base_doc()
-    doc["instance"].append({"driver": "scd30", "name_ext": "", "bus": "i2c1", "irq_pin": 9, "trigger_sec": 3})
+    doc["instance"].append({"driver": "scd30", "name_ext": "", "bus": "i2c1", "irq_pin": 9, "trigger_s": 3})
     with pytest.raises(AssertionError, match="instance name collision"):
         check_no_instance_name_collision(doc, "base")
 
 
 def test_allows_two_same_driver_instances_disambiguated_by_name_ext() -> None:
     doc = _base_doc()
-    doc["instance"].append({"driver": "scd30", "name_ext": "fan_pressure", "bus": "i2c1", "irq_pin": 9, "trigger_sec": 3})
+    doc["instance"].append({"driver": "scd30", "name_ext": "fan_pressure", "bus": "i2c1", "irq_pin": 9, "trigger_s": 3})
     check_no_instance_name_collision(doc, "base")  # must not raise
 
 

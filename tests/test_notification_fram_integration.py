@@ -1,8 +1,8 @@
 """Full-stack FRAM integration for the Neopixel promotion: proves asy_neopixel_driver.py's own
-PrintLogHistoryStore chunk and asy_notification_service.py's single combined one are genuinely independent, non-overlapping allocations off one shared AsyFramManager, and both survive a simulated reboot.
+PrintLogHistoryStore chunk and asy_notification_service.py's single combined one are genuinely independent, non-overlapping allocations off one shared FRAMManager, and both survive a simulated reboot.
 """
 # The generated wiring gives both modules a FRAM-backed log; the service's one chunk covers its own fields and every
-# signal's check failures. Mocked at the SPI bus, not at AsyFramManager's boundary.
+# signal's check failures. Mocked at the SPI bus, not at FRAMManager's boundary.
 
 import asyncio
 
@@ -11,12 +11,12 @@ from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramChunk, AsyFramManager
+from asy_base_classes import ValueRef
+from asy_fram_manager import FRAMChunk, FRAMManager
 from asy_neopixel_driver import NeopixelDriver
-from asy_notification_service import NotificationCoordinator, NotificationSignal
+from asy_notification_service import NotificationService, NotificationSignal
+from asy_print_log import LogConfig, PrintLogHistoryStore
 from asy_spi_driver import SPI
-from base_classes import ValueRef
-from print_log import LogConfig, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from asy_notification_service import _LocalTime  # the callback contract this file's stub fills
 
     T = TypeVar("T")
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
 _PLANTED = code("E", "CALLBACK")  # any catalog code; the tests pin separation and survival, not the code
@@ -51,9 +51,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def make_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+def make_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS64V]":
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=max_size)
+    manager = FRAMManager(bus, 1, max_size=max_size)
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip
@@ -75,14 +75,14 @@ async def _request_signal_stub(_r: int, _g: int, _b: int, _t: float) -> bool:
     return True
 
 
-def make_pixel(manager: AsyFramManager) -> NeopixelDriver:
+def make_pixel(manager: FRAMManager) -> NeopixelDriver:
     return NeopixelDriver(0, log=LogConfig(manager, 10, None))
 
 
-def make_notify(manager: AsyFramManager, cfg_path: str) -> NotificationCoordinator:
+def make_notify(manager: FRAMManager, cfg_path: str) -> NotificationService:
     # The same signals in the same order every time: the FRAM layout must decode identically across
     # the simulated reboot.
-    return NotificationCoordinator(
+    return NotificationService(
         _request_signal_stub,
         _local_time_stub,
         (NotificationSignal("WarnCO2", ValueRef(_FakeSource(), "WarnCO2"), _FIELD_WARN_CO2, (1, 0, 0)),),
@@ -98,15 +98,15 @@ def test_driver_and_notify_service_get_two_independent_non_overlapping_fram_chun
     notify = make_notify(manager, _tmp_cfg_dir())
 
     async def scenario() -> None:
-        await pixel.pr.setup()
-        await notify.pr.setup()
+        await pixel.setup()
+        await notify.setup()
 
     run(scenario())
     assert isinstance(pixel.pr, PrintLogHistoryStore)
     assert isinstance(notify.pr, PrintLogHistoryStore)
-    assert isinstance(pixel.pr.fram, AsyFramChunk)
-    assert isinstance(notify.pr.fram, AsyFramChunk)
-    assert pixel.pr.fram.block_addr != notify.pr.fram.block_addr
+    assert isinstance(pixel.pr.fram, FRAMChunk)
+    assert isinstance(notify.pr.fram, FRAMChunk)
+    assert pixel.pr.fram._block_addr != notify.pr.fram._block_addr
 
 
 def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
@@ -116,8 +116,8 @@ def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
     notify = make_notify(manager, _tmp_cfg_dir())
 
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
-        await pixel.pr.setup()
-        await notify.pr.setup()
+        await pixel.setup()
+        await notify.setup()
         # NeopixelDriver structurally can't fail on any of its own real code paths (see its own
         # module docstring) - this directly exercises the FRAM-backed history machinery itself,
         # not a real failure this driver would ever hit.
@@ -142,8 +142,8 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     notify1 = make_notify(manager1, cfg_path)
 
     async def before_reboot() -> None:
-        await pixel1.pr.setup()
-        await notify1.pr.setup()
+        await pixel1.setup()
+        await notify1.setup()
         await pixel1.pr.err_s("driver before reboot", errno=_PLANTED)
         await notify1.pr.err_s("notify before reboot", errno=_PLANTED)
 
@@ -156,8 +156,8 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     notify2 = make_notify(manager2, cfg_path)  # same registration order/shape as before the reboot
 
     async def after_reboot() -> "tuple[ErrorLog, ErrorLog]":
-        await pixel2.pr.setup()
-        await notify2.pr.setup()
+        await pixel2.setup()
+        await notify2.setup()
         pixel_log = await pixel2.pr.get_log("NEOPIXEL")
         notify_log = await notify2.pr.get_log("NOTIFY")
         return pixel_log, notify_log

@@ -360,14 +360,14 @@ def test_known_tag_names_mirrors_the_registry() -> None:
 @pytest.mark.parametrize(
     "text,family,expected",
     [
-        ("# @wiring fram_target AsyFramManager fram optional kwarg", "wiring", True),
+        ("# @wiring fram_target FRAMManager fram optional kwarg", "wiring", True),
         # With the sigil, any bare-word payload counts - that is what catches a tag whose elements
         # were dropped, at the accepted cost of flagging the prose nobody writes ("@wiring is what
         # this module needs"). Sentence punctuation still rules a comment out immediately.
         ("# @wiring is what this module needs, more of it", "wiring", False),
         ("# wiring is what this module needs more of", "wiring", False),
         ("# @value-wiring temperature_source temperature required", "value-wiring", True),
-        ("# @limits trigger_sec 1..3600", "limits", True),
+        ("# @limits trigger_s 1..3600", "limits", True),
         ("# @limits address in {0x76, 0x77}", "limits", True),
         ("# @limits are checked elsewhere in this file", "limits", False),
         ("# @requires bus.timeout>=200000", "requires", True),
@@ -385,6 +385,6 @@ def test_looks_like_tag_payload_accepts_an_explicit_family(tmp_path: Path) -> No
     # The helper defaults to @requires' own shape; passing a family switches it to that family's
     # predicate, which is how each grammar module gates its own near-miss detection.
     (wiring,) = [s for s in tag_comments.KNOWN_TAGS if s.name == "wiring"]
-    text = "# @wiring fram_target AsyFramManager fram optional kwarg"
+    text = "# @wiring fram_target FRAMManager fram optional kwarg"
     assert tag_comments.looks_like_tag_payload(text, wiring) is True
     assert tag_comments.looks_like_tag_payload(text) is False  # no operator - not @requires-shaped

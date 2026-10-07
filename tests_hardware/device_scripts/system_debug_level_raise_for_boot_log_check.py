@@ -4,13 +4,13 @@ the real prior value first (never a hardcoded restore target) so its restore-pha
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SYS_SCHEMA: "cm.ConfigSchema" = (("DebugLevel", "int", 0, 0, 5, None),)
 _SYS_PATH = "config_SYSTEM.cfg"
 _BACKUP_SCHEMA: "cm.ConfigSchema" = (("PrevLevel", "int", 0, 0, 5, None),)
 _BACKUP_PATH = "config_HWTEST_DEBUGLEVEL_BACKUP.cfg"
-_VERBOSE_LEVEL = 3  # print_log.py's _LOG_ONCE - the level pr.one() itself is gated on
+_VERBOSE_LEVEL = 3  # asy_print_log.py's _LOG_ONCE - the level pr.one() itself is gated on
 
 
 async def _main() -> None:

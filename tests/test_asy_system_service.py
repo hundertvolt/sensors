@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 import machine
 from _error_codes import code
@@ -6,13 +7,15 @@ from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from machine import Timer
 
-# Same one-process-per-test-file swap as test_base_classes.py/test_asy_fram_manager.py.
+# Same one-process-per-test-file swap as test_asy_base_classes.py/test_asy_fram_manager.py.
+import asy_base_classes
+import asy_print_log
 import asy_spi_driver
-import system_service
-from asy_fram_manager import AsyFramManager
+import asy_system_service
+from asy_fram_manager import FRAMManager
+from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore
 from asy_spi_driver import SPI
-from print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore
-from system_service import SystemService
+from asy_system_service import SystemService
 
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
@@ -23,12 +26,12 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, NoReturn, TypeVar
+    from typing import Any, TypeVar
 
     from machine import WDT
     from typing_extensions import Self
 
-    from config_manager import ConfigSchema
+    from asy_config_manager import ConfigSchema
 
     T = TypeVar("T")
 
@@ -57,7 +60,7 @@ def make_ntp_stub(
 def make_service(  # parameters/defaults after ntp mirror SystemService.__init__()'s own
     ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
     watchdog: "WDT | None" = None,
-    storage: "AsyFramManager | None" = None,
+    storage: "FRAMManager | None" = None,
     log: "LogConfig" = DEFAULT_LOG,
     cfg_path: str = "",
     level_setters: "Callable[[], list[Callable[[int], None]]] | None" = None,
@@ -69,9 +72,9 @@ def make_service(  # parameters/defaults after ntp mirror SystemService.__init__
     )
 
 
-def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+def make_fram_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS64V]":
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=max_size)
+    manager = FRAMManager(bus, 1, max_size=max_size)
     chip = manager.fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     return manager, chip
@@ -93,15 +96,18 @@ class _FastAsyncSleep:
     # asyncio.sleep is process-wide - one function to patch - and is restored however the block exits.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
+        self._real_sleep_ms = asyncio.sleep_ms
 
         async def _fast(_seconds: float) -> None:
             await self._real_sleep(0)
 
         asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        asyncio.sleep_ms = _fast  # type: ignore[assignment]  # likewise, for the millisecond form
         return self
 
     def __exit__(self, *exc_info: object) -> None:
         asyncio.sleep = self._real_sleep
+        asyncio.sleep_ms = self._real_sleep_ms
 
 
 class _RaiseOnArm:
@@ -132,7 +138,7 @@ class _RaiseOnArm:
 def test_init_uses_in_memory_logging_when_fram_is_none() -> None:
     svc = make_service()
     assert isinstance(svc.pr, PrintLogHistory)
-    assert svc.storage_pause is None
+    assert svc._storage_pause is None
     assert svc.pr.name == "SYSTEM"  # baked in via make_logger(), not left empty
 
 
@@ -141,13 +147,13 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
     svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     assert isinstance(svc.pr, PrintLogHistoryStore)
     assert isinstance(svc.cfgmgr.pr, PrintLogHistoryStore)  # the settings store's logger shares the log config
-    assert svc.storage_pause is not None
+    assert svc._storage_pause is not None
     assert svc.pr.name == "SYSTEM"
     # Bound-method identity isn't guaranteed (each attribute access can mint a fresh bound-method
-    # object) - confirm by behavior instead: calling svc.storage_pause must reach manager's own state.
-    svc.storage_pause(value=True)
+    # object) - confirm by behavior instead: calling svc._storage_pause must reach manager's own state.
+    svc._storage_pause(value=True)
     assert manager.get_pause() is True
-    svc.storage_pause(value=False)
+    svc._storage_pause(value=False)
     assert manager.get_pause() is False
 
 
@@ -168,8 +174,8 @@ def test_init_storage_without_a_fram_log_keeps_ram_logging_and_the_pause() -> No
     manager, _chip = make_fram_manager()
     svc = make_service(storage=manager)
     assert type(svc.pr) is PrintLogHistory
-    assert svc.storage_pause is not None
-    svc.storage_pause(value=True)
+    assert svc._storage_pause is not None
+    svc._storage_pause(value=True)
     assert manager.get_pause() is True
 
 
@@ -224,12 +230,12 @@ def test_init_zero_history_length_is_accepted_in_memory() -> None:
     assert len(svc.pr.history) == 0
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))  # must not raise despite there being nowhere to store it
-    assert svc.pr.err_count == 1
+    assert svc.pr._err_count == 1
 
 
 def test_init_negative_history_length_is_clamped_to_zero() -> None:
-    # Unusual-but-typing-valid content: print_log.py's own PrintLogHistory clamps this internally;
-    # confirms system_service.py passes it through unmodified rather than re-validating/rejecting it.
+    # Unusual-but-typing-valid content: asy_print_log.py's own PrintLogHistory clamps this internally;
+    # confirms asy_system_service.py passes it through unmodified rather than re-validating/rejecting it.
     svc = make_service(log=LogConfig(None, -5, None))
     assert len(svc.pr.history) == 0
 
@@ -241,14 +247,14 @@ def test_init_all_constructor_params_combined_wire_correctly() -> None:
     wdt = machine.WDT()
     svc = make_service(storage=manager, watchdog=wdt, log=LogConfig(manager, 4, PrintLog.level_info()))
     assert isinstance(svc.pr, PrintLogHistoryStore)
-    assert svc.storage_pause is not None
+    assert svc._storage_pause is not None
     assert svc.watchdog is wdt
     assert len(svc.pr.history) == 4
     assert svc.pr.get_level() == PrintLog.level_info()
 
 
 # ---------------------------------------------------------------------------
-# get_uptime / get_boot_signature - before status_counter ever runs
+# get_uptime / get_boot_signature - before _status_loop ever runs
 # ---------------------------------------------------------------------------
 
 
@@ -259,7 +265,7 @@ def test_get_uptime_initial_value_is_zero_before_status_counter_runs() -> None:
 
 def test_get_boot_signature_initial_value_before_status_counter_runs() -> None:
     svc = make_service()
-    assert run(svc.get_boot_signature()) is None  # LockedCounter(init_value=None)'s own default
+    assert run(svc.get_boot_signature()) is None  # LockedValue(init_value=None)'s own default
 
 
 # ---------------------------------------------------------------------------
@@ -271,16 +277,44 @@ def test_ntp_boot_signature_not_synced_returns_none() -> None:
     ntp, _calls = make_ntp_stub(synced=False)
     svc = make_service(ntp)
     assert run(svc._ntp_boot_signature()) is None
-    assert svc.pr.err_count == 0
+    assert svc.pr._err_count == 0
 
 
 def test_ntp_boot_signature_synced_returns_a_real_utc_timestamp() -> None:
     ntp, _calls = make_ntp_stub(synced=True)
     svc = make_service(ntp)
-    result = run(svc._ntp_boot_signature())
+    asy_base_classes.set_utc_valid()
+    try:
+        result = run(svc._ntp_boot_signature())
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
     assert isinstance(result, int)
     assert result > 1_700_000_000  # sanity bound: after 2023-11-14, not the pre-refactor's magic -1/1
-    assert svc.pr.err_count == 0
+    assert svc.pr._err_count == 0
+
+
+def test_a_synced_signature_reads_utc_now() -> None:
+    # The signature is the shared UTC primitive's value: None while the clock is not marked valid,
+    # even with NTP reporting synced, and utc_now() itself once it is.
+    ntp, _calls = make_ntp_stub(synced=True)
+    svc = make_service(ntp)
+    assert run(svc._ntp_boot_signature()) is None
+    original = asy_base_classes.utc_now
+    asy_system_service.utc_now = lambda: 1_790_000_000
+    try:
+        assert run(svc._ntp_boot_signature()) == 1_790_000_000
+    finally:
+        asy_system_service.utc_now = original
+    assert svc.pr._err_count == 0
+
+
+def test_a_32_bit_signature_round_trips() -> None:
+    # The signature is an identifier, never stepped: a LockedValue, so no counter cap clamps it.
+    svc = make_service()
+    run(svc.boot_signature.set_value(1_790_000_000))
+    assert run(svc.get_boot_signature()) == 1_790_000_000
+    run(svc.boot_signature.set_value(0xFFFFFFFF))  # a random signature uses the full 32 bits
+    assert run(svc.get_boot_signature()) == 0xFFFFFFFF
 
 
 def test_ntp_boot_signature_callback_exception_returns_none_and_logs_once() -> None:
@@ -288,64 +322,12 @@ def test_ntp_boot_signature_callback_exception_returns_none_and_logs_once() -> N
     svc = make_service(ntp)
     assert run(svc._ntp_boot_signature()) is None
     assert calls[0] == 1
-    assert svc.pr.err_count == 1
+    assert svc.pr._err_count == 1
     assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "CALLBACK")
 
 
-class _OverflowingTime:
-    # MicroPython's real `time` module is a read-only builtin (assigning time.mktime raises AttributeError),
-    # so this replaces system_service's own module-level `time` name instead - a plain, mutable module
-    # global, unlike the builtin module it points to.
-    def gmtime(self) -> "tuple[int, ...]":
-        import time as _real_time
-
-        return _real_time.gmtime()
-
-    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
-        raise OverflowError("past rp2's ~2037 32-bit epoch range")
-
-
-def test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once() -> None:
-    ntp, _calls = make_ntp_stub(synced=True)
-    svc = make_service(ntp)
-    original_time = system_service.time
-    system_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
-    try:
-        result = run(svc._ntp_boot_signature())
-    finally:
-        system_service.time = original_time
-    assert result is None
-    assert svc.pr.err_count == 1
-    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "CLOCK")
-
-
-class _RaisingGmtime:
-    # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
-    # same try block (time.gmtime() itself) instead of mktime() - both calls share one try/except,
-    # so this proves the guard isn't accidentally only reachable from the mktime() half of the line.
-    def gmtime(self) -> "NoReturn":
-        raise OSError("RTC read failed")
-
-    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
-        raise AssertionError("must not be reached - gmtime() itself already raised")
-
-
-def test_ntp_boot_signature_gmtime_raising_returns_none_and_logs_once() -> None:
-    ntp, _calls = make_ntp_stub(synced=True)
-    svc = make_service(ntp)
-    original_time = system_service.time
-    system_service.time = _RaisingGmtime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
-    try:
-        result = run(svc._ntp_boot_signature())
-    finally:
-        system_service.time = original_time
-    assert result is None
-    assert svc.pr.err_count == 1
-    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "CLOCK")
-
-
 # ---------------------------------------------------------------------------
-# status_counter - full loop, driven via _pump() instead of real elapsed time
+# _status_loop - full loop, driven via _pump() instead of real elapsed time
 # ---------------------------------------------------------------------------
 
 
@@ -353,8 +335,8 @@ def test_status_counter_increments_uptime_every_tick() -> None:
     svc = make_service()
 
     async def scenario() -> int:
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 5)
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 5)
         uptime = await svc.get_uptime()
         task.cancel()
         try:
@@ -369,19 +351,23 @@ def test_status_counter_increments_uptime_every_tick() -> None:
 def test_status_counter_sets_boot_signature_via_ntp_once_synced() -> None:
     ntp, _calls = make_ntp_stub(synced=True)
     svc = make_service(ntp)
+    asy_base_classes.set_utc_valid()
 
-    async def scenario() -> "tuple[bool, int | None]":
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 1)
+    async def scenario() -> "tuple[bool, int | float | None]":
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 1)
         signature = await svc.get_boot_signature()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        return svc.start_time_set, signature
+        return svc._start_time_set, signature
 
-    start_time_set, signature = run(scenario())
+    try:
+        start_time_set, signature = run(scenario())
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
     assert start_time_set is True
     assert signature is not None
     assert signature > 1_700_000_000
@@ -391,36 +377,36 @@ def test_status_counter_before_wait_time_never_synced_leaves_boot_signature_unre
     ntp, _calls = make_ntp_stub(synced=False)
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int | None]":
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 5)  # well below _NTP_WAIT_TIME (120)
+    async def scenario() -> "tuple[bool, int | float | None]":
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 5)  # well below _NTP_WAIT_TIME (120)
         signature = await svc.get_boot_signature()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        return svc.start_time_set, signature
+        return svc._start_time_set, signature
 
     start_time_set, signature = run(scenario())
     assert start_time_set is False
-    assert signature is None  # status_counter's own "not yet resolved" sentinel
+    assert signature is None  # _status_loop's own "not yet resolved" sentinel
 
 
 def test_status_counter_falls_back_to_random_after_wait_time_when_never_synced() -> None:
     ntp, _calls = make_ntp_stub(synced=False)
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int | None]":
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 120)  # exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
+    async def scenario() -> "tuple[bool, int | float | None]":
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 120)  # exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
         signature = await svc.get_boot_signature()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        return svc.start_time_set, signature
+        return svc._start_time_set, signature
 
     start_time_set, signature = run(scenario())
     assert start_time_set is True
@@ -431,22 +417,22 @@ def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_fa
     ntp, calls = make_ntp_stub(raise_exc=RuntimeError("ntp callback exploded"))
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int | None]":
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 120)
+    async def scenario() -> "tuple[bool, int | float | None]":
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 120)
         signature = await svc.get_boot_signature()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        return svc.start_time_set, signature
+        return svc._start_time_set, signature
 
     start_time_set, signature = run(scenario())
     assert start_time_set is True
     assert signature is not None
     assert calls[0] == 120  # every tick retried the callback until the wait-time fallback resolved it
-    assert svc.pr.err_count == 120  # every tick retried and was counted; the repeat spends one slot
+    assert svc.pr._err_count == 120  # every tick retried and was counted; the repeat spends one slot
     log = run(svc.pr.get_log())["SYSTEM"]
     assert [log["ErrNum"][i] for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"] == [code("E", "CALLBACK")]
 
@@ -454,10 +440,11 @@ def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_fa
 def test_status_counter_stops_checking_ntp_once_start_time_is_set() -> None:
     ntp, calls = make_ntp_stub(synced=True)
     svc = make_service(ntp)
+    asy_base_classes.set_utc_valid()
 
     async def scenario() -> int:
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 4)
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 4)
         task.cancel()
         try:
             await task
@@ -465,7 +452,10 @@ def test_status_counter_stops_checking_ntp_once_start_time_is_set() -> None:
             pass
         return calls[0]
 
-    assert run(scenario()) == 1  # resolved on tick 1, never rechecked on ticks 2-4
+    try:
+        assert run(scenario()) == 1  # resolved on tick 1, never rechecked on ticks 2-4
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
 
 
 def test_status_counter_boot_signature_never_changes_again_once_resolved() -> None:
@@ -474,12 +464,13 @@ def test_status_counter_boot_signature_never_changes_again_once_resolved() -> No
     # boot once resolved - never re-picked, never "upgraded" from random to NTP or vice versa.
     ntp, _calls = make_ntp_stub(synced=True)
     svc = make_service(ntp)
+    asy_base_classes.set_utc_valid()
 
-    async def scenario() -> "list[int | None]":
-        task = asyncio.create_task(svc.status_counter())
-        await _pump(svc.uptime_event, 1)
+    async def scenario() -> "list[int | float | None]":
+        task = asyncio.create_task(svc._status_loop())
+        await _pump(svc._uptime_event, 1)
         seen = [await svc.get_boot_signature()]
-        await _pump(svc.uptime_event, 10)
+        await _pump(svc._uptime_event, 10)
         seen.append(await svc.get_boot_signature())
         task.cancel()
         try:
@@ -488,148 +479,110 @@ def test_status_counter_boot_signature_never_changes_again_once_resolved() -> No
             pass
         return seen
 
-    first, second = run(scenario())
+    try:
+        first, second = run(scenario())
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
     assert first is not None
     assert first == second  # unchanged across 10 further ticks - no spurious "reboot" signal
 
 
 # ---------------------------------------------------------------------------
-# _timer_sequencer / start_timers
+# start_timers - the timer starters, then the read triggers staggered from one shared start
 # ---------------------------------------------------------------------------
 
 
-def test_start_timers_empty_list_sets_timers_running_without_crashing() -> None:
-    # An explicit short-circuit, not an incidental IndexError in _timer_sequencer caught by its generic
-    # except (which would still "work" but log a misleading "Timer starter 0 failed") - asserts
-    # _timer_sequencer is never even called for an empty list, not just that nothing crashes.
+class _PrintRecorder:
+    # Shadows print() inside asy_print_log only, where every logger line is printed.
+    def __init__(self) -> None:
+        self.lines: list[tuple[object, ...]] = []
+        asy_print_log.print = self  # type: ignore[attr-defined]
+
+    def __call__(self, *args: object, **_kwargs: object) -> None:
+        self.lines.append(args)
+
+    def restore(self) -> None:
+        del asy_print_log.print  # type: ignore[attr-defined]
+
+
+def test_start_timers_with_no_starters_arms_nothing() -> None:
     svc = make_service()
-    Timer.all_timers.clear()
-    called = []
-    svc._timer_sequencer = lambda timers, counter=0: called.append(1)  # type: ignore[method-assign]
-    run(svc.start_timers([]))
-    assert called == []
-    assert Timer.all_timers == []  # no chain timer ever created for an empty starter list
+    before = list(Timer.all_timers)
+    run(svc.start_timers([], []))
+    assert Timer.all_timers == before
+    assert svc._sequencer_timer.period == -1  # never armed
 
 
-def test_start_timers_single_starter_needs_no_chain_timer() -> None:
+def test_a_single_trigger_starts_without_a_stagger_timer() -> None:
     svc = make_service()
-    Timer.all_timers.clear()
-    started = []
-    run(svc.start_timers([lambda: started.append(1)]))
-    assert started == [1]
-    assert Timer.all_timers == []
-
-
-def test_start_timers_sequences_all_starters_in_order_and_sets_timers_running() -> None:
-    svc = make_service()
-    Timer.all_timers.clear()
     started: list[int] = []
-    starters = [lambda: started.append(1), lambda: started.append(2), lambda: started.append(3)]
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(svc.start_timers(starters))
-        await asyncio.sleep(0)  # let start_timers begin: _timer_sequencer starts timer[0] synchronously
-        assert started == [1]
-        # No fresh Timer() ever constructed for the chain - svc.sequencer_timer (preallocated in
-        # __init__, same as uptime_timer/reset_timer/storage_timer) is reused via .init() for every
-        # step instead, so Timer.all_timers (only grows on a real __init__) stays empty throughout.
-        assert Timer.all_timers == []
-        svc.sequencer_timer.trigger()
-        assert started == [1, 2]
-        assert Timer.all_timers == []
-        svc.sequencer_timer.trigger()
-        assert started == [1, 2, 3]
-        await task  # completes now: timers_running was set by the last _timer_sequencer step
-        return True
-
-    assert run(scenario())
+    run(svc.start_timers([lambda: started.append(1)], []))
+    assert started == [1]
+    assert svc._sequencer_timer.period == -1  # slot 0 starts at the shared start itself
 
 
-def test_timer_sequencer_reuses_the_same_preallocated_timer_object_across_every_step() -> None:
-    # Regression test for a real GC-drop bug: _timer_sequencer() built a fresh, unstored Timer per chain
-    # step, unreferenced on the Python side and so GC-eligible before its ONE_SHOT callback fired -
-    # reproduced as start_timers() hanging forever (Part F.1's soft-Timer-callback-drop gotcha).
-    #
-    # Fixed by reusing self.sequencer_timer, preallocated in __init__ like the other timers - proven here by
-    # object identity staying constant across every chain step.
+def test_triggers_start_in_order_on_the_one_preallocated_timer() -> None:
     svc = make_service()
-    Timer.all_timers.clear()
-    starters = [lambda: None, lambda: None, lambda: None]
+    before = list(Timer.all_timers)
+    started: list[str] = []
+    timers = [lambda: started.append("t1"), lambda: started.append("t2")]
+    triggers = [lambda: started.append("r1"), lambda: started.append("r2"), lambda: started.append("r3")]
+    first_id = id(svc._sequencer_timer)
 
-    async def scenario() -> bool:
-        task = asyncio.create_task(svc.start_timers(starters))
-        await asyncio.sleep(0)
-        first_id = id(svc.sequencer_timer)
-        assert Timer.all_timers == []
-        svc.sequencer_timer.trigger()
-        assert id(svc.sequencer_timer) == first_id
-        assert Timer.all_timers == []
-        svc.sequencer_timer.trigger()
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_timers(triggers, timers))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert started == ["t1", "t2", "r1"]  # the timer starters first, then trigger 0 at once
+        for n in (2, 3):
+            assert svc._sequencer_timer.mode == Timer.ONE_SHOT
+            assert 0 < svc._sequencer_timer.period <= (n - 1) * 250  # trigger n-1 waits for its slot
+            svc._sequencer_timer.trigger()
+            for _ in range(5):
+                await asyncio.sleep(0)
+            assert started[-1] == "r" + str(n)
         await task
-        return True
 
-    assert run(scenario())
+    run(scenario())
+    assert started == ["t1", "t2", "r1", "r2", "r3"]
+    assert id(svc._sequencer_timer) == first_id
+    assert Timer.all_timers == before  # one preallocated Timer re-armed through init(), none constructed
 
 
-def test_timer_sequencer_starter_exception_is_logged_and_sequencing_continues() -> None:
-    svc = make_service()
-    Timer.all_timers.clear()
+def test_a_raising_starter_is_persisted_and_sequencing_continues() -> None:
+    svc = make_service(log=LogConfig(None, 10, PrintLog.level_err()))
     started: list[int] = []
 
     def bad_starter() -> None:
         raise RuntimeError("boom")
 
-    starters = [bad_starter, lambda: started.append(2)]
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(svc.start_timers(starters))
-        await asyncio.sleep(0)
-        assert started == []  # bad_starter raised, never appended
-        assert Timer.all_timers == []  # no fresh Timer() constructed for the chain step
-        svc.sequencer_timer.trigger()
-        assert started == [2]  # sequencing continued to the next starter regardless
-        await task
-        return True
-
-    assert run(scenario())  # must not raise despite bad_starter's exception
+    recorder = _PrintRecorder()
+    try:
+        with _FastAsyncSleep():
+            run(svc.start_timers([lambda: started.append(1)], [bad_starter, lambda: started.append(2)]))
+    finally:
+        recorder.restore()
+    assert started == [2, 1]
+    assert svc.pr._err_count == 1
+    assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_STARTER_RAISED")
+    assert [line[:3] for line in recorder.lines if line[1] == "Timer starter"] == [("SYSTEM", "Timer starter", 0)]
 
 
-def test_timer_sequencer_cannot_arm_next_step_still_unblocks_start_timers() -> None:
-    # Real rp2 Timer(period=..., ...) can raise OSError(ENOMEM) under alarm-pool exhaustion
-    # (confirmed against ports/rp2/machine_timer.c) - without this fallback, start_timers()'s own
-    # `await self.timers_running.wait()` would hang forever since nothing would ever call `.set()`.
+def _start_triggers_with_every_arm_failing(exc: "type[BaseException]") -> "tuple[SystemService, list[int]]":
     svc = make_service()
-    Timer.all_timers.clear()
     started: list[int] = []
-    starters = [lambda: started.append(1), lambda: started.append(2)]
-
-    async def scenario() -> bool:
-        with _RaiseOnArm():
-            await svc.start_timers(starters)  # must not hang despite the chain timer failing to arm
-        return True
-
-    assert run(scenario())
-    assert started == [1]  # only the first starter ever ran - sequencing stopped, not crashed
-    assert Timer.all_timers == []  # the chain timer never actually got constructed
+    triggers = [lambda: started.append(1), lambda: started.append(2), lambda: started.append(3)]
+    with _FastAsyncSleep(), _RaiseOnArm(exc):
+        run(svc.start_timers(triggers, []))
+    return svc, started
 
 
-def test_timer_sequencer_cannot_arm_next_step_on_a_memory_error_still_unblocks_start_timers() -> None:
-    # Sibling of the OSError test above, for the other arm of _timer_sequencer()'s own
-    # `except (OSError, MemoryError)`: a real allocation failure inside Timer() raises MemoryError,
-    # which is not an OSError subclass - the fallback must behave identically either way.
-    svc = make_service()
-    Timer.all_timers.clear()
-    started: list[int] = []
-    starters = [lambda: started.append(1), lambda: started.append(2)]
-
-    async def scenario() -> bool:
-        with _RaiseOnArm(MemoryError):
-            await svc.start_timers(starters)  # must not hang despite the chain timer failing to arm
-        return True
-
-    assert run(scenario())
-    assert started == [1]  # only the first starter ever ran - sequencing stopped, not crashed
-    assert Timer.all_timers == []  # the chain timer never actually got constructed
+def test_an_arm_failure_falls_back_to_a_sleep_and_still_starts_every_trigger() -> None:
+    for exc in (OSError, MemoryError):
+        svc, started = _start_triggers_with_every_arm_failing(exc)
+        assert started == [1, 2, 3]  # degraded in place, never stopped early
+        assert svc.pr._err_count == 2  # one entry per failed stagger arm (trigger 0 needs none)
+        assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TIMER")
 
 
 # ---------------------------------------------------------------------------
@@ -641,10 +594,10 @@ def test_reboot_system_without_fram_arms_reset_timer_and_fires_machine_reset() -
     svc = make_service()
     machine.reset_count = 0
     svc.reboot_system()
-    assert svc.reset_timer.mode == Timer.ONE_SHOT
-    assert svc.reset_timer.period == 4 * 1000  # _RESET_DELAY: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
+    assert svc._reset_timer.mode == Timer.ONE_SHOT
+    assert svc._reset_timer.period == 4 * 1000  # _RESET_DELAY: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
     assert machine.reset_count == 0  # not yet fired - a real Timer would still be counting down
-    svc.reset_timer.trigger()
+    svc._reset_timer.trigger()
     assert machine.reset_count == 1
 
 
@@ -654,7 +607,7 @@ def test_reboot_system_with_fram_pauses_storage_before_arming_the_reset() -> Non
     machine.reset_count = 0
     svc.reboot_system()
     assert manager.get_pause() is True  # paused immediately, before the reset timer ever fires
-    svc.reset_timer.trigger()
+    svc._reset_timer.trigger()
     assert machine.reset_count == 1
 
 
@@ -662,9 +615,9 @@ def test_reboot_system_cancels_any_pending_storage_unpause_timer() -> None:
     manager, _chip = make_fram_manager()
     svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(60)
-    assert svc.storage_timer.deinit_called is False
+    assert svc._storage_timer.deinit_called is False
     svc.reboot_system()
-    assert svc.storage_timer.deinit_called is True
+    assert svc._storage_timer.deinit_called is True
 
 
 def test_reboot_system_with_fram_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
@@ -735,7 +688,7 @@ def test_reboot_bootloader_arms_reset_timer_and_fires_machine_bootloader() -> No
     machine.bootloader_count = 0
     svc.reboot_bootloader()
     assert machine.bootloader_count == 0
-    svc.reset_timer.trigger()
+    svc._reset_timer.trigger()
     assert machine.bootloader_count == 1
 
 
@@ -745,14 +698,14 @@ def test_reboot_bootloader_with_fram_pauses_storage_before_arming_the_reset() ->
     machine.bootloader_count = 0
     svc.reboot_bootloader()
     assert manager.get_pause() is True  # paused immediately, before the reset timer ever fires
-    svc.reset_timer.trigger()
+    svc._reset_timer.trigger()
     assert machine.bootloader_count == 1
 
 
 def test_pause_permanent_storage_without_fram_is_a_no_op() -> None:
     svc = make_service()
     svc.pause_permanent_storage(100)
-    assert svc.storage_timer.period == -1  # never armed
+    assert svc._storage_timer.period == -1  # never armed
 
 
 def test_pause_permanent_storage_zero_duration_immediately_unpauses() -> None:
@@ -773,14 +726,14 @@ def test_pause_permanent_storage_clamps_to_the_max() -> None:
     manager, _chip = make_fram_manager()
     svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(999_999)
-    assert svc.storage_timer.period == 3600 * 1000  # _MAX_STORAGE_PAUSE: compiled away, hardcoded
+    assert svc._storage_timer.period == 3600 * 1000  # _MAX_STORAGE_PAUSE: compiled away, hardcoded
 
 
 def test_pause_permanent_storage_exact_max_boundary_is_accepted_not_clamped_further() -> None:
     manager, _chip = make_fram_manager()
     svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(3600)
-    assert svc.storage_timer.period == 3600 * 1000  # _MAX_STORAGE_PAUSE: compiled away, hardcoded
+    assert svc._storage_timer.period == 3600 * 1000  # _MAX_STORAGE_PAUSE: compiled away, hardcoded
 
 
 def test_pause_permanent_storage_valid_duration_pauses_then_auto_unpauses_when_timer_fires() -> None:
@@ -788,8 +741,8 @@ def test_pause_permanent_storage_valid_duration_pauses_then_auto_unpauses_when_t
     svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(60)
     assert manager.get_pause() is True
-    assert svc.storage_timer.period == 60 * 1000
-    svc.storage_timer.trigger()
+    assert svc._storage_timer.period == 60 * 1000
+    svc._storage_timer.trigger()
     assert manager.get_pause() is False
 
 
@@ -801,9 +754,9 @@ def test_pause_permanent_storage_second_call_rearms_over_the_first_pending_unpau
     svc = make_service(storage=manager, log=LogConfig(manager, 10, None))
     svc.pause_permanent_storage(60)
     svc.pause_permanent_storage(120)
-    assert svc.storage_timer.period == 120 * 1000  # re-armed with the new duration, not the first
+    assert svc._storage_timer.period == 120 * 1000  # re-armed with the new duration, not the first
     assert manager.get_pause() is True
-    svc.storage_timer.trigger()  # only one callback can possibly fire - the current, second one
+    svc._storage_timer.trigger()  # only one callback can possibly fire - the current, second one
     assert manager.get_pause() is False
 
 
@@ -837,9 +790,9 @@ def test_pause_permanent_storage_aborts_the_pause_on_a_memory_error() -> None:
 def test_stop_uptime_timer_deinits_the_timer() -> None:
     svc = make_service()
     svc.start_uptime_timer()
-    assert svc.uptime_timer.deinit_called is False
+    assert svc._uptime_timer.deinit_called is False
     svc.stop_uptime_timer()
-    assert svc.uptime_timer.deinit_called is True
+    assert svc._uptime_timer.deinit_called is True
 
 
 def test_get_task_starters_starter_returns_a_real_task() -> None:
@@ -863,20 +816,20 @@ def test_get_timer_starters_starter_arms_the_uptime_timer() -> None:
     starters = svc.get_timer_starters()
     assert len(starters) == 1
     starters[0]()
-    assert svc.uptime_timer.mode == Timer.PERIODIC
-    assert svc.uptime_timer.period == 1000
+    assert svc._uptime_timer.mode == Timer.PERIODIC
+    assert svc._uptime_timer.period == 1000
 
 
 def test_start_uptime_timer_logs_and_continues_when_it_cannot_be_armed() -> None:
     # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed against
-    # ports/rp2/machine_timer.c) - owner-confirmed design (2026-07-18, `1df8bc4`): unlike reboot_system()'s reset_timer guard, this
+    # ports/rp2/machine_timer.c) - owner-confirmed design (2026-07-18, `1df8bc4`): unlike reboot_system()'s _reset_timer guard, this
     # degrades gracefully rather than forcing a reboot, everything else working fine without uptime.
     svc = make_service()
     with _RaiseOnArm():
         svc.start_uptime_timer()  # must not raise despite the timer failing to arm
-    assert svc.pr.err_count == 0  # start_uptime_timer() logs via the non-persisting pr.err(), not err_s()
+    assert svc.pr._err_count == 0  # start_uptime_timer() logs via the non-persisting pr.err(), not err_s()
     assert svc._force_watchdog_starve is False  # graceful degradation, not a forced reboot
-    assert svc.uptime_timer.period == -1  # never actually armed
+    assert svc._uptime_timer.period == -1  # never actually armed
 
 
 def test_start_uptime_timer_logs_and_continues_on_a_memory_error() -> None:
@@ -885,9 +838,9 @@ def test_start_uptime_timer_logs_and_continues_on_a_memory_error() -> None:
     svc = make_service()
     with _RaiseOnArm(MemoryError):
         svc.start_uptime_timer()  # must not raise despite the timer failing to arm
-    assert svc.pr.err_count == 0  # start_uptime_timer() logs via the non-persisting pr.err(), not err_s()
+    assert svc.pr._err_count == 0  # start_uptime_timer() logs via the non-persisting pr.err(), not err_s()
     assert svc._force_watchdog_starve is False  # graceful degradation, not a forced reboot
-    assert svc.uptime_timer.period == -1  # never actually armed
+    assert svc._uptime_timer.period == -1  # never actually armed
 
 
 # ---------------------------------------------------------------------------
@@ -905,11 +858,11 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     result = run(svc.get_error_counter())
     assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
-    assert svc.pr.err_count == 0
+    assert svc.pr._err_count == 0
 
 
 def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
-    # Cross-dependency: system_service.py's own get_error_counter()/reset_error_counter() just
+    # Cross-dependency: asy_system_service.py's own get_error_counter()/reset_error_counter() just
     # proxy to self.pr - confirms that still works correctly when self.pr is the FRAM-backed
     # PrintLogHistoryStore (constructed via log=LogConfig(manager, ...)), not only the plain in-memory PrintLogHistory.
     manager, _chip = make_fram_manager()
@@ -919,7 +872,7 @@ def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     result = run(svc.get_error_counter())
     assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [code("E", "CALLBACK")], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
-    assert svc.pr.err_count == 0
+    assert svc.pr._err_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -952,7 +905,7 @@ def test_start_task_starter_exception_returns_none_and_logs_once() -> None:
 
     result = run(svc._start_task(bad_starter, 2))
     assert result is None
-    assert svc.pr.err_count == 1
+    assert svc.pr._err_count == 1
     assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_STARTER_RAISED")
 
 
@@ -980,8 +933,8 @@ def test_start_and_check_tasks_empty_starters_never_fails() -> None:
 
 
 class _CountingGc:
-    """Stands in for the `gc` module so the boot collects can be counted - module-attribute
-    reassignment is this project's mocking mechanism (MicroPython has no unittest.mock)."""
+    # Stands in for the `gc` module so the boot collects can be counted - module-attribute
+    # reassignment is this project's mocking mechanism (MicroPython has no unittest.mock).
 
     def __init__(self) -> None:
         self.collects = 0
@@ -998,11 +951,11 @@ def _long_lived_starter() -> "asyncio.Task[None]":
 
 
 def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task[Any]]]", iterations: int) -> "tuple[int, int]":
-    """Returns (collects once every starter has been started, collects after `iterations` more
-    supervisor passes) - the second must equal the first: the supervisor is the run phase."""
+    # Returns (collects once every starter has been started, collects after `iterations` more
+    # supervisor passes) - the second must equal the first: the supervisor is the run phase.
     counter = _CountingGc()
-    original_gc = system_service.gc
-    system_service.gc = counter  # type: ignore[assignment]
+    original_gc = asy_system_service.gc
+    asy_system_service.gc = counter  # type: ignore[assignment]
     svc = make_service(watchdog=machine.WDT())
     after_start = [0]
 
@@ -1023,7 +976,7 @@ def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task
         with _FastAsyncSleep():
             run(scenario())
     finally:
-        system_service.gc = original_gc
+        asy_system_service.gc = original_gc
     return after_start[0], counter.collects
 
 
@@ -1177,14 +1130,14 @@ def test_each_task_end_adds_exactly_one_entry() -> None:
         _supervise(svc, _ending_then_parked(how, calls, asyncio.Event()))
         assert calls[0] == 2, (how, calls)
         assert _persisted(svc) == [code("E", name)], (how, _persisted(svc))
-        assert svc.pr.err_count == 1, how
+        assert svc.pr._err_count == 1, how
     # A restart whose starter raises adds only its own TASK_STARTER_RAISED beside the task end's entry.
     svc = make_service()
     calls = [0]
     _supervise(svc, _ending_then_parked("starter", calls, asyncio.Event()))
     assert calls[0] == 3, calls
     assert _persisted(svc) == [code("E", "TASK_RETURNED"), code("E", "TASK_STARTER_RAISED")], _persisted(svc)
-    assert svc.pr.err_count == 2
+    assert svc.pr._err_count == 2
 
 
 def test_start_and_check_tasks_restarts_a_dead_task_and_logs_its_end() -> None:
@@ -1313,13 +1266,13 @@ def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() ->
 
     assert call_count[0] >= 4  # enough restart attempts to cross _TASK_FAIL_MAX (100 per attempt)
     assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_BUDGET_REBOOT")
-    svc.reset_timer.trigger()
+    svc._reset_timer.trigger()
     assert machine.reset_count == 1
 
 
 # ---------------------------------------------------------------------------
 # System-settings store (config_SYSTEM.cfg) - general, module-independent persisted settings, DebugLevel
-# first (see system_service.py's docstring for the intended growth). Own isolated cfg_path per test, same
+# first (see asy_system_service.py's docstring for the intended growth). Own isolated cfg_path per test, same
 # reasoning as the NTP/FRAM integration suite: setup()/set_debug_level() are real file I/O.
 # ---------------------------------------------------------------------------
 
@@ -1334,9 +1287,52 @@ def _tmp_cfg_dir() -> str:
 
 def test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot() -> None:
     svc = make_service(cfg_path=_tmp_cfg_dir())
-    run(svc.setup())
+    assert run(svc.setup()) is True
     assert svc.cfgmgr.valid is True
     assert svc.get_debug_level() == 0  # default, no level setters registered either
+
+
+def test_setup_sets_up_its_own_logger_first() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    before = svc.pr.initialized  # __init__ never sets the logger up
+    assert run(svc.setup()) is True
+    assert (before, svc.pr.initialized, svc.cfgmgr.pr.initialized) == (False, True, True)
+
+
+def test_setup_answers_false_for_an_unusable_store_and_still_sets_up_the_logger() -> None:
+    cfg_path = _tmp_cfg_dir()
+    os.mkdir(cfg_path + "config_SYSTEM.cfg")  # a directory where the settings file belongs
+    try:
+        svc = make_service(cfg_path=cfg_path)
+        assert run(svc.setup()) is False
+        assert svc.pr.initialized is True
+    finally:
+        os.rmdir(cfg_path + "config_SYSTEM.cfg")
+
+
+def test_get_dict_cfg_answers_the_nested_shape_every_module_returns() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": None}}  # before setup(): the store is not valid
+    run(svc.setup())
+    assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": 0}}
+
+
+def test_the_supervisor_leaves_the_logger_setup_to_the_boot_batch() -> None:
+    svc = make_service()
+
+    async def scenario() -> None:
+        sup = asyncio.create_task(svc.start_and_check_tasks([_long_lived_starter]))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        sup.cancel()
+        try:
+            await sup
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert svc.pr.initialized is False
 
 
 def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() -> None:
@@ -1411,7 +1407,7 @@ def test_set_debug_level_without_any_registered_setters_still_persists() -> None
 
 
 def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
-    # Matches _timer_sequencer()'s/_start_task()'s own established defense: a driver/caller-supplied
+    # Matches start_timers()'s/_start_task()'s own established defense: a driver/caller-supplied
     # callback could misbehave, and one failure must not take down the others.
     calls: list[int] = []
 

@@ -1,11 +1,12 @@
 import asyncio
 import os
 
+from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C, Pin
 
-import config_manager as cm
+import asy_config_manager as cm
 
 try:
     from typing import TYPE_CHECKING
@@ -149,6 +150,24 @@ def test_scd30_nvm_writes_refuses_a_log_that_dropped_entries() -> None:
     except AssertionError:
         return
     raise AssertionError("a truncated log must not give a count")
+
+
+def test_the_fram_fake_counts_every_write_command_that_reaches_its_data_phase() -> None:
+    chip = FakeMB85RS64V(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+    assert chip.write_transactions == 0
+    chip.write(bytes([0x06]))  # WREN
+    chip.write(bytes([0x02, 0x00, 0x10]))  # WRITE opcode and address: not yet a write
+    assert chip.write_transactions == 0
+    chip.write(b"ab")  # its data phase
+    assert chip.write_transactions == 1
+    assert chip.memory[0x10:0x12] == b"ab"
+    chip.write(bytes([0x02, 0x00, 0x20]))  # no WREN first: the chip drops the data, the command still ran
+    chip.write(b"cd")
+    assert chip.write_transactions == 2
+    assert chip.memory[0x20:0x22] == bytes(2)
+    chip.write(bytes([0x03, 0x00, 0x10]))  # READ is no write
+    chip.readinto(bytearray(2))
+    assert chip.write_transactions == 2
 
 
 if __name__ == "__main__":

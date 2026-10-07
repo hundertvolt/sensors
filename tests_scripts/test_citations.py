@@ -70,7 +70,7 @@ _ARCHIVE_COMMIT = "12640c2"
 
 @dataclass(frozen=True)
 class _Context:
-    """What a citation resolves against: the tree, SPEC's headings, BACKLOG's items, the row keys."""
+    # What a citation resolves against: the tree, SPEC's headings, BACKLOG's items, the row keys.
 
     files: set[str]
     top: set[str]
@@ -100,7 +100,7 @@ def _top_entries(files: list[str]) -> set[str]:
 
 
 def _datasheets_checked() -> bool:
-    """A skip warns rather than prints: pytest shows a warning summary even under -q, never a passing test's output."""
+    # A skip warns rather than prints: pytest shows a warning summary even under -q, never a passing test's output.
     status = git_lines("submodule", "status", "datasheets")
     if status and status[0].startswith("-"):
         warnings.warn("datasheets/ submodule not initialised - paths under it are not checked", stacklevel=2)
@@ -133,8 +133,8 @@ def _path_resolves(token: str, known: set[str]) -> bool:
 
 
 def _path_misses(token: str, ctx: _Context) -> set[str]:
-    """The unresolved paths a token cites. An `a.md/b.md` alternation is split at each known file, and
-    an unresolved name with no extension and no trailing slash is prose ("tests/mypy/ruff/CI")."""
+    # The unresolved paths a token cites. An `a.md/b.md` alternation is split at each known file, and
+    # an unresolved name with no extension and no trailing slash is prose ("tests/mypy/ruff/CI").
     if "//" in token:
         return set().union(*(_path_misses(part, ctx) for part in token.split("//") if part))
     segments = token.split("/")
@@ -171,7 +171,7 @@ def _defined_labels(lines: list[str]) -> set[str]:
 
 
 def _archive_state() -> str:
-    """'ok' when the archive commit is an ancestor, 'shallow' when a shallow clone lacks it, else 'missing'."""
+    # 'ok' when the archive commit is an ancestor, 'shallow' when a shallow clone lacks it, else 'missing'.
     if git_succeeds("merge-base", "--is-ancestor", _ARCHIVE_COMMIT, "HEAD"):
         return "ok"
     if git_lines("rev-parse", "--is-shallow-repository") == ["true"]:
@@ -181,16 +181,16 @@ def _archive_state() -> str:
 
 
 def _prose_lines(path: str, text: str) -> list[str]:
-    """Markdown and plain text whole; code and config by their comments and docstrings only, so a
-    synthetic path in a test's string literal is not mistaken for a citation."""
+    # Markdown and plain text whole; code and config by their comments and docstrings only, so a
+    # synthetic path in a test's string literal is not mistaken for a citation.
     if is_plain(path):
         return text.splitlines()
     return [line for block in prose_blocks(path, text) for line in block.lines]
 
 
 def _token_misses(path: str, token: str, ctx: _Context) -> set[str]:
-    """A token under a directory beside the citing file resolves relative to it, else from the root;
-    it misses only when every reading misses, and is then reported as the first reading."""
+    # A token under a directory beside the citing file resolves relative to it, else from the root;
+    # it misses only when every reading misses, and is then reported as the first reading.
     first, here = token.split("/", 1)[0], path.rpartition("/")[0]
     readings = []
     if here and f"{here}/{first}" in ctx.known - ctx.files:
@@ -201,7 +201,7 @@ def _token_misses(path: str, token: str, ctx: _Context) -> set[str]:
 
 
 def _file_findings(path: str, lines: list[str], ctx: _Context) -> Counter[str]:
-    """Each occurrence counts, so one allow-list line covers one occurrence."""
+    # Each occurrence counts, so one allow-list line covers one occurrence.
     found: Counter[str] = Counter()
     text = "\n".join(lines)
     for match in _PATH_TOKEN.finditer(text):

@@ -69,7 +69,7 @@ coverage_digital_twin.xml
 coverage_summary_digital_twin.md
 .coverage
 
-# Scratch config files written/removed by tests/test_config_manager.py's real file-I/O tests.
+# Scratch config files written/removed by tests/test_asy_config_manager.py's real file-I/O tests.
 tests/_tmp/
 
 # The twin entry points' persistent run state (digital_twin/launch.py, run_generic_integration.py): FRAM

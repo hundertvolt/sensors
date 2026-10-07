@@ -34,7 +34,7 @@ _SITE_RE = re.compile(r"^(?P<path>[\w.][\w./-]*?)(?::[\d, -]+)?\s+[\u2014\u2013]
 
 # rp2's WDT refuses a longer timeout: ports/rp2/machine_wdt.c:32-38 (v1.29.0), a platform fact.
 _RP2_WDT_MAX_MS = 8388
-# "<<" in system_service.py, read as a factor of at least four (agent, 2026-09-29): the ratio the
+# "<<" in asy_system_service.py, read as a factor of at least four (agent, 2026-09-29): the ratio the
 # shipped values meet exactly; the real margin is the supervisor-scan budget in wdt.timeout_ms's row.
 _TASK_CHECK_FACTOR = 4
 
@@ -56,7 +56,7 @@ class Row:
 
 
 def _comments(path: Path, lines: "list[str]") -> "list[tuple[int, str, bool]]":
-    """Every comment as (line, text without its marker, whether the comment has its line to itself)."""
+    # Every comment as (line, text without its marker, whether the comment has its line to itself).
     if path.suffix == ".py":
         try:
             tokens = iter_comment_tokens(path, "tunables", str(path))
@@ -111,7 +111,7 @@ def _scan_file(root: Path, path: Path, tags: "list[Tag]", problems: "list[str]")
 
 
 def collect_tags(root: Path) -> "tuple[list[Tag], list[str]]":
-    """Every tag under the scanned scopes, plus every malformed, misplaced or literal-less one."""
+    # Every tag under the scanned scopes, plus every malformed, misplaced or literal-less one.
     files = [root / name for name in _SCAN_FILES if (root / name).is_file()]
     for scope in _SCAN_DIRS:
         for directory, subdirs, names in os.walk(root / scope):
@@ -132,8 +132,8 @@ def _cells(line: str) -> "list[str]":
 
 
 def parse_register(spec_text: str) -> "tuple[list[Row], list[str]]":
-    """Part N's rows. A table under an N.4 heading, or one with a "Checked by" or rule-valued Kind
-    column, holds rule rows; every other table between the markers holds tuned rows."""
+    # Part N's rows. A table under an N.4 heading, or one with a "Checked by" or rule-valued Kind
+    # column, holds rule rows; every other table between the markers holds tuned rows.
     if spec_text.count(_BEGIN) != 1 or spec_text.count(_END) != 1 or spec_text.index(_BEGIN) > spec_text.index(_END):
         return [], [f"SPECIFICATION.md must hold Part N's register exactly once between {_BEGIN} and {_END}"]
     start = spec_text[: spec_text.index(_BEGIN)].count("\n") + 1
@@ -182,7 +182,7 @@ def _sites(cell: str) -> "tuple[set[tuple[str, str]], list[str]]":
 
 
 def check_register(tags: "list[Tag]", rows: "list[Row]") -> "list[str]":
-    """Tags and rows agree both ways, and every row carries what N.1 requires of it."""
+    # Tags and rows agree both ways, and every row carries what N.1 requires of it.
     problems: list[str] = []
     by_id: dict[str, Row] = {}
     for row in rows:

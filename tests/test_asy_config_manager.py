@@ -6,7 +6,7 @@ from _error_codes import code
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 
-import config_manager as cm
+import asy_config_manager as cm
 
 try:
     from typing import TYPE_CHECKING
@@ -27,7 +27,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Every test
 # below writes its own uniquely-named config file, so they can safely share this one directory.
-_scratch = TmpScratch("config_manager")
+_scratch = TmpScratch("asy_config_manager")
 _SHARED_CFG_DIR = _scratch.dir()
 
 # One field of each schema "type" (int/float/str/bool), plus a special-only (not persisted) field,
@@ -267,7 +267,7 @@ def test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result() -> None:
 # function type_or_range_error() calls before touching min/max/special, tested in isolation so its contract
 # does not depend on any field's range.
 #
-# The same surface sensortask_wozi.py's lightCmdLED dispatch is exercised against, that one having no
+# The same surface sensortask_wozi.py's LightCmdLED dispatch is exercised against, that one having no
 # FieldSchema of its own.
 # ---------------------------------------------------------------------------
 
@@ -339,7 +339,7 @@ def test_coerce_numeric_wrong_type_entirely_rejected() -> None:
 
 def test_coerce_numeric_unsupported_scalar_type_never_raises() -> None:
     # coerce_numeric() is only ever called with scalar_type in (int, float) by real production
-    # code (type_or_range_error()'s int/float branches, sensortask_wozi.py's lightCmdLED) - this is
+    # code (type_or_range_error()'s int/float branches, sensortask_wozi.py's LightCmdLED) - this is
     # a defensive check on the function's own general contract, not a reachable production path.
     assert cm.coerce_numeric(5, str) == (False, 5)
     assert cm.coerce_numeric(5, bool) == (False, 5)
@@ -348,7 +348,7 @@ def test_coerce_numeric_unsupported_scalar_type_never_raises() -> None:
 def test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap() -> None:
     # int -> float is a blanket accept, with no exact-round-trip check unlike the other direction, on the
     # premise that every int is exactly representable as a float. True for any value a real schema field's
-    # bounds let through (the largest today is BMP3xx's SeaLevelOffs at 5000.0).
+    # bounds let through (the largest today is BMP3xx's SeaLevelOffset at 5000.0).
     #
     # Not true in general: float has a finite mantissa (24 bits on the real RP2040's single-precision build,
     # 52 on this Unix-port double-precision one) while MicroPython's int is arbitrary-precision on both, so
@@ -854,7 +854,7 @@ def test_configmanager_directory_path_is_invalid() -> None:
     os.mkdir(path)
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        run(mgr.setup())
+        assert run(mgr.setup()) is False
         assert mgr.valid is False
     finally:
         os.rmdir(path)
@@ -864,6 +864,7 @@ def test_configmanager_empty_schema_is_invalid() -> None:
     mgr, path = _make("emptyschema.cfg", cfg_vals=())
     try:
         assert mgr.valid is False
+        assert run(mgr.setup()) is False
     finally:
         _remove(path)
 
@@ -902,7 +903,7 @@ def test_configmanager_corrupt_json_falls_back_to_defaults() -> None:
         f.write("{not valid json")
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        run(mgr.setup())
+        assert run(mgr.setup()) is True
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -1246,7 +1247,7 @@ def test_configmanager_file_is_json_array_not_dict() -> None:
         f.write("[1, 2, 3]")
     try:
         mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
-        run(mgr.setup())
+        assert run(mgr.setup()) is True
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -1896,10 +1897,10 @@ def test_write_config_non_dict_data_returns_false_not_uncaught() -> None:
     mgr, path = _make("nondictdata.cfg")
     try:
         for bad_data in (None, 5, 12.5, "abc", ["Count", 1]):
-            before = mgr.pr.err_count
+            before = mgr.pr._err_count
             ok, results = run(mgr.write_config(bad_data, _VAL_INT))  # type: ignore[arg-type]
             assert (ok, results) == (False, {})
-            assert mgr.pr.err_count - before == 1
+            assert mgr.pr._err_count - before == 1
             assert _last_errno(mgr) == code("E", "BAD_ARG")
         assert mgr._pending_flush is None
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched by any of the above
@@ -2199,7 +2200,7 @@ def test_write_config_bool_special_wrong_type_is_invalid() -> None:
 
 
 def test_concurrent_writes_are_serialized_not_lost() -> None:
-    # Both write_config() calls read-modify-write the whole file; without config_lock serializing
+    # Both write_config() calls read-modify-write the whole file; without _config_lock serializing
     # them, the second writer overwriting first's read would silently drop one field's update.
     mgr, path = _make("concurrent.cfg", cfg_vals=_VAL_INT + _VAL_FLOAT)
 
@@ -2295,7 +2296,7 @@ def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
 # setup()'s except clauses. RP2040's 264KB SRAM makes a failed serialize/parse realistic, but no config file
 # small enough to be safe in a test can provoke it.
 #
-# So config_manager's own module-level `json` name is substituted instead, the same technique the UDP socket
+# So asy_config_manager's own module-level `json` name is substituted instead, the same technique the UDP socket
 # and UART driver suites use for their own otherwise-unreachable guards.
 # ---------------------------------------------------------------------------
 
@@ -2310,7 +2311,7 @@ class _MemoryErrorJson:
 
     # `stream` is `object`: it is only handed straight back to the real json module, whose own
     # stub types it as IOBase_mp | Incomplete. load() returns `object` for the same reason - every
-    # consumer (config_manager.setup()) isinstance-checks the result before using it.
+    # consumer (asy_config_manager.setup()) isinstance-checks the result before using it.
     def dump(self, obj: "dict[str, cm.CfgValue]", stream: object) -> None:
         if self.raise_on_dump:
             raise MemoryError("simulated allocation failure")
@@ -2590,13 +2591,38 @@ def test_self_heals_a_failed_flush_on_the_next_accepted_change() -> None:
         _remove(path)
 
 
+class _UnserialisableValue:
+    # json.dump() renders an unknown object through its repr(), so a repr() that raises is what an
+    # unexpected serialisation failure looks like here (MicroPython writes "<object>" for a plain one).
+    def __repr__(self) -> str:
+        raise RuntimeError("injected for the flush top")
+
+
+def test_an_unserialisable_snapshot_ends_the_flush_task_with_one_unexpected_entry() -> None:
+    mgr, path = _make("u10_unserialisable.cfg")
+    try:
+        mgr._cache["Name"] = _UnserialisableValue()  # type: ignore[assignment]  # planted past the schema
+        before = mgr.pr._err_count
+
+        async def write_and_flush() -> None:
+            await mgr.write_config({"Count": 6}, _SCHEMA)
+            await mgr.flush_pending()  # the task's end is persisted, not re-raised into its waiter
+
+        run(write_and_flush())
+        assert mgr.pr._err_count == before + 1
+        assert _last_errno(mgr) == code("E", "UNEXPECTED")
+        assert mgr._pending_flush is None
+    finally:
+        _remove(path)
+
+
 def test_the_only_flash_writes_in_config_manager_are_the_two_known_sites() -> None:
     # Structural half of the write-loop guarantee: exactly setup()'s and _flush_staged()'s opens
     # for writing, and nothing in the module that could re-run one on its own - no timer, no sleep,
     # no loop that waits. A new write site or retry mechanism has to come through here.
     with open(cm.__file__) as f:
         source = f.read()
-    assert source.count('open(self.config_file, "w")') == 2
+    assert source.count('open(self._config_file, "w")') == 2
     assert source.count('"w"') == 2
     code = [line.split("#")[0] for line in source.split("\n")]  # comments may say anything
     for forbidden in ("Timer", "sleep", "while "):

@@ -35,17 +35,17 @@ def confirm(prompt: str = "Press Enter once done") -> None:
 
 
 def confirm_pass(prompt: str = "Did it match the expected outcome above? [y/N]") -> None:
-    """For the tests that end in a human visual/instrument judgment call rather than a script-only
-    assertion - a real y/n answer, not Ctrl-C (which aborts the *entire* run, per main()'s own
-    handling, not just this one test)."""
+    # For the tests that end in a human visual/instrument judgment call rather than a script-only
+    # assertion - a real y/n answer, not Ctrl-C (which aborts the *entire* run, per main()'s own
+    # handling, not just this one test).
     answer = input(f"    {prompt} ").strip().lower()
     if answer not in ("y", "yes"):
         raise AssertionError("operator reported this did not match the expected outcome")
 
 
 def countdown(seconds: int, message: str) -> None:
-    """For the genuine power-cycle cases where the console itself goes away mid-step - a bare
-    countdown, not a confirm() prompt, since nothing is listening to press Enter on."""
+    # For the genuine power-cycle cases where the console itself goes away mid-step - a bare
+    # countdown, not a confirm() prompt, since nothing is listening to press Enter on.
     print(f"    {message} ({seconds}s)")
     for remaining in range(seconds, 0, -1):
         print(f"    ...{remaining}s", end="\r")

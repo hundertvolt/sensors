@@ -101,7 +101,7 @@ def test_a_bad_runner_name_or_keep_is_refused(archive: ModuleType, tmp_path: Pat
 
 
 def _cli(tmp_path: Path, *argv: str) -> subprocess.CompletedProcess[str]:
-    """Runs a copy of the script whose repository root is tmp_path, so build/archive lands there."""
+    # Runs a copy of the script whose repository root is tmp_path, so build/archive lands there.
     copy = tmp_path / "scripts" / _SCRIPT.name
     if not copy.exists():
         copy.parent.mkdir(parents=True)

@@ -18,9 +18,9 @@ from _script_loader import load_script_module
 
 @pytest.fixture(scope="session")
 def build_firmware(repo_root: Path) -> ModuleType:
-    """Imports scripts/build_firmware.py as a real module (it's a `uv run`-style standalone
-    script, not a package member) so build_stage_dir()/_MANIFEST_TEMPLATE can be checked
-    directly instead of only through subprocess/CLI behavior."""
+    # Imports scripts/build_firmware.py as a real module (it's a `uv run`-style standalone
+    # script, not a package member) so build_stage_dir()/_MANIFEST_TEMPLATE can be checked
+    # directly instead of only through subprocess/CLI behavior.
     return load_script_module(repo_root / "scripts" / "build_firmware.py", "build_firmware")
 
 
@@ -148,13 +148,13 @@ def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
 def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
-    # config_manager.py is a known if TYPE_CHECKING: user, so its staged copy must have the
+    # asy_config_manager.py is a known if TYPE_CHECKING: user, so its staged copy must have the
     # guard stripped while the real src/ file keeps it - CLAUDE.md's hard rule against editing
     # src/ for a build-only concern.
     build_firmware.build_stage_dir(tmp_path, device)
-    staged_text = (tmp_path / "config_manager.py").read_text()
+    staged_text = (tmp_path / "asy_config_manager.py").read_text()
     assert "TYPE_CHECKING" not in staged_text
-    assert "TYPE_CHECKING" in (repo_root / "src" / "config_manager.py").read_text()
+    assert "TYPE_CHECKING" in (repo_root / "src" / "asy_config_manager.py").read_text()
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])

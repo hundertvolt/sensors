@@ -9,13 +9,14 @@ from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
+import asy_base_classes
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import (
     ISL29125,
     ISL29125_I2C,
     ISL29125_Reader,
 )
-from print_log import LogConfig
+from asy_print_log import LogConfig
 
 # Mirrors of asy_isl29125_driver.py's own underscore-prefixed micropython.const() values - those
 # are folded into every use site at compile time and are NOT importable module attributes (see
@@ -54,9 +55,10 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from asy_base_classes import JsonDict
+    from asy_config_manager import ConfigSchema
     from asy_isl29125_driver import ISLResults
-    from config_manager import ConfigSchema
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -68,7 +70,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 class _FastAsyncSleep:
     # I2CDevice.setup()'s _probe_for_device() makes two real 0.1s asyncio.sleep() calls, and this
     # driver's own settle wait sleeps a whole 303ms conversion cycle - both far too slow for a
-    # test driving read_loop() as a background task. Same technique as test_asy_bmp3xx_driver.py's.
+    # test driving _read_loop() as a background task. Same technique as test_asy_bmp3xx_driver.py's.
     def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
         self._real_sleep_ms = asyncio.sleep_ms
@@ -169,7 +171,7 @@ def mem_reads(i2c: I2C) -> "list[tuple[int, int]]":
 
 
 def logged(counters: "ErrorLog", kind: str, name: str = "ISL29125") -> "list[int]":
-    # print_log.py keeps errors and warnings in ONE history list, discriminated by the parallel
+    # asy_print_log.py keeps errors and warnings in ONE history list, discriminated by the parallel
     # ErrType entry ("E"/"W") - so asserting on ErrNum alone would let warning 13 satisfy a test
     # written for error 13, and vice versa.
     entry = counters[name]
@@ -469,7 +471,7 @@ def test_decode_config_rejects_the_wrong_length_and_none() -> None:
 def test_setup_sequence_is_id_reset_brownout_config() -> None:
     i2c, isl = ready_protocol()
     with _FastAsyncSleep():
-        run(isl.setup())
+        assert run(isl.setup()) is True
     reads = mem_reads(i2c)
     writes = mem_writes(i2c)
     assert reads[0][0] == _REG_ID  # identity first
@@ -486,7 +488,8 @@ def test_setup_raises_on_a_wrong_device_id() -> None:
     with _FastAsyncSleep():
         try:
             run(isl.setup())
-        except RuntimeError:
+        except RuntimeError as e:
+            assert str(e) == "failed to find ISL29125, device ID 0x42"
             return
     raise AssertionError("setup() must refuse a chip that is not an ISL29125")
 
@@ -794,7 +797,7 @@ def make_reader(
         cfg_path=_tmp_cfg_path(name),
         irq_pull_up=irq_pull_up,
     )
-    run(reader.cfgmgr.setup())
+    run(reader.setup())
     return i2c, reader
 
 
@@ -814,7 +817,7 @@ def ready_reader(name: str, **kwargs: "object") -> "tuple[I2C, ISL29125_Reader]"
     # init's CONFIG1 burst legitimately leaves a settle pending, and these tests run in zero wall
     # clock - so the first conversion is marked complete here rather than every test sleeping 303ms.
     # The settle behaviour has its own tests (test_no_sample_is_reported_during_the_settle_window).
-    reader.isl._settle_until_ms = _time.ticks_ms()
+    reader._isl._settle_until_ms = _time.ticks_ms()
     # 0x00 is read-only as the device ID and write-only as the reset command on real hardware, a
     # split tests/machine.py's flat register dict cannot model - so setup()'s reset write leaves
     # 0x46 where the ID should be. Restored so a later device-ID re-read sees a real chip.
@@ -845,7 +848,7 @@ def test_the_log_config_sets_both_loggers_length_and_level() -> None:
     for pr in (reader.pr, reader.cfgmgr.pr):
         assert len(pr.history) == 3
         assert pr.get_level() == 2
-    assert reader.isl.i2c_isl29125.i2c_device.device_address == _ADDR  # the chip's one fixed address
+    assert reader._isl._i2c_isl29125.i2c_device.device_address == _ADDR  # the chip's one fixed address
 
 
 def test_reader_construction_enables_the_internal_pull_up_on_the_int_pin() -> None:
@@ -896,7 +899,7 @@ def test_init_returns_false_when_the_config_is_unreadable_logs_in_both_layers() 
 
 def test_init_returns_false_and_logs_chip_set_when_applying_the_config_raises() -> None:
     i2c, reader = make_reader("cfgwrite")
-    real_configure = reader.isl.configure
+    real_configure = reader._isl.configure
 
     async def only_the_startup_burst_fails(**kwargs: object) -> None:
         # setup()'s own configure() call has to succeed for init to reach the step under test;
@@ -905,7 +908,7 @@ def test_init_returns_false_and_logs_chip_set_when_applying_the_config_raises() 
             raise OSError(errno_mod.EIO, "injected")
         await real_configure(**kwargs)  # type: ignore[arg-type]
 
-    reader.isl.configure = only_the_startup_burst_fails  # type: ignore[method-assign]
+    reader._isl.configure = only_the_startup_burst_fails  # type: ignore[method-assign]
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
@@ -959,7 +962,7 @@ def test_read_loop_calls_error_check_exactly_once_per_cycle() -> None:
             seed(i2c, _REG_CONFIG1, bytes(3))
             task = reader.start_asy_read()
             for _ in range(3):
-                reader.read_event.set()
+                reader._read_event.set()
                 for _ in range(40):
                     await asyncio.sleep(0)
             await _cancel_and_join(task)
@@ -995,7 +998,7 @@ def test_no_exception_escapes_the_reader_layer() -> None:
         async def boom(*_args: object, **_kwargs: object) -> None:
             raise OSError(errno_mod.EIO, "injected")
 
-        setattr(reader.isl, method, boom)
+        setattr(reader._isl, method, boom)
         with _FastAsyncSleep():
             # None of these may raise, whichever entry point was poisoned - that is the reader
             # layer's whole contract. read_status/read_counts additionally have to surface as a
@@ -1015,9 +1018,65 @@ def test_no_exception_escapes_the_reader_layer() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _isl_group(body: "JsonDict") -> "JsonDict":
+    # The REST body's one measurement group, narrowed from the JSON value type.
+    group = body["ISL29125"]
+    assert isinstance(group, dict)
+    return group
+
+
+class _UTCValid:
+    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit.
+    def __enter__(self) -> "_UTCValid":
+        asy_base_classes.set_utc_valid()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
+def test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak() -> None:
+    # utc_now() is None until the NTP client sets the clock: the sample is published with TS None,
+    # and the read loop's condition counts only a cycle whose measured values are gone.
+    i2c, reader = make_reader("presync", max_module_error=1)
+    seed_cycle(i2c, 20000, 20000, 20000)
+
+    async def scenario() -> bool:
+        with _FastAsyncSleep():
+            seed(i2c, _REG_CONFIG1, bytes(3))
+            task = reader.start_asy_read()
+            for _ in range(3):  # three good cycles: past max_module_error had TS counted as a failure
+                reader._read_event.set()
+                for _ in range(40):
+                    await asyncio.sleep(0)
+            running = not task.done()
+            await _cancel_and_join(task)
+        return running
+
+    assert run(scenario()) is True
+    data = run(reader.get_data())
+    assert data.Lux is not None
+    assert data.TS is None
+    assert reader._err_cnt_internal == 0
+
+
+def test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp() -> None:
+    i2c, reader = ready_reader("last_good")
+    seed_cycle(i2c, 20000, 20000, 20000)
+    with _FastAsyncSleep(), _UTCValid():
+        run(reader._store_isl(run(reader._read_isl())))
+        good = run(reader.get_data())
+        fake(i2c).nak_addresses.add(_ADDR)
+        failed = run(reader._read_isl())
+        run(reader._store_isl(failed))
+    assert good.TS is not None
+    assert failed[0] is None
+    assert run(reader.get_data()) == good  # the last good sample, its TS unchanged
+
+
 def test_read_returns_a_narrow_results_tuple_without_cct() -> None:
-    # The _error_check trap: base_classes counts a failed read when ANY element is None, and CCT
-    # is legitimately None in a dark room - so the wide namedtuple must never reach it.
+    # The narrow tuple keeps CCT out: it is legitimately None in a dark room, and the read loop's
+    # condition counts only a cycle whose measured values are gone.
     i2c, reader = ready_reader("narrow")
     seed_cycle(i2c, 20000, 21000, 22000)
     with _FastAsyncSleep():
@@ -1034,7 +1093,8 @@ def test_the_results_tuple_carries_the_range_the_sample_was_taken_on() -> None:
     with _FastAsyncSleep():
         results = run(reader._read_isl())
     assert results[3] == _RANGE_HIGH_LUX
-    assert results[4] is not None  # the timestamp, taken first
+    assert results[4] == _RANGE_HIGH_LUX  # the span
+    assert results[5] is None  # TS: no NTP sync in this test
 
 
 def test_a_switching_cycle_is_scaled_by_the_old_range_not_the_new_one() -> None:
@@ -1066,7 +1126,7 @@ def test_a_dark_room_never_increments_the_error_counter() -> None:
         with _FastAsyncSleep():
             for _ in range(10):
                 results = await reader._read_isl()
-                assert await reader._error_check(results) is True
+                assert await reader._error_check(results, condition=results[0] is None) is True  # the read loop's condition
                 await reader._store_isl(results)
         return await reader.get_error_counter()
 
@@ -1084,9 +1144,12 @@ def test_store_produces_the_documented_nested_body() -> None:
     body = run(reader.get_dict_data())
     assert set(body) == {"ISL29125"}
     group = body["ISL29125"]
+    assert isinstance(group, dict)
     assert set(group) == {"Lux", "RGB", "HSB", "CCT", "RangeAct", "Overrange", "GainMeas", "TS"}
-    assert set(group["RGB"]) == {"R", "G", "B"}
-    assert set(group["HSB"]) == {"H", "S", "B"}
+    rgb, hsb = group["RGB"], group["HSB"]
+    assert isinstance(rgb, dict) and isinstance(hsb, dict)
+    assert set(rgb) == {"R", "G", "B"}
+    assert set(hsb) == {"H", "S", "B"}
     assert group["RangeAct"] == _RANGE_HIGH_LUX
     assert group["Overrange"] is False
 
@@ -1157,7 +1220,7 @@ def test_output_filter_applies_only_when_filtcoeff_is_positive() -> None:
         assert abs(unfiltered - 2.0 * first) < 1e-9
         # Now with the filter on: one step must land a tenth of the way, not all the way.
         run(reader.set_filter_coefficient(0.1))
-        assert run(reader.cfgmgr.write_config({"FiltCoeff": 0.1}, reader.cfg_schema))[0] is True
+        assert run(reader.cfgmgr.write_config({"FiltCoeff": 0.1}, reader.get_cfg_schema()))[0] is True
         seed_cycle(i2c, 40000, 40000, 40000)
         run(reader._store_isl(run(reader._read_isl())))
         filtered = run(reader.get_data()).Lux
@@ -1298,8 +1361,8 @@ def test_no_sample_is_reported_during_the_settle_window() -> None:
     asyncio.sleep_ms = recording  # type: ignore[assignment]
     try:
         with _FastAsyncSleep():
-            run(reader.isl.configure(resolution=12))  # a CONFIG1 write, so a settle is now pending
-            assert reader.isl.time_to_settle_ms() > 0
+            run(reader._isl.configure(resolution=12))  # a CONFIG1 write, so a settle is now pending
+            assert reader._isl.time_to_settle_ms() > 0
             asyncio.sleep_ms = recording  # type: ignore[assignment]  # _FastAsyncSleep replaced it
             run(reader._read_isl())
     finally:
@@ -1316,13 +1379,13 @@ def test_the_settle_wait_is_bounded_against_a_stream_of_config_writes() -> None:
 
     async def extending(_ms: int) -> None:
         rounds.append(1)
-        run_extend = reader.isl
+        run_extend = reader._isl
         run_extend._settle_until_ms = __import__("time").ticks_add(__import__("time").ticks_ms(), 500)
         await real_sleep_ms(0)
 
     asyncio.sleep_ms = extending  # type: ignore[assignment]
     try:
-        reader.isl._settle_until_ms = __import__("time").ticks_add(__import__("time").ticks_ms(), 500)
+        reader._isl._settle_until_ms = __import__("time").ticks_add(__import__("time").ticks_ms(), 500)
         run(reader._settle_wait())
     finally:
         asyncio.sleep_ms = real_sleep_ms
@@ -1400,7 +1463,7 @@ def test_no_range_decision_is_made_while_auto_is_off_or_a_settle_is_pending() ->
     reader._range_auto = False
     assert reader._evaluate_range((65535, 65535, 65535), saturated=True) is None
     reader._range_auto = True
-    reader.isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 500)
+    reader._isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 500)
     assert reader._evaluate_range((65535, 65535, 65535), saturated=True) is None
 
 
@@ -1423,7 +1486,7 @@ def test_thresholds_are_scaled_to_the_active_resolution() -> None:
     # dead there. ISL29125_I2C.fraction_to_counts() itself stays a pure fraction-of-65535 helper.
     i2c, reader = ready_reader("thresh_bits")
     with _FastAsyncSleep():
-        run(reader.isl.configure(resolution=12))
+        run(reader._isl.configure(resolution=12))
         fake(i2c).log.clear()
         run(reader._switch_range(_RANGE_LOW_LUX))
     writes = [payload for register, payload in mem_writes(i2c) if register == _REG_THRESHOLDS]
@@ -1449,14 +1512,14 @@ def test_a_failed_threshold_write_and_a_failed_range_write_each_log_chip_set() -
         with _FastAsyncSleep():
             fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
             await reader._switch_range(_RANGE_LOW_LUX)  # the threshold burst fails -> CHIP_SET
-            real_configure = reader.isl.configure
+            real_configure = reader._isl.configure
 
             async def failing_configure(**_kwargs: object) -> None:
                 raise OSError(errno_mod.EIO, "injected")
 
-            reader.isl.configure = failing_configure  # type: ignore[method-assign]
+            reader._isl.configure = failing_configure  # type: ignore[method-assign]
             await reader._switch_range(_RANGE_LOW_LUX)  # thresholds land, CONFIG1 fails -> CHIP_SET
-            reader.isl.configure = real_configure  # type: ignore[method-assign]
+            reader._isl.configure = real_configure  # type: ignore[method-assign]
         return await reader.get_error_counter()
 
     counters = run(scenario())
@@ -1490,7 +1553,7 @@ def test_a_periodic_only_switch_warns_after_five_consecutive_occurrences() -> No
                     seed_cycle(i2c, 100, 100, 100, status=0x00)
                 else:
                     seed_cycle(i2c, 65535, 65535, 65535, status=0x00)
-                reader.isl._settle_until_ms = time.ticks_ms()
+                reader._isl._settle_until_ms = time.ticks_ms()
                 reader._last_switch_ms = time.ticks_add(time.ticks_ms(), -1000)
                 await reader._read_isl()
         return await reader.get_error_counter()
@@ -1507,7 +1570,7 @@ def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
         with _FastAsyncSleep():
             for index in range(3):  # three, not five - the counter must not reach its own warn point
                 seed_cycle(i2c, 100, 100, 100, status=0x00) if index % 2 == 0 else seed_cycle(i2c, 65535, 65535, 65535, status=0x00)
-                reader.isl._settle_until_ms = time.ticks_ms()
+                reader._isl._settle_until_ms = time.ticks_ms()
                 await reader._read_isl()
             assert reader._periodic_only_switches == 3
             # The third iteration left the reader on the LOW range, so a BRIGHT scene is what
@@ -1515,7 +1578,7 @@ def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
             # healthy fast path are present: the chip latched the crossing AND the line woke us.
             seed_cycle(i2c, 65535, 65535, 65535, status=_STATUS_RGBTHF)
             reader._irq_fired = True
-            reader.isl._settle_until_ms = time.ticks_ms()
+            reader._isl._settle_until_ms = time.ticks_ms()
             await reader._read_isl()
         return await reader.get_error_counter()
 
@@ -1533,7 +1596,7 @@ def test_a_latched_flag_with_no_pin_edge_still_counts_as_a_periodic_only_switch(
     with _FastAsyncSleep():
         seed_cycle(i2c, 100, 100, 100, status=_STATUS_RGBTHF)  # flag set...
         reader._irq_fired = False  # ...but no edge ever arrived
-        reader.isl._settle_until_ms = time.ticks_ms()
+        reader._isl._settle_until_ms = time.ticks_ms()
         run(reader._read_isl())
     assert reader._active_range == _RANGE_LOW_LUX  # the switch still happened, via the periodic path
     assert reader._periodic_only_switches == 1
@@ -1548,7 +1611,7 @@ def test_the_pin_handler_records_the_edge_as_well_as_waking_the_read_loop() -> N
     reader.irq_pin.trigger_irq()
     assert before is False
     assert reader._irq_fired is True
-    assert _drain_flag(reader.read_event) is True
+    assert _drain_flag(reader._read_event) is True
 
 
 def test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt() -> None:
@@ -1557,7 +1620,7 @@ def test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt()
     _i2c, reader = ready_reader("wrn13_12bit")
 
     async def scenario() -> "ErrorLog":
-        await reader.isl.configure(resolution=12, persist=8)
+        await reader._isl.configure(resolution=12, persist=8)
         for _ in range(5):
             await reader._note_decision_source(threshold_fired=False)
         return await reader.get_error_counter()
@@ -1627,10 +1690,12 @@ def test_brownout_does_not_feed_the_leaky_bucket_beyond_its_own_lost_cycle() -> 
     async def scenario() -> int:
         with _FastAsyncSleep():
             seed_cycle(i2c, 20000, 20000, 20000, status=_STATUS_BOUTF)
-            await reader._error_check(await reader._read_isl())
+            lost = await reader._read_isl()
+            await reader._error_check(lost, condition=lost[0] is None)  # the read loop's condition
             after_brownout = reader._err_cnt_internal
             seed_cycle(i2c, 20000, 20000, 20000, status=0x00)
-            await reader._error_check(await reader._read_isl())
+            good = await reader._read_isl()
+            await reader._error_check(good, condition=good[0] is None)
         assert after_brownout == 1
         return reader._err_cnt_internal
 
@@ -1666,7 +1731,7 @@ def test_read_sensor_dict_reports_the_five_hardware_backed_fields() -> None:
     reader._range_auto = False
     with _FastAsyncSleep():
         result = run(reader._read_sensor_dict())
-    assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust"}
+    assert set(result) == {"Resolution", "Range", "IRCompOffset", "IRCompAdjust"}
 
 
 def test_read_sensor_dict_degrades_to_an_empty_dict_when_the_snapshot_cannot_be_decoded() -> None:
@@ -1674,7 +1739,7 @@ def test_read_sensor_dict_degrades_to_an_empty_dict_when_the_snapshot_cannot_be_
     # raise out of a REST GET rather than answering with whatever the driver still knows.
     _i2c, reader = ready_reader("sensor_dict_undecodable")
     reader._range_auto = False
-    reader.isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    reader._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
     with _FastAsyncSleep():
         assert run(reader._read_sensor_dict()) == {}
 
@@ -1682,7 +1747,7 @@ def test_read_sensor_dict_degrades_to_an_empty_dict_when_the_snapshot_cannot_be_
 def test_a_snapshot_field_read_degrades_to_none_when_the_snapshot_cannot_be_decoded() -> None:
     # Same guard on the single-field path, which every per-field getter goes through.
     _i2c, reader = ready_reader("snapshot_field_undecodable")
-    reader.isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    reader._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
     with _FastAsyncSleep():
         assert run(reader._snapshot_field(0, "resolution")) is None
 
@@ -1725,7 +1790,7 @@ def test_read_sensor_dict_returns_all_none_and_logs_chip_get_on_a_bus_fault() ->
         return result, await reader.get_error_counter()
 
     result, counters = run(scenario())
-    assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust"}
+    assert set(result) == {"Resolution", "Range", "IRCompOffset", "IRCompAdjust"}
     assert all(value is None for value in result.values())
     assert code("E", "CHIP_GET") in errors(counters)
 
@@ -1738,7 +1803,7 @@ def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> 
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
-            shadow = reader.isl.encode_shadow()
+            shadow = reader._isl.encode_shadow()
             seed(i2c, _REG_CONFIG1, bytes([shadow[0] & ~0x07, shadow[1], shadow[2]]))  # mode zeroed
             await reader._read_sensor_dict()
         return await reader.get_error_counter()
@@ -1758,7 +1823,7 @@ def test_a_reserved_bit_difference_is_not_reported_as_divergence() -> None:
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
-            shadow = reader.isl.encode_shadow()
+            shadow = reader._isl.encode_shadow()
             seed(i2c, _REG_CONFIG1, bytes([shadow[0] | 0xC0, shadow[1] | 0x40, shadow[2] | 0xE0]))
             await reader._read_sensor_dict()
         return await reader.get_error_counter()
@@ -1772,11 +1837,11 @@ def test_get_dict_cfg_excludes_the_command_only_field() -> None:
     _i2c, reader = ready_reader("cfg_excl")
     with _FastAsyncSleep():
         body = run(reader.get_dict_cfg())
-    assert "ISLCalibrate" not in body["ISL29125"]
-    assert "SampleInterv" in body["ISL29125"]
+    assert "Calibrate" not in body["ISL29125"]
+    assert "SampleInterval" in body["ISL29125"]
     assert set(body["ISL29125"]) == {
-        "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeThresh",
-        "AutoRangeDwell", "IrCompOffset", "IrCompAdjust", "FiltCoeff", "GainRatio",
+        "SampleInterval", "Resolution", "RangeAuto", "Range", "AutoRangeThresh",
+        "AutoRangeDwell", "IRCompOffset", "IRCompAdjust", "FiltCoeff", "GainRatio",
     }
 
 
@@ -1787,7 +1852,7 @@ def test_get_dict_cfg_excludes_the_command_only_field() -> None:
 
 def test_every_schema_field_has_a_push_callback() -> None:
     _i2c, reader = make_reader("push_coverage")
-    names = [field[0] for field in reader.cfg_schema]
+    names = [field[0] for field in reader.get_cfg_schema()]
     assert len(names) == 11  # AutoRangePersist, AutoRangeDown and AutoRangeSettle all derived now
     assert sorted(reader._push_callbacks) == sorted(names)
 
@@ -1797,7 +1862,7 @@ def test_only_the_five_hardware_backed_fields_have_a_getter() -> None:
     # command-only field by design - a getter for either would be dead code.
     _i2c, reader = make_reader("get_coverage")
     assert sorted(reader._get_callbacks) == [
-        "IrCompAdjust", "IrCompOffset", "Range", "Resolution",
+        "IRCompAdjust", "IRCompOffset", "Range", "Resolution",
     ]
 
 
@@ -1806,10 +1871,10 @@ def test_each_push_rejects_the_wrong_type_without_touching_the_bus() -> None:
     # Python, so a bool would slip straight through into an int field.
     i2c, reader = ready_reader("push_types")
     wrong: dict[str, int | float | str | bool | None] = {
-        "SampleInterv": True, "Resolution": 16.0, "RangeAuto": 1, "Range": "10000",
+        "SampleInterval": True, "Resolution": 16.0, "RangeAuto": 1, "Range": "10000",
         "AutoRangeThresh": 85,
-        "AutoRangeDwell": 10, "IrCompOffset": False, "IrCompAdjust": 40.0, "FiltCoeff": 0,
-        "GainRatio": 26, "ISLCalibrate": 1,
+        "AutoRangeDwell": 10, "IRCompOffset": False, "IRCompAdjust": 40.0, "FiltCoeff": 0,
+        "GainRatio": 26, "Calibrate": 1,
     }
     with _FastAsyncSleep():
         for field, value in wrong.items():
@@ -1828,15 +1893,15 @@ def test_pushing_resolution_reaches_the_chip_byte_exactly() -> None:
 def test_pushing_ir_compensation_reaches_config2_without_touching_config1() -> None:
     i2c, reader = ready_reader("push_ir")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["IrCompOffset"](1)) is True
-        assert run(reader._push_callbacks["IrCompAdjust"](63)) is True
+        assert run(reader._push_callbacks["IRCompOffset"](1)) is True
+        assert run(reader._push_callbacks["IRCompAdjust"](63)) is True
     writes = mem_writes(i2c)
     assert all(register == _REG_CONFIG2 for register, _payload in writes)
     assert writes[-1][1][0] == 0x80 | 63
 
 
 def test_the_derived_persistence_reaches_config3_and_tracks_its_two_inputs() -> None:
-    # PRST is not pushable any more - it is derived from Resolution and SampleInterv, so the only
+    # PRST is not pushable any more - it is derived from Resolution and SampleInterval, so the only
     # way it reaches the chip is one of those two changing. 12 bit makes a cycle ~16x shorter, so
     # the same interval then affords the largest rejection the part offers.
     i2c, reader = ready_reader("derived_persist")
@@ -1852,20 +1917,20 @@ def test_the_derivation_never_lets_the_window_outlast_the_sample_interval() -> N
     # RGBTHF before the periodic re-check would have decided.
     _i2c, reader = ready_reader("derived_invariant")
     for resolution in (12, 16):
-        reader.isl._resolution = resolution
-        for trigger_secs in (1, 2, 5, 60, 3600):
-            window_ms = reader.isl.persist_for_interval(trigger_secs) * reader.isl.cycle_ms()
-            assert window_ms < trigger_secs * 1000, (resolution, trigger_secs)
+        reader._isl._resolution = resolution
+        for trigger_s in (1, 2, 5, 60, 3600):
+            window_ms = reader._isl.persist_for_interval(trigger_s) * reader._isl.cycle_ms()
+            assert window_ms < trigger_s * 1000, (resolution, trigger_s)
     # And it is the LARGEST that fits, not merely a safe one - a derivation that always returned 1
     # would satisfy the assertion above while throwing away every bit of transient rejection.
-    reader.isl._resolution = 16
-    assert reader.isl.persist_for_interval(1) == 2  # 606ms of 1000ms; 4 cycles would be 1212ms
-    reader.isl._resolution = 12
-    assert reader.isl.persist_for_interval(1) == 8  # ~152ms of 1000ms
+    reader._isl._resolution = 16
+    assert reader._isl.persist_for_interval(1) == 2  # 606ms of 1000ms; 4 cycles would be 1212ms
+    reader._isl._resolution = 12
+    assert reader._isl.persist_for_interval(1) == 8  # ~152ms of 1000ms
 
 
 def test_the_derivation_degrades_to_the_shortest_window_when_none_fits() -> None:
-    # The fallback the reader cannot reach - _MIN_TRIGGER_SECS is 1s against a 303ms cycle, so some
+    # The fallback the reader cannot reach - _MIN_TRIGGER_S is 1s against a 303ms cycle, so some
     # option always fits. The protocol layer takes no such bound, and the honest degradation is the
     # SHORTEST rejection. Asserted so a bound change surfaces as a decision, not a surprise.
     _i2c, isl = make_protocol()
@@ -1908,14 +1973,14 @@ def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_tak
     # still the OLD config's conversion - scaling it by the new one is 16x out and fakes saturation.
     i2c, reader = ready_reader("mid_read_push")
     seed_cycle(i2c, 20000, 20000, 20000)
-    real_status = reader.isl.read_status
+    real_status = reader._isl.read_status
 
     async def _status_then_a_rest_push() -> int:
         value = await real_status()
         assert await reader.set_resolution(12) is True
         return value
 
-    reader.isl.read_status = _status_then_a_rest_push  # type: ignore[method-assign]
+    reader._isl.read_status = _status_then_a_rest_push  # type: ignore[method-assign]
     with _FastAsyncSleep():
         green, red, blue, sample_range, _sample_span, _timestamp = run(reader._read_isl())
     assert (green, red, blue) == (20000, 20000, 20000), "a 16-bit conversion must not be shifted as if it were 12-bit"
@@ -1950,7 +2015,7 @@ def test_a_reconciling_re_read_that_itself_fails_is_retried_on_the_following_cyc
     # fail too. Recording it as reconciled anyway would drop the torn chip on the floor - the count
     # stays behind instead, which is what makes the next cycle pick it up.
     i2c, reader = ready_reader("reconcile_retry")
-    reader.isl._write_failures = 1
+    reader._isl._write_failures = 1
 
     with _FastAsyncSleep():
         fake(i2c).inject_fault("readfrom_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
@@ -1971,12 +2036,12 @@ def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None
     # is the one seen BEFORE the re-read, so a later failure is still ahead of it.
     i2c, reader = ready_reader("reconcile_race")
     chip = fake(i2c)
-    reader.isl._write_failures = 1  # one failure already outstanding
+    reader._isl._write_failures = 1  # one failure already outstanding
     real_read = chip.readfrom_mem
 
     def _fail_a_write_during_the_re_read(address: int, register: int, nbytes: int, **kwargs: object) -> bytes:
         chip.readfrom_mem = real_read  # type: ignore[method-assign]  # once only
-        reader.isl._write_failures += 1  # a second write fails while this read is in flight
+        reader._isl._write_failures += 1  # a second write fails while this read is in flight
         return real_read(address, register, nbytes, **kwargs)  # type: ignore[arg-type]
 
     chip.readfrom_mem = _fail_a_write_during_the_re_read  # type: ignore[method-assign, assignment]
@@ -1984,7 +2049,7 @@ def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None
         run(reader._verify_after_failed_write())
     assert reader._reconciled_write_failures == 1, "only what was seen before the re-read counts as reconciled"
     # So the next cycle still has work to do, rather than having had it cleared out from under it.
-    assert reader.isl.write_failures() != reader._reconciled_write_failures
+    assert reader._isl.write_failures() != reader._reconciled_write_failures
 
 
 def test_a_config_burst_that_lands_only_partly_is_reconciled_by_the_next_read_cycle() -> None:
@@ -2074,7 +2139,7 @@ def test_set_resolution_reports_failure_when_the_derived_window_cannot_be_re_app
 
 
 def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
-    # SampleInterv is deliberately NOT in this list any more: the derived transient rejection reads
+    # SampleInterval is deliberately NOT in this list any more: the derived transient rejection reads
     # it, so changing it legitimately reaches CONFIG3. Its own test is below.
     i2c, reader = ready_reader("push_software")
     with _FastAsyncSleep():
@@ -2087,15 +2152,15 @@ def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
 
 
 def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> None:
-    # A consequence of deriving PRST: SampleInterv stopped being a software-only knob. At 16 bit a
+    # A consequence of deriving PRST: SampleInterval stopped being a software-only knob. At 16 bit a
     # 1s interval affords 2 cycles and a 7s one 8, so this push must reach the chip - updating only
     # the timer would leave the part rejecting less transient noise than the interval allows.
     i2c, reader = ready_reader("push_interval")
-    assert reader.isl._persist == 2  # derived at init from the 1s default
+    assert reader._isl._persist == 2  # derived at init from the 1s default
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["SampleInterv"](7)) is True
-    assert run(reader.trigger_period.get_value()) == 7
-    assert reader.isl._persist == 8
+        assert run(reader._push_callbacks["SampleInterval"](7)) is True
+    assert run(reader._trigger_period.get_value()) == 7
+    assert reader._isl._persist == 8
     writes = mem_writes(i2c)
     assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "the new PRST has to reach CONFIG3"
 
@@ -2191,23 +2256,22 @@ def test_set_range_rejects_a_value_outside_the_two_real_ranges() -> None:
     assert code("E", "CHIP_SET") in errors(run(scenario()))
 
 
-def test_set_trigger_secs_refuses_bad_values_with_bad_arg_and_never_raises() -> None:
+def test_set_trigger_s_refuses_bad_values_with_bad_arg_and_never_raises() -> None:
     _i2c, reader = make_reader("trigger_bad")
 
     async def scenario() -> "ErrorLog":
-        assert await reader.set_trigger_secs("not-a-number") is False  # type: ignore[arg-type]
-        assert await reader.set_trigger_secs(float("inf")) is False  # OverflowError, not ValueError
-        assert await reader.set_trigger_secs(0) is False
-        assert await reader.set_trigger_secs(3601) is False
-        assert await reader.set_trigger_secs(30) is True
-        await reader.pr.setup()
+        assert await reader.set_trigger_s("not-a-number") is False  # type: ignore[arg-type]
+        assert await reader.set_trigger_s(float("inf")) is False  # OverflowError, not ValueError
+        assert await reader.set_trigger_s(0) is False
+        assert await reader.set_trigger_s(3601) is False
+        assert await reader.set_trigger_s(30) is True
         return await reader.get_error_counter()
 
     counters = run(scenario())
     # One event per rejected value, one slot: a non-number, +inf, and both out-of-range ends.
     assert err_count(counters) == 4
     assert errors(counters)[-1] == code("E", "BAD_ARG")
-    assert run(reader.trigger_period.get_value()) == 30
+    assert run(reader._trigger_period.get_value()) == 30
 
 
 def test_every_hardware_setter_logs_chip_set_on_a_bus_fault() -> None:
@@ -2261,16 +2325,16 @@ def test_a_failed_push_recovers_through_the_getter_then_the_snapshot_then_the_de
 
     async def scenario() -> "dict[str, Any]":
         with _FastAsyncSleep():
-            real_configure = reader.isl.configure
+            real_configure = reader._isl.configure
 
             async def failing(**_kwargs: object) -> None:
                 raise OSError(errno_mod.EIO, "injected")
 
-            reader.isl.configure = failing  # type: ignore[method-assign]
+            reader._isl.configure = failing  # type: ignore[method-assign]
             # The chip reads back a resolution the schema accepts, so recovery uses it.
             seed(i2c, _REG_CONFIG1, bytes([_MODE_RGB | _BITS_12, 0x00, 0x00]))
-            results = await reader._set_dict_cfg({"Resolution": 12}, reader.cfg_schema)
-            reader.isl.configure = real_configure  # type: ignore[method-assign]
+            results = await reader._set_dict_cfg({"Resolution": 12}, reader.get_cfg_schema())
+            reader._isl.configure = real_configure  # type: ignore[method-assign]
             stored = await reader.cfgmgr.get_dict(["Resolution"])
         assert results["Resolution"] == "Failed"
         assert stored is not None
@@ -2290,9 +2354,9 @@ def test_a_getter_returning_an_out_of_schema_value_is_rejected_by_the_recovery_c
             async def nonsense() -> int:
                 return 999  # neither 12 nor 16
 
-            reader.isl.configure = failing  # type: ignore[method-assign]
+            reader._isl.configure = failing  # type: ignore[method-assign]
             reader._get_callbacks["Resolution"] = nonsense
-            await reader._set_dict_cfg({"Resolution": 12}, reader.cfg_schema)
+            await reader._set_dict_cfg({"Resolution": 12}, reader.get_cfg_schema())
             stored = await reader.cfgmgr.get_dict(["Resolution"])
         assert stored is not None
         return stored
@@ -2307,9 +2371,9 @@ def test_starting_a_calibration_returns_valid_twice_in_a_row() -> None:
 
     async def scenario() -> "list[Any]":
         with _FastAsyncSleep():
-            first = await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema)
-            second = await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema)
-        return [first["ISLCalibrate"], second["ISLCalibrate"]]
+            first = await reader._set_dict_cfg({"Calibrate": True}, reader.get_cfg_schema())
+            second = await reader._set_dict_cfg({"Calibrate": True}, reader.get_cfg_schema())
+        return [first["Calibrate"], second["Calibrate"]]
 
     assert run(scenario()) == ["Valid", "Valid"]
 
@@ -2341,14 +2405,14 @@ def test_base_trigger_produces_one_read_event_per_sample_interval() -> None:
     _i2c, reader = make_reader("divider")
 
     async def scenario() -> int:
-        await reader.set_trigger_secs(3)
+        await reader.set_trigger_s(3)
         fired = 0
         task = reader.start_asy_trigger()
         for _ in range(9):
-            reader.base_trigger_event.set()
+            reader._base_trigger_event.set()
             for _ in range(5):
                 await asyncio.sleep(0)
-            if _drain_flag(reader.read_event):
+            if _drain_flag(reader._read_event):
                 fired += 1
         await _cancel_and_join(task)
         return fired
@@ -2380,17 +2444,17 @@ def test_changing_the_sample_interval_takes_effect_on_the_next_boundary() -> Non
     _i2c, reader = make_reader("divider_live")
 
     async def scenario() -> "list[int]":
-        await reader.set_trigger_secs(2)
+        await reader.set_trigger_s(2)
         fired = []
         task = reader.start_asy_trigger()
         for tick in range(4):
-            reader.base_trigger_event.set()
+            reader._base_trigger_event.set()
             for _ in range(5):
                 await asyncio.sleep(0)
-            if _drain_flag(reader.read_event):
+            if _drain_flag(reader._read_event):
                 fired.append(tick)
             if tick == 1:
-                await reader.set_trigger_secs(1)
+                await reader.set_trigger_s(1)
         await _cancel_and_join(task)
         return fired
 
@@ -2400,16 +2464,16 @@ def test_changing_the_sample_interval_takes_effect_on_the_next_boundary() -> Non
 def test_the_timer_and_the_falling_edge_irq_both_reach_the_read_event() -> None:
     _i2c, reader = make_reader("wiring")
     reader.start_timer()
-    timer = reader.trigger_timer
+    timer = reader._trigger_timer
     assert timer.period == 1000
     assert reader.irq_pin._irq_trigger == FakePin.IRQ_FALLING  # active-low, open-drain (p6)
 
     async def scenario() -> "tuple[bool, bool]":
         assert timer.callback is not None
         timer.callback(timer)  # one hardware tick
-        from_timer = _drain_flag(reader.base_trigger_event)
+        from_timer = _drain_flag(reader._base_trigger_event)
         reader.irq_pin.trigger_irq()  # one real falling edge
-        from_irq = _drain_flag(reader.read_event)
+        from_irq = _drain_flag(reader._read_event)
         return from_timer, from_irq
 
     assert run(scenario()) == (True, True)
@@ -2429,13 +2493,14 @@ def test_stop_timer_deinits_the_real_timer() -> None:
     _i2c, reader = make_reader("timer_stop")
     reader.start_timer()
     reader.stop_timer()
-    assert reader.trigger_timer.deinit_called is True
+    assert reader._trigger_timer.deinit_called is True
 
 
-def test_task_and_timer_starters_are_registered() -> None:
+def test_task_and_trigger_starters_are_registered() -> None:
     _i2c, reader = make_reader("starters")
     assert [fn.__name__ for fn in reader.get_task_starters()] == ["start_asy_read", "start_asy_trigger"]
-    assert [fn.__name__ for fn in reader.get_timer_starters()] == ["start_timer"]
+    assert [fn.__name__ for fn in reader.get_trigger_starters()] == ["start_timer"]
+    assert reader.get_timer_starters() == []
 
 
 def test_get_data_returns_the_all_none_namedtuple_before_the_first_read() -> None:
@@ -2462,7 +2527,7 @@ def test_a_diverged_configuration_re_arms_the_range_thresholds_too() -> None:
 
     async def scenario() -> None:
         with _FastAsyncSleep():
-            shadow = reader.isl.encode_shadow()
+            shadow = reader._isl.encode_shadow()
             seed(i2c, _REG_CONFIG1, bytes([shadow[0] & ~0x07, shadow[1], shadow[2]]))  # mode zeroed
             fake(i2c).log.clear()
             await reader._read_sensor_dict()
@@ -2478,13 +2543,13 @@ def test_a_failed_re_apply_after_divergence_logs_chip_set_and_stops_there() -> N
 
     async def scenario() -> "ErrorLog":
         with _FastAsyncSleep():
-            shadow = reader.isl.encode_shadow()
+            shadow = reader._isl.encode_shadow()
             seed(i2c, _REG_CONFIG1, bytes([shadow[0] & ~0x07, shadow[1], shadow[2]]))
 
             async def failing_configure(**_kwargs: object) -> None:
                 raise OSError(errno_mod.EIO, "injected")
 
-            reader.isl.configure = failing_configure  # type: ignore[method-assign]
+            reader._isl.configure = failing_configure  # type: ignore[method-assign]
             fake(i2c).log.clear()
             await reader._read_sensor_dict()
         return await reader.get_error_counter()
@@ -2528,7 +2593,7 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
             async def failing_status() -> int:
                 raise OSError(errno_mod.EIO, "injected")
 
-            reader.isl.read_status = failing_status  # type: ignore[method-assign]
+            reader._isl.read_status = failing_status  # type: ignore[method-assign]
             results = await reader._read_isl()
             assert results == (None, None, None, None, None, None)
             await reader._store_isl(results)
@@ -2560,7 +2625,7 @@ def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -
 
 
 def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_spent() -> None:
-    # read_loop() IS the coroutine system_service.py's supervisor runs, and its False return is
+    # _read_loop() IS the coroutine asy_system_service.py's supervisor runs, and its False return is
     # the restart contract. Every other test in this file drives _read_isl()/_error_check()
     # directly, so the loop that wires them together - and both of its exits - never ran.
     i2c, reader = make_reader("loop_contract", max_module_error=2)
@@ -2586,10 +2651,10 @@ def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_sp
         with _FastAsyncSleep():
             seed(i2c, _REG_CONFIG1, bytes(3))
             seed_cycle(i2c, 20000, 20000, 20000)
-            reader.read_event.wait = ready  # type: ignore[method-assign]
+            reader._read_event.wait = ready  # type: ignore[method-assign]
             reader._store_isl = counting_store  # type: ignore[method-assign]
             reader._read_isl = two_good_then_broken  # type: ignore[method-assign]
-            return await reader.read_loop()
+            return await reader._read_loop()
 
     assert run(scenario()) is False, "a spent error budget must end the task so the supervisor restarts it"
     # Every cycle inside the budget reaches _store_isl, failing ones included - it is _store_isl
@@ -2601,7 +2666,7 @@ def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_sp
 
 def test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all() -> None:
     # The other exit: a failed init returns False WITHOUT entering the loop. Getting this wrong
-    # parks the task forever on read_event.wait() against a chip that never answers - a silently
+    # parks the task forever on _read_event.wait() against a chip that never answers - a silently
     # dead sensor that the supervisor cannot see, because the task never ends.
     i2c, reader = make_reader("loop_init_fail", healthy=False)
     fake(i2c).nak_addresses.add(_ADDR)
@@ -2612,8 +2677,8 @@ def test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all() 
             entered[0] += 1
 
         with _FastAsyncSleep():
-            reader.read_event.wait = counted_wait  # type: ignore[method-assign]
-            return await reader.read_loop()
+            reader._read_event.wait = counted_wait  # type: ignore[method-assign]
+            return await reader._read_loop()
 
     assert run(scenario()) is False
     assert entered[0] == 0, "the loop was entered despite the init having failed"
@@ -2629,7 +2694,7 @@ def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raisi
         async def silent_none(*_args: object, **_kwargs: object) -> None:
             return None
 
-        isl.i2c_isl29125.i2c_device.get_register_struct = silent_none  # type: ignore[method-assign]
+        isl._i2c_isl29125.i2c_device.get_register_struct = silent_none  # type: ignore[method-assign]
         try:
             run(getattr(isl, call)())
         except OSError:
@@ -2706,9 +2771,9 @@ def test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter() -> 
 
     async def scenario() -> "list[Any]":
         with _FastAsyncSleep():
-            low = await reader._set_dict_cfg({"AutoRangeThresh": 20.0}, reader.cfg_schema)
-            good = await reader._set_dict_cfg({"AutoRangeThresh": 60.0}, reader.cfg_schema)
-            dwell = await reader._set_dict_cfg({"AutoRangeDwell": -5.0}, reader.cfg_schema)
+            low = await reader._set_dict_cfg({"AutoRangeThresh": 20.0}, reader.get_cfg_schema())
+            good = await reader._set_dict_cfg({"AutoRangeThresh": 60.0}, reader.get_cfg_schema())
+            dwell = await reader._set_dict_cfg({"AutoRangeDwell": -5.0}, reader.get_cfg_schema())
         return [low["AutoRangeThresh"], good["AutoRangeThresh"], dwell["AutoRangeDwell"]]
 
     assert run(scenario()) == ["Invalid", "Valid", "Invalid"]
@@ -2722,7 +2787,7 @@ def test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter() -> 
 
 def test_configure_rejects_a_field_the_chip_cannot_take_instead_of_masking_it() -> None:
     # The whole point of the guard: encode_shadow() masks every field to its own bit width, so
-    # an IrCompAdjust of 200 would otherwise be written to the chip as 200 & 0x3F = 8 and
+    # an IRCompAdjust of 200 would otherwise be written to the chip as 200 & 0x3F = 8 and
     # reported as a success. Nothing may reach the bus on a rejected value.
     i2c, isl = ready_protocol()
     run(isl.setup())
@@ -2840,13 +2905,13 @@ def test_set_range_rejects_a_bad_value_with_auto_range_off_too() -> None:
 
 def test_a_fractional_setting_is_rejected_rather_than_silently_truncated() -> None:
     # The project-wide coercion policy (SPECIFICATION.md Part A.8), reached by routing these
-    # setters through config_manager's own type_or_range_error() instead of a local int() cast:
+    # setters through asy_config_manager's own type_or_range_error() instead of a local int() cast:
     # a fat-fingered 12.5 must not become a stored 12.
     _i2c, reader = ready_reader("coerce")
 
     async def scenario() -> "ErrorLog":
-        assert await reader.set_trigger_secs(12.5) is False
-        assert await reader.set_trigger_secs(30.0) is True  # integral float: exactly representable
+        assert await reader.set_trigger_s(12.5) is False
+        assert await reader.set_trigger_s(30.0) is True  # integral float: exactly representable
         assert await reader.set_autorange_dwell(10) is True  # int widened to float, always exact
         assert await reader.set_autorange_thresh(85) is True  # the same widening, on a % field
         return await reader.get_error_counter()
@@ -2854,7 +2919,7 @@ def test_a_fractional_setting_is_rejected_rather_than_silently_truncated() -> No
     counters = run(scenario())
     assert err_count(counters) == 1  # the accepted values prove which one was refused
     assert errors(counters)[-1] == code("E", "BAD_ARG")
-    assert run(reader.trigger_period.get_value()) == 30
+    assert run(reader._trigger_period.get_value()) == 30
     assert reader._ar_dwell_s == 10.0
     assert reader._ar_thresh == 85.0
 
@@ -2865,7 +2930,7 @@ def test_a_bool_is_never_accepted_as_a_numeric_setting() -> None:
     _i2c, reader = ready_reader("bool_reject")
 
     async def scenario() -> None:
-        assert await reader.set_trigger_secs(True) is False
+        assert await reader.set_trigger_s(True) is False
         assert await reader.set_autorange_thresh(True) is False
         assert await reader.set_autorange_dwell(True) is False
         assert await reader.set_filter_coefficient(True) is False
@@ -2963,7 +3028,7 @@ def queue_legs(reader: ISL29125_Reader, *triples: "tuple[int, int, int]") -> Non
             pending.extend(triples)
         return pending.pop(0)
 
-    reader.isl.read_counts = _read_counts  # type: ignore[method-assign]
+    reader._isl.read_counts = _read_counts  # type: ignore[method-assign]
 
 
 def calibrating_reader(name: str) -> "tuple[I2C, ISL29125_Reader]":
@@ -3043,11 +3108,11 @@ def test_calibration_is_skipped_during_settle_and_while_auto_range_is_off() -> N
 
     _i2c, reader = calibrating_reader("cal_gated")
     queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
-    reader.isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 10_000)
+    reader._isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 10_000)
     with _FastAsyncSleep():
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None, "a reading taken mid-settle is not a measurement"
-    reader.isl._settle_until_ms = _time.ticks_ms()
+    reader._isl._settle_until_ms = _time.ticks_ms()
     reader._range_auto = False
     with _FastAsyncSleep():
         run(reader._measure_gain_ratio(2000))
@@ -3066,7 +3131,7 @@ def test_the_run_ends_once_consecutive_readings_agree() -> None:
             assert reader._calibrating is True
             # Each sandwich's last switch arms a settle the real read loop waits out between
             # samples; these tests run in zero wall-clock time, so it is retired by hand.
-            reader.isl._settle_until_ms = _time.ticks_ms()
+            reader._isl._settle_until_ms = _time.ticks_ms()
             run(reader._measure_gain_ratio(2000))
     assert reader._calibrating is False, "the run stops itself once it has converged"
     assert reader._measured_ratio() is not None
@@ -3082,7 +3147,7 @@ def test_a_disagreeing_reading_restarts_the_agreement_run() -> None:
         assert len(reader._cal_recent) == 1
         # A different scene: 48000/2000 = 24.0, well outside the 1% agreement tolerance.
         queue_legs(reader, (48000, 48000, 48000), (2000, 2000, 2000))
-        reader.isl._settle_until_ms = _time.ticks_ms()  # as above: no wall clock passes here
+        reader._isl._settle_until_ms = _time.ticks_ms()  # as above: no wall clock passes here
         run(reader._measure_gain_ratio(2000))
     assert len(reader._cal_recent) == 1, "a disagreeing reading starts the count again"
     assert reader._calibrating is True
@@ -3123,11 +3188,11 @@ def test_the_measured_candidate_travels_with_every_reading() -> None:
     # Asserted through get_dict_data(), NOT get_data(): the REST body is a hand-written override
     # (the measurement group is nested), so a field can exist on the namedtuple and still never
     # reach the API. That is exactly what happened when this field was added.
-    assert run(reader.get_dict_data())["ISL29125"]["GainMeas"] is None
+    assert _isl_group(run(reader.get_dict_data()))["GainMeas"] is None
     reader._publish_candidate(25.9)
     with _FastAsyncSleep():
         run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, _RANGE_HIGH_LUX, 1754997000)))
-    assert run(reader.get_dict_data())["ISL29125"]["GainMeas"] == 25.9
+    assert _isl_group(run(reader.get_dict_data()))["GainMeas"] == 25.9
 
 
 def test_only_a_config_push_changes_the_applied_ratio() -> None:
@@ -3152,7 +3217,7 @@ def test_a_failed_partner_read_logs_a_read_error_and_puts_the_range_back() -> No
     async def _boom() -> "tuple[int, int, int]":
         raise OSError(5)
 
-    reader.isl.read_counts = _boom  # type: ignore[method-assign]
+    reader._isl.read_counts = _boom  # type: ignore[method-assign]
     with _FastAsyncSleep():
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
@@ -3255,7 +3320,7 @@ def test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight() -
         await isl.configure(resolution=12)
 
     async def scenario() -> None:
-        lock = isl.i2c_isl29125.asy_lock
+        lock = isl._i2c_isl29125.session_lock
         await lock.acquire()  # simulate another operation already in flight on this sensor
         writer = asyncio.get_event_loop().create_task(change_resolution())
         try:
@@ -3307,7 +3372,7 @@ def test_init_runs_on_the_defaults_when_its_config_file_cannot_be_written() -> N
     i2c = make_i2c()
     seed_healthy_chip(i2c)
     reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
-    run(reader.cfgmgr.setup())
+    assert run(reader.setup()) is True  # the config store's validity: the defaults are valid
     assert reader.cfgmgr.valid is True
 
     async def scenario() -> "ErrorLog":

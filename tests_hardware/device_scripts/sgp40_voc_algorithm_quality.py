@@ -8,8 +8,8 @@ from collections import namedtuple
 import machine
 
 import asy_i2c_driver
+from asy_base_classes import ValueRef
 from asy_sgp40_driver import SGP40_Reader
-from base_classes import ValueRef
 
 VOC_MIN, VOC_MAX = 0, 500
 RAW_MIN, RAW_MAX = 0, 65535
@@ -27,9 +27,9 @@ _FixedValue = namedtuple("_FixedValue", ("value",))
 
 
 class _FixedSource:
-    """Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
-    not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
-    object-with-.value contract asy_sgp40_driver.py's own _Default* providers use."""
+    # Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
+    # not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
+    # object-with-.value contract asy_sgp40_driver.py's own _Default* providers use.
 
     def __init__(self, value: float) -> None:
         self._data = _FixedValue(value)
@@ -48,7 +48,7 @@ async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
 
 async def _main() -> None:
     # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     reader = SGP40_Reader(i2c1, ValueRef(_FixedSource(25.0), "value"), ValueRef(_FixedSource(50.0), "value"), max_module_error=999)
     reader.start_timer()  # 1s fixed period - the algorithm's own sampling interval assumption

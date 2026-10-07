@@ -34,7 +34,7 @@ _SNAPSHOT_WDT_FEED_EVERY = 5
 
 async def _main() -> None:
     # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)
     await scd.setup()
@@ -81,7 +81,7 @@ async def _main() -> None:
             try:
                 _temp_offset, meas_int, _amb_pres, _altitude, frc, _self_cal = await scd.get_config_snapshot()
                 if not (2 <= meas_int <= 1800):
-                    snapshot_errors.append(f"iter {i}: MeasInt={meas_int!r} outside valid schema range")
+                    snapshot_errors.append(f"iter {i}: MeasInterval={meas_int!r} outside valid schema range")
                 if not (400 <= frc <= 2000):
                     snapshot_errors.append(f"iter {i}: ForceCalRef={frc!r} outside valid schema range")
             except Exception as e:

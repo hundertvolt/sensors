@@ -34,7 +34,7 @@ def _check(runner: str, keep: int) -> None:
 
 
 def _runs(runner_dir: Path) -> list[tuple[tuple[str, int], Path]]:
-    """The run directories, oldest first; anything not named like a run is never one."""
+    # The run directories, oldest first; anything not named like a run is never one.
     runs = []
     for entry in runner_dir.iterdir():
         match = _RUN_DIR.match(entry.name)
@@ -51,7 +51,7 @@ def _prune(runner_dir: Path, keep: int, new: Path) -> None:
 
 
 def new_run_dir(runner: str, *, keep: int = 3, root: Path = REPO_ROOT / "build" / "archive") -> Path:
-    """Creates <root>/<runner>/<UTC timestamp>[-n]/ and prunes that runner's runs to the newest `keep`."""
+    # Creates <root>/<runner>/<UTC timestamp>[-n]/ and prunes that runner's runs to the newest `keep`.
     _check(runner, keep)
     runner_dir = root / runner
     runner_dir.mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ def new_run_dir(runner: str, *, keep: int = 3, root: Path = REPO_ROOT / "build" 
 
 
 def archive(runner: str, paths: list[Path], *, keep: int = 3, root: Path = REPO_ROOT / "build" / "archive") -> Path | None:
-    """Moves every existing path into one new run directory and returns it; None when none exists."""
+    # Moves every existing path into one new run directory and returns it; None when none exists.
     _check(runner, keep)
     existing = [path for path in paths if path.exists() or path.is_symlink()]
     if not existing:

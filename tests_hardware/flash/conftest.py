@@ -21,9 +21,9 @@ _SCD30_RW_SCRIPT_TIMEOUT_S = 90.0
 
 @pytest.fixture(scope="session")
 def scd30_continuous_measurement_triggered(board: Board, request: pytest.FixtureRequest) -> None:
-    """Runs scd30_same_device_rw_concurrency.py once per pytest session - the one real NVM-persisted
-    SCD30 write (set_ambient_pressure(), doubling as "trigger continuous measurement") this test
-    group issues. Session-scoped so every other dependent reuses it instead of repeating the write."""
+    # Runs scd30_same_device_rw_concurrency.py once per pytest session - the one real NVM-persisted
+    # SCD30 write (set_ambient_pressure(), doubling as "trigger continuous measurement") this test
+    # group issues. Session-scoped so every other dependent reuses it instead of repeating the write.
     if not request.config.getoption("--allow-persistence-writes"):
         # Every dependent test must carry @pytest.mark.persistence_write, which conftest.py's
         # pytest_collection_modifyitems() deselects before this fixture could run unflagged. So

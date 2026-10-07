@@ -123,17 +123,17 @@ def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float
 
 
 def _website_errcount_keys(definitions: dict[str, Any]) -> set[str]:
-    """The errcount rows js/templates.js will render for this device: the union over every errcount
-    group, wherever the definitions place one (the captive DNS history sits on Networking)."""
+    # The errcount rows js/templates.js will render for this device: the union over every errcount
+    # group, wherever the definitions place one (the captive DNS history sits on Networking).
     groups = [g for section in definitions["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
     assert groups, f"no errcount group in {definitions['device']['id']}'s definitions"
     return {row["key"] for g in groups for row in g["modules"]}
 
 
 def _errcount_parity_failures(definitions: dict[str, Any], status_body: object) -> list[str]:
-    """Compares the error sources GET /status really publishes against the website's own catalog.
-    The API derives itself from the live object graph; buildgen/definitions.py's catalog is
-    hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6."""
+    # Compares the error sources GET /status really publishes against the website's own catalog.
+    # The API derives itself from the live object graph; buildgen/definitions.py's catalog is
+    # hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6.
     if not isinstance(status_body, dict) or not isinstance(status_body.get("errcount"), dict):
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
@@ -151,7 +151,7 @@ def _errcount_parity_failures(definitions: dict[str, Any], status_body: object) 
 
 
 def _resolves(body: object, path: list[str]) -> bool:
-    """Whether a readonly field's `path` resolves in a GET body; a null leaf is a published value."""
+    # Whether a readonly field's `path` resolves in a GET body; a null leaf is a published value.
     for step in path:
         if not isinstance(body, dict) or step not in body:
             return False
@@ -165,8 +165,8 @@ def _readonly_fields(definitions: dict[str, Any], section_key: str) -> list[tupl
 
 
 def _status_field_parity_failures(definitions: dict[str, Any], status_body: object) -> list[str]:
-    """Every readonly field the Status page names must be in GET /status - the page's catalog of these
-    rows is hand-kept, so a key it names but the device never publishes renders blank, silently."""
+    # Every readonly field the Status page names must be in GET /status - the page's catalog of these
+    # rows is hand-kept, so a key it names but the device never publishes renders blank, silently.
     if not isinstance(status_body, dict):
         return ["GET /status carried no object, so no field parity claim would mean anything"]
     missing = []
@@ -182,14 +182,14 @@ def _status_field_parity_failures(definitions: dict[str, Any], status_body: obje
 
 
 def _system_path_failures(definitions: dict[str, Any], system_body: object) -> list[str]:
-    """Every readonly System field reads GET /system through its `path` (the build information)."""
+    # Every readonly System field reads GET /system through its `path` (the build information).
     unresolved = [f"{group_key}.{field['key']}" for group_key, field in _readonly_fields(definitions, "system") if "path" in field and not _resolves(system_body, field["path"])]
     return [f"System page paths GET /system does not resolve: {unresolved}"] if unresolved else []
 
 
 def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
-    """The finished twin's own verdict: its exit status, and every output line holding an
-    allocation-failure marker (SPECIFICATION.md Part I.4(e)), quoted - a clean exit included."""
+    # The finished twin's own verdict: its exit status, and every output line holding an
+    # allocation-failure marker (SPECIFICATION.md Part I.4(e)), quoted - a clean exit included.
     failures = [f"subprocess exited with code {returncode}:\n{output}"] if returncode not in (0, None) else []
     marked = [line for line in output.splitlines() if any(marker in line for marker in _MEMORY_ERROR_MARKERS)]
     if marked:
@@ -198,8 +198,8 @@ def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
 
 
 def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: Callable[[subprocess.Popen[str]], list[str]], shutdown_timeout_s: float = _SHUTDOWN_TIMEOUT_S) -> tuple[list[str], str]:
-    """Runs `session` against the spawned twin, then its exit and output verdicts; returns the
-    failures and the twin's whole merged output."""
+    # Runs `session` against the spawned twin, then its exit and output verdicts; returns the
+    # failures and the twin's whole merged output.
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     # Drained while the twin runs: a pipe read only after exit blocks a child past 64 KiB of output.
     lines: list[str] = []
@@ -230,9 +230,9 @@ def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: Callable[
 
 
 def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
-    """Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
-    real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
-    failures (empty list = clean boot, clean REST responses, clean shutdown)."""
+    # Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
+    # real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
+    # failures (empty list = clean boot, clean REST responses, clean shutdown).
     generated = generate_device(device_toml, src_dir, ext_dir)
     module_name = f"sensortask_{generated.model.device}"
     (tmp_path / f"{module_name}.py").write_text(generated.module_source)

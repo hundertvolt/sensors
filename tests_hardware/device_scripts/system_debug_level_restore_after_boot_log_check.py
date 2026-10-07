@@ -4,7 +4,7 @@ its backup file, never a hardcoded assumption. Run from a `finally` block in the
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SYS_SCHEMA: "cm.ConfigSchema" = (("DebugLevel", "int", 0, 0, 5, None),)
 _SYS_PATH = "config_SYSTEM.cfg"

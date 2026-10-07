@@ -1,5 +1,5 @@
 """Generic threshold-triggered LED notification signalling: `NotificationSignal` (per-condition data
-holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
+holder) and `NotificationService` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
 Promoted from improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED implementation.
 """
 # Signals are passed at construction; a refused one is printed at once and persisted by setup().
@@ -10,9 +10,9 @@ from collections import namedtuple
 
 from micropython import const
 
-from base_classes import LockedCounter, SensorReaderConfig
-from config_manager import make_dict, name_cfg, schema_names
-from print_log import DEFAULT_LOG, LogConfig
+from asy_base_classes import SensorReaderConfig, TickSeconds, utc_now
+from asy_config_manager import make_dict, name_cfg, schema_names
+from asy_print_log import DEFAULT_LOG, LogConfig
 
 try:
     from typing import TYPE_CHECKING
@@ -24,12 +24,12 @@ if TYPE_CHECKING:
     from typing import Any, Protocol
 
     # The stubs model a ticks_ms() value as an opaque type, not a plain int, precisely so it can
-    # only ever reach time.ticks_diff() - _next_sleep_secs()'s t0 is exactly such a value.
+    # only ever reach time.ticks_diff() - _next_sleep_s()'s t0 is exactly such a value.
     from _mpy_shed.time_mp import _TicksMs
 
-    from base_classes import ValueRef
-    from config_manager import ConfigSchema
-    from print_log import ErrorLog
+    from asy_base_classes import TimerStarter, ValueRef
+    from asy_config_manager import ConfigSchema
+    from asy_print_log import ErrorLog
 
     # Structural Protocol for whatever local-time struct the caller's callback returns
     # (SPECIFICATION.md Part C.10's typing convention) - read-only, so a namedtuple
@@ -58,9 +58,9 @@ _WRN_NOTIFY_SIGNAL_DROPPED = const(67)
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
 # @tunable notify.loop_tick_s = 1
-_LOOP_TICK_S = const(1)  # auto_led_override()'s countdown step
+_LOOP_TICK_S = const(1)  # _pause_loop()'s round: how late a measured pause can end
 # @tunable notify.min_sleep_s = 0.1
-_MIN_SLEEP_S = const(0.1)  # floor of monitor_loop()'s sleep to its next cycle
+_MIN_SLEEP_S = const(0.1)  # floor of _monitor_loop()'s sleep to its next cycle
 # @tunable notify.cfg_fail_interval_s = 600.0
 _CFG_FAIL_INTERVAL_S = const(600.0)  # cycle interval while the own configuration cannot be read
 
@@ -68,13 +68,13 @@ _CFG_FAIL_INTERVAL_S = const(600.0)  # cycle interval while the own configuratio
 # required, in "attr" mode - the resolved NeopixelDriver's own request_signal bound method is passed
 # as request_signal_cb, per Part L.2's "no getters in generated code" - plus the optional FRAM.
 # @wiring signal_sink NeopixelDriver request_signal required attr
-# @wiring fram_target AsyFramManager log optional kwarg
+# @wiring fram_target FRAMManager log optional kwarg
 
 
 class _DefaultSignalSink:
-    """The wiring-defaults mechanism (SPECIFICATION.md Part L.6.2), opted into via
-    [instance.wiring].signal_sink = {default = true} - a no-op LED sink for a notification setup
-    that shouldn't blink any LED."""
+    # The wiring-defaults mechanism (SPECIFICATION.md Part L.6.2), opted into via
+    # [instance.wiring].signal_sink = {default = true}: a no-op LED sink for a notification setup that
+    # should blink no LED.
 
     # Signature and return-value contract match NeopixelDriver.request_signal exactly, so codegen's
     # existing attr-mode rendering (f"{var}.{wf.target}") needs no special-casing for a defaulted field.
@@ -91,16 +91,16 @@ _VAL_ON_M = const((("OnM", "int", 0, 0, 59, None),))
 _VAL_OFF_H = const((("OffH", "int", 18, 0, 23, None),))
 _VAL_OFF_M = const((("OffM", "int", 0, 0, 59, None),))
 _VAL_FLASH_BRI = const((("FlashBri", "int", 200, 1, 255, None),))
-_VAL_INTERV = const((("Interv", "float", 300.0, 60.0, 3600.0, None),))
+_VAL_FLASH_INTERVAL = const((("FlashInterval", "float", 300.0, 60.0, 3600.0, None),))
 _VAL_FLASH_DUR = const((("FlashDur", "float", 2.0, 0.5, 10.0, None),))
 _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 
 # WarnCO2/WarnVOC/WarnHum come with each signal passed at construction, not as _VAL_* constants here,
-# so their web metadata is generator-owned (buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the parallel
-# of codegen._KNOWN_SIGNALS) - neither is a per-device fact this file could tag (Part L.5).
+# so their web metadata is generator-owned (buildgen's warn-signal catalog) - no per-device fact this
+# file could tag (Part H.5.1).
 
-# Literal submitGroup ("autoConfig"), not the "self" sentinel the sensors use: this is a singleton
-# service, so there is nothing to disambiguate, and the hand-written definitions established it.
+# Literal submitGroup ("autoConfig"), not the "self" sentinel the sensors use: a singleton service has
+# nothing to disambiguate.
 # @web-group section=notification submitGroup=autoConfig label="Automatic Notification Configuration" submit=true
 # @web AutoOn section=notification submitGroup=autoConfig label="Automatic Notifications" description="Active from Auto On to Auto Off; an On time later than the Off time runs overnight (e.g. 22:00 to 06:00)."
 # @web OnH section=notification submitGroup=autoConfig label="Auto On Hour"
@@ -108,13 +108,14 @@ _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 # @web OffH section=notification submitGroup=autoConfig label="Auto Off Hour"
 # @web OffM section=notification submitGroup=autoConfig label="Auto Off Minute"
 # @web FlashBri section=notification submitGroup=autoConfig label="Flash Brightness"
-# @web Interv section=notification submitGroup=autoConfig label="Flash Interval" unit="s"
+# @web FlashInterval section=notification submitGroup=autoConfig label="Flash Interval" unit="s"
 # @web FlashDur section=notification submitGroup=autoConfig label="Flash Duration" unit="s"
 
+# Concatenations of the field tuples: const() cannot fold them. The constructor appends one field per
+# signal to _VAL_OWN_SCHEMA.
 _VAL_INT_FIELDS = _VAL_ON_H + _VAL_ON_M + _VAL_OFF_H + _VAL_OFF_M + _VAL_FLASH_BRI
-_VAL_FLOAT_FIELDS = _VAL_INTERV + _VAL_FLASH_DUR
+_VAL_FLOAT_FIELDS = _VAL_FLASH_INTERVAL + _VAL_FLASH_DUR
 _VAL_BOOL_FIELDS = _VAL_AUTO_ON
-# Own static schema fragment; the constructor appends one field per kept signal to it.
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot in C.4.2's get_data() shape, like every other Reader:
@@ -137,7 +138,7 @@ class NotificationSignal:
         name: str,
         value: "ValueRef",
         field_schema: "ConfigSchema",
-        color: "tuple[int, int, int]",
+        color: tuple[int, int, int],
         *,
         above: bool = True,
     ) -> None:
@@ -153,7 +154,7 @@ class NotificationSignal:
         self.triggered = False
 
 
-def _refusal(notif: NotificationSignal, taken: "set[str]") -> "tuple[str, int]":
+def _refusal(notif: NotificationSignal, taken: set[str]) -> tuple[str, int]:
     # ("", 0) accepts the signal; otherwise the reason and its warning code.
     key = name_cfg(notif.field_schema)
     if key == "":
@@ -163,12 +164,12 @@ def _refusal(notif: NotificationSignal, taken: "set[str]") -> "tuple[str, int]":
     return "", 0
 
 
-class NotificationCoordinator(SensorReaderConfig):
+class NotificationService(SensorReaderConfig):
     def __init__(
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
         local_time_callback: "Callable[[], Coroutine[Any, Any, _LocalTime | None]]",
-        signals: "tuple[NotificationSignal, ...]",
+        signals: tuple[NotificationSignal, ...],
         cfg_path: str = "",
         log: LogConfig = DEFAULT_LOG,
     ) -> None:
@@ -191,7 +192,7 @@ class NotificationCoordinator(SensorReaderConfig):
             NOTIFY(Triggered=False, TS=None),
             _NAME,
             combined,
-            max_module_error=0,  # no failure streak: a restart re-reads nothing monitor_loop() doesn't (Part C.7.2)
+            max_module_error=0,  # no failure streak: a restart re-reads nothing _monitor_loop() doesn't (Part C.7.2)
             cfg_path=cfg_path,
             log=log,
         )
@@ -201,27 +202,8 @@ class NotificationCoordinator(SensorReaderConfig):
         # The default sink's False means "no LED", never a dropped signal.
         self._sink_is_default = request_signal_cb is _DefaultSignalSink.request_signal
         self._local_time_callback = local_time_callback
-        self.override_secs = LockedCounter(max_val=_MAX_OVERRIDE_TIME)
+        self._pause = TickSeconds(count_down=True)
         self._auto_active = True
-
-    def _next_sleep_secs(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
-        # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
-        # a real elapsed time close to Interv's own 60.0s schema floor to observe the floor kick in.
-        rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
-        return max(rem_interv, _MIN_SLEEP_S)
-
-    def _now(self) -> int | None:
-        try:
-            return time.mktime(time.gmtime())
-        except (OverflowError, OSError):  # rp2's mktime()/gmtime() raise past its ~2037 32-bit epoch range
-            return None
-
-    async def _safe_local_time(self) -> "_LocalTime | None":
-        try:  # caller-supplied callback, could legitimately misbehave
-            return await self._local_time_callback()
-        except Exception as e:
-            await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
-            return None
 
     async def _check_one(self, notif: NotificationSignal) -> bool:
         # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - get_data()
@@ -259,78 +241,8 @@ class NotificationCoordinator(SensorReaderConfig):
         notif.triggered = triggered
         return triggered
 
-    async def _trigger_signal(self, notif: NotificationSignal, flash_bri: int, flash_dur: float) -> None:
-        r, g, b = notif.color
-        try:  # caller-supplied callback, could legitimately misbehave
-            ok = await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
-            if not ok and not self._sink_is_default:
-                await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
-        except Exception as e:
-            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
-
-    async def _store_notif_data(self, *, any_triggered: bool) -> None:
-        await self._set_meas_data(NOTIFY(any_triggered, self._now()))
-
-    def start_asy_notify_monitor(self) -> "asyncio.Task[None]":
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.monitor_loop())
-
-    def start_asy_auto_override(self) -> "asyncio.Task[None]":
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.auto_led_override())
-
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
-        return [self.start_asy_notify_monitor, self.start_asy_auto_override]
-
-    def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
-
-    async def get_data(self) -> NOTIFY:
-        # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
-        return await self._get_meas_data()  # type: ignore[return-value]
-
-    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        data = await self.get_data()
-        return make_dict(data, _FIELDS, name=self.name)
-
-    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        # self.cfg_schema is the full combined schema (own fields + every kept signal's field),
-        # built once at construction, so this covers everything in one call.
-        return await self._get_dict_cfg(self.name, self.cfg_schema)
-
-    async def get_error_counter(self) -> "ErrorLog":
-        return await self.pr.get_log()
-
-    async def get_override_led(self) -> int:
-        value = await self.override_secs.get_value()  # never None: never constructed/set with a None sentinel
-        return 0 if value is None else value
-
-    async def set_override_led(self, secs: int) -> None:
-        await self.override_secs.set_value(secs)  # LockedCounter clamps into [0, _MAX_OVERRIDE_TIME] itself
-
-    async def setup(self) -> None:  # call once, before any task starter runs
-        await super().setup()
-        await self.pr.setup()  # the refusals below persist through a set-up logger
-        while self._pending_wrn:
-            msg, wrnno = self._pending_wrn.pop(0)
-            await self.pr.wrn_s(msg, wrnno=wrnno)
-
-    async def auto_led_override(self) -> None:
-        self._auto_active = True
-        while True:
-            secs = await self.override_secs.decrement()
-            if secs > 0:
-                if self._auto_active:
-                    self._auto_active = False
-                    self.pr.evt("LED Override active.")
-            elif not self._auto_active:
-                self._auto_active = True
-                self.pr.evt("LED Override off.")
-            await asyncio.sleep(_LOOP_TICK_S)
-
-    async def monitor_loop(self) -> None:
-        await self.pr.setup()  # required for all logged warnings and errors
-        # No self._auto_active = True here, unlike __init__/auto_led_override() which own it - this
+    async def _monitor_loop(self) -> None:
+        # No self._auto_active = True here, unlike __init__/_pause_loop() which own it - this
         # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
         # an override set mid-run: two independently-restartable tasks over one unlocked flag.
         while True:
@@ -367,4 +279,86 @@ class NotificationCoordinator(SensorReaderConfig):
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
                                     await asyncio.sleep(2 * flash_dur)
                 await self._store_notif_data(any_triggered=any_triggered)
-            await asyncio.sleep(self._next_sleep_secs(interv, t0))
+            await asyncio.sleep(self._next_sleep_s(interv, t0))
+
+    def _next_sleep_s(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
+        # Isolated from _monitor_loop() specifically so it's directly unit-testable without needing
+        # a real elapsed time close to FlashInterval's own 60.0s schema floor to observe the floor kick in.
+        rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
+        return max(rem_interv, _MIN_SLEEP_S)
+
+    async def _pause_loop(self) -> None:
+        self._auto_active = True
+        while True:
+            secs = self._pause.read()
+            if secs > 0:
+                if self._auto_active:
+                    self._auto_active = False
+                    self.pr.evt("LED Override active.")
+            elif not self._auto_active:
+                self._auto_active = True
+                self.pr.evt("LED Override off.")
+            await asyncio.sleep(_LOOP_TICK_S)
+
+    async def _safe_local_time(self) -> "_LocalTime | None":
+        try:  # caller-supplied callback, could legitimately misbehave
+            return await self._local_time_callback()
+        except Exception as e:
+            await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
+            return None
+
+    async def _store_notif_data(self, *, any_triggered: bool) -> None:
+        await self._set_meas_data(NOTIFY(any_triggered, utc_now()))
+
+    async def _trigger_signal(self, notif: NotificationSignal, flash_bri: int, flash_dur: float) -> None:
+        r, g, b = notif.color
+        try:  # caller-supplied callback, could legitimately misbehave
+            ok = await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
+            if not ok and not self._sink_is_default:
+                await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
+        except Exception as e:
+            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
+
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+        return [self.start_asy_monitor, self.start_asy_pause]
+
+    def get_timer_starters(self) -> "list[TimerStarter]":
+        return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
+
+    def start_asy_monitor(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self._monitor_loop())
+
+    def start_asy_pause(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self._pause_loop())
+
+    async def get_data(self) -> NOTIFY:
+        # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
+        return await self._get_meas_data()  # type: ignore[return-value]
+
+    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        # self._cfg_schema is the full combined schema (own fields + every kept signal's field),
+        # built once at construction, so this covers everything in one call.
+        return await self._get_dict_cfg(self.name, self._cfg_schema)
+
+    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        data = await self.get_data()
+        return make_dict(data, _FIELDS, name=self.name)
+
+    async def get_error_counter(self) -> "ErrorLog":
+        return await self.pr.get_log()
+
+    async def get_override_led(self) -> int:
+        return self._pause.read()  # the seconds left, after the measured time since the last read
+
+    async def set_override_led(self, secs: int) -> bool:
+        self._pause.restart(min(max(secs, 0), _MAX_OVERRIDE_TIME))
+        return True  # clamps, never refuses
+
+    async def setup(self) -> bool:  # call once, before any task starter runs
+        ok = await super().setup()  # the logger first, so the refusals below persist
+        while self._pending_wrn:
+            msg, wrnno = self._pending_wrn.pop(0)
+            await self.pr.wrn_s(msg, wrnno=wrnno)
+        return ok

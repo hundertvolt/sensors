@@ -72,7 +72,7 @@ async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
     # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
-    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # FRAM, so _serve_loop() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
     # not the instant no-op a RAM-only logger's setup() was.
     #
     # Measured directly against this file's real twin fakes: consistently ready within ~400ms, so 1.0s keeps

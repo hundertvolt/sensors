@@ -10,13 +10,14 @@ from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from machine import RTC, Timer
 
+import asy_base_classes
 import asy_ntp_client as ntpmod
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from asy_ntp_client import AsyNtpClient, NtpTiming
-from print_log import DEFAULT_LOG, LogConfig, PrintLogHistoryStore
+from asy_fram_manager import FRAMManager
+from asy_ntp_client import NTPClient, NtpTiming
+from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistoryStore
 
-# Same one-process-per-test-file swap as test_base_classes.py/test_asy_fram_driver.py/
+# Same one-process-per-test-file swap as test_asy_base_classes.py/test_asy_fram_driver.py/
 # test_asy_fram_manager.py - only exercised by the FRAM-backed log test below, isolated to this
 # file's own process.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from asy_ntp_client import GMTimeStruct
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -48,14 +49,14 @@ def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "in
     return value[-1]
 
 
-# Mirrors asy_ntp_client.py's own _VAL_NH/_VAL_NOS/_VAL_NIH/_VAL_GMT/_VAL_DST schema tuples -
+# Mirrors asy_ntp_client.py's own _VAL_NTP_HOST/_VAL_NTP_OFFSET/_VAL_NTP_INTERVAL/_VAL_GMT_OFFSET/_VAL_DST_OFFSET schema tuples -
 # not importable once const()-folded (same reasoning as test_asy_wifi_service.py's own
 # duplicated _PHASE_* constants), so mirrored here instead.
-_VAL_NH = (("NTP_Host", "str", "pool.ntp.org", 3, 1024, None),)
-_VAL_NOS = (("NTP_Offset_S", "int", 0, -43200, 43200, None),)
-_VAL_NIH = (("NTP_Interv_H", "int", 12, 1, 24, None),)
-_VAL_GMT = (("GMTOffset", "int", 3600, -43200, 43200, None),)
-_VAL_DST = (("DSTOffset", "int", 3600, -43200, 43200, None),)
+_VAL_NTP_HOST = (("NTPHost", "str", "pool.ntp.org", 3, 253, None),)
+_VAL_NTP_OFFSET = (("NTPOffset", "int", 0, -43200, 43200, None),)
+_VAL_NTP_INTERVAL = (("NTPInterval", "int", 12, 1, 24, None),)
+_VAL_GMT_OFFSET = (("GMTOffset", "int", 3600, -43200, 43200, None),)
+_VAL_DST_OFFSET = (("DSTOffset", "int", 3600, -43200, 43200, None),)
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
@@ -126,40 +127,40 @@ def _timing(
 
 def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
-    network_available: "Callable[[], bool] | None" = None,
+    network_available_locked: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
     timing: "NtpTiming | None" = None,
     log: LogConfig = DEFAULT_LOG,
     cfg_path: "str | None" = None,
-) -> AsyNtpClient:
+) -> NTPClient:
     if wifi_mode_lock is None:
         wifi_mode_lock = asyncio.Lock()
-    if network_available is None:
-        network_available = lambda: True  # noqa: E731
+    if network_available_locked is None:
+        network_available_locked = lambda: True  # noqa: E731
     if get_dns_server is None:
         get_dns_server = lambda: None  # noqa: E731
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    client = AsyNtpClient(
+    client = NTPClient(
         wifi_mode_lock,
-        network_available,
+        network_available_locked,
         get_dns_server,
         _timing() if timing is None else timing,
         cfg_path=cfg_path,
         log=log,
     )
-    run(client.cfgmgr.setup())
+    run(client.setup())  # the boot batch's setup(): the logger, then the config manager
     return client
 
 
-def make_client_with_json(json_text: str) -> AsyNtpClient:
+def make_client_with_json(json_text: str) -> NTPClient:
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(json_text)
     return make_client(cfg_path=cfg_path)
 
 
-def make_invalid_cfg_client() -> AsyNtpClient:
+def make_invalid_cfg_client() -> NTPClient:
     # A directory where ConfigManager expects a plain file - its os.stat() 0x4000 (MP_S_IFDIR)
     # check rejects it and leaves self.valid False, the same "config manager itself is invalid"
     # state the old empty-schema route reproduced before this driver's schema became non-empty.
@@ -169,7 +170,7 @@ def make_invalid_cfg_client() -> AsyNtpClient:
 
 
 class _RaiseOnArm:
-    # Same technique as test_system_service.py's _RaiseOnArm - toggles tests/machine.py's shared
+    # Same technique as test_asy_system_service.py's _RaiseOnArm - toggles tests/machine.py's shared
     # Timer.raise_on_arm for the `with` block, simulating rp2 alarm-pool exhaustion. `exc` picks
     # which arm of `except (OSError, MemoryError)` runs; neither covers the other (Part F).
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
@@ -208,7 +209,7 @@ def make_port() -> int:
 
 
 # ---------------------------------------------------------------------------
-# __init__ - AsyNtpClient now extends base_classes.py's SensorReaderConfig: it owns its own
+# __init__ - NTPClient now extends asy_base_classes.py's SensorReaderConfig: it owns its own
 # config_NTP.cfg file/schema internally (no externally-injected ConfigManager, no separate
 # get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see SPECIFICATION.md/BACKLOG.md).
 # ---------------------------------------------------------------------------
@@ -224,11 +225,11 @@ def test_init_creates_its_own_config_file_with_schema_defaults() -> None:
     cfg_path = _tmp_cfg_dir()
     client = make_client(cfg_path=cfg_path)
     assert client.cfgmgr.valid is True
-    values = run(client.cfgmgr.get_dict(["NTP_Host", "NTP_Offset_S", "NTP_Interv_H", "GMTOffset", "DSTOffset"]))
+    values = run(client.cfgmgr.get_dict(["NTPHost", "NTPOffset", "NTPInterval", "GMTOffset", "DSTOffset"]))
     assert values == {
-        "NTP_Host": "pool.ntp.org",
-        "NTP_Offset_S": 0,
-        "NTP_Interv_H": 12,
+        "NTPHost": "pool.ntp.org",
+        "NTPOffset": 0,
+        "NTPInterval": 12,
         "GMTOffset": 3600,
         "DSTOffset": 3600,
     }
@@ -275,22 +276,22 @@ def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
 def test_get_task_starters_returns_all_three_ntp_tasks() -> None:
     client = make_client()
     assert client.get_task_starters() == [
-        client.start_asy_ntp_client,
-        client.start_asy_ntp_refresh,
-        client.start_asy_sync_age_counter,
+        client.start_asy_sync,
+        client.start_asy_refresh,
+        client.start_asy_sync_age,
     ]
 
 
 def test_get_timer_starters_returns_both_ntp_timers() -> None:
     client = make_client()
-    assert client.get_timer_starters() == [client.start_ntp_timer, client.start_counter_timer]
+    assert client.get_timer_starters() == [client.start_check_timer, client.start_sync_age_timer]
 
 
 def test_start_asy_ntp_refresh_returns_a_real_task() -> None:
     client = make_client()
 
     async def scenario() -> bool:
-        task = client.start_asy_ntp_refresh()
+        task = client.start_asy_refresh()
         await asyncio.sleep(0)
         is_task = isinstance(task, asyncio.Task)
         task.cancel()
@@ -307,7 +308,7 @@ def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
     client = make_client()
 
     async def scenario() -> bool:
-        task = client.start_asy_sync_age_counter()
+        task = client.start_asy_sync_age()
         await asyncio.sleep(0)
         is_task = isinstance(task, asyncio.Task)
         task.cancel()
@@ -322,9 +323,9 @@ def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
 
 def test_fram_given_uses_fram_backed_logging() -> None:
     # Proves the constructor forwards its log config to SensorReaderConfig/SensorReader rather than
-    # dropping it, using the same real AsyFramManager plus simulated chip test_base_classes.py uses.
+    # dropping it, using the same real FRAMManager plus simulated chip test_asy_base_classes.py uses.
     bus = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=0x2000)
+    manager = FRAMManager(bus, 1, max_size=0x2000)
     client = make_client(log=LogConfig(manager, 10, None))
     assert isinstance(client.pr, PrintLogHistoryStore)
 
@@ -340,9 +341,9 @@ def test_get_dict_cfg_returns_schema_defaults_wrapped_in_ntp_key() -> None:
     result = run(client.get_dict_cfg())
     assert result == {
         "NTP": {
-            "NTP_Host": "pool.ntp.org",
-            "NTP_Offset_S": 0,
-            "NTP_Interv_H": 12,
+            "NTPHost": "pool.ntp.org",
+            "NTPOffset": 0,
+            "NTPInterval": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
         },
@@ -354,9 +355,9 @@ def test_get_dict_cfg_reflects_a_customized_on_disk_config() -> None:
     result = run(client.get_dict_cfg())
     assert result == {
         "NTP": {
-            "NTP_Host": "time.example.org",
-            "NTP_Offset_S": 5,
-            "NTP_Interv_H": 6,
+            "NTPHost": "time.example.org",
+            "NTPOffset": 5,
+            "NTPInterval": 6,
             "GMTOffset": 7200,
             "DSTOffset": 3600,
         },
@@ -368,9 +369,9 @@ def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -
     result = run(client.get_dict_cfg())
     assert result == {
         "NTP": {
-            "NTP_Host": None,
-            "NTP_Offset_S": None,
-            "NTP_Interv_H": None,
+            "NTPHost": None,
+            "NTPOffset": None,
+            "NTPInterval": None,
             "GMTOffset": None,
             "DSTOffset": None,
         },
@@ -378,33 +379,53 @@ def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -
 
 
 def test_get_data_and_get_dict_data_reflect_the_initial_never_synced_state() -> None:
+    asy_base_classes.set_utc_valid(valid=False)  # another test's sync may have set the process-wide flag
     client = make_client()
     data = run(client.get_data())
     assert data.Synced is False
     assert data.LastSyncAge is None
+    assert data.TS is None  # no timestamp before the first sync of the boot
     dict_data = run(client.get_dict_data())
-    assert dict_data == {"NTP": {"Synced": False, "LastSyncAge": None, "TS": data.TS}}
+    assert dict_data == {"NTP": {"Synced": False, "LastSyncAge": None, "TS": None}}
 
 
 def test_get_data_reflects_a_successful_sync() -> None:
     client = make_client()
-    run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
-    data = run(client.get_data())
+    try:
+        run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
+        data = run(client.get_data())
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
     assert data.Synced is True
     assert data.LastSyncAge == 0
+    assert data.TS is not None  # the sync itself marked the clock valid before stamping
+
+
+def test_a_successful_sync_marks_the_utc_clock_valid() -> None:
+    client = make_client()
+    try:
+        asy_base_classes.set_utc_valid(valid=False)
+        assert asy_base_classes.utc_now() is None
+        run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
+        assert isinstance(asy_base_classes.utc_now(), int)
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
 
 
 def test_get_dict_data_reflects_a_successful_sync() -> None:
     client = make_client()
-    run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
-    dict_data = run(client.get_dict_data())
+    try:
+        run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
+        dict_data = run(client.get_dict_data())
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
+    assert dict_data["NTP"]["TS"] is not None
     assert dict_data["NTP"]["Synced"] is True
     assert dict_data["NTP"]["LastSyncAge"] == 0
 
 
 def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
     client = make_client()
-    run(client.pr.setup())
     counter = run(client.get_error_counter())
     assert counter["NTP"]["ErrCount"] == 0
     run(client.pr.err_s("boom", errno=1))
@@ -414,10 +435,9 @@ def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
 
 def test_get_error_counter_counts_a_warning_too() -> None:
     # Full-dict equality (not indexing into the union-typed ErrNum/ErrType values) - same style
-    # test_print_log.py's own get_log() tests use; history_length defaults to 10 (make_client()
+    # test_asy_print_log.py's own get_log() tests use; history_length defaults to 10 (make_client()
     # doesn't override it), so 9 untouched "N"/0 slots precede the one real warning.
     client = make_client()
-    run(client.pr.setup())
     run(client.pr.wrn_s("careful", wrnno=1))
     counter = run(client.get_error_counter())
     assert counter == {"NTP": {"ErrCount": 1, "ErrNum": [0] * 9 + [1], "ErrType": ["N"] * 9 + ["W"]}}
@@ -425,62 +445,15 @@ def test_get_error_counter_counts_a_warning_too() -> None:
 
 def test_get_error_counter_records_multiple_entries_in_order() -> None:
     client = make_client()
-    run(client.pr.setup())
     run(client.pr.err_s("first error", errno=1))
     run(client.pr.wrn_s("first warning", wrnno=2))
     counter = run(client.get_error_counter())
     assert counter == {"NTP": {"ErrCount": 2, "ErrNum": [0] * 8 + [1, 2], "ErrType": ["N"] * 8 + ["E", "W"]}}
 
 
+# The state helpers _set_synced()/_set_last_sync_age(): each does an unlocked get-then-set with no
+# await between (see asy_ntp_client.py's comment on _set_synced()).
 # ---------------------------------------------------------------------------
-# The internal state-mutation helpers _now()/_set_synced()/_set_last_sync_age()/
-# _increment_last_sync_age(), which replaced last_ntp_sync's and ntp_synced's old LockedCounter/
-# LockedFlag objects. Their field-preservation/None-handling/clamping contract needs this.
-
-# Each helper does an unlocked get-then-set pair, safe only because nothing in between awaits -
-# see asy_ntp_client.py's own comment on _set_synced().
-# ---------------------------------------------------------------------------
-
-
-def test_now_returns_a_real_unix_timestamp() -> None:
-    client = make_client()
-    result = client._now()
-    assert result is not None
-    # @tunable ntp.plausible_min_unix = 1735689600
-    assert result >= 1735689600  # sane lower bound - _NTP_MIN_PLAUSIBLE_UNIX_TIME, compiled away
-
-
-class _RaisingTimeForNow:
-    def __init__(self, exc: "Exception") -> None:
-        self._exc = exc
-
-    def gmtime(self, *_a: int) -> "NoReturn":
-        raise self._exc
-
-    def mktime(self, *_a: "tuple[int, ...]") -> "NoReturn":
-        raise self._exc
-
-
-def test_now_returns_none_on_overflow_error() -> None:
-    client = make_client()
-    original_time = ntpmod.time
-    ntpmod.time = _RaisingTimeForNow(OverflowError("past rp2's ~2037 32-bit epoch range"))  # type: ignore[assignment]
-    try:
-        result = client._now()
-    finally:
-        ntpmod.time = original_time
-    assert result is None
-
-
-def test_now_returns_none_on_os_error() -> None:
-    client = make_client()
-    original_time = ntpmod.time
-    ntpmod.time = _RaisingTimeForNow(OSError("simulated RTC read failure"))  # type: ignore[assignment]
-    try:
-        result = client._now()
-    finally:
-        ntpmod.time = original_time
-    assert result is None
 
 
 def test_set_synced_to_true_preserves_last_sync_age_and_ts() -> None:
@@ -522,35 +495,24 @@ def test_set_last_sync_age_to_none_preserves_synced_flag() -> None:
     assert data.LastSyncAge is None
 
 
-def test_increment_last_sync_age_from_none_yields_one() -> None:
-    # None counts as 0, then +1 - matches base_classes.py's LockedCounter.increment() this
-    # replaces (see BACKLOG.md's fifth-pass entry: an earlier draft got this wrong, returning 0).
+def test_the_sync_age_publish_keeps_the_synced_flag() -> None:
     client = make_client()
-    result = run(client._increment_last_sync_age())
-    assert result == 1
-    assert run(client.get_data()).LastSyncAge == 1
 
+    async def scenario() -> "tuple[bool, int | None]":
+        await client._set_synced(value=True)
+        task = asyncio.create_task(client._sync_age_loop())
+        await _tick(client._time_counter_trigger_event)
+        data = await client.get_data()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return data.Synced, data.LastSyncAge
 
-def test_increment_last_sync_age_from_a_real_value_adds_one() -> None:
-    client = make_client()
-    run(client._set_last_sync_age(value=10))
-    result = run(client._increment_last_sync_age())
-    assert result == 11
-
-
-def test_increment_last_sync_age_clamps_at_uint32_max() -> None:
-    client = make_client()
-    run(client._set_last_sync_age(value=0xFFFFFFFF))
-    result = run(client._increment_last_sync_age())
-    assert result == 0xFFFFFFFF  # clamped, not wrapped/overflowed
-
-
-def test_increment_last_sync_age_preserves_synced_flag() -> None:
-    client = make_client()
-    run(client._set_synced(value=True))
-    run(client._increment_last_sync_age())
-    data = run(client.get_data())
-    assert data.Synced is True
+    synced, age = run(scenario())
+    assert synced is True
+    assert age is not None
 
 
 # ---------------------------------------------------------------------------
@@ -560,19 +522,19 @@ def test_increment_last_sync_age_preserves_synced_flag() -> None:
 
 def test_start_ntp_timer_arms_periodic_with_the_documented_period() -> None:
     client = make_client()
-    client.start_ntp_timer()
-    assert client.ntp_timer.mode == Timer.PERIODIC
-    assert client.ntp_timer.period == _CHECK_INTERVAL_S * 1000
+    client.start_check_timer()
+    assert client._ntp_timer.mode == Timer.PERIODIC
+    assert client._ntp_timer.period == _CHECK_INTERVAL_S * 1000
 
 
 def test_start_ntp_timer_fires_the_trigger_event() -> None:
     client = make_client()
-    client.start_ntp_timer()
+    client.start_check_timer()
 
     async def scenario() -> bool:
-        client.ntp_timer.trigger()
+        client._ntp_timer.trigger()
         try:
-            await asyncio.wait_for(client.ntp_timer_trigger_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(client._ntp_timer_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             return False
         else:
@@ -585,56 +547,56 @@ def test_start_ntp_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None
     client = make_client()
     print("(expected) simulating alarm-pool exhaustion - the following 'Could not start NTP timer' is intentional")
     with _RaiseOnArm():
-        client.start_ntp_timer()  # must not raise despite the timer failing to arm
-    assert client.ntp_timer.period == -1  # never actually armed
+        client.start_check_timer()  # must not raise despite the timer failing to arm
+    assert client._ntp_timer.period == -1  # never actually armed
 
 
 def test_start_ntp_timer_degrades_gracefully_on_a_memory_error() -> None:
-    # Sibling of the OSError test above, for the other arm of start_ntp_timer()'s own
+    # Sibling of the OSError test above, for the other arm of start_check_timer()'s own
     # `except (OSError, MemoryError)`: a real alarm allocation can fail with MemoryError instead,
     # which is not an OSError subclass - same graceful degradation must hold either way.
     client = make_client()
     print("(expected) simulating an allocation failure - the following 'Could not start NTP timer' is intentional")
     with _RaiseOnArm(MemoryError):
-        client.start_ntp_timer()  # must not raise despite the timer failing to arm
-    assert client.ntp_timer.period == -1  # never actually armed
+        client.start_check_timer()  # must not raise despite the timer failing to arm
+    assert client._ntp_timer.period == -1  # never actually armed
 
 
 def test_stop_ntp_timer_deinits() -> None:
     client = make_client()
-    client.start_ntp_timer()
-    client.stop_ntp_timer()
-    assert client.ntp_timer.deinit_called is True
+    client.start_check_timer()
+    client.stop_check_timer()
+    assert client._ntp_timer.deinit_called is True
 
 
 def test_start_counter_timer_arms_periodic_1s() -> None:
     client = make_client()
-    client.start_counter_timer()
-    assert client.counter_timer.mode == Timer.PERIODIC
-    assert client.counter_timer.period == 1000
+    client.start_sync_age_timer()
+    assert client._counter_timer.mode == Timer.PERIODIC
+    assert client._counter_timer.period == 1000
 
 
 def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client()
     with _RaiseOnArm():
-        client.start_counter_timer()
-    assert client.counter_timer.period == -1
+        client.start_sync_age_timer()
+    assert client._counter_timer.period == -1
 
 
 def test_start_counter_timer_degrades_gracefully_on_a_memory_error() -> None:
-    # Sibling of the OSError test above, for the other arm of start_counter_timer()'s own
+    # Sibling of the OSError test above, for the other arm of start_sync_age_timer()'s own
     # `except (OSError, MemoryError)`.
     client = make_client()
     with _RaiseOnArm(MemoryError):
-        client.start_counter_timer()
-    assert client.counter_timer.period == -1
+        client.start_sync_age_timer()
+    assert client._counter_timer.period == -1
 
 
 def test_stop_counter_timer_deinits() -> None:
     client = make_client()
-    client.start_counter_timer()
-    client.stop_counter_timer()
-    assert client.counter_timer.deinit_called is True
+    client.start_sync_age_timer()
+    client.stop_sync_age_timer()
+    assert client._counter_timer.deinit_called is True
 
 
 # ---------------------------------------------------------------------------
@@ -647,12 +609,12 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
 
     async def scenario() -> bool:
         await client._set_last_sync_age(value=5)
-        client.ntp_retries = 2
+        client._ntp_retries = 2
         await client.ntp_force_sync()
         assert await client.get_last_ntp_sync() is None
-        assert client.ntp_retries == 0
+        assert client._ntp_retries == 0
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             return False
         else:
@@ -663,19 +625,19 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
 
 def test_ntp_force_sync_deinits_a_pending_retry_timer() -> None:
     client = make_client()
-    client.ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
+    client._ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
     run(client.ntp_force_sync())
-    assert client.ntp_retry_timer.deinit_called is True
+    assert client._ntp_retry_timer.deinit_called is True
 
 
 # ---------------------------------------------------------------------------
 # Configuration: every valid field, plus single/multiple invalid recombinations from a real
 # on-disk config_NTP.cfg, through the real ConfigManager this client owns - proving this module's
-# handling of per-field defaulting, not re-testing ConfigManager (test_config_manager.py does).
+# handling of per-field defaulting, not re-testing ConfigManager (test_asy_config_manager.py does).
 # ---------------------------------------------------------------------------
 
 _VALID_JSON = (
-    '{"NTP_Host": "time.example.org", "NTP_Offset_S": 5, "NTP_Interv_H": 6, '
+    '{"NTPHost": "time.example.org", "NTPOffset": 5, "NTPInterval": 6, '
     '"GMTOffset": 7200, "DSTOffset": 3600}'
 )
 
@@ -690,8 +652,8 @@ def test_get_ntp_config_returns_real_values_from_a_fully_valid_file() -> None:
 
 
 def test_get_ntp_config_single_invalid_field_falls_back_to_default_for_that_field_only() -> None:
-    # NTP_Host too short (min length 3) - falls back to its own default; NTP_Offset_S stays real.
-    json_text = '{"NTP_Host": "ab", "NTP_Offset_S": 5, "NTP_Interv_H": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
+    # NTPHost too short (min length 3) - falls back to its own default; NTPOffset stays real.
+    json_text = '{"NTPHost": "ab", "NTPOffset": 5, "NTPInterval": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
     ntp_cfg = run(client._get_ntp_config())
     assert ntp_cfg is not None
@@ -701,8 +663,8 @@ def test_get_ntp_config_single_invalid_field_falls_back_to_default_for_that_fiel
 
 
 def test_get_ntp_config_multiple_invalid_fields_each_fall_back_independently() -> None:
-    # NTP_Host wrong type, NTP_Offset_S out of range (both invalid at once) - each defaults on its own.
-    json_text = '{"NTP_Host": 12345, "NTP_Offset_S": 999999, "NTP_Interv_H": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
+    # NTPHost wrong type, NTPOffset out of range (both invalid at once) - each defaults on its own.
+    json_text = '{"NTPHost": 12345, "NTPOffset": 999999, "NTPInterval": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
     ntp_cfg = run(client._get_ntp_config())
     assert ntp_cfg is not None
@@ -712,7 +674,7 @@ def test_get_ntp_config_multiple_invalid_fields_each_fall_back_independently() -
 
 
 def test_get_ntp_config_all_fields_invalid_falls_back_to_every_default() -> None:
-    json_text = '{"NTP_Host": null, "NTP_Offset_S": "bad", "NTP_Interv_H": -5, "GMTOffset": "x", "DSTOffset": null}'
+    json_text = '{"NTPHost": null, "NTPOffset": "bad", "NTPInterval": -5, "GMTOffset": "x", "DSTOffset": null}'
     client = make_client_with_json(json_text)
     ntp_cfg = run(client._get_ntp_config())
     assert ntp_cfg is not None
@@ -755,8 +717,8 @@ def test_get_ntp_config_returns_none_when_config_manager_itself_is_invalid() -> 
 
 
 # ---------------------------------------------------------------------------
-# _safe_get_dns_server - reads the get_dns_server callback (AsyConnTime.get_dns_server_ip) and
-# wraps its errors; called by asy_ntp_time() BEFORE acquiring wifi_mode_lock, since from inside
+# _safe_get_dns_server - reads the get_dns_server callback (WifiService.get_dns_server_ip) and
+# wraps its errors; called by _sync_loop() BEFORE acquiring wifi_mode_lock, since from inside
 # the locked section it always saw the shared Lock as held and always got None back.
 # ---------------------------------------------------------------------------
 
@@ -784,7 +746,6 @@ def test_safe_get_dns_server_callback_raising_persists_a_callback_error() -> Non
         raise RuntimeError("get_wlan_ifconfig() exploded")
 
     client = make_client(get_dns_server=raiser)
-    run(client.pr.setup())
     run(client._safe_get_dns_server())
     counter = run(client.get_error_counter())
     assert _last_err(counter, "ErrNum") == code("E", "CALLBACK")
@@ -878,7 +839,6 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
         client = make_client()
-        run(client.pr.setup())
         run(client._resolve_ntp_server("bogus.invalid", None))
     finally:
         ntpmod.resolve_ipv4 = original
@@ -913,13 +873,13 @@ _recording_udp_calls: "list[int]" = []
 
 
 class _RecordingUDPSocket:
-    # Stands in for asy_udp_socket.AsyUDPSocket - records the timeout_ms _fetch_ntp_reply() passes
+    # Stands in for asy_udp_socket.UDPSocket - records the timeout_ms _fetch_ntp_reply() passes
     # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's configured value
     # reaching the real call, not a hardcoded module constant.
     def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
         pass
 
-    # Only timeout_ms is read; the rest keep AsyUDPSocket's own parameter order/positions.
+    # Only timeout_ms is read; the rest keep UDPSocket's own parameter order/positions.
     async def write_and_recvfrom(
         self, _msg: "bytes | bytearray", _buf: int, timeout_ms: int = -1, _tries: int = 1,
     ) -> "tuple[bytes | None, tuple[str, int] | None]":
@@ -932,19 +892,19 @@ class _RecordingUDPSocket:
 
 def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
     client = make_client(timing=_timing(fetch_timeout_ms=9999))
-    original = ntpmod.AsyUDPSocket
+    original = ntpmod.UDPSocket
     _recording_udp_calls.clear()
-    ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[assignment, misc]
+    ntpmod.UDPSocket = _RecordingUDPSocket  # type: ignore[assignment, misc]
     try:
         run(client._fetch_ntp_reply(("127.0.0.1", 123)))
     finally:
-        ntpmod.AsyUDPSocket = original  # type: ignore[misc]
+        ntpmod.UDPSocket = original  # type: ignore[misc]
     assert _recording_udp_calls == [9999]
 
 
 def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
     # getaddrinfo() is called with no address-family hint, so a resolver preferring IPv6 hands
-    # back a 4-tuple, not the 2-tuple this file assumes. AsyUDPSocket.__init__ rejects that with
+    # back a 4-tuple, not the 2-tuple this file assumes. UDPSocket.__init__ rejects that with
     # TypeError, which _fetch_ntp_reply catches, so the pipeline degrades to "no reply".
     client = make_client()
     result = run(client._fetch_ntp_reply(("2001:db8::1", 123, 0, 0)))  # type: ignore[arg-type]
@@ -954,7 +914,6 @@ def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
 def test_fetch_ntp_reply_no_server_listening_times_out_to_none() -> None:
     client = make_client()
     addr = make_addr()
-    run(client.pr.setup())
     result = run(client._fetch_ntp_reply(addr))
     assert result is None
     assert _last_err(run(client.get_error_counter()), "ErrNum") == code("E", "NTP_NO_REPLY")  # a silent timeout used to persist nothing
@@ -991,7 +950,7 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
     async def scenario() -> "bytes | None":
         responder_task = asyncio.create_task(responder())
         await asyncio.sleep(0)  # let the responder bind()+register() before the client sends -
-        # AsyUDPSocket's own _connect()/ready() can complete synchronously for a fresh, uncontended
+        # UDPSocket's own _connect()/ready() can complete synchronously for a fresh, uncontended
         # client socket (UDP connect()/POLLOUT are both immediately satisfiable), so without this
         # yield the request could race ahead of the responder's own bind() (confirmed directly).
         msg = await client._fetch_ntp_reply(addr)
@@ -1106,12 +1065,12 @@ def test_parse_ntp_reply_rtc_set_failure_returns_none_not_raise() -> None:
     assert result is None
 
 
-def _make_raw_ntp_reply(raw_seconds: int) -> bytes:
+def _make_raw_ntp_reply(raw_s: int) -> bytes:
     # Same LI=0/Stratum=1 header as make_ntp_reply() above - a genuinely-synchronized-looking
     # server, so these era/plausibility-window tests aren't incidentally rejected by the separate
     # LI/Stratum check instead of exercising the era logic they're meant to test.
     header = b"\x1c\x01" + bytes(38)
-    transmit = struct.pack("!I", raw_seconds & 0xFFFFFFFF) + bytes(4)
+    transmit = struct.pack("!I", raw_s & 0xFFFFFFFF) + bytes(4)
     msg = header + transmit
     assert len(msg) == 48
     return msg
@@ -1211,16 +1170,16 @@ def test_parse_ntp_reply_accepts_a_normal_synchronized_reply_li_zero_stratum_one
 def test_handle_sync_failure_while_never_synced_does_not_arm_a_retry() -> None:
     client = make_client()  # never synced yet
     run(client._handle_ntp_sync_failure())
-    assert client.ntp_retry_timer.period == -1  # never armed - ntp_time_hours_counter() retries instead
+    assert client._ntp_retry_timer.period == -1  # never armed - _refresh_loop() retries instead
 
 
 def test_handle_sync_failure_while_synced_arms_a_retry_and_increments_the_counter() -> None:
     client = make_client()
     run(client._set_synced(value=True))
     run(client._handle_ntp_sync_failure())
-    assert client.ntp_retries == 1
-    assert client.ntp_retry_timer.mode == Timer.ONE_SHOT
-    assert client.ntp_retry_timer.period == _RETRY_INTERVAL_S * 1000
+    assert client._ntp_retries == 1
+    assert client._ntp_retry_timer.mode == Timer.ONE_SHOT
+    assert client._ntp_retry_timer.period == _RETRY_INTERVAL_S * 1000
 
 
 def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
@@ -1229,9 +1188,9 @@ def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
     run(client._handle_ntp_sync_failure())
 
     async def scenario() -> bool:
-        client.ntp_retry_timer.trigger()
+        client._ntp_retry_timer.trigger()
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             return False
         else:
@@ -1243,10 +1202,10 @@ def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
 def test_handle_sync_failure_gives_up_after_max_retries() -> None:
     client = make_client()
     run(client._set_synced(value=True))
-    client.ntp_retries = _SYNC_RETRIES
+    client._ntp_retries = _SYNC_RETRIES
     run(client._handle_ntp_sync_failure())
-    assert client.ntp_retries == 0
-    assert client.ntp_retry_timer.period == -1  # never (re)armed - past the retry budget
+    assert client._ntp_retries == 0
+    assert client._ntp_retry_timer.period == -1  # never (re)armed - past the retry budget
 
 
 def test_handle_sync_failure_degrades_gracefully_when_alarm_pool_exhausted() -> None:
@@ -1254,7 +1213,7 @@ def test_handle_sync_failure_degrades_gracefully_when_alarm_pool_exhausted() -> 
     run(client._set_synced(value=True))
     with _RaiseOnArm():
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
-    assert client.ntp_retries == 0  # given up this cycle rather than left stuck
+    assert client._ntp_retries == 0  # given up this cycle rather than left stuck
 
 
 def test_handle_sync_failure_degrades_gracefully_on_a_memory_error() -> None:
@@ -1262,15 +1221,14 @@ def test_handle_sync_failure_degrades_gracefully_on_a_memory_error() -> None:
     # `except (OSError, MemoryError)` - the retry cycle is given up the same way either way, and the
     # same TIMER error is persisted (this site logs via the async err_s(), unlike the two starters above).
     client = make_client()
-    run(client.pr.setup())
     run(client._set_synced(value=True))
     with _RaiseOnArm(MemoryError):
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
-    assert client.ntp_retries == 0  # given up this cycle rather than left stuck
+    assert client._ntp_retries == 0  # given up this cycle rather than left stuck
     assert _last_err(run(client.get_error_counter()), "ErrNum") == code("E", "TIMER")
 
 
-def _slots(client: AsyNtpClient) -> "tuple[int, list[int]]":
+def _slots(client: NTPClient) -> "tuple[int, list[int]]":
     # (ErrCount, the ring's used slots oldest first) - "N" marks an unused one.
     entry = run(client.get_error_counter())["NTP"]
     nums, types = entry["ErrNum"], entry["ErrType"]
@@ -1280,7 +1238,6 @@ def _slots(client: AsyNtpClient) -> "tuple[int, list[int]]":
 
 def test_repeated_retry_arm_failures_count_each_and_keep_one_slot() -> None:
     client = make_client()
-    run(client.pr.setup())
     run(client._set_synced(value=True))
     with _RaiseOnArm():
         run(client._handle_ntp_sync_failure())
@@ -1290,32 +1247,31 @@ def test_repeated_retry_arm_failures_count_each_and_keep_one_slot() -> None:
 
 def test_repeated_retry_exhaustion_counts_each_and_keep_one_slot() -> None:
     client = make_client()
-    run(client.pr.setup())
     run(client._set_synced(value=True))
     for _ in range(2):
-        client.ntp_retries = _SYNC_RETRIES
+        client._ntp_retries = _SYNC_RETRIES
         run(client._handle_ntp_sync_failure())
     assert _slots(client) == (2, [code("E", "NTP_RETRIES")])
 
 
 def test_handle_sync_success_resets_retries_marks_synced_and_records_the_sync_time() -> None:
     client = make_client()
-    client.ntp_retries = 2
+    client._ntp_retries = 2
     run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
-    assert client.ntp_retries == 0
+    assert client._ntp_retries == 0
     assert run(client.ntp_issynced()) is True
     assert run(client.get_last_ntp_sync()) == 0
 
 
 def test_handle_sync_success_deinits_a_pending_retry_timer() -> None:
     client = make_client()
-    client.ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
+    client._ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
     run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
-    assert client.ntp_retry_timer.deinit_called is True
+    assert client._ntp_retry_timer.deinit_called is True
 
 
 # ---------------------------------------------------------------------------
-# ntp_time_hours_counter
+# _refresh_loop
 # ---------------------------------------------------------------------------
 
 
@@ -1326,12 +1282,42 @@ async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1) -> None:
         await asyncio.sleep(0)  # let one full loop iteration's awaits settle
 
 
+class _DrivenTime:
+    # A ticks source the test advances, installed as asy_base_classes' `time` for the block: the sync
+    # age counts measured ticks (SPECIFICATION.md G.2), so it follows advance(), never the wake-ups.
+    def __init__(self) -> None:
+        self.now_ms = 0
+
+    def __enter__(self) -> "Self":
+        self._real = asy_base_classes.time
+        asy_base_classes.time = self  # type: ignore[assignment]  # a module attribute swap, restored on exit
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asy_base_classes.time = self._real
+
+    def advance(self, ms: int) -> None:
+        self.now_ms += ms
+
+    def ticks_ms(self) -> int:
+        return self.now_ms
+
+    def ticks_diff(self, new: int, old: int) -> int:
+        return new - old
+
+    def gmtime(self) -> "tuple[int, ...]":
+        return self._real.gmtime()
+
+    def mktime(self, t: "tuple[int, ...]") -> int:
+        return self._real.mktime(t)
+
+
 def test_ntp_time_hours_counter_missing_config_falls_back_to_12h_default_without_raising() -> None:
     client = make_invalid_cfg_client()
 
     async def scenario() -> None:
-        task = asyncio.create_task(client.ntp_time_hours_counter())
-        await _tick(client.ntp_timer_trigger_event, 1)
+        task = asyncio.create_task(client._refresh_loop())
+        await _tick(client._ntp_timer_trigger_event, 1)
         task.cancel()
         try:
             await task
@@ -1345,10 +1331,10 @@ def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() 
     client = make_client()
 
     async def scenario() -> bool:
-        task = asyncio.create_task(client.ntp_time_hours_counter())
-        await _tick(client.ntp_timer_trigger_event, 1)
+        task = asyncio.create_task(client._refresh_loop())
+        await _tick(client._ntp_timer_trigger_event, 1)
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
             fired = True
         except asyncio.TimeoutError:
             fired = False
@@ -1369,16 +1355,16 @@ def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynce
 
     async def fired() -> bool:
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
         except asyncio.TimeoutError:
             return False
         return True
 
     async def scenario() -> "list[bool]":
-        task = asyncio.create_task(client.ntp_time_hours_counter())
+        task = asyncio.create_task(client._refresh_loop())
         results = []
         for ticks in (3, 1, 3, 1):
-            await _tick(client.ntp_timer_trigger_event, ticks)
+            await _tick(client._ntp_timer_trigger_event, ticks)
             results.append(await fired())
         task.cancel()
         try:
@@ -1391,15 +1377,15 @@ def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynce
 
 
 def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interval() -> None:
-    json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
+    json_text = '{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
         await client._set_synced(value=True)
-        task = asyncio.create_task(client.ntp_time_hours_counter())
-        await _tick(client.ntp_timer_trigger_event, 1)  # one tick, well under 1h / 10s-per-tick
+        task = asyncio.create_task(client._refresh_loop())
+        await _tick(client._ntp_timer_trigger_event, 1)  # one tick, well under 1h / 10s-per-tick
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
             fired = True
         except asyncio.TimeoutError:
             fired = False
@@ -1414,16 +1400,16 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
 
 
 def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
-    # NTP_Interv_H=1 -> 3600s / _NTP_CHECK_INTERV(10s) = 360 ticks to reach the interval.
-    json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
+    # NTPInterval=1 -> 3600s / _NTP_CHECK_INTERV(10s) = 360 ticks to reach the interval.
+    json_text = '{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
         await client._set_synced(value=True)
-        task = asyncio.create_task(client.ntp_time_hours_counter())
-        await _tick(client.ntp_timer_trigger_event, 360)
+        task = asyncio.create_task(client._refresh_loop())
+        await _tick(client._ntp_timer_trigger_event, 360)
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
             fired = True
         except asyncio.TimeoutError:
             fired = False
@@ -1440,16 +1426,16 @@ def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
 def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multiple() -> None:
     # _NTP_ASYNC_INTERV(3) x interval(1h) = 10800s without a successful resync flips ntp_synced
     # back to False even though the retrigger condition normally resets sec_count to 0 first -
-    # set ntp_sec_count directly at that boundary to isolate this specific transition.
-    json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
+    # set _ntp_sec_count directly at that boundary to isolate this specific transition.
+    json_text = '{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
         await client._set_synced(value=True)
-        task = asyncio.create_task(client.ntp_time_hours_counter())
-        await asyncio.sleep(0)  # let the task run past its own `self.ntp_sec_count = 0` reset first
-        client.ntp_sec_count = _ASYNC_INTERVALS * 1 * 60 * 60  # x NTP_Interv_H (1) x 3600 s
-        await _tick(client.ntp_timer_trigger_event, 1)
+        task = asyncio.create_task(client._refresh_loop())
+        await asyncio.sleep(0)  # let the task run past its own `self._ntp_sec_count = 0` reset first
+        client._ntp_sec_count = _ASYNC_INTERVALS * 1 * 60 * 60  # x NTPInterval (1) x 3600 s
+        await _tick(client._ntp_timer_trigger_event, 1)
         synced = await client.ntp_issynced()
         task.cancel()
         try:
@@ -1462,20 +1448,20 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
 
 
 def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multiple_under_constant_config() -> None:
-    # Complements the test above that isolates the 3x transition by poking ntp_sec_count. Under
+    # Complements the test above that isolates the 3x transition by poking _ntp_sec_count. Under
     # natural ticking the loop's own reset-to-0 at 1x fires every cycle before sec_count nears 3x,
     # so the "distrust a stale sync" net never engages - inherited byte for byte from legacy.
-    json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
+    json_text = '{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
         await client._set_synced(value=True)
-        task = asyncio.create_task(client.ntp_time_hours_counter())
+        task = asyncio.create_task(client._refresh_loop())
         # 3 full 1h/360-tick cycles - well past where the 3x(=3h) threshold would sit if sec_count
         # were ever allowed to accumulate past a single 1x cycle.
-        await _tick(client.ntp_timer_trigger_event, 3 * 360)
+        await _tick(client._ntp_timer_trigger_event, 3 * 360)
         still_synced = await client.ntp_issynced()
-        sec_count_bounded = client.ntp_sec_count < (1 * 60 * 60)  # always reset well under 1x
+        sec_count_bounded = client._ntp_sec_count < (1 * 60 * 60)  # always reset well under 1x
         task.cancel()
         try:
             await task
@@ -1506,7 +1492,7 @@ def test_this_interpreters_gmtime_returns_nine_elements_not_eight() -> None:
 
 
 class _FixedNowTime:
-    # Same monkeypatch technique as test_system_service.py's _OverflowingTime/_RaisingGmtime -
+    # Same monkeypatch technique as test_asy_system_service.py's _OverflowingTime/_RaisingGmtime -
     # replaces this module's own `time` name, not the read-only builtin. gmtime()/mktime()
     # delegate to the real module; only time() is overridden and gmtime() truncated to 8 elements.
     def __init__(self, fixed_now: int, raise_exc: "Exception | None" = None) -> None:
@@ -1532,12 +1518,12 @@ def _mid_month_now(month: int) -> int:
     return time.mktime((year, month, 15, 12, 0, 0, 0, 0, 0))
 
 
-def _client_with_offsets(gmt_offset: int, dst_offset: int) -> AsyNtpClient:
+def _client_with_offsets(gmt_offset: int, dst_offset: int) -> NTPClient:
     # Deliberately one single f-string, not a plain literal adjacent to an f-string: confirmed
     # directly that MicroPython mishandles the latter when the plain part contains a literal brace
     # (this JSON's opening "{"), raising a spurious KeyError on the plain part's own content.
     json_text = (
-        f'{{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 12, '
+        f'{{"NTPHost": "pool.ntp.org", "NTPOffset": 0, "NTPInterval": 12, '
         f'"GMTOffset": {gmt_offset}, "DSTOffset": {dst_offset}}}'
     )
     return make_client_with_json(json_text)
@@ -1554,7 +1540,7 @@ def test_cettime_returns_none_when_config_missing() -> None:
     assert run(client.cettime()) is None
 
 
-def _run_cettime_with_fixed_now(client: AsyNtpClient, fixed_now: int, raise_exc: "Exception | None" = None) -> "GMTimeStruct | None":
+def _run_cettime_with_fixed_now(client: NTPClient, fixed_now: int, raise_exc: "Exception | None" = None) -> "GMTimeStruct | None":
     original_time = ntpmod.time
     ntpmod.time = _FixedNowTime(fixed_now, raise_exc)  # type: ignore[assignment]
     try:
@@ -1647,34 +1633,67 @@ def test_cettime_returns_none_when_gmtime_result_has_the_wrong_length() -> None:
 
 
 # ---------------------------------------------------------------------------
-# time_counter() - the synced-clock second counter
+# _sync_age_loop() - the synced-clock second counter
 # ---------------------------------------------------------------------------
 
 
-def test_time_counter_increments_while_synced() -> None:
-    client = make_client()
+def test_sync_age_follows_measured_time_while_synced() -> None:
+    with _DrivenTime() as clock:
+        client = make_client()
 
-    async def scenario() -> "int | None":
-        await client._set_synced(value=True)
-        task = asyncio.create_task(client.time_counter())
-        await _tick(client.time_counter_trigger_event, 3)
-        value = await client.get_last_ntp_sync()
-        task.cancel()
+        async def scenario() -> "int | None":
+            await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+            task = asyncio.create_task(client._sync_age_loop())
+            await asyncio.sleep(0)
+            for _ in range(3):
+                clock.advance(1000)
+                await _tick(client._time_counter_trigger_event)
+            value = await client.get_last_ntp_sync()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return value
+
         try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return value
+            assert run(scenario()) == 3
+        finally:
+            asy_base_classes.set_utc_valid(valid=False)
 
-    assert run(scenario()) == 3
+
+def test_a_late_wake_advances_the_age_by_the_measured_seconds() -> None:
+    # One wake-up 2.5 s after the sync: the age is the 2 whole seconds that passed, not one per
+    # wake-up, so a dropped or late soft-Timer callback costs latency only (SPECIFICATION.md C.9).
+    with _DrivenTime() as clock:
+        client = make_client()
+
+        async def scenario() -> "int | None":
+            await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
+            task = asyncio.create_task(client._sync_age_loop())
+            await asyncio.sleep(0)
+            clock.advance(2500)
+            await _tick(client._time_counter_trigger_event)
+            value = await client.get_last_ntp_sync()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return value
+
+        try:
+            assert run(scenario()) == 2
+        finally:
+            asy_base_classes.set_utc_valid(valid=False)
 
 
 def test_time_counter_resets_to_none_while_not_synced() -> None:
     client = make_client()
 
     async def scenario() -> "int | None":
-        task = asyncio.create_task(client.time_counter())
-        await _tick(client.time_counter_trigger_event, 2)
+        task = asyncio.create_task(client._sync_age_loop())
+        await _tick(client._time_counter_trigger_event, 2)
         value = await client.get_last_ntp_sync()
         task.cancel()
         try:
@@ -1693,7 +1712,7 @@ def test_time_counter_resets_to_none_while_not_synced() -> None:
 
 
 def test_run_sync_attempt_network_unavailable_skips_everything_downstream() -> None:
-    client = make_client(network_available=lambda: False)
+    client = make_client(network_available_locked=lambda: False)
     reached = [False]
 
     async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
@@ -1709,7 +1728,7 @@ def test_run_sync_attempt_network_available_raising_is_treated_as_unavailable() 
     def raiser() -> bool:
         raise RuntimeError("wlan.status() exploded")
 
-    client = make_client(network_available=raiser)
+    client = make_client(network_available_locked=raiser)
     reached = [False]
 
     async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
@@ -1725,8 +1744,7 @@ def test_run_sync_attempt_network_available_raising_persists_a_callback_error() 
     def raiser() -> bool:
         raise RuntimeError("wlan.status() exploded")
 
-    client = make_client(network_available=raiser)
-    run(client.pr.setup())
+    client = make_client(network_available_locked=raiser)
     run(client._run_ntp_sync_attempt(None))
     counter = run(client.get_error_counter())
     assert _last_err(counter, "ErrNum") == code("E", "CALLBACK")
@@ -1767,7 +1785,7 @@ def test_run_sync_attempt_resolve_failure_calls_handle_failure() -> None:
 
 def test_run_sync_attempt_passes_the_given_dns_server_to_resolve_ntp_server() -> None:
     # Proves _run_ntp_sync_attempt() forwards its own dns_server parameter through unchanged -
-    # the actual value only ever comes from asy_ntp_time()'s _safe_get_dns_server() call, read
+    # the actual value only ever comes from _sync_loop()'s _safe_get_dns_server() call, read
     # before wifi_mode_lock is acquired (see that method's own comment/BACKLOG.md).
     client = make_client()
     received: list[Any] = []
@@ -1867,9 +1885,8 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
 
 
 # ---------------------------------------------------------------------------
-# asy_ntp_time() - the task-supervisor entry point: proves the trigger -> lock -> attempt ->
-# lock-release cycle works, and that the lock is released even if the attempt raises. That should
-# not happen after the exception audit, but the surrounding try/finally must not depend on it.
+# _sync_loop() - the task-supervisor entry point: proves the trigger -> lock -> attempt ->
+# lock-release cycle works, and that the lock is released by `async with` even if the attempt raises.
 # ---------------------------------------------------------------------------
 
 
@@ -1884,12 +1901,12 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
     client._run_ntp_sync_attempt = fake_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> int:
-        task = asyncio.create_task(client.asy_ntp_time())
-        client.ntp_sync_trigger_event.set()
+        task = asyncio.create_task(client._sync_loop())
+        client._ntp_sync_trigger_event.set()
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         assert not client.wifi_mode_lock.locked()
-        client.ntp_sync_trigger_event.set()
+        client._ntp_sync_trigger_event.set()
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         task.cancel()
@@ -1911,8 +1928,8 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
     client._run_ntp_sync_attempt = raising_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        client.ntp_sync_trigger_event.set()
+        task = asyncio.create_task(client._sync_loop())
+        client._ntp_sync_trigger_event.set()
         # the uncaught RuntimeError kills this task - matches every other supervised task in this
         # codebase, which relies on the outer task-supervisor to notice and restart it, not a
         # catch-all here; retrieved explicitly so asyncio doesn't warn about it going unretrieved.
@@ -1926,43 +1943,19 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
     assert run(scenario())
 
 
-def test_asy_ntp_time_swallows_an_already_released_wifi_lock() -> None:
-    # Defensive guard: if the lock were somehow already released by the time asy_ntp_time()'s
-    # finally block runs, wifi_mode_lock.release() raises RuntimeError - caught and swallowed
-    # rather than crashing the task. Forced here by having the attempt release the lock itself.
-    client = make_client()
-
-    async def attempt_releases_lock_itself(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
-        client.wifi_mode_lock.release()
-        return None, True
-
-    client._run_ntp_sync_attempt = attempt_releases_lock_itself  # type: ignore[assignment, method-assign]
+def test_setup_initialises_the_logger_before_any_task() -> None:
+    # The boot batch's setup() readies the logger; the sync task never sets it up itself (SPECIFICATION.md A.7).
+    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_tmp_cfg_dir())
+    before = client.pr.initialized
+    run(client.setup())
+    assert (before, client.pr.initialized) == (False, True)
+    unset = NTPClient(asyncio.Lock(), lambda: True, lambda: None, _timing(), cfg_path=_tmp_cfg_dir())
 
     async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        client.ntp_sync_trigger_event.set()
+        task = asyncio.create_task(unset._sync_loop())
         await asyncio.sleep(0)
         await asyncio.sleep(0)
-        still_running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return still_running
-
-    assert run(scenario()) is True  # must not have crashed on the redundant release
-
-
-def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
-    client = make_client()
-    assert client.pr.initialized is False
-
-    async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        initialized = client.pr.initialized
+        initialized = unset.pr.initialized
         task.cancel()
         try:
             await task
@@ -1970,14 +1963,14 @@ def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
             pass
         return initialized
 
-    assert run(scenario()) is True
+    assert run(scenario()) is False
 
 
-async def _drive_attempts(client: AsyNtpClient, cycles: int) -> bool:
-    # Fires `cycles` sync triggers through the real asy_ntp_time() loop; True = task still running.
-    task = asyncio.create_task(client.asy_ntp_time())
+async def _drive_attempts(client: NTPClient, cycles: int) -> bool:
+    # Fires `cycles` sync triggers through the real _sync_loop() loop; True = task still running.
+    task = asyncio.create_task(client._sync_loop())
     for _ in range(cycles):
-        client.ntp_sync_trigger_event.set()
+        client._ntp_sync_trigger_event.set()
         await asyncio.sleep(0)
         await asyncio.sleep(0)
     still_running = not task.done()
@@ -2050,7 +2043,7 @@ def test_a_successful_sync_resets_the_backoff() -> None:
 
 
 def test_ntp_force_sync_resets_the_backoff() -> None:
-    # An operator's resync (a PUT of NTP_Host) must run now, not after a ten-minute backoff step.
+    # An operator's resync (a PUT of NTPHost) must run now, not after a ten-minute backoff step.
     client = make_client(timing=_timing(retry_s=10, retry_max_s=600))
     client._retry_wait_s, client._unsynced_wait_s = 600, 50
     run(client.ntp_force_sync())
@@ -2059,9 +2052,9 @@ def test_ntp_force_sync_resets_the_backoff() -> None:
 
 def test_constructor_clamps_the_backoff_pair_to_the_check_tick_and_to_each_other() -> None:
     client = make_client(timing=_timing(retry_s=3, retry_max_s=5))
-    assert (client.retry_s, client.retry_max_s, client._retry_wait_s) == (10, 10, 10)
+    assert (client._retry_s, client._retry_max_s, client._retry_wait_s) == (10, 10, 10)
     client = make_client(timing=_timing(retry_s=40, retry_max_s=20))
-    assert (client.retry_s, client.retry_max_s) == (40, 40)
+    assert (client._retry_s, client._retry_max_s) == (40, 40)
 
 
 def test_asy_ntp_time_alternating_failure_codes_spend_a_slot_each_and_count_every_one() -> None:
@@ -2084,7 +2077,6 @@ def test_a_recurring_code_after_a_success_keeps_one_slot() -> None:
     no_reply, unsync = code("E", "NTP_NO_REPLY"), code("W", "NTP_UNSYNC_REPLY")
 
     async def scenario() -> None:
-        await client.pr.setup()
         await client.pr.err_s("no reply", errno=no_reply)
         await client.pr.err_s("no reply", errno=no_reply)
         await client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0))
@@ -2115,14 +2107,14 @@ def test_asy_ntp_time_keeps_running_across_alternating_failure_and_success() -> 
 
 
 # ===========================================================================
-# Integration tests: the real network path, driving the whole asy_ntp_time() task through
-# cfgmgr -> _resolve_ntp_server -> AsyUDPSocket -> real UDP loopback -> a staged real NTP server,
+# Integration tests: the real network path, driving the whole _sync_loop() task through
+# cfgmgr -> _resolve_ntp_server -> UDPSocket -> real UDP loopback -> a staged real NTP server,
 # proving how a genuine fault or success propagates up through the public getters.
 # ===========================================================================
 
 
 class _RedirectNtpNetworking:
-    # Two Unix-port-only workarounds, needed only when driving the FULL asy_ntp_time() task end to
+    # Two Unix-port-only workarounds, needed only when driving the FULL _sync_loop() task end to
     # end. They must NOT be applied where a test calls _fetch_ntp_reply() with an already-resolved
     # addr, since indexing into an already-opaque object would itself break.
     #
@@ -2132,13 +2124,13 @@ class _RedirectNtpNetworking:
     #
     # (2) _resolve_ntp_server() returns a plain (str, int) tuple - correct for real rp2 hardware -
     #     which this Unix-port build's connect() rejects (micropython/micropython#6924), so
-    #     AsyUDPSocket is wrapped to pre-resolve it, like test_asy_dns_client.py's own wrapper.
+    #     UDPSocket is wrapped to pre-resolve it, like test_asy_dns_client.py's own wrapper.
     def __init__(self, port: int) -> None:
         self._port = port
 
     def __enter__(self) -> "Self":
         self._original_port = ntpmod._NTP_UDP_PORT
-        self._original_socket_cls = ntpmod.AsyUDPSocket
+        self._original_socket_cls = ntpmod.UDPSocket
         ntpmod._NTP_UDP_PORT = self._port
         real_cls = self._original_socket_cls
 
@@ -2150,16 +2142,16 @@ class _RedirectNtpNetworking:
             def __getattr__(self, name: str) -> object:
                 return getattr(self._real, name)
 
-        ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
+        ntpmod.UDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
     def __exit__(self, *exc_info: object) -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
-        ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
+        ntpmod.UDPSocket = self._original_socket_cls  # type: ignore[misc]
 
 
 class FakeNtpServer:
-    # A genuine independent UDP endpoint (a real socket.socket(), not an AsyUDPSocket), staged to
+    # A genuine independent UDP endpoint (a real socket.socket(), not an UDPSocket), staged to
     # answer with a controlled reply or drop the request - the same "real peer, not a mock"
     # approach as test_asy_udp_socket.py's AdversarialPeer, on a free ephemeral port.
     def __init__(self) -> None:
@@ -2195,8 +2187,8 @@ class FakeNtpServer:
         self.sock.close()
 
 
-def make_integration_client() -> AsyNtpClient:
-    json_text = '{"NTP_Host": "127.0.0.1", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}'
+def make_integration_client() -> NTPClient:
+    json_text = '{"NTPHost": "127.0.0.1", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0}'
     return make_client_with_json(json_text)
 
 
@@ -2208,9 +2200,9 @@ def test_integration_full_task_reaches_synced_state_on_a_real_successful_reply()
         server = FakeNtpServer()
         try:
             with server.redirect_resolution():
-                task = asyncio.create_task(client.asy_ntp_time())
+                task = asyncio.create_task(client._sync_loop())
                 server_task = asyncio.create_task(server.serve_once(reply))
-                client.ntp_sync_trigger_event.set()
+                client._ntp_sync_trigger_event.set()
                 await asyncio.wait_for(server_task, 5)
                 for _ in range(_SYNCED_POLL_TRIES):
                     if await client.ntp_issynced():
@@ -2236,8 +2228,8 @@ def test_integration_full_task_stays_not_synced_when_nobody_answers() -> None:
     client = make_integration_client()
 
     async def scenario() -> bool:
-        task = asyncio.create_task(client.asy_ntp_time())
-        client.ntp_sync_trigger_event.set()
+        task = asyncio.create_task(client._sync_loop())
+        client._ntp_sync_trigger_event.set()
         await asyncio.sleep(_NO_ANSWER_WAIT_S)  # comfortably longer than the fetch timeout would need to fail once
         synced = await client.ntp_issynced()
         task.cancel()
@@ -2258,9 +2250,9 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
         server = FakeNtpServer()
         try:
             with server.redirect_resolution():
-                task = asyncio.create_task(client.asy_ntp_time())
+                task = asyncio.create_task(client._sync_loop())
                 server_task = asyncio.create_task(server.serve_once(garbage_reply))
-                client.ntp_sync_trigger_event.set()
+                client._ntp_sync_trigger_event.set()
                 await asyncio.wait_for(server_task, 5)
                 await asyncio.sleep(_REPLY_PROCESS_S)
                 synced = await client.ntp_issynced()
@@ -2296,8 +2288,8 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
         server = FakeNtpServer()
         try:
             with server.redirect_resolution():
-                task = asyncio.create_task(client.asy_ntp_time())
-                client.ntp_sync_trigger_event.set()
+                task = asyncio.create_task(client._sync_loop())
+                client._ntp_sync_trigger_event.set()
                 first_reply_task = asyncio.create_task(server.serve_once(reply))
                 await asyncio.wait_for(first_reply_task, 5)
                 await _wait_synced(target=True)
@@ -2306,12 +2298,12 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 await client.ntp_force_sync()  # trigger a second attempt
                 await server.serve_once(None)  # drop it entirely
                 for _ in range(_RETRY_ARMED_POLL_TRIES):  # wait for the real fetch timeout to elapse and arm a retry
-                    if client.ntp_retry_timer.callback is not None:
+                    if client._ntp_retry_timer.callback is not None:
                         break
                     await asyncio.sleep_ms(_STATE_POLL_MS)
-                assert client.ntp_retry_timer.callback is not None  # retry genuinely armed this time
+                assert client._ntp_retry_timer.callback is not None  # retry genuinely armed this time
 
-                client.ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
+                client._ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
                 second_reply_task = asyncio.create_task(server.serve_once(reply))
                 await asyncio.wait_for(second_reply_task, 5)
                 await _wait_synced(target=True)
@@ -2329,30 +2321,29 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
 
 
 def test_get_cfg_schema_matches_the_public_attribute() -> None:
-    # get_cfg_schema() is the new, base-class-owned access path (see base_classes.py) - cfg_schema
-    # itself stays a public attribute too, for the legacy REST layer's own direct reads.
+    # get_cfg_schema() is the base-class-owned access path (see asy_base_classes.py) to the private schema.
     client = make_client()
-    assert client.get_cfg_schema() == client.cfg_schema
-    assert client.get_cfg_schema() == (_VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
+    assert client.get_cfg_schema() == client._cfg_schema
+    assert client.get_cfg_schema() == (_VAL_NTP_HOST + _VAL_NTP_OFFSET + _VAL_NTP_INTERVAL + _VAL_GMT_OFFSET + _VAL_DST_OFFSET)
 
 
 def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
     # Every NTP field is persist-only, and no asy_ntp_client.py source change was needed to gain
-    # setter support: base_classes.py's generic _set_dict_cfg() already covers the "persist,
+    # setter support: asy_base_classes.py's generic _set_dict_cfg() already covers the "persist,
     # nothing to push" case for free. This is exactly the abstraction the design meant to prove.
     client = make_client()
-    results = run(client._set_dict_cfg({"NTP_Host": "time.example.org", "NTP_Interv_H": 6}, client.get_cfg_schema()))
-    assert results == {"NTP_Host": "Valid", "NTP_Interv_H": "Valid"}
-    stored = run(client.cfgmgr.get_dict(["NTP_Host", "NTP_Interv_H"]))
-    assert stored == {"NTP_Host": "time.example.org", "NTP_Interv_H": 6}
+    results = run(client._set_dict_cfg({"NTPHost": "time.example.org", "NTPInterval": 6}, client.get_cfg_schema()))
+    assert results == {"NTPHost": "Valid", "NTPInterval": "Valid"}
+    stored = run(client.cfgmgr.get_dict(["NTPHost", "NTPInterval"]))
+    assert stored == {"NTPHost": "time.example.org", "NTPInterval": 6}
 
 
 def test_set_dict_cfg_invalid_field_reported_individually_others_still_apply() -> None:
     client = make_client()
-    results = run(client._set_dict_cfg({"NTP_Interv_H": 999, "GMTOffset": 7200}, client.get_cfg_schema()))
-    assert results == {"NTP_Interv_H": "Invalid", "GMTOffset": "Valid"}
-    stored = run(client.cfgmgr.get_dict(["NTP_Interv_H", "GMTOffset"]))
-    assert stored == {"NTP_Interv_H": 12, "GMTOffset": 7200}  # Interv_H untouched default, GMTOffset applied
+    results = run(client._set_dict_cfg({"NTPInterval": 999, "GMTOffset": 7200}, client.get_cfg_schema()))
+    assert results == {"NTPInterval": "Invalid", "GMTOffset": "Valid"}
+    stored = run(client.cfgmgr.get_dict(["NTPInterval", "GMTOffset"]))
+    assert stored == {"NTPInterval": 12, "GMTOffset": 7200}  # Interv_H untouched default, GMTOffset applied
 
 
 def test_no_push_callbacks_are_registered_for_any_ntp_field() -> None:
@@ -2364,25 +2355,25 @@ def test_no_push_callbacks_are_registered_for_any_ntp_field() -> None:
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
     # Regression check for the integration bug where a shared REST helper needed each module's own
-    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the
-    # public attribute giving an outside caller that schema, without reaching into a private const.
+    # schema to call ConfigManager.write_config(data, cfg_vals) correctly - get_cfg_schema() gives
+    # an outside caller that schema, without reaching into a private const.
     client = make_client()
-    assert client.cfg_schema == (_VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
+    assert client.get_cfg_schema() == (_VAL_NTP_HOST + _VAL_NTP_OFFSET + _VAL_NTP_INTERVAL + _VAL_GMT_OFFSET + _VAL_DST_OFFSET)
 
 
 def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
-    # Proves cfg_schema is actually usable for a real write, not just structurally equal - the exact
+    # Proves get_cfg_schema()'s schema is actually usable for a real write, not just structurally equal - the exact
     # call shape api_helpers.py's cmd_post_check() now makes.
     client = make_client()
 
     async def scenario() -> "tuple[bool, dict[str, int | float | str | bool | None] | None]":
-        written, _ = await client.cfgmgr.write_config({"NTP_Host": "time.example.org"}, client.cfg_schema)
-        data = await client.cfgmgr.get_dict(["NTP_Host"])
+        written, _ = await client.cfgmgr.write_config({"NTPHost": "time.example.org"}, client.get_cfg_schema())
+        data = await client.cfgmgr.get_dict(["NTPHost"])
         return written, data
 
     written, data = run(scenario())
     assert written
-    assert data == {"NTP_Host": "time.example.org"}
+    assert data == {"NTPHost": "time.example.org"}
 
 
 # ---------------------------------------------------------------------------
@@ -2392,14 +2383,13 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
 
 
 def test_backoff_defaults_are_ten_seconds_doubling_to_ten_minutes() -> None:
-    client = AsyNtpClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, _RETRY_S, _RETRY_MAX_S), cfg_path=_tmp_cfg_dir())
-    assert (client.retry_s, client.retry_max_s, client._retry_wait_s, client._unsynced_wait_s) == (_RETRY_S, _RETRY_MAX_S, _RETRY_S, 0)
+    client = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _FETCH_TIMEOUT_MS, _RETRY_S, _RETRY_MAX_S), cfg_path=_tmp_cfg_dir())
+    assert (client._retry_s, client._retry_max_s, client._retry_wait_s, client._unsynced_wait_s) == (_RETRY_S, _RETRY_MAX_S, _RETRY_S, 0)
 
 
-def _twice_one_slot(client: AsyNtpClient, make_call: "Callable[[], Coroutine[Any, Any, object]]") -> "tuple[int, list[int], list[str]]":
+def _twice_one_slot(client: NTPClient, make_call: "Callable[[], Coroutine[Any, Any, object]]") -> "tuple[int, list[int], list[str]]":
     # Runs one failure site twice; returns (ErrCount, the non-empty ring slots, their types).
     async def scenario() -> "ErrorLog":
-        await client.pr.setup()
         await make_call()
         await make_call()
         return await client.get_error_counter()
@@ -2465,7 +2455,6 @@ def test_an_error_and_a_warning_with_the_same_number_are_different_codes() -> No
     n = code("W", "NTP_UNSYNC_REPLY")
 
     async def scenario() -> "list[str]":
-        await client.pr.setup()
         await client.pr.err_s("an error numbered n", errno=n)
         await client.pr.wrn_s("a warning numbered n", wrnno=n)
         types = (await client.get_error_counter())["NTP"]["ErrType"]
@@ -2482,7 +2471,6 @@ def test_distinct_codes_each_keep_a_slot() -> None:
     warning = code("W", "NTP_UNSYNC_REPLY")
 
     async def scenario() -> None:
-        await client.pr.setup()
         for errno in errors:
             await client.pr.err_s("failed", errno=errno)
         await client.pr.wrn_s("rejected", wrnno=warning)
@@ -2518,20 +2506,20 @@ def test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_w
 
     async def fired() -> bool:
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
+            await asyncio.wait_for(client._ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
         except asyncio.TimeoutError:
             return False
         return True
 
     async def scenario() -> "list[bool]":
         await client._set_synced(value=True)
-        task = asyncio.create_task(client.ntp_time_hours_counter())
-        await _tick(client.ntp_timer_trigger_event, 5)
+        task = asyncio.create_task(client._refresh_loop())
+        await _tick(client._ntp_timer_trigger_event, 5)
         results = [await fired()]
         await client._set_synced(value=False)
-        await _tick(client.ntp_timer_trigger_event, 2)
+        await _tick(client._ntp_timer_trigger_event, 2)
         results.append(await fired())
-        await _tick(client.ntp_timer_trigger_event, 1)
+        await _tick(client._ntp_timer_trigger_event, 1)
         results.append(await fired())
         task.cancel()
         try:
@@ -2547,18 +2535,17 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
     # Three real requests go unanswered, then the server answers: the same task (never restarted)
     # syncs, the backoff drops back to its first step, and the outage left exactly one ring slot.
     client = make_integration_client()
-    client.ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS
+    client._ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS
     reply = make_ntp_reply(int(time.time()))
 
     async def scenario() -> "tuple[bool, bool, int, ErrorLog]":
         server = FakeNtpServer()
         try:
             with server.redirect_resolution():
-                await client.pr.setup()
-                task = asyncio.create_task(client.asy_ntp_time())
+                task = asyncio.create_task(client._sync_loop())
                 for answer in (None, None, None, reply):
                     served = asyncio.create_task(server.serve_once(answer))
-                    client.ntp_sync_trigger_event.set()
+                    client._ntp_sync_trigger_event.set()
                     await asyncio.wait_for(served, 5)
                     await asyncio.sleep_ms(_PAST_FETCH_TIMEOUT_MS)  # past the 100ms fetch timeout either way
                 still_running = not task.done()
@@ -2574,7 +2561,7 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
     still_running, synced, wait_s, log = run(scenario())
     assert still_running is True
     assert synced is True
-    assert wait_s == client.retry_s
+    assert wait_s == client._retry_s
     assert log["NTP"]["ErrCount"] == 3
     assert log["NTP"]["ErrNum"] == [0] * 9 + [code("E", "NTP_NO_REPLY")]
 
@@ -2587,7 +2574,6 @@ def test_integration_a_successful_exchange_persists_nothing() -> None:
         server = FakeNtpServer()
         try:
             with server.redirect_resolution():
-                await client.pr.setup()
                 served = asyncio.create_task(server.serve_once(reply))
                 assert await client._fetch_ntp_reply(("127.0.0.1", ntpmod._NTP_UDP_PORT)) is not None  # the redirected port
                 await asyncio.wait_for(served, 5)

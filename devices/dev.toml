@@ -71,7 +71,7 @@ driver = "scd30"
 name_ext = ""
 bus = "i2c1"
 irq_pin = 11
-trigger_sec = 3
+trigger_s = 3
 
 [instance.wiring]
 fram_target = "fram"

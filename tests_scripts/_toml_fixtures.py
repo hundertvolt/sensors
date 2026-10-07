@@ -34,7 +34,7 @@ def base_doc() -> TomlDoc:
                 "spi0": {"sck_pin": 2, "mosi_pin": 3, "miso_pin": 4},
             },
             "instance": [
-                {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
+                {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_s": 3, "wiring": {"fram_target": "fram"}},
                 {
                     "driver": "sgp40",
                     "name_ext": "",

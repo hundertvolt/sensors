@@ -4,7 +4,7 @@ ConfigManager.setup() read - the real write_config() -> littlefs -> read path ac
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SCHEMA: "cm.ConfigSchema" = (("Marker", "int", 0, 0, 999999999, None),)
 _PATH = "config_HWTEST_REBOOT.cfg"
@@ -15,7 +15,7 @@ async def _main() -> None:
     mgr = cm.ConfigManager(_PATH, _SCHEMA, "HWTEST")
     await mgr.setup()
     if not mgr.valid:
-        print(f"RESULT: FAIL {_PATH} did not load as valid after reboot - config_manager.setup() rejected it")
+        print(f"RESULT: FAIL {_PATH} did not load as valid after reboot - asy_config_manager.setup() rejected it")
         return
     result = await mgr.get_dict(["Marker"])
     if result is None:

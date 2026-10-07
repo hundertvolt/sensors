@@ -8,7 +8,7 @@
 # name_ext - no real device has more than one), SGP40 independently compensated - temperature from
 # the *second* SCD30, humidity from the *first* (Part L.6.3's per-value wiring; every real device
 # sources both values from the same one sensor), BMP3xx at the alternate hardwired-address-select
-# value (0x76, every real device uses 0x77), NotificationCoordinator wired to only one of the three
+# value (0x76, every real device uses 0x77), NotificationService wired to only one of the three
 # warn_* signals (every real device wires all three or none), and a uart_link initiator/responder
 # pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond
 # dev.toml's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule).
@@ -61,7 +61,7 @@ driver = "scd30"
 name_ext = "primary"
 bus = "i2c0"
 irq_pin = 2
-trigger_sec = 2
+trigger_s = 2
 
 [instance.wiring]
 fram_target = "fram"
@@ -71,7 +71,7 @@ driver = "scd30"
 name_ext = "secondary"
 bus = "i2c1"
 irq_pin = 10
-trigger_sec = 4
+trigger_s = 4
 
 [instance.wiring]
 fram_target = "fram"
@@ -104,7 +104,7 @@ address = 0x76
 [instance.wiring]
 fram_target = "fram"
 
-# ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_sec combo no real device
+# ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_s combo no real device
 # uses, and deliberately no [instance.wiring] - dev.toml's own instance always wires fram_target,
 # so this fixture is what exercises the "no fram_target" branch of _build_args_isl29125.
 [[instance]]
@@ -112,7 +112,7 @@ driver = "isl29125"
 name_ext = ""
 bus = "i2c0"
 irq_pin = 3
-trigger_sec = 5
+trigger_s = 5
 
 [[instance]]
 driver = "fram"

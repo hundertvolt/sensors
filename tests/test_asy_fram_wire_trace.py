@@ -10,11 +10,11 @@ import machine
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
+from asy_crc_checks import CRC32
 from asy_fram_driver import FRAM_SPI
-from asy_fram_manager import AsyFramManager, AsyFramTimestampedChunk
+from asy_fram_manager import FRAMManager, FRAMTimestampedChunk
+from asy_print_log import PrintLogHistoryStore
 from asy_spi_driver import SPI
-from crc_checks import CRC32
-from print_log import PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -124,9 +124,9 @@ def _cycles(trace: "list[str]") -> "tuple[str, ...]":
     return tuple(out)
 
 
-def _arm(manager: AsyFramManager) -> None:
+def _arm(manager: FRAMManager) -> None:
     global _TRACE, _CS_PIN
-    _CS_PIN = manager.fram._spidev.cs_pin
+    _CS_PIN = manager.fram._spidev._cs_pin
     _TRACE = []
 
 
@@ -145,11 +145,11 @@ async def _never_synced() -> bool:
     return False  # a fixed, unsynced clock keeps every timestamped trace deterministic
 
 
-async def _rig() -> "tuple[AsyFramManager, PrintLogHistoryStore, AsyFramTimestampedChunk]":
+async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChunk]":
     # The production shape section 3B priced: one manager, a PrintLogHistoryStore allocated first
     # (SensorReader's own order) and a separate timestamped value chunk second.
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=0x2000)
+    manager = FRAMManager(bus, 1, max_size=0x2000)
     assert await manager.setup()
     logger = PrintLogHistoryStore(manager, 10, None, name="WT")
     chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32())

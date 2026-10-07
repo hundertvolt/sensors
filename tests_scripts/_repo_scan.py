@@ -36,7 +36,7 @@ _RULE_LINE = re.compile(r"^\s*[-=~*#]{4,}\s*$")
 
 @dataclass(frozen=True)
 class Block:
-    """One run of prose: a comment block, a docstring or a Markdown paragraph, from its first line."""
+    # One run of prose: a comment block, a docstring or a Markdown paragraph, from its first line.
 
     path: str
     line: int
@@ -53,7 +53,7 @@ def git_succeeds(*args: str) -> bool:
 
 
 def git_ignored(paths: set[str]) -> set[str]:
-    """The subset of `paths` git would ignore - a runtime artifact's name, not a stale citation."""
+    # The subset of `paths` git would ignore - a runtime artifact's name, not a stale citation.
     if not paths:
         return set()
     result = subprocess.run([_GIT, "check-ignore", "--stdin"], cwd=REPO_ROOT, input="\n".join(sorted(paths)) + "\n", capture_output=True, text=True, check=False)
@@ -61,8 +61,8 @@ def git_ignored(paths: set[str]) -> set[str]:
 
 
 def repo_files() -> list[str]:
-    """The tracked files; a listing without SPECIFICATION.md (a copy nested untracked in another
-    repository lists nothing) raises, since every check would otherwise pass on an empty scan."""
+    # The tracked files; a listing without SPECIFICATION.md (a copy nested untracked in another
+    # repository lists nothing) raises, since every check would otherwise pass on an empty scan.
     listed = subprocess.run([_GIT, "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True, check=True).stdout
     files = sorted({p for p in listed.decode().split("\0") if p and (REPO_ROOT / p).is_file()})
     if "SPECIFICATION.md" not in files:
@@ -76,8 +76,8 @@ def is_shared_excluded(path: str) -> bool:
 
 
 def read_text(path: str) -> str | None:
-    """The file's text, or None for a binary file (a NUL byte). A text file that is not UTF-8 raises,
-    as import placement's own read does, rather than reading as a file with no prose."""
+    # The file's text, or None for a binary file (a NUL byte). A text file that is not UTF-8 raises,
+    # as import placement's own read does, rather than reading as a file with no prose.
     raw = (REPO_ROOT / path).read_bytes()
     if b"\0" in raw[:8192]:
         return None
@@ -98,8 +98,8 @@ def is_plain(path: str) -> bool:
 
 
 def _grouped(path: str, own_line: list[tuple[int, str]], single: list[tuple[int, str]]) -> list[Block]:
-    """Consecutive own-line comments form one block, a bare marker line splitting it; a trailing
-    comment is a block of its own."""
+    # Consecutive own-line comments form one block, a bare marker line splitting it; a trailing
+    # comment is a block of its own.
     blocks: list[Block] = []
     run: list[tuple[int, str]] = []
     for row, raw in [*own_line, (-2, "")]:
@@ -155,7 +155,7 @@ def _hash_blocks(path: str, text: str) -> list[Block]:
 
 
 def _slash_blocks(path: str, text: str) -> list[Block]:
-    """// and /* */ comments, string literals skipped (a regex literal is not, and needs none here)."""
+    # // and /* */ comments, string literals skipped (a regex literal is not, and needs none here).
     own: list[tuple[int, str]] = []
     single: list[tuple[int, str]] = []
     blocks: list[Block] = []
@@ -201,7 +201,7 @@ def _html_blocks(path: str, text: str) -> list[Block]:
 
 
 def _markdown_blocks(path: str, text: str) -> list[Block]:
-    """A paragraph, bullet, table row or heading is one unit; a fenced block's lines are prose too."""
+    # A paragraph, bullet, table row or heading is one unit; a fenced block's lines are prose too.
     blocks: list[Block] = []
     run: list[tuple[int, str]] = []
     for row, line in [*enumerate(text.splitlines(), 1), (-2, "")]:
@@ -234,7 +234,7 @@ def prose_blocks(path: str, text: str) -> list[Block]:
 
 
 def read_allowlist(path: Path) -> Counter[tuple[str, str]]:
-    """One line covers one occurrence: a miss repeated in a file is listed as often as it occurs."""
+    # One line covers one occurrence: a miss repeated in a file is listed as often as it occurs.
     entries: Counter[tuple[str, str]] = Counter()
     for line in path.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#"):
@@ -244,21 +244,21 @@ def read_allowlist(path: Path) -> Counter[tuple[str, str]]:
 
 
 def write_allowlist(path: Path, header: tuple[str, ...], entries: Counter[tuple[str, str]]) -> None:
-    """Sorted and newline-terminated, so a rerun over an unchanged tree rewrites the same bytes."""
+    # Sorted and newline-terminated, so a rerun over an unchanged tree rewrites the same bytes.
     lines = [f"# {line}" for line in header] + [f"{file_path}\t{token}" for file_path, token in sorted(entries.elements())]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def regenerate_allowlist(path: Path, header: tuple[str, ...], current: Counter[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Writes previous & current, so the list only shrinks, and returns the new findings it left out;
-    with no list yet (a check's own landing) it writes the whole current set."""
+    # Writes previous & current, so the list only shrinks, and returns the new findings it left out;
+    # with no list yet (a check's own landing) it writes the whole current set.
     previous = read_allowlist(path) if path.exists() else current
     write_allowlist(path, header, previous & current)
     return sorted((current - previous).elements())
 
 
 def exit_on_new(written: str, new: Sequence[tuple[str, ...]]) -> None:
-    """A --regenerate's last step: exit 1 naming each finding it refused to list."""
+    # A --regenerate's last step: exit 1 naming each finding it refused to list.
     print(f"wrote {written}")
     if new:
         sys.exit("not listed - the list only shrinks; fix these in the text:\n" + "\n".join("  " + "\t".join(entry) for entry in new))

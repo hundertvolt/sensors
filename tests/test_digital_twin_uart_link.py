@@ -17,7 +17,7 @@ from unix_port_poll_prewarm import prewarm_poll_set
 # objects already in it, and this driver registers exactly such an object per UART.
 prewarm_poll_set()
 
-# Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__): this
+# Must run before UDPSocket is constructed (CaptiveDNS, inside WifiService.__init__): this
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto().
 patch_asy_udp_socket_for_unix_port()
 
@@ -112,8 +112,8 @@ def build_linked_system() -> "TwinLink":
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     fake_a, fake_b = fakes()
     link = UARTLink(fake_a, fake_b)
-    dev.uart0.poller = LinkPoller(fake_a)
-    dev.uart1.poller = LinkPoller(fake_b)
+    dev.uart0.poller = LinkPoller(fake_a)  # type: ignore[assignment]
+    dev.uart1.poller = LinkPoller(fake_b)  # type: ignore[assignment]
     return link
 
 
@@ -122,11 +122,11 @@ async def exchange(work: "Coroutine[Any, Any, T]") -> "T":
     # read to complete, and the twin delivers by real wire time. Cutting the listener off would
     # strand a frame for the next exchange - a harness artefact, so the harness waits it out.
     #
-    # Drives the responder's own UART_Comm.uart_listen() directly rather than UartLinkExerciser's real
+    # Drives the responder's own UARTComm.uart_listen() directly rather than UARTLinkDriver's real
     # listen-loop task, deliberately, so this file's callback-storage assertions go through the harness's
     # controlled single round instead of a free-running task.
     #
-    # UartLinkExerciser's own message dispatch is covered separately by tests/test_asy_uart_link_driver.py's
+    # UARTLinkDriver's own message dispatch is covered separately by tests/test_asy_uart_link_driver.py's
     # echo-round-trip test, which drives the real task instead.
     dev = sensortask_dev
     assert dev.uart_link_resp is not None
@@ -158,15 +158,15 @@ def test_both_instances_are_constructed_and_registered() -> None:
     dev = sensortask_dev
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     sources = dev._collect_error_sources()
-    # get_error_sources() delegates entirely to the inner UART_Comm (asy_uart_link_driver.py's own
-    # comment) - the flattened error_sources list holds each _comm, not the UartLinkExerciser wrapper.
+    # get_error_sources() delegates entirely to the inner UARTComm (asy_uart_link_driver.py's own
+    # comment) - the flattened error_sources list holds each _comm, not the UARTLinkDriver wrapper.
     assert dev.uart_link_init._comm in sources
     assert dev.uart_link_resp._comm in sources
     setters = dev._collect_level_setters()
     assert dev.uart_link_init.pr.set_level in setters or len(setters) > 0
     assert dev.uart_link_resp.get_task_starters()  # the responder owns the listen task
     # The initiator's own task list is its exercise loop (asy_uart_link_driver.py), not empty the
-    # way bare UART_Comm.get_task_starters() would be for an initiator role - one entry, not zero.
+    # way bare UARTComm.get_task_starters() would be for an initiator role - one entry, not zero.
     assert len(dev.uart_link_init.get_task_starters()) == 1
 
 
@@ -189,9 +189,9 @@ def test_both_instances_share_one_set_of_protocol_parameters() -> None:
     dev = sensortask_dev
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
-    assert initiator.payload_size == responder.payload_size
-    assert initiator.timeout == responder.timeout
-    assert initiator.frame_size == responder.frame_size
+    assert initiator._payload_size == responder._payload_size
+    assert initiator._timeout == responder._timeout
+    assert initiator._frame_size == responder._frame_size
 
 
 def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
@@ -202,14 +202,14 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
     assert dev.uart0 is not None and dev.uart1 is not None
     fake_a, fake_b = fakes()
     assert fake_a.id != fake_b.id
-    frame_size = dev.uart_link_init._comm.frame_size  # type: ignore[union-attr]
+    frame_size = dev.uart_link_init._comm._frame_size  # type: ignore[union-attr]
     for driver in (dev.uart0, dev.uart1):
         assert driver.rxbuf >= frame_size
         assert driver.poll_wait_ms < 10  # single-digit, or poll latency dominates throughput
 
 
 def test_both_ends_get_their_own_real_fram_chunk() -> None:
-    # AsyFramManager is a bump-pointer allocator, so instantiation order IS the on-chip layout and an
+    # FRAMManager is a bump-pointer allocator, so instantiation order IS the on-chip layout and an
     # inserted chunk would turn every persisted log into garbage. dev.toml wires fram_target on both
     # uart_link instances (WP3), each with its own chunk - a shared one would merge two links' histories.
     build_linked_system()

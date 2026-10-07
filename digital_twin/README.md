@@ -72,7 +72,7 @@ Kept completely separate so nothing here can accidentally affect the determinist
   persistence" below). Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and
   dev's 256KB MB85RS2MTA (`configure_i2c_wiring("dev")` selects it via `rdid_response=`/`size=`) -
   `machine.py`'s `_wire_spi_device()` picking the wrong one regardless of wiring profile was a real
-  bug (fixed 2026-09-04): dev's own `AsyFramManager.setup()` silently failed its device-ID check
+  bug (fixed 2026-09-04): dev's own `FRAMManager.setup()` silently failed its device-ID check
   every twin run, caught and swallowed by its own broad `except Exception`.
 - `unix_port_poll_prewarm.py` — a workaround for a confirmed, real dangling-pointer bug in the
   pinned MicroPython Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
@@ -224,11 +224,11 @@ other test file (via the same per-file `sys.path.insert(0, "digital_twin")` tric
 `tests/test_digital_twin_*.py` file already uses), giving fast, everyday regression coverage of the
 twin+webserver wiring without needing the separate `MICROPYPATH` invocation above. It already found
 and fixed one real, previously-undetected bug this way: `src/asy_webserver_service.py`'s
-`_get_settings_flat()` never flattened `config_manager.make_dict()`'s real `{type_name: {field:
+`_get_settings_flat()` never flattened `asy_config_manager.make_dict()`'s real `{type_name: {field:
 value}}` shape, so `/networking`/`/notification` always returned `{}` and `/system` silently
 dropped its `ntp`-sourced fields — masked by `tests/test_asy_webserver_service.py`'s own uniform
-fakes, which happened to return an already-flat shape. See `_flatten_cfg_values()` in
-`src/asy_webserver_service.py` for the fix.
+fakes, which happened to return an already-flat shape. Every module's config dict now has the one
+nested shape (SPECIFICATION.md C.6), unwrapped by `_cfg_values()` in `src/asy_webserver_service.py`.
 
 ### Booting a generated device
 
@@ -291,7 +291,7 @@ instead, for every real device including wozi/dev.
 `uart_link` instance, i.e. every device but `dev`) alongside `"buses"`/`"spi"`. Unlike those two,
 this key is consumed *after* construction, not by `machine.configure_wiring()` itself:
 `_wire_uart_crossover()` (called from `main()` right after `_wait_until_built()`) reads the two
-already-built `UartLinkExerciser` instances off the booted module by name, joins their own
+already-built `UARTLinkDriver` instances off the booted module by name, joins their own
 `asy_uart_driver.UART`'s underlying `machine.UART` fakes with the already-existing
 `attach_crossover_jumper()`, and swaps in the returned bounded `LinkPoller`s — the exact generic,
 wiring-plan-JSON-driven replacement for what `run_dev_integration.py` used to do by hand
@@ -361,7 +361,7 @@ explicitly) — `scripts/_digital_twin_ci_suite.py` is the one caller that suppl
 paths, for its own persistence-across-a-real-reboot checks.
 
 The firmware compares a `PUT /sensors` against a fresh chip snapshot and writes only what changed
-(compare-before-write, SPECIFICATION.md Part G.2): an identical TempOffs/MeasInt/Altitude/SelfCal
+(compare-before-write, SPECIFICATION.md Part G.2): an identical TempOffset/MeasInterval/Altitude/SelfCal
 spends no NVM write, `AmbPres`/`ForceCalRef` always do. `Scd30Chip.nvm_writes` counts every
 NVM-writing command `handle_writeto()` receives (0x0010, 0x4600, 0x5102, 0x5204, 0x5306, 0x5403 and
 the stop command 0x0104; Interface Description 1.4.1-1.4.3, 1.4.6-1.4.8), the same frames
@@ -441,14 +441,14 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
 1. **Baseline boot** — walk every `GET` endpoint (`/measurements`, `/sensors`, `/networking`,
    `/system`, `/notification`, `/status`, `/`), then `PUT` a setting on each of
    `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
-   (`SCD30.MeasInt=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
+   (`SCD30.MeasInterval=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
    that accepts `PUT`. Shut down cleanly (`SIGINT`, matching the documented Ctrl-C path — a plain
    `SIGTERM`/`terminate()` would skip `run_generic_integration.py`'s own FRAM/SCD30 flush) and confirm
    the state files actually landed on disk.
 2. **Real reboot, settings persistence** — a fresh subprocess against the *same* persisted state
    (no clean step in between — the whole point is testing what survives). Confirms every setting
    from run 1 is still there after a genuine process restart, and that the now-persisted
-   `DebugLevel=5` produces real, multi-module verbose log output (`print_log.py`'s
+   `DebugLevel=5` produces real, multi-module verbose log output (`asy_print_log.py`'s
    `print(name, *args)` convention — checked for known `_NAME` prefixes like `SYSTEM`/`SGP40`/
    `SCD30`/`WEBSERVER`) from the very start of boot, not just after a later `PUT`.
 3. **Reboot with a sustained/high-repeat-count ("permanent") bus-fault matrix** — `--fault` on
@@ -485,10 +485,10 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    "comes back once the fault clears." Confirms the real error count stops climbing once the 3
    queued failures are exhausted (a driver's own "recovered" notice is itself logged as a warning,
    not an error — this suite counts failure events, the counter's steps not backed by a `"W"` slot,
-   since `print_log.py`'s newest-entry rule folds the three identical failures into one slot while
+   since `asy_print_log.py`'s newest-entry rule folds the three identical failures into one slot while
    counting each) and that measurements resume.
    **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
-   left exactly three failures on a *healthy* chip, write-through (`print_log.py`'s
+   left exactly three failures on a *healthy* chip, write-through (`asy_print_log.py`'s
    `_store_err()` writes on every push — there is no deferred flush to race), so they should come
    back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
    go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,
@@ -499,7 +499,7 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    unconditionally: the restore is all-or-nothing, never partial and never garbled, which is the
    dual-block + CRC + busy-flag protocol's actual job.
    **5c. A commanded reboot, taken with storage paused — the case that must never lose anything.**
-   Production's own `system_service._reboot()` pauses permanent storage before it resets, precisely
+   Production's own `asy_system_service._reboot()` pauses permanent storage before it resets, precisely
    so no FRAM chunk operation can be in flight across the restart; `PUT /system {"SystemCmd":
    "mempause"}` is that same pause over REST. With it held, none of `_write()`/`_read()`/`clear()`
    can start, no status byte can be left `_STATUS_BUSY`, and the restore is deterministic —
@@ -515,7 +515,7 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    reboot this run exists to test. The final boot also sweeps every *other* registered error source for loss
    (`SYSTEM`/`NOTIFY`/`NTP`/`WEBSERVER`/`DNSSRV`, every `CFGMGR_*`, `dev`'s two `uart_link`
    instances): a fresh entry from that boot is legitimate, a missing one never is. `FRAM` is the
-   one exemption — `AsyFramManager` builds a plain `PrintLogHistory`, since the store cannot
+   one exemption — `FRAMManager` builds a plain `PrintLogHistory`, since the store cannot
    persist its own failure history through itself, and
    `tests/_sensortask_scenarios.py` pins it as the only one from the real object graph.
    5c also confirms
@@ -528,13 +528,13 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
 6. **Clean boot, configure a real SSID** (persisted) — needed for run 7's genuine STA-connect-
    failure cycle, not the `SSID==""` unconfigured shortcut.
 7. **Reboot with 5 scripted `"no access point found"` WiFi outcomes** — drives the real STA →
-   hotspot-fallback state machine (`conn_fail_to_hotspot=5`), starts the real `DNSServer`, and
+   hotspot-fallback state machine (`conn_fail_to_hotspot=5`), starts the real `CaptiveDNS`, and
    confirms it actually answers a real UDP DNS query sent from outside the process — not just that
    the internal state flipped. Only possible because of
    `digital_twin/_unix_port_udp_addr_shim.py` — see its own module docstring and the "`_unix_port_udp_addr_shim.py`"
    section below for the three Unix-port-only `socket` quirks it works around, entirely from
-   twin-side code, with `src/` left untouched and correct for real hardware. `src/captive_dns.py`'s
-   `DNSServer` binds the real, privileged port 53 unconditionally (correct for real hardware, which
+   twin-side code, with `src/` left untouched and correct for real hardware. `src/asy_captive_dns.py`'s
+   `CaptiveDNS` binds the real, privileged port 53 unconditionally (correct for real hardware, which
    has no user/privilege concept at all) — `scripts/run_digital_twin_ci.sh` grants the built
    interpreter binary `CAP_NET_BIND_SERVICE` (via `setcap`, fresh on every invocation, since a
    cached toolchain archive doesn't preserve it) precisely so this run works when the job itself
@@ -711,7 +711,7 @@ only device that wires the part at all.
 
 A real `--hang` freezes the whole interpreter, so every asyncio task — including `WDT`'s own
 pending `_countdown()` sleep — sits unable to run for the hang's full real duration. Once the
-interpreter unfreezes, `system_service.py`'s periodic `feed()` (its own check interval is
+interpreter unfreezes, `asy_system_service.py`'s periodic `feed()` (its own check interval is
 deliberately shorter than any real watchdog `timeout`) can win the race to run before
 `_countdown()`'s own already-expired `sleep_ms()` gets its turn, since both became ready at the
 same moment. A plain cancel-and-restart in `_arm()` would silently erase that already-elapsed
@@ -768,7 +768,7 @@ site, and not reaching for a threshold.
 `main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — also called
 the same way, module-level before `import sensortask_wozi`, by `tests/
 test_digital_twin_sensortask_integration.py` (its own hotspot/DNS section drives a genuine UDP round
-trip against the real `captive_dns.py` `DNSServer` the same way `run_generic_integration.py`'s run 7
+trip against the real `asy_captive_dns.py` `CaptiveDNS` the same way `run_generic_integration.py`'s run 7
 does — see that test's own comment). That same test also needs the real privileged port 53 itself
 to actually be bindable, same as run 7 — `scripts/test.sh` now grants the built interpreter binary
 `CAP_NET_BIND_SERVICE` unconditionally (mirroring `scripts/run_digital_twin_ci.sh`'s own identical
@@ -777,8 +777,8 @@ grant, see that script's own comment for the full mechanism/rationale), not just
 only the separate digital-twin-e2e job.
 
 > **Two different faults produce the identical message** `"real hotspot activation never started the
-> real DNSServer task"`, and telling them apart costs one command. Running that file directly with
-> the interpreter instead of through `scripts/test.sh` skips the `setcap` grant, so `DNSServer`'s
+> real CaptiveDNS task"`, and telling them apart costs one command. Running that file directly with
+> the interpreter instead of through `scripts/test.sh` skips the `setcap` grant, so `CaptiveDNS`'s
 > `bind()` to port 53 fails and the task never starts — check `getcap` on the binary before drawing
 > any conclusion from a standalone run. The other cause is plain CPU starvation exhausting the
 > assertion's own budget (README.md's `TEST_PARALLELISM` entry), which needs no missing capability at all. Neither is a
@@ -788,27 +788,27 @@ Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
 round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
 
-1. `bind()`/`connect()` reject `AsyUDPSocket`'s own plain `(host: str, port: int)` tuple with
+1. `bind()`/`connect()` reject `UDPSocket`'s own plain `(host: str, port: int)` tuple with
    `TypeError: object with buffer protocol required` — the Unix port's `socket` module
    (`ports/unix/modsocket.c`) requires a pre-resolved buffer-protocol sockaddr instead. The real
    rp2/lwIP module (`extmod/modlwip.c`) accepts the plain tuple directly (confirmed by reading both
    C sources side by side, not just the type stub — see `BACKLOG.md`'s "Real-hardware verification
    gap" entry for the full account), so this is genuinely two different implementations, not one
-   port being stricter about the same contract - the plain-tuple form `AsyUDPSocket` (correctly)
+   port being stricter about the same contract - the plain-tuple form `UDPSocket` (correctly)
    always passes is required for real hardware, not a bug to fix in `src/`.
 2. `sendto()` has this exact same requirement (`micropython/micropython#6924` is specifically about
    this method) — but its destination address is a per-call argument (a DNS/NTP client's ephemeral
    reply address, learned dynamically), not the constructor-time address point 1 already covers.
 3. `recvfrom()` hands back the raw 16-byte packed C `struct sockaddr_in` as a plain `bytes` object,
    not the `(ip: str, port: int)` tuple `lwip_socket_recvfrom()` returns on real hardware and
-   `captive_dns.py`'s own subnet check expects — confirmed directly against a real captured reply,
+   `asy_captive_dns.py`'s own subnet check expects — confirmed directly against a real captured reply,
    not just the C source (this build's actual behavior differs from what a first look at
    `modsocket.c`'s own separate `socket.sockaddr()` utility function would suggest).
 
 The patch pre-resolves via `socket.getaddrinfo()` before `bind()`/`connect()`/`sendto()` (same
 pattern `unix_port_poll_prewarm.py`'s `prewarm_poll_set()` already uses for a different call site)
 and unpacks `recvfrom()`'s raw struct into the shape production code expects. Every real call site
-this project has (`captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s already-DNS-resolved NTP
+this project has (`asy_captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s already-DNS-resolved NTP
 server IP via `asy_dns_client.py`) already hands over an already-numeric address, so the
 `getaddrinfo()` calls here are always fast and local, never a real DNS lookup.
 

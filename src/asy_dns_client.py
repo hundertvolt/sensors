@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: MIT
 # Inspired by github.com/vshymanskyy/aiodns, not a port - THIRD_PARTY_LICENSES.md compares the two.
 
-"""Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket."""
+"""Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's UDPSocket."""
 # resolve_ipv4() never raises, returns the dotted-quad str or None; only bare compression-pointer
-# names (RFC 1035 SS4.1.4) are followed, matching captive_dns.py's precedent.
+# names (RFC 1035 SS4.1.4) are followed, matching asy_captive_dns.py's precedent.
 
 import os
 
 from micropython import const
 
-from asy_udp_socket import AsyUDPSocket
+from asy_udp_socket import UDPSocket
 
 _DNS_PORT = const(53)
 # @tunable dns.timeout_ms = 500
@@ -113,8 +113,8 @@ async def resolve_ipv4(
         if server == "0.0.0.0" or not _is_ipv4_literal(server):
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
         try:
-            cli = AsyUDPSocket((server, port), mode="client")
-        except (ValueError, TypeError):  # malformed port - server is already validated above
+            cli = UDPSocket((server, port), mode="client")
+        except (TypeError, ValueError):  # malformed port - server is already validated above
             continue
         try:
             rsp, _addr = await cli.write_and_recvfrom(query, _DNS_RECV_BUF, timeout_ms=timeout_ms, tries=tries)

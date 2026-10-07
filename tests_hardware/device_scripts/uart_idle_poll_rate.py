@@ -8,7 +8,7 @@ import gc
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UART_Comm
+from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
 BAUDRATE = 115200
 # @tunable dev.uart_poll_wait_ms = 2
@@ -67,7 +67,7 @@ async def _count_rounds(wdt: "machine.WDT", idle_ms: int) -> int:
     )
     counter = CountingPoller(uart.poller)
     uart.poller = counter  # type: ignore[assignment]
-    comm = UART_Comm(
+    comm = UARTComm(
         uart, ROLE_RESPONDER, payload_size=48, timeout=1000,
         callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_IDLE",
     )

@@ -75,7 +75,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "@pytest.mark.persistence_write tests. Covers every store with a finite write-wear "
             "budget, not just one chip: the SCD30's own on-chip NVM, and the RP2040's flash "
             "filesystem, which every accepted config-persisting PUT writes through "
-            "config_manager.py's own json.dump(). FRAM is deliberately NOT in scope - its endurance "
+            "asy_config_manager.py's own json.dump(). FRAM is deliberately NOT in scope - its endurance "
             "is effectively unbounded for this project's write rates. Without this flag a run spends "
             "no write that a test OWNS; it is not zero writes overall, because a persisting write "
             "that is a shared PREREQUISITE (joined_hotspot clearing the SSID, "
@@ -106,7 +106,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
-    config.addinivalue_line("markers", "persistence_write: the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives; a PUT /sensors to the SCD30 spends one NVM write per changed field, one per AmbPres or ForceCalRef sent and one per ContMeas=false, none for an unchanged TempOffs/MeasInt/Altitude/SelfCal - deselected unless --allow-persistence-writes is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
+    config.addinivalue_line("markers", "persistence_write: the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives; a PUT /sensors to the SCD30 spends one NVM write per changed field, one per AmbPres or ForceCalRef sent and one per ContMeas=false, none for an unchanged TempOffset/MeasInterval/Altitude/SelfCal - deselected unless --allow-persistence-writes is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
     config.addinivalue_line("markers", "scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a persistence_write test - always carried alongside @pytest.mark.persistence_write on the same test, deselected unless BOTH --allow-persistence-writes AND --allow-scd30-extra-write are passed")
     config.addinivalue_line("markers", "neopixel_sweep: needs the physical NeoPixel-aimed-at-the-ISL29125 rig (manual tier records its geometry) - skipped unless --allow-neopixel-sweep is passed; ~10 minutes of real light programs when it runs, and a hard failure rather than a soft one without the rig")
     config.addinivalue_line("markers", "over_provisioned_image: only meaningful on a deliberately over-provisioned build (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2, image B) - informational marker, not skip-gated, so it reports the board's own wall whenever it is run")
@@ -177,8 +177,8 @@ def board(request: pytest.FixtureRequest) -> Iterator[Board]:
 
 @pytest.fixture(scope="session")
 def bench(board: Board) -> Iterator[BenchBridge]:
-    """Depends on `board` - a bench test needs both the real board over USB and the real WiFi
-    bridge, never just the bridge alone."""
+    # Depends on `board` - a bench test needs both the real board over USB and the real WiFi
+    # bridge, never just the bridge alone.
     bridge = BenchBridge()
     if not bridge.is_configured():
         pytest.skip(
@@ -196,9 +196,9 @@ _DUT_HOTSPOT_PASSWORD = "12345678"  # src/asy_wifi_service.py's _VAL_HOTSPOT_PW 
 
 
 def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
-    """Last-resort recovery for dut_ip(): if the DUT can't join the bench AP after two hard_reset()
-    retries, stale stored WiFi credentials are the likely cause - joins the DUT's own hotspot
-    fallback and PUTs the bench AP's current credentials to it (see tests_hardware/README.md)."""
+    # Last-resort recovery for dut_ip(): if the DUT can't join the bench AP after two hard_reset()
+    # retries, stale stored WiFi credentials are the likely cause - joins the DUT's own hotspot
+    # fallback and PUTs the bench AP's current credentials to it (see tests_hardware/README.md).
     found: list[str] = []
 
     def _any_candidate_visible() -> bool:
@@ -232,9 +232,9 @@ def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
 
 @pytest.fixture(scope="session")
 def dut_ip(board: Board, bench: BenchBridge) -> str:
-    """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks. Retries
-    hard_reset()+kick_all_stations() through known reconnect flakiness, then falls back to
-    stale-credential recovery - see tests_hardware/README.md for the full findings trail."""
+    # The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks. Retries
+    # hard_reset()+kick_all_stations() through known reconnect flakiness, then falls back to
+    # stale-credential recovery - see tests_hardware/README.md for the full findings trail.
     ip_holder: list[str] = []
 
     def _read_ip_and_resume() -> bool:
@@ -285,12 +285,12 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
     board.hard_reset()  # only a real hard_reset() reliably resumes normal auto-boot; soft reset leaves main.py stopped (README)
     try:
         _wait_for_ip_and_http(60.0)
-    except (TimeoutError, HardwareTestFailureError):
+    except (HardwareTestFailureError, TimeoutError):
         bench.kick_all_stations()
         board.hard_reset()
         try:
             _wait_for_ip_and_http(60.0, description_suffix=" (after one hard_reset() retry - see this fixture's own docstring)")
-        except (TimeoutError, HardwareTestFailureError):
+        except (HardwareTestFailureError, TimeoutError):
             # Neither retry helps if the DUT has stale stored WiFi credentials (e.g. bridge
             # recreated with a fresh SSID/password) - falls back to stale-credential recovery.
             _recover_stale_dut_credentials(bench)

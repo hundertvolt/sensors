@@ -100,9 +100,9 @@ def _ceiling_retries_noted(result_note: Callable[..., None]) -> Iterator[None]:
 
 
 def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = _FETCH_TIMEOUT_S) -> http_client.HttpResponse:
-    """http_client.fetch(), retrying only a connection-ceiling refusal, never a transport failure. Same
-    name and positional signature on purpose: tests_scripts/test_persistence_write_marker_completeness.py
-    reads PUT bodies by AST and would silently lose a persisting write behind another shape (F15)."""
+    # http_client.fetch(), retrying only a connection-ceiling refusal, never a transport failure. Same
+    # name and positional signature on purpose: tests_scripts/test_persistence_write_marker_completeness.py
+    # reads PUT bodies by AST and would silently lose a persisting write behind another shape (F15).
     for attempt in range(_CEILING_RETRY_ATTEMPTS):
         try:
             return http_client.fetch(host, port, method, path, json_body, timeout_s=timeout_s)
@@ -116,16 +116,16 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
 
 
 def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
-    """Range-checks one GET /sensors body against each driver's own schema. A value outside it is
-    not a driver bug but a torn/corrupted read - the property every worker below is really watching
-    for, extracted here so all four tests check exactly the same thing (and stay under C901)."""
+    # Range-checks one GET /sensors body against each driver's own schema. A value outside it is
+    # not a driver bug but a torn/corrupted read - the property every worker below is really watching
+    # for, extracted here so all four tests check exactly the same thing (and stay under C901).
     findings = []
-    meas_int = body.get("SCD30", {}).get("MeasInt")
+    meas_int = body.get("SCD30", {}).get("MeasInterval")
     if meas_int is not None and not (2 <= meas_int <= 1800):
-        findings.append(f"SCD30 MeasInt={meas_int!r} outside valid schema range{context} - possible torn/corrupted config read")
-    press_overs = body.get("BMP3XX", {}).get("PressOvers")
+        findings.append(f"SCD30 MeasInterval={meas_int!r} outside valid schema range{context} - possible torn/corrupted config read")
+    press_overs = body.get("BMP3XX", {}).get("PresOvers")
     if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-        findings.append(f"BMP3XX PressOvers={press_overs!r} outside valid schema range{context} - possible torn/corrupted config read")
+        findings.append(f"BMP3XX PresOvers={press_overs!r} outside valid schema range{context} - possible torn/corrupted config read")
     resolution = body.get("ISL29125", {}).get("Resolution")
     if resolution is not None and resolution not in (12, 16):
         findings.append(f"ISL29125 Resolution={resolution!r} outside valid schema range{context} - possible torn/corrupted config read")
@@ -164,12 +164,12 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"ResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
             except Exception as e:
                 _record(f"sgp40 reset {i}: {type(e).__name__}: {e}")
                 continue
-            if res.status_code != 200 or res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC") != "Valid":
-                _record(f"sgp40 reset {i}: PUT /sensors SGPResetVOC rejected: {res.status_code} {res.body!r}")
+            if res.status_code != 200 or res.json().get("result", {}).get("SGP40", {}).get("ResetVOC") != "Valid":
+                _record(f"sgp40 reset {i}: PUT /sensors ResetVOC rejected: {res.status_code} {res.body!r}")
 
     threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
     threads.append(threading.Thread(target=sgp40_reset_trigger_worker))
@@ -243,11 +243,11 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_DEGRADED_FETCH_TIMEOUT_S)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"ResetVOC": True}}, timeout_s=_DEGRADED_FETCH_TIMEOUT_S)
             except Exception:
                 continue
             if res.status_code == 200:
-                result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")
+                result = res.json().get("result", {}).get("SGP40", {}).get("ResetVOC")
                 if result not in ("Valid", None):  # None = this specific PUT's own body didn't even parse right under the noise - a connection-level symptom already covered by the bare except above, not a bus-corruption finding
                     _record(f"sgp40 reset {i}: unexpected non-Valid result under degraded network: {result!r}")
 
@@ -291,11 +291,11 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
-    original_host = get_before.json()["NTP_Host"]
+    original_host = get_before.json()["NTPHost"]
 
     def _synced() -> bool:
         status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).json()
-        return status.get("networking", {}).get("NtpSynced") is True
+        return status.get("networking", {}).get("NTPSynced") is True
 
     # Same precondition wait as the standalone NTP transient-outage test: dut_ip only waits for
     # HTTP reachability, not specifically for NTP sync to finish.
@@ -323,11 +323,11 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_DEGRADED_FETCH_TIMEOUT_S)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"ResetVOC": True}}, timeout_s=_DEGRADED_FETCH_TIMEOUT_S)
             except Exception:
                 continue
             if res.status_code == 200:
-                result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")
+                result = res.json().get("result", {}).get("SGP40", {}).get("ResetVOC")
                 if result not in ("Valid", None):
                     _record(f"sgp40 reset {i}: unexpected non-Valid result during NTP outage: {result!r}")
 
@@ -335,8 +335,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     try:
         # Re-triggers a real resync attempt without a reboot - post_asy_fct fires on ANY validated
         # field, even one PUT back to its own current value.
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=_PROBE_TIMEOUT_S)
-        assert put_res.status_code == 200 and put_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"re-triggering PUT /networking NTP_Host={original_host!r} was rejected: {put_res.status_code} {put_res.body!r}"
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTPHost": original_host}, timeout_s=_PROBE_TIMEOUT_S)
+        assert put_res.status_code == 200 and put_res.json()["result"].get("NTPHost") in ("Valid", "Unchanged"), f"re-triggering PUT /networking NTPHost={original_host!r} was rejected: {put_res.status_code} {put_res.body!r}"
 
         threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
         threads.append(threading.Thread(target=sgp40_reset_trigger_worker))
@@ -392,11 +392,11 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
             try:
-                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_DEGRADED_FETCH_TIMEOUT_S)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"ResetVOC": True}}, timeout_s=_DEGRADED_FETCH_TIMEOUT_S)
             except Exception:
                 continue
             if res.status_code == 200:
-                result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")
+                result = res.json().get("result", {}).get("SGP40", {}).get("ResetVOC")
                 if result not in ("Valid", None):
                     _record(f"sgp40 reset {i}: unexpected non-Valid result during WiFi flapping: {result!r}")
 
@@ -550,7 +550,7 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
-    original_press_overs = get_before.json()["BMP3XX"]["PressOvers"]
+    original_press_overs = get_before.json()["BMP3XX"]["PresOvers"]
 
     errors: list[str] = []
     errors_lock = threading.Lock()
@@ -577,19 +577,19 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
         # but against this same sensor's own concurrent reads, a same-device hazard rather than a
         # cross-occupant one.
 
-        # Starting away from the current value matters doubly here: PressOvers' driver default IS
+        # Starting away from the current value matters doubly here: PresOvers' driver default IS
         # _BMP3XX_OVERSAMPLING_SETTINGS[0], so a board at defaults would spend its first write on
         # a no-op every run.
         first = 1 if original_press_overs == _BMP3XX_OVERSAMPLING_SETTINGS[0] else 0
         for i in range(_ISL29125_WRITE_CYCLES):
             value = _BMP3XX_OVERSAMPLING_SETTINGS[(first + i) % 2]
             try:
-                res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": value}}, timeout_s=_FETCH_TIMEOUT_S)
+                res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": value}}, timeout_s=_FETCH_TIMEOUT_S)
             except Exception as e:
                 _record(f"bmp3xx write {i}: {type(e).__name__}: {e}")
                 continue
-            if res.status_code != 200 or res.json().get("result", {}).get("BMP3XX", {}).get("PressOvers") != "Valid":
-                _record(f"bmp3xx write {i}: PUT /sensors PressOvers={value} rejected: {res.status_code} {res.body!r}")
+            if res.status_code != 200 or res.json().get("result", {}).get("BMP3XX", {}).get("PresOvers") != "Valid":
+                _record(f"bmp3xx write {i}: PUT /sensors PresOvers={value} rejected: {res.status_code} {res.body!r}")
 
     threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
     threads.append(threading.Thread(target=bmp3xx_write_worker))
@@ -601,9 +601,9 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
             assert not t.is_alive(), f"a worker thread never finished within {_JOIN_TIMEOUT_S:g}s - possible real deadlock under concurrent load"
         assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
     finally:
-        restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=_PROBE_TIMEOUT_S)
+        restore_res = fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": original_press_overs}}, timeout_s=_PROBE_TIMEOUT_S)
         # "Unchanged" is a success here for the same reason the ISL29125 restore above accepts it.
-        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PresOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PresOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
         _report_ceiling_retries(result_note, "bmp3xx config-write arm")
 
     wait_until(
@@ -618,5 +618,5 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
 
 
 # SGP40's general-call hazard has no bench-tier counterpart either, and that is Part C.8's
-# structural exception 2: the broadcast fires only from _reset() at setup. SGPResetVOC, which the
+# structural exception 2: the broadcast fires only from _reset() at setup. ResetVOC, which the
 # workers above use and which looks like a trigger, reaches a software-only reset instead.

@@ -131,7 +131,7 @@ def test_the_cfgmgr_delegation_this_guard_assumes_is_still_what_src_does() -> No
     # The `.cfgmgr` hop above is only correct while _set_mgr_cfg persists through that attribute. If
     # it is ever renamed, every _set_dict_cfg() target this guard derives is wrong, so pin it here.
     # SensorReader's default store writes nothing; SensorReaderConfig's is the one persisting override.
-    tree = ast.parse((REPO_ROOT / "src" / "base_classes.py").read_text(encoding="utf-8"))
+    tree = ast.parse((REPO_ROOT / "src" / "asy_base_classes.py").read_text(encoding="utf-8"))
     by_class = {cls.name: [n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "_set_mgr_cfg"] for cls in tree.body if isinstance(cls, ast.ClassDef)}
     owners = sorted(name for name, bodies in by_class.items() if bodies)
     assert owners == ["SensorReader", "SensorReaderConfig"], f"_set_mgr_cfg is defined on {owners}, not SensorReader (no store) and SensorReaderConfig (cfgmgr)"

@@ -86,8 +86,8 @@ def _ctx(ci_suite: ModuleType, tmp_path: Path) -> object:
 
 @pytest.fixture
 def stubbed_run(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Run 11b with every subprocess/state side effect stubbed; returns the spawn log and a fresh
-    _FAILURES, so a test sees only what its own run recorded."""
+    # Run 11b with every subprocess/state side effect stubbed; returns the spawn log and a fresh
+    # _FAILURES, so a test sees only what its own run recorded.
     spawned: list[str] = []
     monkeypatch.setattr(ci_suite, "_FAILURES", [])
     monkeypatch.setattr(ci_suite, "_clean_state", lambda: None)  # never touches the real digital_twin/ state

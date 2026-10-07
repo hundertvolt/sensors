@@ -2,7 +2,7 @@
 
 This project is MIT-licensed (see `LICENSE`). It also vendors or is partly derived from other
 MIT-licensed code, listed here in one place rather than only in scattered per-file headers. One
-file (`src/captive_dns.py`'s `DNSQuery` class) is derived from an Apache-2.0-licensed project and
+file (`src/asy_captive_dns.py`'s `DNSQuery` class) is derived from an Apache-2.0-licensed project and
 stays under Apache-2.0 for that portion - see "Apache License 2.0" below - so this repo is MIT
 overall with that one documented exception, not purely MIT top to bottom.
 
@@ -70,7 +70,7 @@ applies to the one non-Adafruit file below. The following `src/` files are deriv
   their own `metadata.txt`-declared license, which `ntptime.py` doesn't have). The leap-indicator/
   stratum rejection, the min/max plausibility window (this file's own answer to the Y2036 wraparound,
   differently shaped from `ntptime.py`'s own newer `MIN_NTP_TIMESTAMP` fix), and all of the
-  async/`AsyUDPSocket`/config/retry/timer machinery are this file's own additions, not present
+  async/`UDPSocket`/config/retry/timer machinery are this file's own additions, not present
   upstream. See "Author-permitted, no formal license" below for `karfas/upy-simple-app`'s
   `asy_ntp_time.py`, which the project owner separately flagged as a possible origin and which
   turned out to itself be a further wrapper around this same `micropython-lib` source.
@@ -126,7 +126,7 @@ promoted `src/asy_isl29125_driver.py` is now the one that ships, so its entry mo
 Per `SPECIFICATION.md` Part F.4, this project's own MIT license does not override the terms
 attached to code derived from an Apache-2.0 project - the derived portion stays under Apache-2.0.
 
-- `src/captive_dns.py`'s `DNSQuery` class (and its pre-refactor
+- `src/asy_captive_dns.py`'s `DNSQuery` class (and its pre-refactor
   `legacy/firmware/python/CommonDrivers/` ancestor) - the packet parsing/building logic (variable
   names `tipo`/`ini`/`lon`, the exact `\x81\x80` header/`\xC0\x0C` pointer/`0x3C` TTL byte
   layout, and matching inline comments) is a near-verbatim derivative of
@@ -134,7 +134,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   `main.py`, licensed Apache License 2.0. That upstream repo's own `LICENSE` file ships the
   Apache-2.0 boilerplate with the copyright-holder line unfilled; "p-doyle" (the GitHub account
   the project is published under) is the only identity available, and is used as the attributed
-  name here and in `src/LICENSE-captive_dns` (a sibling file, not embedded in `captive_dns.py`
+  name here and in `src/LICENSE-captive_dns` (a sibling file, not embedded in `asy_captive_dns.py`
   itself, matching the `ext/LICENSE-microdot` pattern). Corroborating evidence:
   [`metachris/micropython-captiveportal`](https://github.com/metachris/micropython-captiveportal)
   (MIT-licensed) carries the identical `DNSQuery` class and states in its own README that it's
@@ -144,7 +144,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   its own basis; the trail wasn't traced further back than p-doyle's repo, the closest
   well-identified link.
   Changes made in this project's version (Apache-2.0 §4(b) notice): ported from a raw blocking
-  `socket` to `AsyUDPSocket`/`asyncio`; in the `src/` version, also added type hints,
+  `socket` to `UDPSocket`/`asyncio`; in the `src/` version, also added type hints,
   `PrintLogHistory`-backed logging/errno reporting, off-subnet request filtering, recv-failure
   backoff, and a root-domain-query parsing fix.
   Ruled out as *not* the source for this file, despite superficial DNS-server similarity: three
@@ -186,7 +186,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   - `asy_udp_client.py`'s `AsyUDPClient` class — a `select.poll()`-based async UDP wrapper with a
     lazy `_connect()`, a `ready(mask, timeout_ms)` poll-and-wait helper, and a combined
     send-then-receive-with-retries method — is structurally close to this project's own
-    `AsyUDPSocket` (`src/asy_udp_socket.py`,
+    `UDPSocket` (`src/asy_udp_socket.py`,
     `legacy/firmware/python/CommonDrivers/asy_udp_socket.py`): the same overall shape (lazy
     connect, a `ready()`/poll gate, a paired write+read convenience method, explicit
     `disconnect()` teardown), though method names differ (`send`/`receive` vs. `write`/`recvfrom`,
@@ -195,7 +195,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
     support karfas's client-only class doesn't have).
   - `karfas/upy-simple-app` carries no `LICENSE` file, license badge, `README.md`, or header
     comment in either file - confirmed directly. On its own, that would mean no permission granted
-    under default copyright law (unlike the permissively-licensed Apache-2.0 `captive_dns.py` case
+    under default copyright law (unlike the permissively-licensed Apache-2.0 `asy_captive_dns.py` case
     above). However, the project owner located and provided the actual context:
     [`micropython/discussions#12967`](https://github.com/orgs/micropython/discussions/12967) (Nov
     2023) shows karfas posting links to exactly these two files, in direct response to a public

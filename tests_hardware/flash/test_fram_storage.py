@@ -1,4 +1,4 @@
-"""Flash-tier automated tests: real MB85RS64V SPI FRAM chip coverage (AsyFramManager/
+"""Flash-tier automated tests: real MB85RS64V SPI FRAM chip coverage (FRAMManager/
 asy_fram_driver) - a structurally different mechanism from test_reboot_persistence.py's
 littlefs-backed config storage."""
 
@@ -43,7 +43,7 @@ def _run_and_assert_pass(board: Board, script_name: str, timeout_s: float, label
 
 
 # ---------------------------------------------------------------------------
-# AsyFramManager/FRAM_SPI's own chunk write/read/CRC/dual-copy logic against the real chip.
+# FRAMManager/FRAM_SPI's own chunk write/read/CRC/dual-copy logic against the real chip.
 # ---------------------------------------------------------------------------
 
 
@@ -83,7 +83,7 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
 # ---------------------------------------------------------------------------
 # The error log's boot window: a ResetErrors landing before a FRAM-backed logger has run its own
 # pr.setup() must persist and survive that setup() (Part C.7). The same claim on the real chip
-# that test_print_log.py, _sensortask_scenarios.py and the twin integration test make elsewhere.
+# that test_asy_print_log.py, _sensortask_scenarios.py and the twin integration test make elsewhere.
 # ---------------------------------------------------------------------------
 
 
@@ -106,7 +106,7 @@ def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: Boa
 
 
 # ---------------------------------------------------------------------------
-# The storage-pause gate (pause_permanent_storage()/AsyFramManager.set_pause()). The mock tier
+# The storage-pause gate (pause_permanent_storage()/FRAMManager.set_pause()). The mock tier
 # covers the clamp/re-arm/abort logic but fakes machine.Timer, so two claims are hardware-only:
 # the ONE_SHOT auto-unpause really fires on an rp2 alarm pool, and a pause really stops the write.
 # ---------------------------------------------------------------------------

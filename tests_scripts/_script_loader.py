@@ -9,9 +9,9 @@ from types import ModuleType
 
 
 def load_script_module(module_path: Path, name: str) -> ModuleType:
-    """Imports a standalone `uv run`-style script so its functions can be exercised directly, not
-    only through subprocess/CLI behavior. Fails loud, because importlib returns None for the spec
-    and its loader rather than raising, and an attribute error on those reads as another bug."""
+    # Imports a standalone `uv run`-style script so its functions can be exercised directly, not
+    # only through subprocess/CLI behavior. Fails loud, because importlib returns None for the spec
+    # and its loader rather than raising, and an attribute error on those reads as another bug.
     spec = importlib.util.spec_from_file_location(name, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"couldn't build an import spec for {module_path}")

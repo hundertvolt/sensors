@@ -49,9 +49,9 @@ def get_errcount(dut_ip: str) -> dict[str, Any]:
 
 
 def assert_no_task_ended(dut_ip: str, context: str) -> None:
-    """The supervisor's own record since the test's opening ResetErrors: a task that ended (errno 5/6,
-    a restart warning) or a budget reboot (errno 4) lands in SYSTEM, which FRAM keeps across a
-    hard_reset(). A routine fault is handled in place (SPECIFICATION.md C.7.2), so this stays empty."""
+    # The supervisor's own record since the test's opening ResetErrors: a task that ended (errno 5/6,
+    # a restart warning) or a budget reboot (errno 4) lands in SYSTEM, which FRAM keeps across a
+    # hard_reset(). A routine fault is handled in place (SPECIFICATION.md C.7.2), so this stays empty.
     entry = get_errcount(dut_ip).get("SYSTEM", {})
     assert entry.get("counter", 0) == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
 
@@ -71,9 +71,9 @@ def assert_module_error_log_nonempty(dut_ip: str, module_name: str) -> None:
 def assert_module_error_log_clean(
     dut_ip: str, module_name: str, allowed_warnings: tuple[int, ...] = (), allowed_errors: tuple[int, ...] = (),
 ) -> None:
-    """Nothing in the log's history beyond the entries named - unlike a zero counter, no race
-    against a module whose normal operation logs a legitimate warning. `allowed_errors` is for a
-    test whose documented outcome is an ERROR (torn writes provoked, then recovery asserted)."""
+    # Nothing in the log's history beyond the entries named - unlike a zero counter, no race
+    # against a module whose normal operation logs a legitimate warning. `allowed_errors` is for a
+    # test whose documented outcome is an ERROR (torn writes provoked, then recovery asserted).
     entry = get_errcount(dut_ip).get(module_name, {})
     history = entry.get("history", [])
     unexpected = [
@@ -88,7 +88,7 @@ def assert_module_error_log_clean(
 
 
 def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, kind: str) -> None:
-    """Kind is "E" (err_s()) or "W" (wrn_s())."""
+    # Kind is "E" (err_s()) or "W" (wrn_s()).
     counts = get_errcount(dut_ip)
     entry = counts.get(module_name)
     assert entry is not None, f"{module_name!r} not present in /status errcount at all: {counts!r}"
@@ -97,9 +97,9 @@ def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, ki
 
 
 def assert_no_module_logged_a_new_error(dut_ip: str, before: dict[str, Any], context: str) -> None:
-    """Every FRAM-backed module's counter, not one named module's. A full-ceiling burst starves the
-    heap for the whole graph, so an allocation failure it provokes can surface in SGP40, SCD30,
-    SYSTEM or any other logger - checking only WEBSERVER would miss exactly the all-sides case."""
+    # Every FRAM-backed module's counter, not one named module's. A full-ceiling burst starves the
+    # heap for the whole graph, so an allocation failure it provokes can surface in SGP40, SCD30,
+    # SYSTEM or any other logger - checking only WEBSERVER would miss exactly the all-sides case.
     after = get_errcount(dut_ip)
     grew = {
         name: (before.get(name, {}).get("counter", 0), entry.get("counter", 0))

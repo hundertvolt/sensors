@@ -2,9 +2,10 @@ import asyncio
 import select
 import socket
 import time
+from asyncio import core as asyncio_core
 
 import asy_udp_socket
-from asy_udp_socket import AsyUDPSocket
+from asy_udp_socket import UDPSocket
 
 try:
     from typing import TYPE_CHECKING
@@ -94,7 +95,7 @@ def make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests 
     # unlike the real rp2 target, so getaddrinfo()'s resolved object is required instead.
 
     # On this port that object is an opaque sockaddr bytearray rather than a tuple[str, int], but
-    # AsyUDPSocket only ever passes addr through untouched, so handing it through is safe despite
+    # UDPSocket only ever passes addr through untouched, so handing it through is safe despite
     # the mismatched static type.
     return socket.getaddrinfo(_HOST, _next_port)[0][-1]  # type: ignore[return-value]
 
@@ -121,11 +122,11 @@ def resolve_addr(host: str, port: int) -> tuple[str, int]:
 def test_init_accepts_every_valid_mode_and_conn_tries_combination() -> None:
     for mode in ("client", "server"):
         for conn_tries in (1, 3, 0, -1):  # 0/negative are valid, degenerate "never even try" values
-            sock = AsyUDPSocket(("127.0.0.1", 12345), mode=mode, conn_tries=conn_tries)
+            sock = UDPSocket(("127.0.0.1", 12345), mode=mode, conn_tries=conn_tries)
             assert sock._mode == mode
             assert sock._conn_tries == conn_tries
             assert sock.connected is False
-            assert sock.sock is None
+            assert sock._sock is None
 
 
 def test_init_accepts_a_pre_resolved_bytes_like_addr() -> None:
@@ -133,7 +134,7 @@ def test_init_accepts_a_pre_resolved_bytes_like_addr() -> None:
     # than a tuple, including this project's own Unix-port test build. This file only passes addr
     # through untouched, so construction must accept that shape too, not just tuple[str, int].
     resolved = socket.getaddrinfo("127.0.0.1", 51500)[0][-1]
-    sock = AsyUDPSocket(resolved, mode="server")  # type: ignore[arg-type]
+    sock = UDPSocket(resolved, mode="server")  # type: ignore[arg-type]
     assert sock._addr == resolved
 
 
@@ -143,7 +144,7 @@ def test_init_rejects_invalid_mode() -> None:
     # asyncio.wait_for()'s timeout to fire. Validated eagerly here, before _connect() is reachable.
     for bad_mode in ("bogus", "", "CLIENT", "client ", None, 123):
         try:
-            AsyUDPSocket(("127.0.0.1", 12345), mode=bad_mode)  # type: ignore[arg-type]
+            UDPSocket(("127.0.0.1", 12345), mode=bad_mode)  # type: ignore[arg-type]
             raise AssertionError(f"expected ValueError for mode={bad_mode!r}")
         except ValueError:
             pass
@@ -161,7 +162,7 @@ def test_init_rejects_malformed_addr_tuple() -> None:
         (),
     ):
         try:
-            AsyUDPSocket(bad_addr, mode="client")  # type: ignore[arg-type]
+            UDPSocket(bad_addr, mode="client")  # type: ignore[arg-type]
             raise AssertionError(f"expected TypeError for addr={bad_addr!r}")
         except TypeError:
             pass
@@ -170,7 +171,7 @@ def test_init_rejects_malformed_addr_tuple() -> None:
 def test_init_rejects_addr_of_the_wrong_type_entirely() -> None:
     for bad_addr in (None, 12345, "127.0.0.1", ["127.0.0.1", 80], 3.14):
         try:
-            AsyUDPSocket(bad_addr, mode="client")  # type: ignore[arg-type]
+            UDPSocket(bad_addr, mode="client")  # type: ignore[arg-type]
             raise AssertionError(f"expected TypeError for addr={bad_addr!r}")
         except TypeError:
             pass
@@ -179,7 +180,7 @@ def test_init_rejects_addr_of_the_wrong_type_entirely() -> None:
 def test_init_rejects_non_int_conn_tries() -> None:
     for bad_conn_tries in (None, "3", 1.5, [1]):
         try:
-            AsyUDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=bad_conn_tries)  # type: ignore[arg-type]
+            UDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=bad_conn_tries)  # type: ignore[arg-type]
             raise AssertionError(f"expected TypeError for conn_tries={bad_conn_tries!r}")
         except TypeError:
             pass
@@ -189,21 +190,21 @@ def test_init_rejects_multiple_invalid_parameters_at_once() -> None:
     # Multiple invalid parameters together must still fail cleanly - not silently succeed, not
     # crash with something other than ValueError/TypeError.
     try:
-        AsyUDPSocket(("bad", "addr", "shape"), mode="bogus", conn_tries=None)  # type: ignore[arg-type]
+        UDPSocket(("bad", "addr", "shape"), mode="bogus", conn_tries=None)  # type: ignore[arg-type]
         raise AssertionError("expected an exception for all-invalid parameters")
-    except (ValueError, TypeError):
+    except (TypeError, ValueError):
         pass
 
     try:
-        AsyUDPSocket(12345, mode="client", conn_tries="nope")  # type: ignore[arg-type]
+        UDPSocket(12345, mode="client", conn_tries="nope")  # type: ignore[arg-type]
         raise AssertionError("expected an exception for addr+conn_tries both invalid")
-    except (ValueError, TypeError):
+    except (TypeError, ValueError):
         pass
 
     try:
-        AsyUDPSocket(None, mode=42, conn_tries=1.5)  # type: ignore[arg-type]
+        UDPSocket(None, mode=42, conn_tries=1.5)  # type: ignore[arg-type]
         raise AssertionError("expected an exception for addr+mode+conn_tries all invalid")
-    except (ValueError, TypeError):
+    except (TypeError, ValueError):
         pass
 
 
@@ -214,12 +215,12 @@ def test_init_rejects_multiple_invalid_parameters_at_once() -> None:
 
 def test_fresh_client_and_server_round_trip() -> None:
     # Every I/O method must call ready() (which lazily binds/connects via _connect()) before ever
-    # touching self.sock - a fresh object must actually send/receive, not return None forever.
+    # touching self._sock - a fresh object must actually send/receive, not return None forever.
     addr = make_addr()
 
     async def scenario() -> tuple[int | None, bytes | None, bytes | None]:
-        server = AsyUDPSocket(addr, mode="server")
-        client = AsyUDPSocket(addr, mode="client")
+        server = UDPSocket(addr, mode="server")
+        client = UDPSocket(addr, mode="client")
         try:
             await server._connect()  # deterministically bind before the client sends
             server_task = asyncio.create_task(server.recvfrom(64))
@@ -245,7 +246,7 @@ def test_sendto_returns_byte_count_like_write() -> None:
     addr = make_addr()
 
     async def scenario() -> int | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             await server._connect()
             return await server.sendto(b"hello", addr)  # a bound UDP socket may send to itself
@@ -259,7 +260,7 @@ def test_recvfrom_returns_none_sentinel_on_timeout() -> None:
     addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             return await server.recvfrom(64, timeout_ms=_RECV_EMPTY_TIMEOUT_MS)
         finally:
@@ -282,8 +283,8 @@ def test_write_and_recvfrom_retries_until_a_reply_arrives() -> None:
     addr = make_addr()
 
     async def scenario() -> bytes | None:
-        server = AsyUDPSocket(addr, mode="server")
-        client = AsyUDPSocket(addr, mode="client")
+        server = UDPSocket(addr, mode="server")
+        client = UDPSocket(addr, mode="client")
         try:
             await server._connect()
 
@@ -308,7 +309,7 @@ def test_write_and_recvfrom_exhausts_tries_and_returns_none_sentinel() -> None:
     addr = make_addr()  # nobody listens on this address at all
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        client = AsyUDPSocket(addr, mode="client")
+        client = UDPSocket(addr, mode="client")
         try:
             return await client.write_and_recvfrom(b"ping", 64, timeout_ms=_EXHAUST_TIMEOUT_MS, tries=2)
         finally:
@@ -325,9 +326,9 @@ def test_write_and_recvfrom_exhausts_tries_and_returns_none_sentinel() -> None:
 
 
 class AdversarialPeer:
-    # A genuine, independent UDP endpoint - a real socket.socket(), never an AsyUDPSocket - used
+    # A genuine, independent UDP endpoint - a real socket.socket(), never an UDPSocket - used
     # to drive real-world edge-case traffic (oversized/zero-length/delayed/burst/off-path
-    # datagrams) at an AsyUDPSocket under test over actual loopback packets, not mocks.
+    # datagrams) at an UDPSocket under test over actual loopback packets, not mocks.
     def __init__(self, addr: tuple[str, int]) -> None:
         self.addr = addr
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -345,8 +346,10 @@ class AdversarialPeer:
         poller.register(self.sock, select.POLLIN)
         t0 = time.ticks_ms()
         while True:
-            if poller.ipoll(0):
-                return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
+            # Each event's mask is read: ipoll() returns an iterator, always truthy (extmod/modselect.c, v1.29.0).
+            for _, event in poller.ipoll(0):
+                if event & select.POLLIN:
+                    return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
             if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
                 raise OSError("AdversarialPeer.recv() timed out")
             await asyncio.sleep_ms(_PEER_POLL_MS)
@@ -371,7 +374,7 @@ def test_recvfrom_silently_truncates_an_oversized_datagram() -> None:
     oversized = b"X" * 500
 
     async def scenario() -> bytes | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
@@ -393,7 +396,7 @@ def test_recvfrom_treats_a_zero_length_datagram_as_a_real_reply_not_a_timeout() 
     peer_addr = make_addr()
 
     async def scenario() -> bytes | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
@@ -416,7 +419,7 @@ def test_sendto_returns_none_sentinel_for_a_too_large_outgoing_payload() -> None
     huge = b"X" * 70000
 
     async def scenario() -> int | None:
-        client = AsyUDPSocket(addr, mode="client")
+        client = UDPSocket(addr, mode="client")
         try:
             return await client.sendto(huge, addr)
         finally:
@@ -433,8 +436,8 @@ def test_arbitrary_binary_content_round_trips_untouched() -> None:
     garbage = bytes(range(256)) + b"\xff\xfe\x00\x00" + bytes([0xDE, 0xAD, 0xBE, 0xEF]) * 10
 
     async def scenario() -> bytes | None:
-        server = AsyUDPSocket(addr, mode="server")
-        client = AsyUDPSocket(addr, mode="client")
+        server = UDPSocket(addr, mode="server")
+        client = UDPSocket(addr, mode="client")
         try:
             await server._connect()
             task = asyncio.create_task(server.recvfrom(1024))
@@ -462,7 +465,7 @@ def test_client_mode_filters_datagrams_from_unexpected_sources() -> None:
     async def scenario() -> tuple[bytes | None, bytes | None]:
         peer = AdversarialPeer(peer_addr)
         attacker = AdversarialPeer(attacker_addr)
-        client = AsyUDPSocket(peer_addr, mode="client")
+        client = UDPSocket(peer_addr, mode="client")
         try:
             await client._connect()
             await client.write(b"hello")  # lets peer discover the client's real ephemeral address
@@ -492,7 +495,7 @@ def test_recvfrom_drains_a_burst_of_queued_datagrams_in_order() -> None:
     peer_addr = make_addr()
 
     async def scenario() -> list[bytes | None]:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
@@ -518,7 +521,7 @@ def test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply
     peer_addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, bytes | None]:
-        client = AsyUDPSocket(peer_addr, mode="client")
+        client = UDPSocket(peer_addr, mode="client")
         peer = AdversarialPeer(peer_addr)
         try:
             await client._connect()
@@ -575,7 +578,7 @@ def test_ready_default_wait_time_ms_does_not_busy_spin() -> None:
     recorder = _RecordingAsyncio(asy_udp_socket.asyncio)
     asy_udp_socket.asyncio = recorder  # type: ignore[assignment]
     try:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             run(sock.ready(select.POLLIN, timeout_ms=_READY_EMPTY_TIMEOUT_MS))  # nothing ever arrives
         finally:
@@ -585,6 +588,43 @@ def test_ready_default_wait_time_ms_does_not_busy_spin() -> None:
 
     assert len(recorder.sleep_ms_calls) > 0
     assert all(ms == 20 for ms in recorder.sleep_ms_calls)
+
+
+class _NeverReadyPoller:
+    # Bounded stand-in, never a real select.poll(): its readiness is scripted (never), not polled in
+    # real time (CLAUDE.md "Known hang cause"); register()/unregister() accept anything.
+    def ipoll(self, _timeout: int) -> "list[tuple[object, int]]":
+        return []
+
+    def register(self, *_args: object) -> None:
+        pass
+
+    def unregister(self, *_args: object) -> None:
+        pass
+
+
+def test_a_bounded_ready_leaves_no_poll_task_behind() -> None:
+    # The deadline is asyncio.wait_for_ms() around the poll (SPECIFICATION.md F.2): on timeout it
+    # cancels the poll, so nothing keeps polling after ready() answered False.
+    addr = make_addr()
+
+    async def scenario() -> "tuple[bool, int, object]":
+        sock = UDPSocket(addr, mode="server")
+        try:
+            await sock._connect()
+            sock.poller = _NeverReadyPoller()  # type: ignore[assignment]
+            t0 = time.ticks_ms()
+            result = await sock.ready(select.POLLIN, timeout_ms=_RECV_EMPTY_TIMEOUT_MS)
+            elapsed = time.ticks_diff(time.ticks_ms(), t0)
+            await asyncio.sleep_ms(0)  # let a cancelled poll task finish unwinding
+            return result, elapsed, asyncio_core._task_queue.peek()
+        finally:
+            await sock.disconnect()
+
+    result, elapsed, leftover = run(scenario())
+    assert result is False
+    assert elapsed >= _RECV_EMPTY_TIMEOUT_MS, elapsed
+    assert leftover is None, "a poll task outlived ready()'s deadline"
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +647,7 @@ class _MemoryErrorOnceSocketModule:
 
 def test_connect_setup_memoryerror_self_heals_instead_of_raising() -> None:
     addr = make_addr()
-    sock = AsyUDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server")
     original_socket = asy_udp_socket.socket
     asy_udp_socket.socket = _MemoryErrorOnceSocketModule()  # type: ignore[assignment]
     try:
@@ -616,7 +656,7 @@ def test_connect_setup_memoryerror_self_heals_instead_of_raising() -> None:
         asy_udp_socket.socket = original_socket
 
     assert sock.connected is False
-    assert sock.sock is None
+    assert sock._sock is None
 
     try:
         run(sock._connect())  # the fault is gone now - should self-heal and succeed
@@ -649,11 +689,11 @@ def test_write_returns_none_sentinel_on_memoryerror() -> None:
     addr = make_addr()
 
     async def scenario() -> int | None:
-        client = AsyUDPSocket(addr, mode="client")
+        client = UDPSocket(addr, mode="client")
         try:
             await client._connect()
-            assert client.sock is not None
-            client.sock = _MemoryErrorSocketWrapper(client.sock)  # type: ignore[assignment]
+            assert client._sock is not None
+            client._sock = _MemoryErrorSocketWrapper(client._sock)  # type: ignore[assignment]
             return await client.write(b"x")
         finally:
             await client.disconnect()
@@ -665,11 +705,11 @@ def test_sendto_returns_none_sentinel_on_memoryerror() -> None:
     addr = make_addr()
 
     async def scenario() -> int | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             await server._connect()
-            assert server.sock is not None
-            server.sock = _MemoryErrorSocketWrapper(server.sock)  # type: ignore[assignment]
+            assert server._sock is not None
+            server._sock = _MemoryErrorSocketWrapper(server._sock)  # type: ignore[assignment]
             return await server.sendto(b"x", addr)
         finally:
             await server.disconnect()
@@ -682,15 +722,15 @@ def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
     peer_addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
             peer.sock.sendto(b"data", addr)
             await asyncio.sleep(_KERNEL_QUEUE_S)  # a genuinely pending datagram, so recvfrom() actually
             # reaches sock.recvfrom() instead of timing out inside ready() first
-            assert server.sock is not None
-            server.sock = _MemoryErrorSocketWrapper(server.sock)  # type: ignore[assignment]
+            assert server._sock is not None
+            server._sock = _MemoryErrorSocketWrapper(server._sock)  # type: ignore[assignment]
             return await server.recvfrom(64, timeout_ms=_RECV_TIMEOUT_MS)
         finally:
             peer.close()
@@ -722,19 +762,19 @@ class _RaisingUnregisterPoller:
 
 def test_disconnect_clears_state_even_when_unregister_raises() -> None:
     # disconnect()'s single try/except used to wrap unregister()+close()+state-clearing together,
-    # so a raising unregister() aborted the block before self.sock/self.poller/self.connected were
+    # so a raising unregister() aborted the block before self._sock/self.poller/self.connected were
     # reset - leaving the object stuck half-connected forever, with no self-heal.
     addr = make_addr()
 
     async def scenario() -> tuple[bool, bool, bool, bool]:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         await sock._connect()
         assert sock.connected
         real_poller = sock.poller
         assert real_poller is not None  # a connected socket always has one
         sock.poller = _RaisingUnregisterPoller(real_poller)  # type: ignore[assignment]
         ok = await sock.disconnect()
-        return sock.sock is None, sock.poller is None, sock.connected is False, ok
+        return sock._sock is None, sock.poller is None, sock.connected is False, ok
 
     sock_cleared, poller_cleared, not_connected, ok = run(scenario())
     assert sock_cleared and poller_cleared and not_connected
@@ -758,14 +798,14 @@ def test_disconnect_clears_state_even_when_sock_close_raises() -> None:
     addr = make_addr()
 
     async def scenario() -> tuple[bool, bool, bool, bool]:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         await sock._connect()
         assert sock.connected
-        real_sock = sock.sock
+        real_sock = sock._sock
         assert real_sock is not None  # a connected socket always has one
-        sock.sock = _RaisingCloseSocket(real_sock)  # type: ignore[assignment]
+        sock._sock = _RaisingCloseSocket(real_sock)  # type: ignore[assignment]
         ok = await sock.disconnect()
-        return sock.sock is None, sock.poller is None, sock.connected is False, ok
+        return sock._sock is None, sock.poller is None, sock.connected is False, ok
 
     sock_cleared, poller_cleared, not_connected, ok = run(scenario())
     assert sock_cleared and poller_cleared and not_connected
@@ -778,10 +818,10 @@ def test_disconnect_clears_state_even_when_sock_close_raises() -> None:
 
 
 class _DisconnectingPoller:
-    # Wraps a real poller but nulls the owning AsyUDPSocket's self.poller the first time ipoll()
+    # Wraps a real poller but nulls the owning UDPSocket's self.poller the first time ipoll()
     # is called - simulates disconnect() firing concurrently on the same instance from another
     # coroutine while ready()'s poll loop is still in flight.
-    def __init__(self, owner: "AsyUDPSocket", real: "select.poll") -> None:
+    def __init__(self, owner: "UDPSocket", real: "select.poll") -> None:
         self.owner = owner
         self._real = real
         self.fired = False
@@ -800,13 +840,13 @@ def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
     # ready()'s poll loop only checked `self.poller is None` once, before the loop, so a
     # concurrent disconnect() made the next self.poller.ipoll(0) raise AttributeError.
 
-    # Neither real caller does this today (both use one AsyUDPSocket from a single coroutine at a
+    # Neither real caller does this today (both use one UDPSocket from a single coroutine at a
     # time), but nothing enforced or documented that constraint - so ready() re-checks every
     # iteration and returns False, matching this file's "never raises" contract.
     addr = make_addr()
 
     async def scenario() -> bool:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             await sock._connect()
             real_poller = sock.poller
@@ -836,7 +876,7 @@ def test_conn_tries_retries_within_a_single_connect_call() -> None:
     good_addr = make_addr()
 
     async def scenario() -> bool:
-        contender = AsyUDPSocket(bad_addr, mode="server", conn_tries=3)
+        contender = UDPSocket(bad_addr, mode="server", conn_tries=3)
         try:
 
             async def fix_address_soon() -> None:
@@ -854,18 +894,18 @@ def test_conn_tries_retries_within_a_single_connect_call() -> None:
 
 
 def test_connect_self_heals_after_conn_tries_exhausted() -> None:
-    # Bug: once self.sock was created, a fully-exhausted conn_tries left _connect() a permanent
-    # no-op (self.sock stayed non-None) - the object was stuck forever. It must now tear itself
+    # Bug: once self._sock was created, a fully-exhausted conn_tries left _connect() a permanent
+    # no-op (self._sock stayed non-None) - the object was stuck forever. It must now tear itself
     # down so a later call gets a fresh attempt.
     bad_addr = unbindable_addr()
     good_addr = make_addr()
 
     async def scenario() -> tuple[bool, bool, bool]:
-        contender = AsyUDPSocket(bad_addr, mode="server", conn_tries=1)
+        contender = UDPSocket(bad_addr, mode="server", conn_tries=1)
         try:
             await contender._connect()  # exhausts its single try against an unbindable address
             first_connected = contender.connected
-            first_sock_cleared = contender.sock is None
+            first_sock_cleared = contender._sock is None
 
             contender._addr = good_addr  # simulate the underlying condition clearing
             await contender._connect()  # should self-heal: fresh attempt now succeeds
@@ -889,11 +929,11 @@ def test_disconnect_is_idempotent_and_resets_state() -> None:
     addr = make_addr()
 
     async def scenario() -> tuple[bool, bool, bool, bool, bool]:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         await sock._connect()
         assert sock.connected
         first_ok = await sock.disconnect()
-        sock_cleared, poller_cleared, not_connected = sock.sock is None, sock.poller is None, sock.connected is False
+        sock_cleared, poller_cleared, not_connected = sock._sock is None, sock.poller is None, sock.connected is False
         second_ok = await sock.disconnect()  # must not raise when already disconnected
         return sock_cleared, poller_cleared, not_connected, first_ok, second_ok
 
@@ -909,8 +949,8 @@ def test_object_is_reusable_after_disconnect() -> None:
     addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, bytes | None]:
-        server = AsyUDPSocket(addr, mode="server")
-        client = AsyUDPSocket(addr, mode="client")
+        server = UDPSocket(addr, mode="server")
+        client = UDPSocket(addr, mode="client")
         try:
             await server._connect()
             first_task = asyncio.create_task(server.recvfrom(64))
@@ -941,7 +981,7 @@ def test_cancellation_propagates_out_of_recvfrom() -> None:
     addr = make_addr()
 
     async def scenario() -> bool:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             task = asyncio.create_task(server.recvfrom(64))  # nothing ever arrives - waits forever
             await asyncio.sleep(_TASK_PARK_S)
@@ -970,7 +1010,7 @@ def test_ready_wait_time_ms_is_milliseconds_not_seconds() -> None:
     addr = make_addr()
 
     async def scenario() -> int:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             t0 = time.ticks_ms()
             result = await sock.ready(select.POLLIN, timeout_ms=_MS_CHECK_TIMEOUT_MS, wait_time_ms=10)
@@ -1005,7 +1045,7 @@ def test_connect_setup_failure_self_heals_instead_of_raising() -> None:
     # Bug: socket()/setsockopt()/poll()/register() ran with zero exception handling - violated
     # this file's own "never raises" contract, and would have leaked a half-initialized socket.
     addr = make_addr()
-    sock = AsyUDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server")
     original_socket = asy_udp_socket.socket
     asy_udp_socket.socket = _RaisingSocketModule()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
@@ -1014,7 +1054,7 @@ def test_connect_setup_failure_self_heals_instead_of_raising() -> None:
         asy_udp_socket.socket = original_socket
 
     assert sock.connected is False
-    assert sock.sock is None
+    assert sock._sock is None
 
     try:
         run(sock._connect())  # the fault is gone now - should self-heal and succeed
@@ -1035,7 +1075,7 @@ def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> N
     addr = make_addr()  # nobody ever binds/listens on this address
 
     async def scenario() -> tuple[bytes | None, int]:
-        client = AsyUDPSocket(addr, mode="client")
+        client = UDPSocket(addr, mode="client")
         try:
             sent = await client.write(b"ping")
             assert sent == 4
@@ -1059,15 +1099,15 @@ def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> N
 def test_async_context_manager_disconnects_on_exit() -> None:
     addr = make_addr()
 
-    async def scenario() -> tuple[bool, AsyUDPSocket]:
-        async with AsyUDPSocket(addr, mode="server") as sock:
+    async def scenario() -> tuple[bool, UDPSocket]:
+        async with UDPSocket(addr, mode="server") as sock:
             await sock._connect()
             still_connected_inside = sock.connected
         return still_connected_inside, sock
 
     still_connected_inside, sock = run(scenario())
     assert still_connected_inside is True
-    assert sock.sock is None
+    assert sock._sock is None
     assert sock.connected is False
 
 
@@ -1077,8 +1117,8 @@ def test_async_context_manager_disconnects_even_on_exception() -> None:
     def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
         raise ValueError("boom")
 
-    async def scenario() -> AsyUDPSocket:
-        sock = AsyUDPSocket(addr, mode="server")
+    async def scenario() -> UDPSocket:
+        sock = UDPSocket(addr, mode="server")
         try:
             async with sock:
                 await sock._connect()
@@ -1088,13 +1128,13 @@ def test_async_context_manager_disconnects_even_on_exception() -> None:
         return sock
 
     sock = run(scenario())
-    assert sock.sock is None
+    assert sock._sock is None
     assert sock.connected is False
 
 
 # ---------------------------------------------------------------------------
 # Integration-level: the exact real-world call patterns of the two upstream callers,
-# asy_ntp_client.py's NTP client and captive_dns.py's DNSServer, plus how a real UDP fault
+# asy_ntp_client.py's NTP client and asy_captive_dns.py's CaptiveDNS, plus how a real UDP fault
 # propagates up through each processing path.
 
 # These mirror each caller's documented, stable call shape (mode, buffer sizes, timeout/tries,
@@ -1123,7 +1163,7 @@ def test_ntp_client_pattern_end_to_end_success() -> None:
         msg: bytes | None = None
         try:
             responder_task = asyncio.create_task(responder(peer))
-            cli = AsyUDPSocket(server_addr, mode="client")
+            cli = UDPSocket(server_addr, mode="client")
             msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             del add
             await cli.disconnect()
@@ -1154,7 +1194,7 @@ def test_ntp_client_pattern_no_server_reachable() -> None:
         cli = None
         msg: bytes | None = None
         try:
-            cli = AsyUDPSocket(server_addr, mode="client")
+            cli = UDPSocket(server_addr, mode="client")
             msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_UNREACHABLE_TIMEOUT_MS)
             del add
             await cli.disconnect()
@@ -1186,7 +1226,7 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
 
     async def scenario() -> bytes | None:
         peer = AdversarialPeer(server_addr)
-        cli = AsyUDPSocket(server_addr, mode="client")
+        cli = UDPSocket(server_addr, mode="client")
         try:
             responder_task = asyncio.create_task(responder(peer))
             msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
@@ -1200,7 +1240,7 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
 
 
 def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
-    # Mirrors captive_dns.py's exact call shape: a server-mode socket bound to ("0.0.0.0", port),
+    # Mirrors asy_captive_dns.py's exact call shape: a server-mode socket bound to ("0.0.0.0", port),
     # recvfrom(4096), conditional sendto(response, addr) - including the real bind-any-interface
     # then receive-via-127.0.0.1 path that every other test in this file skips.
     port = make_port()
@@ -1210,13 +1250,13 @@ def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
     response = b"\x00\x01fake-dns-response"
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None, bytes]:
-        server = AsyUDPSocket(server_addr, mode="server")
+        server = UDPSocket(server_addr, mode="server")
         client = AdversarialPeer(make_addr())
         try:
             await server._connect()
             client.sock.sendto(query, client_target_addr)
             data, addr = await server.recvfrom(4096, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
-            if data is not None and addr is not None:  # captive_dns.py's exact guard
+            if data is not None and addr is not None:  # asy_captive_dns.py's exact guard
                 await server.sendto(response, addr)
             reply, _ = await client.recv(4096, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             return data, addr, reply
@@ -1234,14 +1274,14 @@ def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
 
 
 def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
-    # captive_dns.py's guard is `if data is not None and addr is not None:`, implicitly assuming
+    # asy_captive_dns.py's guard is `if data is not None and addr is not None:`, implicitly assuming
     # the two are always both set or both None. This confirms that holds: recvfrom() never returns
     # (bytes, None) or (None, tuple) in either the timeout or the success path.
     addr = make_addr()
     peer_addr = make_addr()
 
     async def scenario() -> tuple[tuple[bytes | None, tuple[str, int] | None], tuple[bytes | None, tuple[str, int] | None]]:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
@@ -1260,17 +1300,17 @@ def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
 
 
 def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving() -> None:
-    # captive_dns.py discards sendto()'s return value, so a failed reply is silently swallowed one
+    # asy_captive_dns.py discards sendto()'s return value, so a failed reply is silently swallowed one
     # level above this module (flagged in BACKLOG.md, out of scope to fix there).
 
     # What this module is responsible for is that such a failure cannot corrupt the server socket
-    # for the next, unrelated query in the same long-lived DNSServer loop.
+    # for the next, unrelated query in the same long-lived CaptiveDNS loop.
     addr = make_addr()
     unreachable_client_addr = resolve_addr("10.255.255.254", 12345)  # never routable in this environment
     real_peer_addr = make_addr()
 
     async def scenario() -> bytes | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(real_peer_addr)
         try:
             await server._connect()
@@ -1301,7 +1341,7 @@ def test_connect_self_heals_when_addr_mutated_to_a_malformed_value() -> None:
     # raise an uncaught TypeError from sock.connect()/bind(), reintroducing the very bug that
     # eager validation closed. _connect()'s connect()/bind() try now also catches TypeError.
     addr = make_addr()
-    sock = AsyUDPSocket(addr, mode="client")
+    sock = UDPSocket(addr, mode="client")
     sock._addr = (12345, 80)  # type: ignore[assignment]  # malformed - host is an int, not a str
     try:
         run(sock._connect())  # must not raise
@@ -1315,7 +1355,7 @@ def test_connect_self_heals_when_conn_tries_mutated_to_a_non_int() -> None:
     # per-attempt try, which already caught it: `tries < self._conn_tries` is the while loop's own
     # condition, evaluated before that try is entered, so only the outer except covers it.
     addr = make_addr()
-    sock = AsyUDPSocket(addr, mode="server")
+    sock = UDPSocket(addr, mode="server")
     sock._conn_tries = None  # type: ignore[assignment]
     try:
         run(sock._connect())  # must not raise
@@ -1329,7 +1369,7 @@ def test_connect_treats_a_mutated_mode_as_server_like_without_crashing() -> None
     # "client"/"server" reach it. A mutated ._mode bypasses that, but the binary shape falls
     # through to bind() rather than hanging the way the old three-way branch did.
     addr = make_addr()
-    sock = AsyUDPSocket(addr, mode="client")
+    sock = UDPSocket(addr, mode="client")
     sock._mode = "bogus"  # type: ignore[assignment]
     try:
         run(sock._connect())
@@ -1344,7 +1384,7 @@ def test_sendto_returns_none_sentinel_for_a_malformed_explicit_addr() -> None:
     addr = make_addr()
 
     async def scenario() -> int | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             await server._connect()
             return await server.sendto(b"x", (12345, 80))  # type: ignore[arg-type]
@@ -1362,7 +1402,7 @@ def test_recvfrom_returns_none_sentinel_for_a_malformed_buf_with_real_pending_da
     peer_addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
@@ -1385,12 +1425,12 @@ def test_recvfrom_returns_none_sentinel_for_a_malformed_buf_with_real_pending_da
 
 def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> None:
     # Before the connect-lock, a disconnect() concurrent with another coroutine's in-flight
-    # _connect() retry could null self.sock/self.poller out from under it. disconnect() now takes
+    # _connect() retry could null self._sock/self.poller out from under it. disconnect() now takes
     # the same lock, waiting for the attempt (bounded by conn_tries * the backoff) instead.
     bad_addr = unbindable_addr()
 
     async def scenario() -> tuple[bool, int]:
-        sock = AsyUDPSocket(bad_addr, mode="server", conn_tries=3)
+        sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
         try:
             t0 = time.ticks_ms()
             connect_task = asyncio.create_task(sock._connect())
@@ -1416,7 +1456,7 @@ def test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_non
     good_addr = make_addr()
 
     async def scenario() -> tuple[bool, int | None]:
-        sock = AsyUDPSocket(bad_addr, mode="server", conn_tries=3)
+        sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
         try:
             a_task = asyncio.create_task(sock._connect())
             await asyncio.sleep(0.1)  # A has failed its first attempt, is backing off
@@ -1446,7 +1486,7 @@ def test_cancelling_a_task_that_holds_the_connect_lock_releases_it() -> None:
     bad_addr = unbindable_addr()
 
     async def scenario() -> tuple[bool, bool]:
-        sock = AsyUDPSocket(bad_addr, mode="server", conn_tries=5)
+        sock = UDPSocket(bad_addr, mode="server", conn_tries=5)
         a_task = asyncio.create_task(sock._connect())
         await asyncio.sleep(_FIRST_ATTEMPT_S)  # A has failed once, is inside its backoff sleep, holding the lock
         a_task.cancel()
@@ -1475,7 +1515,7 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
     bad_addr = unbindable_addr()
 
     async def scenario() -> tuple[bool, bool]:
-        sock = AsyUDPSocket(bad_addr, mode="server", conn_tries=3)
+        sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
         a_task = asyncio.create_task(sock._connect())
         await asyncio.sleep(_FIRST_ATTEMPT_S)
         b_task = asyncio.create_task(sock.disconnect())  # blocks waiting for the lock A holds
@@ -1516,7 +1556,7 @@ def test_write_on_an_unconnected_server_mode_socket_returns_none_sentinel() -> N
     addr = make_addr()
 
     async def scenario() -> int | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             await server._connect()
             assert server.connected
@@ -1533,7 +1573,7 @@ def test_sendto_empty_bytes_succeeds() -> None:
     addr = make_addr()
 
     async def scenario() -> int | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             await server._connect()
             return await server.sendto(b"", make_addr())
@@ -1551,7 +1591,7 @@ def test_recvfrom_buf_zero_returns_empty_bytes_not_the_timeout_sentinel() -> Non
     peer_addr = make_addr()
 
     async def scenario() -> bytes | None:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
@@ -1570,9 +1610,9 @@ def test_disconnect_on_a_fresh_never_connected_object_is_a_clean_no_op() -> None
     addr = make_addr()
 
     async def scenario() -> tuple[bool, bool]:
-        sock = AsyUDPSocket(addr, mode="client")
+        sock = UDPSocket(addr, mode="client")
         await sock.disconnect()  # _connect() was never called - must not raise
-        return sock.sock is None, sock.connected is False
+        return sock._sock is None, sock.connected is False
 
     sock_is_none, not_connected = run(scenario())
     assert sock_is_none and not_connected
@@ -1582,7 +1622,7 @@ def test_write_and_recvfrom_tries_zero_returns_immediately() -> None:
     addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        sock = AsyUDPSocket(addr, mode="client")
+        sock = UDPSocket(addr, mode="client")
         try:
             return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=0)
         finally:
@@ -1605,7 +1645,7 @@ def test_ready_returns_false_sentinel_for_a_malformed_timeout_ms() -> None:
     addr = make_addr()
 
     async def scenario() -> bool:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             await sock._connect()
             return await sock.ready(select.POLLIN, timeout_ms=None)  # type: ignore[arg-type]
@@ -1622,7 +1662,7 @@ def test_ready_returns_false_sentinel_for_a_malformed_wait_time_ms() -> None:
     addr = make_addr()
 
     async def scenario() -> bool:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             await sock._connect()
             return await sock.ready(select.POLLIN, timeout_ms=200, wait_time_ms=None)  # type: ignore[arg-type]
@@ -1639,7 +1679,7 @@ def test_ready_returns_false_sentinel_for_a_malformed_mask() -> None:
     addr = make_addr()
 
     async def scenario() -> bool:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             await sock._connect()
             return await sock.ready(None, timeout_ms=200)  # type: ignore[arg-type]
@@ -1656,7 +1696,7 @@ def test_ready_cancellation_still_propagates_through_the_new_try_except() -> Non
     addr = make_addr()
 
     async def scenario() -> bool:
-        sock = AsyUDPSocket(addr, mode="server")
+        sock = UDPSocket(addr, mode="server")
         try:
             await sock._connect()
             task = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=-1, wait_time_ms=20))  # waits forever
@@ -1684,7 +1724,7 @@ def test_recvfrom_propagates_readys_false_sentinel_for_a_malformed_timeout_ms() 
     addr = make_addr()
 
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        server = AsyUDPSocket(addr, mode="server")
+        server = UDPSocket(addr, mode="server")
         try:
             await server._connect()
             return await server.recvfrom(64, timeout_ms=None)  # type: ignore[arg-type]
@@ -1700,7 +1740,7 @@ def test_write_and_recvfrom_returns_none_sentinel_for_a_malformed_tries() -> Non
     addr = make_addr()
 
     async def scenario(bad_tries: "Any") -> tuple[bytes | None, tuple[str, int] | None]:
-        sock = AsyUDPSocket(addr, mode="client")
+        sock = UDPSocket(addr, mode="client")
         try:
             return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=bad_tries)
         finally:

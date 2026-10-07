@@ -17,7 +17,7 @@ _SITE_ENTRY = "build/generated_html/${device}"
 
 
 def _bodies(text: str) -> "dict[str, tuple[str, str]]":
-    """Exported function name -> (parameter text, body text up to the next top-level definition)."""
+    # Exported function name -> (parameter text, body text up to the next top-level definition).
     starts = [(m.start(), m.group(1), m.group(2)) for m in _EXPORTED.finditer(text)]
     out: dict[str, tuple[str, str]] = {}
     for index, (start, name, params) in enumerate(starts):

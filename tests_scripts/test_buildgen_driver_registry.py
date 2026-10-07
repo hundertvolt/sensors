@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, class_has_read_triggers, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 
 
@@ -18,14 +18,14 @@ def src_dir(repo_root: Path) -> Path:
 @pytest.mark.parametrize(
     "driver,module,class_name,kind,needs_setup",
     [
-        ("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", False),
+        ("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", True),
         ("sgp40", "asy_sgp40_driver", "SGP40_Reader", "sensor", True),
-        ("bmp3xx", "asy_bmp3xx_driver", "BMP3xx_Reader", "sensor", True),
+        ("bmp3xx", "asy_bmp3xx_driver", "BMP3XX_Reader", "sensor", True),
         ("isl29125", "asy_isl29125_driver", "ISL29125_Reader", "sensor", True),
-        ("fram", "asy_fram_manager", "AsyFramManager", "service", True),
-        ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", False),
-        ("notification", "asy_notification_service", "NotificationCoordinator", "service", True),
-        ("uart_link", "asy_uart_link_driver", "UartLinkExerciser", "service", True),
+        ("fram", "asy_fram_manager", "FRAMManager", "service", True),
+        ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", True),
+        ("notification", "asy_notification_service", "NotificationService", "service", True),
+        ("uart_link", "asy_uart_link_driver", "UARTLinkDriver", "service", True),
     ],
 )
 def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, class_name: str, kind: str, *, needs_setup: bool) -> None:
@@ -33,17 +33,31 @@ def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, cl
     assert info == DriverInfo(driver, module, class_name, kind, src_dir / f"{module}.py", needs_setup)
 
 
+def test_a_plain_sensor_reader_subclass_needs_setup(tmp_path: Path) -> None:
+    # SensorReader.setup() sets the reader's own logger up, so every reader joins the boot batch.
+    (tmp_path / "asy_plain_driver.py").write_text("class Plain_Reader(SensorReader):\n    pass\n")
+    assert resolve_driver("plain", tmp_path, "dev").needs_setup is True
+
+
+def test_read_triggers_are_declared_by_the_reader_class_itself(tmp_path: Path) -> None:
+    (tmp_path / "asy_trig_driver.py").write_text("class Trig_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n")
+    (tmp_path / "asy_tick_driver.py").write_text("class Tick_Reader(SensorReaderConfig):\n    def get_timer_starters(self):\n        return []\n")
+    assert class_has_read_triggers(resolve_driver("trig", tmp_path, "dev")) is True
+    assert class_has_read_triggers(resolve_driver("tick", tmp_path, "dev")) is False
+
+
 def test_resolve_driver_unknown_driver_raises(src_dir: Path) -> None:
     with pytest.raises(BuildError, match="unknown driver"):
         resolve_driver("nonexistent_chip", src_dir, "dev")
 
 
-def test_resolve_driver_bmp3xx_naming_convention_is_not_a_naive_uppercase(src_dir: Path) -> None:
-    # The whole point of AST-based resolution: BMP3xx_Reader isn't "bmp3xx".upper() + "_Reader"
-    # ("BMP3XX_Reader") - a naive string-transform resolver would get this wrong.
-    info = resolve_driver("bmp3xx", src_dir, "dev")
-    assert info.class_name == "BMP3xx_Reader"
-    assert info.class_name != "bmp3xx".upper() + "_Reader"
+def test_resolve_driver_reads_the_class_name_not_a_naive_uppercase(tmp_path: Path) -> None:
+    # The whole point of AST-based resolution: every real driver's class now matches the naive
+    # "<driver>".upper() + "_Reader", so a driver file whose class does not proves the AST read.
+    (tmp_path / "asy_chipx_driver.py").write_text("class ChipX_Reader(SensorReader):\n    pass\n")
+    info = resolve_driver("chipx", tmp_path, "dev")
+    assert info.class_name == "ChipX_Reader"
+    assert info.class_name != "chipx".upper() + "_Reader"
 
 
 def test_resolve_driver_file_with_no_reader_subclass(tmp_path: Path) -> None:
@@ -91,7 +105,7 @@ def test_parse_name_constant_real_drivers(src_dir: Path, driver: str, expected_n
 
 
 def test_parse_name_constant_confirms_notify_is_not_notification(src_dir: Path) -> None:
-    # SPECIFICATION.md Part L.3's confirmed-real bug case: NotificationCoordinator's _NAME is
+    # SPECIFICATION.md Part L.3's confirmed-real bug case: NotificationService's _NAME is
     # "NOTIFY", not "NOTIFICATION" - instance_name()/_NAME is a different naming space than the
     # TOML driver identity ("notification") wiring resolves against.
     info = resolve_driver("notification", src_dir, "dev")
