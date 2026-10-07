@@ -64,14 +64,16 @@ out the WiFi drop, so it reached nobody. The flood run below repeats it while co
 | Connection | no teardown, 27 pings answered |
 
 **Allocation churn** (`gc.mem_alloc()` sampled every 500 ms *without* collecting; the rise between samples is what was
-allocated):
+allocated). The connected-idle client adds nothing measurable: the twin allocates ~128 KB/s on its own and ~126 KB/s
+with the client idle, so the client's idle path sits inside the twin's own noise. Under load the client costs tens of
+bytes per received message and ~140 B per publish:
 
 | Phase | Allocated | Extra over idle | Per message |
 |---|---|---|---|
 | Twin with client, connected, idle | ~126 KB/s | — | — |
 | Inbound flood (21,127 messages) | ~180 KB/s | ~54 KB/s for ~15 s | ~38 B per received message |
 | Outbound hammer (~156 msg/s) | ~150 KB/s | ~22 KB/s | ~140 B per publish, harness loop included |
-| Twin **without** client (baseline) | BASELINE_CHURN | — | — |
+| Twin **without** client (baseline, 180 s) | ~128 KB/s | — | — |
 
 ## Heap: does it flood?
 
