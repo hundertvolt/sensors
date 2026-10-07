@@ -10,8 +10,10 @@ import signal
 import socket
 import subprocess
 import sys
+import shutil
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -44,7 +46,7 @@ class Broker:
                 time.sleep(0.1)
         raise RuntimeError("mosquitto did not start")
 
-    def signal(self, sig: int) -> None:
+    def send(self, sig: int) -> None:
         if self.proc is not None and self.proc.poll() is None:
             self.proc.send_signal(sig)
 
@@ -87,6 +89,29 @@ def pub(port: int, topic: str, lines: "list[str] | None" = None, message: "str |
         subprocess.run([*cmd, "-l"], input="\n".join(lines) + "\n", text=True, timeout=60, check=False, capture_output=True)
     else:
         subprocess.run([*cmd, "-m", message or ""], timeout=20, check=False, capture_output=True)
+
+
+def configure_ssid(http_port: int, timeout_s: float = 60.0) -> str:
+    # The twin boots with no SSID, so WifiService sits in hotspot mode and the client correctly never connects.
+    deadline = time.time() + timeout_s
+    body = json.dumps({"SSID": "mqtt-twin-ssid"}).encode()
+    while time.time() < deadline:
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{http_port}/networking", data=body, method="PUT", headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as r:  # noqa: S310 - loopback twin
+                return r.read().decode()
+        except OSError:
+            time.sleep(0.5)
+    return "PUT /networking never answered"
+
+
+def wait_online(observer_log: Path, timeout_s: float) -> bool:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if observer_log.exists() and f" {BASE}/status " in observer_log.read_text(errors="replace") and " online" in observer_log.read_text(errors="replace"):
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def blackhole(port: int, on: bool) -> None:
@@ -135,10 +160,10 @@ def scenario(tl: Timeline, broker: Broker, port: int) -> None:
 
     tl.at(110)
     tl.mark("broker SIGSTOP (stall, connections stay open)")
-    broker.signal(signal.SIGSTOP)
+    broker.send(signal.SIGSTOP)
     tl.at(150)
     tl.mark("broker SIGCONT")
-    broker.signal(signal.SIGCONT)
+    broker.send(signal.SIGCONT)
 
     tl.at(180)
     tl.mark("iptables blackhole on the broker port (silent path loss)")
@@ -218,13 +243,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gc-threshold", default="-1")
     ap.add_argument("--heapsize", default="")
-    ap.add_argument("--duration", type=float, default=640.0)
+    ap.add_argument("--duration", type=float, default=720.0)
+    ap.add_argument("--baseline", action="store_true", help="same twin, no MQTT client, no faults: heap reference")
     ap.add_argument("--out", required=True)
     ap.add_argument("--micropython", default=str(Path.home() / "pico-toolchain/micropython/ports/unix/build-standard/micropython"))
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     port = free_port()
+    http_port = free_port()
+    shutil.rmtree(REPO / "digital_twin/config", ignore_errors=True)  # gitignored twin state: start every run clean
     blackhole(port, on=False)
     broker = Broker(port, out)
     broker.start()
@@ -235,31 +263,38 @@ def main() -> int:
         cmd += ["-X", f"heapsize={args.heapsize}"]
     cmd += [
         "mqtt_poc/prototype/run_dev_mqtt_twin.py", "--module", "sensortask_dev", "--wiring-plan", "build/generated_src/sensortask_dev_wiring_plan.json",
-        "--device", "dev", "--host", "127.0.0.1", "--port", str(free_port()), "--fram-state-path", "", "--scd30-state-path", "", "--gc-threshold", args.gc_threshold,
-        "--", "--broker-port", str(port), "--duration", str(args.duration), "--hammer", "290:30:200", "--wifi-drop", "330:2",
+        "--device", "dev", "--host", "127.0.0.1", "--port", str(http_port), "--fram-state-path", "", "--scd30-state-path", "", "--gc-threshold", args.gc_threshold,
+        "--", "--broker-port", str(port), "--duration", str(args.duration),
     ]
+    cmd += ["--no-mqtt"] if args.baseline else ["--hammer", "320:30:200", "--wifi-drop", "360:2"]
     env = dict(os.environ, MICROPYPATH=MICROPYPATH, TZ="UTC")
     t0 = time.time()
     with open(out / "twin.log", "w") as tw:
         twin = subprocess.Popen(cmd, cwd=REPO, env=env, stdout=tw, stderr=subprocess.STDOUT)  # noqa: S603 - fixed argv
         tl = Timeline(t0, out)
-        tl.mark(f"start broker_port={port} gc_threshold={args.gc_threshold} heapsize={args.heapsize or 'default'}")
+        tl.mark(f"start broker_port={port} gc_threshold={args.gc_threshold} heapsize={args.heapsize or 'default'} baseline={args.baseline}")
+        tl.mark("PUT /networking SSID: " + configure_ssid(http_port)[:200])
+        if not args.baseline:
+            seen = wait_online(out / "observer.log", 120.0)
+            tl.t0 = time.time()  # the fault timeline starts at the first connection, not at boot
+            tl.mark("first 'online' seen" if seen else "no 'online' within 120 s - timeline starts anyway")
         try:
-            scenario(tl, broker, port)
-            twin.wait(timeout=args.duration + 60)
+            if not args.baseline:
+                scenario(tl, broker, port)
+            twin.wait(timeout=args.duration + 120)
         except subprocess.TimeoutExpired:
             tl.mark("twin did not exit in time - SIGINT")
             twin.send_signal(signal.SIGINT)
             twin.wait(30)
         finally:
             blackhole(port, on=False)
-            broker.signal(signal.SIGCONT)
+            broker.send(signal.SIGCONT)
             observer.stop_flag = True
             broker.stop()
             if twin.poll() is None:
                 twin.kill()
     tl.mark(f"twin exit code {twin.returncode}")
-    summary = analyse(out, t0)
+    summary = analyse(out, tl.t0)
     summary["twin_exit"] = twin.returncode
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     printable = {k: v for k, v in summary.items() if k != "heap_series"}

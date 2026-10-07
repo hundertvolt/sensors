@@ -23,6 +23,7 @@ class HarnessArgs:
         self.meas_ms = 5000
         self.wifi_drops: list[tuple[float, int]] = []  # (at_s, failed reconnect attempts before success)
         self.hammers: list[tuple[float, float, int]] = []  # (at_s, for_s, msgs per second)
+        self.no_mqtt = False  # baseline: the same twin and samplers without the client
 
 
 def _parse_own(argv: "list[str]") -> HarnessArgs:
@@ -44,6 +45,8 @@ def _parse_own(argv: "list[str]") -> HarnessArgs:
         elif arg == "--wifi-drop":
             t, k = next(it).split(":")
             a.wifi_drops.append((float(t), int(k)))
+        elif arg == "--no-mqtt":
+            a.no_mqtt = True
         elif arg == "--hammer":
             t, d, r = next(it).split(":")
             a.hammers.append((float(t), float(d), int(r)))
@@ -152,6 +155,19 @@ async def main(base_argv: "list[str]", own: HarnessArgs) -> None:
         await asyncio.sleep_ms(50)
     module = rgi._booted_module
     await rgi._wait_until_built(module)
+    if own.no_mqtt:
+        print("MQTTEVENT", "%.3f" % time.time(), "baseline run: no MQTT client")
+        sampler = asyncio.create_task(_mem_sampler(own.mem_ms))
+        try:
+            await asyncio.sleep(own.duration_s)
+        finally:
+            sampler.cancel()
+            twin.cancel()
+            try:
+                await twin
+            except BaseException:  # noqa: BLE001 - shutting down
+                pass
+        return
     conn = module.conn
     cfg = MqttConfig(own.broker_host, own.broker_port, client_id="dev", prefix="sensors")
     client = MQTTClient(cfg, conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip)
