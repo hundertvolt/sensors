@@ -1,8 +1,8 @@
 # MQTT proof of concept — research and requirements
 
-**Status: RESEARCH, 2026-10-07 (agent).** No code has been written and nothing has been decided. This file
-consolidates one research round so the owner can answer the questions in section 8 before any design work
-starts. **Temporary**: like `PROJECT_AUDIT_PLAN.md`, it is deleted once the PoC's lasting outcomes
+**Status: REQUIREMENTS RECORDED, 2026-10-07.** No code has been written yet. This file consolidates one
+research round; the owner answered its questions on 2026-10-07 (section 8.0 records the answers and what
+follows from them for the design). **Temporary**: like `PROJECT_AUDIT_PLAN.md`, it is deleted once the PoC's lasting outcomes
 (code, settled decisions, new rules) have migrated into `SPECIFICATION.md`, `CLAUDE.md` or `BACKLOG.md`.
 
 **Branch.** `claude/whole-project-audit-plan-followup`, branched from the audit branch at `1cff5a2` (U14). The
@@ -397,9 +397,64 @@ assumption.
 
 ## 8. Questions for the owner (2026-10-07)
 
-Each: the decision in at most ten words, then the options, each with its consequence. The agent's
-recommendation is marked; none of these has been decided. No option touches any I2C, SPI or UART bus;
-the effects are on WiFi/lwIP, the heap, the flash filesystem, REST and the website.
+### 8.0 The owner's answers (owner, 2026-10-07)
+
+Asked in session as interactive questions; each answer is quoted as the owner gave it (an option label, or
+the owner's own text where none fitted). Two follow-ups, asked once the answers to 8.6 and 8.8 were in, are
+quoted with them.
+
+| # | Question as asked | Owner's answer (quoted) |
+|---|---|---|
+| 8.1 | "Which code: vendor mqtt_as, derive from it, or write our own client?" | "Own client (Recommended)" |
+| 8.2 | "Which devices carry the MQTT service, and is it on by default?" | "dev only, off (Recommended)" |
+| 8.3 | "Plain TCP only, or TLS as well?" | "Plain TCP (Recommended)" |
+| 8.4 | "Who pays for MQTT's permanent TCP connection in the lwIP / heap budget?" | "Web connections 6->5" |
+| 8.5 | "Broker credentials: stored and masked like the WiFi password?" | "Optional, masked (Recommended)" |
+| 8.6 | "What may received MQTT messages do?" | "They may trigger behaviours or contain values (e.g. external measurements)" |
+| 8.6 follow-up | "May a behaviour triggered by an MQTT message write to flash (persist settings)?" | "No flash writes (Recommended)" |
+| 8.7 | "What does the PoC publish and subscribe to?" | "Also measurements JSON" |
+| 8.8 | "Which broker do the tests run against?" | "mosquitto in CI" |
+| 8.8 follow-up | "How does mosquitto get into CI (and local test runs)?" | "apt package (Recommended)" |
+| 8.9 | "May MQTT connection loss ever trigger WiFi recovery?" | "Never (Recommended)" |
+| 8.10 | "Where and when does this merge, relative to the audit?" | "After audit closes" |
+
+**What follows for the design** (the agent's reading of the answers, agent, 2026-10-07; each traces to its row):
+- **8.1** A project-owned MQTT 3.1.1 client in `src/` (section 7's sketch); `mqtt_as` is a behavioural
+  reference, with MIT attribution for any part that ends up derived.
+- **8.2** Built into `dev` only, through `devices/dev.toml`; disabled until a broker host is configured, so
+  the twin and bench baselines stay clean. No other device's image changes.
+- **8.3** Plain TCP on 1883; no mbedTLS on the MQTT path.
+- **8.4** `devices/dev.toml` goes from `max_connections = 6` to 5 when the service lands, so the shared lwIP
+  ensemble in `toolchain/versions.toml` stays as it is; the freed slot is MQTT's. The other five devices
+  keep 6.
+- **8.5** Optional user/password in the module's config file, empty by default, masked on every GET.
+- **8.6** Received messages may carry values (e.g. external measurements) and trigger behaviours, **in RAM
+  only**: nothing an MQTT message causes may write to flash, so "every flash write comes through REST PUT"
+  (SPEC F.2, the WiFi power-cycle safety argument) stays true. The client therefore needs a dispatch
+  mechanism: subscriptions routed to registered consumers through the project's guarded callback dispatch
+  (SPEC G.2), every inbound value validated before use, and every consumer idempotent, since a retained
+  message is delivered again after each reconnect. In the PoC no other module consumes anything yet; the
+  mechanism plus a test consumer prove it.
+- **8.7** Besides the status/heartbeat topic with its "offline" last will and the subscribed test topic, the
+  PoC publishes each module's measurements as JSON, mirroring the REST `/measurements` key scheme (one key
+  scheme, OR58.a). That makes the topic layout and payloads a data contract, frozen at the release like the
+  REST API, and the publisher reads every module's public data (as the webserver's `/measurements` does).
+  Payloads stay small (the `ERR_MEM` stall, section 4 fact 6), so each module is its own message.
+- **8.8** A real mosquitto runs in CI and in local test runs, installed as an apt package through
+  `toolchain/versions.toml`'s `apt_packages` (unpinned: the distro's version on Ubuntu 24.04 and Debian
+  trixie). That change touches the build environment, so it gets a BACKLOG entry for the owner's next
+  chroot run. The mosquitto instance binds a free port found at run time, never 1883, so it can run beside
+  the other suites (CLAUDE.md's "two suites binding real ports" rule). A scripted fake broker is still
+  needed for faults mosquitto cannot produce on demand (dropped or duplicate PUBACKs, malformed lengths, a
+  broker that stops reading).
+- **8.9** MQTT connection loss never triggers WiFi recovery; the client resets only its own socket
+  (section 7.1) and exposes the "link up, transport dead" count as evidence.
+- **8.10** The PoC is developed on this branch, and nothing is merged into the audit branch; it merges only
+  after the audit closes (the PR then retargets `main`). The agent reads "the PoC waits for the audit" as
+  the merge waiting, not the development — to be confirmed by the owner.
+
+Each question below keeps its original options and consequences as asked. No option touches any I2C, SPI or
+UART bus; the effects are on WiFi/lwIP, the heap, the flash filesystem, REST and the website.
 
 **8.1 Which code: vendor, derive, or write our own?**
 - (a) Vendor `mqtt_as_eth` unmodified in `ext/`, wrapped from `src/` — inherits the field-proven session
