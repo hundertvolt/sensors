@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "../tests_js/_memory_markers.js";
 import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
+import { classifyConnections } from "./_page_load_connections.mjs";
 
 /** @typedef {import("./_cross_browser_probe.mjs").Probe} Probe */
 /** @typedef {import("./_cross_browser_probe.mjs").ProbeDefinitions} ProbeDefinitions */
@@ -38,10 +39,13 @@ const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 // @tunable l0.smoke_h1_wait_ms = 10000
 const H1_WAIT_MS = 10000;
-// The connections one page load may open, counted per engine at the proxy (SPECIFICATION.md H.7):
-// a higher count, or none at all, fails that engine's check.
+// The connections one page load opens for itself (the document and its assets, SPECIFICATION.md H.7), counted
+// per engine at the proxy apart from the data requests that follow: a higher count, or none, fails the check.
 // @tunable web.connections_per_page_load = 2
 const CONNECTIONS_PER_PAGE_LOAD = 2;
+// A Chromium-family engine sometimes opens one spare socket that carries no request; it is printed and bounded.
+// @tunable l0.smoke_speculative_connections_max = 1
+const SPECULATIVE_CONNECTIONS_MAX = 1;
 
 const CROSS_BROWSER_DIR = process.env.CROSS_BROWSER_TOOLCHAIN_DIR || path.join(homedir(), "cross-browser-toolchain");
 const FIREFOX_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff", "bin", "firefox");
@@ -120,15 +124,21 @@ async function waitUntilServing(url, timeoutMs) {
     throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
 }
 
-/** @typedef {{reset: () => void, count: () => number, close: () => Promise<void>}} CountingProxy */
+/** @typedef {{reset: () => void, firstRequests: () => (string | null)[], close: () => Promise<void>}} CountingProxy */
 
-/** A TCP proxy in front of the twin that counts every connection a browser opens through it. @returns {Promise<CountingProxy>} */
+/** A TCP proxy in front of the twin that records every connection a browser opens through it, with its first request line. @returns {Promise<CountingProxy>} */
 function startCountingProxy() {
-    let opened = 0;
+    /** @type {(string | null)[]} */
+    let firstRequests = [];
     /** @type {Set<net.Socket>} */
     const sockets = new Set();
     const server = net.createServer((client) => {
-        opened += 1;
+        const slot = firstRequests.length;
+        firstRequests.push(null);
+        client.once("data", (chunk) => {
+            const [line] = chunk.toString("latin1").split("\r\n", 1);
+            firstRequests[slot] = line ?? "";
+        });
         const upstream = net.connect(PORT, HOST);
         const close = () => {
             client.destroy();
@@ -150,9 +160,9 @@ function startCountingProxy() {
         server.listen(PROXY_PORT, HOST, () => {
             resolve({
                 reset: () => {
-                    opened = 0;
+                    firstRequests = [];
                 },
-                count: () => opened,
+                firstRequests: () => [...firstRequests],
                 close: () => new Promise((done) => {
                     for (const socket of sockets) {
                         socket.destroy();
@@ -164,12 +174,14 @@ function startCountingProxy() {
     });
 }
 
-/** Fails a check whose page load opened more connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {CountingProxy} proxy */
+/** Fails a check whose page load opened more of its own connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {CountingProxy} proxy */
 function checkPageLoadConnections(device, engine, proxy) {
-    const opened = proxy.count();
-    console.log(`connections per page load (${device} ${engine}): ${opened}`);
-    if (opened === 0 || opened > CONNECTIONS_PER_PAGE_LOAD) {
-        throw new Error(`the page load opened ${opened} connection(s) through the proxy; 1 to ${CONNECTIONS_PER_PAGE_LOAD} are registered for it`);
+    const firstRequests = proxy.firstRequests();
+    const { page, speculative, data } = classifyConnections(firstRequests);
+    console.log(`connections per page load (${device} ${engine}): ${page}, plus ${speculative} speculative and ${data} for its data requests`);
+    if (page === 0 || page > CONNECTIONS_PER_PAGE_LOAD || speculative > SPECULATIVE_CONNECTIONS_MAX) {
+        const seen = firstRequests.map((line) => line ?? "(no request)").join("; ");
+        throw new Error(`the page load opened ${page} connection(s) of its own and ${speculative} speculative through the proxy; 1 to ${CONNECTIONS_PER_PAGE_LOAD} and at most ${SPECULATIVE_CONNECTIONS_MAX} are registered (${seen})`);
     }
 }
 

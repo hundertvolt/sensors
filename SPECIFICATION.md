@@ -4809,7 +4809,8 @@ per Part B.14.2 — rather than lwIP's own default of 5. A page load stays well 
 **bundling** (seven modules concatenated into one `js/app.js`, plain text concatenation, safe since
 none use default exports/dynamic imports/re-exports) and **inlining** (`style.css` and the device's
 `definitions.json` embedded directly into the staged `index.html`, with `<` escaped to avoid a
-literal `</script` closing the tag early) — 2 connections per page load (down from ~9).
+literal `</script` closing the tag early) — 2 connections per page load (down from ~9), and a
+Chromium-family engine sometimes opens one more, a speculative spare socket that carries no request.
 
 **`max_connections` is `6`** (owner, 2026-09-24, `db3bf52`; evidence below), stated per device in
 `devices/*.toml` and checked against the firmware's own PCB count by `buildgen/validate.py`. **The
@@ -7383,6 +7384,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.live_twin_section_wait_ms` | 10000 ms | `tests_js/_live_twin_command.js` — `10000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.live_twin_tab_wait_ms` | 20000 ms | `tests_js/_live_twin_command.js` — `20000` | — | estimated (agent, `9751814`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.smoke_h1_wait_ms` | 10000 ms | `scripts/cross_browser_smoke.mjs` — `10000` | — | estimated (agent, `7ff3c3c`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 (the smoke) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.smoke_speculative_connections_max` | 1 | `scripts/cross_browser_smoke.mjs` — `1` | read beside `web.connections_per_page_load`: each spare socket holds a device connection slot until the server reclaims it | measured (agent, 2026-10-07): Chromium opened one spare socket carrying no request in 3 of 36 local page loads (wozi, arzi and schlafzi, mobile viewport), never two | the observed maximum | an engine's connection predictor changes, or an engine is added |
 | `l0.poll_manager_poll_ms` | 20 ms | `tests_js/poll-manager.test.js` — `20` | — | estimated (agent, `999aada`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 
 **L1 (unit tier)**
@@ -7421,7 +7423,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.connections_per_page_load` | 2 | `tests/_webserver_concurrency_scenarios.py` — `2`; `scripts/cross_browser_smoke.mjs` — `2` | ≤ the largest shipped `max_connections` (checked by `tests_scripts/test_tunables_register.py`); the concurrency scenarios' tab count `max(2, ceiling // 2)`; `web.poll_interval_ms`'s load | estimated (agent, `31da2b3`) — measurement owed: connections per page load per engine, counted by `scripts/cross_browser_smoke.mjs`, L2 (H.7 states the Chromium figure) | unknown until measured | a page's bundling or inlining changes, or an engine is added |
+| `web.connections_per_page_load` | 2 | `tests/_webserver_concurrency_scenarios.py` — `2`; `scripts/cross_browser_smoke.mjs` — `2` | ≤ the largest shipped `max_connections` (checked by `tests_scripts/test_tunables_register.py`); the concurrency scenarios' tab count `max(2, ceiling // 2)`; `web.poll_interval_ms`'s load; `l0.smoke_speculative_connections_max` beside it | measured (agent, 2026-10-07): the document and its script, 2 on every device in Chromium, both viewports, three local smoke runs, L2; CI's first run (2026-10-07) counted 3 with the first data request inside its window, which the smoke now counts apart | none: the count is exact while the page bundles one script | a page's bundling or inlining changes, or an engine is added |
 | `l2.reset_errors_timeout_margin_s` | 2.0 s | `scripts/_digital_twin_ci_suite.py` — `2.0` | `_RESET_ERRORS_TIMEOUT_S` = `web.outer_cap_s` + it | estimated (agent, `5506f44`) — measurement owed: the ResetErrors request's elapsed past the cap on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.reset_errors_budget_ratio` | 0.8 | `scripts/_digital_twin_ci_suite.py` — `0.8` | `_RESET_ERRORS_BUDGET_S` = `web.outer_cap_s` × it | estimated (agent, `d370413`) — measurement owed: the ResetErrors sweep's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.ceiling_rounds` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | back-to-back ceiling rounds expose a leaked slot | estimated (agent, `d02ccc9`) — measurement owed: the rounds a leaked slot needs to show on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |

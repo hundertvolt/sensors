@@ -226,6 +226,7 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U8 | M.SPEC.135 (5)'s Part N citations are not written | the values it names are UART contract constants, never tagged |
 | U8 | Four `l4.*` rows cite the H.7.1 bench measurements as Basis, run counts unrecorded, re-measure owed | the code's own comments cite that measurement |
 | U8 | `fram.verify_present_lock_timeout_s` and the seconds-named IDs are U8-stage names | their end-state names arrive with later units |
+| U8 | The cross-browser smoke counts a page load's own connections by their first request, apart from the data requests that follow and from a speculative spare socket (at most one, `l0.smoke_speculative_connections_max`) | the page's footprint is the document and its script (H.7); the first data request and Chromium's spare socket made CI count 3 |
 
 ## Parked deltas (OR2.c, OR106.a)
 
