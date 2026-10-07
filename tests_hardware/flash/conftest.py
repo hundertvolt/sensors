@@ -15,6 +15,10 @@ if TYPE_CHECKING:
 _DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 
 
+# @tunable l3.conftest_scd30_rw_script_timeout_s = 90.0
+_SCD30_RW_SCRIPT_TIMEOUT_S = 90.0
+
+
 @pytest.fixture(scope="session")
 def scd30_continuous_measurement_triggered(board: Board, request: pytest.FixtureRequest) -> None:
     """Runs scd30_same_device_rw_concurrency.py once per pytest session - the one real NVM-persisted
@@ -29,5 +33,5 @@ def scd30_continuous_measurement_triggered(board: Board, request: pytest.Fixture
             "requesting test is missing @pytest.mark.persistence_write, so it wasn't deselected by "
             "tests_hardware/conftest.py's pytest_collection_modifyitems() as it should have been.",
         )
-    output = board.run_isolated(_DEVICE_SCRIPTS / "scd30_same_device_rw_concurrency.py", timeout_s=90.0)
+    output = board.run_isolated(_DEVICE_SCRIPTS / "scd30_same_device_rw_concurrency.py", timeout_s=_SCD30_RW_SCRIPT_TIMEOUT_S)
     assert "RESULT: PASS" in output, f"failed to trigger SCD30 continuous measurement (the one real NVM write this test group makes):\n{output}"

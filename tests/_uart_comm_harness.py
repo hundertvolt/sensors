@@ -33,11 +33,17 @@ if TYPE_CHECKING:
         def __call__(self, cmd_id: int, cmd: int, payload: "bytearray | None") -> object: ...
 
 PAYLOAD_SIZE = 8
+# @tunable l1.uart_comm_harness_timeout_ms = 100
 TIMEOUT_MS = 100
+# @tunable l1.uart_comm_harness_poll_wait_ms = 1
 POLL_WAIT_MS = 1
+# @tunable l1.uart_comm_harness_run_limit_s = 10
+RUN_LIMIT_S = 10
+# @tunable l1.uart_comm_harness_listener_drain_s = 5
+LISTENER_DRAIN_S = 5
 
 
-def run(coro: "Coroutine[Any, Any, T]", limit: int = 10) -> "T":
+def run(coro: "Coroutine[Any, Any, T]", limit: int = RUN_LIMIT_S) -> "T":
     # Every test is bounded: a protocol wedge must surface as a fast FAIL, never as a hung file.
     return asyncio.run(asyncio.wait_for(coro, limit))
 
@@ -94,22 +100,12 @@ class Pair:
     def wire_from_responder(self) -> bytes:
         return bytes(self.link.direction_from(self.fake_b).wire_log)
 
-    async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1) -> "T":
+    async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
         # Runs the responder's listen loop alongside the initiator's call: a stop-and-wait exchange
-        # only progresses when both ends are scheduled. The initiator returning does not mean the
-        # responder is done, so the listener is awaited out and cancelled only if it truly stalls.
+        # only progresses when both ends are scheduled. A listener still short of its rounds after the
+        # drain fails the exchange, unless the test declares the stall (a frame it cut on purpose).
         listener = asyncio.create_task(self._listen_rounds(rounds))
-        try:
-            return await work
-        finally:
-            try:
-                await asyncio.wait_for(listener, 5)
-            except asyncio.TimeoutError:
-                listener.cancel()
-                try:
-                    await listener
-                except asyncio.CancelledError:  # expected; anything else is a real failure
-                    pass
+        return await awaited_with_listener(work, listener, rounds, may_stall=listener_may_stall)
 
     async def _listen_rounds(self, rounds: int) -> None:
         for _ in range(rounds):
@@ -138,3 +134,30 @@ def accept_set(exp_size: "int | None" = None) -> "CommCallback":
         return True, exp_size
 
     return callback
+
+
+async def awaited_with_listener(work: "Coroutine[Any, Any, T]", listener: "asyncio.Task[None]", rounds: int, *, may_stall: bool) -> "T":
+    # The initiator's own failure wins: a stall behind it is its consequence, never reported over it.
+    try:
+        result = await work
+    except BaseException:
+        await _drain_listener(listener)
+        raise
+    if not await _drain_listener(listener) and not may_stall:
+        msg = f"the responder's listener did not finish its {rounds} round(s) within {LISTENER_DRAIN_S} s"
+        raise AssertionError(msg)
+    return result
+
+
+async def _drain_listener(listener: "asyncio.Task[None]") -> bool:
+    # True when the listener finished its rounds; a stalled one is cancelled and reported as False.
+    try:
+        await asyncio.wait_for(listener, LISTENER_DRAIN_S)
+    except asyncio.TimeoutError:
+        listener.cancel()
+        try:
+            await listener
+        except asyncio.CancelledError:  # expected; anything else is a real failure
+            pass
+        return False
+    return True

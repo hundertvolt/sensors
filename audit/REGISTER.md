@@ -30,7 +30,7 @@ lease and resumption procedure.
 | U6 | one-source website definitions | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U6_close.md`; evidence `audit/artefacts/evidence/U6_close/`, `U5_neopixel_wakeup_latency/` |
 | U7 | tier ladder and runner summary block | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U7_close.md`; evidence `audit/artefacts/evidence/U7_close/` |
 | U8 | `@tunable` scheme | done 2026-10-06 | the unit's one commit; scan `audit/sweeps/scan_runs/20261006_U8_close.md`; evidence `audit/artefacts/evidence/U8_close/` |
-| U8C | `@tunable` classification of tests | not started | — |
+| U8C | `@tunable` classification of tests | done 2026-10-07 | the unit's one commit; scan `audit/sweeps/scan_runs/20261007_U8C_close.md`; evidence `audit/artefacts/evidence/U8C_close/` |
 | U8C2 | search gaps of the test-tier classification | not started | — |
 | U9 | LED pilot | not started | — |
 | U10 | XCUT: system-wide contracts | not started | — |
@@ -227,6 +227,16 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U8 | Four `l4.*` rows cite the H.7.1 bench measurements as Basis, run counts unrecorded, re-measure owed | the code's own comments cite that measurement |
 | U8 | `fram.verify_present_lock_timeout_s` and the seconds-named IDs are U8-stage names | their end-state names arrive with later units |
 | U8 | The cross-browser smoke counts a page load's own connections by their first request, apart from the data requests that follow and from a speculative spare socket (at most one, `l0.smoke_speculative_connections_max`) | the page's footprint is the document and its script (H.7); the first data request and Chromium's spare socket made CI count 3 |
+| U8C | A tag a lane placed on a real literal stays and gets its Part N row, though its merged text sits in U8C2 (`l1.asy_notification_service_elapsed_stimulus_ms`, the `*_wdt_feed_every` and feed-step tags, the A.U8C2.15 `l1.uart_comm_hazard_*` constants, `l1.asy_uart_comm_prompt_hold_ms`) | U8's ruling: a row with no tag, or a tag with no row, fails the register check; values unchanged |
+| U8C | Rows whose step depends on a later unit are removed until that step lands (`l2.webserver_concurrency_scenarios_*`, A.U8C.04, with U25; `l1.asy_wifi_service_no_reply_wait_s`) | the work order places those tags in the later step; a row with no tag fails the check |
+| U8C | Five rows are added for tags the lanes placed with no row (`l1.asy_ntp_client_serve_wait_s`, the heap-layout starter's grace and poll, `l3.isl29125_lighting_scenarios_step_ms`, `l3.scheduler_saturation_drop_busy_wait_ms`) | same ruling: the literal is real and tagged |
+| U8C | `l3.heap_headroom_after_full_system_build_max_used`'s site keeps the code's spelling `100_000` | the register compares the site literal as written |
+| U8C | `RUN_LIMIT_S` and `LISTENER_DRAIN_S` are public in `tests/_uart_comm_harness.py` | the link-driver test imports them instead of restating the values |
+| U8C | A responder listener that does not finish its rounds fails the exchange; a test that stalls the responder by design passes `listener_may_stall=True` | the harness cancelled the stall silently (SF-U8C-01); the owner's evidence rule |
+| U8C | The U8C2 content lane C met inside U8C steps (`_PROMPT_HOLD_MS` and its derived hold; A.U8C2.15's hazard constants) is kept | the merged text of a U8C step carries it |
+| U8C | `soak_tiers.py` keeps its name; its tags already use the end-state `l4.soak_duration_*` IDs | the rename and its importers are U26's stage |
+| U8C | Tags the merged text withdraws or leaves to a later unit are not written (`l4.network_resilience_crash_check_tail_s`, the four `l3.watchdog_starvation_reachable*`, the toolchain-flash-boot reachable timeout and poll, the driven-time waits) | the later units delete or move those literals |
+| U8C | The pushed U8 smoke fix is carried into the unit's tree as the fix's diff alone | the U8 squash and the lane history share content, not ancestry |
 
 ## Parked deltas (OR2.c, OR106.a)
 

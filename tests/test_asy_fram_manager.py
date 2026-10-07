@@ -41,6 +41,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_fram_manager_read_wait_s = 5
+_READ_WAIT_S = 5
+
+
 def make_bus() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
@@ -802,7 +806,7 @@ def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever
     run(chunk.write(b"data"))
 
     async def scenario() -> bytearray | None:
-        return await asyncio.wait_for(chunk.read(), timeout=5)
+        return await asyncio.wait_for(chunk.read(), timeout=_READ_WAIT_S)
 
     assert run(scenario()) == bytearray(b"data")  # block 1 unverifiable -> healed from block 0
     # Pinned, not just "some error": a bench session reads these codes out of the FRAM log to

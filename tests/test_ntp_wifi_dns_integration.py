@@ -34,6 +34,17 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l1.ntp_wifi_dns_integration_lock_blocked_wait_s = 0.05
+_LOCK_BLOCKED_WAIT_S = 0.05
+# @tunable l1.asy_ntp_client_serve_wait_s = 5
+_SERVE_WAIT_S = 5
+# @tunable l1.asy_ntp_client_state_poll_ms = 20
+_STATE_POLL_MS = 20
+# @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100
+_FETCH_TIMEOUT_NO_REPLY_MS = 100
+# @tunable l1.ntp_wifi_dns_integration_past_fetch_timeout_ms = 150
+_PAST_FETCH_TIMEOUT_MS = 150
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
@@ -225,7 +236,7 @@ def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -
         assert conn.get_dns_server_ip() is None  # conn's own accessor correctly degrades right now
         blocked = False
         try:
-            await asyncio.wait_for(conn._select_wifi_mode(network.AP_IF), 0.05)
+            await asyncio.wait_for(conn._select_wifi_mode(network.AP_IF), _LOCK_BLOCKED_WAIT_S)
         except asyncio.TimeoutError:
             blocked = True  # conn's own mode switch is genuinely stuck waiting on the shared lock
         await _cancel(task)
@@ -343,11 +354,11 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
                 task = asyncio.create_task(ntp.asy_ntp_time())
                 server_task = asyncio.create_task(server.serve_once(reply))
                 ntp.ntp_sync_trigger_event.set()
-                await asyncio.wait_for(server_task, 5)
+                await asyncio.wait_for(server_task, _SERVE_WAIT_S)
                 for _ in range(50):
                     if await ntp.ntp_issynced():
                         break
-                    await asyncio.sleep_ms(20)
+                    await asyncio.sleep_ms(_STATE_POLL_MS)
                 synced = await ntp.ntp_issynced()
                 last_sync = await ntp.get_last_ntp_sync()
                 await _cancel(task)
@@ -375,7 +386,7 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
     conn = make_conn()
     connect_wlan(conn)
     server = FakeNtpServer()
-    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=100)
+    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=_FETCH_TIMEOUT_NO_REPLY_MS)
 
     async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
         try:
@@ -384,7 +395,7 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
                 # Far past the old five-failure give-up, each cycle bounded by the 100ms fetch timeout.
                 for _ in range(8):
                     ntp.ntp_sync_trigger_event.set()
-                    await asyncio.sleep_ms(150)
+                    await asyncio.sleep_ms(_PAST_FETCH_TIMEOUT_MS)
                 still_running = not task.done()
                 task.cancel()
                 try:

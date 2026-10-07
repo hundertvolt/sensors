@@ -11,6 +11,8 @@ from asy_bmp3xx_driver import BMP3xx_Reader
 
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
+# @tunable l3.bmp3xx_plausibility_read_poll_s = 0.5
+_POLL_S = 0.5
 
 
 async def _main() -> None:
@@ -34,7 +36,7 @@ async def _main() -> None:
         if data.Pres is not None:
             break
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_POLL_S)
 
     died: list[str] = []
     for task in (trigger_task, read_task):

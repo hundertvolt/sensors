@@ -17,9 +17,12 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l1.framing_codecs_run_bound_s = 5
+_RUN_BOUND_S = 5
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(asyncio.wait_for(coro, 5))
+    return asyncio.run(asyncio.wait_for(coro, _RUN_BOUND_S))
 
 
 def encoded(codec: "Framing_Pass | Framing_COBS", payload: bytes) -> bytes:

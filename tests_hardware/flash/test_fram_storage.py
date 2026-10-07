@@ -19,6 +19,22 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
+# @tunable l3.fram_storage_short_script_timeout_s = 30.0
+_SHORT_SCRIPT_TIMEOUT_S = 30.0
+# @tunable l3.fram_storage_backup_script_timeout_s = 150.0
+_BACKUP_SCRIPT_TIMEOUT_S = 150.0
+# @tunable l3.fram_storage_reachable_timeout_s = 30.0
+_REACHABLE_TIMEOUT_S = 30.0
+# @tunable l3.fram_storage_reachable_poll_s = 1.0
+_REACHABLE_POLL_S = 1.0
+# @tunable l3.fram_storage_script_timeout_s = 60.0
+_SCRIPT_TIMEOUT_S = 60.0
+# @tunable l3.fram_storage_pause_script_timeout_s = 90.0
+_PAUSE_SCRIPT_TIMEOUT_S = 90.0
+# @tunable l3.fram_storage_lockout_script_timeout_s = 45.0
+_LOCKOUT_SCRIPT_TIMEOUT_S = 45.0
+
+
 def _run_and_assert_pass(board: Board, script_name: str, timeout_s: float, label: str) -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / script_name, timeout_s=timeout_s)
     match = RESULT_RE.search(output)
@@ -32,7 +48,7 @@ def _run_and_assert_pass(board: Board, script_name: str, timeout_s: float, label
 
 
 def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: Board) -> None:
-    _run_and_assert_pass(board, "fram_manager_roundtrip.py", timeout_s=30.0, label="FRAM chunk manager roundtrip")
+    _run_and_assert_pass(board, "fram_manager_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM chunk manager roundtrip")
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +59,7 @@ def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: Board) ->
 def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: Board) -> None:
     # ~90s real runtime (60s to the first natural BackupPeriod trigger, plus restore-cycle margin)
     # - see the device script's own docstring; timeout is generous relative to that.
-    _run_and_assert_pass(board, "sgp40_fram_backup_restore.py", timeout_s=150.0, label="SGP40 FRAM backup/restore")
+    _run_and_assert_pass(board, "sgp40_fram_backup_restore.py", timeout_s=_BACKUP_SCRIPT_TIMEOUT_S, label="SGP40 FRAM backup/restore")
 
 
 # ---------------------------------------------------------------------------
@@ -52,16 +68,16 @@ def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: Boar
 
 
 def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(board: Board) -> None:
-    _run_and_assert_pass(board, "fram_error_log_roundtrip.py", timeout_s=30.0, label="FRAM error log roundtrip")
+    _run_and_assert_pass(board, "fram_error_log_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM error log roundtrip")
 
 
 def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: Board) -> None:
     # The other half of the claim above, which simulates a fresh boot in the SAME process and so
     # only ever shows the happy path. Losing the whole history to a reset landing mid-write is
     # accepted (owner, 2026-09-11; Part C.3.1); a PARTIAL restore never is, and is what this asserts.
-    board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_error_log_reset_race_seed_and_race.py", timeout_s=30.0)
-    wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the reset-raced error-log write")
-    _run_and_assert_pass(board, "fram_error_log_reset_race_verify.py", timeout_s=60.0, label="FRAM error-log reset-race all-or-nothing check")
+    board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_error_log_reset_race_seed_and_race.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S)
+    wait_until(board.is_reachable, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board reachable again after the reset-raced error-log write")
+    _run_and_assert_pass(board, "fram_error_log_reset_race_verify.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM error-log reset-race all-or-nothing check")
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +88,7 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
 
 
 def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(board: Board) -> None:
-    _run_and_assert_pass(board, "fram_error_log_reset_during_boot_window.py", timeout_s=60.0, label="FRAM error-log boot-window reset check")
+    _run_and_assert_pass(board, "fram_error_log_reset_during_boot_window.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM error-log boot-window reset check")
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +102,7 @@ def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(boar
 
 
 def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: Board) -> None:
-    _run_and_assert_pass(board, "fram_write_protect_roundtrip.py", timeout_s=30.0, label="FRAM write-protect roundtrip")
+    _run_and_assert_pass(board, "fram_write_protect_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM write-protect roundtrip")
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +116,7 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
     # ~20s of real waiting inside the script (the 2s/2s/6s auto-unpause windows plus margins, and
     # the exhausted-alarm-pool step's own window), so the timeout is generous relative to that
     # rather than to the script's negligible compute.
-    _run_and_assert_pass(board, "fram_pause_unpause_and_gating.py", timeout_s=90.0, label="FRAM pause/unpause gating")
+    _run_and_assert_pass(board, "fram_pause_unpause_and_gating.py", timeout_s=_PAUSE_SCRIPT_TIMEOUT_S, label="FRAM pause/unpause gating")
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +127,7 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 
 
 def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: Board) -> None:
-    _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=45.0, label="FRAM busy-status lockout")
+    _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=_LOCKOUT_SCRIPT_TIMEOUT_S, label="FRAM busy-status lockout")
 
 
 # ---------------------------------------------------------------------------
@@ -122,4 +138,4 @@ def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: 
 
 
 def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: Board) -> None:
-    _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=60.0, label="FRAM capacity check")
+    _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM capacity check")

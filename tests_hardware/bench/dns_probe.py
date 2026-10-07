@@ -9,6 +9,8 @@ import socket
 import struct
 
 _DNS_PORT = 53
+# @tunable l4.dns_probe_query_timeout_s = 5.0
+_QUERY_TIMEOUT_S = 5.0
 
 
 def build_query(hostname: str) -> tuple[bytes, bytes]:
@@ -24,7 +26,7 @@ def build_query(hostname: str) -> tuple[bytes, bytes]:
     return header + question, txn_id
 
 
-def query(server_ip: str, hostname: str, timeout_s: float = 5.0, raw_query: bytes | None = None) -> bytes | None:
+def query(server_ip: str, hostname: str, timeout_s: float = _QUERY_TIMEOUT_S, raw_query: bytes | None = None) -> bytes | None:
     """Sends `raw_query` (or a freshly-built one for `hostname`) to `server_ip:53` over UDP,
     returning the raw response or None on timeout - never raises, since "no response" is itself a
     real, assertable outcome (a malformed/off-subnet query should be silently dropped)."""

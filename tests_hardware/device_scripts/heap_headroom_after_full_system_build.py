@@ -15,10 +15,13 @@ gc.threshold(-1)
 # Doubling/halving search bounds for the largest contiguous block. 64 B is below anything worth
 # reporting; 192 KB is already above the RP2040's whole 264 KB SRAM, so the search always converges
 # from a real failure rather than running off the top.
+# @tunable l3.heap_headroom_after_full_system_build_probe_min = 64
 _PROBE_MIN = 64
+# @tunable l3.heap_headroom_after_full_system_build_probe_max_kib = 192
 _PROBE_MAX = 192 * 1024
 # Rereads allowed when the probe pins its own buffer (see _report_checked). Three is generous: one
 # has always been enough on the twin, at every heap size tried.
+# @tunable l3.heap_headroom_after_full_system_build_probe_retries = 3
 _PROBE_RETRIES = 3
 
 # The largest contiguous allocation this firmware could be asked to make when these floors were
@@ -36,6 +39,7 @@ _MIN_LARGEST_BLOCK = 2 * _WORST_CASE_ALLOCATION
 # Survivor volume. Every [HW] reading of a fully built dev graph is 87,760-87,968 B, so this is
 # ~14% over the measured cost of the object graph itself, and catches a regression that adds
 # permanent objects rather than one that scatters them.
+# @tunable l3.heap_headroom_after_full_system_build_max_used = 100_000
 _MAX_USED = 100_000
 
 

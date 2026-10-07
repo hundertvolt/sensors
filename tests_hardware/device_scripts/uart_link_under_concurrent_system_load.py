@@ -21,20 +21,36 @@ from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UA
 BAUDRATE = 115200
 PAYLOAD_SIZE = 48
 TIMEOUT_MS = 1000
+# @tunable dev.uart_poll_wait_ms = 2
 POLL_WAIT_MS = 2
+# @tunable dev.uart_poll_idle_ms = 50
 POLL_IDLE_MS = 50
+# @tunable dev.uart_rxbuf = 512
 BUF_BYTES = 512
 _CMD_BANNER = 0x01
 _BANNER = b"loaded-link-ok"
+# @tunable l3.uart_link_under_concurrent_system_load_run_ms = 12000
 RUN_MS = 12000  # long enough for a second measurement window to mean something
 # A stop-and-wait round trip is a few ms; over this window even a heavily loaded board should land
 # many. The floor is deliberately far below the unloaded rate - this asserts the link keeps making
 # progress under load, not a throughput number.
+# @tunable l3.uart_link_under_concurrent_system_load_min_transfers = 20
 _MIN_TRANSFERS = 20  # measured 58 unloaded-by-comparison; this is a floor, not a throughput target
 # No transfer may come close to its own deadline: half the timeout still leaves the link visibly
 # healthy rather than merely not-yet-failing. Measured worst case under this load is ~114ms.
 _MAX_RTT_MS = TIMEOUT_MS // 2
+# @tunable l3.uart_link_under_concurrent_system_load_churn_block = 512
 _CHURN_BLOCK = 512  # bytes per allocation in the churn task - enough to fragment, far from the cap
+# @tunable l3.uart_link_under_concurrent_system_load_sensor_load_step_ms = 5
+_SENSOR_LOAD_STEP_MS = 5
+# @tunable l3.uart_link_under_concurrent_system_load_spi_load_step_ms = 10
+_SPI_LOAD_STEP_MS = 10
+# @tunable l3.uart_link_under_concurrent_system_load_churn_step_ms = 2
+_CHURN_STEP_MS = 2
+# @tunable l3.uart_link_under_concurrent_system_load_heap_sample_step_ms = 8
+_HEAP_SAMPLE_STEP_MS = 8
+# @tunable l3.uart_link_under_concurrent_system_load_transfer_step_ms = 5
+_TRANSFER_STEP_MS = 5
 
 
 def get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
@@ -67,7 +83,7 @@ async def _sgp_load_loop(sgp: "SGP40_I2C", load: Load) -> None:
             load.i2c1_reads += 1
         except Exception:  # a device fault is a different tier's subject; counted so it stays visible
             load.i2c_errors += 1
-        await asyncio.sleep_ms(5)
+        await asyncio.sleep_ms(_SENSOR_LOAD_STEP_MS)
 
 
 async def _scd_load_loop(scd: SCD30_I2C, load: Load) -> None:
@@ -78,14 +94,14 @@ async def _scd_load_loop(scd: SCD30_I2C, load: Load) -> None:
             load.i2c0_reads += 1
         except Exception:
             load.i2c_errors += 1
-        await asyncio.sleep_ms(5)
+        await asyncio.sleep_ms(_SENSOR_LOAD_STEP_MS)
 
 
 async def _fram_read_loop(fram: AsyFramManager, load: Load) -> None:
     while not load.stop:
         if await fram.fram.verify_present():
             load.spi_reads += 1
-        await asyncio.sleep_ms(10)
+        await asyncio.sleep_ms(_SPI_LOAD_STEP_MS)
 
 
 async def _memory_churn_loop(load: Load) -> None:
@@ -102,7 +118,7 @@ async def _memory_churn_loop(load: Load) -> None:
             gc.collect()
         if len(held) > 24:
             held = held[12:]
-        await asyncio.sleep_ms(2)
+        await asyncio.sleep_ms(_CHURN_STEP_MS)
 
 
 async def _heap_floor() -> int:
@@ -114,7 +130,7 @@ async def _heap_floor() -> int:
         gc.collect()
         sample = gc.mem_alloc()
         floor = sample if not floor else min(floor, sample)
-        await asyncio.sleep_ms(8)
+        await asyncio.sleep_ms(_HEAP_SAMPLE_STEP_MS)
     return floor
 
 
@@ -182,7 +198,7 @@ async def _main() -> None:
                 worst_rtt_ms = max(worst_rtt_ms, rtt)
             else:
                 link_failures += 1
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_TRANSFER_STEP_MS)
     finally:
         # Sampled the same way and while the same loads still run, so both ends are comparable
         # floors - stopping the loads first would bias the difference negative instead.

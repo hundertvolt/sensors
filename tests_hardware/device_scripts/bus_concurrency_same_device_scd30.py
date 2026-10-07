@@ -13,12 +13,23 @@ CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
+# @tunable l3.bus_concurrency_same_device_scd30_reader_iterations = 120
 READER_ITERATIONS = 120
+# @tunable l3.bus_concurrency_same_device_scd30_snapshotter_iterations = 40
 SNAPSHOTTER_ITERATIONS = 40
 # setup()'s soft reset leaves the NVM-persisted measurement interval running, so data-ready is
 # raised while the registers still hold the first unsettled conversion - read back as a stuck
 # CO2 on every early iteration. scd30_same_device_rw_concurrency.py carries the same constant.
+# @tunable l3.scd30_same_device_rw_concurrency_settle_s = 12.0
 _SETTLE_S = 12.0
+# @tunable l3.scd30_same_device_rw_concurrency_settle_step_s = 0.5
+_SETTLE_STEP_S = 0.5
+# @tunable l3.bus_concurrency_same_device_scd30_run_bound_s = 90.0
+_RUN_BOUND_S = 90.0
+# @tunable l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every = 10
+_READER_WDT_FEED_EVERY = 10
+# @tunable l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every = 5
+_SNAPSHOT_WDT_FEED_EVERY = 5
 
 
 async def _main() -> None:
@@ -34,10 +45,10 @@ async def _main() -> None:
     # Deliberately discarded - see _SETTLE_S. read_measurement() is called rather than just slept
     # through, because data-ready clears the instant it is read: consuming the stale conversion is
     # what actually clears it, so sleeping alone would leave it waiting in the registers.
-    for _ in range(int(_SETTLE_S / 0.5)):
+    for _ in range(int(_SETTLE_S / _SETTLE_STEP_S)):
         await scd.read_measurement()
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_SETTLE_STEP_S)
 
     reader_errors = []
     reader_completed = 0
@@ -61,7 +72,7 @@ async def _main() -> None:
             except Exception as e:
                 reader_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             reader_completed += 1
-            if i % 10 == 0:
+            if i % _READER_WDT_FEED_EVERY == 0:
                 wdt.feed()
 
     async def snapshotter() -> None:
@@ -76,10 +87,10 @@ async def _main() -> None:
             except Exception as e:
                 snapshot_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             snapshot_completed += 1
-            if i % 5 == 0:
+            if i % _SNAPSHOT_WDT_FEED_EVERY == 0:
                 wdt.feed()
 
-    await asyncio.wait_for(asyncio.gather(reader(), snapshotter()), 90.0)
+    await asyncio.wait_for(asyncio.gather(reader(), snapshotter()), _RUN_BOUND_S)
 
     failures = []
     if reader_completed != READER_ITERATIONS:

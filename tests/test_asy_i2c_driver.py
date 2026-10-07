@@ -23,6 +23,12 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_i2c_driver_gather_wait_s = 1.0
+_GATHER_WAIT_S = 1.0
+# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
+_DEADLOCK_WAIT_S = 0.2
+
+
 def make_i2c() -> I2C:
     return I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
 
@@ -716,7 +722,7 @@ def test_four_concurrent_sessions_all_complete_and_stay_serialized() -> None:
             completed += 1
 
     async def scenario() -> None:
-        await asyncio.wait_for(asyncio.gather(*(worker(d) for d in devices)), 1.0)
+        await asyncio.wait_for(asyncio.gather(*(worker(d) for d in devices)), _GATHER_WAIT_S)
 
     run(scenario())
     assert max_concurrent == 1
@@ -840,7 +846,7 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
 
     async def scenario() -> bool:
         try:
-            await asyncio.wait_for(reentrant(), 0.2)
+            await asyncio.wait_for(reentrant(), _DEADLOCK_WAIT_S)
         except asyncio.TimeoutError:
             return True
         else:

@@ -26,10 +26,17 @@ _FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "ISL29125", "NEOPI
 # 4 GET threads at true max speed (unlike the modest, soak-gated test below) plus 1 thread
 # PUTting SGP40.SGPResetVOC every 3s - reproduces the request density that originally found real
 # MemoryErrors within 45s. Not soak-tier gated - 120s needs no --soak-tier flag to run.
+# @tunable l4.memory_stress_bench_hammer_duration_s = 120.0
 _HAMMER_DURATION_S = 120.0
 _HAMMER_PATHS = ("/measurements", "/sensors")
 _HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: the hammer must
 # saturate admission, so it scales with max_connections rather than restating what it once was
+
+
+# @tunable l4.memory_stress_bench_fetch_timeout_s = 5.0
+_FETCH_TIMEOUT_S = 5.0
+# @tunable l4.memory_stress_bench_join_timeout_s = 10.0
+_JOIN_TIMEOUT_S = 10.0
 
 
 def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
@@ -45,7 +52,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
             path = _HAMMER_PATHS[i % len(_HAMMER_PATHS)]
             i += 1
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=5.0)
+                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_FETCH_TIMEOUT_S)
                 with lock:
                     if res.status_code == 200:
                         success_count += 1
@@ -62,7 +69,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
         nonlocal success_count
         while not stop.wait(3.0):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=5.0)
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
                 with lock:
                     if res.status_code == 200:
                         success_count += 1
@@ -81,7 +88,7 @@ def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> 
     finally:
         stop.set()
         for t in threads:
-            t.join(timeout=10.0)
+            t.join(timeout=_JOIN_TIMEOUT_S)
     return lines, success_count, request_errors
 
 
@@ -150,7 +157,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
             path = paths[i % len(paths)]
             i += 1
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=5.0)
+                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_FETCH_TIMEOUT_S)
                 if res.status_code != 200:
                     request_errors.append(f"GET {path} -> {res.status_code}")
             except (OSError, http_client.HTTP_ERROR) as exc:  # a real transient network hiccup during a long soak is expected sometimes
@@ -163,7 +170,7 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
         lines = board.tail_log(duration_s=duration_s)
     finally:
         stop.set()
-        hammer_thread.join(timeout=10.0)
+        hammer_thread.join(timeout=_JOIN_TIMEOUT_S)
 
     joined = "\n".join(lines)
     crash_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]

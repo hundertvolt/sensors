@@ -25,6 +25,24 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_dns_client_prompt_return_max_ms = 200
+_PROMPT_RETURN_MAX_MS = 200
+# @tunable l1.asy_dns_client_fake_server_wait_ms = 2000
+_FAKE_SERVER_WAIT_MS = 2000
+# @tunable l1.asy_dns_client_fake_server_poll_ms = 5
+_FAKE_SERVER_POLL_MS = 5
+# @tunable l1.asy_dns_client_reply_timeout_ms = 1000
+_REPLY_TIMEOUT_MS = 1000
+# @tunable l1.asy_dns_client_no_reply_timeout_ms = 100
+_NO_REPLY_TIMEOUT_MS = 100
+# @tunable l1.asy_dns_client_bad_reply_timeout_ms = 300
+_BAD_REPLY_TIMEOUT_MS = 300
+# @tunable l1.asy_dns_client_fallback_timeout_ms = 200
+_FALLBACK_TIMEOUT_MS = 200
+# @tunable l1.asy_dns_client_cname_reply_timeout_ms = 500
+_CNAME_REPLY_TIMEOUT_MS = 500
+
+
 _HOST = "127.0.0.1"
 # Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
 # never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
@@ -329,7 +347,7 @@ def test_resolve_ipv4_literal_ip_returns_immediately_without_touching_the_networ
     result = run(resolve_ipv4("192.168.1.50", dns_servers=("not-an-ip", "")))
     elapsed = time.ticks_diff(time.ticks_ms(), t0)
     assert result == "192.168.1.50"
-    assert elapsed < 200
+    assert elapsed < _PROMPT_RETURN_MAX_MS
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +364,7 @@ class FakeDNSServer:
         self.sock.setblocking(False)
         self.received: list[bytes] = []
 
-    async def answer_once(self, build_response: "Callable[[bytes], bytes | None]", timeout_ms: int = 2000) -> None:
+    async def answer_once(self, build_response: "Callable[[bytes], bytes | None]", timeout_ms: int = _FAKE_SERVER_WAIT_MS) -> None:
         # Waits for one query, records it, then replies with build_response(query). Must check the returned
         # event bitmask, not ipoll()'s truthiness: this build reports a registered socket ready on every
         # tick regardless of pending data, almost certainly POLLOUT rather than POLLIN.
@@ -368,7 +386,7 @@ class FakeDNSServer:
                 except OSError:
                     pass
             if query is None:
-                await asyncio.sleep_ms(5)
+                await asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
         self.received.append(query)
         response = build_response(query)
         if response is not None:
@@ -386,7 +404,7 @@ def test_resolve_ipv4_success_via_a_real_fake_dns_server() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=1000, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
             await responder
             return result
         finally:
@@ -399,7 +417,7 @@ def test_resolve_ipv4_no_server_reachable_returns_none() -> None:
     port = make_port()  # nobody listens here
 
     async def scenario() -> "str | None":
-        return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=100, tries=1)
+        return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1)
 
     assert run(scenario()) is None
 
@@ -411,7 +429,7 @@ def test_resolve_ipv4_garbage_reply_returns_none_not_an_exception() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda _q: b"\x00\x01not-a-real-dns-reply-at-all"))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=300, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1)
             await responder
             return result
         finally:
@@ -430,7 +448,7 @@ def test_resolve_ipv4_nxdomain_returns_none() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(nxdomain_response))
-            result = await resolve_ipv4("bogus.invalid", dns_servers=(_HOST,), port=port, timeout_ms=300, tries=1)
+            result = await resolve_ipv4("bogus.invalid", dns_servers=(_HOST,), port=port, timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1)
             await responder
             return result
         finally:
@@ -453,7 +471,7 @@ def test_resolve_ipv4_falls_back_to_the_second_server_when_the_first_is_unreacha
                 "pool.ntp.org",
                 dns_servers=(unreachable_ip,),
                 port=real_server_port,
-                timeout_ms=200,
+                timeout_ms=_FALLBACK_TIMEOUT_MS,
                 tries=1,
             )
             await responder
@@ -484,7 +502,7 @@ def test_resolve_ipv4_skips_unset_and_malformed_dns_server_entries() -> None:
                 "pool.ntp.org",
                 dns_servers=("0.0.0.0", "", "not-an-ip"),
                 port=port,
-                timeout_ms=200,
+                timeout_ms=_FALLBACK_TIMEOUT_MS,
                 tries=1,
             )
             await responder
@@ -506,7 +524,7 @@ def test_resolve_ipv4_no_servers_at_all_and_no_reachable_fallback_returns_none()
     unreachable_port = make_port()
 
     async def scenario() -> "str | None":
-        return await resolve_ipv4("pool.ntp.org", dns_servers=(), port=unreachable_port, timeout_ms=100, tries=1)
+        return await resolve_ipv4("pool.ntp.org", dns_servers=(), port=unreachable_port, timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1)
 
     asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
     try:
@@ -584,7 +602,7 @@ def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=1000, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
             await responder
             return result
         finally:
@@ -608,7 +626,7 @@ def test_resolve_ipv4_cname_chain_end_to_end() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(cname_then_a))
-            result = await resolve_ipv4("time.example.org", dns_servers=(_HOST,), port=port, timeout_ms=500, tries=1)
+            result = await resolve_ipv4("time.example.org", dns_servers=(_HOST,), port=port, timeout_ms=_CNAME_REPLY_TIMEOUT_MS, tries=1)
             await responder
             return result
         finally:

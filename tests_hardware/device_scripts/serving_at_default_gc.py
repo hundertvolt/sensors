@@ -24,12 +24,19 @@ if TYPE_CHECKING:
 # Explicit, never inherited: mpremote's raw-REPL soft reset keeps whatever threshold was in force -
 # the boot entry's 32768, or -1 if the attach interrupted main.py first (MEASUREMENTS M3.8).
 gc.threshold(-1)
+# @tunable l3.heap_under_connection_ceiling_boot_wait_s = 20
 _BOOT_S = 20
+# @tunable l3.serving_at_default_gc_poll_ms = 1000
 _POLL_MS = 1000
+# @tunable l3.serving_at_default_gc_dump_every = 5
 _DUMP_EVERY = 5  # polls per dump
-_BUSY_TO_ENTER = 2  # busy polls out of the last 3 before it counts as load, so one probe is not
+# @tunable l3.serving_at_default_gc_busy_to_enter = 2
+_BUSY_TO_ENTER = 2  # busy polls out of the last 3 before it counts as load, so one stray probe is not load
+# @tunable l3.serving_at_default_gc_quiet_to_leave = 10
 _QUIET_TO_LEAVE = 10  # consecutive idle polls; the host's own gaps between levels stay below this
+# @tunable l3.serving_at_default_gc_post_dumps = 3
 _POST_DUMPS = 3
+# @tunable l3.serving_at_default_gc_window_s = 600
 _WINDOW_S = 600  # hard bound, whatever the host does
 _MAX_FAILURE_MAPS = 3  # the first few are the evidence; more would only flood the console
 _ROUTES = ("_get_status", "_get_measurements", "_get_sensors", "_get_networking", "_get_system", "_get_notification", "_get_static_index", "_get_static")

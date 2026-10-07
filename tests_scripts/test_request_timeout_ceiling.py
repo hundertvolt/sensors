@@ -316,7 +316,14 @@ def test_the_ceiling_holder_ends_as_soon_as_its_test_sets_stop(ceiling_holder: M
 def test_the_bench_ceiling_test_keeps_its_held_set_inside_the_per_call_timeout(repo_root: Path, per_call_timeout_s: float) -> None:
     # A held socket silent past per_call_timeout_s is answered and logs HTTP_CALL_TIMEOUT, failing the test's
     # own empty-WEBSERVER-log check; one extra blocking in recv for 10 s held the set that long.
-    source = (repo_root / "tests_hardware" / "bench" / "test_network_resilience.py").read_text()
+    path = repo_root / "tests_hardware" / "bench" / "test_network_resilience.py"
+    source = path.read_text()
+
+    def value(arg: ast.expr) -> float | None:
+        if isinstance(arg, ast.Name):
+            return _module_constant(path, arg.id)
+        return float(arg.value) if isinstance(arg, ast.Constant) and isinstance(arg.value, int | float) else None
+
     fn = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef) and n.name == "test_connections_at_and_above_the_real_socket_limit_degrade_cleanly")
     sent: set[str] = set()
     read_timeouts: list[float] = []
@@ -326,9 +333,12 @@ def test_the_bench_ceiling_test_keeps_its_held_set_inside_the_per_call_timeout(r
         arg = call.args[0]
         if call.func.attr == "sendall":
             sent.add(ast.unparse(arg))
-        elif call.func.attr == "settimeout" and ast.unparse(call.func.value) == "extra" and isinstance(arg, ast.Constant) and isinstance(arg.value, int | float):
-            read_timeouts.append(float(arg.value))
+        elif call.func.attr == "settimeout" and ast.unparse(call.func.value) == "extra" and (seconds := value(arg)) is not None:
+            read_timeouts.append(seconds)
     assert "HELD_REQUEST_LINE" in sent, "the held sockets never send a request line, so nothing can pad them"
     loop = next(n for n in ast.walk(fn) if isinstance(n, ast.For) and "extra.connect" in ast.unparse(n))  # the attempt loop
     assert "_pad" in {c.func.id for c in ast.walk(loop) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}, "the held sockets are not padded on every attempt"
-    assert read_timeouts and read_timeouts[-1] + 1.0 < per_call_timeout_s, f"the extra's read timeout ({read_timeouts[-1:]}s) plus the 1 s retry sleep outlasts per_call_timeout_s ({per_call_timeout_s}s) between pads"
+    sleeps = [c.args[0] for c in ast.walk(loop) if isinstance(c, ast.Call) and ast.unparse(c.func) == "time.sleep" and c.args]
+    retry_sleeps = [s for s in map(value, sleeps) if s is not None]
+    assert retry_sleeps, "the attempt loop has no retry sleep this check can read"
+    assert read_timeouts and read_timeouts[-1] + max(retry_sleeps) < per_call_timeout_s, f"the extra's read timeout ({read_timeouts[-1:]}s) plus the {max(retry_sleeps)} s retry sleep outlasts per_call_timeout_s ({per_call_timeout_s}s) between pads"

@@ -32,6 +32,8 @@ __all__ = [
 # headroom absorbs real WiFi latency the loopback twin has none of. Measurements: BACKLOG item 24.
 # @tunable l4.reset_errors_timeout_s = 30.0
 _RESET_ERRORS_TIMEOUT_S = 30.0
+# @tunable l4.error_log_helpers_errcount_timeout_s = 10.0
+_ERRCOUNT_TIMEOUT_S = 10.0
 
 
 def reset_all_error_logs(dut_ip: str) -> None:
@@ -40,7 +42,7 @@ def reset_all_error_logs(dut_ip: str) -> None:
 
 
 def get_errcount(dut_ip: str) -> dict[str, Any]:
-    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
     assert res.status_code == 200, f"GET /status failed: {res.status_code} {res.body!r}"
     result: dict[str, Any] = res.json()["errcount"]
     return result

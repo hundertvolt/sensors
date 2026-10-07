@@ -29,6 +29,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_fram_driver_lock_wait_s = 1.0
+_LOCK_WAIT_S = 1.0
+
+
 def make_bus() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
@@ -1371,7 +1375,7 @@ def test_a_later_operation_still_works_after_a_failed_bus_lock_acquisition() -> 
         pass
     # Bounded, not a bare await: a leaked lock makes the second entry wait forever, and a hanging
     # test is never an acceptable failure mode here (CLAUDE.md's standing backstop).
-    assert run(asyncio.wait_for(second(), 1.0)) is True
+    assert run(asyncio.wait_for(second(), _LOCK_WAIT_S)) is True
 
 
 def test_aexit_tolerates_a_bus_lock_that_was_already_released() -> None:

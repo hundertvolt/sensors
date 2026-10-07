@@ -16,26 +16,35 @@ import system_service
 gc.threshold(-1)
 # Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
 # scripts' largest_block figures are only comparable if the probe is identical.
+# @tunable l3.heap_headroom_after_full_system_build_probe_min = 64
 _PROBE_MIN = 64
+# @tunable l3.heap_headroom_after_full_system_build_probe_max_kib = 192
 _PROBE_MAX = 192 * 1024
 # Rereads allowed when the probe pins its own buffer (see _report_checked). Three is generous: one
 # has always been enough on the twin, at every heap size tried.
+# @tunable l3.heap_headroom_after_full_system_build_probe_retries = 3
 _PROBE_RETRIES = 3
 
 # 4 s after the loop ENDS, so this reading is the run phase, not the list: the supervisor and the
 # started tasks churn with no collect, and the twin says B's gain decays there within ~2 s
 # (MEASUREMENTS M3.9). ~1 s later than archive 7F.2's, which that decay makes immaterial.
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_settle_ms = 4000
 _STARTER_SETTLE_MS = 4000
 # How long to wait for the starter loop itself to finish before giving up on it. The loop sleeps
 # 1.0 s in total whatever the starter count, plus each _start_task; 20 s is far above any plausible
 # real value and only exists so a wedged starter fails honestly instead of hanging.
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_timeout_ms = 20000
 _STARTER_LOOP_TIMEOUT_MS = 20000
 # Added to one inter-starter interval once the last starter lands, to cover the loop's final sleep
 # and its final collect - ~41 ms on the RP2040 (MEASUREMENTS archive 7F.7), so 250 ms is ample.
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms = 250
 _STARTER_LOOP_GRACE_MS = 250
 # start_timers() waits on every timer's first fire. Guarded rather than awaited bare so a timer that
 # never fires fails this script honestly instead of hanging the suite (CLAUDE.md's known hang #2).
+# @tunable l3.heap_layout_after_full_boot_sequence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_poll_ms = 20
+_STARTER_POLL_MS = 20
 
 _ARM_LIVE = "collects"
 _ARM_SUPPRESSED = "suppressed"
@@ -187,7 +196,7 @@ async def _main() -> None:
     supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(task_starters))
     loop_deadline = time.ticks_add(t2, _STARTER_LOOP_TIMEOUT_MS)
     while len(started) < len(task_starters) and time.ticks_diff(loop_deadline, time.ticks_ms()) > 0:
-        await asyncio.sleep_ms(20)
+        await asyncio.sleep_ms(_STARTER_POLL_MS)
     if len(started) < len(task_starters):
         print(f"RESULT: FAIL only {len(started)} of {len(task_starters)} starters ran within {_STARTER_LOOP_TIMEOUT_MS} ms")
         return

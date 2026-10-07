@@ -27,6 +27,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_notification_service_elapsed_stimulus_ms = 50
+_ELAPSED_STIMULUS_MS = 50
+
+
 # Mirrors asy_ntp_client.py's own GMTimeStruct (hour/minute are all monitor_loop() actually reads).
 class _FakeTime:
     def __init__(self, hour: int, minute: int) -> None:
@@ -1148,7 +1152,7 @@ def test_next_sleep_secs_subtracts_elapsed_time() -> None:
     coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.cfgmgr.setup())
     t0 = time.ticks_ms()
-    time.sleep_ms(50)
+    time.sleep_ms(_ELAPSED_STIMULUS_MS)
     result = coordinator._next_sleep_secs(60.0, t0)
     assert 59.0 < result < 60.0  # ~60s minus the ~50ms actually elapsed
 

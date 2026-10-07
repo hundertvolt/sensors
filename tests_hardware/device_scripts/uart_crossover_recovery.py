@@ -26,16 +26,21 @@ if TYPE_CHECKING:
 PAYLOAD_SIZE = 48
 TIMEOUT_MS = 1000
 BAUDRATE = 115200
+# @tunable dev.uart_poll_wait_ms = 2
 POLL_WAIT_MS = 2
 # Mirrors sensortask_dev.py's own pair: 2ms while a transaction is in flight, 50ms while the line
 # is idle. A bench run that used one rate would not be exercising the shipped configuration.
+# @tunable dev.uart_poll_idle_ms = 50
 POLL_IDLE_MS = 50
+# @tunable dev.uart_rxbuf = 512
 BUF_BYTES = 512
 _CMD_ECHO = 0x02
 # Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
 # uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so an injected
 # fault resets the board instead of naming the failing check (measured on unjumpered pins).
+# @tunable l3.uart_crossover_exchange_join_step_ms = 100
 JOIN_STEP_MS = 100
+# @tunable l3.uart_crossover_exchange_join_budget_ms = 2000
 JOIN_BUDGET_MS = 2000
 
 

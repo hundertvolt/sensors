@@ -12,6 +12,11 @@ sys.path.insert(0, "digital_twin")
 import _uart_link_contract
 from machine import UART, LinkPoller, Pin, UARTLink
 
+# @tunable l2.machine_uart_wire_time_floor_ms = 100
+_WIRE_TIME_FLOOR_MS = 100
+# @tunable l2.machine_uart_pump_deadline_ms = 500
+_PUMP_DEADLINE_MS = 500
+
 
 def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
     UART._live.clear()  # each test constructs its own pair, never a shared module-level one
@@ -55,7 +60,7 @@ def test_delivery_takes_real_wire_time() -> None:
     start = time.ticks_ms()
     link.settle()
     elapsed = time.ticks_diff(time.ticks_ms(), start)
-    assert elapsed > 100, f"delivery took {elapsed}ms, expected real wire time"
+    assert elapsed > _WIRE_TIME_FLOOR_MS, f"delivery took {elapsed}ms, expected real wire time"
     got = b.read()
     assert got is not None
     assert len(got) == 64
@@ -81,7 +86,7 @@ def test_reads_pump_the_wire_without_settle() -> None:
     # never needs settle() - that helper exists only for synchronous assertions.
     a, b, _link = make_link()
     a.write(b"pump")
-    deadline = time.ticks_add(time.ticks_ms(), 500)
+    deadline = time.ticks_add(time.ticks_ms(), _PUMP_DEADLINE_MS)
     got = bytearray()
     while len(got) < 4 and time.ticks_diff(deadline, time.ticks_ms()) > 0:
         part = b.read()  # arrives byte by byte as its wire time elapses, like a real stream

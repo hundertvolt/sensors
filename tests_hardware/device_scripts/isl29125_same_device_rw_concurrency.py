@@ -9,8 +9,14 @@ import machine
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_I2C
 
+# @tunable l3.isl29125_same_device_rw_concurrency_read_iterations = 20
 READ_ITERATIONS = 20
+# @tunable l3.isl29125_same_device_rw_concurrency_write_iterations = 6
 WRITE_ITERATIONS = 6
+# @tunable l3.isl29125_same_device_rw_concurrency_read_step_ms = 50
+_READ_STEP_MS = 50
+# @tunable l3.isl29125_same_device_rw_concurrency_write_step_ms = 90
+_WRITE_STEP_MS = 90
 _IR_ADJUST_VALUES = (0, 16, 32, 40, 48, 63)  # every one legal per p10's own 0-63 ALSCC field
 _STATUS_RESERVED_MASK = 0xC8  # B7:B6 and B3 read zero on a working part (p12, Table 15)
 
@@ -47,7 +53,7 @@ async def _main() -> None:
             else:
                 read_completed += 1
             wdt.feed()
-            await asyncio.sleep_ms(50)
+            await asyncio.sleep_ms(_READ_STEP_MS)
 
     async def writer() -> None:
         nonlocal write_completed
@@ -67,7 +73,7 @@ async def _main() -> None:
             else:
                 write_completed += 1
             wdt.feed()
-            await asyncio.sleep_ms(90)
+            await asyncio.sleep_ms(_WRITE_STEP_MS)
 
     await asyncio.gather(reader(), writer())
 

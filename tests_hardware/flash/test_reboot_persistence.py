@@ -16,6 +16,14 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
+# @tunable l3.reboot_persistence_reachable_timeout_s = 30.0
+_REACHABLE_TIMEOUT_S = 30.0
+# @tunable l3.reboot_persistence_reachable_poll_s = 1.0
+_REACHABLE_POLL_S = 1.0
+# @tunable l3.reboot_persistence_boot_log_tail_s = 20.0
+_BOOT_LOG_TAIL_S = 20.0
+
+
 def _parse_result(output: str) -> tuple[bool, str]:
     match = RESULT_RE.search(output)
     if match is None:
@@ -35,7 +43,7 @@ def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
     assert ok, f"pre-reboot write failed: {detail}\nfull output:\n{write_output}"
 
     board.hard_reset()
-    wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after hard_reset()")
+    wait_until(board.is_reachable, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board reachable again after hard_reset()")
 
     read_output = board.run_isolated(DEVICE_SCRIPTS / "reboot_persist_read.py")
     ok, detail = _parse_result(read_output)
@@ -63,7 +71,7 @@ def test_boot_import_mechanism_actually_boots_the_real_system(board: Board) -> N
         # Passive observation only (tail_log(), never exec()/run_isolated()) from here on - a real
         # reboot's own boot.py/main.py sequence must run completely undisturbed for this to mean
         # anything.
-        lines = board.tail_log(duration_s=20.0)
+        lines = board.tail_log(duration_s=_BOOT_LOG_TAIL_S)
         joined = "\n".join(lines)
         assert "CFGMGR_" in joined or "FRAM" in joined, (
             "no sensortask_dev startup log lines observed after a genuine hard reset (with DebugLevel "
@@ -78,4 +86,4 @@ def test_boot_import_mechanism_actually_boots_the_real_system(board: Board) -> N
         ok, detail = _parse_result(restore_output)
         assert ok, f"failed to restore DebugLevel to 0 after the boot check - board may be left non-default: {detail}\nfull output:\n{restore_output}"
         board.hard_reset()
-        wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after restoring DebugLevel=0")
+        wait_until(board.is_reachable, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board reachable again after restoring DebugLevel=0")

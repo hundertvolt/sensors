@@ -47,6 +47,8 @@ _scratch = TmpScratch("sgp40")
 _SHARED_CFG_DIR = _scratch.dir()
 
 _CRC_POLY = 0x31  # datasheet Table 7
+# @tunable l1.asy_sgp40_driver_event_wait_s = 1
+_EVENT_WAIT_S = 1
 
 
 def _crc8(data: bytes) -> int:
@@ -529,7 +531,7 @@ def test_start_timer_and_stop_timer_wire_the_trigger_event() -> None:
     reader.start_timer()
     assert reader.trigger_timer.callback is not None
     reader.trigger_timer.trigger()  # fake machine.Timer.trigger() - fires the callback synchronously
-    assert run(asyncio.wait_for(reader.read_event.wait(), 1)) is None
+    assert run(asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)) is None
     reader.stop_timer()
     assert reader.trigger_timer.deinit_called is True
 

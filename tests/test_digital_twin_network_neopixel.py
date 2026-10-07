@@ -29,23 +29,28 @@ from network import (
     WLAN,
 )
 
+# @tunable l2.network_neopixel_wait_timeout_s = 5.0
+_WAIT_TIMEOUT_S = 5.0
+# @tunable l2.network_neopixel_poll_ms = 20
+_POLL_MS = 20
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(coro)
 
 
-async def _wait_until_connected(wlan: WLAN, timeout_s: float = 5.0) -> None:
+async def _wait_until_connected(wlan: WLAN, timeout_s: float = _WAIT_TIMEOUT_S) -> None:
     async def poll() -> None:
         while not wlan.isconnected():
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
 
 
-async def _wait_until_settled(wlan: WLAN, timeout_s: float = 5.0) -> None:
+async def _wait_until_settled(wlan: WLAN, timeout_s: float = _WAIT_TIMEOUT_S) -> None:
     async def poll() -> None:
         while wlan.status() == STAT_CONNECTING:
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
 

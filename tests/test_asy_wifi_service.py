@@ -32,6 +32,19 @@ _VAL_HOST = (("Hostname", "str", "SensorNode", 1, 32, None),)
 _VAL_LED = (("LedWifiOn", "bool", True, None, None, None),)
 _VAL_HOTSPOT_PW = (("HotspotPW", "str", "12345678", 8, 63, None),)
 
+# @tunable l1.asy_wifi_service_connect_bound_s = 2.0
+_CONNECT_BOUND_S = 2.0
+# @tunable l1.asy_wifi_service_sent_poll_ms = 10
+_SENT_POLL_MS = 10
+# @tunable l1.asy_wifi_service_off_subnet_wait_s = 0.2
+_OFF_SUBNET_WAIT_S = 0.2
+# @tunable l1.asy_wifi_service_connect_poll_ms = 50
+_CONNECT_POLL_MS = 50
+# @tunable l1.asy_wifi_service_phase_poll_ms = 20
+_PHASE_POLL_MS = 20
+# @tunable l1.asy_wifi_service_flash_cancel_bound_s = 1
+_FLASH_CANCEL_BOUND_S = 1
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
@@ -2223,7 +2236,7 @@ def test_connect_loop_gives_up_after_repeated_hardware_failures_and_persists_bot
 
     async def scenario() -> "ErrorLog":
         task = asyncio.create_task(client.wlan_connect())
-        await asyncio.wait_for(task, 2.0)  # must actually complete, not loop forever
+        await asyncio.wait_for(task, _CONNECT_BOUND_S)  # must actually complete, not loop forever
         return await client.get_error_counter()
 
     with _FastAsyncSleep():  # wlan_connect() sleeps its 5 s refresh between cycles
@@ -2384,7 +2397,7 @@ def test_integration_hotspot_captive_dns_answers_an_on_subnet_query() -> None:
         for _ in range(100):
             if fake_udps.sent:
                 break
-            await asyncio.sleep_ms(10)
+            await asyncio.sleep_ms(_SENT_POLL_MS)
         await _cancel(task)
 
     run(scenario())
@@ -2404,7 +2417,7 @@ def test_integration_hotspot_captive_dns_ignores_an_off_subnet_query() -> None:
 
     async def scenario() -> None:
         task = asyncio.create_task(client.dns_server.run("192.168.4.1", "255.255.255.0"))
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(_OFF_SUBNET_WAIT_S)
         await _cancel(task)
 
     run(scenario())
@@ -2441,7 +2454,7 @@ def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:
         connected_once = False
         for _ in range(200):
             client.time_counter_trigger_event.set()
-            await asyncio.sleep_ms(50)
+            await asyncio.sleep_ms(_CONNECT_POLL_MS)
             data = await client.get_data()
             if data.Connected:
                 connected_once = client._conn_phase == _PHASE_STA_ESTABLISHED
@@ -2465,7 +2478,7 @@ def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> Non
         for _ in range(100):
             if client._conn_phase == _PHASE_HOTSPOT:
                 break
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_PHASE_POLL_MS)
         hotspot_reached = client._conn_phase == _PHASE_HOTSPOT
         await _cancel(task)
         return hotspot_reached
@@ -2633,7 +2646,7 @@ def test_hotspot_client_connected_cancels_an_already_running_ledflash_task() -> 
         client._hotspot_client_connected()  # must call first_flash.cancel() itself
         done = False
         try:
-            await asyncio.wait_for(first_flash, 1)
+            await asyncio.wait_for(first_flash, _FLASH_CANCEL_BOUND_S)
         except asyncio.CancelledError:
             done = True
         except asyncio.TimeoutError:

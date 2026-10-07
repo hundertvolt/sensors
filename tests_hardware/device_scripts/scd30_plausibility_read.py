@@ -12,7 +12,10 @@ from asy_scd30_driver import SCD30_Reader
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
+# @tunable l3.scd30_plausibility_read_settle_s = 45.0
 _SETTLE_S = 45.0  # datasheet-bound response-time window (see docstring) plus margin
+# @tunable l3.scd30_plausibility_read_step_s = 0.5
+_STEP_S = 0.5
 
 
 async def _main() -> None:
@@ -26,9 +29,9 @@ async def _main() -> None:
 
     # Let the sensor's own post-reset response-time settle (see module docstring) before trusting
     # any reading - readings seen during this window are deliberately discarded.
-    for _ in range(int(_SETTLE_S / 0.5)):
+    for _ in range(int(_SETTLE_S / _STEP_S)):
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_STEP_S)
 
     # get_data() -> the SCD30 namedtuple (CO2, Temp, Hum, WetBulb, DewPoint, TS) - see
     # asy_scd30_driver.py's own `SCD30 = namedtuple(...)` definition; field names are capitalized,
@@ -39,7 +42,7 @@ async def _main() -> None:
         if data.CO2 is not None:
             break
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_STEP_S)
 
     read_task.cancel()
     init_irq_task.cancel()

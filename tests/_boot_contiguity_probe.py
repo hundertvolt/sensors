@@ -33,8 +33,10 @@ if TYPE_CHECKING:
 
 # Bounds mirroring tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py's, so a
 # twin reading and a board reading are taken at the same positions of the same sequence.
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_timeout_ms = 20000
 _STARTER_LOOP_TIMEOUT_MS = 20000
 _STARTER_LOOP_GRACE_MS = 250
+# @tunable l3.heap_layout_after_full_boot_sequence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
 
 _ARM_LIVE = "collects"

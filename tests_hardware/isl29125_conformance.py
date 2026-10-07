@@ -53,7 +53,11 @@ def parse(output: str) -> dict[str, str]:
     return parsed
 
 
-def run_probe_against_twin(timeout_s: float = 180.0) -> dict[str, str]:
+# @tunable l3.conformance_twin_probe_timeout_s = 180.0
+_TWIN_PROBE_TIMEOUT_S = 180.0
+
+
+def run_probe_against_twin(timeout_s: float = _TWIN_PROBE_TIMEOUT_S) -> dict[str, str]:
     binary = unix_port_binary()
     if not binary.is_file():
         raise FileNotFoundError(f"MicroPython Unix port not built at {binary} - run scripts/test.sh once first")

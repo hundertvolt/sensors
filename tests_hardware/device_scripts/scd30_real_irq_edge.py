@@ -8,9 +8,12 @@ import time
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_Reader
 
+# @tunable l3.scd30_real_irq_edge_fast_path_deadline_s = 5.0
 FAST_PATH_DEADLINE_S = 5.0  # comfortably above the SCD30's own ~2s natural interval + IRQ latency,
 # comfortably below the self-healing fallback's own ~10s worst case (TRIGGER_SEC below).
 TRIGGER_SEC = 10
+# @tunable l3.scd30_real_irq_edge_poll_ms = 100
+_POLL_MS = 100
 
 
 async def _main() -> None:
@@ -28,7 +31,7 @@ async def _main() -> None:
         data = await reader.get_data()
         if data.CO2 is not None:
             break
-        await asyncio.sleep_ms(100)
+        await asyncio.sleep_ms(_POLL_MS)
 
     read_task.cancel()
     init_irq_task.cancel()

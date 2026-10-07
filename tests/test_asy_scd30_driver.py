@@ -39,6 +39,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 _ADDR = 0x61  # _SCD30_DEFAULT_ADDR
+# @tunable scd30.start_trigger_period_ms = 500
+_START_TRIGGER_PERIOD_MS = 500
+# @tunable l1.asy_scd30_driver_event_wait_s = 1
+_EVENT_WAIT_S = 1
 
 
 def make_i2c() -> I2C:
@@ -678,7 +682,7 @@ def test_reader_start_timer_arms_periodic_timer_and_pin_irq() -> None:
     FakeTimer.all_timers.clear()
     reader = make_reader()
     reader.start_timer()
-    assert reader.start_trigger_timer.period == 500
+    assert reader.start_trigger_timer.period == _START_TRIGGER_PERIOD_MS
     assert reader.start_trigger_timer.mode == FakeTimer.PERIODIC
     assert reader.irq_pin._irq_trigger == FakePin.IRQ_RISING
 
@@ -686,8 +690,8 @@ def test_reader_start_timer_arms_periodic_timer_and_pin_irq() -> None:
     reader.irq_pin.trigger_irq()
 
     async def scenario() -> None:
-        await asyncio.wait_for(reader.base_trigger_event.wait(), 1)
-        await asyncio.wait_for(reader.read_event.wait(), 1)
+        await asyncio.wait_for(reader.base_trigger_event.wait(), _EVENT_WAIT_S)
+        await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
 
     run(scenario())
     FakeTimer.all_timers.clear()
@@ -715,7 +719,7 @@ def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be
     reader.irq_pin.trigger_irq()
 
     async def scenario() -> None:
-        await asyncio.wait_for(reader.read_event.wait(), 1)
+        await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
 
     run(scenario())
     FakeTimer.all_timers.clear()
@@ -771,7 +775,7 @@ def test_scd_init_irq_sets_irq_trigger_after_enough_consecutive_stuck_ticks() ->
         await _settle(3)
         triggered = False
         try:
-            await asyncio.wait_for(reader.read_event.wait(), 1)
+            await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
             triggered = True
         except asyncio.TimeoutError:
             pass

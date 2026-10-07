@@ -20,6 +20,8 @@ _GUARD_BEFORE_PATTERN = bytes(range(0x10, 0x20))
 _ORIGINAL_TARGET_PATTERN = bytes(range(0x70, 0x80))
 _NEW_TARGET_PATTERN = bytes((0xCC,) * 16)  # what the interrupted write attempts, must never land
 _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
+# @tunable l3.fram_reset_race_during_write_seed_and_race_victim_bound_s = 30.0
+_VICTIM_BOUND_S = 30.0
 
 
 async def _main() -> None:
@@ -66,7 +68,7 @@ async def _main() -> None:
         original_write_sync(buf)
 
     spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]
-    await asyncio.wait_for(victim_writer(), 30.0)
+    await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
     spidev.write_sync = original_write_sync  # type: ignore[method-assign]
     # Unreachable in the successful case (machine.reset() halts the runtime first). If this DOES
     # print, the payload transfer never happened - the phase-2 verify script's guard-region check

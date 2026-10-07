@@ -43,6 +43,19 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable ntp.fetch_timeout_ms = 5000
+_FETCH_TIMEOUT_MS = 5000
+# @tunable l1.asy_ntp_client_serve_wait_s = 5
+_SERVE_WAIT_S = 5
+# @tunable l1.asy_ntp_client_state_poll_ms = 20
+_STATE_POLL_MS = 20
+# @tunable l1.ntp_fram_system_integration_utc_tolerance_s = 5
+_UTC_TOLERANCE_S = 5
+# @tunable l1.ntp_fram_system_integration_supervisor_scan_wait_s = 2.5
+_SCAN_WAIT_S = 2.5
+# @tunable l1.ntp_fram_system_integration_start_poll_s = 0.01
+_START_POLL_S = 0.01
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
@@ -76,7 +89,7 @@ def make_conn() -> AsyConnTime:
 
 
 def make_ntp(
-    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000,
+    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = _FETCH_TIMEOUT_MS,
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
@@ -229,11 +242,11 @@ async def sync_real_ntp_chain(conn: AsyConnTime, ntp: AsyNtpClient) -> None:
             task = asyncio.create_task(ntp.asy_ntp_time())
             server_task = asyncio.create_task(server.serve_once(reply))
             ntp.ntp_sync_trigger_event.set()
-            await asyncio.wait_for(server_task, 5)
+            await asyncio.wait_for(server_task, _SERVE_WAIT_S)
             for _ in range(50):
                 if await ntp.ntp_issynced():
                     break
-                await asyncio.sleep_ms(20)
+                await asyncio.sleep_ms(_STATE_POLL_MS)
             await _cancel(task)
     finally:
         server.close()
@@ -262,7 +275,7 @@ def test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_
     ntp_synced, utc, write_ok = run(scenario())
     assert ntp_synced is True
     assert write_ok is True
-    assert utc is not None and abs(utc - int(time.time())) < 5  # a real, current UTC timestamp
+    assert utc is not None and abs(utc - int(time.time())) < _UTC_TOLERANCE_S  # a real, current UTC timestamp
 
 
 def test_fram_write_into_require_ntp_refuses_when_the_real_ntp_chain_has_never_synced() -> None:
@@ -365,7 +378,7 @@ def test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_sync
 
     boot_signature = run(scenario())
     assert boot_signature is not None
-    assert abs(boot_signature - int(time.time())) < 5  # a real NTP-derived timestamp, not a random fallback
+    assert abs(boot_signature - int(time.time())) < _UTC_TOLERANCE_S  # a real NTP-derived timestamp, not a random fallback
 
 
 def test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_never_syncs() -> None:
@@ -448,7 +461,7 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
                 ntp.ntp_sync_trigger_event.set()
                 await asyncio.sleep(0)
                 await asyncio.sleep(0)
-            await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+            await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
             assert not starts[0].done()  # the real asy_ntp_time() task is still the one running
             await _cancel(svc_task)
             return len(starts)
@@ -553,9 +566,9 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
             # Unix-port event loop, so it can never observe those real sleeps completing.
             if starts and starts[0].done():
                 break
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(_START_POLL_S)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
         await _cancel(svc_task)
         return len(starts)
 
@@ -616,9 +629,9 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
                 break
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(_START_POLL_S)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
         await _cancel(svc_task)
         return len(starts)
 
@@ -647,9 +660,9 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
                 break
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(_START_POLL_S)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
         await _cancel(svc_task)
         return len(starts)
 

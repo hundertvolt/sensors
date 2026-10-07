@@ -16,6 +16,7 @@ from print_log import DEFAULT_LOG, LogConfig
 
 BACKUP_WAIT_S = 75.0  # 60s to the first natural BackupPeriod=1min trigger, plus margin
 RESTORE_WAIT_S = 10.0
+# @tunable l3.sgp40_fram_backup_restore_wdt_feed_interval_s = 2.0
 _WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
 _FixedValue = namedtuple("_FixedValue", ("value",))

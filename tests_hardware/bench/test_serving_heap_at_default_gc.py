@@ -27,21 +27,40 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # The sitting's own load shape - both streaming endpoints, the page, and the rest - plus the script
 # every page load fetches next, the largest static file the device serves.
 _PATHS = ("/status", "/sensors", "/", "/measurements", "/networking", "/system", "/js/app.js")
+# @tunable l4.serving_heap_at_default_gc_rounds = 12
 _ROUNDS = 12
+# @tunable l4.network_resilience_slot_release_wait_s = 1.0
 _ROUND_SETTLE_S = 1.0  # a slot outlives the response its client holds (Part I.6)
+# @tunable l4.serving_heap_at_default_gc_level_gap_s = 3.0
 _LEVEL_GAP_S = 3.0  # between levels - under the device script's own 10 s quiet-to-leave
+# @tunable l4.serving_heap_at_default_gc_pre_idle_s = 30.0
 _PRE_IDLE_S = 30.0  # the device starts dumping 20 s into its own boot: this leaves ~4 idle dumps first
 # Fixed, the worst route needs 320-336 B (board and 32-bit twin); pre-fix needs were 512-1,536 B.
 # Between rungs 24 (measures 384-400 B) and 32 (512 B), so the measured rung cannot flip the
 # verdict either way (SPECIFICATION.md Part I.3).
+# @tunable l4.serving_heap_at_default_gc_max_route_need = 480
 _MAX_ROUTE_NEED = 480
+
+
+# @tunable l4.serving_heap_at_default_gc_connect_timeout_s = 30.0
+_CONNECT_TIMEOUT_S = 30.0
+# @tunable l4.serving_heap_at_default_gc_barrier_timeout_s = 30.0
+_BARRIER_TIMEOUT_S = 30.0
+# @tunable l4.serving_heap_at_default_gc_burst_join_s = 60.0
+_BURST_JOIN_S = 60.0
+# @tunable l4.serving_heap_at_default_gc_need_script_timeout_s = 300.0
+_NEED_SCRIPT_TIMEOUT_S = 300.0
+# @tunable l4.serving_heap_at_default_gc_serving_script_timeout_s = 900.0
+_SERVING_SCRIPT_TIMEOUT_S = 900.0
+# @tunable l4.serving_heap_at_default_gc_driver_join_s = 90.0
+_DRIVER_JOIN_S = 90.0
 
 
 def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: list[str], index: int) -> None:
     """One real socket, body DRAINED rather than materialised - the drain rule, so the host measures
     the board and never its own buffering (tests/test_digital_twin_http_client.py)."""
     try:
-        sock = socket.create_connection((dut_ip, 80), timeout=30.0)
+        sock = socket.create_connection((dut_ip, 80), timeout=_CONNECT_TIMEOUT_S)
     except OSError as e:
         outcomes[index] = f"connect:{type(e).__name__}"
         barrier.abort()
@@ -71,13 +90,13 @@ def _one_request(dut_ip: str, path: str, barrier: threading.Barrier, outcomes: l
 
 
 def _burst(dut_ip: str, n: int) -> list[str]:
-    barrier = threading.Barrier(n, timeout=30.0)
+    barrier = threading.Barrier(n, timeout=_BARRIER_TIMEOUT_S)
     outcomes = ["unset"] * n
     threads = [threading.Thread(target=_one_request, args=(dut_ip, _PATHS[i % len(_PATHS)], barrier, outcomes, i)) for i in range(n)]
     for thread in threads:
         thread.start()
     for thread in threads:
-        thread.join(timeout=60.0)
+        thread.join(timeout=_BURST_JOIN_S)
     assert not any(thread.is_alive() for thread in threads), "a request thread outlived its burst"
     return outcomes
 
@@ -108,7 +127,7 @@ def isolated_board(board: Board, bench: BenchBridge, dut_ip: str) -> Iterator[Bo
 def test_every_source_and_route_fits_a_small_free_run(isolated_board: Board) -> None:
     # No network. The device script shapes the heap so no free run exceeds S, for rising S, and
     # runs each data source and whole GET route on it; the host reduces that to each one's need.
-    output = isolated_board.run_isolated(DEVICE_SCRIPTS / "allocation_need_per_source.py", timeout_s=300.0)
+    output = isolated_board.run_isolated(DEVICE_SCRIPTS / "allocation_need_per_source.py", timeout_s=_NEED_SCRIPT_TIMEOUT_S)
     assert "RESULT: PASS" in output, output[-2000:]
     need = heap_map.parse_allocation_need(output)
     churn = heap_map.parse_churn(output)
@@ -129,10 +148,10 @@ def test_serving_sweep_at_the_reactive_default(isolated_board: Board, dut_ip: st
     driver = threading.Thread(target=sweep_levels, args=(dut_ip, levels, stop, tallies), daemon=True)
     driver.start()
     try:
-        output = isolated_board.run_isolated(DEVICE_SCRIPTS / "serving_at_default_gc.py", timeout_s=900.0)
+        output = isolated_board.run_isolated(DEVICE_SCRIPTS / "serving_at_default_gc.py", timeout_s=_SERVING_SCRIPT_TIMEOUT_S)
     finally:
         stop.set()
-        driver.join(timeout=90.0)
+        driver.join(timeout=_DRIVER_JOIN_S)
     assert not driver.is_alive(), "the load driver is still running after its own test - it would hammer every test that follows"
     assert "RESULT: PASS" in output, output[-2000:]
     assert "PHASES_INCOMPLETE" not in output, f"the script never saw a full idle/load/idle cycle: {output[-1500:]}"

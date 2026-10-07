@@ -15,8 +15,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 N_TIMERS = 10
+# @tunable l3.scheduler_saturation_drop_timer_period_ms = 2
 TIMER_PERIOD_MS = 2
+# @tunable l3.scheduler_saturation_drop_busy_wait_ms = 100
 BUSY_WAIT_MS = 100
+# @tunable l3.scheduler_saturation_drop_heal_window_ms = 500
 HEAL_WINDOW_MS = 500
 
 fire_counts = [0] * N_TIMERS

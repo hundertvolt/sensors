@@ -21,7 +21,19 @@ if TYPE_CHECKING:
 ROLE_REVERSAL_CLIENT_CONN = "sensors-bench-dut-client-tmp"
 
 
-def _nmcli(*args: str, timeout_s: float = 30.0) -> str:
+# @tunable l4.bench_control_nmcli_timeout_s = 30.0
+_NMCLI_TIMEOUT_S = 30.0
+# @tunable l4.bench_control_nmcli_short_timeout_s = 15.0
+_NMCLI_SHORT_TIMEOUT_S = 15.0
+# @tunable l4.bench_control_cmd_timeout_s = 10.0
+_CMD_TIMEOUT_S = 10.0
+# @tunable l4.bench_control_udp_capture_timeout_s = 55.0
+_UDP_CAPTURE_TIMEOUT_S = 55.0
+# @tunable l4.bench_control_join_hotspot_timeout_s = 30.0
+_JOIN_HOTSPOT_TIMEOUT_S = 30.0
+
+
+def _nmcli(*args: str, timeout_s: float = _NMCLI_TIMEOUT_S) -> str:
     try:
         proc = subprocess.run(["sudo", "nmcli", *args], capture_output=True, text=True, timeout=timeout_s, check=False)
     except FileNotFoundError as exc:
@@ -40,7 +52,7 @@ class BenchBridge:
 
     def is_configured(self) -> bool:
         try:
-            out = _nmcli("-t", "-f", "NAME", "connection", "show", timeout_s=15.0)
+            out = _nmcli("-t", "-f", "NAME", "connection", "show", timeout_s=_NMCLI_SHORT_TIMEOUT_S)
         except (HardwareNotAvailableError, HardwareTestFailureError):
             return False
         return self.ap_conn in out.splitlines()
@@ -87,7 +99,7 @@ class BenchBridge:
         has no per-client kick command). Fixes the dominant cause of WiFi reconnection flakiness -
         a stale AP-side entry surviving a hard_reset() power-cycle (see tests_hardware/README.md)."""
         iface = self.wifi_iface()
-        proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=10.0, check=False)
+        proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
         if proc.returncode != 0:
             raise HardwareTestFailureError(f"iw dev {iface} station del {mac_address} failed: {proc.stderr.strip()}")
 
@@ -135,7 +147,7 @@ class BenchBridge:
             text=True,
         )
 
-    def read_captured_udp_source_port(self, proc: subprocess.Popen[str], timeout_s: float = 55.0) -> int | None:
+    def read_captured_udp_source_port(self, proc: subprocess.Popen[str], timeout_s: float = _UDP_CAPTURE_TIMEOUT_S) -> int | None:
         """Blocks for the one packet line start_udp_source_capture()'s tcpdump is watching for,
         returning `src_port` - or None if nothing matched within `timeout_s` (bounded either way
         by the process's own `-c 1`/`timeout 60`)."""
@@ -195,10 +207,10 @@ class BenchBridge:
         hotspot is actually beaconing before joining it, instead of racing a fixed sleep. Requires
         ap_down() already called - this single-radio bench can't scan while still hosting an AP."""
         iface = self.wifi_iface()
-        output = _nmcli("-t", "-f", "SSID", "device", "wifi", "list", "ifname", iface, "--rescan", "yes", timeout_s=15.0)
+        output = _nmcli("-t", "-f", "SSID", "device", "wifi", "list", "ifname", iface, "--rescan", "yes", timeout_s=_NMCLI_SHORT_TIMEOUT_S)
         return ssid in output.splitlines()
 
-    def join_dut_hotspot(self, ssid: str, password: str, *, timeout_s: float = 30.0) -> None:
+    def join_dut_hotspot(self, ssid: str, password: str, *, timeout_s: float = _JOIN_HOTSPOT_TIMEOUT_S) -> None:
         """Stops hosting `br0-wifi-ap` and joins the DUT's own hotspot as a client, via a fresh
         temporary connection profile bound to the same radio. Deletes any leftover profile of the
         same name first - a stale one makes a retry fail more confusingly (see tests_hardware/README.md)."""
@@ -246,13 +258,13 @@ class BenchBridge:
 
 
 def _run_iptables(args: list[str], *, allow_missing: bool = False) -> None:
-    proc = subprocess.run(["sudo", "iptables", *args], capture_output=True, text=True, timeout=10.0, check=False)
+    proc = subprocess.run(["sudo", "iptables", *args], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
     if proc.returncode != 0 and not allow_missing:
         raise HardwareTestFailureError(f"iptables {' '.join(args)} failed: {proc.stderr.strip()}")
 
 
 def _run_tc(args: list[str], *, allow_missing: bool = False) -> None:
-    proc = subprocess.run(["sudo", "tc", *args], capture_output=True, text=True, timeout=10.0, check=False)
+    proc = subprocess.run(["sudo", "tc", *args], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
     if proc.returncode != 0 and not allow_missing:
         raise HardwareTestFailureError(f"tc {' '.join(args)} failed: {proc.stderr.strip()}")
 
@@ -268,7 +280,7 @@ def bench_associated_station_macs(iface: str) -> list[str]:
     """MAC addresses currently associated to `iface` while it's hosting the AP (`iw dev <iface>
     station dump`) - used by kick_client() callers to find a real MAC, and to confirm the DUT's
     own station list reflects reality."""
-    proc = subprocess.run(["iw", "dev", iface, "station", "dump"], capture_output=True, text=True, timeout=10.0, check=False)
+    proc = subprocess.run(["iw", "dev", iface, "station", "dump"], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
     if proc.returncode != 0:
         raise HardwareTestFailureError(f"iw dev {iface} station dump failed: {proc.stderr.strip()}")
     return [line.split()[1] for line in proc.stdout.splitlines() if line.startswith("Station")]

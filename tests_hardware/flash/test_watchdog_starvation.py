@@ -15,6 +15,20 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 _ARMED_BANNER = "WDT armed, starving now"  # printed by device_scripts/watchdog_starvation_reset.py
 
 
+# @tunable l3.watchdog_starvation_script_timeout_s = 15.0
+_SCRIPT_TIMEOUT_S = 15.0
+# @tunable l3.watchdog_starvation_reset_elapsed_max_s = 10.0
+_RESET_ELAPSED_MAX_S = 10.0
+# @tunable l3.watchdog_starvation_device_present_timeout_s = 15.0
+_DEVICE_PRESENT_TIMEOUT_S = 15.0
+# @tunable l3.watchdog_starvation_device_present_poll_s = 0.3
+_DEVICE_PRESENT_POLL_S = 0.3
+# @tunable l3.watchdog_starvation_fallback_script_timeout_s = 20.0
+_FALLBACK_SCRIPT_TIMEOUT_S = 20.0
+# @tunable l3.watchdog_starvation_fallback_elapsed_max_s = 12.0
+_FALLBACK_ELAPSED_MAX_S = 12.0
+
+
 def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> None:
     start = time.monotonic()
     failure = ""
@@ -22,13 +36,13 @@ def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> Non
         # allow_recovery=False: the connection dying is the expected outcome, so the harness's
         # transient-disconnect retry must not run - its 10s grace window put this measurement at
         # a reproducible ~13.2s against the 10.0s bound, measuring the retry, not the watchdog.
-        board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0, allow_recovery=False)
+        board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=_SCRIPT_TIMEOUT_S, allow_recovery=False)
         raise AssertionError("run_isolated() returned normally - the watchdog never fired (the device script should never return)")
     except HardwareTestFailureError as exc:
         failure = str(exc)  # expected: the connection dies mid-script. `exc` is unbound after this block
 
     elapsed = time.monotonic() - start
-    assert elapsed < 10.0, (
+    assert elapsed < _RESET_ELAPSED_MAX_S, (
         f"took {elapsed:.1f}s to observe the connection drop - the device script's own watchdog "
         "is armed for 1.5s, so something else likely timed out instead of a real watchdog reset"
     )
@@ -40,13 +54,13 @@ def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> Non
     # Checked via is_device_present()/is_reachable() rather than tail_log() content, since log
     # output is gated behind DebugLevel (0 by default) and this must hold regardless of that config.
     try:
-        wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after a real watchdog-triggered reset")
+        wait_until(board.is_device_present, timeout_s=_DEVICE_PRESENT_TIMEOUT_S, poll_interval_s=_DEVICE_PRESENT_POLL_S, description="USB device node reappears after a real watchdog-triggered reset")
         wait_until(board.is_reachable, timeout_s=15.0, poll_interval_s=0.5, description="mpremote can talk to the board again after the reset")
     finally:
         # is_reachable() attaches within ~1 s of boot, which parks main.py at the REPL with no
         # watchdog armed until the next reset - so never end the tier on that board (bench 2026-09-25).
         board.hard_reset()
-        wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after the closing hard_reset()")
+        wait_until(board.is_device_present, timeout_s=_DEVICE_PRESENT_TIMEOUT_S, poll_interval_s=_DEVICE_PRESENT_POLL_S, description="USB device node reappears after the closing hard_reset()")
 
 
 _STARVE_BANNER = "STARVE flag set, feeding only through feed_watchdog() now"  # device_scripts/reboot_fallback_starves_the_watchdog.py
@@ -61,19 +75,19 @@ def test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm(bo
     start = time.monotonic()
     failure = ""
     try:
-        output = board.run_isolated(DEVICE_SCRIPTS / "reboot_fallback_starves_the_watchdog.py", timeout_s=20.0, allow_recovery=False)
+        output = board.run_isolated(DEVICE_SCRIPTS / "reboot_fallback_starves_the_watchdog.py", timeout_s=_FALLBACK_SCRIPT_TIMEOUT_S, allow_recovery=False)
         raise AssertionError(f"run_isolated() returned normally - the fallback never starved the watchdog:\n{output}")
     except HardwareTestFailureError as exc:
         failure = str(exc)
 
     elapsed = time.monotonic() - start
-    assert elapsed < 12.0, f"took {elapsed:.1f}s to observe the connection drop - the script's watchdog is armed for 1.5s, so something else timed out"
+    assert elapsed < _FALLBACK_ELAPSED_MAX_S, f"took {elapsed:.1f}s to observe the connection drop - the script's watchdog is armed for 1.5s, so something else timed out"
     assert _STARVE_BANNER in failure, f"the connection dropped without {_STARVE_BANNER!r} - the fallback flag was never reached:\n{failure}"
     assert "action_fired=True" not in failure, f"the reboot action fired although its timer could not be armed:\n{failure}"
     try:
-        wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after the fallback's watchdog reset")
+        wait_until(board.is_device_present, timeout_s=_DEVICE_PRESENT_TIMEOUT_S, poll_interval_s=_DEVICE_PRESENT_POLL_S, description="USB device node reappears after the fallback's watchdog reset")
         cause = board.exec("import machine; print('CAUSE', machine.reset_cause())")
         assert f"CAUSE {_WDT_RESET}" in cause, f"the board came back from something other than a watchdog reset: {cause!r}"
     finally:
         board.hard_reset()  # the attach above parks main.py without a watchdog; never end on that board
-        wait_until(board.is_device_present, timeout_s=15.0, poll_interval_s=0.3, description="USB device node reappears after the closing hard_reset()")
+        wait_until(board.is_device_present, timeout_s=_DEVICE_PRESENT_TIMEOUT_S, poll_interval_s=_DEVICE_PRESENT_POLL_S, description="USB device node reappears after the closing hard_reset()")

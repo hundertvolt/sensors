@@ -13,11 +13,19 @@ CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
+# @tunable l3.scd30_same_device_rw_concurrency_read_iterations = 40
 READ_ITERATIONS = 40
 # The SCD30's measurement interval is NVM-persisted, so it resumes measuring after setup()'s soft
 # reset and raises data-ready while the registers still hold that first unsettled conversion -
 # which read back as a stuck CO2=141.99 on every iteration. A few intervals are enough to clear it.
+# @tunable l3.scd30_same_device_rw_concurrency_settle_s = 12.0
 _SETTLE_S = 12.0
+# @tunable l3.scd30_same_device_rw_concurrency_settle_step_s = 0.5
+_SETTLE_STEP_S = 0.5
+# @tunable l3.scd30_same_device_rw_concurrency_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.scd30_same_device_rw_concurrency_wdt_feed_every = 10
+_WDT_FEED_EVERY = 10
 
 
 async def _main() -> None:
@@ -30,10 +38,10 @@ async def _main() -> None:
     # Deliberately discarded - see _SETTLE_S. read_measurement() is called rather than just slept
     # through, because data-ready clears the instant it is read: consuming the stale conversion is
     # what actually clears it, so sleeping alone would leave it waiting in the registers.
-    for _ in range(int(_SETTLE_S / 0.5)):
+    for _ in range(int(_SETTLE_S / _SETTLE_STEP_S)):
         await scd.read_measurement()
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_SETTLE_STEP_S)
 
     read_errors = []
     read_completed = 0
@@ -57,7 +65,7 @@ async def _main() -> None:
             except Exception as e:
                 read_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             read_completed += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
 
     async def writer() -> None:
@@ -70,7 +78,7 @@ async def _main() -> None:
             write_error = f"{type(e).__name__}: {e}"
         write_done = True
 
-    await asyncio.wait_for(asyncio.gather(reader(), writer()), 60.0)
+    await asyncio.wait_for(asyncio.gather(reader(), writer()), _RUN_BOUND_S)
 
     failures = []
     if read_completed != READ_ITERATIONS:

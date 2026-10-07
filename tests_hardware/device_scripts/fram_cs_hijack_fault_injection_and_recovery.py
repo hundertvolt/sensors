@@ -19,6 +19,8 @@ _ORIGINAL_PATTERN = bytes(range(16))
 _HIJACKED_WRITE_PATTERN = bytes((0xAA,) * 16)  # deliberately distinct from _ORIGINAL_PATTERN
 _READ_SEED_PATTERN = bytes(range(0x60, 0x70))  # deliberately distinct from every other pattern above
 _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
+# @tunable l3.fram_cs_hijack_fault_injection_and_recovery_victim_bound_s = 30.0
+_VICTIM_BOUND_S = 30.0
 
 
 class _CsHijack:
@@ -114,7 +116,7 @@ async def _main() -> None:
     hijack = _CsHijack(fram, len(_HIJACKED_WRITE_PATTERN))
     hijack.install_for_write()
     try:
-        await asyncio.wait_for(victim_writer(), 30.0)
+        await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
     finally:
         hijack.remove()
     if not hijack.injected_with_cs_asserted:
@@ -154,7 +156,7 @@ async def _main() -> None:
         hijack = _CsHijack(fram, len(hijacked_read_buf))
         hijack.install_for_read()
         try:
-            await asyncio.wait_for(victim_reader(), 30.0)
+            await asyncio.wait_for(victim_reader(), _VICTIM_BOUND_S)
         finally:
             hijack.remove()
         if not hijack.injected_with_cs_asserted:

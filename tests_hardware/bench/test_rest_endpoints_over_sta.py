@@ -30,8 +30,18 @@ RAW_MIN, RAW_MAX = 0, 65535
 # ---------------------------------------------------------------------------
 
 
+# @tunable l4.rest_endpoints_over_sta_probe_timeout_s = 10.0
+_PROBE_TIMEOUT_S = 10.0
+# @tunable l4.rest_endpoints_over_sta_ready_probe_timeout_s = 5.0
+_READY_PROBE_TIMEOUT_S = 5.0
+# @tunable l4.rest_endpoints_over_sta_reboot_ready_timeout_s = 120.0
+_REBOOT_READY_TIMEOUT_S = 120.0
+# @tunable l4.rest_endpoints_over_sta_reboot_ready_poll_s = 3.0
+_REBOOT_READY_POLL_S = 3.0
+
+
 def test_real_static_website_content_serves_over_the_normal_bridge_network(board: Board, dut_ip: str) -> None:
-    res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200, f"GET / over the normal bridge network failed: {res.status_code} {res.body!r}"
     # 200-and-non-empty passes for another device's build too, so the body is checked against this
     # device's own generated definitions (queue row G9).
@@ -45,7 +55,7 @@ def test_real_static_website_content_serves_over_the_normal_bridge_network(board
 
 
 def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(board: Board, dut_ip: str) -> None:
-    res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200, f"GET /measurements failed: {res.status_code} {res.body!r}"
     body = res.json()
 
@@ -90,14 +100,14 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
 
 
 def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
     assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
     assert before.json()["system"]["MemPaused"] is False, "storage was already paused before this test ran - a previous test left the bench in a paused state"
 
-    put_res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "mempause"}, timeout_s=10.0)
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "mempause"}, timeout_s=_PROBE_TIMEOUT_S)
     assert put_res.status_code == 200, f"PUT /system mempause failed: {put_res.status_code} {put_res.body!r}"
 
-    paused = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    paused = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
     assert paused.status_code == 200, f"GET /status after mempause failed: {paused.status_code} {paused.body!r}"
     assert paused.json()["system"]["MemPaused"] is True, f"MemPaused did not become True after a real PUT /system mempause: {paused.json()['system']!r}"
 
@@ -107,12 +117,12 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
     bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
     board.hard_reset()
     wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
-        timeout_s=120.0,
-        poll_interval_s=3.0,
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200,
+        timeout_s=_REBOOT_READY_TIMEOUT_S,
+        poll_interval_s=_REBOOT_READY_POLL_S,
         description="DUT serving /status again after the recovery reboot",
     )
-    after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
     assert after.json()["system"]["MemPaused"] is False, f"storage was still paused after a real reboot - the pause is supposed to be RAM-only: {after.json()['system']!r}"
 
 
@@ -128,7 +138,7 @@ def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(
     # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
     # dispatch-only ISLCalibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
     # tests_scripts/test_persistence_write_marker_completeness.py would fail without the marker.
-    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
     original = before.json()["ISL29125"]["GainRatio"]
     assert original is not None, "GainRatio is a schema field with a default - it can never be absent"
@@ -136,7 +146,7 @@ def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(
     # Distinguishable from the nominal default, so the reboot leg proves persistence rather than
     # re-defaulting. Inside the driver's own [20, 34] band and exactly representable as a float.
     probe = 24.5 if abs(original - 24.5) > 0.01 else 27.25
-    put = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": probe}}, timeout_s=10.0)
+    put = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": probe}}, timeout_s=_PROBE_TIMEOUT_S)
     assert put.status_code == 200, f"PUT /sensors GainRatio={probe} failed: {put.status_code} {put.body!r}"
     assert put.json()["result"]["ISL29125"].get("GainRatio") == "Valid", f"could not set GainRatio={probe}: {put.json()['result']['ISL29125']!r}"
 
@@ -144,17 +154,17 @@ def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(
         bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
         board.hard_reset()
         wait_until(
-            lambda: http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=5.0).status_code == 200,
-            timeout_s=120.0,
-            poll_interval_s=3.0,
+            lambda: http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200,
+            timeout_s=_REBOOT_READY_TIMEOUT_S,
+            poll_interval_s=_REBOOT_READY_POLL_S,
             description="DUT serving /sensors again after the reboot this persistence check needs",
         )
-        after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0).json()["ISL29125"]["GainRatio"]
+        after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S).json()["ISL29125"]["GainRatio"]
         assert after == probe, f"GainRatio did not survive a real reboot: set {probe!r}, read back {after!r}"
     finally:
         # Restore regardless of outcome - this mutates the real, persisted config of a shared rig,
         # and the applied ratio scales every later reading across a range change.
-        restore = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": original}}, timeout_s=10.0)
+        restore = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": original}}, timeout_s=_PROBE_TIMEOUT_S)
         assert restore.status_code == 200, f"failed to restore GainRatio={original!r}: {restore.status_code} {restore.body!r}"
         verdict = restore.json()["result"]["ISL29125"].get("GainRatio")
         # "Unchanged" counts as restored: if the probe PUT never landed, the board still holds the

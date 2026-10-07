@@ -36,6 +36,31 @@ from machine import (
     reset,
 )
 
+# @tunable l2.machine_wdt_short_timeout_ms = 150
+_WDT_SHORT_TIMEOUT_MS = 150
+# @tunable l2.machine_wdt_poll_ms = 5
+_WDT_POLL_MS = 5
+# @tunable l2.machine_run_bound_s = 5
+_RUN_BOUND_S = 5
+# @tunable l2.machine_wdt_fed_timeout_ms = 100
+_WDT_FED_TIMEOUT_MS = 100
+# @tunable l2.machine_feed_step_ms = 20
+_FEED_STEP_MS = 20
+# @tunable l2.machine_double_trigger_bound_s = 8
+_DOUBLE_TRIGGER_BOUND_S = 8
+# @tunable l2.machine_timer_period_ms = 20
+_TIMER_PERIOD_MS = 20
+# @tunable l2.machine_before_deinit_ms = 60
+_BEFORE_DEINIT_MS = 60
+# @tunable l2.machine_after_deinit_ms = 80
+_AFTER_DEINIT_MS = 80
+# @tunable l2.machine_chain_period_ms = 10
+_CHAIN_PERIOD_MS = 10
+# @tunable l2.machine_chain_poll_ms = 10
+_CHAIN_POLL_MS = 10
+# @tunable l2.machine_fire_poll_ms = 20
+_FIRE_POLL_MS = 20
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(coro)
@@ -354,67 +379,67 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
     # background monitor loops forever rather than stopping after one notification, so a granularity close
     # to its period races it, the observed count depending on scheduling.
     async def scenario() -> None:
-        wdt = WDT(timeout=150)
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
         for _ in range(200):
             if wdt.would_have_triggered_count >= 1:
                 return
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    run(asyncio.wait_for(scenario(), 5))
+    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
 
 
 def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
     async def scenario() -> int:
-        wdt = WDT(timeout=100)
+        wdt = WDT(timeout=_WDT_FED_TIMEOUT_MS)
         for _ in range(6):  # ~120ms of continuous feeding, comfortably past one 100ms window
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_FEED_STEP_MS)
             wdt.feed()
         return wdt.would_have_triggered_count
 
-    count = run(asyncio.wait_for(scenario(), 5))
+    count = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert count == 0  # kept fed the whole time - never should have noticed a gap
 
 
 def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> None:
     # "keeps monitoring so a long-unfed stretch can notify more than once" - not a one-shot.
     async def scenario() -> None:
-        wdt = WDT(timeout=150)
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
         for _ in range(600):
             if wdt.would_have_triggered_count >= 2:
                 return
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never reached a second would-have-triggered notification")
 
-    run(asyncio.wait_for(scenario(), 8))
+    run(asyncio.wait_for(scenario(), _DOUBLE_TRIGGER_BOUND_S))
 
 
 def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
     async def scenario() -> "deque[int]":
-        wdt = WDT(timeout=150)
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
         wdt.feed()
         wdt.feed()  # feed_count is 2 going into the unfed stretch below
         for _ in range(200):
             if wdt.would_have_triggered_count >= 1:
                 return wdt.would_have_triggered_log
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    log = run(asyncio.wait_for(scenario(), 5))
+    log = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert log[0] == 2  # the first notification must reflect feed_count as of the unfed stretch
 
 
 def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
     async def scenario() -> "list[WDT]":
         seen: list[WDT] = []
-        _wdt = WDT(timeout=150, on_would_trigger=seen.append)
+        _wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS, on_would_trigger=seen.append)
         for _ in range(200):
             if seen:
                 return seen
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("on_would_trigger callback never fired")
 
-    seen = run(asyncio.wait_for(scenario(), 5))
+    seen = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert seen[0].would_have_triggered_count >= 1
 
 
@@ -457,13 +482,13 @@ def test_rtc_datetime_round_trips() -> None:
 def test_timer_deinit_stops_further_callbacks() -> None:
     calls: list[int] = []
     timer = Timer()
-    timer.init(period=20, mode=Timer.PERIODIC, callback=lambda _t: calls.append(1))
+    timer.init(period=_TIMER_PERIOD_MS, mode=Timer.PERIODIC, callback=lambda _t: calls.append(1))
 
     async def scenario() -> "tuple[int, int]":
-        await asyncio.sleep_ms(60)
+        await asyncio.sleep_ms(_BEFORE_DEINIT_MS)
         timer.deinit()
         count_at_deinit = len(calls)
-        await asyncio.sleep_ms(80)
+        await asyncio.sleep_ms(_AFTER_DEINIT_MS)
         return count_at_deinit, len(calls)
 
     count_at_deinit, count_after = run(scenario())
@@ -488,17 +513,17 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
     def _chain(_t: "Timer", counter: int = 0) -> None:
         steps.append(counter)
         if counter < 2:
-            timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
+            timer.init(period=_CHAIN_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
 
     async def scenario() -> None:
-        timer.init(period=10, mode=Timer.ONE_SHOT, callback=_chain)
+        timer.init(period=_CHAIN_PERIOD_MS, mode=Timer.ONE_SHOT, callback=_chain)
         for _ in range(100):  # generous relative to the 10ms period, matches the sibling test below
             if len(steps) >= 3:
                 return
-            await asyncio.sleep_ms(10)
+            await asyncio.sleep_ms(_CHAIN_POLL_MS)
         raise AssertionError("chained timer never completed all steps")
 
-    run(asyncio.wait_for(scenario(), 5))  # must not raise "can't cancel self"
+    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))  # must not raise "can't cancel self"
     assert steps == [0, 1, 2]
 
 
@@ -522,14 +547,14 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
     timer = Timer()
 
     async def scenario() -> None:
-        timer.init(period=20, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
+        timer.init(period=_TIMER_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
         for _ in range(100):  # up to ~2s total, generous relative to the 20ms period
             if fired:
                 return
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_FIRE_POLL_MS)
         raise AssertionError("Timer callback never fired")
 
-    run(asyncio.wait_for(scenario(), 5))
+    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert fired == [1]
 
 

@@ -34,10 +34,16 @@ _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 _ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "IrCompOffset": 1, "IrCompAdjust": 20}
 
 
+# @tunable l4.sensor_config_push_over_real_hardware_probe_timeout_s = 10.0
+_PROBE_TIMEOUT_S = 10.0
+# @tunable l4.sensor_config_push_over_real_hardware_override_poll_s = 1.0
+_OVERRIDE_POLL_S = 1.0
+
+
 @pytest.mark.persistence_write
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original: dict[str, Any] = {k: get_before.json()["BMP3XX"][k] for k in _BMP3XX_TEST_VALUES}
     # An earlier run aborted before its own restore leaves the board already holding a test value.
@@ -47,20 +53,20 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
     assert not already_set, f"the board already holds {already_set!r} - an earlier run aborted before restoring; put those fields back before rerunning"
 
     try:
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": _BMP3XX_TEST_VALUES}, timeout_s=10.0)
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": _BMP3XX_TEST_VALUES}, timeout_s=_PROBE_TIMEOUT_S)
         assert put_res.status_code == 200, f"PUT /sensors failed: {put_res.status_code} {put_res.body!r}"
         results = put_res.json()["result"]["BMP3XX"]
         failed = {k: results.get(k) for k in _BMP3XX_TEST_VALUES if results.get(k) != "Valid"}
         assert not failed, f"real hardware push rejected one or more fields: {failed!r} (full result: {results!r})"
 
-        get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+        get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
         assert get_after.status_code == 200, f"GET /sensors after push failed: {get_after.status_code} {get_after.body!r}"
         actual = {k: get_after.json()["BMP3XX"][k] for k in _BMP3XX_TEST_VALUES}
         assert actual == _BMP3XX_TEST_VALUES, f"real hardware read-back does not match what was pushed: pushed {_BMP3XX_TEST_VALUES!r}, read back {actual!r}"
     finally:
         # Restore the board's original config regardless of outcome - this PUT mutates the real,
         # persisted config file and live hardware registers of a shared bench rig.
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": original}, timeout_s=10.0)
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": original}, timeout_s=_PROBE_TIMEOUT_S)
         assert restore_res.status_code == 200, f"failed to restore original BMP3XX config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["BMP3XX"]
         # "Unchanged" counts as restored: if the body failed before its own PUT landed, the board is
@@ -77,7 +83,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
 @pytest.mark.persistence_write
 def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
-    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original: dict[str, Any] = {k: get_before.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
     # An earlier run aborted before its own restore leaves the board already holding a test value.
@@ -87,20 +93,20 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
     assert not already_set, f"the board already holds {already_set!r} - an earlier run aborted before restoring; put those fields back before rerunning"
 
     try:
-        put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125_TEST_VALUES}, timeout_s=10.0)
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125_TEST_VALUES}, timeout_s=_PROBE_TIMEOUT_S)
         assert put_res.status_code == 200, f"PUT /sensors failed: {put_res.status_code} {put_res.body!r}"
         results = put_res.json()["result"]["ISL29125"]
         failed = {k: results.get(k) for k in _ISL29125_TEST_VALUES if results.get(k) != "Valid"}
         assert not failed, f"real hardware push rejected one or more fields: {failed!r} (full result: {results!r})"
 
-        get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+        get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
         assert get_after.status_code == 200, f"GET /sensors after push failed: {get_after.status_code} {get_after.body!r}"
         actual = {k: get_after.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
         assert actual == _ISL29125_TEST_VALUES, f"real hardware read-back does not match what was pushed: pushed {_ISL29125_TEST_VALUES!r}, read back {actual!r}"
     finally:
         # Restore the board's original config regardless of outcome - this PUT mutates the real,
         # persisted config file and live hardware registers of a shared bench rig.
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": original}, timeout_s=10.0)
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": original}, timeout_s=_PROBE_TIMEOUT_S)
         assert restore_res.status_code == 200, f"failed to restore original ISL29125 config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["ISL29125"]
         # "Unchanged" counts as restored: if the body failed before its own PUT landed, the board is
@@ -119,11 +125,11 @@ def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, d
     # /status's notification section carries it live, which proves the real auto_led_override()
     # background task decrements it on hardware rather than merely that the PUT was accepted.
     reset_all_error_logs(dut_ip)
-    put_res = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"PauseTime": 3}, timeout_s=10.0)
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"PauseTime": 3}, timeout_s=_PROBE_TIMEOUT_S)
     assert put_res.status_code == 200, f"PUT /notification PauseTime failed: {put_res.status_code} {put_res.body!r}"
     assert put_res.json()["result"].get("PauseTime") == "Valid", f"real PauseTime push was rejected: {put_res.json()['result']!r}"
 
-    get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
     assert get_res.status_code == 200, f"GET /status failed: {get_res.status_code} {get_res.body!r}"
     first = get_res.json()["notification"]["PauseTime"]
     assert first > 0, f"PauseTime read back as {first!r} immediately after a real push of 3 - the push never reached real hardware state"
@@ -131,8 +137,8 @@ def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, d
     last = first
     reached_zero = False
     for _ in range(10):  # real ~1s-per-tick auto_led_override() cadence - 10s comfortably covers a 3s countdown
-        time.sleep(1.0)
-        get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+        time.sleep(_OVERRIDE_POLL_S)
+        get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
         current = get_res.json()["notification"]["PauseTime"]
         assert current <= last, f"PauseTime increased ({last} -> {current}) - not a real, monotonic countdown"
         last = current
@@ -147,14 +153,14 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
     reset_all_error_logs(dut_ip)
     # SGPResetVOC is command-only (never persisted - see asy_sgp40_driver.py's _VAL_RESET comment),
     # so there is no "original value" to restore afterward, unlike the BMP3xx fields above.
-    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=10.0)
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=_PROBE_TIMEOUT_S)
     assert put_res.status_code == 200, f"PUT /sensors SGPResetVOC failed: {put_res.status_code} {put_res.body!r}"
     result = put_res.json()["result"]["SGP40"]
     assert result.get("SGPResetVOC") == "Valid", f"real reset_voc() push was rejected: {result!r}"
 
     # The sensor must still be alive and producing real readings afterward - a reset that wedged
     # the real algorithm/hardware would otherwise only surface as a silent later gap.
-    get_res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
+    get_res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=_PROBE_TIMEOUT_S)
     assert get_res.status_code == 200, f"GET /measurements after a real VOC reset failed: {get_res.status_code} {get_res.body!r}"
     assert_module_error_log_empty(dut_ip, "SGP40")
 
@@ -164,12 +170,12 @@ def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: st
     # ISLCalibrate is command-only, so no readback can show it took effect. What can be pinned is
     # the pair of invariants a run must respect, reachable only from the real REST stack.
     reset_all_error_logs(dut_ip)
-    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
     applied = before.json()["ISL29125"]["GainRatio"]
     assert applied is not None, "GainRatio is a schema field with a default - it can never be absent"
 
-    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"ISLCalibrate": True}}, timeout_s=10.0)
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"ISLCalibrate": True}}, timeout_s=_PROBE_TIMEOUT_S)
     assert put_res.status_code == 200, f"PUT /sensors ISLCalibrate failed: {put_res.status_code} {put_res.body!r}"
     result = put_res.json()["result"]["ISL29125"]
     assert result.get("ISLCalibrate") == "Valid", f"real start_calibration() push was rejected: {result!r}"
@@ -177,14 +183,14 @@ def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: st
     # Invariant 1: a calibration run measures a CANDIDATE ratio and must never become the applied
     # one - GainRatio is ordinary config, moved only by a user PUT (asy_isl29125_driver.py's own
     # "the APPLIED factor, replaced only by a config push").
-    after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert after.status_code == 200, f"GET /sensors after starting a calibration failed: {after.status_code} {after.body!r}"
     assert after.json()["ISL29125"]["GainRatio"] == applied, f"a calibration run must never move the applied ratio: was {applied!r}, now {after.json()['ISL29125']['GainRatio']!r}"
 
     # Invariant 2: the measured candidate reaches the operator through the measurement body, which
     # is the only place it is published. Its PRESENCE is the contract, not its value - a run that
     # finds no usable scene legitimately leaves it null, and the bench light is not arranged.
-    meas = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
+    meas = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=_PROBE_TIMEOUT_S)
     assert meas.status_code == 200, f"GET /measurements after starting a calibration failed: {meas.status_code} {meas.body!r}"
     assert "GainMeas" in meas.json()["ISL29125"], f"GET /measurements lost GainMeas: {meas.json()['ISL29125']!r}"
 

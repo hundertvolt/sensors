@@ -56,6 +56,7 @@ def test_sgp40_real_voc_index_response_to_real_stimulus() -> None:
 # The ISL29125 datasheet states no lux accuracy figure, and absolute lux or CCT against a
 # WS2812's three narrow emission lines is meaningless anyway - hence the automated sweep's
 # relative-only assertions. By hand: repeatability on one scene, continuity across a range switch.
+# @tunable l4.manual_sensor_accuracy_isl29125_repeatability_pct = 10.0
 _ISL29125_REPEATABILITY_TOLERANCE_PCT = 10.0
 
 

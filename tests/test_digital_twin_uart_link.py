@@ -44,8 +44,31 @@ if TYPE_CHECKING:
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("twin_uart")
 
+# @tunable l2.uart_link_run_limit_s = 30
+_RUN_LIMIT_S = 30
+# @tunable l2.uart_link_listener_settle_s = 5
+_LISTENER_SETTLE_S = 5
+# @tunable l2.uart_link_exchange_limit_s = 60
+_EXCHANGE_LIMIT_S = 60
+# @tunable l2.uart_link_ticker_step_ms = 2
+_TICKER_STEP_MS = 2
+# @tunable l2.uart_link_collect_step_ms = 3
+_COLLECT_STEP_MS = 3
+# @tunable l2.uart_link_max_train_limit_s = 240
+_MAX_TRAIN_LIMIT_S = 240
+# @tunable l2.uart_link_hammer_limit_s = 300
+_HAMMER_LIMIT_S = 300
+# @tunable l2.uart_link_churn_step_ms = 1
+_CHURN_STEP_MS = 1
+# @tunable l2.uart_link_cancel_settle_ms = 5
+_CANCEL_SETTLE_MS = 5
+# @tunable l2.uart_link_churn_limit_s = 180
+_CHURN_LIMIT_S = 180
+# @tunable l2.uart_link_noise_step_ms = 1
+_NOISE_STEP_MS = 1
 
-def run(coro: "Coroutine[Any, Any, T]", limit: int = 30) -> "T":
+
+def run(coro: "Coroutine[Any, Any, T]", limit: int = _RUN_LIMIT_S) -> "T":
     return asyncio.run(asyncio.wait_for(coro, limit))
 
 
@@ -100,7 +123,7 @@ async def exchange(work: "Coroutine[Any, Any, T]") -> "T":
 
 async def _settle_listener(listener: "asyncio.Task[Any]") -> None:
     try:
-        await asyncio.wait_for(listener, 5)
+        await asyncio.wait_for(listener, _LISTENER_SETTLE_S)
     except asyncio.TimeoutError:
         listener.cancel()
         try:
@@ -224,12 +247,12 @@ def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
     initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
     direction = link.direction_from(fakes()[1])
     direction.silent = True
-    assert run(exchange(initiator.uart_set(0x02, b"lost")), limit=60) is False
+    assert run(exchange(initiator.uart_set(0x02, b"lost")), limit=_EXCHANGE_LIMIT_S) is False
     assert initiator._holdoff_active is True
 
     direction.silent = False
-    run(responder.clear(), limit=60)
-    assert run(exchange(initiator.uart_set(0x02, b"back")), limit=60) is True
+    run(responder.clear(), limit=_EXCHANGE_LIMIT_S)
+    assert run(exchange(initiator.uart_set(0x02, b"back")), limit=_EXCHANGE_LIMIT_S) is True
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +272,7 @@ def test_a_transfer_does_not_starve_other_tasks() -> None:
     async def ticker() -> None:
         while True:
             ticks.append(time.ticks_ms())
-            await asyncio.sleep_ms(2)
+            await asyncio.sleep_ms(_TICKER_STEP_MS)
 
     async def scenario() -> bool:
         background = asyncio.create_task(ticker())
@@ -258,7 +281,7 @@ def test_a_transfer_does_not_starve_other_tasks() -> None:
         finally:
             background.cancel()
 
-    assert run(scenario(), limit=60) is True
+    assert run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
     assert len(ticks) > 5, "other tasks made no progress during the transfer"
 
 
@@ -276,7 +299,7 @@ def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
             await task
         return results
 
-    results = run(scenario(), limit=60)
+    results = run(scenario(), limit=_EXCHANGE_LIMIT_S)
     assert results[0] is not None
 
 
@@ -294,7 +317,7 @@ def test_a_forced_collection_mid_transfer_does_not_break_the_link() -> None:
         async def collector() -> None:
             for _ in range(6):
                 gc.collect()
-                await asyncio.sleep_ms(3)
+                await asyncio.sleep_ms(_COLLECT_STEP_MS)
 
         background = asyncio.create_task(collector())
         try:
@@ -302,7 +325,7 @@ def test_a_forced_collection_mid_transfer_does_not_break_the_link() -> None:
         finally:
             background.cancel()
 
-    assert run(scenario(), limit=60) is True
+    assert run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
 
 
 def test_a_maximum_length_train_completes_and_still_yields() -> None:
@@ -319,7 +342,7 @@ def test_a_maximum_length_train_completes_and_still_yields() -> None:
     async def ticker() -> None:
         while True:
             ticks.append(time.ticks_ms())
-            await asyncio.sleep_ms(2)
+            await asyncio.sleep_ms(_TICKER_STEP_MS)
 
     async def scenario() -> bool:
         background = asyncio.create_task(ticker())
@@ -328,7 +351,7 @@ def test_a_maximum_length_train_completes_and_still_yields() -> None:
         finally:
             background.cancel()
 
-    assert run(scenario(), limit=240) is True, "the maximum-length train did not complete"
+    assert run(scenario(), limit=_MAX_TRAIN_LIMIT_S) is True, "the maximum-length train did not complete"
     # Progress, not a rate: the ticker must have been scheduled throughout, which it cannot be if
     # any step held the loop for the whole transfer.
     assert len(ticks) > 50, f"other tasks ran only {len(ticks)} times across a 254-chunk transfer"
@@ -370,7 +393,7 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
         gc.collect()
         return ok, before - gc.mem_free()
 
-    ok, leaked = run(scenario(), limit=300)
+    ok, leaked = run(scenario(), limit=_HAMMER_LIMIT_S)
     assert ok == rounds, f"only {ok}/{rounds} transfers succeeded across a full UID wrap"
     counts = run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, f"{rounds} clean transfers logged an error"
@@ -401,7 +424,7 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
                 gc.collect()
             if len(held) > 32:
                 held = held[16:]
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_CHURN_STEP_MS)
 
     async def scenario() -> "list[bool]":
         background = asyncio.create_task(churn())
@@ -415,9 +438,9 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
         finally:
             stop.append(True)
             background.cancel()
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
 
-    results = run(scenario(), limit=180)
+    results = run(scenario(), limit=_CHURN_LIMIT_S)
     assert all(isinstance(r, bool) for r in results), "a transfer returned something other than its documented bool"
     assert any(results), "every transfer failed under allocation pressure - the link did not degrade, it stopped"
 
@@ -463,10 +486,10 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         finally:
             for task in noise:
                 task.cancel()
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
 
     try:
-        ok, leaked = run(scenario(), limit=300)
+        ok, leaked = run(scenario(), limit=_HAMMER_LIMIT_S)
     finally:
         gc.threshold(original)
     assert ok == 120, f"only {ok}/120 hammered transactions completed at gc.threshold({threshold})"
@@ -479,7 +502,7 @@ async def _uptime_noise(dev: "ModuleType") -> None:
     # A co-running consumer of the same event loop, so the hammer is never the only thing scheduled.
     while True:
         await dev.sysfunct.get_uptime()
-        await asyncio.sleep_ms(1)
+        await asyncio.sleep_ms(_NOISE_STEP_MS)
 
 
 def test_hammering_the_link_beside_the_graph_holds_at_the_gc_default() -> None:

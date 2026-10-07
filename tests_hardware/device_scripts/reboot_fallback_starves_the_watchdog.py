@@ -11,6 +11,8 @@ from system_service import SystemService
 
 # @tunable l3.starvation_wdt_ms = 1500
 WATCHDOG_TIMEOUT_MS = 1500  # short, as watchdog_starvation_reset.py: the host bounds the whole run
+# @tunable l3.reboot_fallback_starves_the_watchdog_feed_attempt_ms = 250
+_FEED_ATTEMPT_MS = 250
 
 
 async def _never_synced() -> bool:
@@ -47,7 +49,7 @@ def main() -> None:
     while True:  # the supervisor's own feed site, called on schedule; the watchdog must still fire
         svc.feed_watchdog()
         print(f"FEED_CALLED t={time.ticks_diff(time.ticks_ms(), t0)}ms action_fired={bool(fired)}")
-        time.sleep_ms(250)
+        time.sleep_ms(_FEED_ATTEMPT_MS)
 
 
 main()

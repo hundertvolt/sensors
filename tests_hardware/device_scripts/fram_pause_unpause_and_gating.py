@@ -15,10 +15,14 @@ CHUNK_SIZE = 32
 PATTERN_A = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))
 PATTERN_B = bytes((i * 11 + 29) % 256 for i in range(CHUNK_SIZE))  # distinct, so a stale read can't masquerade as a fresh one
 
+# @tunable l3.fram_pause_unpause_and_gating_pause_s = 2
 PAUSE_SEC = 2
+# @tunable l3.fram_pause_unpause_and_gating_rearm_s = 6
 REARM_SEC = 6
 # @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
+# @tunable l3.fram_pause_unpause_and_gating_feed_step_s = 1.0
+_FEED_STEP_S = 1.0
 failures: list[str] = []
 wdt: "machine.WDT | None" = None
 
@@ -29,7 +33,7 @@ async def sleep_fed(seconds: float) -> None:
     presenting as a bare serial EIO. tests_hardware/README.md has the full account."""
     remaining = seconds
     while remaining > 0:
-        step = min(remaining, 1.0)
+        step = min(remaining, _FEED_STEP_S)
         await asyncio.sleep(step)
         if wdt is not None:
             wdt.feed()

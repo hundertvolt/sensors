@@ -14,9 +14,13 @@ import sensortask_dev
 # set rather than inherited - it is what MEASUREMENTS archive 7R.2 was taken at.
 # @tunable gc.threshold_bytes = 32768
 gc.threshold(32768)
+# @tunable l3.heap_under_connection_ceiling_sample_interval_ms = 1000
 _SAMPLE_INTERVAL_MS = 1000
 # Long enough for the host to see this boot serve, settle, and drive several full-ceiling rounds.
+# @tunable l3.heap_under_connection_ceiling_window_s = 90
 _WINDOW_S = 90
+# @tunable l3.heap_under_connection_ceiling_boot_wait_s = 20
+_BOOT_WAIT_S = 20
 
 
 def _dump(label: str) -> None:
@@ -42,7 +46,7 @@ async def _run() -> None:
     # No readiness probe from in here: a request driven from this process would share the heap
     # under measurement, which is the whole thing Part E.9 forbids. The host polls the real HTTP
     # port itself, once main.py's own server has gone quiet (harness.wait_for_script_server()).
-    await asyncio.sleep(20)
+    await asyncio.sleep(_BOOT_WAIT_S)
     _dump("after_boot")
     print("READY")
     try:

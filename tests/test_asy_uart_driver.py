@@ -19,12 +19,43 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l1.asy_uart_driver_run_bound_s = 5
+_RUN_BOUND_S = 5
+# @tunable l1.asy_uart_driver_data_timeout_ms = 200
+_DATA_TIMEOUT_MS = 200
+# @tunable l1.asy_uart_driver_no_data_timeout_ms = 20
+_NO_DATA_TIMEOUT_MS = 20
+# @tunable l1.asy_uart_driver_task_inside_ms = 5
+_TASK_INSIDE_MS = 5
+# @tunable l1.asy_uart_driver_step_bound_s = 2
+_STEP_BOUND_S = 2
+# @tunable l1.asy_uart_driver_no_delimiter_timeout_ms = 100
+_NO_DELIMITER_TIMEOUT_MS = 100
+# @tunable l1.asy_uart_driver_locked_work_ms = 30
+_LOCKED_WORK_MS = 30
+# @tunable l1.asy_uart_driver_short_cancel_ack_ms = 50
+_SHORT_CANCEL_ACK_MS = 50
+# @tunable l1.asy_uart_driver_holder_work_ms = 20
+_HOLDER_WORK_MS = 20
+# @tunable l1.asy_uart_driver_cancel_ack_ms = 500
+_CANCEL_ACK_MS = 500
+# @tunable l1.asy_uart_driver_ready_timeout_ms = 100
+_READY_TIMEOUT_MS = 100
+# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
+_DEADLOCK_WAIT_S = 0.2
+# @tunable l1.asy_uart_driver_poll_wait_ms = 1
+_POLL_WAIT_MS = 1
+# @tunable l1.asy_uart_driver_idle_poll_ms = 40
+_IDLE_POLL_MS = 40
+# @tunable l1.asy_uart_driver_silent_line_timeout_ms = 30
+_SILENT_LINE_TIMEOUT_MS = 30
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
     # Bounded via wait_for(), not a bare asyncio.run(): a timeout_ms=-1 read through a real
     # select.poll() against a pure-Python fake hangs forever on CI runners (CLAUDE.md's known hang).
     # 5s is generous next to this file's tightest inner bound, and a TimeoutError FAILs fast.
-    return asyncio.run(asyncio.wait_for(coro, 5))
+    return asyncio.run(asyncio.wait_for(coro, _RUN_BOUND_S))
 
 
 def make_uart(**kwargs: "Any") -> UART:
@@ -362,13 +393,13 @@ def test_async_with_acquires_and_releases_lock() -> None:
 def test_ready_returns_true_once_data_is_available() -> None:
     uart = make_uart()
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
-    assert run(uart.ready(select.POLLIN, timeout_ms=200)) is True
+    assert run(uart.ready(select.POLLIN, timeout_ms=_DATA_TIMEOUT_MS)) is True
 
 
 def test_ready_times_out_when_nothing_arrives() -> None:
     uart = make_uart()
     uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never ready - see _StepPoller's own docstring
-    assert run(uart.ready(select.POLLIN, timeout_ms=20)) is False
+    assert run(uart.ready(select.POLLIN, timeout_ms=_NO_DATA_TIMEOUT_MS)) is False
 
 
 def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
@@ -385,7 +416,7 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            return await uart.ready(select.POLLIN, timeout_ms=200)
+            return await uart.ready(select.POLLIN, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) is False  # must not raise
 
@@ -414,9 +445,9 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
 
     async def scenario() -> tuple[bytes | None, bool]:
         task = asyncio.create_task(waiter())
-        await asyncio.sleep_ms(5)  # let waiter enter ready()'s poll loop, holding the lock
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)  # let waiter enter ready()'s poll loop, holding the lock
         cancelled = await uart.cancel_read_timeout()
-        result = await asyncio.wait_for(task, 2)
+        result = await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, cancelled
 
     result, cancelled = run(scenario())
@@ -497,9 +528,9 @@ def test_into_methods_move_the_same_bytes_as_their_allocating_siblings() -> None
     reader_into = make_uart()
     reader_into.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(reader_into).feed_rx(bytes(payload))
-    got = run(locked_read_until_complete(reader_alloc, 4, start_timeout_ms=200, timeout_ms=200))
+    got = run(locked_read_until_complete(reader_alloc, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     buf = bytearray(4)
-    size = run(locked_readinto_until_complete(reader_into, buf, 4, start_timeout_ms=200, timeout_ms=200))
+    size = run(locked_readinto_until_complete(reader_into, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert got is not None
     assert size == 4
     assert bytes(got) == bytes(buf)
@@ -576,7 +607,7 @@ def test_cobs_round_trips_through_the_driver() -> None:
     receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(receiver).feed_rx(written(sender))
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=200, timeout_ms=200))
+    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert size == len(payload)
     assert bytes(buf[:size]) == bytes(payload)
 
@@ -590,7 +621,7 @@ def test_cobs_round_trips_through_the_allocating_read() -> None:
     receiver = cobs_uart()
     receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(receiver).feed_rx(written(sender))
-    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=200, timeout_ms=200))
+    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert got is not None
     assert bytes(got) == bytes(payload)
 
@@ -604,7 +635,7 @@ def test_cobs_round_trips_with_a_crc_underneath_it() -> None:
     receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(receiver).feed_rx(written(sender))
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=200, timeout_ms=200))
+    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert size == len(payload)
     assert bytes(buf[:size]) == bytes(payload)
 
@@ -616,7 +647,7 @@ def test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking
     uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never becomes ready again
     fake(uart).feed_rx(b"\x01" * 200)  # plenty of bytes, not one delimiter
     buf = bytearray(64)
-    assert run(locked_readinto_until_complete(uart, buf, 8, start_timeout_ms=100, timeout_ms=100)) is None
+    assert run(locked_readinto_until_complete(uart, buf, 8, start_timeout_ms=_NO_DELIMITER_TIMEOUT_MS, timeout_ms=_NO_DELIMITER_TIMEOUT_MS)) is None
 
 
 def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
@@ -633,7 +664,7 @@ def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
     fake(receiver).feed_rx(tail + whole_frame)
     receiver.resync_framing()
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, 3, start_timeout_ms=200, timeout_ms=200))
+    size = run(locked_readinto_until_complete(receiver, buf, 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert size == 3
     assert bytes(buf[:size]) == b"\x41\x42\x43"
 
@@ -642,7 +673,7 @@ def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
     naive = cobs_uart()
     naive.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(naive).feed_rx(tail + whole_frame)
-    assert run(locked_readinto_until_complete(naive, bytearray(64), 3, start_timeout_ms=200, timeout_ms=200)) is None
+    assert run(locked_readinto_until_complete(naive, bytearray(64), 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
 
 
 def test_empty_frames_are_skipped_at_the_codec_layer() -> None:
@@ -653,7 +684,7 @@ def test_empty_frames_are_skipped_at_the_codec_layer() -> None:
     receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(receiver).feed_rx(bytes([COBS_DELIMITER, COBS_DELIMITER]) + written(sender))
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, 2, start_timeout_ms=200, timeout_ms=200))
+    size = run(locked_readinto_until_complete(receiver, buf, 2, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert size == 2
     assert bytes(buf[:size]) == b"\x31\x32"
 
@@ -664,7 +695,7 @@ def test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun() -> None:
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(uart).feed_rx(b"\x40\x01\x02" + bytes([COBS_DELIMITER]))  # code 0x40 runs past the frame
     buf = bytearray(64)
-    assert run(locked_readinto_until_complete(uart, buf, 3, start_timeout_ms=200, timeout_ms=200)) is None
+    assert run(locked_readinto_until_complete(uart, buf, 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
 
 
 def test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused() -> None:
@@ -703,14 +734,14 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
     async def reader() -> bytes | None:
         async with uart:
             data = await uart.read(4)
-            await asyncio.sleep_ms(30)  # stands in for crc.check()'s own per-byte yields
+            await asyncio.sleep_ms(_LOCKED_WORK_MS)  # stands in for crc.check()'s own per-byte yields
             return data
 
     async def scenario() -> tuple[bytes | None, bool]:
         task = asyncio.create_task(reader())
-        await asyncio.sleep_ms(5)  # the read has completed; the lock is still held
-        cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), 2)
-        return await asyncio.wait_for(task, 2), cancelled
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)  # the read has completed; the lock is still held
+        cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), _STEP_BOUND_S)
+        return await asyncio.wait_for(task, _STEP_BOUND_S), cancelled
 
     result, cancelled = run(scenario())
     assert result == b"abcd"  # the read was already done, so it is not disturbed
@@ -727,15 +758,15 @@ def test_cancel_between_two_reads_is_not_lost() -> None:
     async def reader() -> "list[object]":
         async with uart:
             first = await uart.read(2)
-            await asyncio.sleep_ms(30)  # cancel lands in here, with no ready() in flight
+            await asyncio.sleep_ms(_LOCKED_WORK_MS)  # cancel lands in here, with no ready() in flight
             second = await uart.read(2, timeout_ms=-1)
             return [first, second]
 
     async def scenario() -> "tuple[list[object], bool]":
         task = asyncio.create_task(reader())
-        await asyncio.sleep_ms(5)
-        cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), 2)
-        return await asyncio.wait_for(task, 2), cancelled
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)
+        cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), _STEP_BOUND_S)
+        return await asyncio.wait_for(task, _STEP_BOUND_S), cancelled
 
     results, cancelled = run(scenario())
     assert cancelled is True
@@ -754,11 +785,11 @@ def test_two_concurrent_cancellers_both_return() -> None:
 
     async def scenario() -> "tuple[bool, bool]":
         task = asyncio.create_task(waiter())
-        await asyncio.sleep_ms(5)
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)
         first = asyncio.create_task(uart.cancel_read_timeout())
         second = asyncio.create_task(uart.cancel_read_timeout())
-        results = (await asyncio.wait_for(first, 2), await asyncio.wait_for(second, 2))
-        await asyncio.wait_for(task, 2)
+        results = (await asyncio.wait_for(first, _STEP_BOUND_S), await asyncio.wait_for(second, _STEP_BOUND_S))
+        await asyncio.wait_for(task, _STEP_BOUND_S)
         return results
 
     first_result, second_result = run(scenario())
@@ -777,10 +808,10 @@ def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
 
     async def scenario() -> "tuple[int, int]":
         task = asyncio.create_task(waiter())
-        await asyncio.sleep_ms(5)
-        await asyncio.wait_for(uart.cancel_read_timeout(), 2)
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)
+        await asyncio.wait_for(uart.cancel_read_timeout(), _STEP_BOUND_S)
         reads_at_ack = len([entry for entry in fake(uart).log if entry[0] == "read"])
-        await asyncio.wait_for(task, 2)
+        await asyncio.wait_for(task, _STEP_BOUND_S)
         return reads_at_ack, len([entry for entry in fake(uart).log if entry[0] == "read"])
 
     at_ack, after = run(scenario())
@@ -800,10 +831,10 @@ def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
 
     async def scenario() -> "tuple[bool, int]":
         task = asyncio.create_task(wedged())
-        await asyncio.sleep_ms(5)
-        result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=50), 2)
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)
+        result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=_SHORT_CANCEL_ACK_MS), _STEP_BOUND_S)
         unacked = uart.cancel_unacknowledged
-        await asyncio.wait_for(task, 2)
+        await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, unacked
 
     result, unacked = run(scenario())
@@ -818,13 +849,13 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
 
     async def holder() -> None:
         async with uart:
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_HOLDER_WORK_MS)
 
     async def scenario() -> "tuple[bool, int]":
         task = asyncio.create_task(holder())
-        await asyncio.sleep_ms(5)
-        result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=500), 2)
-        await asyncio.wait_for(task, 2)
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)
+        result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=_CANCEL_ACK_MS), _STEP_BOUND_S)
+        await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, uart.cancel_unacknowledged
 
     result, unacked = run(scenario())
@@ -843,7 +874,7 @@ def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
 
 async def one_shot_ready(uart: UART) -> bool:
     async with uart:
-        return await uart.ready(select.POLLIN, timeout_ms=100)
+        return await uart.ready(select.POLLIN, timeout_ms=_READY_TIMEOUT_MS)
 
 
 # ---------------------------------------------------------------------------
@@ -872,7 +903,7 @@ def test_read_returns_none_on_timeout() -> None:
 
     async def scenario() -> bytes | None:
         async with uart:
-            return await uart.read(timeout_ms=20)
+            return await uart.read(timeout_ms=_NO_DATA_TIMEOUT_MS)
 
     assert run(scenario()) is None
 
@@ -957,7 +988,7 @@ def test_read_until_complete_assembles_across_multiple_rounds() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            return await uart.read_until_complete(5, start_timeout_ms=200, timeout_ms=200)
+            return await uart.read_until_complete(5, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) == bytearray(b"abcde")
 
@@ -1050,7 +1081,7 @@ def test_readline_until_complete_assembles_multi_part_line() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            return await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
+            return await uart.readline_until_complete(start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) == bytearray(b"partial-line\n")
 
@@ -1076,7 +1107,7 @@ def test_readline_until_complete_survives_an_empty_readline_without_crashing() -
 
     async def scenario() -> bytearray | None:
         async with uart:
-            return await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
+            return await uart.readline_until_complete(start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) == bytearray(b"ok\n")
 
@@ -1141,9 +1172,9 @@ def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
 
     async def scenario() -> tuple[bool, bool]:
         task = asyncio.create_task(writer())
-        await asyncio.sleep_ms(5)  # let writer enter ready()'s poll loop, holding the lock
+        await asyncio.sleep_ms(_TASK_INSIDE_MS)  # let writer enter ready()'s poll loop, holding the lock
         cancelled = await uart.cancel_read_timeout()
-        result = await asyncio.wait_for(task, 2)
+        result = await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, cancelled
 
     result, cancelled = run(scenario())
@@ -1369,7 +1400,7 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
 
     async def scenario() -> bool:
         try:
-            await asyncio.wait_for(reentrant(), 0.2)
+            await asyncio.wait_for(reentrant(), _DEADLOCK_WAIT_S)
         except asyncio.TimeoutError:
             return True
         else:
@@ -1496,7 +1527,7 @@ def test_readinto_until_complete_never_asks_for_more_than_is_buffered() -> None:
 
     async def scenario() -> int | None:
         async with uart:
-            return await uart.readinto_until_complete(buf, 5, start_timeout_ms=200, timeout_ms=200)
+            return await uart.readinto_until_complete(buf, 5, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) == 5
     assert bytes(buf) == b"abcde"
@@ -1520,7 +1551,7 @@ def test_read_until_complete_never_asks_for_more_than_is_buffered() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            return await uart.read_until_complete(5, start_timeout_ms=200, timeout_ms=200)
+            return await uart.read_until_complete(5, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) == bytearray(b"abcde")
     assert asked[0] == 2, f"first round asked for {asked[0]}, not the 2 bytes actually buffered"
@@ -1571,7 +1602,7 @@ def test_ready_yields_even_when_the_mask_is_already_satisfied() -> None:
     async def scenario() -> bool:
         async with uart:
             other = asyncio.create_task(competitor())  # runnable, but only if ready() yields
-            got = await uart.ready(select.POLLIN, timeout_ms=100)
+            got = await uart.ready(select.POLLIN, timeout_ms=_READY_TIMEOUT_MS)
             assert ran, "ready() returned True without yielding: a read loop through it cannot be preempted"
             await other
             return got
@@ -1588,11 +1619,11 @@ def test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not()
             assert await uart.ready(select.POLLIN, timeout_ms=timeout_ms) is True
             return time.ticks_diff(time.ticks_ms(), t0)
 
-    idle = make_uart(poll_wait_ms=1, poll_idle_ms=40)
+    idle = make_uart(poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
     idle.poller = _StepPoller([0, 0, select.POLLIN])  # type: ignore[assignment]
     assert run(wait_on(idle, -1)) >= 2 * 40
 
-    bounded = make_uart(poll_wait_ms=1, poll_idle_ms=40)
+    bounded = make_uart(poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
     bounded.poller = _StepPoller([0, 0, select.POLLIN])  # type: ignore[assignment]
     assert run(wait_on(bounded, 1000)) < 40
 
@@ -1647,7 +1678,7 @@ def test_readline_until_complete_does_not_probe_an_empty_buffer_either() -> None
     # The looping half of the same gate: POLLIN says a byte is readable, so a round that finds the
     # ring empty must yield rather than hand readline() an empty ring to spin its EAGAIN probe on.
     FakeUART.would_have_blocked_bytes = 0
-    uart = make_uart(poll_wait_ms=1)
+    uart = make_uart(poll_wait_ms=_POLL_WAIT_MS)
     fk = fake(uart)
 
     def feed_line_and_ready() -> int:
@@ -1658,7 +1689,7 @@ def test_readline_until_complete_does_not_probe_an_empty_buffer_either() -> None
 
     async def scenario() -> bytearray | None:
         async with uart:
-            return await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
+            return await uart.readline_until_complete(start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     got = run(scenario())
     assert got is not None and bytes(got) == b"hi\n", got
@@ -1674,7 +1705,7 @@ def test_a_delimited_frame_read_never_probes_an_empty_ring() -> None:
     assert run(locked_write(sender, bytearray(payload))) is True
     frame = written(sender)
 
-    receiver = cobs_uart(poll_wait_ms=1)
+    receiver = cobs_uart(poll_wait_ms=_POLL_WAIT_MS)
     fk = fake(receiver)
     fk.feed_rx(frame[:2])
 
@@ -1683,7 +1714,7 @@ def test_a_delimited_frame_read_never_probes_an_empty_ring() -> None:
         return select.POLLIN
 
     receiver.poller = _StepPoller([select.POLLIN, feed_rest_and_ready])  # type: ignore[assignment]
-    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=200, timeout_ms=200))
+    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert got is not None and bytes(got) == bytes(payload), got
     assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
 
@@ -1705,7 +1736,7 @@ def test_a_whole_frame_read_never_asks_for_a_byte_that_has_not_arrived() -> None
 
     async def scenario() -> int | None:
         async with uart:
-            return await uart.readinto_until_complete(buf, 8, start_timeout_ms=200, timeout_ms=200)
+            return await uart.readinto_until_complete(buf, 8, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
 
     assert run(scenario()) == 8
     assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
@@ -1788,7 +1819,7 @@ def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> N
     # POLLIN with nothing actually buffered: the loop must hand the scheduler a turn instead of
     # calling ready() again at once, which on real hardware burns the whole latency budget inside
     # one task. readinto_until_complete()'s twin already had this; the allocating one did not.
-    uart = make_uart(poll_wait_ms=1)
+    uart = make_uart(poll_wait_ms=_POLL_WAIT_MS)
     fk = fake(uart)
 
     def feed_and_ready() -> int:
@@ -1796,7 +1827,7 @@ def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> N
         return select.POLLIN
 
     uart.poller = _StepPoller([select.POLLIN, feed_and_ready])  # type: ignore[assignment]
-    got = run(locked_read_until_complete(uart, 4, start_timeout_ms=200, timeout_ms=200))
+    got = run(locked_read_until_complete(uart, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
     assert got is not None and bytes(got) == b"abcd", got
 
 
@@ -1806,8 +1837,8 @@ def test_a_delimited_read_with_nothing_on_the_line_times_out_on_both_paths() -> 
     # has to turn _read_delimited()'s sentinel into its own rather than returning a partial frame.
     uart = cobs_uart()
     uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never becomes ready
-    assert run(locked_readinto_until_complete(uart, bytearray(64), 8, start_timeout_ms=30, timeout_ms=30)) is None
-    assert run(locked_read_until_complete(uart, 8, start_timeout_ms=30, timeout_ms=30)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 8, start_timeout_ms=_SILENT_LINE_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS)) is None
+    assert run(locked_read_until_complete(uart, 8, start_timeout_ms=_SILENT_LINE_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS)) is None
 
 
 def test_a_delimited_codec_that_names_no_delimiter_fails_the_read() -> None:
@@ -1849,7 +1880,7 @@ def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None
     async def scenario() -> "bytearray | None":
         other = asyncio.create_task(competitor())
         try:
-            return await locked_read_until_complete(receiver, 40, start_timeout_ms=200, timeout_ms=200)
+            return await locked_read_until_complete(receiver, 40, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)
         finally:
             other.cancel()
             try:
@@ -1877,7 +1908,7 @@ def test_a_readline_that_never_becomes_ready_returns_the_sentinel() -> None:
 
     async def scenario() -> "bytes | None":
         async with uart:
-            return await uart.readline(timeout_ms=30)
+            return await uart.readline(timeout_ms=_SILENT_LINE_TIMEOUT_MS)
 
     assert run(scenario()) is None
 

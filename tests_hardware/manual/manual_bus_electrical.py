@@ -5,6 +5,11 @@ from __future__ import annotations
 from harness import Board
 from runner import confirm, confirm_pass, countdown, print_instruction, register, state_expected_outcome
 
+# @tunable l4.manual_bus_electrical_recovery_watch_s = 30.0
+_RECOVERY_WATCH_S = 30.0
+# @tunable l4.manual_bus_electrical_reboot_watch_s = 30.0
+_REBOOT_WATCH_S = 30.0
+
 
 @register(
     "hot_unplug_replug_i2c_recovery",
@@ -23,10 +28,10 @@ def test_hot_unplug_replug_i2c_recovery() -> None:
     countdown(20, "Reconnect the SCD30 I2C leads now")
     confirm("Confirm both leads are reconnected, then press Enter")
 
-    print_instruction("Watching the live log for 30s for evidence of recovery (a fresh successful SCD30 read).")
-    lines = board.tail_log(duration_s=30.0)
+    print_instruction(f"Watching the live log for {_RECOVERY_WATCH_S:g}s for evidence of recovery (a fresh successful SCD30 read).")
+    lines = board.tail_log(duration_s=_RECOVERY_WATCH_S)
     joined = "\n".join(lines)
-    assert "SCD30" in joined or "CO2" in joined, f"no SCD30-related recovery activity observed in the 30s window after reconnect:\n{joined}"
+    assert "SCD30" in joined or "CO2" in joined, f"no SCD30-related recovery activity observed in the {_RECOVERY_WATCH_S:g}s window after reconnect:\n{joined}"
 
 
 @register(
@@ -40,13 +45,13 @@ def test_wedged_i2c_bus_watchdog_backstop() -> None:
     state_expected_outcome("the board resets (WDT-triggered) within ~8.4s of the bus being held low long enough to starve the watchdog - you'll see the boot log lines reappear.")
     confirm("Confirm the jumper is connected (SDA held to GND), then press Enter to start watching")
 
-    print_instruction("Watching for a reboot (up to 30s, generous relative to the 8388ms WDT cap).")
-    lines = board.tail_log(duration_s=30.0)
+    print_instruction(f"Watching for a reboot (up to {_REBOOT_WATCH_S:g}s, generous relative to the 8388ms WDT cap).")
+    lines = board.tail_log(duration_s=_REBOOT_WATCH_S)
     joined = "\n".join(lines)
     rebooted = "CFGMGR_" in joined or "FRAM SPI FRAM Driver Setup complete" in joined
     print_instruction("Now remove the SDA-to-GND jumper.")
     confirm("Confirm the jumper is removed, then press Enter")
-    assert rebooted, f"no reboot observed within 30s of wedging the I2C bus - WDT backstop did not fire as expected:\n{joined}"
+    assert rebooted, f"no reboot observed within {_REBOOT_WATCH_S:g}s of wedging the I2C bus - WDT backstop did not fire as expected:\n{joined}"
 
 
 @register(

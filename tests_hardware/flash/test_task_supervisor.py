@@ -17,8 +17,12 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
+# @tunable l3.task_supervisor_script_timeout_s = 15.0
+_SCRIPT_TIMEOUT_S = 15.0
+
+
 def test_start_and_check_tasks_restarts_a_real_dead_task(board: Board) -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "system_service_restarts_a_real_dead_task.py", timeout_s=15.0)
+    output = board.run_isolated(DEVICE_SCRIPTS / "system_service_restarts_a_real_dead_task.py", timeout_s=_SCRIPT_TIMEOUT_S)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"task-supervisor restart check failed: {match.group(2).strip()}\nfull output:\n{output}"

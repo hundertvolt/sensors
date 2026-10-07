@@ -26,8 +26,13 @@ from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, Pin
 from run_generic_integration import RunConfig, RunLimits, _apply_fault, _apply_hang, _collect_chips, main, parse_args
 
+# @tunable l2.run_generic_integration_run_bound_s = 5.0
+_RUN_BOUND_S = 5.0
+# @tunable l2.run_generic_integration_main_run_bound_s = 15.0
+_MAIN_RUN_BOUND_S = 15.0
 
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
+
+def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = _RUN_BOUND_S) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
@@ -254,7 +259,7 @@ def test_main_boots_arms_a_fault_and_shuts_down_cleanly() -> None:
         injections=Injections(None, [("sgp40", "writeto", 2)], [], []),
         run=RunLimits(0.0, run_generic_integration._GC_THRESHOLD_DEFAULT, None),  # boot, arm the fault, then shut down immediately - no soak driving here any more
     )
-    run_timed(main(config), timeout_s=15.0)
+    run_timed(main(config), timeout_s=_MAIN_RUN_BOUND_S)
     # _booted_module is set by main() itself and read the same way _print_wdt_status()'s own two
     # call sites do - the real watchdog must never have starved just from this ordinary boot.
     booted = run_generic_integration._booted_module

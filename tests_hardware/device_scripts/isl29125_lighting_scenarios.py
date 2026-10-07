@@ -29,14 +29,22 @@ _PIN_PIXEL = 18
 # (~76 lx). So levels 2..8 sit INSIDE the hysteresis band and cannot force a switch either way.
 _BAND_BELOW = 1  # comfortably under the falling edge
 _BAND_ABOVE = 12  # comfortably over the rising edge
+# @tunable l3.isl29125_lighting_scenarios_switch_hold_s = 8.0
 _SWITCH_HOLD_S = 8.0  # the derived 2 cycles + settle + a 1s sample interval, with margin
+# @tunable l3.isl29125_lighting_scenarios_step_ms = 100
 _STEP_MS = 100  # light-program update period; a "step" shape lands inside one of these
+# @tunable l3.isl29125_lighting_scenarios_sample_ms = 300
 _SAMPLE_MS = 300  # reader polling; the reader itself produces a fresh sample about once a second
+# @tunable l3.isl29125_lighting_scenarios_settle_s = 4.0
 _SETTLE_S = 4.0
+# @tunable l3.isl29125_lighting_scenarios_max_sample_gap_s = 8.0
 _MAX_SAMPLE_GAP_S = 8.0  # a longer stall means the read chain died, not that light moved slowly
 _BASELINE_LEVEL = 20
+# @tunable l3.isl29125_lighting_scenarios_baseline_tol = 0.35
 _BASELINE_TOL = 0.35  # return-to-baseline: same light must read the same after ANY scenario
+# @tunable l3.isl29125_lighting_scenarios_park_stable_samples = 3
 _PARK_STABLE_SAMPLES = 3  # consecutive same-range samples that count as "the entry range has settled"
+# @tunable l3.isl29125_lighting_scenarios_park_timeout_s = 20.0
 _PARK_TIMEOUT_S = 20.0
 W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 

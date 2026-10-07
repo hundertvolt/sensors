@@ -71,6 +71,7 @@ def _tmp_cfg_dir() -> str:
 # then the client's own backoff defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) - mirrored, not imported.
 _DNS_TIMEOUT_MS = 500
 _DNS_TRIES = 1
+# @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000
 _RETRY_S = 10
 _RETRY_MAX_S = 600
@@ -84,6 +85,23 @@ _RETRY_INTERVAL_S = 15
 _SYNC_RETRIES = 3
 # @tunable ntp.async_intervals = 3
 _ASYNC_INTERVALS = 3
+
+# @tunable l1.asy_ntp_client_event_wait_s = 0.2
+_EVENT_WAIT_S = 0.2
+# @tunable l1.asy_ntp_client_fake_server_poll_ms = 10
+_FAKE_SERVER_POLL_MS = 10
+# @tunable l1.asy_ntp_client_fired_probe_s = 0.05
+_FIRED_PROBE_S = 0.05
+# @tunable l1.asy_ntp_client_state_poll_ms = 20
+_STATE_POLL_MS = 20
+# @tunable l1.asy_ntp_client_no_answer_wait_s = 1
+_NO_ANSWER_WAIT_S = 1
+# @tunable l1.asy_ntp_client_reply_process_s = 0.2
+_REPLY_PROCESS_S = 0.2
+# @tunable l1.asy_ntp_client_no_reply_fetch_timeout_ms = 100
+_NO_REPLY_FETCH_TIMEOUT_MS = 100
+# @tunable l1.asy_ntp_client_past_fetch_timeout_ms = 200
+_PAST_FETCH_TIMEOUT_MS = 200
 
 
 def _timing(
@@ -544,7 +562,7 @@ def test_start_ntp_timer_fires_the_trigger_event() -> None:
     async def scenario() -> bool:
         client.ntp_timer.trigger()
         try:
-            await asyncio.wait_for(client.ntp_timer_trigger_event.wait(), 0.2)
+            await asyncio.wait_for(client.ntp_timer_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             return False
         else:
@@ -624,7 +642,7 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
         assert await client.get_last_ntp_sync() is None
         assert client.ntp_retries == 0
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             return False
         else:
@@ -953,11 +971,11 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
                 try:
                     _data, from_addr = server.recvfrom(1024)
                 except OSError:  # spurious wakeup/transient EAGAIN - keep polling instead of raising
-                    await asyncio.sleep_ms(10)
+                    await asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
                     continue
                 server.sendto(reply, from_addr)
                 break
-            await asyncio.sleep_ms(10)
+            await asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
         server.close()
 
     async def scenario() -> "bytes | None":
@@ -1203,7 +1221,7 @@ def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
     async def scenario() -> bool:
         client.ntp_retry_timer.trigger()
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             return False
         else:
@@ -1320,7 +1338,7 @@ def test_ntp_time_hours_counter_triggers_sync_immediately_when_not_yet_synced() 
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 1)
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
             fired = True
         except asyncio.TimeoutError:
             fired = False
@@ -1341,7 +1359,7 @@ def test_ntp_time_hours_counter_waits_out_the_current_backoff_step_while_unsynce
 
     async def fired() -> bool:
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.05)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
         except asyncio.TimeoutError:
             return False
         return True
@@ -1371,7 +1389,7 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 1)  # one tick, well under 1h / 10s-per-tick
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
             fired = True
         except asyncio.TimeoutError:
             fired = False
@@ -1395,7 +1413,7 @@ def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 360)
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _EVENT_WAIT_S)
             fired = True
         except asyncio.TimeoutError:
             fired = False
@@ -1889,7 +1907,7 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
         # codebase, which relies on the outer task-supervisor to notice and restart it, not a
         # catch-all here; retrieved explicitly so asyncio doesn't warn about it going unretrieved.
         try:
-            await asyncio.wait_for(task, 0.2)
+            await asyncio.wait_for(task, _EVENT_WAIT_S)
             raised = False
         except RuntimeError:
             raised = True
@@ -2156,12 +2174,12 @@ class FakeNtpServer:
                 try:
                     _data, from_addr = self.sock.recvfrom(1024)
                 except OSError:  # spurious wakeup/transient EAGAIN - keep polling instead of raising
-                    await asyncio.sleep_ms(10)
+                    await asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
                     continue
                 if reply is not None:
                     self.sock.sendto(reply, from_addr)
                 return
-            await asyncio.sleep_ms(10)
+            await asyncio.sleep_ms(_FAKE_SERVER_POLL_MS)
 
     def close(self) -> None:
         self.sock.close()
@@ -2187,7 +2205,7 @@ def test_integration_full_task_reaches_synced_state_on_a_real_successful_reply()
                 for _ in range(50):
                     if await client.ntp_issynced():
                         break
-                    await asyncio.sleep_ms(20)
+                    await asyncio.sleep_ms(_STATE_POLL_MS)
                 synced = await client.ntp_issynced()
                 last_sync = await client.get_last_ntp_sync()
                 task.cancel()
@@ -2210,7 +2228,7 @@ def test_integration_full_task_stays_not_synced_when_nobody_answers() -> None:
     async def scenario() -> bool:
         task = asyncio.create_task(client.asy_ntp_time())
         client.ntp_sync_trigger_event.set()
-        await asyncio.sleep(1)  # comfortably longer than the fetch timeout would need to fail once
+        await asyncio.sleep(_NO_ANSWER_WAIT_S)  # comfortably longer than the fetch timeout would need to fail once
         synced = await client.ntp_issynced()
         task.cancel()
         try:
@@ -2234,7 +2252,7 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
                 server_task = asyncio.create_task(server.serve_once(garbage_reply))
                 client.ntp_sync_trigger_event.set()
                 await asyncio.wait_for(server_task, 5)
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(_REPLY_PROCESS_S)
                 synced = await client.ntp_issynced()
                 task.cancel()
                 try:
@@ -2262,7 +2280,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
         for _ in range(200):
             if await client.ntp_issynced() == target:
                 return
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_STATE_POLL_MS)
 
     async def scenario() -> bool:
         server = FakeNtpServer()
@@ -2280,7 +2298,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 for _ in range(300):  # wait for the real fetch timeout to elapse and arm a retry
                     if client.ntp_retry_timer.callback is not None:
                         break
-                    await asyncio.sleep_ms(20)
+                    await asyncio.sleep_ms(_STATE_POLL_MS)
                 assert client.ntp_retry_timer.callback is not None  # retry genuinely armed this time
 
                 client.ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
@@ -2409,7 +2427,7 @@ def test_invalid_server_address_is_counted_twice_but_persisted_once() -> None:
 
 
 def test_no_reply_is_counted_twice_but_persisted_once() -> None:
-    client = make_client(timing=_timing(fetch_timeout_ms=100))
+    client = make_client(timing=_timing(fetch_timeout_ms=_NO_REPLY_FETCH_TIMEOUT_MS))
     addr = make_addr()
     assert _twice_one_slot(client, lambda: client._fetch_ntp_reply(addr)) == (2, [code("E", "NTP_NO_REPLY")], ["E"])
 
@@ -2490,7 +2508,7 @@ def test_ntp_time_hours_counter_does_not_bank_synced_ticks_toward_the_unsynced_w
 
     async def fired() -> bool:
         try:
-            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.05)
+            await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), _FIRED_PROBE_S)
         except asyncio.TimeoutError:
             return False
         return True
@@ -2532,7 +2550,7 @@ def test_integration_self_heals_after_an_outage_through_the_real_task_and_socket
                     served = asyncio.create_task(server.serve_once(answer))
                     client.ntp_sync_trigger_event.set()
                     await asyncio.wait_for(served, 5)
-                    await asyncio.sleep_ms(200)  # past the 100ms fetch timeout either way
+                    await asyncio.sleep_ms(_PAST_FETCH_TIMEOUT_MS)  # past the 100ms fetch timeout either way
                 still_running = not task.done()
                 task.cancel()
                 try:

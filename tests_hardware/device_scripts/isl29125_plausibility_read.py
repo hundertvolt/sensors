@@ -14,8 +14,11 @@ from asy_isl29125_driver import ISL29125_Reader
 LUX_MIN, LUX_MAX = 0.0, 10000.0  # p1's own feature list: range 1 reaches 10000 lx
 CCT_MIN_K, CCT_MAX_K = 2000.0, 12500.0  # McCamy (1992)'s own usable span
 _SELF_LIGHT_LEVEL = 20  # ~750 lx at this geometry: well inside range 1, nowhere near clipping
+# @tunable l3.isl29125_plausibility_read_room_light_min_lux = 5.0
 ROOM_LIGHT_MIN_LUX = 5.0  # with the board lighting ITSELF (below), anything this dark is a real
 # fault rather than a dark bench - see the self-lighting note in _main().
+# @tunable l3.isl29125_plausibility_read_poll_s = 0.5
+_POLL_S = 0.5
 
 
 async def _main() -> None:
@@ -48,7 +51,7 @@ async def _main() -> None:
         if data.Lux is not None:
             break
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_POLL_S)
 
     died: list[str] = []
     for task in (trigger_task, read_task):

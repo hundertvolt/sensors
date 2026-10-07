@@ -9,6 +9,11 @@ import subprocess
 from harness import REPO_ROOT
 from runner import confirm, print_instruction, register, state_expected_outcome
 
+# @tunable l3.toolchain_flash_boot_build_timeout_s = 600
+_BUILD_TIMEOUT_S = 600
+# @tunable l3.toolchain_flash_boot_load_timeout_s = 120
+_LOAD_TIMEOUT_S = 120
+
 
 @register(
     "first_ever_uf2_flash_of_a_blank_board",
@@ -25,7 +30,7 @@ def test_first_ever_uf2_flash_of_a_blank_board() -> None:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=_BUILD_TIMEOUT_S,
         check=False,
     )
     if build.returncode != 0:
@@ -39,7 +44,7 @@ def test_first_ever_uf2_flash_of_a_blank_board() -> None:
     confirm("Press Enter once you've confirmed the mass-storage device appeared")
 
     print_instruction("Copying the UF2 to the mass-storage device now via picotool.")
-    load = subprocess.run(["sudo", "picotool", "load", "-x", "-v", str(uf2_path)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=120, check=False)
+    load = subprocess.run(["sudo", "picotool", "load", "-x", "-v", str(uf2_path)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=_LOAD_TIMEOUT_S, check=False)
     if load.returncode != 0:
         raise AssertionError(f"picotool load -x -v {uf2_path} failed (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
     state_expected_outcome("the board reboots on its own into the real firmware and starts running normally (visible in a serial monitor as the usual boot log lines).")

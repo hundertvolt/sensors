@@ -12,8 +12,15 @@ from asy_isl29125_driver import ISL29125_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
+# @tunable l3.isl29125_cross_device_concurrency_sgp40_cycles = 6
 SGP40_CYCLES = 6
 _MODE_RGB = 0x05
+# @tunable l3.isl29125_cross_device_concurrency_sibling_step_ms = 20
+_SIBLING_STEP_MS = 20
+# @tunable l3.isl29125_cross_device_concurrency_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.isl29125_cross_device_concurrency_wdt_feed_every = 10
+_WDT_FEED_EVERY = 10
 
 
 def _failures(isl_errors: "list[str]", scd_errors: "list[str]", sgp_errors: "list[str]", isl_reads: int, scd_reads: int, sgp_cycles: int, interleaved: int) -> "list[str]":
@@ -71,9 +78,9 @@ async def _main() -> None:
             except Exception as e:
                 isl_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_SIBLING_STEP_MS)
 
     async def scd_loop() -> None:
         nonlocal scd_reads
@@ -85,9 +92,9 @@ async def _main() -> None:
             except Exception as e:
                 scd_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_SIBLING_STEP_MS)
 
     async def sgp_loop() -> None:
         nonlocal stop
@@ -101,7 +108,7 @@ async def _main() -> None:
             wdt.feed()
         stop = True
 
-    await asyncio.wait_for(asyncio.gather(isl_loop(), scd_loop(), sgp_loop()), 60.0)
+    await asyncio.wait_for(asyncio.gather(isl_loop(), scd_loop(), sgp_loop()), _RUN_BOUND_S)
 
     # An ISL read that both starts and finishes strictly inside an SGP40 device-session window
     # proves its whole bus transaction ran while that session was still open.

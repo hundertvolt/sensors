@@ -26,18 +26,58 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortas
 pytestmark = pytest.mark.role_reversal
 
 
-def _join_dut_hotspot_with_reverify_retry(bench: BenchBridge, ssid: str, password: str, *, attempts: int = 5) -> None:
+# @tunable l4.hotspot_role_reversal_join_attempts = 5
+_JOIN_ATTEMPTS = 5
+# @tunable l4.hotspot_role_reversal_join_hotspot_timeout_s = 45.0
+_JOIN_HOTSPOT_TIMEOUT_S = 45.0
+# @tunable l4.hotspot_role_reversal_hotspot_scan_timeout_s = 30.0
+_HOTSPOT_SCAN_TIMEOUT_S = 30.0
+# @tunable l4.hotspot_role_reversal_hotspot_scan_poll_s = 2.0
+_HOTSPOT_SCAN_POLL_S = 2.0
+# @tunable l4.hotspot_role_reversal_probe_timeout_s = 10.0
+_PROBE_TIMEOUT_S = 10.0
+# @tunable l4.hotspot_role_reversal_dhcp_timeout_s = 45.0
+_DHCP_TIMEOUT_S = 45.0
+# @tunable l4.hotspot_role_reversal_dhcp_poll_s = 2.0
+_DHCP_POLL_S = 2.0
+# @tunable l4.hotspot_role_reversal_restore_put_timeout_s = 15.0
+_RESTORE_PUT_TIMEOUT_S = 15.0
+# @tunable l4.hotspot_role_reversal_flip_back_timeout_s = 90.0
+_FLIP_BACK_TIMEOUT_S = 90.0
+# @tunable l4.hotspot_role_reversal_flip_back_poll_s = 3.0
+_FLIP_BACK_POLL_S = 3.0
+# @tunable l4.hotspot_role_reversal_recovery_timeout_s = 30.0
+_RECOVERY_TIMEOUT_S = 30.0
+# @tunable l4.hotspot_role_reversal_recovery_poll_s = 1.0
+_RECOVERY_POLL_S = 1.0
+# @tunable l4.hotspot_role_reversal_ready_probe_timeout_s = 5.0
+_READY_PROBE_TIMEOUT_S = 5.0
+# @tunable l4.hotspot_role_reversal_reassoc_visible_timeout_s = 15.0
+_REASSOC_VISIBLE_TIMEOUT_S = 15.0
+# @tunable l4.hotspot_role_reversal_reassoc_visible_poll_s = 1.0
+_REASSOC_VISIBLE_POLL_S = 1.0
+# @tunable l4.hotspot_role_reversal_dns_flood_s = 3.0
+_DNS_FLOOD_S = 3.0
+# @tunable l4.hotspot_role_reversal_dns_flood_step_s = 0.05
+_DNS_FLOOD_STEP_S = 0.05
+# @tunable l4.hotspot_role_reversal_dns_recovery_timeout_s = 8.0
+_DNS_RECOVERY_TIMEOUT_S = 8.0
+# @tunable l4.hotspot_role_reversal_raw_socket_timeout_s = 10.0
+_RAW_SOCKET_TIMEOUT_S = 10.0
+
+
+def _join_dut_hotspot_with_reverify_retry(bench: BenchBridge, ssid: str, password: str, *, attempts: int = _JOIN_ATTEMPTS) -> None:
     """Shared by every real `join_dut_hotspot()` call site: `is_ssid_visible()`==True doesn't
     guarantee nmcli's own internal rescan still sees it a moment later, and this can persist
     across several attempts - each retry re-confirms fresh visibility (see tests_hardware/README.md)."""
     for attempt in range(attempts):
         try:
-            bench.join_dut_hotspot(ssid, password, timeout_s=45.0)
+            bench.join_dut_hotspot(ssid, password, timeout_s=_JOIN_HOTSPOT_TIMEOUT_S)
         except HardwareTestFailureError:
             if attempt == attempts - 1:
                 raise
             try:
-                wait_until(lambda: bench.is_ssid_visible(ssid), timeout_s=30.0, poll_interval_s=2.0, description=f"DUT's own hotspot ({ssid!r}) to be freshly scannable again before retrying the join")
+                wait_until(lambda: bench.is_ssid_visible(ssid), timeout_s=_HOTSPOT_SCAN_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"DUT's own hotspot ({ssid!r}) to be freshly scannable again before retrying the join")
             except TimeoutError:
                 pass  # fall through and retry the join anyway - it may still succeed, and the
                 # join's own next HardwareTestFailureError (or success) is the real signal either way
@@ -67,7 +107,7 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     # Leaving that to stage 6 strands the board in hotspot mode whenever stage 6 does not run:
     # the cleared SSID is persisted to flash, so no reset clears it. It happened on the bench
     # (2026-09-17) and needed a manual serial-side repair.
-    original = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
+    original = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert original.status_code == 200, f"GET /networking (to record the SSID before clearing it) failed: {original.status_code} {original.body!r}"
     original_ssid = original.json().get("SSID") or ""
     assert original_ssid, f"GET /networking returned no SSID to restore later - refusing to clear it: {original.json()!r}"
@@ -79,13 +119,13 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     # needs a moment after the SSID="" PUT - so poll is_ssid_visible() (a real scan) instead of
     # guessing a delay (see tests_hardware/README.md).
     bench.ap_down()  # is_ssid_visible() needs the radio free to scan - see its own docstring
-    wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=30.0, poll_interval_s=2.0, description=f"DUT's own hotspot ({hotspot_ssid!r}) to become scannable")
+    wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=_HOTSPOT_SCAN_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"DUT's own hotspot ({hotspot_ssid!r}) to become scannable")
     # is_ssid_visible()==True doesn't guarantee nmcli's own internal rescan still sees it a moment
     # later - see _join_dut_hotspot_with_reverify_retry()'s own docstring.
     _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
 
     # Stage 2 - DHCP.
-    wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description="bench radio DHCP lease + gateway on the DUT hotspot")
+    wait_until(lambda: bool(bench.gateway_ip()), timeout_s=_DHCP_TIMEOUT_S, poll_interval_s=_DHCP_POLL_S, description="bench radio DHCP lease + gateway on the DUT hotspot")
     gateway_ip = bench.gateway_ip()
 
     yield gateway_ip
@@ -94,7 +134,7 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     # link to the DUT left at this point. Best-effort and never raising, so it cannot mask the
     # failure unwinding this fixture; stage 8 is what still fails loudly if the DUT stays away.
     try:
-        restored = http_client.fetch(gateway_ip, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=15.0)
+        restored = http_client.fetch(gateway_ip, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=_RESTORE_PUT_TIMEOUT_S)
         if restored.status_code != 200 or restored.json().get("result", {}).get("SSID") not in ("Valid", "Unchanged"):
             print(f"RESULT NOTE: SSID restore over the hotspot was not accepted: {restored.status_code} {restored.body!r}")
     except (OSError, ValueError) as exc:
@@ -108,19 +148,19 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     # ends in _PHASE_DEACTIVATED, which only a power cycle clears (Part A.4), so recover with
     # hard_reset() rather than leaving the board stuck - then still assert, so a break is loud.
     try:
-        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=90.0, poll_interval_s=3.0, description="DUT reachable again over the bridge network after role-flip-back")
+        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=_FLIP_BACK_TIMEOUT_S, poll_interval_s=_FLIP_BACK_POLL_S, description="DUT reachable again over the bridge network after role-flip-back")
     except TimeoutError:
         # A stale AP-side station-table entry for the DUT's MAC is the dominant real cause of a
         # hard_reset()-triggered reconnect failing here - see kick_client()'s own docstring.
         bench.kick_all_stations()
         board.hard_reset()
-        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=30.0, poll_interval_s=1.0, description="DUT reachable again after a recovery hard_reset() (see this fixture's own comment)")
+        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=_RECOVERY_TIMEOUT_S, poll_interval_s=_RECOVERY_POLL_S, description="DUT reachable again after a recovery hard_reset() (see this fixture's own comment)")
         raise
 
 
 def _dut_reachable_again(dut_ip: str) -> bool:
     try:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
+        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200
     except OSError:
         return False
 
@@ -184,9 +224,9 @@ def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench
     for cycle in range(3):
         bench.leave_dut_hotspot_and_restore_bridge()
         bench.ap_down()
-        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=15.0, poll_interval_s=1.0, description=f"DUT hotspot {hotspot_ssid!r} visible again on reassociate cycle {cycle}")
+        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=_REASSOC_VISIBLE_TIMEOUT_S, poll_interval_s=_REASSOC_VISIBLE_POLL_S, description=f"DUT hotspot {hotspot_ssid!r} visible again on reassociate cycle {cycle}")
         _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
-        wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description=f"DHCP lease on reassociate cycle {cycle}")
+        wait_until(lambda: bool(bench.gateway_ip()), timeout_s=_DHCP_TIMEOUT_S, poll_interval_s=_DHCP_POLL_S, description=f"DHCP lease on reassociate cycle {cycle}")
 
 
 # ---------------------------------------------------------------------------
@@ -250,14 +290,14 @@ def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) 
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        deadline = time.monotonic() + 3.0
+        deadline = time.monotonic() + _DNS_FLOOD_S
         while time.monotonic() < deadline:
             sock.sendto(b"\x00\x01\x02", (joined_hotspot, 53))
-            time.sleep(0.05)
+            time.sleep(_DNS_FLOOD_STEP_S)
 
     # A generous settle - the backoff cap is 5s, so a legitimate query shortly after should still
     # be served well within a normal timeout, not stuck in an extended backoff from the flood.
-    response = dns_probe.query(joined_hotspot, "recovery-check.example", timeout_s=8.0)
+    response = dns_probe.query(joined_hotspot, "recovery-check.example", timeout_s=_DNS_RECOVERY_TIMEOUT_S)
     assert response is not None, "no response to a legitimate query shortly after a malformed-packet flood - backoff may not be recovering"
     assert dns_probe.extract_answer_ip(response) == joined_hotspot
 
@@ -269,7 +309,7 @@ def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) 
 
 def test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link(joined_hotspot: str) -> None:
     for path in ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/"):
-        res = http_client.fetch(joined_hotspot, 80, "GET", path, timeout_s=10.0)
+        res = http_client.fetch(joined_hotspot, 80, "GET", path, timeout_s=_PROBE_TIMEOUT_S)
         assert res.status_code == 200, f"GET {path} over the hotspot link -> {res.status_code}"
 
 
@@ -286,7 +326,7 @@ def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: st
 def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot: str) -> None:
     # The same real property test_digital_twin_real_website_integration.py already proves for the
     # twin (SPECIFICATION.md Part A.9), now over real hardware/RF.
-    res = http_client.fetch(joined_hotspot, 80, "GET", "/", timeout_s=10.0)
+    res = http_client.fetch(joined_hotspot, 80, "GET", "/", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200
     website_identity.assert_page_is_this_devices_build(res, "the hotspot link")
 
@@ -299,7 +339,7 @@ def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: s
 
     reset_all_error_logs(joined_hotspot)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(10.0)
+        sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
         sock.connect((joined_hotspot, 80))
         sock.sendall(b"GET /generate_204 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
         response = b""
@@ -323,7 +363,7 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
     # _serve_static() is reached - so the redirect fallback cannot leak into an unrelated error
     # path. The hotspot<->STA toggle is not repeated here: Part A.5, and ~15-30s per cycle.
     reset_all_error_logs(joined_hotspot)
-    res = http_client.fetch(joined_hotspot, 80, "PUT", "/generate_204", {}, timeout_s=10.0)
+    res = http_client.fetch(joined_hotspot, 80, "PUT", "/generate_204", {}, timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 405, f"PUT to a nonsense path over the hotspot link did not return 405: {res.status_code} {res.body!r}"
     assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
@@ -338,7 +378,7 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
 
     reset_all_error_logs(joined_hotspot)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(10.0)
+        sock.settimeout(_RAW_SOCKET_TIMEOUT_S)
         sock.connect((joined_hotspot, 80))
         sock.sendall(b"NOT A REAL HTTP REQUEST\r\n\r\n")
         try:
@@ -347,7 +387,7 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
             pass
     # The exact response shape isn't asserted (mock/twin cover that) - the hardware-only property
     # this adds is that the connection doesn't hang or crash the webserver over a real wireless link.
-    assert http_client.fetch(joined_hotspot, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a malformed request over real wireless"
+    assert http_client.fetch(joined_hotspot, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after a malformed request over real wireless"
     # An unparseable request line fails entirely inside vendored ext/microdot.py's Request.create(),
     # never reaching this project's own route handlers or _serve()'s wrn_s()/err_s() calls.
     assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
@@ -360,9 +400,9 @@ def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(benc
     for cycle in range(3):
         bench.leave_dut_hotspot_and_restore_bridge()
         bench.ap_down()
-        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=15.0, poll_interval_s=1.0, description=f"DUT hotspot {hotspot_ssid!r} visible again on churn cycle {cycle}")
+        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=_REASSOC_VISIBLE_TIMEOUT_S, poll_interval_s=_REASSOC_VISIBLE_POLL_S, description=f"DUT hotspot {hotspot_ssid!r} visible again on churn cycle {cycle}")
         _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
-    assert http_client.fetch(bench.gateway_ip(), 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after rapid associate/disassociate churn"
+    assert http_client.fetch(bench.gateway_ip(), 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after rapid associate/disassociate churn"
 
 
 def test_concurrent_multi_client_burst_is_out_of_scope_here(joined_hotspot: str) -> None:

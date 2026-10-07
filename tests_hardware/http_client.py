@@ -25,7 +25,11 @@ class HttpResponse:
         return result
 
 
-def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 10.0) -> HttpResponse:
+# @tunable l4.http_client_fetch_timeout_s = 10.0
+_FETCH_TIMEOUT_S = 10.0
+
+
+def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = _FETCH_TIMEOUT_S) -> HttpResponse:
     url = f"http://{host}:{port}{path}"
     data = None
     headers = {}

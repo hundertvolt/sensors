@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l1.system_service_run_bound_s = 5
+_RUN_BOUND_S = 5
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
@@ -1306,7 +1309,7 @@ def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() ->
 
     machine.reset_count = 0
     with _FastAsyncSleep():
-        run(asyncio.wait_for(svc.start_and_check_tasks([always_raising_starter]), 5))
+        run(asyncio.wait_for(svc.start_and_check_tasks([always_raising_starter]), _RUN_BOUND_S))
 
     assert call_count[0] >= 4  # enough restart attempts to cross _TASK_FAIL_MAX (100 per attempt)
     assert run(svc.pr.get_log())["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_BUDGET_REBOOT")

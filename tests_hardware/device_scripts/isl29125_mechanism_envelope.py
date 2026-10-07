@@ -22,13 +22,18 @@ if TYPE_CHECKING:
 # Steady levels, ascending: ambient only, then up through the range switch into hard saturation.
 LEVELS = (0, 2, 4, 8, 16, 40, 100, 255)
 SETTLE_S = 4.5  # SampleInterv=1 + the fixed 2-cycle settle + slack for a switch to land
+# @tunable l3.isl29125_mechanism_envelope_max_wait_s = 12.0
 MAX_WAIT_S = 12.0
+# @tunable l3.isl29125_mechanism_envelope_max_switches = 4
 MAX_SWITCHES = 4  # one up and one down is ideal; chatter would be dozens
 OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so BOTH ranges can represent it
 # A relative bound on the gain step, not a calibration claim: the applied ratio's band is 20-34
 # around a nominal 26.67, so the worst a working driver can be off by is ~25%. Past that is a
 # missing or inverted correction. The accuracy question itself lives in Part M.1.6.
+# @tunable l3.isl29125_mechanism_envelope_max_range_step = 0.25
 MAX_RANGE_STEP = 0.25
+# @tunable l3.isl29125_mechanism_envelope_poll_ms = 200
+_POLL_MS = 200
 W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
 
 failures: "list[str]" = []
@@ -50,7 +55,7 @@ async def _fresh_sample(reader: ISL29125_Reader, wdt: machine.WDT) -> "ISL29125 
         if data.Lux is not None and data.TS is not None:
             return data
         wdt.feed()
-        await asyncio.sleep_ms(200)
+        await asyncio.sleep_ms(_POLL_MS)
     return None
 
 
@@ -80,7 +85,7 @@ async def _hold(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: machine.WDT
     start = time.ticks_ms()
     while time.ticks_diff(time.ticks_ms(), start) < int(SETTLE_S * 1000):
         wdt.feed()
-        await asyncio.sleep_ms(200)
+        await asyncio.sleep_ms(_POLL_MS)
     data = await _fresh_sample(reader, wdt)
     check(data is not None, f"{label}: no sample at all within {MAX_WAIT_S}s - the read loop is dead")
     if data is not None:

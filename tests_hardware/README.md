@@ -249,7 +249,8 @@ scripts/run_bench_hardware_suite.sh
 
 # Soak tests (long_soak marker) are NEVER bundled into either suite runner above - they always
 # need their own deliberate, dedicated invocation, one of three named tiers (short=60s/mid=600s/
-# long=6h - see tests_hardware/conftest.py's own SOAK_TIER_SECONDS):
+# long=6h - tests_hardware/soak_tiers.py's SOAK_TIER_SECONDS; SPECIFICATION.md Part N
+# l4.soak_duration_short_s / _mid_s / _long_h):
 scripts/run_bench_soak_tests.sh --tier short   # quick mechanism/assertion check, CI-time
 scripts/run_bench_soak_tests.sh --tier mid     # a few minutes
 scripts/run_bench_soak_tests.sh --tier long    # the real 6h production duration
@@ -525,16 +526,17 @@ HTTP — in its own `finally`. `harness.discover_max_connections()` and
 headers and it answers what was asked, so a held socket costs only a small 405 and is released
 the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 
-- **The ceiling probe** (`discover_max_connections()`) dwells 0.3 s per step and pads every held
-  connection with a header line (`HELD_PAD_LINE`) per step, so the per-call timeout never frees a
-  slot mid-walk and only the outer cap bounds it (`probe_limit` 40 × 0.3 s). It fails loudly if a
-  held connection answers instead of staying open, and re-checks every counted socket is still open
-  when the refusal lands. A connect that is refused or times out is the wall itself, counted rather
-  than raised, with its own 2 s timeout apart from the read's, so a slow handshake is never read as
-  a held connection. After a successful walk it waits until the whole discovered ceiling can be
-  held at once again — not one slot — then allows `settle_s` for its own check connections to
-  release theirs, backing off the same interval after a partial set; after a failed walk it drains
-  one slot best-effort and keeps the walk's own error as the headline.
+- **The ceiling probe** (`discover_max_connections()`) dwells 0.3 s per step (`l4.ceiling_dwell_s`)
+  and pads every held connection with a header line (`HELD_PAD_LINE`) per step, so the per-call
+  timeout never frees a slot mid-walk and only the outer cap bounds it (`probe_limit` 40 × 0.3 s,
+  `l4.ceiling_probe_limit`). It fails loudly if a held connection answers instead of staying open,
+  and re-checks every counted socket is still open when the refusal lands. A connect that is refused
+  or times out is the wall itself, counted rather than raised, with its own 2 s timeout
+  (`l4.ceiling_probe_connect_timeout_s`) apart from the read's, so a slow handshake is never read as
+  a held connection. After a successful walk it waits until the whole discovered ceiling can be held
+  at once again — not one slot — then allows `settle_s` for its own check connections to release
+  theirs, backing off the same interval after a partial set; after a failed walk it drains one slot
+  best-effort and keeps the walk's own error as the headline.
 - **Pinned by the pytest tier.** `tests_scripts/test_request_timeout_ceiling.py` reads both
   timeouts from `src/` and keeps the probe's dwell and the holder's drip under `per_call_timeout_s`,
   the whole walk and the holder's recycle under `outer_cap_s`; against a loopback server it checks

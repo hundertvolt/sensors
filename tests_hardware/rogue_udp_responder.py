@@ -7,12 +7,17 @@ from __future__ import annotations
 import socket
 import threading
 
+# @tunable l4.rogue_udp_responder_recv_timeout_s = 0.5
+_RECV_TIMEOUT_S = 0.5
+# @tunable l4.rogue_udp_responder_join_timeout_s = 5.0
+_JOIN_TIMEOUT_S = 5.0
+
 
 class RogueUdpResponder:
     def __init__(self, local_port: int, garbage_payload: bytes) -> None:
         self._garbage_payload = garbage_payload
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.settimeout(0.5)  # bounds each recvfrom() so stop() can interrupt the loop promptly
+        self._sock.settimeout(_RECV_TIMEOUT_S)  # bounds each recvfrom() so stop() can interrupt the loop promptly
         self._sock.bind(("0.0.0.0", local_port))
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -35,7 +40,7 @@ class RogueUdpResponder:
 
     def stop(self) -> None:
         self._stop_event.set()
-        self._thread.join(timeout=5.0)
+        self._thread.join(timeout=_JOIN_TIMEOUT_S)
         self._sock.close()
 
     def __enter__(self) -> RogueUdpResponder:

@@ -165,11 +165,15 @@ def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: flo
     raise AssertionError(f"{host}:{port} never held {admitted} connections at once again within {timeout_s}s of the probe releasing its own - the slots did not drain")
 
 
+# @tunable l4.ceiling_hold_check_timeout_s = 0.05
+_HOLD_CHECK_TIMEOUT_S = 0.05
+
+
 def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
     """Every connection the probe counted must still be open at the moment the refusal landed,
     or they were never held simultaneously and the count is an artefact of the walk's own pace."""
     for index, sock in enumerate(admitted_socks):
-        sock.settimeout(0.05)
+        sock.settimeout(_HOLD_CHECK_TIMEOUT_S)
         try:
             payload = sock.recv(4096)
         except TimeoutError:
@@ -185,6 +189,10 @@ def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
 BENCH_BRIDGE_CONN = setup_toolchain.BENCH_BRIDGE_CONN
 BENCH_ETH_CONN = setup_toolchain.BENCH_ETH_CONN
 BENCH_AP_CONN = setup_toolchain.BENCH_AP_CONN
+
+
+# @tunable l4.harness_usb_rebind_cmd_timeout_s = 10.0
+_USB_REBIND_CMD_TIMEOUT_S = 10.0
 
 
 def _usb_reset_device(device: str) -> bool:
@@ -205,9 +213,9 @@ def _usb_reset_device(device: str) -> bool:
     usb_device_dir = resolved.parent
     usb_id = usb_device_dir.name
     try:
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=10.0, check=False)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=_USB_REBIND_CMD_TIMEOUT_S, check=False)
         time.sleep(2.0)
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=10.0, check=False)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=_USB_REBIND_CMD_TIMEOUT_S, check=False)
         time.sleep(3.0)
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -225,10 +233,14 @@ class HardwareTestFailureError(AssertionError):
     subclass so pytest reports it like any other failed assertion, not a framework-level error."""
 
 
+# @tunable l4.harness_wait_until_poll_s = 1.0
+_WAIT_UNTIL_POLL_S = 1.0
+
+
 def wait_until(
     check_fn: Callable[[], bool],
     timeout_s: float,
-    poll_interval_s: float = 1.0,
+    poll_interval_s: float = _WAIT_UNTIL_POLL_S,
     description: str = "condition",
 ) -> bool:
     """Bounded poll-until-condition wait, test-harness-only (never used to change src/'s own real
@@ -252,6 +264,14 @@ def wait_until(
     raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
 
 
+# @tunable l4.harness_serving_probe_timeout_s = 10.0
+_SERVING_PROBE_TIMEOUT_S = 10.0
+# @tunable l4.harness_serving_restore_timeout_s = 90.0
+_SERVING_RESTORE_TIMEOUT_S = 90.0
+# @tunable l4.harness_serving_restore_poll_s = 3.0
+_SERVING_RESTORE_POLL_S = 3.0
+
+
 def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     """run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
     test that runs a device script calls this in a finally or a fixture's teardown, or every network test
@@ -261,14 +281,22 @@ def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> N
     bench.kick_all_stations()  # stale AP-side station entries stop the DUT reassociating (README)
     board.hard_reset()
     wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
-        timeout_s=90.0,
-        poll_interval_s=3.0,
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_SERVING_PROBE_TIMEOUT_S).status_code == 200,
+        timeout_s=_SERVING_RESTORE_TIMEOUT_S,
+        poll_interval_s=_SERVING_RESTORE_POLL_S,
         description="DUT serving HTTP again after a device script left main.py stopped",
     )
 
 
-def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = 120.0, handover_s: float = 20.0) -> bool:
+# @tunable l4.harness_script_server_timeout_s = 120.0
+_SCRIPT_SERVER_TIMEOUT_S = 120.0
+# @tunable l4.harness_script_server_handover_s = 20.0
+_SCRIPT_SERVER_HANDOVER_S = 20.0
+# @tunable l4.harness_script_server_probe_timeout_s = 3.0
+_SCRIPT_SERVER_PROBE_TIMEOUT_S = 3.0
+
+
+def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = _SCRIPT_SERVER_TIMEOUT_S, handover_s: float = _SCRIPT_SERVER_HANDOVER_S) -> bool:
     """True once a device script's own server answers `path` with a 200. main.py's server may still
     be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
     `stop` ends the wait early, so it never outlives its test."""
@@ -276,7 +304,7 @@ def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/sta
 
     def serves() -> bool:
         try:
-            return http_client.fetch(dut_ip, 80, "GET", path, timeout_s=3.0).status_code == 200
+            return http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_SCRIPT_SERVER_PROBE_TIMEOUT_S).status_code == 200
         except (OSError, http_client.HTTP_ERROR):
             return False
 
@@ -308,7 +336,22 @@ _NO_BOARD_DEVICE = "/dev/no-pico-serial-device-detected"
 # Bounded for the same reason the USB unbind/rebind escalation below is: a node that keeps
 # vanishing and reappearing under an alternating name would otherwise extend the grace window
 # forever, and no single subprocess timeout breaks out of _mpremote()'s own loop.
+# @tunable l4.harness_max_device_rebinds = 2
 _MAX_DEVICE_REBINDS = 2
+# @tunable l4.harness_mpremote_default_timeout_s = 60.0
+_MPREMOTE_DEFAULT_TIMEOUT_S = 60.0
+# @tunable l4.harness_usb_grace_s = 10.0
+_USB_GRACE_S = 10.0
+# @tunable l4.harness_usb_grace_poll_s = 0.5
+_USB_GRACE_POLL_S = 0.5
+# @tunable l4.harness_mpremote_short_timeout_s = 10.0
+_MPREMOTE_SHORT_TIMEOUT_S = 10.0
+# @tunable l4.harness_presence_probe_timeout_s = 0.2
+_PRESENCE_PROBE_TIMEOUT_S = 0.2
+# @tunable l4.harness_mpremote_reset_timeout_s = 15.0
+_MPREMOTE_RESET_TIMEOUT_S = 15.0
+# @tunable l4.harness_log_tail_read_timeout_s = 0.5
+_LOG_TAIL_READ_TIMEOUT_S = 0.5
 
 
 def _stable_name_for(dev_path: Path, by_id_dir: Path) -> str:
@@ -349,7 +392,7 @@ class Board:
     so individual test files never shell out to mpremote themselves. Also where
     `machine.bootloader()` re-flash and hard-reset live, for tests_hardware/flash/test_toolchain_flash_boot.py."""
 
-    def __init__(self, device: str | None = None, default_timeout_s: float = 60.0) -> None:
+    def __init__(self, device: str | None = None, default_timeout_s: float = _MPREMOTE_DEFAULT_TIMEOUT_S) -> None:
         self._pinned_device = device or os.environ.get("MPREMOTE_DEVICE")
         self.device = self._pinned_device or resolve_board_device()
         self.default_timeout_s = default_timeout_s
@@ -372,7 +415,7 @@ class Board:
         (is_reachable()'s own use) skips retry, so a real expected disconnect isn't masked."""
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
-        grace_deadline = time.monotonic() + 10.0
+        grace_deadline = time.monotonic() + _USB_GRACE_S
         usb_reset_attempted = False
         rebinds_left = _MAX_DEVICE_REBINDS
         while True:
@@ -393,7 +436,7 @@ class Board:
             if not transient or not allow_recovery:
                 return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
             if time.monotonic() < grace_deadline:
-                time.sleep(0.5)
+                time.sleep(_USB_GRACE_POLL_S)
                 continue
             # The 10s settle-wait grace window above is sometimes not enough - this bench's USB
             # device can wedge into indefinite raw-REPL-entry failure until unbound/rebound (see
@@ -403,12 +446,12 @@ class Board:
                 # The node moved under us (re-enumeration after a reset) - retry on the new one
                 # before escalating to a USB unbind/rebind, which would not have helped.
                 cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
-                grace_deadline = time.monotonic() + 10.0
+                grace_deadline = time.monotonic() + _USB_GRACE_S
                 continue
             if not usb_reset_attempted:
                 usb_reset_attempted = True
                 if _usb_reset_device(self.device):
-                    grace_deadline = time.monotonic() + 10.0
+                    grace_deadline = time.monotonic() + _USB_GRACE_S
                     continue
             return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
 
@@ -417,7 +460,7 @@ class Board:
         # for an expected "no" while waiting out a real reboot. Raw-REPL entry always Ctrl-C's the
         # device, so never poll this against a live system - is_device_present() is for that.
         try:
-            result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0, allow_recovery=False)
+            result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=_MPREMOTE_SHORT_TIMEOUT_S, allow_recovery=False)
         except (HardwareNotAvailableError, HardwareTestFailureError):
             return False
         return result.returncode == 0 and "mpremote-ok" in result.stdout
@@ -427,7 +470,7 @@ class Board:
         without writing a byte, unlike is_reachable()'s raw-REPL entry (see its comment).
         Correctly reports False during a hard_reset()'s USB re-enumeration window."""
         try:
-            probe = serial.Serial(self.device, baudrate=115200, timeout=0.2)
+            probe = serial.Serial(self.device, baudrate=115200, timeout=_PRESENCE_PROBE_TIMEOUT_S)
         except (OSError, serial.SerialException):
             return False
         probe.close()
@@ -468,7 +511,7 @@ class Board:
         # Deliberately ignore the return code/output - see this method's own docstring.
 
     def soft_reset(self) -> None:
-        result = self._mpremote("soft-reset", timeout_s=15.0)
+        result = self._mpremote("soft-reset", timeout_s=_MPREMOTE_RESET_TIMEOUT_S)
         if result.returncode != 0:
             raise HardwareTestFailureError(f"mpremote soft-reset failed (exit {result.returncode}):\n{result.stderr}")
 
@@ -476,7 +519,7 @@ class Board:
         """The `reset` shortcut (DTR-line hardware reset, never a flash) - used for genuine
         full-boot-cycle tests (config-survives-reboot, cold-boot timing) where a soft reset
         wouldn't exercise the real boot path."""
-        result = self._mpremote("reset", timeout_s=15.0)
+        result = self._mpremote("reset", timeout_s=_MPREMOTE_RESET_TIMEOUT_S)
         if result.returncode != 0:
             raise HardwareTestFailureError(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")
 
@@ -486,18 +529,18 @@ class Board:
         called by any routine test, only the explicit re-provisioning helper in test_toolchain_flash_boot.py."""
         # exec(), not run_isolated(): the device never comes back to answer a chained soft-reset
         # once dropped into the bootloader - a non-zero/timeout exit here is expected, not a failure.
-        self._mpremote("exec", "import machine; machine.bootloader()", timeout_s=10.0)
+        self._mpremote("exec", "import machine; machine.bootloader()", timeout_s=_MPREMOTE_SHORT_TIMEOUT_S)
 
     def tail_log(self, duration_s: float, baudrate: int = 115200) -> list[str]:
         """Passively captures what the live system prints over `duration_s`, without interrupting
         it (unlike exec()/run_isolated(), which always Ctrl-C first - see tests_hardware/README.md).
         Retries a transient post-hard_reset() USB-settle failure before raising HardwareNotAvailableError."""
-        grace_deadline = time.monotonic() + 10.0
+        grace_deadline = time.monotonic() + _USB_GRACE_S
         overall_deadline = time.monotonic() + duration_s
         lines: list[str] = []
         while True:
             try:
-                with serial.Serial(self.device, baudrate, timeout=0.5) as port:
+                with serial.Serial(self.device, baudrate, timeout=_LOG_TAIL_READ_TIMEOUT_S) as port:
                     while time.monotonic() < overall_deadline:
                         raw = port.readline()
                         if raw:
@@ -505,6 +548,6 @@ class Board:
             except serial.SerialException as exc:
                 if time.monotonic() >= grace_deadline:
                     raise HardwareNotAvailableError(f"could not read {self.device} for passive log tailing: {exc}") from exc
-                time.sleep(0.5)
+                time.sleep(_USB_GRACE_POLL_S)
             else:
                 return lines

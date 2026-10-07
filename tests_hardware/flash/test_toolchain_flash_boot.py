@@ -18,6 +18,16 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 # ---------------------------------------------------------------------------
 
 
+# @tunable l3.toolchain_flash_boot_env_setup_timeout_s = 1200
+_ENV_SETUP_TIMEOUT_S = 1200
+# @tunable l3.toolchain_flash_boot_build_timeout_s = 600
+_BUILD_TIMEOUT_S = 600
+# @tunable l3.toolchain_flash_boot_load_timeout_s = 120
+_LOAD_TIMEOUT_S = 120
+# @tunable l3.toolchain_flash_boot_load_retry_backoff_s = 2.0
+_LOAD_RETRY_BACKOFF_S = 2.0
+
+
 def test_mpremote_connection_is_stable_across_repeated_calls(board: Board) -> None:
     failures = [i for i in range(5) if not board.is_reachable()]
     assert not failures, f"mpremote connection failed on attempt(s) {failures} out of 5 consecutive calls to {board.device}"
@@ -38,7 +48,7 @@ def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=1200,
+        timeout=_ENV_SETUP_TIMEOUT_S,
         check=False,
     )
     assert proc.returncode == 0, f"env --tier flash re-run failed (exit {proc.returncode}):\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
@@ -64,7 +74,7 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=_BUILD_TIMEOUT_S,
         check=False,
     )
     assert build.returncode == 0, f"scripts/build_firmware.py failed (exit {build.returncode}):\n{build.stdout}\n{build.stderr}"
@@ -81,12 +91,12 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_LOAD_TIMEOUT_S,
             check=False,
         )
         if load.returncode == 0:
             break
-        time.sleep(2.0)
+        time.sleep(_LOAD_RETRY_BACKOFF_S)
     assert load is not None
     if load.returncode != 0:
         raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")

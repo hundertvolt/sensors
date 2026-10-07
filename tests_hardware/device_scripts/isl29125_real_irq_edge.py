@@ -15,10 +15,15 @@ from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
 # TRIGGER_SEC=30 affords the largest PRST the part offers - 8 RGB cycles, ~2424ms at 16 bit -
 # before RGBTHF may rise at all, plus the fixed 2-cycle settle: ~3030ms worst case, so the old 3.0s
 # no longer clears it. 6.0s is still 5x under the periodic fallback, so a pass means the INT line.
+# @tunable l3.isl29125_real_irq_edge_fast_path_deadline_s = 6.0
 FAST_PATH_DEADLINE_S = 6.0
 TRIGGER_SEC = 30  # deliberately long: only a real interrupt can beat it
 _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101ms typ (p3)
 _MODE_RGB = 0x05
+# @tunable l3.isl29125_real_irq_edge_int_poll_ms = 50
+_INT_POLL_MS = 50
+# @tunable l3.isl29125_real_irq_edge_fast_path_poll_ms = 100
+_FAST_PATH_POLL_MS = 100
 
 
 async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
@@ -55,7 +60,7 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
             fired_ms = time.ticks_diff(time.ticks_ms(), start)
             break
         wdt.feed()
-        await asyncio.sleep_ms(50)
+        await asyncio.sleep_ms(_INT_POLL_MS)
     await isl.read_status()  # release the line again
     if fired_ms < 0:
         return "persist_unit=inconclusive (the interrupt never asserted within 1.5s)"
@@ -106,7 +111,7 @@ async def _main() -> None:
         if data.Lux is not None:
             break
         wdt.feed()
-        await asyncio.sleep_ms(100)
+        await asyncio.sleep_ms(_FAST_PATH_POLL_MS)
 
     died: list[str] = []
     for task in (trigger_task, read_task):

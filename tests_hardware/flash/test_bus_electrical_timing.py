@@ -21,6 +21,10 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
+# @tunable l3.bus_electrical_timing_irq_script_timeout_s = 30.0
+_IRQ_SCRIPT_TIMEOUT_S = 30.0
+
+
 def _parse_result(output: str) -> tuple[bool, str]:
     match = RESULT_RE.search(output)
     if match is None:
@@ -58,7 +62,7 @@ def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board: Board
 
 
 def test_scd30_real_irq_edge_drives_a_real_read(board: Board) -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "scd30_real_irq_edge.py", timeout_s=30.0)
+    output = board.run_isolated(DEVICE_SCRIPTS / "scd30_real_irq_edge.py", timeout_s=_IRQ_SCRIPT_TIMEOUT_S)
     ok, detail = _parse_result(output)
     assert ok, f"SCD30 real IRQ-edge probe failed: {detail}\nfull output:\n{output}"
 
@@ -106,6 +110,7 @@ def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Bo
 # So a wrap only counts when the PREVIOUS read was already near 2**30; a drop from anywhere else
 # is the reboot above. Two hours of headroom, wider than the poll interval below, so a real wrap
 # straddling one poll is still recognised - and the ambiguity fails honestly instead of passing.
+# @tunable l3.bus_electrical_timing_wrap_headroom_h = 2
 _WRAP_FLOOR_MS = (2**30) - 2 * 60 * 60 * 1000
 
 

@@ -13,10 +13,14 @@ from base_classes import ValueRef
 
 VOC_MIN, VOC_MAX = 0, 500
 RAW_MIN, RAW_MAX = 0, 65535
+# @tunable l3.sgp40_voc_algorithm_quality_blackout_wait_s = 60.0
 BLACKOUT_WAIT_S = 60.0  # 45s documented blackout + margin for a real 1s-cadence read loop to catch up
 N_QUALITY_SAMPLES = 8
+# @tunable l3.sgp40_voc_algorithm_quality_sample_interval_s = 2.0
 SAMPLE_INTERVAL_S = 2.0
+# @tunable l3.sgp40_voc_algorithm_quality_max_single_step_jump = 300
 MAX_SINGLE_STEP_JUMP = 300  # generous relative to the algorithm's own adaptive-lowpass smoothing
+# @tunable l3.sgp40_fram_backup_restore_wdt_feed_interval_s = 2.0
 _WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
 _FixedValue = namedtuple("_FixedValue", ("value",))

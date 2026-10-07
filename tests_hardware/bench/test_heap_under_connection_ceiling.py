@@ -48,13 +48,23 @@ _MIN_FRACTION_AT_CEILING = 0.55
 _ADMISSION_WAIT_S = 0.3
 
 
+# @tunable l4.ceiling_holder_socket_timeout_s = 5.0
+_HOLDER_SOCKET_TIMEOUT_S = 5.0
+# @tunable l4.heap_under_connection_ceiling_worker_join_s = 10.0
+_WORKER_JOIN_S = 10.0
+# @tunable l4.heap_under_connection_ceiling_script_timeout_s = 240.0
+_SCRIPT_TIMEOUT_S = 240.0
+# @tunable l4.heap_under_connection_ceiling_hammer_join_s = 30.0
+_HAMMER_JOIN_S = 30.0
+
+
 def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float, port: int = 80) -> None:
     """Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
     the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test."""
     stop.wait(offset_s)  # stagger, so the whole set does not expire in lockstep
     while not stop.is_set():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5.0)
+        sock.settimeout(_HOLDER_SOCKET_TIMEOUT_S)
         parked = False
         try:
             sock.connect((dut_ip, port))
@@ -114,7 +124,7 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
         # of the pytest session, which took down 37 unrelated tests once.
         stop.set()
         for worker in workers:
-            worker.join(timeout=10.0)
+            worker.join(timeout=_WORKER_JOIN_S)
     at_ceiling = sum(1 for count in observed if count >= ceiling)
     held_out.extend((min(observed, default=0), max(observed, default=0), at_ceiling, len(observed)))
 
@@ -126,10 +136,10 @@ def test_heap_at_peak_while_a_full_ceiling_is_held(board: Board, bench: BenchBri
     hammer = threading.Thread(target=_hold_ceiling_open, args=(dut_ip, ceiling, _HOLD_S, held_out, stop), daemon=True)
     hammer.start()
     try:
-        output = board.run_isolated(DEVICE_SCRIPTS / "heap_under_connection_ceiling.py", timeout_s=240.0)
+        output = board.run_isolated(DEVICE_SCRIPTS / "heap_under_connection_ceiling.py", timeout_s=_SCRIPT_TIMEOUT_S)
     finally:
         stop.set()  # never leave the load generator running past this test
-        hammer.join(timeout=30.0)
+        hammer.join(timeout=_HAMMER_JOIN_S)
         holder_alive = hammer.is_alive()
         restore_board_to_serving(board, bench, dut_ip)
     assert not holder_alive, "the connection holder is still running after its own test - it will hammer the board through every test that follows"

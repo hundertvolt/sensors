@@ -40,6 +40,21 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l2.twin_wdt_feed_interval_s = 1.0
+_WDT_FEED_INTERVAL_S = 1.0
+# @tunable l2.bus_hazard_concurrency_run_bound_s = 20.0
+_RUN_BOUND_S = 20.0
+# @tunable l2.bus_hazard_concurrency_established_poll_s = 0.5
+_ESTABLISHED_POLL_S = 0.5
+# @tunable l2.bus_hazard_concurrency_reconnect_poll_s = 1.0
+_RECONNECT_POLL_S = 1.0
+# @tunable l2.bus_hazard_concurrency_flap_window_s = 75.0
+_FLAP_WINDOW_S = 75.0
+# @tunable l2.bus_hazard_concurrency_flap_run_bound_s = 95.0
+_FLAP_RUN_BOUND_S = 95.0
+# @tunable l2.bus_hazard_concurrency_state_run_bound_s = 30.0
+_STATE_RUN_BOUND_S = 30.0
+
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
@@ -73,7 +88,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
     while True:
         watchdog.feed()
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(_WDT_FEED_INTERVAL_S)
 
 
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
@@ -184,7 +199,7 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=9.0)
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
@@ -198,7 +213,7 @@ def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0)
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load() -> None:
@@ -269,7 +284,7 @@ def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:
             ok = await fram_spi.get_values(buf, addr_start=0x100)
             assert ok and bytes(buf) == b"\x01\x02\x03\x04", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected b'\\x01\\x02\\x03\\x04'"
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
@@ -311,7 +326,7 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
             ok = await fram_spi.get_values(buf, addr_start=0x200)
             assert ok and bytes(buf) == b"\x05\x06\x07\x08", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected the real pre-fault seeded content b'\\x05\\x06\\x07\\x08'"
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
@@ -346,7 +361,7 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
         assert await chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
         assert await chunk.read() == bytearray(payload)
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 async def _wait_established_then_flap_once(conn: "AsyConnTime") -> None:
@@ -354,10 +369,10 @@ async def _wait_established_then_flap_once(conn: "AsyConnTime") -> None:
     # forwardable 60s sleep (Part E.5.1), so repeated flapping is not CI-time-reasonable here.
     # tests_hardware/bench/test_network_resilience.py covers that on real hardware instead.
     while not conn.wlan.isconnected():
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_ESTABLISHED_POLL_S)
     conn.wlan.disconnect()
     while not conn.wlan.isconnected():
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(_RECONNECT_POLL_S)
 
 
 def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect() -> None:
@@ -389,7 +404,7 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
         tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
         flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn))
         try:
-            await asyncio.sleep(75.0)
+            await asyncio.sleep(_FLAP_WINDOW_S)
             assert module.watchdog.would_have_triggered_count == 0
             sgp_data = await module.sgp40.get_data()
             bmp_data = await module.bmp3xx.get_data()
@@ -405,7 +420,7 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
             for task in tasks:
                 await _cancel(task)
 
-    run_timed(scenario(), timeout_s=95.0)
+    run_timed(scenario(), timeout_s=_FLAP_RUN_BOUND_S)
 
 
 def test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_it() -> None:
@@ -435,7 +450,7 @@ def test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_
         assert await chunk.write(first) is True
         assert bytes(await chunk.read() or b"") == first
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
@@ -466,7 +481,7 @@ def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
         assert await manager.fram.set_write_protected(value=False) is True
         assert bytes(await chunk.read() or b"") == payload, "the refusal damaged the stored bytes - it is supposed to be an access gate only"
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives() -> None:
@@ -495,7 +510,7 @@ def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_s
         assert await chunk.read() == bytearray(payload)  # absorbed by the block-1 copy
         assert bus.rx_overrun_remaining == 0, "the overrun never fired once the bus was genuinely reachable"
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
@@ -530,7 +545,7 @@ def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
         finally:
             machine.configure_fram_state_path(None)
 
-    run_timed(scenario(), timeout_s=30.0)
+    run_timed(scenario(), timeout_s=_STATE_RUN_BOUND_S)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,10 @@ _OTHER_RESERVED = [a for lo, hi in RESERVED_RANGES for a in range(lo, hi + 1) if
 # This bench's own real pin assignments (sensortask_dev.py's own construction comments) - scanned,
 # never assumed populated.
 _BUSES = ((0, 13, 12, 50000, None), (1, 15, 14, 50000, 200000))
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcast_step_s = 0.2
+_BROADCAST_STEP_S = 0.2
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_run_bound_s = 30.0
+_RUN_BOUND_S = 30.0
 
 
 async def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | None":
@@ -134,9 +138,9 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
                 i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")
             except OSError:
                 pass
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(_BROADCAST_STEP_S)
 
-    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), 30.0)
+    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), _RUN_BOUND_S)
     return self_errors
 
 

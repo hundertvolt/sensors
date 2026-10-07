@@ -37,6 +37,11 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l2.real_website_integration_run_bound_s = 10.0
+_RUN_BOUND_S = 10.0
+# @tunable l2.real_website_integration_burst_run_bound_s = 30.0
+_BURST_RUN_BOUND_S = 30.0
+
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
@@ -110,7 +115,7 @@ def test_real_website_root_serves_the_actual_production_index_html() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() -> None:
@@ -152,7 +157,7 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_production_js_entry_is_served_not_the_prototype() -> None:
@@ -170,7 +175,7 @@ def test_real_website_production_js_entry_is_served_not_the_prototype() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
@@ -189,7 +194,7 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +226,7 @@ def test_real_website_hotspot_mode_redirects_unmatched_path_to_root() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() -> None:
@@ -248,7 +253,7 @@ def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() 
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live() -> None:
@@ -278,7 +283,7 @@ def test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live() -
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
@@ -297,7 +302,7 @@ def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website() -> None:
@@ -336,7 +341,7 @@ def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=30.0)
+    run_timed(scenario(), timeout_s=_BURST_RUN_BOUND_S)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import asyncio
 
+from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, awaited_with_listener
 from machine import UART as FakeUART
 from machine import LinkPoller, UARTLink
 
@@ -22,11 +23,13 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 PAYLOAD_SIZE = 8
-TIMEOUT_MS = 100
-POLL_WAIT_MS = 1
+# @tunable l1.asy_uart_link_driver_round_poll_s = 0.005
+_ROUND_POLL_S = 0.005
+# @tunable l1.asy_uart_link_driver_ticker_step_ms = 1
+_TICKER_STEP_MS = 1
 
 
-def run(coro: "Coroutine[Any, Any, T]", limit: int = 10) -> "T":
+def run(coro: "Coroutine[Any, Any, T]", limit: int = RUN_LIMIT_S) -> "T":
     # Every test is bounded: a wedge must surface as a fast FAIL, never as a hung test file.
     return asyncio.run(asyncio.wait_for(coro, limit))
 
@@ -49,19 +52,10 @@ class Pair:
     async def setup(self) -> bool:
         return await self.initiator.setup() and await self.responder.setup()
 
-    async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1) -> "T":
+    async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
+        # The harness's rule: a stalled responder fails the exchange unless the test declares it.
         listener = asyncio.create_task(self._listen_rounds(rounds))
-        try:
-            return await work
-        finally:
-            try:
-                await asyncio.wait_for(listener, 5)
-            except asyncio.TimeoutError:
-                listener.cancel()
-                try:
-                    await listener
-                except asyncio.CancelledError:
-                    pass
+        return await awaited_with_listener(work, listener, rounds, may_stall=listener_may_stall)
 
     async def _listen_rounds(self, rounds: int) -> None:
         for _ in range(rounds):
@@ -148,7 +142,7 @@ async def _one_exercise_round(pair: Pair, *, listen: bool = True) -> None:
     loop_task = asyncio.create_task(pair.initiator._exercise_loop())
     try:
         while not (pair.initiator.transfers or pair.initiator.failures):
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(_ROUND_POLL_S)
     finally:
         for task in (loop_task, listener):
             if task is None:
@@ -366,7 +360,7 @@ def test_a_persisted_fault_during_a_transfer_does_not_stall_other_tasks() -> Non
             nonlocal ticks
             while True:
                 ticks += 1
-                await asyncio.sleep_ms(1)
+                await asyncio.sleep_ms(_TICKER_STEP_MS)
 
         background = asyncio.create_task(ticker())
         try:

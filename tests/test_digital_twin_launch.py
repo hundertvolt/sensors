@@ -22,6 +22,16 @@ from _twin_common import Injections, StatePaths
 from launch import LaunchConfig, _apply_fault, _apply_hang, main, parse_args, parse_fault_spec
 
 _IN_MEMORY = StatePaths(None, None)  # neither chip persists: every main() run here starts fresh
+# @tunable l2.launch_short_duration_s = 0.5
+_SHORT_DURATION_S = 0.5
+# @tunable l2.launch_main_bound_s = 10
+_MAIN_BOUND_S = 10
+# @tunable l2.launch_fault_duration_s = 2.5
+_FAULT_DURATION_S = 2.5
+# @tunable l2.launch_long_duration_s = 4.5
+_LONG_DURATION_S = 4.5
+# @tunable l2.launch_long_main_bound_s = 15
+_LONG_MAIN_BOUND_S = 15
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -217,8 +227,8 @@ def test_parse_args_combines_every_flag_together() -> None:
 
 def test_main_runs_end_to_end_and_returns_a_summary() -> None:
     machine.Pin.reset_registry()  # isolate from any earlier test file's own Pin(8)/etc. wiring
-    config = LaunchConfig(_IN_MEMORY, Injections(1234, [], [], []), no_wdt_feed=True, duration=0.5)
-    summary = run(asyncio.wait_for(main(config), 10))
+    config = LaunchConfig(_IN_MEMORY, Injections(1234, [], [], []), no_wdt_feed=True, duration=_SHORT_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _MAIN_BOUND_S))
     assert summary["readings"] >= 1  # at least one real bus-level read happened
     assert summary["wifi_status"] is not None
     assert summary["would_have_triggered_count"] == 0  # only 0.5s, well under wdt.timeout_ms (8000 ms)
@@ -233,8 +243,8 @@ def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
     # early either, which the longer-duration test below covers.
     machine.Pin.reset_registry()
     injections = Injections(99, [("sgp40", "writeto", 1), ("bmp3xx", "readfrom_mem", 1)], [], [network.STAT_NO_AP_FOUND])
-    config = LaunchConfig(_IN_MEMORY, injections, no_wdt_feed=True, duration=2.5)
-    summary = run(asyncio.wait_for(main(config), 10))
+    config = LaunchConfig(_IN_MEMORY, injections, no_wdt_feed=True, duration=_FAULT_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _MAIN_BOUND_S))
     assert summary["wifi_status"] == network.STAT_NO_AP_FOUND
     # Both one-shot faults (sgp40/bmp3xx) are isolated to their own read and spent after the first
     # iteration - the second iteration's real readings must still have been produced.
@@ -246,8 +256,8 @@ def test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary() -> None:
     # loop, all used to be unguarded, so a --fault wlan:... crashed main() outright before it reached the
     # WDT-feed and sensor-read loops. Now isolated the way _sensor_loop() isolates each sensor's read.
     machine.Pin.reset_registry()
-    config = LaunchConfig(_IN_MEMORY, Injections(7, [("wlan", "connect", 1)], [], []), no_wdt_feed=True, duration=0.5)
-    summary = run(asyncio.wait_for(main(config), 10))
+    config = LaunchConfig(_IN_MEMORY, Injections(7, [("wlan", "connect", 1)], [], []), no_wdt_feed=True, duration=_SHORT_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _MAIN_BOUND_S))
     assert summary["readings"] >= 1  # sensor loop still ran despite the WLAN fault
 
 
@@ -258,8 +268,8 @@ def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driv
     #
     # no_wdt_feed=False here also exercises a real watchdog.feed() call, unlike every other main() test.
     machine.Pin.reset_registry()
-    config = LaunchConfig(_IN_MEMORY, Injections(55, [], [], []), no_wdt_feed=False, duration=4.5)
-    summary = run(asyncio.wait_for(main(config), 15))
+    config = LaunchConfig(_IN_MEMORY, Injections(55, [], [], []), no_wdt_feed=False, duration=_LONG_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _LONG_MAIN_BOUND_S))
     assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
     assert summary["would_have_triggered_count"] == 0  # fed for real, well under wdt.timeout_ms (8000 ms)
 

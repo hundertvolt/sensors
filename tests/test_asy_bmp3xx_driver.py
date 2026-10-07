@@ -58,6 +58,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_bmp3xx_driver_event_wait_s = 1
+_EVENT_WAIT_S = 1
+
+
 async def _settle(n: int = 5) -> None:
     for _ in range(n):
         await asyncio.sleep(0)
@@ -1818,7 +1822,7 @@ def test_start_timer_arms_a_real_periodic_timer_that_drives_base_trigger_event()
     async def scenario() -> bool:
         fired = True
         try:
-            await asyncio.wait_for(reader.base_trigger_event.wait(), 1)
+            await asyncio.wait_for(reader.base_trigger_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             fired = False
         return fired
@@ -1889,7 +1893,7 @@ def test_base_trigger_sets_trigger_event_only_once_the_configured_period_elapses
         await _settle(3)
         fired = True
         try:
-            await asyncio.wait_for(reader.read_event.wait(), 1)
+            await asyncio.wait_for(reader.read_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             fired = False
         task.cancel()

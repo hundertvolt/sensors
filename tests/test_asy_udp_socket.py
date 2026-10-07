@@ -18,6 +18,63 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# @tunable l1.asy_udp_socket_recv_empty_timeout_ms = 50
+_RECV_EMPTY_TIMEOUT_MS = 50
+# @tunable l1.asy_udp_socket_attempt_timeout_ms = 200
+_ATTEMPT_TIMEOUT_MS = 200
+# @tunable l1.asy_udp_socket_exhaust_timeout_ms = 30
+_EXHAUST_TIMEOUT_MS = 30
+# @tunable l1.asy_udp_socket_peer_recv_timeout_ms = 1000
+_PEER_RECV_TIMEOUT_MS = 1000
+# @tunable l1.asy_udp_socket_peer_poll_ms = 5
+_PEER_POLL_MS = 5
+# @tunable l1.asy_udp_socket_reply_timeout_ms = 500
+_REPLY_TIMEOUT_MS = 500
+# @tunable l1.asy_udp_socket_spoof_wait_ms = 150
+_SPOOF_WAIT_MS = 150
+# @tunable l1.asy_udp_socket_kernel_queue_s = 0.05
+_KERNEL_QUEUE_S = 0.05
+# @tunable l1.asy_udp_socket_recv_timeout_ms = 200
+_RECV_TIMEOUT_MS = 200
+# @tunable l1.asy_udp_socket_in_time_delay_ms = 40
+_IN_TIME_DELAY_MS = 40
+# @tunable l1.asy_udp_socket_in_time_timeout_ms = 300
+_IN_TIME_TIMEOUT_MS = 300
+# @tunable l1.asy_udp_socket_too_late_delay_ms = 300
+_TOO_LATE_DELAY_MS = 300
+# @tunable l1.asy_udp_socket_too_late_timeout_ms = 100
+_TOO_LATE_TIMEOUT_MS = 100
+# @tunable l1.asy_udp_socket_ready_empty_timeout_ms = 80
+_READY_EMPTY_TIMEOUT_MS = 80
+# @tunable l1.asy_udp_socket_task_park_s = 0.05
+_TASK_PARK_S = 0.05
+# @tunable l1.asy_udp_socket_ms_check_timeout_ms = 50
+_MS_CHECK_TIMEOUT_MS = 50
+# @tunable l1.asy_udp_socket_ms_check_elapsed_max_ms = 2000
+_MS_CHECK_ELAPSED_MAX_MS = 2000
+# @tunable l1.asy_udp_socket_icmp_delivery_s = 0.2
+_ICMP_DELIVERY_S = 0.2
+# @tunable l1.asy_udp_socket_icmp_recv_timeout_ms = 5000
+_ICMP_RECV_TIMEOUT_MS = 5000
+# @tunable l1.asy_udp_socket_icmp_elapsed_max_ms = 1000
+_ICMP_ELAPSED_MAX_MS = 1000
+# @tunable l1.asy_udp_socket_long_reply_timeout_ms = 1000
+_LONG_REPLY_TIMEOUT_MS = 1000
+# @tunable l1.asy_udp_socket_unreachable_timeout_ms = 500
+_UNREACHABLE_TIMEOUT_MS = 500
+# @tunable l1.asy_udp_socket_no_sender_timeout_ms = 100
+_NO_SENDER_TIMEOUT_MS = 100
+# @tunable l1.asy_udp_socket_first_attempt_s = 0.1
+_FIRST_ATTEMPT_S = 0.1
+# @tunable l1.asy_udp_socket_retry_cycle_max_ms = 5000
+_RETRY_CYCLE_MAX_MS = 5000
+# @tunable l1.asy_udp_socket_disconnect_bound_s = 2
+_DISCONNECT_BOUND_S = 2
+# @tunable l1.asy_udp_socket_connect_bound_s = 3
+_CONNECT_BOUND_S = 3
+# @tunable l1.asy_udp_socket_enter_sleep_s = 0.1
+_ENTER_SLEEP_S = 0.1
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
@@ -204,7 +261,7 @@ def test_recvfrom_returns_none_sentinel_on_timeout() -> None:
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
         server = AsyUDPSocket(addr, mode="server")
         try:
-            return await server.recvfrom(64, timeout_ms=50)
+            return await server.recvfrom(64, timeout_ms=_RECV_EMPTY_TIMEOUT_MS)
         finally:
             await server.disconnect()
 
@@ -237,7 +294,7 @@ def test_write_and_recvfrom_retries_until_a_reply_arrives() -> None:
                     await server.sendto(b"pong", from_addr)
 
             responder = asyncio.create_task(drop_first_then_reply())
-            data, _ = await client.write_and_recvfrom(b"ping", 64, timeout_ms=200, tries=3)
+            data, _ = await client.write_and_recvfrom(b"ping", 64, timeout_ms=_ATTEMPT_TIMEOUT_MS, tries=3)
             await responder
             return data
         finally:
@@ -253,7 +310,7 @@ def test_write_and_recvfrom_exhausts_tries_and_returns_none_sentinel() -> None:
     async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
         client = AsyUDPSocket(addr, mode="client")
         try:
-            return await client.write_and_recvfrom(b"ping", 64, timeout_ms=30, tries=2)
+            return await client.write_and_recvfrom(b"ping", 64, timeout_ms=_EXHAUST_TIMEOUT_MS, tries=2)
         finally:
             await client.disconnect()
 
@@ -283,7 +340,7 @@ class AdversarialPeer:
             await asyncio.sleep_ms(delay_ms)
         self.sock.sendto(data, target)
 
-    async def recv(self, bufsize: int, timeout_ms: int = 1000) -> tuple[bytes, tuple[str, int]]:
+    async def recv(self, bufsize: int, timeout_ms: int = _PEER_RECV_TIMEOUT_MS) -> tuple[bytes, tuple[str, int]]:
         poller = select.poll()
         poller.register(self.sock, select.POLLIN)
         t0 = time.ticks_ms()
@@ -292,7 +349,7 @@ class AdversarialPeer:
                 return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
             if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
                 raise OSError("AdversarialPeer.recv() timed out")
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_PEER_POLL_MS)
 
     def close(self) -> None:
         self.sock.close()
@@ -319,7 +376,7 @@ def test_recvfrom_silently_truncates_an_oversized_datagram() -> None:
         try:
             await server._connect()
             peer.sock.sendto(oversized, addr)
-            data, _ = await server.recvfrom(10, timeout_ms=500)
+            data, _ = await server.recvfrom(10, timeout_ms=_REPLY_TIMEOUT_MS)
             return data
         finally:
             peer.close()
@@ -341,7 +398,7 @@ def test_recvfrom_treats_a_zero_length_datagram_as_a_real_reply_not_a_timeout() 
         try:
             await server._connect()
             peer.sock.sendto(b"", addr)
-            data, _ = await server.recvfrom(64, timeout_ms=500)
+            data, _ = await server.recvfrom(64, timeout_ms=_REPLY_TIMEOUT_MS)
             return data
         finally:
             peer.close()
@@ -413,10 +470,10 @@ def test_client_mode_filters_datagrams_from_unexpected_sources() -> None:
             assert client_addr is not None
 
             attacker.sock.sendto(b"spoofed", client_addr)
-            spoofed_result, _ = await client.recvfrom(64, timeout_ms=150)
+            spoofed_result, _ = await client.recvfrom(64, timeout_ms=_SPOOF_WAIT_MS)
 
             peer.sock.sendto(b"legit", client_addr)
-            legit_result, _ = await client.recvfrom(64, timeout_ms=500)
+            legit_result, _ = await client.recvfrom(64, timeout_ms=_REPLY_TIMEOUT_MS)
             return spoofed_result, legit_result
         finally:
             peer.close()
@@ -441,10 +498,10 @@ def test_recvfrom_drains_a_burst_of_queued_datagrams_in_order() -> None:
             await server._connect()
             for i in range(5):
                 peer.sock.sendto(f"pkt-{i}".encode(), addr)
-            await asyncio.sleep(0.05)  # let the kernel queue all 5 before draining starts
+            await asyncio.sleep(_KERNEL_QUEUE_S)  # let the kernel queue all 5 before draining starts
             results = []
             for _ in range(5):
-                data, _ = await server.recvfrom(64, timeout_ms=200)
+                data, _ = await server.recvfrom(64, timeout_ms=_RECV_TIMEOUT_MS)
                 results.append(data)
             return results
         finally:
@@ -469,12 +526,12 @@ def test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply
             _, client_addr = await peer.recv(64)
             assert client_addr is not None
 
-            in_time_sender = asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=40))
-            in_time, _ = await client.recvfrom(64, timeout_ms=300)
+            in_time_sender = asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=_IN_TIME_DELAY_MS))
+            in_time, _ = await client.recvfrom(64, timeout_ms=_IN_TIME_TIMEOUT_MS)
             await in_time_sender  # already finished - the reply above is what it sent
 
-            too_late_sender = asyncio.create_task(peer.send_after(client_addr, b"too-late", delay_ms=300))
-            too_late, _ = await client.recvfrom(64, timeout_ms=100)
+            too_late_sender = asyncio.create_task(peer.send_after(client_addr, b"too-late", delay_ms=_TOO_LATE_DELAY_MS))
+            too_late, _ = await client.recvfrom(64, timeout_ms=_TOO_LATE_TIMEOUT_MS)
             await too_late_sender  # let the delayed send actually happen before teardown
             return in_time, too_late
         finally:
@@ -520,7 +577,7 @@ def test_ready_default_wait_time_ms_does_not_busy_spin() -> None:
     try:
         sock = AsyUDPSocket(addr, mode="server")
         try:
-            run(sock.ready(select.POLLIN, timeout_ms=80))  # nothing ever arrives
+            run(sock.ready(select.POLLIN, timeout_ms=_READY_EMPTY_TIMEOUT_MS))  # nothing ever arrives
         finally:
             run(sock.disconnect())
     finally:
@@ -630,11 +687,11 @@ def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
         try:
             await server._connect()
             peer.sock.sendto(b"data", addr)
-            await asyncio.sleep(0.05)  # a genuinely pending datagram, so recvfrom() actually
+            await asyncio.sleep(_KERNEL_QUEUE_S)  # a genuinely pending datagram, so recvfrom() actually
             # reaches sock.recvfrom() instead of timing out inside ready() first
             assert server.sock is not None
             server.sock = _MemoryErrorSocketWrapper(server.sock)  # type: ignore[assignment]
-            return await server.recvfrom(64, timeout_ms=200)
+            return await server.recvfrom(64, timeout_ms=_RECV_TIMEOUT_MS)
         finally:
             peer.close()
             await server.disconnect()
@@ -755,7 +812,7 @@ def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
             real_poller = sock.poller
             assert real_poller is not None  # a connected socket always has one
             sock.poller = _DisconnectingPoller(sock, real_poller)  # type: ignore[assignment]
-            return await sock.ready(select.POLLIN, timeout_ms=200, wait_time_ms=10)
+            return await sock.ready(select.POLLIN, timeout_ms=_RECV_TIMEOUT_MS, wait_time_ms=10)
         finally:
             await sock.disconnect()
 
@@ -887,7 +944,7 @@ def test_cancellation_propagates_out_of_recvfrom() -> None:
         server = AsyUDPSocket(addr, mode="server")
         try:
             task = asyncio.create_task(server.recvfrom(64))  # nothing ever arrives - waits forever
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(_TASK_PARK_S)
             task.cancel()
             try:
                 await task
@@ -916,14 +973,14 @@ def test_ready_wait_time_ms_is_milliseconds_not_seconds() -> None:
         sock = AsyUDPSocket(addr, mode="server")
         try:
             t0 = time.ticks_ms()
-            result = await sock.ready(select.POLLIN, timeout_ms=50, wait_time_ms=10)
+            result = await sock.ready(select.POLLIN, timeout_ms=_MS_CHECK_TIMEOUT_MS, wait_time_ms=10)
             assert result is False  # nothing ever arrives
             return time.ticks_diff(time.ticks_ms(), t0)
         finally:
             await sock.disconnect()
 
     elapsed = run(scenario())
-    assert elapsed < 2000  # generously below the 10000ms+ the old seconds-interpretation bug would take
+    assert elapsed < _MS_CHECK_ELAPSED_MAX_MS  # generously below the 10000ms+ the old seconds-interpretation bug would take
 
 
 # ---------------------------------------------------------------------------
@@ -982,16 +1039,16 @@ def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> N
         try:
             sent = await client.write(b"ping")
             assert sent == 4
-            await asyncio.sleep(0.2)  # let the kernel deliver the ICMP unreachable
+            await asyncio.sleep(_ICMP_DELIVERY_S)  # let the kernel deliver the ICMP unreachable
             t0 = time.ticks_ms()
-            data, _ = await client.recvfrom(64, timeout_ms=5000)  # generously long if the old bug were still present
+            data, _ = await client.recvfrom(64, timeout_ms=_ICMP_RECV_TIMEOUT_MS)  # generously long if the old bug were still present
             return data, time.ticks_diff(time.ticks_ms(), t0)
         finally:
             await client.disconnect()
 
     data, elapsed = run(scenario())
     assert data is None  # recvfrom() itself still raises OSError, correctly converted to the sentinel
-    assert elapsed < 1000  # detected via POLLERR promptly, not by waiting out the 5000ms timeout
+    assert elapsed < _ICMP_ELAPSED_MAX_MS  # detected via POLLERR promptly, not by waiting out the 5000ms timeout
 
 
 # ---------------------------------------------------------------------------
@@ -1055,7 +1112,7 @@ def test_ntp_client_pattern_end_to_end_success() -> None:
     ntp_reply = b"\x1c" + bytearray(47)  # a realistic 48-byte NTP-shaped reply
 
     async def responder(peer: AdversarialPeer) -> None:
-        _, from_addr = await peer.recv(1024, timeout_ms=1000)
+        _, from_addr = await peer.recv(1024, timeout_ms=_PEER_RECV_TIMEOUT_MS)
         assert from_addr is not None
         peer.sock.sendto(ntp_reply, from_addr)
 
@@ -1067,7 +1124,7 @@ def test_ntp_client_pattern_end_to_end_success() -> None:
         try:
             responder_task = asyncio.create_task(responder(peer))
             cli = AsyUDPSocket(server_addr, mode="client")
-            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=1000)
+            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             del add
             await cli.disconnect()
             await responder_task
@@ -1098,7 +1155,7 @@ def test_ntp_client_pattern_no_server_reachable() -> None:
         msg: bytes | None = None
         try:
             cli = AsyUDPSocket(server_addr, mode="client")
-            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=500)
+            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_UNREACHABLE_TIMEOUT_MS)
             del add
             await cli.disconnect()
         except Exception:
@@ -1123,7 +1180,7 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
     garbage_reply = b"\x00\x01\x02not-an-ntp-packet-at-all" * 3
 
     async def responder(peer: AdversarialPeer) -> None:
-        _, from_addr = await peer.recv(1024, timeout_ms=1000)
+        _, from_addr = await peer.recv(1024, timeout_ms=_PEER_RECV_TIMEOUT_MS)
         assert from_addr is not None
         peer.sock.sendto(garbage_reply, from_addr)
 
@@ -1132,7 +1189,7 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
         cli = AsyUDPSocket(server_addr, mode="client")
         try:
             responder_task = asyncio.create_task(responder(peer))
-            msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=1000)
+            msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             await responder_task
             return msg
         finally:
@@ -1158,10 +1215,10 @@ def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
         try:
             await server._connect()
             client.sock.sendto(query, client_target_addr)
-            data, addr = await server.recvfrom(4096, timeout_ms=1000)
+            data, addr = await server.recvfrom(4096, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             if data is not None and addr is not None:  # captive_dns.py's exact guard
                 await server.sendto(response, addr)
-            reply, _ = await client.recv(4096, timeout_ms=1000)
+            reply, _ = await client.recv(4096, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
             return data, addr, reply
         finally:
             client.close()
@@ -1188,9 +1245,9 @@ def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
         peer = AdversarialPeer(peer_addr)
         try:
             await server._connect()
-            timeout_result = await server.recvfrom(64, timeout_ms=100)  # nobody sends - timeout path
+            timeout_result = await server.recvfrom(64, timeout_ms=_NO_SENDER_TIMEOUT_MS)  # nobody sends - timeout path
             peer.sock.sendto(b"real query", addr)
-            success_result = await server.recvfrom(64, timeout_ms=500)  # success path
+            success_result = await server.recvfrom(64, timeout_ms=_REPLY_TIMEOUT_MS)  # success path
             return timeout_result, success_result
         finally:
             peer.close()
@@ -1220,10 +1277,10 @@ def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving()
             await server.sendto(b"reply to nobody", unreachable_client_addr)  # never raises either way
 
             peer.sock.sendto(b"next real query", addr)
-            _data, from_addr = await server.recvfrom(64, timeout_ms=500)
+            _data, from_addr = await server.recvfrom(64, timeout_ms=_REPLY_TIMEOUT_MS)
             assert from_addr is not None
             await server.sendto(b"real reply", from_addr)
-            reply, _ = await peer.recv(64, timeout_ms=500)
+            reply, _ = await peer.recv(64, timeout_ms=_REPLY_TIMEOUT_MS)
             return reply
         finally:
             peer.close()
@@ -1310,8 +1367,8 @@ def test_recvfrom_returns_none_sentinel_for_a_malformed_buf_with_real_pending_da
         try:
             await server._connect()
             peer.sock.sendto(b"real data", addr)
-            await asyncio.sleep(0.05)
-            return await server.recvfrom("not an int", timeout_ms=200)  # type: ignore[arg-type]
+            await asyncio.sleep(_KERNEL_QUEUE_S)
+            return await server.recvfrom("not an int", timeout_ms=_RECV_TIMEOUT_MS)  # type: ignore[arg-type]
         finally:
             peer.close()
             await server.disconnect()
@@ -1337,7 +1394,7 @@ def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> 
         try:
             t0 = time.ticks_ms()
             connect_task = asyncio.create_task(sock._connect())
-            await asyncio.sleep(0.1)  # let it fail its first attempt and start backing off
+            await asyncio.sleep(_FIRST_ATTEMPT_S)  # let it fail its first attempt and start backing off
             await sock.disconnect()  # must not raise, and must not crash connect_task either
             await connect_task
             elapsed = time.ticks_diff(time.ticks_ms(), t0)
@@ -1348,7 +1405,7 @@ def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> 
     connected, elapsed = run(scenario())
     assert connected is False  # bad_addr never becomes bindable
     assert elapsed >= 1000  # disconnect() genuinely waited for the ~1.5s (3 tries) retry cycle
-    assert elapsed < 5000  # ...but didn't hang forever either
+    assert elapsed < _RETRY_CYCLE_MAX_MS  # ...but didn't hang forever either
 
 
 def test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none() -> None:
@@ -1391,7 +1448,7 @@ def test_cancelling_a_task_that_holds_the_connect_lock_releases_it() -> None:
     async def scenario() -> tuple[bool, bool]:
         sock = AsyUDPSocket(bad_addr, mode="server", conn_tries=5)
         a_task = asyncio.create_task(sock._connect())
-        await asyncio.sleep(0.1)  # A has failed once, is inside its backoff sleep, holding the lock
+        await asyncio.sleep(_FIRST_ATTEMPT_S)  # A has failed once, is inside its backoff sleep, holding the lock
         a_task.cancel()
         cancelled_cleanly = False
         try:
@@ -1400,7 +1457,7 @@ def test_cancelling_a_task_that_holds_the_connect_lock_releases_it() -> None:
             cancelled_cleanly = True
 
         try:
-            await asyncio.wait_for(sock.disconnect(), 2)
+            await asyncio.wait_for(sock.disconnect(), _DISCONNECT_BOUND_S)
             lock_was_released = True
         except asyncio.TimeoutError:
             lock_was_released = False
@@ -1420,9 +1477,9 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
     async def scenario() -> tuple[bool, bool]:
         sock = AsyUDPSocket(bad_addr, mode="server", conn_tries=3)
         a_task = asyncio.create_task(sock._connect())
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(_FIRST_ATTEMPT_S)
         b_task = asyncio.create_task(sock.disconnect())  # blocks waiting for the lock A holds
-        await asyncio.sleep(0.05)  # let B actually start waiting
+        await asyncio.sleep(_TASK_PARK_S)  # let B actually start waiting
         b_task.cancel()
         b_cancelled_cleanly = False
         try:
@@ -1431,12 +1488,12 @@ def test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy() -> No
             b_cancelled_cleanly = True
 
         try:
-            await asyncio.wait_for(a_task, 3)
+            await asyncio.wait_for(a_task, _CONNECT_BOUND_S)
             a_completed = True
         except asyncio.TimeoutError:
             a_completed = False
         try:
-            await asyncio.wait_for(sock.disconnect(), 2)
+            await asyncio.wait_for(sock.disconnect(), _DISCONNECT_BOUND_S)
             lock_still_healthy = True
         except asyncio.TimeoutError:
             lock_still_healthy = False
@@ -1499,8 +1556,8 @@ def test_recvfrom_buf_zero_returns_empty_bytes_not_the_timeout_sentinel() -> Non
         try:
             await server._connect()
             peer.sock.sendto(b"real data", addr)
-            await asyncio.sleep(0.05)
-            data, _ = await server.recvfrom(0, timeout_ms=200)
+            await asyncio.sleep(_KERNEL_QUEUE_S)
+            data, _ = await server.recvfrom(0, timeout_ms=_RECV_TIMEOUT_MS)
             return data
         finally:
             peer.close()
@@ -1603,7 +1660,7 @@ def test_ready_cancellation_still_propagates_through_the_new_try_except() -> Non
         try:
             await sock._connect()
             task = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=-1, wait_time_ms=20))  # waits forever
-            await asyncio.sleep(0.1)  # let it enter the sleep_ms() inside the new try block
+            await asyncio.sleep(_ENTER_SLEEP_S)  # let it enter the sleep_ms() inside the new try block
             task.cancel()
             try:
                 await task

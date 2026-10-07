@@ -42,6 +42,10 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
+# @tunable l2.construction_scenarios_run_timeout_s = 10.0
+_RUN_TIMEOUT_S = 10.0
+
+
 # Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
 # build/generated_src/ before scripts/test.sh ever runs this file (scripts/_generate_sensortask_modules.py).
 _DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
@@ -128,7 +132,7 @@ def _scenario_boots_against_real_twin_buses(device: str) -> None:
         mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
         assert_named_modules_constructed(module, mandatory + _present_optional_instances(module, device))
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 @_register_param("get_measurements_and_sensors_are_reachable_and_shaped_correctly")
@@ -157,7 +161,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 @_register_param("a_real_bus_fault_degrades_to_a_clean_response_not_a_crash")
@@ -200,7 +204,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 # ---------------------------------------------------------------------------

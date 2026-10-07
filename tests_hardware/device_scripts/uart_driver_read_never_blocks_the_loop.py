@@ -23,10 +23,20 @@ if TYPE_CHECKING:
 
 BAUDRATE = 115200
 FRAME = 53  # one whole framed frame at the bench's payload_size=48, as uart_read_never_blocks_the_loop.py
+# @tunable l3.uart_driver_read_never_blocks_the_loop_trials = 5
 TRIALS = 5
+# @tunable dev.uart_poll_wait_ms = 2
 POLL_WAIT_MS = 2  # mirrors sensortask_dev.py's own transaction rate
 _WIRE_US = FRAME * 10 * 1000000 // BAUDRATE
 _SPAN_MAX_US = _WIRE_US // 3  # one synchronous call: the raw-UART script's own bound
+# @tunable l3.uart_driver_read_never_blocks_the_loop_start_timeout_ms = 500
+_START_TIMEOUT_MS = 500
+# @tunable l3.uart_driver_read_never_blocks_the_loop_read_timeout_ms = 200
+_READ_TIMEOUT_MS = 200
+# @tunable l3.uart_driver_read_never_blocks_the_loop_raw_deadline_ms = 500
+_RAW_DEADLINE_MS = 500
+# @tunable l3.uart_driver_read_never_blocks_the_loop_idle_window_ms = 20
+_IDLE_WINDOW_MS = 20
 _raw: "list[UART]" = []  # the driver's real UART, kept for draining and the unclamped control
 _control_span = [0]
 
@@ -76,7 +86,7 @@ class Ticker:
 
 async def _driver_read(drv: "asy_uart_driver.UART", buf: bytearray) -> int | None:
     async with drv:  # every read method refuses outside the lock (_active_uart())
-        return await drv.readinto_until_complete(buf, FRAME, start_timeout_ms=500, timeout_ms=200)
+        return await drv.readinto_until_complete(buf, FRAME, start_timeout_ms=_START_TIMEOUT_MS, timeout_ms=_READ_TIMEOUT_MS)
 
 
 async def _unclamped_read(drv: "asy_uart_driver.UART", buf: bytearray) -> int | None:
@@ -85,7 +95,7 @@ async def _unclamped_read(drv: "asy_uart_driver.UART", buf: bytearray) -> int | 
     async with drv:
         poller = select.poll()
         poller.register(_raw[0], select.POLLIN)
-        deadline = time.ticks_add(time.ticks_ms(), 500)
+        deadline = time.ticks_add(time.ticks_ms(), _RAW_DEADLINE_MS)
         while not any(ev & select.POLLIN for _, ev in poller.ipoll(0)):
             if time.ticks_diff(deadline, time.ticks_ms()) < 0:
                 return None
@@ -116,7 +126,7 @@ async def _trial(wdt: "machine.WDT", writer: "UART", drv: "asy_uart_driver.UART"
 async def _idle_gap() -> int:
     ticker = Ticker()
     tick_task = asyncio.create_task(ticker.run())
-    await asyncio.sleep_ms(20)
+    await asyncio.sleep_ms(_IDLE_WINDOW_MS)
     ticker.running = False
     await tick_task
     return ticker.worst_us
