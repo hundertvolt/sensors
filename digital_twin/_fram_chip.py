@@ -9,6 +9,12 @@ try:
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from typing import overload
+
+    _Slice = slice[int | None, int | None, int | None]
+
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04
@@ -32,6 +38,80 @@ _SAVE_CHUNK_SIZE = 512  # bytes per chunk streamed to disk in save_state() - avo
 
 _LOAD_CHUNK_CHARS = 1024  # hex chars per chunk in _load_state() - read-side mirror of the above.
 
+_PAGE_SIZE = 4096  # bytes per page of the chip's memory: a 256KB part as one bytearray needs a contiguous
+# run a fragmented test heap may lack with most of it free (digital_twin/README.md, "FRAM persistence").
+
+
+class _PagedMemory:
+    """The chip's memory as fixed-size pages, read and written like the bytearray it replaces."""
+
+    def __init__(self, size: int) -> None:
+        self._size = size
+        self._pages = [bytearray(min(_PAGE_SIZE, size - start)) for start in range(0, size, _PAGE_SIZE)]
+
+    def __len__(self) -> int:
+        return self._size
+
+    def _bounds(self, key: "_Slice") -> "tuple[int, int]":
+        if key.step not in (None, 1):
+            raise ValueError("FRAM memory slices take no step")
+        start = 0 if key.start is None else key.start
+        stop = self._size if key.stop is None else key.stop
+        if start < 0 or stop < 0:
+            raise IndexError("FRAM memory takes no negative addresses")
+        return start, max(start, stop)
+
+    if TYPE_CHECKING:
+
+        @overload
+        def __getitem__(self, key: int) -> int: ...
+        @overload
+        def __getitem__(self, key: "_Slice") -> bytearray: ...
+
+    def __getitem__(self, key: "int | _Slice") -> "int | bytearray":
+        if isinstance(key, int):
+            if not 0 <= key < self._size:
+                raise IndexError("FRAM address out of range")
+            return self._pages[key // _PAGE_SIZE][key % _PAGE_SIZE]
+        start, stop = self._bounds(key)
+        stop = min(stop, self._size)  # a read past the end comes back short, as a bytearray slice does
+        out = bytearray()
+        while start < stop:
+            page, offset = divmod(start, _PAGE_SIZE)
+            n = min(stop - start, _PAGE_SIZE - offset)
+            out += self._pages[page][offset : offset + n]
+            start += n
+        return out
+
+    def __setitem__(self, key: "int | _Slice", value: "int | bytes | bytearray | memoryview") -> None:
+        if isinstance(key, int):
+            if not isinstance(value, int):
+                raise TypeError("a FRAM address takes one byte value")
+            if not 0 <= key < self._size:
+                raise IndexError("FRAM address out of range")
+            self._pages[key // _PAGE_SIZE][key % _PAGE_SIZE] = value
+            return
+        if isinstance(value, int):
+            raise TypeError("a FRAM slice takes bytes")
+        start, stop = self._bounds(key)
+        if stop - start != len(value) or stop > self._size:
+            raise IndexError("a FRAM write must fit the chip and keep its length")
+        done = 0
+        while done < len(value):
+            page, offset = divmod(start + done, _PAGE_SIZE)
+            n = min(len(value) - done, _PAGE_SIZE - offset)
+            self._pages[page][offset : offset + n] = value[done : done + n]
+            done += n
+
+    def __iter__(self) -> "Iterator[int]":
+        for page in self._pages:
+            yield from page
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _PagedMemory):
+            return self._pages == other._pages
+        return NotImplemented
+
 
 class FramChip:
     def __init__(self, size: int = 0x2000, state_path: "str | None" = None, rdid_response: "bytes | None" = None) -> None:
@@ -40,7 +120,7 @@ class FramChip:
         self.status = 0x00
         self.rdid_response = _DEFAULT_RDID if rdid_response is None else rdid_response
         self.fault = FaultInjector()
-        self.memory = bytearray(size)
+        self.memory = _PagedMemory(size)
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
         self._load_state()

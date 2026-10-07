@@ -237,6 +237,7 @@ Decisions taken on the owner's behalf during execution, for the B5 review.
 | U8C | `soak_tiers.py` keeps its name; its tags already use the end-state `l4.soak_duration_*` IDs | the rename and its importers are U26's stage |
 | U8C | Tags the merged text withdraws or leaves to a later unit are not written (`l4.network_resilience_crash_check_tail_s`, the four `l3.watchdog_starvation_reachable*`, the toolchain-flash-boot reachable timeout and poll, the driven-time waits) | the later units delete or move those literals |
 | U8C | The pushed U8 smoke fix is carried into the unit's tree as the fix's diff alone | the U8 squash and the lane history share content, not ancestry |
+| U8C | The twin FRAM's fix is paged memory, not a larger test heap or a pinned test order; a write past the chip's end is refused instead of growing it | the memory rules: relieve a single large allocation by design; the old growth was a silent twin bug |
 
 ## Parked deltas (OR2.c, OR106.a)
 

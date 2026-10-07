@@ -329,6 +329,13 @@ fragments the heap) even with ~1.5MB of *total* `gc.mem_free()` still available,
 GC coalesces freed blocks but never relocates live ones. Chunked reads/writes only ever need one
 small chunk contiguous at a time.
 
+**The memory itself is held in 4KB pages (`_PagedMemory`), never one bytearray for the whole chip.**
+Same cause, at chip construction: dev's 256KB MB85RS2MTA as one `bytearray` needs a 256KB contiguous
+run, and under the coverage build's inflated allocations `tests/test_digital_twin_bus_hazard_concurrency.py`
+failed to build it with ~15MB of the 16MB heap free, once an unrelated edit reordered the file's tests
+(agent, 2026-10-07). The pages read and write like the bytearray they replace, and a write past the
+chip's end is refused rather than growing the chip.
+
 ### SCD30 persistence
 
 Real SCD30 hardware persists five settings in its own onboard NVM across a power cycle:

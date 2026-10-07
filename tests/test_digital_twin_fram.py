@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from _fram_chip import FramChip
+from _fram_chip import _PAGE_SIZE, FramChip
 from _tmp_scratch import TmpScratch
 
 _OPCODE_WREN = 0x06
@@ -322,6 +322,47 @@ def test_16_bit_address_chip_is_unaffected_by_the_24_bit_address_path() -> None:
     _wren(chip)
     _write_mem(chip, 0x0100, b"\xdd")
     assert _read_mem(chip, 0x0100, 1) == b"\xdd"
+
+
+def test_a_256kb_chip_holds_its_memory_in_pages_never_one_large_block() -> None:
+    # One 256KB bytearray needs a contiguous run a fragmented test heap may not have, even with most of
+    # it free (a coverage run failed so with 15MB free). No page may exceed one page's size.
+    chip = FramChip(size=0x40000)
+    pages = chip.memory._pages
+    assert len(pages) > 1, f"a 256KB chip still holds {len(pages)} block"
+    assert all(len(page) <= _PAGE_SIZE for page in pages), [len(page) for page in pages if len(page) > _PAGE_SIZE]
+    assert sum(len(page) for page in pages) == 0x40000
+
+
+def test_paged_memory_reads_and_writes_like_the_bytearray_it_replaces() -> None:
+    # Every access shape the twin and the tests use, across page boundaries, against a plain bytearray.
+    size = 3 * _PAGE_SIZE + 17
+    chip = FramChip(size=size)
+    ref = bytearray(size)
+    for start, data in ((0, b"\x01\x02"), (_PAGE_SIZE - 3, bytes(range(1, 9))), (2 * _PAGE_SIZE - 1, bytes(_PAGE_SIZE + 5)), (size - 4, b"\xfe\xfd\xfc\xfb")):
+        chip.memory[start : start + len(data)] = data
+        ref[start : start + len(data)] = data
+    chip.memory[_PAGE_SIZE] ^= 0xFF
+    ref[_PAGE_SIZE] ^= 0xFF
+    assert len(chip.memory) == size
+    assert chip.memory[_PAGE_SIZE] == ref[_PAGE_SIZE] == 4 ^ 0xFF  # byte 4 of range(1, 9), flipped
+    assert chip.memory[_PAGE_SIZE - 5 : 2 * _PAGE_SIZE + 9] == ref[_PAGE_SIZE - 5 : 2 * _PAGE_SIZE + 9]
+    assert chip.memory[size - 2 :] == ref[size - 2 :]
+    assert bytes(chip.memory) == bytes(ref)
+    other = FramChip(size=size)
+    other.memory[0:size] = ref
+    assert chip.memory == other.memory
+
+
+def test_a_write_past_the_chip_end_is_refused_not_grown() -> None:
+    # A bytearray slice assignment past its end would grow the chip; the paged memory refuses instead.
+    chip = FramChip(size=_PAGE_SIZE)
+    try:
+        chip.memory[_PAGE_SIZE - 1 : _PAGE_SIZE + 1] = b"\x01\x02"
+        raise AssertionError("expected IndexError")
+    except IndexError:
+        pass
+    assert len(chip.memory) == _PAGE_SIZE
 
 
 if __name__ == "__main__":
