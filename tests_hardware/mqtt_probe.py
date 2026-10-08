@@ -173,7 +173,7 @@ class Probe:
         with self._lock:
             self.messages.append(Message(time.monotonic(), topic, body[start:], bool(first & 1)))
 
-    def _read_exact(self, sock: socket.socket, n: int) -> bytes:
+    def _read_exact(self, sock: socket.socket, n: int, *, idle_returns: bool = False) -> bytes:
         data = b""
         while len(data) < n:
             try:
@@ -181,6 +181,8 @@ class Probe:
             except TimeoutError:
                 if self._closed.is_set():
                     raise ConnectionError("probe closed") from None
+                if idle_returns and not data:
+                    raise  # an idle second between packets: _run() spends it on the keepalive
                 continue
             if not chunk:
                 raise ConnectionError("broker closed the connection")
@@ -188,7 +190,7 @@ class Probe:
         return data
 
     def _read_packet(self, sock: socket.socket) -> tuple[int, bytes]:
-        first = self._read_exact(sock, 1)[0]
+        first = self._read_exact(sock, 1, idle_returns=True)[0]
         value = 0
         shift = 0
         while True:
