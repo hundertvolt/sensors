@@ -54,9 +54,12 @@ def test_a_scopes_writes_are_exactly_what_its_marked_tests_name(repo_root: Path,
 
 
 def test_the_mqtt_scope_runs_the_whole_client_module_and_writes_only_its_settings(repo_root: Path) -> None:
-    # Owner, 2026-10-08: "include the ntp tests too, allow networking/ntp" - and nothing beyond the two groups.
+    # Owner, 2026-10-08: "include the ntp tests too, allow networking/ntp"; "include the hotspot role reversal too",
+    # whose own writes are its credentials and one notification setting. Nothing beyond, the SCD30's least of all.
     scope = SCOPES["mqtt"]
     assert "tests_hardware/bench/test_mqtt_broker_faults.py" in _nodes(scope, "bench")
-    assert scope.writes == ("networking/mqtt", "networking/ntp"), "the MQTT scope permits a write to no other group, the SCD30's least of all"
+    assert "tests_hardware/bench/test_hotspot_role_reversal.py" in _nodes(scope, "bench")
+    assert scope.writes == ("networking/identity", "networking/mqtt", "networking/ntp", "notification/autoConfig"), scope.writes
+    assert not {"sensors/SCD30", "hwtest"} & set(scope.writes)
     gated = _collect(repo_root, _nodes(scope, "bench"))
     assert "test_the_broker_is_found_by_the_bench_hosts_local_name" not in gated, "without the scoped permission its own write stays deselected"

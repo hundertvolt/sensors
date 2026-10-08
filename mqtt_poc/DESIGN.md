@@ -310,12 +310,12 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
 
 `mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
 before the flash, the one flash, the scoped run
-(`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/mqtt,networking/ntp`),
-what each of its 3 flash and 41 bench tests covers, where the results go and which Part N rows they settle.
-The scope (`tests_hardware/run_scopes.py`) is the MQTT module plus what the branch reaches beside it: NTP and
-the resolver, the connection ceiling and body cap, the heap with the client resident, boot and reboot, the
-website, the FRAM chunk layout and the `env --tier flash` rerun; the hotspot role reversal and every SCD30
-write wait for the full bench run.
+(`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`),
+what each of its 3 flash and 66 bench tests covers, where the results go and which Part N rows they settle,
+with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
+MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
+cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
+chunk layout and the `env --tier flash` rerun; every SCD30 write waits for the full bench run.
 
 ## 12. Where the rules land when the PoC merges
 
@@ -347,8 +347,7 @@ Each the more conservative, more easily reversible choice, for review:
     gets values at once, and a changed interval applies at once instead of after the old one ran out.
 11. A passing scoped bench run (`--scope mqtt`) is reported NOT CLEAN, the precedent `--skip-lower-levels`
     set: everything that ran passed, but it never stands in for an L3/L4 pass. Its scope also carries the
-    tests the branch reaches outside the client (§11.1); the hotspot role reversal, which never enables the
-    client, is left to the full run.
+    tests the branch reaches outside the client (§11.1).
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 
@@ -365,4 +364,6 @@ Each the more conservative, more easily reversible choice, for review:
   MQTT (and whatever is affected by your changes) on the bench. you shall not run the whole bench at this
   time (will happen lateron when mqtt as such is running)'. And its writes are scoped per group: 'it makes
   absolutely no sense globally enable persistence writes, as writing the scd30 for mqtt tests is nonsense,
-  so scope it correctly'. Then: 'include the ntp tests too, allow networking/ntp'. §11.1 has the command.
+  so scope it correctly'. Then: 'include the ntp tests too, allow networking/ntp', and 'include the hotspot
+  role reversal too', whose own writes add `networking/identity` and `notification/autoConfig`. §11.1 has
+  the command.

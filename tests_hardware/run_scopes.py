@@ -21,9 +21,9 @@ _CEILING = "the build's connection ceiling moved 6 -> 5 for the client's own soc
 _NTP = "NTP resolves its host through the changed resolver"
 
 SCOPES: dict[str, Scope] = {
-    # The MQTT client PoC (SPECIFICATION.md Part A.11) and what its branch changed beside it (owner, 2026-10-08:
-    # "only test MQTT (and whatever is affected by your changes) on the bench. you shall not run the whole bench
-    # at this time (will happen lateron when mqtt as such is running)"; "include the ntp tests too, allow networking/ntp").
+    # The MQTT PoC (Part A.11) and what its branch reaches (owner, 2026-10-08: "only test MQTT (and whatever is affected
+    # by your changes) on the bench. you shall not run the whole bench at this time (will happen lateron when mqtt as such
+    # is running)"; "include the ntp tests too, allow networking/ntp"; "include the hotspot role reversal too").
     "mqtt": Scope(
         flash=(
             (f"{_FLASH}test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build", "the FRAM layout gains the MQTT and CFGMGR_MQTT chunks"),
@@ -54,8 +54,9 @@ SCOPES: dict[str, Scope] = {
             (f"{_BENCH}test_serving_heap_at_default_gc.py", "serving at the reactive gc default, the client resident"),
             (f"{_BENCH}test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot", "the hammer load's heap, the client resident"),
             (f"{_BENCH}test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network", "the device's website gains the MQTT settings group"),
+            (f"{_BENCH}test_hotspot_role_reversal.py", "the GET shapes it checks over the hotspot carry the MQTT fields, and the client idles there"),
         ),
-        writes=("networking/mqtt", "networking/ntp"),
+        writes=("networking/identity", "networking/mqtt", "networking/ntp", "notification/autoConfig"),
     ),
 }
 

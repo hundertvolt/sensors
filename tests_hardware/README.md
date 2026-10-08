@@ -507,23 +507,26 @@ Each recovery time and count lands in the run record through `result_note`, whic
 
 **The `mqtt` run scope** (owner, 2026-10-08: "only test MQTT (and whatever is affected by your changes)
 on the bench. you shall not run the whole bench at this time (will happen lateron when mqtt as such is
-running)"; then "include the ntp tests too, allow networking/ntp"). `scripts/run_bench_hardware_suite.sh
+running)"; then "include the ntp tests too, allow networking/ntp" and "include the hotspot role reversal
+too"). `scripts/run_bench_hardware_suite.sh
 --scope mqtt` runs the lower levels as always, then only what `tests_hardware/run_scopes.py` lists, each
 entry with the reason the branch reaches it: this module; the resolver and every NTP test (sync,
 resolution, garbage DNS and NTP answers, an unreachable server, an unexpected source, the retry after an
 outage with and without API load, an unresolvable `NTPHost`); the connection-ceiling and body-cap
 tests (dev's ceiling went 6 to 5, and the MQTT settings made `PUT /networking` the largest body); the
 heap tests at a full ceiling, at the reactive gc default and under the hammer; cold boot, REST reboot
-and the concurrent burst; the website identity check; and on the flash step the FRAM chunk layout, the
-full-build heap headroom and the `env --tier flash` rerun (`mosquitto` joined `apt_packages`). Its owned
-writes are the `.local` test's (`networking/mqtt`) and three NTP tests' (`networking/ntp`), so the run takes
-the scoped permission for those two groups; the runner refuses the
+and the concurrent burst; the website identity check; the hotspot role reversal (its GET shapes carry the
+MQTT fields); and on the flash step the FRAM chunk layout, the full-build heap headroom and the
+`env --tier flash` rerun (`mosquitto` joined `apt_packages`). Its owned writes are the `.local` test's
+(`networking/mqtt`), three NTP tests' (`networking/ntp`) and the hotspot module's credentials
+(`networking/identity`) and settings round trip (`notification/autoConfig`), so the run takes the scoped
+permission for those four groups; the runner refuses the
 global flag with a scope, and a passing scoped run is reported NOT CLEAN, since the rest of both tiers did
 not run (`tests_scripts/test_run_scopes.py` keeps the list collectable and its writes exact). The run
 sheet for the Pi4 session, and where its results go: `mqtt_poc/BENCH_HANDOVER.md`.
 
 ```bash
-scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/mqtt,networking/ntp
+scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig
 uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py --allow-persistence-writes-to=networking/mqtt -v   # the module alone
 ```
 

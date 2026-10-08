@@ -253,7 +253,8 @@ def test_a_scoped_bench_run_gives_each_step_only_its_scopes_tests(tree: Path) ->
 def test_a_scoped_run_refuses_the_global_write_flag_before_any_level_runs(tree: Path) -> None:
     result, calls = _run(tree, "run_bench_hardware_suite.sh", "--scope=mqtt", "--allow-persistence-writes")
     assert result.returncode == 2, result.stdout + result.stderr
-    assert "--allow-persistence-writes-to=networking/mqtt" in result.stderr, "the refusal names the scoped flag to use instead"
+    expected = "--allow-persistence-writes-to=" + ",".join(_scope(tree, "mqtt", "writes"))
+    assert expected in result.stderr, "the refusal names the scoped flag, with the scope's own groups, to use instead"
     assert not calls, f"nothing may run before the refusal, saw {calls}"
 
 
