@@ -35,10 +35,11 @@ Everyday build commands:
 ```sh
 uv run toolchain/setup_toolchain.py                              # first-time setup / everyday re-run (see SPECIFICATION.md Part B)
 uv run toolchain/setup_toolchain.py --latest                      # detect + pin + install newest stable MicroPython
-uv run toolchain/setup_toolchain.py test                          # offline re-verify an existing install (~30s), no network/apt access needed
+uv run toolchain/setup_toolchain.py test                          # offline re-verify an existing install (a few minutes), no network/apt access needed
 uv run toolchain/setup_toolchain.py setup --clean                 # wipe build-artifact dirs and rebuild from scratch, without re-cloning sources
 uv run toolchain/setup_toolchain.py setup --toolchain-dir /path   # install/build under a different directory than $PICO_TOOLCHAIN_DIR/~/pico-toolchain
 uv run toolchain/setup_toolchain.py setup --jobs 4                # override parallel make jobs (default: all cores)
+uv run toolchain/setup_toolchain.py board                         # print the connected MicroPython board's serial path (no lock, no build)
 ```
 
 `setup_toolchain.py` (no subcommand) is shorthand for `setup` — any flag valid for `setup` also
@@ -46,16 +47,24 @@ works with no subcommand named. Full `setup` flag reference:
 
 | Flag | Effect |
 |---|---|
-| `--micropython-ref REF` | Build a specific MicroPython tag/ref instead of `toolchain/versions.toml`'s pinned one |
-| `--latest` | Detect the newest stable MicroPython release, pin `versions.toml` to it, then build that |
+| `--micropython-ref REF` | Build this MicroPython ref instead of the pin, without changing `versions.toml` (an off-pin build: the platform re-check applies before trusting it) |
+| `--latest` | Pin `versions.toml` to the newest stable MicroPython tag, then build it (a pin move: the owner's call, and the platform re-check follows); exclusive with `--micropython-ref` |
 | `--skip-apt` | Skip installing system/apt packages (assumes they're already present) |
-| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and both Unix-port variants `ports/unix/build-standard` and `ports/unix/build-settrace`) before building, without re-cloning git sources |
+| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and every Unix-port build flavour: `ports/unix/build-standard`, `build-settrace`, `build-lwip`) before building, without re-cloning git sources |
 | `--toolchain-dir PATH` | Directory holding the micropython/pico-sdk/picotool source trees (default: `$PICO_TOOLCHAIN_DIR` or `~/pico-toolchain`) |
 | `--jobs N` | Parallel make jobs (default: `os.cpu_count()`) |
 
-`test` re-verifies an already-installed toolchain (checks the Unix port and RP2 firmware both
-still build/run) with no network or apt access — the CI-friendly, ~30s re-check; it accepts the
-same `--toolchain-dir`/`--jobs` flags as `setup`.
+`test` re-verifies an already-installed toolchain (rebuilds `mpy-cross`, the RP2 firmware and the
+three Unix-port builds, each proven by its readbacks) with no network or apt access — the
+CI-friendly re-check, a few minutes; it accepts the same `--toolchain-dir`/`--jobs` flags as
+`setup`.
+
+Every `setup` and `test` run deletes `toolchain-record.json` in the toolchain directory first and
+writes it last: what was built from what — refs, commits, picotool, compilers, input hashes
+(SPECIFICATION.md B.5). A directory without one is unfinished or older, so `scripts/test.sh` reruns
+`setup` on it and `scripts/build_firmware.py` refuses it. picotool is rebuilt and
+`sudo make install`ed only when its tag changed or the installed binary no longer reports it. One
+run at a time per toolchain directory: a second fails at once, naming the first one's pid.
 
 ## Dev environment setup (generic / flash / bench)
 
@@ -65,14 +74,15 @@ superset of the one before it:
 | Tier | Adds on top of the previous tier | Command |
 |---|---|---|
 | generic | Python (`uv sync`) + website (`npm ci`) deps, the firmware/Unix-port toolchain above | `uv run toolchain/setup_toolchain.py env --tier generic` |
-| flash | Non-root USB serial access (`dialout` group) + an auto-detected real RP2040/Pico W board | `uv run toolchain/setup_toolchain.py env --tier flash` |
-| bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP | `uv run toolchain/setup_toolchain.py env --tier bench` |
+| flash | Non-root USB serial access (`dialout` group) + a real board, resolved by USB vendor ID `2e8a` and its MicroPython `/dev/serial/by-id` name (SPECIFICATION.md B.12) | `uv run toolchain/setup_toolchain.py env --tier flash` |
+| bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP; the commands it installs and the passwordless-sudo rules it checks: `tests_hardware/README.md` Prerequisites | `uv run toolchain/setup_toolchain.py env --tier bench` |
 
-Every tier needs only itself run once on a given host — `flash`/`bench` call straight through to
-the tier(s) below rather than needing them run separately first. apt packages, `dialout` group
-membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via
-`sudo`. `bench` is idempotent: re-running it against an already-configured bridge reports the
-existing AP's SSID rather than recreating (and re-randomizing) it — see
+Every tier needs only itself run once on a given host — `flash`/`bench` call straight through to the
+tier(s) below rather than needing them run separately first. apt packages, `dialout` group
+membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via `sudo`;
+each tier checks the commands it runs and installs the missing ones' packages, which `--skip-apt`
+turns into an error naming them. `bench` is idempotent: re-running it against an already-configured
+bridge reports the existing AP's SSID rather than recreating (and re-randomizing) it — see
 `tests_hardware/README.md`'s 'Host network' section for the manual `nmcli` recipe this automates,
 including the Pico W `cyw43439`-specific WPA2/PMF tuning it applies.
 
@@ -84,31 +94,40 @@ Full `env` flag reference (in addition to `setup`'s `--micropython-ref`/`--lates
 | `--tier {generic,flash,bench}` | Required. Which tier to set up |
 | `--skip-apt` | Skip apt packages, `dialout` group, and NetworkManager install (every step needing `sudo`) |
 | `--skip-npm` | Skip `npm ci` even if `package.json` is present |
-| `--device PATH` | `[flash/bench]` explicit serial device path, skips USB vendor-ID auto-detection |
+| `--device PATH` | `[flash/bench]` explicit serial device path; otherwise `$MPREMOTE_DEVICE`, otherwise the one board detected (none or several is an error) |
 | `--uplink-iface IFACE` | `[bench]` explicit uplink (internet-bearing) network interface, skips auto-detection |
 | `--wifi-iface IFACE` | `[bench]` explicit WiFi adapter to host the AP on, skips auto-detection |
 | `--ssid SSID` | `[bench]` explicit AP SSID — only used when creating a new bridge, ignored if one already exists |
-| `--password PW` | `[bench]` explicit AP password — only used when creating a new bridge, ignored if one already exists |
 
-USB device detection (by Raspberry Pi's USB vendor ID) and network interface detection (uplink =
-default-route interface, WiFi = a free adapter that isn't the uplink) are automatic but overridable
-with `--device`/`--uplink-iface`/`--wifi-iface` if a host has more than one candidate and
-auto-detection is ambiguous. Without `--ssid`/`--password`, a fresh bridge gets a randomly
-generated SSID/password (`generate_bench_ap_credentials()`) rather than a fixed default. Example,
-bench setup with an explicit interface pairing and fixed credentials (useful when auto-detection
-picks the wrong adapter, or a specific SSID/password is needed for a known client device):
+`BENCH_AP_PASSWORD` (environment variable) is the explicit AP password for a new bridge, ignored
+if one already exists; it is never a command-line flag.
+
+The board is resolved by USB vendor ID `2e8a` plus its MicroPython `/dev/serial/by-id` name (a
+debug probe shares the vendor ID) and named by that by-id path, which survives the re-enumeration
+a hard reset causes (SPECIFICATION.md B.12); `setup_toolchain.py board` prints it. Network
+interface detection (uplink = default-route interface, WiFi = a free adapter that isn't the
+uplink) is automatic too; both are overridable with `--device`/`--uplink-iface`/`--wifi-iface` if
+a host has more than one candidate. A new bridge gets a random SSID and password unless `--ssid`
+and `BENCH_AP_PASSWORD` are set — a throwaway password, used once and passed to `nmcli` on its
+command line, kept out of the echoed command; a generated one is shown once, and none is ever
+committed (owner, 2026-10-02). Example, bench setup with an explicit interface pairing and fixed
+credentials (useful when auto-detection picks the wrong adapter, or a specific SSID/password is
+needed for a known client device):
 
 ```sh
-uv run toolchain/setup_toolchain.py env --tier bench \
-    --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap --password correct-horse-battery
+BENCH_AP_PASSWORD=<psk> uv run toolchain/setup_toolchain.py env --tier bench \
+    --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap
 ```
 
-Once a bridge exists, re-running `env --tier bench` (with or without these flags) never recreates
-or re-randomizes it — it only reports the existing SSID and self-heals two specific drift cases
-(a non-pinned AP channel, an unpinned/drifted bridge MAC — the latter only flagged, never
-auto-repaired, since fixing it live can cycle the interface the session itself depends on; see
-SPECIFICATION.md Part B.13). To force a new bridge, follow the delete-and-recreate recipe in
-`tests_hardware/README.md`'s 'Host network' section (dead-man's switch first).
+`env --tier bench` makes every bridge change under its own recovery timer, armed and verified before
+the change and disarmed only once `br0` has an address and the default route (SPECIFICATION.md Part
+B.13). Once a bridge exists, re-running `env --tier bench` (with or without these flags) never
+recreates or re-randomizes it — it only reports the existing SSID and self-heals two specific drift
+cases (a non-pinned AP channel, re-pinned under that timer, and an unpinned/drifted bridge MAC — the
+latter only flagged with the manual remedy, never auto-repaired, since fixing it live can cycle the
+interface the session itself depends on; see SPECIFICATION.md Part B.13). To force a new bridge,
+follow the delete-and-recreate recipe in `tests_hardware/README.md`'s 'Host network' section
+(dead-man's switch first).
 
 ## Code quality tooling
 
@@ -220,9 +239,12 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 `.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
 downloads the Playwright Chromium build Vitest needs. Node comes from nodejs.org (checksum-verified
 against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
-repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use. A
-Node already on `PATH` that matches the pin is used as-is and never overridden, so `nvm`, a system
-install or CI's own `setup-node` all keep working. `--skip-npm` opts out of the whole JS side.
+repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use.
+The release's SHASUMS256.txt is fetched once per install and the tarball checked against it before
+anything is unpacked; the tree is unpacked aside, renamed into place and recorded in
+`node/node-record.json`. A Node already on `PATH` that matches the pin is used as-is and never
+overridden, so `nvm`, a system install or CI's own `setup-node` all keep working. `--skip-npm` opts
+out of the whole JS side.
 
 The individual commands, if you want to run them by hand:
 
@@ -283,7 +305,9 @@ standalone script, `scripts/cross_browser_smoke.mjs`, rather than a Vitest test 
 `ext/microdot.py` + the real website (`html/`+`js/`, staged by `scripts/build_website.sh`) for one
 device. Build-only, like every other RP2 build this project's tooling produces — nothing here
 flashes or tests real hardware. Needs the toolchain already installed
-(`uv run toolchain/setup_toolchain.py`, see above):
+(`uv run toolchain/setup_toolchain.py`, see above): it holds the toolchain directory's lock for the
+build, refuses a directory without `toolchain-record.json`, and prints the recorded MicroPython ref
+and commit first:
 
 ```sh
 uv run scripts/build_firmware.py wozi                                   # -> build/firmware-wozi.uf2
@@ -360,7 +384,8 @@ MPREMOTE_DEVICE=/dev/ttyACM1 scripts/mpremote_connect.sh ls     # different seri
 
 Non-root serial access needs the connecting user in the `dialout` group (`sudo usermod -aG dialout
 $USER`, then re-login) and a real board plugged in — both checked/added automatically, including
-USB-vendor-ID auto-detection of which `/dev/ttyACM*` is the board (still pass it as
+resolving which serial device is the board (USB vendor `2e8a` plus its MicroPython by-id name,
+SPECIFICATION.md B.12; `uv run toolchain/setup_toolchain.py board` prints it — still pass it as
 `MPREMOTE_DEVICE` yourself, or override with `--device` if more than one is plugged in), by
 `uv run toolchain/setup_toolchain.py env --tier flash` (see "Dev environment setup" above). This
 is a genuinely different tier from the mocked `tests/` suite (which

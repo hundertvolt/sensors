@@ -1,0 +1,2 @@
+lwIP assertion failed: invalid socket state for err callback (../../lib/lwip/src/core/tcp.c:2070)
+rc=134 wall=.220481159s

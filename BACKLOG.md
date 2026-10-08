@@ -337,6 +337,32 @@ gates, traps).
   PUT (one SCD30 NVM write, `--allow-persistence-writes`), a power cycle, then 0x0010 read back:
   the answer goes into SPECIFICATION.md M.2 (Interface Description 1.4.1 documents only the
   measurement status as persisted). Twin row: `digital_twin/README.md`'s "SCD30 persistence".
+- **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
+  `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
+  pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
+  worktree, never committed). Hold the connection ceiling open with clients that stop reading
+  mid-`app.js` (sockets kept open without `recv()`), then request one more page: record whether the
+  board freezes for up to 10 s and whether a watchdog reset follows (`/status`'s `ResetReason`).
+  (2) Flash the normal build and repeat that load, plus dead-client and slow-client page loads on
+  every route at the ceiling. Expected: no watchdog reset, no VM stall longer than Part N `web.per_call_timeout_s`,
+  the stalled connections reclaimed, service back to baseline once the clients go, and no
+  `MemoryError` or `memory allocation failed` marker; page-load time before and after and the CPU
+  cost of the cooperative retry recorded. While one connection sits in the retry (a client holding
+  its socket open without `recv()` during a large route), a concurrent `GET /status` completes
+  within a bound this run sets, its Part N row landing with the bench test, and the supervisor's
+  task check keeps running with no task-error growth. A failed bound goes to the owner as a change
+  to the override (a short POLLOUT back-off after `EAGAIN`), not absorbed by a larger bound. Wear:
+  two flash cycles (the control image and the normal build), no persistence write. Twin row: none
+  (the twin has no lwIP); `tests/lwip_host/test_modlwip_eagain.py` runs the same send path on the
+  `build-lwip` host build.
+- **`env --tier bench` creating a bridge under its own recovery timer** — on the bench Pi4, a
+  fresh bridge (the old one deleted per `tests_hardware/README.md`'s 'Host network' section), with
+  a second, manually armed SPECIFICATION.md B.13 timer as the outer safety. Expected: the
+  installer's `sensors-bench-recovery-<pid>` timer is active before the first `nmcli connection
+  add`, `br0` holds an address and the default route within Part N `tool.bench_bridge_up_poll_s`,
+  and the timer is gone afterwards; the sequence's wall time and the time to a DHCP lease go into
+  the Basis of `tool.bench_bridge_recovery_arm_s` and `tool.bench_bridge_up_poll_s`. Wear: none
+  (host network state only, no flash). Twin row: none.
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
   reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
   segfault fix" below); G6, a rollover method that leaves the board running (item 12, adapt now,
@@ -585,6 +611,44 @@ gates, traps).
   step changed: a chroot's lint, typecheck and `scripts/test.sh` legs cover all of it, the installer
   leg is not owed, and the ARM image build `build_firmware.py` feeds stays opt-in, its staging tested
   in the pytest tier.
+  **2026-10-08, the installer and the build overrides — the installer leg is owed**:
+  `toolchain/setup_toolchain.py` bounds and streams every subprocess (three budgets; a command is
+  stopped on a timeout, a SIGTERM or a SIGHUP) and retries every network step three times with
+  secrets kept out of the echo; reads `versions.toml` as a validated table, and its ref writer
+  refuses a missing, duplicate or misplaced `ref`; one diagnostics check for every build,
+  `mpy-cross` included; one lock per toolchain directory and a `toolchain-record.json` deleted first
+  and written last; `sudo --preserve-env` for the proxy and CA variables on apt, apt's update
+  bounded, its download bounded and retried, the install from the local cache; picotool rebuilt only
+  when its tag changed, a USB-less one refused in the flash and bench tiers and a shadowed one
+  reported; one table of the commands each tier runs (`curl`, `procps`, `kmod`, `iw`, `tcpdump`,
+  `coreutils`, `iproute2`, `iptables`, `network-manager`) and a passwordless-sudo probe
+  (`sudo -k -n`) for the bench tier; the bench bridge changed only under its own armed recovery
+  timer, its throwaway password passed to `nmcli` on its command line; Node's SHASUMS fetched once,
+  the tree unpacked aside and renamed into place, and recorded; its own outdated leftovers removed;
+  a third Unix binary `build-lwip` (`make submodules MICROPY_PY_LWIP=1` for the Unix port);
+  `--password` gone, a `board` subcommand. `toolchain/micropython_overrides.py` resolves and screens
+  every path it writes, empties each override directory before writing, proves `unix_kbd_intr` in
+  every Unix binary, gains `modlwip_eagain` (a patched `modlwip.c` copy in every rp2 build, proven
+  post-build), the host lwIP build (proven to run lwIP's own timers) and the test-only tick-offset
+  override a release build refuses (the installer leg builds no test image). The mbedtls
+  `-Wno-array-bounds` leaves the make lines for one file's generated rule per target; the GCC ≥ 14
+  leg is the one that decides it. Both legs are also the host lwIP build's first compilers other
+  than this host's GCC 13.3 on x86-64, where it is warning-free with `-Wno-sign-compare` and
+  `SOMAXCONN=2` on `extmod/modlwip.o` alone. `scripts/test.sh` treats a missing record as a missing
+  build and runs `tests/lwip_host/` on `build-lwip`; `scripts/build_firmware.py` takes the lock and
+  refuses a toolchain without the record; `scripts/typecheck.sh` records the installed stub version
+  in `typings/.stub-spec`; `scripts/_generate_sensortask_modules.py` writes through rename; the
+  toolchain action's cache key hashes `micropython_overrides.py`; `pyproject.toml` drops the
+  `FBT001`/`FBT002` entry for `tests_scripts/test_setup_toolchain_env.py` and restates the
+  overrides' `S603` reason; `host_typecheck.ini` drops `[mypy-setup_toolchain]`,
+  `[mypy-test_setup_toolchain_env]` and `[mypy-test_micropython_overrides]`;
+  `toolchain/versions.toml` changes in its header comment only. No dependency or pin changed; the
+  noble and trixie legs run lint, typecheck and `scripts/test.sh` over it, and the installer leg
+  (`uv run toolchain/setup_toolchain.py`) is owed: neither `setup` nor `env` has run to completion
+  on this code, only `test` (offline, all three Unix builds and every readback). It also owes two
+  readings this host could not make: the apt-get(8), apt.conf(5) and dpkg(1) pages behind the apt
+  split (here only the binaries' own strings were read), and `sudo -k`'s exact semantics for the
+  passwordless-sudo probe.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -840,6 +904,12 @@ gates, traps).
   target').
 - **Resize the rp2 littlefs reservation** — only once flash space is actually short (owner,
   2026-09-26); trigger: the firmware image-size report; mechanism SPECIFICATION.md B.14.3.
+- **modlwip non-blocking send stall — watched upstream**: micropython issue 19704, with PRs 19705
+  (partial write, `ENOBUFS`) and 19708 (`EAGAIN` on `ERR_MEM`); upstream commit `6e79dcf9c` (after
+  v1.29.0) only swaps the retry loop's 50 ms sleep for `poll_sockets()` and keeps its 10 s limit, so
+  the stall stays. The `modlwip_eagain` build override (SPECIFICATION.md B.14.4) stays until the pin
+  carries a real fix; the override's anchor check fails the build when upstream changes the loop
+  (owner, 2026-09-30).
 
 ## Owner questions
 

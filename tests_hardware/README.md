@@ -18,28 +18,43 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
 ## Prerequisites
 
 1. `uv run toolchain/setup_toolchain.py env --tier flash` (real USB board attached) or `--tier
-   bench` (also needs a WiFi adapter for the bridge) - see README.md's own environment-tiers table
-   and `toolchain/setup_toolchain.py`'s own docstring for the full recipe (dialout group, device
-   auto-detection, `br0-wifi-ap` bridge creation via `ensure_bench_bridge()`).
-2. The board must already be running the real `dev` firmware
+   bench` (also needs a WiFi adapter for the bridge) - see README.md's own environment-tiers table.
+   Each tier checks the commands it runs and, unless `--skip-apt`, installs the missing ones'
+   packages; the table of commands and packages is `_TIER_COMMANDS` in
+   `toolchain/setup_toolchain.py`. Flash adds the `dialout` group and resolves the board (USB vendor
+   `2e8a` plus its MicroPython `/dev/serial/by-id` name, SPECIFICATION.md Part B.12); bench creates
+   the `br0-wifi-ap` bridge through `ensure_bench_bridge()` ("Host network" below).
+2. **Passwordless sudo for every command the bench tier runs unattended.** `env --tier bench`
+   writes no sudoers file: it probes each command with `sudo -k -n <path> <version argument>` and
+   names every one refused, including one whose rule allows only other arguments (the probe fails
+   there though the real call would run). A sample `/etc/sudoers.d/` line, each `<command>` the
+   absolute path `which <command>` prints on the bench host:
+
+   ```
+   <user> ALL=(root) NOPASSWD: <nmcli>, <iw>, <iptables>, <tc>, <tee>, <picotool>, <timeout>, <systemd-run>, <systemctl>
+   ```
+
+   Why each: `nmcli` for the bridge and its AP, `iw` for the AP's station kick, `iptables` and `tc`
+   for fault injection, `tee` for the USB unbind/rebind, `picotool` for flashing, `timeout` for the
+   `tcpdump` capture it wraps, and `systemd-run`/`systemctl` for the bridge's recovery timer. Root
+   passes the probe as it is. Unrestricted, `tee`, `timeout` and `systemd-run` each run or write
+   anything as root, so this line grants as much as `NOPASSWD: ALL`.
+3. The board must already be running the real `dev` firmware
    (SPECIFICATION.md Part E.6.3's "one allowed flash" - `uv run scripts/build_firmware.py dev` +
    `picotool load -x -v`, or the manual BOOTSEL-button first flash for a genuinely blank board, see
    `tests_hardware/manual/manual_toolchain.py`). **Never `scripts/build_firmware.py wozi` against
    this bench** - `wozi` is never physically flashed, only `dev` is (CLAUDE.md's hard rule); `wozi`'s
    own hardcoded pins don't match this bench's real wiring.
-3. **`picotool` needs real USB support to actually flash anything.** The toolchain build this
-   session ran (`uv run toolchain/setup_toolchain.py setup`) produced a `picotool` explicitly
-   compiled *without* USB support (confirmed directly: its own `--help` output prints "This version
-   of picotool was compiled without USB support. Some commands are not available." - this sandbox
-   had no real USB device for the build to detect/link against). Before running anything that calls
-   `picotool load` (`tests_hardware/flash/test_toolchain_flash_boot.py`'s
-   `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/manual_toolchain.py`),
-   rebuild picotool on the bench host itself (or confirm the apt-packaged `picotool` there already
-   has USB support - check for the same warning line) rather than assuming a sandbox-cached build
-   works. A `picotool` reporting "Requires version X, you have version Y" is a stale system-wide
-   install shadowing the toolchain's own build: rerun `uv run toolchain/setup_toolchain.py setup`
-   rather than working around it.
-4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
+4. **`picotool` needs real USB support to actually flash anything.** `env --tier flash` and
+   `--tier bench` refuse a `picotool` built without it (its `picotool version` output then says
+   "compiled without USB support"; install `libusb-1.0-0-dev`, in `toolchain/versions.toml`'s
+   `apt_packages`, and re-run setup), while `setup` and `--tier generic`, which flash nothing, only
+   warn. picotool is rebuilt only when its tag changed or the installed binary no longer reports it,
+   and a different `picotool` earlier on the installer's `PATH` is reported with both paths. A
+   `picotool` reporting "Requires version X, you have version Y" is a stale system-wide install
+   shadowing the toolchain's own build: rerun `uv run toolchain/setup_toolchain.py setup` rather
+   than working around it.
+5. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
    `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
    this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
    light excluded (an enclosure or a darkened room). Two flash-tier tests depend on it -
@@ -128,6 +143,11 @@ remedy `env --tier bench` prints - runs with SPECIFICATION.md Part B.13's recove
 its recovery script recreated fresh in the session scratchpad and never committed, armed per step
 or once around a sequence whose timing was measured, the outcome polled, then disarmed, following
 B.13's arm/verify/disarm steps rather than a copy of them here (CLAUDE.md's hard rule).
+`env --tier bench` arms its own recovery timer around every bridge change it makes - the creation
+and the channel re-pin: a `systemd-run` timer whose script tears the bridge down (and, around a
+creation, brings back the uplink's own profile, read at run time); verified active before the first
+change, stopped only once `br0` holds an address and the default route, and left armed when the
+change fails, the log naming when it fires.
 
 ```sh
 sudo modprobe br_netfilter
@@ -162,11 +182,14 @@ is there:
 - `br_netfilter` with `bridge-nf-call-iptables=1` makes iptables see bridged traffic; without it
   `bench_control.py`'s fault injection is a silent no-op (SPECIFICATION.md Part B.13).
 
-Credentials: a new bridge gets random ones (`generate_bench_ap_credentials()`), an existing one
-keeps its own, and real ones are never committed (CLAUDE.md). An existing bridge is reported, not
-recreated; its MAC is compared with the uplink's, and a mismatch is only reported with the manual
-remedy, never repaired live. The comparison reads `nmcli --escape no`, since plain `nmcli -g`
-escapes every `:` in a MAC; SPECIFICATION.md Part B.13 says why a live repair is out.
+Credentials: a new bridge gets random ones (`generate_bench_ap_credentials()`) unless `--ssid` and
+`$BENCH_AP_PASSWORD` name them, an existing one keeps its own, and real ones are never committed
+(CLAUDE.md). The AP's PSK is a throwaway password used once, passed plainly to the one
+`nmcli connection modify` on its command line, as in the recipe above (owner, 2026-10-02); the
+installer keeps it out of the command it echoes and shows a generated one once. An existing bridge
+is reported, not recreated; its MAC is compared with the uplink's, and a mismatch is only reported
+with the manual remedy, never repaired live. The comparison reads `nmcli --escape no`, since plain
+`nmcli -g` escapes every `:` in a MAC; SPECIFICATION.md Part B.13 says why a live repair is out.
 
 To force a new bridge (new credentials, another adapter), delete the bridge and both its slave
 connections with the switch armed, then rerun `env --tier bench` or the recipe above. The host's
@@ -189,7 +212,7 @@ sudo nmcli connection delete br0-wifi-ap br0-eth0 br0
 ### Testing a driver by hand over mpremote
 
 One driver, or a partial closure, at a time, against the `dev` image already on the board
-(Prerequisites item 2):
+(Prerequisites item 3):
 
 - **Mount, never copy.** `scripts/mpremote_connect.sh mount <dir> run <script>.py` makes `<dir>`
   importable with no flash write. A mounted module shadows the frozen one of the same name, since
@@ -218,14 +241,16 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
 
 - `MPREMOTE_DEVICE` (or `--device` on any `pytest tests_hardware` invocation) - serial device path
   for the flash-tier board. With neither set, `harness.resolve_board_device()` identifies the board
-  by USB vendor ID - `toolchain/setup_toolchain.py`'s own `detect_pico_serial_devices()`, so the two
-  cannot disagree - and returns its `/dev/serial/by-id/...` symlink, which is named by USB serial
-  number and so survives the re-enumeration a hard reset causes. Two boards attached is a hard error
-  naming both rather than a silent pick; none attached returns a path that cannot exist, so the
-  `board` fixture skips without mpremote opening some other device's port to find that out. Either
-  variable pins the path outright, and a pinned path is never re-resolved.
-  `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry point a
-  re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
+  by USB vendor ID through `toolchain/setup_toolchain.py`'s `detect_pico_serial_devices()` and
+  returns its `/dev/serial/by-id/...` symlink, which is named by USB serial number and so survives
+  the re-enumeration a hard reset causes. Two boards attached is a hard error naming both rather
+  than a silent pick; none attached returns a path that cannot exist, so the `board` fixture skips
+  without mpremote opening some other device's port to find that out. Either variable pins the path
+  outright, and a pinned path is never re-resolved. The installer's own resolver
+  (`setup_toolchain.py board`, `env --tier flash|bench`) also requires the MicroPython by-id name
+  (SPECIFICATION.md Part B.12), so a debug probe sharing vendor `2e8a` is a candidate here but not
+  there. `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry
+  point a re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
 - `BENCH_AP_PASSWORD` - **optional, not required for a normal run** (fixed 2026-09-08 - see
   BACKLOG.md open question 9 for the full incident this used to cause).
   `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`
@@ -234,9 +259,10 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
   tier already has for everything else (the same mechanism `conftest.py`'s own
   `_recover_stale_dut_credentials()` already relied on). This env var only matters if you need to
   override that with a different password (e.g. testing against a non-bench AP `nmcli` can't read
-  secrets back from) - set it and it takes priority over the automatic lookup. **Do not rely on this
-  test skipping cleanly if you deliberately want to skip stage 6/7** - it no longer skips on its own;
-  a real bench (`ensure_bench_bridge()`-created `br0-wifi-ap`) always has a readable password.
+  secrets back from) - set it and it takes priority over the automatic lookup. `env --tier bench`
+  reads the same variable when it creates a bridge. **Do not rely on this test skipping cleanly if
+  you deliberately want to skip stage 6/7** - it no longer skips on its own; a real bench
+  (`ensure_bench_bridge()`-created `br0-wifi-ap`) always has a readable password.
 
 ## Running
 

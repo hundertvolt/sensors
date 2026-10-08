@@ -493,6 +493,90 @@ def test_a_wrong_variant_triggers_a_rebuild_rather_than_running_on_it(repo_root:
     assert re.search(r'got_variant="\$\(unix_port_variant "\$micropython_bin"\)"\nif \[ "\$got_variant" != "\$want_variant" \]; then\n(?:.*\n)*?\s*exit 1', text), (
         "after the rebuild the variant must be re-checked and the run must exit, never fall through onto the wrong binary"
     )
+    # The same holds for the toolchain record and the lwIP host build (driven for real below).
+    assert re.search(r'elif \[ ! -f "\$toolchain_record" \]; then\n(?:.*\n)*?\s*uv run toolchain/setup_toolchain\.py setup', text), "a missing toolchain record must reach setup"
+    assert re.search(r'elif \[ "\$coverage" = "0" \] && \[ "\$\(unix_port_variant "\$lwip_bin"\)" != "plain" \]; then\n(?:.*\n)*?\s*uv run toolchain/setup_toolchain\.py setup', text), "a missing or wrong lwIP host build must reach setup on a plain run"
+
+
+_COMPLETE = ("record", "build-standard", "build-settrace", "build-lwip")
+
+
+# The probe on stub binaries and a stub `uv` that records each setup and, unless told not to, builds
+# what was missing: what has to hold is which state reaches setup and which leaves the run dead after it.
+def _run_probe(repo_root: Path, tmp_path: Path, present: "tuple[str, ...]", *, coverage: bool = False, setup_repairs: "tuple[str, ...]" = _COMPLETE) -> tuple["subprocess.CompletedProcess[str]", list[str]]:
+    text = _test_sh_text(repo_root)
+    start = text.index('toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"')
+    end = text.index("# TEST_PARALLELISM: how many", start)
+    toolchain = tmp_path / "toolchain"
+    # Each maker creates one part; "build-lwip-settrace" is a build-lwip binary of the wrong flavour.
+    binaries = {"build-standard": ("build-standard", "plain"), "build-settrace": ("build-settrace", "settrace"), "build-lwip": ("build-lwip", "plain"), "build-lwip-settrace": ("build-lwip", "settrace")}
+    makers = tmp_path / "makers"
+    makers.mkdir()
+    (makers / "record").write_text(f': >"{toolchain}/toolchain-record.json"\n')
+    for name, (build_dir, flavour) in binaries.items():
+        target = toolchain / "micropython" / "ports" / "unix" / build_dir
+        (makers / name).write_text(f'mkdir -p "{target}"\nprintf \'#!/bin/sh\\necho {flavour}\\n\' >"{target}/micropython"\nchmod +x "{target}/micropython"\n')
+    toolchain.mkdir()
+    for name in present:
+        subprocess.run(["/bin/bash", str(makers / name)], check=True)
+    calls = tmp_path / "uv_calls"
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    repair = "".join(f'bash "{makers / name}"\n' for name in setup_repairs)
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "$*" >>"{calls}"\n{repair}')
+    (stub_bin / "uv").chmod(0o755)
+    script = tmp_path / "probe.sh"
+    script.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\ncoverage={int(coverage)}\n{text[start:end]}echo PROBED\n")
+    env = {"PATH": f"{stub_bin}:/usr/bin:/bin", "PICO_TOOLCHAIN_DIR": str(toolchain), "HOME": str(tmp_path)}
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    return done, calls.read_text().splitlines() if calls.exists() else []
+
+
+@pytest.mark.parametrize("coverage", [False, True])
+def test_a_complete_toolchain_runs_no_setup(repo_root: Path, tmp_path: Path, *, coverage: bool) -> None:
+    # Guard: the false-positive direction - a toolchain with its record and all three builds is used as is.
+    done, calls = _run_probe(repo_root, tmp_path, _COMPLETE, coverage=coverage)
+    assert done.returncode == 0, done.stderr
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("present", "coverage", "reason"),
+    [
+        (("build-standard", "build-settrace", "build-lwip"), False, "no toolchain record"),
+        (("build-standard", "build-settrace", "build-lwip"), True, "no toolchain record"),
+        (("record", "build-standard", "build-settrace"), False, "the lwIP host build"),
+        (("record", "build-standard", "build-settrace", "build-lwip-settrace"), False, "the lwIP host build"),
+    ],
+)
+def test_a_missing_record_or_lwip_build_runs_setup(repo_root: Path, tmp_path: Path, present: "tuple[str, ...]", reason: str, *, coverage: bool) -> None:
+    # setup deletes the record first and writes it last, so a missing one is an interrupted or older
+    # toolchain - the same as a missing binary; the lwIP host build is needed by a plain run only.
+    done, calls = _run_probe(repo_root, tmp_path, present, coverage=coverage)
+    assert done.returncode == 0, done.stderr
+    assert calls == [f"run toolchain/setup_toolchain.py setup --toolchain-dir {tmp_path / 'toolchain'}"], calls
+    assert reason in done.stderr
+    assert "rebuilding the Unix ports" in done.stderr
+
+
+def test_a_coverage_run_does_not_need_the_lwip_host_build(repo_root: Path, tmp_path: Path) -> None:
+    # Guard: --coverage never runs the lwIP host files, so a toolchain without build-lwip serves it as is.
+    done, calls = _run_probe(repo_root, tmp_path, ("record", "build-standard", "build-settrace"), coverage=True)
+    assert done.returncode == 0, done.stderr
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("left_out", "message"),
+    [("record", "error: setup left no toolchain record at"), ("build-lwip", "the lwIP host build")],
+)
+def test_a_setup_that_leaves_the_record_or_the_lwip_build_missing_ends_the_run(repo_root: Path, tmp_path: Path, left_out: str, message: str) -> None:
+    repairs = tuple(name for name in _COMPLETE if name != left_out)
+    done, calls = _run_probe(repo_root, tmp_path, (), setup_repairs=repairs)
+    assert len(calls) == 1, calls
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert message in done.stderr
+    assert "PROBED" not in done.stdout
 
 
 def test_a_non_integer_gc_threshold_is_rejected_before_anything_is_built(repo_root: Path) -> None:
@@ -903,7 +987,8 @@ _GREEN_RECORD = '{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outco
 
 def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None, str | None, str | None]], *, pytest_status: str = "PASS", record: str | None = _GREEN_RECORD, coverage: int = 0, render_fails: bool = False, extra: dict[str, str] | None = None) -> tuple[int, str, Path]:
     # Runs the verdict tail over a fixture results dir: jobs maps a test file to its (status, log,
-    # memerr) contents, None meaning that file is absent; extra plants further result files.
+    # memerr) contents, None meaning that file is absent; extra plants further result files. An lwIP
+    # host file is discovered as the script does, and dispatched unless coverage is set.
     root = _fake_repo(repo_root, tmp_path)
     results = tmp_path / "results"
     results.mkdir()
@@ -923,11 +1008,12 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
     # The renderer is the only `uv run` the tail makes that the fixture stands in for.
     (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nif [ "$2" = "scripts/_render_coverage.py" ]; then exit {1 if render_fails else 0}; fi\nexec {shutil.which("uv")} "$@"\n')
     (stub_bin / "uv").chmod(0o755)
-    files = " ".join(jobs)
+    lwip_host_files = [name for name in jobs if name.startswith("tests/lwip_host/")]
+    files = " ".join(name for name in jobs if not (coverage and name in lwip_host_files))
     script = tmp_path / "tail.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'test_files=({files})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
+        f'test_files=({files})\nlwip_host_files=({" ".join(lwip_host_files)})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
         f'tests_scripts_status_file="{status_file}"\nevidence_archived=0\n'
         f"{_verdict_tail(repo_root)}\n",
     )
@@ -1065,9 +1151,10 @@ def test_nothing_follows_the_block_on_stdout(repo_root: Path, tmp_path: Path) ->
     assert out.count("== Summary: scripts/test.sh ==") == 1
 
 
-def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str) -> Path:
+def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False) -> Path:
     # Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose
     # first call runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir.
+    # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails.
     text = _test_sh_text(repo_root)
     bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_flag_memory_errors", "run_test_file")]
     assert all(bodies), "scripts/test.sh no longer defines _flag_memory_errors() and run_test_file()"
@@ -1075,15 +1162,20 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
     stub = tmp_path / "micropython"
     stub.write_text(f'#!/usr/bin/env bash\necho x >>"{calls}"\nif [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt}\nelse\n{later_attempts}\nfi\n')
     stub.chmod(0o755)
+    default_bin = stub
+    if own_binary:
+        default_bin = tmp_path / "default_micropython"
+        default_bin.write_text('#!/usr/bin/env bash\necho "the default binary ran"\nexit 3\n')
+        default_bin.chmod(0o755)
     results = tmp_path / "results"
     results.mkdir()
     script = tmp_path / "run.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{stub}"\nper_file_timeout_s=1\nmax_attempts=3\n'
+        f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s=1\nmax_attempts=3\n'
         "declare -A per_file_timeout_overrides_s=()\n"
         + "\n".join(b.group(0) for b in bodies if b)
-        + f'\nrun_test_file tests/test_x.py "{results}/test_x.status"\n',
+        + f'\nrun_test_file tests/test_x.py "{results}/test_x.status"' + (f' "{stub}"' if own_binary else "") + "\n",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=120)
     assert done.returncode == 0, done.stderr
@@ -1173,3 +1265,72 @@ def test_ci_gates_the_coverage_reruns_test_result_but_not_its_report(repo_root: 
     # The other half of the split: a red test result must not also swallow the report that rendered.
     reports = job[job.index("- name: Add coverage summary"):]
     assert reports.count("always() &&") == 6, "every report step in this job must publish even on a red test result"
+
+
+# --- the lwIP host files: their own binary, dispatched last, counted in L1, not run under --coverage ---
+
+
+def test_a_job_runs_on_the_binary_it_is_given(repo_root: Path, tmp_path: Path) -> None:
+    # The lwIP host files run on build-lwip: run_test_file()'s third argument names the binary, and
+    # $micropython_bin (a stub that fails here) is only the default.
+    results = _run_file_job(repo_root, tmp_path, 'echo "1/1 passed, 0 failed, 0 skipped"', "exit 1", own_binary=True)
+    status, log, _ = _job_files(results)
+    assert status == "PASS\n", log
+    assert log is not None and "the default binary ran" not in log
+
+
+def _dispatch(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
+    # Runs scripts/test.sh's own job list and dispatch loop in a fixture tree, run_test_file stubbed to
+    # record "<file> <binary>"; one job at a time, so the record is in dispatch order.
+    text = _test_sh_text(repo_root)
+    start = text.index("_heavy_files_priority=(")
+    end = text.index("\nwait || true\n", start)
+    for name in ("tests/test_a.py", "tests/test_b.py", "tests/lwip_host/test_l.py", "tests/lwip_host/helper.py"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("")
+    record = tmp_path / "dispatched"
+    script = tmp_path / "dispatch.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'coverage={int(coverage)}\nmax_parallel=1\nresults_dir="{tmp_path}"\nmicropython_bin=/std\nlwip_bin=/lwip\n'
+        f'run_test_file() {{ echo "$1 ${{3:-unset}}" >>"{record}"; }}\n' + text[start:end] + "\nwait || true\n",
+    )
+    subprocess.run(["/bin/bash", str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    return record.read_text().splitlines()
+
+
+def test_the_lwip_host_files_are_dispatched_last_on_the_lwip_binary(repo_root: Path, tmp_path: Path) -> None:
+    assert _dispatch(repo_root, tmp_path, coverage=False) == ["tests/test_a.py /std", "tests/test_b.py /std", "tests/lwip_host/test_l.py /lwip"]
+
+
+def test_a_coverage_run_dispatches_no_lwip_host_file(repo_root: Path, tmp_path: Path) -> None:
+    # They exercise C code line coverage cannot see; the plain pass runs them.
+    assert _dispatch(repo_root, tmp_path, coverage=True) == ["tests/test_a.py /std", "tests/test_b.py /std"]
+
+
+def test_a_coverage_run_names_each_lwip_host_file_as_skipped(repo_root: Path, tmp_path: Path) -> None:
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok"), "tests/lwip_host/test_l.py": (None, None, None)}, coverage=1)
+    block = _block(out)
+    assert code == 0, out
+    assert "Skipped:\n  - tests/lwip_host/test_l.py: not run under --coverage (the plain pass runs them)\n" in block, block
+    assert "\nCounts (files): passed 1 · failed 0 · skipped 1 ·" in block
+
+
+def test_a_failing_lwip_host_file_fails_l1_and_a_plain_run_lists_no_skip(repo_root: Path, tmp_path: Path) -> None:
+    # Guard: the tail counts every file that is not a twin file in L1, the lwIP host files included.
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_ok.py": _passing("test_ok"), "tests/lwip_host/test_l.py": ("FAIL\n", "[test_l] 0/1 passed, 1 failed, 0 skipped\n", None)}
+    code, out, _ = _run_tail(repo_root, tmp_path, jobs)
+    block = _block(out)
+    assert code == 1, out
+    assert "Levels: L0 PASS · L1 FAIL · L2 PASS" in block
+    assert "  - tests/lwip_host/test_l.py: 1 of 1 tests failed\n" in block
+    assert "Skipped: none\n" in block
+
+
+def test_no_lwip_host_file_shares_a_tag_with_a_unit_file(repo_root: Path) -> None:
+    # Guard: every job writes $results_dir/<basename>.*, so two files of one basename would share a log.
+    unit = {p.stem for p in (repo_root / "tests").glob("test_*.py")}
+    lwip_host = {p.stem for p in (repo_root / "tests" / "lwip_host").glob("test_*.py")}
+    # Not empty either: the dispatch runs whatever the glob finds, so a lost file would leave L1 silently thinner.
+    assert lwip_host, "tests/lwip_host/ holds no test_*.py - the lwIP host build would run nothing"
+    assert not unit & lwip_host, f"tests/lwip_host/ reuses a tests/ basename: {sorted(unit & lwip_host)}"

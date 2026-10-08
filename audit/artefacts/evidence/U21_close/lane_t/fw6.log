@@ -1,0 +1,18 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /home/user/sensors/.venv/bin/python
+rootdir: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u21t
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 23 items / 15 deselected / 8 selected
+
+tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[wozi] PASSED [ 12%]
+tests_scripts/test_build_firmware.py::test_build_stage_dir_frozen_html_contains_the_real_website[dev] PASSED [ 25%]
+tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi] PASSED [ 37%]
+tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev] PASSED [ 50%]
+tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[grkizi] PASSED [ 62%]
+tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[klkizi] PASSED [ 75%]
+tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[schlafzi] PASSED [ 87%]
+tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi] PASSED [100%]
+
+================= 8 passed, 15 deselected in 509.15s (0:08:29) =================
+rc=0 elapsed=671s end=17:49:05

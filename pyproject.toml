@@ -250,10 +250,6 @@ max-returns = 10
 # ANN401: _build_i2c_chip() returns Any on purpose - no single chip fake implements every _I2CDevice
 # method (see that function's comment).
 "digital_twin/machine.py" = ["A002", "FBT001", "FBT002", "ANN401", "PLR0913"]
-# Same faithful-double reasoning: test_setup_toolchain_env.py's fake_run() doubles must accept
-# setup_toolchain.run()'s signature exactly, positional `check=True` included; its own helpers stay
-# keyword-only.
-"tests_scripts/test_setup_toolchain_env.py" = ["FBT001", "FBT002"]
 # PLR0913/PLR0917: UART.__init__/init() take machine.UART's twelve parameters plus the wrapper's own four;
 # ISL29125_I2C.configure() takes one keyword per CONFIG1-3 field (FN8424 p10-11).
 "src/asy_uart_driver.py" = ["PLR0913", "PLR0917"]
@@ -332,8 +328,9 @@ max-returns = 10
 # setup_toolchain.py IS a subprocess driver (git, apt, make, nmcli). run() takes an argv list, never
 # a shell string, built from repo constants plus the installer's own versions.toml/CLI input.
 "toolchain/setup_toolchain.py" = ["S603"]
-# Same for the lwIP override's post-build check: `-E` only, with the argv CMake recorded in the real
-# build's flags.make.
+# S603: the overrides' post-build proofs run the preprocessor (`-E`, the argv CMake recorded in the build's
+# flags.make), `make <build>/unix_mphal.pp` with the build's own variables (`make` from the build's PATH)
+# and the built host binary's runtime probe; every argv is repo constants plus the build's recorded flags.
 "toolchain/micropython_overrides.py" = ["S603"]
 # ---- tests_hardware/ (real-hardware tier) ----
 # S603/S607: shelling out to mpremote/picotool/nmcli/iw/iptables/tc IS this tier's job, argv from

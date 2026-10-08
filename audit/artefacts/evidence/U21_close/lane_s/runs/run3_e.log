@@ -1,0 +1,16 @@
+lwIP host pool: 4 connection pairs admitted (MEMP_NUM_TCP_PCB 9, two pcbs per pair)
+PASS test_a_write_to_a_peer_that_stopped_reading_returns_within_the_bound
+PASS test_capacity_returns_after_the_peers_close
+PASS test_repeated_rounds_stay_stable
+EAGAIN spin: slowest round 4861 us, largest allocation 32 B over 1000 rounds
+PASS test_the_eagain_spin_round_is_bounded
+PASS test_the_queue_limit_edge
+PASS test_the_segment_pool_edge
+intact-data run: 0 EAGAIN and 12 ENOMEM edges over 32768 B
+FAIL test_a_reading_peer_receives_every_byte_intact:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/lwip_host/test_modlwip_eagain.py", line 356, in test_a_reading_peer_receives_every_byte_intact
+AssertionError: the writer never met the arena edge: the loader's share is too small to test the edge
+6/7 passed, 1 failed, 0 skipped
+rc=1 wall=15.981182300s

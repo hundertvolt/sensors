@@ -281,8 +281,11 @@ call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.
 
 ### M5.2 Interpreter builds
 
-- **`build-standard` / `build-settrace`** — `toolchain/setup_toolchain.py` builds both; plain
-  `scripts/test.sh` uses the flag-free one.
+- **`build-standard` / `build-settrace` / `build-lwip`** — `toolchain/setup_toolchain.py` builds
+  all three; plain `scripts/test.sh` uses `build-standard`, `--coverage` `build-settrace`, and
+  `build-lwip` runs the firmware's patched `modlwip.c` over loopback lwIP for `tests/lwip_host/`
+  alone (SPECIFICATION.md B.14.4). Every `setup` and `test` run removes any other `ports/unix/build-*`
+  as an outdated leftover, the two twins below included, so a twin is rebuilt after one.
 - **`build-nosettrace`** (a frozen flag-free twin), in `ports/unix`:
   `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<manifest>`.
 - **`build-heapprobe32`** (the 32-bit twin, ~2 min):

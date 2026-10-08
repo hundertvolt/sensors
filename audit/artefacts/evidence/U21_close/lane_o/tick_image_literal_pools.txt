@@ -1,0 +1,323 @@
+# Every line of u21o_tick/dis.txt (arm-none-eabi-objdump -d of dev's tick-offset test image, 240160 lines, 10 MB, left out) that
+# holds the literal 0xfff24460 (= TICK_OFFSET_MS), 16 hits, each with its enclosing function from the header line on;
+# a function longer than 25 lines keeps its header and its last 16 lines. dis.txt:<n> gives the line number in the full file.
+
+dis.txt:58585
+1001e7e0 <mp_hal_ticks_ms>:
+1001e7e0:	b510      	push	{r4, lr}
+1001e7e2:	f03b faf3 	bl	10059dcc <time_us_64>
+1001e7e6:	2900      	cmp	r1, #0
+1001e7e8:	d007      	beq.n	1001e7fa <mp_hal_ticks_ms+0x1a>
+1001e7ea:	22fa      	movs	r2, #250	@ 0xfa
+1001e7ec:	2300      	movs	r3, #0
+1001e7ee:	0092      	lsls	r2, r2, #2
+1001e7f0:	f052 fb7a 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+1001e7f4:	4b03      	ldr	r3, [pc, #12]	@ (1001e804 <mp_hal_ticks_ms+0x24>)
+1001e7f6:	18c0      	adds	r0, r0, r3
+1001e7f8:	bd10      	pop	{r4, pc}
+1001e7fa:	21fa      	movs	r1, #250	@ 0xfa
+1001e7fc:	0089      	lsls	r1, r1, #2
+1001e7fe:	f052 fb35 	bl	10070e6c <__wrap___aeabi_uidiv>
+1001e802:	e7f7      	b.n	1001e7f4 <mp_hal_ticks_ms+0x14>
+1001e804:	fff24460 	.word	0xfff24460
+
+dis.txt:64247
+100216bc <ticks>:
+100216bc:	b510      	push	{r4, lr}
+100216be:	f038 fb85 	bl	10059dcc <time_us_64>
+100216c2:	2900      	cmp	r1, #0
+100216c4:	d00c      	beq.n	100216e0 <ticks+0x24>
+100216c6:	22fa      	movs	r2, #250	@ 0xfa
+100216c8:	2300      	movs	r3, #0
+100216ca:	0092      	lsls	r2, r2, #2
+100216cc:	f04f fc0c 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+100216d0:	4b06      	ldr	r3, [pc, #24]	@ (100216ec <ticks+0x30>)
+100216d2:	4a07      	ldr	r2, [pc, #28]	@ (100216f0 <ticks+0x34>)
+100216d4:	18c3      	adds	r3, r0, r3
+100216d6:	2001      	movs	r0, #1
+100216d8:	005b      	lsls	r3, r3, #1
+100216da:	4013      	ands	r3, r2
+100216dc:	4318      	orrs	r0, r3
+100216de:	bd10      	pop	{r4, pc}
+100216e0:	21fa      	movs	r1, #250	@ 0xfa
+100216e2:	0089      	lsls	r1, r1, #2
+100216e4:	f04f fbc2 	bl	10070e6c <__wrap___aeabi_uidiv>
+100216e8:	e7f2      	b.n	100216d0 <ticks+0x14>
+100216ea:	46c0      	nop			@ (mov r8, r8)
+100216ec:	fff24460 	.word	0xfff24460
+
+dis.txt:69757
+10024484 <mp_hal_ticks_ms>:
+10024484:	b510      	push	{r4, lr}
+10024486:	f035 fca1 	bl	10059dcc <time_us_64>
+1002448a:	2900      	cmp	r1, #0
+1002448c:	d007      	beq.n	1002449e <mp_hal_ticks_ms+0x1a>
+1002448e:	22fa      	movs	r2, #250	@ 0xfa
+10024490:	2300      	movs	r3, #0
+10024492:	0092      	lsls	r2, r2, #2
+10024494:	f04c fd28 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+10024498:	4b03      	ldr	r3, [pc, #12]	@ (100244a8 <mp_hal_ticks_ms+0x24>)
+1002449a:	18c0      	adds	r0, r0, r3
+1002449c:	bd10      	pop	{r4, pc}
+1002449e:	21fa      	movs	r1, #250	@ 0xfa
+100244a0:	0089      	lsls	r1, r1, #2
+100244a2:	f04c fce3 	bl	10070e6c <__wrap___aeabi_uidiv>
+100244a6:	e7f7      	b.n	10024498 <mp_hal_ticks_ms+0x14>
+100244a8:	fff24460 	.word	0xfff24460
+
+dis.txt:70249
+10024890 <mp_hal_ticks_ms>:
+10024890:	b510      	push	{r4, lr}
+10024892:	f035 fa9b 	bl	10059dcc <time_us_64>
+10024896:	2900      	cmp	r1, #0
+10024898:	d007      	beq.n	100248aa <mp_hal_ticks_ms+0x1a>
+1002489a:	22fa      	movs	r2, #250	@ 0xfa
+1002489c:	2300      	movs	r3, #0
+1002489e:	0092      	lsls	r2, r2, #2
+100248a0:	f04c fb22 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+100248a4:	4b03      	ldr	r3, [pc, #12]	@ (100248b4 <mp_hal_ticks_ms+0x24>)
+100248a6:	18c0      	adds	r0, r0, r3
+100248a8:	bd10      	pop	{r4, pc}
+100248aa:	21fa      	movs	r1, #250	@ 0xfa
+100248ac:	0089      	lsls	r1, r1, #2
+100248ae:	f04c fadd 	bl	10070e6c <__wrap___aeabi_uidiv>
+100248b2:	e7f7      	b.n	100248a4 <mp_hal_ticks_ms+0x14>
+100248b4:	fff24460 	.word	0xfff24460
+
+dis.txt:71678
+1002550c <time_ticks_ms>:
+1002550c:	b510      	push	{r4, lr}
+1002550e:	f034 fc5d 	bl	10059dcc <time_us_64>
+10025512:	2900      	cmp	r1, #0
+10025514:	d00c      	beq.n	10025530 <time_ticks_ms+0x24>
+10025516:	22fa      	movs	r2, #250	@ 0xfa
+10025518:	2300      	movs	r3, #0
+1002551a:	0092      	lsls	r2, r2, #2
+1002551c:	f04b fce4 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+10025520:	4b06      	ldr	r3, [pc, #24]	@ (1002553c <time_ticks_ms+0x30>)
+10025522:	4a07      	ldr	r2, [pc, #28]	@ (10025540 <time_ticks_ms+0x34>)
+10025524:	18c3      	adds	r3, r0, r3
+10025526:	2001      	movs	r0, #1
+10025528:	005b      	lsls	r3, r3, #1
+1002552a:	4013      	ands	r3, r2
+1002552c:	4318      	orrs	r0, r3
+1002552e:	bd10      	pop	{r4, pc}
+10025530:	21fa      	movs	r1, #250	@ 0xfa
+10025532:	0089      	lsls	r1, r1, #2
+10025534:	f04b fc9a 	bl	10070e6c <__wrap___aeabi_uidiv>
+10025538:	e7f2      	b.n	10025520 <time_ticks_ms+0x14>
+1002553a:	46c0      	nop			@ (mov r8, r8)
+1002553c:	fff24460 	.word	0xfff24460
+
+dis.txt:72862
+10025ec0 <mp_hal_ticks_ms>:
+10025ec0:	b510      	push	{r4, lr}
+10025ec2:	f033 ff83 	bl	10059dcc <time_us_64>
+10025ec6:	2900      	cmp	r1, #0
+10025ec8:	d007      	beq.n	10025eda <mp_hal_ticks_ms+0x1a>
+10025eca:	22fa      	movs	r2, #250	@ 0xfa
+10025ecc:	2300      	movs	r3, #0
+10025ece:	0092      	lsls	r2, r2, #2
+10025ed0:	f04b f80a 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+10025ed4:	4b03      	ldr	r3, [pc, #12]	@ (10025ee4 <mp_hal_ticks_ms+0x24>)
+10025ed6:	18c0      	adds	r0, r0, r3
+10025ed8:	bd10      	pop	{r4, pc}
+10025eda:	21fa      	movs	r1, #250	@ 0xfa
+10025edc:	0089      	lsls	r1, r1, #2
+10025ede:	f04a ffc5 	bl	10070e6c <__wrap___aeabi_uidiv>
+10025ee2:	e7f7      	b.n	10025ed4 <mp_hal_ticks_ms+0x14>
+10025ee4:	fff24460 	.word	0xfff24460
+
+dis.txt:73501
+10026468 <mp_hal_ticks_ms>:
+10026468:	b510      	push	{r4, lr}
+1002646a:	f033 fcaf 	bl	10059dcc <time_us_64>
+1002646e:	2900      	cmp	r1, #0
+10026470:	d007      	beq.n	10026482 <mp_hal_ticks_ms+0x1a>
+10026472:	22fa      	movs	r2, #250	@ 0xfa
+10026474:	2300      	movs	r3, #0
+10026476:	0092      	lsls	r2, r2, #2
+10026478:	f04a fd36 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+1002647c:	4b03      	ldr	r3, [pc, #12]	@ (1002648c <mp_hal_ticks_ms+0x24>)
+1002647e:	18c0      	adds	r0, r0, r3
+10026480:	bd10      	pop	{r4, pc}
+10026482:	21fa      	movs	r1, #250	@ 0xfa
+10026484:	0089      	lsls	r1, r1, #2
+10026486:	f04a fcf1 	bl	10070e6c <__wrap___aeabi_uidiv>
+1002648a:	e7f7      	b.n	1002647c <mp_hal_ticks_ms+0x14>
+1002648c:	fff24460 	.word	0xfff24460
+
+dis.txt:78049
+10028ae0 <mp_hal_ticks_ms>:
+10028ae0:	b510      	push	{r4, lr}
+10028ae2:	f031 f973 	bl	10059dcc <time_us_64>
+10028ae6:	2900      	cmp	r1, #0
+10028ae8:	d007      	beq.n	10028afa <mp_hal_ticks_ms+0x1a>
+10028aea:	22fa      	movs	r2, #250	@ 0xfa
+10028aec:	2300      	movs	r3, #0
+10028aee:	0092      	lsls	r2, r2, #2
+10028af0:	f048 f9fa 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+10028af4:	4b03      	ldr	r3, [pc, #12]	@ (10028b04 <mp_hal_ticks_ms+0x24>)
+10028af6:	18c0      	adds	r0, r0, r3
+10028af8:	bd10      	pop	{r4, pc}
+10028afa:	21fa      	movs	r1, #250	@ 0xfa
+10028afc:	0089      	lsls	r1, r1, #2
+10028afe:	f048 f9b5 	bl	10070e6c <__wrap___aeabi_uidiv>
+10028b02:	e7f7      	b.n	10028af4 <mp_hal_ticks_ms+0x14>
+10028b04:	fff24460 	.word	0xfff24460
+
+dis.txt:91552
+1002f98c <mp_hal_ticks_ms>:
+1002f98c:	b510      	push	{r4, lr}
+1002f98e:	f02a fa1d 	bl	10059dcc <time_us_64>
+1002f992:	2900      	cmp	r1, #0
+1002f994:	d007      	beq.n	1002f9a6 <mp_hal_ticks_ms+0x1a>
+1002f996:	22fa      	movs	r2, #250	@ 0xfa
+1002f998:	2300      	movs	r3, #0
+1002f99a:	0092      	lsls	r2, r2, #2
+1002f99c:	f041 faa4 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+1002f9a0:	4b03      	ldr	r3, [pc, #12]	@ (1002f9b0 <mp_hal_ticks_ms+0x24>)
+1002f9a2:	18c0      	adds	r0, r0, r3
+1002f9a4:	bd10      	pop	{r4, pc}
+1002f9a6:	21fa      	movs	r1, #250	@ 0xfa
+1002f9a8:	0089      	lsls	r1, r1, #2
+1002f9aa:	f041 fa5f 	bl	10070e6c <__wrap___aeabi_uidiv>
+1002f9ae:	e7f7      	b.n	1002f9a0 <mp_hal_ticks_ms+0x14>
+1002f9b0:	fff24460 	.word	0xfff24460
+
+dis.txt:92125
+1002fe44 <netutils_ethernet_trace>:
+    [... 364 lines ...]
+10030154:	f7ff fe66 	bl	1002fe24 <dump_hex_bytes>
+10030158:	4925      	ldr	r1, [pc, #148]	@ (100301f0 <netutils_ethernet_trace+0x3ac>)
+1003015a:	0028      	movs	r0, r5
+1003015c:	f7db ff5a 	bl	1000c014 <mp_printf>
+10030160:	003a      	movs	r2, r7
+10030162:	0034      	movs	r4, r6
+10030164:	2110      	movs	r1, #16
+10030166:	0028      	movs	r0, r5
+10030168:	3226      	adds	r2, #38	@ 0x26
+1003016a:	3736      	adds	r7, #54	@ 0x36
+1003016c:	f7ff fe5a 	bl	1002fe24 <dump_hex_bytes>
+10030170:	3c36      	subs	r4, #54	@ 0x36
+10030172:	9706      	str	r7, [sp, #24]
+10030174:	e738      	b.n	1002ffe8 <netutils_ethernet_trace+0x1a4>
+10030176:	46c0      	nop			@ (mov r8, r8)
+10030178:	fff24460 	.word	0xfff24460
+
+dis.txt:94327
+10031168 <mp_hal_ticks_ms>:
+10031168:	b510      	push	{r4, lr}
+1003116a:	f028 fe2f 	bl	10059dcc <time_us_64>
+1003116e:	2900      	cmp	r1, #0
+10031170:	d007      	beq.n	10031182 <mp_hal_ticks_ms+0x1a>
+10031172:	22fa      	movs	r2, #250	@ 0xfa
+10031174:	2300      	movs	r3, #0
+10031176:	0092      	lsls	r2, r2, #2
+10031178:	f03f feb6 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+1003117c:	4b03      	ldr	r3, [pc, #12]	@ (1003118c <mp_hal_ticks_ms+0x24>)
+1003117e:	18c0      	adds	r0, r0, r3
+10031180:	bd10      	pop	{r4, pc}
+10031182:	21fa      	movs	r1, #250	@ 0xfa
+10031184:	0089      	lsls	r1, r1, #2
+10031186:	f03f fe71 	bl	10070e6c <__wrap___aeabi_uidiv>
+1003118a:	e7f7      	b.n	1003117c <mp_hal_ticks_ms+0x14>
+1003118c:	fff24460 	.word	0xfff24460
+
+dis.txt:97933
+10033078 <mp_hal_ticks_ms>:
+10033078:	b510      	push	{r4, lr}
+1003307a:	f026 fea7 	bl	10059dcc <time_us_64>
+1003307e:	2900      	cmp	r1, #0
+10033080:	d007      	beq.n	10033092 <mp_hal_ticks_ms+0x1a>
+10033082:	22fa      	movs	r2, #250	@ 0xfa
+10033084:	2300      	movs	r3, #0
+10033086:	0092      	lsls	r2, r2, #2
+10033088:	f03d ff2e 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+1003308c:	4b03      	ldr	r3, [pc, #12]	@ (1003309c <mp_hal_ticks_ms+0x24>)
+1003308e:	18c0      	adds	r0, r0, r3
+10033090:	bd10      	pop	{r4, pc}
+10033092:	21fa      	movs	r1, #250	@ 0xfa
+10033094:	0089      	lsls	r1, r1, #2
+10033096:	f03d fee9 	bl	10070e6c <__wrap___aeabi_uidiv>
+1003309a:	e7f7      	b.n	1003308c <mp_hal_ticks_ms+0x14>
+1003309c:	fff24460 	.word	0xfff24460
+
+dis.txt:98361
+100333fc <sys_now>:
+100333fc:	b510      	push	{r4, lr}
+100333fe:	f026 fce5 	bl	10059dcc <time_us_64>
+10033402:	2900      	cmp	r1, #0
+10033404:	d007      	beq.n	10033416 <sys_now+0x1a>
+10033406:	22fa      	movs	r2, #250	@ 0xfa
+10033408:	2300      	movs	r3, #0
+1003340a:	0092      	lsls	r2, r2, #2
+1003340c:	f03d fd6c 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+10033410:	4b03      	ldr	r3, [pc, #12]	@ (10033420 <sys_now+0x24>)
+10033412:	18c0      	adds	r0, r0, r3
+10033414:	bd10      	pop	{r4, pc}
+10033416:	21fa      	movs	r1, #250	@ 0xfa
+10033418:	0089      	lsls	r1, r1, #2
+1003341a:	f03d fd27 	bl	10070e6c <__wrap___aeabi_uidiv>
+1003341e:	e7f7      	b.n	10033410 <sys_now+0x14>
+10033420:	fff24460 	.word	0xfff24460
+
+dis.txt:101673
+10034fd4 <mp_hal_ticks_ms>:
+10034fd4:	b510      	push	{r4, lr}
+10034fd6:	f024 fef9 	bl	10059dcc <time_us_64>
+10034fda:	2900      	cmp	r1, #0
+10034fdc:	d007      	beq.n	10034fee <mp_hal_ticks_ms+0x1a>
+10034fde:	22fa      	movs	r2, #250	@ 0xfa
+10034fe0:	2300      	movs	r3, #0
+10034fe2:	0092      	lsls	r2, r2, #2
+10034fe4:	f03b ff80 	bl	10070ee8 <__wrap___aeabi_uldivmod>
+10034fe8:	4b03      	ldr	r3, [pc, #12]	@ (10034ff8 <mp_hal_ticks_ms+0x24>)
+10034fea:	18c0      	adds	r0, r0, r3
+10034fec:	bd10      	pop	{r4, pc}
+10034fee:	21fa      	movs	r1, #250	@ 0xfa
+10034ff0:	0089      	lsls	r1, r1, #2
+10034ff2:	f03b ff3b 	bl	10070e6c <__wrap___aeabi_uidiv>
+10034ff6:	e7f7      	b.n	10034fe8 <mp_hal_ticks_ms+0x14>
+10034ff8:	fff24460 	.word	0xfff24460
+
+dis.txt:167611
+100574dc <cyw43_ethernet_trace>:
+    [... 73 lines ...]
+1005757a:	f7b4 fd4b 	bl	1000c014 <mp_printf>
+1005757e:	3401      	adds	r4, #1
+10057580:	e7ec      	b.n	1005755c <cyw43_ethernet_trace+0x80>
+10057582:	0712      	lsls	r2, r2, #28
+10057584:	d501      	bpl.n	1005758a <cyw43_ethernet_trace+0xae>
+10057586:	2202      	movs	r2, #2
+10057588:	4313      	orrs	r3, r2
+1005758a:	0022      	movs	r2, r4
+1005758c:	0029      	movs	r1, r5
+1005758e:	0038      	movs	r0, r7
+10057590:	f7d8 fc58 	bl	1002fe44 <netutils_ethernet_trace>
+10057594:	e7b2      	b.n	100574fc <cyw43_ethernet_trace+0x20>
+10057596:	46c0      	nop			@ (mov r8, r8)
+10057598:	00000864 	.word	0x00000864
+1005759c:	1008e3d0 	.word	0x1008e3d0
+100575a0:	fff24460 	.word	0xfff24460
+
+dis.txt:168283
+10057adc <cyw43_cb_process_async_event>:
+    [... 192 lines ...]
+10057c7a:	59a2      	ldr	r2, [r4, r6]
+10057c7c:	011b      	lsls	r3, r3, #4
+10057c7e:	e7c8      	b.n	10057c12 <cyw43_cb_process_async_event+0x136>
+10057c80:	68eb      	ldr	r3, [r5, #12]
+10057c82:	2b0f      	cmp	r3, #15
+10057c84:	d1c9      	bne.n	10057c1a <cyw43_cb_process_async_event+0x13e>
+10057c86:	2001      	movs	r0, #1
+10057c88:	4b0e      	ldr	r3, [pc, #56]	@ (10057cc4 <cyw43_cb_process_async_event+0x1e8>)
+10057c8a:	e7d0      	b.n	10057c2e <cyw43_cb_process_async_event+0x152>
+10057c8c:	2001      	movs	r0, #1
+10057c8e:	4b0d      	ldr	r3, [pc, #52]	@ (10057cc4 <cyw43_cb_process_async_event+0x1e8>)
+10057c90:	52e0      	strh	r0, [r4, r3]
+10057c92:	e7cd      	b.n	10057c30 <cyw43_cb_process_async_event+0x154>
+10057c94:	00000864 	.word	0x00000864
+10057c98:	1008e3d0 	.word	0x1008e3d0
+10057c9c:	fff24460 	.word	0xfff24460
+

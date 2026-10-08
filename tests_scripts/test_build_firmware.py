@@ -5,11 +5,13 @@ CLI error paths) without the minutes-long ARM compile."""
 # The one test that does run the real ARM build carries its own comment - see
 # test_real_firmware_build_produces_a_valid_uf2.
 
+import contextlib
 import os
 import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 import pytest
 from _devices import DEVICE_NAMES
@@ -17,6 +19,9 @@ from _script_loader import load_script_module
 
 from buildgen.frozen_modules import compute_frozen_modules
 from buildgen.generate import generate_device
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -195,6 +200,79 @@ def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root: Pa
     assert result.returncode != 0
     assert "no-toolchain-here" in result.stderr or "toolchain" in result.stderr.lower()
     assert not (tmp_path / "out.uf2").exists()
+
+
+def _fake_toolchain(root: Path) -> Path:
+    # A toolchain directory that passes the checkout check: ports/rp2 present, nothing built.
+    (root / "micropython" / "ports" / "rp2").mkdir(parents=True)
+    return root
+
+
+def test_cli_a_toolchain_without_its_record_is_refused_before_building(repo_root: Path, tmp_path: Path) -> None:
+    # setup deletes the record first and writes it last, so a directory without one is an interrupted
+    # setup or a toolchain built before the record existed: neither is built from.
+    toolchain = _fake_toolchain(tmp_path / "toolchain")
+    result = _run_cli(repo_root, ["wozi", "--output", str(tmp_path / "out.uf2"), "--toolchain-dir", str(toolchain)])
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"the toolchain at {toolchain} is incomplete or predates the build record - run `uv run toolchain/setup_toolchain.py setup` first" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not (tmp_path / "out.uf2").exists()
+
+
+def test_cli_a_toolchain_in_use_fails_at_once_naming_the_holder(build_firmware: ModuleType, repo_root: Path, tmp_path: Path) -> None:
+    # A second build (or a setup) on one toolchain directory fails fast with the holder's pid rather than
+    # wiping mpy-cross under the first; this process holds the real lock while the CLI runs.
+    toolchain = _fake_toolchain(tmp_path / "toolchain")
+    with build_firmware.st.toolchain_lock(toolchain):
+        result = _run_cli(repo_root, ["wozi", "--output", str(tmp_path / "out.uf2"), "--toolchain-dir", str(toolchain)])
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"another setup or firmware build (pid {os.getpid()}) is using {toolchain}" in result.stderr
+    assert not (tmp_path / "out.uf2").exists()
+
+
+# A record may carry no built ref (a `test` run with none to carry over); the line then says so, never "None".
+@pytest.mark.parametrize(
+    ("built_ref", "printed"),
+    [("v1.29.0", "MicroPython v1.29.0 (0123abcd)"), (None, "MicroPython v1.29.0 as pinned (built by `test`, ref not recorded) (0123abcd)")],
+)
+def test_a_relative_toolchain_dir_reaches_the_build_resolved_and_the_lock_spans_it(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], built_ref: "str | None", printed: str) -> None:
+    # One absolute path for the lock, the record and every path the build writes into generated files;
+    # the lock is held from before the mpy-cross wipe until the image is copied out.
+    monkeypatch.chdir(tmp_path)
+    toolchain = _fake_toolchain(tmp_path / "rel" / "toolchain").resolve()
+    stale_mpy_cross = toolchain / "micropython" / "mpy-cross" / "build" / "stale.o"
+    stale_mpy_cross.parent.mkdir(parents=True)
+    stale_mpy_cross.write_text("")
+    output = tmp_path / "out.uf2"
+    events: list[str] = []
+    seen: dict[str, Path] = {}
+
+    @contextlib.contextmanager
+    def fake_lock(toolchain_dir: Path) -> "Iterator[None]":
+        seen["lock"] = toolchain_dir
+        events.append(f"lock (mpy-cross build present: {stale_mpy_cross.exists()})")
+        yield
+        events.append(f"unlock (image copied: {output.exists()})")
+
+    def fake_build_firmware(micropython_dir: Path, _board: str, _jobs: int, *_args: object, toolchain_dir: Path, **_kwargs: object) -> Path:
+        seen["build"] = toolchain_dir
+        events.append("build_firmware")
+        image = micropython_dir / "firmware.uf2"
+        image.write_bytes(b"UF2\n")
+        return image
+
+    monkeypatch.setattr(build_firmware.st, "toolchain_lock", fake_lock)
+    monkeypatch.setattr(build_firmware.st, "read_toolchain_record", lambda _d: {"pinned_ref": "v1.29.0", "built_ref": built_ref, "micropython_commit": "0123abcd"})
+    monkeypatch.setattr(build_firmware.st, "build_mpy_cross", lambda *_a: events.append(f"build_mpy_cross (wiped: {not stale_mpy_cross.exists()})"))
+    monkeypatch.setattr(build_firmware.st, "build_firmware", fake_build_firmware)
+    monkeypatch.setattr(build_firmware, "build_stage_dir", lambda *_a: events.append("stage"))
+    monkeypatch.setattr(sys, "argv", ["build_firmware.py", "wozi", "--output", str(output), "--toolchain-dir", "rel/toolchain"])
+    assert build_firmware.main() == 0
+    assert seen == {"lock": toolchain, "build": toolchain}, seen
+    assert events == ["lock (mpy-cross build present: True)", "stage", "build_mpy_cross (wiped: True)", "build_firmware", "unlock (image copied: True)"], events
+    toolchain_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("== Toolchain: "))
+    assert printed in toolchain_line, toolchain_line
+    assert "None" not in toolchain_line, toolchain_line
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

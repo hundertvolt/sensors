@@ -1,8 +1,12 @@
 """Tests scripts/_generate_sensortask_modules.py (SPECIFICATION.md Part E.3's build/generated_src/
-pre-generation step): every real device's written outputs equal its in-memory generation, and a
-BuildError from any stage is one reported line that leaves no file of that device behind."""
+pre-generation step): every real device's written outputs equal its in-memory generation, every file
+reaches its name by rename, and a BuildError or a failed write is one reported line, nothing half-written."""
 
+import builtins
+import errno
+import io
 import json
+import os
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -93,3 +97,64 @@ def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(ge
     assert f"simulated {stage} failure" in capsys.readouterr().err
     out_dir = tmp_path / "build" / "generated_src"
     assert not [p for p in out_dir.rglob("*") if p.is_file()]
+
+
+def _one_device_tree(repo_root: Path, tmp_path: Path) -> Path:
+    # A stand-in repo root holding one real device, its src/ and ext/; returns the output directory.
+    (tmp_path / "devices").mkdir()
+    (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
+    (tmp_path / "src").symlink_to(repo_root / "src")
+    (tmp_path / "ext").symlink_to(repo_root / "ext")
+    return tmp_path / "build" / "generated_src"
+
+
+def test_no_output_is_ever_opened_for_writing_under_its_final_name(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A typecheck or test run reading build/generated_src/ while it is regenerated must meet the old file
+    # or the new one, never a truncated one: every write goes to <name>.tmp and reaches <name> by os.replace.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    opened: list[Path] = []
+    renamed: list[tuple[Path, Path]] = []
+    real_open, real_replace = io.open, os.replace
+
+    def recording_open(file: object, mode: str = "r", *args: object, **kwargs: object) -> object:
+        if isinstance(file, (str, Path)) and any(flag in mode for flag in "wax+") and Path(file).is_relative_to(out_dir):
+            opened.append(Path(file))
+        return real_open(file, mode, *args, **kwargs)  # type: ignore[call-overload]
+
+    def recording_replace(src: "str | Path", dst: "str | Path") -> None:
+        renamed.append((Path(src), Path(dst)))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(io, "open", recording_open)
+    monkeypatch.setattr(builtins, "open", recording_open)
+    monkeypatch.setattr(os, "replace", recording_replace)
+    assert generate_sensortask_modules.main() == 0
+
+    finals = sorted(p for p in out_dir.rglob("*") if p.is_file())
+    assert finals, "the run wrote nothing - the check below would hold vacuously"
+    assert not [p for p in finals if p.name.endswith(".tmp")], "a .tmp file was left behind"
+    assert sorted(opened) == sorted(p.with_name(f"{p.name}.tmp") for p in finals), f"a file was opened under its final name: {sorted(set(opened) - {p.with_name(f'{p.name}.tmp') for p in finals})}"
+    assert sorted(renamed) == sorted((p.with_name(f"{p.name}.tmp"), p) for p in finals), "every output must reach its name by one rename of its own .tmp"
+
+
+def test_a_failed_write_is_one_reported_line_and_leaves_no_temporary_file(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # A full disk on the device's third file, raised by the write itself and so naming no file: exit 1
+    # with the file named anyway, no traceback, the .tmp files already written removed, no output in place.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    real_write_text = Path.write_text
+    writes: list[Path] = []
+
+    def filling_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        writes.append(self)
+        if len(writes) == 3:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "write_text", filling_write_text)
+    assert generate_sensortask_modules.main() == 1
+    err = capsys.readouterr().err
+    assert f"error: cannot write {writes[2]}: No space left on device" in err
+    assert "Traceback" not in err
+    assert not [p for p in out_dir.rglob("*") if p.is_file()], "a failed write left files behind"

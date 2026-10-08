@@ -90,7 +90,16 @@ firmware_version="$(derive_firmware_version)"
 stub_package="micropython-rp2-rpi_pico_w-stubs==${firmware_version}.*"
 _stage_passed
 
+# ---- stub install block ----
 stage="stub install"
+# typings/ is this script's own gitignored tree: an install recorded under another spec, or under none,
+# is wiped first, so a version change never overlays an older install.
+stub_spec_file="typings/.stub-spec"
+if [ -e typings ] && [ "$(head -n 1 "$stub_spec_file" 2>/dev/null || true)" != "$stub_package" ]; then
+    rm -rf typings
+fi
+# Dropped before the install and written after its check, so a failed or killed install leaves none.
+rm -f "$stub_spec_file"
 if ! uv pip install --quiet --target typings "$stub_package"; then
     cat >&2 <<EOF
 error: couldn't install $stub_package.
@@ -106,7 +115,24 @@ automatic fallback.
 EOF
     exit 1
 fi
+# The board package's one dist-info directory names the version uv resolved; none or several leave it
+# unknown, so nothing is recorded.
+stub_dist_infos=()
+for stub_dist_info in typings/micropython_rp2_rpi_pico_w_stubs-*.dist-info; do
+    if [ -d "$stub_dist_info" ]; then
+        stub_dist_infos+=("$stub_dist_info")
+    fi
+done
+if [ "${#stub_dist_infos[@]}" -ne 1 ]; then
+    echo "error: found ${#stub_dist_infos[@]} stub dist-info directories (typings/micropython_rp2_rpi_pico_w_stubs-*.dist-info), expected exactly one - remove typings/ and re-run" >&2
+    exit 1
+fi
+stub_version="${stub_dist_infos[0]#typings/micropython_rp2_rpi_pico_w_stubs-}"
+stub_version="${stub_version%.dist-info}"
+echo "== MicroPython stubs: $stub_version (for firmware $firmware_version)"
+printf '%s\n%s\n' "$stub_package" "$stub_version" >"$stub_spec_file"
 _stage_passed
+# ---- end of the stub install block ----
 
 # Two verified regressions in micropython-stdlib-stubs 1.29.0.post1/.post2, repaired at the stub
 # tree rather than papered over with `type: ignore` in our own code, which is correct on the real

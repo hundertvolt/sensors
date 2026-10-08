@@ -1,0 +1,8 @@
+total 28
+drwxr-xr-x  7 root root 4096 Oct  8 17:21 .
+drwx------ 17 root root 4096 Oct  8 15:38 ..
+drwxr-xr-x  5 root root 4096 Oct  8 17:19 build_overrides
+drwxr-xr-x 16 root root 4096 Oct  6 05:29 micropython
+drwxr-xr-x  3 root root 4096 Oct  6 05:41 node
+drwxr-xr-x 12 root root 4096 Oct  6 05:29 pico-sdk
+drwxr-xr-x 21 root root 4096 Oct  8 17:17 picotool

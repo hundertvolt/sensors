@@ -11,7 +11,9 @@ REST API reference via `buildgen` into gitignored `build/generated_src/`, regene
 # Writes sensortask_<d>.py, sensortask_<d>_main.py, sensortask_<d>_main_noautostart.py, sensortask_<d>_expected.json, sensortask_<d>_wiring_plan.json,
 # definitions/<d>.json and api/<d>.json per device, plus definitions/index.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
 
+import contextlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +26,25 @@ from buildgen.errors import BuildError  # noqa: E402
 from buildgen.generate import generate_device  # noqa: E402
 from buildgen.twin_wiring import compute_twin_wiring  # noqa: E402
 from buildgen.version import current_build_date  # noqa: E402
+
+
+def _write_through_rename(files: "dict[Path, str]") -> bool:
+    # Each file goes to <name>.tmp beside it and is renamed into place once all are written, so a run
+    # reading build/generated_src/ meanwhile meets the old file or the new one, never a truncated one.
+    written: list[Path] = []
+    try:
+        for path, text in files.items():
+            written.append(path.with_name(f"{path.name}.tmp"))
+            written[-1].write_text(text)
+        for tmp in written:
+            os.replace(tmp, tmp.with_name(tmp.name.removesuffix(".tmp")))
+    except OSError as e:
+        for tmp in written:
+            with contextlib.suppress(OSError):  # the write error below is the one reported
+                tmp.unlink(missing_ok=True)
+        print(f"error: cannot write {e.filename or written[-1]}: {e.strerror}", file=sys.stderr)
+        return False
+    return True
 
 
 def main() -> int:
@@ -52,14 +73,19 @@ def main() -> int:
         except BuildError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-        (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
-        (out_dir / f"sensortask_{device}_main.py").write_text(generated.boot_entry_source)
-        (out_dir / f"sensortask_{device}_main_noautostart.py").write_text(generated.boot_entry_noautostart_source)
-        (out_dir / f"sensortask_{device}_expected.json").write_text(json.dumps(generated.expected_facts))
-        (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))
-        (definitions_dir / f"{device}.json").write_text(json.dumps(definitions, indent=2))
-        (api_dir / f"{device}.json").write_text(api_reference_json(reference))
-    (definitions_dir / "index.json").write_text(json.dumps({"devices": [p.stem for p in device_tomls]}))
+        outputs = {
+            out_dir / f"sensortask_{device}.py": generated.module_source,
+            out_dir / f"sensortask_{device}_main.py": generated.boot_entry_source,
+            out_dir / f"sensortask_{device}_main_noautostart.py": generated.boot_entry_noautostart_source,
+            out_dir / f"sensortask_{device}_expected.json": json.dumps(generated.expected_facts),
+            out_dir / f"sensortask_{device}_wiring_plan.json": json.dumps(wiring_plan),
+            definitions_dir / f"{device}.json": json.dumps(definitions, indent=2),
+            api_dir / f"{device}.json": api_reference_json(reference),
+        }
+        if not _write_through_rename(outputs):
+            return 1
+    if not _write_through_rename({definitions_dir / "index.json": json.dumps({"devices": [p.stem for p in device_tomls]})}):
+        return 1
     print(f"Generated {len(device_tomls)} device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into {out_dir}")
     return 0
 

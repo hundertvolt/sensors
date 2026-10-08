@@ -81,7 +81,7 @@ tests_hardware/          Real-hardware tiers (flash, bench) and device scripts -
                           state
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
   versions.toml             single source of truth for the target MicroPython version (Part B)
-  setup_toolchain.py        setup/test - builds RP2040 firmware and both Unix-port variants
+  setup_toolchain.py        setup/test/env/board - builds RP2040 firmware and the three Unix-port builds
   micropython_overrides.py  build overrides applied without editing the checkout (B.14)
 pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv)
 scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run_unix_port_integration.sh
@@ -512,9 +512,12 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   first): a client fault — a refusal, a bad head, a reset, a per-call or outer-cap timeout, a stream
   error — ends that one connection and releases its slot (the smallest rung), traced once; it never
   restarts the server task. A send that finds no room in the lwIP send buffer answers `EAGAIN`, and
-  its task waits for room without holding the loop until the connection's per-call timeout ends it;
-  a write that meets `ERR_MEM` while room is reported still waits inside the pinned
-  `extmod/modlwip.c` for up to 10 s with the whole VM held (B.14.2.1). A failed `start_server()` is
+  its task waits for room without holding the loop until the connection's per-call timeout ends it.
+  A write that meets `ERR_MEM` while room is reported answers `EAGAIN` too in this firmware (the
+  `modlwip_eagain` build override, B.14.4; owner, 2026-09-30), where the pinned `extmod/modlwip.c`
+  alone would wait inside the call for up to 10 s with the whole VM held (B.14.2.1); with room
+  reported, its task's retry is a cooperative busy wait until the peer acknowledges or the per-call
+  timeout fires. A failed `start_server()` is
   tried three times in all, five seconds apart, so the last attempt comes one full lwIP close linger
   (10 s) after the first (`web.start_retries`, `web.start_retry_s`); each failure prints at the
   configured level, the last persists `wrnno` 62 and ends the task. A `socket()` failure holds
@@ -1124,10 +1127,10 @@ host-side Unix port build for running tests under the real interpreter (E.1).
 
 ## B.1 Why not just "apt install the toolchain"
 
-1. **The four pieces must agree exactly, or the build silently breaks** — `picotool` enforces a
-   matching major.minor against `pico-sdk` since 2.0.0 ("Incompatible picotool installation
-   found"), and `pico-sdk` must match whatever MicroPython's build compiles against (B.3 derives
-   this instead of hand-tracking it).
+1. **The four pieces must agree, or the build breaks** — `picotool` must be of `pico-sdk`'s major
+   version and at least the version `pico-sdk` requires, or the build fails ("Incompatible picotool
+   installation found"; F.1), and `pico-sdk` must match whatever MicroPython's build compiles
+   against (B.3 derives this instead of hand-tracking it).
 2. **A dev machine's own tools/env vars could silently change the build output** — a stray
    `CFLAGS`, a shadowing `~/bin/cmake`, a different `picotool` — none should affect a reproducible
    build (B.4).
@@ -1136,51 +1139,83 @@ host-side Unix port build for running tests under the real interpreter (E.1).
 
 ```sh
 uv run toolchain/setup_toolchain.py                              # install/update per versions.toml
-uv run toolchain/setup_toolchain.py --latest                      # pin + install newest stable
-uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build a specific ref
+uv run toolchain/setup_toolchain.py --latest                      # pin versions.toml to the newest stable tag (a pin move: the owner's call; the platform re-check follows)
+uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build this ref without changing versions.toml (off-pin: re-check before trusting it)
 uv run toolchain/setup_toolchain.py --clean                       # wipe + rebuild from scratch
 uv run toolchain/setup_toolchain.py --skip-apt                    # skip apt-get install
 uv run toolchain/setup_toolchain.py --jobs 4                      # override parallel make jobs
-uv run toolchain/setup_toolchain.py --toolchain-dir /path         # default ~/pico-toolchain
+uv run toolchain/setup_toolchain.py --toolchain-dir /path         # default ~/pico-toolchain; the path may not hold whitespace, quotes, \ $ # ; :
 
 uv run toolchain/setup_toolchain.py test                          # re-verify existing install, offline
+uv run toolchain/setup_toolchain.py board                         # print the one connected board's serial path (B.12)
 ```
 
 `setup` is the default subcommand; `test` skips network/apt and re-verifies an existing install.
-`--toolchain-dir`/`--jobs` apply to both; the rest are `setup`-only. `scripts/test.sh` exposes
-`--skip-apt` as `SKIP_APT=1`. No venv needed — `uv run` provisions an ephemeral interpreter (B.8).
-Both subcommands also build/verify **two** Unix-port interpreters (owner decision, 2026-09-21):
+`--toolchain-dir`/`--jobs` apply to both; the rest are `setup`-only. `--latest` and
+`--micropython-ref` are exclusive (B.3). `scripts/test.sh` exposes `--skip-apt` as `SKIP_APT=1`.
+No venv needed — `uv run` provisions an ephemeral interpreter (B.8).
+Both subcommands also build/verify **three** Unix-port interpreters, one per build flavour:
 `build-standard` **without** `MICROPY_PY_SYS_SETTRACE` — the test rig, what plain `scripts/test.sh`
-runs — and `build-settrace` with it, which only `scripts/test.sh --coverage` uses (E.5). RP2040
-firmware never gets the flag either way. **The flag is not inert when unused** (measured
-2026-09-18), which is why the two cannot share one build: it makes the VM allocate a frame and a
-code object on every call and every generator resume, callback or not, inflating every allocation
-figure 4-5x relative to the firmware — E.5.2 has the measurements and
-HEAP_FRAGMENTATION_MEASUREMENTS.md archive §1.2 item 7 the per-node table. Since
-the split, the plain suite's figures are the firmware's own scale, and the heavy files run faster
-for the same reason (`test_sensortask_wozi.py` 24.6s → 9.3s). Because a build directory's name no
-longer tells you which variant is in it, `scripts/test.sh` verifies the binary rather than the path
-(E.5.2's first consequence).
+runs — and `build-settrace` with it, which only `scripts/test.sh --coverage` uses (E.5) (owner,
+2026-09-21); and `build-lwip`, the real patched `extmod/modlwip.c` over loopback lwIP, which only
+the lwIP host files run (E.1, E.3; owner, 2026-09-30). RP2040 firmware never gets the settrace flag
+either way. **The flag is not inert when unused** (measured 2026-09-18), which is why the two cannot
+share one build: it makes the VM allocate a frame and a code object on every call and every
+generator resume, callback or not, inflating every allocation figure 4-5x relative to the firmware
+— E.5.2 has the measurements and HEAP_FRAGMENTATION_MEASUREMENTS.md archive §1.2 item 7 the
+per-node table. The plain suite's figures are therefore the firmware's own scale, and the heavy
+files run faster for the same reason (measured at the split of the two builds:
+`test_sensortask_wozi.py` 24.6s → 9.3s). Because a build directory's name no longer tells you
+which variant is in it, `scripts/test.sh` verifies the binary rather than the path (E.5.2's first
+consequence).
 
 **Prerequisites**: `sudo`; outbound network to GitHub/apt; `uv`; Ubuntu's `universe` component
 (default on real Ubuntu images — `gcc-arm-none-eabi` lives there).
 
 ## B.3 How it works
 
-1. Check out MicroPython at the pinned ref (`versions.toml`'s `[micropython] ref`).
+1. Check out MicroPython at the pinned ref — `versions.toml`'s `[micropython] ref`, exactly one
+   `ref = "…"` line in that table. The pin moves only on the owner's call (owner, 2026-09-26):
+   `--latest` rewrites that one line through a checked copy (`versions.toml.tmp`, re-read as below,
+   then renamed into place), and a missing, doubled or misplaced line is refused with the file
+   untouched; `--latest` that resolves to the pinned tag writes nothing. `--micropython-ref` builds
+   another ref without writing anything; the two options are exclusive.
 2. Derive the matching `pico-sdk` version from MicroPython's own git submodule pin at
    `lib/pico-sdk`, rather than tracking it separately.
 3. Derive the matching `picotool` version by resolving that commit to its nearest tag, taking
-   major.minor, picking the newest `picotool` tag sharing it.
+   major.minor, picking the newest `picotool` tag sharing it (narrower than pico-sdk's own rule,
+   B.1).
 4. Install the ARM cross-compiler from `apt`'s `gcc-arm-none-eabi` (no pin needed).
 5. Build inside an explicit, isolated environment (B.4).
 6. Verify before declaring success, every run, via a frozen-bytecode chain (B.6): freeze a test
    module into both the Unix port and RP2 firmware, import it by name in the Unix port and check
-   its result, clean up, rebuild a vanilla Unix port as the standing test rig.
+   its result, clean up, rebuild the Unix ports, each proven by its readbacks (B.14).
+7. Record what was built: `toolchain-record.json` in the toolchain directory (B.5) names the pinned
+   and built refs, the MicroPython and pico-sdk commits, the picotool tag and version, the board,
+   the `[lwip]` table, the compilers' version lines, the three Unix build directories, the sha256 of
+   `versions.toml`, `setup_toolchain.py` and `micropython_overrides.py`, and the time.
+
+`versions.toml` is read as a typed table — `[micropython] ref` (a non-empty string), `[toolchain]
+board` (a non-empty string) and `apt_packages` (a list of strings), `[lwip]` (a table, whose values
+B.14.2's checks take at the build that applies them) — and an unreadable file, or a missing or
+mistyped key, fails naming the file, table and key before anything is built.
+
+The whole `setup`, `test` or `env` command runs under the toolchain directory's lock (B.5). The
+record is deleted when a `setup` or `test` starts and written last, after the verification summary,
+through a temporary file and a rename, so an interrupted run leaves none. `test` derives no pico-sdk
+or picotool fact: it carries the built ref and those fields over from the previous record while the
+MicroPython commit is unchanged, and otherwise records the checkout's own `git describe --tags
+--always` as the built ref and leaves them null. Both then remove the installer's own outdated
+leftovers (B.5). After a build of any ref other than the pin, `setup` prints the platform re-check
+notice (Part F's opening checklist), and after `--latest` moved the pin it prints "versions.toml now
+pins <tag>: the pin moves only on the owner's call (owner, 2026-09-26) - revert it unless that call
+was made." both when it writes the file and again at the end.
 
 Firmware/Unix-port builds always wipe first; `mpy-cross`'s build dir is left alone (relinks if
 unchanged). `--clean` forces a from-scratch rebuild of everything without re-cloning. `test` is
-`setup` with steps 1-4 skipped.
+`setup` with steps 1-4 skipped. An existing clone with no `.git` or no `HEAD` (an interrupted clone)
+is named and refused, never deleted; a new clone is retried, its own partial directory removed
+before each retry.
 
 ## B.4 Environment isolation
 
@@ -1189,41 +1224,112 @@ constructed environment, never the caller's shell wholesale:
 
 - **`build_env()`** (compile steps) — a fixed `PATH` plus a small allowlist (`HOME`, `USER`,
   `LOGNAME`, `TERM`, `TMPDIR`); everything else (`CC`/`CFLAGS`/`CMAKE_*`/`PICO_SDK_PATH`/
-  `PYTHONPATH`/stray proxy vars) is dropped. `LANG`/`LC_ALL` forced to `C.UTF-8` (B.7.1).
+  `PYTHONPATH`/stray proxy vars) is dropped. `LANG`/`LC_ALL` forced to `C.UTF-8`, since the
+  diagnostics check reads English `error:`/`warning:` (B.7).
 - **`network_env()`** — the same base plus real proxy/CA vars, explicitly named. Used for
   `git`/`apt-get`, and for the rp2 port's `make submodules` (fetches over git *and* runs a
   preliminary `cmake` configure — needs both the deterministic `PATH` and network access).
+  Privileged apt calls keep them through `sudo --preserve-env=<names>` (sudo's `env_reset` would
+  drop them): `DEBIAN_FRONTEND` plus whichever of those variables are set, by name, so a proxy URL,
+  which can carry credentials, never appears in argv.
 
 `picotool`'s install location is pinned explicitly (`-DCMAKE_INSTALL_PREFIX=/usr/local`).
+
+**Every subprocess is bounded and streams its output** (`run()`). Its budget is one of three —
+`tool.remote_query_timeout_s` for a short query or probe (`git` queries and checkouts, the built
+binaries' probes, `nmcli`/`ip`/`systemctl` and the other bench and host commands, the sudo probe),
+`tool.network_step_timeout_s` for a third-party download (clones, fetches, submodule updates, `uv
+sync`, `npm ci`, the Playwright installs) and `tool.build_step_timeout_s` for a compile or install
+(every `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the cache, the Node
+unpack) — or a step's own (Part N `tool.*`). Each output line is printed as it arrives, flushed, so
+a stalled step is named by the last line it printed. A timeout stops the command — SIGTERM, then
+SIGKILL after 5 s — and fails naming the limit. Every command gets its own session, so the stop
+reaches everything it started, except one run through `sudo` (or one that runs sudo itself, the
+Playwright `install-deps`), which stays in the caller's session, where sudo can ask for a password
+on the terminal. SIGTERM and SIGHUP to the installer become an exit that stops the running command
+the same way, as Ctrl-C does; a SIGKILL cannot be caught, so the command it was running keeps
+running in its own session, no longer holding the toolchain lock (B.5).
+
+**Network steps are retried** (`run_retried()`): `tool.uv_sync_attempts` attempts with pauses of
+one, then two, `tool.uv_sync_backoff_step_s` steps — the clones (each retry first removing that
+clone's own partial directory), the fetches, both `git ls-remote` tag queries, the pico-sdk
+`lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's download and both Node `curl`
+calls; the last failure names the step and the fix. **A secret passed to a step** (`secrets=`)
+shows as `***` in the echoed command and in its streamed output, while the caller still gets the
+real text back.
+
+**apt runs in three steps** (`ensure_apt_packages()`): `apt-get update` once, bounded by
+`tool.apt_step_timeout_s` and non-fatal (a failure is logged and the lists already on the host
+are used); `apt-get install --download-only`, retried, each attempt bounded by the same limit and
+each fetch by `tool.apt_acquire_timeout_s`; then one `apt-get install` from the local cache on the
+build budget. Only the download is retried, so no retry can kill `dpkg` mid-configure, which leaves
+the package database interrupted until `dpkg --configure -a`. A failed download or install adds
+the remedy: let sudo keep the proxy variables (`env_keep`), or install the packages by hand and pass
+`--skip-apt`.
+`npx playwright install-deps` runs sudo itself with the caller's environment (B.12).
 
 ## B.5 Directory layout
 
 ```
 <toolchain-dir>/          default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain
+  toolchain-record.json    what was built from what (refs, commits, picotool, compilers, input hashes)
+  .toolchain.lock          held by the one setup, test or firmware build allowed per directory
   micropython/             full clone at the pinned ref
     ports/rp2/build-<board>/    transient - removed after verification
     ports/unix/build-standard/  host-side interpreter build - the standing test-rig artifact
     ports/unix/build-settrace/  the same, plus MICROPY_PY_SYS_SETTRACE - `--coverage` only
+    ports/unix/build-lwip/      the same interpreter with the patched modlwip over loopback lwIP - the lwIP host files only
     mpy-cross/build/            cross-compiler build output
+  build_overrides/         the generated files of B.14's overrides, one directory each
   pico-sdk/                full clone at the ref MicroPython pins
-  picotool/                full clone at the derived matching tag; built + sudo make install'ed
+  picotool/                full clone at the derived matching tag; built and sudo make install'ed only when its tag changed
+  node/                    the .nvmrc-pinned Node, when the host has none, and node-record.json naming it
 ```
 
 Full (non-shallow) clones — shallow clones make the update path unreliable.
+
+**One run at a time per toolchain directory**: `setup`, `test` and `env` (around the whole command)
+and `scripts/build_firmware.py` take an exclusive, non-blocking `flock` on `.toolchain.lock`,
+creating the directory first, and write their pid into it; a second run fails at once with
+"another setup or firmware build (pid N) is using <dir> - wait for it to finish, or use another
+--toolchain-dir", never waiting, and the OS drops the lock with a dying holder, so it never goes
+stale. An interrupted `setup` or `test` is detected by the missing record (B.3), on which
+`scripts/test.sh` rebuilds (E.3) and `scripts/build_firmware.py` refuses (B.11).
+`setup_toolchain.py board` takes no lock.
+
+**picotool** is rebuilt and installed only when the previous record names another tag or
+`/usr/local/bin/picotool version` no longer reports `picotool v<tag>`; otherwise no `cmake` and
+no `sudo` run. A picotool whose `version` says it was "compiled without USB support" cannot flash:
+`env --tier flash|bench` refuses it, `setup` and `generic` warn. A different `picotool` found first
+on the fixed `PATH` gets a warning naming both. **Node**, when no matching one is on `PATH`, comes
+from one fetch of the pinned major's `SHASUMS256.txt` (the release name and its sha256 together),
+is checked against that sha256 before anything is unpacked, unpacked aside and renamed into place,
+and recorded in `node/node-record.json` (major, tarball, sha256), which a reused tree also gets.
+
+**Setup removes directories its own earlier versions left**, each printed with its reason, at the
+end of every `setup` and `test`: Unix `build-*` directories other than the three current ones,
+`build_overrides/` entries no current override writes, and Node trees other than the one
+`node/node-record.json` names — with no Node record, no Node tree is removed. `ports/rp2/build-*`
+is never touched, and a leftover resolving outside the toolchain directory (a symlink) is kept with
+a warning.
 
 ## B.6 Verification
 
 Every run (`run_verification_sequence()`), each step gating the next:
 
 1. Write a small test module (arithmetic, exception handling, stdlib import, a `RESULT` value).
-2. Build `mpy-cross`. 3. Cross-compile the test module directly. 4. Build the Unix port with it
-   frozen via `FROZEN_MANIFEST=`, zero warnings. 5. Import the frozen module by name in that
-   binary, no source `.py` on disk — proves it was actually baked in. This is the host-side build
-   tests run under (Part E). 6. Build the RP2 firmware with the same module frozen, zero warnings
-   (build-only, no hardware here). 7. Clean up the RP2 firmware/Unix-port build dirs (keep
-   `mpy-cross`/`picotool`). 8. Rebuild a vanilla Unix port — the standing test rig.
+2. Build `mpy-cross`, zero errors and warnings. 3. Cross-compile the test module directly. 4. Build
+   the Unix port with it frozen via `FROZEN_MANIFEST=`, zero errors and warnings, its SIGINT
+   readback passed (B.14.1). 5. Import the frozen module by name in that binary, no source `.py` on
+   disk — proves it was actually baked in. This is the host-side build tests run under (Part E).
+   6. Build the RP2 firmware with the same module frozen, zero errors and warnings (build-only, no
+   hardware here), its lwIP-options, `modlwip_eagain` and tick-offset readbacks passed (B.14). 7.
+   Clean up the RP2 firmware/Unix-port build dirs (keep `mpy-cross`/`picotool`). 8. Rebuild the
+   vanilla Unix ports — (a) `build-standard`, the standing test rig, (b) `build-settrace`, (c)
+   `build-lwip`, the lwIP host build (B.14.4) — each followed by its override readbacks (B.14).
 
-A completed run leaves no vanilla RP2 `firmware.uf2`; step 8's Unix port is the only kept artifact.
+A completed run leaves no vanilla RP2 `firmware.uf2`; step 8's three Unix ports are the kept
+artefacts, and the toolchain record is written after them (B.3).
 
 ## B.7 Evidence this actually works
 
@@ -1231,17 +1337,35 @@ Verified end-to-end in a clean `debootstrap` Ubuntu 24.04 chroot for both `v1.26
 stable; an in-place version update leaves no stale state; `test` alone completes in ~30s offline;
 both `setup`/`test` were run against a deliberately hostile environment (poisoned `PATH`, garbage
 `CFLAGS`/`CMAKE_*`, non-English `LANG`) with zero poison surviving into the build.
+**Every build is warning-free**: a `warning:` or `error:` in any build's output — `mpy-cross`, the
+firmware, every Unix-port build — fails the run, even when the tool exits 0 (one helper checks every
+build, `_fail_on_build_diagnostics()` in `toolchain/setup_toolchain.py`). The per-file flags are named
+here and in B.7.1, each scoped to one object file in a generated build file and never passed on a
+`make` line: the mbedtls one (B.7.1), and two flags private to `extmod/modlwip.o` in the host lwIP
+build's variant makefile only (B.14.4), never in the firmware or the other two Unix builds —
+`-Wno-sign-compare`, since eight unmodified upstream lines of `extmod/modlwip.c` compare an unsigned
+value with `-1` and the Unix port compiles with `-Wextra` (`ports/unix/Makefile:55`) where rp2 does
+not (`ports/rp2/CMakeLists.txt:540-541`), and `-DSOMAXCONN=2`, since `ports/unix/mpconfigport.h:176`
+takes the default `listen()` backlog from `<sys/socket.h>`'s `SOMAXCONN`, which `modlwip.c` never
+includes (2 is rp2's own default, `py/mpconfig.h:2148`). Nothing else in lwIP or the Unix port
+warned on the first host lwIP build (GCC 13.3.0, x86-64, 2026-10-08).
 See CLAUDE.md's "Build-environment verification" for the re-check recipe.
 
 ### B.7.1 GCC ≥14 host: mbedtls array-bounds workaround
 
-`ctr_drbg.c` fails `-Werror=array-bounds` inside `mbedtls_xor()` on any GCC ≥14 host (confirmed on
-Debian trixie, GCC 14.2) — a confirmed GCC false positive (Debian bug #1085354), fixed upstream in
-mbedtls 3.6.6; this project's pinned MicroPython vendors an mbedtls commit predating that fix.
-Worked around via `-Wno-array-bounds` in `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` (both build
-functions treat any warning as a hard failure). **Not yet fixed upstream** ([GCC bug
-#121044](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044) still UNCONFIRMED) — recheck its
-status, and whether a future MicroPython ref vendors mbedtls ≥3.6.6, before removing this.
+`ctr_drbg.c` failed `-Werror=array-bounds` inside `mbedtls_xor()` on a GCC ≥14 host (confirmed on
+Debian trixie, GCC 14.2, with the mbedtls 3.6.2 the pins before v1.29.0 vendored) — a confirmed GCC
+false positive (Debian bug #1085354). mbedtls avoids it since `292b96c0a`, which the pin's vendored
+mbedtls 3.6.6 (`lib/mbedtls` `0bebf8b`) contains. The suppression stays, scoped to that one file:
+`toolchain/micropython_overrides.py` writes `$(BUILD)/lib/mbedtls/library/ctr_drbg.o: CFLAGS +=
+-Wno-array-bounds` into both generated Unix variant makefiles and
+`set_source_files_properties("${MICROPY_DIR}/lib/mbedtls/library/ctr_drbg.c" PROPERTIES
+COMPILE_OPTIONS "-Wno-array-bounds")` into the generated rp2 board cmake (the real build's
+`flags.make` lists it for that one object only). It is not yet re-checked on a GCC ≥ 14 host with
+the pin's mbedtls 3.6.6 — this host's compilers are gcc 13.3.0 and arm-none-eabi-gcc 13.2.1 — and
+goes when a GCC ≥ 14 build of both targets is clean without it, checked at every ref move (agent,
+2026-10-08). GCC bug [#121044](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044) was UNCONFIRMED
+when last read; its status is unread here (gcc.gnu.org unreachable from this sandbox, 2026-10-08).
 
 ## B.8 Why not a full venv
 
@@ -1268,10 +1392,11 @@ the six devices and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit
 is the web tier's whole wall clock - 567s of the suite's 578s, measured 2026-09-19 - and kept
 rolling a 20-minute budget while taking three other jobs' signals with it.
 
-Cache key hashes **both** `versions.toml` and `setup_toolchain.py` — keying on `versions.toml`
-alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`) survive across
-commits, a real bug (`--coverage` failed in CI while passing locally). Every caller of the
-composite action shares that one key, so the first job in a run builds and the rest hit.
+The cache key hashes every file whose content is compiled into the cached binaries —
+`versions.toml`, `setup_toolchain.py` and `micropython_overrides.py` — since keying on
+`versions.toml` alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`)
+survive across commits, a real bug (`--coverage` failed in CI while passing locally). Every caller
+of the composite action shares that one key, so the first job in a run builds and the rest hit.
 
 **`uv sync` is retried three times in every job that syncs** — the four lint lanes, and every job
 reaching uv through `.github/actions/setup-micropython-toolchain` — so a third party's build-time
@@ -1361,21 +1486,28 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
 
 ## B.11 Building this project's firmware
 
-**Bumping the MicroPython version**: change `versions.toml`'s `[micropython] ref` — the only place.
+**Bumping the MicroPython version**: change `versions.toml`'s `[micropython] ref` — the only place —
+then run the platform re-check (CLAUDE.md "Platform target"; Part F's opening checklist).
 Everything else derives automatically: matching pico-sdk/picotool (B.3), the mypy type stubs
-(`scripts/typecheck.sh`, failing clearly if no matching stub release exists yet), the Unix port.
+(`scripts/typecheck.sh`, failing clearly if no matching stub release exists yet), the Unix ports.
 
 The legacy build (`legacy/firmware/build-<device>.sh`) is described in `legacy/README.md`;
 reference-only.
 
-**The `src/`-based build (parallel pipeline)**: `scripts/build_firmware.py <device> [--output
-PATH]` assembles a real `firmware.uf2` from the generated device module, its boot entry, `src/` +
+**The `src/`-based build (parallel pipeline)**: `scripts/build_firmware.py <device> [--output PATH]`
+assembles a real `firmware.uf2` from the generated device module, its boot entry, `src/` +
 `ext/microdot.py` + the device's website (H) — build-only. Every device needs its own
 `devices/<device>.toml` (Part L); `buildgen.codegen.generate_boot_entry_source()` emits the boot
 entry `sensortask_<device>_main.py`, frozen as `main.py`, and its no-autostart variant
 `sensortask_<device>_main_noautostart.py`, an entry that starts at the REPL and prints the manual
 start line (A.7); `scripts/_generate_sensortask_modules.py` writes both beside the device module
-into `build/generated_src/`.
+into `build/generated_src/`, every output to a `<name>.tmp` beside it, renamed into place with
+`os.replace()` once all are written, so a killed run never leaves a half-written file under its real
+name. One build at a time per toolchain directory: `scripts/build_firmware.py` holds the directory's
+lock (B.5) from before it stages the modules until the image is copied out, so a second build or
+setup fails at once naming the first; it refuses a toolchain directory without
+`toolchain-record.json` (incomplete, or older than the record) and prints the record's built ref and
+commit before building.
 
 **That entry point is frozen under the literal name `"main.py"`, NOT imported from a custom
 `_boot.py` — load-bearing**, re-confirmed against pinned v1.29.0: `ports/rp2/main.c`'s boot sequence
@@ -1421,22 +1553,39 @@ necessary, not sufficient, for a real device to boot.
 WiFi bridge/AP so a flashed board reaches genuine internet/NTP, automating
 `tests_hardware/README.md`'s manual `nmcli` recipe).
 
-**USB device detection** reads `/sys/class/tty/<name>/device` for `idVendor=2e8a` across every
-`ttyACM*`/`ttyUSB*` entry (not `lsusb`/`udevadm`, not guaranteed present). Exactly one match
-required; zero or multiple is a hard error naming `--device` as the escape hatch, never a silent
-guess.
+**USB board detection** is one resolver (`resolve_pico_device()`): `--device` wins, then
+`$MPREMOTE_DEVICE`, then exactly one detected board — a `/dev/serial/by-id/` link with MicroPython's
+own USB name (`usb-MicroPython_Board_in_FS_mode_*-if00`) whose `ttyACM*`/`ttyUSB*` reports vendor
+`2e8a` under `/sys/class/tty/<name>/device` (not `lsusb`/`udevadm`, not guaranteed present). The
+vendor narrows to Raspberry Pi devices and the name to a board running MicroPython, since a debug
+probe shares the vendor; the by-id path survives the re-enumeration a hard reset causes. With `/sys`
+unreadable the name alone decides. Zero or several boards is a hard error naming `--device` and
+`MPREMOTE_DEVICE`, never a guess. `setup_toolchain.py board` prints the resolved path and nothing
+else (no lock, no `versions.toml`), the entry point for scripts.
 
-**`bench`'s bridge/AP creation is idempotent** (`ensure_bench_bridge()`): recognized purely by
-nmcli connection name (`br0`/`br0-eth0`/`br0-wifi-ap`), so a second run never recreates/
-re-randomizes an already-configured bridge. A genuinely new bridge gets fresh random SSID/password
-(`secrets`-generated) unless overridden, printed once at creation only. Uplink/WiFi-adapter
-interfaces auto-detect the same "exactly one or hard error" way, only when actually creating a
-bridge (checked via `bench_ap_exists()` first).
+**`bench`'s bridge/AP creation is idempotent** (`ensure_bench_bridge()`): recognized purely by nmcli
+connection name (`br0`/`br0-eth0`/`br0-wifi-ap`), so a second run never recreates/ re-randomizes an
+already-configured bridge. A genuinely new bridge gets a fresh random SSID (`secrets`-generated)
+unless `--ssid` names one, and a fresh random password unless `$BENCH_AP_PASSWORD` is set — a
+throwaway password used once, passed to `nmcli` on its command line and never committed (owner,
+2026-10-02); `secrets=` keeps it out of the echoed command (B.4), and only a generated one is
+printed, once, at creation. Uplink/WiFi-adapter interfaces auto-detect the same "exactly one or hard
+error" way, only when actually creating a bridge (checked via `bench_ap_exists()` first).
 
 `run_project_dependency_install()` (`uv sync`/`npm ci`) runs with `env=None` (inherit the caller's
 real environment) — the one deliberate exception to this script's isolation convention, since
 `uv`/`npm` live wherever the host's own installer put them, never the fixed system-tool `PATH`.
-`ip`/`nmcli` stay on the fixed `PATH` correctly; missing ones auto-install via `apt`.
+Every command a tier runs is checked on that fixed `PATH` and, unless `--skip-apt`, installed (the
+`_TIER_COMMANDS` table: `curl` for `generic`'s Node download, checked only when Node must be
+fetched; for `bench`, `nmcli` (`network-manager`), `ip` and `tc` (`iproute2`), `iptables`, `sysctl`
+(`procps`), `modprobe` (`kmod`), `iw`, `tcpdump` and `timeout` (`coreutils`)); a missing one with
+`--skip-apt` fails naming its package, and one still missing after the install fails too. The bench
+tier then probes passwordless sudo, `sudo -k -n <absolute path> <version argument>`, for each
+command it runs unattended (`_BENCH_SUDO_COMMANDS`: `nmcli`, `iw`, `iptables`, `tc`, `tee`,
+`picotool`, `timeout`, `systemd-run`, `systemctl`), so a cached credential cannot pass it; it writes
+no sudoers file and names every refused command (`tests_hardware/README.md`, Prerequisites); root
+passes. `ensure_br_netfilter()` persists its two settings with `sudo tee` from stdin, no temporary
+file.
 
 **Local-test scope**: `generic` verified fully end-to-end in a cloud sandbox; USB/network
 *detection* logic exercised for real where safe. Not exercised there: actually flashing a physical
@@ -1463,6 +1612,18 @@ later changes. `ensure_bench_bridge()` now pins `bridge.mac-address` to the upli
 MAC before the bridge comes up on every fresh creation, and warns (never auto-repairs — cycling a
 live bridge's MAC risks the same incident) if an existing bridge's MAC doesn't match.
 `tests_hardware/README.md`'s manual recipe carries the identical fix.
+
+**The installer arms the switch itself** (`_armed_recovery()`), around a bridge creation and around
+the channel re-pin of an existing bridge: `sudo systemd-run --unit=sensors-bench-recovery-<pid>
+--on-active=<tool.bench_bridge_recovery_arm_s> /bin/bash -c <script>`, the script built in memory
+at each arm — the teardown below, then, for a creation, the uplink's own profile back up, read at
+run time (`nmcli -g GENERAL.CONNECTION device show <uplink>`), never hard-coded; the re-pin, which
+has no profile to restore, tears down only. The timer must report `active` before the first change
+is made. After the change, `nmcli connection up` is not taken as success: the installer polls every
+2 s, up to `tool.bench_bridge_up_poll_s`, until `br0` holds an address and carries the default
+route, then stops the timer and its service and checks they are gone. A failure inside leaves the
+timer armed and logs when it will restore what, never disarming it; the installer never retries a
+bridge change itself. The MAC-mismatch remedy it prints starts with arming the recovery timer below.
 
 **The recovery script, and the arm/verify/disarm pattern** — validated on a real successful run.
 Recreate this script fresh in a session's own scratchpad each time (not a committed file: the
@@ -1493,56 +1654,69 @@ nmcli connection up "Wired connection 1"
 
 ## B.14 MicroPython build overrides: a canonical, zero-touch patching framework
 
-**Standing need**: a handful of real problems (so far: two implemented, one identified and planned) need
-MicroPython's own *build behavior* changed — not this project's code — and none of them are things
-upstream exposes as an ordinary, safe-by-default option. The wrong way to solve this is a one-off
-hand-edit to the fetched `$PICO_TOOLCHAIN_DIR/micropython` checkout: it has to be reapplied by hand
-after every fresh clone or version bump, it is invisible to code review, and it leaves no trace of
-*why* once someone forgets. **`toolchain/micropython_overrides.py` is the one canonical place these
-live instead** — every override there generates files or extra build flags entirely *outside* the
-fetched checkout (never a single byte written into it), applied automatically by
-`toolchain/setup_toolchain.py` on every build, from tracked, reviewed Python code. Each override
-also *verifies a known anchor* in the pinned source before doing anything — a short excerpt of the
-exact text it depends on — and raises a clear, actionable `OverrideError` if that anchor is gone,
-rather than silently building an unpatched (or, worse, half-patched) binary. This is the same
-"re-check every MicroPython-facing construct on a version bump" discipline CLAUDE.md's "Platform
-target" section already establishes as standing practice — these anchors are exactly the kind of
-thing to re-verify on the next `toolchain/versions.toml` `[micropython] ref` bump, alongside
-everything else that section already tracks.
+**Standing need**: a handful of real problems (so far: four implemented, one of them a test-only
+override, and one documented and not built) need MicroPython's own *build behavior* changed — not
+this project's code — and none of them are things upstream exposes as an ordinary, safe-by-default
+option. The wrong way to solve this is a one-off hand-edit to the fetched
+`$PICO_TOOLCHAIN_DIR/micropython` checkout: it has to be reapplied by hand after every fresh clone
+or version bump, it is invisible to code review, and it leaves no trace of *why* once someone
+forgets. **`toolchain/micropython_overrides.py` is the one canonical place these live instead** —
+every override there generates files or extra build flags entirely *outside* the fetched checkout
+(never a single byte written into it), applied automatically by `toolchain/setup_toolchain.py` on
+every build (the test-only one only on a build that asks for it, B.14.5), from tracked, reviewed
+Python code. Each override also *verifies a known anchor* in the pinned source before doing
+anything — a short excerpt of the exact text it depends on — and raises a clear, actionable
+`OverrideError` if that anchor is gone, rather than silently building an unpatched (or, worse,
+half-patched) binary. This is the same "re-check every MicroPython-facing construct on a version
+bump" discipline CLAUDE.md's "Platform target" section already establishes as standing practice —
+these anchors are exactly the kind of thing to re-verify on the next `toolchain/versions.toml`
+`[micropython] ref` bump, alongside everything else that section already tracks (Part F's opening
+checklist).
 
-**Why not just a `CFLAGS_EXTRA -D...`, the way the mbedtls GCC-14 workaround and
-`MICROPY_PY_SYS_SETTRACE=1` already do it?** That remains the right tool whenever the target macro
-is itself written as `#ifndef X #define X ... #endif` upstream (only some of lwIP's own options are -
-B.14.2, which therefore uses a generated header).
+**Why not just a `CFLAGS_EXTRA -D...`, the way `MICROPY_PY_SYS_SETTRACE=1` does it?** That remains
+the right tool whenever the target macro is itself written as `#ifndef X #define X ... #endif`
+upstream (only some of lwIP's own options are - B.14.2, which therefore uses a generated header).
 It does **not** work for a plain, unguarded `#define` (B.14.1's case): confirmed directly
 (2026-09-15) that a later plain `#define` in the same translation unit always wins over an earlier
 command-line `-D`, unconditionally, and this project's own build already treats the resulting
-"macro redefined" warning as a hard failure (`build_unix_port()`/`build_firmware()` grep their own
-output for `warning:`). Those cases need a different mechanism - B.14.1 below.
+"macro redefined" warning as a hard failure (every build's output passes one diagnostics check,
+B.7). Those cases need a different mechanism - B.14.1 below.
 
 **General shape every override in `toolchain/micropython_overrides.py` follows**: a `verify_*()`
-function that reads one specific pinned-source file and raises `OverrideError` (naming the exact
-file/line it expected, what to re-derive, and what real problem skipping the check would
-reintroduce) if a known anchor string is missing; an `apply_*()` function that calls the verify
-step first, then either writes small generator files into a directory the caller supplies
-(never inside `micropython_dir`) or returns extra `make`/CMake variables, or both; and a docstring
-covering the exact mechanism, why it's the mechanism (not a simpler one that doesn't actually
-work), and what was verified. `toolchain/setup_toolchain.py`'s `build_unix_port()`/`build_firmware()`
-call the relevant `apply_*()` unconditionally, every build - there is no opt-out flag, since an
-override existing at all means the *unpatched* build is the one considered unsafe/insufficient.
+function that reads the pinned-source files it depends on and raises `OverrideError` (naming the
+exact file and anchor it expected, what to re-derive, and what real problem skipping the check would
+reintroduce) if a known anchor string is missing, repeated or out of order; an `apply_*()` function
+that calls the verify step first, then either writes small generator files into a directory the
+caller supplies (never inside `micropython_dir`) or returns extra `make`/CMake variables, or both;
+paths written into generated files are resolved, and refused when they hold a character the target
+syntax cannot carry — whitespace, `"`, `'`, `\`, `$`, `#`, `;` or `:`, the message naming the
+character and the remedy (a `--toolchain-dir` without it); each override empties its own directory
+under `<toolchain-dir>/build_overrides/` before writing it (`unix_kbd_intr_variant`,
+`lwip_connection_counts_board`, `modlwip_eagain`, `unix_lwip_host_variant`, `tick_offset_test`;
+`CURRENT_OVERRIDE_DIRS`), since a file an older generator left there would still be compiled or be
+found first on an include path; and a header comment covering the exact mechanism, why it's the
+mechanism (not a simpler one that doesn't actually work), and what was verified.
+`toolchain/setup_toolchain.py`'s `build_unix_port()`, `build_unix_lwip_port()` and
+`build_firmware()` call the relevant `apply_*()` unconditionally, every build - there is no opt-out
+flag, since an override existing at all means the *unpatched* build is the one considered
+unsafe/insufficient - and each override is then proven in the built artefact, a readback of the
+preprocessed source, the build's own recorded flags or its compile rules, never only the generated
+input. An override marked test-only is the one exception: it is applied only to a build that asks
+for it by name, and every build's readback refuses a release build that carries it (B.14.5).
 
 **The first real test of any override here is not a dedicated test file - it's every ordinary
-build.** Because `apply_*()` runs unconditionally inside `build_unix_port()`/`build_firmware()`,
-simply running `uv run toolchain/setup_toolchain.py setup` (or `test`, or any of `scripts/test.sh`/
+build.** Because `apply_*()` and the readbacks run inside every Unix-port and firmware build, simply
+running `uv run toolchain/setup_toolchain.py setup` (or `test`, or any of `scripts/test.sh`/
 `scripts/run_digital_twin_ci.sh`/`scripts/run_unix_port_integration.sh`/`scripts/build_firmware.py`
 — every one of them reaches the toolchain build through this same entry point, with no alternate
-path anywhere in this project's own tooling) already exercises the anchor check and the generated
-override end to end, on a genuinely fresh checkout, before a single dedicated test runs. A broken
-anchor or a build that no longer accepts the injected variables surfaces immediately as a hard
-`OverrideError`/build failure at that point - `tests_scripts/test_micropython_overrides.py`'s own
-synthetic-fixture coverage exists for fast, isolated *unit* feedback on the override logic itself
-(and for asserting the generated content's exact shape, which a successful build alone doesn't
-check), not as the first or only place a regression would be caught.
+path anywhere in this project's own tooling) already exercises the anchor check, the generated
+override and its proof end to end, on a genuinely fresh checkout, before a single dedicated test
+runs. A broken anchor or a build that no longer accepts the injected variables surfaces immediately
+as a hard `OverrideError`/build failure at that point -
+`tests_scripts/test_micropython_overrides.py`'s own synthetic-fixture coverage exists for fast,
+isolated *unit* feedback on the override logic itself (and for asserting the generated content's
+exact shape, which a successful build alone doesn't check), not as the first or only place a
+regression would be caught.
 
 ### B.14.1 `unix_kbd_intr` (implemented) - safe SIGINT delivery for the Unix port test binary
 
@@ -1600,8 +1774,10 @@ tests/twin actually run under, without editing anything inside the fetched check
   own `-I$(VARIANT_DIR)` is added to `CFLAGS` *before* `CFLAGS_EXTRA`, so the compiler always finds
   the real, unpatched header first). The override directory contains a generated
   `mpconfigvariant.h` that `#include`s the real one **by absolute path** and then
-  `#undef`/`#define`s `MICROPY_ASYNC_KBD_INTR` to `0`; a generated `mpconfigvariant.mk` that plain
-  `include`s the real one; and (mirrored via the freeze-manifest DSL's own `include()` primitive,
+  `#undef`/`#define`s `MICROPY_ASYNC_KBD_INTR` to `0` and defines the sentinel
+  `MICROPY_SENSORS_KBD_INTR_OVERRIDE_APPLIED`; a generated `mpconfigvariant.mk` that plain
+  `include`s the real one (plus B.7.1's one-file mbedtls rule); and (mirrored via the
+  freeze-manifest DSL's own `include()` primitive,
   never copied - so it can never silently drift from a future pinned-version change) a generated
   `manifest.py` that includes the real one. **Deliberately never a symlink**: [MicroPython issue
   #12671](https://github.com/micropython/micropython/issues/12671) documents that the Unix port's
@@ -1624,11 +1800,20 @@ tests/twin actually run under, without editing anything inside the fetched check
 **Verified**: preprocessing the resulting `unix_mphal.c` directly confirms the safe branch
 (`mp_sched_keyboard_interrupt()`) is selected, never `nlr_raise()`. End-to-end: a hammer loop of
 the real `Run 3` (sustained bus-fault matrix) + `Run 5` (bounded-fault recovery) suite functions at
-`gc.threshold=32768`, across all 6 real devices, ran clean for a combined 700+ iterations against
-the patched binary with zero shutdown failures - the same harness reproduced the real corrupted
-traceback directly against the unpatched, upstream-default binary. `build_unix_port()` (both call
-sites - the frozen-verification build and the vanilla test-rig rebuild) applies this unconditionally.
-Unit coverage (synthetic fixture trees, no real compile): `tests_scripts/test_micropython_overrides.py`.
+`gc.threshold=32768`, across all six devices then defined, ran clean for a combined 700+ iterations
+against the patched binary with zero shutdown failures - the same harness reproduced the real
+corrupted traceback directly against the unpatched, upstream-default binary. Every Unix-port build
+applies this unconditionally, and every build re-proves it: `verify_unix_kbd_intr_in_build()` runs
+`make <the build's own variables> BUILD=<dir> <dir>/unix_mphal.pp` in `ports/unix` (MicroPython's
+own `$(BUILD)/%.pp` rule, `py/mkrules.mk:119-121`, so the very flags the binary was compiled with;
+`make` resolved on the build's own `PATH`) and fails unless the `.pp` defines the sentinel, its last
+`#define MICROPY_ASYNC_KBD_INTR` reads `(0)`, and `sighandler()` (up to `void
+mp_hal_set_interrupt_char`, `ports/unix/unix_mphal.c:49-75`) calls `mp_sched_keyboard_interrupt()`
+and never `nlr_jump(` — for `build-standard`, `build-settrace` and `build-lwip` alike. The `.pp` is
+removed before and after, so one an interrupted run left can never vouch for a build. Proven on
+real builds of all three (2026-10-08); with the real standard variant in place of the override it
+is refused ("sentinel absent"). Unit coverage (synthetic fixture trees and `.pp` texts, a fake
+`make`, no real compile): `tests_scripts/test_micropython_overrides.py`.
 
 **Re-verification checklist for a MicroPython version bump** (do this alongside CLAUDE.md's
 existing "Platform target" re-check practice, not as a separate pass): re-read
@@ -1712,7 +1897,10 @@ source is edited and nothing but `make` command-line variables is passed:
   `manifest.py`, the latter because the real board cmake points `MICROPY_FROZEN_MANIFEST` at
   `${MICROPY_BOARD_DIR}`, which is now the generated directory. `BOARD=` is passed alongside
   `BOARD_DIR=` so `BUILD ?= build-$(BOARD)` still resolves to `build-RPI_PICO_W`, the same
-  precaution B.14.1 takes with `VARIANT`.
+  precaution B.14.1 takes with `VARIANT`. The generated cmake includes the real board file by a
+  quoted `include("…")`, the relayed manifest names it by `include('…')`, and the cmake also carries
+  B.7.1's one-file mbedtls rule; only the tick-offset test image adds one more
+  `include_directories(BEFORE "…")` line (B.14.5), so a release build's generated files carry none.
 - **The values are verified in the built firmware, not assumed.** `verify_lwip_macros_in_build()`
   reads the real `flags.make` CMake wrote for the `firmware` target and preprocesses lwIP's own
   `opt.h` with exactly those `C_DEFINES`/`C_INCLUDES`/`C_FLAGS` and the C compiler CMake recorded
@@ -1760,11 +1948,13 @@ at once (and a `max_connections` below 1 is refused by name, since every share d
   (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`), so two clients that stop reading mid page load fill the
   12,000 B arena. `tcp_write()` then answers `ERR_MEM` while the socket still reports room — from
   the arena, the global segment pool, or the connection's `TCP_SND_QUEUELEN` pbuf limit — and the
-  pinned `extmod/modlwip.c` retries it up to 200 x 50 ms inside one call (`:793-813`), even on a
+  pinned `extmod/modlwip.c` retries it up to 200 x 50 ms inside one call (`:801-813`), even on a
   non-blocking socket: up to 10 s with the whole VM frozen, past the 8,388 ms watchdog, and no
   asyncio timeout can interrupt it (a live peer's ACK ends the wait sooner, still in 50 ms steps).
-  A non-blocking write that finds no room at all answers `EAGAIN` instead (`:758-769`), which the
-  webserver's per-call write timeout bounds cooperatively (A.5). Not yet reproduced on silicon: no
+  The firmware build replaces that loop (B.14.4, the `modlwip_eagain` override; owner, 2026-09-30):
+  a non-blocking write that meets `ERR_MEM` returns `EAGAIN`, and the webserver's per-call write
+  timeout bounds the wait cooperatively (A.5), as it does for a non-blocking write that finds no
+  room at all, which answers `EAGAIN` upstream too (`:758-769`). Not yet reproduced on silicon: no
   bench test holds a connection open without reading (agent, 2026-09-30).
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
@@ -1861,6 +2051,166 @@ carrying real persisted state there - CLAUDE.md's own "real hardware go-ahead" g
 SPECIFICATION.md Part C.8's flash/NVM write-safety rules apply to *validating* a chosen value on
 real hardware, not just to building it.
 
+### B.14.4 `modlwip_eagain` (implemented) - a non-blocking modlwip send returns `EAGAIN` on `ERR_MEM`
+
+**The problem** (B.14.2.1 has the pool account): `lwip_tcp_send()` (`extmod/modlwip.c:750-829`,
+v1.29.0) sizes a write by `tcp_sndbuf()`; when `tcp_write()` then answers `ERR_MEM` — the arena, the
+segment pool or the connection's `TCP_SND_QUEUELEN` limit full while the socket still reports room
+— it retries `for (int i = 0; i < 200; ++i)` with `mp_hal_delay_ms(50)` between rounds (`:801-813`):
+up to 10 s inside one C call, on a non-blocking socket too (its own comment, `:795-799`), past the
+8,388 ms watchdog cap, with no asyncio timeout able to interrupt it. Upstream tracks it as
+micropython issue 19704 (PRs 19705, a partial write with `ENOBUFS`, and 19708, `EAGAIN` on
+`ERR_MEM`); upstream `6e79dcf9c`, after v1.29.0, only replaces the sleep with `poll_sockets()` under
+the same 10 s bound.
+
+**What it does.** Every rp2 build compiles a patched copy of `extmod/modlwip.c` in the original's
+place: inside the retry loop, right after `tcp_output()`'s `ERR_OK` check and before the 50 ms
+sleep, a socket whose timeout is 0 (non-blocking) leaves the lwIP lock and returns
+`MP_STREAM_ERROR` with `EAGAIN` — upstream PR 19708's change (owner, 2026-09-30). A blocking socket
+keeps the 10 s loop. No `src/` site sends on a blocking TCP socket: every accepted asyncio
+connection is non-blocking (`extmod/asyncio/stream.py:172`), and `src/` otherwise sends over UDP.
+`Stream.write()` keeps the unsent rest (`:66-74`) and `drain()` retries it through the event loop
+(`:77-87`), so the watchdog feeder and every other task keep running, and the webserver's per-call
+write timeout reclaims a connection whose peer never drains (A.5). No `TCP_NODELAY` call is made
+anywhere, and `[lwip]` keeps its values (owner, 2026-09-30; F.9).
+
+**Mechanism** (`apply_modlwip_eagain_override()`): it writes
+`<toolchain-dir>/build_overrides/modlwip_eagain/modlwip.c` — the pinned file with that block
+inserted and `#include "modnetwork.h"` (`:40`) rewritten to `#include "extmod/modnetwork.h"`, since
+the copy no longer sits beside it and `${MICROPY_DIR}` is on every rp2 include path
+(`py/py.cmake:5`), headed by a two-line generated comment naming the MicroPython version it came
+from (read from `py/mpconfig.h`), with no `#line` directive, so a compiler diagnostic names the copy
+— and a `micropython.cmake` beside it that finds `${MICROPY_EXTMOD_DIR}/modlwip.c` in
+`MICROPY_SOURCE_EXTMOD`, stops the configure with `FATAL_ERROR` if it is not there, and replaces it
+with the copy. `build_firmware()` passes the directory as `USER_C_MODULES=`; `py/usermod.cmake`
+appends `micropython.cmake` (`:54`) and includes it (`:63`) in the top-level directory scope, after
+`extmod/extmod.cmake` set the list and before the QSTR list and `target_sources()` read it
+(`ports/rp2/CMakeLists.txt:100, :108, :500-501, :518-520`), so the copy is compiled and QSTR-scanned
+in the original's place and nothing else changes. No manifest this project passes uses
+`USER_C_MODULES` or `c_module()`.
+
+**Anchors**, verified before anything is written, each a miss naming its file and asking whether the
+pin now carries a real fix for issue 19704 (then the override is retired, not re-anchored) or the
+patch must be re-derived: in `extmod/modlwip.c`, the 13-line retry loop (`:801-813`), its insertion
+point (`:806-809`) and the local include (`:40`), each exactly once — the loop's text holds the
+insertion point, so its one occurrence lies inside the loop; `extmod/extmod.cmake`'s modlwip line
+(`:27`) inside `set(MICROPY_SOURCE_EXTMOD`; in order in `ports/rp2/CMakeLists.txt`, the extmod
+include, the usermod include, the QSTR append and the `target_sources()` of `${MICROPY_SOURCE_PY}`
+and `${MICROPY_SOURCE_EXTMOD}`; `ports/rp2/Makefile`'s `-DUSER_C_MODULES` (`:40`); and
+`py/usermod.cmake`'s two lines.
+
+**Proof, after every rp2 build** (`verify_modlwip_eagain_in_build()`): the firmware target's own
+`CMakeFiles/firmware.dir/build.make` has the rule `CMakeFiles/firmware.dir<copy>.o: <copy>` and
+never names the original, and exactly one non-empty `modlwip.c.o` lies under
+`CMakeFiles/firmware.dir/`, at the copy's absolute path mirrored there (pico-sdk 2.3.0 names every
+object `<source>.o`, `lib/pico-sdk/cmake/preload/toolchains/util/pico_gcc_common.cmake:45`). Any
+other layout fails the build by name. CI's `firmware-build-verify` proves it for every device.
+
+**The host build `build-lwip`** runs the same copy on the host, the third Unix-port build flavour
+(owner, 2026-09-30), so the patched send path has an L1 test (E.1).
+`apply_unix_lwip_host_override()` writes `<toolchain-dir>/build_overrides/unix_lwip_host_variant/`:
+- `mpconfigvariant.h`: B.14.1's header and sentinel, plus `void mp_lwip_host_poll(void);` and
+  `#define MICROPY_INTERNAL_EVENT_HOOK mp_lwip_host_poll()`;
+- `mpconfigvariant.mk`: the real standard variant's makefile included,
+  `INC += -I<variant>/lwip_inc`, `vpath extmod/modlwip.c <variant>/src`, B.7.1's mbedtls rule and
+  B.7's two flags private to `$(BUILD)/extmod/modlwip.o`; `manifest.py` relays the real one;
+- `<variant>/src/extmod/modlwip.c`: byte-identical to the rp2 copy;
+- `lwip_inc/lwipopts.h`: rp2's six settings (the two netif status callbacks, IPv4, IPv6,
+  `LWIP_ND6_NUM_DESTINATIONS`, `LWIP_ND6_QUEUEING`), restated rather than included since rp2's file
+  includes `pico/rand.h`; `LWIP_RAND()` as libc `rand()`; MicroPython's
+  `extmod/lwip-include/lwipopts_common.h`; `MEM_ALIGNMENT` set to the host's pointer size (Python's
+  `struct.calcsize("P")`, 8 on an LP64 host) as a literal; `IPV6_FRAG_COPYHEADER 1`; then
+  `versions.toml`'s `[lwip]` table redefined with B.14.2's sentinel, as in every rp2 image;
+- `lwip_inc/arch/cc.h` as rp2's, except that a failed lwIP assertion prints it and calls `abort()`;
+  `lwip_inc/arch/sys_arch.h` empty, as rp2's;
+- `lwip_host_port.c`: `sys_now()` from `mp_hal_ticks_ms()`, modlwip's DNS preference (4), and
+  `mp_lwip_host_poll()`, which runs `netif_poll_all(); sys_check_timeouts();` behind a re-entry
+  flag.
+
+It builds with `VARIANT=standard VARIANT_DIR=<that directory> BUILD=build-lwip MICROPY_PY_LWIP=1
+MICROPY_PY_LWIP_LOOPBACK=1 MICROPY_PY_SOCKET=0`: `extmod/extmod.mk:338-420` compiles lwIP 2.2.1 when
+`MICROPY_PY_LWIP` is 1 and the loopback switch adds `-DLWIP_NETIF_LOOPBACK=1` (`:413-414`);
+`MICROPY_PY_SOCKET=0` overrides the plain assignment in `ports/unix/mpconfigport.mk:19`, leaving the
+name `socket` to modlwip; GNU make searches `vpath` directories in the order their directives
+appear, and the variant makefile (`ports/unix/Makefile:25`) is read before `py/mkrules.mk`'s `vpath
+%.c . $(TOP)` (`:111`, included at `ports/unix/Makefile:253`), so `$(BUILD)/extmod/modlwip.o`
+compiles the copy; and the hook runs in `mp_event_handle_nowait()` (`py/scheduler.c:259-266`) on
+every `mp_event_wait_ms()` — the Unix `mp_hal_delay_ms()` (`ports/unix/unix_mphal.c:244-252`) and
+modlwip's own `poll_sockets()` (`extmod/modlwip.c:367-370`) — so lwIP runs wherever MicroPython
+waits, as PendSV and the soft timer do on rp2. Its anchors, checked in order before anything is
+written: `extmod/extmod.mk`'s modlwip line, `MICROPY_PY_LWIP` and loopback blocks; the Unix
+`Makefile`'s variant include, the `extmod.mk` include, `ifeq ($(MICROPY_PY_SOCKET),1)`, the
+variant's `$(wildcard $(VARIANT_DIR)/*.c)` and the `mkrules.mk` include; `py/mkrules.mk`'s `vpath`;
+`py/mphal.h`'s `#ifndef MICROPY_INTERNAL_EVENT_HOOK`; the hook call in `py/scheduler.c`;
+`poll_sockets()`'s body; `lib/lwip/src/include/lwip/opt.h`'s `LWIP_HAVE_LOOPIF` and
+`LWIP_NETIF_LOOPBACK_MULTITHREADING` lines; rp2's six settings; B.14.1's anchor and the three `modlwip.c`
+anchors; and `lib/lwip/src/core/tcp_out.c` present. **Its proof, after the build**
+(`verify_unix_lwip_host_in_build()`): `build-lwip/extmod/modlwip.P` names the copy first and never
+the original, the copy holds the `EAGAIN` block, and the binary runs `import lwip, socket, time;
+print(socket is lwip); lwip.reset(); time.sleep_ms(2500); lwip.callback(); print('lwip timers ok')`,
+printing `True` and then that sentinel, exiting 0, within `tool.preprocess_timeout_s` — lwIP's own
+timers have then run through two IPv6 reassembly ticks. Where the host build differs from rp2 is
+F.7.
+
+**What the host build measured** (`tests/lwip_host/test_modlwip_eagain.py`, 2026-10-08, both GC
+stages): every non-blocking write returned within 0.16 ms at the arena, queue-limit (32 segments)
+and segment-pool (48) edges, each edge the patched branch (`POLLOUT` still set); a reading peer got
+every byte in order; capacity (10,400 B to a peer that never reads) came back after the peers
+closed, the same in 20 rounds. A control build with the insertion step disabled, built once and
+deleted, failed all seven tests: single writes of 10,000-10,065 ms, or a different edge.
+
+**Cost.** `POLLOUT` reports writable while `tcp_sndbuf() > 0` (`extmod/modlwip.c:1639`), so with
+the arena full the retry is a cooperative busy wait until the peer acknowledges or the per-call
+timeout fires — its duration bounded by that timeout, its per-round cost by the host build's
+spin-round test (`l1.lwip_host_spin_round_max_us`, `l1.lwip_host_spin_round_alloc_max_b`; 8.5 ms
+and 32 B at worst on the host) and on the dev bench by a concurrent request's bound while one
+connection spins (owed, BACKLOG.md); a failed bound goes to the owner as a change to the override,
+a short `POLLOUT` back-off after `EAGAIN`, not a larger bound (owner, 2026-09-30).
+
+**Removal trigger**: the pin carries an upstream fix for micropython issue 19704 (PRs 19705/19708);
+the override is then removed, not re-anchored (owner, 2026-09-30). Its anchors are re-checked at
+every MicroPython version bump (Part F's opening checklist).
+
+### B.14.5 `tick_offset_test` (test-only) - the tick counts wrap about 15 minutes after boot
+
+**What it does.** A test build of a firmware image that differs from it by one build define:
+`mp_hal_ticks_ms()` (`ports/rp2/mphalport.h:96-98`, v1.29.0, which also feeds the soft-timer queue,
+`ports/rp2/mphalport.c:236-241`, and lwIP's `sys_now()`, `ports/rp2/mpnetworkport.c:122-125`)
+returns the time since boot plus 2**32 ms minus 15 minutes (`TICK_OFFSET_MS`, 4,294,067,296), in
+32-bit unsigned arithmetic, so `time.ticks_ms()` (period 2**30, which divides 2**32) and the 32-bit
+millisecond count both wrap about 15 minutes after boot. The hardware timer is never written: the
+SDK expects it to increase monotonically (RP2040 datasheet §4.6.2). **Why.** The rollover round on
+`dev` then crosses both wraps in about two hours on silicon instead of a 12.4-day run (owner,
+2026-10-01: 'Test build with a starting offset'); the driven-clock proofs in the unit and twin tiers
+stay the per-commit proof (E.6).
+
+**Mechanism and anchor.** `apply_tick_offset_override(micropython_dir, overrides_dir, *, board)`
+checks that the pinned `mp_hal_ticks_ms()` body occurs exactly once, then writes a copy of
+`ports/rp2/mphalport.h` into `<toolchain-dir>/build_overrides/tick_offset_test/` with
+`#define MICROPY_SENSORS_TICK_OFFSET_MS (4294067296u)` and the sentinel `#define
+MICROPY_SENSORS_TICK_OFFSET_TEST_APPLIED 1` prepended and that one body's return replaced by
+`(mp_uint_t)(to_ms_since_boot(get_absolute_time()) + MICROPY_SENSORS_TICK_OFFSET_MS)`.
+`build_firmware(..., tick_offset_test=True)` passes the directory as B.14.2's extra
+`include_directories(BEFORE …)`, so it comes first in the real build's `C_INCLUDES`; `py/mphal.h:36`
+includes `<mphalport.h>` in angle brackets and no `ports/rp2`, `extmod` or `shared` file includes it
+with quotes, so the copy reaches every translation unit. The test image builds in its own directory,
+`build-<board>-tickoffset`, so a release build never reuses one of its objects and two boards never
+share one CMake cache. No command line requests it at this stage: only a direct
+`build_firmware(..., tick_offset_test=True)` call builds it, since the rollover runner that will is
+not written yet (agent, 2026-10-08).
+
+**Release refusal.** After every rp2 build, `verify_tick_offset_in_build()` preprocesses
+`py/mphal.h` with the build's own recorded flags and reads the sentinel back: a release build that
+carries it fails ("a release build carries the tick-offset test override"), and a test build that
+lacks it fails too. CI's `firmware-build-verify` proves the absence for every device. Proven once on
+`dev` (2026-10-08): the test image built, the readback found the override, the offset
+(`0xfff24460`) appeared in 16 of the image's literal pools, and the release readback over that image
+was refused.
+
+**Cost.** Flashing the test image spends one flash cycle on the board, inside the round's flash
+budget (CLAUDE.md's wear rule). **Removal trigger.** None while the rollover round exists; its
+anchor is re-verified with every MicroPython version bump (Part F's opening checklist).
+
 ---
 
 ## B.15 The three mypy passes: what each one resolves, and why they cannot merge
@@ -1879,6 +2229,13 @@ stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality too
   `follow_imports_for_stubs` extends that to the (upstream-Beta) stub package itself. `ext/typings`
   holds Microdot's upstream stub, vendored unmodified at `ext/typings/microdot/` (same policy as
   `ext/microdot.py`).
+- `scripts/typecheck.sh` records the installed stub release in `typings/.stub-spec`: line 1 the
+  spec it asked for (`micropython-rp2-rpi_pico_w-stubs==<X.Y.Z>.*`, X.Y.Z from the MicroPython
+  ref), line 2 the version uv resolved, read from the board package's one `.dist-info` directory
+  (none or several fail the run). It prints `== MicroPython stubs: <version> (for firmware
+  <X.Y.Z>)`, wipes `typings/` first when the recorded spec differs or is missing, and drops the
+  record before each install and writes it after the check, so a failed or killed install leaves
+  none.
 - `no_site_packages`: otherwise the venv's own packages are discovered and checked against a
   typeshed holding only the MicroPython stdlib subset.
 - `files` names directories, never globs: a glob is pre-expanded into a file list that `exclude`
@@ -3774,9 +4131,11 @@ instead of serializing in front of it, and reports its counts through a run reco
 counts against the same `TEST_PARALLELISM` budget as any test file — a monotonic speed probe picks
 it, falling back to the slow-host value when the probe cannot run, and a `--coverage` run takes one
 file per usable core, the settrace binary making the suite CPU-bound — and carries its own `timeout`
-for the standing "hanging tests are never allowed" rule). One ordering constraint follows from that
-concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before** the
-background launch, because one `tests_scripts/` test necessarily writes a throwaway
+for the standing "hanging tests are never allowed" rule). One toolchain build at a time per
+toolchain directory: a `scripts/test.sh` that must build runs `setup`, which takes that directory's
+lock (B.5) and waits on no one — it fails at once naming the run holding it. One ordering constraint
+follows from that concurrency and is load-bearing: every step that globs `devices/*.toml` must run
+**before** the background launch, because one `tests_scripts/` test necessarily writes a throwaway
 `devices/zz_test_*.toml` into the live tree.
 
 **`devices/zz_test_*.toml` is a reserved namespace** — for live-tree test fixtures only; a real
@@ -3810,6 +4169,15 @@ a long-lived local sandbox against what accumulated before that mechanism existe
 file (a segfault, E.3) left behind. A real `rm -rf` rather than a MicroPython `os.listdir()` loop,
 whose cost grows with the entry count — the very `MemoryError` that design replaced. Both sweeps
 no-op on CI, which starts from a fresh checkout.
+
+**The lwIP host files** (`tests/lwip_host/test_*.py`) run after the `tests/test_*.py` loop,
+dispatched last through the same bounded loop and the same per-file function — its timeout and
+retries, the `MemoryError` gate and the `GC_THRESHOLD` runner — on the `build-lwip` binary (B.14.4):
+`run_test_file <test_file> <status_file> [<binary>]`, the binary defaulting to the test rig. They
+count in L1 at both GC stages, bind no host port (loopback lwIP is in-process), and `--coverage`
+runs none of them, since they exercise C code line coverage cannot see (E.10). A job's tag is its
+file's basename, so `tests_scripts/test_test_sh.py` checks that the set is non-empty and that no
+basename repeats a `tests/test_*.py` one.
 
 **Evidence archive**: every runner — `scripts/test.sh`, the hardware runners — moves its logs and
 reports under `build/archive/<runner>/<UTC>/` (`scripts/_archive_evidence.py`) and keeps the last
@@ -3862,8 +4230,12 @@ device-independent and a ×6 parametrization would buy nothing.
 scripts/test.sh
 ```
 
-Builds the Unix port on first run (via `setup`, Part B, cached under `$PICO_TOOLCHAIN_DIR`).
-`SKIP_APT=1 scripts/test.sh` skips the first-run apt-get install. To run one file directly:
+Builds the Unix ports on first run (via `setup`, Part B, cached under `$PICO_TOOLCHAIN_DIR`), and
+again whenever the binary the run needs is missing or not its variant, `toolchain-record.json` is
+missing (an interrupted or older setup; B.5), or, on a plain run, `build-lwip` is missing or not
+the plain variant (E.5.2); each condition is checked again after `setup`, and one still unmet fails
+the run naming it. `SKIP_APT=1 scripts/test.sh` skips the first-run apt-get install. To run one file
+directly:
 
 ```
 MICROPYPATH="src:tests:frozen_modules:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
@@ -3875,7 +4247,9 @@ importable. **`.frozen` is a literal MicroPython sentinel, not an ordinary direc
 starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, never the real
 filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
 too, since `sensortask_wozi.py`'s `import frozen_html` needs it. Where the Unix-port rig differs
-from rp2 is F.7.
+from rp2 is F.7. **The second L1 file set**, `tests/lwip_host/`, runs the same way on
+`~/pico-toolchain/micropython/ports/unix/build-lwip/micropython` instead (E.1); its rig differences
+are F.7's `build-lwip` rows.
 
 Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`,
 `tests/_webserver_concurrency_scenarios.py`, and every `tests/test_digital_twin_*.py` that does the
@@ -4093,18 +4467,21 @@ Against an otherwise identical settrace-free build of the same frozen manifest:
 
 No test's *result* changes, but every allocation figure measured under that binary — the digital
 twin's and the memory-safety suite's alike — is inflated 4-5x, and non-uniformly, relative to the
-firmware. So `toolchain/setup_toolchain.py` builds **two** Unix-port variants rather than one
+firmware. So `toolchain/setup_toolchain.py` builds the two as separate binaries rather than one
 (owner decision, 2026-09-21): `build-standard` **without** the flag is the test rig that plain
 `scripts/test.sh` runs, and `build-settrace` with it is used only by `--coverage`, which genuinely
-needs `sys.settrace` itself. `ports/rp2`'s firmware build never gets the flag either way.
+needs `sys.settrace` itself. `ports/rp2`'s firmware build never gets the flag either way, and nor
+does the third Unix build, `build-lwip` (B.14.4).
 
 Two consequences worth keeping in mind:
 
 - **The build directory's path no longer identifies its variant.** A `~/pico-toolchain` predating
   the split has a `build-standard` that still carries the flag, and it is executable — so an
   existence check is satisfied while the suite silently measures on the inflated binary. CI is
-  covered because the toolchain cache key hashes `setup_toolchain.py`; locally, `scripts/test.sh`
-  asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds when the answer is wrong. The
+  covered because the toolchain cache key hashes `setup_toolchain.py` and
+  `micropython_overrides.py` (B.10); locally, `scripts/test.sh` asks the binary itself
+  (`hasattr(sys, "settrace")`) and rebuilds when the answer is wrong, and asks `build-lwip` the same
+  on a plain run, which must answer `plain`. The
   same probe imports `asyncio`: a `setup` interrupted between its frozen-verification build and
   the vanilla rebuild leaves an executable binary with no frozen `asyncio`, on which every test
   file dies with `ImportError` — that too reads as unusable and triggers the rebuild.
@@ -4173,7 +4550,7 @@ instead. See CLAUDE.md's eight scopes.
 | Level | Tests | Runs on | Fault injection | Proves | Command | GC stages |
 |---|---|---|---|---|---|---|
 | **L0 host** | `tests_scripts/` (pytest, CPython) and `tests_js/` (vitest, `npm test`) | everywhere | — | the host build chain, `buildgen/`, the website, cross-file invariants (E.1, H.8) | `scripts/test.sh` (its pytest tier), `npm test` | — |
-| **L1 unit** | `tests/test_*.py` except `tests/test_digital_twin_*.py` | everywhere: Unix port, `tests/machine.py` fakes | synthetic, in-process | raw bus byte/frame correctness, schema boundaries, NAK/CRC error paths | `scripts/test.sh` | `-1`, then `GC_THRESHOLD=32768` on a second `scripts/test.sh` run |
+| **L1 unit** | `tests/test_*.py` except `tests/test_digital_twin_*.py`, and `tests/lwip_host/test_*.py` on `build-lwip` (not under `--coverage`) | everywhere: Unix port, `tests/machine.py` fakes; the lwIP host files over loopback lwIP (B.14.4) | synthetic, in-process | raw bus byte/frame correctness, schema boundaries, NAK/CRC error paths | `scripts/test.sh` | `-1`, then `GC_THRESHOLD=32768` on a second `scripts/test.sh` run |
 | **L2 twin** | `tests/test_digital_twin_*.py` (run by `scripts/test.sh`) and `scripts/run_digital_twin_ci.sh <device>` for every device of `devices/*.toml` | sandbox and CI: Unix port, `digital_twin/` fakes (real asyncio graph) | synthetic, higher-fidelity, same interface shape | realistic stateful/concurrent/timing/persistence behavior of the whole system | `scripts/test.sh`, `scripts/run_digital_twin_ci.sh <device>` | the `tests/test_digital_twin_*.py` part as L1; `run_digital_twin_ci.sh` runs both stages itself |
 | **L3 flash** | `tests_hardware/flash/` (+ `device_scripts/`) | L2 plus a real RP2040 on USB serial | none | real timing, WDT reset, Timer/IRQ, flash/littlefs persistence, BOOTSEL | `scripts/run_flash_hardware_suite.sh` | the two-image release proof (below) |
 | **L4 bench** | `tests_hardware/bench/` | L3 plus the host's real WiFi bridge | real (bridge host: AP down/up, `iptables`, station kick) | real lwIP/WiFi transport, real fault-injected scenarios | `scripts/run_bench_hardware_suite.sh` | the two-image release proof (below) |
@@ -4517,7 +4894,9 @@ Exit code: <n>
   nothing; any one makes the result FAIL and raises a passing exit status (0, 3 or 4) to 1.
 - `Notes:` lists every note a test or session left (the run record below), never counted and never
   changing the result. `scripts/test.sh` lists each skipped microtest under `Skipped:` as
-  `<file>::<test>: <reason>`, so its files line's `skipped` counts those tests.
+  `<file>::<test>: <reason>`, so its files line's `skipped` counts those tests; under `--coverage`
+  it also lists each `tests/lwip_host/` file there, as `<file>: not run under --coverage (the plain
+  pass runs them)`, while a plain run counts those files in L1 (E.1).
 - `Result:` reads `PASS` only when the exit status is 0 and nothing failed or checked nothing;
   `FAIL` for exit 1; `USAGE ERROR` for 2; `PASS (coverage report not rendered)` for 3; `NOT CLEAN
   (<reason>)` for 4 (a hardware runner with `--skip-lower-levels` reads `NOT CLEAN (lower levels
@@ -4547,6 +4926,27 @@ so a passing test's note and a recovery pass reach the block rather than pytest'
 
 # Part F — Platform Target & MicroPython Runtime Facts
 
+Current MicroPython and Microdot documentation and source are checked before asserting how an API
+behaves — never training-data memory. Every MicroPython fact in this Part is a fact of the pinned
+tag (`toolchain/versions.toml`'s `[micropython] ref`; its owner rule, F.1). **The platform
+re-check** runs on every move of that tag and before trusting anything built from another ref
+(`setup_toolchain.py --latest`, `--micropython-ref`, a hand edit): (1) every fact in this Part, and
+every upstream file:line citation in the repo, against the new tag's source; (2) each build
+override's anchor and the mechanism behind it (B.14); (3) `tests_hardware/heap_map.py`'s parser
+anchor; (4) the stub release (`scripts/typecheck.sh`); (5) for each MicroPython-facing construct,
+whether a newer or better way now exists; (6) every item ruled out last time, re-checked rather than
+carried; (7) upstream changes newer than the tag, noted only; (8) the built ref recorded where a
+build can be traced to it (the toolchain record, B.3); (9) every standing workaround listed in F.9,
+at each pin move and at every dependency refresh; (10) the two dynamic-import sites in MicroPython's
+bundled modules that F.1 records (the `asyncio` lazy loader and micropython-lib's `dht.py`), re-read
+for any new one in what the image freezes (owner, 2026-10-05). The practice (agent, 2026-08-06,
+`f3f25fe`); its last run is recorded in F.5.
+
+The toolchain builds the `RPI_PICO_W` firmware at the pin from scratch without editing the
+MicroPython tree; its out-of-tree changes are the build overrides of
+`toolchain/micropython_overrides.py` (B.14), whose generated build files also carry the GCC ≥ 14
+array-bounds workaround (B.7.1).
+
 ## F.1 Core platform facts
 
 The owner's legacy units run **MicroPython 1.24.1** with the legacy firmware (`legacy/firmware/`)
@@ -4557,8 +4957,11 @@ runtime — CPython-only stdlib behaviour cannot be assumed. It pins **v1.29.0**
 call (owner, 2026-09-26), and uses that version's features rather than reproducing legacy behaviour.
 F.5 records what the pin changed for this codebase. The pin bundles pico-sdk as its `lib/pico-sdk`
 submodule at `98a542c` (version 2.3.0, `lib/pico-sdk/pico_sdk_version.cmake:4-10`), which the
-firmware build compiles against. Since pico-sdk 2.0.0, a standalone `picotool` must match its
-major.minor or the build fails. `machine.WDT` hard-caps at **8388 ms**
+firmware build compiles against; pico-sdk accepts a standalone `picotool` of its own major version
+and at least its `picotool_VERSION_REQUIRED` (2.3.0 at the pin), so 2.3.0 or a later 2.x builds and
+an older 2.x or a 3.x fails (pico-sdk 2.3.0 `tools/CMakeLists.txt:146, :165-169`; picotool 2.3.1
+`CMakeLists.txt:380`, `SameMajorVersion`); `toolchain/versions.toml` pins only the MicroPython ref
+and derives both (B.3). `machine.WDT` hard-caps at **8388 ms**
 (`ports/rp2/machine_wdt.c:32-38`); the boot entry arms 8000 ms (Part N `wdt.timeout_ms`, a 388 ms
 margin) — not raised without re-checking the cap. **USB (`mp_usbd_init()`) initializes only *after*
 the frozen `_boot.py` returns** — a `_boot.py` that blocks forever means USB never initializes on a
@@ -4878,13 +5281,6 @@ failing chip surfaces through the connect-attempt tier (agent, 2026-09-30). A se
 an inactive STA's `-EPERM` (`lib/cyw43-driver/src/cyw43_ctrl.c:672-677`) or a failed ioctl returns
 whatever the uninitialised value holds; the snapshot reads it only on the selected STA with a link,
 so a failed read shows as a wrong `RSSI`, display only (agent, 2026-10-08).
-
-**Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
-never rely on training-data memory. **Whenever the pinned version changes (and periodically
-otherwise), re-check every MicroPython-facing construct against the current source/docs/issue
-tracker** — not just "is this still correct" but "is there now a better way" (e.g. F.2's
-`socket.getaddrinfo()` status is exactly the kind of fact a version bump could invalidate). Repeat
-every time `versions.toml`'s ref moves.
 
 ## F.2 Blocking calls and the recovery ladder
 
@@ -5647,7 +6043,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 11 | emergency exception buffer | a static 256 B buffer (`ports/unix/variants/mpconfigvariant_common.h:69-70`): a `MemoryError` always keeps its message | enabled with size 0 until `micropython.alloc_emergency_exception_buf()` (`ports/rp2/mpconfigport.h:126`, `py/objexcept.c:81-89`): under heap exhaustion the message can be empty — when its 16 B str object or its 1-tuple cannot be allocated, the exception carries no arguments and `str(e)` is `''` (`py/objexcept.c:207-251, 395-416, 478-501`); a failed text buffer alone keeps the ROM text (`:503-509`) | the generated boot entry reserves 100 B on rp2 (`micropython.alloc_emergency_exception_buf(100)`, I.4(e)); that function is compiled only where the buffer size is 0 (`py/modmicropython.c:146-148, 210-212`), so the Unix port has none, and no Unix-port run executes the boot entry itself | L3 | none |
 | 12 | `select.poll()` over a Python stream object | a real poll asks each registered object for a file descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of the object's own `ioctl()` (`extmod/modselect.c:252-268, 302-306`, `py/modio.c:84-96`); a fake answering 0 makes the poll watch fd 0, stdin, which never turns ready on GitHub runners (CLAUDE.md, the known hang cause); growing the pollfd array by a fresh allocation also rewrites a non-fd entry's `NULL` pointer into a dangling one (`extmod/modselect.c:154-186`), which can segfault | no POSIX path (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` 0, `py/mpconfig.h:1891-1893`) | `tests/test_asy_uart_driver.py`'s bounded `_StepPoller` (every `uart.poller` double is bounded), `digital_twin/unix_port_poll_prewarm.py`, `_cancel_and_join()` and `_drain_flag()` in `tests/test_asy_isl29125_driver.py` | L2/L3 | a pin re-check that finds the POSIX path changed (owner, 2026-09-29, paraphrase: a known limitation, not filed upstream) |
 | 13 | `ipoll(0)` | returns an always-truthy iterator, so callers test the event flags (`tests/test_asy_ntp_client.py`; `src/asy_udp_socket.py` `ready()`) | the same | — | — | none (not a divergence; kept as the harness note it is) |
-| 14 | SIGINT delivery and the test heap | pointers only: F.6, E.3.1; `MICROPY_ASYNC_KBD_INTR` is 0 in rp2 and both Unix builds, the latter through B.14.1's override | — | — | — | — |
+| 14 | SIGINT delivery and the test heap | pointers only: F.6, E.3.1; `MICROPY_ASYNC_KBD_INTR` is 0 in rp2 and every Unix build, the latter through B.14.1's override, which `build-lwip`'s variant header carries too | — | — | — | — |
 | 15 | exception message detail | DETAILED error reporting: messages name objects and types (`ports/unix/variants/mpconfigvariant_common.h:86-87`) | NORMAL (the ROM-level default, `py/mpconfig.h:925-941`): a `TypeError`/`ValueError`/`AttributeError` text can name less | — | L3 for any log text a check reads | none |
 | 16 | `machine`, `rp2`, `neopixel` and `network` | the Unix `machine` has none of `I2C`, `SPI`, `UART`, `Pin`, `Timer`, `WDT`, `RTC`, `reset_cause()` or `mem_backup()`, its `mem32` maps `/dev/mem`, and there is no `rp2`, `neopixel` or `network`: L1/L2 run the same-named fakes in `tests/` and `digital_twin/`, found first on the search path | the real peripherals, the DMA engine, the NeoPixel bitstream and `network.WLAN` | the fakes | L3/L4 | none |
 | 17 | soft-callback queue | depth 4 (`py/mpconfig.h:1232-1234`) | depth 8 (`ports/rp2/mpconfigport.h:131`); every soft Timer and Pin IRQ callback is queued there and dropped when it is full (`shared/runtime/mpirq.c:103-106`, `py/scheduler.c:162-180`; F.1) | the unit fake's `Timer.drop()` stands in for a drop | L3/L4 | none |
@@ -5656,6 +6052,14 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 20 | `random`'s boot seed | the host's randomness (`ports/unix/mpconfigport.h:190-196`) | `get_rand_32()` (`ports/rp2/mpconfigport.h:163`), used by the boot signature's `random.getrandbits(32)` | — | — | none |
 | 21 | C-stack limit | 80,000 B on the 64-bit host, no margin (`ports/unix/main.c:443-451`, `py/mpconfig.h:819-820`) | the 8 KB stack less a 256 B margin (`ports/rp2/CMakeLists.txt:661`, `ports/rp2/mpconfigport.h:125`): a call or await depth that passes on the rig can raise `RuntimeError` on the board | — | L3 | none |
 | 22 | `sys.settrace` | compiled into `build-settrace` only, with the three settings it implies (`MICROPY_PERSISTENT_CODE_SAVE`, `MICROPY_PY_BUILTINS_CODE` full, `MICROPY_EXPOSE_MP_COMPILE_TO_RAW_CODE`); `build-standard` differs from rp2 in none of them | none | only `scripts/test.sh --coverage` uses `build-settrace`; its allocation figures are inflated (E.5.2) | — | none |
+| 23 | lwIP's network interface (`build-lwip`, B.14.4) | a loopback netif (`MICROPY_PY_LWIP_LOOPBACK=1`, `extmod/extmod.mk:413-414`) with both ends of every connection in one process, so each connection holds two pcbs and `MEMP_NUM_TCP_PCB` 9 admits 4 pairs, about half rp2's connections; every sent packet is copied into the lwIP arena on its way back (`netif_loop_output()`, a `PBUF_RAM` pbuf, `lib/lwip/src/core/netif.c:1147`), so the arena fills sooner and a write at its edge can raise `ENOMEM` from `tcp_output()` with its bytes already queued (`extmod/modlwip.c:817-826`) before the zero-window `EAGAIN` comes; a fresh connection takes 10,400 B (13 MSS) to a peer that never reads | the CYW43 netif: the peer is another host and the driver takes the outgoing pbufs | `tests/lwip_host/test_modlwip_eagain.py` measures the pool in-process, loads with whole-MSS writes so every edge is the zero-window `EAGAIN`, and never accepts `ENOMEM` in its place | L4: the modlwip send-stall round on `dev` (owed, BACKLOG.md) | none (the instrument's design) |
+| 24 | lwIP struct sizes and `MEM_ALIGNMENT` (`build-lwip`) | 64-bit pointers make lwIP's structs and pool elements larger, and `MEM_ALIGNMENT` is the host's pointer size, 8, against `extmod/lwip-include/lwipopts_common.h:42`'s 4: every pool and arena threshold falls elsewhere than on rp2 | 32-bit, `MEM_ALIGNMENT` 4 | the host test reads its edges from `versions.toml`'s `[lwip]` and measures them, never asserting an rp2 figure | L4 | none |
+| 25 | IPv6 fragment reassembly (`build-lwip`) | `IPV6_FRAG_COPYHEADER` 1: with 8-byte pointers `struct ip6_reass_helper` outgrows `IP6_FRAG_HLEN`, which `ip6_reass_tmr()` asserts every second (`lib/lwip/src/core/ipv6/ip6_frag.c:117-120`); lwIP's own setting for `sizeof(void*) > 4` (`lib/lwip/src/include/lwip/ip6_frag.h:60-72`) | 0, lwIP's default | the generated host `lwipopts.h`; the build's readback runs lwIP's timers through two reassembly ticks (B.14.4) | — (nothing here reassembles fragments) | none (a pointer-width setting) |
+| 26 | what runs lwIP (`build-lwip`) | the variant's `MICROPY_INTERNAL_EVENT_HOOK` (`netif_poll_all(); sys_check_timeouts();`) in `mp_event_handle_nowait()` on every `mp_event_wait_ms()` (`py/scheduler.c:259-266`, `ports/unix/unix_mphal.c:244-252`), so lwIP advances only while MicroPython waits | PendSV and a soft timer every 64 ms (`ports/rp2/mpnetworkport.c:39, :137-171`), whatever Python is doing | `lwip_host_port.c` (B.14.4); the host tests pump with `time.sleep_ms(1)` | L4 | none |
+| 27 | lwIP assertions (`build-lwip`) | `LWIP_PLATFORM_ASSERT` prints the assertion and calls `abort()`, so a failed one ends the run loudly; closing a listening socket trips one, because modlwip's close calls `tcp_err()`/`tcp_recv()` on the LISTEN pcb (`extmod/modlwip.c:1680-1683`) | a no-op (`ports/rp2/lwip_inc/arch/cc.h:6`) | the generated host `arch/cc.h`; the host tests open one listener and never close it | — | none (the instrument's design) |
+| 28 | lwIP's start and `LWIP_RAND()` (`build-lwip`) | lwIP is not started at boot, the Unix port having no boot hook: until `lwip.reset()` (`extmod/modlwip.c:1781-1785`, `lwip_init()`) every socket fails with `OSError: [Errno 12] ENOMEM`; `LWIP_RAND()` is libc `rand()` | `lwip_init()` at boot (`ports/rp2/main.c:173`); `LWIP_RAND()` is `get_rand_32()` (`ports/rp2/lwip_inc/lwipopts.h:12`) | the host tests and the build's readback call `lwip.reset()` once first | — | none |
+| 29 | `modlwip.o`'s compile flags and the `listen()` backlog (`build-lwip`) | `-Wno-sign-compare` and `-DSOMAXCONN=2`, private to that object (B.7): the Unix port compiles with `-Wextra` and takes its default backlog from `<sys/socket.h>`, which `modlwip.c` never includes (`ports/unix/mpconfigport.h:176`) | `-Wall -Werror` without `-Wextra`; default backlog 2 (`py/mpconfig.h:2148`), which `SOMAXCONN=2` reproduces | the generated host `mpconfigvariant.mk` | — | upstream `modlwip.c` compiles clean under the Unix port's `-Wextra` and its backlog default stops needing the socket header |
+| 30 | a timeout-0 `select.poll()` with a non-fd object registered | the POSIX path sleeps `MICROPY_PY_SELECT_IOCTL_CALL_PERIOD_MS` (1 ms) in `poll()` before asking the non-fd objects (`extmod/modselect.c:58, :353, :370-386`), so a `poll(0)` on an lwIP socket costs about 1 ms | no POSIX path (row 12): a `poll(0)` asks each object once and returns | the host spin-round bound (`l1.lwip_host_spin_round_max_us`) includes that sleep | L4 | as row 12 |
 
 These further settings differ and are used by nothing here: `MICROPY_BANNER_MACHINE`,
 `MICROPY_BLUETOOTH_BTSTACK`, `MICROPY_BLUETOOTH_BTSTACK_CONFIG_FILE`, `MICROPY_BOARD_BUILD_NAME`,
@@ -5717,9 +6121,11 @@ workaround.
 
 | Workaround | Where | Retired when upstream … | Detail |
 |---|---|---|---|
-| Deferred SIGINT delivery for the Unix test binary (`unix_kbd_intr` override) | `toolchain/micropython_overrides.py`, `build_unix_port()` | the Unix standard variant delivers SIGINT through the scheduler by default | B.14.1 |
+| Deferred SIGINT delivery for the Unix test binary (`unix_kbd_intr` override) | `toolchain/micropython_overrides.py`, every Unix-port build | the Unix standard variant delivers SIGINT through the scheduler by default | B.14.1 |
 | Heap unwedge after a SIGINT inside `gc_collect()` | `digital_twin/unix_port_gc_unwedge.py` and the twin runners' `except KeyboardInterrupt:` | retired by a build-time proof that the SIGINT override is applied, not by upstream | F.6 |
-| `-Wno-array-bounds` for mbedtls's `mbedtls_xor()` under GCC ≥ 14 | `toolchain/setup_toolchain.py` build flags | mbedtls ≥ 3.6.6 (already met at `v1.29.0`) and a GCC ≥ 14 build of both targets clean without the flag | B.7.1 |
+| `-Wno-array-bounds` for mbedtls's `mbedtls_xor()` under GCC ≥ 14 | `ctr_drbg.c` alone, in the generated Unix variant makefiles and rp2 board cmake of `toolchain/micropython_overrides.py` | mbedtls ≥ 3.6.6 (already met at `v1.29.0`) and a GCC ≥ 14 build of both targets clean without the flag | B.7.1 |
+| A non-blocking modlwip send returns `EAGAIN` on `ERR_MEM` instead of retrying up to 10 s (`modlwip_eagain` override, micropython issue 19704) | `toolchain/micropython_overrides.py`, every rp2 build and the lwIP host build | the pin carries a real fix for issue 19704 (PRs 19705/19708); the override is then removed, not re-anchored (owner, 2026-09-30) | B.14.4 |
+| `-Wno-sign-compare` and `-DSOMAXCONN=2` for `extmod/modlwip.o` in the lwIP host build | `toolchain/micropython_overrides.py`, the host variant makefile | upstream `modlwip.c` compiles clean under the Unix port's `-Wextra` and the Unix backlog default stops needing `<sys/socket.h>` | B.7, F.7 |
 | No `setsockopt(TCP_NODELAY)` call | absence in `src/` | `modlwip.c` NULL-checks the pcb and takes the lwIP lock there; lifting it is the owner's call (owner, 2026-09-30) | B.14.2 |
 | `peer_gone` write suppression after a connection reset | `src/asy_webserver_service.py` `_TimeoutStreamProxy` | `modlwip.c` refuses writes on a freed pcb with an error | H.7.1 |
 | Stub repair: `asyncio/futures.pyi` re-export | `scripts/typecheck.sh` | the stdlib stubs ship the re-export again | F.5.5 |
@@ -5731,7 +6137,7 @@ workaround.
 | Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double | none: a non-fd `select.poll()` never becomes ready on GitHub runners, and the bounded fake is the test design | F.7 |
 | `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | F.7 |
 | Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | F.7 |
-| Two Unix binaries, the test rig without `sys.settrace` | `toolchain/setup_toolchain.py` `build_unix_port()`, `scripts/test.sh` | an idle compiled-in `sys.settrace` stops allocating per call; merging the binaries is the owner's call (owner, 2026-09-21) | E.5.2 |
+| A settrace-free test rig beside the `sys.settrace` binary | `toolchain/setup_toolchain.py` `build_unix_port()`, `scripts/test.sh` | an idle compiled-in `sys.settrace` stops allocating per call; merging the binaries is the owner's call (owner, 2026-09-21) | E.5.2 |
 | Never nest `asyncio.run()` (segfaults instead of raising) | test helpers' synchronous scope | `asyncio.run()` raises inside a running loop | F.1 |
 | Never await an ended task a second time (after a first await that raced its queued handler call, the second raises `None`) | `SystemService._supervise()` empties a slot right after logging its ended task; the twin integration test's cleanup skips ended tasks | `core.py` keeps `t.data` on the path where the task was already awaited | F.1 |
 | `/status` collected into a list (no async generators) | `src/asy_webserver_service.py` | async generators are supported | F.1 |
@@ -6352,7 +6758,10 @@ with these three spares; nothing leaner has been measured.
 
 **The PCB count is the small part.** A servable connection also needs its share of
 `MEMP_NUM_TCP_SEG` and `MEM_SIZE`; the ensemble, its per-device build-time check and its cost
-(2,324 B of GC heap per connection) are B.14.2.
+(2,324 B of GC heap per connection) are B.14.2. A response write that meets the edge of either pool
+answers `EAGAIN` and waits cooperatively until the peer acknowledges or the connection's per-call
+timeout ends it, instead of holding the whole VM for up to 10 s inside modlwip (B.14.4; owner,
+2026-09-30).
 
 **`backlog` is coupled to it, and must be.** It sizes `extmod/modlwip.c`'s ring of connections lwIP
 has established but asyncio has not yet accepted; an arrival that finds it full is reset inside
@@ -9614,10 +10023,18 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `lwip.tcp_snd_buf` | 6400 | `toolchain/versions.toml` — `6400` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.mem_size_per_connection_floor` | 2000 B | `toolchain/micropython_overrides.py` — `2000` | `MEM_SIZE` (derived per `max_connections`, `toolchain/versions.toml`) | estimated (agent, `31da2b3`) — measurement owed: a connection's arena share at the ceiling, L4 | unknown until measured | the pin moves or the serving piece size changes |
 | `lwip.spare_tcp_pcbs` | 3 | `toolchain/micropython_overrides.py` — `3` | `MEMP_NUM_TCP_PCB` and `MEMP_NUM_TCP_SEG` (derived per `max_connections`) | estimated (agent, `58b14ac`) — measurement owed: pcbs in TIME_WAIT at the ceiling, L4 | unknown until measured | the pin moves or the close linger changes |
-| `tool.preprocess_timeout_s` | 120 s | `toolchain/micropython_overrides.py` — `120` | the preprocessor readbacks | estimated (agent, `bcea110`) — measurement owed: the readback's wall clock on the bench Pi4 | unknown until measured | the toolchain or the host class changes |
-| `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30` | every apt fetch `ensure_apt_packages()` makes: a mirror silent this long is stalled, and the fetch is retried (`tool.uv_sync_attempts`) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
-| `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `.github/workflows/ci.yml` — `3`; `.github/actions/setup-micropython-toolchain/action.yml` — `3` | every retried network step, uv sync included | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
-| `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `.github/workflows/ci.yml` — `10`; `.github/actions/setup-micropython-toolchain/action.yml` — `10` | every retried network step: the pause grows by one step per attempt | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
+| `tool.preprocess_timeout_s` | 120 s | `toolchain/micropython_overrides.py` — `120` | each post-build proof that runs a subprocess: the lwIP options' and the tick-offset sentinel's `-E` readbacks, the SIGINT readback's `make <build>/unix_mphal.pp`, and the host lwIP binary's runtime probe, which sleeps 2.5 s (B.14) | estimated (agent, `bcea110`) — measurement owed: the readback's wall clock on the bench Pi4 | unknown until measured | the toolchain or the host class changes |
+| `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
+| `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `.github/workflows/ci.yml` — `3`; `.github/actions/setup-micropython-toolchain/action.yml` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; and CI's own retried `uv sync` | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
+| `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `.github/workflows/ci.yml` — `10`; `.github/actions/setup-micropython-toolchain/action.yml` — `10` | the pause before each retry of every step `tool.uv_sync_attempts` lists, growing by one step per attempt | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
+| `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | every short query or probe `run()` makes: `git` queries and checkouts, both `git ls-remote` tag queries (per attempt), the built binaries' version and frozen-module probes, `picotool version`, the `nmcli`/`ip`/`systemctl` calls and bridge changes, the sudo probe; `node_on_path_matches()`'s own `node --version` | estimated (agent, `8c38f9d`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
+| `tool.network_step_timeout_s` | 1800 s | `toolchain/setup_toolchain.py` — `1800` | one attempt of a third-party download: clones, fetches, submodule updates, `uv sync`, `npm ci`, the Playwright `install`/`install-deps`; × `tool.uv_sync_attempts` for a retried one | estimated (agent, `8c38f9d`) — measurement owed: a cold MicroPython/pico-sdk clone with submodules on CI and over the bench Pi4's uplink, L0 | unknown until measured | a source's size or the uplink changes |
+| `tool.build_step_timeout_s` | 3600 s | `toolchain/setup_toolchain.py` — `3600` | every compile or install: each `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the local cache, the Node unpack | estimated (agent, `8c38f9d`) — measurement owed: the longest build step on the bench Pi4, L0; a whole `test` run took 161-169 s at `-j2` on this host (2026-10-08) | unknown until measured on the Pi4 | a build's size or the host class changes |
+| `tool.apt_step_timeout_s` | 150 s | `toolchain/setup_toolchain.py` — `150` | one apt attempt: the list `update` (once, non-fatal) and each `install --download-only` attempt (B.4); worst case 150 + 3 × 150 + 10 + 20 = 630 s of fetching, under `firmware-build-verify`'s 15-minute limit with its other steps | estimated (agent, `5b6dc1b`) — measurement owed: the download share of the apt step on CI (the whole step took 27-66 s on run 37799699030), the sandbox and the bench Pi4, L0 | about 2.3× the longest whole apt step seen on CI | a mirror's failure pattern or the package list changes |
+| `tool.bench_bridge_recovery_arm_s` | 300 s | `toolchain/setup_toolchain.py` — `300` | the recovery timer's window around a bridge creation or channel re-pin (B.13); must cover the change plus `tool.bench_bridge_up_poll_s` | estimated (agent, `5b6dc1b`) — measurement owed: a real bridge creation's wall time and its time to a DHCP lease on the bench Pi4 (B.13 measured about 30 s to a lease, 2026-09-04), L4 | arm ≥ the sequence + the poll + 60 s | the bridge sequence or the bench host changes |
+| `tool.bench_bridge_up_poll_s` | 90 s | `toolchain/setup_toolchain.py` — `90` | how long `br0` may take after `up` to hold an address and the default route before the change counts as failed and the timer stays armed (B.13) | estimated (agent, `5b6dc1b`) — measurement owed: as `tool.bench_bridge_recovery_arm_s`, L4 | 3× the single 30 s lease measured on the bench Pi4 (2026-09-04) | the bridge sequence or the bench host changes |
+| `tool.node_shasums_timeout_s` | 60 s | `toolchain/setup_toolchain.py` — `60` | `curl --max-time` for the Node `SHASUMS256.txt`; `run()` allows each attempt that plus 30 s, so curl names a stall first | estimated (agent, `8c38f9d`) — measurement owed: the fetch on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
+| `tool.node_tarball_timeout_s` | 600 s | `toolchain/setup_toolchain.py` — `600` | `curl --max-time` for the Node tarball, plus 30 s as above | estimated (agent, `8c38f9d`) — measurement owed: the download on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
 | `dev.uart_poll_wait_ms` | 2 ms | `devices/dev.toml` — `2`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `2`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `2`; `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` — `2`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `2`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `2` | `uart.timeout_floor`, `uart.rxbuf_floor` | estimated (agent, `4f8caf5`) — measurement owed: the crossover link's throughput at 2 ms on the dev bench, L3 (J.6: a protocol instance needs a single-digit rate) | unknown until measured | a bench window, baud, `payload_size` or `timeout` change |
 | `dev.uart_poll_idle_ms` | 50 ms | `devices/dev.toml` — `50`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `50`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `50`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `50`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `50` | `uart.timeout_floor` (`buildgen/validate.py`); `tests_hardware/device_scripts/uart_idle_poll_rate.py` counts it | measured 2026-09-12, dev bench, 2 interleaved runs: an idle listener 1244/1233 poll rounds over 3 s at 2 ms against 60/60 at 50 ms (F.5.9); 1/20 of the 1000 ms reply budget (agent, 2026-09-11, `7cf989d`) | 13.3× the reply timeout's floor (J.7: 2·2 + 50 + 21 = 75 ms against 1000 ms) | a bench window, baud, `payload_size` or `timeout` change |
 | `dev.uart_rxbuf` | 512 B | `devices/dev.toml` — `512`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `512`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `512`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `512` | `uart.rxbuf_floor` | estimated (agent, `4f8caf5`) — measurement owed: the ring's peak fill and the largest write on the dev bench, L3 | unknown until measured | a bench window, baud, `payload_size` or `timeout` change |
@@ -9847,6 +10264,13 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.uart_comm_hazard_retention_per_failure_max_bytes` | 16.0 B | `tests/test_uart_comm_hazard.py` — `16.0` | — | estimated (agent, `fd333ce`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_uart_comm_prompt_hold_ms` | 5 ms | `tests/test_asy_uart_comm.py` — `5` | — | estimated (agent, `4d5154d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_fram_manager_read_wait_s` | 5 s | `tests/test_asy_fram_manager.py` — `5` | — | estimated (agent, `892a591`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.lwip_host_write_bound_ms` | 250 ms | `tests/lwip_host/test_modlwip_eagain.py` — `250` | every timed `write()` of the host file; the unpatched `ERR_MEM` loop holds one for up to 10,000 ms | estimated (agent, `a2d7ee2`) — measurement owed: the slowest patched write on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here (2026-10-08, both GC stages) 0.16 ms under load, 0.06 ms quiet | over 1,500× the slowest write here, 40× under the unpatched 10,000 ms (a control build: 10,000-10,065 ms) | the host build, the pin's `modlwip.c` or the host class changes |
+| `l1.lwip_host_connect_bound_ms` | 200 ms | `tests/lwip_host/test_modlwip_eagain.py` — `200` | a handshake slower than this counts the pcb pool as exhausted, so it also sets test (1)'s pair count | estimated (agent, `a2d7ee2`) — measurement owed: the slowest handshake on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 1.19 ms under load, 1.48 ms quiet, 117 pairs a run | over 100× the slowest handshake here | the host build or the host class changes |
+| `l1.lwip_host_recovery_s` | 15 s | `tests/lwip_host/test_modlwip_eagain.py` — `15` | the drain and capacity-recovery waits; covers modlwip's 10 s close-abort (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`) | estimated (agent, `a2d7ee2`) — measurement owed: the slowest recovery on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 126.6 ms under load, 120.1 ms quiet, the close-abort never reached | 5 s over the 10 s close-abort | the close linger or the host class changes |
+| `l1.lwip_host_rounds` | 20 | `tests/lwip_host/test_modlwip_eagain.py` — `20` | test (6)'s load, drain and close rounds; 20 take 16.8 s of the file's 23.7-24.4 s here | estimated (agent, `a2d7ee2`) — measurement owed: the file's wall time against `runner.per_file_timeout_s` on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; capacity was 10,400 B in every round here | the file uses about a tenth of the 240 s per-file limit here | the file's wall time nears the per-file limit |
+| `l1.lwip_host_spin_rounds` | 1000 | `tests/lwip_host/test_modlwip_eagain.py` — `1000` | test (7)'s rounds; 5.1-5.2 s here | estimated (agent, `a2d7ee2`) — measurement owed: test (7)'s wall time on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1 | enough rounds that one slow round shows; a tenth of the file's time here | the file's wall time nears the per-file limit |
+| `l1.lwip_host_spin_round_max_us` | 20000 µs | `tests/lwip_host/test_modlwip_eagain.py` — `20000` | one `drain()` round at the patched edge (a `write()` returning `None`, a timeout-0 poll), which on this host includes select's 1 ms `poll()` sleep (F.7 row 30); rounds that ran a collection are counted and left out | estimated (agent, `a2d7ee2`) — measurement owed: the slowest spin round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 8,536 µs under load, 5,896 µs quiet | 2.3× the slowest round here, 2.5× under an unpatched round's 50,000 µs sleep; a failed bound goes to the owner as a change to the override, never a larger bound (owner, 2026-09-30) | the override, the pin's `modlwip.c` or the host class changes |
+| `l1.lwip_host_spin_round_alloc_max_b` | 64 B | `tests/lwip_host/test_modlwip_eagain.py` — `64` | the heap one spin round allocates, a `gc.mem_alloc()` delta | estimated (agent, `a2d7ee2`) — measurement owed: the allocation per round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 32 B in every round of every run, one 32 B GC block for the memoryview slice `drain()` makes | two GC blocks of the 64-bit host | the spin's per-round work or the GC block size changes |
 
 **L2 (digital twin)**
 
