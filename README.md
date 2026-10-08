@@ -722,9 +722,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 - **[`mqtt_poc/`](mqtt_poc/)** — the MQTT client proof of concept's research round (2026-10-07):
   `mqtt_poc/RESEARCH.md` (the client landscape, Peter Hinch's `mqtt_as` in detail, the rp2 platform facts, what
   the framework requires of the service, and the owner's answers), the six raw, unverified research
-  reports under `research/` it was built from, and `prototype/`: a first client prototype with its dev
-  digital-twin torture harness and `prototype/RESULTS.md`. Like `audit/`, outside the doc gates' scan;
-  deleted once the PoC's outcomes are migrated.
+  reports under `research/` it was built from, `prototype/`: a first client prototype with its dev
+  digital-twin torture harness and `prototype/RESULTS.md`, and `mqtt_poc/DESIGN.md` (2026-10-08): the
+  detailed design of the `src/` client, its `dev` wiring, its tests per tier and the bench runbook. Like
+  `audit/`, outside the doc gates' scan; deleted once the PoC's outcomes are migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; for
