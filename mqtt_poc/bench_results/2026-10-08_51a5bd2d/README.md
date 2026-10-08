@@ -328,3 +328,34 @@ What this tells the twin's further development:
   the real figures above are the ones for `mqtt.out_payload_max`.
 - **The fixed probe held its session for the whole twin run** (3 connects: the start and the two kills),
   where before the fix a quiet observer was dropped every 30–60 s.
+
+### Where the flash step's other ~14 KB comes from (`observations/twin_heap_bisect/`)
+
+Host only. The board's own split, from attempt 3's log, is `baseline` (after `import sensortask_dev`) 62,720 B
+allocated and `build_system()` +50,352 B, total 113,072 B; the 87,760–87,968 B readings the tripwire was set
+from are dated 2026-09-19 (`3fe0fb2b`), and no run kept their split. On the twin (Unix port, 64-bit, 32 B
+blocks), the board's own `heap_headroom_after_full_system_build.py` (`c11ca0a`'s copy for every tree) was run
+against each tree's src and generated `sensortask_dev`, all under `c11ca0a`'s fakes and one `frozen_html.py`,
+so only `src/` and the generated module differ. The comparable figure is the graph, `after_build_system`
+minus `baseline`: on the twin the modules' bytecode sits in the heap, on the board in flash.
+
+| Tree | Twin graph | Step |
+|---|---|---|
+| `3fe0fb2b` (2026-09-19) through U10 (`41b47f1d`) | 388,768 → 388,032 B | flat (−736) |
+| U11 `8d44fd14`, the core | 392,192 B | +4,160 |
+| U12 `2949ed97` | 392,064 B | −128 |
+| U13 `cbb65df2`, the bus layers | 397,504 B | +5,440 |
+| U14 `1cff5a26` | 400,064 B | +2,560 |
+| U15 `5689e2f4`, the sensor drivers | 401,888 B | +1,824 |
+| U16 `2977c4e0`, FRAM storage | 405,664 B | +3,776 |
+| U17 `c11ca0a`, the audit base | 406,304 B | +640 |
+| `51a5bd2d`, this branch's image | 418,880 B | +12,576 |
+
+The fakes themselves grew 8,512 B over the same span (the 2026-09-19 src under its own fakes: 380,096 B), which
+is why one set of fakes is used throughout. The scale between the tiers comes from this branch's step: the twin
++12,576 B against the board's 8,432 B `MQTTClient` construction, about 1.5x (the branch's other graph
+changes ride in the twin figure, so the factor is an upper bound). At that factor, **U11–U17's +18,272 B is
+about 12 KB on the board, against the ~13.8 KB left after the client's 11,360 B**; the rest fits the board's
+import-time growth, which the twin cannot show apart from bytecode. So the tripwire's overshoot is about half
+this branch (11.4 KB) and about half the audit base's own U11–U17 (agent estimate, from one scale factor; a
+board reading of a `c11ca0a` image would settle it, and needs a flash this session no longer has).
