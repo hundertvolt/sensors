@@ -52,6 +52,7 @@ _KNOWN_PERSISTING_HELPERS = {
     # and its undo leaves the next module the old baseline - prerequisite writes, so no dependent is marked.
     "_enable_mqtt",
     "_disable_mqtt",
+    "_password_broker",  # the password broker's credentials and their undo, driven only from persistence_write-marked tests
 }
 
 

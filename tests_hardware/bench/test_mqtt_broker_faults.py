@@ -4,6 +4,7 @@ and a reboot at the firmware's own gc threshold, then the broker faults again at
 
 from __future__ import annotations
 
+import contextlib
 import json
 import signal
 import socket
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import http_client
 import pytest
+import serial
 import tomllib
 from error_log_helpers import assert_no_task_ended, code, get_errcount, reset_all_error_logs
 from harness import MEMORY_ERROR_MARKERS, REPO_ROOT, restore_board_to_serving, wait_for_script_server, wait_until
@@ -35,6 +37,10 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_mqtt_broker_faults",
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 _BROKER_PORT = 18883  # fixed, so every iptables rule names it; a distribution mosquitto keeps 1883 to itself
+_AUTH_PORT = 18884  # the password broker's, beside the anonymous one
+_AUTH_DEVICE = ("bench-device", "bench-device-pass")  # a throwaway broker's accounts, not real secrets
+_AUTH_OBSERVER = ("bench-observer", "bench-observer-pass")
+_STALL_OFFSETS_S = (1.0, 5.0, 9.0, 13.0)  # after a connect, across the 15 s ping interval's phase
 _FAULT_COMMENT = "sensors-bench-mqtt-fault"
 _OBSERVER_ID = "bench-observer"
 _SLOT_PAYLOAD_MAX = 384  # mqtt.out_payload_max: a larger measurement object would be dropped, counted
@@ -80,6 +86,12 @@ _SCRIPT_TIMEOUT_S = 600.0  # the device script's 420 s window, its boot and mpre
 _DRIVER_JOIN_S = 60.0
 # @tunable l4.mqtt_poll_s = 1.0
 _POLL_S = 1.0
+# @tunable l4.mqtt_refused_window_s = 40.0
+_REFUSED_WINDOW_S = 40.0  # failed attempts are counted over it: about five at the 2 s doubling backoff
+# @tunable l4.mqtt_refused_max_attempts = 6
+_REFUSED_MAX_ATTEMPTS = 6  # one over the doubling backoff's count in the window; the minimum alone would allow about 20
+# @tunable l4.mqtt_stall_phase_tolerance_s = 1.5
+_STALL_PHASE_TOLERANCE_S = 1.5  # the keeper's 100 ms tick, the console's USB latency and this host's scheduling
 
 _E_CONNECT = code("E", "MQTT_CONNECT")
 # What this module's faults may log: a failed attempt, a lost connection, a missed PINGRESP, a stalled drain and the
@@ -215,6 +227,61 @@ def _drive_faults(m: MqttBench, stop: threading.Event, steps: list[str]) -> None
     thief.close()
     if step("reconnected after takeover", connected, _CONNECT_WAIT_S + _BACKOFF_CAP_S):
         steps.append("done")
+
+
+@contextlib.contextmanager
+def _password_broker(m: MqttBench, workdir: Path, password: str) -> Iterator[tuple[Mosquitto, Probe]]:
+    # A second broker that admits only its two accounts, the device pointed at it with `password`; this test owns the
+    # writes and their undo (the anonymous broker's port and no credentials).
+    broker = Mosquitto(workdir, _AUTH_PORT, bind=m.host_ip, users=dict([_AUTH_DEVICE, _AUTH_OBSERVER]))
+    broker.start()
+    observer = Probe(m.host_ip, _AUTH_PORT, _OBSERVER_ID + "-auth", (f"{m.base}/#",), username=_AUTH_OBSERVER[0], password=_AUTH_OBSERVER[1]).start()
+    try:
+        assert observer.wait_connected(), f"the bench's own account was refused (log: {broker.log_path})"
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPort": _AUTH_PORT, "MQTTUser": _AUTH_DEVICE[0], "MQTTPW": password}, timeout_s=_REST_BUDGET_S)
+        assert res.status_code == 200 and all(v in ("Valid", "Unchanged") for v in res.json().get("result", {}).values()), f"the credentials were refused at PUT: {res.body!r}"
+        yield broker, observer
+    finally:
+        restore = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPort": _BROKER_PORT, "MQTTUser": "", "MQTTPW": ""}, timeout_s=_REST_BUDGET_S)
+        observer.close()
+        broker.stop()
+        assert restore.status_code == 200, f"restoring the anonymous broker failed: {restore.body!r}"
+
+
+def _broker_attempts_from(broker: Mosquitto, dut_ip: str) -> int:
+    return broker.log_path.read_text(errors="replace").count(f"New connection from {dut_ip}:")
+
+
+def _mqtt_counter(dut_ip: str) -> int:
+    return int(get_errcount(dut_ip).get("MQTT", {}).get("counter", 0))
+
+
+class _Console:
+    # The board's console with this host's monotonic time per line, read passively while a test runs.
+    def __init__(self, device: str) -> None:
+        self.lines: list[tuple[float, str]] = []
+        self._stop = threading.Event()
+        self._port = serial.Serial(device, 115200, timeout=0.2)
+        self._thread = threading.Thread(target=self._read, daemon=True)
+        self._thread.start()
+
+    def _read(self) -> None:
+        while not self._stop.is_set():
+            raw = self._port.readline()
+            if raw:
+                self.lines.append((time.monotonic(), raw.decode("utf-8", errors="replace").rstrip("\r\n")))
+
+    def first_after(self, since: float, text: str, timeout_s: float) -> float | None:
+        def hit() -> float | None:
+            return next((t for t, line in list(self.lines) if t >= since and text in line), None)
+
+        wait_for(lambda: hit() is not None, timeout_s, 0.05)
+        return hit()
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+        self._port.close()
 
 
 @pytest.fixture(scope="module")
@@ -436,6 +503,108 @@ def test_no_task_ended_and_only_expected_codes_were_logged(mqtt_bench: MqttBench
     web = get_errcount(m.dut_ip).get("WEBSERVER", {})
     assert not web.get("counter"), f"the web server logged during the MQTT faults: {web!r}"
     _assert_mqtt_logged_only(m.dut_ip, "MQTT broker faults")
+
+
+@pytest.mark.persistence_write("networking/mqtt")
+def test_a_password_broker_admits_the_stored_credentials(mqtt_bench: MqttBench, tmp_path: Path, result_note: Callable[..., None]) -> None:
+    # MQTTUser/MQTTPW reach the CONNECT; GET /networking never shows the password back.
+    m = mqtt_bench
+    _wait_connected(m.dut_ip, "before switching to the password broker")
+    connects = _count(m.dut_ip, "MQTTConnects")
+    with _password_broker(m, tmp_path, _AUTH_DEVICE[1]) as (broker, observer):
+        took = _wait_count_above(m.dut_ip, "MQTTConnects", connects, _CONNECT_WAIT_S, "a connection to the password broker")
+        online = wait_for(lambda: any(msg.payload == b"online" for msg in observer.received(f"{m.base}/status")), _STEP_WAIT_S)
+        assert online, f"no online on the password broker: {observer.received()!r}"
+        shown = http_client.fetch(m.dut_ip, 80, "GET", "/networking", timeout_s=_REST_BUDGET_S).json()
+        assert shown.get("MQTTUser") == _AUTH_DEVICE[0] and shown.get("MQTTPW") != _AUTH_DEVICE[1], f"GET /networking: user {shown.get('MQTTUser')!r}, password shown in clear"
+        anonymous = Probe(m.host_ip, _AUTH_PORT, "bench-anonymous", ()).start()
+        refused = not anonymous.wait_connected(3.0)
+        anonymous.close()
+        assert refused, "the password broker admitted an anonymous client, so this test proves nothing"
+        assert "bench-device" in broker.log_path.read_text(errors="replace")
+    back = _wait_connected(m.dut_ip, "back on the anonymous broker")
+    result_note(f"connected to the password broker in {took:.1f}s; password masked as {shown.get('MQTTPW')!r}; back on the anonymous broker in {back:.1f}s")
+
+
+@pytest.mark.persistence_write("networking/mqtt")
+def test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff(mqtt_bench: MqttBench, tmp_path: Path, result_note: Callable[..., None]) -> None:
+    m = mqtt_bench
+    _wait_connected(m.dut_ip, "before the wrong password")
+    connects, logged = _count(m.dut_ip, "MQTTConnects"), _mqtt_counter(m.dut_ip)
+    with _password_broker(m, tmp_path, _AUTH_DEVICE[1][::-1]) as (broker, _observer):
+        started = time.monotonic()
+        time.sleep(_REFUSED_WINDOW_S)  # an absence: no refused attempt may become a connection
+        attempts = _broker_attempts_from(broker, m.dut_ip)
+        status = _networking(m.dut_ip)
+        assert status.get("MQTTConnected") is False and _count(m.dut_ip, "MQTTConnects") == connects, f"connected with a wrong password: {status!r}"
+        assert 1 <= attempts <= _REFUSED_MAX_ATTEMPTS, f"{attempts} attempts in {_REFUSED_WINDOW_S:g}s: the backoff did not bound the refused retries"
+        refused = [h for h in _mqtt_history(m.dut_ip) if h.get("num") == code("E", "MQTT_REFUSED")]
+        assert refused, f"no MQTT_REFUSED logged: {_mqtt_history(m.dut_ip)!r}"
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPW": _AUTH_DEVICE[1]}, timeout_s=_REST_BUDGET_S)
+        assert res.status_code == 200, f"correcting the password failed: {res.body!r}"
+        fixed = _wait_count_above(m.dut_ip, "MQTTConnects", connects, _CONNECT_WAIT_S, "a connection once the password was corrected")
+        window = time.monotonic() - started
+    _wait_connected(m.dut_ip, "back on the anonymous broker")
+    result_note(f"{attempts} refused attempts in {_REFUSED_WINDOW_S:g}s, {_mqtt_counter(m.dut_ip) - logged} MQTT log entries, codes {sorted({int(h['num']) for h in _mqtt_history(m.dut_ip)})}; connected {fixed:.1f}s after the correction ({window:.0f}s in all)")
+
+
+@pytest.mark.persistence_write("networking/mqtt")
+@pytest.mark.parametrize("name", ["no-such-broker.invalid", "no-such-broker.local"])
+def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_bench: MqttBench, name: str, result_note: Callable[..., None]) -> None:
+    # .invalid never resolves (RFC 6761): the router answers NXDOMAIN; nobody answers the .local name's mDNS query.
+    m = mqtt_bench
+    _wait_connected(m.dut_ip, f"before switching to {name}")
+    connects = _count(m.dut_ip, "MQTTConnects")
+    reset_all_error_logs(m.dut_ip)
+    try:
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTHost": name}, timeout_s=_REST_BUDGET_S)
+        assert res.status_code == 200 and res.json().get("result", {}).get("MQTTHost") == "Valid", f"{name} was refused at PUT: {res.body!r}"
+        started = time.monotonic()
+        wait_until(lambda: any(h.get("num") == code("E", "MQTT_DNS") for h in _mqtt_history(m.dut_ip)), timeout_s=_DETECT_WAIT_S, poll_interval_s=_POLL_S, description=f"MQTT_DNS logged for {name}")
+        first = time.monotonic() - started
+        time.sleep(max(0.0, _REFUSED_WINDOW_S - first))  # an absence: no attempt may connect
+        failures = _mqtt_counter(m.dut_ip)
+        assert _count(m.dut_ip, "MQTTConnects") == connects and _networking(m.dut_ip).get("MQTTConnected") is False
+        assert 1 <= failures <= _REFUSED_MAX_ATTEMPTS, f"{failures} MQTT log entries in {_REFUSED_WINDOW_S:g}s for an unresolvable name"
+        unexpected = [h for h in _mqtt_history(m.dut_ip) if h.get("num") != code("E", "MQTT_DNS")]
+        assert not unexpected, f"an unresolvable name logged more than MQTT_DNS: {unexpected!r}"
+        assert http_client.fetch(m.dut_ip, 80, "GET", "/status", timeout_s=_REST_BUDGET_S).status_code == 200
+    finally:
+        restore = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTHost": m.host_ip}, timeout_s=_REST_BUDGET_S)
+        assert restore.status_code == 200, f"restoring MQTTHost failed: {restore.body!r}"
+    back = _wait_connected(m.dut_ip, "after MQTTHost went back to the IP")
+    result_note(f"{name}: MQTT_DNS first logged {first:.1f}s after the PUT, {failures} entries in {_REFUSED_WINDOW_S:g}s; reconnected {back:.1f}s after the restore")
+
+
+@pytest.mark.parametrize("offset_s", _STALL_OFFSETS_S)
+def test_stall_detection_follows_the_ping_schedule(mqtt_bench: MqttBench, board: Board, offset_s: float, result_note: Callable[..., None]) -> None:
+    # PINGREQ goes out every 15 s from the connect, its PINGRESP due 10 s later: a stall `offset_s` after a connect is
+    # detected at (15 - offset_s) + 10 s. The board's own console times both ends; a killed broker makes the connect.
+    m = mqtt_bench
+    _wait_connected(m.dut_ip, "before the stall sweep's connect")
+    console = _Console(board.device)
+    try:
+        killed = time.monotonic()
+        m.broker.stop(signal.SIGKILL)
+        time.sleep(_OUTAGE_S)  # an absence, as in the kill test
+        m.broker.start()
+        connected = console.first_after(killed, "MQTT Connected to", _CONNECT_WAIT_S + _BACKOFF_CAP_S)
+        assert connected is not None, "no connect line on the console after the broker restarted"
+        time.sleep(max(0.0, connected + offset_s - time.monotonic()))
+        stalled = time.monotonic()
+        m.broker.send(signal.SIGSTOP)
+        try:
+            detected = console.first_after(stalled, "No PINGRESP", _DETECT_WAIT_S)
+        finally:
+            m.broker.send(signal.SIGCONT)
+    finally:
+        console.close()
+    assert detected is not None, f"no PINGRESP deadline on the console within {_DETECT_WAIT_S:g}s of a stall {offset_s:g}s after the connect"
+    took, expected = detected - stalled, 25.0 - offset_s
+    assert abs(took - expected) <= _STALL_PHASE_TOLERANCE_S, f"a stall {offset_s:g}s after the connect was detected in {took:.2f}s, expected {expected:.1f}s"
+    back = _wait_connected(m.dut_ip, "once the stalled broker resumed")
+    assert m.observer.wait_connected(), "the observer did not come back"
+    result_note(f"stall {offset_s:g}s after the connect: detected in {took:.2f}s (expected {expected:.1f}s); reconnected {back:.1f}s after the resume")
 
 
 def test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link(mqtt_bench: MqttBench, board: Board, bench: BenchBridge, result_note: Callable[..., None]) -> None:

@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"
 import mqtt_probe
 
 _PINGREQ = b"\xc0\x00"
+_CREDENTIALS = ("bench-user", "bench-secret")  # a throwaway broker's only account, not a real secret
 
 
 def _fake_broker(server: socket.socket, seen: "list[bytes]", done: threading.Event) -> None:
@@ -74,3 +75,23 @@ def test_a_packet_split_across_reads_still_arrives_whole(monkeypatch: pytest.Mon
         writer.join(timeout=2.0)
         left.close()
         right.close()
+
+
+@pytest.mark.skipif(mqtt_probe.mosquitto_binary() is None, reason="mosquitto is not installed")
+def test_a_password_broker_admits_only_a_probe_with_its_credentials(tmp_path: Path) -> None:
+    # The bench's password-broker tests rest on both halves: anonymous refused, the right credentials admitted.
+    broker = mqtt_probe.Mosquitto(tmp_path, mqtt_probe.free_tcp_port(), users=dict([_CREDENTIALS]))
+    broker.start()
+    probes = [
+        mqtt_probe.Probe("127.0.0.1", broker.port, "anonymous-probe", ()).start(),
+        mqtt_probe.Probe("127.0.0.1", broker.port, "wrong-probe", (), username=_CREDENTIALS[0], password=_CREDENTIALS[1][::-1]).start(),
+        mqtt_probe.Probe("127.0.0.1", broker.port, "right-probe", (), username=_CREDENTIALS[0], password=_CREDENTIALS[1]).start(),
+    ]
+    try:
+        assert probes[2].wait_connected(5.0), f"the right credentials were refused (log: {broker.log_path.read_text()})"
+        assert not probes[0].wait_connected(1.0), "an anonymous probe was admitted"
+        assert not probes[1].wait_connected(1.0), "a wrong password was admitted"
+    finally:
+        for probe in probes:
+            probe.close()
+        broker.stop()

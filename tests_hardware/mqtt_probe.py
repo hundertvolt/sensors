@@ -45,8 +45,9 @@ def mosquitto_binary() -> str | None:
 
 
 class Mosquitto:
-    # A broker this test starts, signals and stops itself: anonymous, no persistence, logging to the work dir.
-    def __init__(self, workdir: Path, port: int, bind: str = "127.0.0.1") -> None:
+    # A broker this test starts, signals and stops itself: no persistence, logging to the work dir; anonymous, or with
+    # `users` only those name/password pairs, written through mosquitto_passwd.
+    def __init__(self, workdir: Path, port: int, bind: str = "127.0.0.1", users: dict[str, str] | None = None) -> None:
         binary = mosquitto_binary()
         if binary is None:
             raise FileNotFoundError("mosquitto is not installed - toolchain/versions.toml's apt_packages carries it (setup_toolchain.py setup)")
@@ -56,8 +57,16 @@ class Mosquitto:
         workdir.mkdir(parents=True, exist_ok=True)
         self.conf = workdir / f"mosquitto_{port}.conf"
         self.log_path = workdir / f"mosquitto_{port}.log"
+        access = "allow_anonymous true\n"
+        if users:
+            passwd = shutil.which("mosquitto_passwd") or "/usr/bin/mosquitto_passwd"
+            password_file = workdir / f"mosquitto_{port}.passwd"
+            password_file.write_text("")
+            for name, secret in users.items():
+                subprocess.run([passwd, "-b", str(password_file), name, secret], check=True, capture_output=True)  # noqa: S603 - fixed argv
+            access = f"allow_anonymous false\npassword_file {password_file}\n"
         self.conf.write_text(
-            f"listener {port} {bind}\nallow_anonymous true\npersistence false\nconnection_messages true\n"
+            f"listener {port} {bind}\n{access}persistence false\nconnection_messages true\n"
             "log_type error\nlog_type warning\nlog_type notice\nlog_type information\n",
         )
         self.proc: subprocess.Popen[bytes] | None = None
@@ -126,11 +135,13 @@ def _packet(first: int, body: bytes) -> bytes:
 class Probe:
     # One clean-session MQTT connection whose reader thread records every PUBLISH; it reconnects after a loss
     # until close(). With the device's own client id it is the takeover a duplicate client causes.
-    def __init__(self, host: str, port: int, client_id: str, subscribe: tuple[str, ...] = ("#",)) -> None:
+    def __init__(self, host: str, port: int, client_id: str, subscribe: tuple[str, ...] = ("#",), *, username: str | None = None, password: str | None = None) -> None:
         self.host = host
         self.port = port
         self.client_id = client_id
         self.subscribe = subscribe
+        self.username = username
+        self.password = password
         self.messages: list[Message] = []
         self.connects = 0
         self._lock = threading.Lock()
@@ -144,7 +155,9 @@ class Probe:
     def _connect_once(self) -> socket.socket:
         sock = socket.create_connection((self.host, self.port), _START_TIMEOUT_S)
         sock.settimeout(_START_TIMEOUT_S)
-        body = _str(b"MQTT") + bytes([4, 0x02]) + struct.pack("!H", _KEEPALIVE_S) + _str(self.client_id.encode())
+        flags = 0x02 | (0x80 if self.username is not None else 0) | (0x40 if self.password is not None else 0)
+        body = _str(b"MQTT") + bytes([4, flags]) + struct.pack("!H", _KEEPALIVE_S) + _str(self.client_id.encode())
+        body += b"".join(_str(v.encode()) for v in (self.username, self.password) if v is not None)
         sock.sendall(_packet(0x10, body))
         first, payload = self._read_packet(sock)
         if first != 0x20 or len(payload) != 2 or payload[1] != 0:
