@@ -215,3 +215,13 @@ and end without waiting for a resync, and this test asserts a synced clock at on
 tier would hit the same, independent of this branch: a precondition gap in the test, which reads its clock
 once rather than waiting for the sync the earlier tests took away (status at the failure:
 `fram_after_failure_rerun_test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source.json`).
+
+### Observation: NTP's own recovery after the block (`observations/ntp_recovery.json`)
+
+A read-only probe started right after attempt 5 ended (the last test, the unreachable server, leaves NTP
+unsynced): `GET /status` every 5 s plus the board's console, read passively with host timestamps. The board
+resynced by itself **29.8 s after the probe started** (`/status` showed it at the next poll, 34.7 s); the probe
+started after the test's teardown, so this is not a time from the unblock. From the timestamped console, for
+the twin: NTP's check tick fires every 10.0 s (9.79 → 19.79 → 29.79 s), the resync is triggered on a tick
+(`NTP resync triggered.` → `NTP sync starting.` 10 ms later), and the NTP exchange takes **105 ms**
+(`sync starting` → `Received NTP time`); the WiFi service logs its established link every 5.0 s.
