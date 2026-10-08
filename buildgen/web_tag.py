@@ -16,10 +16,10 @@ _SPECS_WEB_GROUP = tuple(spec for spec in KNOWN_TAGS if spec.name == "web-group"
 _WEB_RE = re.compile(r"#+\s*@web\s+(?P<field>[A-Za-z_]\w*)(?P<rest>.*)$")
 _WEB_GROUP_RE = re.compile(r"#+\s*@web-group(?P<rest>.*)$")
 
-# A key is a plain identifier, or the "special:<value>" shape (repeatable, one per enum/sentinel
-# option) - the value is either a double-quoted string or a bare, space-free token. Escaping a
-# literal '"' inside a quoted value is deliberately unsupported (see module docstring).
-_KV_RE = re.compile(r'(?P<key>special:[^\s="]+|[A-Za-z][A-Za-z0-9]*)=(?:"(?P<qval>[^"]*)"|(?P<bval>[^\s"]+))')
+# A key is a plain identifier or "special:<value>" (repeatable, one per enum/sentinel option), its
+# <value> a bare token or, for a string field, a quoted string kept with its quotes (special:"" is the
+# empty one). Every value is a quoted string or a bare, space-free token; no escaped '"' (Part H.5.1).
+_KV_RE = re.compile(r'(?P<key>special:(?:"[^"]*"|[^\s="]+)|[A-Za-z][A-Za-z0-9]*)=(?:"(?P<qval>[^"]*)"|(?P<bval>[^\s"]+))')
 
 _FIELD_KNOWN_KEYS = frozenset({
     "section", "submitGroup", "label", "unit", "description", "kind",
@@ -31,7 +31,7 @@ _VALID_KINDS = frozenset({"readonly", "number", "string", "enum", "toggle"})
 # The values each enumerated key takes; format and codes describe a readonly value, bytes and shape a
 # string one (a string's kind is inferred from its schema, so the generator checks that half).
 _FORMATS = frozenset({"epoch", "gmtimestruct"})
-_SHAPES = frozenset({"hostLabel", "countryCode", "hostName"})
+_SHAPES = frozenset({"hostLabel", "countryCode", "hostName", "ipv4List"})
 _READONLY_ONLY_KEYS = ("format", "codes")
 _STRING_ONLY_KEYS = ("bytes", "shape")
 # js/definitions.js's own validateFieldHints() ceiling (Number#toFixed()'s real RangeError

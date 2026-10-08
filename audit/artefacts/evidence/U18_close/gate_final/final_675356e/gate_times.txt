@@ -1,0 +1,7 @@
+lint rc=0 06:02:29
+typecheck noargs rc=0 06:02:53
+typecheck ci rc=0 06:03:19
+start 06:10:49
+gc-1 rc=0 06:30:11
+coverage rc=1 1565s 06:56:16
+done 06:56:16

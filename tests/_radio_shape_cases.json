@@ -6,5 +6,13 @@
     "countryCode": {
         "accept": ["DE", "XX"],
         "reject": ["de", "D1", "ZZZ", "Z", "D\u0000", "DÉ"]
+    },
+    "hostName": {
+        "accept": ["pool.ntp.org", "192.168.1.1"],
+        "reject": ["-a.b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "a..b", "a b"]
+    },
+    "ipv4List": {
+        "accept": ["", "8.8.8.8", "8.8.8.8,1.1.1.1", "1.1.1.1,8.8.4.4,9.9.9.9"],
+        "reject": ["8.8.8.8,", "a.b.c.d", "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1", "8.8.8.8 ,1.1.1.1", "256.1.1.1"]
     }
 }

@@ -1,0 +1,11 @@
+rep 0 FAIL no recovery within two transactions after step 8 1686 ms
+rep 1 FAIL no recovery within two transactions after step 11 2712 ms
+rep 2 FAIL no recovery within two transactions after step 5 1376 ms
+rep 3 PASS 6478 ms
+rep 4 PASS 5307 ms
+rep 5 PASS 6639 ms
+rep 6 FAIL no recovery within two transactions after step 2 681 ms
+rep 7 PASS 6203 ms
+rep 8 FAIL no recovery within two transactions after step 14 3549 ms
+rep 9 FAIL no recovery within two transactions after step 15 3408 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 4 / 10 passed

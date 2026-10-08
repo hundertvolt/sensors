@@ -1,0 +1,11 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 FAIL no recovery within two transactions after step 15 clean_awaits [21] last_k 15 max_ok_wait_vms 39 expired_waits 29 3910 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 1 FAIL no recovery within two transactions after step 2 clean_awaits [22] last_k 2 max_ok_wait_vms 30 expired_waits 4 567 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 2 FAIL no recovery within two transactions after step 5 clean_awaits [37] last_k 5 max_ok_wait_vms 35 expired_waits 12 1642 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 3 FAIL no recovery within two transactions after step 0 clean_awaits [46] last_k 0 max_ok_wait_vms 39 expired_waits 6 611 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 4 FAIL no recovery within two transactions after step 6 clean_awaits [25] last_k 6 max_ok_wait_vms 37 expired_waits 12 1754 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 5 FAIL no recovery within two transactions after step 7 clean_awaits [26] last_k 7 max_ok_wait_vms 32 expired_waits 16 2116 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 6 FAIL no recovery within two transactions after step 14 clean_awaits [41] last_k 14 max_ok_wait_vms 35 expired_waits 27 3602 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 7 PASS clean_awaits [54] last_k 27 max_ok_wait_vms 39 expired_waits 52 7339 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 8 FAIL no recovery within two transactions after step 10 clean_awaits [21] last_k 10 max_ok_wait_vms 31 expired_waits 21 2771 ms
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 9 FAIL no recovery within two transactions after step 16 clean_awaits [22] last_k 16 max_ok_wait_vms 40 expired_waits 32 4580 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant crc 0 1 / 10 passed 28892 ms

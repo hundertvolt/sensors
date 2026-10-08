@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
     import network
 
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
+
 import machine
 from _twin_common import Injections, StatePaths
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port

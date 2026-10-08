@@ -9,6 +9,7 @@ import time
 
 sys.path.insert(0, "ext")  # the real vendored ext/microdot.py sensortask_dev.py transitively imports
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from unix_port_poll_prewarm import prewarm_poll_set

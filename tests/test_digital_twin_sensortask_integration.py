@@ -13,6 +13,7 @@ import time
 sys.path.insert(0, "ext")  # same convention as _sensortask_scenarios.py's own comment - reaches the
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 import _http_client
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -35,6 +36,7 @@ import unix_port_unretrieved_report  # noqa: E402
 from _shared_rest_roundtrip import assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
+import asy_base_classes  # noqa: E402  # the clock-set state cettime() gates on, set in the notification-window section
 import asy_ntp_client  # noqa: E402  # its `time` is swapped for rp2's 8-field gmtime() in the notification-window section
 import asy_system_service  # noqa: E402  # its asyncio is swapped for a fast-sleeping view in the unretrieved-exception section
 from asy_scd30_driver import SCD30  # noqa: E402  # seeds a reading: the notification-window and reboot-survival sections below
@@ -250,10 +252,12 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
                 "PW": "********",
                 "Country": "DE",
                 "Hostname": "SensorStationWozi",  # devices/wozi.toml's own [device].hostname, injected by buildgen
+                "HotspotPW": "********",
                 "LEDWifiOn": True,
                 "NTPHost": "pool.ntp.org",
                 "NTPOffset": 0,
                 "NTPInterval": 12,
+                "DNSFallback": "8.8.8.8,1.1.1.1",
             }
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/system")
@@ -483,7 +487,9 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
         notif, ntp, pixel = sensortask_wozi.notification, sensortask_wozi.ntp, sensortask_wozi.neopixel
         scd30, webserver = sensortask_wozi.scd30, sensortask_wozi.webserver
         assert notif is not None and ntp is not None and pixel is not None and scd30 is not None and webserver is not None
-        await ntp._set_synced(value=True)  # the twin has no NTP server; the clock itself is the host's
+        # The twin has no NTP server; the clock itself is the host's. cettime() answers once the clock was set.
+        await ntp._set_synced(value=True)
+        asy_base_classes.set_utc_valid()
         local = await ntp.cettime()
         assert local is not None
         hour = local.hour
@@ -530,6 +536,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
         run_timed(scenario(), timeout_s=3 * _WINDOW_WAIT_S)
     finally:
         asy_ntp_client.time = real_time  # type: ignore[attr-defined]
+        asy_base_classes.set_utc_valid(valid=False)
 
 
 # The real-bus-fault test moved into the "Construction across every real device" section near the end of

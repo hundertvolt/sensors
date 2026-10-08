@@ -8,10 +8,14 @@ elsewhere, when a new user-facing behavior needs explaining.
 
 One physical LED serves two independent purposes, arbitrated by `asy_neopixel_driver.py`:
 
-- **WiFi status overlay** — a dim white glow, on/off only, driven by `/networking`'s `LEDWifiOn`
-  config field. This is a static preference ("is the indicator enabled"), not a live connectivity
-  signal — it's (re)applied whenever the WiFi service (re)establishes its state, not continuously
-  tied to connection health.
+- **Wi-Fi status overlay** — a dim white glow showing the Wi-Fi state while `/networking`'s
+  `LEDWifiOn` is on (off: the overlay stays dark): searching for the network — toggling every half
+  second; connected — on; disconnected — off; serving the fallback hotspot — on with a short gap
+  every 3 s, an even slow blink (1.5 s on, 1.5 s off) once a client has joined: the unit stays on its
+  hotspot while the client stays; Wi-Fi switched off (a second failure streak after the hotspot ran,
+  or no readable Wi-Fi configuration) — off with a short blink every 3 s, until a power cycle. Every
+  one of these patterns follows `LEDWifiOn`, the switched-off one included: dark while it is off,
+  shown as soon as it is switched on (owner, 2026-10-02).
 - **Notification signal** — a colored ramp-up/ramp-down flash, triggered per sensor threshold and
   fully overriding the WiFi overlay while it plays (the overlay's own value is restored once the
   flash finishes). Brightness (`FlashBri`, 1–255) and duration (`FlashDur`, 0.5–10s) are
@@ -25,6 +29,22 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
   | `WarnCO2` | red |
   | `WarnVOC` | green |
   | `WarnHum` | blue |
+
+## Networking status
+
+`Connected` and `WifiUptime` (`/status`, networking) describe the Wi-Fi link, not internet
+reachability: they count while the unit is joined to a network **or** serving its fallback hotspot
+(owner, 2026-09-29). While the radio's status cannot be read, `Connected` and `WifiUptime` keep
+their last values and the WIFI history counts a warning. Why a unit went offline is in that history
+too: the fallback to the hotspot, the permanent switch-off and a connect attempt that ended without
+a verdict each leave a warning.
+
+`NTPSynced` is true only while the last successful time sync is less than three sync intervals old
+(`NTPInterval`); a failed resync does not extend it, and a change to an NTP setting clears it until
+the next successful sync (owner, 2026-09-29). `DNSFallback` (Networking) lists up to three IPv4 DNS
+servers, comma-separated, tried in order after the one the network hands out (default
+`8.8.8.8,1.1.1.1`); empty means none, set through the API, since the website cannot send an empty
+value.
 
 ## SGP40 VOC baseline FRAM backup
 

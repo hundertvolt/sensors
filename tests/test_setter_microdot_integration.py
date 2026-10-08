@@ -47,9 +47,11 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     import asy_config_manager as cm
-    from asy_base_classes import JsonValue
+    from asy_base_classes import AsyncCallback, JsonValue, SensorReaderConfig
 
     T = TypeVar("T")
+    # (module, its fields, post_fct, post_asy_fct): one settings group, the shape buildgen/codegen.py emits.
+    Group = tuple[SensorReaderConfig, tuple[str, ...], Callable[[], None] | None, AsyncCallback | None]
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -72,14 +74,16 @@ def make_wifi_client() -> WifiService:
 
 
 def make_ntp_client() -> NTPClient:
-    wifi_mode_lock = asyncio.Lock()
-    client = NTPClient(
-        wifi_mode_lock,
-        network_available_locked=lambda: True,
-        get_dns_server=lambda: None,
-        timing=NtpTiming(500, 1, 5000, 10, 600),
-        cfg_path=_tmp_cfg_dir(),
-    )
+    def network_available_locked() -> bool:
+        return True
+
+    def get_dns_server() -> "str | None":
+        return None
+
+    cfg_path = _tmp_cfg_dir()
+    with open(cfg_path + "config_NTP.cfg", "w") as f:
+        f.write('{"DNSFallback": ""}')  # no public resolver as a candidate, whatever a test triggers
+    client = NTPClient(asyncio.Lock(), network_available_locked, get_dns_server, NtpTiming(500, 1, 5000, 10, 600), cfg_path=cfg_path)
     run(client.setup())
     return client
 
@@ -102,23 +106,32 @@ class _FakeRequest:
 # (one cmd, a fixed field list, one post_fct hook), driven against mocked request data of varying quality
 # without a real Microdot app or real sockets.
 #
-# WifiService owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LEDWifiOn, but the real
-# registration scopes them into two separate SettingsGroup entries - one for the four with
+# WifiService owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/HotspotPW/LEDWifiOn, but the real
+# registration scopes them into two separate SettingsGroup entries - one for the five identity fields with
 # post_fct=conn.reconnect_wifi, one for LEDWifiOn alone with none.
 #
 # Passing the whole field set as one group would let a LEDWifiOn-only change spuriously reconnect, and let
-# the others reach LEDWifiOn's group with no reconnect at all. _scoped_set() below mirrors that scoping
+# the others reach LEDWifiOn's group with no reconnect at all. _grouped_set() below mirrors that scoping
 # locally, the way the real SettingsGroup does, this file never importing the generated device module.
 # ---------------------------------------------------------------------------
 
+# The settings groups as buildgen/codegen.py emits them: the identity group (reconnects), the NTP group
+# (forces a resync), and the two hookless ones the next attempt reads (DNSFallback; the System page's offsets).
+_IDENTITY_FIELDS = ("SSID", "PW", "Country", "Hostname", "HotspotPW")
+_NTP_SYNC_FIELDS = ("NTPHost", "NTPOffset", "NTPInterval")
+_NTP_DNS_FIELDS = ("DNSFallback",)
+_NTP_TIME_FIELDS = ("GMTOffset", "DSTOffset")
 
-async def _scoped_set(
-    client: WifiService, fields: "dict[str, JsonValue]", keys: "tuple[str, ...]", post_fct: "Callable[[], None] | None" = None,
-) -> "dict[str, str]":
-    # The route's own keys go to handle_set_cmd() with the module's schema (the store validates against all of
-    # it); any other key answers Invalid, as a key outside every group of the real route does.
-    result: dict[str, str] = dict.fromkeys([k for k in fields if k not in keys], "Invalid")
-    result.update(await ar.handle_set_cmd(client, {k: v for k, v in fields.items() if k in keys}, client.get_cfg_schema(), post_fct=post_fct))
+
+async def _grouped_set(fields: "dict[str, JsonValue]", groups: "tuple[Group, ...]") -> "dict[str, str]":
+    # Each group's own keys go to handle_set_cmd() with its module's schema (the store validates against all of
+    # it) and that group's hooks; any other key answers Invalid, as a key outside every group of the real route does.
+    owned = [key for group in groups for key in group[1]]
+    result: dict[str, str] = dict.fromkeys([k for k in fields if k not in owned], "Invalid")
+    for module, keys, post_fct, post_asy_fct in groups:
+        subset = {k: v for k, v in fields.items() if k in keys}
+        if subset:
+            result.update(await ar.handle_set_cmd(module, subset, module.get_cfg_schema(), post_fct=post_fct, post_asy_fct=post_asy_fct))
     return result
 
 
@@ -129,7 +142,7 @@ async def _simulated_set_network_endpoint(client: WifiService, request: "ar._Req
     assert data is not None
     fields = {k: v for k, v in data.items() if k != "cmd"}
     # The endpoint builds the one OK envelope around handle_set_cmd()'s per-field result, with its own text.
-    result = await _scoped_set(client, fields, ("SSID", "PW", "Country", "Hostname"), post_fct=client.reconnect_wifi)
+    result = await _grouped_set(fields, ((client, _IDENTITY_FIELDS, client.reconnect_wifi, None),))
     return ar.make_response(0, descr="Network settings updated", result=result)
 
 
@@ -139,7 +152,7 @@ async def _simulated_set_wifi_led_endpoint(client: WifiService, request: "ar._Re
         return err
     assert data is not None
     fields = {k: v for k, v in data.items() if k != "cmd"}
-    return ar.make_response(0, result=await _scoped_set(client, fields, ("LEDWifiOn",)))
+    return ar.make_response(0, result=await _grouped_set(fields, ((client, ("LEDWifiOn",), None, None),)))
 
 
 def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
@@ -207,6 +220,26 @@ def test_mocked_request_unknown_field_key_reported_individually_not_whole_reques
     assert resp["res"] == "OK"
     assert resp["result"] == {"Hostname": "Valid", "Bogus": "Invalid"}
     assert run(client.cfgmgr.get_dict(["Hostname"])) == {"Hostname": "NewHost"}
+
+
+def test_mocked_request_hotspot_password_applies_in_the_identity_group_and_reconnects() -> None:
+    client = make_wifi_client()
+    req = _FakeRequest({"cmd": "setNetwork", "HotspotPW": "newpass123"})
+    resp = run(_simulated_set_network_endpoint(client, req))
+    assert resp["res"] == "OK"
+    assert resp["result"] == {"HotspotPW": "Valid"}
+    assert client._reconn_wifi is True  # the next hotspot start configures it (post_fct fired)
+    assert run(client.cfgmgr.get_dict(["HotspotPW"])) == {"HotspotPW": "newpass123"}
+    assert run(client.get_dict_cfg())["WIFI"]["HotspotPW"] == "********"  # read back masked, like PW
+
+
+def test_mocked_request_hotspot_password_outside_8_to_63_characters_is_refused() -> None:
+    client = make_wifi_client()
+    req = _FakeRequest({"cmd": "setNetwork", "HotspotPW": "short"})
+    resp = run(_simulated_set_network_endpoint(client, req))
+    assert resp["result"] == {"HotspotPW": "Invalid"}
+    assert client._reconn_wifi is False  # nothing changed, so no reconnect
+    assert run(client.cfgmgr.get_dict(["HotspotPW"])) == {"HotspotPW": "12345678"}  # the build-time default kept
 
 
 def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
@@ -512,6 +545,7 @@ def test_real_microdot_getter_end_to_end_returns_schema_defaults() -> None:
             "NTPInterval": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
+            "DNSFallback": "",  # the builder's stored empty list; every other field is its schema default
         },
     }
 
@@ -527,12 +561,11 @@ def test_real_microdot_getter_end_to_end_reflects_a_prior_write() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end to end for NTPClient's SETTER path. asy_ntp_client.py's module docstring claims
-# asy_base_classes.py's generic _set_dict_cfg() gives full setter support with no changes to that file, every
-# field being persist-only.
+# Real Microdot end to end for NTPClient's SETTER path: every field persists through asy_base_classes.py's
+# generic _set_dict_cfg(), NTPHost and DNSFallback shape-checked first (asy_ntp_client.py's _set_mgr_cfg()).
 #
-# That claim was only ever exercised at the _set_dict_cfg() level; this proves it end to end through a real
-# route shaped exactly like the real handler, post_asy_fct=ntp_force_sync included.
+# The route scopes the body into NTPClient's three settings groups as buildgen/codegen.py emits them, so
+# ntp_force_sync runs for the NTP group alone.
 # ---------------------------------------------------------------------------
 
 
@@ -546,9 +579,10 @@ def _ntp_setter_app(client: NTPClient) -> Microdot:
             return err
         assert data is not None
         fields = {k: v for k, v in data.items() if k != "cmd"}
-        # post_asy_fct mirrors the real route: a changed NTP config must force an immediate resync
-        # rather than waiting out the (up to 24h) NTPInterval window with the old settings.
-        return ar.make_response(0, result=await ar.handle_set_cmd(client, fields, client.get_cfg_schema(), post_asy_fct=client.ntp_force_sync))
+        # A changed NTP group forces an immediate resync rather than waiting out the (up to 24h) NTPInterval
+        # window; the fallback list and the offsets are read by the next attempt, so they force none.
+        groups: tuple[Group, ...] = ((client, _NTP_SYNC_FIELDS, None, client.ntp_force_sync), (client, _NTP_DNS_FIELDS, None, None), (client, _NTP_TIME_FIELDS, None, None))
+        return ar.make_response(0, result=await _grouped_set(fields, groups))
 
     return app
 
@@ -568,6 +602,40 @@ def test_real_microdot_ntp_setter_end_to_end_persists_and_forces_a_resync() -> N
     stored = run(client.cfgmgr.get_dict(["NTPHost", "GMTOffset", "DSTOffset"]))
     assert stored == {"NTPHost": "time.example.org", "GMTOffset": 7200, "DSTOffset": 3600}
     assert client._ntp_retries == 0  # post_asy_fct fired
+
+
+def test_real_microdot_dns_fallback_put_persists_without_forcing_a_resync() -> None:
+    client = make_ntp_client()
+    client._ntp_retries = 3  # ntp_force_sync() would clear it to 0
+    app = _ntp_setter_app(client)
+    req = _make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "DNSFallback": "9.9.9.9,1.1.1.1"})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
+    assert run(client.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": "9.9.9.9,1.1.1.1"}
+    assert client._ntp_retries == 3  # its own group has no hook: the next attempt reads the list
+
+
+def test_real_microdot_dns_fallback_put_can_empty_the_list() -> None:
+    client = make_ntp_client()
+    run(client._set_dict_cfg({"DNSFallback": "9.9.9.9"}, client.get_cfg_schema()))
+    app = _ntp_setter_app(client)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "DNSFallback": ""})))
+    assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
+    assert run(client.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": ""}  # emptied over the API
+
+
+def test_real_microdot_malformed_dns_fallback_is_refused_and_logged() -> None:
+    for value in ("8.8.8.8,", "a.b.c.d", "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1", "8.8.8.8 ,1.1.1.1", "256.1.1.1"):
+        client = make_ntp_client()
+        run(client.pr.setup())
+        app = _ntp_setter_app(client)
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "DNSFallback": value})))
+        assert res.status_code == 200
+        assert json.loads(res.body)["result"] == {"DNSFallback": "Invalid"}, value
+        assert run(client.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": ""}, value  # nothing stored
+        nums = run(client.get_error_counter())["NTP"]["ErrNum"]
+        assert isinstance(nums, list) and nums[-1] == code("E", "BAD_ARG"), value
 
 
 def test_real_microdot_ntp_setter_end_to_end_out_of_range_field_is_rejected_per_field() -> None:

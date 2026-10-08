@@ -17,14 +17,43 @@ const REST_PATHS = /** @type {const} */ ([
 
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
+const DNS_LABEL_MAX = 63; // matches src/asy_dns_client.py's own DNS_LABEL_MAX
+const IPV4_OCTET_MAX = 255;
+const DNS_FALLBACK_MAX = 3; // the most servers src/asy_ntp_client.py's _dns_fallback_ok() accepts
 
 /**
- * One rule per string shape, the same as src/asy_wifi_service.py's _host_label_ok()/_country_ok().
+ * An RFC 1123 host label: letters, digits and "-", not "-" at either end; the caller bounds its length.
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isHostLabel(value) {
+    return /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(value);
+}
+
+/**
+ * A dotted-quad IPv4 literal as src/asy_dns_client.py's ipv4_to_int() reads one: four octets of
+ * ASCII digits, each at most 255 (leading zeros allowed).
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isIpv4Literal(value) {
+    const octets = value.split(".");
+    return octets.length === 4 && octets.every((octet) => /^[0-9]+$/.test(octet) && Number(octet) <= IPV4_OCTET_MAX);
+}
+
+/**
+ * One rule per string shape, the same as src/'s host_label_ok(), _country_ok(), _ntp_host_ok() and
+ * _dns_fallback_ok(): a host name is an IPv4 literal or dot-separated labels of at most 63 characters.
  * @type {Record<string, (value: string) => boolean>}
  */
 const STRING_SHAPE_OK = {
-    hostLabel: (value) => /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(value),
+    hostLabel: isHostLabel,
     countryCode: (value) => /^[A-Z]{2}$/.test(value),
+    hostName: (value) => isIpv4Literal(value) || value.split(".").every((label) => label.length <= DNS_LABEL_MAX && isHostLabel(label)),
+    ipv4List: (value) => {
+        const servers = value.split(",");
+        return value === "" || (servers.length <= DNS_FALLBACK_MAX && servers.every(isIpv4Literal));
+    },
 };
 
 /**
@@ -617,9 +646,9 @@ export function installMockFetch(defs, initialData, controls) {
             return applySensorQuirksForGet(state.sensorsConfig);
         }
         if (path === "/networking") {
-            // Mirrors src/asy_wifi_service.py's _mask_pw() callback overlay: PW is a real credential,
+            // Mirrors src/asy_wifi_service.py's _cfg_overlay(): PW and HotspotPW are real credentials,
             // never returned in plaintext over GET, on real hardware or here.
-            return { ...state.networkingConfig, PW: "********" };
+            return { ...state.networkingConfig, PW: "********", HotspotPW: "********" };
         }
         if (path === "/system") {
             return state.systemConfig;

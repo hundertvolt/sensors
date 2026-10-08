@@ -1,0 +1,76 @@
+PASS test_the_notification_window_spanning_midnight_flashes_red
+PASS test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk
+PASS test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly
+PASS test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error
+PASS test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list
+PASS test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 335, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 695, in read
+RuntimeError: injected status fault
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+PASS test_put_round_trips_through_a_real_twin_backed_driver_over_real_http
+PASS test_sensors_put_round_trips_a_real_scd30_field_over_real_http
+PASS test_static_site_is_served_over_real_http
+PASS test_put_pause_time_round_trips_and_counts_down_over_real_http
+PASS test_watchdog_is_never_starved_while_every_real_task_runs_concurrently
+PASS test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses
+PASS test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
+PASS test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
+15/15 passed, 0 failed, 0 skipped

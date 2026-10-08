@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import radioShapes from "../tests/_radio_shape_cases.json";
+import { validateDefinitions } from "../js/definitions.js";
 import { installMockFetch } from "../js/mock-server.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
@@ -60,8 +61,24 @@ const DEFS = {
                         { key: "SSID", label: "Wi-Fi SSID", kind: "string", minLength: 0, maxLength: 32, byteLength: true },
                         { key: "Country", label: "Country", kind: "string", minLength: 2, maxLength: 2, byteLength: true, shape: "countryCode" },
                         { key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63, byteLength: true, shape: "hostLabel" },
-                        { key: "PW", label: "Wi-Fi Password", kind: "string", minLength: 8, maxLength: 63, mask: true },
+                        {
+                            key: "PW", label: "Wi-Fi Password", kind: "string", minLength: 8, maxLength: 63, mask: true, byteLength: true,
+                            specialValues: [{ value: "", meaning: "Open network" }],
+                        },
+                        { key: "HotspotPW", label: "Hotspot Password", kind: "string", minLength: 8, maxLength: 63, mask: true, byteLength: true },
                     ],
+                },
+                {
+                    key: "ntp",
+                    label: "NTP Time Sync",
+                    submit: true,
+                    fields: [{ key: "NTPHost", label: "NTP Server Address", kind: "string", minLength: 3, maxLength: 253, shape: "hostName" }],
+                },
+                {
+                    key: "dns",
+                    label: "DNS Fallback",
+                    submit: true,
+                    fields: [{ key: "DNSFallback", label: "DNS Fallback Servers", kind: "string", minLength: 0, maxLength: 47, shape: "ipv4List" }],
                 },
             ],
         },
@@ -149,7 +166,7 @@ const DATA = {
         ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
     },
     sensorsConfig: { SCD30: { MeasInterval: 5, AmbPres: 1013, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IRCompAdjust: 40 } },
-    networkingConfig: { Hostname: "fixture-host", PW: "hunter2hunter2" },
+    networkingConfig: { Hostname: "fixture-host", PW: "hunter2hunter2", HotspotPW: "fixture-hotspot", NTPHost: "ntp.fixture-host", DNSFallback: "192.0.2.53" },
     systemConfig: {},
     notificationConfig: {},
     status: {
@@ -176,6 +193,10 @@ describe("installMockFetch", () => {
     afterEach(() => {
         uninstall?.();
         vi.useRealTimers(); // also ends a vi.setSystemTime() Date mock
+    });
+
+    it("runs on fixture definitions the site's own validator accepts", () => {
+        expect(validateDefinitions(DEFS)).toEqual([]);
     });
 
     it("answers GET /sensors from the fixture", async () => {
@@ -264,6 +285,14 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/networking", { method: "PUT", body: JSON.stringify({ [key]: value }) });
         expect((await response.json()).result[key]).toBe(expected);
+    });
+
+    it("accepts a string field's schema special before its length bounds, as the server does", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const open = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "" }) });
+        expect((await open.json()).result.PW).toBe("Valid"); // "" = open network, though below minLength 8
+        const short = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "short" }) });
+        expect((await short.json()).result.PW).toBe("Invalid"); // not a special: the bound still holds
     });
 
     it("bounds a byte-bounded string in UTF-8 bytes, not characters", async () => {
@@ -461,17 +490,19 @@ describe("installMockFetch", () => {
         expect("ResetVOC" in (await (await fetch("/sensors")).json()).SGP40).toBe(false);
     });
 
-    it("masks PW on every GET /networking like the real backend's _mask_pw(), regardless of what was actually applied", async () => {
+    it("masks PW (and HotspotPW) on every GET /networking, whatever was applied", async () => {
         uninstall = installMockFetch(DEFS, DATA);
 
-        // Fixture-seeded value is never echoed in plaintext, even before any write.
-        expect((await (await fetch("/networking")).json()).PW).toBe("********");
+        // Fixture-seeded values are never echoed in plaintext, even before any write.
+        const before = await (await fetch("/networking")).json();
+        expect([before.PW, before.HotspotPW]).toEqual(["********", "********"]);
 
-        const applied = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "a-real-new-password" }) });
-        expect((await applied.json()).result.PW).toBe("Valid");
+        const applied = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "a-real-new-password", HotspotPW: "a-new-hotspot-pw" }) });
+        expect((await applied.json()).result).toEqual({ PW: "Valid", HotspotPW: "Valid" });
 
         // Still masked after a real, accepted write - GET never reflects the actual stored value.
-        expect((await (await fetch("/networking")).json()).PW).toBe("********");
+        const after = await (await fetch("/networking")).json();
+        expect([after.PW, after.HotspotPW]).toEqual(["********", "********"]);
     });
 
     it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {

@@ -308,16 +308,13 @@ def test_wifi_service_answers_before_and_after_a_failed_setup() -> None:
     svc = WifiService(WifiConfig("GATE", "12345678", 5, 5), cfg_path=_blocked_dir("WIFI"), log=LogConfig(None, 4, None))
     calls = _reader_calls(svc)
     calls.update({
-        "get_data": ((), lambda r: isinstance(r, tuple) and tuple(r) == (None, None, None, None)),
-        "get_dict_data": ((), lambda r: r == {"WIFI": {"Mode": None, "Connected": None, "IP": None, "TS": None}}),
+        "get_data": ((), lambda r: isinstance(r, tuple) and tuple(r) == (None,) * 8),
+        "get_dict_data": ((), lambda r: r == {"WIFI": dict.fromkeys(("Mode", "Connected", "IP", "Subnet", "Gateway", "DNS", "RSSI", "TS"))}),
         "get_dict_cfg": ((), lambda r: isinstance(r, dict) and list(r) == ["WIFI"] and r["WIFI"]["SSID"] is None),
         "get_wifi_uptime": ((), lambda r: r == 0),
         "is_hotspot_active": ((), _is(False)),
-        "wlan_isconnected": ((), _is(False)),
         "network_available_locked": ((), _is(False)),
-        "get_dns_server_ip": ((), lambda r: r is None or type(r) is str),
-        "get_wlan_rssi": ((), lambda r: r is None or type(r) is int),
-        "get_wlan_ifconfig": ((), lambda r: r is None or (type(r) is tuple and len(r) == 4)),
+        "get_dns_server_ip": ((), _is(None)),  # no snapshot taken yet: no DHCP-assigned server known
     })
     assert _answers(svc, calls) == []
     assert run(svc.setup()) is False

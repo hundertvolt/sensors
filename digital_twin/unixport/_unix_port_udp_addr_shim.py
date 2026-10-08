@@ -30,9 +30,8 @@ _patched = False
 
 def _resolve_plain_addr(addr: "T") -> "T | tuple[str, int]":
     if isinstance(addr, tuple) and len(addr) == 2 and isinstance(addr[0], str):
-        # getaddrinfo()'s stub-declared sockaddr slot is (host, port) or IPv6's 4-tuple; this
-        # project is IPv4-only (UDPSocket's own addr type), and on this build it is in fact the
-        # opaque sockaddr bytes object src/asy_udp_socket.py already documents accepting.
+        # getaddrinfo()'s sockaddr slot here is the opaque bytes object this Unix build's socket
+        # needs; src/ only ever sees tuples (IPv4-only project).
         return cast("tuple[str, int]", socket.getaddrinfo(addr[0], addr[1])[0][-1])
     return addr
 

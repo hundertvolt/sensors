@@ -250,7 +250,8 @@ def entry_findings(label: str, tree: ast.Module, entry: str) -> list[str]:
 def _entry_points(root: Path) -> list[tuple[str, ast.Module, str]]:
     found: list[tuple[str, ast.Module, str]] = []
     for directory in _ENTRY_DIRS:
-        for path in sorted((root / directory).glob("*.py")):
+        # Recursive (digital_twin/unixport/), but never tests/_tmp: per-test scratch that other files churn.
+        for path in sorted(p for p in (root / directory).rglob("*.py") if "_tmp" not in p.relative_to(root).parts):
             label = path.relative_to(root).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"))
             if label == _MICROTEST_FILE:
@@ -431,11 +432,17 @@ def test_a_clean_entry_point_reports_nothing(tmp_path: Path) -> None:
         ("tests/_probe.py", "import asyncio\n\nasync def _main():\n    pass\n\nasyncio.run(_main())\n", "_probe.py:3 _main()"),
         ("tests/microtest.py", "def run(namespace):\n    pass\n", "microtest.py:1 run()"),
         ("digital_twin/a.py", "import asyncio\n\nasyncio.run(main())\n", "main() is not defined"),
+        ("digital_twin/unixport/a.py", _GOOD_ENTRY.replace("    install()\n", ""), "digital_twin/unixport/a.py:4 main()"),
     ],
 )
 def test_a_planted_entry_point_is_reported(tmp_path: Path, name: str, text: str, needle: str) -> None:
     findings = _planted_entries(tmp_path, {name: text})
     assert any(needle in f for f in findings), findings
+
+
+def test_per_test_scratch_under_tests_tmp_is_not_scanned(tmp_path: Path) -> None:
+    # tests/_tmp is per-test scratch other test files create and delete while this tier runs.
+    assert _planted_entries(tmp_path, {"tests/_tmp/key/a.py": _GOOD_ENTRY.replace("    install()\n", "")}) == []
 
 
 # ---------------------------------------------------------------------------

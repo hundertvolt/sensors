@@ -1,0 +1,133 @@
+PASS test_run_continues_after_sendto_reports_failure
+FAIL test_a_name_of_255_octets_is_answered_and_256_is_dropped:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 181, in test_a_name_of_255_octets_is_answered_and_256_is_dropped
+AssertionError: 
+FAIL test_other_query_types_get_an_empty_noerror_reply:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 271, in test_other_query_types_get_an_empty_noerror_reply
+AssertionError: 
+PASS test_dns_server_logger_is_named_dnssrv
+FAIL test_run_reads_with_the_rfc_1035_udp_limit:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 693, in test_run_reads_with_the_rfc_1035_udp_limit
+AssertionError: 
+PASS test_run_ignores_malformed_query_without_stalling
+PASS test_dns_server_uses_in_memory_logging_when_fram_is_none
+PASS test_dns_query_init_accepts_all_valid_data_configurations
+PASS test_response_accepts_edge_valid_ip_configurations
+PASS test_response_builds_expected_packet_for_valid_domain
+PASS test_dns_server_debug_none_leaves_logger_at_off
+PASS test_run_rejects_non_str_server_ip_or_netmask
+PASS test_dns_query_rejects_question_truncated_right_before_qtype_qclass
+PASS test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure
+PASS test_dns_server_debug_level_is_forwarded_to_the_logger
+PASS test_response_rejects_invalid_ip_combined_with_empty_domain_state
+PASS test_response_rejects_single_invalid_ip_parameter_without_raising
+PASS test_response_rejects_non_str_ip_parameter
+PASS test_integration_survives_the_wifi_services_fire_and_forget_cancel_pattern
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV DNS Server error: simulated unexpected failure
+PASS test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers
+FAIL test_run_disconnect_reporting_a_second_cancellation_propagates_without_logging:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 1279, in test_run_disconnect_reporting_a_second_cancellation_propagates_without_logging
+AssertionError: 
+PASS test_run_ignores_source_address_that_is_not_a_valid_ipv4_string
+PASS test_run_rejects_multiple_simultaneous_invalid_server_ip_and_netmask_recombinations
+PASS test_dns_server_default_logger_is_off
+PASS test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles
+PASS test_run_recv_backoff_resets_after_a_successful_receive
+PASS test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Invalid server_ip/netmask, not starting: not-an-ip 255.255.255.0
+PASS test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV PrintLog: Uninitialized, call setup first!
+FAIL test_run_bind_failure_logs_init_once_and_backs_off:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 756, in test_run_bind_failure_logs_init_once_and_backs_off
+  File "tests/test_asy_captive_dns.py", line 80, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 751, in scenario
+AssertionError: 
+FAIL test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 1057, in test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams
+AssertionError: 
+PASS test_dns_query_non_standard_opcode_yields_empty_domain
+PASS test_run_answers_on_subnet_request
+PASS test_reset_error_counter_returns_true_and_clears
+PASS test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV DNS Server error during disconnect: simulated disconnect failure
+PASS test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error
+PASS test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Invalid DNS request data or address, not sending response.
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Invalid DNS request data or address, not sending response.
+PASS test_run_failed_receive_logs_one_warning_per_code
+PASS test_dns_server_get_error_counter_forwards_to_the_real_print_log
+FAIL test_dns_query_malformed_or_truncated_data_yields_empty_domain:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 171, in test_dns_query_malformed_or_truncated_data_yields_empty_domain
+AssertionError: 
+PASS test_dns_query_init_rejects_single_invalid_data_parameter_without_raising
+PASS test_dns_query_reuses_the_given_logger_instead_of_constructing_its_own
+FAIL test_awaiting_a_cancelled_run_raises_after_disconnect:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 612, in test_awaiting_a_cancelled_run_raises_after_disconnect
+AssertionError: 
+FAIL test_a_query_declaring_two_questions_is_dropped:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 251, in test_a_query_declaring_two_questions_is_dropped
+AssertionError: 
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV DNS Server socket teardown did not complete cleanly.
+FAIL test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardown:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 1299, in test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardown
+  File "tests/test_asy_captive_dns.py", line 80, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 1297, in scenario
+AssertionError: 
+PASS test_response_returns_none_for_empty_domain
+PASS test_dns_query_parses_single_and_multi_label_domain
+DNSSRV Init with memory logging.
+PASS test_dns_server_init_binds_the_standard_dns_port_in_server_mode
+PASS test_run_handles_real_loopback_traffic_without_crashing
+PASS test_run_accepts_all_valid_server_ip_netmask_configurations
+PASS test_dns_server_error_source_and_logger_fan_in_report_itself
+PASS test_dns_query_init_rejects_list_shaped_data_that_passes_every_index_lookup
+PASS test_run_recv_backoff_caps_at_the_ceiling
+PASS test_an_a_or_any_query_gets_the_a_record
+PASS test_run_rejects_invalid_server_ip_or_netmask_without_raising
+PASS test_dns_server_history_length_comes_from_the_log_config
+PASS test_run_rejects_single_invalid_server_ip_parameter
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Reply to 127.0.0.5:5000 dropped by sendto().
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Reply to 127.0.0.5:5000 dropped by sendto().
+PASS test_run_sendto_failure_logs_a_persisted_warning
+PASS test_run_answers_queued_queries_back_to_back
+PASS test_run_rejects_single_invalid_netmask_parameter
+PASS test_dns_server_get_error_counter_reflects_a_real_logged_error
+PASS test_run_cancellation_disconnects_cleanly
+51/61 passed, 10 failed, 0 skipped
+rc=1 elapsed=25.472473201s

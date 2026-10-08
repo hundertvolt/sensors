@@ -864,10 +864,13 @@ a live question:
   space). Reuse this pattern for any future real-hardware memory/timing investigation rather than
   re-deriving it; SPECIFICATION.md Part I.1/I.3/I.5 has the results this technique already produced.
   The same technique applied to `UDPSocket.ready()` (a one-line `print()` on a real
-  `POLLERR`/`POLLHUP` event) found that real rp2/lwIP does not appear to propagate ICMP errors onto
-  a connected UDP socket's poll state at all (BACKLOG.md open question 5) - zero such events
-  observed across 6 real retry cycles against a target with no listener (the condition that
-  generates a real ICMP Port Unreachable).
+  `POLLERR`/`POLLHUP` event) found that real rp2/lwIP does not propagate ICMP errors onto a
+  connected UDP socket's poll state at all (BACKLOG.md open question 5) - zero such events observed
+  across 6 real retry cycles against a target with no listener (the condition that generates a real
+  ICMP Port Unreachable). The source agrees: lwIP's `icmp_input()` counts an incoming
+  destination-unreachable and drops it (`lib/lwip/src/core/ipv4/icmp.c:258-283`, lwIP `77dcd25`),
+  and a UDP socket's state stays `STATE_ACTIVE_UDP` (`extmod/modlwip.c:1008`, v1.29.0), which sets
+  no error flag in modlwip's poll (`:1646-1666`).
 - **`bench_control.BenchBridge.redirect_udp_port_to_local()`'s DNAT redirect does not reliably
   deliver to a local *listening socket*** - confirmed via a live `iptables -t nat -L PREROUTING -n
   -v` packet-counter poll showing the rule matching real traffic while a live-bound listening
@@ -1081,7 +1084,7 @@ this pass.
 `test_malformed_truncated_packet_is_silently_dropped` and
 `test_malformed_http_request_over_real_wireless_degrades_cleanly` now assert the module log stays
 empty too (`DNSSRV`/`WEBSERVER` respectively - both grounded directly against source: a
-garbage-but-present UDP datagram never reaches `asy_captive_dns.py`'s own `DNS_BAD_REQUEST` (`W42`)
+garbage-but-present UDP datagram never reaches `asy_captive_dns.py`'s own `DNS_RECV_FAILED` (`W42`)
 backoff branch, which only fires on a genuine `(None, None)` `recvfrom()` failure, and an
 unparseable HTTP request line fails entirely inside vendored `ext/microdot.py` before this
 project's own code is ever reached). **Real finding while doing this, since corrected (2026-09-08)**:
@@ -1096,8 +1099,8 @@ stops) always held regardless, so this was never a false pass - only the comment
 (project-owner direction): it now describes the actual `pr.evt()`-only path the flood exercises and
 notes that no fault in this codebase can currently force a real `(None, None)` `recvfrom()` failure
 from a bench test, so the backoff-growth branch itself remains unexercised by any test in this
-tier - a real, still-open coverage gap (not a bug), left for whenever a way to inject that specific
-failure is worth building.
+tier; it is covered at L1 instead (`tests/test_asy_captive_dns.py`'s backoff tests: an unbound
+socket logs `INIT`, a failed receive `DNS_RECV_FAILED`, each backing off).
 
 The rest of the tier - `test_hotspot_role_reversal.py`'s remaining fault tests (association/DHCP
 churn, which are bench-radio-observable only and have no DUT-side `src/` module to log against, so

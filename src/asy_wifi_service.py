@@ -2,8 +2,8 @@
 asy_base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg (see SPECIFICATION.md Part C).
 """
 # "Attempt" operations persist a real errno via self.pr.err_s() and set self._hw_op_failed, feeding
-# _connect_loop()'s _error_check() streak; routine state observations degrade silently via
-# self.pr.err() instead.
+# _connect_loop()'s _error_check() streak; routine state observations stay print-only via self.pr.err()
+# (SPECIFICATION.md C.7 lists every site; error numbers come from the one catalog, C.7.1).
 
 import asyncio
 from collections import namedtuple
@@ -15,6 +15,7 @@ from micropython import const
 from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, utc_now
 from asy_captive_dns import CaptiveDNS
 from asy_config_manager import make_dict, name_cfg, schema_dict, schema_names
+from asy_dns_client import host_label_ok
 from asy_print_log import DEFAULT_LOG, LogConfig
 
 try:
@@ -23,11 +24,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from typing import Any, NamedTuple, Protocol
+    from typing import NamedTuple, Protocol
 
-    from asy_base_classes import ErrorSource, JsonMapping, TimerStarter
-    from asy_config_manager import ConfigSchema, FieldSchema, WriteValidity
+    from asy_base_classes import ErrorSource, JsonMapping, TaskStarter, TimerStarter
+    from asy_config_manager import CfgValue, ConfigSchema, FieldSchema, WriteValidity
     from asy_print_log import ErrorLog, PrintLogHistory
 
     # Structural Protocol for a caller-supplied LED (SPECIFICATION.md Part C.10's typing convention).
@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and WIFI's band.
+_ERR_TIMER = const(17)
 _ERR_BAD_ARG = const(21)
 _ERR_TIMEOUT = const(22)
 _ERR_UNEXPECTED = const(23)
@@ -54,6 +55,11 @@ _WRN_WLAN_AUTH_FAILED = const(36)
 _WRN_WLAN_NO_AP = const(37)
 _WRN_WLAN_CONNECT_FAILED = const(38)
 _WRN_WLAN_STATUS_UNKNOWN = const(39)
+_WRN_WLAN_STATIONS_UNKNOWN = const(77)
+_WRN_WLAN_STATUS_UNREADABLE = const(78)
+_WRN_WLAN_TO_HOTSPOT = const(79)
+_WRN_WLAN_DEACTIVATED = const(80)
+_WRN_WLAN_NO_VERDICT = const(81)
 
 # Schema tuples for ConfigManager.get_*_values().
 # SSID: 0-32 octets (802.11's real range); 0 also doubles as this driver's "not configured yet"
@@ -73,9 +79,10 @@ _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 
 # @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true submitLabel="Apply & Reconnect"
 # @web SSID section=networking submitGroup=identity label="Wi-Fi SSID" bytes=true
-# @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true bytes=true
+# @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true bytes=true special:""="Open network"
 # @web Country section=networking submitGroup=identity label="Country" bytes=true shape=countryCode description="Two uppercase letters (ISO 3166-1 alpha-2), e.g. DE."
 # @web Hostname section=networking submitGroup=identity label="Hostname" bytes=true shape=hostLabel
+# @web HotspotPW section=networking submitGroup=identity label="Hotspot Password" mask=true bytes=true description="Password of the fallback hotspot (8-63 characters)."
 
 # @web-group section=networking submitGroup=wifiLed label="Wi-Fi Status LED" submit=true
 # @web LEDWifiOn section=networking submitGroup=wifiLed label="Wi-Fi Status LED"
@@ -83,8 +90,8 @@ _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 _NAME = const("WIFI")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
-WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
-_FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
+WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "Subnet", "Gateway", "DNS", "RSSI", "TS"))
+_FIELDS = const(("Mode", "Connected", "IP", "Subnet", "Gateway", "DNS", "RSSI", "TS"))  # kept in sync with WIFI's own fields above
 
 
 # The radio's own bounds are UTF-8 bytes, where the schema counts characters: country()/hostname()
@@ -97,13 +104,6 @@ def _country_ok(value: str) -> bool:
     return len(value) == _COUNTRY_CODE_LEN and all("A" <= ch <= "Z" for ch in value)
 
 
-def _host_label_ok(label: str) -> bool:
-    # RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length.
-    if not label or label[0] == "-" or label[-1] == "-":
-        return False
-    return all("0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in label)
-
-
 def _radio_value_ok(field: "FieldSchema", value: object) -> bool:
     # Three checks once the schema's own character bounds hold (anything else stays its refusal): the
     # UTF-8 byte count within the max (never fewer bytes than characters), Hostname a host label, and
@@ -114,21 +114,19 @@ def _radio_value_ok(field: "FieldSchema", value: object) -> bool:
     if len(value.encode()) > high:
         return False
     if field[0] == name_cfg(_VAL_HOSTNAME):
-        return _host_label_ok(value)
+        return host_label_ok(value)
     if field[0] == name_cfg(_VAL_COUNTRY):
         return _country_ok(value)
     return True
 
 
-def _with_default(schema: tuple[tuple[str, str, str, int, int, str | None], ...], value: str | None) -> tuple[tuple[str, str, str, int, int, str | None], ...]:
+def _with_default(schema: tuple[tuple[str, str, str, int, int, str | None], ...], value: str) -> tuple[tuple[str, str, str, int, int, str | None], ...]:
     # Substitutes a build-time per-device default into a one-field schema. Only the DEFAULT moves,
     # never the bounds, so a value a user already persisted still wins at boot.
 
-    # A value outside the field's bounds is dropped rather than installed: ConfigManager treats an
-    # unsatisfiable default as an invalid config and answers None to every read, costing the device
+    # A value outside the field's bounds or shape is dropped rather than installed: ConfigManager treats
+    # an unsatisfiable default as an invalid config and answers None to every read, costing the device
     # its networking config. buildgen.validate refuses it at build time; this keeps it bootable.
-    if value is None:
-        return schema
     name, kind, _default, low, high, special = schema[0]
     if kind != "str" or not (low <= len(value) <= high) or not _radio_value_ok(schema[0], value):
         return schema  # a non-str field would be substituted unchecked - keep the built-in default
@@ -164,10 +162,19 @@ _WLAN_DEINIT_SETTLE_S = const(1)  # after deinit(), before the new interface
 _WLAN_MODE_SETTLE_S = const(1)  # after the new interface is created
 # @tunable wifi.sta_retry_after_loss_s = 60
 _STA_RETRY_AFTER_LOSS_S = const(60)  # retry a previously successful connection after one minute
-# @tunable wifi.led_flash_on_s = 2.9
-_LED_FLASH_ON_S = const(2.9)  # _flash_led_off()'s on phase
-# @tunable wifi.led_flash_off_s = 0.1
-_LED_FLASH_OFF_S = const(0.1)  # and its off phase
+# The flash patterns' (on, off) phases, each run by the one flash task (_run_led_pattern()).
+# @tunable wifi.led_hotspot_on_s = 2.9
+_LED_HOTSPOT_ON_S = const(2.9)  # the hotspot without a client: mostly lit
+# @tunable wifi.led_hotspot_off_s = 0.1
+_LED_HOTSPOT_OFF_S = const(0.1)
+# @tunable wifi.led_hotspot_client_on_s = 1.5
+_LED_HOTSPOT_CLIENT_ON_S = const(1.5)  # a station on the hotspot: an even slow blink
+# @tunable wifi.led_hotspot_client_off_s = 1.5
+_LED_HOTSPOT_CLIENT_OFF_S = const(1.5)
+# @tunable wifi.led_deactivated_on_s = 0.1
+_LED_DEACTIVATED_ON_S = const(0.1)  # deactivated: the hotspot pattern inverted, a short blink every 3 s
+# @tunable wifi.led_deactivated_off_s = 2.9
+_LED_DEACTIVATED_OFF_S = const(2.9)
 # @tunable wifi.reconnect_caller_grace_s = 5
 _RECONNECT_CALLER_GRACE_S = const(5)  # lets the triggering caller's own final tasks finish
 # @tunable wifi.reconnect_settle_s = 3
@@ -186,13 +193,15 @@ _PHASE_STA_SEEKING = const(0)  # STA mode, has not connected successfully since 
 _PHASE_STA_ESTABLISHED = const(1)  # STA mode, connected at least once since the last reset - live
 # wlan.isconnected() still distinguishes "connected" from "disconnected, retrying every 60s".
 _PHASE_HOTSPOT = const(2)  # AP/hotspot fallback mode active
-_PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated, needs a task/device restart
+_PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated until a power cycle or reset; survives a task restart
 
 # @tunable wifi.refresh_s = 5
 _WIFI_REFRESH_S = const(5)  # _connect_loop()'s loop period between connection checks
 
-_STAT_OBTAINING_IP = const(2)  # network.STAT_* value seen mid-connect, between STAT_CONNECTING and
-# STAT_GOT_IP - not yet exposed as a named constant by MicroPython's network module itself.
+_STAT_JOINED_NO_IP = const(2)  # cyw43 CYW43_LINK_NOIP (cyw43.h:100): joined, no IP yet; network exports no name for it (extmod/modnetwork.c:197-202, v1.29.0)
+# CYW43_PM_VALUE(NO_POWERSAVE, 200, 1, 1, 10): power save off, PM_PERFORMANCE's listen fields
+# (network_cyw43.c:43-52, v1.29.0); legacy's word.
+_PM_NO_POWERSAVE = const(0xA11140)
 
 
 # The device's [device] settings, passed whole by the generated module: hostname and hotspot
@@ -221,7 +230,7 @@ class WifiService(SensorReaderConfig):
         log: LogConfig = DEFAULT_LOG,
     ) -> None:
         super().__init__(
-            WIFI(None, None, None, None),
+            WIFI(None, None, None, None, None, None, None, None),
             _NAME,
             _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _with_default(_VAL_HOSTNAME, wifi.hostname) + _VAL_LED_WIFI_ON + _with_default(_VAL_HOTSPOT_PW, wifi.hotspot_password),
             max_module_error=max_module_error,
@@ -235,6 +244,8 @@ class WifiService(SensorReaderConfig):
         self._conn_fail_to_hotspot = wifi.conn_fail_to_hotspot
         self._wifi_uptime = TickSeconds()
         self._wifi_connected = False
+        self._dhcp_dns: str | None = None
+        self._ap_selected = False
         # CaptiveDNS gets its own independent "DNSSRV"-named logger, not this class's own self.pr (owner, 2026-08-07) -
         # its history is shown with the networking data (owner, 2026-09-26).
         self._dns_server = CaptiveDNS(log=log)
@@ -247,29 +258,33 @@ class WifiService(SensorReaderConfig):
         self._hotspot_timer_running = False
         self._hotspot_timeout_trigger_event = asyncio.ThreadSafeFlag()
         self._ledflash: asyncio.Task[None] | None = None
+        self._led_pattern: tuple[float, float] | None = None  # the (on, off) pattern _ledflash runs
         # _connect_loop()'s own state machine - reset at the top of every _connect_loop() call
         # (i.e. every task (re)start), not meant to be read from outside this class.
         self._conn_phase = _PHASE_STA_SEEKING
         self._connection_failures = 0
         self._hotspot_started_once = False
         self._hw_op_failed = False  # this loop iteration's flag feeding _error_check(), see _connect_loop()
+        self._tick_armed: bool | None = None  # the uptime tick's last arm; None until start_uptime_timer() ran
         # SSID/PW/Country/Hostname are persist-only (read fresh from cfgmgr each connection attempt);
         # LEDWifiOn is the one field with a real live push.
         self._push_callbacks[name_cfg(_VAL_LED_WIFI_ON)] = self._push_wifi_led
 
-    async def _get_hotspot_stations(self) -> "list[Any]":
+    async def _get_hotspot_stations(self) -> list[tuple[bytes]] | None:
         async with self.wifi_mode_lock:
+            # Legacy's settle before the stations query (legacy/firmware/python/CommonDrivers/async_connect.py:258); cyw43 055d642 states no such need.
+            # It stays: two flashes are not spent testing a harmless 100 ms wait (owner, 2026-10-05, paraphrase).
             await asyncio.sleep(_HOTSPOT_STATIONS_SETTLE_S)
             try:
-                # the stations command needs no other status command close before it
                 stations = self._wlan.status("stations")
                 self.pr.all("Connected stations:", stations)
-            except Exception as e:  # observation-tier (polled every _WIFI_REFRESH_S while hotspot is
-                # active) - see _wlan_status_or_none()'s comment on why this stays silent, not err_s()
+            except Exception as e:  # A failed query is unknown, never 'no client': None leaves the hotspot timer as it is (the caller persists it).
                 self.pr.err("Could not fetch connected clients:", e)
-                return []
+                return None
             else:
-                return stations  # type: ignore[return-value]  # stub types status(str) as int; real AP-mode "stations" returns a list per MicroPython docs
+                # The 1.29 stub types status(str) as int; "stations" returns a list of 1-tuples (network_cyw43.c:371-388).
+                # Remove the ignore when the stub types it (warn_unused_ignores then flags it).
+                return stations  # type: ignore[return-value]
 
     async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # Refuses a radio value outside its byte bound or shape before it is stored (C.7.4); the rest of the
@@ -292,8 +307,8 @@ class WifiService(SensorReaderConfig):
 
     async def _apply_initial_led_config(self) -> None:
         led_cfg = await self._read_wifi_led_cfg()
-        if led_cfg is None:
-            await self.set_wifi_led(status=False)
+        if led_cfg is None:  # LEDWifiOn on its schema default (on), so the deactivated pattern shows
+            await self.set_wifi_led(status=_VAL_LED_WIFI_ON[0][2])
             self._conn_phase = _PHASE_DEACTIVATED
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)
         else:
@@ -308,22 +323,49 @@ class WifiService(SensorReaderConfig):
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)
             return
         ssid, pw, country, hostname = await self._radio_values(wifi_cfg, _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME)
-        if ssid == "":  # SSID - invalid or empty config
-            self._connection_failures = self._conn_fail_to_hotspot  # immediate hotspot mode
+        if ssid == "":  # No SSID: nothing to attempt, so no failure streak - straight back to the hotspot.
+            self._connection_failures = 0
+            self._conn_phase = _PHASE_HOTSPOT
+            self.pr.evt("No SSID configured, hotspot mode")
             return
         if await self._trigger_sta_connect(ssid, pw, country, hostname):
             await self._poll_sta_connect_status()
 
+    async def _bring_up_hotspot_ap(self) -> None:
+        async with self.wifi_mode_lock:
+            led_cfg = await self._read_wifi_led_cfg()
+            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)
+            if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != _HOTSPOT_CFG_FIELDS:
+                await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)
+                await self.set_wifi_led(status=False)
+            else:
+                await self.set_wifi_led(status=led_cfg)
+                country, hostname, password = await self._radio_values(wifi_cfg, _VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)
+                await self._activate_hotspot_ap(country, hostname, password)
+
+    async def _cfg_overlay(self) -> "dict[str, CfgValue]":
+        # GET shows what the radio uses: passwords masked, and a stored value the radio would refuse as the default it runs
+        # on (SPECIFICATION.md C.7.4).
+        overlay: dict[str, CfgValue] = {name_cfg(_VAL_PW): "********", name_cfg(_VAL_HOTSPOT_PW): "********"}
+        schema = _VAL_SSID + _VAL_COUNTRY + _VAL_HOSTNAME
+        values = await self.cfgmgr.get_str_values(schema)
+        if values is not None:
+            fields = schema_dict(self._cfg_schema)
+            for field, value in zip(schema, values):  # noqa: B905 - MicroPython zip() rejects strict=
+                used = self._value_in_use(fields.get(field[0], field), value)
+                if used != value:
+                    overlay[field[0]] = used
+        return overlay
+
     def _configure_hotspot_ap(self, country: str, hostname: str, password: str) -> None:
-        # Only reached on the first tick after entering hotspot mode in normal operation - see
-        # SPECIFICATION.md Part F.2 for why STAT_GOT_IP isn't STA-only. The active() guard below is
-        # kept regardless, as low-risk defense against redundant reconfiguration on genuine re-entry.
+        # Configures only an inactive AP: re-applying essid/password to a running one can drop its beacon (cyw43).
+        # Reached on a hotspot phase's first tick and when the selected AP reports no link (_run_hotspot_mode()).
         if not self._wlan.active():
             network.country(country)  # Country
             network.hostname(hostname)  # Hostname
             self._wlan.config(essid=hostname, password=password)  # HotspotPW, per-device configurable
             self._wlan.active(True)
-            self._wlan.config(pm=0xA11140)  # disable power-save mode
+            self._wlan.config(pm=_PM_NO_POWERSAVE)
             self.pr.one("WLAN hotspot was started")
         own_ip, own_netmask = self._wlan.ifconfig()[:2]
         # Guard against leaking a duplicate concurrent CaptiveDNS.run() task on top of one already
@@ -340,8 +382,16 @@ class WifiService(SensorReaderConfig):
         while True:
             if self._conn_phase == _PHASE_DEACTIVATED:
                 self.pr.all("WLAN is deactivated.")
+                # Deactivated: a distinct pattern (owner, 2026-09-29), a short blink every 3 s that obeys the Wi-Fi LED setting
+                # like every pattern: silent while it is off, shown once it is turned on (owner, 2026-10-02).
+                self._run_led_pattern(_LED_DEACTIVATED_ON_S, _LED_DEACTIVATED_OFF_S)
             else:
                 self._hw_op_failed = False
+                if self._tick_armed is False:  # the uptime tick never armed: this iteration retries it
+                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")
+                    if not self._tick_armed:
+                        await self.pr.err_s("WiFi uptime timer not armed", errno=_ERR_TIMER)
+                        self._hw_op_failed = True
                 if self._reconn_wifi:
                     await self._handle_reconnect_trigger()
                 if self._conn_phase == _PHASE_HOTSPOT:
@@ -359,7 +409,7 @@ class WifiService(SensorReaderConfig):
             await asyncio.sleep(_WIFI_REFRESH_S)
 
     async def _deactivate_wlan_permanently(self) -> None:
-        self.pr.one("Permanently no WLAN connection, no connection to hotspot. Deactivating WLAN!")
+        await self.pr.wrn_s("Permanently no WLAN connection, no connection to hotspot. Deactivating WLAN!", wrnno=_WRN_WLAN_DEACTIVATED)
         self._conn_phase = _PHASE_DEACTIVATED
         try:
             self._wlan.disconnect()
@@ -387,19 +437,16 @@ class WifiService(SensorReaderConfig):
             self._hw_op_failed = True
             await self.pr.err_s("Error waiting for STA disconnect:", e, errno=_ERR_WLAN_STA_DISCONNECT)
 
-    async def _flash_led_off(self) -> None:
-        while True:
-            try:
+    async def _flash_led(self, on_s: float, off_s: float) -> None:
+        # A cancel ends the task at its sleep and touches no LED: the canceller sets the LED it wants.
+        try:
+            while True:
                 self._led_on()
-                await asyncio.sleep(_LED_FLASH_ON_S)
+                await asyncio.sleep(on_s)
                 self._led_off()
-                await asyncio.sleep(_LED_FLASH_OFF_S)
-            except asyncio.CancelledError:
-                self._led_on()
-                break
-            except Exception as e:  # unsupervised task's top: its end is persisted, the LED left as it is
-                await self.pr.err_s("LED flash task failed:", e, errno=_ERR_UNEXPECTED)
-                break
+                await asyncio.sleep(off_s)
+        except Exception as e:  # unsupervised task's top: its end is persisted, the LED left as it is
+            await self.pr.err_s("LED flash task failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _handle_reconnect_trigger(self) -> None:
         self._hotspot_timer.deinit()
@@ -421,11 +468,11 @@ class WifiService(SensorReaderConfig):
             await self._wait_for_sta_disconnect()
         await asyncio.sleep(_RECONNECT_SETTLE_S)  # wait once for whatever else to settle
 
-    async def _handle_sta_connection_result(self) -> None:
+    async def _handle_sta_connection_result(self) -> bool:  # True: the retry wait after a lost link is due
         if self._wlan_isconnected_or_false():
             self._on_sta_connected()
-        else:
-            await self._on_sta_disconnected()
+            return False
+        return await self._on_sta_disconnected()
 
     async def _hotspot_client_absent(self) -> None:
         if not self._hotspot_timer_running:
@@ -440,22 +487,15 @@ class WifiService(SensorReaderConfig):
                     callback=lambda _b: self._hotspot_timeout_trigger_event.set(),
                 )
                 self._hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
-            except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM) - matches
-                # asy_ntp_client.py's own Timer.init() guards; _hotspot_timer_running stays False so
-                # the next _WIFI_REFRESH_S cycle retries arming it instead of getting stuck unset.
-                self.pr.err("Could not start hotspot timer:", e)
-        if self._ledflash is None:
-            evtloop = asyncio.get_event_loop()
-            self._ledflash = evtloop.create_task(self._flash_led_off())
+            except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM) -
+                # _hotspot_timer_running stays False so the next refresh cycle retries arming it.
+                await self.pr.err_s("Could not start hotspot timer:", e, errno=_ERR_TIMER)
+        self._run_led_pattern(_LED_HOTSPOT_ON_S, _LED_HOTSPOT_OFF_S)
 
     def _hotspot_client_connected(self) -> None:
         self._hotspot_timer.deinit()  # if client connected, do not stop hotspot
         self._hotspot_timer_running = False
-        if self._ledflash is None:
-            self._led_on()
-        else:
-            self._ledflash.cancel()
-            self._ledflash = None
+        self._run_led_pattern(_LED_HOTSPOT_CLIENT_ON_S, _LED_HOTSPOT_CLIENT_OFF_S)
         self.pr.evt("Client connected to hotspot, timer stopped")
 
     async def _hotspot_timeout_loop(self) -> None:
@@ -502,16 +542,13 @@ class WifiService(SensorReaderConfig):
     async def _manage_hotspot_stations(self) -> None:
         self.pr.all("Hotspot mode is active")
         stations = await self._get_hotspot_stations()
+        if stations is None:  # unknown: neither transition runs, so the timer stays as it was
+            await self.pr.wrn_s("Hotspot stations unknown, hotspot timer left as it was", wrnno=_WRN_WLAN_STATIONS_UNKNOWN)
+            return
         if len(stations) > 0:  # at least one client connected
             self._hotspot_client_connected()
         else:  # no client connected
             await self._hotspot_client_absent()
-
-    async def _mask_pw(self) -> dict[str, int | float | str | bool | None]:
-        # PW/HotspotPW are real credentials, masked here ("********") via _get_dict_cfg()'s callback
-        # overlay so neither can leak its plaintext value through any REST route built on the
-        # generic getter-quartet path.
-        return {name_cfg(_VAL_PW): "********", name_cfg(_VAL_HOTSPOT_PW): "********"}
 
     def _on_sta_connected(self) -> None:
         self.pr.one("WLAN connection established")
@@ -520,15 +557,16 @@ class WifiService(SensorReaderConfig):
         self._led_on()
         self._print_wlan_diagnostics()
 
-    async def _on_sta_disconnected(self) -> None:
+    async def _on_sta_disconnected(self) -> bool:  # True: the retry wait is due, which the caller sleeps unlocked
         self.pr.evt("No WLAN connection")
-        if self._conn_phase == _PHASE_STA_ESTABLISHED:
+        retry_due = self._conn_phase == _PHASE_STA_ESTABLISHED
+        if retry_due:
             self.pr.evt("WLAN connection was previously successful, retrying in 1 minute...")
-            await asyncio.sleep(_STA_RETRY_AFTER_LOSS_S)
         else:
             await self._register_sta_connection_failure()
         self._led_off()
         self.pr.all("WLAN status:", self._wlan_status_or_none())
+        return retry_due
 
     async def _poll_sta_connect_status(self) -> None:
         for _i in range(_STA_CONNECT_POLL_ITERS):
@@ -543,10 +581,11 @@ class WifiService(SensorReaderConfig):
                 self.pr.all("WLAN idle")
             elif status == network.STAT_CONNECTING:
                 self.pr.all("WLAN connecting")
-            elif status == _STAT_OBTAINING_IP:
+            elif status == _STAT_JOINED_NO_IP:
                 self.pr.all("WLAN obtaining IP")
             elif status == network.STAT_WRONG_PASSWORD:
-                await self.pr.wrn_s("WLAN authentication failed - wrong password, or the AP dropped mid-handshake", wrnno=_WRN_WLAN_AUTH_FAILED)
+                # cyw43 reports any failed AUTH event or key exchange as BADAUTH (cyw43_ctrl.c:383-395, 415-427): not proof of a wrong password.
+                await self.pr.wrn_s("WLAN authentication or handshake failed", wrnno=_WRN_WLAN_AUTH_FAILED)
                 return
             elif status == network.STAT_NO_AP_FOUND:
                 await self.pr.wrn_s("WLAN access point not found", wrnno=_WRN_WLAN_NO_AP)
@@ -556,10 +595,13 @@ class WifiService(SensorReaderConfig):
                 return
             elif status == network.STAT_GOT_IP:
                 self.pr.all("WLAN connection successful")
+                return
             else:
                 await self.pr.wrn_s("WLAN undefined state:", status, wrnno=_WRN_WLAN_STATUS_UNKNOWN)
                 return
             await asyncio.sleep(_STA_CONNECT_POLL_S)
+        # Every verdict returned above: each poll stayed IDLE, CONNECTING or joined without an IP (a DHCP server that never answers).
+        await self.pr.wrn_s("WLAN connect attempt ended without a verdict, last status:", status, wrnno=_WRN_WLAN_NO_VERDICT)
 
     def _print_wlan_diagnostics(self) -> None:  # self.pr.all() self-gates on the configured level
         try:
@@ -571,9 +613,9 @@ class WifiService(SensorReaderConfig):
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
             self.pr.err("WLAN diagnostic read failed:", e)
 
-    async def _push_wifi_led(self, value: int | float | str | bool | None) -> bool:
-        # Narrows _push_callbacks' wide value type to set_wifi_led's real bool parameter - the
-        # isinstance check is defense-in-depth, not a scenario a real (schema-validated) caller hits.
+    async def _push_wifi_led(self, value: "CfgValue") -> bool:
+        # Narrows the config-value union to bool for set_wifi_led(); the schema already guarantees a bool,
+        # so the False arm is unreachable - kept for the type.
         if not isinstance(value, bool):
             return False
         return await self.set_wifi_led(status=value)
@@ -585,11 +627,10 @@ class WifiService(SensorReaderConfig):
         safe = []
         for field, value in zip(schema, values):  # noqa: B905 - MicroPython zip() rejects strict=
             live = fields.get(field[0], field)
-            if _radio_value_ok(live, value):
-                safe.append(value)
-            else:
+            used = self._value_in_use(live, value)
+            if used != value:
                 await self.pr.wrn_s("Stored", field[0], "is outside the radio's accepted form, using its default", wrnno=_WRN_STORED_DEFAULT)
-                safe.append(str(live[2]))  # every radio field's default is a str
+            safe.append(used)
         return safe
 
     async def _read_wifi_led_cfg(self) -> bool | None:  # None = config missing/malformed
@@ -597,6 +638,13 @@ class WifiService(SensorReaderConfig):
         if wifi_led is None or len(wifi_led) != 1:
             return None
         return wifi_led[0]
+
+    async def _recover_device(self) -> bool | None:
+        # Participant rung (SPECIFICATION.md C.7/F.2): re-select the current mode; deinit() powers the CYW43 off
+        # and the next active(True) reloads its firmware (cyw43_ctrl.c:118-175, cyw43-driver 055d642). None while deactivated: no radio in use.
+        if self._conn_phase == _PHASE_DEACTIVATED:
+            return None
+        return await self._select_wifi_mode(network.AP_IF if self._conn_phase == _PHASE_HOTSPOT else network.STA_IF)
 
     async def _register_sta_connection_failure(self) -> None:
         if self._connection_failures < (self._conn_fail_to_hotspot - 1):
@@ -608,7 +656,7 @@ class WifiService(SensorReaderConfig):
             await self._deactivate_wlan_permanently()
         else:
             self._conn_phase = _PHASE_HOTSPOT
-            self.pr.one("Permanently no WLAN connection - activating hotspot!")
+            await self.pr.wrn_s("Permanently no WLAN connection - activating hotspot!", wrnno=_WRN_WLAN_TO_HOTSPOT)
 
     def _reset_wlan_connect_state(self) -> None:
         if self._ledflash is not None:
@@ -620,8 +668,8 @@ class WifiService(SensorReaderConfig):
         self._connection_failures = 0
         self._hotspot_started_once = False
         if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED):
-            # Both left as-is on a task restart, not reset to _PHASE_STA_SEEKING - see
-            # SPECIFICATION.md Part A.4's "Permanent WiFi deactivation" bullet.
+            # DEACTIVATED survives a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves it through _leave_hotspot_mode(),
+            # after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's restart did (legacy/firmware/python/CommonDrivers/async_connect.py:176-181).
             self._conn_phase = _PHASE_STA_SEEKING
         self._hotspot_timer.deinit()
         self._hotspot_timer_running = False
@@ -635,36 +683,45 @@ class WifiService(SensorReaderConfig):
 
     async def _run_hotspot_mode(self) -> None:
         status = await self._locked_wlan_status()
-        if status != network.STAT_GOT_IP:
-            await self._start_hotspot()
-        else:
+        if status == network.STAT_GOT_IP:
             await self._manage_hotspot_stations()
+        elif not self._ap_selected:  # the hotspot phase's first tick: STA is still selected
+            await self._start_hotspot()
+        else:  # the selected AP reports no link: up again in place, and no client, so the timer still runs
+            await self._bring_up_hotspot_ap()
+            await self._hotspot_client_absent()
+
+    def _run_led_pattern(self, on_s: float, off_s: float) -> None:
+        # One flash task; asking for the pattern already running keeps its phase (a task that ended on a fault
+        # is not running: the next request starts it again).
+        if self._ledflash is not None and not self._ledflash.done() and self._led_pattern == (on_s, off_s):
+            return
+        if self._ledflash is not None:
+            self._ledflash.cancel()
+        self._led_pattern = (on_s, off_s)
+        self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
 
     async def _run_sta_mode(self) -> None:
         async with self.wifi_mode_lock:
             if not self._wlan_isconnected_or_false():
                 await self._attempt_sta_connect()
-            await self._handle_sta_connection_result()
+            retry_due = False
+            if self._conn_phase != _PHASE_HOTSPOT:  # an empty SSID went straight to the hotspot: no result to judge
+                retry_due = await self._handle_sta_connection_result()
+        if retry_due:  # outside the lock: NTP, the uptime tick and a reconnect go on during the wait
+            await asyncio.sleep(_STA_RETRY_AFTER_LOSS_S)
 
-    async def _select_wifi_mode(self, mode: int) -> None:
+    async def _select_wifi_mode(self, mode: int) -> bool:
         async with self.wifi_mode_lock:
-            await self._switch_wlan_mode(mode)
+            return await self._switch_wlan_mode(mode)
 
     async def _start_hotspot(self) -> None:
         await self._select_wifi_mode(network.AP_IF)
-        async with self.wifi_mode_lock:
-            led_cfg = await self._read_wifi_led_cfg()
-            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)
-            if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != _HOTSPOT_CFG_FIELDS:
-                await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)
-                await self.set_wifi_led(status=False)
-            else:
-                await self.set_wifi_led(status=led_cfg)
-                country, hostname, password = await self._radio_values(wifi_cfg, _VAL_COUNTRY + _VAL_HOSTNAME + _VAL_HOTSPOT_PW)
-                await self._activate_hotspot_ap(country, hostname, password)
-            self._hotspot_started_once = True
+        await self._bring_up_hotspot_ap()
+        self._hotspot_started_once = True
 
-    async def _switch_wlan_mode(self, mode: int) -> None:
+    async def _switch_wlan_mode(self, mode: int) -> bool:
+        self._ap_selected = False
         try:
             self._wlan.disconnect()
             self._wlan.active(False)
@@ -675,18 +732,21 @@ class WifiService(SensorReaderConfig):
             await asyncio.sleep(_WLAN_DEINIT_SETTLE_S)
             self._wifi_uptime.restart(0)
             self._wlan = network.WLAN(mode)
+            self._ap_selected = mode == network.AP_IF
             self.pr.all("Wifi mode set")
             await asyncio.sleep(_WLAN_MODE_SETTLE_S)
         except Exception as e:
             self._hw_op_failed = True
             await self.pr.err_s("Error switching WLAN mode:", e, errno=_ERR_WLAN_MODE_SWITCH)
+            return False
+        return True
 
     async def _trigger_sta_connect(self, ssid: str, pw: str, country: str, hostname: str) -> bool:
         try:
             network.country(country)
             network.hostname(hostname)
             self._wlan.active(True)
-            self._wlan.config(pm=0xA11140)  # disable power-save mode
+            self._wlan.config(pm=_PM_NO_POWERSAVE)
             self._wlan.connect(ssid, pw)
         except Exception as e:
             self._hw_op_failed = True
@@ -697,14 +757,30 @@ class WifiService(SensorReaderConfig):
 
     async def _update_wifi_snapshot(self, *, connected: bool) -> None:
         mode = "AP" if self._conn_phase == _PHASE_HOTSPOT else "STA"
-        ip = None
+        if self._conn_phase == _PHASE_DEACTIVATED:  # no radio in use: nothing to read
+            self._dhcp_dns = None
+            await self._set_meas_data(WIFI(mode, connected, None, None, None, None, None, utc_now()))
+            return
+        ip: str | None = None
+        subnet: str | None = None
+        gateway: str | None = None
+        dns: str | None = None
         try:
             ifcfg = self._wlan.ifconfig()
             if len(ifcfg) == _IFCONFIG_FIELDS:
-                ip = ifcfg[0]
+                ip, subnet, gateway, dns = ifcfg
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
             self.pr.err("wlan.ifconfig() failed:", e)
-        await self._set_meas_data(WIFI(mode, connected, ip, utc_now()))
+        rssi = None
+        # Read only with a link on STA: an AP raises ValueError, and an inactive STA returns the driver's
+        # unset value, its -EPERM dropped (extmod/network_cyw43.c:363-369, v1.29.0).
+        if not self._ap_selected and connected:
+            try:
+                rssi = int(self._wlan.status("rssi"))
+            except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
+                self.pr.err("wlan.status('rssi') failed:", e)
+        self._dhcp_dns = dns if connected else None
+        await self._set_meas_data(WIFI(mode, connected, ip, subnet, gateway, dns, rssi, utc_now()))
 
     async def _uptime_loop(self) -> None:
         self._wifi_uptime.restart(0)
@@ -717,13 +793,21 @@ class WifiService(SensorReaderConfig):
                 await self._update_wifi_snapshot(connected=False)
                 continue
             async with self.wifi_mode_lock:
-                connected = self._wlan_status_or_none() == network.STAT_GOT_IP
-                self._wifi_connected = connected
-                if connected:
+                status = self._wlan_status_or_none()
+                if status is not None:
+                    # Link up, hotspot included: an active AP reports STAT_GOT_IP too (owner, 2026-09-29).
+                    connected = status == network.STAT_GOT_IP
+                    self._wifi_connected = connected
+                    if not connected:
+                        self._wifi_uptime.restart(0)
+                    await self._update_wifi_snapshot(connected=connected)
+                if self._wifi_connected:
                     self._wifi_uptime.read()  # one read per tick keeps it inside ticks_diff()'s horizon (G.2)
-                else:
-                    self._wifi_uptime.restart(0)
-                await self._update_wifi_snapshot(connected=connected)
+            if status is None:  # Unreadable is not down: the last link state and uptime stand; the warning count shows how long.
+                await self.pr.wrn_s("WLAN status unreadable, link state kept", wrnno=_WRN_WLAN_STATUS_UNREADABLE)
+
+    def _value_in_use(self, field: "FieldSchema", value: str) -> str:
+        return value if _radio_value_ok(field, value) else str(field[2])
 
     async def _wait_for_sta_disconnect(self) -> None:
         self.pr.evt("Reconnecting WLAN...")
@@ -748,7 +832,7 @@ class WifiService(SensorReaderConfig):
             self.pr.err("wlan.status() failed:", e)
             return None
 
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+    def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_connect, self.start_asy_uptime, self.start_asy_hotspot_timeout]
 
     def get_timer_starters(self) -> "list[TimerStarter]":
@@ -767,11 +851,14 @@ class WifiService(SensorReaderConfig):
         return evtloop.create_task(self._uptime_loop())
 
     def start_uptime_timer(self) -> None:
-        arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")
+        # a failed arm is retried by _connect_loop(), which persists a second failure
+        self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")
 
     def stop_uptime_timer(self) -> None:
         self._counter_timer.deinit()
 
+    # Every public getter reads state this service holds (the 1 Hz snapshot, the phase); none touches the radio. The one
+    # radio read callers may make, network_available_locked(), requires wifi_mode_lock (SPECIFICATION.md C.8).
     async def get_data(self) -> WIFI:
         # Narrows to this Reader's concrete WIFI - see SPECIFICATION.md C.4.2's get_data() convention.
         # Backed by _uptime_loop()'s 1Hz cache push rather than a live lock-aware query - avoids a
@@ -780,7 +867,7 @@ class WifiService(SensorReaderConfig):
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            self.name, _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME + _VAL_LED_WIFI_ON + _VAL_HOTSPOT_PW, callback=self._mask_pw,
+            self.name, _VAL_SSID + _VAL_PW + _VAL_COUNTRY + _VAL_HOSTNAME + _VAL_LED_WIFI_ON + _VAL_HOTSPOT_PW, callback=self._cfg_overlay,
         )
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -788,10 +875,8 @@ class WifiService(SensorReaderConfig):
         return make_dict(data, _FIELDS, name=self.name)
 
     def get_dns_server_ip(self) -> str | None:
-        # The DHCP-assigned DNS server to try first, before any fallback list. Reuses
-        # get_wlan_ifconfig()'s own None-on-failure convention.
-        ifcfg = self.get_wlan_ifconfig()
-        return None if ifcfg is None else ifcfg[3]
+        # The DHCP-assigned DNS server to try first, from the last snapshot.
+        return self._dhcp_dns
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -811,37 +896,9 @@ class WifiService(SensorReaderConfig):
     async def get_wifi_uptime(self) -> int:
         return self._wifi_uptime.read() if self._wifi_connected else 0
 
-    # Locking convention (Part C.8's "Known inconsistency"): network_available_locked() assumes the caller
-    # holds wifi_mode_lock; get_wlan_ifconfig(), get_wlan_rssi() and wlan_isconnected() check .locked()
-    # themselves and degrade. A new getter picks one shape deliberately, never by copying its nearest neighbour.
-    def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
-        if self.wifi_mode_lock.locked():
-            return None
-        try:
-            ifcfg = self._wlan.ifconfig()
-        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
-            self.pr.err("wlan.ifconfig() failed:", e)
-            return None
-        if len(ifcfg) == _IFCONFIG_FIELDS:
-            return ifcfg[0:4]
-        return None  # defensive: real WLAN.ifconfig() is a fixed 4-tuple per the stub
-
-    def get_wlan_rssi(self) -> int | None:
-        if self.wifi_mode_lock.locked():
-            return None
-        try:
-            rssi = int(self._wlan.status("rssi"))  # not valid in AP mode!
-        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment. Per
-            # extmod/network_cyw43.c, querying "rssi" outside STA mode raises ValueError("STA
-            # required"), a routine failure while hotspot_mode is active - still logs.
-            self.pr.err("wlan.status('rssi') failed:", e)
-            rssi = None
-        return rssi
-
     def is_hotspot_active(self) -> bool:
-        # A plain self._conn_phase int-compare touches no hardware, unlike network_available_locked()'s
-        # own _wlan_status_or_none() call - no lock needed, so this picks the callable-from-anywhere
-        # getter shape (like get_dns_server_ip()/get_wlan_rssi() above), not network_available_locked()'s.
+        # A plain self._conn_phase compare touches no hardware, unlike network_available_locked()'s radio read -
+        # no lock needed, the callable-from-anywhere getter shape.
         return self._conn_phase == _PHASE_HOTSPOT
 
     async def set_wifi_led(self, *, status: bool) -> bool:
@@ -870,8 +927,3 @@ class WifiService(SensorReaderConfig):
         ok = await super().setup()
         await self._dns_server.pr.setup()  # the DNS server's own logger is set up separately
         return ok
-
-    def wlan_isconnected(self) -> bool:
-        if self.wifi_mode_lock.locked():
-            return False
-        return self._wlan_isconnected_or_false()

@@ -1,0 +1,31 @@
+FF.........                                                              [100%]
+=================================== FAILURES ===================================
+________ test_no_occurrence_is_persisted_as_both_a_fault_and_a_warning _________
+
+tree_pairs = {('src/asy_base_classes.py', '_get_dict_cfg', ('E', 'CFG_GET_RAISED'), ('W', 'CALLBACK_KEYS')), ('src/asy_base_classes..._RESET'), ('E', 'READ')), ('src/asy_bmp3xx_driver.py', '_read_bmp', ('W', 'BMP_CHIP_RESET'), ('E', 'READ_RANGE')), ...}
+
+    def test_no_occurrence_is_persisted_as_both_a_fault_and_a_warning(tree_pairs: "set[Pair]") -> None:
+        unlisted = tree_pairs - set(_ALLOWED)
+>       assert not unlisted, "a persisted fault and warning on one path, not in _ALLOWED - one occurrence is one or the other:\n" + _describe(unlisted)
+E       AssertionError: a persisted fault and warning on one path, not in _ALLOWED - one occurrence is one or the other:
+E         src/asy_captive_dns.py run(): E UNEXPECTED then W SOCKET_TEARDOWN
+E         src/asy_ntp_client.py _fetch_ntp_reply(): W SOCKET_TEARDOWN then E NTP_NO_REPLY
+E       assert not {('src/asy_captive_dns.py', 'run', ('E', 'UNEXPECTED'), ('W', 'SOCKET_TEARDOWN')), ('src/asy_ntp_client.py', '_fetch_ntp_reply', ('W', 'SOCKET_TEARDOWN'), ('E', 'NTP_NO_REPLY'))}
+
+tests_scripts/test_fault_or_warning_never_both.py:245: AssertionError
+_____________________ test_every_allowed_pair_still_occurs _____________________
+
+tree_pairs = {('src/asy_base_classes.py', '_get_dict_cfg', ('E', 'CFG_GET_RAISED'), ('W', 'CALLBACK_KEYS')), ('src/asy_base_classes..._RESET'), ('E', 'READ')), ('src/asy_bmp3xx_driver.py', '_read_bmp', ('W', 'BMP_CHIP_RESET'), ('E', 'READ_RANGE')), ...}
+
+    def test_every_allowed_pair_still_occurs(tree_pairs: "set[Pair]") -> None:
+        stale = set(_ALLOWED) - tree_pairs
+>       assert not stale, "these _ALLOWED pairs no longer occur - drop or rename them:\n" + _describe(stale)
+E       AssertionError: these _ALLOWED pairs no longer occur - drop or rename them:
+E         src/asy_captive_dns.py run(): E UNEXPECTED then W DNS_TEARDOWN
+E       assert not {('src/asy_captive_dns.py', 'run', ('E', 'UNEXPECTED'), ('W', 'DNS_TEARDOWN'))}
+
+tests_scripts/test_fault_or_warning_never_both.py:250: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_no_occurrence_is_persisted_as_both_a_fault_and_a_warning
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_every_allowed_pair_still_occurs
+2 failed, 9 passed in 7.28s

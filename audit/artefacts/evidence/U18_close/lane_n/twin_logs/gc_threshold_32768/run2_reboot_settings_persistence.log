@@ -1,0 +1,131 @@
+digital_twin/run_generic_integration.py starting - device='wozi' module='sensortask_wozi' host='127.0.0.1' port=18080 fram_state_path='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/digital_twin/fram_state.json' scd30_state_path='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/digital_twin/scd30_state.json' seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:18080/ - Ctrl+C to stop
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - config is ready, nothing to write
+FRAM Data read successfully from block 0
+FRAM Both blocks valid and data verified
+SYSTEM Timer started: 0
+SYSTEM Timer started: 1
+SYSTEM Timer started: 2
+SYSTEM Timer started: 3
+SYSTEM Timer started: 4
+SYSTEM Timer started: 5
+SYSTEM Timer started: 6
+SYSTEM All timers running.
+NTP Force resync triggered.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Establishing WLAN connection
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI No SSID configured, hotspot mode
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 1
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into list.
+SYSTEM All tasks running.
+BMP3XX Setting sensor config at startup.
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into list.
+BMP3XX initialized
+BMP3XX sensor trigger
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 2
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+BMP3XX Reading config via cfgmgr.
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+FRAM FRAM verification set to 60 write cycles.
+SGP40 initialized with storage
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 VOC backup load trigger
+SGP40 Backup counter: 1 Trigger: 60
+FRAM Uninitialized data in block 0, reading block 1
+FRAM Uninitialized data in block 1
+SGP40 No backup found
+SYSTEM System uptime: 3
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 2 Trigger: 60
+BMP3XX sensor trigger
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM All tasks running.
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 4
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 5
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 4 Trigger: 60
+SGP40 read
+SGP40 data stored
+WIFI Wifi inactive
+BMP3XX sensor trigger
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM All tasks running.
+digital_twin/run_generic_integration.py [wozi] shutdown: would_have_triggered_count=0
+digital_twin/run_generic_integration.py: interrupted

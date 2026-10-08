@@ -1,0 +1,6 @@
+tests/test_asy_ntp_client.py: note: In member "write" of class "_FakeUDPSocket":
+tests/test_asy_ntp_client.py:1033:37: error: Argument 1 to "append" of "list"
+has incompatible type "bytes | bytearray"; expected "bytes"  [arg-type]
+            self.script.requests.append(msg)  # the object itself: the tes...
+                                        ^~~
+Found 1 error in 1 file (checked 181 source files)

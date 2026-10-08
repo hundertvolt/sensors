@@ -1,0 +1,238 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18j_sim
+
+ ✓ |chromium| tests_js/mock-server-put-matrix.test.js (433 tests) 120065ms
+   ✓ PUT arzi sensors/SCD30/TempOffset (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 327ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 339ms
+   ✓ PUT arzi sensors/SCD30/MeasInterval (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 307ms
+   ✓ PUT arzi sensors/SCD30/Altitude (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 326ms
+     ✓ accepts 65535 (a valid value distributed across the range): Valid, and it gets persisted 361ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 319ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 321ms
+   ✓ PUT arzi sensors/SCD30/SelfCal (toggle) (4)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 353ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 315ms
+   ✓ PUT arzi sensors/SCD30/FRCNoise (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 334ms
+     ✓ accepts 1 (a valid value distributed across the range): Valid, and it gets persisted 301ms
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 343ms
+     ✓ rejects 501 (out of [min, max], and not a declared special value): Invalid, not persisted 357ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 331ms
+   ✓ PUT arzi sensors/SCD30/FRCRate (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 307ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 384ms
+     ✓ accepts 0.1 (a valid value distributed across the range): Valid, and it gets persisted 345ms
+     ✓ accepts 500.05 (a valid value distributed across the range): Valid, and it gets persisted 337ms
+     ✓ rejects -0.4 (out of [min, max], and not a declared special value): Invalid, not persisted 318ms
+     ✓ rejects 1000.5 (out of [min, max], and not a declared special value): Invalid, not persisted 350ms
+   ✓ PUT arzi sensors/SCD30/FRCWindow (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 356ms
+     ✓ accepts 3600 (a valid value distributed across the range): Valid, and it gets persisted 307ms
+     ✓ rejects 3601 (out of [min, max], and not a declared special value): Invalid, not persisted 310ms
+   ✓ PUT arzi sensors/SGP40/BackupPeriod (number) (10)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 316ms
+     ✓ accepts 720 (a valid value distributed across the range): Valid, and it gets persisted 307ms
+     ✓ rejects 1441 (out of [min, max], and not a declared special value): Invalid, not persisted 315ms
+     ✓ accepts the declared special value 0 ("Backups off"): Valid, and it gets persisted 336ms
+   ✓ PUT arzi sensors/SGP40/BackupMaxAge (number) (10)
+     ✓ accepts 5040 (a valid value distributed across the range): Valid, and it gets persisted 321ms
+     ✓ rejects 10081 (out of [min, max], and not a declared special value): Invalid, not persisted 341ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 304ms
+   ✓ PUT arzi sensors/SGP40/WaitTimeNTP (number) (10)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 313ms
+     ✓ accepts 300 (a valid value distributed across the range): Valid, and it gets persisted 309ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 304ms
+     ✓ rejects 601 (out of [min, max], and not a declared special value): Invalid, not persisted 376ms
+     ✓ accepts the declared special value 0 ("Never wait for NTP sync"): Valid, and it gets persisted 340ms
+   ✓ PUT arzi networking/identity/SSID (string) (7)
+     ✓ accepts a 1-char string (a valid value distributed across the length range): Valid, and it gets persisted 315ms
+     ✓ rejects a too-long string: Invalid, not persisted 303ms
+   ✓ PUT arzi networking/identity/Country (string) (6)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 312ms
+     ✓ rejects a too-short string: Invalid, not persisted 348ms
+     ✓ rejects a too-long string: Invalid, not persisted 353ms
+   ✓ PUT arzi networking/identity/Hostname (string) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 329ms
+     ✓ accepts a 1-char string (a valid value distributed across the length range): Valid, and it gets persisted 342ms
+     ✓ rejects a too-long string: Invalid, not persisted 357ms
+   ✓ PUT arzi networking/wifiLed/LEDWifiOn (toggle) (4)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 311ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 343ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 317ms
+   ✓ PUT arzi networking/ntp/NTPHost (string) (8)
+     ✓ accepts a 3-char string (a valid value distributed across the length range): Valid, and it gets persisted 358ms
+     ✓ rejects a too-short string: Invalid, not persisted 325ms
+   ✓ PUT arzi networking/ntp/NTPOffset (number) (8)
+     ✓ accepts 43200 (a valid value distributed across the range): Valid, and it gets persisted 349ms
+   ✓ PUT arzi networking/ntp/NTPInterval (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 357ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 307ms
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 327ms
+     ✓ rejects 25 (out of [min, max], and not a declared special value): Invalid, not persisted 328ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 327ms
+   ✓ PUT arzi networking/dns/DNSFallback (string) (7)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 311ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 300ms
+     ✓ accepts a 1-char string (a valid value distributed across the length range): Valid, and it gets persisted 339ms
+     ✓ accepts a 47-char string (a valid value distributed across the length range): Valid, and it gets persisted 351ms
+   ✓ PUT arzi system/settings/DebugLevel (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 338ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 312ms
+     ✓ accepts 5 (a valid value distributed across the range): Valid, and it gets persisted 364ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 320ms
+   ✓ PUT arzi system/settings/GMTOffset (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 362ms
+     ✓ rejects 43201 (out of [min, max], and not a declared special value): Invalid, not persisted 317ms
+   ✓ PUT arzi system/settings/DSTOffset (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 322ms
+     ✓ rejects -43201 (out of [min, max], and not a declared special value): Invalid, not persisted 312ms
+     ✓ rejects 43201 (out of [min, max], and not a declared special value): Invalid, not persisted 345ms
+   ✓ PUT arzi notification/autoConfig/AutoOn (toggle) (4)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 354ms
+     ✓ accepts false: Valid, and it gets persisted 302ms
+   ✓ PUT arzi notification/autoConfig/OnH (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 343ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 360ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 314ms
+     ✓ rejects 24 (out of [min, max], and not a declared special value): Invalid, not persisted 317ms
+   ✓ PUT arzi notification/autoConfig/OnM (number) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 323ms
+     ✓ accepts 59 (a valid value distributed across the range): Valid, and it gets persisted 312ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 323ms
+   ✓ PUT arzi notification/autoConfig/OffH (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 345ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 331ms
+     ✓ accepts 23 (a valid value distributed across the range): Valid, and it gets persisted 350ms
+     ✓ rejects 24 (out of [min, max], and not a declared special value): Invalid, not persisted 304ms
+   ✓ PUT arzi notification/autoConfig/OffM (number) (8)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 309ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 305ms
+   ✓ PUT arzi notification/autoConfig/FlashBri (number) (9)
+     ✓ accepts 128 (a valid value distributed across the range): Valid, and it gets persisted 329ms
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 327ms
+   ✓ PUT arzi notification/autoConfig/FlashInterval (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 304ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 396ms
+     ✓ accepts 60 (a valid value distributed across the range): Valid, and it gets persisted 314ms
+   ✓ PUT arzi notification/autoConfig/FlashDur (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 320ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 302ms
+     ✓ accepts 5.25 (a valid value distributed across the range): Valid, and it gets persisted 311ms
+     ✓ accepts 10 (a valid value distributed across the range): Valid, and it gets persisted 333ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 303ms
+   ✓ PUT arzi notification/autoConfig/WarnCO2 (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 300ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 317ms
+     ✓ rejects 3001 (out of [min, max], and not a declared special value): Invalid, not persisted 307ms
+   ✓ PUT arzi notification/autoConfig/WarnVOC (number) (8)
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 324ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 347ms
+   ✓ PUT arzi notification/autoConfig/WarnHum (number) (9)
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 309ms
+   ✓ PUT dev sensors/BMP3XX/SampleInterval (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 340ms
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 306ms
+   ✓ PUT dev sensors/BMP3XX/PresOvers (enum) (10)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 348ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 307ms
+     ✓ accepts option 32 (a valid value distributed across the option set): Valid, and it gets persisted 319ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 335ms
+     ✓ rejects a fractional value for this numeric enum field: Invalid, not persisted (mock-server.js's coerceAndValidate() enum branch, SPECIFICATION.md Part A.8 - every declared numeric enum is itself a plain int field server-side) 301ms
+   ✓ PUT dev sensors/BMP3XX/TempOvers (enum) (10)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 333ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 301ms
+     ✓ accepts option 8 (a valid value distributed across the option set): Valid, and it gets persisted 346ms
+     ✓ accepts option 16 (a valid value distributed across the option set): Valid, and it gets persisted 348ms
+     ✓ accepts option 32 (a valid value distributed across the option set): Valid, and it gets persisted 322ms
+   ✓ PUT dev sensors/BMP3XX/FiltCoeff (enum) (12)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 301ms
+     ✓ accepts option 0 (a valid value distributed across the option set): Valid, and it gets persisted 308ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 321ms
+   ✓ PUT dev sensors/BMP3XX/PresOffset (number) (8)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 311ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 352ms
+     ✓ rejects 501 (out of [min, max], and not a declared special value): Invalid, not persisted 309ms
+   ✓ PUT dev sensors/BMP3XX/TempOffset (number) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 312ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 318ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 347ms
+     ✓ rejects -11 (out of [min, max], and not a declared special value): Invalid, not persisted 358ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 339ms
+   ✓ PUT dev sensors/BMP3XX/SeaLevelOffset (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 346ms
+   ✓ PUT dev sensors/BMP3XX/MeanAtmTemp (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 330ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 316ms
+     ✓ accepts -40 (a valid value distributed across the range): Valid, and it gets persisted 375ms
+     ✓ rejects 51 (out of [min, max], and not a declared special value): Invalid, not persisted 329ms
+   ✓ PUT dev sensors/ISL29125/SampleInterval (number) (8)
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 368ms
+     ✓ rejects 3601 (out of [min, max], and not a declared special value): Invalid, not persisted 323ms
+   ✓ PUT dev sensors/ISL29125/Resolution (enum) (6)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 305ms
+     ✓ rejects a fractional value for this numeric enum field: Invalid, not persisted (mock-server.js's coerceAndValidate() enum branch, SPECIFICATION.md Part A.8 - every declared numeric enum is itself a plain int field server-side) 314ms
+   ✓ PUT dev sensors/ISL29125/RangeAuto (toggle) (4)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 330ms
+     ✓ accepts false: Valid, and it gets persisted 314ms
+   ✓ PUT dev sensors/ISL29125/Range (enum) (6)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 312ms
+     ✓ accepts option 375 (a valid value distributed across the option set): Valid, and it gets persisted 307ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 333ms
+   ✓ PUT dev sensors/ISL29125/AutoRangeThresh (number) (9)
+     ✓ accepts 95 (a valid value distributed across the range): Valid, and it gets persisted 310ms
+   ✓ PUT dev sensors/ISL29125/AutoRangeDwell (number) (10)
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 331ms
+     ✓ accepts 150 (a valid value distributed across the range): Valid, and it gets persisted 325ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 346ms
+   ✓ PUT dev sensors/ISL29125/IRCompOffset (enum) (6)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 349ms
+     ✓ rejects a fractional value for this numeric enum field: Invalid, not persisted (mock-server.js's coerceAndValidate() enum branch, SPECIFICATION.md Part A.8 - every declared numeric enum is itself a plain int field server-side) 305ms
+   ✓ PUT dev sensors/ISL29125/IRCompAdjust (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 313ms
+     ✓ accepts 32 (a valid value distributed across the range): Valid, and it gets persisted 304ms
+   ✓ PUT dev sensors/ISL29125/FiltCoeff (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 302ms
+     ✓ rejects -2 (out of [min, max], and not a declared special value): Invalid, not persisted 310ms
+     ✓ rejects 2 (out of [min, max], and not a declared special value): Invalid, not persisted 332ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 339ms
+   ✓ PUT dev sensors/ISL29125/GainRatio (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 375ms
+     ✓ accepts 20 (a valid value distributed across the range): Valid, and it gets persisted 334ms
+     ✓ rejects 19 (out of [min, max], and not a declared special value): Invalid, not persisted 391ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 310ms
+   ✓ PUT arzi sensors/SCD30/AmbPres (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 429ms
+   ✓ PUT arzi sensors/SCD30/ForceCalRef (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 683ms
+   ✓ PUT arzi sensors/SCD30/ContMeas (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 626ms
+   ✓ PUT arzi sensors/SGP40/ResetVOC (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 467ms
+   ✓ PUT arzi system/command/SystemCmd (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 614ms
+   ✓ PUT arzi notification/pause/PauseTime (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 477ms
+   ✓ PUT dev sensors/ISL29125/Calibrate (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 588ms
+
+ Test Files  1 passed (1)
+      Tests  433 passed (433)
+   Start at  02:15:21
+   Duration  121.64s (tests 100%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 433 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

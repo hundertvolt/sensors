@@ -31,11 +31,11 @@ _NESTED_ROUTES = frozenset({"/sensors"})
 # The measured maximum per device, pinned so that growth is deliberate and visible rather than
 # silent. A new driver or a widened string bound SHOULD fail this - update it and read the margin.
 _EXPECTED_LARGEST = {
-    "arzi": 536,
+    "arzi": 678,
     "dev": 1080,
-    "grkizi": 536,
-    "klkizi": 536,
-    "schlafzi": 536,
+    "grkizi": 678,
+    "klkizi": 678,
+    "schlafzi": 678,
     "wozi": 743,
 }
 

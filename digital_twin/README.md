@@ -9,9 +9,12 @@ like it's attached to real hardware, not just satisfy a hand-driven test double.
 SPECIFICATION.md Part A.10 for how this fits into the rest of the architecture, and Part C.11 point 9
 for the per-driver "add a matching chip fake" requirement.
 
-**Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
-Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
-`scripts/test.sh` runs by default (`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`).
+**Not `tests/machine.py`, and does not import it.** Kept off the default unit-test path, so nothing
+here can accidentally affect the deterministic unit-test suite `scripts/test.sh` runs by default
+(`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`): a test that needs a twin
+module puts its directory on `sys.path` itself — `digital_twin/` for the `tests/test_digital_twin_*.py`
+files and their scenario libraries, `digital_twin/unixport/` (no fake there) for a test needing only
+the UDP shim (see "Running the twin's own tests" below).
 
 ## What's here
 
@@ -539,24 +542,28 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    hotspot-fallback state machine (`conn_fail_to_hotspot=5`), starts the real `CaptiveDNS`, and
    confirms it actually answers a real UDP DNS query sent from outside the process — not just that
    the internal state flipped. Only possible because of
-   `digital_twin/_unix_port_udp_addr_shim.py` — see its own module docstring and the "`_unix_port_udp_addr_shim.py`"
-   section below for the three Unix-port-only `socket` quirks it works around, entirely from
-   twin-side code, with `src/` left untouched and correct for real hardware. `src/asy_captive_dns.py`'s
-   `CaptiveDNS` binds the real, privileged port 53 unconditionally (correct for real hardware, which
-   has no user/privilege concept at all) — `scripts/run_digital_twin_ci.sh` grants the built
-   interpreter binary `CAP_NET_BIND_SERVICE` (via `setcap`, fresh on every invocation, since a
-   cached toolchain archive doesn't preserve it) precisely so this run works when the job itself
-   isn't root, e.g. a GitHub Actions runner. Without it, `asy_udp_socket.py`'s own `bind()` retry
-   loop swallows the resulting `PermissionError` and gives up silently — the DNS server never
-   raises, never crashes the process, it just never starts listening, so no amount of waiting fixes
-   it. Confirmed directly: two real CI failures here were a timeout-budget red herring; the actual
-   fix was the capability grant, not a longer wait.
+   `digital_twin/unixport/_unix_port_udp_addr_shim.py` — see its own module docstring and the
+   "`_unix_port_udp_addr_shim.py`" section below for the three Unix-port-only `socket` quirks it
+   works around, entirely from twin-side code, with `src/` left untouched and correct for real
+   hardware. `src/asy_captive_dns.py`'s `CaptiveDNS` binds the real, privileged port 53
+   unconditionally (correct for real hardware, which has no user/privilege concept at all) —
+   `scripts/run_digital_twin_ci.sh` grants the built interpreter binary `CAP_NET_BIND_SERVICE` (via
+   `setcap`, fresh on every invocation, since a cached toolchain archive doesn't preserve it)
+   precisely so this run works when the job itself isn't root, e.g. a GitHub Actions runner. Without
+   it, every `bind()` fails with `PermissionError`, which `asy_udp_socket.py` absorbs (its I/O never
+   raises) — the DNS server never crashes the process and only logs, each backoff round, that it
+   could not bind port 53; it never starts listening, so no amount of waiting fixes it. Confirmed
+   directly: two real CI failures here were a timeout-budget red herring; the actual fix was the
+   capability grant, not a longer wait.
 8. **Reboot fault-free** — WIFI's own persistence-correctness check (FRAM-backed since WP1, same
    all-or-nothing abrupt-restart guarantee as SGP40's run 5b — restored count must be `0` or the
-   full scripted-failure count, never partial), plus configures an unreachable NTP host
+   full count, never partial: the five scripted failures plus the persisted `WLAN_TO_HOTSPOT`
+   fallback warning, six events in two history slots), plus configures an unreachable NTP host
    (`192.0.2.1`, RFC 5737 TEST-NET-1) for run 9.
 9. **Reboot with NTP permanently unreachable** — the other "network connections" real-world case.
-   Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually.
+   Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually,
+   and that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
+   where it has none (a network namespace holding only `lo`), never both.
 10. **The dedicated watchdog-backstop case** — a real, *blocking* (`time.sleep()`, not
     `asyncio.sleep()`) hang inside a chip fake's handler (`--hang sgp40:writeto:12`), genuinely
     freezing the whole interpreter past the 8000ms WDT window. `digital_twin/_fault_injection.py`'s
@@ -566,8 +573,8 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     blocking sleep is the only way this twin can reproduce that specific failure mode faithfully.
     Confirms the process survives and exits cleanly, and — the one thing sustained-but-bounded
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
-    (`would_have_triggered_count >= 1`), matching CLAUDE.md's own settled "hardware watchdog is the
-    accepted backstop" rule for a genuinely wedged bus.
+    (`would_have_triggered_count >= 1`), matching CLAUDE.md's recovery-ladder rule: a call that
+    never returns is the watchdog's.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only (no `--soak`/`--soak-cycles` — that
     flag doesn't exist any more); the *host* (this script's own `_run_11_soak()`, plain CPython)
@@ -772,6 +779,13 @@ site, and not reaching for a threshold.
 
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 
+The file sits in `digital_twin/unixport/`, a directory holding no `machine`, `network` or
+`neopixel` fake, so a unit test can put it on `sys.path` without the twin's fakes shadowing
+`tests/`' own. Every importer inserts that directory itself,
+`sys.path.insert(0, "digital_twin/unixport")`, `run_generic_integration.py` included, so no
+`MICROPYPATH` needs to name it; and it stays inside `digital_twin/`, so the lint and type scopes
+are unchanged (both mypy passes carry the directory on their `mypy_path`).
+
 `patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_generic_integration.py`'s own
 `main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — also called
 the same way, module-level before `import sensortask_wozi`, by `tests/
@@ -816,7 +830,8 @@ and its trigger: SPECIFICATION.md Part F.7):
 
 The patch pre-resolves via `socket.getaddrinfo()` before `bind()`/`connect()`/`sendto()` (same
 pattern `unix_port_poll_prewarm.py`'s `prewarm_poll_set()` already uses for a different call site)
-and unpacks `recvfrom()`'s raw struct into the shape production code expects. Every real call site
+and unpacks `recvfrom()`'s raw struct into the `(host, port)` tuple production code expects, so
+`src/` only ever sees tuples. Every real call site
 this project has (`asy_captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s already-DNS-resolved NTP
 server IP via `asy_dns_client.py`) already hands over an already-numeric address, so the
 `getaddrinfo()` calls here are always fast and local, never a real DNS lookup.

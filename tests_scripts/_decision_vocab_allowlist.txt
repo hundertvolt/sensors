@@ -74,7 +74,6 @@ SPECIFICATION.md	Real declarations today: `asy_scd30_driver.py`/`asy_sgp40_drive
 SPECIFICATION.md	Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-co
 SPECIFICATION.md	Removing it (2026-09-14, auditing the now-retired in-process `_soak()`'s own ide
 SPECIFICATION.md	Self-healing follows from the same two sites: the next accepted change writes th
-SPECIFICATION.md	Separately, the 60s STA-retry branch holds `wifi_mode_lock` while NTP's sync tas
 SPECIFICATION.md	That is **accepted** — no recovery scheme is wanted for a reboot that catches th
 SPECIFICATION.md	That makes it a host-dependency wherever a test asserts that every one of a long
 SPECIFICATION.md	The accepted trade-off is that neither test would now catch a *latency* regressi
@@ -120,14 +119,12 @@ buildgen/requires_tag.py	"#+" so a "## @requires ..." section-style comment is a
 buildgen/tag_comments.py	"label=" or "special:0=" - deliberately not anchored to a specific key name, sin
 buildgen/tag_comments.py	Deliberately not the
 buildgen/web_tag.py	"#+" so a "## @web ..." section-style comment is accepted, matching every other
-buildgen/web_tag.py	Escaping a literal '"' inside a quoted value is deliberately unsupported (see mo
 digital_twin/README.md	- **The `wire_log` clearer.** `UARTLink.wire_log` is unbounded by design, so a u
 digital_twin/README.md	- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this proce
 digital_twin/README.md	- **`segfault_stress_repro.py`** is a manual, deliberately-aggressive concurrenc
 digital_twin/README.md	- `network.py` / `neopixel.py` — independent, deliberately duplicated (not reuse
 digital_twin/README.md	5c also confirms the pause itself does *not* survive the reboot (RAM-only by des
 digital_twin/README.md	A commanded reboot, taken with storage paused — the case that must never lose an
-digital_twin/README.md	Confirms the process survives and exits cleanly, and — the one thing sustained-b
 digital_twin/README.md	Deliberately kept hardcoded to `sensortask_wozi`, not generalized to `run_generi
 digital_twin/README.md	FRAM itself is deliberately excluded from the sweep for a different reason: its
 digital_twin/README.md	Once the interpreter unfreezes, `asy_system_service.py`'s periodic `feed()` (its
@@ -170,8 +167,6 @@ pyproject.toml	The RPI_PICO_W MicroPython stubs are deliberately NOT a dependenc
 pyproject.toml	`assignment` is deliberately not disabled.
 pyproject.toml	asy_api_response.py calls a reader's `_set_dict_cfg` across objects by design: P
 scripts/_digital_twin_ci_suite.py	---- Run 5c: the case that must NEVER lose anything, a commanded reboot.
-scripts/_digital_twin_ci_suite.py	192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproduc
-scripts/_digital_twin_ci_suite.py	Counter and slot count are therefore different numbers here, deliberately - SPEC
 scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
 scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
 scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
@@ -208,7 +203,6 @@ src/asy_webserver_service.py	Only a group whose field subset intersects the requ
 src/asy_webserver_service.py	Reuses type_or_range_error() against a synthetic FieldSchema rather than a secon
 src/asy_webserver_service.py	The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTE
 src/asy_webserver_service.py	per-route handler shapes differ by design - Microdot's own
-src/asy_wifi_service.py	A new getter picks one shape deliberately, never by copying its nearest neighbou
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
 src/asy_system_service.py	A device with no watchdog and one deliberately left to die take the same path.
 src/asy_system_service.py	It pushes on "Unchanged" too, not only on a real change, so every logger's live
@@ -239,7 +233,6 @@ tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeyp
 tests/test_asy_dns_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_dns_client.py	Both are unused by design - it raises before reading them.
 tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
-tests/test_asy_dns_client.py	dns_servers deliberately point nowhere real (and aren't even valid literals for
 tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
 tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch, by design (not a bug)
 tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
@@ -285,9 +278,7 @@ tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate mon
 tests/test_asy_ntp_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
 tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successful sync".
-tests/test_asy_ntp_client.py	exactly enough bytes - accepted
 tests/test_asy_ntp_client.py	one must never suppress the other's slot.
-tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_scd30_driver.py	An invalid argument must never reach _send_command at all (no partial/garbage I2
 tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/asy_scd30_driver.py on why they
@@ -313,7 +304,6 @@ tests/test_asy_uart_driver.py	J.5's "provably terminating" half: a lock holder t
 tests/test_asy_uart_driver.py	Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's sha
 tests/test_asy_uart_driver.py	Two consecutive delimiters must never surface as a zero-length frame to index in
 tests/test_asy_uart_driver.py	never touches the bus again
-tests/test_asy_udp_socket.py	"0.0.0.0", or a deliberately unreachable address - rather than a fresh loopback
 tests/test_asy_udp_socket.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_udp_socket.py	write() semantically requires a connected socket, so calling it on a bound-but-u
@@ -338,7 +328,6 @@ tests/test_asy_webserver_service.py	writer.close() raising is real Stream-caller
 tests/test_asy_wifi_service.py	(field, largest accepted, smallest refused) - each pair within the schema's char
 tests/test_asy_wifi_service.py	A task restart (e.g. after the _hw_op_failed streak gives up) must NOT pull the
 tests/test_asy_wifi_service.py	All four _conn_phase values are exercised deliberately: a regression narrowed to
-tests/test_asy_wifi_service.py	Neither WLAN fake ever transitions _status to STAT_GOT_IP for AP mode on its own
 tests/test_asy_wifi_service.py	Proves the give-up decision is a genuine streak, not a monotonic lifetime counte
 tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be accepted, not rejected.
 tests/test_asy_wifi_service.py	_wlan(client) is typed against the real network.WLAN stub (pyproject.toml's test
@@ -369,18 +358,14 @@ tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypa
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
-tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
 tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
 tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
 tests/test_asy_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
 tests/test_bus_hazard_multi_device.py	And BMP3xx's own address must never appear mixed into a general-call entry - the
 tests/test_bus_hazard_multi_device.py	Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance,
 tests/test_asy_captive_dns.py	"Any", not "int": mypy's time.pyi types ticks_ms() as the opaque _TicksMs marker
-tests/test_asy_captive_dns.py	A query whose header claims QDCOUNT=2: __init__ only ever parses the first quest
-tests/test_asy_captive_dns.py	A real server socket in this Unix-port build is always bound via a resolved sock
 tests/test_asy_captive_dns.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
-tests/test_asy_captive_dns.py	_FakeUDPS lets run()'s actual subnet-membership, malformed-query and error-path
 tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
 tests/test_asy_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
 tests/test_asy_config_manager.py	Deliberate consequence of _cache (see module docstring): get_dict never re-opens
@@ -435,7 +420,6 @@ tests/test_notification_sgp40_integration.py	confirms the baseline genuinely set
 tests/test_notification_sgp40_integration.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_ntp_fram_system_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_ntp_wifi_dns_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
-tests/test_ntp_wifi_dns_integration.py	type: ignore[assignment] # deliberate monkeypatch, same as test_asy_ntp_client.p
 tests/test_asy_print_log.py	SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard.
 tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
 tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul

@@ -214,7 +214,31 @@ def _toggle_field(tag: WebFieldTag) -> "dict[str, Any]":
     return {"onLabel": tag.on_label or "On", "offLabel": tag.off_label or "Off"}
 
 
-def _string_field(tag: WebFieldTag, min_v: object, max_v: object) -> "dict[str, Any]":
+def _unquoted(raw: str) -> "str | None":
+    # A quoted special:"<text>" value's text; None for a bare token.
+    return raw[1:-1] if len(raw) > 1 and raw[0] == raw[-1] == '"' else None
+
+
+def _string_special(tag: WebFieldTag, special: object, device: str, path: Path) -> "list[dict[str, Any]]":
+    # The schema's sentinel (PW's "" bypasses its length bounds), labelled by the tag: the page then
+    # accepts exactly what the server accepts, so a tag may label no other value.
+    labels: dict[str, str] = {}
+    for raw, meaning in tag.special:
+        text = _unquoted(raw)
+        if text is None:
+            raise BuildError(device, f'{path}: @web tag for {tag.field_name!r} has special:{raw}= but a string field\'s special: value is a quoted string, e.g. special:""="..."', field=tag.field_name)
+        labels[text] = meaning
+    extra = sorted(set(labels) - ({special} if isinstance(special, str) else set()))
+    if extra:
+        raise BuildError(device, f"{path}: @web tag for {tag.field_name!r} declares special: value(s) {extra} not in its ConfigSchema", field=tag.field_name)
+    if not isinstance(special, str):
+        return []
+    if special not in labels:
+        raise BuildError(device, f'{path}: @web tag for {tag.field_name!r} has a sentinel special value {special!r} but no matching special:"{special}"="..." label', field=tag.field_name)
+    return [{"value": special, "meaning": labels[special]}]
+
+
+def _string_field(tag: WebFieldTag, min_v: object, max_v: object, special: object, device: str, path: Path) -> "dict[str, Any]":
     out: dict[str, Any] = {}
     if min_v is not None:
         out["minLength"] = min_v
@@ -226,6 +250,9 @@ def _string_field(tag: WebFieldTag, min_v: object, max_v: object) -> "dict[str, 
         out["byteLength"] = True
     if tag.shape is not None:
         out["shape"] = tag.shape
+    special_values = _string_special(tag, special, device, path)
+    if special_values:
+        out["specialValues"] = special_values
     return out
 
 
@@ -233,6 +260,8 @@ def _check_string_keys(tag: WebFieldTag, kind: str, device: str, path: Path) -> 
     # web_tag checks bytes=/shape= against an explicit kind=; an inferred kind is known only here.
     if kind != "string" and (tag.byte_length or tag.shape is not None):
         raise BuildError(device, f"{path}: @web tag for {tag.field_name!r} has bytes= or shape= but its kind is {kind!r}, not string", field=tag.field_name)
+    if kind != "string" and any(_unquoted(raw) is not None for raw, _meaning in tag.special):
+        raise BuildError(device, f"{path}: @web tag for {tag.field_name!r} has a quoted special: value but its kind is {kind!r}; a quoted special: value labels a string field only", field=tag.field_name)
 
 
 def _enum_field(tag: WebFieldTag, special: object, device: str, path: Path) -> "dict[str, Any]":
@@ -288,7 +317,7 @@ def _build_field_def(tag: WebFieldTag, schema: "FieldSchema | None", device: str
     if kind == "toggle":
         out.update(_toggle_field(tag))
     elif kind == "string":
-        out.update(_string_field(tag, min_v, max_v))
+        out.update(_string_field(tag, min_v, max_v, special, device, path))
     elif kind == "enum":
         out.update(_enum_field(tag, special, device, path))
     elif kind == "number":
@@ -415,6 +444,7 @@ def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTa
         _mandatory_group("networking", "identity", "identity", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "wifiLed", "wifiLed", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "ntp", "ntp", [(ntp_tags, ntp_path)], device),
+        _mandatory_group("networking", "dns", "dns", [(ntp_tags, ntp_path)], device),
         # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
         _errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _ERRCOUNT_NAME["dns"], "label": dns_label}], _load_catalog()),
     ]
@@ -498,14 +528,13 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
     section = dict(_SECTION_SKELETON[4])
     networking_fields = [
         {"key": "Mode", "label": "Wi-Fi Mode", "kind": "readonly"},
-        {"key": "Connected", "label": "Connected", "kind": "readonly"},
-        {"key": "IP", "label": "IP Address", "kind": "readonly"},
+        {"key": "Connected", "label": "Connected", "kind": "readonly", "description": "True while the Wi-Fi link is up, hotspot included."},
         {"key": "IPv4", "label": "IPv4 Address", "kind": "readonly"},
         {"key": "Subnet", "label": "Subnet Mask", "kind": "readonly"},
         {"key": "Gateway", "label": "Gateway", "kind": "readonly"},
         {"key": "DNS", "label": "Name Server", "kind": "readonly"},
         {"key": "RSSI", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly"},
-        {"key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly"},
+        {"key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly", "description": "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down."},
         {"key": "NTPSynced", "label": "NTP Synced", "kind": "readonly"},
         {"key": "NTPLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
         {"key": "NTPLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},

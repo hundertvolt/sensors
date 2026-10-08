@@ -1,0 +1,376 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18j
+
+ ✓ |chromium| tests_js/definitions.test.js (39 tests) 59ms
+ ❯ |chromium| tests_js/mock-data-compose.test.js (26 tests | 6 failed) 789ms
+   ❯ arzi's composed mock data (4)
+     × gives every field of every group a value of its kind 306ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 1ms
+   ❯ dev's composed mock data (4)
+     × gives every field of every group a value of its kind 114ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ grkizi's composed mock data (4)
+     × gives every field of every group a value of its kind 96ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ klkizi's composed mock data (4)
+     × gives every field of every group a value of its kind 84ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ schlafzi's composed mock data (4)
+     × gives every field of every group a value of its kind 90ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ wozi's composed mock data (4)
+     × gives every field of every group a value of its kind 87ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ composeMockData (2)
+     ✓ throws for a group no sample matches 1ms
+     ✓ reports a value of the wrong kind and a stray key, so the checks above cannot pass vacuously 2ms
+ ❯ |chromium| tests_js/definitions-mockdata-coverage.test.js (8 tests | 6 failed) 731ms
+   ❯ definitions and mockdata agree (8)
+     × every readonly field arzi's definitions name resolves in its composed mock data 247ms
+     × every readonly field dev's definitions name resolves in its composed mock data 107ms
+     × every readonly field grkizi's definitions name resolves in its composed mock data 96ms
+     × every readonly field klkizi's definitions name resolves in its composed mock data 98ms
+     × every readonly field schlafzi's definitions name resolves in its composed mock data 90ms
+     × every readonly field wozi's definitions name resolves in its composed mock data 92ms
+     ✓ reports a field whose mockdata is genuinely absent 1ms
+     ✓ reports a nested path that stops on a group instead of a leaf 0ms
+ ✓ |chromium| tests_js/definitions-shape-corpus.test.js (70 tests) 28ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js (48 tests) 7633ms
+   ✓ arzi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 362ms
+   ✓ dev's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 310ms
+     ✓ render the notification section's every group, field and errcount row, with no error 328ms
+   ✓ grkizi's generated definitions (8)
+     ✓ render the notification section's every group, field and errcount row, with no error 307ms
+   ✓ klkizi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 308ms
+   ✓ schlafzi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 306ms
+     ✓ render the notification section's every group, field and errcount row, with no error 367ms
+   ✓ wozi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 346ms
+     ✓ render the notification section's every group, field and errcount row, with no error 391ms
+ ✓ |chromium| tests_js/mock-server-put-matrix.test.js (426 tests) 117456ms
+   ✓ PUT arzi sensors/SCD30/TempOffset (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 308ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 317ms
+     ✓ rejects -0.5 (out of [min, max], and not a declared special value): Invalid, not persisted 302ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 330ms
+   ✓ PUT arzi sensors/SCD30/MeasInterval (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 317ms
+     ✓ accepts 2 (a valid value distributed across the range): Valid, and it gets persisted 304ms
+     ✓ accepts 901 (a valid value distributed across the range): Valid, and it gets persisted 334ms
+     ✓ rejects 1 (out of [min, max], and not a declared special value): Invalid, not persisted 355ms
+     ✓ rejects 1801 (out of [min, max], and not a declared special value): Invalid, not persisted 311ms
+   ✓ PUT arzi sensors/SCD30/Altitude (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 320ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 325ms
+     ✓ accepts 65535 (a valid value distributed across the range): Valid, and it gets persisted 338ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 307ms
+     ✓ rejects 65536 (out of [min, max], and not a declared special value): Invalid, not persisted 351ms
+   ✓ PUT arzi sensors/SCD30/SelfCal (toggle) (4)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 381ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 328ms
+     ✓ accepts false: Valid, and it gets persisted 325ms
+   ✓ PUT arzi sensors/SCD30/FRCNoise (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 321ms
+     ✓ accepts 500 (a valid value distributed across the range): Valid, and it gets persisted 321ms
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 323ms
+   ✓ PUT arzi sensors/SCD30/FRCRate (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 334ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 311ms
+     ✓ accepts 500.05 (a valid value distributed across the range): Valid, and it gets persisted 329ms
+     ✓ accepts 1000 (a valid value distributed across the range): Valid, and it gets persisted 349ms
+   ✓ PUT arzi sensors/SCD30/FRCWindow (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 358ms
+     ✓ accepts 20 (a valid value distributed across the range): Valid, and it gets persisted 312ms
+     ✓ accepts 1810 (a valid value distributed across the range): Valid, and it gets persisted 381ms
+     ✓ rejects 19 (out of [min, max], and not a declared special value): Invalid, not persisted 343ms
+     ✓ rejects 3601 (out of [min, max], and not a declared special value): Invalid, not persisted 329ms
+   ✓ PUT arzi sensors/SGP40/BackupPeriod (number) (10)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 317ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 324ms
+     ✓ accepts 1440 (a valid value distributed across the range): Valid, and it gets persisted 329ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 340ms
+   ✓ PUT arzi sensors/SGP40/BackupMaxAge (number) (10)
+     ✓ accepts 10080 (a valid value distributed across the range): Valid, and it gets persisted 365ms
+     ✓ rejects 10081 (out of [min, max], and not a declared special value): Invalid, not persisted 344ms
+   ✓ PUT arzi sensors/SGP40/WaitTimeNTP (number) (10)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 334ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 321ms
+     ✓ accepts 600 (a valid value distributed across the range): Valid, and it gets persisted 324ms
+   ✓ PUT arzi networking/identity/SSID (string) (7)
+     ✓ accepts a 32-char string (a valid value distributed across the length range): Valid, and it gets persisted 302ms
+   ✓ PUT arzi networking/identity/Country (string) (6)
+     ✓ accepts a 2-char string (a valid value distributed across the length range): Valid, and it gets persisted 363ms
+     ✓ rejects a too-long string: Invalid, not persisted 320ms
+   ✓ PUT arzi networking/identity/Hostname (string) (8)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 322ms
+     ✓ accepts a 4-char string (a valid value distributed across the length range): Valid, and it gets persisted 320ms
+     ✓ accepts a 32-char string (a valid value distributed across the length range): Valid, and it gets persisted 378ms
+     ✓ rejects a too-short string: Invalid, not persisted 327ms
+   ✓ PUT arzi networking/ntp/NTPHost (string) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 387ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 307ms
+     ✓ accepts a 3-char string (a valid value distributed across the length range): Valid, and it gets persisted 326ms
+     ✓ accepts a 253-char string (a valid value distributed across the length range): Valid, and it gets persisted 365ms
+   ✓ PUT arzi networking/ntp/NTPOffset (number) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 379ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 316ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 308ms
+   ✓ PUT arzi networking/ntp/NTPInterval (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 343ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 316ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 322ms
+     ✓ accepts 24 (a valid value distributed across the range): Valid, and it gets persisted 367ms
+     ✓ rejects 0 (out of [min, max], and not a declared special value): Invalid, not persisted 325ms
+   ✓ PUT arzi system/settings/DebugLevel (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 350ms
+     ✓ accepts 5 (a valid value distributed across the range): Valid, and it gets persisted 352ms
+   ✓ PUT arzi system/settings/GMTOffset (number) (9)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 329ms
+     ✓ accepts -43200 (a valid value distributed across the range): Valid, and it gets persisted 325ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 366ms
+     ✓ accepts 43200 (a valid value distributed across the range): Valid, and it gets persisted 326ms
+   ✓ PUT arzi system/settings/DSTOffset (number) (9)
+     ✓ accepts -43200 (a valid value distributed across the range): Valid, and it gets persisted 305ms
+     ✓ accepts 43200 (a valid value distributed across the range): Valid, and it gets persisted 351ms
+     ✓ rejects -43201 (out of [min, max], and not a declared special value): Invalid, not persisted 310ms
+     ✓ rejects 43201 (out of [min, max], and not a declared special value): Invalid, not persisted 328ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 378ms
+   ✓ PUT arzi notification/autoConfig/AutoOn (toggle) (4)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 343ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 303ms
+   ✓ PUT arzi notification/autoConfig/OnM (number) (8)
+     ✓ accepts 30 (a valid value distributed across the range): Valid, and it gets persisted 354ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 345ms
+     ✓ rejects 60 (out of [min, max], and not a declared special value): Invalid, not persisted 327ms
+   ✓ PUT arzi notification/autoConfig/OffH (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 306ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 387ms
+     ✓ accepts 12 (a valid value distributed across the range): Valid, and it gets persisted 381ms
+     ✓ accepts 23 (a valid value distributed across the range): Valid, and it gets persisted 342ms
+   ✓ PUT arzi notification/autoConfig/OffM (number) (8)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 317ms
+   ✓ PUT arzi notification/autoConfig/FlashBri (number) (9)
+     ✓ rejects 256 (out of [min, max], and not a declared special value): Invalid, not persisted 302ms
+   ✓ PUT arzi notification/autoConfig/FlashInterval (number) (9)
+     ✓ accepts 1830 (a valid value distributed across the range): Valid, and it gets persisted 305ms
+   ✓ PUT arzi notification/autoConfig/FlashDur (number) (9)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 305ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 379ms
+     ✓ accepts 0.5 (a valid value distributed across the range): Valid, and it gets persisted 353ms
+     ✓ rejects 10.5 (out of [min, max], and not a declared special value): Invalid, not persisted 361ms
+   ✓ PUT arzi notification/autoConfig/WarnCO2 (number) (9)
+     ✓ accepts 1500 (a valid value distributed across the range): Valid, and it gets persisted 302ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 312ms
+   ✓ PUT arzi notification/autoConfig/WarnVOC (number) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 312ms
+     ✓ rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (the server's per-kind validation, SPECIFICATION.md Part A.8) 365ms
+   ✓ PUT arzi notification/autoConfig/WarnHum (number) (9)
+     ✓ accepts 100 (a valid value distributed across the range): Valid, and it gets persisted 377ms
+     ✓ rejects 101 (out of [min, max], and not a declared special value): Invalid, not persisted 315ms
+   ✓ PUT dev sensors/BMP3XX/PresOvers (enum) (10)
+     ✓ accepts option 8 (a valid value distributed across the option set): Valid, and it gets persisted 302ms
+     ✓ accepts option 32 (a valid value distributed across the option set): Valid, and it gets persisted 319ms
+   ✓ PUT dev sensors/BMP3XX/TempOvers (enum) (10)
+     ✓ accepts option 1 (a valid value distributed across the option set): Valid, and it gets persisted 311ms
+     ✓ accepts option 8 (a valid value distributed across the option set): Valid, and it gets persisted 301ms
+     ✓ accepts option 16 (a valid value distributed across the option set): Valid, and it gets persisted 301ms
+     ✓ accepts option 32 (a valid value distributed across the option set): Valid, and it gets persisted 322ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 332ms
+   ✓ PUT dev sensors/BMP3XX/FiltCoeff (enum) (12)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 319ms
+     ✓ accepts option 1 (a valid value distributed across the option set): Valid, and it gets persisted 305ms
+     ✓ accepts option 63 (a valid value distributed across the option set): Valid, and it gets persisted 302ms
+     ✓ accepts option 127 (a valid value distributed across the option set): Valid, and it gets persisted 324ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 309ms
+     ✓ rejects a fractional value for this numeric enum field: Invalid, not persisted (mock-server.js's coerceAndValidate() enum branch, SPECIFICATION.md Part A.8 - every declared numeric enum is itself a plain int field server-side) 336ms
+   ✓ PUT dev sensors/BMP3XX/PresOffset (number) (8)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 323ms
+     ✓ accepts 500 (a valid value distributed across the range): Valid, and it gets persisted 385ms
+   ✓ PUT dev sensors/BMP3XX/TempOffset (number) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 321ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 316ms
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 317ms
+     ✓ accepts 10 (a valid value distributed across the range): Valid, and it gets persisted 317ms
+     ✓ rejects 11 (out of [min, max], and not a declared special value): Invalid, not persisted 309ms
+   ✓ PUT dev sensors/BMP3XX/SeaLevelOffset (number) (9)
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 364ms
+   ✓ PUT dev sensors/BMP3XX/MeanAtmTemp (number) (9)
+     ✓ accepts -40 (a valid value distributed across the range): Valid, and it gets persisted 358ms
+     ✓ rejects -41 (out of [min, max], and not a declared special value): Invalid, not persisted 350ms
+     ✓ rejects 51 (out of [min, max], and not a declared special value): Invalid, not persisted 331ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 301ms
+   ✓ PUT dev sensors/ISL29125/SampleInterval (number) (8)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 311ms
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 303ms
+   ✓ PUT dev sensors/ISL29125/Resolution (enum) (6)
+     ✓ omitted from the body: not in the result, and the stored value is left untouched 380ms
+     ✓ accepts option 12 (a valid value distributed across the option set): Valid, and it gets persisted 343ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 349ms
+   ✓ PUT dev sensors/ISL29125/Range (enum) (6)
+     ✓ a value of the wrong JSON type: Invalid, and the stored value is unaffected 312ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 303ms
+   ✓ PUT dev sensors/ISL29125/AutoRangeThresh (number) (9)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 316ms
+   ✓ PUT dev sensors/ISL29125/AutoRangeDwell (number) (10)
+     ✓ resubmitting the field's own current value: Unchanged, and the stored value is unaffected 334ms
+     ✓ accepts 0 (a valid value distributed across the range): Valid, and it gets persisted 345ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 324ms
+     ✓ rejects 301 (out of [min, max], and not a declared special value): Invalid, not persisted 374ms
+   ✓ PUT dev sensors/ISL29125/IRCompOffset (enum) (6)
+     ✓ accepts option 1 (a valid value distributed across the option set): Valid, and it gets persisted 305ms
+     ✓ rejects a value that isn't one of the declared options: Invalid, not persisted 369ms
+   ✓ PUT dev sensors/ISL29125/IRCompAdjust (number) (9)
+     ✓ accepts 63 (a valid value distributed across the range): Valid, and it gets persisted 310ms
+     ✓ rejects -1 (out of [min, max], and not a declared special value): Invalid, not persisted 366ms
+     ✓ rejects 64 (out of [min, max], and not a declared special value): Invalid, not persisted 335ms
+   ✓ PUT dev sensors/ISL29125/FiltCoeff (number) (9)
+     ✓ resubmitting the declared special value -1 ("Filter off"), which happens to already be the current value: Unchanged 309ms
+     ✓ accepts a bare-integer literal for this float-typed field: Valid, coerced (the server's per-kind validation, SPECIFICATION.md Part A.8 - int -> float is a blanket accept) 319ms
+   ✓ PUT dev sensors/ISL29125/GainRatio (number) (9)
+     ✓ accepts 20 (a valid value distributed across the range): Valid, and it gets persisted 370ms
+   ✓ PUT arzi sensors/SCD30/AmbPres (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 613ms
+   ✓ PUT arzi sensors/SCD30/ForceCalRef (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 467ms
+   ✓ PUT arzi sensors/SCD30/ContMeas (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 480ms
+   ✓ PUT arzi sensors/SGP40/ResetVOC (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 522ms
+   ✓ PUT arzi system/command/SystemCmd (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 578ms
+   ✓ PUT arzi notification/pause/PauseTime (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 570ms
+   ✓ PUT dev sensors/ISL29125/Calibrate (never Unchanged) (1)
+     ✓ two identical valid sends both answer Valid 452ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data
+ FAIL  |chromium| tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data
+AssertionError: expected [ 'status/networking/IP' ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-arzi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-dev-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-grkizi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-klkizi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-schlafzi-s-definitions-name-resolves-in-its-composed-mock-data.png
+  - .vitest/attachments/failure-screenshots/definitions-mockdata-coverage.test.js/definitions-and-mockdata-agree---every-readonly-field-wozi-s-definitions-name-resolves-in-its-composed-mock-data.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/networking/IP",[39m
+[31m+ ][39m
+
+ ❯ tests_js/definitions-mockdata-coverage.test.js:98:56
+     96|         const defs = /** @type {import("../js/definitions.js").SiteDef…
+     97|         const data = composeMockData(defs, /** @type {import("../js/de…
+     98|         expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
+       |                                                        ^
+     99|     });
+    100|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5294:63
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5648:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > arzi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > dev's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > grkizi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > klkizi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > schlafzi's composed mock data > gives every field of every group a value of its kind
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > wozi's composed mock data > gives every field of every group a value of its kind
+AssertionError: expected [ 'status/networking/IP: no value' ] to deeply equal []
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/arzi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/dev-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/grkizi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/klkizi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/schlafzi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/wozi-s-composed-mock-data---gives-every-field-of-every-group-a-value-of-its-kind.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "status/networking/IP: no value",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-data-compose.test.js:177:43
+    175|
+    176|     it("gives every field of every group a value of its kind", () => {
+    177|         expect(fieldProblems(defs, data)).toEqual([]);
+       |                                           ^
+    178|     });
+    179|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+
+ Test Files  2 failed | 4 passed (6)
+      Tests  12 failed | 605 passed (617)
+   Start at  02:00:02
+   Duration  120.77s (tests 89%, worker 9%, import 1%)
+
+== Summary: npm test ==
+Commit: c11ca0a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 605 · failed 12 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field arzi's definitions name resolves in its composed mock data: expected [ 'status/networking/IP' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field dev's definitions name resolves in its composed mock data: expected [ 'status/networking/IP' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field grkizi's definitions name resolves in its composed mock data: expected [ 'status/networking/IP' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field klkizi's definitions name resolves in its composed mock data: expected [ 'status/networking/IP' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field schlafzi's definitions name resolves in its composed mock data: expected [ 'status/networking/IP' ] to deeply equal []
+  - tests_js/definitions-mockdata-coverage.test.js > definitions and mockdata agree > every readonly field wozi's definitions name resolves in its composed mock data: expected [ 'status/networking/IP' ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > arzi's composed mock data > gives every field of every group a value of its kind: expected [ 'status/networking/IP: no value' ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > dev's composed mock data > gives every field of every group a value of its kind: expected [ 'status/networking/IP: no value' ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > grkizi's composed mock data > gives every field of every group a value of its kind: expected [ 'status/networking/IP: no value' ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > klkizi's composed mock data > gives every field of every group a value of its kind: expected [ 'status/networking/IP: no value' ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > schlafzi's composed mock data > gives every field of every group a value of its kind: expected [ 'status/networking/IP: no value' ] to deeply equal []
+  - tests_js/mock-data-compose.test.js > wozi's composed mock data > gives every field of every group a value of its kind: expected [ 'status/networking/IP: no value' ] to deeply equal []
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

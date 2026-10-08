@@ -1,6 +1,6 @@
-"""Leveled console logging (PrintLog), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore).
+"""Leveled console logging (PrintLog), the one ungated line of a layer with no logger (console()), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore).
 A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints every call at its level.
-Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or fails the write.
+Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or fails the write; this layer cannot log into itself, so its caught allocation failures print through console().
 """
 
 import asyncio
@@ -133,15 +133,28 @@ class PrintLogHistory(PrintLog):
         except MemoryError as e:  # a 0-length ring: get_log() then reports no slot, every call still counts
             history_length = 0
             self.history = deque([], 0)
-            self._diag("PrintLog: history allocation failed:", e)
+            console(self.name, "PrintLog: history allocation failed:", e)
         self._err_count = 0
         self._pre_setup_slots = 0  # ring slots taken before setup(): RAM-only entries for setup() to keep
+        self._write_failing = False  # a write after setup() failed and none has landed since: one LOG_RAM_ONLY per run
         self.initialized = False
         self.restored = False  # True once setup() loaded what an earlier boot stored; a RAM-only history never does
+
+    def _count(self) -> None:
+        if self._err_count < _MAX_CNT:
+            self._err_count += 1
+        else:
+            self._diag("PrintLog: Error count reached maximum value!")
 
     def _diag(self, *args: object) -> None:  # print-only: inside the logging layer itself; gated on any logging being enabled
         if self.level > _LOG_OFF:
             print(self.name, *args)
+
+    def _keep(self, code: int) -> None:
+        if not (len(self.history) and self.history[-1] == code):  # the newest-entry rule, SPECIFICATION.md Part C.7.1
+            self.history.append(code)
+            if not self.initialized and self._pre_setup_slots < len(self.history):
+                self._pre_setup_slots += 1
 
     async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
         return True
@@ -149,28 +162,34 @@ class PrintLogHistory(PrintLog):
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
         # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike; a
         # negative or over-range code is a defect the catalog check prevents: counted, diagnosed, no slot.
-        if self._err_count < _MAX_CNT:
-            self._err_count += 1
-        else:
-            self._diag("PrintLog: Error count reached maximum value!")
+        self._count()
         if errno == _NO_ERR:
             return
         code = errno + min_e
         if errno < 0 or code > max_e:
             self._diag("PrintLog: Error number", errno, "is invalid!")
-        elif not (len(self.history) and self.history[-1] == code):  # the newest-entry rule, SPECIFICATION.md Part C.7.1
-            self.history.append(code)
-            if not self.initialized and self._pre_setup_slots < len(self.history):
-                self._pre_setup_slots += 1
+        else:
+            self._keep(code)
         if not self.initialized:
             # Return regardless of logging level - don't write stale state to FRAM before setup().
             self._diag("PrintLog: Uninitialized, call setup first!")
             return
-        if not await self._write():
-            self._diag("PrintLog: History write failed!")
+        await self._write_through()
 
     async def _write(self) -> bool:
         return True
+
+    async def _write_through(self) -> None:
+        # A failed write after setup() starts a run: its first failure keeps one counted LOG_RAM_ONLY entry in RAM with
+        # no second attempt, and the next write that lands persists that entry and ends the run.
+        if await self._write():
+            self._write_failing = False
+            return
+        self._diag("PrintLog: History write failed!")
+        if not self._write_failing:
+            self._write_failing = True
+            self._count()
+            self._keep(_ERR_LOG_RAM_ONLY)
 
     async def get_log(self, name: str | None = None) -> "ErrorLog":
         # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded" and report 0, never the
@@ -204,10 +223,12 @@ class PrintLogHistory(PrintLog):
         self.history.extend([_NO_ERR] * len(self.history))
         self._err_count = 0
         self._pre_setup_slots = 0
+        self._write_failing = False  # the cleared ring holds no run's entry: the next failed write records one
         if not await self._write():
             # Same "regardless of self.level" reasoning as _store_err() above.
             self._diag("PrintLog: History reset write failed!")
             return False
+        self._write_failing = False  # a write that failed meanwhile left its entry in what this write landed
         self.initialized = True
         return True
 
@@ -234,10 +255,11 @@ class PrintLogHistoryStore(PrintLogHistory):
         self._heap_failed = False  # the chunk's heap allocation raised; an allocator refusal (None) is not counted
         try:
             self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8(), owner=name)
-        except MemoryError:
+        except MemoryError as e:
             self.fram = None
             self._heap_failed = True
-        if self.fram is None:
+            console(self.name, "PrintLog: FRAM allocation failed:", e)
+        if self.fram is None and not self._heap_failed:
             self._diag("PrintLog: FRAM allocation failed!")
         self._write_lock = asyncio.Lock()
         self._write_gen = 0  # one step per _write() call
@@ -259,7 +281,8 @@ class PrintLogHistoryStore(PrintLogHistory):
                 return False
             count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
             entries = struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE)
-        except MemoryError:
+        except MemoryError as e:
+            console(self.name, "PrintLog: FRAM history read failed:", e)
             return None
         return count, entries
 
@@ -282,7 +305,8 @@ class PrintLogHistoryStore(PrintLogHistory):
                 struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
                 struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
                 ok = bool(await self.fram.write_into(buf))
-            except MemoryError:
+            except MemoryError as e:
+                console(self.name, "PrintLog: FRAM history write failed:", e)
                 return False
             if ok:
                 self._written_gen = gen
@@ -322,8 +346,7 @@ class PrintLogHistoryStore(PrintLogHistory):
             self.initialized = True
             if self._pre_setup_slots or self._err_count != count:  # logged during the write: in RAM only so far
                 self._pre_setup_slots = 0
-                if not await self._write():
-                    self._diag("PrintLog: History write failed!")
+                await self._write_through()
         else:
             self._diag("PrintLog: FRAM setup failed!")
             await self.err_s("FRAM history setup write failed - RAM-only until reboot", errno=_ERR_LOG_RAM_ONLY)
@@ -345,6 +368,16 @@ else:
     LogConfig = namedtuple("LogConfig", ("fram", "history_length", "debug"))
 
 DEFAULT_LOG = LogConfig(None, _DEFAULT_HISTORY_LENGTH, None)
+
+
+def console(name: str, what: object, err: object = None) -> None:
+    # The console line of a layer with no logger: never level-gated, never kept in a history, so a caught MemoryError's
+    # own text reaches the memory gates (CLAUDE.md memory rule). Fixed arity and no star-call, so it allocates nothing
+    # and cannot raise from the arm it reports in (a frame falls back to the C stack, py/objfun.c:268-287).
+    if err is None:
+        print(name, what)
+    else:
+        print(name, what, err)
 
 
 def make_logger(log: LogConfig, name: str) -> PrintLogHistory:

@@ -21,7 +21,7 @@ _JSON_METHOD = "json"
 
 
 def _twin_sources() -> list[Path]:
-    return sorted(TWIN.glob("*.py"))
+    return sorted(TWIN.rglob("*.py"))
 
 
 def _micropypath_values() -> list[str]:
@@ -54,6 +54,15 @@ def test_the_twins_own_micropypath_still_carries_no_tests_directory() -> None:
     assert paths, f"found no MICROPYPATH assignment in {CI_SUITE.name} or {RUNNER.name} - this guard cannot check its own premise"
     for value in paths:
         assert "tests" not in value.split(":"), f"MICROPYPATH {value!r} now carries tests/, so this guard is obsolete"
+
+
+def test_every_twin_directory_a_twin_module_puts_on_sys_path_is_scanned() -> None:
+    # A twin process imports from each such directory too: digital_twin/unixport/ holds the UDP shim.
+    scanned = set(_twin_sources())
+    inserted = {d for p in scanned for d in re.findall(r'sys\.path\.insert\(0, "(digital_twin/[^"]+)"\)', p.read_text(encoding="utf-8"))}
+    assert inserted, "no twin module inserts a digital_twin subdirectory into sys.path - this premise check finds nothing to check"
+    missing = sorted(str(p.relative_to(REPO_ROOT)) for d in inserted for p in (REPO_ROOT / d).glob("*.py") if p not in scanned)
+    assert not missing, f"twin modules outside this file's scan: {missing}"
 
 
 @pytest.mark.parametrize("source", _twin_sources(), ids=lambda p: p.name)

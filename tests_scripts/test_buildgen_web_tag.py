@@ -212,10 +212,17 @@ def test_parse_web_tags_bytes_rejected_off_a_bool_or_a_string(tmp_path: Path, so
     _parse_expecting(tmp_path, source, match)
 
 
-@pytest.mark.parametrize("value", ["hostLabel", "countryCode"])
+@pytest.mark.parametrize("value", ["hostLabel", "countryCode", "hostName", "ipv4List"])
 def test_parse_web_tags_shape_on_a_string_field(tmp_path: Path, value: str) -> None:
     (tag,) = _parse(tmp_path, f'# @web X section=networking submitGroup=identity label="L" shape={value}\n')
     assert tag.shape == value
+
+
+@pytest.mark.parametrize(("raw", "value"), [('""', '""'), ('"two words"', '"two words"')])
+def test_parse_web_tags_a_quoted_special_is_kept_with_its_quotes(tmp_path: Path, raw: str, value: str) -> None:
+    # A string field's special is a quoted string, the empty one included; the generator unquotes it.
+    (tag,) = _parse(tmp_path, f'# @web X section=networking submitGroup=identity label="L" special:{raw}="Open network"\n')
+    assert tag.special == ((value, "Open network"),)
 
 
 @pytest.mark.parametrize(
@@ -243,6 +250,8 @@ def test_parse_web_tags_shape_rejected_off_its_value_set_or_a_string(tmp_path: P
         "# @web X section=sensors submitGroup=self label=\n",  # value dropped entirely
         '# @web X section=sensors submitGroup=self label="L" label="L2"\n',  # duplicate plain key
         '# @web X section=sensors submitGroup=self label="L" special:1="A" special:1="B"\n',  # duplicate special key
+        '# @web X section=sensors submitGroup=self label="L" special:""="A" special:""="B"\n',  # duplicate quoted special
+        '# @web X section=sensors submitGroup=self label="L" special:"open="A"\n',  # unterminated quoted special
     ],
 )
 def test_parse_web_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
@@ -603,20 +612,24 @@ def test_parse_web_tags_real_sgp40_backup_timestamps_on_the_status_page(src_dir:
 
 def test_parse_web_tags_real_wifi_byte_bounds_and_shapes(src_dir: Path) -> None:
     tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")}
-    assert {name for name, t in tags.items() if t.byte_length} == {"SSID", "PW", "Country", "Hostname"}
+    assert {name for name, t in tags.items() if t.byte_length} == {"SSID", "PW", "Country", "Hostname", "HotspotPW"}
     assert {name: t.shape for name, t in tags.items() if t.shape is not None} == {"Hostname": "hostLabel", "Country": "countryCode"}
 
 
 def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")
-    assert {t.field_name for t in tags if t.submit_group == "identity"} == {"SSID", "PW", "Country", "Hostname"}
+    assert {t.field_name for t in tags if t.submit_group == "identity"} == {"SSID", "PW", "Country", "Hostname", "HotspotPW"}
     assert {t.field_name for t in tags if t.submit_group == "wifiLed"} == {"LEDWifiOn"}
-    assert next(t for t in tags if t.field_name == "PW").mask is True
+    assert {t.field_name for t in tags if t.mask} == {"PW", "HotspotPW"}
+    assert next(t for t in tags if t.field_name == "PW").special == (('""', "Open network"),)
 
 
 def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_ntp_client.py", "dev", "ntp")
-    assert {t.field_name for t in tags if t.section == "networking"} == {"NTPHost", "NTPOffset", "NTPInterval"}
+    assert {t.field_name for t in tags if t.submit_group == "ntp"} == {"NTPHost", "NTPOffset", "NTPInterval"}
+    assert {t.field_name for t in tags if t.submit_group == "dns"} == {"DNSFallback"}
+    assert {t.field_name: t.shape for t in tags if t.shape is not None} == {"NTPHost": "hostName", "DNSFallback": "ipv4List"}
+    assert {t.section for t in tags if t.submit_group in ("ntp", "dns")} == {"networking"}
     # GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System page instead
     # (a deliberate cross-file section/group assignment, not a mistake to "fix").
     assert {t.field_name for t in tags if t.section == "system"} == {"GMTOffset", "DSTOffset"}
@@ -641,6 +654,7 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
         ("asy_isl29125_driver.py", ("measurements", "self")),
         ("asy_wifi_service.py", ("networking", "identity")),
         ("asy_ntp_client.py", ("networking", "ntp")),
+        ("asy_ntp_client.py", ("networking", "dns")),
         ("asy_system_service.py", ("system", "settings")),
         ("asy_notification_service.py", ("notification", "autoConfig")),
     ],

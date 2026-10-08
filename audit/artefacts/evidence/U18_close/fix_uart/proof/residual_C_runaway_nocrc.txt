@@ -1,0 +1,13 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_nocrc rep 0 FAIL step 35 is past twice the clean run's 17 awaits: a wait that never ends clean_awaits [17] last_k 35 2256 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_nocrc plant_us 0 runaway True 0 / 1 passed
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18/uart_rca/drv5.py", line 97, in <module>
+  File "tests/_uart_comm_hazard_common.py", line 79, in run_one
+  File "tests/test_uart_comm_cancel_sweep.py", line 247, in _check_clear_at_every_await_leaves_the_transaction_whole_or_failed
+  File "tests/test_uart_comm_cancel_sweep.py", line 186, in _sweep
+  File "tests/_uart_comm_harness.py", line 245, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 

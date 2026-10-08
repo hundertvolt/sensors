@@ -216,9 +216,12 @@ information):
   functionality was fully promoted to
   `src/asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo
   referenced it anymore.
-- **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop** — the current
-  state, backstopped, until a genuine non-blocking alternative reliably exists (owner, 2026-07-24;
-  BACKLOG deferred goal); which calls can be timeout-wrapped is in SPECIFICATION.md Part F.2.
+- **A wedged I2C bus or sensor recovers through the recovery ladder, smallest blast radius first —
+  retry, the participant's own reset, bus clear and controller re-init, task restart, reboot, the
+  hardware watchdog last** (owner, 2026-09-30); a transfer in flight cannot be interrupted, so the
+  ladder acts after it returns an error, and a call that never returns is the watchdog's — the
+  current state, until a genuine non-blocking alternative reliably exists (owner, 2026-07-24; BACKLOG
+  deferred goal). Full ladder and which waits can be timeout-wrapped: SPECIFICATION.md Part F.2.
 - **The same backstop applies to a WiFi link stuck in a CYW43-firmware-level `isconnected()` false
   positive — a power cycle/`hard_reset()` stays the recovery, because the owner judged an
   independent reachability probe not worth its complexity (owner, 2026-09-04, `655e4f9`, paraphrase;

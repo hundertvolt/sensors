@@ -12,7 +12,7 @@
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
  *   format?: "gmtimestruct"|"epoch", float?: boolean, dispatch?: boolean, alwaysExecuted?: boolean,
  *   defaultValue?: unknown, path?: string[], decimals?: number, byteLength?: boolean,
- *   shape?: "hostLabel"|"countryCode", codes?: Record<string, string>,
+ *   shape?: "hostLabel"|"countryCode"|"hostName"|"ipv4List", codes?: Record<string, string>,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{
@@ -78,7 +78,7 @@ const MAX_DECIMALS = 100;
 
 // The enumerated hint values the generator emits (buildgen/web_tag.py's _FORMATS and _SHAPES).
 const FIELD_FORMATS = new Set(["gmtimestruct", "epoch"]);
-const STRING_SHAPES = new Set(["hostLabel", "countryCode"]);
+const STRING_SHAPES = new Set(["hostLabel", "countryCode", "hostName", "ipv4List"]);
 
 /**
  * True for the two classes the server never answers "Unchanged" (SPECIFICATION.md Part H.4).

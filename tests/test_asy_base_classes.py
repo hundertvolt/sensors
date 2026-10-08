@@ -278,18 +278,57 @@ def test_regionbuffer_negative_data_length_yields_none() -> None:
 def test_regionbuffer_huge_size_yields_none_not_memoryerror() -> None:
     # A valid, non-negative size can still exhaust the heap - confirmed directly against the real
     # MicroPython interpreter that bytearray(2**62) raises MemoryError, not a negative-input error.
-    buf = RegionBuffer(2**62)
+    rec = _PrintRecorder()  # the real allocation text stays off this file's output, where the memory gates read
+    try:
+        buf = RegionBuffer(2**62)
+    finally:
+        rec.restore()
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("RegionBuffer", "buffer allocation failed:"), MemoryError)]
 
 
 def test_regionbuffer_astronomical_size_yields_none_not_overflowerror() -> None:
     # A second, distinct failure mode above the first: confirmed directly that bytearray(n) raises
     # OverflowError instead of MemoryError once n hits the signed-64-bit machine-word boundary
     # (2**63) - both must degrade the same way, not just the smaller-magnitude one.
-    buf = RegionBuffer(2**63)
+    rec = _PrintRecorder()
+    try:
+        buf = RegionBuffer(2**63)
+    finally:
+        rec.restore()
     assert buf.get_buf() is None
     assert buf.get_data_buf() is None
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("RegionBuffer", "buffer allocation failed:"), OverflowError)]
+
+
+def test_a_failed_region_allocation_prints_its_own_text_once() -> None:
+    # No logger in RegionBuffer: a caught allocation failure prints one console line with its own text, while a
+    # size or region guard's None is a caller mistake and prints nothing.
+    err = MemoryError("injected for the region buffer")  # worded clear of the memory gates' markers
+
+    def failing(*_args: object) -> bytearray:
+        raise err
+
+    rec = _PrintRecorder()
+    asy_base_classes.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        buf = RegionBuffer(8)
+    finally:
+        del asy_base_classes.bytearray  # type: ignore[attr-defined]
+        rec.restore()
+    assert buf.get_buf() is None
+    assert buf.get_data_buf() is None
+    assert rec.lines == [("RegionBuffer", "buffer allocation failed:", err)]
+    assert " ".join(str(a) for a in rec.lines[0]) == "RegionBuffer buffer allocation failed: injected for the region buffer"
+    rec = _PrintRecorder()
+    try:
+        guarded = [RegionBuffer(-1), RegionBuffer(10, data_start=-3), RegionBuffer(4, data_start=2, data_length=10)]
+    finally:
+        rec.restore()
+    assert [b.get_buf() for b in guarded] == [None, None, None]
+    assert rec.lines == []
+    assert RegionBuffer(8).get_buf() == bytearray(8)  # the module's own bytearray is back
 
 
 def test_regionbuffer_zero_length_data_region_is_valid() -> None:
@@ -1496,7 +1535,8 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     assert reader.pr.initialized is True  # set up first: setup() writes the merged ring too
     chunk.raise_on_write = True
     assert run(reader._error_check(Meas(None, 50))) is True
-    assert reader.pr._err_count == 1  # FRAM write failed silently; in-memory count still tracked
+    assert reader.pr._err_count == 2  # the entry and the failed write's LOG_RAM_ONLY, both kept in RAM
+    assert list(reader.pr.history)[-1] == code("E", "LOG_RAM_ONLY")
 
 
 def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() -> None:
@@ -1508,7 +1548,8 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     assert run(reader.setup()) is True
     chip.drop_wren = True
     assert run(reader._error_check(Meas(None, 50))) is True
-    assert reader.pr._err_count == 1
+    assert reader.pr._err_count == 2  # the entry and the failed write's LOG_RAM_ONLY
+    assert list(reader.pr.history)[-1] == code("E", "LOG_RAM_ONLY")
 
 
 def test_sensorreader_fram_read_into_raising_leaves_the_logger_ram_only() -> None:

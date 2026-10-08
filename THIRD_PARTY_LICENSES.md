@@ -146,7 +146,9 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   Changes made in this project's version (Apache-2.0 §4(b) notice): ported from a raw blocking
   `socket` to `UDPSocket`/`asyncio`; in the `src/` version, also added type hints,
   `PrintLogHistory`-backed logging/errno reporting, off-subnet request filtering, recv-failure
-  backoff, and a root-domain-query parsing fix.
+  backoff, a root-domain-query parsing fix, QTYPE-dependent answers (the A record for A/ANY, an
+  empty NOERROR reply otherwise), and a query must be a single-question query with plain labels
+  and a name of at most 255 octets.
   Ruled out as *not* the source for this file, despite superficial DNS-server similarity: three
   of the other candidates the project owner asked to check -
   [`jczic/MicroDNSSrv`](https://github.com/jczic/MicroDNSSrv) (MIT, thread-based, unrelated
@@ -191,8 +193,8 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
     connect, a `ready()`/poll gate, a paired write+read convenience method, explicit
     `disconnect()` teardown), though method names differ (`send`/`receive` vs. `write`/`recvfrom`,
     `send_and_receive` vs. `write_and_recvfrom`) and this project's version is materially more
-    built out (locking, retries, context-manager support, input validation, `mode="server"`
-    support karfas's client-only class doesn't have).
+    built out (locking, input validation, `mode="server"` support karfas's client-only class
+    doesn't have).
   - `karfas/upy-simple-app` carries no `LICENSE` file, license badge, `README.md`, or header
     comment in either file - confirmed directly. On its own, that would mean no permission granted
     under default copyright law (unlike the permissively-licensed Apache-2.0 `asy_captive_dns.py` case
