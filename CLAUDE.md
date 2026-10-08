@@ -381,7 +381,8 @@ information):
   suite's own deliberate injections worded clear of what they grep for, since a message borrowing
   the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
-  `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
+  `gc.collect()` between the units of the two one-time lists, both run by `SystemService`
+  (`run_setups()` and `start_tasks()`'s starter loop), and nowhere else, mechanically
   confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by
   `tests_scripts/test_digital_twin_boot_contiguity.py` on the *effect* (it boots all six generated
   devices and asserts the survivors still land low, with a suppressed control arm asserting the
@@ -684,7 +685,7 @@ information):
   object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
   re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
 - **Known hang cause #2, fixed**: a digital-twin integration test that drives the real
-  `sensortask_wozi.build_system()`/`start_and_check_tasks()` task graph to a clean, non-cancelled
+  `sensortask_wozi.build_system()`/`start_tasks()` task graph to a clean, non-cancelled
   completion (e.g. the digital twin's now-retired `--soak` flag finishing normally, not via
   timeout — the soak check itself has since moved host-side, SPECIFICATION.md's "Driver/DUT
   process separation" Part, but any other run reaching a clean non-cancelled completion hits the
@@ -709,8 +710,8 @@ information):
   graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
   more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
   the `asy_system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
-  hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
-  existed to leak — the soak test's own bounded-completion path was previously unreachable.
+  hung forever, and the task starters then ran only after it, so they never even got called and no
+  sibling tasks ever existed to leak — the soak test's own bounded-completion path was previously unreachable.
 - **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
   in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
   `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`

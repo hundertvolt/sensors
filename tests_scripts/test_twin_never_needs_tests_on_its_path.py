@@ -2,8 +2,6 @@
 imports tests/_strict_json lazily, and the twin's own MICROPYPATH carries no tests/ - so a second
 caller inside digital_twin/ would raise ImportError only on that path, at runtime."""
 
-from __future__ import annotations
-
 import ast
 import re
 from pathlib import Path

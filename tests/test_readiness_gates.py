@@ -330,7 +330,7 @@ def test_wifi_service_answers_before_and_after_a_failed_setup() -> None:
 def test_webserver_service_answers_before_and_after_a_setup_whose_logger_cannot_reach_its_store() -> None:
     routes = RouteSources((), None, None, None, None, None, None, (), ())
     serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
-    svc = WebserverService(Microdot(), routes, serving, uptime_s=_uptime_s, log=LogConfig(_fram(writable=False), 4, None))  # type: ignore[arg-type]
+    svc = WebserverService(Microdot(), routes, serving, uptime_s=_uptime_s, log=LogConfig(_fram(writable=False), 4, None))
     calls: Calls = {
         "get_dropped_count": ((), lambda r: r == 0),  # an empty window: nothing served, nothing dropped
         "get_error_counter": ((), _is_log_of(svc.pr.name)),

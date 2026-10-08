@@ -6,13 +6,14 @@ test: a typo'd or misplaced attempt must fail loud, never read as "no tag here".
 # built on it lives in test_buildgen_requires_tag.py. SPECIFICATION.md Part L.5 names this file's
 # own matrix dimensions - scan, wording, payload and verdict.
 
+import ast
 from pathlib import Path
 
 import pytest
 
 from buildgen import tag_comments
-from buildgen.errors import BuildError
-from buildgen.tag_comments import CommentToken, _levenshtein, check_for_near_miss_tags, find_leading_word, iter_comment_tokens, looks_like_tag_payload
+from buildgen.errors import BuildError, BuildInternalError
+from buildgen.tag_comments import KNOWN_TAG_NAMES, KNOWN_TAGS, CommentToken, _levenshtein, _looks_like_requires_payload, check_for_near_miss_tags, find_leading_word, iter_comment_tokens, specs_for
 
 
 def _tok(text: str, lineno: int = 1, col: int = 0, *, indented: bool = False) -> CommentToken:
@@ -21,6 +22,14 @@ def _tok(text: str, lineno: int = 1, col: int = 0, *, indented: bool = False) ->
 
 def _check(tokens: "list[CommentToken]", exact: "set[tuple[int, int]] | None" = None) -> None:
     check_for_near_miss_tags(tokens, Path("x.py"), "dev", "x", exact or set())
+
+
+def _assert_silent_but_live(tokens: "list[CommentToken]", exact: "set[tuple[int, int]] | None" = None) -> None:
+    # The check accepts these tokens, and the same list with one typo'd tag added raises: the pair
+    # proves the scan walked the list rather than stopping early.
+    _check(tokens, exact)
+    with pytest.raises(BuildError, match="misspelled @requires tag"):
+        _check([*tokens, _tok("# @require bus.timeout>=200000", lineno=99)], exact)
 
 
 # ---------------------------------------------------------------------------
@@ -171,12 +180,36 @@ def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp
     assert (tok.lineno, tok.inside_block) == (4, False)
 
 
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        pytest.param("def f():\n    x = 1\n# @requires bus.timeout>=200000\n    y = 2\n", True, id="inside-a-function-body"),
+        pytest.param("class A:\n    def f(self):\n        pass\n# @requires bus.timeout>=200000\n    def g(self):\n        pass\n", True, id="between-two-methods"),
+        pytest.param("def f():\n    pass\n# @requires bus.timeout>=200000\n(x, y) = (1, 2)\n", False, id="before-a-bracketed-module-statement"),
+        pytest.param("def f():\n    pass\n# @requires bus.timeout>=200000\n", False, id="after-a-function-at-end-of-file"),
+    ],
+)
+def test_iter_comment_tokens_column_0_comment_takes_the_level_of_the_next_statement(tmp_path: Path, source: str, *, expected: bool) -> None:
+    # A column-0 comment says nothing by its own indentation: the next statement decides.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text(source)
+    (tok,) = iter_comment_tokens(path, "fixture", "x")
+    assert (tok.col, tok.inside_block) == (0, expected)
+
+
 @pytest.mark.parametrize("source", ["x = ('unterminated\n", "x = (1,\n"])
 def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(tmp_path: Path, source: str) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
-    with pytest.raises(BuildError, match="syntax error"):
+    with pytest.raises(BuildError, match="syntax error") as raised:
         iter_comment_tokens(path, "dev", "x")
+    assert raised.value.rule == "source.syntax-error"
+
+
+def test_iter_comment_tokens_unreadable_file_is_a_build_error_not_a_raw_oserror(tmp_path: Path) -> None:
+    with pytest.raises(BuildError, match="cannot read") as raised:
+        iter_comment_tokens(tmp_path / "asy_x_driver.py", "fixture", "x")
+    assert (raised.value.rule, raised.value.instance) == ("src.unreadable", "x")
 
 
 def test_one_content_is_tokenized_once_whatever_its_path(tmp_path: Path) -> None:
@@ -274,8 +307,8 @@ def test_levenshtein(a: str, b: str, expected: int) -> None:
 
 
 @pytest.mark.parametrize("op", [">=", "<=", "==", "!=", "=", ">", "<"])
-def test_looks_like_tag_payload_every_operator(op: str) -> None:
-    assert looks_like_tag_payload(f"# @requires bus.timeout{op}200000") is True
+def test_looks_like_requires_payload_every_operator(op: str) -> None:
+    assert _looks_like_requires_payload(f"# @requires bus.timeout{op}200000") is True
 
 
 @pytest.mark.parametrize(
@@ -291,8 +324,8 @@ def test_looks_like_tag_payload_every_operator(op: str) -> None:
         ("# @requires a bit more care here", False),
     ],
 )
-def test_looks_like_tag_payload(text: str, *, expected: bool) -> None:
-    assert looks_like_tag_payload(text) is expected
+def test_looks_like_requires_payload(text: str, *, expected: bool) -> None:
+    assert _looks_like_requires_payload(text) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +334,9 @@ def test_looks_like_tag_payload(text: str, *, expected: bool) -> None:
 
 
 def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure() -> None:
-    with pytest.raises(BuildError, match="malformed @requires tag"):
+    with pytest.raises(BuildError, match="malformed @requires tag") as raised:
         _check([_tok("# @requires timeout>=200000")])  # missing "bus." prefix
+    assert raised.value.rule == "tag.malformed"
 
 
 @pytest.mark.parametrize(
@@ -310,8 +344,9 @@ def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure() -> None:
     ["require", "requiress", "requirez", "requries", "requir"],  # delete/insert/substitute/transpose/distance-2
 )
 def test_check_for_near_miss_tags_flags_every_typo_shape(word: str) -> None:
-    with pytest.raises(BuildError, match="misspelled @requires tag"):
+    with pytest.raises(BuildError, match="misspelled @requires tag") as raised:
         _check([_tok(f"# @{word} bus.timeout>=200000")])
+    assert raised.value.rule == "tag.misspelled"
 
 
 def test_check_for_near_miss_tags_flags_wrong_case_as_the_exact_tag() -> None:
@@ -321,8 +356,9 @@ def test_check_for_near_miss_tags_flags_wrong_case_as_the_exact_tag() -> None:
 
 
 def test_check_for_near_miss_tags_flags_missing_at_sigil() -> None:
-    with pytest.raises(BuildError, match="leading '@' missing"):
+    with pytest.raises(BuildError, match="leading '@' missing") as raised:
         _check([_tok("# requires bus.timeout>=200000")])
+    assert raised.value.rule == "tag.missing-sigil"
 
 
 def test_check_for_near_miss_tags_flags_exact_keyword_with_only_a_number() -> None:
@@ -348,7 +384,7 @@ def test_check_for_near_miss_tags_ignores_prose_without_payload_shape() -> None:
     # Mirrors a real near-collision in this repo, where a wrapped comment line began with the
     # tag's own name: a comment opening with "@requires" but carrying no field/operator/value
     # shape must never be flagged, or prose mentioning the tag would break every build.
-    _check([_tok("# @requires tag, not here).")])  # no raise
+    _assert_silent_but_live([_tok("# @requires tag, not here).")])
 
 
 @pytest.mark.parametrize(
@@ -363,11 +399,14 @@ def test_check_for_near_miss_tags_ignores_prose_without_payload_shape() -> None:
     ],
 )
 def test_check_for_near_miss_tags_stays_silent(text: str) -> None:
-    _check([_tok(text)])  # no raise
+    _assert_silent_but_live([_tok(text)])
 
 
 def test_check_for_near_miss_tags_skips_already_exact_matched_tokens() -> None:
-    _check([_tok("# @requires bus.timeout>=200000")], exact={(1, 0)})  # no raise - already counted
+    tokens = [_tok("# @requires bus.timeout>=200000")]
+    _assert_silent_but_live(tokens, exact={(1, 0)})  # already counted
+    with pytest.raises(BuildError, match="malformed @requires tag"):
+        _check(tokens)  # the same token, not counted as an exact match
 
 
 def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one() -> None:
@@ -378,14 +417,14 @@ def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one
 
 
 def test_check_for_near_miss_tags_empty_token_list() -> None:
-    _check([])  # no raise
+    _assert_silent_but_live([])
 
 
 def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(monkeypatch: pytest.MonkeyPatch) -> None:
     # Two edits away from a 3-letter name is most of the dictionary, so a short tag name (the
     # planned "@web") tolerates only one - otherwise adding it to the registry would start failing
     # builds over unrelated @-words. "wet" is one edit from "web"; "wed"/"we" would be too.
-    web = tag_comments.TagSpec("web", tag_comments.looks_like_tag_payload)
+    web = tag_comments.TagSpec("web", _looks_like_requires_payload)
     monkeypatch.setattr(tag_comments, "KNOWN_TAGS", (web,))
     with pytest.raises(BuildError, match="misspelled @web tag"):
         _check([_tok("# @wet name=x")])
@@ -421,10 +460,64 @@ def test_each_family_recognizes_its_own_payload_shape_and_not_prose(text: str, f
     assert spec.looks_like_payload(text) is expected
 
 
-def test_looks_like_tag_payload_accepts_an_explicit_family(tmp_path: Path) -> None:
-    # The helper defaults to @requires' own shape; passing a family switches it to that family's
-    # predicate, which is how each grammar module gates its own near-miss detection.
-    (wiring,) = [s for s in tag_comments.KNOWN_TAGS if s.name == "wiring"]
+def test_a_family_predicate_reads_its_own_shape_where_requires_reads_none() -> None:
+    # Each grammar module gates its own near-miss detection on its family's predicate: a wiring
+    # tag is wiring-shaped, while @requires' operator-based shape sees no payload in it.
+    (wiring,) = specs_for("wiring")
     text = "# @wiring fram_target FRAMManager fram optional kwarg"
-    assert tag_comments.looks_like_tag_payload(text, wiring) is True
-    assert tag_comments.looks_like_tag_payload(text) is False  # no operator - not @requires-shaped
+    assert wiring.looks_like_payload(text) is True
+    assert _looks_like_requires_payload(text) is False  # no operator - not @requires-shaped
+
+
+def test_specs_for_returns_the_one_registered_family() -> None:
+    for name in KNOWN_TAG_NAMES:
+        assert specs_for(name) == tuple(spec for spec in KNOWN_TAGS if spec.name == name)
+        assert len(specs_for(name)) == 1
+
+
+def test_specs_for_an_unregistered_family_is_a_generator_bug() -> None:
+    with pytest.raises(BuildInternalError, match="tag family 'nope' is not in KNOWN_TAGS"):
+        specs_for("nope")
+
+
+def _module_specs(tree: ast.Module) -> "dict[str, str]":
+    # Module-level `<name> = specs_for("<family>")` bindings: name -> family.
+    found = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "specs_for":
+            (target,) = node.targets
+            (arg,) = node.value.args
+            assert isinstance(target, ast.Name) and isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+            found[target.id] = arg.value
+    return found
+
+
+def test_every_family_module_polices_its_own_registered_spec(repo_root: Path) -> None:
+    # Each check_for_near_miss_tags() caller passes a specs_for() tuple (never the all-families
+    # default), and each registered family is fetched by exactly one module.
+    fetched: dict[str, list[str]] = {}
+    for path in sorted((repo_root / "buildgen").glob("*.py")):
+        tree = ast.parse(path.read_text())
+        specs = _module_specs(tree)
+        for name, family in specs.items():
+            fetched.setdefault(family, []).append(f"{path.name}:{name}")
+        for call in ast.walk(tree):
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "check_for_near_miss_tags":
+                arg = call.args[5] if len(call.args) > 5 else next((k.value for k in call.keywords if k.arg == "specs"), None)
+                assert isinstance(arg, ast.Name) and arg.id in specs, f"{path.name}:{call.lineno} passes no specs_for() tuple"
+    assert sorted(fetched) == sorted(KNOWN_TAG_NAMES)
+    assert all(len(sites) == 1 for sites in fetched.values()), fetched
+
+
+def test_the_near_miss_verdict_follows_a_file_rewritten_at_the_same_path(tmp_path: Path) -> None:
+    # The verdict is cached by the tokens, not by the path: a fixed or a newly broken file is read again.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @require bus.timeout>=200000\n")
+    with pytest.raises(BuildError, match="misspelled @requires tag"):
+        check_for_near_miss_tags(iter_comment_tokens(path, "fixture", "x"), path, "fixture", "x", set(), specs_for("requires"))
+    path.write_text("# @requires bus.timeout>=200000\n")
+    check_for_near_miss_tags(iter_comment_tokens(path, "fixture", "x"), path, "fixture", "x", {(1, 0)}, specs_for("requires"))
+    path.write_text("# @require bus.timeout>=200000\n")
+    with pytest.raises(BuildError, match="misspelled @requires tag") as raised:
+        check_for_near_miss_tags(iter_comment_tokens(path, "dev2", "y"), path, "dev2", "y", set(), specs_for("requires"))
+    assert (raised.value.device, raised.value.instance) == ("dev2", "y")  # a repeated verdict names its own caller

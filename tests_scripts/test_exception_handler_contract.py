@@ -1,8 +1,6 @@
 """Whole-tree contract for asyncio's unretrieved-task-exception handler (SPECIFICATION.md Part F.1): only the firmware's
-start_and_check_tasks() installs one, and only where none is set; both handler bodies are allocation-free and never
+start_tasks() installs one, and only where none is set; both handler bodies are allocation-free and never
 raise by construction; every PC entry point installs the always-printing PC report before the firmware starts."""
-
-from __future__ import annotations
 
 import ast
 from pathlib import Path
@@ -20,7 +18,7 @@ if TYPE_CHECKING:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _FIRMWARE_FILE = "src/asy_system_service.py"  # the one install site
-_INSTALLER = "start_and_check_tasks"
+_INSTALLER = "start_tasks"
 _HANDLER_FILE = "src/asy_print_log.py"  # print() lives only in the logger module (test_code_conventions.py)
 _HANDLER_CLASS = "PrintLog"
 _FIRMWARE_HANDLER = "report_unretrieved"
@@ -271,11 +269,12 @@ def firmware_sources() -> dict[str, str]:
     for device in DEVICE_NAMES:
         generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src", REPO_ROOT / "ext")
         sources[f"build/generated_src/sensortask_{device}.py"] = generated.module_source
-        sources[f"build/generated_src/{device}_boot.py"] = generated.boot_entry_source
+        sources[f"build/generated_src/sensortask_{device}_main.py"] = generated.boot_entry_source
+        sources[f"build/generated_src/sensortask_{device}_main_noautostart.py"] = generated.boot_entry_noautostart_source
     return sources
 
 
-def test_only_start_and_check_tasks_installs_a_handler_and_only_where_none_is_set(firmware_sources: dict[str, str]) -> None:
+def test_only_start_tasks_installs_a_handler_and_only_where_none_is_set(firmware_sources: dict[str, str]) -> None:
     findings = install_site_findings(firmware_sources)
     assert not findings, "\n".join(findings)
 
@@ -302,7 +301,7 @@ def test_every_pc_entry_point_installs_the_pc_report_before_the_firmware_starts(
 # ---------------------------------------------------------------------------
 
 _GOOD_INSTALLER = (
-    "async def start_and_check_tasks(self):\n"
+    "async def start_tasks(self):\n"
     "    loop = asyncio.get_event_loop()\n"
     "    if loop.get_exception_handler() is None:\n"
     "        loop.set_exception_handler(self.pr.report_unretrieved)\n"
@@ -318,11 +317,11 @@ def test_a_clean_install_site_reports_nothing() -> None:
     [
         ({_FIRMWARE_FILE: _GOOD_INSTALLER, "src/other.py": "def f(loop):\n    loop.set_exception_handler(None)\n"}, "src/other.py:2"),
         ({_FIRMWARE_FILE: _GOOD_INSTALLER, "build/generated_src/sensortask_x.py": "loop.set_exception_handler(h)\n"}, "sensortask_x.py:1"),
-        ({_FIRMWARE_FILE: _GOOD_INSTALLER.replace("start_and_check_tasks", "setup")}, "in setup"),
+        ({_FIRMWARE_FILE: _GOOD_INSTALLER.replace("start_tasks", "setup")}, "in setup"),
         ({_FIRMWARE_FILE: _GOOD_INSTALLER.replace("    if loop.get_exception_handler() is None:\n        ", "    ")}, "without `if"),
         ({_FIRMWARE_FILE: _GOOD_INSTALLER.replace("is None", "is not None")}, "without `if"),
         ({_FIRMWARE_FILE: _GOOD_INSTALLER.replace("is None:\n        loop.set", "is None:\n        pass\n    else:\n        loop.set")}, "without `if"),
-        ({_FIRMWARE_FILE: "async def start_and_check_tasks(self):\n    pass\n"}, "0 time(s)"),
+        ({_FIRMWARE_FILE: "async def start_tasks(self):\n    pass\n"}, "0 time(s)"),
     ],
 )
 def test_a_planted_install_site_is_reported(sources: dict[str, str], needle: str) -> None:
@@ -646,7 +645,7 @@ def test_a_planted_gate_is_reported(old: str, new: str, needle: str) -> None:
 
 
 @pytest.fixture
-def helpers(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+def helpers(monkeypatch: pytest.MonkeyPatch) -> "ModuleType":
     monkeypatch.syspath_prepend(str(REPO_ROOT / "tests_hardware"))
     return load_script_module(REPO_ROOT / "tests_hardware" / "error_log_helpers.py", "error_log_helpers")
 
@@ -669,7 +668,7 @@ def _log(counter: int, *entries: tuple[str, int]) -> dict[str, object]:
         (_log(0), _log(2, ("W", 42), ("E", 41)), 0),  # a warning with the same number is no task end
     ],
 )
-def test_new_task_raised_counts_only_the_entries_since_the_first_read(helpers: ModuleType, before: dict[str, object], after: dict[str, object], expected: int) -> None:
+def test_new_task_raised_counts_only_the_entries_since_the_first_read(helpers: "ModuleType", before: dict[str, object], after: dict[str, object], expected: int) -> None:
     assert helpers.new_task_raised(before, after) == expected
     if expected:
         with pytest.raises(AssertionError, match="TASK_RAISED"):

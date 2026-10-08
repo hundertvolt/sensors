@@ -1,0 +1,10 @@
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=8099 fram_state_path=None scd30_state_path=None seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:8099/ - Ctrl+C to stop
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 382, in _reset_when_due
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-npm/digital_twin/machine.py", line 1376, in reset
+SimulatedResetError: machine.reset() called - the twin does not actually restart the process
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=7
+digital_twin/run_generic_integration.py: interrupted

@@ -554,6 +554,37 @@ gates, traps).
   the host typecheck pass. Comments only in `scripts/_digital_twin_ci_suite.py` and
   `toolchain/micropython_overrides.py` (its check and message unchanged). No new dependency and no
   firmware input changed; the next chroot run covers lint, typecheck and `scripts/test.sh` over them.
+  **2026-10-08, the cross-browser smoke's connection count, web tier only, no build impact**:
+  `scripts/cross_browser_smoke.mjs` counts a page load's connections once the page's first data
+  request went out, through the counting proxy now in `scripts/_page_load_connections.mjs` (driven
+  under Node by `tests_scripts/test_cross_browser_page_load_connections.py`). Node only, no new
+  dependency: `env --tier generic` installs nothing new, and the chroot legs run only its pytest file.
+  **2026-10-08, the generated boot sequence: host Python, shell and lint/type config, no dependency or
+  installer change**: `scripts/_digital_twin_ci_suite.py`, `scripts/_render_coverage.py`,
+  `scripts/_strip_type_checking.py`, `scripts/build_firmware.py`, `toolchain/micropython_overrides.py`
+  and `toolchain/setup_toolchain.py` drop `from __future__ import annotations` (Python 3.11 evaluates
+  their annotations natively; `requires-python = ">=3.11"`), as do the host-side files of
+  `tests_scripts/` and `tests_hardware/`, which the new `tests_scripts/test_host_annotations.py` keeps
+  that way; the two `toolchain/` files change in that import line alone. `scripts/lint.sh`'s
+  `gc.collect()` guard names `run_setups()` and `start_tasks()` and refuses any `gc.collect(` under
+  `buildgen/`. `scripts/_generate_sensortask_modules.py` also writes each device's two boot entries
+  (`sensortask_<d>_main.py`, `sensortask_<d>_main_noautostart.py`) and its expected boot facts
+  (`sensortask_<d>_expected.json`), and computes the wiring plan inside its `BuildError` guard.
+  `scripts/build_firmware.py` stages the generated device module through the `TYPE_CHECKING`
+  stripper like every `src/` module, from a frozen set `buildgen` now seeds with that module's own
+  imports. `pyproject.toml` gains `[tool.ruff.lint.pyflakes] allowed-unused-imports =
+  ["frozen_html"]` and a `frozen_html` mypy override; `host_typecheck.ini` drops five explicit-`Any`
+  baseline sections (`buildgen.definitions`, `.model`, `.requires_tag`, `.twin_wiring` and
+  `test_device_tomls`). New
+  pytest-tier files join the host typecheck pass: `tests_scripts/test_buildgen_error_contract.py`,
+  `test_buildgen_fuzz.py`, `test_buildgen_locale.py` (`dev`'s whole build under an ASCII locale with
+  Python's UTF-8 mode off: `buildgen` now reads `src/` as UTF-8 whatever the host's locale),
+  `test_buildgen_reproducible.py` (two CPython children under different `PYTHONHASHSEED`s),
+  `test_buildgen_source_agreement.py`, `test_host_annotations.py`, `test_toml_schema_contract.py` and
+  `test_twin_wiring_contract.py`. No dependency, pin or installer
+  step changed: a chroot's lint, typecheck and `scripts/test.sh` legs cover all of it, the installer
+  leg is not owed, and the ARM image build `build_firmware.py` feeds stays opt-in, its staging tested
+  in the pytest tier.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

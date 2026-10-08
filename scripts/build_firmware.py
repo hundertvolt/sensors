@@ -11,8 +11,6 @@ sufficient, for a device to boot."""
 #     uv run scripts/build_firmware.py wozi
 #     uv run scripts/build_firmware.py wozi --output build/firmware-wozi.uf2
 
-from __future__ import annotations
-
 import argparse
 import os
 import shutil
@@ -43,10 +41,6 @@ _MANIFEST_TEMPLATE = """\
 include("$(PORT_DIR)/boards/{board}/manifest.py")
 freeze({stage_dir!r})
 """
-
-
-def log(msg: str) -> None:
-    print(f"\n== {msg}")
 
 
 def _stage_stripped(src_file: Path, dest: Path) -> None:
@@ -92,10 +86,10 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     for module, path in sorted(module_files.items()):
         _stage_stripped(path, stage_dir / f"{module}.py")
 
-    # The generated device entry module and its boot entry: freshly generated text, never read
-    # off disk, so nothing to strip. Frozen as "main.py" rather than "<device>_boot.py" for the
-    # source-confirmed reason the docstring gives - a custom _boot.py would cost USB entirely.
-    (stage_dir / f"{entry_module}.py").write_text(generated.module_source)
+    # The generated module carries src/'s own TYPE_CHECKING form, so it is stripped like them. The
+    # autostart boot entry is frozen as "main.py", never a custom _boot.py: rp2 starts USB only after
+    # _boot.py returns (SPECIFICATION.md Part B.11), and main() never returns.
+    (stage_dir / f"{entry_module}.py").write_text(strip_type_checking_blocks(generated.module_source))
     (stage_dir / "main.py").write_text(generated.boot_entry_source)
 
     # This device's real website, frozen under the "frozen_html" name the generated entry module's
@@ -106,6 +100,10 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
         cwd=REPO_ROOT,
         check=True,
     )
+
+
+def log(msg: str) -> None:
+    print(f"\n== {msg}")
 
 
 def main() -> int:

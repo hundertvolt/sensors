@@ -7,8 +7,6 @@
 (MicroPython + matching pico-sdk/picotool + ARM cross-toolchain) plus the host-side Unix port the
 tests run on. Invocations: README.md's quick-start; the full picture: SPECIFICATION.md Part B."""
 
-from __future__ import annotations
-
 import argparse
 import grp
 import os

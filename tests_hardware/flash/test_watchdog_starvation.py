@@ -2,8 +2,6 @@
 when starved - prior coverage was mock/twin-level only, which can never prove the peripheral fires.
 Safe under run_isolated(): WDT(timeout=...) always re-arms fresh, so the short device-script timeout governs."""
 
-from __future__ import annotations
-
 import time
 from pathlib import Path
 

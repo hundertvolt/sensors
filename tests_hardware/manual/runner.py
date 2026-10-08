@@ -2,8 +2,6 @@
 structurally separate from the automated flash/bench runner so an unattended pass never stalls on
 a human. Run via `__main__.py`, never this file directly - see tests_hardware/README.md."""
 
-from __future__ import annotations
-
 import argparse
 import sys
 import time
@@ -57,14 +55,14 @@ class ManualTest(NamedTuple):
     name: str
     description: str
     tier: str  # "[USB]" or "[USB+WiFi]"
-    fn: Callable[[], None]
+    fn: "Callable[[], None]"
 
 
 _REGISTRY: list[ManualTest] = []
 
 
-def register(name: str, description: str, tier: str) -> Callable[[Callable[[], None]], Callable[[], None]]:
-    def _decorator(fn: Callable[[], None]) -> Callable[[], None]:
+def register(name: str, description: str, tier: str) -> "Callable[[Callable[[], None]], Callable[[], None]]":
+    def _decorator(fn: "Callable[[], None]") -> "Callable[[], None]":
         _REGISTRY.append(ManualTest(name, description, tier, fn))
         return fn
 

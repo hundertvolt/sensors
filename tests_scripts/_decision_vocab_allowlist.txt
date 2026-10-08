@@ -201,14 +201,12 @@ src/asy_uart_driver.py	Kept deliberately, unlike SPIDevice/I2CDevice: cancel_rea
 src/asy_uart_link_driver.py	Registered as a maintenance sensor, not a new /status key - that list is variabl
 src/asy_webserver_service.py	Only a group whose field subset intersects the request body is dispatched: one w
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
-src/asy_system_service.py	A device with no watchdog and one deliberately left to die take the same path.
 src/asy_system_service.py	It pushes on "Unchanged" too, not only on a real change, so every logger's live
 src/asy_system_service.py	System-settings store, deliberately not a SensorReaderConfig subclass - no measu
 src/voc_algorithm.py	__init__ and reset() deliberately share one body (reset() is the source of truth
 tests/_bus_hazard_catalog.py	Register-addressed, not queue-based (see seed_isl_ready()) - a fixed register sn
 tests/_bus_hazard_catalog.py	Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read
 tests/_fram_chip_fake.py	Different in kind from the knobs above: simulates a disturbance landing on a WRI
-tests/_sensortask_scenarios.py	Deliberately never loops - the real implementation runs forever;
 tests/_sensortask_scenarios.py	Deliberately one dispatch per test: _dispatch() drives each call through its own
 tests/_sensortask_scenarios.py	Keyed per-device (register_for_device() sets this up), not one shared "sensortas
 tests/_sensortask_scenarios.py	LEDWifiOn alone must never reconnect
@@ -389,10 +387,9 @@ tests/test_digital_twin_poll_prewarm.py	Twin-tier coverage for digital_twin/unix
 tests/test_digital_twin_poll_prewarm.py	type: ignore[attr-defined, assignment] # deliberate monkeypatch
 tests/test_digital_twin_real_website_integration.py	"wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4
 tests/test_digital_twin_run_generic_integration.py	Deliberately exactly one such test, not a boot-only one plus a separate fault-in
-tests/test_digital_twin_run_generic_integration.py	_booted_module is set by main() itself and read the same way _print_wdt_status()
 tests/test_digital_twin_scd30.py	_FixedRandom itself asserts a <= value <= b for every uniform() call - if _produ
 tests/test_digital_twin_sensortask_integration.py	A second real backup mutates the twin's in-memory FRAM image but is deliberately
-tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/start_and_check_tasks().
+tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/supervise_tasks().
 tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT pre-seed scd30's measurement data the way every other SGP4
 tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
 tests/test_digital_twin_sensortask_integration.py	Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why.
@@ -555,7 +552,6 @@ tests_scripts/test_build_website_sh.py	build_website.sh's cp lists are hand-kept
 tests_scripts/test_buildgen_definitions.py	Failure paths: a minimal DeviceModel pointed at a deliberately mutated copy of o
 tests_scripts/test_buildgen_definitions.py	SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenanc
 tests_scripts/test_buildgen_definitions.py	asy_ntp_client.py deliberately never declares its own @web-group for section=sys
-tests_scripts/test_buildgen_generate.py	a warn_* key outside it must abort and name the catalog, never be silently dropp
 tests_scripts/test_buildgen_requires_tag.py	"Present, or close to present, with typos" - a typo'd/malformed/misplaced @requi
 tests_scripts/test_buildgen_requires_tag.py	A driver gaining or losing one is a deliberate change that has to show up here t
 tests_scripts/test_buildgen_tag_comments.py	Mirrors a real near-collision in this repo, where a wrapped comment line began w
@@ -571,7 +567,6 @@ tests_scripts/test_buildgen_wiring.py	The one deletion that does NOT abort, deli
 tests_scripts/test_coverage_runner.py	NOT the rig binary: this runner installs sys.settrace, and build-standard is del
 tests_scripts/test_device_tomls.py	Each scenario library's `_DEVICES` tuple stays hand-written deliberately: its OR
 tests_scripts/test_device_tomls.py	The on-target sweep keeps its own copy deliberately, being MicroPython on the bo
-tests_scripts/test_device_tomls.py	wifi/ntp/system must never appear as [[instance]] entries.
 tests_scripts/test_digital_twin_boot_contiguity.py	Same import route tests_scripts/test_heap_map_parser.py uses for the same file:
 tests_scripts/test_digital_twin_boot_contiguity.py	The heap size is deliberately NOT calibrated to a fill fraction: every bound bel
 tests_scripts/test_digital_twin_ci_suite_errcount.py	A per-name settle would call SGP40 settled while SCD30 was still climbing, and s

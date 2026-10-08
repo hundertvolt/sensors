@@ -472,6 +472,9 @@ class SensorReader:
         # staged write, so the flash write follows the pushes. One PUT per module at a time: a failed push's
         # recovery can never overwrite a value a later PUT stored meanwhile.
         async with self._set_lock:
+            if self._writes_closed():
+                # Closed by an accepted system command: nothing writes, flash or chip, until the reset (owner, 2026-10-02).
+                return dict.fromkeys(data, FAILED)
             fields = schema_dict(cfg_vals)
             # The pre-write snapshot covers only what _recover_failed_push can use: a persisted key with a
             # push callback, so a store without push callbacks (SCD30's chip) pays no second read.
@@ -705,6 +708,10 @@ class SensorReader:
                 self._read_event.set()
                 self._trigger_counter = 0
 
+    def _writes_closed(self) -> bool:
+        # No store: nothing to close, so a PUT is never refused here.
+        return False
+
     def get_trigger_starters(self) -> "list[TimerStarter]":
         # Read-trigger timer starters the system service staggers (SPECIFICATION.md Part C.9.1); none here.
         return []
@@ -764,9 +771,12 @@ class SensorReaderConfig(SensorReader):
         # "CFGMGR_<name>" logger (Part C.14). Never the raw `name`, which is the type's base name.
         cfg_log = log if self._CFG_LOG_FRAM else LogConfig(None, log.history_length, log.debug)
         self.cfgmgr = ConfigManager(config_filename(cfg_path, self.name), default_vals, self.name, log=cfg_log)
+        self.cfgmgr.owner_lock = self._set_lock  # this module's one PUT lock (_set_dict_cfg())
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         self.pr.evt("Reading config via cfgmgr.")
+        if not self.cfgmgr.writable:
+            return None  # defaults standing in for a file it could not read: the GET's marker, as SYSTEM's (Part C.6)
         return await self.cfgmgr.get_dict(cfg)
 
     async def _set_mgr_cfg(self, data: "JsonMapping", _cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
@@ -777,6 +787,10 @@ class SensorReaderConfig(SensorReader):
 
     def _commit_mgr_cfg(self) -> None:
         self.cfgmgr.commit()
+
+    def _writes_closed(self) -> bool:
+        # A store closed for a commanded reset refuses this module's PUTs.
+        return self.cfgmgr.writes_closed()
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).

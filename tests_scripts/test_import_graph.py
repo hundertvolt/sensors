@@ -150,18 +150,20 @@ def _src_and_ext(src_dir: Path, ext_dir: Path) -> dict[str, Module]:
 
 
 def build_images(src_dir: Path, ext_dir: Path, website: Path, out_dir: Path) -> list[Image]:
-    # Each device's frozen set as build_firmware.py stages it: its src/ and ext/ modules, the generated
-    # device and boot entry modules written into out_dir, and the website module.
+    # Each device's frozen set as build_firmware.py stages it: its src/ and ext/ modules, the generated device
+    # module and both boot entries written into out_dir (one is staged as main.py, the other is the no-autostart
+    # image's), and the website module.
     images = []
     for device in DEVICE_NAMES:
         generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", src_dir, ext_dir)
-        (out_dir / f"sensortask_{device}.py").write_text(generated.module_source, encoding="utf-8")
-        (out_dir / f"{device}_boot.py").write_text(generated.boot_entry_source, encoding="utf-8")
+        generated_names = (f"sensortask_{device}", f"sensortask_{device}_main", f"sensortask_{device}_main_noautostart")
+        for name, source in zip(generated_names, (generated.module_source, generated.boot_entry_source, generated.boot_entry_noautostart_source), strict=True):
+            (out_dir / f"{name}.py").write_text(source, encoding="utf-8")
         modules = []
         for name in sorted(generated.frozen_modules):
             path = src_dir / f"{name}.py" if (src_dir / f"{name}.py").is_file() else ext_dir / f"{name}.py"
             modules.append(_parse(name, f"{path.parent.name}/{path.name}", path.read_text(encoding="utf-8")))
-        modules.extend(_parse(name, f"build/generated_src/{name}.py", (out_dir / f"{name}.py").read_text(encoding="utf-8")) for name in (f"sensortask_{device}", f"{device}_boot"))
+        modules.extend(_parse(name, f"build/generated_src/{name}.py", (out_dir / f"{name}.py").read_text(encoding="utf-8")) for name in generated_names)
         modules.append(_parse(_WEBSITE_MODULE, f"build/{device}/{_WEBSITE_MODULE}.py", website.read_text(encoding="utf-8")))
         images.append(Image(device, tuple(modules)))
     return images
@@ -273,7 +275,7 @@ def test_no_device_image_holds_a_dynamic_import_site(images: list[Image], device
 def test_every_image_holds_its_generated_modules_and_website(images: list[Image]) -> None:
     for image in images:
         names = {m.name for m in image.modules}
-        assert {f"sensortask_{image.device}", f"{image.device}_boot", _WEBSITE_MODULE, "asy_system_service", "microdot"} <= names, image.device
+        assert {f"sensortask_{image.device}", f"sensortask_{image.device}_main", f"sensortask_{image.device}_main_noautostart", _WEBSITE_MODULE, "asy_system_service", "microdot"} <= names, image.device
 
 
 def test_outside_the_images_only_the_named_files_load_dynamically() -> None:

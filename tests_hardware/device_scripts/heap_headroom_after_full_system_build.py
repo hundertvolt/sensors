@@ -5,6 +5,7 @@ where the survivors sit (the block map, measured host-side by heap_map.py). SPEC
 import asyncio
 import gc
 
+import machine
 import micropython
 import sensortask_dev
 
@@ -107,10 +108,14 @@ async def _main() -> None:
     # comparing against what was already there, which is what makes that check independent of the
     # suite position (MEASUREMENTS M3.9, M2.4).
     _dump_map("baseline")
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own: build_system() takes it, run_setups() feeds it
     try:
-        await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
+        await sensortask_dev.build_system(watchdog=wdt, cfg_path="", web_host="127.0.0.1", web_port=8080)
+        # main()'s next step: the measured graph is the one a real boot leaves, setup survivors included.
+        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())
     except Exception as e:
-        print(f"RESULT: FAIL build_system() raised on real hardware: {e!r}")
+        print(f"RESULT: FAIL build_system() or its setup list raised on real hardware: {e!r}")
         return
     # Deliberately measured at MicroPython's own reactive-only default first: a headroom figure that
     # only holds with a proactive threshold isn't headroom (CLAUDE.md's memory-safety ladder).

@@ -2,8 +2,6 @@
 SPECIFICATION.md Part I.3): the contiguous block each data source and route needs, and a sweep of
 concurrent requests up past the ceiling with the heap read idle, under load and after."""
 
-from __future__ import annotations
-
 import re
 import socket
 import threading
@@ -118,13 +116,13 @@ def sweep_levels(dut_ip: str, levels: list[int], stop: threading.Event, tallies:
 
 
 @pytest.fixture(scope="module")
-def isolated_board(board: Board, bench: BenchBridge, dut_ip: str) -> Iterator[Board]:
+def isolated_board(board: "Board", bench: "BenchBridge", dut_ip: str) -> "Iterator[Board]":
     # Both tests stop main.py; the board is put back ONCE, after the last of them, not per test.
     yield board
     restore_board_to_serving(board, bench, dut_ip)
 
 
-def test_every_source_and_route_fits_a_small_free_run(isolated_board: Board) -> None:
+def test_every_source_and_route_fits_a_small_free_run(isolated_board: "Board") -> None:
     # No network. The device script shapes the heap so no free run exceeds S, for rising S, and
     # runs each data source and whole GET route on it; the host reduces that to each one's need.
     output = isolated_board.run_isolated(DEVICE_SCRIPTS / "allocation_need_per_source.py", timeout_s=_NEED_SCRIPT_TIMEOUT_S)
@@ -138,7 +136,7 @@ def test_every_source_and_route_fits_a_small_free_run(isolated_board: Board) -> 
     assert not too_big, f"these need a larger contiguous block than a loaded heap keeps (Part I.3): {too_big}"
 
 
-def test_serving_sweep_at_the_reactive_default(isolated_board: Board, dut_ip: str) -> None:
+def test_serving_sweep_at_the_reactive_default(isolated_board: "Board", dut_ip: str) -> None:
     # Ascending levels up past the configured ceiling, on one boot: the realistic case is a running
     # device whose heap carries every earlier burst. The bar is I.4(e): not one allocation failure.
     ceiling = configured_max_connections()

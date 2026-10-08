@@ -2,8 +2,6 @@
 mirrors digital_twin/_http_client.py's `HttpResponse`/`fetch()` shape closely enough that a
 shared-behavior function written against one translates directly to the other, though synchronous."""
 
-from __future__ import annotations
-
 import http.client
 import json
 import urllib.error

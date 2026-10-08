@@ -2,8 +2,6 @@
 plausibility (sane datasheet bounds, not exact-reference calibration - see
 tests_hardware/manual/manual_sensor_accuracy.py for the reference-calibrated variant)."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,7 +38,7 @@ _SGP40_CADENCE_SCRIPT_TIMEOUT_S = 660.0
 CADENCE_RE = re.compile(r"^CADENCE cycles=(\d+) elapsed_ms=(\d+) lost=(-?\d+) max_gap_ms=(\d+) gaps_over_1500=(\d+)", re.MULTILINE)
 
 
-def test_scd30_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:
+def test_scd30_real_reading_is_within_datasheet_plausible_bounds(board: "Board") -> None:
     # ~60s real runtime (45s post-reset settle + up to 15s final poll - see the device script's own
     # docstring); timeout is generous relative to that.
     output = board.run_isolated(DEVICE_SCRIPTS / "scd30_plausibility_read.py", timeout_s=_SCD30_SCRIPT_TIMEOUT_S)
@@ -49,14 +47,14 @@ def test_scd30_real_reading_is_within_datasheet_plausible_bounds(board: Board) -
     assert match.group(1) == "PASS", f"SCD30 plausibility check failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
-def test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:
+def test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds(board: "Board") -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "bmp3xx_plausibility_read.py", timeout_s=_BMP3XX_SCRIPT_TIMEOUT_S)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"BMP3xx plausibility check failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
-def test_sgp40_voc_algorithm_produces_plausible_and_stable_results(board: Board) -> None:
+def test_sgp40_voc_algorithm_produces_plausible_and_stable_results(board: "Board") -> None:
     # ~90s real runtime (45s documented algorithm blackout + a sampling window) - see the device
     # script's own docstring; timeout is generous relative to that.
     output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_voc_algorithm_quality.py", timeout_s=_SGP40_SCRIPT_TIMEOUT_S)
@@ -66,7 +64,7 @@ def test_sgp40_voc_algorithm_produces_plausible_and_stable_results(board: Board)
 
 
 @pytest.mark.long_soak
-def test_sgp40_sample_cadence(board: Board, request: pytest.FixtureRequest) -> None:
+def test_sgp40_sample_cadence(board: "Board", request: pytest.FixtureRequest) -> None:
     # Ten minutes of the real dev task graph, read cycles counted: the figures are the deliverable (no pass
     # threshold, SPECIFICATION.md M.3), recorded from the CADENCE line; the window is fixed, whatever the tier.
     if request.config.getoption("--soak-tier") is None:
@@ -78,7 +76,7 @@ def test_sgp40_sample_cadence(board: Board, request: pytest.FixtureRequest) -> N
     print(match.group(0))
 
 
-def test_isl29125_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:
+def test_isl29125_real_reading_is_within_datasheet_plausible_bounds(board: "Board") -> None:
     # dev-only sensor (i2c1); ~15s worst-case wait window - see the device script's own docstring.
     output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_plausibility_read.py", timeout_s=_ISL29125_SCRIPT_TIMEOUT_S)
     match = RESULT_RE.search(output)
@@ -87,7 +85,7 @@ def test_isl29125_real_reading_is_within_datasheet_plausible_bounds(board: Board
 
 
 @pytest.mark.neopixel_sweep
-def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration(board: Board, request: pytest.FixtureRequest) -> None:
+def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration(board: "Board", request: pytest.FixtureRequest) -> None:
     if not request.config.getoption("--allow-neopixel-sweep"):
         pytest.skip("needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md's rig section, recorded by the manual tier)")
     # Drives the board's own NeoPixel through 8 steady levels each way (16 holds) plus 6 more holds
@@ -100,7 +98,7 @@ def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibrati
 
 
 @pytest.mark.neopixel_sweep
-def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: Board, request: pytest.FixtureRequest) -> None:
+def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: "Board", request: pytest.FixtureRequest) -> None:
     if not request.config.getoption("--allow-neopixel-sweep"):
         pytest.skip("needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md's rig section, recorded by the manual tier)")
     # Ten recombined lighting scenarios driven through the board's own NeoPixel. The device
@@ -112,7 +110,7 @@ def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: Board,
     assert match.group(1) == "PASS", f"ISL29125 lighting-scenarios check failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
-def test_isl29125_register_probe_matches_the_digital_twins_fake_chip(board: Board) -> None:
+def test_isl29125_register_probe_matches_the_digital_twins_fake_chip(board: "Board") -> None:
     # Runs isl29125_mock_conformance_probe.py identically against the real chip and against the
     # twin's fake under the Unix port (run_probe_against_twin(), which needs that port built),
     # then diffs every protocol KEY=VALUE pair. PHYSICAL_KEYS excludes the light-dependent ones.

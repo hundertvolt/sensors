@@ -1,6 +1,6 @@
 """Tests scripts/_generate_sensortask_modules.py (SPECIFICATION.md Part E.3's build/generated_src/
-pre-generation step) - both its real-device happy path (module source, wiring-plan JSON, definitions,
-their manifest and the REST API reference) and its BuildError-reporting failure path."""
+pre-generation step): every real device's written outputs equal its in-memory generation, and a
+BuildError from any stage is one reported line that leaves no file of that device behind."""
 
 import json
 from pathlib import Path
@@ -39,13 +39,11 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
     for device in DEVICE_NAMES:
         expected = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext", build_date="2026-09-12T10:00:00Z")
         assert (out_dir / f"sensortask_{device}.py").read_text() == expected.module_source
-        expected_plan = compute_twin_wiring(expected.model)
-        # "instances" is main()'s addition on top of compute_twin_wiring()'s shape, an
-        # independent pre-construction driver-presence oracle - checked against the model
-        # directly, then popped so the rest compares against that function's return unchanged.
-        actual_plan = json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text())
-        assert actual_plan.pop("instances") == sorted({spec.driver for spec in expected.model.instances.values()})
-        assert actual_plan == expected_plan
+        assert (out_dir / f"sensortask_{device}_main.py").read_text() == expected.boot_entry_source
+        assert (out_dir / f"sensortask_{device}_main_noautostart.py").read_text() == expected.boot_entry_noautostart_source
+        assert json.loads((out_dir / f"sensortask_{device}_expected.json").read_text()) == expected.expected_facts
+        # compute_twin_wiring() is the plan's one producer, "instances" included: the file is its output unchanged.
+        assert json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text()) == compute_twin_wiring(expected.model)
         written = json.loads((out_dir / "definitions" / f"{device}.json").read_text())
         assert written == definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")
         assert (out_dir / "api" / f"{device}.json").read_text() == api_reference_json(generate_api_reference(expected.model, repo_root / "src"))
@@ -61,20 +59,22 @@ def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_
     monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
 
     def fake_generate_device(*_args: object, **_kwargs: object) -> SimpleNamespace:
-        raise BuildError("broken", "simulated failure for broken.toml")
+        raise BuildError("broken", "simulated failure for broken.toml", rule="test.simulated-failure", fix="repair the fixture")
 
     monkeypatch.setattr(generate_sensortask_modules, "generate_device", fake_generate_device)
 
     exit_code = generate_sensortask_modules.main()
     assert exit_code == 1
-    assert "simulated failure for broken.toml" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "simulated failure for broken.toml - fix: repair the fixture" in err
+    assert "Traceback" not in err
 
     # Never left holding a half-written module, wiring plan, definitions or API reference for the device that failed.
     out_dir = tmp_path / "build" / "generated_src"
     assert not [*out_dir.glob("sensortask_broken*"), *out_dir.glob("definitions/broken*"), *out_dir.glob("api/broken*")]
 
 
-@pytest.mark.parametrize("stage", ["generate_definitions", "generate_api_reference"])
+@pytest.mark.parametrize("stage", ["generate_definitions", "generate_api_reference", "compute_twin_wiring"])
 def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], stage: str) -> None:
     # A device's outputs are all computed before any is written, so a stage after the module's own
     # generation failing is the same one-line report and exit 1, with no file of that device behind.
@@ -85,7 +85,7 @@ def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(ge
     (tmp_path / "ext").symlink_to(repo_root / "ext")
 
     def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
-        raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure")
+        raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure", rule="test.simulated-failure", fix="repair the fixture")
 
     monkeypatch.setattr(generate_sensortask_modules, stage, failing_stage)
 

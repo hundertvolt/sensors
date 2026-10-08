@@ -6,8 +6,6 @@
 """Merges the raw per-test-file line-hit JSON dumps written by tests/_coverage_runner.py (run under the MicroPython Unix port) into a single coverage.py CoverageData file, then lets coverage.py render the HTML/XML/markdown reports from it - the second half of the collect/render split described in SPECIFICATION.md Part E.5 ("Coverage").
 Self-contained via `uv run` (like toolchain/setup_toolchain.py) rather than a pyproject.toml dev dependency: scripts/test.sh --coverage works standalone with only `uv` installed, without requiring `uv sync`/an activated venv first."""
 
-from __future__ import annotations
-
 import argparse
 import glob
 import json

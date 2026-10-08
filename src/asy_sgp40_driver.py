@@ -110,6 +110,8 @@ _N_SETUP_CFG = const(2)  # value count of the _VAL_BACKUP_PERIOD + _VAL_WAIT_TIM
 # @web BackupMaxAge section=sensors submitGroup=self label="VOC Index Backup Max Age" unit="min" special:0="Use all found backups"
 # @web WaitTimeNTP section=sensors submitGroup=self label="VOC Index NTP Wait Time" unit="s" special:0="Never wait for NTP sync"
 # @web ResetVOC section=sensors submitGroup=self label="Reset VOC Index" description="Only 'On' has effect. Resets the VOC algorithm and deletes the current backup." dispatch=true
+# @web Temp hidden="validation record of the temperature compensation input read from its producer, not a setting"
+# @web Hum hidden="validation record of the humidity compensation input read from its producer, not a setting"
 
 _NAME = const("SGP40")
 # VOC/Raw/VOCState/TS doubles as a read's full result, so no separate results type is needed - unlike

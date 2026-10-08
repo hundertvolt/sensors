@@ -113,7 +113,7 @@ def modules(tmp_path_factory: pytest.TempPathFactory) -> list[tuple[str, ast.Mod
     found = [(f"src/{p.name}", ast.parse(p.read_text(encoding="utf-8"))) for p in sorted((REPO_ROOT / "src").glob("*.py"))]
     for device in DEVICE_NAMES:
         generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src", REPO_ROOT / "ext")
-        for name, source in ((f"sensortask_{device}", generated.module_source), (f"{device}_boot", generated.boot_entry_source)):
+        for name, source in ((f"sensortask_{device}", generated.module_source), (f"sensortask_{device}_main", generated.boot_entry_source), (f"sensortask_{device}_main_noautostart", generated.boot_entry_noautostart_source)):
             (out / f"{name}.py").write_text(source, encoding="utf-8")
             found.append((f"build/generated_src/{name}.py", ast.parse((out / f"{name}.py").read_text(encoding="utf-8"))))
     return found

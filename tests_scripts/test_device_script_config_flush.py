@@ -2,8 +2,6 @@
 that actually holds it. write_config() only stages - an unflushed manager lets asyncio.run() discard
 the flash write, and the file keeps setup()'s defaults (MEASUREMENTS archive 7O)."""
 
-from __future__ import annotations
-
 import ast
 import sys
 from pathlib import Path

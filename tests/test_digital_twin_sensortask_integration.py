@@ -31,6 +31,7 @@ patch_asy_udp_socket_for_unix_port()
 # digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
 # this file's own reboot-survival section below.
 import machine  # noqa: E402
+import run_generic_integration  # noqa: E402
 import sensortask_wozi  # noqa: E402
 import unix_port_unretrieved_report  # noqa: E402
 from _shared_rest_roundtrip import assert_sensor_payload_not_self_wrapped  # noqa: E402
@@ -107,7 +108,7 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
     return plan
 
 
-async def _boot(port: int) -> None:
+async def _boot(port: int) -> "machine.WDT":
     # configure_wiring() explicitly, every call: every twin I2C/SPI construction reads the shared
     # machine._wiring_plan global ("last call before construction wins"), and this file's own construction-
     # across-every-device section, sharing this process, configures a different plan.
@@ -115,7 +116,16 @@ async def _boot(port: int) -> None:
     # MicroPython's globals() does not preserve definition order, so relying on "the wozi tests always run
     # first" would be an order-dependent hazard rather than a guarantee.
     machine.configure_wiring(_wiring_plan("wozi"))
-    await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    return await _build(_tmp_cfg_dir(), port)
+
+
+async def _build(cfg_path: str, port: int) -> "machine.WDT":
+    # The generated main()'s first two steps: build_system() constructs with the watchdog the boot entry
+    # arms, then the setup list runs. Returns that watchdog, the one every assertion here reads.
+    watchdog = machine.WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS)
+    await sensortask_wozi.build_system(watchdog=watchdog, cfg_path=cfg_path, web_host="127.0.0.1", web_port=port)
+    await sensortask_wozi.sysfunct.run_setups(sensortask_wozi._collect_setups())
+    return watchdog
 
 
 async def _start_webserver() -> "asyncio.Task[None]":
@@ -549,9 +559,9 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
 # *and* a manually observable run - the manual side lives in digital_twin/run_generic_integration.py
 # (--module sensortask_wozi --wiring-plan ... --device wozi), this is the automated side).
 #
-# Deliberately does NOT drive this through main()/start_and_check_tasks(). MicroPython's globals() does not
+# Deliberately does NOT drive this through main()/supervise_tasks(). MicroPython's globals() does not
 # preserve definition order, so "the last test in the file" is not the last test to run, and
-# cancelling start_and_check_tasks() cancels only its supervisor, never the tasks it started.
+# cancelling supervise_tasks() stops at most its supervisor, never the tasks start_tasks() started.
 #
 # main_task.cancel() then only cancelled the outer wrapper, leaving every real task it had started running
 # for the rest of the process. Across the other tests' repeated build_system() calls, those orphaned
@@ -561,7 +571,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
 # owns and cancels in `finally` - the controlled pattern _start_webserver() already uses, extended to all of
 # them.
 #
-# It runs its own small watchdog-feed loop rather than start_and_check_tasks()'s, which
+# It runs its own small watchdog-feed loop rather than supervise_tasks()'s, which
 # tests/test_asy_system_service.py already covers: the job here is only whether the real concurrent tasks ever
 # block the event loop long enough to starve a feed loop running alongside them.
 # ---------------------------------------------------------------------------
@@ -581,18 +591,22 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
     port = _next_test_port()
 
     async def scenario() -> None:
-        await _boot(port)
-        assert sensortask_wozi.watchdog is not None and sensortask_wozi.sysfunct is not None
+        watchdog = await _boot(port)
+        assert sensortask_wozi.sysfunct is not None
+        # The setup list fed once per unit, each feed stamped oldest first (the twin WDT's feed_times, as the mock's).
+        stamps = list(watchdog.feed_times)
+        assert watchdog.feed_count == len(sensortask_wozi._collect_setups()) == len(stamps), (watchdog.feed_count, len(stamps))
+        assert all(time.ticks_diff(stamps[i + 1], stamps[i]) >= 0 for i in range(len(stamps) - 1)), stamps
         await sensortask_wozi.sysfunct.start_timers(sensortask_wozi._collect_trigger_starters(), sensortask_wozi._collect_timer_starters())
         # Each starter already returns its own asyncio.Task (asy_system_service.py's own _start_task()
         # calls them exactly this way - `return starter()`, no extra create_task() wrapping).
         tasks = [starter() for starter in sensortask_wozi._collect_task_starters()]
-        tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(sensortask_wozi.watchdog)))
+        tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog)))
         try:
             await asyncio.sleep(_WDT_OVERRUN_WAIT_S)  # just over wdt.timeout_ms (8000 ms) - long enough that
             # a real, unintended stall (not just this test's own feed loop existing) is what keeps
             # the count at 0, not merely "not enough wall-clock time has passed yet".
-            assert sensortask_wozi.watchdog.would_have_triggered_count == 0
+            assert watchdog.would_have_triggered_count == 0
         finally:
             for task in tasks:
                 await _cancel(task)
@@ -603,7 +617,7 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
 # ---------------------------------------------------------------------------
 # Task-supervisor restart, end to end: a real task drawn from the REAL, full _collect_task_starters() list -
 # build_system()'s own object graph, not a synthetic list - actually dying and being rediscovered and
-# restarted by SystemService.start_and_check_tasks()'s real supervisor loop.
+# restarted by SystemService.supervise_tasks()'s real supervisor loop.
 #
 # Via the real get_task_starters() indirection, not a fake of the supervisor. The one test here that starts
 # the real full task list through the real supervisor rather than a hand-picked subset.
@@ -634,8 +648,10 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
             return task
 
         SystemService._start_task = _tracking_start_task  # type: ignore[method-assign]
-        supervisor_task = asyncio.get_event_loop().create_task(sysfunct.start_and_check_tasks(task_starters))
+        supervisor_task: asyncio.Task[None] | None = None
         try:
+            await sysfunct.start_tasks(task_starters)
+            supervisor_task = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             # bmp3xx.start_asy_trigger's task is a real event-wait loop with no I/O and no Timer armed here
             # - a side-effect-free task to kill and watch get restarted. The restart logic only ever checks
             # task.done(), never which task died, so the pick is representative.
@@ -648,10 +664,10 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
             assert first_task is not None and not first_task.done()
 
             first_task.cancel()  # a real task genuinely ending - the same observable state
-            # (task.done() == True) a real crash would leave behind; start_and_check_tasks() only
+            # (task.done() == True) a real crash would leave behind; the supervisor only
             # ever inspects .done(), never *why* a task ended.
             assert await _wait_until(lambda: len(started[target_idx]) == 2, timeout_s=_RESTART_WAIT_TIMEOUT_S), (
-                "start_and_check_tasks() never rediscovered and restarted the real dead task"
+                "supervise_tasks() never rediscovered and restarted the real dead task"
             )
             second_task = started[target_idx][1]
             assert second_task is not None
@@ -659,9 +675,11 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
             assert not second_task.done()
         finally:
             SystemService._start_task = real_start_task  # type: ignore[method-assign]
-            await _cancel(supervisor_task)  # only cancels the outer wrapper (see this file's own
-            # watchdog-section comment above) - every real started task is cancelled individually
-            # below too.
+            if supervisor_task is not None:
+                await _cancel(supervisor_task)  # the outer wrapper; its supervisor task and every real
+                # started task are cancelled on their own below (this file's watchdog-section comment).
+            if sysfunct._supervisor_task is not None:
+                await _cancel(sysfunct._supervisor_task)
             for tasks in started.values():
                 for task in tasks:
                     if task is not None:
@@ -681,7 +699,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
 
 # ---------------------------------------------------------------------------
 # Unretrieved task exceptions on the twin: the PC tier's report, installed by microtest before this file ran,
-# stays installed over the real start_and_check_tasks(), and a supervised task's death reaches the console at
+# stays installed over the real start_tasks(), and a supervised task's death reaches the console at
 # DebugLevel 0, death after death, with the heap where it was (SPECIFICATION.md Parts F.1 and I.4(e)).
 # ---------------------------------------------------------------------------
 
@@ -778,9 +796,9 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
     resets = machine.reset_count
 
     async def scenario() -> None:
-        await _boot(port)
-        sysfunct, watchdog = sensortask_wozi.sysfunct, sensortask_wozi.watchdog
-        assert sysfunct is not None and watchdog is not None
+        watchdog = await _boot(port)
+        sysfunct = sensortask_wozi.sysfunct
+        assert sysfunct is not None
         assert sysfunct.pr.set_level(0)
         task_starters = sensortask_wozi._collect_task_starters()
         status_idx = task_starters.index(sysfunct.start_asy_status)  # SYSTEM's own task: every device has it
@@ -796,8 +814,10 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         sysfunct._start_task = _tracking_start_task  # type: ignore[method-assign]
         fast = _FastSupervisorAsyncio()
         asy_system_service.asyncio = fast  # type: ignore[attr-defined, assignment]
-        supervisor = asyncio.get_event_loop().create_task(sysfunct.start_and_check_tasks(task_starters))
+        supervisor: asyncio.Task[None] | None = None
         try:
+            await sysfunct.start_tasks(task_starters)
+            supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert await _yield_until(lambda: all(starts)), starts
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
             sysfunct._uptime = _StatusFault()  # type: ignore[assignment]
@@ -821,7 +841,10 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
             sysfunct._uptime = real_uptime
             del sysfunct._start_task
             asy_system_service.asyncio = asyncio  # type: ignore[attr-defined]
-            await _cancel(supervisor)
+            if supervisor is not None:
+                await _cancel(supervisor)
+            if sysfunct._supervisor_task is not None:
+                await _cancel(sysfunct._supervisor_task)
             for task in latest:
                 # A dead one stays: the supervisor awaited it already, and a second await of a task whose first
                 # one raced asyncio's pending handler entry raises None, a segfault (SPECIFICATION.md Part F.1).
@@ -936,7 +959,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # --- Boot 1: real construction, the real timestamped FRAM backup chunk (SPECIFICATION.md Part A.7) write
             # through the real chain. ---
             machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
-            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            await _build(cfg_path, _next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             sgp1 = sensortask_wozi.sgp40
             # sgp_comp_callback reads scd30.get_data() for humidity compensation, without which _read_sgp()
@@ -970,7 +993,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # booting with the same chip attached (digital_twin/README.md's "FRAM persistence").
             machine.flush_fram()
             machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
-            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            await _build(cfg_path, _next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             assert sensortask_wozi.sgp40 is not sgp1  # a genuinely fresh object, not the same
             # instance surviving in memory - the whole point is that the persisted FRAM bytes, not
@@ -1014,7 +1037,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             # Boot 1: real construction, one real backup, flushed - the durable "last known good"
             # state everything below checks against.
             machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
-            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            await _build(cfg_path, _next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             sgp1 = sensortask_wozi.sgp40
             await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None, None, None))
@@ -1050,7 +1073,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             # which still only holds boot 1's flushed content - the second backup's write is
             # genuinely lost, exactly as an un-flushed write would be lost to a real power cycle.
             machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
-            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            await _build(cfg_path, _next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             assert sensortask_wozi.sgp40 is not sgp1  # genuinely fresh object, not memory surviving in-process
             sgp2 = sensortask_wozi.sgp40

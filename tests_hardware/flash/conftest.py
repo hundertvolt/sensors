@@ -2,8 +2,6 @@
 SCD30's on-chip NVM has a real write-wear budget, so this test group writes it at most once per
 pytest session, and only when --allow-persistence-writes is passed (see tests_hardware/conftest.py)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +18,7 @@ _SCD30_RW_SCRIPT_TIMEOUT_S = 90.0
 
 
 @pytest.fixture(scope="session")
-def scd30_continuous_measurement_triggered(board: Board, request: pytest.FixtureRequest) -> None:
+def scd30_continuous_measurement_triggered(board: "Board", request: pytest.FixtureRequest) -> None:
     # Runs scd30_same_device_rw_concurrency.py once per pytest session - the one real NVM-persisted
     # SCD30 write (set_ambient_pressure(), doubling as "trigger continuous measurement") this test
     # group issues. Session-scoped so every other dependent reuses it instead of repeating the write.

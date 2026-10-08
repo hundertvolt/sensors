@@ -2,8 +2,6 @@
 floats, and a repeat write after a reload from flash answers "Unchanged" (SPECIFICATION.md C.5). The
 float fields are rendered into the device script from the src/ schemas, never copied by hand."""
 
-from __future__ import annotations
-
 import re
 import sys
 from pathlib import Path
@@ -17,6 +15,7 @@ if TYPE_CHECKING:
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # the repo root, for buildgen
 
 from buildgen.schema_ast import extract_field_schemas
+from buildgen.signals import WARN_SIGNALS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -27,13 +26,12 @@ _SCRIPT = DEVICE_SCRIPTS / "config_float_round_trip.py"
 _PLACEHOLDER = 'FLOAT_FIELDS: "tuple[tuple[str, float, float], ...]" = ()'
 # asy_scd30_driver.py's float field lives in the chip's own NVM, not in a config file.
 _CHIP_STORES = ("asy_scd30_driver.py",)
-_SIGNAL_SCHEMA_RE = re.compile(r'"\(\("(\w+)", "float", ([-\d.]+), ([-\d.]+), ([-\d.]+), None\),\)"')
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
 def float_fields(repo_root: Path) -> list[tuple[str, float, float]]:
     # Every file-stored float field with both bounds: the src/ schemas, plus the notification signals'
-    # thresholds the generator emits (buildgen/codegen.py's _KNOWN_SIGNALS).
+    # float thresholds the generator emits from buildgen/signals.py's WARN_SIGNALS.
     found: dict[str, tuple[float, float]] = {}
     for path in sorted((repo_root / "src").glob("*.py")):
         if path.name in _CHIP_STORES:
@@ -41,8 +39,10 @@ def float_fields(repo_root: Path) -> list[tuple[str, float, float]]:
         for name, (kind, _default, lo, hi, _special) in extract_field_schemas(path).items():
             if kind == "float" and isinstance(lo, float) and isinstance(hi, float):
                 found[name] = (lo, hi)
-    for name, _default, lo, hi in _SIGNAL_SCHEMA_RE.findall((repo_root / "buildgen" / "codegen.py").read_text(encoding="utf-8")):
-        found[name] = (float(lo), float(hi))
+    signals = [warn for warn in WARN_SIGNALS.values() if warn.field_type == "float"]
+    assert signals, "WARN_SIGNALS holds no float threshold - the signal half of this test would cover nothing"
+    for warn in signals:
+        found[warn.name] = (float(warn.min), float(warn.max))
     return [(name, lo, hi) for name, (lo, hi) in sorted(found.items())]
 
 
@@ -53,7 +53,7 @@ def rendered_script(repo_root: Path) -> str:
 
 
 @pytest.mark.persistence_write
-def test_config_floats_round_trip_unchanged(board: Board, tmp_path: Path) -> None:
+def test_config_floats_round_trip_unchanged(board: "Board", tmp_path: Path) -> None:
     script = tmp_path / _SCRIPT.name
     script.write_text(rendered_script(REPO_ROOT), encoding="utf-8")
     output = board.run_isolated(script)

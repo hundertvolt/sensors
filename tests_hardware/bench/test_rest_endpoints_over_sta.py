@@ -2,8 +2,6 @@
 the *normal* STA/bridge network path (see tests_hardware/README.md). Bounds mirror the flash-tier
 isolated-driver plausibility scripts' own datasheet-sourced bounds - loose plausibility, not exact-reference calibration."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import http_client
@@ -40,7 +38,7 @@ _REBOOT_READY_TIMEOUT_S = 120.0
 _REBOOT_READY_POLL_S = 3.0
 
 
-def test_real_static_website_content_serves_over_the_normal_bridge_network(board: Board, dut_ip: str) -> None:
+def test_real_static_website_content_serves_over_the_normal_bridge_network(board: "Board", dut_ip: str) -> None:
     res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200, f"GET / over the normal bridge network failed: {res.status_code} {res.body!r}"
     # 200-and-non-empty passes for another device's build too, so the body is checked against this
@@ -54,7 +52,7 @@ def test_real_static_website_content_serves_over_the_normal_bridge_network(board
 # ---------------------------------------------------------------------------
 
 
-def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(board: Board, dut_ip: str) -> None:
+def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(board: "Board", dut_ip: str) -> None:
     res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200, f"GET /measurements failed: {res.status_code} {res.body!r}"
     body = res.json()
@@ -99,7 +97,7 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
 # ---------------------------------------------------------------------------
 
 
-def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
     before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
     assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
     assert before.json()["system"]["MemPaused"] is False, "storage was already paused before this test ran - a previous test left the bench in a paused state"
@@ -134,7 +132,7 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 
 
 @pytest.mark.persistence_write
-def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
     # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
     # dispatch-only Calibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
     # tests_scripts/test_persistence_write_marker_completeness.py would fail without the marker.

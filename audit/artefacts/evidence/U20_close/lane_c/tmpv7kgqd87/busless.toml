@@ -1,0 +1,13 @@
+[device]
+name = "Test"
+hostname = "SensorStationTest"
+hotspot_password = "12345678"
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
+[device.wiring]
+led_target = "neopixel"
+
+[[instance]]
+driver = "neopixel"
+pin = 15

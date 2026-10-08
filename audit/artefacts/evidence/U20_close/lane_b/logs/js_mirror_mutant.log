@@ -1,0 +1,269 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b
+      API started at http://localhost:63315/
+
+ ❯ |chromium| tests_js/mock-server.test.js (100 tests | 6 failed | 94 skipped) 1970ms
+   ❯ installMockFetch (100)
+     ↓ runs on fixture definitions the site's own validator accepts
+     ↓ answers GET /sensors from the fixture
+     ↓ passes non-REST paths through to the real fetch
+     ↓ validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged
+     ↓ marks an in-range changed value as Valid and persists it for the next GET
+     ↓ resets error counters and refills history with no-error placeholders (real reset() never shrinks it)
+     ↓ leaves error counters untouched when ResetErrors is absent
+     ↓ validates PUT /networking against the networking group's own field defs
+     ↓ finds a fixture field for every shape the shared corpus names
+     ↓ answers a hostLabel field (Hostname) PUT of "SensorNode" with Valid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "SensorStation7" with Valid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a" with Valid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a-b" with Valid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "A1-b2" with Valid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "-a" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a-" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a b" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a.b" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a_b" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "a\u0000b" with Invalid, as the server's shape check does
+     ↓ answers a hostLabel field (Hostname) PUT of "ä" with Invalid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "DE" with Valid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "XX" with Valid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "de" with Invalid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "D1" with Invalid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "ZZZ" with Invalid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "Z" with Invalid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "D\u0000" with Invalid, as the server's shape check does
+     ↓ answers a countryCode field (Country) PUT of "DÉ" with Invalid, as the server's shape check does
+     ↓ answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does
+     ↓ answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does
+     ↓ answers a hostName field (NTPHost) PUT of "-a.b" with Invalid, as the server's shape check does
+     ↓ answers a hostName field (NTPHost) PUT of "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" with Invalid, as the server's shape check does
+     ↓ answers a hostName field (NTPHost) PUT of "a..b" with Invalid, as the server's shape check does
+     ↓ answers a hostName field (NTPHost) PUT of "a b" with Invalid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8," with Invalid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "a.b.c.d" with Invalid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1" with Invalid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8 ,1.1.1.1" with Invalid, as the server's shape check does
+     ↓ answers a ipv4List field (DNSFallback) PUT of "256.1.1.1" with Invalid, as the server's shape check does
+     ↓ accepts a string field's schema special before its length bounds, as the server does
+     ↓ bounds a byte-bounded string in UTF-8 bytes, not characters
+     ↓ validates PUT /system's SystemCmd against the fixed real command set: "reboot" answers Valid
+     ↓ validates PUT /system's SystemCmd against the fixed real command set: "bootloader" answers Valid
+     ↓ validates PUT /system's SystemCmd against the fixed real command set: "mempause" answers Valid
+     ↓ validates PUT /system's SystemCmd against the fixed real command set: "resetconfig" answers Valid
+     ↓ validates PUT /system's SystemCmd against the fixed real command set: "erasefram" answers Valid
+     × answers Valid for every SystemCmd option device arzi's generated definitions offer 540ms
+     × answers Valid for every SystemCmd option device dev's generated definitions offer 301ms
+     × answers Valid for every SystemCmd option device grkizi's generated definitions offer 267ms
+     × answers Valid for every SystemCmd option device klkizi's generated definitions offer 290ms
+     × answers Valid for every SystemCmd option device schlafzi's generated definitions offer 304ms
+     × answers Valid for every SystemCmd option device wozi's generated definitions offer 263ms
+     ↓ answers the SystemCmd near miss "Reboot" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "reboot " with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss " reboot" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "reb" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "rebootx" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "ResetConfig" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "reset_config" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "resetconfig " with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "EraseFRAM" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss "erase_fram" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss " erasefram" with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss 1 with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss null with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss ["reboot"] with Invalid: only the whole word runs a command
+     ↓ answers the SystemCmd near miss {} with Invalid: only the whole word runs a command
+     ↓ answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included
+     ↓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it)
+     ↓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting
+     ↓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting
+     ↓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed
+     ↓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied
+     ↓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied
+     ↓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all
+     ↓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all
+     ↓ masks PW (and HotspotPW) on every GET /networking, whatever was applied
+     ↓ increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched
+     ↓ jitters a nested measurement sub-object's leaves too, not just the top level
+     ↓ never jitters a non-negative measurement leaf into a negative one
+     ↓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC
+     ↓ accepts Calibrate repeatedly - it is a trigger, not a one-shot
+     ↓ answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally
+     ↓ answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map
+     ↓ answers a PUT /sensors entry null that is not an object with Invalid in place of its field map
+     ↓ answers a PUT /sensors entry [1] that is not an object with Invalid in place of its field map
+     ↓ answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map
+     ↓ rejects an unsupported HTTP method with a 405
+     ↓ injects exactly one network failure via controls.nextFailure, then serves normally again
+     ↓ injects exactly one HTTP error status via controls.nextFailure, then serves normally again
+     ↓ injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly
+     ↓ injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission
+     ↓ injects an empty-body failure: HTTP 200 with a zero-length body
+     ↓ injects a partial-result failure: one submitted field silently missing from a successful PUT's result
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device arzi's generated definitions offer
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device dev's generated definitions offer
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device grkizi's generated definitions offer
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device klkizi's generated definitions offer
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device schlafzi's generated definitions offer
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device wozi's generated definitions offer
+AssertionError: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Valid-for-every-SystemCmd-option-device-arzi-s-generated-definitions-offer.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Valid-for-every-SystemCmd-option-device-dev-s-generated-definitions-offer.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Valid-for-every-SystemCmd-option-device-grkizi-s-generated-definitions-offer.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Valid-for-every-SystemCmd-option-device-klkizi-s-generated-definitions-offer.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Valid-for-every-SystemCmd-option-device-schlafzi-s-generated-definitions-offer.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-Valid-for-every-SystemCmd-option-device-wozi-s-generated-definitions-offer.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "Valid",[22m
+[2m    "Valid",[22m
+[2m    "Valid",[22m
+[32m-   "Valid",[39m
+[32m-   "Valid",[39m
+[31m+   "Invalid",[39m
+[31m+   "Invalid",[39m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:333:25
+    331|             return (await response.json()).result.SystemCmd;
+    332|         }));
+    333|         expect(answers).toEqual(words.map(() => "Valid"));
+       |                         ^
+    334|     });
+    335|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.Cigb0uSy-BEOvKO87.js?v=545b542e:4951:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 94 skipped (100)
+   Start at  11:26:59
+   Duration  5.45s (tests 69%, worker 20%, import 11%)
+
+== Summary: npm test ==
+Commit: db6ce58 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 6 · skipped 94 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device arzi's generated definitions offer: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device dev's generated definitions offer: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device grkizi's generated definitions offer: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device klkizi's generated definitions offer: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device schlafzi's generated definitions offer: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+  - tests_js/mock-server.test.js > installMockFetch > answers Valid for every SystemCmd option device wozi's generated definitions offer: expected [ 'Valid', 'Valid', 'Valid', …(2) ] to deeply equal [ 'Valid', 'Valid', 'Valid', …(2) ]
+Skipped:
+  - tests_js/mock-server.test.js > installMockFetch > runs on fixture definitions the site's own validator accepts: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers GET /sensors from the fixture: skip
+  - tests_js/mock-server.test.js > installMockFetch > passes non-REST paths through to the real fetch: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged: skip
+  - tests_js/mock-server.test.js > installMockFetch > marks an in-range changed value as Valid and persists it for the next GET: skip
+  - tests_js/mock-server.test.js > installMockFetch > resets error counters and refills history with no-error placeholders (real reset() never shrinks it): skip
+  - tests_js/mock-server.test.js > installMockFetch > leaves error counters untouched when ResetErrors is absent: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /networking against the networking group's own field defs: skip
+  - tests_js/mock-server.test.js > installMockFetch > finds a fixture field for every shape the shared corpus names: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "SensorNode" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "SensorStation7" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a-b" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "A1-b2" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "-a" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a-" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a.b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a_b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "a\u0000b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostLabel field (Hostname) PUT of "ä" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "DE" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "XX" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "de" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "D1" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "ZZZ" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "Z" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "D\u0000" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a countryCode field (Country) PUT of "DÉ" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "-a.b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "a..b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "a b" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8," with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "a.b.c.d" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8 ,1.1.1.1" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "256.1.1.1" with Invalid, as the server's shape check does: skip
+  - tests_js/mock-server.test.js > installMockFetch > accepts a string field's schema special before its length bounds, as the server does: skip
+  - tests_js/mock-server.test.js > installMockFetch > bounds a byte-bounded string in UTF-8 bytes, not characters: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /system's SystemCmd against the fixed real command set: "reboot" answers Valid: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /system's SystemCmd against the fixed real command set: "bootloader" answers Valid: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /system's SystemCmd against the fixed real command set: "mempause" answers Valid: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /system's SystemCmd against the fixed real command set: "resetconfig" answers Valid: skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /system's SystemCmd against the fixed real command set: "erasefram" answers Valid: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "Reboot" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "reboot " with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss " reboot" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "reb" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "rebootx" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "ResetConfig" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "reset_config" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "resetconfig " with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "EraseFRAM" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss "erase_fram" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss " erasefram" with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss 1 with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss null with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss ["reboot"] with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers the SystemCmd near miss {} with Invalid: only the whole word runs a command: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included: skip
+  - tests_js/mock-server.test.js > installMockFetch > never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it): skip
+  - tests_js/mock-server.test.js > installMockFetch > validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting: skip
+  - tests_js/mock-server.test.js > installMockFetch > dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting: skip
+  - tests_js/mock-server.test.js > installMockFetch > refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed: skip
+  - tests_js/mock-server.test.js > installMockFetch > dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied: skip
+  - tests_js/mock-server.test.js > installMockFetch > runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied: skip
+  - tests_js/mock-server.test.js > installMockFetch > dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all: skip
+  - tests_js/mock-server.test.js > installMockFetch > dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all: skip
+  - tests_js/mock-server.test.js > installMockFetch > masks PW (and HotspotPW) on every GET /networking, whatever was applied: skip
+  - tests_js/mock-server.test.js > installMockFetch > increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched: skip
+  - tests_js/mock-server.test.js > installMockFetch > jitters a nested measurement sub-object's leaves too, not just the top level: skip
+  - tests_js/mock-server.test.js > installMockFetch > never jitters a non-negative measurement leaf into a negative one: skip
+  - tests_js/mock-server.test.js > installMockFetch > omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC: skip
+  - tests_js/mock-server.test.js > installMockFetch > accepts Calibrate repeatedly - it is a trigger, not a one-shot: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry 5 that is not an object with Invalid in place of its field map: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry null that is not an object with Invalid in place of its field map: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry [1] that is not an object with Invalid in place of its field map: skip
+  - tests_js/mock-server.test.js > installMockFetch > answers a PUT /sensors entry "x" that is not an object with Invalid in place of its field map: skip
+  - tests_js/mock-server.test.js > installMockFetch > rejects an unsupported HTTP method with a 405: skip
+  - tests_js/mock-server.test.js > installMockFetch > injects exactly one network failure via controls.nextFailure, then serves normally again: skip
+  - tests_js/mock-server.test.js > installMockFetch > injects exactly one HTTP error status via controls.nextFailure, then serves normally again: skip
+  - tests_js/mock-server.test.js > installMockFetch > injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly: skip
+  - tests_js/mock-server.test.js > installMockFetch > injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission: skip
+  - tests_js/mock-server.test.js > installMockFetch > injects an empty-body failure: HTTP 200 with a zero-length body: skip
+  - tests_js/mock-server.test.js > installMockFetch > injects a partial-result failure: one submitted field silently missing from a successful PUT's result: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

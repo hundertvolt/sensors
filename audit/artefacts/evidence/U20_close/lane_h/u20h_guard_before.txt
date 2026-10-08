@@ -1,0 +1,198 @@
+scripts/_digital_twin_ci_suite.py:9: imports annotations from __future__ - host code evaluates its annotations natively
+scripts/_render_coverage.py:9: imports annotations from __future__ - host code evaluates its annotations natively
+scripts/_strip_type_checking.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+scripts/build_firmware.py:14: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/dns_probe.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:84: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:88: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:88: `Iterator` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:97: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:97: `Iterator` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:222: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:290: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:371: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:371: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:460: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_bus_concurrency_under_api_load.py:549: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_end_to_end_timing.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_end_to_end_timing.py:57: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_end_to_end_timing.py:129: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_end_to_end_timing.py:160: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_heap_under_connection_ceiling.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_heap_under_connection_ceiling.py:138: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_heap_under_connection_ceiling.py:138: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:6: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_hotspot_role_reversal.py:71: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:102: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:102: `Iterator` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:181: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:209: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:215: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:223: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:399: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:426: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_hotspot_role_reversal.py:440: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_memory_stress_bench.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_memory_stress_bench.py:48: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_memory_stress_bench.py:120: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_memory_stress_bench.py:136: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_memory_stress_bench.py:162: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_network_resilience.py:124: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:124: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:166: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:166: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:234: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:266: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:283: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:313: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:344: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:391: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:422: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:464: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:527: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:606: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_network_resilience.py:938: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_rest_endpoints_over_sta.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_rest_endpoints_over_sta.py:43: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_rest_endpoints_over_sta.py:57: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_rest_endpoints_over_sta.py:102: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_rest_endpoints_over_sta.py:102: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_rest_endpoints_over_sta.py:137: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_rest_endpoints_over_sta.py:137: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:46: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:86: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:125: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:154: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_sensor_config_push_over_real_hardware.py:170: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_serving_heap_at_default_gc.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_serving_heap_at_default_gc.py:121: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_serving_heap_at_default_gc.py:121: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_serving_heap_at_default_gc.py:121: `Iterator` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_serving_heap_at_default_gc.py:121: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_serving_heap_at_default_gc.py:127: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_serving_heap_at_default_gc.py:141: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_uart_link_under_api_load.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_uart_link_under_api_load.py:79: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_uart_link_under_api_load.py:130: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_uart_link_under_api_load.py:178: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_wifi_networking.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench/test_wifi_networking.py:42: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_wifi_networking.py:42: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench/test_wifi_networking.py:99: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench_control.py:6: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/bench_control.py:118: `Iterable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/bench_control.py:125: `Iterable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/conftest.py:6: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/conftest.py:141: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/conftest.py:167: `Iterator` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/conftest.py:179: `Iterator` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/error_log_helpers.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/error_log_helpers.py:126: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/conftest.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/conftest.py:23: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_bus_concurrency.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_bus_electrical_timing.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_bus_electrical_timing.py:40: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_bus_electrical_timing.py:51: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_bus_electrical_timing.py:64: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_bus_electrical_timing.py:75: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_bus_electrical_timing.py:89: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_bus_electrical_timing.py:122: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_config_float_round_trip.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_config_float_round_trip.py:56: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_fram_storage.py:38: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:50: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:59: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:70: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:74: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:90: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:104: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:115: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:128: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:139: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_fram_storage.py:150: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_memory_stress.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_memory_stress.py:46: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_memory_stress.py:102: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_reboot_persistence.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_sensor_accuracy.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_sensor_accuracy.py:43: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:52: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:59: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:69: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:81: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:90: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:103: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_sensor_accuracy.py:115: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_task_supervisor.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_task_supervisor.py:24: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_toolchain_flash_boot.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_uart_crossover.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_uart_crossover.py:33: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_uart_crossover.py:51: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_uart_crossover.py:59: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_uart_crossover.py:66: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_uart_crossover.py:74: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_uart_crossover.py:81: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_uart_crossover.py:88: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_unretrieved_task_exception_handler.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/flash/test_unretrieved_task_exception_handler.py:30: `Board` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/flash/test_watchdog_starvation.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/harness.py:6: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/harness.py:172: `Any` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/harness.py:244: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/harness.py:278: `Board` is not defined yet when this annotation is evaluated - quote it
+tests_hardware/harness.py:278: `BenchBridge` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/harness.py:306: `threading` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/heap_map.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/http_client.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/isl29125_conformance.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/manual_bus_electrical.py:3: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/manual_persistence.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/manual_sensor_accuracy.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/manual_toolchain.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/manual_wifi.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/runner.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/manual/runner.py:60: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/manual/runner.py:66: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/manual/runner.py:66: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/manual/runner.py:66: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/manual/runner.py:67: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/manual/runner.py:67: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/ntp_probe.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/rogue_udp_responder.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/rogue_udp_responder.py:46: `RogueUdpResponder` is not defined yet when this annotation is evaluated - quote it
+tests_hardware/soak_tiers.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/website_identity.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_hardware/website_identity.py:24: `HttpResponse` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_hardware/website_identity.py:46: `HttpResponse` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_bench_harness_helpers.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_bench_harness_helpers.py:30: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_bench_restores_serving.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_comment_block_cap.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_device_script_config_flush.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_device_script_gc_threshold.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_digital_twin_boot_contiguity.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_digital_twin_boot_contiguity.py:157: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:206: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:220: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:234: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:248: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:263: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:275: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:322: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_boot_contiguity.py:367: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_digital_twin_generated_boot.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_digital_twin_generated_boot.py:201: `Callable` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_exception_handler_contract.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_exception_handler_contract.py:649: `ModuleType` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_exception_handler_contract.py:672: `ModuleType` is imported under TYPE_CHECKING only - quote it in this annotation
+tests_scripts/test_heap_map_parser.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+tests_scripts/test_twin_never_needs_tests_on_its_path.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+toolchain/micropython_overrides.py:5: imports annotations from __future__ - host code evaluates its annotations natively
+toolchain/setup_toolchain.py:10: imports annotations from __future__ - host code evaluates its annotations natively
+197 findings in 58 files; future: 58 ; scanned 192

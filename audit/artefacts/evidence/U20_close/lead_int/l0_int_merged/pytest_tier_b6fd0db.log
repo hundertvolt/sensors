@@ -1,0 +1,1246 @@
+........................................................................ [  1%]
+........................................................................ [  3%]
+...........ssssss....................................................... [  5%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 29%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 50%]
+........................................................................ [ 52%]
+..............F......................................................... [ 54%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................F............... [ 67%]
+....................................................FFFFFFFFFFFFFFFFFFFF [ 69%]
+F.sFssss.FF............................................................. [ 71%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 78%]
+...................F.................................................... [ 80%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+........................................................................ [ 85%]
+...........F............................................................ [ 87%]
+........................................................................ [ 89%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 98%]
+..................................................................       [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{t}" for p, t in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           SPECIFICATION.md	WP6
+E           tests_hardware/README.md	Topic 6
+E           tests_hardware/README.md	WP3
+E           tests_hardware/README.md	WP3
+E       assert not [('SPECIFICATION.md', 'WP6'), ('tests_hardware/README.md', 'Topic 6'), ('tests_hardware/README.md', 'WP3'), ('tests_hardware/README.md', 'WP3')]
+
+tests_scripts/test_citations.py:256: AssertionError
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           buildgen/driver_registry.py: The facts below are cached by the file's text (each caller has parsed it first),
+E           buildgen/schema_ast.py: Cached by the text, never the path, and immutable: a rewritten file is scanned a
+E           tests_scripts/test_buildgen_driver_registry.py: Every fact is cached by the file's text, never its path: a rewritten file is rea
+E           tests_scripts/test_buildgen_tag_comments.py: The verdict is cached by the tokens, never by the path: a fixed or a newly broke
+E       assert not [('buildgen/driver_registry.py', "The facts below are cached by the file's text (each caller has parsed it first),"), ...ts/test_buildgen_tag_comments.py', 'The verdict is cached by the tokens, never by the path: a fixed or a newly broke')]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+_____________ test_the_setup_batch_places_its_survivors_low[arzi] ______________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
+        # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
+        # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'arzi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for arzi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+______________ test_the_setup_batch_places_its_survivors_low[dev] ______________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
+        # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
+        # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+____________ test_the_setup_batch_places_its_survivors_low[grkizi] _____________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
+        # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
+        # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'grkizi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_grkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for grkizi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_grkizi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_grkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+____________ test_the_setup_batch_places_its_survivors_low[klkizi] _____________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
+        # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
+        # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'klkizi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_klkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for klkizi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_klkizi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_klkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+___________ test_the_setup_batch_places_its_survivors_low[schlafzi] ____________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
+        # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
+        # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'schlafzi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...generated_src/sensortask_schlafzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for schlafzi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_schlafzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...generated_src/sensortask_schlafzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_____________ test_the_setup_batch_places_its_survivors_low[wozi] ______________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
+        # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
+        # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:210: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'wozi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_wozi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for wozi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_wozi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_________ test_the_whole_boot_sequence_places_its_survivors_low[arzi] __________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
+        # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
+        # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'arzi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for arzi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+__________ test_the_whole_boot_sequence_places_its_survivors_low[dev] __________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
+        # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
+        # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+________ test_the_whole_boot_sequence_places_its_survivors_low[grkizi] _________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
+        # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
+        # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'grkizi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_grkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for grkizi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_grkizi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_grkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+________ test_the_whole_boot_sequence_places_its_survivors_low[klkizi] _________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
+        # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
+        # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'klkizi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_klkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for klkizi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_klkizi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_klkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_______ test_the_whole_boot_sequence_places_its_survivors_low[schlafzi] ________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
+        # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
+        # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'schlafzi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...generated_src/sensortask_schlafzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for schlafzi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_schlafzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...generated_src/sensortask_schlafzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_________ test_the_whole_boot_sequence_places_its_survivors_low[wozi] __________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
+        # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
+        # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
+>       maps = boot_probe(device, _ARM_LIVE).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'wozi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_wozi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for wozi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_wozi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_______ test_suppressing_the_placement_collects_breaks_both_bounds[dev] ________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    def test_suppressing_the_placement_collects_breaks_both_bounds(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The control arm, and the reason the bounds above mean anything: a bound the broken
+        # configuration also satisfies is not a guard. The arm keeps only the seam's own anchor collect
+        # (both arms need it to be comparable) and drops the per-module ones, so this UNDERSTATES.
+>       maps = boot_probe(device, _ARM_SUPPRESSED).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:238: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'suppressed'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/suppressed (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+____ test_the_live_arm_places_strictly_deeper_than_the_suppressed_one[dev] _____
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    def test_the_live_arm_places_strictly_deeper_than_the_suppressed_one(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # The mechanism as a RATIO between the two arms of the same run, which is what the absolute
+        # bounds above only approximate: no unit, no heap-size term, and no margin spent on the gap
+        # between devices. A change that moved both arms together would pass every bound and fail here.
+>       live, suppressed = boot_probe(device, _ARM_LIVE).maps, boot_probe(device, _ARM_SUPPRESSED).maps
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:252: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+___________ test_the_collects_move_placement_and_not_retention[dev] ____________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    def test_the_collects_move_placement_and_not_retention(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # I.4(f.1)'s central claim as an assertion rather than a doc sentence: a placement reset, not
+        # hygiene. If the arms ever diverge on how much SURVIVES, the collects have started compensating
+        # for a leak, and the exception's whole justification has changed.
+>       live = boot_probe(device, _ARM_LIVE).maps["after_batch"].used_bytes
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:267: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+__ test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[arzi] ___
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
+        boot_probe: Callable[[str, str], _ProbeRun],
+        repo_root: Path,
+        device: str,
+    ) -> None:
+        # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+        # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+        # keeps that anchor honest, and it is what then fails.
+>       counters = boot_probe(device, _ARM_LIVE).counters
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:282: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'arzi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for arzi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+___ test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[dev] ___
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
+        boot_probe: Callable[[str, str], _ProbeRun],
+        repo_root: Path,
+        device: str,
+    ) -> None:
+        # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+        # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+        # keeps that anchor honest, and it is what then fails.
+>       counters = boot_probe(device, _ARM_LIVE).counters
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:282: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_ test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[grkizi] __
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
+        boot_probe: Callable[[str, str], _ProbeRun],
+        repo_root: Path,
+        device: str,
+    ) -> None:
+        # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+        # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+        # keeps that anchor honest, and it is what then fails.
+>       counters = boot_probe(device, _ARM_LIVE).counters
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:282: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'grkizi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_grkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for grkizi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_grkizi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_grkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_ test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[klkizi] __
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
+        boot_probe: Callable[[str, str], _ProbeRun],
+        repo_root: Path,
+        device: str,
+    ) -> None:
+        # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+        # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+        # keeps that anchor honest, and it is what then fails.
+>       counters = boot_probe(device, _ARM_LIVE).counters
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:282: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'klkizi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_klkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for klkizi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_klkizi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...d/generated_src/sensortask_klkizi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_ test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[schlafzi] _
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
+        boot_probe: Callable[[str, str], _ProbeRun],
+        repo_root: Path,
+        device: str,
+    ) -> None:
+        # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+        # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+        # keeps that anchor honest, and it is what then fails.
+>       counters = boot_probe(device, _ARM_LIVE).counters
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:282: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'schlafzi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...generated_src/sensortask_schlafzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for schlafzi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_schlafzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...generated_src/sensortask_schlafzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+__ test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[wozi] ___
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int')
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
+        boot_probe: Callable[[str, str], _ProbeRun],
+        repo_root: Path,
+        device: str,
+    ) -> None:
+        # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+        # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+        # keeps that anchor honest, and it is what then fails.
+>       counters = boot_probe(device, _ARM_LIVE).counters
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:282: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'wozi', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_wozi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for wozi/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_wozi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...ild/generated_src/sensortask_wozi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+________ test_the_uart_receive_rings_land_with_the_boot_survivors[dev] _________
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+        # Each link allocates its DMA ring in its own setup(), a unit of the one-time batch, so the placement
+        # reset puts it low with the other survivors (SPECIFICATION.md I.4(f.1)), and its address never moves:
+        # the same ring after the starter loop, nothing reallocated once the batch ended.
+        if device not in _uart_link_devices():
+            pytest.skip(f"{device} builds no UART link, so it has no receive ring")
+>       run = boot_probe(device, _ARM_LIVE)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:328: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_ test_the_control_device_batch_creates_enough_firmware_survivors[collects-dev] _
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev', arm = 'collects'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    @pytest.mark.parametrize("arm", [_ARM_LIVE, _ARM_SUPPRESSED])
+    def test_the_control_device_batch_creates_enough_firmware_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str, arm: str) -> None:
+        # A control device whose batch leaves only a few blocks makes the arms' medians noise, as wozi's do.
+>       maps = boot_probe(device, arm).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:369: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'collects'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/collects (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+_ test_the_control_device_batch_creates_enough_firmware_survivors[suppressed-dev] _
+
+boot_probe = <function boot_probe.<locals>.run at 0x7fc391ab7380>
+device = 'dev', arm = 'suppressed'
+
+    @pytest.mark.parametrize("device", _CONTROL_DEVICES)
+    @pytest.mark.parametrize("arm", [_ARM_LIVE, _ARM_SUPPRESSED])
+    def test_the_control_device_batch_creates_enough_firmware_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str, arm: str) -> None:
+        # A control device whose batch leaves only a few blocks makes the arms' medians noise, as wozi's do.
+>       maps = boot_probe(device, arm).maps
+               ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_scripts/test_digital_twin_boot_contiguity.py:369: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests_scripts/test_digital_twin_boot_contiguity.py:177: in run
+    cache[key] = _checked_probe_run(device, arm, completed)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 'dev', arm = 'suppressed'
+completed = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='')
+
+    def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
+        # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
+        # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
+        tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
+>       assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
+E       AssertionError: the probe failed for dev/suppressed (exit 1):
+E         Traceback (most recent call last):
+E           File "tests/_boot_contiguity_probe.py", line 206, in <module>
+E           File "asyncio/core.py", line 1, in run
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "asyncio/core.py", line 1, in run_until_complete
+E           File "tests/_boot_contiguity_probe.py", line 150, in _main
+E           File "build/generated_src/sensortask_dev.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-standard/micropython', '-X', 'heapsize=16M',...uild/generated_src/sensortask_dev.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_digital_twin_boot_contiguity.py:128: AssertionError
+________ test_outside_the_images_only_the_named_files_load_dynamically _________
+
+    def test_outside_the_images_only_the_named_files_load_dynamically() -> None:
+        found = unnamed_host_sites(repo_files())
+>       assert not found, "a dynamic load outside SPECIFICATION.md F.1's named list - make it static, or name it there:\n" + "\n".join(f"  {p}:{line} {what}" for p, line, what in found)
+E       AssertionError: a dynamic load outside SPECIFICATION.md F.1's named list - make it static, or name it there:
+E           tests_scripts/test_buildgen_error_contract.py:154 importlib
+E       assert not [('tests_scripts/test_buildgen_error_contract.py', 154, 'importlib')]
+
+tests_scripts/test_import_graph.py:283: AssertionError
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_scripts/test_buildgen_locale.py: [(19, 'dev.toml')]
+E       assert not {'tests_scripts/test_buildgen_locale.py': [(19, 'dev.toml')]}
+
+tests_scripts/test_no_variant_literals.py:201: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:287: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:457: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20int/tests_hardware/bench/test_bus_concurrency_under_api_load.py:546: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================= slowest 25 durations =============================
+16.90s setup    tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+16.03s call     tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+15.00s setup    tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+12.78s call     tests_scripts/test_lock_order.py::test_an_unlevelled_row_nested_with_another_fails
+12.51s call     tests_scripts/test_import_graph.py::test_a_planted_import_in_a_frozen_module_fails_naming_every_device_and_the_site
+11.52s call     tests_scripts/test_buildgen_fuzz.py::test_a_mutated_device_builds_or_fails_with_a_build_error
+8.55s call     tests_scripts/test_lint_ceilings.py::test_every_function_above_max_args_is_exactly_the_exempt_set
+8.51s call     tests_scripts/test_lint_ceilings.py::test_the_ast_count_agrees_with_ruff_on_every_file_without_an_exemption
+8.32s call     tests_scripts/test_js_coverage_report_dir.py::test_the_report_directory_is_not_a_name_this_repo_imports
+8.00s call     tests_scripts/test_ticks_wrap_scan.py::test_a_stored_attribute_compared_in_another_method_fails
+7.65s call     tests_scripts/test_ticks_wrap_scan.py::test_a_ticks_add_delta_at_the_horizon_fails
+7.64s call     tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+7.51s call     tests_scripts/test_memory_error_gate_agreement.py::test_the_marker_free_wording_is_actually_in_use
+7.26s call     tests_scripts/test_task_inventory.py::test_the_table_and_the_starters_both_carry_sites
+7.18s call     tests_scripts/test_ticks_wrap_scan.py::test_a_listed_user_binding_no_tick_fails
+6.17s call     tests_scripts/test_import_graph.py::test_the_graph_sees_every_sensor_driver
+6.10s call     tests_scripts/test_buildgen_generate.py::test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart[wozi-expected1]
+6.09s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[wiring.default-key-missing]
+6.03s call     tests_scripts/test_watchdog_feed_sites.py::test_a_reboot_feed_after_the_arm_fails
+5.91s call     tests_scripts/test_stored_config_golden.py::test_both_derivations_of_the_stored_config_agree[dev]
+5.91s call     tests_scripts/test_watchdog_feed_sites.py::test_a_feed_in_a_timer_constructor_callback_fails
+5.90s call     tests_scripts/test_stored_config_golden.py::test_a_construction_the_model_does_not_know_fails[wozi]
+5.41s call     tests_scripts/test_readiness_gates.py::test_a_flag_never_true_in_setup_fails
+5.39s call     tests_scripts/test_stored_config_golden.py::test_a_construction_the_model_does_not_know_fails[arzi]
+5.37s call     tests_scripts/test_setter_contract.py::test_a_push_registered_outside_init_fails
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[arzi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[grkizi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[klkizi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[schlafzi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[wozi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[arzi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[grkizi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[klkizi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[schlafzi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[wozi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_suppressing_the_placement_collects_breaks_both_bounds[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_live_arm_places_strictly_deeper_than_the_suppressed_one[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_collects_move_placement_and_not_retention[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[arzi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[grkizi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[klkizi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[schlafzi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[wozi]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_uart_receive_rings_land_with_the_boot_survivors[dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_control_device_batch_creates_enough_firmware_survivors[collects-dev]
+FAILED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_control_device_batch_creates_enough_firmware_survivors[suppressed-dev]
+FAILED tests_scripts/test_import_graph.py::test_outside_the_images_only_the_named_files_load_dynamically
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+SKIPPED [6] tests_scripts/test_build_firmware.py:200: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: arzi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: grkizi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: klkizi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: schlafzi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: wozi builds no UART link, so it has no receive ring
+28 failed, 3915 passed, 11 skipped, 3 warnings in 624.25s (0:10:24)
+exit 1 in 651 s

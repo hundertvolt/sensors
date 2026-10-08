@@ -1,0 +1,60 @@
+# Files left out of evidence_stage_u20 by the brief's rules, one per line: evidence path | rule | matched tracked file | source (relative to the scratchpad)
+# a = git blob equals a tracked blob (wt-u20int HEAD af2d0fc, 7efb5f2, or any commit between); b = basename of a tracked .py/.js/.mjs/.ts/.toml/.sh/.json/.css/.html/.md file; c = 90% or more of its non-blank lines in one tracked text file of HEAD or 7efb5f2
+
+lane_s/before.test_ntp_fram_system_integration.py.cov.log | a | blob 97cd64df0ee3 = audit/artefacts/evidence/U15_close/integration/mp_test_ntp_fram_system_integration_gc-1.log@af2d0fc | u20s_work/before.test_ntp_fram_system_integration.py.cov.log
+lane_s/before.test_ntp_fram_system_integration.py.std.log | a | blob 97cd64df0ee3 = audit/artefacts/evidence/U15_close/integration/mp_test_ntp_fram_system_integration_gc-1.log@af2d0fc | u20s_work/before.test_ntp_fram_system_integration.py.std.log
+lane_s/before.test_ntp_fram_system_integration.py.thr.log | a | blob 97cd64df0ee3 = audit/artefacts/evidence/U15_close/integration/mp_test_ntp_fram_system_integration_gc-1.log@af2d0fc | u20s_work/before.test_ntp_fram_system_integration.py.thr.log
+lane_s/final2.test_ntp_fram_system_integration.py.cov.log | a | blob 97cd64df0ee3 = audit/artefacts/evidence/U15_close/integration/mp_test_ntp_fram_system_integration_gc-1.log@af2d0fc | u20s_work/final2.test_ntp_fram_system_integration.py.cov.log
+lane_s/final2.test_ntp_fram_system_integration.py.std.log | a | blob 97cd64df0ee3 = audit/artefacts/evidence/U15_close/integration/mp_test_ntp_fram_system_integration_gc-1.log@af2d0fc | u20s_work/final2.test_ntp_fram_system_integration.py.std.log
+lane_s/final2.test_ntp_fram_system_integration.py.thr.log | a | blob 97cd64df0ee3 = audit/artefacts/evidence/U15_close/integration/mp_test_ntp_fram_system_integration_gc-1.log@af2d0fc | u20s_work/final2.test_ntp_fram_system_integration.py.thr.log
+lead_int/citation_allowlist_before.txt | a | blob c29207e52ba8 = tests_scripts/_citation_allowlist.txt@b11f027 | u20/lead_evidence/citation_allowlist_before.txt
+lead_int/lead_edits_verify/ruff.log | a | blob 1f5f344d054f = audit/artefacts/evidence/U15_close/u14_fix_hammer_clock/ruff.log@af2d0fc | u20/lead_evidence/lead_edits_verify/ruff.log
+lane_i/final_runs.sh | b | audit/artefacts/evidence/U15_close/u14_fix_hammer_clock/final_runs.sh | u20i_runs/final_runs.sh
+lane_s/run.sh | b | audit/artefacts/evidence/U15_close/integration/ladder_plants/run.sh | u20s_work/run.sh
+lane_c/tmp2z3zdimj/nameext.toml | c | devices/arzi.toml@HEAD (93% of 56 lines) | u20c/tmp2z3zdimj/nameext.toml
+lane_d/rulelist.txt | c | SPECIFICATION.md@HEAD (98% of 57 lines) | u20d/rulelist.txt
+lane_k/scratch_tests/fuzz300_test.py | c | tests_scripts/test_buildgen_fuzz.py@HEAD (99% of 120 lines) | u20k_work/scratch_tests/fuzz300_test.py
+lane_s/final2.test_readiness_gates.py.std.log | c | audit/artefacts/evidence/U16_close/same_file_concurrent_scratch/sgp_serial/ready.d.log@HEAD (100% of 15 lines) | u20s_work/final2.test_readiness_gates.py.std.log
+lane_s/final2.test_readiness_gates.py.thr.log | c | audit/artefacts/evidence/U16_close/same_file_concurrent_scratch/sgp_serial/ready.d.log@HEAD (100% of 15 lines) | u20s_work/final2.test_readiness_gates.py.thr.log
+lane_v/keep_coverage.txt | c | tests_scripts/test_device_tomls.py@HEAD (100% of 38 lines) | u20v/keep_coverage.txt
+lane_v/keep_reserved.txt | c | tests_scripts/test_device_tomls.py@HEAD (94% of 31 lines) | u20v/keep_reserved.txt
+
+# Restored by the lead (22 files, 2026-10-08): rule (c) matched each of these logs only against an earlier unit's
+# tracked evidence log of the same test file (the same pass list), never against product source; they hold this
+# unit's figures (lane S's before runs, lane W's stage runs, the twin SCD30 fix at three stages), so they are kept.
+# The counts below are the agent's, before that restore.
+
+# Counts: rule a 8, rule b 2, rule c 29 (39 files). Seven of the rule-a hits and 24 of the rule-c hits match an earlier
+# unit's tracked evidence log (audit/artefacts/evidence/U11..U17_close), not product source: the same test file printed the
+# same pass list then. The two rule-b hits are run scripts named like an earlier unit's. All are left out as the rules say;
+# the logs' results stand in the lane reports, in lane_s/before_times.txt and in lane_w/matrix_before.txt and matrix_after.txt.
+# The other six are copies of product files: the citation allow-list, a device TOML, a SPEC passage, a test file, two test extracts.
+
+# Left out without a rule check (never candidates; paths relative to the scratchpad):
+# - tree exports and worktree copies: u20c/basechk1, u20c/sim, u20c/sim2b, u20g_work/base_tree, u20g_work/head_tree,
+#   u20i_before, u20i_mypy, u20k_work/{api,base,flip,int,k1sim,pscan}, u20s_work/{base,genbase,hostbase},
+#   u20v/{ov,ov2,ov3,ov4,probe_rules}, u20w_before, u20b_probe/lockcheck
+# - scratch copies of source, tests and TOMLs, overlays and edit scripts: u20b_logs/{dmc.new,mock-server.js.cur,mock-server.js.new},
+#   u20b_probe/{test_ws_base.py,test_ws_baseimp.py,ws_base_mod.py}, u20c/{overlay.py,dev_before_rest.py,sensortask_devnoign.py,
+#   dev_main_noautostart.py,dev_main_noautostart_unix.py,noign,before_vw}, u20d/*.py edit scripts (rules.py and rulelist.py kept),
+#   u20d/fz, u20d/sd, u20d_l3.py, u20d_validate_v.py, u20g_work/{api_reference_*.py,definitions_*.py,defs_tail.py,synsrc,
+#   pyproject_head.toml}, u20h_api_stub, u20h_*_edit.py, u20h_probe/ring512, u20k_work/{errors_flip.py,errors_k1.py},
+#   u20s_work/{overlay,pre_s1,section_cmds.py,section_setups.py}, u20v/{validate_base.py,frozen_html.before.py,acc,floor_probe,probe_tmp}
+# - planted mutants: u20i_mut, u20s_work/mut (each plant is described by its sweep script and log: lane_s/mutate*.py/.log)
+# - generated modules and dumps: u20b_probe/gen_stripped/stripped_*.py, u20g_work/defs_base, u20g_work/defs_new (their diff is
+#   lane_g/defs_base_vs_new.diff.txt), u20i_runs/ov512, u20i_sim, u20k_work/gen_int_base, u20v/{base_gen,wt_gen,gen_base_api},
+#   u20/lead_evidence/k_patch/{gen_before,gen_after} (their diff is lead_int/k_patch/gen_before_vs_after.diff.txt)
+# - superseded reruns and duplicates: u20b_logs intermediate runs (*_after1..3, *_apibase, *_final..final3 identical to final4,
+#   the per-file neighbour logs whose summary is kept, jsbase_* base runs), u20c/host_base.txt and u20g_work/host_base.txt
+#   (identical to u20v/host_mypy_base.txt), the lanes' host type-check dumps (u20c/host_rest.txt, u20g_work/host_now.txt,
+#   u20h_host_mypy.txt, u20k_work/host_mypy_k1.txt, u20v/host_mypy_*.txt; the merged tree's type check is in gate1/),
+#   u20s_work/{r1..r4,wip*,probe1..3,after.*,after2.*,final.*,l0_*,final_l0_*,trace*} (final2.* and final2_l0_* kept),
+#   u20i_runs/{sim1,dev1,probe_sim_*,cfg_*,probecfg_*,probe_cfg_*}, u20h_probe/{dev_live.txt,cfg_*},
+#   u20w_runs/after_{bh,rgi,si,uart,web}_std.log, u20/lead_evidence/b_int/test_asy_base_classes.gc-1.log (identical to seq/),
+#   u20e_draft.md (a pointer to a report that does not exist), u20d_probe.py (no output kept)
+# - caches and binaries of tools: __pycache__, .ruff_cache, .mypy_cache
+
+# Credential grep (password, token, secret, psk, any case) over every copied text file: 18 distinct matching lines, all
+# test names, rule ids, TOML key and schema names, a tokenizer path in a profiler call, and one TOML line carrying the
+# accepted hotspot fallback literal (lane_c/tmpv7kgqd87/busless.toml). The two binary profiles (lane_k/fuzz300.prof.gz,
+# lane_v/fuzz.prof) match only on "tokenize" inside pstats data. No credential: no file was left out on this rule.

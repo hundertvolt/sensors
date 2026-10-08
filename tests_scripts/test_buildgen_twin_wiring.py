@@ -1,5 +1,6 @@
 """Tests for buildgen.twin_wiring: the digital twin's wiring-plan generator - proves digital_twin/machine.py's `configure_i2c_wiring("wozi"|"dev")` correctly loads and applies the real, freshly-generated plan (no hand-maintained literal exists anymore), plus shape/JSON-round-trip checks and the two synthetic fixtures (proving generality beyond the 6 real, hand-verified devices, same spirit as test_buildgen_definitions.py)."""
 
+import ast
 import json
 import sys
 from pathlib import Path
@@ -10,19 +11,33 @@ import tomllib
 from _devices import DEVICE_NAMES
 
 from buildgen import twin_wiring
+from buildgen.buildspec import BUS_KIND_BY_DRIVER, FIXED_ADDRESS_DRIVERS
+from buildgen.driver_registry import DriverInfo, resolve_driver
+from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec
-from buildgen.twin_wiring import FIXED_ADDRESSES, compute_twin_wiring
+from buildgen.twin_wiring import compute_twin_wiring, fixed_address
 from buildgen.validate import build_model
 
 
-@pytest.fixture
-def src_dir(repo_root: Path) -> Path:
-    return repo_root / "src"
+def _driver_address_const(src_dir: Path, driver: str) -> int:
+    # The test's own AST read of the driver file's `_<DRIVER>_ADDR = const(<int>)`, kept apart from
+    # buildgen's reader so the two can disagree.
+    tree = ast.parse((src_dir / f"asy_{driver}_driver.py").read_text())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and [t.id for t in node.targets if isinstance(t, ast.Name)] == [f"_{driver.upper()}_ADDR"]:
+            call = node.value
+            assert isinstance(call, ast.Call) and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, int)
+            return call.args[0].value
+    raise AssertionError(f"asy_{driver}_driver.py has no _{driver.upper()}_ADDR")
 
 
-@pytest.fixture
-def fixtures_dir(repo_root: Path) -> Path:
-    return repo_root / "tests_scripts" / "buildgen_fixtures"
+def _toml_uart_pair(toml_path: Path) -> "dict[str, str] | None":
+    # The expected pair read straight from the TOML, independent of build_model()'s own parse.
+    with toml_path.open("rb") as f:
+        links = [i for i in tomllib.load(f).get("instance", []) if i.get("driver") == "uart_link"]
+    if not links:
+        return None
+    return {f"{i['role']}_bus": i["bus"] for i in links}
 
 
 @pytest.fixture
@@ -38,6 +53,16 @@ def digital_twin_machine(repo_root: Path) -> Any:
     yield machine
     if inserted:
         sys.path.remove(digital_twin_dir)
+
+
+@pytest.fixture
+def fixtures_dir(repo_root: Path) -> Path:
+    return repo_root / "tests_scripts" / "buildgen_fixtures"
+
+
+@pytest.fixture
+def src_dir(repo_root: Path) -> Path:
+    return repo_root / "src"
 
 
 # ---------------------------------------------------------------------------
@@ -82,15 +107,6 @@ def test_every_real_device_wires_fram_on_its_own_declared_spi_bus(repo_root: Pat
     assert plan["spi"]["spi0"]["driver"] == "fram"
 
 
-def _toml_uart_pair(toml_path: Path) -> "dict[str, str] | None":
-    # The expected pair read straight from the TOML, independent of build_model()'s own parse.
-    with toml_path.open("rb") as f:
-        links = [i for i in tomllib.load(f).get("instance", []) if i.get("driver") == "uart_link"]
-    if not links:
-        return None
-    return {f"{i['role']}_bus": i["bus"] for i in links}
-
-
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_uart_pair_names_the_two_generated_bus_globals(repo_root: Path, src_dir: Path, device: str) -> None:
     toml_path = repo_root / "devices" / f"{device}.toml"
@@ -105,7 +121,7 @@ def test_at_least_one_shipped_device_wires_a_uart_pair(repo_root: Path) -> None:
 
 def test_bmp3xx_address_is_read_from_the_toml_not_the_fixed_table(repo_root: Path, src_dir: Path) -> None:
     # bmp3xx is ADDRESS_CAPABLE, not FIXED_ADDRESS - proves compute_twin_wiring() actually reads
-    # spec.fields["address"] for it rather than (incorrectly) falling back to FIXED_ADDRESSES.
+    # spec.fields["address"] for it rather than (incorrectly) falling back to a driver constant.
     model = build_model(repo_root / "devices" / "wozi.toml", src_dir)
     plan = compute_twin_wiring(model)
     bmp_attachments = [a for attachments in plan["buses"].values() for a in attachments if a["driver"] == "bmp3xx"]
@@ -113,11 +129,28 @@ def test_bmp3xx_address_is_read_from_the_toml_not_the_fixed_table(repo_root: Pat
     assert bmp_attachments[0]["address"] == 0x77
 
 
-def test_fixed_addresses_table_matches_the_real_drivers_own_hardware_defaults() -> None:
-    # src/asy_scd30_driver.py's own _SCD30_DEFAULT_ADDR, src/asy_sgp40_driver.py's own
-    # address=0x59 default, and src/asy_isl29125_driver.py's own hard-wired 0x44 (no
-    # address-select pin at all) - see buildgen/twin_wiring.py's own FIXED_ADDRESSES docstring.
-    assert FIXED_ADDRESSES == {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0x44}
+# The fixed-address I2C drivers, derived: uart_link is fixed-address too, but has no address at all.
+_FIXED_I2C_DRIVERS = sorted(d for d in FIXED_ADDRESS_DRIVERS if BUS_KIND_BY_DRIVER[d] == "i2c")
+
+
+@pytest.mark.parametrize("driver", _FIXED_I2C_DRIVERS)
+def test_fixed_address_reads_the_drivers_own_address_constant(src_dir: Path, driver: str) -> None:
+    assert fixed_address(resolve_driver(driver, src_dir, "test")) == _driver_address_const(src_dir, driver)
+
+
+@pytest.mark.parametrize("toml_path", [*(f"devices/{d}.toml" for d in DEVICE_NAMES), "tests_scripts/buildgen_fixtures/multi_instance.toml", "tests_scripts/buildgen_fixtures/novel_combo.toml"])
+def test_every_fixed_address_in_a_plan_is_the_drivers_own_constant(repo_root: Path, src_dir: Path, toml_path: str) -> None:
+    plan = compute_twin_wiring(build_model(repo_root / toml_path, src_dir))
+    attachments = [a for bus in plan["buses"].values() for a in bus if a["driver"] in FIXED_ADDRESS_DRIVERS]
+    assert [a["address"] for a in attachments] == [_driver_address_const(src_dir, a["driver"]) for a in attachments]
+
+
+@pytest.mark.parametrize("toml_path", [*(f"devices/{d}.toml" for d in DEVICE_NAMES), "tests_scripts/buildgen_fixtures/multi_instance.toml", "tests_scripts/buildgen_fixtures/novel_combo.toml"])
+def test_the_plan_lists_every_declared_driver_once(repo_root: Path, src_dir: Path, toml_path: str) -> None:
+    # compute_twin_wiring() is the plan's one producer: "instances" is its own key, read here straight from the TOML.
+    with (repo_root / toml_path).open("rb") as f:
+        declared = sorted({i["driver"] for i in tomllib.load(f)["instance"]})
+    assert compute_twin_wiring(build_model(repo_root / toml_path, src_dir))["instances"] == declared
 
 
 def test_twin_machine_has_no_chip_fake_for_an_unknown_driver_fails_loud(digital_twin_machine: Any) -> None:
@@ -138,8 +171,25 @@ def test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswir
     monkeypatch.setattr(twin_wiring, "BUS_ATTACHED_DRIVERS", frozenset({"fakebus"}))
     spec = InstanceSpec(driver="fakebus", name_ext="", fields={"bus": "i2c0"}, wiring={}, order_index=0)
     model = DeviceModel(device="test", path=Path("test.toml"), doc={}, instances={("fakebus", ""): spec})
-    with pytest.raises(ValueError, match=r"no address rule for bus-attached driver 'fakebus'"):
+    # A BuildError, not a ValueError: the generator's one error contract, a line naming rule, place and fix.
+    with pytest.raises(BuildError, match=r"^\[test/fakebus\] .*no address rule.* - fix: ") as caught:
         compute_twin_wiring(model)
+    assert caught.value.rule == "twin.no-address-rule"
+
+
+def test_a_fixed_address_driver_without_its_address_constant_fails_the_twin_rule(tmp_path: Path) -> None:
+    # A driver file that lost its _<DRIVER>_ADDR const: the plan cannot place the chip, so the build says which rule broke.
+    (tmp_path / "asy_scd30_driver.py").write_text("_SCD30_TIMEOUT_MS = const(20)\n")
+    info = DriverInfo("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", tmp_path / "asy_scd30_driver.py", True)
+    with pytest.raises(BuildError, match=r"_SCD30_ADDR.* - fix: ") as caught:
+        fixed_address(info)
+    assert caught.value.rule == "twin.no-address-rule"
+
+    spec = InstanceSpec(driver="scd30", name_ext="", fields={"bus": "i2c0", "irq_pin": 2}, wiring={}, order_index=0, driver_info=info)
+    model = DeviceModel(device="test", path=Path("test.toml"), doc={}, instances={("scd30", ""): spec})
+    with pytest.raises(BuildError, match=r"^\[test/scd30\] ") as caught:
+        compute_twin_wiring(model)
+    assert caught.value.rule == "twin.no-address-rule"
 
 
 # ---------------------------------------------------------------------------

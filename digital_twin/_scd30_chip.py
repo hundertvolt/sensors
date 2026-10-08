@@ -1,5 +1,5 @@
 """Digital-twin chip fake for the Sensirion SCD30 (I2C 0x61) — answers `asy_scd30_driver.py`'s exact word-register protocol with datasheet-ranged random CO2/temperature/humidity and a real RDY-pin IRQ transition.
-Persists its five NVM-backed settings only; see `digital_twin/README.md`'s "SCD30 persistence" section."""
+Reports the temperature less its set offset, as the chip does. Persists its five NVM-backed settings only; see `digital_twin/README.md`'s "SCD30 persistence" section."""
 
 import json
 import struct
@@ -169,7 +169,9 @@ class Scd30Chip:
         self._co2 = self._clamp(self._co2 + self._random.uniform(-self._co2_step, self._co2_step), self._min_co2, self._max_co2)
         self._temp = self._clamp(self._temp + self._random.uniform(-self._temp_step, self._temp_step), self._min_temp, self._max_temp)
         self._hum = self._clamp(self._hum + self._random.uniform(-self._hum_step, self._hum_step), self._min_hum, self._max_hum)
-        self._buffer = _pack_float(self._co2) + _pack_float(self._temp) + _pack_float(self._hum)
+        # The walk is the sensor's own temperature; the chip reports it less the offset (datasheets/scd30 Low Power
+        # Mode, "Set temperature offset": the offset is the output's difference from ambient), as the driver's gate expects.
+        self._buffer = _pack_float(self._co2) + _pack_float(self._temp - self._temp_offset_raw / 100) + _pack_float(self._hum)
         self._data_ready = True
         if self._rdy_pin is not None:
             self._rdy_pin.simulate_edge(1)

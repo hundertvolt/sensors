@@ -1,0 +1,53 @@
+# git -C wt-u20int log --stat 7efb5f2..HEAD --grep='lane S' (af2d0fc)
+
+commit 4a0b632
+subject: U20 lead: merge lane S final (controlled shutdown proofs, feed-site guard, reset record 9)
+
+
+commit 877c57d
+subject: U20 lane S: controlled shutdown proofs, feed-site guard, reset record 9 for a hung or short sequence
+
+- The command gate writes reset record 9 at acceptance, so a step that hangs ends in a watchdog reset that reads
+  "command incomplete" at the next boot (agent, 2026-10-08); S2 counts a store left unpersisted as a shortfall, so a
+  reboot, bootloader or erase that loses config reads 9 too, while a config reset's deletes make it moot.
+- S2 waits under each store's owner_lock (attribute form the lock-order checker resolves).
+- Tests: the takeover order per command, every refusal, two commands at once, hangs in every step never fed, power
+  cuts in the erase and the deletes, the feed timing up to the arm, run_setups' feed/collect order, the config fault
+  and unpersisted lists, and all four commands over the real webserver PUT path with no owner_lock deadlock, a config
+  PUT mid-write flushed before the arm.
+- tests_scripts/test_watchdog_feed_sites.py pins feed_watchdog(), _own_feed(), the supervisor's and run_setups'
+  feeds, and that generated modules and boot entries never feed; its pending list is gone.
+- Comments naming the retired start_and_check_tasks() now name start_tasks()/supervise_tasks().
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ src/asy_system_service.py                 |   27 +-
+ src/asy_wifi_service.py                   |    4 +-
+ tests/test_asy_notification_service.py    |    2 +-
+ tests/test_asy_system_service.py          | 1587 ++++++++++++++++++++++++++++-
+ tests/test_asy_wifi_service.py            |    2 +-
+ tests/test_reset_call_site_invariant.py   |   13 +-
+ tests_scripts/test_watchdog_feed_sites.py |  229 +++--
+ 7 files changed, 1735 insertions(+), 129 deletions(-)
+commit 9735d02
+subject: U20 lane S WIP S1: the SystemService command gate, shutdown sequence, run_setups() and split supervisor
+
+SystemService gains the one command gate (_request_shutdown) and the controlled shutdown sequence (S1-S6) for
+reboot, bootloader and the two new words reset_to_defaults()/erase_fram(), all answering bool; the
+sequence-owned watchdog feed (_own_feed, the _feed_owned latch); _reboot(..., fed=) feeding right before the
+arm; run_setups() with get_config_faults()/get_config_unpersisted(); start_tasks() and supervise_tasks() in
+place of start_and_check_tasks() (no alias), the supervisor parking for a command and re-checking after its
+escalation entry; pause_permanent_storage() refused during a shutdown; public RR_INTERRUPTED = 21.
+tests/machine.WDT keeps a bounded feed_times; the existing tests move to the new names.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ src/asy_system_service.py                 | 232 +++++++++++++++++++++++++-----
+ tests/machine.py                          |   3 +
+ tests/test_asy_system_service.py          | 143 +++++++++++-------
+ tests/test_ntp_fram_system_integration.py |  44 +++---
+ 4 files changed, 317 insertions(+), 105 deletions(-)

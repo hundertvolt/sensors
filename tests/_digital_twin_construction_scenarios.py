@@ -24,6 +24,7 @@ prewarm_poll_set()
 patch_asy_udp_socket_for_unix_port()
 
 import machine  # noqa: E402
+from _generated_module import boot_generated  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
@@ -101,7 +102,7 @@ def _register_param(name: str) -> "Callable[[Callable[[str], None]], Callable[[s
 async def _boot_device(port: int, device: str) -> "Any":
     machine.configure_wiring(_wiring_plan(device))
     module = __import__(f"sensortask_{device}")
-    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
     return module
 
 
@@ -130,7 +131,7 @@ def _scenario_boots_against_real_twin_buses(device: str) -> None:
     # test (tests/_shared_rest_roundtrip.py); adds "webserver" since this file exercises real HTTP.
     async def scenario() -> None:
         module = await _boot_device(_next_test_port(), device)
-        mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
+        mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver")
         assert_named_modules_constructed(module, mandatory + _present_optional_instances(module, device))
 
     run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
@@ -176,7 +177,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         module = await _boot_device(port, device)
         import errno
 
-        # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.FIXED_ADDRESSES),
+        # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.fixed_address()),
         # but which bus it's actually wired to varies by device (wozi/dev already differ from each
         # other) - resolved here from the device's own real wiring plan, never assumed to be i2c1.
         plan = _wiring_plan(device)

@@ -2,8 +2,6 @@
 hardware, the real-hardware counterpart to tests/test_setter_microdot_integration.py's mock. A
 "Valid" result plus a follow-up GET confirms the live-push callback took effect and stuck."""
 
-from __future__ import annotations
-
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -43,7 +41,7 @@ _OVERRIDE_POLL_TRIES = 10
 
 
 @pytest.mark.persistence_write
-def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
+def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: "Board", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
@@ -83,7 +81,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
 
 
 @pytest.mark.persistence_write
-def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
+def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: "Board", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
@@ -122,7 +120,7 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
     assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")
 
 
-def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, dut_ip: str) -> None:
+def test_notification_pause_time_push_counts_down_over_real_rest(board: "Board", dut_ip: str) -> None:
     # PauseTime is dispatch-only, so GET /notification has nothing to read back - but GET
     # /status's notification section carries it live: PauseTime counts down measured time over
     # real HTTP, which proves more than that the PUT was accepted.
@@ -151,7 +149,7 @@ def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, d
     assert_module_error_log_empty(dut_ip, "NOTIFY")
 
 
-def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
+def test_sgp40_reset_voc_command_push_over_real_rest(board: "Board", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     # ResetVOC is command-only (never persisted - see asy_sgp40_driver.py's _VAL_RESET_VOC comment),
     # so there is no "original value" to restore afterward, unlike the BMP3xx fields above.
@@ -167,7 +165,7 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
     assert_module_error_log_empty(dut_ip, "SGP40")
 
 
-def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
+def test_isl29125_calibrate_command_push_over_real_rest(board: "Board", dut_ip: str) -> None:
     # The one ISL29125 field the test above excludes, for the reason that earns it its own:
     # Calibrate is command-only, so no readback can show it took effect. What can be pinned is
     # the pair of invariants a run must respect, reachable only from the real REST stack.

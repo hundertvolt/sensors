@@ -196,6 +196,10 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.pyflakes]
+# Imported for its side effect: frozen_html mounts the website.
+allowed-unused-imports = ["frozen_html"]
+
 # Ceilings sit at the measured maximum and only go down, enforced by
 # tests_scripts/test_lint_ceilings.py; a signature mirroring an external API is exempted per file
 # below, never by raising a limit (owner, 2026-09-26: "8 is fine").
@@ -422,6 +426,12 @@ no_implicit_reexport = false
 # under --strict; this is the one file registering real routes.
 module = "test_setter_microdot_integration"
 disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+# frozen_html is the frozen website the generated modules import only to mount it; it exists on
+# no search path.
+module = "frozen_html"
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # baseline: a module leaves this list once its explicit-`Any` findings are cleared; the list ends

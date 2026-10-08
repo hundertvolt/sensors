@@ -1,10 +1,10 @@
 """Per-driver "what does this need from the TOML" facts: required/optional fields, which drivers
 sit on a bus, and which have a real TOML-configurable `address` (SPECIFICATION.md's schema note -
-datasheet-checked by Session 2, not re-derived here)."""
+each fact datasheet-checked (agent, 2026-09-09), not re-derived here)."""
 
-# The one hand-maintained per-driver table here; everything else buildgen needs is AST-derived
-# from src/. It cannot be derived: the shipped TOML field names and src/'s constructor parameter
-# names are two independently-evolved naming spaces. Adding a driver adds a row (Part L.6).
+# One of the two tables buildgen keeps by hand (owner, 2026-09-18; the other is definitions.py's
+# status/errcount catalog): TOML field names and constructor parameter names are independent naming
+# spaces. A resolvable driver without its row is a named build error (Part L.6.6).
 
 # TOML fields every instance of this driver must declare (beyond "driver"/"name_ext", which
 # model.py itself already requires/defaults) - a missing one is a build-time error
@@ -33,7 +33,7 @@ OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "fram": (),
     "neopixel": (),
     "notification": (),
-    "uart_link": (),
+    "uart_link": ("crc", "max_transfer_bytes"),
 }
 
 # Every field an instance of this driver may legitimately declare (beyond "driver"/"name_ext") -
@@ -66,3 +66,6 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 # instances on one bus cannot be told apart (Part L.5). "uart_link" joins them for a related
 # reason - a UART is point-to-point and has no address concept at all.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}
+
+# CRC mode of a uart_link end -> (asy_crc_checks class, width in bytes); held equal to src/asy_crc_checks.py by a test
+UART_CRC_MODES: dict[str, tuple[str, int]] = {"none": ("CRCPass", 0), "crc16": ("CRC16", 2)}

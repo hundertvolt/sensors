@@ -3,8 +3,6 @@ need isn't reachable, so `uv run pytest tests_hardware --collect-only` always su
 nothing attached. See tests_hardware/README.md for how a dedicated hardware session runs this tier.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -138,7 +136,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture
-def result_note(request: pytest.FixtureRequest) -> Callable[..., None]:
+def result_note(request: pytest.FixtureRequest) -> "Callable[..., None]":
     # A note on the test's own report, which the run record keeps for a passing test too (a print
     # is dropped by capture). recovery=True marks a pass that needed a recovery step.
     def _note(text: str, *, recovery: bool = False) -> None:
@@ -164,7 +162,7 @@ def record_session_note(config: pytest.Config, text: str, *, recovery: bool = Fa
 
 
 @pytest.fixture(scope="session")
-def board(request: pytest.FixtureRequest) -> Iterator[Board]:
+def board(request: pytest.FixtureRequest) -> "Iterator[Board]":
     b = Board(device=request.config.getoption("--device"))
     if not b.is_reachable():
         pytest.skip(
@@ -176,7 +174,7 @@ def board(request: pytest.FixtureRequest) -> Iterator[Board]:
 
 
 @pytest.fixture(scope="session")
-def bench(board: Board) -> Iterator[BenchBridge]:
+def bench(board: Board) -> "Iterator[BenchBridge]":
     # Depends on `board` - a bench test needs both the real board over USB and the real WiFi
     # bridge, never just the bridge alone.
     bridge = BenchBridge()

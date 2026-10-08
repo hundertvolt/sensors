@@ -2,8 +2,6 @@
 reachable network, unavailable on flash tier) - generates load over WiFi while passively
 tail_log()-watching for a MemoryError or an unexpected mid-soak reboot."""
 
-from __future__ import annotations
-
 import threading
 from typing import TYPE_CHECKING
 
@@ -45,7 +43,7 @@ _MIN_ANSWERED = 100
 _SOAK_REQUEST_STEP_S = 0.2
 
 
-def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
+def _run_max_speed_hammer_load(board: "Board", dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
     stop = threading.Event()
     request_errors: list[str] = []
     success_count = 0
@@ -117,7 +115,7 @@ def _read_before_clearing(dut_ip: str) -> None:
     print(f"ERRCOUNT before ResetErrors: {get_errcount(dut_ip)!r}")
 
 
-def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: Board, dut_ip: str) -> None:
+def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: "Board", dut_ip: str) -> None:
     _read_before_clearing(dut_ip)
     reset_all_error_logs(dut_ip)
     lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
@@ -133,7 +131,7 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
 
 
 @pytest.mark.long_soak
-def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
+def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     # Long-duration form (--soak-tier mid = 600s, matching the one real WDT_RESET this project
     # has observed) of the bounded test above - captures FRAM-backed errcount in the assertion
     # message before any cleanup clears it (CLAUDE.md's standing rule).
@@ -159,7 +157,7 @@ def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnos
 
 
 @pytest.mark.long_soak
-def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
+def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: "Board", dut_ip: str, request: pytest.FixtureRequest) -> None:
     tier = request.config.getoption("--soak-tier")
     if tier is None:
         pytest.skip("real HTTP soak, one of three named duration tiers - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long}")

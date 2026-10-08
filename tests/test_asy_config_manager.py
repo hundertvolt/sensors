@@ -2956,6 +2956,28 @@ def test_a_closed_store_refuses_writes_and_opens_nothing() -> None:
         _remove(path)
 
 
+def test_writes_closed_answers_whether_close_writes_or_delete_file_closed_the_store() -> None:
+    # The reader base's PUT refusal reads it, so it must turn True the moment either one closes the store.
+    mgr, path = _make("writesclosed.cfg", cfg_vals=_VAL_INT)
+    deleted, deleted_path = _make("writesclosed_delete.cfg", cfg_vals=_VAL_INT)
+    try:
+        assert (mgr.writes_closed(), deleted.writes_closed()) == (False, False)
+        mgr.close_writes()
+        assert run(deleted.delete_file()) is True
+        assert (mgr.writes_closed(), deleted.writes_closed()) == (True, True)
+    finally:
+        _remove(path)
+        _remove(deleted_path)
+
+
+def test_owner_lock_is_unset_until_the_owning_module_lends_its_put_lock() -> None:
+    mgr, path = _make("ownerlock.cfg", cfg_vals=_VAL_INT)
+    try:
+        assert mgr.owner_lock is None
+    finally:
+        _remove(path)
+
+
 class _RemoveFailingOs:
     # asy_config_manager's `os` with a remove() that fails `failures` times with EIO, then removes for real.
     def __init__(self, failures: int) -> None:
@@ -3014,6 +3036,35 @@ def test_delete_file_retries_once_then_reports_a_failure() -> None:
             assert run(mgr.write_config({"Count": 8})) == (False, {}), failures
         finally:
             _remove(path)
+
+
+def test_delete_file_removes_an_unreadable_or_damaged_file_without_reading_it() -> None:
+    # Reset to defaults deletes the file unread, readable or not (owner, 2026-10-01): no open of any mode.
+    unreadable_path = _tmp_path("deleteunreadable.cfg")
+    damaged_path = _tmp_path("deletedamaged.cfg")
+    with open(unreadable_path, "w") as f:
+        json.dump({"Count": 7}, f)
+    with open(damaged_path, "w") as f:
+        f.write('{"Count": ')
+    unreadable = cm.ConfigManager(unreadable_path, _VAL_INT, "TEST")
+    damaged = cm.ConfigManager(damaged_path, _VAL_INT, "TEST")
+    try:
+        with _ReadFailingOpen(cm):
+            run(unreadable.setup())  # EIO on the read: never overwritten this boot
+        with WriteCountingOpen(cm, fail_writes=True):
+            run(damaged.setup())  # the repair fails, so the damaged bytes stay on flash
+        assert (unreadable.writable, unreadable.faulted) == (False, True)
+        assert (damaged.faulted, damaged.unpersisted) == (True, True)
+        with open(damaged_path) as f:
+            assert f.read() == '{"Count": '
+        for mgr, path in ((unreadable, unreadable_path), (damaged, damaged_path)):
+            with WriteCountingOpen(cm) as counter:
+                assert run(mgr.delete_file()) is True, path
+            assert (counter.reads, counter.writes) == (0, 0), path
+            assert _exists(path) is False, path
+    finally:
+        _remove(unreadable_path)
+        _remove(damaged_path)
 
 
 def test_a_flush_held_at_the_lock_lands_after_close_and_flush_pending() -> None:

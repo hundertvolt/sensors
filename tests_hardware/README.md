@@ -571,7 +571,9 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
   attach is the likely, unconfirmed cause of one dead run.
 - An attach within ~1 s of boot (before `main.py` arms the watchdog) parks the board at the REPL
-  with no watchdog: no WiFi, no output, no self-recovery until the next reset (bench, 2026-09-25).
+  with no watchdog: no WiFi, no output, no self-recovery until the next reset (bench, 2026-09-25,
+  when the device module armed it; the boot entry's first statement arms it now, so the window is
+  shorter and unmeasured).
   A test that polls `is_reachable()` right after a reset must end with `hard_reset()`, as
   `flash/test_watchdog_starvation.py` does.
 - After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
@@ -852,9 +854,9 @@ a live question:
   and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
   scoped to avoid this either way, but the naming is the structural backstop.
 - **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
-  task added to the boot entry (`boot_entry/<device>_boot.py` at the time this was written; that
-  directory is retired now - SPECIFICATION.md Part L.4 - so add it to the staged `main.py`
-  a build produces, before flashing, and never commit the edit), printing a fixed-format
+  task added to the boot entry (generated as `sensortask_<device>_main.py`, SPECIFICATION.md Part
+  L.4, and staged as `main.py` by a build - add it to that staged `main.py` before flashing, and
+  never commit the edit), printing a fixed-format
   line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
   `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
   measured). Used for `gc.mem_free()` sampling + collection detection, real per-collection pause
@@ -1167,9 +1169,10 @@ here in full since the code comment that used to carry them had to shrink to a p
 1. Early WiFi reconnection flakiness on this bench unit was undiagnosed; a single bad boot used to
    fail this session-scoped fixture outright, cascading into every other bench test. Fixed with one
    bounded `hard_reset()` retry.
-2. A real STA IP does not mean the webserver is serving: `sensortask_wozi.main()` starts the
-   webserver task only after `ntp_force_sync()` (bounded by a 20s `asyncio.wait_for()`), so up to
-   ~20s can pass with a connected IP but nothing on port 80. Fixed by waiting for real HTTP
+2. A real STA IP does not mean the webserver is serving: the generated `main()` starts the WiFi
+   connect loop and the webserver as separate tasks of one staggered starter list
+   (`start_tasks()`), so the link can come up before port 80 answers - up to ~20s back when the
+   first NTP sync still held the boot ahead of every task. Fixed by waiting for real HTTP
    reachability, not just link connectivity.
 3. Polling for an IP via `board.exec()` in a loop is self-defeating: `mpremote`'s raw-REPL entry
    always performs an implicit `machine.soft_reset()` (confirmed against `transport_serial.py`'s
@@ -1426,12 +1429,13 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   coverage with its own bench-vs-flash split never written down anywhere**, unlike storage-pause
   gating's own explicitly-documented split. Confirmed structural (E.6.6 row `fram-write-protect-no-rest`:
   neither method has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
-- **`SystemService.start_and_check_tasks()`'s own real restart-a-dead-task mechanism had no
-  real-hardware test at all** - the exact recovery rung CLAUDE.md's memory-safety-discipline rule
-  leans on ("trust `asy_system_service.py`'s task supervisor to restart a task that still dies"), proven
-  only at the mock/twin tiers. New: `device_scripts/system_service_restarts_a_real_dead_task.py` +
+- **`SystemService.supervise_tasks()`'s own real restart-a-dead-task mechanism (over the tasks
+  `start_tasks()` started) had no real-hardware test at all** - the exact recovery rung CLAUDE.md's
+  memory-safety-discipline rule leans on ("trust `asy_system_service.py`'s task supervisor to
+  restart a task that still dies"), proven only at the mock/twin tiers. New:
+  `device_scripts/system_service_restarts_a_real_dead_task.py` +
   `tests_hardware/flash/test_task_supervisor.py`'s
-  `test_start_and_check_tasks_restarts_a_real_dead_task` - a starter that dies immediately, checked
+  `test_the_supervisor_restarts_a_real_dead_task` - a starter that dies immediately, checked
   called at least twice within one real `_TASK_CHECK_TIME` (2s) cycle. Deliberately stops at ~3.6s
   real time (task_errors capped at 200): a task that dies immediately adds `_TASK_FAIL_INCREMENT`
   (100) per cycle, and `_TASK_FAIL_MAX` (300) would otherwise trip a real reboot around the 4th
@@ -1580,23 +1584,27 @@ there means "everything that ran, passed", not "everything ran".
   dependent test makes this unreachable via the collection-time deselection above, but a future test
   that forgets the marker fails hard here instead of silently spending a real write.
 
-## WP4/Topic 6 - FRAM capacity check, real-hardware tier
+## FRAM capacity check, real-hardware tier
 
 `test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build`
 (device script `fram_capacity_after_full_system_build.py`) closes the real-hardware leg of
 CLAUDE.md's implicit-FRAM-wiring rule's own capacity backstop: a shipped firmware asking for more
 FRAM than its own chip has must be a hard, automatic, pre-flash test failure, not a silent
 boot-time console print nobody's watching. Builds the real `dev` object graph
-(`sensortask_dev.build_system()`) on the real board, then checks that every module which should
-have inherited a real FRAM chunk (its own `pr`, plus its own `cfgmgr` where one exists) actually
-got one rather than silently degrading to RAM-only.
+(`sensortask_dev.build_system()`, then its setup list as `main()` runs it) on the real board, then
+checks that every module which should have inherited a real FRAM chunk (its own `pr`, plus its own
+`cfgmgr` where one exists) actually got one rather than silently degrading to RAM-only.
 
 **Deliberately not `fram._allocated_size <= fram.size`** - `FRAMManager.get_chunk()` checks
 capacity *before* incrementing `_allocated_size`, never after, so that comparison can never be
 false by construction and would be a tautology, not a check. A `None` chunk reference on a module
 that should have gotten one is the real, observable signal that capacity ran out; the mock-tier
 equivalent (`tests/_sensortask_scenarios.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
-run for every real device) uses the same shape, and
+run for every real device) uses the same shape, with its module list derived from the build's
+facts rather than listed by hand: the `fram_wired` list of
+`build/generated_src/sensortask_<device>_expected.json` (every instance whose TOML sets
+`fram_target`, plus `conn`, `ntp`, `sysfunct` and `webserver` when `[device.wiring]` sets it), so a
+new driver's chunks are checked with no test edit and a module off the list must hold none; and
 `tests/test_asy_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
 is the negative case proving it can actually fail.
 
@@ -1606,7 +1614,7 @@ build-validity fact (`FRAMManager` is a bump-pointer allocator with no deallocat
 everything fit" is fully decided once construction finishes, and stays true for that build's entire
 life), not live operational state a client needs to query.
 
-**Extended by WP3**: `_CANDIDATE_MODULE_NAMES` now also checks `uart_link_init`/`uart_link_resp` -
+**The UART links too**: `_CANDIDATE_MODULE_NAMES` also checks `uart_link_init`/`uart_link_resp` -
 `dev.toml`'s only two `uart_link` instances, both wired with `fram_target = "fram"` - so this same
 real-hardware check covers the UART crossover link's own errno/wrnno history getting a real chunk,
 not just the sensor/infra modules it already covered. `UARTLinkDriver`'s own `log=`/`logger=`
@@ -1614,5 +1622,6 @@ forwarding is otherwise covered by `tests/test_asy_uart_link_driver.py` (mock ti
 the RAM-only default `log`, the allocation-failure fallback, the `logger=` reach-through, and a
 simulated-reboot roundtrip) and `tests/test_digital_twin_uart_link.py`'s
 `test_both_ends_get_their_own_real_fram_chunk` (twin tier) - real-hardware visibility through
-`/status` was already covered pre-WP3 by `tests_hardware/bench/test_uart_link_under_api_load.py`'s
-own `get_errcount()` calls, since that was never conditional on RAM-vs-FRAM backing.
+`/status` was already covered before the links had chunks, by
+`tests_hardware/bench/test_uart_link_under_api_load.py`'s own `get_errcount()` calls, since that
+was never conditional on RAM-vs-FRAM backing.

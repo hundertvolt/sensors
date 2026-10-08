@@ -2,8 +2,6 @@
 answering garbage (BACKLOG.md question #5), the admission ceiling, malformed requests, slowloris.
 DHCP-client faults are a documented known limitation (owner, 2026-09-26; tests_hardware/README.md)."""
 
-from __future__ import annotations
-
 import json
 import socket
 import threading
@@ -121,7 +119,7 @@ _CAPTURE_ATTEMPTS = 3
 _STORM_REPEAT_MIN = 3
 
 
-def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "Callable[..., None]") -> None:
     reset_all_error_logs(dut_ip)
     bench.ap_down()
     try:
@@ -163,7 +161,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
         _assert_wifi_log_has_only_benign_outage_warnings(dut_ip)
 
 
-def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "Callable[..., None]") -> None:
     reset_all_error_logs(dut_ip)
     for _cycle in range(_FLAP_CYCLES):
         bench.ap_down()
@@ -231,7 +229,7 @@ def _sta_reconnected(dut_ip: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_latency(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_latency(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     bench.inject_network_degradation(loss_pct=30, delay_ms=150, jitter_ms=50)
     try:
@@ -263,7 +261,7 @@ def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_lat
     reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
 
 
-def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # The "everyday" end of the researched range (30ms delay, 20ms jitter, 0.5-5% loss) - unlike
     # the sustained/severe test above, requests here should just succeed first try, with no
     # special retry tolerance needed.
@@ -280,7 +278,7 @@ def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Bo
     assert_no_task_ended(dut_ip, "light WiFi congestion")
 
 
-def test_real_operations_survive_real_packet_corruption(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_operations_survive_real_packet_corruption(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # Unlike the rogue-responder tests below, corrupt() flips a random bit inside an otherwise-real
     # packet (a radio-level bit error) - real UDP/TCP checksums should catch and drop/retransmit
     # it, which is exactly the property this test confirms rather than assumes.
@@ -310,7 +308,7 @@ def test_real_operations_survive_real_packet_corruption(board: Board, bench: Ben
     reset_all_error_logs(dut_ip)
 
 
-def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # A real duplicated/out-of-order UDP delivery - checks whether a duplicate or late reply ever
     # gets mismatched against a different, later pending request. `reorder` needs an existing
     # `delay` to be meaningful (man tc-netem) - the light delay here is for that, not as its own stressor.
@@ -341,7 +339,7 @@ def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, 
 
 
 @pytest.mark.persistence_write
-def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # The real-hardware form of test_asy_ntp_client.py's retry-after-one-dropped-request test:
     # the retry timer alone recovers, with no reboot. A guaranteed block_udp_ports() rather than
     # netem loss, so the outage outlasts the 5s NTP fetch timeout (NtpTiming.fetch_timeout_ms) but clears inside the 15s retry.
@@ -388,7 +386,7 @@ _ROGUE_LOCAL_PORT_DNS = 42153
 _GARBAGE_PAYLOAD = b"this is not a valid NTP or DNS wire-format packet, on purpose"
 
 
-def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     with RogueUdpResponder(_ROGUE_LOCAL_PORT_NTP, _GARBAGE_PAYLOAD):
         bench.redirect_udp_port_to_local(123, _ROGUE_LOCAL_PORT_NTP)
@@ -419,7 +417,7 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
 
 
-def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     with RogueUdpResponder(_ROGUE_LOCAL_PORT_DNS, _GARBAGE_PAYLOAD):
         bench.redirect_udp_port_to_local(53, _ROGUE_LOCAL_PORT_DNS)
@@ -461,7 +459,7 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
 _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - decades from any real "now", safely inside _parse_ntp_reply()'s own 2025-2100 plausibility window
 
 
-def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
     # a reply from anywhere else - checkable via GET /status's UTCTime, since an accepted reply's
     # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
@@ -524,7 +522,7 @@ _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
 @pytest.mark.persistence_write
-def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_host = get_before.json()["NTPHost"]
@@ -603,7 +601,7 @@ _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _config
 
 
 @pytest.mark.persistence_write
-def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_ssid = get_before.json()["SSID"]
@@ -935,7 +933,7 @@ def test_put_a_mixed_stream_of_body_sizes_is_handled_each_on_its_own_merits(dut_
     assert_no_task_ended(dut_ip, "client misbehaviour")
 
 
-def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status(dut_ip: str, result_note: "Callable[..., None]") -> None:
     # The multi-buffer shape that motivated Part I.6, asserted on what the body cap owns: max_connections
     # bodies can be in flight at once, so the simultaneous contiguous demand is that many buffers -
     # connections x 2048 now, connections x 16384 while the band was open.

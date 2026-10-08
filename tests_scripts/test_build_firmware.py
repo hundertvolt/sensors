@@ -15,6 +15,19 @@ import pytest
 from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
+from buildgen.frozen_modules import compute_frozen_modules
+from buildgen.generate import generate_device
+
+
+def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "scripts/build_firmware.py", *args],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
 
 @pytest.fixture(scope="session")
 def build_firmware(repo_root: Path) -> ModuleType:
@@ -92,13 +105,10 @@ def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(build_firmwa
     # No longer every src/*.py file: only this device's buildgen-computed dependency closure is
     # staged (Part L.2's dependency-driven selection), a genuinely smaller firmware than this
     # script produced before buildgen.
-    from buildgen.frozen_modules import compute_frozen_modules
-    from buildgen.validate import build_model
-
     build_firmware.build_stage_dir(tmp_path, device)
 
-    model = build_model(repo_root / "devices" / f"{device}.toml", repo_root / "src")
-    expected_modules = compute_frozen_modules(model, repo_root / "src", repo_root / "ext")
+    generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
+    expected_modules = compute_frozen_modules(generated.module_source, repo_root / "src", repo_root / "ext")
     assert expected_modules, "sanity: a real device should need at least one frozen module"
 
     staged = {p.name for p in tmp_path.iterdir()}
@@ -140,8 +150,12 @@ def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_
     build_firmware.build_stage_dir(tmp_path, device)
 
     generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
-    assert (tmp_path / f"sensortask_{device}.py").read_text() == generated.module_source
-    assert (tmp_path / "main.py").read_text() == generate_boot_entry_source(device)
+    # The generated module carries src/'s own TYPE_CHECKING form, so it is staged stripped like every src/ module.
+    staged = (tmp_path / f"sensortask_{device}.py").read_text()
+    assert "TYPE_CHECKING" in generated.module_source
+    assert "TYPE_CHECKING" not in staged
+    assert staged == build_firmware.strip_type_checking_blocks(generated.module_source)
+    assert (tmp_path / "main.py").read_text() == generated.boot_entry_source == generate_boot_entry_source(device)
     other_device = "dev" if device == "wozi" else "wozi"
     assert (tmp_path / "main.py").read_text() != generate_boot_entry_source(other_device)
 
@@ -165,16 +179,6 @@ def test_build_stage_dir_frozen_html_contains_the_real_website(build_firmware: M
     # /js/app.js.gz marks the real bundled website. No separate definitions or style check: both are
     # inlined into index.html at build time (Part H.7), never staged as their own files.
     assert "/js/app.js.gz" in frozen_html_text
-
-
-def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "scripts/build_firmware.py", *args],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=check,
-    )
 
 
 def test_cli_missing_device_toml_fails_fast(repo_root: Path, tmp_path: Path) -> None:

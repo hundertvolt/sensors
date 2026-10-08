@@ -2,8 +2,6 @@
 DTR-based reset, the closest real equivalent to a power-cycle without pulling power). Uses
 hard_reset()+tail_log(), not run_isolated()/exec(), so the real boot.py/main.py path runs undisturbed."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

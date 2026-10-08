@@ -13,7 +13,7 @@ hotspot_time_min = 8
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
 max_connections = 6
 
-# Mandatory-infra-to-instance links; each field optional, absence disables that feature.
+# Mandatory-infra-to-instance links; each optional, absence disables that link (owner, 2026-09-09).
 [device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
@@ -50,6 +50,11 @@ txbuf = 512
 poll_wait_ms = 2
 # @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
+# The receive ring at its driver default, 4 x the 128-byte floor the build derives for this link
+# (Part J.6). A ring for the bench's 400 ms continuous-sender window is sized on the bench, with
+# its heap cost measured.
+# @tunable dev.uart_rx_ring = 512
+rx_ring = 512
 
 [bus.uart1]
 tx_pin = 8
@@ -63,8 +68,10 @@ txbuf = 512
 poll_wait_ms = 2
 # @tunable dev.uart_poll_idle_ms = 50
 poll_idle_ms = 50
+# @tunable dev.uart_rx_ring = 512
+rx_ring = 512
 
-# --- sensor drivers ---------------------------------------------------------------------------
+# --- sensor drivers -------------------------------------------------------------------------------
 
 [[instance]]
 driver = "scd30"
@@ -115,7 +122,7 @@ irq_pull_up = false
 [instance.wiring]
 fram_target = "fram"
 
-# --- singleton services ------------------------------------------------------------------------
+# --- singleton services ---------------------------------------------------------------------------
 
 [[instance]]
 driver = "fram"
@@ -138,7 +145,7 @@ driver = "notification"
 signal_sink = "neopixel"
 fram_target = "fram"
 
-# Per-signal getters - each optional; absence disables that specific warning signal.
+# Per-signal getters - each optional; absence disables that warning signal (owner, 2026-09-09).
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"
@@ -151,10 +158,12 @@ field = "VOC"
 source = "scd30"
 field = "Hum"
 
-# --- UART crossover link exerciser (bench-only) -------------------------------------------------
+# --- multi-instance services ----------------------------------------------------------------------
 #
-# Each end gets its own fram_target chunk, so a fault on one end stays attributable (WP3; only the
+# Each end gets its own fram_target chunk, so a fault on one end stays attributable (only the
 # link's own error history is made durable, Part J.1).
+#
+# crc (optional, per end): "none" (default) or "crc16"; both ends must agree (Part J.6).
 #
 # Only dev has UART links: the crossover jumper they exercise is on the bench (owner, 2026-10-02).
 
@@ -163,6 +172,10 @@ driver = "uart_link"
 name_ext = "init"
 bus = "uart0"
 role = "initiator"
+# The receive cap: the protocol's own default, its largest train at the default payload size
+# (254 x 48 B), so the generated limits equal DEFAULT_LIMITS (agent, 2026-10-08; Part J.8).
+# @tunable dev.uart_max_transfer_bytes = 12192
+max_transfer_bytes = 12192
 
 [instance.wiring]
 fram_target = "fram"
@@ -172,6 +185,8 @@ driver = "uart_link"
 name_ext = "resp"
 bus = "uart1"
 role = "responder"
+# @tunable dev.uart_max_transfer_bytes = 12192
+max_transfer_bytes = 12192
 
 [instance.wiring]
 fram_target = "fram"

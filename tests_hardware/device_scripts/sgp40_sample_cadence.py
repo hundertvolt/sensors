@@ -7,6 +7,7 @@ import time
 from array import array
 
 import _bench_device as device  # rendered: the bench device's generated module
+import machine
 
 # @tunable l3.sgp40_sample_cadence_window_s = 600
 _WINDOW_S = 600
@@ -25,8 +26,10 @@ async def _main() -> None:
     stamps = array("I", range(_SLOTS))  # ms since base, sized once from the range's length; a record allocates nothing
     count = [0]
     base = time.ticks_ms()
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own: build_system() takes it, the supervisor feeds it
     try:
-        await device.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
+        await device.build_system(watchdog=wdt, cfg_path="", web_host="127.0.0.1", web_port=8080)
     except Exception as e:
         print(f"RESULT: FAIL build_system() raised on real hardware: {e!r}")
         return
@@ -34,6 +37,11 @@ async def _main() -> None:
     sysfunct = device.sysfunct
     if sgp40 is None or sysfunct is None:
         print("RESULT: FAIL build_system() completed but left sgp40 or sysfunct unset")
+        return
+    try:
+        await sysfunct.run_setups(device._collect_setups())  # main()'s next step
+    except Exception as e:
+        print(f"RESULT: FAIL the setup list raised on real hardware: {e!r}")
         return
     period = (await sgp40.get_dict_cfg())[sgp40.name].get("BackupPeriod")  # the device's own setting, not overridden
     inner_read = sgp40._read_sgp
@@ -50,7 +58,8 @@ async def _main() -> None:
     except asyncio.TimeoutError:
         print(f"RESULT: FAIL start_timers() did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
         return
-    supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(device._collect_task_starters()))  # feeds the watchdog
+    await sysfunct.start_tasks(device._collect_task_starters())
+    supervisor = asyncio.create_task(sysfunct.supervise_tasks())  # feeds the watchdog
     start = time.ticks_ms()
     await asyncio.sleep(_WINDOW_S)
     elapsed = time.ticks_diff(time.ticks_ms(), start)

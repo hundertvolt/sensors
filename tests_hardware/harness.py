@@ -3,8 +3,6 @@ real board over `mpremote` and, for bench, real `nmcli`/`iw` calls against the b
 under the MicroPython Unix port. See tests_hardware/README.md for how to run this tier.
 """
 
-from __future__ import annotations
-
 import os
 import socket
 import subprocess
@@ -169,7 +167,7 @@ def _wait_for_slots_to_drain(host: str, port: int, admitted: int, timeout_s: flo
 _HOLD_CHECK_TIMEOUT_S = 0.05
 
 
-def _assert_probe_held(admitted_socks: list[Any], started: float) -> None:
+def _assert_probe_held(admitted_socks: "list[Any]", started: float) -> None:
     # Every connection the probe counted must still be open at the moment the refusal landed,
     # or they were never held simultaneously and the count is an artefact of the walk's own pace.
     for index, sock in enumerate(admitted_socks):
@@ -241,7 +239,7 @@ _WAIT_UNTIL_POLL_S = 1.0
 
 
 def wait_until(
-    check_fn: Callable[[], bool],
+    check_fn: "Callable[[], bool]",
     timeout_s: float,
     poll_interval_s: float = _WAIT_UNTIL_POLL_S,
     description: str = "condition",
@@ -275,7 +273,7 @@ _SERVING_RESTORE_TIMEOUT_S = 90.0
 _SERVING_RESTORE_POLL_S = 3.0
 
 
-def restore_board_to_serving(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def restore_board_to_serving(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
     # run_isolated() leaves main.py stopped, so the webserver is gone until a real hard reset. A bench
     # test that runs a device script calls this in a finally or a fixture's teardown, or every network test
     # after it fails on a refused connection (tests_scripts/test_bench_restores_serving.py pins it).
@@ -303,7 +301,7 @@ _SCRIPT_SERVER_HANDOVER_POLL_S = 0.5
 _SCRIPT_SERVER_POLL_S = 1.0
 
 
-def wait_for_script_server(dut_ip: str, stop: threading.Event, path: str = "/status", timeout_s: float = _SCRIPT_SERVER_TIMEOUT_S, handover_s: float = _SCRIPT_SERVER_HANDOVER_S) -> bool:
+def wait_for_script_server(dut_ip: str, stop: "threading.Event", path: str = "/status", timeout_s: float = _SCRIPT_SERVER_TIMEOUT_S, handover_s: float = _SCRIPT_SERVER_HANDOVER_S) -> bool:
     # True once a device script's own server answers `path` with a 200. main.py's server may still
     # be answering when this starts, so it first waits (up to `handover_s`) for that one to go quiet;
     # `stop` ends the wait early, so it never outlives its test.

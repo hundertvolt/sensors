@@ -22,9 +22,11 @@ def _parse(tmp_path: Path, source: str) -> "tuple[LimitField, ...]":
     return parse_limits(path, "dev", "x")
 
 
-def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
-    with pytest.raises(BuildError, match=match):
+def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None" = None) -> None:
+    with pytest.raises(BuildError, match=match) as raised:
         _parse(tmp_path, source)
+    if rule is not None:
+        assert raised.value.rule == rule
 
 
 # --- accept side: the full range x number-shape cross product -----------------------------------
@@ -48,6 +50,11 @@ def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
 def test_parse_limits_accepts_every_range_shape(tmp_path: Path, payload: str, low: object, high: object) -> None:
     (field,) = _parse(tmp_path, f"# @limits trigger_s {payload}\n")
     assert (field.toml_field, field.choices, field.min, field.max) == ("trigger_s", None, low, high)
+
+
+@pytest.mark.parametrize("field", ["trigger_s", "x", "_leading_underscore", "with9digits", "max_size"])
+def test_parse_limits_accepts_every_name_shape(tmp_path: Path, field: str) -> None:
+    assert _parse(tmp_path, f"# @limits {field} 1..3600\n") == (LimitField(field, None, 1, 3600),)
 
 
 @pytest.mark.parametrize(
@@ -96,7 +103,7 @@ def test_parse_limits_several_tags_keep_source_order(tmp_path: Path) -> None:
 
 def test_parse_limits_duplicate_field_rejected(tmp_path: Path) -> None:
     # One domain per field: two tags would silently let the second win.
-    _parse_expecting(tmp_path, "# @limits trigger_s 1..10\n# @limits trigger_s 1..3600\n", "two @limits tags for 'trigger_s'")
+    _parse_expecting(tmp_path, "# @limits trigger_s 1..10\n# @limits trigger_s 1..3600\n", "two @limits tags for 'trigger_s'", "tag.duplicate-field")
 
 
 # --- reject side: wording -----------------------------------------------------------------------
@@ -117,29 +124,42 @@ def test_parse_limits_rejects_each_wording_mistake(tmp_path: Path, source: str, 
     _parse_expecting(tmp_path, source, match)
 
 
+def test_parse_limits_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Path) -> None:
+    # "limitless" is three edits from "limits" - past tolerance, so prose, not an attempt.
+    assert _parse(tmp_path, "# @limitless trigger_s 1..3600\n") == ()
+
+
 # --- reject side: format, each element wrong then dropped ---------------------------------------
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    "source,match,rule",
     [
-        ("# @limits trigger_s\n", "malformed @limits tag"),  # the whole domain dropped
-        ("# @limits trigger_s 1..\n", "missing one of its bounds"),  # max dropped
-        ("# @limits trigger_s ..3600\n", "missing one of its bounds"),  # min dropped
-        ("# @limits trigger_s 1.3600\n", "malformed @limits tag"),  # the ".." itself dropped
-        ("# @limits trigger_s *..*\n", "checks nothing"),  # both bounds unbounded
-        ("# @limits trigger_s 3600..1\n", "inverted"),  # bounds swapped
-        ("# @limits trigger_s x..3600\n", "min 'x' is not a number"),
-        ("# @limits trigger_s 1..x\n", "max 'x' is not a number"),
-        ("# @limits address in {}\n", "empty choice set"),  # the values dropped
-        ("# @limits address in {0x76\n", "is neither a range"),  # the closing brace dropped
-        ("# @limits address in 0x76, 0x77}\n", "is neither a range"),  # the opening brace dropped
-        ("# @limits address in {1.5}\n", "must be an int, not a float"),
-        ("# @limits address in {x}\n", "choice 'x' is not a number"),
+        ("# @limits trigger_s\n", "malformed @limits tag", "tag.malformed"),  # the whole domain dropped
+        ("# @limits trigger_s 1..\n", "missing one of its bounds", "limits.missing-bound"),  # max dropped
+        ("# @limits trigger_s ..3600\n", "missing one of its bounds", "limits.missing-bound"),  # min dropped
+        ("# @limits trigger_s 1.3600\n", "malformed @limits tag", "tag.malformed"),  # the ".." itself dropped
+        ("# @limits trigger_s *..*\n", "checks nothing", "limits.checks-nothing"),  # both bounds unbounded
+        ("# @limits trigger_s 3600..1\n", "inverted", "limits.inverted-range"),  # bounds swapped
+        ("# @limits trigger_s x..3600\n", "min 'x' is not a number", "tag.not-a-number"),
+        ("# @limits trigger_s 1..x\n", "max 'x' is not a number", "tag.not-a-number"),
+        ("# @limits address in {}\n", "empty choice set", "limits.empty-choice-set"),  # the values dropped
+        ("# @limits address in {0x76\n", "is neither a range", "limits.payload-shape"),  # the closing brace dropped
+        ("# @limits address in 0x76, 0x77}\n", "is neither a range", "limits.payload-shape"),  # the opening brace dropped
+        ("# @limits address in {1.5}\n", "must be an int, not a float", "limits.choice-not-int"),
+        ("# @limits address in {x}\n", "choice 'x' is not a number", "tag.not-a-number"),
     ],
 )
-def test_parse_limits_rejects_each_payload_mistake(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_limits_rejects_each_payload_mistake(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
+
+
+@pytest.mark.parametrize("payload", ["nan..1", "1..inf", "-inf..0", "0..infinity", "in {nan}"])
+def test_parse_limits_rejects_a_non_finite_number(tmp_path: Path, payload: str) -> None:
+    # float() reads all of these, and every range comparison with one is silently false or true.
+    with pytest.raises(BuildError, match="is not a finite number") as raised:
+        _parse(tmp_path, f"# @limits trigger_s {payload}\n")
+    assert (raised.value.rule, raised.value.fix) == ("tag.non-finite-number", "write a finite number")
 
 
 def test_parse_limits_rejects_a_dropped_field_name(tmp_path: Path) -> None:
@@ -164,7 +184,7 @@ def test_parse_limits_bare_tag_name_with_no_payload_at_all_is_prose(tmp_path: Pa
     ],
 )
 def test_parse_limits_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "module level")
+    _parse_expecting(tmp_path, source, "module level", "tag.not-module-level")
 
 
 # --- false positives ----------------------------------------------------------------------------

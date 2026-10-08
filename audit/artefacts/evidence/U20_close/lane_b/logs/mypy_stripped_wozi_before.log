@@ -1,0 +1,129 @@
+../u20b_probe/gen_stripped/stripped_wozi.py: note: In function "build_system":
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: error: Argument 1 to
+"WebserverService" has incompatible type "Microdot"; expected "_MicrodotApp" 
+[arg-type]
+            app,
+            ^~~
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note: Following member(s) of "Microdot" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:         def after_error_request(self, f: Callable[[_RequestLike, Response], Response]) -> object
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:         def after_error_request(self, f: Callable[[Request, Response], Any | None]) -> Callable[[Request, Response], Any | None]
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:         def after_request(self, f: Callable[[_RequestLike, Response], Response]) -> object
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:         def after_request(self, f: Callable[[Request, Response], Any | None]) -> Callable[[Request, Response], Any | None]
+../u20b_probe/gen_stripped/stripped_wozi.py:145:9: note:     <3 more conflict(s) not shown>
+../u20b_probe/gen_stripped/stripped_wozi.py:147:21: error: Argument "sensors"
+to "RouteSources" has incompatible type
+"tuple[SCD30_Reader, SGP40_Reader, BMP3XX_Reader]"; expected
+"Sequence[_ModuleLike]"  [arg-type]
+                sensors=(scd30, sgp40, bmp3xx),
+                        ^~~~~~~~~~~~~~~~~~~~~~
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: error: Argument 1 to
+"SettingsGroup" has incompatible type "WifiService"; expected "_ModuleLike" 
+[arg-type]
+                        SettingsGroup(conn, ("SSID", "PW", "Country", "Hos...
+                                      ^~~~
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note: Following member(s) of "WifiService" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:150:35: note:     <1 more conflict(s) not shown>
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: error: Argument 1 to
+"SettingsGroup" has incompatible type "WifiService"; expected "_ModuleLike" 
+[arg-type]
+                        SettingsGroup(conn, ("LEDWifiOn",)),
+                                      ^~~~
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note: Following member(s) of "WifiService" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:151:35: note:     <1 more conflict(s) not shown>
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: error: Argument 1 to
+"SettingsGroup" has incompatible type "NTPClient"; expected "_ModuleLike" 
+[arg-type]
+                        SettingsGroup(ntp, ("NTPHost", "NTPOffset", "NTPIn...
+                                      ^~~
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note: Following member(s) of "NTPClient" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:152:35: note:     <1 more conflict(s) not shown>
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: error: Argument 1 to
+"SettingsGroup" has incompatible type "NTPClient"; expected "_ModuleLike" 
+[arg-type]
+                        SettingsGroup(ntp, ("DNSFallback",)),
+                                      ^~~
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note: Following member(s) of "NTPClient" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:153:35: note:     <1 more conflict(s) not shown>
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: error: Argument 1 to
+"SettingsGroup" has incompatible type "SystemService"; expected "_ModuleLike" 
+[arg-type]
+                        SettingsGroup(sysfunct, ("DebugLevel",)),
+                                      ^~~~~~~~
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note: "SystemService" is missing following "_ModuleLike" protocol member:
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:     get_dict_data
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note: Following member(s) of "SystemService" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], _cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:156:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: error: Argument 1 to
+"SettingsGroup" has incompatible type "NTPClient"; expected "_ModuleLike" 
+[arg-type]
+                        SettingsGroup(ntp, ("GMTOffset", "DSTOffset")),
+                                      ^~~
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note: Following member(s) of "NTPClient" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:157:35: note:     <1 more conflict(s) not shown>
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: error: Argument 1 to
+"SettingsGroup" has incompatible type "NotificationService"; expected
+"_ModuleLike"  [arg-type]
+                    "notification": [SettingsGroup(notification, cm.schema...
+                                                   ^~~~~~~~~~~~
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note: Following member(s) of "NotificationService" have conflicts:
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, str]]
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:         def _set_dict_cfg(self, data: Mapping[str, JsonValue], cfg_vals: tuple[tuple[str, str, int | float | str | bool | None, int | float | None, int | float | None, int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None], ...]) -> Coroutine[Any, Any, dict[str, Literal['Invalid', 'Unchanged', 'Valid', 'Failed']]]
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:     Expected:
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, JsonValue]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:     Got:
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:         def get_dict_cfg(self) -> Coroutine[Any, Any, dict[str, dict[str, int | float | str | bool | None]]]
+../u20b_probe/gen_stripped/stripped_wozi.py:159:48: note:     <1 more conflict(s) not shown>
+Found 9 errors in 1 file (checked 1 source file)

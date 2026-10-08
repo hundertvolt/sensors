@@ -183,6 +183,24 @@
     }
   },
   "status": {
+    "ResetReason": {
+      "0": {"text": "unknown (the record's magic or check word is wrong)"},
+      "1": {"text": "power-on (also the RUN pin, RP2040 datasheet §4.7.4)"},
+      "2": {"text": "watchdog without a record (a starvation, machine.reset() from outside the firmware, mpremote reset)"},
+      "3": {"text": "reboot command"},
+      "4": {"text": "bootloader command"},
+      "5": {"text": "supervisor escalation (task-error budget)"},
+      "6": {"text": "watchdog starve after the reset timer could not be armed"},
+      "7": {"text": "reboot after \"Reset to defaults\""},
+      "8": {"text": "reboot after \"Erase FRAM\""},
+      "9": {"text": "reboot after either command whose purpose did not complete"},
+      "11": {"text": "boot failure in phase 1 (construction)"},
+      "12": {"text": "boot failure in phase 2 (setup batch)"},
+      "13": {"text": "boot failure in phase 3 (task starts)"},
+      "14": {"text": "boot failure in phase 4 (timer starts)"},
+      "15": {"text": "boot failure in phase 5 (first NTP sync)"},
+      "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset followed"}
+    },
     "VOCState": {
       "0": {"text": "blackout (first 46 samples, index 0)"},
       "1": {"text": "learning (fresh start, first 24 h)"},

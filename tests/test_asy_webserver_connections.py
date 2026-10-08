@@ -437,7 +437,7 @@ def _make_service(
     routes = RouteSources(sensors, None, None, None, None, None, None, (), ())
     serving = ServingLimits(_MAX_CONTENT_LENGTH, _CHUNK_BYTES, max_connections, None, per_call_timeout_s, outer_cap_s, "127.0.0.1", port)
     uptime_s = (uptime or _Uptime()).read
-    return WebserverService(Microdot(), routes, serving, uptime_s, None, LogConfig(None, 10, debug))  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
+    return WebserverService(Microdot(), routes, serving, uptime_s, None, LogConfig(None, 10, debug))
 
 
 def _head(*lines: str) -> bytes:

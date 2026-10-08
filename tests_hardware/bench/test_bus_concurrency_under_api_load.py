@@ -2,8 +2,6 @@
 buses through the full HTTP stack (concurrent threads hammering GET /sensors, the bus-touching
 endpoint) - complements flash/test_bus_concurrency.py's direct-driver version (SPECIFICATION.md C.8)."""
 
-from __future__ import annotations
-
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -81,11 +79,11 @@ def _take_ceiling_retries() -> dict[str, int]:
     return counts
 
 
-def _report_ceiling_retries(note: Callable[[str], None], arm: str) -> None:
+def _report_ceiling_retries(note: "Callable[[str], None]", arm: str) -> None:
     note(f"CEILING_RETRIES {arm}: {_take_ceiling_retries() or 'none'}")
 
 
-def _noted_ceiling_retries(note: Callable[[str], None]) -> Iterator[None]:
+def _noted_ceiling_retries(note: "Callable[[str], None]") -> "Iterator[None]":
     _take_ceiling_retries()
     yield
     counts = _take_ceiling_retries()
@@ -94,7 +92,7 @@ def _noted_ceiling_retries(note: Callable[[str], None]) -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _ceiling_retries_noted(result_note: Callable[..., None]) -> Iterator[None]:
+def _ceiling_retries_noted(result_note: "Callable[..., None]") -> "Iterator[None]":
     # Every test's retried refusals reach the run record, not a print capture drops on a pass.
     yield from _noted_ceiling_retries(result_note)
 
@@ -219,7 +217,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
 # ---------------------------------------------------------------------------
 
 
-def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
 
     corruption: list[str] = []
@@ -287,7 +285,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
 
 
 @pytest.mark.persistence_write
-def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
@@ -368,7 +366,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
 # ---------------------------------------------------------------------------
 
 
-def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "Callable[..., None]") -> None:
     reset_all_error_logs(dut_ip)
 
     corruption: list[str] = []
@@ -457,7 +455,7 @@ _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle her
 
 
 @pytest.mark.persistence_write
-def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str, result_note: "Callable[..., None]") -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
@@ -546,7 +544,7 @@ _BMP3XX_OVERSAMPLING_SETTINGS = (1, 2)  # cycled - both real, valid settings (as
 
 
 @pytest.mark.persistence_write
-def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str, result_note: "Callable[..., None]") -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"

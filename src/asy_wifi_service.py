@@ -369,8 +369,8 @@ class WifiService(SensorReaderConfig):
             self.pr.one("WLAN hotspot was started")
         own_ip, own_netmask = self._wlan.ifconfig()[:2]
         # Guard against leaking a duplicate concurrent CaptiveDNS.run() task on top of one already
-        # running - same "is None or .done()" convention asy_system_service.py's own
-        # start_and_check_tasks() already uses for its supervised tasks.
+        # running - same "is None or .done()" convention asy_system_service.py's own supervisor
+        # (supervise_tasks()) already uses for its supervised tasks.
         if self._dns_server_task is None or self._dns_server_task.done():
             evtloop = asyncio.get_event_loop()
             self._dns_server_task = evtloop.create_task(self._dns_server.run(own_ip, own_netmask))

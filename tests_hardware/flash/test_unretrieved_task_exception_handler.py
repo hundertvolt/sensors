@@ -2,8 +2,6 @@
 heap locked at DebugLevel 0 and 1 through the real USB console path, and a thousand detached task deaths leaving the
 collected heap where it was. The twin and unit tiers cannot confirm the console path; this is where it is confirmed."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,7 +25,7 @@ def _assert_pass(output: str, what: str) -> None:
     assert match.group(1) == "PASS", f"{what} failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
-def test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware(board: Board) -> None:
+def test_the_unretrieved_exception_report_is_allocation_free_and_retains_nothing_on_real_hardware(board: "Board") -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "unretrieved_task_exception_handler.py", timeout_s=_SCRIPT_TIMEOUT_S)
     # Printed on pass too: run_isolated() captures the board's stdout, and these are the measured figures.
     for line in (ln for ln in output.splitlines() if ln.startswith(("REPORT ", "HEAP ", "HAMMER "))):

@@ -31,14 +31,16 @@ def _parse_group(tmp_path: Path, source: str) -> "tuple[WebGroupTag, ...]":
     return parse_web_group_tags(path, "dev", "x")
 
 
-def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
-    with pytest.raises(BuildError, match=match):
+def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    with pytest.raises(BuildError, match=match) as raised:
         _parse(tmp_path, source)
+    assert raised.value.rule == rule
 
 
-def _parse_group_expecting(tmp_path: Path, source: str, match: str) -> None:
-    with pytest.raises(BuildError, match=match):
+def _parse_group_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    with pytest.raises(BuildError, match=match) as raised:
         _parse_group(tmp_path, source)
+    assert raised.value.rule == rule
 
 
 # ---------------------------------------------------------------------------
@@ -69,13 +71,39 @@ def test_parse_web_tags_default_value_coercion(tmp_path: Path, raw: str, expecte
     assert type(tag.default_value) is type(expected)
 
 
+@pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "infinity"])
+def test_parse_web_tags_non_finite_default_value_rejected(tmp_path: Path, raw: str) -> None:
+    # float() reads all of these; json.dumps() would then write NaN/Infinity, which no browser parses.
+    _parse_expecting(tmp_path, f'# @web X section=sensors submitGroup=self label="L" defaultValue={raw}\n', "is not a finite number", "tag.non-finite-number")
+
+
+def test_parse_web_tags_hidden_alone_keeps_a_schema_field_off_the_page(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web PauseTime hidden="validation record only"\n')
+    assert (tag.field_name, tag.hidden) == ("PauseTime", "validation record only")
+    assert (tag.section, tag.submit_group, tag.label) == ("", "", "")
+
+
+@pytest.mark.parametrize(
+    ("source", "match", "rule"),
+    [
+        ('# @web X hidden="why" label="L"\n', "hidden= stands alone", "web.hidden-not-alone"),
+        ('# @web X section=sensors submitGroup=self label="L" hidden="why"\n', "hidden= stands alone", "web.hidden-not-alone"),
+        ('# @web X hidden="why" special:0="Off"\n', "hidden= stands alone", "web.hidden-not-alone"),
+        ('# @web X hidden=""\n', "gives no reason", "web.hidden-no-reason"),
+        ('# @web X hidden="why"\n# @web X section=sensors submitGroup=self label="L"\n', "both hidden and on the page", "web.hidden-and-tagged"),
+    ],
+)
+def test_parse_web_tags_hidden_rejected_beside_any_other_key_or_tag(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
+
+
 def test_parse_web_tags_repeated_special_entries(tmp_path: Path) -> None:
     (tag,) = _parse(tmp_path, '# @web X section=sensors submitGroup=self label="L" special:1="One" special:2="Two"\n')
     assert dict(tag.special) == {"1": "One", "2": "Two"}
 
 
 def test_parse_web_tags_unknown_key_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" bogus=1\n', "unknown key")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" bogus=1\n', "unknown key", "web.unknown-key")
 
 
 @pytest.mark.parametrize(
@@ -87,15 +115,15 @@ def test_parse_web_tags_unknown_key_rejected(tmp_path: Path) -> None:
     ],
 )
 def test_parse_web_tags_missing_required_key_rejected(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "missing required key")
+    _parse_expecting(tmp_path, source, "missing required key", "web.missing-key")
 
 
 def test_parse_web_tags_invalid_kind_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" kind=bogus\n', "unknown kind")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" kind=bogus\n', "unknown kind", "web.kind-unknown")
 
 
 def test_parse_web_tags_invalid_bool_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" mask=yes\n', "must be true or false")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" mask=yes\n', "must be true or false", "web.not-a-bool")
 
 
 # ---------------------------------------------------------------------------
@@ -120,25 +148,25 @@ def test_parse_web_tags_decimals_is_coerced_to_int(tmp_path: Path) -> None:
 
 
 def test_parse_web_tags_path_with_empty_segment_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="RGB."\n', "malformed path")
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="RGB."\n', "malformed path", "web.path-malformed")
 
 
 def test_parse_web_tags_path_on_a_non_readonly_field_rejected(tmp_path: Path) -> None:
     # A PUT body is always flat, so a path on a writable field would render one value and submit
     # a different one - js/definitions.js's own validateFieldHints() enforces the identical rule.
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" path="RGB.R"\n', "not kind=readonly")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" path="RGB.R"\n', "not kind=readonly", "web.key-needs-readonly")
 
 
 def test_parse_web_tags_non_integer_decimals_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=abc\n', "non-integer decimals")
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=abc\n', "non-integer decimals", "web.decimals-range")
 
 
 def test_parse_web_tags_decimals_out_of_range_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=101\n', "outside 0..100")
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=101\n', "outside 0..100", "web.decimals-range")
 
 
 def test_parse_web_tags_negative_decimals_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=-1\n', "outside 0..100")
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=-1\n', "outside 0..100", "web.decimals-range")
 
 
 # ---------------------------------------------------------------------------
@@ -155,12 +183,12 @@ def test_parse_web_tags_always_executed_is_a_flag(tmp_path: Path) -> None:
 
 
 def test_parse_web_tags_non_bool_always_executed_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=yes\n', "must be true or false")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=yes\n', "must be true or false", "web.not-a-bool")
 
 
 def test_parse_web_tags_always_executed_with_dispatch_rejected(tmp_path: Path) -> None:
     # A dispatch field persists nothing; an always-executed one writes the chip's own store each time.
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=true dispatch=true\n', "exclude each other")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=true dispatch=true\n', "exclude each other", "web.always-executed-and-dispatch")
 
 
 @pytest.mark.parametrize("value", ["epoch", "gmtimestruct"])
@@ -170,15 +198,15 @@ def test_parse_web_tags_format_on_a_readonly_field(tmp_path: Path, value: str) -
 
 
 @pytest.mark.parametrize(
-    ("source", "match"),
+    ("source", "match", "rule"),
     [
-        ('# @web X section=measurements submitGroup=self kind=readonly label="L" format=iso\n', "expected one of"),
-        ('# @web X section=sensors submitGroup=self kind=number label="L" format=epoch\n', "not kind=readonly"),
-        ('# @web X section=sensors submitGroup=self label="L" format=epoch\n', "not kind=readonly"),
+        ('# @web X section=measurements submitGroup=self kind=readonly label="L" format=iso\n', "expected one of", "web.value-not-in-set"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" format=epoch\n', "not kind=readonly", "web.key-needs-readonly"),
+        ('# @web X section=sensors submitGroup=self label="L" format=epoch\n', "not kind=readonly", "web.key-needs-readonly"),
     ],
 )
-def test_parse_web_tags_format_rejected_off_its_value_set_or_kind(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_web_tags_format_rejected_off_its_value_set_or_kind(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
 
 
 def test_parse_web_tags_special_null_is_kept_as_a_special(tmp_path: Path) -> None:
@@ -193,7 +221,7 @@ def test_parse_web_tags_codes_names_a_table_on_a_readonly_field(tmp_path: Path) 
 
 
 def test_parse_web_tags_codes_on_a_writable_field_rejected(tmp_path: Path) -> None:
-    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" codes=ResetReason\n', "not kind=readonly")
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" codes=ResetReason\n', "not kind=readonly", "web.key-needs-readonly")
 
 
 def test_parse_web_tags_bytes_is_a_flag(tmp_path: Path) -> None:
@@ -202,14 +230,14 @@ def test_parse_web_tags_bytes_is_a_flag(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("source", "match"),
+    ("source", "match", "rule"),
     [
-        ('# @web X section=networking submitGroup=identity label="L" bytes=yes\n', "must be true or false"),
-        ('# @web X section=sensors submitGroup=self kind=number label="L" bytes=true\n', "not a string field"),
+        ('# @web X section=networking submitGroup=identity label="L" bytes=yes\n', "must be true or false", "web.not-a-bool"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" bytes=true\n', "not a string field", "web.key-needs-string"),
     ],
 )
-def test_parse_web_tags_bytes_rejected_off_a_bool_or_a_string(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_web_tags_bytes_rejected_off_a_bool_or_a_string(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
 
 
 @pytest.mark.parametrize("value", ["hostLabel", "countryCode", "hostName", "ipv4List"])
@@ -226,14 +254,14 @@ def test_parse_web_tags_a_quoted_special_is_kept_with_its_quotes(tmp_path: Path,
 
 
 @pytest.mark.parametrize(
-    ("source", "match"),
+    ("source", "match", "rule"),
     [
-        ('# @web X section=networking submitGroup=identity label="L" shape=email\n', "expected one of"),
-        ('# @web X section=sensors submitGroup=self kind=number label="L" shape=hostLabel\n', "not a string field"),
+        ('# @web X section=networking submitGroup=identity label="L" shape=email\n', "expected one of", "web.value-not-in-set"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" shape=hostLabel\n', "not a string field", "web.key-needs-string"),
     ],
 )
-def test_parse_web_tags_shape_rejected_off_its_value_set_or_a_string(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_web_tags_shape_rejected_off_its_value_set_or_a_string(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +283,7 @@ def test_parse_web_tags_shape_rejected_off_its_value_set_or_a_string(tmp_path: P
     ],
 )
 def test_parse_web_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "malformed @web tag")
+    _parse_expecting(tmp_path, source, "malformed @web tag", "web.malformed-pairs")
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +336,7 @@ def test_parse_web_tags_valid_locations(tmp_path: Path, source: str) -> None:
     ],
 )
 def test_parse_web_tags_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "module level")
+    _parse_expecting(tmp_path, source, "module level", "tag.not-module-level")
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +361,7 @@ def test_parse_web_tags_duplicate_field_in_same_section_group_rejected(tmp_path:
         tmp_path,
         '# @web A section=sensors submitGroup=self label="A"\n# @web A section=sensors submitGroup=self label="A again"\n',
         "duplicate",
+        "tag.duplicate-field",
     )
 
 
@@ -352,6 +381,7 @@ def test_parse_web_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it(tmp_pa
         tmp_path,
         '# @web A section=sensors submitGroup=self label="A"\n# @wb B section=sensors submitGroup=self label="B"\n',
         "misspelled @web tag",
+        "tag.misspelled",
     )
 
 
@@ -380,7 +410,7 @@ def test_parse_web_group_tags_submit_defaults_false(tmp_path: Path) -> None:
     ],
 )
 def test_parse_web_group_tags_missing_required_key_rejected(tmp_path: Path, source: str) -> None:
-    _parse_group_expecting(tmp_path, source, "missing required key")
+    _parse_group_expecting(tmp_path, source, "missing required key", "web.missing-key")
 
 
 def test_parse_web_group_tags_duplicate_section_group_rejected(tmp_path: Path) -> None:
@@ -388,6 +418,7 @@ def test_parse_web_group_tags_duplicate_section_group_rejected(tmp_path: Path) -
         tmp_path,
         '# @web-group section=sensors submitGroup=self label="A"\n# @web-group section=sensors submitGroup=self label="B"\n',
         "duplicate",
+        "web.duplicate-group",
     )
 
 
@@ -400,7 +431,7 @@ def test_parse_web_group_tags_different_submit_group_same_section_is_not_a_dupli
 
 
 def test_parse_web_group_tags_invalid_submit_bool_rejected(tmp_path: Path) -> None:
-    _parse_group_expecting(tmp_path, '# @web-group section=sensors submitGroup=self label="L" submit=yes\n', "must be true or false")
+    _parse_group_expecting(tmp_path, '# @web-group section=sensors submitGroup=self label="L" submit=yes\n', "must be true or false", "web.not-a-bool")
 
 
 @pytest.mark.parametrize(
@@ -412,7 +443,7 @@ def test_parse_web_group_tags_invalid_submit_bool_rejected(tmp_path: Path) -> No
     ],
 )
 def test_parse_web_group_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
-    _parse_group_expecting(tmp_path, source, "malformed @web-group tag")
+    _parse_group_expecting(tmp_path, source, "malformed @web-group tag", "web.malformed-pairs")
 
 
 @pytest.mark.parametrize(
@@ -426,7 +457,7 @@ def test_parse_web_group_tags_rejects_locations_inside_a_body(tmp_path: Path, so
     # The @web-group sibling of test_parse_web_tags_rejects_locations_inside_a_body above - same
     # D4 location dimension, same "module level" rejection, but for parse_web_group_tags()'s own
     # separate inside_block check, which had no test of its own.
-    _parse_group_expecting(tmp_path, source, "module level")
+    _parse_group_expecting(tmp_path, source, "module level", "tag.not-module-level")
 
 
 # ---------------------------------------------------------------------------
@@ -435,16 +466,16 @@ def test_parse_web_group_tags_rejects_locations_inside_a_body(tmp_path: Path, so
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    "source,match,rule",
     [
-        ('# web X section=sensors submitGroup=self label="L"\n', "leading '@' missing"),
-        ('# @wb X section=sensors submitGroup=self label="L"\n', "misspelled @web tag"),
-        ('# @web section=sensors submitGroup=self label="L"\n', "malformed @web tag"),  # field name dropped
-        ('# @web X section=sensors submitGroup=self labell="L"\n', "unknown key"),  # typo'd key name
+        ('# web X section=sensors submitGroup=self label="L"\n', "leading '@' missing", "tag.missing-sigil"),
+        ('# @wb X section=sensors submitGroup=self label="L"\n', "misspelled @web tag", "tag.misspelled"),
+        ('# @web section=sensors submitGroup=self label="L"\n', "malformed @web tag", "web.malformed-pairs"),  # field name dropped
+        ('# @web X section=sensors submitGroup=self labell="L"\n', "unknown key", "web.unknown-key"),  # typo'd key name
     ],
 )
-def test_parse_web_tags_rejects_near_misses(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_web_tags_rejects_near_misses(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
 
 
 @pytest.mark.parametrize(
@@ -470,14 +501,14 @@ def test_parse_web_group_tags_a_real_web_tag_is_not_a_near_miss_of_web_group(tmp
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    "source,match,rule",
     [
-        ('# web-group section=sensors submitGroup=self label="L"\n', "leading '@' missing"),
-        ('# @wbe-group section=sensors submitGroup=self label="L"\n', "misspelled @web-group tag"),
+        ('# web-group section=sensors submitGroup=self label="L"\n', "leading '@' missing", "tag.missing-sigil"),
+        ('# @wbe-group section=sensors submitGroup=self label="L"\n', "misspelled @web-group tag", "tag.misspelled"),
     ],
 )
-def test_parse_web_group_tags_rejects_near_misses(tmp_path: Path, source: str, match: str) -> None:
-    _parse_group_expecting(tmp_path, source, match)
+def test_parse_web_group_tags_rejects_near_misses(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_group_expecting(tmp_path, source, match, rule)
 
 
 def test_parse_web_tags_edit_distance_just_outside_tolerance_stays_silent(tmp_path: Path) -> None:
@@ -645,28 +676,31 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
     assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur"}
 
 
-@pytest.mark.parametrize(
-    "driver,expected_key",
-    [
-        ("asy_scd30_driver.py", ("measurements", "self")),
-        ("asy_sgp40_driver.py", ("measurements", "self")),
-        ("asy_bmp3xx_driver.py", ("measurements", "self")),
-        ("asy_isl29125_driver.py", ("measurements", "self")),
-        ("asy_wifi_service.py", ("networking", "identity")),
-        ("asy_ntp_client.py", ("networking", "ntp")),
-        ("asy_ntp_client.py", ("networking", "dns")),
-        ("asy_system_service.py", ("system", "settings")),
-        ("asy_notification_service.py", ("notification", "autoConfig")),
-    ],
-)
-def test_parse_web_group_tags_real_drivers_declare_expected_group(src_dir: Path, driver: str, expected_key: "tuple[str, str]") -> None:
-    tags = parse_web_group_tags(src_dir / driver, "dev", "x")
-    assert any((t.section, t.submit_group) == expected_key for t in tags)
+def test_parse_web_group_tags_inventory_of_every_src_file(src_dir: Path) -> None:
+    # The full (section, submitGroup) set per file, so a group dropped or added anywhere is seen.
+    found = {}
+    for path in sorted(src_dir.glob("*.py")):
+        groups = sorted((t.section, t.submit_group) for t in parse_web_group_tags(path, "<test>", "x"))
+        if groups:
+            found[path.name] = groups
+    sensor_cards = [("measurements", "self"), ("sensors", "self")]
+    assert found == {
+        "asy_bmp3xx_driver.py": sensor_cards,
+        "asy_isl29125_driver.py": sensor_cards,
+        "asy_notification_service.py": [("notification", "autoConfig")],
+        "asy_ntp_client.py": [("networking", "dns"), ("networking", "ntp")],
+        "asy_scd30_driver.py": sensor_cards,
+        "asy_sgp40_driver.py": sensor_cards,
+        "asy_system_service.py": [("system", "settings")],
+        "asy_wifi_service.py": [("networking", "identity"), ("networking", "wifiLed")],
+    }
 
 
 def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> None:
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_web_tags(p, "dev", "x")}
-    assert tagged == {
+    # Page tags and hidden ones apart: a hidden tag puts nothing on a page, so only a page tag needs a file the build reads.
+    tags = {p.name: parse_web_tags(p, "dev", "x") for p in sorted(src_dir.glob("*.py"))}
+    assert {name for name, found in tags.items() if any(t.hidden is None for t in found)} == {
         "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
         "asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py", "asy_notification_service.py",
     }
+    assert {name for name, found in tags.items() if any(t.hidden is not None for t in found)} == {"asy_sgp40_driver.py", "asy_webserver_service.py"}

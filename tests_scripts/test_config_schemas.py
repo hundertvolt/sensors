@@ -1,8 +1,9 @@
 """Every config schema is checked statically (SPECIFICATION.md C.5): each `_VAL_*` or `ConfigSchema`/`FieldSchema`
 constant of src/ and of every generated device module is a run of well-formed 6-field records whose default passes
-the store's own validator, with float bounds within 2**24, so the store guards no malformed schema at runtime."""
+the store's own validator, float bounds within 2**24 and each field name declared once per module."""
 
 import ast
+import re
 import shutil
 import sys
 import types
@@ -20,8 +21,8 @@ from buildgen.generate import generate_device
 
 _SRC = REPO_ROOT / "src"
 _FIXTURE_TOMLS = ("multi_instance.toml", "novel_combo.toml")
-_SELECTED_ANNOTATIONS = frozenset({"ConfigSchema", "FieldSchema", "cm.FieldSchema"})
-_ONE_FIELD_ANNOTATIONS = frozenset({"FieldSchema", "cm.FieldSchema"})
+# A ConfigSchema spelled out as its alias's own tuple[FieldSchema, ...] (the LED command fields).
+_SPELLED_OUT_SCHEMA = re.compile(r"tuple\[(?:\w+\.)?FieldSchema, \.\.\.\]")
 _TYPES: dict[str, type] = {"int": int, "float": float, "str": str, "bool": bool}
 # rp2 builds single-precision floats (ports/rp2/mpconfigport.h, MICROPY_FLOAT_IMPL_FLOAT at v1.29.0): every
 # integer up to 2**24 is exact, so a float field's bounds stay inside it and a field needing more is an int.
@@ -40,33 +41,68 @@ def _annotation(node: ast.expr | None) -> str:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else ast.unparse(node)
 
 
-def schema_constants(source: str) -> Iterator[tuple[str, int, list[object] | str]]:
-    # (name, line, its records, or why it cannot be read) for each selected module-level constant.
+def _schema_kind(annotation: str) -> str:
+    # "record" for a FieldSchema, "schema" for a ConfigSchema, "" for anything else: an annotation
+    # names one by its last dotted part (cm.ConfigSchema is the generated modules' form).
+    if _SPELLED_OUT_SCHEMA.fullmatch(annotation):
+        return "schema"
+    return {"FieldSchema": "record", "ConfigSchema": "schema"}.get(annotation.rsplit(".", 1)[-1], "")
+
+
+def _is_aggregate(value: ast.expr) -> bool:
+    # Built from other constants by name (`_VAL_A + _VAL_B`, or a bare `_VAL_A`): its records are theirs.
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and len(value.args) == 1:
+        return _is_aggregate(value.args[0])
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+        return _is_aggregate(value.left) and _is_aggregate(value.right)
+    return isinstance(value, ast.Name)
+
+
+def schema_constants(source: str) -> Iterator[tuple[str, int, list[object] | str, bool]]:
+    # (name, line, its records or why they cannot be read, whether it aggregates other constants)
+    # for each selected module-level constant.
     tree = ast.parse(source)
     consts: dict[str, ast.expr] = {}
     selected: list[tuple[str, ast.expr, int, bool]] = []
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            name, value, annotation = node.targets[0].id, node.value, ""
+            name, value, kind = node.targets[0].id, node.value, ""
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-            name, value, annotation = node.target.id, node.value, _annotation(node.annotation)
+            name, value, kind = node.target.id, node.value, _schema_kind(_annotation(node.annotation))
         else:
             continue
         consts[name] = value
-        if name.startswith("_VAL_") or annotation in _SELECTED_ANNOTATIONS:
-            selected.append((name, value, node.lineno, annotation in _ONE_FIELD_ANNOTATIONS))
+        if name.startswith("_VAL_") or kind:
+            selected.append((name, value, node.lineno, kind == "record"))
     for name, value, line, one_field in selected:
         try:
             literal = schema_ast._eval_literal(value, consts)
         except (TypeError, ValueError) as e:
-            yield name, line, f"cannot be evaluated ({e})"
+            yield name, line, f"cannot be evaluated ({e})", False
             continue
         if one_field:
-            yield name, line, [literal]
+            yield name, line, [literal], False
         elif isinstance(literal, tuple):
-            yield name, line, list(literal)
+            yield name, line, list(literal), _is_aggregate(value)
         else:
-            yield name, line, f"is {literal!r}, not a tuple of field records"
+            yield name, line, f"is {literal!r}, not a tuple of field records", False
+
+
+def duplicate_name_findings(path: str, source: str) -> list[str]:
+    # Each field name once over a module's leaf schemas; an aggregate repeats its parts' names, so it is skipped.
+    owner: dict[str, str] = {}
+    found = []
+    for name, line, records, aggregate in schema_constants(source):
+        if aggregate or isinstance(records, str):
+            continue
+        for record in records:
+            if not (isinstance(record, tuple) and record and isinstance(record[0], str)):
+                continue  # record_findings() reports the shape
+            if record[0] in owner:
+                found.append(f"{path}:{line} field {record[0]!r} is declared by both {owner[record[0]]} and {name}")
+            else:
+                owner[record[0]] = name
+    return found
 
 
 def record_findings(record: object, validator: Validator) -> list[str]:
@@ -99,12 +135,12 @@ def record_findings(record: object, validator: Validator) -> list[str]:
 
 def module_findings(path: str, source: str, validator: Validator) -> list[str]:
     found = []
-    for name, line, records in schema_constants(source):
+    for name, line, records, _aggregate in schema_constants(source):
         if isinstance(records, str):
             found.append(f"{path}:{line} {name} {records}")
             continue
         found.extend(f"{path}:{line} {name}: {finding}" for record in records for finding in record_findings(record, validator))
-    return found
+    return found + duplicate_name_findings(path, source)
 
 
 @pytest.fixture(scope="module")
@@ -148,12 +184,24 @@ def test_every_schema_in_src_and_the_generated_modules_is_well_formed(modules: d
 
 def test_the_scan_reads_every_device_and_concatenated_schemas(modules: dict[str, str]) -> None:
     assert sum(path.startswith("generated/") for path in modules) == len(DEVICE_NAMES) + len(_FIXTURE_TOMLS)
-    read = {name: records for name, _line, records in schema_constants(modules["src/asy_notification_service.py"])}
-    own = read["_VAL_OWN_SCHEMA"]  # three concatenations deep
+    read = {name: (records, aggregate) for name, _line, records, aggregate in schema_constants(modules["src/asy_notification_service.py"])}
+    own, aggregate = read["_VAL_OWN_SCHEMA"]  # three concatenations deep
     assert isinstance(own, list)
+    assert aggregate
     assert [r[0] for r in own if isinstance(r, tuple)] == ["OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur", "AutoOn"]
-    records = sum(len(r) for path, source in modules.items() for _n, _l, r in schema_constants(source) if not isinstance(r, str))
+    records = sum(len(r) for path, source in modules.items() for _n, _l, r, _a in schema_constants(source) if not isinstance(r, str))
     assert records > 50, records  # every driver's fields, not a vacuous scan
+
+
+def test_the_scan_reads_the_generated_warn_schemas_and_the_led_command_fields(modules: dict[str, str]) -> None:
+    # The generated modules annotate their warn-signal schemas cm.ConfigSchema; the LED command
+    # fields spell the alias out as tuple[cm.FieldSchema, ...]. Both are schemas the lint must read.
+    warn = {name for path, source in modules.items() if path.startswith("generated/") for name, _l, _r, _a in schema_constants(source)}
+    assert {"_FIELD_WARN_CO2", "_FIELD_WARN_VOC", "_FIELD_WARN_HUM"} <= warn
+    webserver = {name: records for name, _l, records, _a in schema_constants(modules["src/asy_webserver_service.py"])}
+    led = webserver["_LIGHT_CMD_FIELDS"]
+    assert isinstance(led, list)
+    assert [r[0] for r in led if isinstance(r, tuple)] == ["R", "G", "B", "T"]
 
 
 def test_the_evaluator_concatenates_tuples_and_refuses_anything_else() -> None:
@@ -169,6 +217,7 @@ _BITES = (
     ('("PresOffset", "float", 0.0, -500.0, 500.0, None)', '("PresOffset", "float", 0.0, -500, 500.0, None)', "PresOffset: min -500 is not float or None"),
     ('("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None)', '("MeanAtmTemp", "float", 15.0, -40.0, 50.0)', "is not a 6-tuple"),
     ('("TempOffset", "float", 0.0, -10.0, 10.0, None)', '("TempOffset", "float", 0.0, 10.0, -10.0, None)', "TempOffset: min 10.0 > max -10.0"),
+    ('("TempOffset", "float", 0.0, -10.0, 10.0, None)', '("PresOffset", "float", 0.0, -10.0, 10.0, None)', "field 'PresOffset' is declared by both _VAL_PRES_OFFSET and _VAL_TEMP_OFFSET"),
     ('("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None)', '("MeanAtmTemp", "float", 99.0, -40.0, 50.0, None)', "MeanAtmTemp: default 99.0 (special None) fails"),
 )
 

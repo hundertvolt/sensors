@@ -2,8 +2,6 @@
 stress, cold-boot-to-first-response latency, and hard resets during natural FRAM backup activity -
 all need a reachable network, unavailable on flash tier."""
 
-from __future__ import annotations
-
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -54,7 +52,7 @@ _BACKUP_POLL_S = 5.0
 _RESTORE_RECOVERY_TIMEOUT_S = 20.0
 
 
-def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # is_reachable() soft-resets the board's heap on every poll (raw-REPL entry Ctrl-D's first),
     # wiping the very Timer this test waits on. is_device_present() is the passive open()/close()
     # that touches nothing; tests_hardware/README.md has the repro.
@@ -126,7 +124,7 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
 # ---------------------------------------------------------------------------
 
 
-def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # kick_all_stations() first - see conftest.py's dut_ip docstring for the full stale-AP-station-
     # table finding this real hard_reset() would otherwise be exposed to.
     bench.kick_all_stations()
@@ -157,7 +155,7 @@ def _try_fetch_ok(dut_ip: str) -> bool:
 
 
 @pytest.mark.persistence_write
-def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     current = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S).json()
     original_backup_period = current.get("SGP40", {}).get("BackupPeriod")

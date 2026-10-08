@@ -1,80 +1,70 @@
-"""The Pico W's real, fixed GPIO-to-peripheral mapping, transcribed from
-RP-008312-DS-2-pico-w-datasheet.pdf Figure 2 (printed p.4) - see
-SPECIFICATION.md Part L.6.5."""
+"""The Pico W's fixed GPIO-to-peripheral mapping, transcribed row by row from the RP2040 datasheet's
+Table 279 (F1 SPI, F2 UART, F3 I2C; printed pp.237-238) - see SPECIFICATION.md Part L.6.5. GPIO23/24/25/29
+drive the wireless chip on the Pico W (Pico W datasheet, printed p.7), so they are never offered."""
 
 WIRELESS_RESERVED_GPIOS = frozenset({23, 24, 25, 29})
 _GPIO_MIN = 0
 _GPIO_MAX = 29
 
-# (sda_gpio, scl_gpio, i2c_bus_id) - alternates I2C0/I2C1 every 2 GPIOs; even=SDA, odd=SCL within
-# each pair. GP22/GP28 have no I2C function at all (simply absent from this table).
-_I2C_PAIRS = (
-    (0, 1, "i2c0"),
-    (2, 3, "i2c1"),
-    (4, 5, "i2c0"),
-    (6, 7, "i2c1"),
-    (8, 9, "i2c0"),
-    (10, 11, "i2c1"),
-    (12, 13, "i2c0"),
-    (14, 15, "i2c1"),
-    (16, 17, "i2c0"),
-    (18, 19, "i2c1"),
-    (20, 21, "i2c0"),
-    (26, 27, "i2c1"),
+# Table 279 as printed: (gpio, spi bus, spi role, uart bus, uart role, i2c bus, i2c role), SPI's RX/TX
+# written as the miso/mosi a bus field names. Every user GPIO has one function of each kind; only the
+# roles a bus field can claim below are offered (a chip select is any free GPIO, UART CTS/RTS unused).
+_TABLE_279: "tuple[tuple[int, str, str, str, str, str, str], ...]" = (
+    (0, "spi0", "miso", "uart0", "tx", "i2c0", "sda"),
+    (1, "spi0", "csn", "uart0", "rx", "i2c0", "scl"),
+    (2, "spi0", "sck", "uart0", "cts", "i2c1", "sda"),
+    (3, "spi0", "mosi", "uart0", "rts", "i2c1", "scl"),
+    (4, "spi0", "miso", "uart1", "tx", "i2c0", "sda"),
+    (5, "spi0", "csn", "uart1", "rx", "i2c0", "scl"),
+    (6, "spi0", "sck", "uart1", "cts", "i2c1", "sda"),
+    (7, "spi0", "mosi", "uart1", "rts", "i2c1", "scl"),
+    (8, "spi1", "miso", "uart1", "tx", "i2c0", "sda"),
+    (9, "spi1", "csn", "uart1", "rx", "i2c0", "scl"),
+    (10, "spi1", "sck", "uart1", "cts", "i2c1", "sda"),
+    (11, "spi1", "mosi", "uart1", "rts", "i2c1", "scl"),
+    (12, "spi1", "miso", "uart0", "tx", "i2c0", "sda"),
+    (13, "spi1", "csn", "uart0", "rx", "i2c0", "scl"),
+    (14, "spi1", "sck", "uart0", "cts", "i2c1", "sda"),
+    (15, "spi1", "mosi", "uart0", "rts", "i2c1", "scl"),
+    (16, "spi0", "miso", "uart0", "tx", "i2c0", "sda"),
+    (17, "spi0", "csn", "uart0", "rx", "i2c0", "scl"),
+    (18, "spi0", "sck", "uart0", "cts", "i2c1", "sda"),
+    (19, "spi0", "mosi", "uart0", "rts", "i2c1", "scl"),
+    (20, "spi0", "miso", "uart1", "tx", "i2c0", "sda"),
+    (21, "spi0", "csn", "uart1", "rx", "i2c0", "scl"),
+    (22, "spi0", "sck", "uart1", "cts", "i2c1", "sda"),
+    (23, "spi0", "mosi", "uart1", "rts", "i2c1", "scl"),
+    (24, "spi1", "miso", "uart1", "tx", "i2c0", "sda"),
+    (25, "spi1", "csn", "uart1", "rx", "i2c0", "scl"),
+    (26, "spi1", "sck", "uart1", "cts", "i2c1", "sda"),
+    (27, "spi1", "mosi", "uart1", "rts", "i2c1", "scl"),
+    (28, "spi1", "miso", "uart0", "tx", "i2c0", "sda"),
+    (29, "spi1", "csn", "uart0", "rx", "i2c0", "scl"),
 )
-
-# (block_start_gpio, spi_bus_id) - each block is 4 contiguous GPIOs, roles fixed at
-# offset 0=MISO(RX)/1=CSn/2=SCK/3=MOSI(TX) within the block. GP20-22/GP26-28 have no SPI function.
-_SPI_BLOCKS = ((0, "spi0"), (4, "spi0"), (8, "spi1"), (12, "spi1"), (16, "spi0"))
-_SPI_ROLE_BY_OFFSET = {0: "miso", 1: "csn", 2: "sck", 3: "mosi"}
-
-# (tx_gpio, rx_gpio, uart_id), an irregular set with no arithmetic stride unlike _I2C_PAIRS/
-# _SPI_BLOCKS, transcribed from Figure 2's per-pin labels (pico-w-datasheet.pdf, printed p.4).
-# GP0/GP1 is UART0's default pairing per the legend; the other four are equally legal.
-
-# A GPIO absent from this table has no UART function in Figure 2, the same convention the I2C and
-# SPI tables use. GPIO23/24/25/29 never appear in that user-GPIO table at all, being
-# wireless-reserved (p.7), and gpio_exists()'s own exclusion still applies on top.
-
-# asy_uart_driver.py's module comment names GPIO24/25 and GPIO28/29 - a true claim about the
-# RP2040 die's silicon mux, not about this board's broken-out header pins. It does not
-# contradict this table.
-_UART_PAIRS = (
-    (0, 1, "uart0"),
-    (4, 5, "uart1"),
-    (8, 9, "uart1"),
-    (12, 13, "uart0"),
-    (16, 17, "uart0"),
-)
+# The roles a [bus.*] wire field claims (validate.py's _BUS_PIN_ROLE), per peripheral kind.
+_I2C_BUS_ROLES = frozenset({"sda", "scl"})
+_SPI_BUS_ROLES = frozenset({"miso", "sck", "mosi"})
+_UART_BUS_ROLES = frozenset({"tx", "rx"})
 
 
-def _build_i2c_role() -> "dict[int, tuple[str, str]]":
-    role: dict[int, tuple[str, str]] = {}
-    for sda, scl, bus in _I2C_PAIRS:
-        role[sda] = (bus, "sda")
-        role[scl] = (bus, "scl")
-    return role
+def _role_tables() -> "tuple[dict[int, tuple[str, str]], dict[int, tuple[str, str]], dict[int, tuple[str, str]]]":
+    # Each kind's (bus, role) per offered GPIO: Table 279's rows minus the wireless four and the unclaimable roles.
+    i2c: dict[int, tuple[str, str]] = {}
+    spi: dict[int, tuple[str, str]] = {}
+    uart: dict[int, tuple[str, str]] = {}
+    for gpio, spi_bus, spi_role, uart_bus, uart_role, i2c_bus, i2c_role in _TABLE_279:
+        if gpio in WIRELESS_RESERVED_GPIOS:
+            continue
+        if i2c_role in _I2C_BUS_ROLES:
+            i2c[gpio] = (i2c_bus, i2c_role)
+        if spi_role in _SPI_BUS_ROLES:
+            spi[gpio] = (spi_bus, spi_role)
+        if uart_role in _UART_BUS_ROLES:
+            uart[gpio] = (uart_bus, uart_role)
+    return i2c, spi, uart
 
 
-def _build_spi_role() -> "dict[int, tuple[str, str]]":
-    role: dict[int, tuple[str, str]] = {}
-    for start, bus in _SPI_BLOCKS:
-        for offset, name in _SPI_ROLE_BY_OFFSET.items():
-            role[start + offset] = (bus, name)
-    return role
-
-
-def _build_uart_role() -> "dict[int, tuple[str, str]]":
-    role: dict[int, tuple[str, str]] = {}
-    for tx, rx, bus in _UART_PAIRS:
-        role[tx] = (bus, "tx")
-        role[rx] = (bus, "rx")
-    return role
-
-
-I2C_ROLE = _build_i2c_role()
-SPI_ROLE = _build_spi_role()
-UART_ROLE = _build_uart_role()
+I2C_ROLE, SPI_ROLE, UART_ROLE = _role_tables()
 
 
 def gpio_exists(pin: int) -> bool:

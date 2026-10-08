@@ -2,8 +2,6 @@
 provoked fault produced the expected error/warning entry, then reset again. Shape: GET /status ->
 {"errcount": {"<ModuleName>": {"counter": int, "history": [...]}}} - see SPECIFICATION.md Part A.7."""
 
-from __future__ import annotations
-
 import json
 import sys
 from pathlib import Path
@@ -123,7 +121,7 @@ def assert_no_module_logged_a_new_error(dut_ip: str, before: dict[str, Any], con
     assert not grew, f"{context}: these modules logged new errors during the burst (before, after): {grew!r}; full log: {after!r}"
 
 
-def read_live_system_log(board: Board) -> dict[str, Any]:
+def read_live_system_log(board: "Board") -> dict[str, Any]:
     # SYSTEM's log in /status's errcount shape, read off the running firmware over the REPL (see _READ_SYSTEM_LOG).
     output = board.exec(_READ_SYSTEM_LOG)
     line = next((ln for ln in output.splitlines() if ln.startswith("SYSLOG ")), None)

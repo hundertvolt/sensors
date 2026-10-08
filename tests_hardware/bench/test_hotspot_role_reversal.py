@@ -3,8 +3,6 @@ DUT's OWN hotspot to test its AP/DHCP/captive-portal/REST role from a real exter
 (untestable in the digital twin). Definition order matters - see stage 6 below.
 """
 
-from __future__ import annotations
-
 import os
 import time
 from typing import TYPE_CHECKING
@@ -68,7 +66,7 @@ _DNS_RECOVERY_TIMEOUT_S = 8.0
 _RAW_SOCKET_TIMEOUT_S = 10.0
 
 
-def _join_dut_hotspot_with_reverify_retry(bench: BenchBridge, ssid: str, password: str, *, attempts: int = _JOIN_ATTEMPTS) -> None:
+def _join_dut_hotspot_with_reverify_retry(bench: "BenchBridge", ssid: str, password: str, *, attempts: int = _JOIN_ATTEMPTS) -> None:
     # Shared by every real `join_dut_hotspot()` call site: `is_ssid_visible()`==True doesn't
     # guarantee nmcli's own internal rescan still sees it a moment later, and this can persist
     # across several attempts - each retry re-confirms fresh visibility (see tests_hardware/README.md).
@@ -99,7 +97,7 @@ def hotspot_ssid(board: Board, dut_ip: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: str) -> Iterator[str]:
+def joined_hotspot(board: Board, bench: "BenchBridge", dut_ip: str, hotspot_ssid: str) -> "Iterator[str]":
     # Stages 0-2 in setup, stages 7-8 in teardown, module-scoped - each join/leave costs a real
     # ~15-30s association. Yields the DUT's gateway IP. Its own persisting writes stay UNMARKED per
     # CLAUDE.md's owns-vs-reached-through rule: mark a test that spends a write, never this fixture.
@@ -178,7 +176,7 @@ def test_dut_enters_hotspot_mode_after_ssid_cleared(joined_hotspot: str) -> None
     pass  # the joined_hotspot fixture itself only succeeds if stage 0-2 all completed - this test names that fact
 
 
-def test_hotspot_ssid_matches_configured_hostname(bench: BenchBridge, hotspot_ssid: str, joined_hotspot: str) -> None:
+def test_hotspot_ssid_matches_configured_hostname(bench: "BenchBridge", hotspot_ssid: str, joined_hotspot: str) -> None:
     # bench.ap_ssid() reads the torn-down br0-wifi-ap profile's SSID, not the DUT's. The real
     # assertion is simpler: the fixture's join_dut_hotspot() already had to succeed against
     # hotspot_ssid, which is only possible if the DUT's own hotspot SSID equals it.
@@ -206,13 +204,13 @@ def test_bench_radio_associates_within_bounded_window(joined_hotspot: str) -> No
 # ---------------------------------------------------------------------------
 
 
-def test_bench_radio_receives_a_valid_dhcp_lease(bench: BenchBridge, joined_hotspot: str) -> None:
+def test_bench_radio_receives_a_valid_dhcp_lease(bench: "BenchBridge", joined_hotspot: str) -> None:
     ip = bench.own_ip_on()
     parts = ip.split(".")
     assert len(parts) == 4 and all(p.isdigit() for p in parts), f"own_ip_on() returned something that doesn't look like an IPv4 address: {ip!r}"
 
 
-def test_leased_ip_falls_within_the_aps_own_subnet(bench: BenchBridge, joined_hotspot: str) -> None:
+def test_leased_ip_falls_within_the_aps_own_subnet(bench: "BenchBridge", joined_hotspot: str) -> None:
     own_ip = bench.own_ip_on()
     gateway_ip = joined_hotspot
     # A /24 assumption (the common CYW43 AP DHCP range) - own_ip_on() only reads the address, not
@@ -220,7 +218,7 @@ def test_leased_ip_falls_within_the_aps_own_subnet(bench: BenchBridge, joined_ho
     assert own_ip.rsplit(".", 1)[0] == gateway_ip.rsplit(".", 1)[0], f"leased IP {own_ip} not in the same /24 as gateway {gateway_ip}"
 
 
-def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench: BenchBridge, hotspot_ssid: str, joined_hotspot: str) -> None:
+def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench: "BenchBridge", hotspot_ssid: str, joined_hotspot: str) -> None:
     # Fault injection against the CYW43 firmware's own DHCP server - there is no Python DHCP code
     # here to test. Three reassociate cycles, each confirming a lease. Polls is_ssid_visible()
     # after an explicit ap_down(), since the bench's single radio otherwise misses the hotspot.
@@ -396,7 +394,7 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
     assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
 
-def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(bench: BenchBridge, hotspot_ssid: str, joined_hotspot: str) -> None:
+def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(bench: "BenchBridge", hotspot_ssid: str, joined_hotspot: str) -> None:
     # See test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server's own comment for
     # why this polls is_ssid_visible() (after an explicit ap_down()) instead of a fixed settle -
     # same real single-radio AP-to-client transition race, same fix.
@@ -423,7 +421,7 @@ def test_concurrent_multi_client_burst_is_out_of_scope_here(joined_hotspot: str)
 
 
 @pytest.mark.persistence_write
-def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchBridge, joined_hotspot: str) -> None:
+def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "BenchBridge", joined_hotspot: str) -> None:
     # post_fct (the /networking group's reconnect_wifi() hook) fires if ANY field validates, so
     # sending PW alone keeps `results` to one entry and one invalid field prevents it. A password
     # under 8 characters is invalid per _VAL_PW's bounds.
@@ -437,7 +435,7 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchB
 
 
 @pytest.mark.persistence_write
-def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: BenchBridge, joined_hotspot: str, hotspot_ssid: str) -> None:
+def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK via `nmcli --show-secrets` by default now, so this
     # test needs no manual BENCH_AP_PASSWORD setup (still honored as an explicit override) - see
     # tests_hardware/README.md for why this PUT is required (stage 7's flip-back depends on it).

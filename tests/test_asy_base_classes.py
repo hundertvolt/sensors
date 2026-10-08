@@ -2028,6 +2028,42 @@ def test_sensorreaderconfig_an_invalid_store_sends_the_unavailable_marker_throug
         _remove(path_prefix + "config_badschema.cfg")
 
 
+class _ReadFailingOpen(WriteCountingOpen):
+    # asy_config_manager's `open`: every read-mode open fails with EIO, a write-mode one is counted and goes through.
+    def __call__(self, path: str, mode: str = "r") -> object:
+        if "w" not in mode:
+            raise OSError(5)
+        return super().__call__(path, mode)
+
+
+def test_sensorreaderconfig_an_unreadable_store_sends_the_unavailable_marker_through_get_dict_cfg() -> None:
+    # The store runs on defaults standing in for a file it could not read: the GET answers the marker, as SYSTEM's
+    # does, without reading the callback; the fault's one entry is the store's own CFG_FILE_UNREADABLE warning.
+    path = _SHARED_CFG_DIR + "config_unreadable.cfg"
+    _remove(path)
+    with open(path, "w") as f:
+        json.dump({"SampleInterval": 7}, f)
+    callback_reads: list[int] = []
+
+    async def callback() -> "dict[str, int | float | str | bool | None] | None":
+        callback_reads.append(1)
+        return {}
+
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), "unreadable", _VAL_SI, max_module_error=3, cfg_path=_SHARED_CFG_DIR)
+        with _ReadFailingOpen(asy_config_manager):
+            assert run(reader.setup()) is True  # valid, on its defaults
+        assert (reader.cfgmgr.writable, reader.cfgmgr.faulted) == (False, True)
+        assert run(reader.cfgmgr.get_int_values(_VAL_SI)) == [2]  # the module itself still runs on the defaults
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI, callback)) == {"Sensor": {"error": "unavailable"}}
+        assert callback_reads == []
+        assert reader.pr._err_count == 0
+        log = run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.pr.name]
+        assert (log["ErrNum"][-1], log["ErrType"][-1]) == (code("W", "CFG_FILE_UNREADABLE"), "W"), log
+    finally:
+        _remove(path)
+
+
 # ---------------------------------------------------------------------------
 # SensorReaderConfig - integration across all three files at once: real ConfigManager file I/O
 # (asy_config_manager.py), FRAM-backed logging via the real FRAMManager (asy_print_log.py +
@@ -3175,6 +3211,89 @@ def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> 
     finally:
         _remove(path_prefix + "config_percallback1.cfg")
         _remove(path_prefix + "config_percallback2.cfg")
+
+
+# ---------------------------------------------------------------------------
+# A store closed for a commanded reset: the module's PUT answers "Failed" before any chip or flash write.
+# ---------------------------------------------------------------------------
+
+
+class _ChipStoreReader(SensorReaderConfig):
+    # A store whose _set_mgr_cfg() writes a chip before the file (SCD30's shape); every call and snapshot recorded.
+    chip_writes: "list[JsonMapping]"
+    snapshot_reads: "list[list[str]]"
+
+    async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        self.snapshot_reads.append(cfg)
+        return await super()._get_mgr_cfg(cfg)
+
+    async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> "tuple[bool, cm.WriteValidity]":
+        self.chip_writes.append(data)
+        return await super()._set_mgr_cfg(data, cfg_vals)
+
+
+def _chip_store_reader(name: str, schema: "cm.ConfigSchema") -> _ChipStoreReader:
+    _remove(_SHARED_CFG_DIR + "config_" + name + ".cfg")
+    reader = _ChipStoreReader(Meas(20.0, 50), name, schema, max_module_error=3, cfg_path=_SHARED_CFG_DIR)
+    reader.chip_writes = []
+    reader.snapshot_reads = []
+    run(reader.cfgmgr.setup())
+    return reader
+
+
+def test_a_plain_sensorreader_never_reports_its_writes_closed() -> None:
+    assert SensorReader(Meas(20.0, 50), "", max_module_error=3)._writes_closed() is False
+
+
+def test_sensorreaderconfig_reads_its_stores_close_and_lends_the_store_its_put_lock() -> None:
+    # The lock a reset's flush takes to wait out an in-flight PUT is the one that PUT holds.
+    reader = _chip_store_reader("closeread", _VAL_SI)
+    try:
+        assert reader.cfgmgr.owner_lock is reader._set_lock
+        assert reader._writes_closed() is False
+        reader.cfgmgr.close_writes()
+        assert reader._writes_closed() is True
+    finally:
+        _remove(_SHARED_CFG_DIR + "config_closeread.cfg")
+
+
+def test_a_put_on_a_closed_store_fails_every_key_before_any_chip_or_flash_write() -> None:
+    combined = _VAL_SI + _VAL_BOOL
+    reader = _chip_store_reader("closedput", combined)
+    pushed: list[int | float | str | bool | None] = []
+
+    async def push(value: "int | float | str | bool | None") -> bool:
+        pushed.append(value)
+        return True
+
+    reader._push_callbacks["SelfCal"] = push
+    try:
+        reader.cfgmgr.close_writes()
+        with WriteCountingOpen(asy_config_manager) as counter:
+            results = run(_put_flushed(reader, {"SampleInterval": 42, "SelfCal": True, "Ghost": 1}))
+        assert results == {"SampleInterval": "Failed", "SelfCal": "Failed", "Ghost": "Failed"}
+        assert (reader.chip_writes, reader.snapshot_reads, pushed, counter.writes) == ([], [], [], 0)
+    finally:
+        _remove(_SHARED_CFG_DIR + "config_closedput.cfg")
+
+
+def test_a_put_queued_behind_the_put_lock_when_the_store_closes_is_refused() -> None:
+    reader = _chip_store_reader("queuedput", _VAL_SI)
+    try:
+
+        async def scenario() -> "cm.WriteValidity":
+            await reader._set_lock.acquire()
+            put = asyncio.create_task(reader._set_dict_cfg({"SampleInterval": 42}, _VAL_SI))
+            for _ in range(3):
+                await asyncio.sleep(0)  # the PUT now waits at the lock
+            reader.cfgmgr.close_writes()
+            reader._set_lock.release()
+            return await put
+
+        assert run(scenario()) == {"SampleInterval": "Failed"}
+        assert reader.chip_writes == []
+    finally:
+        _remove(_SHARED_CFG_DIR + "config_queuedput.cfg")
 
 
 if __name__ == "__main__":

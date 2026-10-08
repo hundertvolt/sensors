@@ -7,6 +7,7 @@ silently. The sibling gating test proves the flag WORKS; this proves nothing esc
 # 2026-09-18; tests_hardware/README.md states it fully, and why the answer is not "spend zero".
 
 import ast
+import json
 import re
 from functools import cache
 from pathlib import Path
@@ -58,7 +59,7 @@ def _flagged_fields(repo_root: Path, flag: str) -> frozenset[str]:
     # website, the mock and this gate all read the two never-"Unchanged" classes from.
     found = set()
     for device in DEVICE_NAMES:
-        definitions = definitions_for_toml(device_toml(device), repo_root / "src")
+        definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), repo_root / "src")))
         found |= {f["key"] for s in definitions["sections"] for g in s["groups"] for f in g.get("fields", []) if f.get(flag) is True}
     return frozenset(found)
 

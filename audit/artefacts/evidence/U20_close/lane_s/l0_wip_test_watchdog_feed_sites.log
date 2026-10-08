@@ -1,0 +1,187 @@
+F.FFFFFFFFFF.F.                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_src_feeds_only_at_the_pinned_sites ____________________
+
+    def test_src_feeds_only_at_the_pinned_sites() -> None:
+>       assert src_findings(SRC) == []
+E       AssertionError: assert ['asy_system_...e pinned set'] == []
+E         
+E         Left contains 2 more items, first extra item: 'asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set'
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:204: AssertionError
+___________________ test_the_later_stages_are_still_pending ____________________
+
+    def test_the_later_stages_are_still_pending() -> None:
+>       assert pending_findings(SRC) == []
+E       AssertionError: assert ['pending par...rom _PENDING'] == []
+E         
+E         Left contains 4 more items, first extra item: 'pending part landed (U20): feed_watchdog() tests _feed_owned - pin it in this check and drop it from _PENDING'
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:219: AssertionError
+_________________________ test_a_fifth_feed_site_fails _________________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_fifth_feed_site_fails0/src')
+
+    def test_a_fifth_feed_site_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "    def pause_permanent_storage(self, duration: int) -> bool:\n", "    def pause_permanent_storage(self, duration: int) -> bool:\n        self._watchdog.feed()\n")
+        findings = src_findings(src_copy)
+>       assert len(findings) == 1 and "SystemService.pause_permanent_storage(): a watchdog feed outside the pinned set" in findings[0], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...utside the pinned set', 'asy_system_service.py:643 SystemService.run_setups(): a watchdog feed outside the pinned set']
+E       assert (3 == 1)
+E        +  where 3 = len(['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...utside the pinned set', 'asy_system_service.py:643 SystemService.run_setups(): a watchdog feed outside the pinned set'])
+
+tests_scripts/test_watchdog_feed_sites.py:225: AssertionError
+_______________________ test_a_dropped_latch_test_fails ________________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_dropped_latch_test_fail0/src')
+
+    def test_a_dropped_latch_test_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve:\n            self._watchdog.feed()", "        if self._watchdog is not None:\n            self._watchdog.feed()")
+        findings = src_findings(src_copy)
+>       assert len(findings) == 1 and "SystemService.feed_watchdog(): the latched feed no longer tests _force_watchdog_starve" in findings[0], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py:642 SystemService.run_setups(): a watchdog feed outside the pinned set']
+E       assert (2 == 1)
+E        +  where 2 = len(['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py:642 SystemService.run_setups(): a watchdog feed outside the pinned set'])
+
+tests_scripts/test_watchdog_feed_sites.py:231: AssertionError
+____________________ test_a_feed_in_a_timer_callback_fails _____________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_feed_in_a_timer_callbac0/src')
+
+    def test_a_feed_in_a_timer_callback_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._sequencer_flag.set())", "callback=lambda _b: self.feed_watchdog())")
+        findings = src_findings(src_copy)
+        # Both the lambda's own call and the latched feed it reaches.
+>       assert [f.split(" ", 1)[1] for f in findings] == [
+            "SystemService.feed_watchdog(): a feed inside a Timer/IRQ callback",
+            "SystemService.start_timers(): a feed inside a Timer/IRQ callback",
+        ], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py... outside the pinned set', 'asy_system_service.py:694 SystemService.start_timers(): a feed inside a Timer/IRQ callback']
+E       assert ['SystemServi...IRQ callback'] == ['SystemServi...IRQ callback']
+E         
+E         At index 0 diff: 'SystemService._own_feed(): a watchdog feed outside the pinned set' != 'SystemService.feed_watchdog(): a feed inside a Timer/IRQ callback'
+E         Left contains 2 more items, first extra item: 'SystemService.run_setups(): a watchdog feed outside the pinned set'
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:238: AssertionError
+____________ test_a_function_a_timer_callback_reaches_must_not_feed ____________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_function_a_timer_callba0/src')
+
+    def test_a_function_a_timer_callback_reaches_must_not_feed(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "callback=lambda _b: self._sequencer_flag.set())", "callback=lambda _b: self.pause_permanent_storage(0))")
+        _edit(src_copy / "asy_system_service.py", "    def pause_permanent_storage(self, duration: int) -> bool:\n", "    def pause_permanent_storage(self, duration: int) -> bool:\n        self.feed_watchdog()\n")
+        findings = src_findings(src_copy)
+>       assert len(findings) == 1 and "SystemService.pause_permanent_storage(): a feed inside a Timer/IRQ callback" in findings[0], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py... a Timer/IRQ callback', 'asy_system_service.py:643 SystemService.run_setups(): a watchdog feed outside the pinned set']
+E       assert (3 == 1)
+E        +  where 3 = len(['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py... a Timer/IRQ callback', 'asy_system_service.py:643 SystemService.run_setups(): a watchdog feed outside the pinned set'])
+
+tests_scripts/test_watchdog_feed_sites.py:248: AssertionError
+_________________ test_a_feed_inside_the_supervisor_scan_fails _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_feed_inside_the_supervi0/src')
+
+    def test_a_feed_inside_the_supervisor_scan_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self.feed_watchdog()\n")
+        findings = src_findings(src_copy)
+>       assert findings[0].endswith("the supervisor feeds at its pass end and in its escalation block - not inside ('While', 'For')"), findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', "asy_system_service.py...tchdog feed outside the pinned set', 'SystemService._supervise(): 3 `feed_watchdog(` calls where the pinned set has 2']
+E       assert False
+E        +  where False = <built-in method endswith of str object at 0x7fc24b054d20>("the supervisor feeds at its pass end and in its escalation block - not inside ('While', 'For')")
+E        +    where <built-in method endswith of str object at 0x7fc24b054d20> = 'asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set'.endswith
+
+tests_scripts/test_watchdog_feed_sites.py:254: AssertionError
+_____________________ test_a_dropped_escalation_feed_fails _____________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_dropped_escalation_feed0/src')
+
+    def test_a_dropped_escalation_feed_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "                self.feed_watchdog()\n                self._force_watchdog_starve = True\n", "                self._force_watchdog_starve = True\n")
+        findings = src_findings(src_copy)
+>       assert findings == ["SystemService._supervise(): 1 `feed_watchdog(` calls where the pinned set has 2"], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...tchdog feed outside the pinned set', 'SystemService._supervise(): 1 `feed_watchdog(` calls where the pinned set has 2']
+E       assert ['asy_system_...ed set has 2'] == ['SystemServi...ed set has 2']
+E         
+E         At index 0 diff: 'asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set' != 'SystemService._supervise(): 1 `feed_watchdog(` calls where the pinned set has 2'
+E         Left contains 2 more items, first extra item: 'asy_system_service.py:641 SystemService.run_setups(): a watchdog feed outside the pinned set'
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:261: AssertionError
+_______________ test_an_escalation_through_a_command_path_fails ________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_an_escalation_through_a_c0/src')
+
+    def test_an_escalation_through_a_command_path_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", '                await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)\n', "                await self.reboot_system()\n")
+        findings = src_findings(src_copy)
+>       assert findings == [
+            "SystemService._supervise() references reboot_system",
+            "SystemService._supervise(): 0 `_reboot(` calls where the pinned set has one, without fed=",
+        ], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...references reboot_system', 'SystemService._supervise(): 0 `_reboot(` calls where the pinned set has one, without fed=']
+E       assert ['asy_system_...without fed='] == ['SystemServi...without fed=']
+E         
+E         At index 0 diff: 'asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set' != 'SystemService._supervise() references reboot_system'
+E         Left contains 2 more items, first extra item: 'SystemService._supervise() references reboot_system'
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:267: AssertionError
+______________________ test_a_fed_escalation_reset_fails _______________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_fed_escalation_reset_fa0/src')
+
+    def test_a_fed_escalation_reset_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", 'await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)', 'await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset, fed=True)')
+        findings = src_findings(src_copy)
+>       assert findings == ["SystemService._supervise(): 1 `_reboot(` calls where the pinned set has one, without fed="], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...d outside the pinned set', 'SystemService._supervise(): 1 `_reboot(` calls where the pinned set has one, without fed=']
+E       assert ['asy_system_...without fed='] == ['SystemServi...without fed=']
+E         
+E         At index 0 diff: 'asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set' != 'SystemService._supervise(): 1 `_reboot(` calls where the pinned set has one, without fed='
+E         Left contains 2 more items, first extra item: 'asy_system_service.py:642 SystemService.run_setups(): a watchdog feed outside the pinned set'
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:276: AssertionError
+______________________ test_a_feed_in_another_loop_fails _______________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_feed_in_another_loop_fa0/src')
+
+    def test_a_feed_in_another_loop_fails(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "        for n, starter in enumerate(timers):\n", "        for n, starter in enumerate(timers):\n            self.feed_watchdog()\n")
+        findings = src_findings(src_copy)
+>       assert len(findings) == 1 and "SystemService.start_timers(): a watchdog feed outside the pinned set" in findings[0], findings
+E       AssertionError: ['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...side the pinned set', 'asy_system_service.py:687 SystemService.start_timers(): a watchdog feed outside the pinned set']
+E       assert (3 == 1)
+E        +  where 3 = len(['asy_system_service.py:308 SystemService._own_feed(): a watchdog feed outside the pinned set', 'asy_system_service.py...side the pinned set', 'asy_system_service.py:687 SystemService.start_timers(): a watchdog feed outside the pinned set'])
+
+tests_scripts/test_watchdog_feed_sites.py:282: AssertionError
+___________________ test_a_landed_later_stage_must_be_pinned ___________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6524/test_a_landed_later_stage_must0/src')
+
+    def test_a_landed_later_stage_must_be_pinned(src_copy: Path) -> None:
+        _edit(src_copy / "asy_system_service.py", "    def feed_watchdog(self) -> None:\n", "    def _own_feed(self) -> None:\n        pass\n\n    def feed_watchdog(self) -> None:\n")
+        findings = pending_findings(src_copy)
+>       assert len(findings) == 1 and findings[0].startswith("pending part landed (U20): _own_feed():"), findings
+E       AssertionError: ['pending part landed (U20): feed_watchdog() tests _feed_owned - pin it in this check and drop it from _PENDING', 'pen...art landed (U26): erase_chip(self._own_feed) in _shutdown_sequence() - pin it in this check and drop it from _PENDING']
+E       assert (4 == 1)
+E        +  where 4 = len(['pending part landed (U20): feed_watchdog() tests _feed_owned - pin it in this check and drop it from _PENDING', 'pen...art landed (U26): erase_chip(self._own_feed) in _shutdown_sequence() - pin it in this check and drop it from _PENDING'])
+
+tests_scripts/test_watchdog_feed_sites.py:299: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_src_feeds_only_at_the_pinned_sites
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_the_later_stages_are_still_pending
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_fifth_feed_site_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_dropped_latch_test_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_feed_in_a_timer_callback_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_function_a_timer_callback_reaches_must_not_feed
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_feed_inside_the_supervisor_scan_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_dropped_escalation_feed_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_an_escalation_through_a_command_path_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_fed_escalation_reset_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_feed_in_another_loop_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_a_landed_later_stage_must_be_pinned
+12 failed, 3 passed in 13.24s

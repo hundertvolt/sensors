@@ -40,6 +40,15 @@ function groupValuesFrom(section, group, data) {
     return data;
 }
 
+/**
+ * A list whose every item is a string, number, boolean or null: String() renders it as text, never as an object.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isScalarList(value) {
+    return Array.isArray(value) && value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
+}
+
 // Which mockdata top-level object backs each definitions section, matching what js/mock-server.js
 // serves for that section's own GET.
 const SECTION_DATA_KEY = {
@@ -80,8 +89,8 @@ function unrenderableReadonlyFields(defs, data) {
                 }
                 // A `path` naming a GROUP rather than a leaf resolves to the sub-object, which
                 // renders as "[object Object]" - a value, so the check above cannot see it.
-                // gmtimestruct is the one format whose value legitimately is a struct.
-                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null) {
+                // gmtimestruct's struct and a list of scalars (ConfigFaults) are leaves.
+                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null && !isScalarList(resolved)) {
                     missing.push(`${section.key}/${group.key}/${field.key} (an object, not a leaf)`);
                 }
             }
@@ -116,5 +125,14 @@ describe("definitions and mockdata agree", () => {
         };
         const data = { measurements: { ISL29125: { RGB: { R: 0.5, G: 0.25, B: 0.125 } } } };
         expect(unrenderableReadonlyFields(defs, data)).toEqual(["measurements/ISL29125/R (an object, not a leaf)"]);
+    });
+
+    it("takes a list of names as a leaf and still reports a list that holds a sub-object", () => {
+        const defs = {
+            sections: [{ key: "status", groups: [{ key: "system", fields: [{ key: "ConfigFaults", label: "Config Faults", kind: "readonly" }] }] }],
+        };
+        expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [] } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: ["SCD30", "WIFI"] } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [{ Module: "SCD30" }] } } })).toEqual(["status/system/ConfigFaults (an object, not a leaf)"]);
     });
 });

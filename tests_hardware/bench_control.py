@@ -3,8 +3,6 @@ uplink, and the role-reversal flip where the bridge's radio joins the DUT's own 
 client. Shares connection names with toolchain/setup_toolchain.py's ensure_bench_bridge().
 """
 
-from __future__ import annotations
-
 import re
 import subprocess
 import time
@@ -115,14 +113,14 @@ class BenchBridge:
         for mac in bench_associated_station_macs(iface):
             self.kick_client(mac)
 
-    def block_udp_ports(self, ports: Iterable[int], comment: str = "sensors-bench-fault-injection") -> None:
+    def block_udp_ports(self, ports: "Iterable[int]", comment: str = "sensors-bench-fault-injection") -> None:
         # Scoped, temporary iptables DROP rules on the bridge's OUTPUT/FORWARD chains for the
         # given UDP ports (53 DNS, 123 NTP) - simulates network jitter/loss without touching the
         # DUT's flash. Always paired with unblock_udp_ports() in a test's own teardown.
         for port in ports:
             _run_iptables(["-A", "FORWARD", "-p", "udp", "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", comment])
 
-    def unblock_udp_ports(self, ports: Iterable[int], comment: str = "sensors-bench-fault-injection") -> None:
+    def unblock_udp_ports(self, ports: "Iterable[int]", comment: str = "sensors-bench-fault-injection") -> None:
         for port in ports:
             # -D removes one matching rule per call - safe to call even if block_udp_ports() was
             # never actually reached (e.g. an earlier assertion in the same test failed first).

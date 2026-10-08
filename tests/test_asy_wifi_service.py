@@ -3705,7 +3705,7 @@ def test_start_hotspot_does_not_leak_a_dns_server_task_when_called_again_while_a
 
 def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_already_finished() -> None:
     # The other half of the guard: a *finished* task (real crash/cancellation) must not block a
-    # legitimate restart, matching asy_system_service.py's own start_and_check_tasks() `is None or
+    # legitimate restart, matching asy_system_service.py's own supervisor's (supervise_tasks()) `is None or
     # .done()` convention.
     client = make_client()
 

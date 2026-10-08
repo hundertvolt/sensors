@@ -15,7 +15,8 @@ from _devices import DEVICE_NAMES, device_toml
 
 from buildgen import api_reference
 from buildgen.api_reference import api_reference_json, generate_api_reference
-from buildgen.errors import BuildError
+from buildgen.errors import BuildError, BuildInternalError
+from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
 from buildgen.model import DeviceModel
 from buildgen.validate import build_model
@@ -49,6 +50,12 @@ _GENERATE = (
 )
 
 
+def _assert_rule(error: BuildError, rule: str) -> None:
+    # Every build error names the rule it broke and carries its fix in the message (SPECIFICATION.md L.5).
+    assert error.rule == rule, error.rule
+    assert error.fix and str(error).endswith(f" - fix: {error.fix}"), str(error)
+
+
 def _expected_fields(model: DeviceModel) -> "tuple[set[tuple[str, str, str, str]], set[tuple[str, str, str, str]], set[Path]]":
     # (method, path, group, key) of every @web tag the device's sources carry, present and absent, and the files read:
     # GET reports a tag unless dispatch or defaultValue (H.5), PUT takes it unless readonly; maintenance is <name>_<field>.
@@ -58,6 +65,8 @@ def _expected_fields(model: DeviceModel) -> "tuple[set[tuple[str, str, str, str]
     absent: set[tuple[str, str, str, str]] = set()
     for path, label, resolved in sources:
         for tag in parse_web_tags(path, model.device, label):
+            if tag.hidden is not None:
+                continue  # off every route: test_a_hidden_field_is_on_no_route checks it
             group, key = tag.submit_group, tag.field_name
             if tag.section == "status" or tag.submit_group == SELF_GROUP:
                 assert resolved is not None, f"{path}: {tag.field_name} is keyed by its instance, but {path.name} has none"
@@ -65,6 +74,11 @@ def _expected_fields(model: DeviceModel) -> "tuple[set[tuple[str, str, str, str]
             for method, applies in (("GET", not tag.dispatch and tag.default_value is None), ("PUT", tag.kind != "readonly")):
                 (expected if applies else absent).add((method, f"/{tag.section}", group, key))
     return expected, absent, {path for path, _label, _resolved in sources}
+
+
+def _generated_function(device: str, name: str) -> ast.AsyncFunctionDef:
+    tree = ast.parse(generate_device(device_toml(device), _SRC, _REPO_ROOT / "ext").module_source)
+    return next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == name)
 
 
 def _groups(route: "dict[str, object]") -> "list[dict[str, object]]":
@@ -159,11 +173,12 @@ def test_every_web_field_appears_under_its_route_and_nowhere_it_is_not_carried(r
 
 
 def test_every_tagged_source_is_one_some_device_reads() -> None:
-    # A newly tagged src/ file outside every device's sources would leave its fields unchecked above.
+    # A newly page-tagged src/ file outside every device's sources would leave its fields unchecked above; a hidden
+    # tag is on no route, so it needs no reader.
     read: set[Path] = set()
     for device in DEVICE_NAMES:
         read |= _expected_fields(_model(device))[2]
-    tagged = {path for path in _SRC.glob("*.py") if parse_web_tags(path, "scan", path.stem)}
+    tagged = {path for path in _SRC.glob("*.py") if any(tag.hidden is None for tag in parse_web_tags(path, "scan", path.stem))}
     assert tagged <= read, f"tagged sources no device reads: {sorted(p.name for p in tagged - read)}"
 
 
@@ -189,42 +204,47 @@ def test_the_result_words_and_envelope_codes_are_the_sources(references: "dict[s
 
 def test_a_route_the_definitions_name_but_the_table_lacks_fails_the_build(tmp_path: Path) -> None:
     src_dir = _src_with(tmp_path, _WEBSERVER, '    ("PUT", "/sensors", "_put_sensors"),\n', "")
-    with pytest.raises(BuildError, match=r"PUT /sensors"):
+    with pytest.raises(BuildError, match=r"PUT /sensors") as caught:
         generate_api_reference(_model(DEVICE_NAMES[0], src_dir), src_dir)
+    _assert_rule(caught.value, "api.route-unregistered")
 
 
 @pytest.mark.parametrize(
-    ("old", "new", "reason"),
+    ("old", "new", "reason", "rule"),
     [
-        ("ROUTES = (", "ROUTES_GONE = (", r"no longer defines ROUTES"),
-        ("ROUTES = (", "ROUTES = () + (", r"ROUTES is no longer a plain literal"),
-        ('    ("GET", "/measurements", "_get_measurements"),', '    ("POST", "/measurements", "_get_measurements"),', r"ROUTES row \('POST'"),
-        ('    ("GET", "/measurements", "_get_measurements"),', '    ("GET", "measurements", "_get_measurements"),', r"ROUTES row \('GET', 'measurements'"),
-        ('    ("GET", "/measurements", "_get_measurements"),', '    ("GET", "/measurements"),', r"ROUTES row \('GET', '/measurements'\)"),
-        ('    ("GET", "/sensors", "_get_sensors"),', '    ("GET", "/measurements", "_get_sensors"),', r"ROUTES lists GET /measurements twice"),
+        ("ROUTES = (", "ROUTES_GONE = (", r"no longer defines ROUTES", "api.source-name-missing"),
+        ("ROUTES = (", "ROUTES = () + (", r"ROUTES is no longer a plain literal", "api.source-not-literal"),
+        ("ROUTES = (", 'ROUTES = "rows"\n_ROUTES_ROWS = (', r"ROUTES is a str, not a tuple of rows", "api.routes-not-tuple"),
+        ('    ("GET", "/measurements", "_get_measurements"),', '    ("POST", "/measurements", "_get_measurements"),', r"ROUTES row \('POST'", "api.routes-row-malformed"),
+        ('    ("GET", "/measurements", "_get_measurements"),', '    ("GET", "measurements", "_get_measurements"),', r"ROUTES row \('GET', 'measurements'", "api.routes-row-malformed"),
+        ('    ("GET", "/measurements", "_get_measurements"),', '    ("GET", "/measurements"),', r"ROUTES row \('GET', '/measurements'\)", "api.routes-row-malformed"),
+        ('    ("GET", "/sensors", "_get_sensors"),', '    ("GET", "/measurements", "_get_sensors"),', r"ROUTES lists GET /measurements twice", "api.routes-duplicate"),
     ],
-    ids=["missing", "not-a-literal", "unknown-method", "relative-path", "short-row", "duplicate"],
+    ids=["missing", "not-a-literal", "not-a-tuple", "unknown-method", "relative-path", "short-row", "duplicate"],
 )
-def test_an_unreadable_route_table_fails_the_build(tmp_path: Path, old: str, new: str, reason: str) -> None:
+def test_an_unreadable_route_table_fails_the_build(tmp_path: Path, old: str, new: str, reason: str, rule: str) -> None:
     src_dir = _src_with(tmp_path, _WEBSERVER, old, new)
-    with pytest.raises(BuildError, match=reason):
+    with pytest.raises(BuildError, match=reason) as caught:
         generate_api_reference(_model(DEVICE_NAMES[0], src_dir), src_dir)
+    _assert_rule(caught.value, rule)
 
 
 @pytest.mark.parametrize(
-    ("filename", "old", "new", "name"),
+    ("filename", "old", "new", "name", "rule"),
     [
-        ("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4', "FAILED"),
-        ("asy_config_manager.py", 'VALID: "Final" = "Valid"', 'VALIDATED: "Final" = "Valid"', "VALID"),
-        ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES"),
-        ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal"),
+        ("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4', "FAILED", "api.result-word-not-string"),
+        ("asy_config_manager.py", 'VALID: "Final" = "Valid"', 'VALIDATED: "Final" = "Valid"', "VALID", "api.source-name-missing"),
+        ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES", "api.envelope-codes-malformed"),
+        ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal", "api.source-not-literal"),
+        ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {)", "cannot read .* for its _STANDARD_CODES", "api.source-unreadable"),
     ],
-    ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key"],
+    ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key", "syntax-error"],
 )
-def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str) -> None:
+def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str, rule: str) -> None:
     src_dir = _src_with(tmp_path, filename, old, new)
-    with pytest.raises(BuildError, match=name):
+    with pytest.raises(BuildError, match=name) as caught:
         generate_api_reference(_model(DEVICE_NAMES[0], src_dir), src_dir)
+    _assert_rule(caught.value, rule)
 
 
 @pytest.mark.parametrize(
@@ -241,7 +261,7 @@ def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filen
 def test_a_malformed_definitions_shape_fails_the_build(monkeypatch: pytest.MonkeyPatch, definitions: "dict[str, object]", what: str) -> None:
     # The definitions generator's own output is checked as it is read, never trusted into a wrong reference.
     monkeypatch.setattr(api_reference, "generate_definitions", lambda _model, _src_dir: definitions)
-    with pytest.raises(BuildError, match=f"internal: the definitions' {what} is not"):
+    with pytest.raises(BuildInternalError, match=f"the definitions' {what} is not"):
         generate_api_reference(_model(DEVICE_NAMES[0]), _SRC)
 
 
@@ -253,8 +273,9 @@ def test_a_field_key_the_reference_does_not_classify_fails_the_build(monkeypatch
         field = {"key": "C", "kind": "composite", "subFields": [field]}
     definitions = {"sections": [{"key": "sensors", "rest": {"put": "/sensors"}, "groups": [{"key": "G", "fields": [field]}]}]}
     monkeypatch.setattr(api_reference, "generate_definitions", lambda _model, _src_dir: definitions)
-    with pytest.raises(BuildError, match=r"'pattern'.*neither an API fact nor the page's own"):
+    with pytest.raises(BuildError, match=r"'pattern'.*neither an API fact nor the page's own") as caught:
         generate_api_reference(_model(DEVICE_NAMES[0]), _SRC)
+    _assert_rule(caught.value, "api.field-key-unclassified")
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -264,3 +285,45 @@ def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, 
     fields = identity["fields"]
     assert isinstance(fields, list)
     assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_status_route_lists_the_system_keys_the_device_publishes(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # Guard: GET /status's system group names exactly the keys the generated _system_status() returns.
+    system = next(group for group in _groups(_route(references[device], "GET", "/status")) if group["key"] == "system")
+    fields = system["fields"]
+    assert isinstance(fields, list)
+    returned = next(node.value for node in ast.walk(_generated_function(device, "_system_status")) if isinstance(node, ast.Return))
+    assert isinstance(returned, ast.Dict)
+    assert [field["key"] for field in fields] == [key.value for key in returned.keys if isinstance(key, ast.Constant)]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_system_route_offers_the_words_the_server_accepts(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # Guard: PUT /system's SystemCmd options are asy_webserver_service.py's _SYSTEM_CMDS, in its order.
+    command = next(group for group in _groups(_route(references[device], "PUT", "/system")) if group["key"] == "command")
+    fields = command["fields"]
+    assert isinstance(fields, list)
+    (field,) = fields
+    served = next(node.value for node in ast.parse((_SRC / _WEBSERVER).read_text(encoding="utf-8")).body if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_SYSTEM_CMDS" for t in node.targets))
+    assert isinstance(served, ast.Call)
+    assert field["options"] == list(ast.literal_eval(served.args[0]))
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_a_hidden_field_is_on_no_route(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # An instance's hidden= fields appear in none of its own groups, nor as its maintenance rows.
+    model = _model(device)
+    shown: list[str] = []
+    for spec in model.instances.values():
+        if spec.driver_info is None:
+            continue
+        hidden = {tag.field_name for tag in parse_web_tags(spec.driver_info.source_path, device, spec.label) if tag.hidden is not None}
+        for route in _routes(references[device]):
+            for group in _groups(route):
+                fields = group.get("fields", [])
+                assert isinstance(fields, list)
+                keys = {field["key"] for field in fields}
+                own = keys & hidden if group["key"] == spec.resolved_name else set()
+                shown += sorted(f"{route['method']} {route['path']} {group['key']}.{key}" for key in own | (keys & {f"{spec.resolved_name}_{name}" for name in hidden}))
+    assert not shown, shown

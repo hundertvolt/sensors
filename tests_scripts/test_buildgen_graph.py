@@ -69,8 +69,25 @@ def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
     a = model.instances[("scd30", "")]  # sgp40 already depends on scd30 (temperature_source/humidity_source, base_doc's own wiring)
     a.wiring_schema = (WiringField("fake_dep", "SGP40_Reader", "fake_dep", True, "kwarg"),)
     a.wiring["fake_dep"] = "sgp40"
-    with pytest.raises(BuildError, match="cycle"):
+    # notification waits on both, so it is left unordered with them.
+    with pytest.raises(BuildError, match=r"wiring dependency cycle detected among: \['notification', 'scd30', 'sgp40'\]") as raised:
         build_construction_order(model)
+    assert raised.value.rule == "wiring.cycle"
+
+
+@pytest.mark.parametrize(
+    "driver,toml_field",
+    [
+        pytest.param("scd30", "stray", id="a-sub-table-no-tag-declares"),
+        pytest.param("scd30", "warn_co2", id="a-warn-key-off-the-notification"),
+    ],
+)
+def test_a_source_edge_comes_only_from_value_wiring_and_notification_signals(tmp_path: Path, src_dir: Path, driver: str, toml_field: str) -> None:
+    # sgp40 already depends on scd30; an edge from any other {source} sub-table would close a cycle.
+    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model.instances[(driver, "")].wiring[toml_field] = {"source": "sgp40", "field": "VOC"}
+    order = build_construction_order(model)
+    assert order.index((driver, "")) < order.index(("sgp40", ""))
 
 
 def test_led_target_builds_the_neopixel_before_conn(tmp_path: Path, src_dir: Path) -> None:

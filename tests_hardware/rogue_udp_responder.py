@@ -2,8 +2,6 @@
 replies to every datagram with a fixed garbage payload until stopped, used by the NTP/DNS
 garbage-response tests via bench_control.BenchBridge's UDP-port-redirect helpers."""
 
-from __future__ import annotations
-
 import socket
 import threading
 
@@ -43,7 +41,7 @@ class RogueUdpResponder:
         self._thread.join(timeout=_JOIN_TIMEOUT_S)
         self._sock.close()
 
-    def __enter__(self) -> RogueUdpResponder:
+    def __enter__(self) -> "RogueUdpResponder":
         self.start()
         return self
 

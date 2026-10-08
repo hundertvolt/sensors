@@ -2,11 +2,14 @@
 (SPECIFICATION.md Part L.6.2) - the wiring-defaults mechanism's own schema-by-construction.
 Covers the three real default providers already in src/ plus every malformed shape."""
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
+from buildgen.defaults import DefaultParam, default_class_defines_attr, default_class_name, default_init_params, find_default_class
 from buildgen.errors import BuildError
 
 
@@ -31,7 +34,7 @@ def test_find_default_class_sgp40_temperature_source(src_dir: Path) -> None:
     class_node = find_default_class(src_dir / "asy_sgp40_driver.py", "dev", "sgp40", "temperature_source")
     assert class_node is not None
     assert class_node.name == "_DefaultTemperatureSource"
-    params = default_init_params(class_node, src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    params = default_init_params(class_node)
     assert any(p.name == "temperature" and p.has_default for p in params)
 
 
@@ -39,7 +42,7 @@ def test_find_default_class_sgp40_humidity_source(src_dir: Path) -> None:
     class_node = find_default_class(src_dir / "asy_sgp40_driver.py", "dev", "sgp40", "humidity_source")
     assert class_node is not None
     assert class_node.name == "_DefaultHumiditySource"
-    params = default_init_params(class_node, src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    params = default_init_params(class_node)
     assert any(p.name == "relative_humidity" and p.has_default for p in params)
 
 
@@ -62,9 +65,17 @@ def test_default_init_params_required_and_optional(tmp_path: Path) -> None:
     path.write_text("class _DefaultFoo:\n    def __init__(self, required_one, optional_one=5):\n        pass\n")
     class_node = find_default_class(path, "dev", "fake", "foo")
     assert class_node is not None
-    params = default_init_params(class_node, path, "dev", "fake")
+    params = default_init_params(class_node)
     assert params[0].name == "required_one" and not params[0].has_default
     assert params[1].name == "optional_one" and params[1].has_default
+
+
+def test_default_init_params_keyword_only_parameters_join_the_schema(tmp_path: Path) -> None:
+    path = tmp_path / "asy_fake_driver.py"
+    path.write_text("class _DefaultFoo:\n    def __init__(self, *, need, opt=1):\n        pass\n")
+    class_node = find_default_class(path, "dev", "fake", "foo")
+    assert class_node is not None
+    assert default_init_params(class_node) == (DefaultParam("need", has_default=False), DefaultParam("opt", has_default=True))
 
 
 def test_default_init_params_no_init_means_zero_params(tmp_path: Path) -> None:
@@ -74,11 +85,30 @@ def test_default_init_params_no_init_means_zero_params(tmp_path: Path) -> None:
     path.write_text("class _DefaultFoo:\n    pass\n")
     class_node = find_default_class(path, "dev", "fake", "foo")
     assert class_node is not None
-    assert default_init_params(class_node, path, "dev", "fake") == ()
+    assert default_init_params(class_node) == ()
 
 
 def test_find_default_class_syntax_error(tmp_path: Path) -> None:
     path = tmp_path / "asy_broken_driver.py"
     path.write_text("def f(:\n")
-    with pytest.raises(BuildError, match="syntax error"):
+    with pytest.raises(BuildError, match="syntax error") as raised:
         find_default_class(path, "dev", "broken", "foo")
+    assert raised.value.rule == "source.syntax-error"
+
+
+def test_find_default_class_unreadable_file(tmp_path: Path) -> None:
+    with pytest.raises(BuildError, match="cannot read") as raised:
+        find_default_class(tmp_path / "asy_absent_driver.py", "fixture", "absent", "foo")
+    assert raised.value.rule == "src.unreadable"
+
+
+def test_find_default_class_reads_the_same_under_any_locale(repo_root: Path) -> None:
+    # asy_sgp40_driver.py holds non-ASCII text; read under an ASCII locale with UTF-8 mode off, it must still parse.
+    probe = (
+        "import sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; from buildgen.defaults import find_default_class; "
+        "node = find_default_class(Path(sys.argv[1]) / 'src' / 'asy_sgp40_driver.py', 'fixture', 'sgp40', 'temperature_source'); print(node.name)"
+    )
+    env = {"PATH": os.environ.get("PATH", ""), "LC_ALL": "C", "LANG": "C"}
+    done = subprocess.run([sys.executable, "-I", "-X", "utf8=0", "-c", probe, str(repo_root)], env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "_DefaultTemperatureSource"

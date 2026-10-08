@@ -1237,7 +1237,7 @@ def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
     # restart.
     #
     # It would silently clobber an override _pause_loop() had legitimately set active meanwhile, the
-    # two tasks being independently restartable by start_and_check_tasks() while sharing one unlocked flag.
+    # two tasks, started by start_tasks(), being independently restartable by supervise_tasks() while sharing one unlocked flag.
     # Fixed by making _pause_loop() the flag's sole writer.
     coordinator, _clock, _cb = make_coordinator(())
     run(coordinator.setup())

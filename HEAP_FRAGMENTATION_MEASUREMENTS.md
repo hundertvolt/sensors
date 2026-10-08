@@ -181,8 +181,9 @@ Each was caught only by an explicit audit, and each is re-enterable. Occurrences
    flashed and deep in a suite, the same image read the same free bytes and a 70 % smaller largest
    run. A standalone reading is a controlled cost comparison, not a layout reading. Name the position
    on every line: `after_build_system`, `after_starter_loop_end` (the starter list's own site), and
-   `after_starter_list` (settled 4 s after the loop's end — the run phase, where most of a boot-time
-   placement gain has already decayed).
+   `after_starter_list` (settled 4 s after the timers started — the run phase, where most of a
+   boot-time placement gain has already decayed); `after_build_system` follows `build_system()` and
+   the setup list, `main()`'s first two steps.
 10. **Ensemble every layout comparison.** Two perturbation families: a retained `bytearray` of *k*
     blocks allocated at the seam (a global offset), and *q* extra transient allocations per bus
     session (a phase shift spread through the batch); ~15 runs per variant. A variant is robust only
@@ -220,16 +221,17 @@ alone — so it also **ranks allocation walls wrongly**. Quantitative serving wo
 
 ### M4.2 Heap size by fill fraction, never by copying a number
 
-1. On a large heap, measure the bare system's `used` after `build_system()` (and after the starter
-   list, if the run goes that far).
-2. Choose the heap so that fill matches the board's (~44 % after `build_system()` [HW]).
+1. On a large heap, measure the bare system's `used` after `build_system()` and the setup list (and
+   after the starter list, if the run goes that far).
+2. Choose the heap so that fill matches the board's (~44 % after `build_system()` and the setup list
+   [HW]).
 3. **Subtract the instrument's own retained bytes** — a probe's imports, arrays and wiring plan
    (~52,700 B for the layout probe on the settrace binary) sit before the seam and shift fill.
 4. Re-derive after any change of binary, manifest or object graph.
 
 **Undersizing inverts the diagnosis**: at 59 % fill the construction phase looked like the whole
 problem and the setup batch looked harmless. Last derived: ~455k bare on the flag-free binary, 508k
-under the probe to `build_system()`, 560k to the starter list (archive §1.4).
+under the probe to `build_system()` and the setup list, 560k to the starter list (archive §1.4).
 
 **Serving is calibrated against the board's own failure curve instead**: run the same rounds load
 (N = 4/5/7, 12 rounds) at a series of heaps and bracket the heap whose failure counts match the
@@ -267,11 +269,11 @@ call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.
 | instrument | what it measures |
 | --- | --- |
 | `tests_hardware/heap_map.py` (+ `tests_scripts/test_heap_map_parser.py`) | parses `mem_info(1)` captures; `HeapDelta`, `new_above()`, `free_above_top_survivor`, largest run |
-| `tests/_boot_contiguity_probe.py` + `tests_scripts/test_digital_twin_boot_contiguity.py` | the twin placement guard: a `gc` stand-in dumps the seam map at the first emitted collect and forwards to the real collect only on the live arm — one instrument, both arms, no second image |
+| `tests/_boot_contiguity_probe.py` + `tests_scripts/test_digital_twin_boot_contiguity.py` | the twin placement guard: a `gc` stand-in dumps the seam map at `run_setups()`'s first collect and forwards to the real collect only on the live arm — one instrument, both arms, no second image |
 | `tests/test_asy_fram_allocation_budget.py` | the FRAM path's allocation budget, one per binary |
 | `tests/test_asy_fram_wire_trace.py` | the FRAM path's chip-select/transfer trace, held byte-identical across any restructure |
-| `device_scripts/heap_headroom_after_full_system_build.py` | flash-tier layout after `build_system()`: before/after maps, probe with `retained=`, a control reading at the unchanged threshold |
-| `device_scripts/heap_layout_after_full_boot_sequence.py` | the boot sequence at each named position; the `_ProbeGc` seam map; arms selectable at runtime (§M3.13); counts starters to find the loop's real end |
+| `device_scripts/heap_headroom_after_full_system_build.py` | flash-tier layout after `build_system()` and the setup list: before/after maps, probe with `retained=`, a control reading at the unchanged threshold |
+| `device_scripts/heap_layout_after_full_boot_sequence.py` | the boot sequence at each named position; the `_ProbeGc` seam map; arms selectable at runtime (§M3.13); the starter loop's end is where `start_tasks()` returns |
 | `device_scripts/allocation_need_per_source.py` | the need sieve (§M6.1) |
 | `device_scripts/serving_at_default_gc.py`, `heap_under_connection_ceiling.py` | serving at `-1`; heap with the connection ceiling held open |
 | `bench/test_serving_heap_at_default_gc.py`, `bench/test_heap_under_connection_ceiling.py`, `flash/test_memory_stress.py` | the host sides, with `sweep_levels()`, tallies and the derived assertions |
@@ -303,7 +305,7 @@ Scratchpad tools, rebuilt from these descriptions when needed (names from the ar
 
 | shape | how it works |
 | --- | --- |
-| layout probe (`probe.py`) | imports the real device module, builds the graph, dumps maps at the seam and after the batch; modes wrap `SystemService.feed_watchdog()` (the call the generated batch already makes between modules) to add or suppress collects, `GCTHRESH=` applies a threshold where the boot entry does, and a synthetic injector adds churn/survivors at chosen size classes |
+| layout probe (`probe.py`) | imports the real device module, builds the graph, dumps maps at the seam and after the batch; modes wrap `SystemService.feed_watchdog()` (the call `run_setups()` makes after every setup unit) to add or suppress collects, `GCTHRESH=` applies a threshold where the boot entry does, and a synthetic injector adds churn/survivors at chosen size classes |
 | per-object placement probe | a runtime-built tuple (one allocation; `id()` is its address), allocated first and dumped after; the pre-state is rebuilt by freeing the probe's own blocks, because the dump itself allocates |
 | call-graph pricing (`fgraph.py` / `fprice.py`) | wrap every method of the path under test for exact counts and edges (the wrapper's own bytes are discarded), then price each node alone in a collection-free window |
 | wire-identity prototype (`proto.py`) | record every CS edge and transfer on the fake `SPI`/`Pin`, assert a restructured path's trace equals the current one, then price both with the fakes' own allocations removed |

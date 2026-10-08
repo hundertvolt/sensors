@@ -28,9 +28,10 @@ def _parse(tmp_path: Path, source: str) -> "tuple[WiringField, ...]":
     return parse_wiring(path, "dev", "x")
 
 
-def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
-    with pytest.raises(BuildError, match=match):
+def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    with pytest.raises(BuildError, match=match) as raised:
         _parse(tmp_path, source)
+    assert raised.value.rule == rule
 
 
 # --- D6/D2 accept side: the full requiredness x mode cross product ------------------------------
@@ -121,6 +122,7 @@ def test_parse_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> None:
         tmp_path,
         "# @wiring fram_target FRAMManager fram optional kwarg\n# @wiring fram_target FRAMManager other required attr\n",
         "two @wiring tags for 'fram_target'",
+        "tag.duplicate-field",
     )
 
 
@@ -128,18 +130,18 @@ def test_parse_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    "source,match,rule",
     [
-        ("# @wirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # deletion
-        ("# @wiiring fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # insertion
-        ("# @wiribg fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # substitution
-        ("# @wiirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag"),  # transposition
-        ("# @WIRING fram_target FRAMManager fram optional kwarg\n", "malformed @wiring tag"),  # mis-cased
-        ("# wiring fram_target FRAMManager fram optional kwarg\n", "leading '@' missing"),  # sigil dropped
+        ("# @wirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # deletion
+        ("# @wiiring fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # insertion
+        ("# @wiribg fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # substitution
+        ("# @wiirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # transposition
+        ("# @WIRING fram_target FRAMManager fram optional kwarg\n", "malformed @wiring tag", "tag.malformed"),  # mis-cased
+        ("# wiring fram_target FRAMManager fram optional kwarg\n", "leading '@' missing", "tag.missing-sigil"),  # sigil dropped
     ],
 )
-def test_parse_wiring_rejects_each_wording_mistake(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_wiring_rejects_each_wording_mistake(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
 
 
 def test_parse_wiring_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Path) -> None:
@@ -163,7 +165,7 @@ def test_parse_wiring_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Pa
     ],
 )
 def test_parse_wiring_rejects_each_element_being_wrong(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "malformed @wiring tag")
+    _parse_expecting(tmp_path, source, "malformed @wiring tag", "tag.malformed")
 
 
 @pytest.mark.parametrize(
@@ -179,7 +181,7 @@ def test_parse_wiring_rejects_each_element_being_wrong(tmp_path: Path, source: s
 def test_parse_wiring_rejects_each_element_being_dropped(tmp_path: Path, source: str) -> None:
     # Deleting a piece must never leave a line that silently parses as "no tag declared" - that is
     # the exact silent miss the near-miss detector exists to prevent.
-    _parse_expecting(tmp_path, source, "malformed @wiring tag")
+    _parse_expecting(tmp_path, source, "malformed @wiring tag", "tag.malformed")
 
 
 def test_parse_wiring_bare_tag_name_with_no_payload_at_all_is_prose(tmp_path: Path) -> None:
@@ -201,7 +203,7 @@ def test_parse_wiring_bare_tag_name_with_no_payload_at_all_is_prose(tmp_path: Pa
     ],
 )
 def test_parse_wiring_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "module level")
+    _parse_expecting(tmp_path, source, "module level", "tag.not-module-level")
 
 
 # --- false positives ----------------------------------------------------------------------------
@@ -271,3 +273,9 @@ def test_no_other_src_module_declares_an_unnoticed_wiring_tag(src_dir: Path) -> 
         "asy_wifi_service.py",
         "asy_system_service.py",
     }
+
+
+def test_parse_wiring_a_missing_consumer_file_is_a_build_error_not_a_raw_oserror(tmp_path: Path) -> None:
+    with pytest.raises(BuildError, match="cannot read") as raised:
+        parse_wiring(tmp_path / "asy_wifi_service.py", "fixture", "conn")
+    assert (raised.value.rule, raised.value.instance) == ("src.unreadable", "conn")

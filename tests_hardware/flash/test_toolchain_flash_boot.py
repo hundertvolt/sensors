@@ -2,8 +2,6 @@
 setup. The real UF2 flash-and-boot smoke test is gated behind `--allow-flash-cycle` and its own
 `flash_cycle` marker - a deliberate re-provisioning flash, never triggered by a routine run."""
 
-from __future__ import annotations
-
 import subprocess
 import time
 

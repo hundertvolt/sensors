@@ -35,15 +35,19 @@ from unix_port_poll_prewarm import prewarm_poll_set
 from unix_port_unretrieved_report import install
 
 _CONFIG_DIR = "digital_twin/config/"
-_booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status()'s two call sites -
-# needed explicitly here since this file's own module is only known at runtime (parse_args()'s
-# --module), unlike run_wozi_integration.py/run_dev_integration.py's own static imports.
+_watchdog: "machine.WDT | None" = None  # the WDT main() builds and passes to the booted module's main(),
+# read by _print_wdt_status()'s two call sites: the generated module keeps no watchdog global.
 
 # The same value and one-time placement the real firmware boot entry uses, so a twin run models
 # production's memory-safety configuration and not just its allocation code. --gc-threshold
 # overrides it, since Part I.4(e) requires the whole suite to pass at -1 first.
 # @tunable gc.threshold_bytes = 32768
 _GC_THRESHOLD_DEFAULT = 32768
+
+# The watchdog a device's boot entry arms and passes to main(); this runner stands in for that entry,
+# and the twin's in-process tests build theirs from this one value.
+# @tunable wdt.timeout_ms = 8000
+_WDT_TIMEOUT_MS = 8000
 
 if TYPE_CHECKING:
 
@@ -214,9 +218,8 @@ def _pop_value(remaining: "list[str]", flag: str) -> str:
 def _print_wdt_status(config: RunConfig) -> None:
     # See both call sites' own comments in run_wozi_integration.py for why this needs to run from
     # two different places - same reasoning applies here.
-    watchdog = getattr(_booted_module, "watchdog", None) if _booted_module is not None else None
-    if watchdog is not None:
-        print(f"digital_twin/run_generic_integration.py [{config.device}] shutdown: would_have_triggered_count={watchdog.would_have_triggered_count}")
+    if _watchdog is not None:
+        print(f"digital_twin/run_generic_integration.py [{config.device}] shutdown: would_have_triggered_count={_watchdog.would_have_triggered_count}")
 
 
 def _require_wired(device: str, chips: "dict[str, Any]") -> None:
@@ -229,9 +232,8 @@ def _require_wired(device: str, chips: "dict[str, Any]") -> None:
 
 async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
     async def poll() -> None:
-        # webserver is the last module build_system() assigns before its own grouped await
-        # x.setup() batch - see tests/test_digital_twin_sensortask_integration.py's own identical
-        # poll for why this (not watchdog, assigned first) is the right readiness signal.
+        # webserver is the last global build_system() assigns, so every bus and chip exists once it is
+        # set; main() then runs the setup list while this runner wires the jumper and the faults.
         while getattr(module, "webserver", None) is None:
             await asyncio.sleep_ms(_READY_POLL_MS)
 
@@ -274,8 +276,8 @@ def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
 
 
 async def main(config: RunConfig) -> None:
-    global _booted_module
-    install()  # before the firmware: start_and_check_tasks() keeps it, so every task death prints (Part I.4(e))
+    global _watchdog
+    install()  # before the firmware: start_tasks() keeps it, so every task death prints (Part I.4(e))
     # Must run before anything else in the process registers a poll object - see
     # unix_port_poll_prewarm.py's own module docstring.
     prewarm_poll_set()
@@ -304,9 +306,10 @@ async def main(config: RunConfig) -> None:
     )
 
     module = __import__(config.module)
-    _booted_module = module
+    watchdog = machine.WDT(timeout=_WDT_TIMEOUT_MS)
+    _watchdog = watchdog
     main_task = asyncio.get_event_loop().create_task(
-        module.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
+        module.main(watchdog=watchdog, cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
     sampler_task = (
         asyncio.get_event_loop().create_task(_mem_sampler(run.mem_sample_interval_ms))
@@ -320,7 +323,7 @@ async def main(config: RunConfig) -> None:
         if uart_link is not None:
             wire_log_clearer_task = asyncio.get_event_loop().create_task(_wire_log_clearer(uart_link))
 
-        assert module.conn is not None and module.watchdog is not None
+        assert module.conn is not None
         chips = _collect_chips(module, plan)
         for device, op, times in injections.faults:
             _apply_fault(device, op, times, chips, module.conn._wlan)

@@ -2,8 +2,6 @@
 entirely OUTSIDE the fetched checkout, and verifies a known anchor in the pinned source first so a
 restructuring release fails loudly. Rationale and version-bump checklist: SPECIFICATION.md B.14."""
 
-from __future__ import annotations
-
 import ast
 import re
 import shlex

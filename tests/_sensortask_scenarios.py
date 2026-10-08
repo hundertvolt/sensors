@@ -5,7 +5,6 @@ Not a test file - register_for_device() is the export; SPECIFICATION.md Part E.2
 import asyncio
 import json
 import os
-import struct
 import sys
 import time
 
@@ -17,32 +16,33 @@ sys.path.insert(0, "ext")
 import machine
 import network
 import rp2
+from _boot_recorder import BootRecorder
+from _bus_hazard_catalog import scd_data_frame, scd_register_frame
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
+from _generated_module import boot_entry_watchdog, boot_generated, write_offline_ntp_config
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
 from _tmp_scratch import TmpScratch
-from _write_counters import WriteCountingOpen
+from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from microdot import Request, Response
 
 import asy_config_manager
+import asy_scd30_driver
 import asy_spi_driver
 import asy_system_service
 import asy_webserver_service
 import asy_wifi_service
-from asy_base_classes import SensorReader, SensorReaderConfig
-from asy_crc_checks import CRC8
-from asy_fram_manager import FRAMManager, _owner_seed
-from asy_neopixel_driver import NeopixelDriver
-from asy_notification_service import NotificationService
+from asy_base_classes import SensorReader
+from asy_fram_manager import _owner_seed
 from asy_ntp_client import NTP
-from asy_print_log import PrintLogHistory, PrintLogHistoryStore
+from asy_print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+from asy_scd30_driver import SCD30_Reader
+from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
-from asy_uart_link_driver import UARTLinkDriver
-from asy_webserver_service import WebserverService
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
 # not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
@@ -74,6 +74,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Iterable
     from typing import Any, TypeVar
 
+    from asy_base_classes import SetupFct
+
     T = TypeVar("T")
 
 
@@ -93,11 +95,34 @@ def status_body(res: "Response") -> bytes:
 _DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
 
 
+_BLANK = bytes(4096)
+
+
 class _FakeMB85RS2MTA(FakeMB85RS64V):
     # dev's real FRAM: a 256KB MB85RS2MTA with its own RDID (DS501-00032 p.10), not the base fake's 8KB
     # MB85RS64V. A subclass, since build_system() offers no post-construction hook.
     SIZE = 0x40000
     RDID = bytes([0x04, 0x7F, 0x48, 0x03])
+    # One array for every build of the process, blank at each construction: a fresh 256 KB array needs one free
+    # run that long, which a long scenario's survivors left nowhere on the settrace binary (12 MemoryErrors).
+    _array: "bytearray | None" = None
+    _holder: "_FakeMB85RS2MTA | None" = None
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.SIZE = 0  # shadows the class value while the base constructor runs, so it allocates no array
+        super().__init__(*args, **kwargs)
+        del self.SIZE
+        cls = _FakeMB85RS2MTA
+        if cls._array is None:
+            cls._array = bytearray(self.SIZE)
+        for start in range(0, self.SIZE, len(_BLANK)):
+            cls._array[start : start + len(_BLANK)] = _BLANK
+        if cls._holder is not None:
+            cls._holder.memory = None  # type: ignore[assignment]  # an earlier build's chip fails loudly, never writes this one
+        cls._holder = self
+        self.size = self.SIZE
+        self.memory = cls._array
+        self._addr_width = 3  # the 3-byte address of a part above 64 KB (DS501-00032 p.9)
 
 
 # Same "keyed by the real chip's own max_size" table digital_twin/machine.py's _FRAM_RDID_BY_MAX_SIZE
@@ -113,6 +138,13 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
     with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
         plan: dict[str, Any] = json.load(f)
     return plan
+
+
+def _expected_facts(device: str) -> "dict[str, Any]":
+    # What buildgen alone derives for the device (its boot sequence, its FRAM-wired modules), written beside the module.
+    with open(f"build/generated_src/sensortask_{device}_expected.json") as f:
+        facts: dict[str, Any] = json.load(f)
+    return facts
 
 
 def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
@@ -159,18 +191,29 @@ def _tmp_cfg_dir() -> str:
 _OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
 
 
-async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
+def _reset_peripherals() -> None:
+    # Each build is a boot: rp2's soft reset frees every DMA channel and stops every timer (ports/rp2/main.c
+    # v1.29.0, rp2_dma_deinit(), soft_timer_deinit()). A timer left armed kept its run's whole graph alive.
+    rp2.DMA.reset_registry()
+    for timer in machine.Timer.all_timers:
+        timer.deinit()
+    machine.Timer.all_timers.clear()
+
+
+async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "tuple[Any, Any]":
     # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and
     # several devices' own modules get booted in this one process across this file's full run.
     asy_spi_driver._SPI = fram_fake_class(device) if chip is None else chip  # type: ignore[misc]
-    rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
+    _reset_peripherals()
     module = __import__(f"sensortask_{device}")
-    await module.build_system(cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
-    return module
+    return await boot_generated(module, device, cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
 
 
 def build(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
-    return run(_boot(device, cfg_path, chip, **kwargs))
+    # The module, constructed and set up; called only at synchronous scenario scope. The WDT its boot armed
+    # comes with run(_boot(...)), for the scenarios that read it.
+    module, _watchdog = run(_boot(device, cfg_path, chip, **kwargs))
+    return module
 
 
 def _device_of(module: "Any") -> str:
@@ -307,17 +350,21 @@ class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened f
         pass
 
 
-def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] | None" = None, timeout_ms: "int | None" = None) -> "Response":
-    assert module.webserver is not None
+async def _dispatch_async(module: "Any", method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Response":
+    # The request a real client's would be, dispatched in-process: for a scenario already inside its one coroutine.
     app = module.webserver._app
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
     sock = (_NoopHolder(), _NoopHolder())
     req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
-    coro = app.dispatch_request(req)
+    return await app.dispatch_request(req)  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
+
+
+def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] | None" = None, timeout_ms: "int | None" = None) -> "Response":
+    coro = _dispatch_async(module, method, path, json_body)
     if timeout_ms is not None:  # a request that must answer at once fails with TimeoutError, never hangs
-        coro = asyncio.wait_for_ms(coro, timeout_ms)
-    return run(coro)  # type: ignore[no-any-return]  # the upstream stub leaves dispatch_request() unannotated - removal trigger: SPECIFICATION.md B.15
+        return run(asyncio.wait_for_ms(coro, timeout_ms))
+    return run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +406,7 @@ def _scenario_build_system_constructs_every_real_module(device: str) -> None:
     # Bare module-level attributes - reaches every long-lived object the way the legacy reference
     # file's own module-level names would. Shared shape with tests/_shared_rest_roundtrip.py.
     # Mandatory infra plus this device's reflected optional set, never a hardcoded 3-sensor literal.
-    mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "watchdog")
+    mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification")
     assert_named_modules_constructed(module, mandatory + _present_optional_instances(module))
 
 
@@ -423,14 +470,18 @@ def _scenario_web_host_port_overridable(device: str) -> None:
 @_register("main_forwards_web_host_and_port_to_build_system")
 def _scenario_main_forwards_web_host_port(device: str) -> None:
     # main() itself, not just build_system(), must accept and forward the override - the real entry
-    # point calls <module>.main(). Fakes the three steps for the same reason the main-call-order
-    # scenario below does: the real Timer-sequencing chain never completes under machine.py's fake.
+    # point calls <module>.main(). Fakes every step after the setup list, as the main-call-order
+    # scenario below does: the real ones start every task and then supervise them for good.
     from asy_ntp_client import NTPClient
     from asy_system_service import SystemService
 
+    real_start_tasks = SystemService.start_tasks
     real_start_timers = SystemService.start_timers
     real_force_sync = NTPClient.ntp_force_sync
-    real_start_and_check = SystemService.start_and_check_tasks
+    real_supervise = SystemService.supervise_tasks
+
+    async def _fake_start_tasks(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
+        pass
 
     async def _fake_start_timers(self: "SystemService", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> None:
         pass
@@ -438,20 +489,22 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
     async def _fake_force_sync(self: "NTPClient") -> None:
         pass
 
-    async def _fake_start_and_check(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
-        pass  # never loops - this test only cares that build_system() received the override
+    async def _fake_supervise(self: "SystemService") -> None:
+        pass  # returns at once: this test only checks that build_system() received the override
 
+    SystemService.start_tasks = _fake_start_tasks  # type: ignore[method-assign]
     SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
     NTPClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
-    SystemService.start_and_check_tasks = _fake_start_and_check  # type: ignore[method-assign]
+    SystemService.supervise_tasks = _fake_supervise  # type: ignore[method-assign]
     try:
         asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
-        run(module.main(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
+        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
     finally:
+        SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
         SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
         NTPClient.ntp_force_sync = real_force_sync  # type: ignore[method-assign]
-        SystemService.start_and_check_tasks = real_start_and_check  # type: ignore[method-assign]
+        SystemService.supervise_tasks = real_supervise  # type: ignore[method-assign]
     assert module.webserver is not None
     assert module.webserver._host == "127.0.0.1"
     assert module.webserver._port == 8080
@@ -506,10 +559,11 @@ def _error_count(logger: "Any") -> int:
 
 def _assert_every_chunk_starts_empty_and_accepts_writes(device: str, image: bytes) -> None:
     # A boot on an image this build did not write: no owner restores anything, every store is set up on a
-    # re-initialised chunk, and a reboot on the same filesystem then restores what that boot wrote.
+    # re-initialised chunk, and a reboot on the same filesystem then restores what that boot wrote. No task
+    # starts, so neither boot needs the offline NTP file, whose repair would log in CFGMGR_NTP.
     base = fram_fake_class(device)
     cfg_path = _tmp_cfg_dir()
-    module = build(device, cfg_path, chip=_chip_holding(base, image))
+    module = build(device, cfg_path, chip=_chip_holding(base, image), offline_ntp=False)
     stores = _fram_stores(module)
     for logger in stores:
         assert logger.initialized is True, f"{logger.name} stayed RAM-only on a foreign image"
@@ -527,7 +581,7 @@ def _assert_every_chunk_starts_empty_and_accepts_writes(device: str, image: byte
     assert fram_log["ErrCount"] <= 2 * 2 * len(_fram_chunks(module)), fram_log
     _log_one_entry_everywhere(module, "written after the foreign image")
     rewritten = bytes(_fram_chip(module).memory)
-    module = build(device, cfg_path, chip=_chip_holding(base, rewritten))
+    module = build(device, cfg_path, chip=_chip_holding(base, rewritten), offline_ntp=False)
     for logger in _fram_stores(module):
         log = run(logger.get_log())[logger.name]
         assert log["ErrCount"] == 1 and code("E", "INIT") in log["ErrNum"], (logger.name, log)
@@ -566,64 +620,25 @@ def _scenario_layout_shifted_by_one_chunk(device: str) -> None:
 
 @_register("fram_chunks_are_all_successfully_allocated_not_out_of_memory")
 def _scenario_fram_chunks_allocated(device: str) -> None:
+    # The per-device "does everything fit" check: get_chunk() answers None when a chunk does not fit, so a None
+    # chunk is the failure - `_allocated_size <= size` holds by construction. The FRAM-wired modules are the
+    # build's own list; the negative case is test_asy_base_classes.py's FRAM allocation-failure test.
     module = build(device)
-    # Every FRAM-chunk-owning module degrades to in-memory-only on allocation failure rather than
-    # raising (asy_base_classes.py's contract) - assert the happy path got real chunks, not a degraded
-    # one. This is also the per-device "does everything fit" capacity check.
-
-    # The real enforcement is exactly this - no chunk-holding module ended up with a None chunk -
-    # not `_allocated_size <= size`, which get_chunk() makes true by construction. The negative case
-    # is test_asy_base_classes.py's test_sensorreaderconfig_fram_allocation_failure_and_missing_....
-    assert module.conn is not None and module.ntp is not None
-    assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
-    assert isinstance(module.conn.pr, PrintLogHistoryStore)
-    assert module.conn.pr.fram is not None
-    assert isinstance(module.conn.cfgmgr.pr, PrintLogHistoryStore)
-    assert module.conn.cfgmgr.pr.fram is not None
-    assert isinstance(module.conn._dns_server.pr, PrintLogHistoryStore)
-    assert module.conn._dns_server.pr.fram is not None
-    assert isinstance(module.ntp.pr, PrintLogHistoryStore)
-    assert module.ntp.pr.fram is not None
-    assert isinstance(module.ntp.cfgmgr.pr, PrintLogHistoryStore)
-    assert module.ntp.cfgmgr.pr.fram is not None
-    assert isinstance(module.sysfunct.pr, PrintLogHistoryStore)
-    assert module.sysfunct.pr.fram is not None
-    assert isinstance(module.sysfunct.cfgmgr.pr, PrintLogHistoryStore)
-    assert module.sysfunct.cfgmgr.pr.fram is not None
-    assert isinstance(module.neopixel.pr, PrintLogHistoryStore)
-    assert module.neopixel.pr.fram is not None
-    assert isinstance(module.notification.pr, PrintLogHistoryStore)
-    assert module.notification.pr.fram is not None
-    assert isinstance(module.notification.cfgmgr.pr, PrintLogHistoryStore)
-    assert module.notification.cfgmgr.pr.fram is not None
-    assert isinstance(module.webserver.pr, PrintLogHistoryStore)
-    assert module.webserver.pr.fram is not None
-    if _has(module, "scd30"):
-        assert isinstance(module.scd30.pr, PrintLogHistoryStore)
-        assert module.scd30.pr.fram is not None
-        assert not isinstance(module.scd30.cfgmgr.pr, PrintLogHistoryStore)  # its class keeps the config log off FRAM
-    if _has(module, "sgp40"):
-        assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
-        assert module.sgp40.pr.fram is not None
-        assert module.sgp40._ts_storage is not None
-        assert isinstance(module.sgp40.cfgmgr.pr, PrintLogHistoryStore)
-        assert module.sgp40.cfgmgr.pr.fram is not None
-    if _has(module, "bmp3xx"):
-        assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
-        assert module.bmp3xx.pr.fram is not None
-        assert isinstance(module.bmp3xx.cfgmgr.pr, PrintLogHistoryStore)
-        assert module.bmp3xx.cfgmgr.pr.fram is not None
-    if _has(module, "isl29125"):
-        assert isinstance(module.isl29125.pr, PrintLogHistoryStore)
-        assert module.isl29125.pr.fram is not None
-        assert isinstance(module.isl29125.cfgmgr.pr, PrintLogHistoryStore)
-        assert module.isl29125.cfgmgr.pr.fram is not None
-    if _has_uart_link(module):
-        # WP3 - own chunk each, no cfgmgr (UARTComm has no on-flash config schema).
-        assert isinstance(module.uart_link_init.pr, PrintLogHistoryStore)
-        assert module.uart_link_init.pr.fram is not None
-        assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
-        assert module.uart_link_resp.pr.fram is not None
+    wired = _expected_facts(device)["fram_wired"]
+    objects = _module_objects(module)
+    assert sorted(name for name in wired if name in objects) == sorted(wired), (wired, sorted(objects))
+    for name, obj in objects.items():
+        # A config log its class keeps off FRAM stays RAM-only on a FRAM-wired module (read from the class).
+        ram_config = getattr(obj, "cfgmgr", None) if not getattr(type(obj), "_CFG_LOG_FRAM", True) else None
+        for logger in obj.get_loggers():
+            chunk = getattr(logger, "fram", None)
+            if name in wired and (ram_config is None or logger is not ram_config.pr):
+                assert chunk is not None, f"{name}'s logger {logger.name} holds no FRAM chunk"
+            else:
+                assert chunk is None, f"{name}'s logger {logger.name} holds a FRAM chunk the build does not wire"
+    for obj in objects.values():
+        if isinstance(obj, SGP40_Reader):  # the one data-chunk owner: its VOC backup
+            assert obj._ts_storage is not None, f"{obj.name}'s VOC backup holds no FRAM chunk"
 
 
 @_register("the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed")
@@ -649,21 +664,30 @@ def _ram_only_entries(logger: "Any") -> int:
     return sum(1 for i, kind in enumerate(log["ErrType"]) if kind == "E" and log["ErrNum"][i] == code("E", "LOG_RAM_ONLY"))
 
 
+async def _stop_supervising(sysfunct: "Any", sup: "asyncio.Task[None]") -> None:
+    # supervise_tasks() runs the loop as its own task: both are cancelled, so no pass outlives the scenario.
+    sup.cancel()
+    if sysfunct._supervisor_task is not None:
+        sysfunct._supervisor_task.cancel()
+    await asyncio.sleep(0)
+
+
 async def _supervise_until_the_reboot_is_armed(sysfunct: "Any", starters: "list[Any]") -> None:
-    sup = asyncio.create_task(sysfunct.start_and_check_tasks(starters))
+    await sysfunct.start_tasks(starters)
+    sup = asyncio.create_task(sysfunct.supervise_tasks())
     for _ in range(5000):
         if sysfunct._reset_armed or sup.done():
             break
         await asyncio.sleep(0)
-    sup.cancel()
-    await asyncio.sleep(0)
+    await _stop_supervising(sysfunct, sup)
 
 
 @_register("a_declared_dead_fram_chip_escalates_to_a_reboot")
 def _scenario_dead_fram_chip_escalates(device: str) -> None:
     # A declared chip that never comes up escalates like every other declared chip (owner, 2026-09-29: 'the
-    # same as all other chips'); until the reboot every module keeps logging in RAM (owner, 2026-08-11).
-    module = build(device, chip=_DeadFramChip)
+    # same as all other chips'); until the reboot every module keeps logging in RAM (owner, 2026-08-11). No NTP
+    # task starts here, so the boot keeps a fresh config dir: the offline file's repair would log in CFGMGR_NTP.
+    module = build(device, chip=_DeadFramChip, offline_ntp=False)
     assert module.fram is not None and module.sysfunct is not None
     assert module.neopixel is not None and module.notification is not None
     rdids = _fram_chip(module).rdid_count
@@ -699,40 +723,28 @@ def _scenario_dead_fram_chip_escalates(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# setup() batch: grouped, fixed order, notification.setup() last.
+# setup() batch: the generated _collect_setups() list, run by SystemService.run_setups() in its fixed order.
 # ---------------------------------------------------------------------------
 
 
-@_register("setup_batch_runs_every_unit_in_the_generated_order")
+def _setup_owner_names(module: "Any") -> "list[str]":
+    # The module global owning each entry of _collect_setups(), in list order: a bound method equals its
+    # own object's (MicroPython exposes no __self__).
+    names = [name for name in dir(module) if not name.startswith("_") and hasattr(getattr(module, name), "setup")]
+    return [next((name for name in names if getattr(module, name).setup == setup), repr(setup)) for setup in module._collect_setups()]
+
+
+@_register("setup_batch_runs_every_unit_in_the_collected_order")
 def _scenario_setup_batch_order(device: str) -> None:
-    # Every class defining its own setup() is wrapped to record which object ran it; the recorded
-    # objects, named by their module globals, must equal the generated batch's `await X.setup()` order.
-    ran: list[object] = []
-
-    def recording(real: "Callable[[Any], Coroutine[Any, Any, bool]]") -> "Callable[[Any], Coroutine[Any, Any, bool]]":
-        async def setup(self: "Any") -> bool:
-            ran.append(self)
-            return await real(self)
-
-        return setup
-
-    candidates: tuple[Any, ...] = (SensorReader, SensorReaderConfig, SystemService, FRAMManager, NotificationService, UARTLinkDriver, WebserverService, NeopixelDriver)
-    owners = [cls for cls in candidates if getattr(cls, "setup", None) is not None and all(getattr(base, "setup", None) is not cls.setup for base in cls.__bases__)]
-    originals = [(cls, cls.setup) for cls in owners]
-    for cls, real in originals:
-        cls.setup = recording(real)
+    # The boot's setup units, recorded from outside as run_setups() runs them and named by their module globals:
+    # exactly the generated _collect_setups() list, in its order, each unit once.
+    recorder = BootRecorder(build(device))  # the recorder names its classes from a built module
     try:
         module = build(device)
     finally:
-        for cls, real in originals:
-            cls.setup = real
-
-    # super().setup() inside a recorded setup records the same object again, back to back: one unit.
-    units = [obj for n, obj in enumerate(ran) if n == 0 or obj is not ran[n - 1]]
-    by_id = {id(getattr(module, name)): name for name in dir(module) if not name.startswith("_")}
-    with open(module.__file__) as f:  # the module actually loaded, wherever MICROPYPATH found it
-        expected = [line.strip()[len("await ") : -len(".setup()")] for line in f if line.strip().startswith("await ") and line.strip().endswith(".setup()")]
-    assert [by_id.get(id(obj), repr(obj)) for obj in units] == expected
+        recorder.restore()
+    expected = _setup_owner_names(module)
+    assert [name for kind, name in recorder.entries() if kind == "setup"] == expected, recorder.entries()
     # fram first (sysfunct's FRAM-backed store logs to it), every sensor reader set up, the webserver last.
     fram_vars = [name for name in expected if name.startswith("fram")]
     assert expected[: len(fram_vars)] == fram_vars
@@ -745,17 +757,101 @@ def _scenario_setup_batch_order(device: str) -> None:
 
 @_register("boot_feeds_the_watchdog_exactly_once_per_setup_call")
 def _scenario_boot_feeds_the_watchdog(device: str) -> None:
-    # WP6 (SPECIFICATION.md Part D.9/G.2): the generated boot sequence must actually execute a feed
-    # after every setup() call, not just emit one in source (tests_scripts/test_buildgen_generate.py
-    # proves the codegen shape). The expected count comes from the generated source, not by hand.
-    module = build(device)
-    with open(module.__file__) as f:  # the module actually loaded, wherever MICROPYPATH found it
-        source_lines = f.readlines()
-    expected_feeds = sum(1 for line in source_lines if line.strip().startswith("await ") and line.strip().endswith(".setup()"))
+    # SPECIFICATION.md Part D.9/G.2: the boot must actually feed the WDT it was handed after every setup()
+    # it runs. The expected count is the generated setup list's own length, not a number by hand.
+    module, wdt = run(_boot(device))
+    expected_feeds = len(module._collect_setups())
     assert expected_feeds > 0
-    assert module.sysfunct is not None and module.watchdog is not None
-    assert module.sysfunct._watchdog is module.watchdog
-    assert module.watchdog.feed_count == expected_feeds
+    assert module.sysfunct is not None
+    assert module.sysfunct._watchdog is wdt
+    assert wdt.feed_count == expected_feeds
+
+
+def _expected_boot_entries(sequence: "dict[str, list[str]]") -> "list[tuple[str, str]]":
+    # The recorder's view of the build's boot sequence: a step's inner entries between its call and its return,
+    # the webserver built last after the model's own nodes; the last step, the supervisor, never returns.
+    entries: list[tuple[str, str]] = []
+    for step in sequence["phases"]:
+        if step.startswith("BOOT_"):
+            entries.append(("phase", step))
+            continue
+        entries.append(("call", step))
+        if step == "build_system":
+            entries += [("construct", name) for name in sequence["construction"] + ["webserver"]]
+        elif step == "run_setups":
+            for name in sequence["setups"]:
+                entries += [("setup", name), ("feed", "")]
+        if step != sequence["phases"][-1]:
+            entries.append(("return", step))
+    return entries
+
+
+async def _main_until_supervised(module: "Any", device: str, recorder: "BootRecorder") -> None:
+    # The real main(), as the boot entry runs it, until the recorder stops it entering supervise_tasks(); each
+    # stagger wait is fired, the Timer fake never firing one itself. The tasks main() started are stopped after.
+    asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
+    _reset_peripherals()
+    cfg_path = _tmp_cfg_dir()
+    write_offline_ntp_config(cfg_path)
+    main = asyncio.create_task(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0))
+    try:
+        for _ in range(100000):
+            if main.done():
+                break
+            await asyncio.sleep(0)
+            timer = module.sysfunct._sequencer_timer
+            if timer.callback is not None:
+                timer.trigger()
+        assert main.done(), "main() never reached supervise_tasks()"
+        await main
+    except Exception as e:
+        if not recorder.stopped_by(e):
+            raise
+    else:
+        raise AssertionError("main() returned")
+    finally:
+        main.cancel()
+        for task in module.sysfunct._tasks:
+            if task is not None:
+                task.cancel()
+        await asyncio.sleep(0)
+
+
+@_register("boot_sequence_matches_the_generated_expectation")
+def _scenario_boot_sequence(device: str) -> None:
+    # main() up to the supervisor: every construction, each setup unit once with one feed after it, then each step
+    # main() awaits, each returned before the next began - exactly the boot sequence the build derived for the device.
+    module = build(device)  # the recorder names its classes from a built module
+    recorder = BootRecorder(module)
+    asy_system_service.asyncio = _AsyncioWaits()  # type: ignore[assignment]
+    try:
+        run(_main_until_supervised(module, device, recorder))
+    finally:
+        asy_system_service.asyncio = asyncio
+        recorder.restore()
+    assert recorder.entries() == _expected_boot_entries(_expected_facts(device)["boot_sequence"]), recorder.entries()
+
+
+@_register("every_logger_the_boot_constructs_reaches_status_errcount_exactly_once")
+def _scenario_no_dropped_logger(device: str) -> None:
+    # Every logger the boot constructs, recorded from PrintLog's own constructor (each logger class derives from it,
+    # and the FRAM manager builds its own directly), is one GET /status errcount entry by name: none dropped, none shadowed.
+    made: list[Any] = []
+    real_init = PrintLog.__init__
+
+    def recording(self: "PrintLog", level: "int | None" = None, name: str = "") -> None:
+        real_init(self, level, name)
+        made.append(self)
+
+    PrintLog.__init__ = recording  # type: ignore[method-assign]
+    try:
+        module = build(device)
+    finally:
+        PrintLog.__init__ = real_init  # type: ignore[method-assign]
+    names = [logger.name for logger in made]
+    assert len(set(names)) == len(names), f"two loggers share a name, so one of them has no errcount entry: {sorted(names)}"
+    errcount = json.loads(status_body(_dispatch(module, "GET", "/status")))["errcount"]
+    assert sorted(errcount) == sorted(names), (sorted(errcount), sorted(names))
 
 
 def _bmp3xx_devices() -> "frozenset[str]":
@@ -898,7 +994,7 @@ def _scenario_debug_level_survives_reboot(device: str) -> None:
 
 # ---------------------------------------------------------------------------
 # Task/timer starter collection - shape and membership only, never drives the infinite supervisor
-# loop (start_and_check_tasks()) or a starter's own coroutine body. That boundary stays out of this
+# loop (supervise_tasks()) or a starter's own coroutine body. That boundary stays out of this
 # file's own scope.
 # ---------------------------------------------------------------------------
 
@@ -974,15 +1070,6 @@ def _system_const(name: str) -> int:
             if line.startswith(name + " = const("):
                 return int(line.split("const(")[1].split(")")[0])
     raise AssertionError(name + " not found in src/asy_system_service.py")
-
-
-async def _reset_task_done(sysfunct: "Any") -> None:
-    # Yields until the reset task a fired reset timer woke has run the reset action.
-    for _ in range(50):
-        if sysfunct._reset_task is not None and sysfunct._reset_task.done():
-            return
-        await asyncio.sleep(0)
-    raise AssertionError("the reset task never ran")
 
 
 class _StaggerClock:
@@ -1120,8 +1207,8 @@ def _scenario_read_trigger_stagger(device: str) -> None:
 
 @_register("the_unfed_boot_stretch_after_the_last_setup_feed_stays_within_two_seconds")
 def _scenario_unfed_boot_stretch(device: str) -> None:
-    # From the batch's last feed to the supervisor's first: the trigger plan's one-shot waits (under one
-    # second) and the task-start spread (N sleeps of 1/N s) are the only waits; any other fails here.
+    # From the batch's last feed to the supervisor's first, in main()'s order: the task-start spread (N sleeps
+    # of 1/N s) and the trigger plan's one-shot waits (under one second) are the only waits; any other fails here.
     module = build(device, web_host="127.0.0.1", web_port=0)
     sysfunct = module.sysfunct
     clock = _StaggerClock()
@@ -1144,15 +1231,16 @@ def _scenario_unfed_boot_stretch(device: str) -> None:
     task_starters = module._collect_task_starters()
 
     async def boot_tail() -> "list[int]":
+        await sysfunct.start_tasks([tracking(s) for s in task_starters])
         timers = asyncio.create_task(sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters()))
         periods = await _fire_stagger_waits(sysfunct, timers, clock)
         await module.ntp.ntp_force_sync()
-        sup = asyncio.create_task(sysfunct.start_and_check_tasks([tracking(s) for s in task_starters]))
+        sup = asyncio.create_task(sysfunct.supervise_tasks())
         for _ in range(5000):
             if first_feed:
                 break
             await asyncio.sleep(0)
-        sup.cancel()
+        await _stop_supervising(sysfunct, sup)
         for task in started:
             if task is not None:
                 task.cancel()
@@ -1180,7 +1268,7 @@ def _scenario_unfed_boot_stretch(device: str) -> None:
 def _scenario_supervisor_scan_budget(device: str) -> None:
     # Every supervised task already dead at the first pass: the pass persists at most one entry per task
     # end plus the escalation's, counted on the FRAM chip, and makes at most one _TASK_CHECK_TIME sleep.
-    module = build(device, web_host="127.0.0.1", web_port=0)
+    module, wdt = run(_boot(device, web_host="127.0.0.1", web_port=0))
     sysfunct = module.sysfunct
     k = len(module._collect_task_starters())
     chip = module.fram.fram._spidev.spi._spi
@@ -1200,21 +1288,23 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     def on_wait(count: int) -> None:
         # The k-th wait is the start loop's last; the next one is the first pass's sleep, its end.
         if count == k:
-            marks["start"], marks["entries"], marks["feeds"] = chip.write_transactions, sysfunct.pr._err_count, module.watchdog.feed_count
+            marks["start"], marks["entries"], marks["feeds"] = chip.write_transactions, sysfunct.pr._err_count, wdt.feed_count
         elif count == k + 1:
-            marks["end"], marks["entries_end"], marks["feeds_end"] = chip.write_transactions, sysfunct.pr._err_count, module.watchdog.feed_count
+            marks["end"], marks["entries_end"], marks["feeds_end"] = chip.write_transactions, sysfunct.pr._err_count, wdt.feed_count
 
     waits = _AsyncioWaits(on_wait)
 
+    async def boot_lists() -> None:
+        await sysfunct.start_tasks([dead_starter] * k)
+        await sysfunct.supervise_tasks()
+
     async def one_pass() -> None:
-        sup = asyncio.create_task(sysfunct.start_and_check_tasks([dead_starter] * k))
+        sup = asyncio.create_task(boot_lists())
         for _ in range(5000):
             if sup.done() or "end" in marks:
                 break
             await asyncio.sleep(0)
-        if not sup.done():
-            sup.cancel()
-        await asyncio.sleep(0)
+        await _stop_supervising(sysfunct, sup)
 
     asy_system_service.asyncio = waits  # type: ignore[assignment]
     try:
@@ -1381,7 +1471,7 @@ def _scenario_serving_demand(device: str) -> None:
     assert demand <= _SERVING_DEMAND_BUDGET_B, (demand, sizes)
 
 
-@_register("collect_task_starters_never_touches_start_and_check_tasks")
+@_register("collect_task_starters_never_touches_start_tasks")
 def _scenario_collect_starters_never_blocks(device: str) -> None:
     # Collection is pure list-building from already-constructed objects - calling it must not
     # start, await, or block on anything. If it did, this test itself would hang.
@@ -1391,26 +1481,36 @@ def _scenario_collect_starters_never_blocks(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# main()'s own composition - build_system() -> start_timers() -> ntp_force_sync() ->
-# start_and_check_tasks(), in that order. Both middle steps are faked out (their real mechanisms
-# need wall-clock Timers, or block forever); test_asy_system_service.py covers them directly.
+# main()'s own composition - build_system() -> run_setups() -> start_tasks() -> start_timers() ->
+# ntp_force_sync() -> supervise_tasks(), in that order. Every step after construction is faked (the
+# real ones start tasks, wait on Timers or supervise for good); test_asy_system_service.py covers them.
 # ---------------------------------------------------------------------------
 
 
-@_register("main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_order")
+@_register("main_runs_setups_then_tasks_then_timers_then_force_sync_then_supervises_in_order")
 def _scenario_main_call_order(device: str) -> None:
     calls: list[str] = []
-    passed: list[tuple[list[Callable[[], None]], list[Callable[[], None]]]] = []
+    passed: list[object] = []
     from asy_ntp_client import NTPClient
     from asy_system_service import SystemService
 
+    real_run_setups = SystemService.run_setups
+    real_start_tasks = SystemService.start_tasks
     real_start_timers = SystemService.start_timers
     real_force_sync = NTPClient.ntp_force_sync
-    real_start_and_check = SystemService.start_and_check_tasks
+    real_supervise = SystemService.supervise_tasks
 
-    # self/timers/task_starters keep their names (and stay unused): these are assigned onto the
-    # real class attributes below, so mypy checks their parameter NAMES against the real methods'
+    # self/setups/task_starters/triggers/timers keep their names (and self stays unused): these are assigned onto
+    # the real class attributes below, so mypy checks their parameter NAMES against the real methods'
     # (an underscore prefix is a hard [assignment] error, not covered by the method-assign ignore).
+    async def _fake_run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:
+        calls.append("run_setups")
+        passed.append(setups)
+
+    async def _fake_start_tasks(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
+        calls.append("start_tasks")
+        passed.append(task_starters)
+
     async def _fake_start_timers(self: "SystemService", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> None:
         calls.append("start_timers")
         passed.append((triggers, timers))
@@ -1418,27 +1518,32 @@ def _scenario_main_call_order(device: str) -> None:
     async def _fake_force_sync(self: "NTPClient") -> None:
         calls.append("force_sync")
 
-    async def _fake_start_and_check(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
-        calls.append("start_and_check_tasks")
-        # Deliberately never loops - the real implementation runs forever; this proves main()
-        # reaches this call, not that the supervisor loop itself behaves (test_asy_system_service.py's
-        # own job).
+    async def _fake_supervise(self: "SystemService") -> None:
+        calls.append("supervise_tasks")
+        # Returns at once where the real one supervises for good: this proves main() reaches it, not
+        # that the supervisor loop itself behaves (test_asy_system_service.py's own job).
 
+    SystemService.run_setups = _fake_run_setups  # type: ignore[method-assign]
+    SystemService.start_tasks = _fake_start_tasks  # type: ignore[method-assign]
     SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
     NTPClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
-    SystemService.start_and_check_tasks = _fake_start_and_check  # type: ignore[method-assign]
+    SystemService.supervise_tasks = _fake_supervise  # type: ignore[method-assign]
     try:
         asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
-        run(module.main(cfg_path=_tmp_cfg_dir()))
+        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=_tmp_cfg_dir()))
     finally:
+        SystemService.run_setups = real_run_setups  # type: ignore[method-assign]
+        SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
         SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
         NTPClient.ntp_force_sync = real_force_sync  # type: ignore[method-assign]
-        SystemService.start_and_check_tasks = real_start_and_check  # type: ignore[method-assign]
+        SystemService.supervise_tasks = real_supervise  # type: ignore[method-assign]
 
-    assert calls == ["start_timers", "force_sync", "start_and_check_tasks"]
-    # the read triggers first, staggered; the unstaggered timer starters second
-    assert passed == [(module._collect_trigger_starters(), module._collect_timer_starters())]
+    assert calls == ["run_setups", "start_tasks", "start_timers", "force_sync", "supervise_tasks"], calls
+    # The collected lists, each handed over whole: the setups in their fixed order, then the task starters, then the
+    # read triggers (staggered) beside the unstaggered timer starters.
+    expected = [module._collect_setups(), module._collect_task_starters(), (module._collect_trigger_starters(), module._collect_timer_starters())]
+    assert passed == expected, passed
     # build_system() itself already ran (construction succeeded) - main() reaches the task-starting
     # phase with every module in place, not just up to build_system().
     assert module.sysfunct is not None
@@ -1500,11 +1605,7 @@ def _scenario_sensors_put_sgp40(device: str) -> None:
 def _queue_scd30_snapshot(fake_i2c: "Any", interval: int) -> None:
     # The six register replies of one SCD30 config snapshot (word + CRC-8 each), queued for its address
     # only: TempOffset 0, MeasInterval `interval`, AmbPres 0, Altitude 0, ForceCalRef 400, SelfCal 0.
-    for value in (0, interval, 0, 0, 400, 0):
-        payload = struct.pack(">H", value)
-        crc = run(CRC8().add(bytearray(payload)))
-        assert crc is not None
-        fake_i2c.read_queue_by_address.setdefault(0x61, []).append(payload + bytes([crc[-1]]))
+    fake_i2c.read_queue_by_address.setdefault(0x61, []).extend(scd_register_frame(value) for value in (0, interval, 0, 0, 400, 0))
 
 
 @_register("webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver")
@@ -1614,7 +1715,8 @@ def _scenario_networking_put_ntp_clears_synced(device: str) -> None:
 @_register("webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one")
 def _scenario_networking_put_dns_fallback(device: str) -> None:
     # DNSFallback is its own settings group: empty means none, and a list the resolver could not use is refused.
-    module = build(device)
+    # Booted on the schema default, which the offline NTP file would already have emptied; no task starts.
+    module = build(device, offline_ntp=False)
     assert module.ntp is not None
     res = _dispatch(module, "PUT", "/networking", {"DNSFallback": ""})
     assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
@@ -1687,32 +1789,390 @@ def _scenario_system_put_gmt_offset(device: str) -> None:
     assert module.conn._reconn_wifi is False  # unrelated to the networking settings groups
 
 
+class _StepGate:
+    # Holds the controlled shutdown at a named step until the scenario opens it: a gate, never a sleep.
+    def __init__(self) -> None:
+        self.arrived = asyncio.Event()
+        self.release = asyncio.Event()
+        self.step = ""
+        self.passed: list[str] = []
+
+    async def hold(self, step: str) -> None:
+        self.step = step
+        self.passed.append(step)
+        self.arrived.set()
+        await self.release.wait()
+        self.release.clear()
+
+    def open(self) -> None:
+        self.arrived.clear()
+        self.release.set()
+
+
+class _SupervisorAtGate(_AsyncioWaits):
+    # asy_system_service's asyncio in a command scenario: the start spread yields at once and the supervisor's pass
+    # sleep holds at the gate, so a command sent then finds its first step (S1) waiting on the supervisor.
+    def __init__(self, gate: "_StepGate") -> None:
+        super().__init__()
+        self._gate = gate
+
+    async def sleep(self, seconds: float) -> None:
+        await self._gate.hold("S1")
+
+
+def _hold_each_step(module: "Any", gate: "_StepGate") -> None:
+    # Gates in front of each later step of the sequence: S2 the stores' flush, S3 storage quiesced, S4 the tasks
+    # stopped (right after S3), S5 the file deletions or the chip erase, S6 the reset armed.
+    sysfunct, fram = module.sysfunct, module.fram
+    flush, quiesce, erase, reboot = sysfunct._flush_config_stores, fram.quiesce, fram.erase_chip, sysfunct._reboot
+
+    async def flush_held(*, close: bool = False, step_done: "Any" = None) -> bool:
+        if step_done is not None:  # the sequence's own flush; the reset's last one passes no step_done
+            await gate.hold("S2")
+        ok: bool = await flush(close=close, step_done=step_done)
+        return ok
+
+    async def quiesce_held(step_done: "Any") -> None:
+        await gate.hold("S3")
+        await quiesce(step_done)
+        await gate.hold("S4")
+
+    async def erase_held(step_done: "Any") -> bool:
+        await gate.hold("S5")
+        ok: bool = await erase(step_done)
+        return ok
+
+    async def reboot_held(code: int, message: str, action: "Any", *, fed: bool = False) -> None:
+        await gate.hold("S6")
+        await reboot(code, message, action, fed=fed)
+
+    stores = sysfunct._config_stores
+    delete = stores[0].delete_file
+
+    async def first_delete_held() -> bool:
+        await gate.hold("S5")
+        ok: bool = await delete()
+        return ok
+
+    sysfunct._flush_config_stores = flush_held
+    fram.quiesce = quiesce_held
+    fram.erase_chip = erase_held
+    sysfunct._reboot = reboot_held
+    stores[0].delete_file = first_delete_held
+
+
+async def _until(done: "Callable[[], bool]", what: str) -> None:
+    # Yields until done() holds; the bound ends a regression that never gets there instead of hanging the file.
+    for _ in range(100000):
+        if done():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError(what)
+
+
+async def _boot_supervised(device: str, gate: "_StepGate", **kwargs: "Any") -> "tuple[Any, asyncio.Task[None]]":
+    # main()'s state after its last step: every task started and the supervisor running, its first pass ended at the
+    # gate, so a command sent now finds its first step waiting on the supervisor (in this file's one coroutine).
+    module, _watchdog = await _boot(device, web_host="127.0.0.1", web_port=0, **kwargs)
+    await module.sysfunct.start_tasks(module._collect_task_starters())
+    sup = asyncio.create_task(module.sysfunct.supervise_tasks())
+    await _until(gate.arrived.is_set, "the supervisor never ended its first pass")
+    return module, sup
+
+
+async def _command_to_reset(module: "Any", sup: "asyncio.Task[None]", gate: "_StepGate", body: "dict[str, Any]", at_step: "Any" = None) -> "dict[str, Any]":
+    # The command over REST, every held step let through (at_step(step) run first at each), then the armed reset
+    # fired and the supervisor's task ended: the run stops where a real unit restarts. Returns the PUT's results.
+    sysfunct = module.sysfunct
+    fired = machine.reset_count + machine.bootloader_count
+    result: dict[str, Any] = json.loads((await _dispatch_async(module, "PUT", "/system", body)).body)["result"]
+    assert result["SystemCmd"] == "Valid", result
+    task = sysfunct._shutdown_task
+    while True:
+        await _until(lambda: gate.arrived.is_set() or task.done(), f"{body}: the sequence stopped between its steps")
+        if not gate.arrived.is_set():
+            break
+        if at_step is not None:
+            await at_step(gate.step)
+        gate.open()
+    await task
+    assert sysfunct._reset_armed and machine.reset_count + machine.bootloader_count == fired, "the sequence ended unarmed or reset early"
+    sysfunct._reset_timer.trigger()  # the fake Timer fires only on request; its callback wakes the reset task
+    await _until(sysfunct._reset_task.done, "the armed reset never ran")
+    sup.cancel()
+    try:
+        await sup
+    except asyncio.CancelledError:
+        pass
+    return result
+
+
+def _run_gated(gate: "_StepGate", coro: "Coroutine[Any, Any, T]") -> "T":
+    asy_system_service.asyncio = _SupervisorAtGate(gate)  # type: ignore[assignment]
+    try:
+        return run(coro)
+    finally:
+        asy_system_service.asyncio = asyncio
+
+
 @_register("webserver_system_put_reboot_cmd_arms_the_real_reset_timer")
 def _scenario_system_put_reboot(device: str) -> None:
-    module = build(device)
-    assert module.sysfunct is not None
+    # "Valid", then the controlled shutdown arms the reset with region 0's reboot code; the fired timer resets the unit
+    # once and the reset cause reads WDT. One coroutine from the boot to the reset: never a nested asyncio.run().
+    gate = _StepGate()
     before = machine.reset_count
-    res = _dispatch(module, "PUT", "/system", {"SystemCmd": "reboot"})
-    assert json.loads(res.body)["result"]["SystemCmd"] == "Valid"
-    assert machine.reset_count == before  # armed, not yet fired
-    module.sysfunct._reset_timer.trigger()  # fake Timer - its callback only wakes the reset task
-    run(_reset_task_done(module.sysfunct))  # the woken task runs the reset
+
+    async def scenario() -> None:
+        module, sup = await _boot_supervised(device, gate)
+        await _command_to_reset(module, sup, gate, {"SystemCmd": "reboot"})
+
+    _run_gated(gate, scenario())
+    assert machine.mem_backup(0)[1] == _system_const("_RR_REBOOT")
     assert machine.reset_count == before + 1
     assert machine.reset_cause() == machine.WDT_RESET
 
 
 @_register("webserver_system_put_reboot_flushes_a_still_pending_config_write_first")
 def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
-    # A commanded reboot must not drop a still-staged write (the generated _flush_pending_configs(),
-    # asy_config_manager.py's flush_pending()) - unlike the accepted power-loss residual risk (owner, 2026-09-26; Part F.2),
-    # this path can wait the flush out. One PUT with a settings change plus SystemCmd=reboot.
-    module = build(device)
-    assert module.sysfunct is not None
-    res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1, "SystemCmd": "reboot"})
-    result = json.loads(res.body)["result"]
-    assert result["DebugLevel"] == "Valid"
-    assert result["SystemCmd"] == "Valid"
-    assert module.sysfunct.cfgmgr._pending_flush is None  # the exact thing being proven: already flushed, not merely scheduled
+    # A commanded reboot must not drop a still-staged write: unlike the accepted power-loss residual risk (owner,
+    # 2026-09-26; Part F.2) this path waits the flush out, in the sequence's own flush step. A write after it is refused.
+    gate = _StepGate()
+
+    async def scenario() -> "tuple[list[object], dict[str, Any]]":
+        module, sup = await _boot_supervised(device, gate)
+        _hold_each_step(module, gate)
+        wifi = module.conn.cfgmgr
+        wifi.commit = lambda: None  # its flush waits on a commit no one sends: still staged when the command comes
+        staged = json.loads((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": False})).body)["result"]
+        del wifi.commit
+        seen: list[object] = []
+
+        async def at_step(step: str) -> None:
+            if step in ("S2", "S3"):  # just before and just after the sequence's own flush step
+                for store, key in ((wifi, "LEDWifiOn"), (module.sysfunct.cfgmgr, "DebugLevel")):
+                    with open(store._config_file) as f:
+                        seen.append((step, store._pending_flush is None, json.load(f)[key]))
+
+        result = await _command_to_reset(module, sup, gate, {"DebugLevel": 1, "SystemCmd": "reboot"}, at_step)
+        assert result == {"DebugLevel": "Valid", "SystemCmd": "Valid"} and staged == {"LEDWifiOn": "Valid"}, (staged, result)
+        late = json.loads((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": True})).body)["result"]
+        return seen, late
+
+    seen, late = _run_gated(gate, scenario())
+    assert seen[:1] == [("S2", False, True)], seen  # the networking write still staged, the file on its old value
+    assert seen[2:] == [("S3", True, False), ("S3", True, 1)], seen  # on flash, not merely scheduled, after S2
+    assert late == {"LEDWifiOn": "Failed"}, late
+
+
+def _scd30_readers(module: "Any") -> "list[Any]":
+    return [obj for obj in _module_objects(module).values() if isinstance(obj, SCD30_Reader)]
+
+
+def _scd30_bus(reader: "Any") -> "Any":
+    return reader._scd._i2c_scd30.i2c_device.i2c._i2c
+
+
+def _scd30_put_bodies(reader: "Any") -> "list[dict[str, Any]]":
+    # One body per key a PUT may carry, each a value its field accepts: the schema's keys, and ContMeas's stop.
+    bodies = []
+    for name, kind, default, low, _high, _special in reader.get_cfg_schema():
+        value = True if kind == "bool" else (low if low is not None else default)
+        bodies.append({reader.name: {name: value}})
+    bodies.append({reader.name: {"ContMeas": False}})
+    return bodies
+
+
+async def _every_write_refused(module: "Any", word: str, accepted: "Any") -> "list[object]":
+    # Every write the API offers, sent while the sequence waits at a gate: the answers that are not "Failed" (the same
+    # command again: "Valid", nothing new started). ResetErrors writes FRAM, not a store: refused once S3 paused FRAM.
+    wrong: list[object] = []
+    paused = module.fram.get_pause()
+
+    async def put(path: str, body: "dict[str, Any]") -> "dict[str, Any]":
+        answer: dict[str, Any] = json.loads((await _dispatch_async(module, "PUT", path, body)).body)["result"]
+        return answer
+
+    for reader in _scd30_readers(module):
+        queue = _scd30_bus(reader).read_queue_by_address.setdefault(reader._scd._i2c_scd30.i2c_device.device_address, [])
+        before = list(queue)
+        for body in _scd30_put_bodies(reader):
+            # A chip snapshot waits on the bus, so a PUT the closed store let through would read it and write the chip.
+            _queue_scd30_snapshot(_scd30_bus(reader), 2)
+            waiting = list(queue)
+            answer = await put("/sensors", body)
+            if answer != {reader.name: dict.fromkeys(body[reader.name], "Failed")} or queue != waiting:
+                wrong.append(("/sensors", body, answer, len(waiting) - len(queue)))
+            queue[:] = before
+    for path, body in (("/networking", {"LEDWifiOn": True}), ("/status", {"ResetErrors": True}), ("/system", {"SystemCmd": "bootloader" if word == "reboot" else "reboot"})):
+        answer = await put(path, body)
+        if answer != dict.fromkeys(body, "Valid" if path == "/status" and not paused else "Failed"):
+            wrong.append((path, body, answer))
+    again = await put("/system", {"SystemCmd": word})
+    if again != {"SystemCmd": "Valid"} or module.sysfunct._shutdown_task is not accepted:
+        wrong.append(("/system", word, again))
+    return wrong
+
+
+class _StaticI2C:
+    # rp2's machine.I2C(id) is one object per bus (machine_i2c.c): kept so for one scenario, a controller a recovery
+    # rebuilds keeps the log and replies a count reads; every bus is fresh per build again afterwards.
+    def __init__(self, device: str) -> None:
+        self.ids = [int(name[len("i2c") :]) for name in _wiring_plan(device)["buses"] if name.startswith("i2c")]
+
+    def __enter__(self) -> "_StaticI2C":
+        for bus_id in self.ids:
+            machine.I2C.reset_id(bus_id)
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        machine.I2C.reset_registry()
+
+
+def _scd30_commands(reader: "Any", word: int) -> int:
+    # The frames of one command word the reader's bus carried to its address, with or without an argument.
+    address = reader._scd._i2c_scd30.i2c_device.device_address
+    return sum(1 for entry in _scd30_bus(reader).log if entry[0] == "writeto" and entry[1] == address and len(entry[2]) >= 2 and (entry[2][0] << 8 | entry[2][1]) == word)
+
+
+async def _scd30_cycles(module: "Any") -> "list[tuple[int, int, int]]":
+    # Every SCD30's own cycle, driven to its end: the init, its 500 ms ticks past the FRC idle limit, ready and
+    # not-ready reads, then reads on an empty bus failing up the recovery ladder until the read task gives up.
+    # Returns per reader the idle ticks counted, the measurement reads and the soft resets the bus carried.
+    sysfunct = module.sysfunct
+    covered: list[tuple[int, int, int]] = []
+    for reader in _scd30_readers(module):
+        queue = _scd30_bus(reader).read_queue_by_address.setdefault(reader._scd._i2c_scd30.i2c_device.device_address, [])
+        queue.extend(scd_register_frame(word) for word in (0x0342, 0, 2))  # the firmware version, offset 0, interval 2 s
+        for _ in range(3):
+            queue.extend((scd_register_frame(1), scd_data_frame(600.0, 21.5, 40.0)))
+        queue.append(scd_register_frame(0))  # data-ready clear: a not-ready read
+    await sysfunct.start_tasks(module._collect_task_starters())
+    timers = asyncio.create_task(sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters()))
+
+    def stagger_done() -> bool:
+        if sysfunct._sequencer_timer.callback is not None:
+            sysfunct._sequencer_timer.trigger()
+        return timers.done()
+
+    await _until(stagger_done, "start_timers() never finished")
+    for reader in _scd30_readers(module):
+        for _ in range(4 * reader._frc_interval_s + 2):  # the ticks to the FRC idle limit and past it
+            reader._start_trigger_timer.trigger()
+
+            def tick_taken(reader: "Any" = reader) -> bool:
+                return not reader._base_trigger_event.state
+
+            await _until(tick_taken, "a tick was never taken")
+        idle_ticks = reader._frc_idle_ticks
+        read = sysfunct._tasks[sysfunct._task_starters.index(reader.start_asy_read)]
+        for _ in range(20):  # each edge one read cycle; the empty bus ends the task within the error budget
+            if read.done():
+                break
+            reader._irq_pin.trigger_irq()
+            for _ in range(200):
+                await asyncio.sleep(0)
+        assert read.done(), f"{reader.name}'s read task outlived its error budget"
+        covered.append((idle_ticks, _scd30_commands(reader, 0x0300), _scd30_commands(reader, 0xD304)))
+    for task in sysfunct._tasks:
+        if task is not None:
+            task.cancel()
+    await asyncio.sleep(0)
+    return covered
+
+
+@_register("only_the_api_writes_the_scd30")
+def _scenario_only_the_api_writes_the_scd30(device: str) -> None:
+    # From the boot setup on, the SCD30's own cycle writes nothing to the chip's NVM, its recovery included; a
+    # PUT /sensors is the one writer, its one interval frame the only new count.
+    async def scenario() -> "tuple[list[dict[int, int]], list[dict[int, int]], list[object]]":
+        module, _watchdog = await _boot(device, web_host="127.0.0.1", web_port=0)
+        readers = _scd30_readers(module)
+        assert readers, f"{device} declares no SCD30"
+        after_setup = [scd30_nvm_writes(_scd30_bus(reader)) for reader in readers]
+        for idle_ticks, reads, resets in await _scd30_cycles(module):
+            # The whole cycle ran: the idle limit reached, the three ready reads, the init's soft reset and the ladder's.
+            assert idle_ticks >= 8 and reads >= 3 and resets >= 2, (idle_ticks, reads, resets)
+        window = [scd30_nvm_writes(_scd30_bus(reader)) for reader in readers]
+        answers: list[object] = []
+        for reader in readers:
+            _queue_scd30_snapshot(_scd30_bus(reader), 2)
+            answers.append(json.loads((await _dispatch_async(module, "PUT", "/sensors", {reader.name: {"MeasInterval": 4}})).body)["result"])
+        return after_setup, window, answers + [scd30_nvm_writes(_scd30_bus(reader)) for reader in readers]
+
+    asy_system_service.asyncio = _AsyncioWaits()  # type: ignore[assignment]
+    asy_scd30_driver.asyncio = _AsyncioWaits()  # type: ignore[assignment]
+    try:
+        with _StaticI2C(device):
+            after_setup, window, after_put = run(scenario())
+    finally:
+        asy_system_service.asyncio = asyncio
+        asy_scd30_driver.asyncio = asyncio
+    assert window == after_setup, (after_setup, window)
+    count = len(after_setup)
+    assert after_put[:count] == [{"SCD30": {"MeasInterval": "Valid"}}] * count, after_put
+    expected = [dict(writes) for writes in window]
+    for writes in expected:
+        writes[0x4600] = writes.get(0x4600, 0) + 1  # the interval command's one frame
+    assert after_put[count:] == expected, (window, after_put)
+
+
+@_register("every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset")
+def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
+    # Each of the four words, its sequence held at every step by a gate: each SCD30 key, a networking setting,
+    # ResetErrors and another command answer "Failed", the same command "Valid" with nothing new started, and no
+    # SCD30 NVM write happens from the acceptance to the reset (owner, 2026-10-02: no SCD30 write while it runs).
+    for word, steps in (("reboot", "S1 S2 S3 S4 S6"), ("bootloader", "S1 S2 S3 S4 S6"), ("resetconfig", "S1 S2 S3 S4 S5 S6"), ("erasefram", "S1 S2 S3 S4 S5 S6")):
+        gate = _StepGate()
+
+        async def scenario(word: str = word, gate: "_StepGate" = gate) -> "tuple[list[object], list[dict[int, int]], list[dict[int, int]]]":
+            module, sup = await _boot_supervised(device, gate)
+            _hold_each_step(module, gate)
+            nvm: list[list[dict[int, int]]] = []
+            wrong: list[object] = []
+
+            async def at_step(step: str) -> None:
+                if not nvm:  # the first step runs right after the acceptance
+                    nvm.append([scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)])
+                if module.fram.get_pause() != (step >= "S4"):  # FRAM pauses inside S3's quiesce, before the tasks stop
+                    wrong.append((step, "FRAM paused" if module.fram.get_pause() else "FRAM not paused"))
+                wrong.extend((step, w) for w in await _every_write_refused(module, word, module.sysfunct._shutdown_task))
+
+            await _command_to_reset(module, sup, gate, {"SystemCmd": word}, at_step)
+            return wrong, nvm[0], [scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)]
+
+        with _StaticI2C(device):
+            wrong, accepted, reset = _run_gated(gate, scenario())
+        assert gate.passed == steps.split(), (word, gate.passed)
+        assert wrong == [], (word, wrong)
+        assert reset == accepted, (word, accepted, reset)
+
+
+@_register("resetconfig_over_a_damaged_config_file_boots_next_on_every_default")
+def _scenario_resetconfig_over_a_damaged_file(device: str) -> None:
+    # NTP's file corrupted before the boot: the boot repairs it and still lists NTP in ConfigFaults; "Reset to
+    # defaults" deletes every file, and the next boot over the same directory writes each once, its defaults alone.
+    cfg_path = _tmp_cfg_dir()
+    ntp_name = json.loads(_src_const("src/asy_ntp_client.py", "_NAME"))
+    with open(asy_config_manager.config_filename(cfg_path, ntp_name), "w") as f:
+        f.write("{not json")
+    gate = _StepGate()
+
+    async def scenario() -> "list[str]":
+        module, sup = await _boot_supervised(device, gate, cfg_path=cfg_path)
+        faults: list[str] = json.loads(drain_json_response_body((await _dispatch_async(module, "GET", "/status")).body))["system"]["ConfigFaults"]
+        await _command_to_reset(module, sup, gate, {"SystemCmd": "resetconfig"})
+        return faults
+
+    assert _run_gated(gate, scenario()) == [ntp_name]
+    assert machine.mem_backup(0)[1] == _system_const("_RR_CONFIG_RESET")
+    assert [name for name in os.listdir(cfg_path) if name.startswith("config_")] == [], os.listdir(cfg_path)
+    module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: the defaults alone, NTP's included
+    stores = _storing_stores(module)
+    assert sorted(os.listdir(cfg_path)) == sorted(asy_config_manager.config_filename("", store.module_name) for store in stores)
+    for store in stores:
+        with open(store._config_file) as f:
+            assert json.load(f) == _store_defaults(store), store.module_name
+    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["ConfigFaults"] == []
 
 
 @_register("webserver_system_put_invalid_cmd_is_rejected_without_side_effects")
@@ -1874,6 +2334,10 @@ def _scenario_status_get(device: str) -> None:
     if _has_uart_link(module):
         assert "Transfers" in body["sensors"]["UARTLINK"] and "Failures" in body["sensors"]["UARTLINK"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UTCTime" in body["system"]
+    system = body["system"]
+    for key in ("ResetReason", "ResetBits", "MemFree"):  # this boot's decoded reason, the chip's raw flags, the free heap
+        assert type(system[key]) is int, (key, system[key])
+    assert system["ConfigFaults"] == [] and system["ConfigUnpersisted"] == [], system  # a clean boot
     assert "WifiUptime" in body["networking"] and "NTPSynced" in body["networking"] and "WifiTS" in body["networking"]
     assert body["networking"]["HTTPDropped"] == 0  # a clean boot has dropped no connection
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
@@ -1882,6 +2346,88 @@ def _scenario_status_get(device: str) -> None:
     # keyed by name (Part H.6), so a published key nothing matches renders nothing at all.
     assert {logger.name for logger in _all_loggers(module)} == set(body["errcount"].keys())
     assert len(body["errcount"]) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
+
+
+def _storing_stores(module: "Any") -> "list[Any]":
+    # Every config store the build collected whose schema keeps a value in its file, in the collected order.
+    return [store for store in module.sysfunct._config_stores if any(asy_config_manager.check_cfg_get_default(field)[0] for field in store._cfg_vals)]
+
+
+def _store_defaults(store: "Any") -> "dict[str, Any]":
+    fields = asy_config_manager.schema_dict(store._cfg_vals).items()
+    return {name: asy_config_manager.check_cfg_get_default(field)[1] for name, field in fields if asy_config_manager.check_cfg_get_default(field)[0]}
+
+
+def _out_of_field(store: "Any") -> "dict[str, Any] | None":
+    # The store's defaults with one bounded number set past its maximum, or None when no field has a maximum.
+    for name, field in asy_config_manager.schema_dict(store._cfg_vals).items():
+        if field[1] in ("int", "float") and field[4] is not None and name in _store_defaults(store):
+            return dict(_store_defaults(store), **{name: field[4] + 1})
+    return None
+
+
+class _ReadFails(WriteCountingOpen):
+    # asy_config_manager's open for one boot: reading the one planted file fails as a flash read error would.
+    def __init__(self, path: str) -> None:
+        super().__init__(asy_config_manager)
+        self.path = path
+
+    def __call__(self, path: str, mode: str = "r") -> object:
+        if "w" not in mode and path == self.path:
+            raise OSError(5, "EIO")
+        return super().__call__(path, mode)
+
+
+@_register("webserver_status_lists_exactly_the_modules_whose_config_file_was_unreadable_or_damaged")
+def _scenario_status_config_faults(device: str) -> None:
+    # Planted before a boot: one file unreadable, one unparseable, one not an object, one with a value its field
+    # refuses - each listed in ConfigFaults even after the boot repaired it; one file lacking a key and one holding
+    # an unknown key are repaired and not listed. A missing or unknown key is schema drift, not damage.
+    stores = _storing_stores(build(device))
+    assert len(stores) >= 6, [store.module_name for store in stores]  # one store per planted case
+    bounded = next(store for store in stores if _out_of_field(store) is not None)
+    others = [store for store in stores if store is not bounded]
+    unreadable, unparseable, not_object, lacking, unknown = others[:5]
+    cfg_path = _tmp_cfg_dir()
+    planted = {
+        unreadable: "{}",
+        unparseable: "{not json",
+        not_object: "[1, 2]",
+        bounded: json.dumps(_out_of_field(bounded)),
+        lacking: json.dumps(dict(list(_store_defaults(lacking).items())[1:])),
+        unknown: json.dumps(dict(_store_defaults(unknown), NoSuchKey=1)),
+    }
+    for store, text in planted.items():
+        with open(asy_config_manager.config_filename(cfg_path, store.module_name), "w") as f:
+            f.write(text)
+    unreadable_path = asy_config_manager.config_filename(cfg_path, unreadable.module_name)
+    with _ReadFails(unreadable_path):
+        module = build(device, cfg_path=cfg_path)
+    faulted = [unreadable, unparseable, not_object, bounded]
+    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    assert system["ConfigFaults"] == [store.module_name for store in stores if store in faulted], system["ConfigFaults"]
+    assert system["ConfigUnpersisted"] == [], system["ConfigUnpersisted"]
+    with open(unreadable_path) as f:
+        assert f.read() == "{}", "the unreadable file was overwritten"
+    for store in (unparseable, not_object, bounded, lacking, unknown):  # every readable damaged or drifted file repaired
+        with open(asy_config_manager.config_filename(cfg_path, store.module_name)) as f:
+            assert json.load(f) == _store_defaults(store), store.module_name
+
+
+@_register("webserver_status_lists_a_module_whose_config_write_failed_until_its_next_good_write")
+def _scenario_status_config_unpersisted(device: str) -> None:
+    # Every file write of a fresh boot refused: each storing module runs on values the flash lacks and is listed in
+    # ConfigUnpersisted (not ConfigFaults: no file was damaged); a module's next good write takes it off the list.
+    cfg_path = _tmp_cfg_dir()
+    with WriteCountingOpen(asy_config_manager, fail_writes=True):
+        module = build(device, cfg_path=cfg_path)
+    names = [store.module_name for store in _storing_stores(module)]
+    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    assert (system["ConfigUnpersisted"], system["ConfigFaults"]) == (names, []), system
+    assert json.loads(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
+    run(module.sysfunct.cfgmgr.flush_pending())
+    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    assert system["ConfigUnpersisted"] == [name for name in names if name != module.sysfunct.cfgmgr.module_name], system
 
 
 @_register("webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held")

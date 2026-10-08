@@ -1,0 +1,5 @@
+final arzi gc-1 rc=0 secs=53.236152119 pass=88 fail=0 mem=0 tail=88/88 passed, 0 failed, 0 skipped
+final arzi gc32768 rc=0 secs=81.731615233 pass=88 fail=0 mem=0 tail=88/88 passed, 0 failed, 0 skipped
+final arzi settrace rc=0 secs=129.639230250 pass=88 fail=0 mem=0 tail=88/88 passed, 0 failed, 0 skipped
+final dev gc-1 rc=0 secs=73.314361187 pass=88 fail=0 mem=0 tail=88/88 passed, 0 failed, 0 skipped
+final dev gc32768 rc=0 secs=106.519430288 pass=88 fail=0 mem=0 tail=88/88 passed, 0 failed, 0 skipped

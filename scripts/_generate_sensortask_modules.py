@@ -3,13 +3,13 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Pre-generates every real device's `sensortask_<device>.py`, its wiring-plan JSON (an independent
-oracle for its consumers), its website definitions and its REST API reference via `buildgen` into
-gitignored `build/generated_src/`, regenerated fresh every run (SPECIFICATION.md E.3)."""
+"""Pre-generates every real device's `sensortask_<device>.py`, both its boot entries, its expected boot
+facts and wiring-plan JSON (independent oracles for their consumers), its website definitions and its
+REST API reference via `buildgen` into gitignored `build/generated_src/`, regenerated fresh every run (SPECIFICATION.md E.3)."""
 
 # Usage: uv run scripts/_generate_sensortask_modules.py
-# Writes sensortask_<d>.py, sensortask_<d>_wiring_plan.json, definitions/<d>.json and api/<d>.json per device,
-# plus definitions/index.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
+# Writes sensortask_<d>.py, sensortask_<d>_main.py, sensortask_<d>_main_noautostart.py, sensortask_<d>_expected.json, sensortask_<d>_wiring_plan.json,
+# definitions/<d>.json and api/<d>.json per device, plus definitions/index.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
 
 import json
 import sys
@@ -48,20 +48,19 @@ def main() -> int:
             # generate_device() has already put the model in construction order, which the cards follow.
             definitions = generate_definitions(generated.model, REPO_ROOT / "src")
             reference = generate_api_reference(generated.model, REPO_ROOT / "src")
+            wiring_plan = compute_twin_wiring(generated.model)
         except BuildError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-        wiring_plan = compute_twin_wiring(generated.model)
-        # "instances" is this script's addition, outside compute_twin_wiring()'s I2C/SPI-only
-        # contract: every driver the TOML declares, bus-attached or not. An independent,
-        # pre-construction oracle, so the scenario checks need not reflect on the module itself.
-        wiring_plan["instances"] = sorted({spec.driver for spec in generated.model.instances.values()})
         (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
+        (out_dir / f"sensortask_{device}_main.py").write_text(generated.boot_entry_source)
+        (out_dir / f"sensortask_{device}_main_noautostart.py").write_text(generated.boot_entry_noautostart_source)
+        (out_dir / f"sensortask_{device}_expected.json").write_text(json.dumps(generated.expected_facts))
         (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))
         (definitions_dir / f"{device}.json").write_text(json.dumps(definitions, indent=2))
         (api_dir / f"{device}.json").write_text(api_reference_json(reference))
     (definitions_dir / "index.json").write_text(json.dumps({"devices": [p.stem for p in device_tomls]}))
-    print(f"Generated {len(device_tomls)} device module(s) + wiring plan(s) + definitions + API reference(s) into {out_dir}")
+    print(f"Generated {len(device_tomls)} device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into {out_dir}")
     return 0
 
 

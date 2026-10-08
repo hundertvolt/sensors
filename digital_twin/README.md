@@ -46,11 +46,13 @@ the UDP shim (see "Running the twin's own tests" below).
   to the most recent 200 entries (`_LOG_MAXLEN`) - an unbounded list here was a real memory leak,
   found once a run drove enough real transactions for the list's own backing-array growth to need a
   large contiguous reallocation that failed with a genuine `MemoryError` on a fragmented heap.
+  `WDT.feed_times` is bounded the same way: the `ticks_ms()` stamp of each `feed()`, oldest first,
+  so a test can read the gaps between feeds (`feed_count` less its length is how many it dropped).
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` / `_isl29125_chip.py` — one chip fake per
   sensor, each verified against its own datasheet in `datasheets/` for the raw transaction shape and
   sensible value ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal
-  measurement-interval cadence, exercising the real driver's normal IRQ-driven path. `_scd30_chip.py`
-  also has explicit `save_state()`/on-construction load JSON persistence (owner, 2026-08-12) for its
+  measurement-interval cadence, exercising the real driver's normal IRQ-driven path; it reports its
+  temperature walk less the set temperature offset, as the chip does. `_scd30_chip.py` also has explicit `save_state()`/on-construction load JSON persistence (owner, 2026-08-12) for its
   five NVM-backed settings (see "SCD30 persistence" below) — the same `state_path` design
   `_fram_chip.py` uses, applied to a handful of scalars instead of the whole memory image.
   `_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is the one fake whose
@@ -108,7 +110,7 @@ the UDP shim (see "Running the twin's own tests" below).
   traceback at every DebugLevel, then the handler releases the dead task from asyncio's context dict.
   `install()` is the first statement of every launcher's `main()` (`run_generic_integration.py`,
   `launch.py`, `segfault_stress_repro.py`), of `tests/microtest.py`'s `run()` and of
-  `tests/_boot_contiguity_probe.py`'s `_main()`; the firmware's `start_and_check_tasks()` then keeps
+  `tests/_boot_contiguity_probe.py`'s `_main()`; the firmware's `start_tasks()` then keeps
   it instead of installing SYSTEM's level-gated report, so the memory gates still see a task that
   died of an exhausted heap at level 0 (SPECIFICATION.md Parts F.1 and I.4(e)).
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
@@ -183,8 +185,8 @@ mechanism this is built on — then builds the real website for the chosen devic
 deployed unit serves — then runs
 `digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan
 build/generated_src/sensortask_<device>_wiring_plan.json --device <device>` — the real orchestrator,
-not the generated boot entry directly, since it also needs to drive the soak/fault-injection/
-`--duration`-forever logic around `<module>.main()`, not just block on it):
+not the generated boot entry (`sensortask_<device>_main.py`) directly, since it also needs to drive
+the soak/fault-injection/`--duration`-forever logic around `<module>.main()`, not just block on it):
 
 ```bash
 MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan build/generated_src/sensortask_wozi_wiring_plan.json --device wozi [flags]
@@ -232,8 +234,9 @@ counter.
 A second, lighter integration tier also landed alongside the full orchestrator:
 `tests/test_digital_twin_sensortask_integration.py` builds the real `sensortask_wozi` object graph
 against the real twin buses and drives real HTTP traffic against it (never `app.dispatch_request()`
-bypass), but only ever starts the specific tasks each test needs (never the full
-`start_and_check_tasks()` supervisor) — runs under `scripts/test.sh`'s own default loop like any
+bypass), but only ever starts the specific tasks each test needs and never runs the generated
+`main()` (its supervisor tests drive `start_tasks()`/`supervise_tasks()` themselves and cancel what
+they started) — runs under `scripts/test.sh`'s own default loop like any
 other test file (via the same per-file `sys.path.insert(0, "digital_twin")` trick every other
 `tests/test_digital_twin_*.py` file already uses), giving fast, everyday regression coverage of the
 twin+webserver wiring without needing the separate `MICROPYPATH` invocation above. It already found
@@ -281,6 +284,15 @@ MICROPYPATH="/tmp/twin_boot:src:digital_twin:ext:.frozen" <micropython-unix-port
     digital_twin/run_generic_integration.py --module sensortask_novel_combo \
     --wiring-plan /tmp/twin_boot/wiring_plan.json --device novel_combo --host 127.0.0.1 --port 8080
 ```
+
+The runner stands in for the device's boot entry: it arms the twin `WDT` with the entry's own
+timeout (`_WDT_TIMEOUT_MS`, 8000 ms, a mirror, since the twin cannot import `buildgen/`) and passes it
+as `main(watchdog=..., cfg_path=..., web_host=..., web_port=...)`. The generated `main()` then runs
+the whole boot sequence itself - `build_system()` (construction only), the setup list through
+`run_setups()`, the task starters, the timers, `ntp_force_sync()` and the supervisor - while the
+runner waits for `build_system()`'s last global (`webserver`) and then wires the UART jumper and any
+faults. Its shutdown line reads `would_have_triggered_count` off that same `WDT`; the generated
+module keeps no watchdog global.
 
 `tests_scripts/test_digital_twin_generated_boot.py` does exactly this (via `subprocess.Popen`, the
 same pattern `scripts/_digital_twin_ci_suite.py` already uses for the hand-written wozi module) for
@@ -868,8 +880,9 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    constructing the new chip fake (the wiring plan itself — which bus, which address — is already
    generic and needs no per-chip code; see "Booting a generated device" above). If the chip's real
    I2C address is hardwired (no TOML `address` field — `buildgen.buildspec.FIXED_ADDRESS_DRIVERS`),
-   add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table too, matching the real driver's
-   own hardcoded default address. Nothing else to wire by hand for `"wozi"`/`"dev"`:
+   the wiring plan reads it from the driver's own module-level `_<DRIVER>_ADDR = const(<int>)`
+   (`buildgen/twin_wiring.py`'s `fixed_address()`), and generation stops with a named error if the
+   driver has none. Nothing else to wire by hand for `"wozi"`/`"dev"`:
    `configure_i2c_wiring()` loads its plan from `devices/wozi.toml`/`dev.toml` via generation, so a
    driver promoted for either device is picked up automatically the next time
    `scripts/_generate_sensortask_modules.py` runs.

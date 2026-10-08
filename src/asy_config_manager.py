@@ -326,6 +326,9 @@ class ConfigManager:
         self.unpersisted = False  # the latest file write failed: the store runs on values the flash lacks
         self.module_name = name  # the module name a config-fault report lists
         self._closed = False  # close_writes() before a commanded reset; one-way
+        # The owning module's PUT lock, set once by that module after construction: a commanded reset takes it
+        # before this store's flush, so a PUT in flight finishes its pushes and commit first. None: no PUT lock.
+        self.owner_lock: asyncio.Lock | None = None
         self._cache: dict[str, CfgValue] = {}
         # Staging slot for write_config()'s deferred flash write (SPECIFICATION.md Part F.2) - not
         # yet on disk, but the read path serves it first so a GET reflects a just-accepted PUT
@@ -635,3 +638,7 @@ class ConfigManager:
             self._pending_flush = task
             self.pr.evt(self._config_file, "- Config data staged, flash write scheduled.")
             return True, dict_results
+
+    def writes_closed(self) -> bool:
+        # True once close_writes() (or delete_file()) closed the store; the reader base's PUT refusal reads it.
+        return self._closed

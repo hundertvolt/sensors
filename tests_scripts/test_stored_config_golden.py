@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from _devices import DEVICE_NAMES
 
-from buildgen.codegen import _KNOWN_SIGNALS
 from buildgen.driver_registry import parse_name_constant
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
 from buildgen.schema_ast import _eval_literal, extract_field_schemas
+from buildgen.signals import WARN_SIGNALS
 from buildgen.validate import build_model
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -57,10 +57,6 @@ def _stored_keys(fields: Fields) -> "dict[str, str]":
     return {name: str(spec[0]) for name, spec in fields.items() if not (spec[1] is None and not isinstance(spec[4], (tuple, list)))}
 
 
-def _signal_fields(literal: str) -> Fields:
-    return {field[0]: tuple(field[1:]) for field in ast.literal_eval(literal)}
-
-
 def from_model(toml: Path, src: Path) -> StoredConfig:
     # Derivation 1: the validated device model - its construction order, drivers, resolved names and wiring.
     model = build_model(toml, src)
@@ -78,8 +74,9 @@ def from_model(toml: Path, src: Path) -> StoredConfig:
             assert inst.driver_info is not None and inst.resolved_name is not None
             class_name, path, name = inst.driver_info.class_name, inst.driver_info.source_path, inst.resolved_name
             fields = _fields(path)
-            for signal in sorted(k for k in inst.wiring if k in _KNOWN_SIGNALS):
-                fields.update(_signal_fields(_KNOWN_SIGNALS[signal][2]))
+            for signal in sorted(k for k in inst.wiring if k in WARN_SIGNALS):
+                warn = WARN_SIGNALS[signal]
+                fields[warn.name] = (warn.field_type, warn.default, warn.min, warn.max, None)
         if _is_store(class_name, classes):
             stored[f"config_{name}.cfg"] = _stored_keys(fields)
     return stored

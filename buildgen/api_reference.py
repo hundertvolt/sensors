@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 
 from buildgen.definitions import generate_definitions
-from buildgen.errors import BuildError
+from buildgen.errors import BuildError, BuildInternalError
+from buildgen.jsontypes import JsonDict, JsonValue
 from buildgen.model import DeviceModel
 from buildgen.source_ast import parse_source
 
@@ -29,11 +30,14 @@ _PAGE_ONLY = frozenset({"label", "description", "onLabel", "offLabel", "defaultV
 _ERRCOUNT_GROUP = "errcount"
 
 
-def _field_facts(field: "dict[str, object]", device: str) -> "dict[str, object]":
+def _field_facts(field: JsonDict, device: str) -> JsonDict:
     unclassified = sorted(set(field) - _FIELD_FACTS - _PAGE_ONLY - {"options", "subFields"})
     if unclassified:
-        raise BuildError(device, f"definitions field {field.get('key')!r} carries {unclassified}, neither an API fact nor the page's own - classify each in buildgen/api_reference.py")
-    facts = {name: value for name, value in field.items() if name in _FIELD_FACTS}
+        raise BuildError(
+            device, f"definitions field {field.get('key')!r} carries {unclassified}, neither an API fact nor the page's own - classify each in buildgen/api_reference.py",
+            rule="api.field-key-unclassified", fix="add each key to _FIELD_FACTS (an API fact) or _PAGE_ONLY (the page's own) in buildgen/api_reference.py",
+        )
+    facts: JsonDict = {name: value for name, value in field.items() if name in _FIELD_FACTS}
     if "options" in field:
         facts["options"] = [option["value"] for option in _items(field["options"], "options", device)]
     if "subFields" in field:
@@ -41,17 +45,17 @@ def _field_facts(field: "dict[str, object]", device: str) -> "dict[str, object]"
     return facts
 
 
-def _items(value: object, what: str, device: str) -> "list[dict[str, object]]":
+def _items(value: JsonValue, what: str, device: str) -> "list[JsonDict]":
     # A definitions list of objects; any other shape is a definitions generator fault, named here.
-    if isinstance(value, list) and all(isinstance(item, dict) for item in value):
-        return value
-    raise BuildError(device, f"internal: the definitions' {what} is not a list of objects: {value!r}")
+    if not (isinstance(value, list) and all(isinstance(item, dict) for item in value)):
+        raise BuildInternalError(f"[{device}] the definitions' {what} is not a list of objects: {value!r}")
+    return [item for item in value if isinstance(item, dict)]
 
 
-def _mapping(value: object, what: str, device: str) -> "dict[str, object]":
+def _mapping(value: JsonValue, what: str, device: str) -> JsonDict:
     if isinstance(value, dict):
         return value
-    raise BuildError(device, f"internal: the definitions' {what} is not an object: {value!r}")
+    raise BuildInternalError(f"[{device}] the definitions' {what} is not an object: {value!r}")
 
 
 def _module_literal(src_dir: Path, filename: str, name: str, device: str) -> object:
@@ -60,7 +64,10 @@ def _module_literal(src_dir: Path, filename: str, name: str, device: str) -> obj
     try:
         tree = parse_source(path.read_text(encoding="utf-8"), str(path))
     except (OSError, SyntaxError) as e:
-        raise BuildError(device, f"cannot read {path} for its {name}: {e}", field=name) from e
+        raise BuildError(
+            device, f"cannot read {path} for its {name}: {e}", field=name,
+            rule="api.source-unreadable", fix=f"check that --src-dir holds a {path.name} that parses",
+        ) from e
     for node in tree.body:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
@@ -73,17 +80,26 @@ def _module_literal(src_dir: Path, filename: str, name: str, device: str) -> obj
         try:
             literal: object = ast.literal_eval(value)
         except (TypeError, ValueError) as e:  # TypeError: a container literal that cannot be built, an unhashable key
-            raise BuildError(device, f"{path}: {name} is no longer a plain literal ({e}) - the REST reference reads it by AST", field=name) from e
+            raise BuildError(
+                device, f"{path}: {name} is no longer a plain literal ({e}) - the REST reference reads it by AST", field=name,
+                rule="api.source-not-literal", fix=f"write {name} in {path.name} as a plain literal (const() allowed)",
+            ) from e
         return literal
-    raise BuildError(device, f"{path} no longer defines {name} at module level - the REST reference reads it by AST", field=name)
+    raise BuildError(
+        device, f"{path} no longer defines {name} at module level - the REST reference reads it by AST", field=name,
+        rule="api.source-name-missing", fix=f"define {name} at module level in {path.name}, or follow its rename in buildgen/api_reference.py",
+    )
 
 
-def _read_result_words(src_dir: Path, device: str) -> "list[str]":
-    words: list[str] = []
+def _read_result_words(src_dir: Path, device: str) -> "list[JsonValue]":
+    words: list[JsonValue] = []
     for name in _RESULT_WORD_NAMES:
         word = _module_literal(src_dir, _CONFIG_MANAGER, name, device)
         if not isinstance(word, str):
-            raise BuildError(device, f"{src_dir / _CONFIG_MANAGER}: {name} is {word!r}, not a result word string", field=name)
+            raise BuildError(
+                device, f"{src_dir / _CONFIG_MANAGER}: {name} is {word!r}, not a result word string", field=name,
+                rule="api.result-word-not-string", fix=f"bind {name} in {_CONFIG_MANAGER} to its result word, a string",
+            )
         words.append(word)
     return words
 
@@ -92,30 +108,42 @@ def _read_routes(src_dir: Path, device: str) -> "list[tuple[str, str]]":
     # ROUTES' (method, path) pairs in registration order; a row of any other shape, or a repeat, fails here.
     rows = _module_literal(src_dir, _WEBSERVER, "ROUTES", device)
     if not isinstance(rows, tuple):
-        raise BuildError(device, f"{src_dir / _WEBSERVER}: ROUTES is a {type(rows).__name__}, not a tuple of rows", field="ROUTES")
+        raise BuildError(
+            device, f"{src_dir / _WEBSERVER}: ROUTES is a {type(rows).__name__}, not a tuple of rows", field="ROUTES",
+            rule="api.routes-not-tuple", fix="write ROUTES as a tuple of (method, path, handler name) rows",
+        )
     routes: list[tuple[str, str]] = []
     for row in rows:
         if not (isinstance(row, tuple) and len(row) == _ROUTE_ROW_LEN and all(isinstance(part, str) for part in row) and row[0] in _METHODS and row[1].startswith("/")):
-            raise BuildError(device, f"{src_dir / _WEBSERVER}: ROUTES row {row!r} is not (a method of {_METHODS}, '/<path>', a handler name)", field="ROUTES")
+            raise BuildError(
+                device, f"{src_dir / _WEBSERVER}: ROUTES row {row!r} is not (a method of {_METHODS}, '/<path>', a handler name)", field="ROUTES",
+                rule="api.routes-row-malformed", fix='write the row as ("GET" or "PUT", "/<path>", "<handler name>")',
+            )
         if (row[0], row[1]) in routes:
-            raise BuildError(device, f"{src_dir / _WEBSERVER}: ROUTES lists {row[0]} {row[1]} twice", field="ROUTES")
+            raise BuildError(
+                device, f"{src_dir / _WEBSERVER}: ROUTES lists {row[0]} {row[1]} twice", field="ROUTES",
+                rule="api.routes-duplicate", fix=f"list {row[0]} {row[1]} once in ROUTES",
+            )
         routes.append((row[0], row[1]))
     return routes
 
 
-def _read_standard_codes(src_dir: Path, device: str) -> "dict[str, str]":
+def _read_standard_codes(src_dir: Path, device: str) -> JsonDict:
     codes = _module_literal(src_dir, _API_RESPONSE, "_STANDARD_CODES", device)
     if not (isinstance(codes, dict) and all(isinstance(code, int) and isinstance(text, str) for code, text in codes.items())):
-        raise BuildError(device, f"{src_dir / _API_RESPONSE}: _STANDARD_CODES is not an {{int: str}} literal: {codes!r}", field="_STANDARD_CODES")
-    return {str(code): text for code, text in sorted(codes.items())}
+        raise BuildError(
+            device, f"{src_dir / _API_RESPONSE}: _STANDARD_CODES is not an {{int: str}} literal: {codes!r}", field="_STANDARD_CODES",
+            rule="api.envelope-codes-malformed", fix="write _STANDARD_CODES as a literal mapping each int code to its text",
+        )
+    return {str(code): str(text) for code, text in sorted(codes.items())}
 
 
-def _route_groups(method: str, section: "dict[str, object] | None", errcount_modules: "list[object]", device: str) -> "list[dict[str, object]]":
+def _route_groups(method: str, section: "JsonDict | None", errcount_modules: "list[JsonValue]", device: str) -> "list[JsonValue]":
     # A GET answers every field but a dispatch-only one and one GET never reports (a defaultValue, H.5); a PUT
     # takes every field but a readonly one. A route no section describes (no such service) has no groups.
     if section is None:
         return []
-    groups: list[dict[str, object]] = []
+    groups: list[JsonValue] = []
     for group in _items(section["groups"], "groups", device):
         if group.get("kind") == "errcount":
             if method == "GET" and group["key"] == _ERRCOUNT_GROUP:
@@ -128,25 +156,28 @@ def _route_groups(method: str, section: "dict[str, object] | None", errcount_mod
     return groups
 
 
-def api_reference_json(reference: "dict[str, object]") -> str:
+def api_reference_json(reference: JsonDict) -> str:
     # The one serialisation every writer and check uses: sorted keys, list order kept, no timestamp.
     return json.dumps(reference, indent=2, sort_keys=True)
 
 
-def generate_api_reference(model: DeviceModel, src_dir: Path) -> "dict[str, object]":
+def generate_api_reference(model: DeviceModel, src_dir: Path) -> JsonDict:
     # `model` validated and in construction order, as for generate_definitions(). A definitions section naming a
     # route the table does not register fails the build: the page would call an API the device lacks.
     routes = _read_routes(src_dir, model.device)
-    by_route: dict[tuple[str, str], dict[str, object]] = {}
-    errcount_groups: list[tuple[object, list[dict[str, object]]]] = []
+    by_route: dict[tuple[str, str], JsonDict] = {}
+    errcount_groups: list[tuple[JsonValue, list[JsonDict]]] = []
     for section in _items(generate_definitions(model, src_dir)["sections"], "sections", model.device):
         for method, path in _mapping(section["rest"], "rest", model.device).items():
             route = (method.upper(), str(path))
             if route not in routes:
-                raise BuildError(model.device, f"definitions section {section['key']!r} names {route[0]} {route[1]}, which ROUTES in {src_dir / _WEBSERVER} does not register")
+                raise BuildError(
+                    model.device, f"definitions section {section['key']!r} names {route[0]} {route[1]}, which ROUTES in {src_dir / _WEBSERVER} does not register",
+                    rule="api.route-unregistered", fix=f"register {route[0]} {route[1]} in ROUTES, or drop it from the section's rest",
+                )
             by_route[route] = section
         errcount_groups += [(group["key"], _items(group["modules"], "modules", model.device)) for group in _items(section["groups"], "groups", model.device) if group.get("kind") == "errcount"]
-    errcount_modules: list[object] = []
+    errcount_modules: list[JsonValue] = []
     for _key, modules in sorted(errcount_groups, key=lambda key_modules: key_modules[0] != _ERRCOUNT_GROUP):
         for module in modules:
             if module["key"] not in errcount_modules:

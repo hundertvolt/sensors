@@ -1,10 +1,9 @@
-"""The watchdog is fed only at the pinned sites (SPECIFICATION.md G.2): `SystemService.feed_watchdog()`'s latched
-`.feed()`, the supervisor loop's two calls (escalation, pass end), and the generated boot batch's call after each
-`setup()` - never in a Timer/IRQ callback, in another loop, or anywhere else in src/ or a generated module."""
+"""The watchdog is fed only at the pinned sites (SPECIFICATION.md G.2): `feed_watchdog()`'s and `_own_feed()`'s latched
+`.feed()`, the supervisor loop's two calls, `run_setups()`'s one per unit, and `_own_feed()`'s shutdown-sequence callers -
+never in a Timer/IRQ callback, in another loop, or anywhere else in src/; a generated module or boot entry feeds nowhere."""
 
 import ast
 import shutil
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,10 +16,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src"
 _SERVICE = ("asy_system_service.py", "SystemService")
 _LATCH = "_force_watchdog_starve"
+_OWNED = "_feed_owned"
 _SUPERVISOR = "_supervise"
+_SETUP_RUNNER = "run_setups"
+_OWN_FEED = "_own_feed"
+_SEQUENCE = "_shutdown_sequence"
 # Names the supervisor never reaches: its escalation resets through _reboot() directly, never a command path.
-_SUPERVISOR_FORBIDDEN = ("reboot_system", "reboot_bootloader", "_request_shutdown")
-_BOOT_BATCH = "build_system"
+_SUPERVISOR_FORBIDDEN = ("reboot_system", "reboot_bootloader", "reset_to_defaults", "erase_fram", "_request_shutdown")
+# Each latched .feed() and the conditions its guard tests; each feed_watchdog() caller and its loop nesting and count.
+_LATCHED_FEEDS = {"feed_watchdog": (_LATCH, _OWNED), _OWN_FEED: (_LATCH,)}
+_FEED_CALLERS = {_SUPERVISOR: (("While",), 2), _SETUP_RUNNER: (("For",), 1)}
 _CALLBACK_KEYWORDS = frozenset({"callback", "handler"})
 
 
@@ -90,8 +95,24 @@ def _service_method(tree: ast.Module, name: str) -> ast.FunctionDef | ast.AsyncF
     return None if service is None else next((f for f in service.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and f.name == name), None)
 
 
-def _guarded_by_latch(fn: ast.FunctionDef | ast.AsyncFunctionDef, call: ast.Call) -> bool:
-    return any(isinstance(n, ast.If) and _LATCH in ast.unparse(n.test) and any(c is call for c in ast.walk(n)) for n in ast.walk(fn))
+def _guard_tests(fn: ast.FunctionDef | ast.AsyncFunctionDef, call: ast.Call) -> str:
+    # The conditions of every `if` enclosing the call, as text.
+    return " ".join(ast.unparse(n.test) for n in ast.walk(fn) if isinstance(n, ast.If) and any(c is call for c in ast.walk(n)))
+
+
+def _site_finding(tree: ast.Module, site: Feed) -> str | None:
+    # None for a pinned site in its pinned shape, else what is wrong with it.
+    if (site.file, site.cls) != _SERVICE:
+        return "a watchdog feed outside the pinned set"
+    if site.kind == "feed" and site.function in _LATCHED_FEEDS:
+        fn = _service_method(tree, site.function)
+        tests = "" if fn is None else _guard_tests(fn, site.node)
+        missing = [name for name in _LATCHED_FEEDS[site.function] if name not in tests]
+        return f"the latched feed no longer tests {', '.join(missing)}" if missing else None
+    if site.kind == "feed_watchdog" and site.function in _FEED_CALLERS:
+        loops = _FEED_CALLERS[site.function][0]
+        return None if site.loops == loops else f"feeds inside {site.loops}, where the pinned site sits inside {loops}"
+    return "a watchdog feed outside the pinned set"
 
 
 def src_findings(src: Path) -> list[str]:
@@ -103,17 +124,11 @@ def src_findings(src: Path) -> list[str]:
         for site in feed_sites(file, tree):
             if site.in_lambda or site.function in reached:
                 findings.append(f"{site.where()}: a feed inside a Timer/IRQ callback")
-            elif (site.file, site.cls) == _SERVICE and site.kind == "feed" and site.function == "feed_watchdog":
-                fn = _service_method(tree, "feed_watchdog")
-                if fn is None or not _guarded_by_latch(fn, site.node):
-                    findings.append(f"{site.where()}: the latched feed no longer tests {_LATCH}")
-            elif (site.file, site.cls) == _SERVICE and site.kind == "feed_watchdog" and site.function == _SUPERVISOR:
-                if site.loops != ("While",):
-                    findings.append(f"{site.where()}: the supervisor feeds at its pass end and in its escalation block - not inside {site.loops}")
-            else:
-                findings.append(f"{site.where()}: a watchdog feed outside the pinned set")
+            elif (problem := _site_finding(tree, site)) is not None:
+                findings.append(f"{site.where()}: {problem}")
     sites = [s for file, tree in trees.items() for s in feed_sites(file, tree)]
-    for kind, function, want in (("feed", "feed_watchdog", 1), ("feed_watchdog", _SUPERVISOR, 2)):
+    pinned = [("feed", name, 1) for name in _LATCHED_FEEDS] + [("feed_watchdog", name, want) for name, (_loops, want) in _FEED_CALLERS.items()]
+    for kind, function, want in pinned:
         count = sum(1 for s in sites if (s.file, s.cls) == _SERVICE and s.kind == kind and s.function == function)
         if count != want:
             findings.append(f"{_SERVICE[1]}.{function}(): {count} `{kind}(` calls where the pinned set has {want}")
@@ -121,6 +136,54 @@ def src_findings(src: Path) -> list[str]:
         findings.append(f"{_SERVICE[0]} is missing")
     else:
         findings.extend(supervisor_findings(service))
+        findings.extend(own_feed_findings(service))
+    return findings
+
+
+def _own_feed_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, ref: ast.Attribute) -> bool:
+    # A pinned use of self._own_feed inside fn: the sequence's statement call or a step_done handed to its flush, quiesce
+    # or erase; _reboot()'s one call under `if fed:`, directly followed by the arm.
+    parents = {child: node for node in ast.walk(fn) for child in ast.iter_child_nodes(node)}
+    parent = parents.get(ref)
+    if fn.name == _SEQUENCE:
+        if isinstance(parent, ast.Call) and parent.func is ref:
+            return isinstance(parents.get(parent), ast.Expr)
+        holder = parents.get(parent) if isinstance(parent, ast.keyword) else parent
+        if not isinstance(holder, ast.Call):
+            return False
+        callee = ast.unparse(holder.func)
+        if isinstance(parent, ast.keyword):
+            return parent.arg == "step_done" and callee == "self._flush_config_stores" and "close=True" in ast.unparse(holder)
+        return callee in ("self._storage.quiesce", "self._storage.erase_chip")
+    if fn.name == "_reboot" and isinstance(parent, ast.Call) and parent.func is ref:
+        statement = parents.get(parent)
+        guard = parents.get(statement) if statement is not None else None
+        if not (isinstance(guard, ast.If) and ast.unparse(guard.test) == "fed" and len(guard.body) == 1):
+            return False
+        body = parents.get(guard)
+        siblings = getattr(body, "body", [])
+        following = siblings[siblings.index(guard) + 1] if guard in siblings and siblings.index(guard) + 1 < len(siblings) else None
+        return following is not None and ast.unparse(following).startswith("self._reset_timer.init(")
+    return False
+
+
+def own_feed_findings(tree: ast.Module) -> list[str]:
+    # _own_feed() is referenced only by the shutdown sequence and once by _reboot(); the sequence hands it to its flush,
+    # quiesce and erase as each step's feed (a hung step is never fed).
+    service = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == _SERVICE[1]), None)
+    findings: list[str] = []
+    reboot_calls = 0
+    for fn in (f for f in getattr(service, "body", []) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        for ref in (n for n in ast.walk(fn) if isinstance(n, ast.Attribute) and n.attr == _OWN_FEED and fn.name != _OWN_FEED):
+            if not _own_feed_use(fn, ref):
+                findings.append(f"{_SERVICE[1]}.{fn.name}():{ref.lineno} uses {_OWN_FEED} outside the pinned set")
+            elif fn.name == "_reboot":
+                reboot_calls += 1
+    if reboot_calls != 1:
+        findings.append(f"{_SERVICE[1]}._reboot(): {reboot_calls} `{_OWN_FEED}()` calls under `if fed:` before the arm, where the pinned set has one")
+    sequence = _service_method(tree, _SEQUENCE)
+    if sequence is None or "self._storage.erase_chip(self._own_feed)" not in ast.unparse(sequence):
+        findings.append(f"{_SERVICE[1]}.{_SEQUENCE}(): the erase no longer feeds through {_OWN_FEED} per unit")
     return findings
 
 
@@ -138,45 +201,10 @@ def supervisor_findings(tree: ast.Module) -> list[str]:
     return findings
 
 
-def generated_findings(device: str, source: str) -> list[str]:
-    # The generated boot batch: every `await <x>.setup()` is followed by one sysfunct.feed_watchdog(),
-    # outside any loop; no other generated feed.
-    tree = ast.parse(source)
-    findings: list[str] = []
-    batch = next((n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == _BOOT_BATCH), None)
-    after_setup: set[int] = set()
-    if batch is None:
-        findings.append(f"sensortask_{device}: no {_BOOT_BATCH}()")
-    else:
-        body = batch.body
-        for i, stmt in enumerate(body):
-            is_setup = isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await) and isinstance(stmt.value.value, ast.Call) and isinstance(stmt.value.value.func, ast.Attribute) and stmt.value.value.func.attr == "setup"
-            if not is_setup:
-                continue
-            following = body[i + 1] if i + 1 < len(body) else None
-            if following is not None and isinstance(following, ast.Expr) and ast.unparse(following) == "sysfunct.feed_watchdog()":
-                after_setup.add(id(following.value))
-            else:
-                findings.append(f"sensortask_{device}:{stmt.lineno} {_BOOT_BATCH}(): `{ast.unparse(stmt)}` is not followed by sysfunct.feed_watchdog()")
-    findings.extend(f"{site.where()}: a generated feed outside the boot batch's per-setup() calls" for site in feed_sites(f"sensortask_{device}.py", tree) if id(site.node) not in after_setup)
-    return findings
-
-
-# The later stages of the pinned set: each holds while its form is absent; once it lands, its test fails
-# so the landing change moves it into the checks above. (part, owner, still-pending predicate)
-_PENDING: tuple[tuple[str, str, Callable[[str, ast.Module], bool]], ...] = (
-    ("feed_watchdog() tests _feed_owned", "U20", lambda _text, tree: "_feed_owned" not in ast.unparse(_service_method(tree, "feed_watchdog") or ast.Pass())),
-    ("run_setups(): the per-unit feed inside its bounded for; no generated feed", "U20", lambda _text, tree: _service_method(tree, "run_setups") is None),
-    (("_own_feed(): referenced only by _shutdown_sequence(), by _reboot() once under `if fed:` right before self._reset_timer.init(, and as step_done of "
-      "_flush_config_stores(close=True, ...) and self._storage.quiesce(...)"), "U20", lambda _text, tree: _service_method(tree, "_own_feed") is None),
-    ("erase_chip(self._own_feed) in _shutdown_sequence()", "U26", lambda text, _tree: "erase_chip(" not in text),
-)
-
-
-def pending_findings(src: Path) -> list[str]:
-    text = (src / _SERVICE[0]).read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    return [f"pending part landed ({unit}): {part} - pin it in this check and drop it from _PENDING" for part, unit, pending in _PENDING if not pending(text, tree)]
+def generated_findings(name: str, source: str) -> list[str]:
+    # A generated module or boot entry feeds nowhere: run_setups() feeds the boot batch, the sequence and the supervisor
+    # the rest, all inside SystemService.
+    return [f"{site.where()}: a feed in generated code" for site in feed_sites(name, ast.parse(source))]
 
 
 @pytest.fixture(scope="module")
@@ -184,8 +212,9 @@ def modules() -> dict[str, str]:
     out: dict[str, str] = {}
     for device in DEVICE_NAMES:
         generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", SRC, REPO_ROOT / "ext")
-        out[device] = generated.module_source
-        out[f"boot_{device}"] = generated.boot_entry_source
+        out[f"sensortask_{device}.py"] = generated.module_source
+        out[f"sensortask_{device}_main.py"] = generated.boot_entry_source
+        out[f"sensortask_{device}_main_noautostart.py"] = generated.boot_entry_noautostart_source
     return out
 
 
@@ -204,19 +233,9 @@ def test_src_feeds_only_at_the_pinned_sites() -> None:
     assert src_findings(SRC) == []
 
 
-def test_generated_modules_feed_only_after_each_boot_setup(modules: dict[str, str]) -> None:
-    findings: list[str] = []
-    for device, source in sorted(modules.items()):
-        if device.startswith("boot_"):
-            findings += [f"{device}: {site.where()}: a feed in a generated boot entry" for site in feed_sites(device, ast.parse(source))]
-        else:
-            findings += generated_findings(device, source)
-    assert findings == []
-    assert all(sum(1 for s in feed_sites(d, ast.parse(src)) if s.kind == "feed_watchdog") >= 3 for d, src in modules.items() if not d.startswith("boot_"))
-
-
-def test_the_later_stages_are_still_pending() -> None:
-    assert pending_findings(SRC) == []
+def test_generated_modules_and_boot_entries_never_feed(modules: dict[str, str]) -> None:
+    assert len(modules) == 3 * len(DEVICE_NAMES)
+    assert [f for name, source in sorted(modules.items()) for f in generated_findings(name, source)] == []
 
 
 def test_a_fifth_feed_site_fails(src_copy: Path) -> None:
@@ -226,9 +245,49 @@ def test_a_fifth_feed_site_fails(src_copy: Path) -> None:
 
 
 def test_a_dropped_latch_test_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve:\n            self._watchdog.feed()", "        if self._watchdog is not None:\n            self._watchdog.feed()")
+    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve and not self._feed_owned:\n", "        if self._watchdog is not None and not self._feed_owned:\n")
     findings = src_findings(src_copy)
     assert len(findings) == 1 and "SystemService.feed_watchdog(): the latched feed no longer tests _force_watchdog_starve" in findings[0], findings
+
+
+def test_a_dropped_ownership_test_fails(src_copy: Path) -> None:
+    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve and not self._feed_owned:\n", "        if self._watchdog is not None and not self._force_watchdog_starve:\n")
+    findings = src_findings(src_copy)
+    assert len(findings) == 1 and "SystemService.feed_watchdog(): the latched feed no longer tests _feed_owned" in findings[0], findings
+
+
+def test_an_own_feed_without_the_starve_latch_fails(src_copy: Path) -> None:
+    _edit(src_copy / "asy_system_service.py", "        if self._watchdog is not None and not self._force_watchdog_starve:\n            self._watchdog.feed()", "        if self._watchdog is not None:\n            self._watchdog.feed()")
+    findings = src_findings(src_copy)
+    assert len(findings) == 1 and "SystemService._own_feed(): the latched feed no longer tests _force_watchdog_starve" in findings[0], findings
+
+
+def test_an_own_feed_outside_the_sequence_fails(src_copy: Path) -> None:
+    _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self._own_feed()\n")
+    findings = src_findings(src_copy)
+    assert len(findings) == 1 and findings[0].startswith("SystemService._supervise():") and "uses _own_feed outside the pinned set" in findings[0], findings
+
+
+def test_a_reboot_feed_after_the_arm_fails(src_copy: Path) -> None:
+    text = (src_copy / "asy_system_service.py").read_text(encoding="utf-8")
+    arm = next(line for line in text.splitlines() if line.strip().startswith("self._reset_timer.init(")) + "\n"
+    _edit(src_copy / "asy_system_service.py", "            if fed:\n                self._own_feed()  # a system command's last feed, right before the arm\n" + arm, arm + "            if fed:\n                self._own_feed()\n")
+    findings = src_findings(src_copy)
+    assert any("SystemService._reboot():" in f and "outside the pinned set" in f for f in findings), findings
+    assert "SystemService._reboot(): 0 `_own_feed()` calls under `if fed:` before the arm, where the pinned set has one" in findings, findings
+
+
+def test_an_unfed_erase_fails(src_copy: Path) -> None:
+    _edit(src_copy / "asy_system_service.py", "self._storage.erase_chip(self._own_feed)", "self._storage.erase_chip(lambda: None)")
+    findings = src_findings(src_copy)
+    assert findings == ["SystemService._shutdown_sequence(): the erase no longer feeds through _own_feed per unit"], findings
+
+
+def test_a_setup_feed_moved_out_of_its_loop_fails(src_copy: Path) -> None:
+    _edit(src_copy / "asy_system_service.py", "            await setup()\n            self.feed_watchdog()\n", "            await setup()\n")
+    _edit(src_copy / "asy_system_service.py", "        self._config_faults = [", "        self.feed_watchdog()\n        self._config_faults = [")
+    findings = src_findings(src_copy)
+    assert len(findings) == 1 and "SystemService.run_setups(): feeds inside (), where the pinned site sits inside ('For',)" in findings[0], findings
 
 
 def test_a_feed_in_a_timer_callback_fails(src_copy: Path) -> None:
@@ -251,7 +310,7 @@ def test_a_function_a_timer_callback_reaches_must_not_feed(src_copy: Path) -> No
 def test_a_feed_inside_the_supervisor_scan_fails(src_copy: Path) -> None:
     _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self.feed_watchdog()\n")
     findings = src_findings(src_copy)
-    assert findings[0].endswith("the supervisor feeds at its pass end and in its escalation block - not inside ('While', 'For')"), findings
+    assert findings[0].endswith("feeds inside ('While', 'For'), where the pinned site sits inside ('While',)"), findings
     assert findings[1] == "SystemService._supervise(): 3 `feed_watchdog(` calls where the pinned set has 2", findings
 
 
@@ -282,21 +341,13 @@ def test_a_feed_in_another_loop_fails(src_copy: Path) -> None:
     assert len(findings) == 1 and "SystemService.start_timers(): a watchdog feed outside the pinned set" in findings[0], findings
 
 
-def test_a_generated_feed_off_the_per_setup_pattern_fails(modules: dict[str, str]) -> None:
-    device = next(d for d in sorted(modules) if not d.startswith("boot_"))
-    source = modules[device]
-    setup = next(line for line in source.splitlines() if line.strip().startswith("await ") and line.strip().endswith(".setup()"))
-    moved = source.replace(f"{setup}\n    sysfunct.feed_watchdog()\n", f"{setup}\n", 1).replace("    gc.collect()\n", "    gc.collect()\n    for _ in range(2):\n        sysfunct.feed_watchdog()\n", 1)
-    assert moved != source
-    findings = generated_findings(device, moved)
-    assert len(findings) == 2, findings
-    assert "is not followed by sysfunct.feed_watchdog()" in findings[0] and "a generated feed outside the boot batch's per-setup() calls" in findings[1], findings
-
-
-def test_a_landed_later_stage_must_be_pinned(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "    def feed_watchdog(self) -> None:\n", "    def _own_feed(self) -> None:\n        pass\n\n    def feed_watchdog(self) -> None:\n")
-    findings = pending_findings(src_copy)
-    assert len(findings) == 1 and findings[0].startswith("pending part landed (U20): _own_feed():"), findings
+def test_a_generated_feed_fails(modules: dict[str, str]) -> None:
+    name = next(n for n in sorted(modules) if n.endswith("_main.py"))
+    source = modules[name]
+    fed = source.replace("\nasync def ", "\nasync def _fed() -> None:\n    sysfunct.feed_watchdog()\n\nasync def ", 1) if "\nasync def " in source else source + "\nsysfunct.feed_watchdog()\n"
+    assert fed != source
+    findings = generated_findings(name, fed)
+    assert len(findings) == 1 and findings[0].endswith("a feed in generated code"), findings
 
 
 def test_a_feed_in_a_timer_constructor_callback_fails(src_copy: Path) -> None:

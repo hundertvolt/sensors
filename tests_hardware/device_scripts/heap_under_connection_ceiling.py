@@ -7,6 +7,7 @@ import gc
 import sys
 import time
 
+import machine
 import micropython
 import sensortask_dev
 
@@ -66,7 +67,9 @@ async def _sampler() -> None:
 async def _run() -> None:
     asyncio.get_event_loop().set_exception_handler(_report_unretrieved)  # before main(): the firmware then keeps it
     print(f"GC_THRESHOLD={gc.threshold()}")
-    main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own, as the boot entry arms one: main() takes it
+    main_task = asyncio.get_event_loop().create_task(sensortask_dev.main(watchdog=wdt))
     # No readiness probe from in here: a request driven from this process would share the heap
     # under measurement, which is the whole thing Part E.9 forbids. The host polls the real HTTP
     # port itself, once main.py's own server has gone quiet (harness.wait_for_script_server()).

@@ -1,0 +1,181 @@
+........................................................................ [ 13%]
+........................................................................ [ 27%]
+........................................................................ [ 41%]
+........................................................................ [ 55%]
+........................................................................ [ 69%]
+........................................................................ [ 82%]
+..................................................F..............F...... [ 96%]
+.......F.FFFFFFFF                                                        [100%]
+=================================== FAILURES ===================================
+____________ test_the_generated_narrowing_exemption_is_still_needed ____________
+
+modules = [Module(path='src/asy_api_response.py', tree=<ast.Module object at 0x7f3b739c2ef0>), Module(path='src/asy_base_classes...dule object at 0x7f3b72e8e500>), Module(path='src/asy_crc_checks.py', tree=<ast.Module object at 0x7f3b72ecffd0>), ...]
+
+    def test_the_generated_narrowing_exemption_is_still_needed(modules: list[Module]) -> None:
+        exempted = [m.path for m in modules if m.generated for n in ast.walk(m.tree) if isinstance(n, ast.Assert) and _is_generated_narrowing(n)]
+>       assert exempted, "no generated narrowing assert is left - delete the exemption in no_assert()"
+E       AssertionError: no generated narrowing assert is left - delete the exemption in no_assert()
+E       assert []
+
+tests_scripts/test_code_conventions.py:355: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=761, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: buildgen/codegen.py:764: gc.emergency_exc_buf_bytes is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:55: dev.uart_rx_ring is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:70: dev.uart_rx_ring is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:174: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row
+E         devices/dev.toml:185: dev.uart_max_transfer_bytes is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:9023: wdt.timeout_ms: Sites list [('buildgen/codegen.py', '8000'), ('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')], the tags say [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_capacity_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/heap_headroom_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py', '8000'), ('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_sample_cadence.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')]
+E         SPECIFICATION.md:9788: l3.heap_layout_after_full_boot_sequence_starter_loop_grace_ms is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:9789: l3.heap_layout_after_full_boot_sequence_starter_poll_ms is a tuned row, but no file carries its @tunable tag
+E       assert not ['buildgen/codegen.py:764: gc.emergency_exc_buf_bytes is tagged but has no SPECIFICATION.md Part N row', 'devices/dev...._hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')]", ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+_________________ test_every_lock_is_tabled_and_taken_in_order _________________
+
+    def test_every_lock_is_tabled_and_taken_in_order() -> None:
+>       assert all_findings(SRC, _spec()) == []
+E       assert ["asy_config_...s lock table"] == []
+E         
+E         Left contains 4 more items, first extra item: "asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table"
+E         Use -v to get more diff
+
+tests_scripts/test_lock_order.py:298: AssertionError
+______________ test_a_lower_level_taken_before_a_higher_one_fails ______________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_a_lower_level_taken_befor0/src')
+
+    def test_a_lower_level_taken_before_a_higher_one_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_bmp3xx_driver.py", "\n\nasync def _planted(dev):\n    async with dev.i2c_device as i2c, dev._i2c_bmp3xx as s:\n        pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "asy_bmp3xx_driver.py _planted():" in findings[0], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"]
+E       assert (5 == 1)
+E        +  where 5 = len(["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:315: AssertionError
+____________________ test_an_untabled_lock_attribute_fails _____________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_an_untabled_lock_attribut0/src')
+
+    def test_an_untabled_lock_attribute_fails(src_copy: Path) -> None:
+        path = src_copy / "asy_neopixel_driver.py"
+        text = path.read_text(encoding="utf-8")
+        anchor = "        self._overlay_lock = asyncio.Lock()"
+        assert anchor in text
+        path.write_text(text.replace(anchor, "        self._extra_lock = asyncio.Lock()\n" + anchor), encoding="utf-8")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "NeopixelDriver._extra_lock: an asyncio.Lock() with no row" in findings[0], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_neopixel..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"]
+E       assert (5 == 1)
+E        +  where 5 = len(["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_neopixel..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:326: AssertionError
+_________________ test_an_acquisition_inside_a_leaf_lock_fails _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_an_acquisition_inside_a_l0/src')
+
+    def test_an_acquisition_inside_a_leaf_lock_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_base_classes.py", "\n\nasync def _planted(r):\n    async with r._data_lock:\n        async with r._overlay_lock:\n            pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "_planted():" in findings[0] and "taken inside the leaf lock SensorReader._data_lock" in findings[0], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"]
+E       assert (5 == 1)
+E        +  where 5 = len(["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:332: AssertionError
+_______________ test_an_unlevelled_row_nested_with_another_fails _______________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_an_unlevelled_row_nested_0/src')
+
+    def test_an_unlevelled_row_nested_with_another_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_wifi_service.py", "\n\nasync def _planted(w, s):\n    async with w.wifi_mode_lock:\n        async with s._connect_lock:\n            pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "UDPSocket._connect_lock nested with WifiService.wifi_mode_lock" in findings[0], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s...t._connect_lock nested with WifiService.wifi_mode_lock, and a row without a level is never nested inside one function']
+E       assert (5 == 1)
+E        +  where 5 = len(["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s...t._connect_lock nested with WifiService.wifi_mode_lock, and a row without a level is never nested inside one function'])
+
+tests_scripts/test_lock_order.py:338: AssertionError
+_________________ test_an_acquire_call_holds_until_its_release _________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_an_acquire_call_holds_unt0/src')
+
+    def test_an_acquire_call_holds_until_its_release(src_copy: Path) -> None:
+        planted = "\n\nasync def _planted(f):\n    await f._bus_lock.acquire()\n    f._bus_lock.release()\n    await f.session_lock.acquire()\n    async with f._bus_lock:\n        await f._op_lock.acquire()\n"
+        _append(src_copy, "asy_fram_driver.py", planted)
+        findings = all_findings(src_copy, _spec())
+        # The released bus lock is not held at the session acquire; both locks held at the _op_lock acquire are.
+>       assert sorted(f.split(": ", 1)[1] for f in findings) == [
+            "_FRAMBaseChunk._op_lock level 3 taken while holding level 1 (FRAM_SPI._bus_lock): a higher level comes first",
+            "_FRAMBaseChunk._op_lock level 3 taken while holding level 2 (Lockable.session_lock): a higher level comes first",
+        ], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"]
+E       assert ['_FRAMBaseCh...s lock table"] == ['_FRAMBaseCh... comes first']
+E         
+E         Left contains 4 more items, first extra item: "`lock` resolves to no row of C.8's lock table"
+E         Use -v to get more diff
+
+tests_scripts/test_lock_order.py:346: AssertionError
+_______________ test_an_acquisition_the_table_cannot_name_fails ________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_an_acquisition_the_table_0/src')
+
+    def test_an_acquisition_the_table_cannot_name_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_udp_socket.py", "\n\nasync def _planted(x):\n    async with x.mystery:\n        pass\n")
+        findings = all_findings(src_copy, _spec())
+>       assert findings == [findings[0]] and "`x.mystery` resolves to no row" in findings[0], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s...to no row of C.8's lock table", "asy_udp_socket.py _planted():199: `x.mystery` resolves to no row of C.8's lock table"]
+E       assert (["asy_config_...s lock table"] == ["asy_config_...s lock table"]
+E         
+E         Left contains 4 more items, first extra item: "asy_system_service.py:213 SystemService._command_lock: an asyncio.Lock() with no row in C.8's lock table"
+E         Use -v to get more diff)
+
+tests_scripts/test_lock_order.py:355: AssertionError
+__________________ test_a_lock_outside_a_self_attribute_fails __________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-6877/test_a_lock_outside_a_self_att0/src')
+
+    def test_a_lock_outside_a_self_attribute_fails(src_copy: Path) -> None:
+        _append(src_copy, "asy_udp_socket.py", "\n\n_SHARED = asyncio.Lock()\n")
+        findings = all_findings(src_copy, _spec())
+>       assert len(findings) == 1 and "asy_udp_socket.py:" in findings[0] and "not held in a self attribute" in findings[0], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"]
+E       assert (5 == 1)
+E        +  where 5 = len(["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"])
+
+tests_scripts/test_lock_order.py:361: AssertionError
+____________________________ test_a_stale_row_fails ____________________________
+
+    def test_a_stale_row_fails() -> None:
+        spec = _spec().replace(_END, "| `UDPSocket._gone_lock` | \u2014 | nothing | nothing |\n" + _END)
+        findings = all_findings(SRC, spec)
+>       assert findings == ["C.8 lock table: UDPSocket._gone_lock is assigned nowhere in src/ (stale row)"], findings
+E       AssertionError: ["asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table", "asy_system_s..._system_service.py SystemService._request_shutdown():341: `self._command_lock` resolves to no row of C.8's lock table"]
+E       assert ["asy_config_...s lock table"] == ['C.8 lock ta... (stale row)']
+E         
+E         At index 0 diff: "asy_config_manager.py:331 ConfigManager.owner_lock: a lock attribute with no row in C.8's lock table" != 'C.8 lock table: UDPSocket._gone_lock is assigned nowhere in src/ (stale row)'
+E         Left contains 4 more items, first extra item: "asy_system_service.py:213 SystemService._command_lock: an asyncio.Lock() with no row in C.8's lock table"
+E         Use -v to get more diff
+
+tests_scripts/test_lock_order.py:367: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_code_conventions.py::test_the_generated_narrowing_exemption_is_still_needed
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_lock_order.py::test_every_lock_is_tabled_and_taken_in_order
+FAILED tests_scripts/test_lock_order.py::test_a_lower_level_taken_before_a_higher_one_fails
+FAILED tests_scripts/test_lock_order.py::test_an_untabled_lock_attribute_fails
+FAILED tests_scripts/test_lock_order.py::test_an_acquisition_inside_a_leaf_lock_fails
+FAILED tests_scripts/test_lock_order.py::test_an_unlevelled_row_nested_with_another_fails
+FAILED tests_scripts/test_lock_order.py::test_an_acquire_call_holds_until_its_release
+FAILED tests_scripts/test_lock_order.py::test_an_acquisition_the_table_cannot_name_fails
+FAILED tests_scripts/test_lock_order.py::test_a_lock_outside_a_self_attribute_fails
+FAILED tests_scripts/test_lock_order.py::test_a_stale_row_fails - AssertionEr...
+11 failed, 510 passed in 53.08s

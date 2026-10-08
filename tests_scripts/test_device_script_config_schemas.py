@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from buildgen.schema_ast import _eval_literal, extract_field_schemas
+from buildgen.signals import WARN_SIGNALS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEVICE_SCRIPTS = REPO_ROOT / "tests_hardware" / "device_scripts"
@@ -32,15 +33,8 @@ Schema = frozenset[tuple[object, ...]]
 def production_schema(name: str, repo_root: Path = REPO_ROOT) -> Schema:
     fields = {(field, *spec) for field, spec in extract_field_schemas(repo_root / "src" / _OWNERS[name]).items()}
     if name == "NOTIFY":
-        # The notification signals' thresholds join its schema at construction (buildgen/codegen.py's _KNOWN_SIGNALS).
-        tree = ast.parse((repo_root / "buildgen" / "codegen.py").read_text(encoding="utf-8"))
-        table = next(n.value for n in tree.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "_KNOWN_SIGNALS")
-        assert isinstance(table, ast.Dict)
-        for entry in table.values:
-            assert isinstance(entry, ast.Tuple)
-            literal = entry.elts[2]
-            assert isinstance(literal, ast.Constant) and isinstance(literal.value, str)
-            fields |= {tuple(field) for field in ast.literal_eval(literal.value)}
+        # The notification signals' thresholds join its schema at construction (buildgen/signals.py's WARN_SIGNALS).
+        fields |= {(s.name, s.field_type, s.default, s.min, s.max, None) for s in WARN_SIGNALS.values()}
     return frozenset(fields)
 
 

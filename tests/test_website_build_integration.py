@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+import frozen_html  # mounts /html on import
 from microdot import Microdot, Request
 
 from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
@@ -82,7 +82,7 @@ def _make_app() -> "tuple[WebserverService, Microdot]":
         None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
     )
     routes = RouteSources([], None, None, None, None, None, None, [], [])
-    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
+    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
     return service, app
 
 

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from typing import Any, Literal, Protocol, overload
 
     from _fram_chip import FramChip  # lazy-imported at runtime inside _wire_spi_device()
+    from _mpy_shed.time_mp import _TicksMs
 
     class _RandomSource(Protocol):
         # Structural stand-in for the `random` module (the default) or a seeded random.Random.
@@ -81,7 +82,10 @@ class _BoundedLog:
         return len(self._items)
 
     def _ordered(self) -> "list[Any]":
-        return self._items[self._head :] + self._items[: self._head]
+        # Joined by extend(), not +: the ticks-wrap scan reads `slice + slice` of a log that may hold ticks as tick arithmetic.
+        ordered = self._items[self._head :]
+        ordered.extend(self._items[: self._head])
+        return ordered
 
     def append(self, entry: object) -> None:
         if len(self._items) < self.maxlen:
@@ -1195,6 +1199,9 @@ class WDT:
         # I2C.log/SPI.log above (see _LOG_MAXLEN's own comment): grows for the life of the process
         # on every would-have-triggered notification, so bounded the same way.
         self.would_have_triggered_log: deque[int] = deque((), _LOG_MAXLEN)
+        # ticks_ms() of each feed(), oldest first - the mock WDT's feed_times. A deque holds its slots from the
+        # start, so a long run never grows the heap; feed_count less len(feed_times) is how many it dropped.
+        self.feed_times: deque[_TicksMs] = deque((), _LOG_MAXLEN)
         self._on_would_trigger = on_would_trigger
         self._task: asyncio.Task[None] | None = None
         self._armed_at_ms: Any | None = None  # an opaque ticks_ms() value, not a plain int
@@ -1232,6 +1239,7 @@ class WDT:
 
     def feed(self) -> None:
         self.feed_count += 1
+        self.feed_times.append(time.ticks_ms())
         self._arm()  # a real feed() resets the hardware countdown - restart ours the same way
 
 
