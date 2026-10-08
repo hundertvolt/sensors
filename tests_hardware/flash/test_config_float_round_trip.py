@@ -52,7 +52,7 @@ def rendered_script(repo_root: Path) -> str:
     return source.replace(_PLACEHOLDER, f"FLOAT_FIELDS = {tuple(float_fields(repo_root))!r}")
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_config_floats_round_trip_unchanged(board: Board, tmp_path: Path) -> None:
     script = tmp_path / _SCRIPT.name
     script.write_text(rendered_script(REPO_ROOT), encoding="utf-8")

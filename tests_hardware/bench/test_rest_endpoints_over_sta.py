@@ -133,7 +133,7 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/ISL29125")
 def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
     # dispatch-only Calibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason

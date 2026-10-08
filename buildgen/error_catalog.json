@@ -17,6 +17,7 @@
     "uart": {"files": ["src/asy_uart_comm.py", "src/asy_uart_driver.py"], "loggers": ["UART"], "bands": {"E": [[75, 99]], "W": [[54, 59]]}},
     "bmp3xx": {"files": ["src/asy_bmp3xx_driver.py"], "loggers": ["BMP3XX"], "bands": {"E": null, "W": [[71, 72]]}},
     "scd30": {"files": ["src/asy_scd30_driver.py"], "loggers": ["SCD30"], "bands": {"E": null, "W": [[73, 74]]}},
+    "mqtt": {"files": ["src/asy_mqtt_client.py"], "loggers": ["MQTT"], "bands": {"E": [[115, 124]], "W": [[82, 85]]}},
     "asy_api_response": {"files": ["src/asy_api_response.py"], "loggers": [], "bands": {"E": null, "W": null}},
     "test": {"files": ["tests_hardware/device_scripts/"], "loggers": [], "bands": {"E": [[125, 127]], "W": null}}
   },
@@ -113,6 +114,14 @@
       "105": {"owner": "fram", "name": "FRAM_CLEAR_WRITE", "text": "writing a cleared block failed"},
       "106": {"owner": "fram", "name": "FRAM_CLEAR", "text": "clearing a chunk failed"},
       "110": {"owner": "sgp40", "name": "SGP_BACKUP_WRITE", "text": "writing the algorithm-state backup failed"},
+      "115": {"owner": "mqtt", "name": "MQTT_DNS", "text": "the broker's name did not resolve"},
+      "116": {"owner": "mqtt", "name": "MQTT_CONNECT", "text": "the TCP connection to the broker or its CONNACK failed or timed out"},
+      "117": {"owner": "mqtt", "name": "MQTT_REFUSED", "text": "the broker refused the connection (a CONNACK return code)"},
+      "118": {"owner": "mqtt", "name": "MQTT_PROTOCOL", "text": "a malformed or unexpected packet arrived from the broker; the connection was closed"},
+      "119": {"owner": "mqtt", "name": "MQTT_NO_PINGRESP", "text": "no PINGRESP within its deadline while the link reported up; the connection was closed"},
+      "120": {"owner": "mqtt", "name": "MQTT_LOST", "text": "the broker closed the connection, or a socket error ended it"},
+      "121": {"owner": "mqtt", "name": "MQTT_STALLED", "text": "the broker stopped reading (send backlog or drain timeout); the connection was closed"},
+      "122": {"owner": "mqtt", "name": "MQTT_SUB_REFUSED", "text": "the broker refused a subscription"},
       "125": {"owner": "test", "name": "TEST_SEED_A", "text": "test seed A, written only by hardware test scripts; on a board it means a test ran against this FRAM"},
       "126": {"owner": "test", "name": "TEST_SEED_B", "text": "test seed B, written only by hardware test scripts; on a board it means a test ran against this FRAM"},
       "127": {"owner": "test", "name": "TEST_SEED_C", "text": "test seed C, written only by hardware test scripts; on a board it means a test ran against this FRAM"}
@@ -179,7 +188,8 @@
       "78": {"owner": "wifi", "name": "WLAN_STATUS_UNREADABLE", "text": "the WLAN status could not be read; the last link state and uptime are kept"},
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},
       "80": {"owner": "wifi", "name": "WLAN_DEACTIVATED", "text": "a second STA failure streak after the hotspot ran; the WLAN is deactivated until a power cycle"},
-      "81": {"owner": "wifi", "name": "WLAN_NO_VERDICT", "text": "a STA connect poll ended without a verdict (still connecting, or joined without an IP address)"}
+      "81": {"owner": "wifi", "name": "WLAN_NO_VERDICT", "text": "a STA connect poll ended without a verdict (still connecting, or joined without an IP address)"},
+      "82": {"owner": "mqtt", "name": "MQTT_SHORT_SESSIONS", "text": "MQTT sessions keep ending right after they start (another client with the same client id?)"}
     }
   },
   "status": {

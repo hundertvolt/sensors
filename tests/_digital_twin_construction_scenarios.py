@@ -110,7 +110,7 @@ def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]"
     # see tests/_sensortask_scenarios.py's identical helper for why: a construction bug that silently drops
     # a declared driver reads back as though the device never had it, which getattr cannot tell apart.
     plan_instances = set(_wiring_plan(device)["instances"])
-    all_names = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
+    all_names = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "mqtt")
     present = tuple(name for name in all_names if name in plan_instances)
     for name in all_names:
         if name in present:

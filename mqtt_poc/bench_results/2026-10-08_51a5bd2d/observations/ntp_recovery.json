@@ -1,0 +1,91 @@
+{
+ "synced_after_s": 34.7,
+ "limit_s": 900.0,
+ "samples": [
+  {
+   "t": 1.6,
+   "NTPLastSyncAge": null,
+   "NTPLastSync": null,
+   "NTPSynced": false
+  },
+  {
+   "t": 8.2,
+   "NTPLastSyncAge": null,
+   "NTPLastSync": null,
+   "NTPSynced": false
+  },
+  {
+   "t": 14.8,
+   "NTPLastSyncAge": null,
+   "NTPLastSync": null,
+   "NTPSynced": false
+  },
+  {
+   "t": 21.4,
+   "NTPLastSyncAge": null,
+   "NTPLastSync": null,
+   "NTPSynced": false
+  },
+  {
+   "t": 28.0,
+   "NTPLastSyncAge": null,
+   "NTPLastSync": null,
+   "NTPSynced": false
+  },
+  {
+   "t": 34.7,
+   "NTPLastSyncAge": 2,
+   "NTPLastSync": 1791465568,
+   "NTPSynced": true
+  }
+ ],
+ "console_ntp_lines": [
+  "0.101 WIFI WLAN connection established",
+  "0.102 WIFI WLAN status: 3",
+  "0.102 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "0.103 WIFI Default gateway: 192.168.85.1",
+  "0.104 WIFI DNS server: 192.168.85.1",
+  "5.105 WIFI WLAN connection established",
+  "5.106 WIFI WLAN status: 3",
+  "5.108 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "5.110 WIFI Default gateway: 192.168.85.1",
+  "5.111 WIFI DNS server: 192.168.85.1",
+  "9.792 NTP Sync-age tick counter at 0",
+  "10.119 WIFI WLAN connection established",
+  "10.120 WIFI WLAN status: 3",
+  "10.122 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "10.123 WIFI Default gateway: 192.168.85.1",
+  "10.124 WIFI DNS server: 192.168.85.1",
+  "15.122 WIFI WLAN connection established",
+  "15.123 WIFI WLAN status: 3",
+  "15.124 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "15.125 WIFI Default gateway: 192.168.85.1",
+  "15.125 WIFI DNS server: 192.168.85.1",
+  "19.786 NTP Sync-age tick counter at 0",
+  "20.128 WIFI WLAN connection established",
+  "20.129 WIFI WLAN status: 3",
+  "20.130 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "20.131 WIFI Default gateway: 192.168.85.1",
+  "20.131 WIFI DNS server: 192.168.85.1",
+  "25.133 WIFI WLAN connection established",
+  "25.134 WIFI WLAN status: 3",
+  "25.135 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "25.135 WIFI Default gateway: 192.168.85.1",
+  "25.136 WIFI DNS server: 192.168.85.1",
+  "29.787 NTP Sync-age tick counter at 0",
+  "29.787 NTP NTP resync triggered.",
+  "29.797 NTP NTP sync starting.",
+  "29.902 NTP Received NTP time: 1791465567",
+  "29.904 NTP RTC set to: (2026, 10, 8, 13, 19, 27, 3, 281)",
+  "30.136 WIFI WLAN connection established",
+  "30.137 WIFI WLAN status: 3",
+  "30.138 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "30.139 WIFI Default gateway: 192.168.85.1",
+  "30.139 WIFI DNS server: 192.168.85.1",
+  "35.142 WIFI WLAN connection established",
+  "35.143 WIFI WLAN status: 3",
+  "35.145 WIFI IPv4 address: 192.168.85.57 / 255.255.255.0",
+  "35.147 WIFI Default gateway: 192.168.85.1",
+  "35.148 WIFI DNS server: 192.168.85.1"
+ ]
+}

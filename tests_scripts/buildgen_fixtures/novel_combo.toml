@@ -11,7 +11,8 @@
 # value (0x76, every real device uses 0x77), NotificationService wired to only one of the three
 # warn_* signals (every real device wires all three or none), and a uart_link initiator/responder
 # pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond
-# dev.toml's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule).
+# dev.toml's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule),
+# and the MQTT client publishing two SCD30s plus SGP40/BMP3xx, with no FRAM wiring of its own.
 
 [device]
 name = "NovelCombo"
@@ -19,6 +20,8 @@ hostname = "SensorStationNovelCombo"
 hotspot_password = "12345678"
 conn_fail_to_hotspot = 3
 hotspot_time_min = 10
+# One under the shipped default: the MQTT client's held connection takes the last slot (buildgen/validate.py).
+max_connections = 5
 
 [device.wiring]
 led_target = "neopixel"
@@ -149,3 +152,6 @@ driver = "uart_link"
 name_ext = "b"
 bus = "uart1"
 role = "responder"
+
+[[instance]]
+driver = "mqtt"

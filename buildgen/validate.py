@@ -251,10 +251,13 @@ def _check_connection_ceiling(model: DeviceModel, src_dir: Path) -> None:
     if max_connections < _MAX_CONNECTIONS_FLOOR:
         raise BuildError(model.device, f"[device].max_connections is {max_connections} - a webserver admitting no connection at all serves nothing, so the floor is {_MAX_CONNECTIONS_FLOOR}", field="max_connections")
     # lwIP's options are an ensemble and its own checks size the shared pools for ONE connection.
-    # The N-connection half is checked here, where N is known.
-    ensemble = _lwip_ensemble_problems(lwip_macros(), max_connections)
+    # The N-connection half is checked here, where N is known. The MQTT client holds one more, paid for
+    # by the web ceiling (owner, 2026-10-07, asked who pays MQTT's connection: 'Web connections 6->5').
+    held = 1 if any(spec.driver == "mqtt" for spec in model.instances.values()) else 0
+    ensemble = _lwip_ensemble_problems(lwip_macros(), max_connections + held)
     if ensemble:
-        raise BuildError(model.device, f"[device].max_connections is {max_connections}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + ". Raise the matching [lwip] values in toolchain/versions.toml or lower max_connections", field="max_connections")
+        what = f"{max_connections} plus the MQTT client's own connection" if held else str(max_connections)
+        raise BuildError(model.device, f"[device].max_connections is {what}, which this firmware's lwIP settings cannot serve: " + "; ".join(ensemble) + ". Raise the matching [lwip] values in toolchain/versions.toml or lower max_connections", field="max_connections")
     backlog = dev.get("backlog")
     if backlog is not None and backlog < max_connections:
         # backlog is how many arrivals can land while the event loop is busy elsewhere; past it lwIP

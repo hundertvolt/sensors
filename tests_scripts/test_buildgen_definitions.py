@@ -25,6 +25,7 @@ from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_t
 
 BMP3XX_DEVICES = {"dev", "wozi"}
 ISL29125_DEVICES = {"dev"}
+MQTT_DEVICES = {"dev"}  # owner, 2026-10-07: 'dev only, off (Recommended)'
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text())
@@ -149,6 +150,29 @@ def test_isl29125_group_presence_matches_device_instance_set(repo_root: Path, sr
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_mqtt_settings_status_and_errcount_follow_the_device_instance_set(repo_root: Path, src_dir: Path, device: str) -> None:
+    generated = _generate(repo_root, src_dir, device)
+    networking = next(s for s in generated["sections"] if s["key"] == "networking")
+    mqtt_groups = [g for g in networking["groups"] if g["key"] == "mqtt"]
+    status = next(s for s in generated["sections"] if s["key"] == "status")
+    status_keys = {f["key"] for g in status["groups"] if g["key"] == "networking" for f in g["fields"]}
+    errcount = {m["key"] for _section, g in _errcount_groups(generated) for m in g["modules"]}
+    if device not in MQTT_DEVICES:
+        assert not mqtt_groups
+        assert not {k for k in status_keys if k.startswith("MQTT")}
+        assert not {"MQTT", "CFGMGR_MQTT"} & errcount
+        return
+    fields = {f["key"]: f for f in mqtt_groups[0]["fields"]}
+    assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"]
+    assert fields["MQTTPW"]["mask"] is True
+    assert fields["MQTTClientId"]["shape"] == "hostLabel"
+    assert (fields["MQTTHost"]["shape"], fields["MQTTHost"]["minLength"], fields["MQTTHost"]["specialValues"][0]["value"]) == ("hostName", 1, "")
+    assert (fields["MQTTPort"]["min"], fields["MQTTPort"]["max"]) == (1, 65535)
+    assert {"MQTTState", "MQTTConnected", "MQTTTxDropped", "MQTTPingTimeouts", "MQTTShortSessions", "MQTTLastRxTopic"} <= status_keys
+    assert {"MQTT", "CFGMGR_MQTT"} <= errcount
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_real_device_has_all_six_sections(repo_root: Path, src_dir: Path, device: str) -> None:
     generated = _generate(repo_root, src_dir, device)
     assert {s["key"] for s in generated["sections"]} == {"measurements", "sensors", "networking", "system", "status", "notification"}
@@ -175,12 +199,26 @@ def test_status_pages_system_group_does_not_declare_a_firmware_version_field(rep
     assert not any(f["key"] == "FirmwareVersion" for f in system_group["fields"])
 
 
-def _returned_keys(module_source: str, function: str) -> "list[str]":
-    # The literal keys of the dict a generated status source returns.
+def _literal_keys(node: ast.Dict) -> "list[str]":
+    return [k.value for k in node.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+
+
+def _returned_keys(module_source: str, function: str, src_dir: Path) -> "list[str]":
+    # The literal keys of the dict a generated status source returns; on the MQTT client's device, those of the
+    # literal its link status is merged into plus get_link_status()'s own, read from src/asy_mqtt_client.py.
     fn = next(n for n in ast.walk(ast.parse(module_source)) if isinstance(n, ast.AsyncFunctionDef) and n.name == function)
     returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Return))
+    if isinstance(returned, ast.Name):
+        merged = [ast.unparse(n) for n in ast.walk(fn) if isinstance(n, ast.Call) and ast.unparse(n.func) == f"{returned.id}.update"]
+        assert merged == [f"{returned.id}.update(mqtt.get_link_status())"], merged
+        literal = next(n.value for n in ast.walk(fn) if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == returned.id)
+        assert isinstance(literal, ast.Dict), f"{function}() merges into no dict literal"
+        link = next(n for n in ast.walk(ast.parse((src_dir / "asy_mqtt_client.py").read_text())) if isinstance(n, ast.FunctionDef) and n.name == "get_link_status")
+        link_returned = next(n.value for n in ast.walk(link) if isinstance(n, ast.Return))
+        assert isinstance(link_returned, ast.Dict), "get_link_status() returns no dict literal"
+        return _literal_keys(literal) + _literal_keys(link_returned)
     assert isinstance(returned, ast.Dict), f"{function}() returns no dict literal"
-    return [k.value for k in returned.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+    return _literal_keys(returned)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -192,7 +230,7 @@ def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root
         if key not in groups:
             assert f"async def {function}(" not in source, f"{function}() is generated but no status group lists it"
             continue
-        assert sorted(f["key"] for f in groups[key]["fields"]) == sorted(_returned_keys(source, function)), key
+        assert sorted(f["key"] for f in groups[key]["fields"]) == sorted(_returned_keys(source, function, src_dir)), key
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

@@ -45,7 +45,7 @@ function isIpv4Literal(value) {
 }
 
 /**
- * One rule per string shape, the same as src/'s host_label_ok(), _country_ok(), _ntp_host_ok() and
+ * One rule per string shape, the same as src/'s host_label_ok(), _country_ok(), host_name_ok() and
  * _dns_fallback_ok(): a host name is an IPv4 literal or dot-separated labels of at most 63 characters.
  * @type {Record<string, (value: string) => boolean>}
  */
@@ -681,9 +681,9 @@ export function installMockFetch(defs, initialData, controls) {
             return applySensorQuirksForGet(state.sensorsConfig);
         }
         if (path === "/networking") {
-            // Mirrors src/asy_wifi_service.py's _cfg_overlay(): PW and HotspotPW are real credentials,
-            // never returned in plaintext over GET, on real hardware or here.
-            return { ...state.networkingConfig, PW: "********", HotspotPW: "********" };
+            // Mirrors src/asy_wifi_service.py's _cfg_overlay() and src/asy_mqtt_client.py's _mask_pw(): PW, HotspotPW
+            // and MQTTPW are real credentials, never returned in plaintext over GET, on real hardware or here.
+            return { ...state.networkingConfig, PW: "********", HotspotPW: "********", ...("MQTTPW" in state.networkingConfig ? { MQTTPW: "********" } : {}) };
         }
         if (path === "/system") {
             return state.systemConfig;

@@ -261,6 +261,11 @@ plan (on its own branch) cite them. **Nothing here authorizes anything**: CLAUDE
 applies, and `tests_hardware/README.md` is the reference for how any of it runs (flags, wear
 gates, traps).
 
+- **The MQTT PoC's scoped bench run** (branch `claude/whole-project-audit-plan-followup` only, until it
+  merges): `mqtt_poc/BENCH_HANDOVER.md` is its run sheet and its full context, `--scope mqtt` with writes
+  scoped to `networking/identity`, `networking/mqtt`, `networking/ntp` and `notification/autoConfig`
+  (owner, 2026-10-08: "include the ntp tests too, allow networking/ntp"; "include the hotspot role reversal
+  too"); its section 7 says where the results go.
 - **How a sitting runs.** D1 and D2 are the owner's standing answers (owner, 2026-09-22, `00f3eac`,
   paraphrase — the commit records no owner words): D1, spend flash/NVM writes, but only after a
   clean default run, so a gated failure is the gated test's own; D2, the NeoPixel-aimed-at-ISL29125
@@ -542,6 +547,19 @@ gates, traps).
   7 and 8 count the WIFI fallback's persisted `WLAN_TO_HOTSPOT` warning (two history slots, six
   counted events). Stdlib only, no new dependency: the chroot legs, which share the host's network,
   are unaffected.
+  **2026-10-08, `toolchain/versions.toml`, both legs and the installer leg (MQTT PoC branch)**: `apt_packages`
+  gains `mosquitto`, the broker the MQTT client's twin and bench tests start themselves (owner, 2026-10-07: 'apt
+  package (Recommended)'). Its Debian/Ubuntu package also enables a system broker on `localhost:1883`, which no test
+  uses; a chroot without systemd only installs it. `devices/dev.toml`'s `max_connections` goes 6 → 5 (the lwIP table
+  itself is unchanged). `scripts/_digital_twin_ci_suite.py` gains Run 12, which needs that broker on `PATH` or in
+  `/usr/sbin`, so a chroot's `scripts/run_digital_twin_ci.sh dev` now also proves the package landed; CI's
+  `digital-twin-e2e` installs it alone from `versions.toml`.
+  **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg (MQTT PoC branch)**: `env --tier bench` gains
+  `ensure_avahi()`, installing `avahi-daemon` when missing, as `ensure_iptables()` does `iptables`; the generic
+  and flash tiers are unchanged.
+  **2026-10-08, `scripts/run_bench_hardware_suite.sh` only, no build impact (MQTT PoC branch)**: the runner
+  gains `--scope NAME` (resolved by `python3 tests_hardware/run_scopes.py`, stdlib only); nothing installed or
+  built changes, so nothing here moves either leg.
   **2026-10-08, lint and mypy config, the generated REST API reference and comments**:
   `pyproject.toml`'s `src/asy_webserver_service.py` entry narrows to `SLF001` (its `S101` and
   `ANN401` are gone, and the category-2 `ANN401` comment names `digital_twin/_http_client.py`

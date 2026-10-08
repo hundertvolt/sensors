@@ -645,6 +645,11 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
     assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur"}
 
 
+def test_parse_web_tags_real_mqtt_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_mqtt_client.py", "dev", "mqtt")
+    assert {t.field_name for t in tags} == {"MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"}
+
+
 @pytest.mark.parametrize(
     "driver,expected_key",
     [
@@ -657,6 +662,7 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
         ("asy_ntp_client.py", ("networking", "dns")),
         ("asy_system_service.py", ("system", "settings")),
         ("asy_notification_service.py", ("notification", "autoConfig")),
+        ("asy_mqtt_client.py", ("networking", "mqtt")),
     ],
 )
 def test_parse_web_group_tags_real_drivers_declare_expected_group(src_dir: Path, driver: str, expected_key: "tuple[str, str]") -> None:
@@ -669,4 +675,5 @@ def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> Non
     assert tagged == {
         "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
         "asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py", "asy_notification_service.py",
+        "asy_mqtt_client.py",
     }

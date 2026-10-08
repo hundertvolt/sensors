@@ -17,6 +17,7 @@ from rp2 import DMA
 import asy_base_classes
 import asy_bmp3xx_driver
 import asy_i2c_driver
+import asy_mqtt_client
 import asy_neopixel_driver
 import asy_notification_service
 import asy_system_service
@@ -25,6 +26,7 @@ import asy_uart_driver
 from asy_base_classes import TickSeconds
 from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_i2c_driver import I2C
+from asy_mqtt_client import MQTTClient, MqttConfig
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService
 from asy_print_log import LogConfig
@@ -50,6 +52,7 @@ _KNOWN_TICKS_USERS = (
     "src/asy_bmp3xx_driver.py",
     "src/asy_i2c_driver.py",
     "src/asy_isl29125_driver.py",
+    "src/asy_mqtt_client.py",
     "src/asy_neopixel_driver.py",
     "src/asy_notification_service.py",
     "src/asy_system_service.py",
@@ -254,6 +257,85 @@ async def _no_local_time() -> None:
 
 async def _no_signal(_r: int, _g: int, _b: int, _t: float) -> bool:
     return True
+
+
+# The MQTT client's timings for its two deadlines below: a 250 ms PINGRESP deadline, a 200 ms QoS 1 retry, 5 ms ticks.
+_MQTT_CFG = MqttConfig("t", 60, 300, 250, 500, 100, 400, 600, 200, 300, 5, 1000, 200, 100, 1)
+_MQTT_PING = 3  # asy_mqtt_client.py's const()-folded _R_PING - mirrored, not importable
+
+
+class _MqttStream:
+    # A connected stream that takes every write and never has output pending: no socket, so no poller (CLAUDE.md).
+    def __init__(self) -> None:
+        self.out_buf = b""
+        self.writes = 0
+
+    def write(self, _buf: "bytes | bytearray | memoryview") -> None:
+        self.writes += 1
+
+    async def drain(self) -> None:
+        pass
+
+    async def readinto(self, _buf: memoryview) -> int:
+        await asyncio.sleep_ms(60_000)
+        return 0
+
+    async def wait_closed(self) -> None:
+        pass
+
+
+def _mqtt_client() -> MQTTClient:
+    return MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _MQTT_CFG, cfg_path=_scratch.dir(), log=LogConfig(None, 10, None))
+
+
+def _mqtt_retry_outcome(start: int) -> "tuple[int, int]":
+    # A QoS 1 message first sent at uptime `start`: (resends 1 ms before its retry is due, resends at it).
+    client = _mqtt_client()
+    fake = _install(asy_mqtt_client, start)
+    try:
+        client._state = 3  # connected, so the publish queues
+        assert client.publish("t", b"x", qos=1)
+        stream = _MqttStream()
+        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]  # a ticks value from the fake
+        sent = stream.writes
+        fake.advance(_MQTT_CFG.qos1_retry_ms - 1)
+        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
+        before = stream.writes - sent
+        fake.advance(1)
+        client._flush_outbound(stream, fake.ticks_ms())  # type: ignore[arg-type]
+        return before, stream.writes - sent - before
+    finally:
+        _restore(asy_mqtt_client)
+
+
+def _mqtt_ping_outcome(start: int) -> "tuple[bool, int]":
+    # A PINGREQ sent at uptime `start`: (the connection still serving 1 ms before its deadline, the reason it ends at it).
+    client = _mqtt_client()
+    fake = _install(asy_mqtt_client, start)
+
+    async def scenario() -> "tuple[bool, int]":
+        client._base = b"s/t"
+        client._new_connection()
+        client._ping_out = True
+        client._ping_sent = fake.ticks_ms()  # type: ignore[assignment]  # a ticks value from the fake
+        task = asyncio.create_task(client._serve(_MqttStream()))
+        fake.advance(_MQTT_CFG.response_timeout_ms - 1)
+        await asyncio.sleep_ms(30)  # several 5 ms ticks
+        serving = not task.done()
+        fake.advance(1)
+        for _ in range(200):
+            if task.done():
+                break
+            await asyncio.sleep_ms(5)
+        if not task.done():
+            task.cancel()
+            return serving, -1
+        return serving, await task
+
+    try:
+        return asyncio.run(scenario())
+    finally:
+        _restore(asy_mqtt_client)
 
 
 def _restore(module: object) -> None:
@@ -669,6 +751,20 @@ def test_the_trigger_stagger_crosses_the_ticks_wrap() -> None:
     wrapped = _sequencer_outcome(TICKS_PERIOD - 300, delays)
     assert wrapped == _sequencer_outcome(_REFERENCE_NOW, delays), wrapped
     assert wrapped == ([200, 150], [0, 1, 2, 3]), wrapped
+
+
+def test_the_mqtt_qos1_retry_crosses_the_ticks_wrap() -> None:
+    # First sent 100 ms before the wrap, the 200 ms retry falls past it: no resend 1 ms short, one at it.
+    wrapped = _mqtt_retry_outcome(TICKS_PERIOD - _MQTT_CFG.qos1_retry_ms // 2)
+    assert wrapped == _mqtt_retry_outcome(_REFERENCE_NOW), wrapped
+    assert wrapped == (0, 1), wrapped
+
+
+def test_the_mqtt_pingresp_deadline_crosses_the_ticks_wrap() -> None:
+    # A PINGREQ 100 ms before the wrap, its 250 ms deadline past it: still serving 1 ms short, closed at it.
+    wrapped = _mqtt_ping_outcome(TICKS_PERIOD - 100)
+    assert wrapped == _mqtt_ping_outcome(_REFERENCE_NOW), wrapped
+    assert wrapped == (True, _MQTT_PING), wrapped
 
 
 def test_the_storage_pause_deadline_crosses_the_ticks_wrap() -> None:

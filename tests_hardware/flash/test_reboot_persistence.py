@@ -36,7 +36,7 @@ def _parse_result(output: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("hwtest")
 def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
     write_output = board.run_isolated(DEVICE_SCRIPTS / "reboot_persist_write.py")
     ok, detail = _parse_result(write_output)
@@ -57,7 +57,7 @@ def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("system/settings", "hwtest")
 def test_boot_import_mechanism_actually_boots_the_real_system(board: Board) -> None:
     # This bench's board is left at production-quiet DebugLevel=0 between sessions, which suppresses
     # the pr.one()-level boot-chatter lines this check looks for - raise DebugLevel for the one

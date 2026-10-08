@@ -42,7 +42,7 @@ _OVERRIDE_POLL_S = 1.0
 _OVERRIDE_POLL_TRIES = 10
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/BMP3XX")
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
@@ -82,7 +82,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
     assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/ISL29125")
 def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)

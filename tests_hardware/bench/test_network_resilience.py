@@ -340,7 +340,7 @@ def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, 
     reset_all_error_logs(dut_ip)
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/ntp")
 def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # The real-hardware form of test_asy_ntp_client.py's retry-after-one-dropped-request test:
     # the retry timer alone recovers, with no reboot. A guaranteed block_udp_ports() rather than
@@ -523,7 +523,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/ntp")
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
@@ -602,7 +602,7 @@ _GARBAGE_SSID = "wozi-test-net-does-not-exist"  # <=32 chars (_VAL_SSID's own ca
 _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap()
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
@@ -864,7 +864,7 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 
 _BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
 _OLD_CONTENT_CAP = 4096  # what it was before Part I.6; the 2048..4096 band is the discriminator
-_SCHEMA_MAX_BODY = 1080  # largest schema-permitted PUT body on the bench's dev: its /sensors route (I.6)
+_SCHEMA_MAX_BODY = 1318  # largest schema-permitted PUT body on the bench device: PUT /networking, MQTT included (I.6)
 
 
 def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:
@@ -908,8 +908,8 @@ def test_put_the_band_that_used_to_be_accepted_is_now_rejected_over_the_normal_n
 
 def test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap(dut_ip: str) -> None:
     # The direction that matters when a cap is LOWERED: the regression would be refusing something
-    # legitimate. 1080 B is the largest body any route's own schema can produce on dev, so a real
-    # maximal config push must still be served - 1.9x headroom, derived in tests_scripts/ and asserted here.
+    # legitimate. _SCHEMA_MAX_BODY is the largest body any route's own schema can produce on the bench device,
+    # sent here as padding so its size is the whole subject - 1.7x headroom, derived and pinned in tests_scripts/.
     reset_all_error_logs(dut_ip)
     assert _SCHEMA_MAX_BODY < _BODY_CAP, "the schema maximum no longer fits under the cap - Part I.6's premise has moved"
     assert _put_sized(dut_ip, _SCHEMA_MAX_BODY) == 200, f"the largest schema-permitted body ({_SCHEMA_MAX_BODY} B) was rejected"

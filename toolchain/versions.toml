@@ -26,6 +26,9 @@ apt_packages = [
     # setcap, for the port-53 DNS-server test's CAP_NET_BIND_SERVICE grant: absent from a minimal
     # image, where it surfaced only after the whole toolchain build.
     "libcap2-bin",
+    # The broker the MQTT client's twin and bench tests start on a port of their own (owner, 2026-10-07:
+    # 'mosquitto in CI', 'apt package (Recommended)'); unpinned, the distribution's own version.
+    "mosquitto",
 ]
 
 # lwIP options for the rp2 firmware, injected through an out-of-tree lwipopts.h (Part B.14.2). Every

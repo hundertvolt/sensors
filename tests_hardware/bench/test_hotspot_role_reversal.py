@@ -316,7 +316,7 @@ def test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link(joined_ho
         assert res.status_code == 200, f"GET {path} over the hotspot link -> {res.status_code}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("notification/autoConfig")
 def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: str) -> None:
     # /notification's WarnCO2: _shared_rest_roundtrip.py's mock/twin shape over a real wireless
     # hotspot link. /networking's SSID/PW/Country/Hostname are excluded, being stage 6's. Accepts
@@ -422,7 +422,7 @@ def test_concurrent_multi_client_burst_is_out_of_scope_here(joined_hotspot: str)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchBridge, joined_hotspot: str) -> None:
     # post_fct (the /networking group's reconnect_wifi() hook) fires if ANY field validates, so
     # sending PW alone keeps `results` to one entry and one invalid field prevents it. A password
@@ -436,7 +436,7 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchB
     assert bench.gateway_ip() == joined_hotspot, "DUT appears to have reconnected after a PUT that should have been entirely rejected"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: BenchBridge, joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK via `nmcli --show-secrets` by default now, so this
     # test needs no manual BENCH_AP_PASSWORD setup (still honored as an explicit override) - see

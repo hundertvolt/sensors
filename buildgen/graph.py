@@ -60,6 +60,10 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
     for spec in model.instances.values():
         if spec.driver in ("sgp40", "notification"):
             deps[spec.key].add("ntp")  # built with ntp.ntp_issynced / ntp.cettime
+        if spec.driver == "mqtt":
+            # Built with conn's bound methods, and with every sensor whose measurements it publishes.
+            deps[spec.key].add("conn")
+            deps[spec.key].update(s.key for s in model.instances.values() if s.driver_info is not None and s.driver_info.kind == "sensor")
         for wf in spec.wiring_schema:
             value = spec.wiring.get(wf.toml_field)
             if value is None:

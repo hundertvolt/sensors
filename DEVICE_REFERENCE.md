@@ -134,6 +134,37 @@ again.
 The sensor is wired on `dev` only (I2C1, IRQ on GPIO6) — `wozi` carries no colour sensor; a
 device's TOML decides its sensors.
 
+## MQTT client (dev units only)
+
+Off until you switch it on: set `MQTT Client` to On and enter the broker's address on the
+Networking page, then **Apply & Reconnect**. The address can be an IP address, a host name or a
+`.local` name such as `homeassistant.local`; an IP address works without any lookup, and anything else is
+refused as invalid. Plain MQTT over TCP only (no TLS, usually port 1883);
+user name and password are optional, and the device does not show the password once it is saved. While
+the device runs its own hotspot, the client is off.
+
+**What it sends.** Every *Publish Interval* seconds, one JSON message per sensor on
+`<prefix>/<client id>/measurements/<SENSOR>` (the same keys and values as the REST
+`/measurements` page; a value the sensor cannot give is `null`). `<prefix>/<client id>/status` reads
+`online` while the device is connected and `offline` once it is not: the device sets it itself when
+you change the MQTT settings or switch the client off, and the broker sets it (the device's last
+will) when the device simply disappears, after up to 90 s. A
+consumer such as openHAB should read that retained topic for availability rather than timing the
+measurements. The device sends a first round as soon as it connects. Measurements are not retained:
+after a restart a consumer waits one interval for fresh values.
+
+**What it does not do.** Messages sent to `<prefix>/<client id>/cmd/...` are counted and the last
+topic is shown on the Status page; they change no setting and run no command. Nothing received over
+MQTT ever writes to the device's flash.
+
+**Two clients must not share a client ID.** The broker drops the older connection whenever a client
+connects with an ID already in use, so two devices with the same ID take turns disconnecting each
+other. The Status page then shows `MQTT Short Sessions` climbing, and the error history shows the
+short-sessions warning. The client ID defaults to the device's hostname.
+
+**When the broker is away** the device keeps measuring and serving its pages; it retries the broker
+after 2 s, doubling up to once a minute, and each failed attempt shows in the MQTT error history.
+
 ## Clearing the error logs
 
 The Status page's error-log reset (`PUT /status {"ResetErrors": true}`) clears every module's log

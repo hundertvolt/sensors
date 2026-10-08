@@ -156,7 +156,7 @@ def _try_fetch_ok(dut_ip: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SGP40")
 def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     current = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S).json()

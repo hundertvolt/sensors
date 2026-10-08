@@ -37,7 +37,7 @@ def _assert_pass(output: str, what: str) -> None:
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_scd30_same_device_read_write_concurrency_and_continuous_measurement_trigger(scd30_continuous_measurement_triggered: None) -> None:
     # Declaring the fixture as a parameter is what runs it. This test exists only to give that
     # one real NVM write its own named, first-to-run pass/fail surface; the SCD30 tests below
@@ -46,7 +46,7 @@ def test_scd30_same_device_read_write_concurrency_and_continuous_measurement_tri
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_same_device_concurrent_sessions_never_corrupt_each_other(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # Generous relative to the device script's own ~90s internal asyncio.wait_for budget.
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_same_device_scd30.py", timeout_s=_LONG_SCRIPT_TIMEOUT_S)
@@ -54,14 +54,14 @@ def test_same_device_concurrent_sessions_never_corrupt_each_other(board: Board, 
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_cross_device_scd30_sgp40.py", timeout_s=_SCRIPT_TIMEOUT_S)
     _assert_pass(output, "cross-device interleaving check")
 
 
 # Bench counterpart: none, E.6.6 row `sgp40-general-call`
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # Both real i2c1 siblings, not just SCD30 - closes a gap tests/_bus_hazard_catalog.py's own
     # generic scenario_general_call_does_not_disturb_concurrent_siblings surfaced (it runs against
@@ -96,7 +96,7 @@ def test_sgp40_concurrent_sessions_each_get_a_tick(board: Board) -> None:
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # The SCD30 leg reads real measurements, so it needs the same session fixture the other
     # SCD30-touching tests take; the ISL and SGP40 legs would run fine without it.
@@ -105,7 +105,7 @@ def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board
 
 
 # Bench counterpart: bench/test_bus_concurrency_under_api_load.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # Real-hardware counterpart to _bus_hazard_catalog.py's scenario_a (Part C.8), closing a gap
     # that catalog surfaced: nothing here had proved one dev/i2c1 occupant's WRITE landing among
@@ -115,7 +115,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: 
 
 
 # Bench counterpart: none, E.6.6 row `scd30-writer-under-api-load`
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("sensors/SCD30")
 @pytest.mark.scd30_extra_write
 def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # The SCD30-as-writer half of the same gap, deliberately outside the routine group: it spends

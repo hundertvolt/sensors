@@ -8,6 +8,7 @@ silently. The sibling gating test proves the flag WORKS; this proves nothing esc
 
 import ast
 import re
+import sys
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -16,6 +17,10 @@ import pytest
 from _devices import DEVICE_NAMES, device_toml
 
 from buildgen.definitions import definitions_for_toml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"))
+
+from persistence_groups import persistence_groups
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -43,6 +48,10 @@ _KNOWN_PERSISTING_HELPERS = {
     "joined_hotspot",
     "_restore_ssid_over",  # teardown-side restore for the garbage-SSID outage test
     "_recover_stale_dut_credentials",  # session-level recovery path, not a test's own write
+    # The MQTT bench module's fixture: one write points the client at the bench broker for every test there,
+    # and its undo leaves the next module the old baseline - prerequisite writes, so no dependent is marked.
+    "_enable_mqtt",
+    "_disable_mqtt",
 }
 
 
@@ -93,6 +102,7 @@ class _FetchShape(NamedTuple):
     method_at: int
     body_at: int
     body_kw: str
+    path_at: int
 
 
 def _fetch_shape(repo_root: Path) -> _FetchShape:
@@ -106,7 +116,8 @@ def _fetch_shape(repo_root: Path) -> _FetchShape:
     bodies = [n for n in names if "body" in n]
     assert len(bodies) == 1, f"fetch()'s body argument is no longer unambiguous ({bodies}) - update this derivation with it"
     assert "method" in names, f"fetch() no longer takes a `method` argument ({names}) - every detector here reads it to tell a PUT from a GET"
-    return _FetchShape(names.index("method"), names.index(bodies[0]), bodies[0])
+    assert "path" in names, f"fetch() no longer takes a `path` argument ({names}) - the group derivation reads it to find the route"
+    return _FetchShape(names.index("method"), names.index(bodies[0]), bodies[0], names.index("path"))
 
 
 def _fetch_calls(path: Path) -> "Iterator[tuple[str, ast.Call]]":
@@ -361,7 +372,7 @@ def test_a_dispatch_only_put_is_not_flagged(tmp_path: Path, repo_root: Path, bod
 
 def _registered_markers(repo_root: Path) -> set[str]:
     conftest = (repo_root / "tests_hardware" / "conftest.py").read_text()
-    names = set(re.findall(r'addinivalue_line\(\s*"markers",\s*"(\w+):', conftest))
+    names = set(re.findall(r"""addinivalue_line\(\s*"markers",\s*["'](\w+)[(:]""", conftest))
     assert names, "tests_hardware/conftest.py no longer registers any markers - update this parse with it"
     return names
 
@@ -395,3 +406,146 @@ def test_the_extra_write_marker_is_never_carried_alone(repo_root: Path) -> None:
     # The sibling test proves the flags compose; this proves the usage does.
     lone = [name for name, marks in _used_markers(repo_root).items() if "scd30_extra_write" in marks and "persistence_write" not in marks]
     assert not lone, f"scd30_extra_write must always be carried alongside persistence_write: {lone}"
+
+
+# ---------------------------------------------------------------------------
+# Which store each owned write lands in (owner, 2026-10-08: "it makes absolutely no sense globally enable
+# persistence writes, as writing the scd30 for mqtt tests is nonsense, so scope it correctly"): every marker
+# names its groups, and --allow-persistence-writes-to permits a run exactly those (tests_hardware/README.md).
+# ---------------------------------------------------------------------------
+
+_SCD30_FIXTURE = "scd30_continuous_measurement_triggered"  # tests_hardware/flash/conftest.py: one SCD30 NVM write
+
+
+def _marker_groups(path: Path) -> "dict[str, list[ast.expr]]":
+    # Test name -> the arguments of its persistence_write marker, for every marked test in the module.
+    found: dict[str, list[ast.expr]] = {}
+    for fn in [n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
+        for dec in fn.decorator_list:
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            if isinstance(target, ast.Attribute) and target.attr == "persistence_write":
+                found[fn.name] = list(dec.args) if isinstance(dec, ast.Call) else []
+    return found
+
+
+@cache
+def _route_groups(repo_root: Path) -> "tuple[dict[tuple[str, str], frozenset[str]], dict[tuple[str, str], frozenset[str]]]":
+    # (route, group key) -> that group's persisting field keys, and (route, field key) -> the groups the field
+    # persists into, over every device. Dispatch and readonly fields persist nothing.
+    by_group: dict[tuple[str, str], set[str]] = {}
+    by_field: dict[tuple[str, str], set[str]] = {}
+    for device in DEVICE_NAMES:
+        for section in definitions_for_toml(device_toml(device), repo_root / "src")["sections"]:
+            route = section.get("rest", {}).get("put")
+            for group in section["groups"] if route is not None else []:
+                for field in group.get("fields", []):
+                    if field.get("kind") not in (None, "readonly") and not field.get("dispatch"):
+                        by_group.setdefault((route, group["key"]), set()).add(field["key"])
+                        by_field.setdefault((route, field["key"]), set()).add(f"{section['key']}/{group['key']}")
+    return {k: frozenset(v) for k, v in by_group.items()}, {k: frozenset(v) for k, v in by_field.items()}
+
+
+def _key_groups(route: str, key: str, value: ast.expr, repo_root: Path) -> "set[str]":
+    # The groups one top-level body key persists into: a nested group's ({"BMP3XX": {...}}) when its literal
+    # value names a persisting field or is no literal at all, else the field's own groups.
+    by_group, by_field = _route_groups(repo_root)
+    fields = by_group.get((route, key))
+    if fields is not None and not isinstance(value, ast.Constant):
+        written = not isinstance(value, ast.Dict) or bool(_leaf_keys(value) & fields)
+        return {f"{section}/{key}" for section in _sections_of(route, repo_root)} if written else set()
+    return set(by_field.get((route, key), frozenset()))
+
+
+@cache
+def _sections_of(route: str, repo_root: Path) -> "frozenset[str]":
+    return frozenset(s["key"] for d in DEVICE_NAMES for s in definitions_for_toml(device_toml(d), repo_root / "src")["sections"] if s.get("rest", {}).get("put") == route)
+
+
+def _written_groups(path: Path, shape: _FetchShape, repo_root: Path) -> "dict[str, set[str]]":
+    # Function name -> the groups its own literal-route, literal-body PUTs persist into.
+    found: dict[str, set[str]] = {}
+    for fn_name, call in _fetch_calls(path):
+        body = _put_body(call, shape)
+        route = _argument(call, shape.path_at, "path")
+        if not (isinstance(body, ast.Dict) and isinstance(route, ast.Constant) and isinstance(route.value, str)):
+            continue
+        for key, value in zip(body.keys, body.values, strict=True):
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                groups = _key_groups(route.value, key.value, value, repo_root)
+                if groups:
+                    found.setdefault(fn_name, set()).update(groups)
+    return found
+
+
+def test_every_marker_names_the_groups_it_writes(repo_root: Path) -> None:
+    # A marker naming nothing runs only under the global flag, so a scoped run could never select it.
+    vocabulary = persistence_groups()
+    offenders = []
+    for path in _tests_hardware_modules(repo_root):
+        for name, args in _marker_groups(path).items():
+            values = [a.value for a in args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            if not args or len(values) != len(args) or set(values) - vocabulary:
+                offenders.append(f"{path.relative_to(repo_root)}::{name} {[ast.unparse(a) for a in args]}")
+    assert not offenders, f"every persistence_write marker names its groups as string literals from {sorted(vocabulary)}:\n  " + "\n  ".join(offenders)
+
+
+def test_a_marker_covers_every_group_its_own_puts_write(repo_root: Path) -> None:
+    # The scoped permission is only as good as the names: a PUT into a group its marker omits would run
+    # under a permission scoped to the others and spend a write nobody allowed.
+    shape = _fetch_shape(repo_root)
+    offenders = []
+    for path in _tests_hardware_modules(repo_root):
+        declared = {name: {a.value for a in args if isinstance(a, ast.Constant) and isinstance(a.value, str)} for name, args in _marker_groups(path).items()}
+        for name, groups in _written_groups(path, shape, repo_root).items():
+            if name in declared and groups - declared[name]:
+                offenders.append(f"{path.relative_to(repo_root)}::{name} writes {sorted(groups - declared[name])} beyond {sorted(declared[name])}")
+    assert not offenders, "\n  ".join(["these markers omit a group the test's own PUTs write:", *offenders])
+
+
+def test_the_group_derivation_reads_a_real_marked_test(repo_root: Path) -> None:
+    # Guards the scan itself: an AST or definitions change must not quietly turn the check above into none.
+    path = repo_root / "tests_hardware" / "bench" / "test_mqtt_broker_faults.py"
+    written = _written_groups(path, _fetch_shape(repo_root), repo_root)
+    assert written.get("test_the_broker_is_found_by_the_bench_hosts_local_name") == {"networking/mqtt"}, written
+    assert written.get("_enable_mqtt") == {"networking/mqtt"}, written
+
+
+def test_every_test_spending_the_scd30_fixtures_write_names_sensors_scd30(repo_root: Path) -> None:
+    # The fixture's NVM write is checked at run time against the same permission; this catches the omission statically.
+    offenders = []
+    for path in _tests_hardware_modules(repo_root):
+        markers = _marker_groups(path)
+        for fn in [n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]:
+            if _SCD30_FIXTURE in {a.arg for a in fn.args.args}:
+                declared = {a.value for a in markers.get(fn.name, []) if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+                if "sensors/SCD30" not in declared:
+                    offenders.append(f"{path.relative_to(repo_root)}::{fn.name}")
+    assert not offenders, f'these tests take {_SCD30_FIXTURE} without persistence_write("sensors/SCD30"): {offenders}'
+
+
+def test_the_extra_write_marker_rides_on_an_scd30_group(repo_root: Path) -> None:
+    offenders = []
+    for path in _tests_hardware_modules(repo_root):
+        markers = _marker_groups(path)
+        for name, marks in _used_markers(repo_root).items():
+            if name.startswith(f"{path.relative_to(repo_root)}::") and "scd30_extra_write" in marks:
+                declared = {a.value for a in markers.get(name.rsplit("::", 1)[1], []) if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+                if "sensors/SCD30" not in declared:
+                    offenders.append(name)
+    assert not offenders, f'scd30_extra_write needs persistence_write("sensors/SCD30") beside it: {offenders}'
+
+
+@pytest.mark.parametrize(
+    ("body", "groups"),
+    [
+        ('"/sensors", {"BMP3XX": {"PresOvers": 4}}', {"sensors/BMP3XX"}),
+        ('"/sensors", {"SGP40": {"ResetVOC": True}}', set()),
+        ('"/sensors", {"ISL29125": values}', {"sensors/ISL29125"}),
+        ('"/networking", {"NTPHost": "a.b", "MQTTHost": "c.d"}', {"networking/ntp", "networking/mqtt"}),
+    ],
+)
+def test_a_synthetic_put_is_read_into_its_groups(tmp_path: Path, repo_root: Path, body: str, groups: "set[str]") -> None:
+    # Bites rather than agrees: a nested group, a dispatch-only one, a non-literal group value and two flat fields.
+    module = tmp_path / "test_synthetic_groups.py"
+    module.write_text(f'def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", {body}, timeout_s=10.0)\n')
+    assert _written_groups(module, _fetch_shape(repo_root), repo_root).get("test_writes", set()) == groups
