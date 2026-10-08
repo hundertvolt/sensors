@@ -42,7 +42,7 @@ function isIpv4Literal(value) {
 }
 
 /**
- * One rule per string shape, the same as src/'s host_label_ok(), _country_ok(), _ntp_host_ok() and
+ * One rule per string shape, the same as src/'s host_label_ok(), _country_ok(), host_name_ok() and
  * _dns_fallback_ok(): a host name is an IPv4 literal or dot-separated labels of at most 63 characters.
  * @type {Record<string, (value: string) => boolean>}
  */

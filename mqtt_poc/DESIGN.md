@@ -191,7 +191,7 @@ tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
 | Key | Type | Default | Bounds | Rule at PUT and at use |
 |---|---|---|---|---|
 | `MQTTEnable` | bool | `false` | — | off by default (owner, 8.2) |
-| `MQTTHost` | str | `""` | 0–253 | bytes ≤ 253 at PUT; at use, an IPv4 literal (no lookup), a DNS name, or a `.local` name asked by one mDNS query (§14 item 1), as `NTPHost` |
+| `MQTTHost` | str | `""` | 1–253, special `""` | `NTPHost`'s `hostName` shape at PUT and at use: an IPv4 literal (no lookup), a DNS name, or a `.local` name asked by one mDNS query (§14 item 1); `""` is no broker, the client off |
 | `MQTTPort` | int | 1883 | 1–65535 | plain TCP only (owner, 8.3) |
 | `MQTTUser` | str | `""` | 0–64 | bytes ≤ 64, no NUL |
 | `MQTTPW` | str | `""` | 0–64 | bytes ≤ 64; masked on every GET (owner, 8.5) |
@@ -200,9 +200,8 @@ tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
 | `MQTTPubInterval` | int | 60 | 10–3600 | seconds between measurement rounds |
 
 A refused value answers `"Invalid"` with the shared `BAD_ARG` errno 21, as WiFi's radio fields do
-(C.7.4). `MQTTHost`'s shape is checked at use only, as `NTPHost`'s is: the website has no host-name
-shape to mirror a PUT check, and the live PUT matrix sends any in-range string to a shapeless field
-(§13 item 8). A stored value that fails its shape at use keeps the client disabled with the shared
+(C.7.4). `MQTTHost` takes `NTPHost`'s `hostName` check, `host_name_ok()`, at PUT and at use, the
+website's mock mirroring it (§13 item 8). A stored value that fails its shape at use keeps the client disabled with the shared
 `STORED_DEFAULT` warning, never a failure streak. `MQTTEnable` exists because the web UI cannot set an
 empty string (owner, 2026-08-22), so an empty host could never switch the client off again from the UI.
 The client id default is `[device].hostname`, substituted the way WiFi substitutes its hostname default.
@@ -340,9 +339,10 @@ Each the more conservative, more easily reversible choice, for review:
 5. Client id limited to the 1–23 letters, digits and `-` every MQTT 3.1.1 broker must accept.
 6. Ping every 15 s with a 10 s deadline regardless of traffic: dead-transport detection within 25 s.
 7. No MQTT DISCONNECT before a commanded reboot (no new shutdown hook); the broker publishes the will.
-8. `MQTTHost` is length-checked at PUT and shape-checked at use, exactly as `NTPHost` is, until the
-   project's host-name shape exists on both sides of the website; every other MQTT string keeps its
-   PUT check.
+8. `MQTTHost` takes `NTPHost`'s `hostName` shape at PUT and at use, its empty value the schema special
+   "no broker, the client off" (as `PW`'s `""` is an open network). First decided as a length check at PUT
+   until the project's host-name shape existed on both sides of the website; the audit's U18 delivered
+   that shape, so the PUT check now applies (agent, 2026-10-08).
 9. A reconfiguring DISCONNECT (a settings change, or switching the client off) is preceded by a
    retained `offline` on the old status topic, since the DISCONNECT makes the broker drop the will.
 10. The first measurement round follows each CONNACK, and the interval is read at connect: a consumer

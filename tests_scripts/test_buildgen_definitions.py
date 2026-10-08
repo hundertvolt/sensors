@@ -166,6 +166,7 @@ def test_mqtt_settings_status_and_errcount_follow_the_device_instance_set(repo_r
     assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"]
     assert fields["MQTTPW"]["mask"] is True
     assert fields["MQTTClientId"]["shape"] == "hostLabel"
+    assert (fields["MQTTHost"]["shape"], fields["MQTTHost"]["minLength"], fields["MQTTHost"]["specialValues"][0]["value"]) == ("hostName", 1, "")
     assert (fields["MQTTPort"]["min"], fields["MQTTPort"]["max"]) == (1, 65535)
     assert {"MQTTState", "MQTTConnected", "MQTTTxDropped", "MQTTPingTimeouts", "MQTTShortSessions", "MQTTLastRxTopic"} <= status_keys
     assert {"MQTT", "CFGMGR_MQTT"} <= errcount

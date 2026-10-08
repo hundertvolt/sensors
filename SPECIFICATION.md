@@ -989,17 +989,16 @@ answers `False`, counted in `MQTTTxDropped`.
 
 **Configuration** (`config_MQTT.cfg`, every field persist-only and read at each connect, all on
 `/networking`; credentials optional and masked, owner, 2026-10-07: 'Optional, masked
-(Recommended)'): `MQTTEnable` (default false), `MQTTHost` (0-253: an IPv4 literal, used as it is
-with no lookup, a DNS name, or a `.local` name, which `asy_dns_client.py` asks for with one
+(Recommended)'): `MQTTEnable` (default false), `MQTTHost` (1-253 in `NTPHost`'s `hostName` shape, or the
+special `""`, no broker and the client off: an IPv4 literal, used as it is with no lookup, a DNS name, or a `.local` name, which `asy_dns_client.py` asks for with one
 multicast query, RFC 6762 section 5.1; owner, 2026-10-08, asked whether the resolver should learn
 `.local` names for `MQTTHost` and `NTPHost` alike: 'Add it, bench-tested (Recommended)'),
 `MQTTPort` (1883), `MQTTUser`/`MQTTPW` (0-64 bytes, no NUL, the password masked on every GET),
 `MQTTClientId` (a host label of 1-23 bytes, default `[device].hostname`), `MQTTPrefix` (1-64 bytes,
 no wildcard, NUL, or edge slash) and `MQTTPubInterval` (10-3600 s). A string outside its shape is
-refused at PUT as `Invalid` with `BAD_ARG` (C.7.4's precedent), except `MQTTHost`, which like
-`NTPHost` is checked for its length at PUT and its shape at use: the website has no host-name shape
-to mirror a PUT check with (agent, 2026-10-08). A stored value that fails at use keeps the client off
-with one `STORED_DEFAULT` warning. `MQTTEnable` exists because the web UI cannot set
+refused at PUT as `Invalid` with `BAD_ARG` (C.7.4's precedent), `MQTTHost` through the `hostName` check
+`NTPHost` uses, `asy_dns_client.py`'s `host_name_ok()`, which the website's mock mirrors (agent,
+2026-10-08). A stored value that fails at use keeps the client off with one `STORED_DEFAULT` warning. `MQTTEnable` exists because the web UI cannot set
 an empty string (owner, 2026-08-22), so an empty host alone could never switch the client off from
 the UI (agent, 2026-10-08).
 

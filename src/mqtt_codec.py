@@ -40,11 +40,7 @@ _PUBLISH_DUP = const(0x08)
 _PUBLISH_RETAIN = const(0x01)
 _MAX_TOPIC = const(128)  # a PUBLISH topic name; with a full payload slot it still fits the client's transmit buffer
 _MAX_CLIENT_ID = const(23)  # the length every 3.1.1 server must accept (section 3.1.3.1)
-_MAX_HOST = const(253)  # RFC 1035
 _MAX_LABEL = const(63)
-_IPV4_PARTS = const(4)
-_OCTET_DIGITS = const(3)
-_OCTET_MAX = const(0xFF)
 _MAX_PREFIX = const(64)
 _LEN_1_BYTE = const(0x80)  # remaining lengths below these take one, two and three bytes
 _LEN_2_BYTES = const(0x4000)
@@ -182,16 +178,6 @@ def encode_subscribe(buf: "Buf", pid: int, filters: tuple[bytes, ...]) -> int:
         buf[i] = 1
         i += 1
     return i
-
-
-def host_ok(value: str) -> bool:
-    # A broker address: a dotted-quad IPv4 literal or dot-separated host labels, at most 253 bytes.
-    if not 0 < len(value.encode()) <= _MAX_HOST or len(value.encode()) != len(value):
-        return False
-    parts = value.split(".")
-    if len(parts) == _IPV4_PARTS and all(p.isdigit() for p in parts):
-        return all(len(p) <= _OCTET_DIGITS and int(p) <= _OCTET_MAX for p in parts)
-    return all(_label_ok(p) for p in parts)
 
 
 def prefix_ok(value: str) -> bool:

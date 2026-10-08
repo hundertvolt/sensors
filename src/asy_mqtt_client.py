@@ -14,7 +14,7 @@ from micropython import const
 
 from asy_base_classes import COUNTER_CAP, SensorReaderConfig, TickSeconds, utc_now
 from asy_config_manager import make_dict, name_cfg, schema_dict
-from asy_dns_client import resolve_ipv4
+from asy_dns_client import host_name_ok, resolve_ipv4
 from asy_print_log import DEFAULT_LOG, LogConfig
 from mqtt_codec import (
     CONNACK,
@@ -31,7 +31,6 @@ from mqtt_codec import (
     encode_puback,
     encode_publish,
     encode_subscribe,
-    host_ok,
     prefix_ok,
     remaining_length_bytes,
     text_ok,
@@ -204,7 +203,7 @@ _FIELDS = const(("Connected", "TS"))  # kept in sync with MQTT's own fields abov
 
 # Schema (persist-only; read at each connect). Every string is checked for its MQTT shape at PUT and at use.
 _VAL_MQTT_ENABLE = const((("MQTTEnable", "bool", False, None, None, None),))
-_VAL_MQTT_HOST = const((("MQTTHost", "str", "", 0, 253, None),))
+_VAL_MQTT_HOST = const((("MQTTHost", "str", "", 1, 253, ""),))  # special "": no broker, the client off
 _VAL_MQTT_PORT = const((("MQTTPort", "int", 1883, 1, 65535, None),))
 _VAL_MQTT_USER = const((("MQTTUser", "str", "", 0, 64, None),))
 _VAL_MQTT_PW = const((("MQTTPW", "str", "", 0, 64, None),))
@@ -214,7 +213,7 @@ _VAL_MQTT_PUB_INTERVAL = const((("MQTTPubInterval", "int", 60, 10, 3600, None),)
 
 # @web-group section=networking submitGroup=mqtt label="MQTT Broker" submit=true submitLabel="Apply & Reconnect"
 # @web MQTTEnable section=networking submitGroup=mqtt label="MQTT Client" onLabel="On" offLabel="Off"
-# @web MQTTHost section=networking submitGroup=mqtt label="Broker Address" description="IPv4 address, host name or .local name; plain TCP, no TLS." bytes=true
+# @web MQTTHost section=networking submitGroup=mqtt label="Broker Address" description="IPv4 address, host name or .local name; plain TCP, no TLS." bytes=true shape=hostName special:""="No broker (client off)"
 # @web MQTTPort section=networking submitGroup=mqtt label="Broker Port"
 # @web MQTTUser section=networking submitGroup=mqtt label="User Name" description="Leave empty for an anonymous broker." bytes=true
 # @web MQTTPW section=networking submitGroup=mqtt label="Password" mask=true bytes=true
@@ -683,7 +682,7 @@ class MQTTClient(SensorReaderConfig):
         host, user, password, client_id, prefix = texts
         if not enable[0] or not host:
             return False
-        if not (host_ok(host) and client_id_ok(client_id) and prefix_ok(prefix) and text_ok(user.encode(), _MAX_TEXT_BYTES) and text_ok(password.encode(), _MAX_TEXT_BYTES)):
+        if not (host_name_ok(host) and client_id_ok(client_id) and prefix_ok(prefix) and text_ok(user.encode(), _MAX_TEXT_BYTES) and text_ok(password.encode(), _MAX_TEXT_BYTES)):
             if not self._cfg_warned:
                 self._cfg_warned = True
                 await self.pr.wrn_s("Stored MQTT settings out of shape, client off:", host, client_id, prefix, wrnno=_WRN_STORED_DEFAULT)
@@ -874,8 +873,9 @@ class MQTTClient(SensorReaderConfig):
             await self._close()
 
     def _shape_ok(self, key: str, value: str) -> bool:
-        # MQTTHost, like NTPHost, is checked for its length at PUT and its shape at use: the website has no
-        # host-name shape to mirror a PUT check (Part A.11).
+        # MQTTHost takes NTPHost's hostName shape, its special "" (the client off) aside (Part A.11).
+        if key == name_cfg(_VAL_MQTT_HOST):
+            return value == "" or host_name_ok(value)
         if key == name_cfg(self._val_client_id):
             return client_id_ok(value)
         if key == name_cfg(_VAL_MQTT_PREFIX):

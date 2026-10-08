@@ -127,6 +127,13 @@ def ipv4_to_int(ip: str) -> int | None:
     return (a << 24) | (b << 16) | (c << 8) | d
 
 
+def host_name_ok(value: object) -> bool:
+    # The hostName shape (js/mock-server.js mirrors it): an IPv4 literal, or dot-separated RFC 1123 labels of at most 63 characters.
+    if type(value) is not str:
+        return False
+    return ipv4_to_int(value) is not None or all(len(label) <= DNS_LABEL_MAX and host_label_ok(label) for label in value.split("."))
+
+
 async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int, pr: "PrintLogHistory") -> str | None:
     # A one-shot query from an ephemeral port (RFC 6762 SS5.1): a responder answers by unicast with the ID and
     # question repeated, as a conventional DNS reply (SS6.7), from its own address, so the socket is bound, not connected.

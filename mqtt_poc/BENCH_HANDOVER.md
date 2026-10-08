@@ -145,7 +145,8 @@ What that became on this branch:
 `mqtt_poc/DESIGN.md` §13 holds all twelve. The ones this run touches:
 - The first measurement round follows each CONNACK.
 - A settings change or switching the client off publishes a retained `offline` first.
-- `MQTTHost` is length-checked at PUT and shape-checked at use, as `NTPHost` is.
+- `MQTTHost` takes `NTPHost`'s host-name shape at PUT and at use; empty is the special "no broker, the
+  client off".
 - A passing scoped run is reported `NOT CLEAN` (exit 4), as `--skip-lower-levels` is, so it never stands in
   for a full L3/L4 pass.
 - The broker name is asked of the DHCP-provided DNS server only, never NTP's `DNSFallback` list.

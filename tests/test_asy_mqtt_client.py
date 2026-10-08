@@ -666,7 +666,7 @@ def test_put_refuses_strings_outside_their_mqtt_shape() -> None:
         client = make_client()
         assert await client.setup()
         schema = client.get_cfg_schema()
-        bad = {"MQTTClientId": "a b", "MQTTPrefix": "a/#", "MQTTUser": "a\x00b"}
+        bad = {"MQTTHost": "bad host", "MQTTClientId": "a b", "MQTTPrefix": "a/#", "MQTTUser": "a\x00b"}
         results = await client._set_dict_cfg(bad, schema)
         assert results == dict.fromkeys(bad, "Invalid")
         nums = await errnums(client)
@@ -720,25 +720,47 @@ def test_a_stored_value_out_of_shape_keeps_the_client_off_with_one_warning() -> 
     run(scenario())
 
 
-def test_a_host_out_of_shape_is_taken_at_put_and_keeps_the_client_off() -> None:
-    # Like NTPHost: a length-only check at PUT, the shape at use, one warning and no connection attempt.
+def test_a_host_out_of_shape_is_refused_at_put_and_a_stored_one_keeps_the_client_off() -> None:
+    # Like NTPHost: the hostName shape at PUT, and again at use, where a hand-edited file gets one warning and no connection attempt.
     async def scenario() -> None:
         broker = FakeBroker(_port())
         await broker.start()
         client = make_client()
         assert await client.setup()
         results = await client._set_dict_cfg({"MQTTHost": "bad host"}, client.get_cfg_schema())
-        assert results == {"MQTTHost": "Valid"}
-        await configure(client, broker.port, MQTTHost="bad host")
+        assert results == {"MQTTHost": "Invalid"}
+        await configure(client, broker.port)
+        await client.cfgmgr.flush_pending()
+        client.cfgmgr._cache["MQTTHost"] = "bad host"  # as a hand-edited file would hold it
         tasks = [client.start_asy_connection(), client.start_asy_publish()]
         try:
             await asyncio.sleep_ms(700)
             assert broker.connections == 0
-            log = await client.get_error_counter()
-            assert log["MQTT"]["ErrCount"] == 1
-            assert log["MQTT"]["ErrNum"][-1] == code("W", "STORED_DEFAULT")
+            assert await errnums(client) == [code("E", "BAD_ARG"), code("W", "STORED_DEFAULT")]  # the PUT's refusal, then one warning
         finally:
             await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_the_shape_corpus_judges_the_broker_host_and_empty_is_off() -> None:
+    # One corpus, the judges NTPHost already has (SPECIFICATION.md G.2); "" is the schema special, the client off.
+    with open("tests/_radio_shape_cases.json") as f:
+        cases = json.load(f)["hostName"]
+    assert cases["accept"] and cases["reject"]
+
+    async def put(value: str) -> str:
+        client = make_client()
+        assert await client.setup()
+        assert (await client._set_dict_cfg({"MQTTHost": "broker"}, client.get_cfg_schema())) == {"MQTTHost": "Valid"}
+        return (await client._set_dict_cfg({"MQTTHost": value}, client.get_cfg_schema()))["MQTTHost"]
+
+    async def scenario() -> None:
+        for value in cases["accept"]:
+            assert await put(value) == "Valid", value
+        for value in cases["reject"]:
+            assert await put(value) == "Invalid", value
+        assert await put("") == "Valid"  # below the 1-character minimum, taken as the special
 
     run(scenario())
 

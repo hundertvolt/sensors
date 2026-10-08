@@ -164,13 +164,6 @@ def test_client_ids_are_host_labels_up_to_23_bytes() -> None:
         assert not mc.client_id_ok(bad), bad
 
 
-def test_hosts_are_ipv4_literals_or_host_labels() -> None:
-    for good in ("192.168.1.10", "0.0.0.0", "broker", "broker.local", "mqtt-1.example.org", "a" * 63):
-        assert mc.host_ok(good), good
-    for bad in ("", "256.1.1.1", "1.2.3.1234", "-broker", "broker-", "bro ker", "a..b", ".a", "a" * 64, "ä.de", "x" * 254):
-        assert not mc.host_ok(bad), bad
-
-
 def test_prefixes_have_no_wildcard_nul_or_edge_slash() -> None:
     for good in ("sensors", "home/sensors", "a" * 64):
         assert mc.prefix_ok(good), good

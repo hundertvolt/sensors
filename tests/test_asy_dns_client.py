@@ -12,7 +12,7 @@ from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 import asy_dns_client
 import asy_udp_socket
-from asy_dns_client import _build_query, _parse_response, ipv4_to_int, resolve_ipv4
+from asy_dns_client import _build_query, _parse_response, host_name_ok, ipv4_to_int, resolve_ipv4
 from asy_print_log import PrintLogHistory
 
 # UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
@@ -123,6 +123,15 @@ def test_ipv4_to_int_valid() -> None:
     assert ipv4_to_int("0.0.0.0") == 0
     assert ipv4_to_int("255.255.255.255") == 0xFFFFFFFF
     assert ipv4_to_int("192.168.4.1") == (192 << 24) | (168 << 16) | (4 << 8) | 1
+
+
+def test_host_names_are_ipv4_literals_or_rfc_1123_labels() -> None:
+    # The hostName shape NTPHost and MQTTHost share; an all-digit label is a valid RFC 1123 label, so "256.1.1.1" passes here
+    # and is refused by the DNS answer instead, as js/mock-server.js's hostName rule does.
+    for good in ("192.168.1.10", "0.0.0.0", "broker", "broker.local", "mqtt-1.example.org", "a" * 63, "256.1.1.1"):
+        assert host_name_ok(good), good
+    for bad in ("", "-broker", "broker-", "bro ker", "a..b", ".a", "a.", "a" * 64, "ä.de", "x" * 254, "a_b", None, 5):
+        assert not host_name_ok(bad), bad
 
 
 def test_ipv4_to_int_rejects_wrong_octet_count() -> None:
