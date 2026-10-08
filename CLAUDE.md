@@ -284,7 +284,9 @@ information):
   institutionalized and stays that way: every operation that spends a limited-endurance write cycle
   is a default-off, explicitly-opted-into marker with a tracked budget — `flash_cycle` ("counts
   against the 'no extra flash cycles' constraint"), `persistence_write`
-  (`--allow-persistence-writes`) for any real write to a limited-endurance store — the SCD30's own
+  (`--allow-persistence-writes`, or `--allow-persistence-writes-to GROUP` for only the named groups each
+  marker declares (owner, 2026-10-08: "it makes absolutely no sense globally enable persistence writes, as
+  writing the scd30 for mqtt tests is nonsense, so scope it correctly")) for any real write to a limited-endurance store — the SCD30's own
   on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
   writes through `asy_config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
   deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —

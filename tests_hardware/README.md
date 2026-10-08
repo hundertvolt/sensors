@@ -267,13 +267,13 @@ scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
 # SCD30 NVM writes are off by default (flash wear on real hardware) - a plain run above spends zero
 # real SCD30 writes, and every SCD30-dependent bus-hazard test (routine or additional) deselects
-# cleanly. Add --allow-persistence-writes for the global permission (runs the routine group, one real
-# write for the whole session); add --allow-scd30-extra-write ON TOP of that (AND-gated, not a
-# substitute) to also run the one test that spends a SECOND real write (skipped/deselected by
-# default - same precedent as --allow-flash-cycle; see SPECIFICATION.md Part C.8's bus-hazard
-# promotion checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
-scripts/run_flash_hardware_suite.sh --allow-persistence-writes
-scripts/run_flash_hardware_suite.sh --allow-persistence-writes --allow-scd30-extra-write
+# cleanly. --allow-persistence-writes-to=sensors/SCD30 permits just that group (the routine group, one
+# real write for the whole session) and --allow-persistence-writes every group; add
+# --allow-scd30-extra-write ON TOP of either (AND-gated, not a substitute) to also run the one test
+# that spends a SECOND real write (deselected by default - same precedent as --allow-flash-cycle; see
+# SPECIFICATION.md Part C.8's bus-hazard promotion checklist and bus_concurrency_scd30_write_vs_siblings.py):
+scripts/run_flash_hardware_suite.sh --allow-persistence-writes-to=sensors/SCD30
+scripts/run_flash_hardware_suite.sh --allow-persistence-writes-to=sensors/SCD30 --allow-scd30-extra-write
 
 # The two long ISL29125 light programs need a PHYSICAL rig, not a permission: the on-board WS2812
 # aimed at the sensor's window at a fixed distance with ambient light excluded (see "The NeoPixel
@@ -493,7 +493,7 @@ fallback as `test_network_resilience.py`.
 - a 3000-message QoS 0 flood and a 500-message QoS 1 burst;
 - the broker found through this host's own `.local` name, answered by its Avahi (`env --tier bench`
   installs `avahi-daemon` when missing). This test owns two `MQTTHost` writes, so it runs only with
-  `--allow-persistence-writes`;
+  `--allow-persistence-writes-to=networking/mqtt` (or the global flag);
 - an oversized message;
 - a checkpoint (no task ended, only the expected MQTT codes);
 - the AP outage;
@@ -505,9 +505,22 @@ fallback as `test_network_resilience.py`.
 Each recovery time and count lands in the run record through `result_note`, which is where Part N's owed
 `mqtt.*`/`l4.mqtt_*` measurements come from.
 
+**The `mqtt` run scope** (owner, 2026-10-08: "only test MQTT (and whatever is affected by your changes)
+on the bench. you shall not run the whole bench at this time (will happen lateron when mqtt as such is
+running)"). `scripts/run_bench_hardware_suite.sh --scope mqtt` runs the lower levels as always, then only
+what `tests_hardware/run_scopes.py` lists, each entry with the reason the branch reaches it: this module;
+the resolver tests (NTP sync, DNS resolution, a garbage DNS answer); the connection-ceiling and body-cap
+tests (dev's ceiling went 6 to 5, and the MQTT settings made `PUT /networking` the largest body); the
+heap tests at a full ceiling, at the reactive gc default and under the hammer; cold boot, REST reboot
+and the concurrent burst; the website identity check; and on the flash step the FRAM chunk layout, the
+full-build heap headroom and the `env --tier flash` rerun (`mosquitto` joined `apt_packages`). The only
+owned write in it is the `.local` test's, so the run takes the scoped permission; the runner refuses the
+global flag with a scope, and a passing scoped run is reported NOT CLEAN, since the rest of both tiers did
+not run (`tests_scripts/test_run_scopes.py` keeps the list collectable and its writes exact).
+
 ```bash
-uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py -v   # alone, about 20 minutes
-scripts/run_bench_hardware_suite.sh                               # or within the whole bench tier
+scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/mqtt
+uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py --allow-persistence-writes-to=networking/mqtt -v   # the module alone
 ```
 
 ## Measuring heap and serving under load
@@ -1541,7 +1554,7 @@ Ninth pass's bug, just worth naming.
 Same honesty note as every real-hardware addition in this file: the new/changed files above are
 `ruff`/`mypy`-clean but unverified against real silicon when written.
 
-## Persistence-write gating: one global flag plus an AND-gated extra flag
+## Persistence-write gating: a global or a per-group permission, plus an AND-gated extra flag
 
 **Standing design (owner, 2026-09-16, `98dc1b2`/`4f1c802`)** (broadened from SCD30-only to all
 persistence, 2026-09-17): every real write to a **limited-endurance** store is gated by two
@@ -1558,6 +1571,21 @@ flags/markers, deliberately not one, in a strict hierarchy —
   ALONGSIDE `@pytest.mark.persistence_write` (never in place of it) on the one test that spends a second
   write beyond the routine one. It is AND-gated with the global flag in code, not just by
   convention — passing it alone, without `--allow-persistence-writes`, still deselects that test.
+
+**The scoped form: `--allow-persistence-writes-to GROUP`** (owner, 2026-10-08: "it makes absolutely no
+sense globally enable persistence writes, as writing the scd30 for mqtt tests is nonsense, so scope it
+correctly"). Every `@pytest.mark.persistence_write(...)` names the groups its write lands in:
+`"<section>/<group>"` as the device definitions key it (`networking/mqtt`, `networking/ntp`,
+`sensors/SCD30` for the SCD30's NVM and its config, ...), or `hwtest` for a test's own
+`config_HWTEST_*.cfg` file (`tests_hardware/persistence_groups.py` derives the list). The scoped flag
+selects a marked test only when it names every group that test writes; it is repeatable or
+comma-separated, an unknown group is a usage error, and the extra SCD30 flag still needs a permission
+covering `sensors/SCD30` beneath it. A deselection under a scoped permission is tagged
+`--allow-persistence-writes-to=<the missing groups>`, so the verdict names the exact group a later run
+would add. `tests_scripts/test_persistence_write_marker_completeness.py` holds every marker to naming
+groups from that list and to covering every group its own literal PUTs write, and any test taking
+`scd30_continuous_measurement_triggered` to naming `sensors/SCD30`; the fixture checks the same
+permission at run time.
 
 **What the gate is about: the write a test OWNS, not one it is reached through** (project owner's
 clarification, 2026-09-18). A persisting write that *is* the thing under test is optional, and
@@ -1605,24 +1633,27 @@ there means "everything that ran, passed", not "everything ran".
 **Mechanism:**
 
 - `tests_hardware/conftest.py`'s `pytest_collection_modifyitems()` is the single deselection point:
-  it deselects every `persistence_write`-marked item when `--allow-persistence-writes` is absent, and every
+  it deselects every `persistence_write`-marked item no permission covers (neither the global flag nor
+  a scoped one naming all of its groups), and every
   additionally `scd30_extra_write`-marked item when `--allow-scd30-extra-write` is absent. No test
   checks either flag inline. This matters beyond style: the verdict (`scripts/_hardware_verdict.py`)
   fails a run on any unexpected skip and accepts a skip only from a per-test gate whose flag is
   absent (`--allow-flash-cycle`/`--soak-tier`/`--allow-multi-day-rollover-wait`/
   `--allow-neopixel-sweep`), so a plain `scripts/run_flash_hardware_suite.sh` invocation needs the
   SCD30 tests out of the run as deselections. Each one is tagged
-  `("deselected_by", "--allow-persistence-writes")` or `("deselected_by", "--allow-scd30-extra-write")`
+  `("deselected_by", "--allow-persistence-writes")` (no permission given at all),
+  `("deselected_by", "--allow-persistence-writes-to=<groups>")` (a scoped one missing those groups) or
+  `("deselected_by", "--allow-scd30-extra-write")`
   in its `user_properties` before pytest's deselection hook, so the run record tells a wear-gate
   deselection from a runner's `-m` exclusion.
 - Every test that depends on `scd30_continuous_measurement_triggered`, directly or transitively,
-  carries `@pytest.mark.persistence_write` — the 6 routine-group tests, plus two ISL29125-named tests
+  carries `@pytest.mark.persistence_write("sensors/SCD30")` — the 6 routine-group tests, plus two ISL29125-named tests
   (`test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`,
   `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`) whose SCD30 leg also
   depends on that fixture. Marker placement is derived from the fixture's real dependents, not from
   which tests look SCD30-related by name.
 - `scd30_continuous_measurement_triggered` (`tests_hardware/flash/conftest.py`) raises loudly if
-  it is ever invoked without `--allow-persistence-writes`, as a backstop: correct marker placement on every
+  it is ever invoked without a permission covering `sensors/SCD30`, as a backstop: correct marker placement on every
   dependent test makes this unreachable via the collection-time deselection above, but a future test
   that forgets the marker fails hard here instead of silently spending a real write.
 

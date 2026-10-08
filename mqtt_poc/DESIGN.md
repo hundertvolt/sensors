@@ -314,10 +314,17 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
    scripts/build_firmware.py dev`, then `picotool load -x -v` with a USB-capable picotool.
 3. Read the board's FRAM error logs (`GET /status` errcount) before anything clears them (CLAUDE.md); the
    module's fixture also prints every non-empty log before its own `ResetErrors`.
-4. Run `uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py -v` (about 20 minutes), or the whole
-   bench tier through `scripts/run_bench_hardware_suite.sh`, which runs L0-L2 first. The module starts its
-   own mosquitto on the Pi4's `br0` address and port 18883 and enables the client over REST once (a shared
-   prerequisite write). In order it covers:
+4. Run the `mqtt` scope, never the whole bench yet (owner, 2026-10-08: "you shall not run the whole bench at
+   this time (will happen lateron when mqtt as such is running)"):
+   `scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/mqtt`. It runs
+   L0-L2 first, then only the flash and bench tests `tests_hardware/run_scopes.py` lists: this module plus
+   the tests the branch reaches beside it (the resolver, the connection ceiling and body cap, the heap with
+   the client resident, boot and reboot, the website, the FRAM chunk layout and the `env --tier flash`
+   rerun), with the reason for each. The write permission is scoped to `networking/mqtt`, so no other
+   group, the SCD30's NVM least of all, can be written; the runner refuses the global
+   `--allow-persistence-writes` with a scope, and reports a passing scoped run NOT CLEAN, since the rest of
+   both tiers waits for the full run. The module starts its own mosquitto on the Pi4's `br0` address and
+   port 18883 and enables the client over REST once (a shared prerequisite write). In order it covers:
    - connect, `online`, and strict-JSON measurements per sensor;
    - an inbound command;
    - broker SIGKILL and restart;
@@ -325,7 +332,7 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
    - a reset path (REJECT);
    - a client-id takeover bounded by the backoff;
    - the broker found by the Pi4's own `.local` name through its Avahi (this one writes `MQTTHost` twice, so
-     it runs only with `--allow-persistence-writes`);
+     it runs only with `--allow-persistence-writes-to=networking/mqtt`);
    - a 3000-message QoS 0 flood with REST timed under it, a 500-message QoS 1 burst and an oversized message;
    - a checkpoint (no task ended, only the expected `MQTT` codes);
    - an AP outage through `BenchBridge`;
@@ -368,6 +375,11 @@ Each the more conservative, more easily reversible choice, for review:
    retained `offline` on the old status topic, since the DISCONNECT makes the broker drop the will.
 10. The first measurement round follows each CONNACK, and the interval is read at connect: a consumer
     gets values at once, and a changed interval applies at once instead of after the old one ran out.
+11. A passing scoped bench run (`--scope mqtt`) is reported NOT CLEAN, the precedent `--skip-lower-levels`
+    set: everything that ran passed, but it never stands in for an L3/L4 pass. Its scope also carries the
+    tests the branch reaches outside the client (§11.1), and two candidates were left to the full run: the
+    NTP tests that write `NTPHost` (`networking/ntp`), and the hotspot role reversal, which never enables
+    the client.
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 
@@ -380,3 +392,8 @@ Each the more conservative, more easily reversible choice, for review:
    path, which only the blocking `getaddrinfo()` reaches.
 2. Asked "Should the MQTT client cap the bytes the broker has not yet confirmed at its 2,000 B share of
    lwIP memory?": 'Cap at 2,000 B (Recommended)'. §3.3 has the mechanism.
+- The bench runs the client's scope, not the whole tier: 'set up the tests in such way that you only test
+  MQTT (and whatever is affected by your changes) on the bench. you shall not run the whole bench at this
+  time (will happen lateron when mqtt as such is running)'. And its writes are scoped per group: 'it makes
+  absolutely no sense globally enable persistence writes, as writing the scd30 for mqtt tests is nonsense,
+  so scope it correctly'. §11.1 step 4 has the command.

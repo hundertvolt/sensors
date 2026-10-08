@@ -142,3 +142,25 @@ def test_an_oversized_field_is_actually_caught(repo_root: Path) -> None:
     assert _largest_put_body(section) > cap, "a field alone wider than the cap was not reported as exceeding it"
     empty = {"rest": {"put": "/networking"}, "groups": [{"key": "identity", "fields": [{"key": "Reading", "kind": "readonly"}]}]}
     assert _largest_put_body(empty) == 0, "a section with no writable field must contribute nothing, not an empty-body constant"
+
+
+def _bench_device(repo_root: Path) -> str:
+    # The device the bench tier reads its tree-derived figures for: harness.configured_max_connections()'s default.
+    tree = ast.parse((repo_root / "tests_hardware" / "harness.py").read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "configured_max_connections")
+    default = fn.args.defaults[-1]
+    assert isinstance(default, ast.Constant) and isinstance(default.value, str), "configured_max_connections() lost its device default"
+    return default.value
+
+
+def test_the_bench_tiers_largest_body_is_the_bench_devices_own(repo_root: Path) -> None:
+    # The bench sends this size to prove a maximal push is still served; a stale figure proves a smaller one.
+    path = repo_root / "tests_hardware" / "bench" / "test_network_resilience.py"
+    pinned = next(
+        node.value.value
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_SCHEMA_MAX_BODY" for t in node.targets) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, int)
+    )
+    device = _bench_device(repo_root)
+    largest = max(size for _route, size in _put_sections(repo_root, device))
+    assert pinned == largest, f"{path.name}'s _SCHEMA_MAX_BODY is {pinned} B, but {device}'s largest schema-permitted body is {largest} B"

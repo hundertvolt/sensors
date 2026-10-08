@@ -407,7 +407,7 @@ def test_an_oversized_inbound_message_is_discarded_and_framing_kept(mqtt_bench: 
     assert _count(m.dut_ip, "MQTTTeardowns") == teardowns, "the oversized message ended the session"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/mqtt")
 def test_the_broker_is_found_by_the_bench_hosts_local_name(mqtt_bench: MqttBench, result_note: Callable[..., None]) -> None:
     # The DUT asks for this host's .local name with a one-shot mDNS query, answered by this host's Avahi (Part A.11).
     # The test owns both writes: the name, then this host's IP back.

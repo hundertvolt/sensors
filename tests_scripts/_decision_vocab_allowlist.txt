@@ -18,7 +18,6 @@ CLAUDE.md	- **Two suites that both bind real ports must never run at the same ti
 CLAUDE.md	- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `
 CLAUDE.md	Does **not** disable the `assignment` error code — the old `improved-quality/myp
 CLAUDE.md	Installed into `typings/` (gitignored) — **deliberately not** a `pyproject.toml`
-CLAUDE.md	On the *target* this is already institutionalized and stays that way: every oper
 CLAUDE.md	One further narrow exemption lives in a central `[[tool.mypy.overrides]]` block:
 CLAUDE.md	The hardware pair reads one shared `tests_hardware/harness.py` `MEMORY_ERROR_MAR
 CLAUDE.md	`scripts/test.sh`'s own backgrounded `tests_scripts/` tier is a deliberate non-i

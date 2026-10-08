@@ -589,6 +589,9 @@ gates, traps).
   **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg (MQTT PoC branch)**: `env --tier bench` gains
   `ensure_avahi()`, installing `avahi-daemon` when missing, as `ensure_iptables()` does `iptables`; the generic
   and flash tiers are unchanged.
+  **2026-10-08, `scripts/run_bench_hardware_suite.sh` only, no build impact (MQTT PoC branch)**: the runner
+  gains `--scope NAME` (resolved by `python3 tests_hardware/run_scopes.py`, stdlib only); nothing installed or
+  built changes, so nothing here moves either leg.
   **2026-10-08, lint config only, no build impact (MQTT PoC branch)**: `pyproject.toml` `max-statements` 77 → 75,
   the measured maximum once the generator's networking-status emitter became its own function; nothing here moves
   either leg.

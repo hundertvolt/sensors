@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests_hardware/ itse
 import http_client
 from bench_control import BenchBridge
 from harness import Board, HardwareTestFailureError, wait_until
+from persistence_groups import SCOPED_FLAG, allowed_groups, deselected_by, persistence_groups
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
@@ -81,9 +82,21 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "that is a shared PREREQUISITE (joined_hotspot clearing the SSID, "
             "_recover_stale_dut_credentials()) stays unmarked and still runs - gating those would "
             "deselect exactly the tests they exist to enable. Skipped by default. Every test that "
-            "owns one needs this flag, including the one further gated behind "
-            "--allow-scd30-extra-write below - this is the single flag that decides whether any "
-            "real persistence write happens, not one flag per test group."
+            "owns one needs this flag or --allow-persistence-writes-to naming every group it writes, "
+            "including the one further gated behind --allow-scd30-extra-write below."
+        ),
+    )
+    parser.addoption(
+        "--allow-persistence-writes-to",
+        action="append",
+        default=[],
+        metavar="GROUP[,GROUP]",
+        help=(
+            "The scoped form of --allow-persistence-writes: run only the @pytest.mark.persistence_write "
+            "tests whose every named group is given here (repeatable, or comma-separated). A group is "
+            "'<section>/<group>' as the device definitions key it (networking/mqtt, sensors/SCD30, ...) "
+            "or 'hwtest' for a test's own config_HWTEST_*.cfg file; an unknown name is a usage error. A "
+            "marker naming no group runs only under the global flag. Skipped by default."
         ),
     )
     parser.addoption(
@@ -91,11 +104,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help=(
-            "On top of --allow-persistence-writes, also run the one @pytest.mark.scd30_extra_write "
+            "On top of a write permission covering sensors/SCD30, also run the one @pytest.mark.scd30_extra_write "
             "test that spends a SECOND real NVM-persisted SCD30 write beyond the one routine "
             "per-session write --allow-persistence-writes alone already permits (SPECIFICATION.md "
             "Part C.8). Stays SCD30-specific, and stays AND-gated with the global flag - passing "
-            "this alone, without --allow-persistence-writes, still deselects the test. Skipped by default, "
+            "this alone, without that write permission, still deselects the test. Skipped by default, "
             "same precedent as --allow-flash-cycle: an explicit, rare, deliberately-opted-into "
             "extra real write, never run as part of a routine pass."
         ),
@@ -103,11 +116,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    unknown = sorted(allowed_groups(config) - persistence_groups()) if config.getoption(SCOPED_FLAG) else []
+    if unknown:
+        raise pytest.UsageError(f"{SCOPED_FLAG}: no such group {unknown}; the groups are {sorted(persistence_groups())}")
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
-    config.addinivalue_line("markers", "persistence_write: the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives; a PUT /sensors to the SCD30 spends one NVM write per changed field, one per AmbPres or ForceCalRef sent and one per ContMeas=false, none for an unchanged TempOffset/MeasInterval/Altitude/SelfCal - deselected unless --allow-persistence-writes is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
-    config.addinivalue_line("markers", "scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a persistence_write test - always carried alongside @pytest.mark.persistence_write on the same test, deselected unless BOTH --allow-persistence-writes AND --allow-scd30-extra-write are passed")
+    config.addinivalue_line("markers", "persistence_write(*groups): the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives, into the named groups (tests_hardware/persistence_groups.py); a PUT /sensors to the SCD30 spends one NVM write per changed field, one per AmbPres or ForceCalRef sent and one per ContMeas=false, none for an unchanged TempOffset/MeasInterval/Altitude/SelfCal - deselected unless --allow-persistence-writes, or --allow-persistence-writes-to naming every group, is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
+    config.addinivalue_line("markers", 'scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a persistence_write test - always carried alongside @pytest.mark.persistence_write("sensors/SCD30") on the same test, deselected unless a write permission covering sensors/SCD30 AND --allow-scd30-extra-write are passed')
     config.addinivalue_line("markers", "neopixel_sweep: needs the physical NeoPixel-aimed-at-the-ISL29125 rig (manual tier records its geometry) - skipped unless --allow-neopixel-sweep is passed; ~10 minutes of real light programs when it runs, and a hard failure rather than a soft one without the rig")
     config.addinivalue_line("markers", "over_provisioned_image: only meaningful on a deliberately over-provisioned build (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2, image B) - informational marker, not skip-gated, so it reports the board's own wall whenever it is run")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
@@ -116,16 +132,16 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     # The wear gates deselect rather than skip, so a run reports its deselected count; each item is
     # tagged with the flag that would select it, which tells it apart from a runner's -m exclusion.
-    # --allow-persistence-writes alone decides whether any write happens; the SCD30 flag narrows.
-    allow_writes = config.getoption("--allow-persistence-writes")
+    # A write permission (global, or scoped to every group the marker names) comes first; the SCD30 flag narrows.
     allow_extra_write = config.getoption("--allow-scd30-extra-write")
     kept: list[pytest.Item] = []
     deselected: list[pytest.Item] = []
     for item in items:
-        lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
+        marker = item.get_closest_marker("persistence_write")
+        lacks_write_permission = None if marker is None else deselected_by(marker.args, config)
         lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
         if lacks_write_permission:
-            item.user_properties.append(("deselected_by", "--allow-persistence-writes"))
+            item.user_properties.append(("deselected_by", lacks_write_permission))
             deselected.append(item)
         elif lacks_extra_write_permission:
             item.user_properties.append(("deselected_by", "--allow-scd30-extra-write"))

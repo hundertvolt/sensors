@@ -757,7 +757,7 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 
 - **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
   prerequisites, environment variables, how to run each tier, the safety facts (the
-  `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
+  `--allow-flash-cycle`/`--allow-persistence-writes`(`-to`)/`--allow-neopixel-sweep`/long-soak opt-in
   gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the dev
   bench's wiring, chips, host-network recipe and dated state, the ISL29125 bench-rig facts and the
   numbered audit passes that found this tier's own gaps. CLAUDE.md's

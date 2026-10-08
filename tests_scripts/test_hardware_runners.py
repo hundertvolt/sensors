@@ -22,6 +22,7 @@ _COPIED = (
     "scripts/_hardware_verdict.py",
     "scripts/_archive_evidence.py",
     "scripts/_summary_block.py",
+    "tests_hardware/run_scopes.py",
 )
 
 # One stub for every external command: logs the call, fails when told to, for `uv run pytest` writes
@@ -222,3 +223,49 @@ def test_help_prints_usage_and_runs_nothing(tree: Path, script: str) -> None:
     assert result.returncode == 0, result.stderr
     assert "Usage:" in result.stdout
     assert not calls, f"--help must have no side effect, saw {calls}"
+
+
+# ---------------------------------------------------------------------------
+# A scoped bench run (owner, 2026-10-08: "only test MQTT (and whatever is affected by your changes) on the
+# bench"): the scope's own tests on both steps, its write permission named, never reported clean.
+# ---------------------------------------------------------------------------
+
+
+def _scope(tree: Path, name: str, part: str) -> "list[str]":
+    listed = subprocess.run([sys.executable, str(tree / "tests_hardware" / "run_scopes.py"), name, part], capture_output=True, text=True, check=True)
+    return listed.stdout.split()
+
+
+def test_a_scoped_bench_run_gives_each_step_only_its_scopes_tests(tree: Path) -> None:
+    result, calls = _run(tree, "run_bench_hardware_suite.sh", "--scope", "mqtt", "--allow-persistence-writes-to=networking/mqtt")
+    assert result.returncode == 4, result.stdout + result.stderr
+    assert _lower(calls)[:3] == ["test.sh", "test.sh:32768", "npm:test"], "a scope narrows the hardware steps, never the lower levels"
+    assert _pytest_targets(calls) == [_scope(tree, "mqtt", "flash"), _scope(tree, "mqtt", "bench")]
+    steps = [argv for cmd, argv, _ in calls if cmd == "uv" and argv[:2] == ["run", "pytest"]]
+    assert all("--allow-persistence-writes-to=networking/mqtt" in argv for argv in steps), "the scoped permission reaches both steps"
+    block = _block(result.stdout)
+    assert "== Summary: run_bench_hardware_suite_scope_mqtt ==" in block
+    assert "Levels: L0 L1 L2 L3 L4, scope mqtt" in block
+    assert "Result: NOT CLEAN (scope mqtt: " in block, block
+    assert "== Summary: run_bench_hardware_suite_scope_mqtt_flash_step ==" in result.stdout, "the flash step archives apart from a full run's"
+
+
+def test_a_scoped_run_refuses_the_global_write_flag_before_any_level_runs(tree: Path) -> None:
+    result, calls = _run(tree, "run_bench_hardware_suite.sh", "--scope=mqtt", "--allow-persistence-writes")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "--allow-persistence-writes-to=networking/mqtt" in result.stderr, "the refusal names the scoped flag to use instead"
+    assert not calls, f"nothing may run before the refusal, saw {calls}"
+
+
+@pytest.mark.parametrize("extra", [["--scope", "nonesuch"], ["--scope", "mqtt", "tests_hardware/bench/test_x.py"], ["--scope"]])
+def test_a_bad_scope_is_a_usage_error_before_any_level_runs(tree: Path, extra: "list[str]") -> None:
+    result, calls = _run(tree, "run_bench_hardware_suite.sh", *extra)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert not calls, f"nothing may run before a usage error, saw {calls}"
+
+
+def test_a_scoped_run_without_the_lower_levels_names_both_reasons(tree: Path) -> None:
+    result, calls = _run(tree, "run_bench_hardware_suite.sh", "--skip-lower-levels", "--scope", "mqtt")
+    assert result.returncode == 4, result.stdout
+    assert not _lower(calls)
+    assert "Result: NOT CLEAN (lower levels skipped: L0 L1 L2; scope mqtt: " in _block(result.stdout)

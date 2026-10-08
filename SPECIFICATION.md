@@ -2720,14 +2720,17 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   one exception: **SCD30's own on-chip NVM write is opt-in, off by default, and capped at one real
   write per test session** (owner, 2026-09-16, `98dc1b2`) — every real SCD30 write, flash wear being
   a real, always-relevant concern on real hardware, is gated behind `tests_hardware/conftest.py`'s
-  `--allow-persistence-writes`/`@pytest.mark.persistence_write` (the single global permission: without it, a
-  full flash-tier run spends zero real SCD30 writes, including the one routine per-session write
-  `scd30_continuous_measurement_triggered` would otherwise make for the whole bus-hazard group).
+  `--allow-persistence-writes`/`@pytest.mark.persistence_write` (the global permission, or
+  `--allow-persistence-writes-to=sensors/SCD30` scoped to that group alone (owner, 2026-10-08: "it makes
+  absolutely no sense globally enable persistence writes, as writing the scd30 for mqtt tests is nonsense, so
+  scope it correctly"): without either, a full flash-tier run spends zero real SCD30 writes, including the
+  one routine per-session write `scd30_continuous_measurement_triggered` would otherwise make for the whole
+  bus-hazard group).
   Any additional test that needs to fire SCD30's own write a second time is gated behind a further,
   narrower flag/marker pair, `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write`, that is
   AND-gated on top of the global one — never an independent flag standing in for it, and never
-  substitutable for it (passing only the extra-write flag still deselects the test). One flag
-  decides whether any real SCD30 write happens at all; the second only ever narrows that further.
+  substitutable for it (passing only the extra-write flag still deselects the test). One permission
+  decides whether any real SCD30 write happens at all; the second flag only ever narrows that further.
   A `PUT /sensors` to SCD30 spends one NVM write per field whose value changed, one per
   `AmbPres`/`ForceCalRef` sent and one per `ContMeas=false`, none for an identical
   TempOffset/MeasInterval/Altitude/SelfCal.
@@ -3844,7 +3847,11 @@ normal image (owner, 2026-09-26).
 
 **Containment holds in both senses (owner, 2026-09-26)**: (a) execution — each hardware runner runs
 every lower level first (`scripts/_run_lower_levels.sh`); (b) scenarios — L3 ∪ L4 ⊇ L2 and L4 ⊇ L3
-(`tests_scripts/test_level_containment.py`). `manual` is an execution mode of L3/L4, not a level: it
+(`tests_scripts/test_level_containment.py`). A **scoped run** (`scripts/run_bench_hardware_suite.sh --scope
+NAME`) runs every lower level, then only the flash and bench tests `tests_hardware/run_scopes.py` lists for
+one change, with the write groups those tests own (owner, 2026-10-08: "only test MQTT (and whatever is affected
+by your changes) on the bench"); a passing one is reported NOT CLEAN, so it never stands in for an L3/L4 pass
+(agent, 2026-10-08, decided on the owner's behalf, `mqtt_poc/DESIGN.md` §13). `manual` is an execution mode of L3/L4, not a level: it
 rides on a flash or bench board and a human closes the loop (unplug/replug, genuine power loss, a
 real second device joining a hotspot).
 
