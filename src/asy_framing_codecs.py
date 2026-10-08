@@ -87,13 +87,17 @@ class FramingCOBS(FramingBase):
     def _checked(self, buf: bytearray, size: int) -> bool:
         return self.ready() and 0 <= size <= len(buf) and size <= self.max_frame
 
+    def _checked_encoded(self, buf: bytearray, size: int) -> bool:
+        # decode input is the encoded frame without its delimiter - up to the run-code bytes longer than max_frame.
+        return self.ready() and 0 <= size <= len(buf) and size <= self.max_encoded(self.max_frame) - self._trailer
+
     def is_delimited(self) -> bool:
         return True
 
     async def decode_from(self, buf: bytearray, size: int) -> int | None:
         # `buf` holds one encoded frame *without* its delimiter - the read loop strips it, since
         # the delimiter is what told the loop the frame had ended in the first place.
-        if not self._checked(buf, size):
+        if not self._checked_encoded(buf, size):
             return None
         read = 0
         written = 0

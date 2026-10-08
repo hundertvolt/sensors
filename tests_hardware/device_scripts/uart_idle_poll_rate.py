@@ -67,10 +67,7 @@ async def _count_rounds(wdt: "machine.WDT", idle_ms: int) -> int:
     )
     counter = CountingPoller(uart.poller)
     uart.poller = counter  # type: ignore[assignment]
-    comm = UARTComm(
-        uart, ROLE_RESPONDER, payload_size=48, timeout=1000,
-        callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_IDLE",
-    )
+    comm = UARTComm(uart, ROLE_RESPONDER, callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_IDLE")
     await comm.setup()
     listener = asyncio.create_task(comm.uart_listen())
     await asyncio.sleep_ms(100)  # let it reach the parked wait before counting

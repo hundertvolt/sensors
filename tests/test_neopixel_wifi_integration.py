@@ -61,7 +61,9 @@ async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
 
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
-    pixel = NeopixelDriver(0, neopixel_freq=100)
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
@@ -72,7 +74,7 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
         await asyncio.sleep(0)
         await conn.set_wifi_led(status=True)  # self._led becomes self._ext_led (pixel)
         conn._led_on()
-        on_seen = await _run_until(last_is((50, 50, 50)), 10)  # default led_overl_bri
+        on_seen = await _run_until(last_is((50, 50, 50)), 10)  # the shipped overlay brightness
         conn._led_off()
         off_seen = await _run_until(last_is((0, 0, 0)), 10)
         conn._led_toggle()

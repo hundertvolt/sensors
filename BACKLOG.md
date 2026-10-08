@@ -572,6 +572,10 @@ gates, traps).
   **2026-10-07, `scripts/test.sh`, shell only, no build impact**: a `--coverage` run takes one test file per
   usable core (`_coverage_parallelism()`), since the settrace binary makes the suite CPU-bound; a chroot run of
   `--coverage` is slower in wall clock and otherwise unchanged.
+  **2026-10-07, lint and mypy config only, no build impact**: `pyproject.toml`'s `max-returns` 11 →
+  10 (the measured maximum once `UARTComm`'s construction checks split into two helpers), and
+  `asy_uart_comm` and `asy_uart_link_driver` leave the explicit-`Any` baseline. No new dependency
+  and no build input changed, so nothing here moves either leg.
   **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg**: `ensure_apt_packages()` passes apt a 30 s fetch
   timeout and two retries on both its `update` and its `install`, so a stalled mirror fails within about a minute
   instead of holding the step; a chroot run's apt calls carry the same options, with no other change.
@@ -648,8 +652,7 @@ gates, traps).
   *duration* — a fake cannot tell a caller how many milliseconds of event loop an over-ask would
   have cost, only how many bytes it was over by. Only the bench tier measures the milliseconds, and
   F.5.8's table is that measurement.
-- **Four UART-audit findings reviewed and left as they are** (agent, 2026-09-11):
-  - **The peer-sized `_accept_set()` allocation is to be chunked and capped** (owner, 2026-10-05).
+- **Three UART-audit findings reviewed and left as they are** (agent, 2026-09-11):
   - **`asy_uart_driver.UART.deinit()`/`init()` do not respect the session lock.** Calling either
     while a read is in flight would leave the in-flight code holding a reference to a deinit'd
     peripheral. No caller does: `UARTComm` never deinits, and the one place that does

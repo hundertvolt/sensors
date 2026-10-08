@@ -34,10 +34,13 @@ def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
 
 
 def make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int | None" = None) -> NeopixelDriver:
-    # freq=100, against the real 20 default, keeps every ramp's step count high enough - 5 per direction at
-    # the t=0.1 floor - to observe mid-ramp state. A test outside _DrivenClock drives real asyncio.sleep(),
-    # so fast ramps keep its runtime short.
-    driver = NeopixelDriver(0, neopixel_freq=neopixel_freq, led_overl_bri=led_overl_bri, log=LogConfig(None, 10, debug))
+    # freq=100, against the shipped 20 Hz, keeps every ramp's step count high enough - 5 per direction at the
+    # t=0.1 floor - to observe mid-ramp state; the fixed values are the driver's own state, set from outside.
+    # A test outside _DrivenClock drives real asyncio.sleep(), so fast ramps keep its runtime short.
+    driver = NeopixelDriver(0, log=LogConfig(None, 10, debug))
+    driver.neopixel_freq = neopixel_freq
+    driver.neopixel_dt = 1.0 / neopixel_freq
+    driver._overlay_bri = led_overl_bri
     run(driver.setup())  # the boot batch's setup(), before any task starts
     return driver
 
@@ -150,6 +153,19 @@ def _event_driver() -> NeopixelDriver:
 def test_init_bakes_name_into_the_logger() -> None:
     driver = make_driver()
     assert driver.pr.name == "NEOPIXEL"
+
+
+def test_the_frame_rate_and_overlay_brightness_are_fixed_values_no_caller_passes() -> None:
+    driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
+    freq = _src_const("_NEOPIXEL_FREQ_HZ")
+    assert (driver.neopixel_freq, driver.neopixel_dt, driver._overlay_bri) == (freq, 1.0 / freq, _src_const("_LED_OVERL_BRI"))
+    refused = []
+    for keyword in ("neopixel_freq", "led_overl_bri"):
+        try:
+            NeopixelDriver(0, **{keyword: 100})  # type: ignore[arg-type]  # the dict's int values against log's LogConfig
+        except TypeError:  # an unexpected keyword argument
+            refused.append(keyword)
+    assert refused == ["neopixel_freq", "led_overl_bri"], refused
 
 
 def test_get_error_counter_forwards_to_the_real_print_log() -> None:
@@ -362,7 +378,7 @@ def test_request_signal_always_returns_true_even_back_to_back() -> None:
 
 
 def test_request_signal_below_floor_still_produces_at_least_one_step_each_direction() -> None:
-    driver = make_driver(neopixel_freq=20)  # matches today's real default
+    driver = make_driver(neopixel_freq=20)  # the shipped rate
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)

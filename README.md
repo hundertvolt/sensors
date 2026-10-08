@@ -708,7 +708,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
-  reconciled - post-audit only (owner, 2026-09-25) - then gets deleted.
+  reconciled: kept until the post-audit C reconciliation deletes it (owner, 2026-09-25).
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
 - **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
   whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area

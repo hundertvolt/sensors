@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UARTComm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, TransferLimits, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -80,12 +80,13 @@ def set_callback(cmd_id: int) -> "tuple[bool, int | None]":
 def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UARTComm, UARTComm]":
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UARTComm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
+    limits_a = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    limits_b = TransferLimits(payload_size_b, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits_a, name="UART_INIT")
     responder = UARTComm(
         uart1,
         ROLE_RESPONDER,
-        payload_size=payload_size_b,
-        timeout=TIMEOUT_MS,
+        limits=limits_b,
         callbacks=ResponderCallbacks(get_callback, set_callback, None),
         name="UART_RESP",
     )

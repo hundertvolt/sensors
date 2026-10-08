@@ -294,21 +294,27 @@ def _uart_bus_value(src_dir: Path, table: TomlDoc, name: str) -> int:
 
 
 def _check_uart_link_buses(model: DeviceModel, src_dir: Path) -> None:
-    # UARTComm.setup() refuses a link whose bus cannot carry its protocol (UART_TIMEOUT_PARAM, UART_RXBUF) - a config
-    # mismatch out of runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24).
-    # Mirrors _min_timeout()/_min_rxbuf(); generated code wires no CRC or framing, so both add 0.
+    # Refuses the timeout, rxbuf and poll-rate values the protocol would refuse at boot - a config mismatch out of
+    # runtime scope (owner, 2026-09-24, Part C.7.2); the build refuses it instead (agent, 2026-09-24). Mirrors
+    # UARTComm's own bounds; generated code wires no CRC or framing, so both add 0.
     links = [spec for spec in model.instances.values() if spec.driver == "uart_link"]
     if not links:
         return
     comm = "asy_uart_comm.py"
     header, gc_pause, jitter = (module_int_const(src_dir, comm, n) for n in ("_HEADER_LEN", "_GC_PAUSE_WORST_MS", "_POLL_JITTER_MS"))
-    payload = init_int_default(src_dir, "asy_uart_link_driver.py", "UARTLinkDriver", "payload_size")
-    timeout = init_int_default(src_dir, "asy_uart_link_driver.py", "UARTLinkDriver", "timeout")
+    payload, timeout = (module_int_const(src_dir, comm, n) for n in ("_DEFAULT_PAYLOAD_SIZE", "_DEFAULT_TIMEOUT_MS"))
+    poll_max, horizon = (module_int_const(src_dir, comm, n) for n in ("_POLL_WAIT_MAX_MS", "_TICKS_HORIZON_MS"))
+    num, den, mult = (module_int_const(src_dir, comm, n) for n in ("_RESYNC_NUM", "_RESYNC_DEN", "_DRAIN_BOUND_MULT"))
+    max_timeout = horizon * den // (num * mult)
     buses = model.doc.get("bus", {})
     for spec in links:
         bus_name = spec.fields["bus"]
         table = buses[bus_name]
         poll_wait, poll_idle, rxbuf = (_uart_bus_value(src_dir, table, n) for n in ("poll_wait_ms", "poll_idle_ms", "rxbuf"))
+        if not 1 <= poll_wait <= poll_max:
+            raise BuildError(model.device, f"bus.{bus_name}: poll_wait_ms {poll_wait} is outside 1 … {poll_max} - a UART transaction polls at single-digit milliseconds or poll latency dominates every exchange (Part J.6); state a value from 1 to {poll_max}", field="poll_wait_ms", instance=spec.label)
+        if timeout > max_timeout:
+            raise BuildError(model.device, f"{spec.label}'s {timeout}ms reply timeout is above {max_timeout}ms - its drain bound, {num}/{den} x {mult} x the timeout, would leave rp2's 2**29 ms ticks range (Part J.6); lower asy_uart_comm's _DEFAULT_TIMEOUT_MS", instance=spec.label)
         min_timeout = 2 * poll_wait + poll_idle + gc_pause
         if timeout < min_timeout:
             raise BuildError(model.device, f"bus.{bus_name}: {spec.label}'s {timeout}ms reply timeout is below the {min_timeout}ms its polls need (2 x poll_wait_ms {poll_wait} + poll_idle_ms {poll_idle} + {gc_pause}ms GC pause) - every request would time out on a sound link (Part J.6)", field="poll_idle_ms", instance=spec.label)
@@ -601,9 +607,11 @@ def _check_uart_link_roles(model: DeviceModel) -> None:
 
     # Without it two initiators on uart0/uart1 built and booted silently, both looping on read
     # timeouts with nothing able to answer, while the twin's pairing loop kept the last one it
-    # saw and left responder_var None - disabling crossover wiring with no error naming it.
-    initiators = [spec.label for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "initiator"]
-    responders = [spec.label for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder"]
+    # saw and left responder_bus None - disabling crossover wiring with no error naming it.
+    initiator_specs = [spec for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "initiator"]
+    responder_specs = [spec for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder"]
+    initiators = [spec.label for spec in initiator_specs]
+    responders = [spec.label for spec in responder_specs]
     if not initiators and not responders:
         return
     if len(initiators) != 1 or len(responders) != 1:
@@ -611,6 +619,11 @@ def _check_uart_link_roles(model: DeviceModel) -> None:
             model.device,
             f"a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peripherals) - found {len(initiators)} initiator(s) {sorted(initiators)} and {len(responders)} responder(s) {sorted(responders)}",
         )
+    buses = model.doc.get("bus", {})
+    a, b = initiator_specs[0].fields["bus"], responder_specs[0].fields["bus"]
+    x, y = int(buses[a]["baudrate"]), int(buses[b]["baudrate"])
+    if x != y:
+        raise BuildError(model.device, f"uart_link pair: bus.{a} runs at {x} baud and bus.{b} at {y} - both ends of a link must agree (Part J.6: agreed out of band, never negotiated); state one baudrate on both", field="baudrate", instance=responder_specs[0].label)
 
 
 def _resolve_wiring_field(schema: "tuple[WiringField, ...]", toml_field: str) -> "WiringField | None":

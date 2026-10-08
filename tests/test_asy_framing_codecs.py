@@ -137,6 +137,22 @@ def test_cobs_round_trips_every_length_up_to_the_frame_bound() -> None:
             assert decoded(codec, frame[:-1]) == bytes(payload), f"round trip failed at size {size}, pattern {pattern}"
 
 
+def test_a_262_byte_frame_bound_decodes_every_length_and_refuses_one_past() -> None:
+    # A codec sized exactly to its frame (a 255-byte payload frame plus CRC16): the decode input is the encoded
+    # frame without its delimiter, up to the run-code bytes longer than the frame, and every length decodes.
+    codec = FramingCOBS(262)
+    for size in range(263):
+        for pattern in (0, 1):
+            payload = bytes(size) if pattern == 0 else bytes((i % 255) + 1 for i in range(size))
+            frame = encoded(codec, payload)
+            buf = bytearray(frame[:-1])
+            assert run(codec.decode_from(buf, len(buf))) == size, f"size {size}, pattern {pattern}"
+            assert bytes(buf[:size]) == payload, f"size {size}, pattern {pattern}"
+    past = codec.max_encoded(262)  # one byte past the longest legal decode input, max_encoded(262) - 1
+    assert run(codec.decode_from(bytearray(b"\x01" * past), past)) is None
+    assert run(codec.decode_from(bytearray(b"\x01" * (past - 1)), past - 1)) is not None
+
+
 def test_a_returned_view_aliases_the_scratch_until_the_next_encode() -> None:
     # The contract: a caller finishes with a returned view before the next encode_into().
     codec = FramingCOBS(64)
