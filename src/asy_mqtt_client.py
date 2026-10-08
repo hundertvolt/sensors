@@ -13,7 +13,7 @@ from collections import namedtuple
 from micropython import const
 
 from asy_base_classes import COUNTER_CAP, SensorReaderConfig, TickSeconds, utc_now
-from asy_config_manager import make_dict, name_cfg, schema_dict
+from asy_config_manager import INVALID, make_dict, name_cfg, schema_dict
 from asy_dns_client import host_name_ok, resolve_ipv4
 from asy_print_log import DEFAULT_LOG, LogConfig
 from mqtt_codec import (
@@ -342,7 +342,7 @@ class MQTTClient(SensorReaderConfig):
             await self.pr.err_s("Refusing", key, "- outside the MQTT client's accepted form", errno=_ERR_BAD_ARG)
         ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
         for key in refused:
-            results[key] = "Invalid"
+            results[key] = INVALID
         return ok, results
 
     def _set_state(self, state: int) -> None:

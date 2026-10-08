@@ -28,7 +28,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_base_classes import JsonDict, TaskStarter, TimerStarter
-    from asy_config_manager import ConfigSchema
+    from asy_config_manager import CfgValue, ConfigSchema
     from asy_i2c_driver import I2C
     from asy_print_log import ErrorLog
 
@@ -763,24 +763,21 @@ class ISL29125_Reader(SensorReaderConfig):
             return None
         return counts[0]
 
-    async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
+    async def _read_sensor_dict(self) -> "dict[str, CfgValue] | None":
         # Reads the real registers rather than the shadow - the only thing that can detect the two
         # diverging. A read of 0x01 is not the write Table 7 names, so a read-only snapshot starts
-        # nothing and creates no read-modify-write hazard.
+        # nothing and creates no read-modify-write hazard. No reading is None: the GET's unavailable marker.
         try:
             raw = await self._isl.get_config_snapshot()
         except Exception as e:
             await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CHIP_GET)
-            return dict.fromkeys(
-                (name_cfg(_VAL_RESOLUTION), name_cfg(_VAL_RANGE), name_cfg(_VAL_IR_COMP_OFFSET), name_cfg(_VAL_IR_COMP_ADJUST)),
-                None,
-            )
+            return None
         await self._check_divergence(raw)
         decoded = self._isl.decode_config(raw)
         if decoded is None:
-            return {}
+            return None
         resolution, range_fs, ir_offset, ir_adjust, _persist = decoded
-        result: dict[str, int | float | str | bool | None] = {
+        result: dict[str, CfgValue] = {
             name_cfg(_VAL_RESOLUTION): resolution,
             name_cfg(_VAL_IR_COMP_OFFSET): ir_offset,
             name_cfg(_VAL_IR_COMP_ADJUST): ir_adjust,

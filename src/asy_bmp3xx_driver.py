@@ -28,6 +28,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_base_classes import TaskStarter, TimerStarter
+    from asy_config_manager import CfgValue
     from asy_print_log import ErrorLog
 
 
@@ -293,15 +294,15 @@ class BMP3XX_Reader(SensorReaderConfig):
                 return  # break and restart if too many errors
             await self._store_bmp(results)  # store data in result buffer
 
-    async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
+    async def _read_sensor_dict(self) -> "dict[str, CfgValue] | None":
         # One batched read, not three get_*() calls, closing a torn-read window a concurrent config
-        # write could land in. It can raise on a bus fault, caught here rather than by get_dict_cfg()'s
-        # try/except - which would skip the dict update and leave these fields at their defaults.
+        # write could land in. A bus fault is caught here, keeping its CHIP_GET entry, and is None:
+        # the GET then answers the unavailable marker in place of the map, never nulls read as unset.
         try:
             pressure_oversampling, temperature_oversampling, filter_coefficient = await self._bmp.get_config_snapshot()
         except Exception as e:
             await self.pr.err_s("Error reading oversampling/filter config from sensor:", e, errno=_ERR_CHIP_GET)
-            return {name_cfg(_VAL_PRES_OVERS): None, name_cfg(_VAL_TEMP_OVERS): None, name_cfg(_VAL_FILT_COEFF): None}
+            return None
         return {
             name_cfg(_VAL_PRES_OVERS): pressure_oversampling,
             name_cfg(_VAL_TEMP_OVERS): temperature_oversampling,

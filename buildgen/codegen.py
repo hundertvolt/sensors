@@ -612,7 +612,7 @@ def _emit_networking_status(lines: "list[str]", have: "set[str]") -> None:
     # GET /status's networking object; a device carrying the MQTT client merges its fields in, every other device
     # keeps the plain return.
     lines.append('async def _networking_status() -> "dict[str, Any]":')
-    lines.append("    assert conn is not None and ntp is not None")
+    lines.append("    assert conn is not None and ntp is not None and webserver is not None")
     # One snapshot per response (the WiFi service refreshes it each second); no call reads the radio.
     lines.append("    wifi_data = await conn.get_data()")
     lines.append("    ntp_data = await ntp.get_data()")
@@ -620,6 +620,7 @@ def _emit_networking_status(lines: "list[str]", have: "set[str]") -> None:
     lines.append('        "WifiUptime": await conn.get_wifi_uptime(), "Mode": wifi_data.Mode, "Connected": wifi_data.Connected,')
     lines.append('        "IPv4": wifi_data.IP, "Subnet": wifi_data.Subnet, "Gateway": wifi_data.Gateway, "DNS": wifi_data.DNS, "RSSI": wifi_data.RSSI,')
     lines.append('        "NTPSynced": ntp_data.Synced, "NTPLastSyncAge": ntp_data.LastSyncAge, "NTPLastSync": ntp_data.TS,')
+    lines.append('        "HTTPDropped": await webserver.get_dropped_count(), "WifiTS": wifi_data.TS,')
     lines.append("    }")
     if "mqtt" in have:
         lines.append("    assert mqtt is not None")
@@ -650,22 +651,9 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
     lines.append("    return True")
     lines.append("")
     if "neopixel" in have:
-        lines.append('_FIELD_LED_R: "cm.FieldSchema" = ("R", "int", None, 0, 255, None)')
-        lines.append('_FIELD_LED_G: "cm.FieldSchema" = ("G", "int", None, 0, 255, None)')
-        lines.append('_FIELD_LED_B: "cm.FieldSchema" = ("B", "int", None, 0, 255, None)')
-        lines.append('_FIELD_LED_T: "cm.FieldSchema" = ("T", "float", None, 0.5, 60.0, None)')
-        lines.append("")
-        lines.append('async def _notification_led_callback(payload: "dict[str, Any]") -> bool:')
+        # The webserver validates R/G/B/T against its _LIGHT_CMD_FIELDS before this is called.
+        lines.append("async def _notification_led_callback(r: int, g: int, b: int, t: float) -> bool:")
         lines.append("    assert neopixel is not None")
-        lines.append("    try:")
-        lines.append('        r = cm.checked_int(payload["R"], _FIELD_LED_R)')
-        lines.append('        g = cm.checked_int(payload["G"], _FIELD_LED_G)')
-        lines.append('        b = cm.checked_int(payload["B"], _FIELD_LED_B)')
-        lines.append('        t = cm.checked_float(payload["T"], _FIELD_LED_T)')
-        lines.append("    except KeyError:")
-        lines.append("        return False")
-        lines.append("    if r is None or g is None or b is None or t is None:")
-        lines.append("        return False")
         lines.append("    return neopixel.led_signal(r, g, b, t)")
         lines.append("")
     if "notification" in have:
@@ -750,6 +738,7 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("            host=web_host,")
     lines.append("            port=web_port,")
     lines.append("        ),")
+    lines.append("        uptime_s=sysfunct.get_uptime,")
     lines.append(f'        static=StaticSite(mount="/html", index_file={module_str_const(src_dir, ws, "_DEFAULT_STATIC_INDEX")!r}, is_hotspot_active=conn.is_hotspot_active),')
     lines.append(f"        {log_arg},")
     lines.append("    )")

@@ -1,0 +1,42 @@
+F.....                                                                   [100%]
+=================================== FAILURES ===================================
+__________ test_src_spells_no_result_word_outside_the_config_manager ___________
+
+    def test_src_spells_no_result_word_outside_the_config_manager() -> None:
+        found = scan_src(_REPO_ROOT / "src")
+>       assert not found, "a result word spelled outside asy_config_manager.py - use its VALID/UNCHANGED/INVALID/FAILED:\n" + "\n".join(f"  {line}" for line in found)
+E       AssertionError: a result word spelled outside asy_config_manager.py - use its VALID/UNCHANGED/INVALID/FAILED:
+E           src/asy_api_response.py:63: 'Valid'
+E           src/asy_api_response.py:71: 'Failed'
+E           src/asy_base_classes.py:503: 'Failed'
+E           src/asy_base_classes.py:509: 'Failed'
+E           src/asy_base_classes.py:511: 'Valid'
+E           src/asy_base_classes.py:526: 'Failed'
+E           src/asy_base_classes.py:666: 'Unchanged'
+E           src/asy_base_classes.py:666: 'Valid'
+E           src/asy_config_manager.py:209: 'Invalid'
+E           src/asy_config_manager.py:213: 'Invalid'
+E           src/asy_config_manager.py:217: 'Valid'
+E           src/asy_config_manager.py:220: 'Failed'
+E           src/asy_config_manager.py:226: 'Valid'
+E           src/asy_config_manager.py:228: 'Unchanged'
+E           src/asy_config_manager.py:604: 'Invalid'
+E           src/asy_config_manager.py:609: 'Failed'
+E           src/asy_ntp_client.py:232: 'Invalid'
+E           src/asy_scd30_driver.py:275: 'Invalid'
+E           src/asy_scd30_driver.py:290: 'Failed'
+E           src/asy_scd30_driver.py:302: 'Invalid'
+E           src/asy_scd30_driver.py:305: 'Valid'
+E           src/asy_scd30_driver.py:307: 'Valid'
+E           src/asy_scd30_driver.py:311: 'Failed'
+E           src/asy_scd30_driver.py:314: 'Failed'
+E           src/asy_system_service.py:215: 'Failed'
+E           src/asy_system_service.py:216: 'Unchanged'
+E           src/asy_system_service.py:216: 'Valid'
+E           src/asy_wifi_service.py:298: 'Invalid'
+E       assert not ["src/asy_api_response.py:63: 'Valid'", "src/asy_api_response.py:71: 'Failed'", "src/asy_base_classes.py:503: 'Failed'...y_base_classes.py:509: 'Failed'", "src/asy_base_classes.py:511: 'Valid'", "src/asy_base_classes.py:526: 'Failed'", ...]
+
+tests_scripts/test_result_words.py:68: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_result_words.py::test_src_spells_no_result_word_outside_the_config_manager
+1 failed, 5 passed in 6.56s

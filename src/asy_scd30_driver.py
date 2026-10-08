@@ -17,7 +17,7 @@ from micropython import const
 
 import math_helpers
 from asy_base_classes import DeviceSession, SensorReaderConfig, utc_now
-from asy_config_manager import compare_before_write, make_dict, name_cfg, schema_names, type_or_range_error
+from asy_config_manager import FAILED, INVALID, VALID, compare_before_write, make_dict, name_cfg, schema_names, type_or_range_error
 from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import DEFAULT_LOG, LogConfig
@@ -237,17 +237,19 @@ class SCD30_Reader(SensorReaderConfig):
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> "dict[str, CfgValue] | None":
         # A composite store (SPECIFICATION.md C.4.3): the six chip keys from one chip snapshot, the three
-        # FRC keys from the config file; a failed snapshot leaves the chip keys out (None in the GET).
+        # FRC keys from the config file; either half unreadable is None for the whole read (the GET's marker).
         values: dict[str, CfgValue] = {}
         if any(key in _APPLY_ORDER for key in cfg):
             current = await self._config_snapshot()
-            if current is not None:
-                values.update({key: current[key] for key in cfg if key in current})
+            if current is None:
+                return None  # the snapshot logged CHIP_GET; the file is not read
+            values.update({key: current[key] for key in cfg if key in current})
         frc = [key for key in cfg if key not in _APPLY_ORDER]
         if frc:
             stored = await super()._get_mgr_cfg(frc)
-            if stored is not None:
-                values.update(stored)
+            if stored is None:
+                return None  # the store logged its own entry
+            values.update(stored)
         return values
 
     async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
@@ -272,7 +274,7 @@ class SCD30_Reader(SensorReaderConfig):
             return False, {}
         write, results = outcome
         for key, result in results.items():
-            if result == "Invalid":
+            if result == INVALID:
                 await self.pr.err_s("Invalid value for", key, errno=_ERR_BAD_ARG)
         setters = (
             self.set_temperature_offset,
@@ -287,7 +289,7 @@ class SCD30_Reader(SensorReaderConfig):
             if key not in write:
                 continue
             if not await setter(write[key]):  # type: ignore[arg-type]
-                results[key] = "Failed"
+                results[key] = FAILED
             elif key == "MeasInterval":  # a new interval: readiness starts over at it
                 self._frc_interval_s = write[key]  # type: ignore[assignment]
                 self._frc_reset()
@@ -299,19 +301,19 @@ class SCD30_Reader(SensorReaderConfig):
             # False stops it - after the writes, so an AmbPres in the same body cannot restart it.
             is_error, flag = type_or_range_error(cont_meas, _CONT_MEAS_FIELD)
             if is_error:
-                results["ContMeas"] = "Invalid"
+                results["ContMeas"] = INVALID
                 await self.pr.err_s("Invalid value for ContMeas", errno=_ERR_BAD_ARG)
             elif flag:
-                results["ContMeas"] = "Valid"
+                results["ContMeas"] = VALID
             elif await self.stop_continuous_measurement(value=False):
-                results["ContMeas"] = "Valid"
+                results["ContMeas"] = VALID
                 self._frc_reset()
                 await self._frc_not_measuring()
             else:
-                results["ContMeas"] = "Failed"
+                results["ContMeas"] = FAILED
         if frc:
             persisted, frc_results = await super()._set_mgr_cfg(frc, _VAL_FRC_NOISE + _VAL_FRC_RATE + _VAL_FRC_WINDOW)
-            results.update(frc_results if persisted else dict.fromkeys(frc, "Failed"))
+            results.update(frc_results if persisted else dict.fromkeys(frc, FAILED))
         return True, results
 
     async def _capture_frc_config(self) -> None:

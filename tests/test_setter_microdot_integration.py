@@ -88,11 +88,17 @@ def make_ntp_client() -> NTPClient:
     return client
 
 
+class _NoopHolder:
+    def hold(self, closable: object) -> None:
+        pass
+
+
 class _FakeRequest:
     # Same minimal stand-in as test_asy_api_response.py's own - mocks only the .json property boundary.
     def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
+        self.sock = (_NoopHolder(), _NoopHolder())
 
     @property
     def json(self) -> object:  # matches asy_api_response.py's own _RequestLike Protocol
@@ -330,7 +336,7 @@ def _wifi_app(client: WifiService) -> Microdot:
     app = Microdot()
 
     @app.put("/net/cmd")
-    async def network_cmd(request: Request) -> "ar.ResponseEnvelope":
+    async def network_cmd(request: "ar._RequestLike") -> "ar.ResponseEnvelope":
         return await _simulated_set_network_endpoint(client, request)
 
     return app
@@ -459,7 +465,7 @@ def _bmp_app(reader: BMP3XX_Reader) -> Microdot:
     app = Microdot()
 
     @app.put("/sensors/cmd")
-    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+    async def sensor_cmd(request: "ar._RequestLike") -> "ar.ResponseEnvelope":
         data, err = ar.parse_cmd_request(request, ["setBMP"])
         if err is not None:
             return err
@@ -573,7 +579,7 @@ def _ntp_setter_app(client: NTPClient) -> Microdot:
     app = Microdot()
 
     @app.put("/time/cmd")
-    async def timing_cmd(request: Request) -> "ar.ResponseEnvelope":
+    async def timing_cmd(request: "ar._RequestLike") -> "ar.ResponseEnvelope":
         data, err = ar.parse_cmd_request(request, ["setTiming"])
         if err is not None:
             return err
@@ -701,7 +707,7 @@ def _sgp_app(reader: SGP40_Reader) -> Microdot:
     app = Microdot()
 
     @app.put("/sensors/cmd")
-    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+    async def sensor_cmd(request: "ar._RequestLike") -> "ar.ResponseEnvelope":
         data, err = ar.parse_cmd_request(request, ["setSGP"])
         if err is not None:
             return err
@@ -795,7 +801,7 @@ def _scd_app(reader: SCD30_Reader) -> Microdot:
     app = Microdot()
 
     @app.put("/sensors/cmd")
-    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+    async def sensor_cmd(request: "ar._RequestLike") -> "ar.ResponseEnvelope":
         return await _simulated_set_scd_endpoint(reader, request)
 
     return app

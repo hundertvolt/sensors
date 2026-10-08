@@ -39,7 +39,6 @@ _NOT_YET_CLEANED: "dict[str, str]" = {
     "digital_twin/machine.py": _REASON_RUNNER,
     "digital_twin/run_generic_integration.py": _REASON_RUNNER,
     "digital_twin/segfault_stress_repro.py": _REASON_RUNNER,
-    "js/mock-server.js": _REASON_COMMENT,
     "pyproject.toml": _REASON_COMMENT,
     "scripts/_digital_twin_ci_suite.py": _REASON_RUNNER,
     "scripts/build_firmware.py": _REASON_RUNNER,

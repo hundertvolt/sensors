@@ -254,8 +254,8 @@ def test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Numeric coercion (SPECIFICATION.md C.10): the private halves behind checked_int()/checked_float(),
-# which the webserver's pause dispatch, the generated LED callback and the ISL29125 driver call.
+# Numeric coercion (SPECIFICATION.md C.10): the private halves behind checked_int()/checked_float(), which the
+# webserver's pause and LED dispatch and the BMP3XX, SGP40 and (through checked_numeric()) ISL29125 drivers call.
 # ---------------------------------------------------------------------------
 
 
@@ -1693,6 +1693,11 @@ def test_get_values_empty_schema_returns_empty_list_not_none() -> None:
 def _tenths(value: "cm.CfgValue") -> "cm.CfgValue":
     assert isinstance(value, float)
     return round(value * 10)
+
+
+def test_the_four_result_words_are_plain_module_constants() -> None:
+    # Every src/ site that sets a per-field result imports these by name; tests keep the wire words literal.
+    assert (cm.VALID, cm.UNCHANGED, cm.INVALID, cm.FAILED) == ("Valid", "Unchanged", "Invalid", "Failed")
 
 
 def test_compare_before_write_outcome_rows() -> None:

@@ -363,7 +363,7 @@ def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: s
 
 def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined_hotspot: str) -> None:
     # A non-GET to an unmatched path resolves to 405 inside Microdot's routing, before
-    # _serve_static() is reached - so the redirect fallback cannot leak into an unrelated error
+    # _StaticRoutes.serve() is reached - so the redirect fallback cannot leak into an unrelated error
     # path. The hotspot<->STA toggle is not repeated here: Part A.5, and ~15-30s per cycle.
     reset_all_error_logs(joined_hotspot)
     res = http_client.fetch(joined_hotspot, 80, "PUT", "/generate_204", {}, timeout_s=_PROBE_TIMEOUT_S)

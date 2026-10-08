@@ -14,7 +14,7 @@ from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, utc_now
 from asy_captive_dns import CaptiveDNS
-from asy_config_manager import make_dict, name_cfg, schema_dict, schema_names
+from asy_config_manager import INVALID, make_dict, name_cfg, schema_dict, schema_names
 from asy_dns_client import host_label_ok
 from asy_print_log import DEFAULT_LOG, LogConfig
 
@@ -295,7 +295,7 @@ class WifiService(SensorReaderConfig):
             await self.pr.err_s("Refusing", key, "- outside the radio's accepted form", errno=_ERR_BAD_ARG)
         ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
         for key in refused:
-            results[key] = "Invalid"
+            results[key] = INVALID
         return ok, results
 
     async def _activate_hotspot_ap(self, country: str, hostname: str, password: str) -> None:

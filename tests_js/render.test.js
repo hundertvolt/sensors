@@ -721,13 +721,10 @@ describe("renderSection", () => {
         expect(mustQuery(card, ".apply-result").textContent).toContain("COffset: Invalid");
     });
 
-    it("reports Failed (not Invalid) for non-numeric text in a composite subfield instead of silently submitting 0 (regression)", async () => {
+    it("reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)", async () => {
         // The same NaN -> null -> 0 gap as the number-field case above, through
         // collectGroupBody()'s composite branch: r's min is 0, so garbage becoming 0 would pass.
-
-        // "Failed", not "Invalid": the dispatch layer only checks isinstance(payload, dict), so
-        // a non-numeric subfield fails inside the callback's own cast, which
-        // _dispatch_notification_led() reports like any other callback exception.
+        // A non-numeric member is refused by the dispatcher's per-member validation (SPECIFICATION.md A.8).
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -743,14 +740,13 @@ describe("renderSection", () => {
         await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
-        expect(card.dataset.applyStatus).toBe("failed");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Failed");
+        expect(card.dataset.applyStatus).toBe("invalid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Invalid");
     });
 
-    it("reports Failed (not Invalid) for a composite field submitted with only some subfields filled", async () => {
-        // collectGroupBody() sends only the subfields the visitor filled in, and LightCmdLED's
-        // callback indexes them directly - so a missing one raises KeyError there and reports
-        // "Failed". "Invalid" is reserved for a payload that is not a dict at all (Part A.8).
+    it("reports Invalid for a composite field submitted with only some subfields filled", async () => {
+        // collectGroupBody() sends only the subfields the visitor filled in; the dispatcher refuses a
+        // payload missing a member as "Invalid", the answer to any malformed one (SPECIFICATION.md A.8).
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -765,8 +761,8 @@ describe("renderSection", () => {
         await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
-        expect(card.dataset.applyStatus).toBe("failed");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Failed");
+        expect(card.dataset.applyStatus).toBe("invalid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("LightCmdLED: Invalid");
     });
 
     it("reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)", async () => {

@@ -1,0 +1,67 @@
+PASS test_a_report_that_cannot_print_still_releases_the_task_and_never_raises
+PASS test_each_unretrieved_death_through_the_real_loop_is_reported_once
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 2048)
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 2048)
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 16)
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 2048)
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 16)
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 2048)
+Task exception wasn't retrieved
+future: <Task> coro= <generator object '_dies' at 7f0d2d42fcc0>
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 2048)
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 107, in _dies
+ValueError: ('probe', 2048)
+PASS test_unretrieved_deaths_through_the_real_loop_retain_nothing
+PASS test_install_sets_the_report_and_is_idempotent
+PASS test_the_report_always_prints_the_marker_and_the_traceback_and_releases_the_task
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 83, in _raised
+ValueError: probe
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 83, in _raised
+_ExhaustionError: simulated allocation failure
+PASS test_the_report_returns_and_releases_the_task_with_the_heap_locked
+PASS test_the_marker_carries_neither_memory_gate_word
+PASS test_microtest_installed_the_report_before_any_test_ran
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 83, in _raised
+ValueError: probe
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "tests/test_digital_twin_unix_port_unretrieved_report.py", line 83, in _raised
+ValueError: probe
+PASS test_the_reports_outputs_allocate_nothing
+9/9 passed, 0 failed, 0 skipped

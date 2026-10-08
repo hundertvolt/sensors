@@ -195,8 +195,39 @@ def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(repo
     returned = _status_literal(fn)
     entries = {k.value: ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
     assert "IP" not in entries
-    fields = {"IPv4": "IP", "Subnet": "Subnet", "Gateway": "Gateway", "DNS": "DNS", "RSSI": "RSSI", "Mode": "Mode", "Connected": "Connected"}
+    fields = {"IPv4": "IP", "Subnet": "Subnet", "Gateway": "Gateway", "DNS": "DNS", "RSSI": "RSSI", "Mode": "Mode", "Connected": "Connected", "WifiTS": "TS"}
     assert {key: entries[key] for key in fields} == {key: f"{snapshot}.{field}" for key, field in fields.items()}
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_networking_status_reads_the_webservers_drop_window(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
+    fn = _function(source, "_networking_status")
+    returned = _status_literal(fn)
+    entries = {k.value: ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
+    assert entries["HTTPDropped"] == "await webserver.get_dropped_count()"
+    guards = [ast.dump(n.test) for n in fn.body if isinstance(n, ast.Assert)]
+    expected = ["conn is not None and ntp is not None and webserver is not None"] + (["mqtt is not None"] if "mqtt = MQTTClient(" in source else [])
+    assert guards == [ast.dump(ast.parse(e, mode="eval").body) for e in expected], guards
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_led_callback_takes_the_validated_values_and_only_signals(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # The webserver validates R/G/B/T against its own schemas, so the callback is a plain hand-over.
+    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
+    fn = _function(source, "_notification_led_callback")
+    assert ast.unparse(fn.args) == "r: int, g: int, b: int, t: float"
+    assert fn.returns is not None and ast.unparse(fn.returns) == "bool"
+    assert [ast.unparse(n) for n in fn.body] == ["assert neopixel is not None", "return neopixel.led_signal(r, g, b, t)"]
+    assert "_FIELD_LED_" not in source
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
+    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
+    assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "static", "log"]
+    assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "uptime_s") == "sysfunct.get_uptime"
 
 
 def _status_literal(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> ast.Dict:

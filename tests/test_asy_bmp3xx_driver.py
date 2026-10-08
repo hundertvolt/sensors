@@ -1374,14 +1374,15 @@ def test_get_dict_cfg_overlays_live_sensor_readback_on_oversampling_and_filter_f
     assert cfg["SampleInterval"] == 2  # pure config-file field, no live equivalent to read back
 
 
-def test_get_dict_cfg_keeps_none_for_oversampling_when_sensor_unreachable() -> None:
+def test_get_dict_cfg_of_an_unreachable_sensor_is_the_unavailable_marker() -> None:
+    # The marker in place of the whole map: no null a reader would take for an unset value, and no
+    # config-file field beside it. The failed read keeps its one CHIP_GET entry, nothing more.
     i2c, reader = make_clean_reader("dict_cfg_unreachable")
     fake(i2c).nak_addresses.add(_ADDR)
-    cfg = run(reader.get_dict_cfg())["BMP3XX"]
-    assert cfg["PresOvers"] is None
-    assert cfg["TempOvers"] is None
-    assert cfg["FiltCoeff"] is None
-    assert cfg["SampleInterval"] == 2  # config-only field, unaffected by the sensor bus failure
+    assert run(reader.get_dict_cfg()) == {"BMP3XX": {"error": "unavailable"}}
+    assert _count(reader, "E", "CHIP_GET") == 1
+    assert _count(reader, "E", "CFG_CALLBACK_RAISED") == 0
+    assert run(reader._read_sensor_dict()) is None  # the driver's half: None, not a map of nulls
 
 
 def test_get_config_snapshot_holds_the_device_lock_once_for_the_whole_batch_not_per_field() -> None:

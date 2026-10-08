@@ -1,0 +1,31 @@
+FF.........                                                              [100%]
+=================================== FAILURES ===================================
+________ test_no_occurrence_is_persisted_as_both_a_fault_and_a_warning _________
+
+tree_pairs = {('src/asy_base_classes.py', '_get_dict_cfg', ('W', 'CALLBACK_KEYS'), ('E', 'CFG_CALLBACK_RAISED')), ('src/asy_base_cl...P_RESET'), ('E', 'READ_RANGE')), ('src/asy_captive_dns.py', 'run', ('E', 'UNEXPECTED'), ('W', 'SOCKET_TEARDOWN')), ...}
+
+    def test_no_occurrence_is_persisted_as_both_a_fault_and_a_warning(tree_pairs: "set[Pair]") -> None:
+        unlisted = tree_pairs - set(_ALLOWED)
+>       assert not unlisted, "a persisted fault and warning on one path, not in _ALLOWED - one occurrence is one or the other:\n" + _describe(unlisted)
+E       AssertionError: a persisted fault and warning on one path, not in _ALLOWED - one occurrence is one or the other:
+E         src/asy_webserver_service.py _serve(): E UNEXPECTED then W HTTP_BAD_HEAD
+E         src/asy_webserver_service.py _serve(): E UNEXPECTED then W HTTP_PEER_RESET
+E       assert not {('src/asy_webserver_service.py', '_serve', ('E', 'UNEXPECTED'), ('W', 'HTTP_BAD_HEAD')), ('src/asy_webserver_service.py', '_serve', ('E', 'UNEXPECTED'), ('W', 'HTTP_PEER_RESET'))}
+
+tests_scripts/test_fault_or_warning_never_both.py:247: AssertionError
+_____________________ test_every_allowed_pair_still_occurs _____________________
+
+tree_pairs = {('src/asy_base_classes.py', '_get_dict_cfg', ('W', 'CALLBACK_KEYS'), ('E', 'CFG_CALLBACK_RAISED')), ('src/asy_base_cl...P_RESET'), ('E', 'READ_RANGE')), ('src/asy_captive_dns.py', 'run', ('E', 'UNEXPECTED'), ('W', 'SOCKET_TEARDOWN')), ...}
+
+    def test_every_allowed_pair_still_occurs(tree_pairs: "set[Pair]") -> None:
+        stale = set(_ALLOWED) - tree_pairs
+>       assert not stale, "these _ALLOWED pairs no longer occur - drop or rename them:\n" + _describe(stale)
+E       AssertionError: these _ALLOWED pairs no longer occur - drop or rename them:
+E         src/asy_base_classes.py _get_dict_cfg(): E CFG_GET_RAISED then W CALLBACK_KEYS
+E       assert not {('src/asy_base_classes.py', '_get_dict_cfg', ('E', 'CFG_GET_RAISED'), ('W', 'CALLBACK_KEYS'))}
+
+tests_scripts/test_fault_or_warning_never_both.py:252: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_no_occurrence_is_persisted_as_both_a_fault_and_a_warning
+FAILED tests_scripts/test_fault_or_warning_never_both.py::test_every_allowed_pair_still_occurs
+2 failed, 9 passed in 3.08s

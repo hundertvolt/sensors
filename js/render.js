@@ -41,7 +41,7 @@ function readInputValue(rawInputValue, field) {
 
 /**
  * A GET's non-ok/empty response, worded using the server's own shaped-error `descr` when present
- * (SPECIFICATION.md Part A.5's `_ERROR_SHAPES`/`_shaped_error_handler` - every 400/404/405/413/500
+ * (SPECIFICATION.md Part A.5's `_ERROR_STATUSES`/`_shaped_error_handler` - every 400/404/405/413/500
  * carries one) rather than a bare status code.
  * @param {{ok: boolean, status: number, body: unknown}} response
  * @param {string} url

@@ -2110,17 +2110,18 @@ def test_read_sensor_dict_reports_the_five_hardware_backed_fields() -> None:
     reader._range_auto = False
     with _FastAsyncSleep():
         result = run(reader._read_sensor_dict())
+    assert result is not None
     assert set(result) == {"Resolution", "Range", "IRCompOffset", "IRCompAdjust"}
 
 
-def test_read_sensor_dict_degrades_to_an_empty_dict_when_the_snapshot_cannot_be_decoded() -> None:
-    # The caller's own half of the guard above. Unhandled, the tuple unpack that follows would
-    # raise out of a REST GET rather than answering with whatever the driver still knows.
+def test_read_sensor_dict_returns_none_when_the_snapshot_cannot_be_decoded() -> None:
+    # The caller's own half of the guard above: an undecodable snapshot is no reading, so None (the
+    # GET's unavailable marker) rather than a raise from the tuple unpack or an empty map.
     _i2c, reader = ready_reader("sensor_dict_undecodable")
     reader._range_auto = False
     reader._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
     with _FastAsyncSleep():
-        assert run(reader._read_sensor_dict()) == {}
+        assert run(reader._read_sensor_dict()) is None
 
 
 def test_a_snapshot_field_read_degrades_to_none_when_the_snapshot_cannot_be_decoded() -> None:
@@ -2151,27 +2152,52 @@ def test_range_readback_is_suppressed_while_autorange_is_on() -> None:
     _i2c, reader = ready_reader("range_readback")
     reader._range_auto = True
     with _FastAsyncSleep():
-        assert "Range" not in run(reader._read_sensor_dict())
+        automatic = run(reader._read_sensor_dict())
+    assert automatic is not None
+    assert "Range" not in automatic
     reader._range_auto = False
     with _FastAsyncSleep():
-        assert "Range" in run(reader._read_sensor_dict())
+        manual = run(reader._read_sensor_dict())
+    assert manual is not None
+    assert "Range" in manual
 
 
-def test_read_sensor_dict_returns_all_none_and_logs_chip_get_on_a_bus_fault() -> None:
-    # Caught HERE rather than left to _get_dict_cfg()'s own guard: that outer guard skips the
-    # whole dict update and leaves the fields showing persisted values as if they were live.
+def test_read_sensor_dict_returns_none_and_logs_chip_get_on_a_bus_fault() -> None:
+    # Caught HERE, so the bus fault keeps its own CHIP_GET entry; the None tells _get_dict_cfg()
+    # to answer the unavailable marker rather than fields a reader would take for unset ones.
     i2c, reader = ready_reader("sensor_dict_fail")
 
-    async def scenario() -> "tuple[dict[str, int | float | str | bool | None], ErrorLog]":
+    async def scenario() -> "tuple[dict[str, int | float | str | bool | None] | None, ErrorLog]":
         with _FastAsyncSleep():
             fake(i2c).nak_addresses.add(_ADDR)
             result = await reader._read_sensor_dict()
         return result, await reader.get_error_counter()
 
     result, counters = run(scenario())
-    assert set(result) == {"Resolution", "Range", "IRCompOffset", "IRCompAdjust"}
-    assert all(value is None for value in result.values())
-    assert code("E", "CHIP_GET") in errors(counters)
+    assert result is None
+    assert errors(counters).count(code("E", "CHIP_GET")) == 1
+
+
+def test_get_dict_cfg_is_the_unavailable_marker_after_a_bus_fault_or_an_undecodable_snapshot() -> None:
+    # Both of _read_sensor_dict()'s no-reading paths reach the GET as exactly the marker, in place
+    # of the map: no stored value beside it, and the bus fault's one CHIP_GET entry.
+    i2c, reader = ready_reader("dict_cfg_bus_fault")
+
+    async def bus_fault() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], ErrorLog]":
+        with _FastAsyncSleep():
+            fake(i2c).nak_addresses.add(_ADDR)
+            body = await reader.get_dict_cfg()
+        return body, await reader.get_error_counter()
+
+    body, counters = run(bus_fault())
+    assert body == {"ISL29125": {"error": "unavailable"}}
+    assert errors(counters).count(code("E", "CHIP_GET")) == 1
+    assert code("E", "CFG_CALLBACK_RAISED") not in errors(counters)
+
+    _i2c, undecodable = ready_reader("dict_cfg_undecodable")
+    undecodable._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # a planted undecodable snapshot
+    with _FastAsyncSleep():
+        assert run(undecodable.get_dict_cfg()) == {"ISL29125": {"error": "unavailable"}}
 
 
 def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> None:

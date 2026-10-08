@@ -1,0 +1,24 @@
+WS lane working notes (scratch, not repo).
+WS1 WIP 4047b3b on audit/u19-ws (base fb0657d).
+Before figures (test_asy_webserver_service.py, 198 tests): e 17.1 s, f 18.1 s, settrace 52.4 s.
+WS1 figures (199 tests, overlay): e 20.2 s, f 19.0 s, settrace 54.9 s.
+Seen failing on old src (ws1_seen_failing_on_old_src.log): 15 tests (9 bytes-writer, reset trace, LED tuple,
+ flat marker, unknown sensor, unknown key, EOFError).
+Deviations: no `import errno` (MicroPython errno has no EPIPE; _EPIPE = const(32)); _HeadRefused -> _HeadRefusedError (N818);
+ _StaticRoutes(site, chunk_bytes) without pr (unused); _ModuleLike comment names SystemService (Neopixel/CaptiveDNS do not satisfy it);
+ request-line rule adds "/" in version; head_refused wins over peer_gone (one entry); refusal path try/finally;
+ release() in the inner try's finally; _dispatch_notification_led returns (word, busy); TimerStarter kept;
+ _pieces_response ignore stays (stub body str|bytes); _put_sensors new ignore[assignment] (dict invariance);
+ _apply_settings_groups arg-type ignore stays (handle_set_cmd takes SensorReaderConfig); flat GET per-field marker (new, for I's fold 8);
+ test doubles: _OneStream base (full _StreamLike surface), readline removed from fakes; f2b head/body in two segments.
+Cross-lane reds: test_error_catalog (G1), test_fault_or_warning_never_both 2 _serve rows (G, A-9), test_code_conventions
+ _PENDING_ASSERTS (G), test_tunables_register 4 tags (D), decision-vocab allow-list lines 203/204 (lead),
+ mypy: test_website_build_integration.py:75, test_neopixel_wifi_integration.py:231, allocation_need_per_source.py:92-93 (I),
+ test_readiness_gates.py:329 positional None binds uptime_s (I, A-3), C1's _RequestLike.sock -> 21 arg-type errors
+ (test_setter_microdot_integration.py 20, test_asy_api_response.py:175) under the contract as stated.
+TODO after resume: tests 23 (non-object sensor entry, dispatch key once, status unknown keys), 72 (near misses, non-string),
+ 73 (malformed LED, coercion, False->Failed + busy descr, pause shapes), 74 existing (f1 refusal logged + count, close-writer
+ entries, body-phase reset W48, write-phase timeout code) + static (HEAD close, failed/timed-out write close, Cache-Control),
+ 77 (bytes count, multibyte SSID, NaN), 78 (route table exact), 24 torn read (needs B1 lock), OF-34 (9 tests on _VirtualClock,
+ namespace gets sleep etc.), OF-46 labels (A-22), 70/71 rest, buffered-body readexactly test, seen-failing evidence via
+ `git show fb0657d:src/asy_webserver_service.py` overlay. Scan + final report.

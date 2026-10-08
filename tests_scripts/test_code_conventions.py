@@ -191,7 +191,7 @@ def _is_generated_narrowing(node: ast.Assert) -> bool:
 
 # A src assert whose removal a later unit's change owns, keyed by file and enclosing function; an
 # entry whose assert has gone fails (test_every_pending_assert_is_still_there).
-_PENDING_ASSERTS = {("src/asy_webserver_service.py", "_serve_static"): "U19"}
+_PENDING_ASSERTS: "dict[tuple[str, str], str]" = {}
 
 
 def _asserts_by_function(module: Module) -> list[tuple[str, ast.Assert]]:

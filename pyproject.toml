@@ -274,9 +274,8 @@ max-returns = 10
 "tests/test_asy_uart_comm.py" = ["ANN401"]
 "tests/_uart_comm_harness.py" = ["ANN401"]
 "tests/test_asy_webserver_service.py" = ["ANN401"]
-# ANN401, category 2 - the asyncio.start_server() callback seam: MicroPython has ONE Stream for both
-# directions and CPython's StreamWriter has no aclose(), so no annotation fits both; everything past
-# _serve() is typed.
+# ANN401, category 2 - digital_twin/_http_client.py's reader seam: MicroPython has ONE Stream for
+# both directions and readinto() has no clean non-Any type, so no annotation fits both.
 #
 # ANN401, category 3 - `_wlan` bridges the real WLAN board stub and tests/network.py's fake for
 # fake-only attributes; a three-file family (D.10), change all three or none.
@@ -316,10 +315,9 @@ max-returns = 10
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
-# asy_api_response.py above, and asserts its static mount is non-None purely to narrow the type for
-# mypy (the route is only ever registered when it isn't None).
-"src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
-"digital_twin/_http_client.py" = ["ANN401"]  # ANN401: category 2 above, the reader-side half of the same one-Stream-for-both-directions seam - readinto() has no clean non-Any type either
+# asy_api_response.py above.
+"src/asy_webserver_service.py" = ["SLF001"]
+"digital_twin/_http_client.py" = ["ANN401"]  # ANN401: category 2 above
 # S603 (untrusted subprocess input) has no satisfiable form for a build driver: build_firmware.py's
 # one call runs the repo's own build_website.sh by absolute path, shell=False. The rule stays live
 # everywhere else.
@@ -441,7 +439,6 @@ module = [
     "asy_neopixel_driver",
     "asy_notification_service",
     "asy_system_service",
-    "asy_webserver_service",
     "machine",
     "serving_at_default_gc",
     "test_asy_api_response",

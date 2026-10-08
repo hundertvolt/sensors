@@ -165,3 +165,10 @@ short-sessions warning. The client ID defaults to the device's hostname.
 **When the broker is away** the device keeps measuring and serving its pages; it retries the broker
 after 2 s, doubling up to once a minute, and each failed attempt shows in the MQTT error history.
 
+## Clearing the error logs
+
+The Status page's error-log reset (`PUT /status {"ResetErrors": true}`) clears every module's log
+and the dropped-connection count (`HTTPDropped`) at once. It must finish within the device's
+15-second request limit, the same limit the web page waits; on a busy device it can take several
+seconds. A reset that reports "Failed" means one module's log could not be written; the other logs
+are cleared. Read and save the logs before clearing them: the reset cannot be undone.

@@ -199,9 +199,6 @@ src/asy_uart_comm.py	no machine.Timer anywhere in this module, deliberately
 src/asy_uart_driver.py	Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() infers "a r
 src/asy_uart_link_driver.py	Registered as a maintenance sensor, not a new /status key - that list is variabl
 src/asy_webserver_service.py	Only a group whose field subset intersects the request body is dispatched: one w
-src/asy_webserver_service.py	Reuses type_or_range_error() against a synthetic FieldSchema rather than a secon
-src/asy_webserver_service.py	The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTE
-src/asy_webserver_service.py	per-route handler shapes differ by design - Microdot's own
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
 src/asy_system_service.py	A device with no watchdog and one deliberately left to die take the same path.
 src/asy_system_service.py	It pushes on "Unchanged" too, not only on a real change, so every logger's live
@@ -307,11 +304,9 @@ tests/test_asy_udp_socket.py	Below the OS ephemeral range (32768-60999) so a con
 tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_udp_socket.py	write() semantically requires a connected socket, so calling it on a bound-but-u
 tests/test_asy_webserver_service.py	A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") n
-tests/test_asy_webserver_service.py	A torn read: Interval read before the mutation, Offset read after it - exactly t
 tests/test_asy_webserver_service.py	Accepted means APPLIED: the real field next to the padding reached the module.
 tests/test_asy_webserver_service.py	Deliberately a plain list of pre-fetched fragments handed to a sync iterator, ne
 tests/test_asy_webserver_service.py	Deliberately lightweight: sections A-E test the webserver's own dispatch/aggrega
-tests/test_asy_webserver_service.py	F.2b - request-body buffering: an oversized body must never be read into memory
 tests/test_asy_webserver_service.py	HTTPException (abort()) is caught separately by ext/microdot.py's dispatch_reque
 tests/test_asy_webserver_service.py	Same defensive bound as test_asy_uart_driver.py's own run(): section F below del
 tests/test_asy_webserver_service.py	Same sys.path convention as tests/test_setter_microdot_integration.py: scripts/t

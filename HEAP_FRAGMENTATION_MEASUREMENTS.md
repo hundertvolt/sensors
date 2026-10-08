@@ -200,8 +200,8 @@ Each was caught only by an explicit audit, and each is re-enterable. Occurrences
 13. **Device-script habits** (the rest are `tests_hardware/README.md`'s four): build every line the
     script will print *before* shaping the heap; under `mpremote run`, `sys.argv` reads `[]` and
     cannot be assigned, so select an arm with an `exec`'d global; a wrapper around a route handler
-    must pass through every keyword Microdot passes (`_get_static` takes `filename`); an `await`-less
-    `get_value()` is a coroutine object, always truthy — read `.value`.
+    must pass through every keyword Microdot passes (`_StaticRoutes.get` takes `filename`); an
+    `await`-less `get_value()` is a coroutine object, always truthy — read `.value`.
 14. **Read the FRAM `errcount` before anything clears it**, and remember that a device script
     building its own `FRAMManager` writes production's first chunk (CLAUDE.md's FRAM-log rule).
 15. **Re-derive a tool's printed summary from its raw output** when a label looks wrong.

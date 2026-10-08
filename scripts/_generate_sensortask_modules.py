@@ -4,12 +4,12 @@
 # dependencies = []
 # ///
 """Pre-generates every real device's `sensortask_<device>.py`, its wiring-plan JSON (an independent
-oracle for its consumers) and its website definitions via `buildgen` into gitignored
-`build/generated_src/`, regenerated fresh every run (SPECIFICATION.md E.3)."""
+oracle for its consumers), its website definitions and its REST API reference via `buildgen` into
+gitignored `build/generated_src/`, regenerated fresh every run (SPECIFICATION.md E.3)."""
 
 # Usage: uv run scripts/_generate_sensortask_modules.py
-# Writes sensortask_<d>.py, sensortask_<d>_wiring_plan.json and definitions/<d>.json per device, plus
-# definitions/index.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
+# Writes sensortask_<d>.py, sensortask_<d>_wiring_plan.json, definitions/<d>.json and api/<d>.json per device,
+# plus definitions/index.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
 
 import json
 import sys
@@ -18,6 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from buildgen.api_reference import api_reference_json, generate_api_reference  # noqa: E402
 from buildgen.definitions import generate_definitions  # noqa: E402
 from buildgen.errors import BuildError  # noqa: E402
 from buildgen.generate import generate_device  # noqa: E402
@@ -29,6 +30,8 @@ def main() -> int:
     out_dir = REPO_ROOT / "build" / "generated_src"
     definitions_dir = out_dir / "definitions"
     definitions_dir.mkdir(parents=True, exist_ok=True)
+    api_dir = out_dir / "api"
+    api_dir.mkdir(exist_ok=True)
     # Every real device, discovered from the directory rather than a hand-kept list, so a seventh
     # device needs no edit here. A zz_test_ fixture a concurrent test left in devices/ is never one
     # (the same rule as tests_scripts/_devices.py).
@@ -39,23 +42,26 @@ def main() -> int:
     build_date = current_build_date()
     for device_toml in device_tomls:
         device = device_toml.stem
+        # Every output of a device is built before the first is written: a failing stage leaves none of its files.
         try:
             generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", build_date=build_date)
+            # generate_device() has already put the model in construction order, which the cards follow.
+            definitions = generate_definitions(generated.model, REPO_ROOT / "src")
+            reference = generate_api_reference(generated.model, REPO_ROOT / "src")
         except BuildError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-        (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
         wiring_plan = compute_twin_wiring(generated.model)
         # "instances" is this script's addition, outside compute_twin_wiring()'s I2C/SPI-only
         # contract: every driver the TOML declares, bus-attached or not. An independent,
         # pre-construction oracle, so the scenario checks need not reflect on the module itself.
         wiring_plan["instances"] = sorted({spec.driver for spec in generated.model.instances.values()})
+        (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
         (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))
-        # generate_device() has already put the model in construction order, which the cards follow.
-        definitions = generate_definitions(generated.model, REPO_ROOT / "src")
         (definitions_dir / f"{device}.json").write_text(json.dumps(definitions, indent=2))
+        (api_dir / f"{device}.json").write_text(api_reference_json(reference))
     (definitions_dir / "index.json").write_text(json.dumps({"devices": [p.stem for p in device_tomls]}))
-    print(f"Generated {len(device_tomls)} device module(s) + wiring plan(s) + definitions into {out_dir}")
+    print(f"Generated {len(device_tomls)} device module(s) + wiring plan(s) + definitions + API reference(s) into {out_dir}")
     return 0
 
 

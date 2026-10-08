@@ -1524,7 +1524,20 @@ def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
     assert set(names) == {"TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal", "FRCNoise", "FRCRate", "FRCWindow"}
 
 
-def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> None:
+def _record_file_reads(reader: SCD30_Reader) -> "list[list[str]]":
+    # Every key list the config file is asked for, recorded on the reader's own ConfigManager.
+    reads: list[list[str]] = []
+    real_get_dict = reader.cfgmgr.get_dict
+
+    async def recording_get_dict(keys: "list[str]") -> "dict[str, CfgValue] | None":
+        reads.append(list(keys))
+        return await real_get_dict(keys)
+
+    reader.cfgmgr.get_dict = recording_get_dict  # type: ignore[method-assign]
+    return reads
+
+
+def test_get_dict_cfg_on_a_bus_fault_is_the_unavailable_marker_not_a_crash() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
@@ -1535,34 +1548,45 @@ def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> N
     result, log = run(scenario())
     assert log["SCD30"]["ErrCount"] == 1
     assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
-    fields = result["SCD30"]
-    assert fields == {
-        "TempOffset": None,
-        "MeasInterval": None,
-        "AmbPres": None,
-        "Altitude": None,
-        "ForceCalRef": None,
-        "SelfCal": None,
-        "FRCNoise": 20.0,
-        "FRCRate": 10.0,
-        "FRCWindow": 60,
-    }
+    assert result == {"SCD30": {"error": "unavailable"}}  # in place of the map: no null chip key, no file key beside it
 
 
-def test_get_dict_cfg_after_a_failing_snapshot_shows_none_and_one_entry() -> None:
-    # A CRC-failing snapshot on a live bus (nothing queued), beside the NAK case above.
+def test_get_dict_cfg_after_a_failing_snapshot_is_the_unavailable_marker_and_one_entry() -> None:
+    # A CRC-failing snapshot on a live bus (nothing queued), beside the NAK case above: the whole read
+    # is unavailable, so the file is not asked for its keys; a good snapshot afterwards reads them.
     reader = make_reader()
+    reads = _record_file_reads(reader)
 
     async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], ErrorLog]":
         result = await reader.get_dict_cfg()
         return result, await reader.get_error_counter()
 
     result, log = run(scenario())
-    expected: dict[str, int | float | str | bool | None] = dict.fromkeys(("TempOffset", "MeasInterval", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"))
-    expected.update({"FRCNoise": 20.0, "FRCRate": 10.0, "FRCWindow": 60})  # the file still answers
-    assert result == {"SCD30": expected}
+    assert result == {"SCD30": {"error": "unavailable"}}
     assert log["SCD30"]["ErrCount"] == 1
     assert log["SCD30"]["ErrNum"][-1] == code("E", "CHIP_GET")
+    assert reads == []
+
+    _queue_snapshot(reader_fake_i2c(reader))
+    assert run(reader.get_dict_cfg())["SCD30"]["FRCWindow"] == 60
+    assert reads == [["FRCNoise", "FRCRate", "FRCWindow"]]
+
+
+def test_get_dict_cfg_with_an_unreadable_config_file_is_the_unavailable_marker() -> None:
+    # The composite store's file half: an unreadable file is the same marker, never the six chip
+    # values beside null FRC keys. The store keeps its own entry; the reader adds none.
+    reader = make_reader()
+    _queue_snapshot(reader_fake_i2c(reader))
+    reader.cfgmgr.valid = False  # an unreadable or corrupted config file
+
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], ErrorLog, ErrorLog]":
+        result = await reader.get_dict_cfg()
+        return result, await reader.get_error_counter(), await reader.cfgmgr.get_error_counter()
+
+    result, log, store_log = run(scenario())
+    assert result == {"SCD30": {"error": "unavailable"}}
+    assert log["SCD30"]["ErrCount"] == 0
+    assert store_log[reader.cfgmgr.name]["ErrNum"][-1] == code("E", "CFG_NOT_VALID")
 
 
 def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> None:

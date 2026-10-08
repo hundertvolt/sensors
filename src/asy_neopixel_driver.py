@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 _NAME = const("NEOPIXEL")
 # @tunable led.min_signal_s = 0.1
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the non-finite fallback
-_MAX_SIGNAL_S = const(60.0)  # the REST ceiling of t (buildgen's LED command bound, legacy led_cmd())
+_MAX_SIGNAL_S = const(60.0)  # the REST ceiling of t (asy_webserver_service.py's _LIGHT_CMD_FIELDS, legacy led_cmd())
 # @tunable led.refresh_hz = 20
 _NEOPIXEL_FREQ_HZ = const(20)
 # @tunable led.overlay_brightness = 50

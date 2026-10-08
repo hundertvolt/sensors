@@ -1,0 +1,17 @@
+..........F............                                                  [100%]
+=================================== FAILURES ===================================
+___________________ test_every_pending_assert_is_still_there ___________________
+
+modules = [Module(path='src/asy_api_response.py', tree=<ast.Module object at 0x7f7400236a40>), Module(path='src/asy_base_classes...dule object at 0x7f7400007850>), Module(path='src/asy_crc_checks.py', tree=<ast.Module object at 0x7f73ffe9e800>), ...]
+
+    def test_every_pending_assert_is_still_there(modules: list[Module]) -> None:
+        by_path = {m.path: m for m in modules}
+        gone = [key for key in _PENDING_ASSERTS if key[1] not in {func for func, _n in _asserts_by_function(by_path[key[0]])}]
+>       assert not gone, f"pending asserts no longer present - delete them from _PENDING_ASSERTS: {gone}"
+E       AssertionError: pending asserts no longer present - delete them from _PENDING_ASSERTS: [('src/asy_webserver_service.py', '_serve_static')]
+E       assert not [('src/asy_webserver_service.py', '_serve_static')]
+
+tests_scripts/test_code_conventions.py:361: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_code_conventions.py::test_every_pending_assert_is_still_there
+1 failed, 22 passed in 4.61s

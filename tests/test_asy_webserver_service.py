@@ -6,6 +6,7 @@ import gc
 import json
 import os
 import sys
+from collections import namedtuple
 
 # Same sys.path convention as tests/test_setter_microdot_integration.py: scripts/test.sh's
 # MICROPYPATH deliberately excludes ext/, so reaching the real vendored ext/microdot.py needs
@@ -19,8 +20,9 @@ from microdot import Microdot, Request, Response
 
 import asy_config_manager as cm
 import asy_webserver_service
+from asy_base_classes import SensorReader
 from asy_print_log import LogConfig
-from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+from asy_webserver_service import ROUTES, RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
 
 try:
     from typing import TYPE_CHECKING
@@ -31,7 +33,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Iterable
     from typing import Any, TypeVar
 
-    from asy_base_classes import JsonMapping
+    from asy_base_classes import JsonDict, JsonMapping
+    from asy_config_manager import WriteValidity
 
     T = TypeVar("T")
 
@@ -157,14 +160,40 @@ class _FakeModule:
 # ---------------------------------------------------------------------------
 
 
-class _ScriptedReader:
-    # Feeds pre-scripted byte chunks, each preceded by an optional asyncio.sleep(delay), so a test
-    # can simulate a paced/Slowloris client with no real I/O. Once exhausted, reads hang forever
-    # unless eof=True - matching real Stream behavior for a clean peer close vs. a wedged one.
-    def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False) -> None:
+class _OneStream:
+    # MicroPython hands start_server()'s callback one Stream as both reader and writer (src's _StreamLike); each
+    # double below plays one half and inherits the other as calls _serve() never makes on it, failing loudly.
+    def close(self) -> None:
+        raise AssertionError("close() on the reader half")
+
+    def get_extra_info(self, _name: str) -> object:
+        raise AssertionError("get_extra_info() on the reader half")
+
+    async def aclose(self) -> None:
+        raise AssertionError("aclose() on the reader half")
+
+    async def awrite(self, _data: bytes) -> None:
+        raise AssertionError("awrite() on the reader half")
+
+    async def read(self, _n: int) -> bytes:
+        raise AssertionError("read() on the writer half")
+
+    async def readexactly(self, _n: int) -> bytes:
+        raise AssertionError("readexactly() on the writer half")
+
+    async def wait_closed(self) -> None:
+        raise AssertionError("wait_closed() on the reader half")
+
+
+class _ScriptedReader(_OneStream):
+    # Feeds pre-scripted byte chunks, each preceded by an optional delay (on `clock` when given, else
+    # asyncio.sleep()), so a test can simulate a paced/Slowloris client with no real I/O. Once exhausted, reads
+    # hang forever unless eof=True - matching real Stream behavior for a clean peer close vs. a wedged one.
+    def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False, clock: "_VirtualClock | None" = None) -> None:
         self._chunks = list(chunks)
         self._buf = b""
         self._eof = eof
+        self._clock = clock
 
     async def _pull(self) -> bool:  # returns False once genuinely exhausted (caller decides what that means)
         if not self._chunks:
@@ -173,19 +202,20 @@ class _ScriptedReader:
             await asyncio.Event().wait()  # never set - simulates a silent/wedged connection
             return False  # unreachable, keeps type-checkers happy
         delay, chunk = self._chunks.pop(0)
-        if delay:
+        if delay and self._clock is not None:
+            self._clock.now += delay  # the trickle moves the test's time, never the host's
+            await asyncio.sleep(0)
+        elif delay:
             await asyncio.sleep(delay)
         self._buf += chunk
         return True
 
-    async def readline(self) -> bytes:
-        while b"\n" not in self._buf:
-            if not await self._pull():
-                line, self._buf = self._buf, b""
-                return line  # readline() never raises on early close - just returns the partial buffer
-        idx = self._buf.index(b"\n") + 1
-        line, self._buf = self._buf[:idx], self._buf[idx:]
-        return line
+    async def read(self, n: int) -> bytes:
+        # Up to n bytes of what has arrived, pulling the next scripted chunk only once the buffer is empty.
+        if not self._buf and not await self._pull():
+            return b""  # a clean close, as Stream.read() returns it
+        data, self._buf = self._buf[:n], self._buf[n:]
+        return data
 
     async def readexactly(self, n: int) -> bytes:
         while len(self._buf) < n:
@@ -195,10 +225,10 @@ class _ScriptedReader:
         return data
 
 
-class _HangingReader:
+class _HangingReader(_OneStream):
     # Never yields any bytes at all, on any call - the "opens a TCP connection and sends nothing,
-    # ever" shape from F.1, and the base for the outer-cap wedge tests in F.6/F.7.
-    async def readline(self) -> bytes:
+    # ever" shape, and the base for the outer-cap wedge tests of the concurrency and adversarial-input sections.
+    async def read(self, _n: int) -> bytes:
         await asyncio.Event().wait()
         return b""  # unreachable
 
@@ -207,18 +237,18 @@ class _HangingReader:
         return b""  # unreachable
 
 
-class _ClosedReader:
-    # Opens then immediately closes before sending any bytes - readline() returns empty immediately
-    # (matches real Stream.readline()'s no-raise-on-early-close behavior); readexactly() raises
+class _ClosedReader(_OneStream):
+    # Opens then immediately closes before sending any bytes - read() returns empty immediately
+    # (matches real Stream.read()'s no-raise-on-early-close behavior); readexactly() raises
     # EOFError immediately (matches Stream.readexactly()).
-    async def readline(self) -> bytes:
+    async def read(self, _n: int) -> bytes:
         return b""
 
     async def readexactly(self, _n: int) -> bytes:
         raise EOFError
 
 
-class _ScriptedWriter:
+class _ScriptedWriter(_OneStream):
     def __init__(self, *, hang_close: bool = False, fail_with: "Exception | None" = None) -> None:
         self.written = b""
         self.close_called = False
@@ -246,12 +276,79 @@ class _ScriptedWriter:
         return ("127.0.0.1", 54321) if name == "peername" else None
 
 
+class _VirtualClock:
+    # Stands in for the module's wait_for() timers: a deadline elapses only when the test advances
+    # the clock, so the order of two bounds is fixed by the test, never by host scheduling.
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    async def sleep(self, t: float) -> None:
+        # Yields rather than parking on an Event: wait_for()'s runner cancels its waiter only while
+        # that waiter's task data is None, which an Event wait would set (extmod/asyncio/funcs.py).
+        deadline = self.now + t
+        while self.now < deadline:
+            await asyncio.sleep_ms(0)
+
+    def timers(self) -> "Any":
+        # Every asyncio name asy_webserver_service uses, set on an instance so none binds as a method, with
+        # wait_for() on this clock; sleep() and start_server() stay the real ones.
+        timers = type("VirtualTimers", (), {})()
+        for name in ("CancelledError", "Task", "TimeoutError", "gather", "get_event_loop", "sleep", "start_server"):
+            setattr(timers, name, getattr(asyncio, name))
+        timers.wait_for = self.wait_for
+        return timers
+
+    def wait_for(self, aw: "Coroutine[Any, Any, T]", timeout: float) -> "Coroutine[Any, Any, T]":
+        # MicroPython's wait_for() takes its sleep as a third argument (extmod/asyncio/funcs.py).
+        return asyncio.wait_for(aw, timeout, self.sleep)  # type: ignore[call-arg]
+
+
+def _on_virtual_clock(clock: "_VirtualClock", scenario: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
+    # Runs scenario with the module's bounds on clock: one fires only when the test moves the clock, so a host
+    # stall can neither cut a response short nor reorder two bounds. Called at synchronous test scope only.
+    real_asyncio = asy_webserver_service.asyncio
+    asy_webserver_service.asyncio = clock.timers()
+    try:
+        return run_timed(scenario, timeout_s)  # a hang bound only: the virtual clock makes the pass itself instant
+    finally:
+        asy_webserver_service.asyncio = real_asyncio
+
+
+class _Entered:
+    # Wraps a hanging stream double and sets `entered` once its first call has started, which is
+    # after the proxy registered that call's bound - the point the test may move the clock past.
+    def __init__(self, inner: "Any") -> None:
+        self._inner = inner
+        self.entered = asyncio.Event()
+
+    def __getattr__(self, name: str) -> "Any":
+        attr = getattr(self._inner, name)
+        if not name.startswith(("read", "awrite")):
+            return attr
+
+        async def call(*args: "Any") -> "Any":
+            self.entered.set()
+            return await attr(*args)
+
+        return call
+
+
 def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "dict[str, str] | None" = None) -> bytes:
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json", "Host": "device.local"}
     if extra_headers:
         headers.update(extra_headers)
     header_lines = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
     return f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n".encode() + body
+
+
+async def _no_uptime() -> int:  # the drop window's clock held at boot unless a test passes its own uptime_s
+    return 0
+
+
+class _NoopHolder:
+    # Request.sock's stand-in for a dispatch_request() request: no connection ends, so a held stream is never closed.
+    def hold(self, _closable: object) -> None:
+        pass
 
 
 _ROUTE_FIELDS = ("sensors", "settings", "build_info", "system_cmd", "notification_led", "notification_pause", "status_sources", "maintenance_sensors", "error_sources")
@@ -278,15 +375,17 @@ def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # An
     mount, index, hotspot = kwargs.pop("static_mount", None), kwargs.pop("static_index", "index.html"), kwargs.pop("is_hotspot_active", None)
     static = None if mount is None else StaticSite(mount, index, hotspot)
     log = LogConfig(kwargs.pop("fram", None), kwargs.pop("history_length", 10), kwargs.pop("debug", None))
+    uptime_s = kwargs.pop("uptime_s", _no_uptime)
     assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
-    service = WebserverService(app, routes, serving, static, log)  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
+    service = WebserverService(app, routes, serving, uptime_s, static, log)  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
     return service, app
 
 
 def _make_request(app: "Microdot", method: str, path: str, json_body: "dict[str, Any] | list[Any] | None") -> Request:
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
+    sock = (_NoopHolder(), _NoopHolder())
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as the two asyncio streams; a static route only calls hold() on it - removal trigger: SPECIFICATION.md B.15
 
 
 # ---------------------------------------------------------------------------
@@ -376,12 +475,22 @@ def test_sensors_put_all_fields_for_all_sensors() -> None:
     }
 
 
-def test_sensors_put_unknown_sensor_key_ignored() -> None:
+def test_sensors_put_unknown_sensor_key_answers_invalid() -> None:
     scd = _FakeModule("SCD30")
     _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"BOGUS": {"Interval": 10}})))
     assert res.status_code == 200
-    assert json.loads(res.body)["result"] == {}
+    assert json.loads(res.body)["result"] == {"BOGUS": "Invalid"}
+    assert scd.set_calls == []
+
+
+def test_a_non_object_sensor_entry_answers_invalid() -> None:
+    scd = _FakeModule("SCD30")
+    _service, app = _make_service(sensors=[scd])
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"SCD30": 5})))
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"SCD30": "Invalid"}
     assert scd.set_calls == []
 
 
@@ -439,6 +548,19 @@ def test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape() ->
     _service, app = _make_service(settings={"networking": [group]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
     assert json.loads(status_body(res)) == {"SSID": "MyNet"}
+
+
+def test_a_flat_get_sends_the_unavailable_marker_for_each_field_of_an_unreadable_group() -> None:
+    # A flat route has no module level: each field of a group whose module sends the marker (SPECIFICATION.md
+    # C.6) carries it in place of its value, never a silent gap; the other groups' values are untouched.
+    for endpoint in _SETTINGS_ENDPOINTS:
+        unreadable = _NestedCfgModule("STORE", {"error": "unavailable"})
+        ntp = _NestedCfgModule("NTP", {"GMTOffset": 3600, "DSTOffset": 0})
+        groups = [SettingsGroup(unreadable, ("DebugLevel", "SSID")), SettingsGroup(ntp, ("GMTOffset", "DSTOffset"))]  # type: ignore[arg-type]  # structurally _ModuleLike-shaped
+        _service, app = _make_service(settings={endpoint: groups})
+        res = run(app.dispatch_request(_make_request(app, "GET", "/" + endpoint, None)))
+        marker = {"error": "unavailable"}
+        assert json.loads(status_body(res)) == {"DebugLevel": marker, "SSID": marker, "GMTOffset": 3600, "DSTOffset": 0}, endpoint
 
 
 def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() -> None:
@@ -585,6 +707,70 @@ def test_system_put_mempause_never_accepts_a_client_supplied_duration() -> None:
     assert cmd_calls == ["mempause"]
 
 
+def test_a_dispatch_key_is_answered_once() -> None:
+    # SystemCmd is the dispatcher's alone: the settings groups never answer it, and an unlisted key reads "Invalid".
+    cmd_calls: list[str] = []
+
+    async def system_cmd(cmd: str) -> bool:
+        cmd_calls.append(cmd)
+        return True
+
+    sysm = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 0})
+    _service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, system_cmd=system_cmd)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "reboot", "Bogus": 1})))
+    assert json.loads(res.body)["result"] == {"SystemCmd": "Valid", "Bogus": "Invalid"}
+    assert cmd_calls == ["reboot"]
+    assert sysm.set_calls == []
+
+
+# Near misses of the three action words: prefixes, case variants, padded, joined and aliased words.
+_SYSTEM_CMD_NEAR_MISSES = (
+    "Reboot", "REBOOT", "reboot ", " reboot", "reboot\n", "rebootx", "rebo", "re boot", "restart", "reset", "boot",
+    "Bootloader", "bootloader ", "boot loader", "mempause300", "mem_pause", "MemPause", "pause", "",
+)
+
+
+def test_system_put_systemcmd_runs_only_on_the_exact_action_word() -> None:
+    calls: list[str] = []
+    outcome: list[object] = [True]
+
+    async def system_cmd(cmd: str) -> bool:
+        calls.append(cmd)
+        if isinstance(outcome[0], Exception):
+            raise outcome[0]
+        return outcome[0] is True
+
+    service, app = _make_service(system_cmd=system_cmd)
+
+    def put(word: str) -> object:
+        return json.loads(run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": word}))).body)["result"]["SystemCmd"]
+
+    for word in _SYSTEM_CMD_NEAR_MISSES:
+        assert put(word) == "Invalid", word
+    assert calls == []
+    for word in ("reboot", "bootloader", "mempause"):
+        for result, answer in ((True, "Valid"), (False, "Failed"), (RuntimeError("injected for the callback"), "Failed")):
+            outcome[0] = result
+            del calls[:]
+            assert put(word) == answer, (word, result)
+            assert calls == [word], (word, calls)
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrNum"].count(code("E", "CALLBACK")) == 1  # one slot for the three
+
+
+def test_system_put_systemcmd_non_string_values_are_invalid() -> None:
+    calls: list[object] = []
+
+    async def system_cmd(cmd: str) -> bool:
+        calls.append(cmd)
+        return True
+
+    _service, app = _make_service(system_cmd=system_cmd)
+    for value in (1, ["reboot"], {"x": 1}, None, True):
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": value})))
+        assert json.loads(res.body)["result"] == {"SystemCmd": "Invalid"}, value
+    assert calls == []
+
+
 def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception() -> None:
     # system_cmd is a caller-supplied callback like every other in this codebase and could
     # legitimately misbehave; unguarded, a raise would escape the route handler instead of
@@ -648,6 +834,16 @@ def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
         assert json.loads(res.body) == {"res": "OK", "code": 0, "descr": "Command executed", "result": result}
     assert mod.pr.reset_calls == 0
     assert mod.pr.err_count == 1
+
+
+def test_status_put_answers_unknown_keys() -> None:
+    mod = _FakeModule("SGP40")
+    _service, app = _make_service(error_sources=[mod])
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True, "X": 1})))
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"ResetErrors": "Valid", "X": "Invalid"}
+    assert mod.pr.reset_calls == 1
 
 
 def test_status_put_reset_errors_true_resets_every_module_counter_and_history() -> None:
@@ -725,10 +921,10 @@ def test_notification_get_is_flat_settings_only_no_live_fields() -> None:
 
 
 def test_notification_put_light_cmd_led_round_trips_independently_of_flat_fields() -> None:
-    led_calls = []
+    led_calls: list[tuple[int, int, int, float]] = []
 
-    async def notification_led(payload: "dict[str, Any]") -> bool:
-        led_calls.append(payload)
+    async def notification_led(r: int, g: int, b: int, t: float) -> bool:
+        led_calls.append((r, g, b, t))
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -741,7 +937,8 @@ def test_notification_put_light_cmd_led_round_trips_independently_of_flat_fields
         ),
     )
     assert res.status_code == 200
-    assert led_calls == [{"R": 10, "G": 20, "B": 30, "T": 5}]
+    assert led_calls == [(10, 20, 30, 5.0)]  # validated and coerced: the int T arrives as a float
+    assert type(led_calls[0][3]) is float
     assert run(notif.get_dict_cfg())[notif.name]["OnH"] == 8  # flat field never touched by this body
 
 
@@ -858,7 +1055,7 @@ def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registe
 
 
 def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_dict() -> None:
-    async def notification_led(_payload: "dict[str, Any]") -> bool:
+    async def notification_led(_r: int, _g: int, _b: int, _t: float) -> bool:
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -870,11 +1067,84 @@ def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_d
     assert body["result"]["LightCmdLED"] == "Invalid"
 
 
+def _led_service(outcome: "list[object]", calls: "list[tuple[int, int, int, float]]") -> "tuple[WebserverService, Microdot]":
+    # A LightCmdLED callback recording what it receives and answering outcome[0]: a bool, or an exception it raises.
+    async def notification_led(r: int, g: int, b: int, t: float) -> bool:
+        calls.append((r, g, b, t))
+        if isinstance(outcome[0], Exception):
+            raise outcome[0]
+        return outcome[0] is True
+
+    return _make_service(notification_led=notification_led)
+
+
+def _put_led(app: "Microdot", payload: object) -> "dict[str, Any]":
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"LightCmdLED": payload})))
+    body: dict[str, Any] = json.loads(res.body)
+    return body
+
+
+def test_a_malformed_led_command_is_invalid_and_never_dispatched() -> None:
+    calls: list[tuple[int, int, int, float]] = []
+    _service, app = _led_service([True], calls)
+    for payload in (
+        {"R": 10, "G": 20, "B": 30},  # T missing
+        {"R": 10, "G": 20, "B": 30, "T": 5, "x": 1},  # an extra member
+        {"R": 256, "G": 20, "B": 30, "T": 5},  # out of range
+        {"R": 10, "G": -1, "B": 30, "T": 5},
+        {"R": 10.5, "G": 20, "B": 30, "T": 5},  # a fraction is never truncated
+        {"R": 10, "G": 20, "B": 30, "T": True},  # bool is no number
+        {"R": 10, "G": 20, "B": 30, "T": 0.1},
+        {"R": 10, "G": 20, "B": "30", "T": 5},
+        [10, 20, 30, 5],
+    ):
+        assert _put_led(app, payload)["result"] == {"LightCmdLED": "Invalid"}, payload
+    assert calls == []
+
+
+def test_an_integral_float_channel_is_coerced() -> None:
+    calls: list[tuple[int, int, int, float]] = []
+    _service, app = _led_service([True], calls)
+    assert _put_led(app, {"R": 10.0, "G": 20, "B": 30, "T": 2})["result"] == {"LightCmdLED": "Valid"}
+    assert calls == [(10, 20, 30, 2.0)]
+    assert [type(v) for v in calls[0]] == [int, int, int, float]
+
+
+def test_a_led_callback_returning_false_answers_failed_and_asks_for_a_retry() -> None:
+    # A running signal refuses an external LED command: "Failed", told to retry in the envelope's descr; a raising
+    # callback answers "Failed" too, but with the plain descr and a persisted entry.
+    outcome: list[object] = [False]
+    calls: list[tuple[int, int, int, float]] = []
+    service, app = _led_service(outcome, calls)
+    body = _put_led(app, {"R": 1, "G": 2, "B": 3, "T": 1.0})
+    assert (body["res"], body["descr"], body["result"]) == ("OK", "LED busy - retry later", {"LightCmdLED": "Failed"})
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 0
+    outcome[0] = RuntimeError("injected for the LED callback")
+    body = _put_led(app, {"R": 1, "G": 2, "B": 3, "T": 1.0})
+    assert (body["res"], body["descr"], body["result"]) == ("OK", "Command executed", {"LightCmdLED": "Failed"})
+    assert _newest_entry(service) == (code("E", "CALLBACK"), "E")
+    assert len(calls) == 2
+
+
+def test_a_pause_time_of_the_wrong_shape_is_invalid() -> None:
+    pause_calls: list[int] = []
+
+    async def notification_pause(secs: int) -> bool:
+        pause_calls.append(secs)
+        return True
+
+    _service, app = _make_service(notification_pause=notification_pause)
+    for value in ([60], {"s": 60}):
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": value})))
+        assert json.loads(res.body)["result"] == {"PauseTime": "Invalid"}, value
+    assert pause_calls == []
+
+
 def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_exception() -> None:
     # notification_led is a caller-supplied callback and could legitimately misbehave, the same as
     # system_cmd (see test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception's
     # own comment) - previously unguarded here too.
-    async def notification_led(_payload: "dict[str, Any]") -> bool:
+    async def notification_led(_r: int, _g: int, _b: int, _t: float) -> bool:
         raise RuntimeError("simulated notification_led failure")
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -914,13 +1184,14 @@ def test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint
         assert run(mod.get_dict_cfg())[mod.name]["Offset"] == 0, endpoint  # untouched, not reset to default
 
 
-def test_b_unknown_top_level_key_silently_ignored_on_every_settings_endpoint() -> None:
+def test_b_unknown_top_level_key_answers_invalid_on_every_settings_endpoint() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
         _service, app, _mod = _settings_service(endpoint)
         res = run(app.dispatch_request(_make_request(app, "PUT", "/" + endpoint, {"Bogus": 1})))
         assert res.status_code == 200, endpoint
         body = json.loads(res.body)
-        assert "Bogus" not in body.get("result", {}), endpoint
+        assert body["res"] == "OK", endpoint
+        assert body["result"]["Bogus"] == "Invalid", endpoint
 
 
 def test_b_wrong_top_level_json_type_is_a_clean_rejection_on_every_settings_endpoint() -> None:
@@ -944,7 +1215,7 @@ def test_b_wrong_type_for_a_known_field_is_a_per_field_rejection_others_still_ap
         assert run(mod.get_dict_cfg())[mod.name]["Offset"] == 5, endpoint
 
 
-def test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path() -> None:
+def test_b_malformed_json_body_answers_code_1() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
         _service, app, _mod = _settings_service(endpoint)
         req = _make_request(app, "PUT", "/" + endpoint, {})
@@ -1104,7 +1375,7 @@ def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -
 
 def test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_rest() -> None:
     # This service's own "WEBSERVER" entry uses the real PrintLogHistory (self.pr), not a
-    # _FakeModule - exercised directly via a real per-call timeout reclaim (F.2-style), then
+    # _FakeModule - exercised directly via a real per-call timeout reclaim (as the mid-request tests do), then
     # confirmed ResetErrors clears it same as every registered module.
     service, app = _make_service(error_sources=[], per_call_timeout_s=0.01)
     reader = _HangingReader()
@@ -1180,35 +1451,57 @@ def test_e_concurrent_put_during_get_never_produces_a_torn_response() -> None:
     run(scenario())
 
 
-def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_a_regression() -> None:
-    # Characterizes the known, already-flagged gap (SPECIFICATION.md Part A.8's GET-shapes note)
-    # rather than asserting it fixed, so a future fix has a red test to turn green. The fake's
-    # get_dict_cfg() awaits mid-construction, the real SCD30_Reader/BMP3XX_Reader shape.
-    class _LiveReadbackModule(_FakeModule):
-        async def get_dict_cfg(self) -> "dict[str, Any]":
-            result: dict[str, Any] = {}
-            for key in ("Interval", "Offset"):
-                await asyncio.sleep(0)  # a real await - the torn-read window
-                result[key] = self._values[key]
-            return {self.name: result}
+_TwoFieldData = namedtuple("_TwoFieldData", ("TS",))
 
-    mod = _LiveReadbackModule("SCD30", values={"Interval": 1, "Offset": 0})
-    _service, _app = _make_service(settings={"sensors_live": [SettingsGroup(mod, ("Interval", "Offset"))]})
 
-    async def scenario() -> "dict[str, Any]":
-        async def mutate_mid_read() -> None:
+class _TwoFieldReader(SensorReader):
+    # A real SensorReader over an in-memory store whose write pauses between its two fields until the test lets it on.
+    def __init__(self) -> None:
+        super().__init__(_TwoFieldData(0), "TWO")
+        self.values: dict[str, int] = {"Interval": 1, "Offset": 0}
+        self.mid_write = asyncio.Event()
+        self.resume_write = asyncio.Event()
+
+    def get_cfg_schema(self) -> "cm.ConfigSchema":
+        return _FAKE_SCHEMA
+
+    async def get_dict_cfg(self) -> "dict[str, dict[str, cm.CfgValue]]":
+        return await self._get_dict_cfg(self.name, _FAKE_SCHEMA)
+
+    async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, cm.CfgValue] | None":
+        return {key: self.values[key] for key in cfg}
+
+    async def _set_mgr_cfg(self, data: "JsonMapping", _cfg_vals: "cm.ConfigSchema") -> "tuple[bool, WriteValidity]":
+        for index, (key, value) in enumerate(data.items()):
+            if index:
+                self.mid_write.set()
+                await self.resume_write.wait()
+            assert isinstance(value, int)
+            self.values[key] = value
+        return True, dict.fromkeys(data, "Valid")
+
+
+def test_e_a_config_get_never_mixes_values_from_before_and_after_a_concurrent_put() -> None:
+    # A GET started while a PUT has written one of its two fields waits on the module's write lock (SPECIFICATION.md
+    # C.5.2) and reads both new values, never one of each; without the lock it finishes early with a torn pair.
+    reader = _TwoFieldReader()
+    _service, app = _make_service(sensors=[reader])
+
+    async def scenario() -> "tuple[bool, dict[str, Any]]":
+        put = asyncio.create_task(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"TWO": {"Interval": 50, "Offset": 5}})))
+        await reader.mid_write.wait()
+        get = asyncio.create_task(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
+        for _ in range(50):  # as far as the GET can run while the PUT is mid-write
             await asyncio.sleep(0)
-            mod._values["Offset"] = 99
+        finished_early = get.done()
+        reader.resume_write.set()
+        await put
+        body: dict[str, Any] = json.loads(status_body(await get))
+        return finished_early, body
 
-        mutate_task = asyncio.get_event_loop().create_task(mutate_mid_read())
-        result = await mod.get_dict_cfg()
-        await mutate_task
-        return result
-
-    result = run(scenario())
-    # A torn read: Interval read before the mutation, Offset read after it - exactly the documented,
-    # accepted gap, not something this test suite is meant to fail on.
-    assert result == {"SCD30": {"Interval": 1, "Offset": 99}}
+    finished_early, body = run(scenario())
+    assert finished_early is False  # the GET waited for the PUT
+    assert body == {"TWO": {"Interval": 50, "Offset": 5}}, body
 
 
 def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state() -> None:
@@ -1226,7 +1519,7 @@ def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state()
 # (the CI-hang-fix precedent).
 # ---------------------------------------------------------------------------
 
-# F.1 - before/at accept
+# Connection lifecycle: before and at accept
 
 
 def test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout() -> None:
@@ -1255,7 +1548,7 @@ def test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate() -> None:
     assert run(service._open_conns.get_value()) == 0
 
 
-def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed() -> None:
+def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_closed_and_logged() -> None:
     service, _app = _make_service(max_connections=2, per_call_timeout_s=5.0, outer_cap_s=5.0)
 
     async def scenario() -> None:
@@ -1273,6 +1566,10 @@ def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed() 
         await service._serve(extra_reader, extra_writer)
         assert extra_writer.written == b""  # never accepted - no response ever written
         assert await service._open_conns.get_value() == 2  # unchanged by the rejection
+        entry = (await service.get_error_counter())["WEBSERVER"]  # awaited: a nested run() here would segfault
+        assert entry["ErrCount"] == 1, entry
+        assert (entry["ErrNum"][-1], entry["ErrType"][-1]) == (code("W", "HTTP_REFUSED"), "W"), entry
+        assert await service.get_dropped_count() == 1
 
         for t in held_tasks:
             t.cancel()
@@ -1329,6 +1626,9 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
             refused = _ScriptedWriter()
             await service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), refused)
             assert refused.written == b"" and refused.close_called  # refused like any over-ceiling client
+            entry = (await service.get_error_counter())["WEBSERVER"]  # awaited: a nested run() here would segfault
+            assert (entry["ErrNum"][-1], entry["ErrType"][-1]) == (code("W", "HTTP_REFUSED"), "W"), entry
+            assert await service.get_dropped_count() == 1
         finally:
             gate.set()
             await task
@@ -1340,7 +1640,7 @@ def test_f1_a_slot_is_held_until_the_close_completes_not_until_the_response_is_w
     run_timed(scenario(), timeout_s=5.0)
 
 
-# F.2 - mid-request, headers/request-line
+# Connection lifecycle: mid-request, the request line and headers
 
 
 # @tunable l1.serve_backstop_cap_mult = 20
@@ -1359,9 +1659,9 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
     # split() artifact after the final \r\n - see full_line's own \r\n\r\n terminator
     chunks = [(line_delay, line) for line in physical_lines]
     service, _app = _make_service(per_call_timeout_s=per_call, outer_cap_s=outer_cap)
-    reader = _ScriptedReader(chunks)
+    clock = _VirtualClock()  # the lines' pacing moves this clock, so the cap fires on the third line on any host
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=outer_cap * _SERVE_BACKSTOP_CAP_MULT)
+    _on_virtual_clock(clock, service._serve(_ScriptedReader(chunks, clock=clock), writer), outer_cap * _SERVE_BACKSTOP_CAP_MULT)
     assert run(service._open_conns.get_value()) == 0
     assert writer.written == b""  # reclaimed before a response could ever be produced
 
@@ -1374,15 +1674,34 @@ def test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_cat
     assert run(service._open_conns.get_value()) == 0  # no exception escaped _serve()
 
 
+class _BodyEnteredReader(_ScriptedReader):
+    # Sets body_entered once Microdot's body read has started, after the proxy registered that read's bound.
+    def __init__(self, chunks: "list[tuple[float, bytes]]") -> None:
+        super().__init__(chunks)
+        self.body_entered = asyncio.Event()
+
+    async def readexactly(self, n: int) -> bytes:
+        self.body_entered.set()
+        return await super().readexactly(n)
+
+
 def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> None:
     # The per-call readexactly() timeout is an asyncio.TimeoutError, a plain Exception and not an
     # OSError (confirmed against the pinned interpreter's extmod/asyncio/core.py) - so it is
     # absorbed by handle_request()'s blanket catch, which writes its own ordinary 400.
     service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n"
-    reader = _ScriptedReader([(0, headers.encode() + b'{"Interval":')])  # body truncated, then silence
+    reader = _BodyEnteredReader([(0, headers.encode() + b'{"Interval":')])  # body truncated, then silence
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=3.0)
+    clock = _VirtualClock()
+
+    async def scenario() -> None:
+        served = asyncio.create_task(service._serve(reader, writer))
+        await reader.body_entered.wait()
+        clock.now = 0.05  # the body read's bound is due; the cap (1.0) is not
+        await served
+
+    _on_virtual_clock(clock, scenario())
     assert run(service._open_conns.get_value()) == 0
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
@@ -1410,14 +1729,14 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
     assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
 
-# F.2b - request-body buffering: an oversized body must never be read into memory at all.
+# Request-body buffering: no oversized body is ever read into memory.
 #
 # ext/microdot.py reads the body inside Request.create() (`:426`) and only answers 413 later, in
 # dispatch_request() (`:1443`), so a body between max_body_length and max_content_length is
 # allocated in full and then thrown away - the band WebserverService closes by binding the two.
 #
 # These tests pin the direct cause, not a memory heuristic the Unix-port heap could never show: the
-# server must never ASK its reader for more than the cap (same framing as H.3/I.2's hammers). Why
+# server must never ASK its reader for more than the cap (same framing as the GET hammers'). Why
 # both caps had to move together, with the measured schema maxima: SPECIFICATION.md Part I.6.
 
 
@@ -1459,8 +1778,14 @@ def _body_service() -> "tuple[WebserverService, Microdot, _FakeModule]":
     return service, app, mod
 
 
+def _head_then_body(request: bytes) -> "list[tuple[float, bytes]]":
+    # Two segments: the reader proxy reads the head in pieces, so a body arriving apart is read whole by readexactly().
+    head, blank, body = request.partition(b"\r\n\r\n")
+    return [(0, head + blank), (0, body)]
+
+
 def _serve_one(service: "WebserverService", body_bytes: int, interval: int = 7) -> "tuple[_BodySizeReader, _ScriptedWriter]":
-    reader = _BodySizeReader([(0, _sized_put(body_bytes, interval))])
+    reader = _BodySizeReader(_head_then_body(_sized_put(body_bytes, interval)))
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     return reader, writer
@@ -1509,6 +1834,19 @@ def test_f2b_a_mixed_stream_handles_each_request_on_its_own_merits() -> None:
         assert run(service._open_conns.get_value()) == 0
 
 
+def test_f2b_a_body_arriving_with_its_head_is_served_from_both_reads_and_applied() -> None:
+    # One segment: the reader proxy's first 256 B read holds the head and the body's start, readexactly() serves
+    # that part first and asks the stream only for the rest, so no read asks for more than the body.
+    service, _app, mod = _body_service()
+    request = _sized_put(1500, interval=33)
+    reader = _BodySizeReader([(0, request)])
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer), timeout_s=3.0)
+    assert b" 200 " in writer.written, writer.written[:80]
+    assert mod.set_calls[-1]["Interval"] == 33
+    assert reader.body_reads == [len(request) - _WIRE_CHUNK_BYTES], (len(request), reader.body_reads)
+
+
 def test_f2b_the_two_microdot_caps_are_bound_together_so_the_band_cannot_reopen() -> None:
     # Structural guard: the defect is not a value, it is the GAP between the two. A future change
     # that sets only one of them would silently reopen it, and every behavioural test above would
@@ -1528,7 +1866,7 @@ def _body_service_with_connections(max_connections: int) -> "tuple[WebserverServ
 
 
 def _hammer_mixed_bodies(service: "WebserverService", sizes: "list[int]") -> "list[_BodySizeReader]":
-    readers = [_BodySizeReader([(0, _sized_put(size))]) for size in sizes]
+    readers = [_BodySizeReader(_head_then_body(_sized_put(size))) for size in sizes]
     writers = [_ScriptedWriter() for _ in sizes]
 
     async def _all() -> None:  # index-based, not zip(): MicroPython's zip() has no strict= (B905)
@@ -1546,7 +1884,7 @@ def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> 
     # the simultaneous contiguous demand is that many buffers, not one. With the caps bound it is
     # bounded by connections x cap; with the band open it would be connections x 16 KB.
     orig_threshold = gc.threshold()
-    gc.threshold(-1)  # I.4(e) first: the guarantee must hold at MicroPython's own real default
+    gc.threshold(-1)  # SPECIFICATION.md I.4(e) first: the guarantee must hold at MicroPython's own real default
     try:
         service, _app, mod = _body_service_with_connections(64)
         sizes = [_BODY_CAP * 4 if i % 3 else 512 for i in range(60)]
@@ -1562,7 +1900,7 @@ def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> 
 def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
     orig_threshold = gc.threshold()
     # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)  # and again at the shipped threshold, as H.3 does for its own pair
+    gc.threshold(32768)  # and again at the shipped threshold, as the /status hammers do for their own pair
     try:
         service, _app, mod = _body_service_with_connections(64)
         readers = _hammer_mixed_bodies(service, [_BODY_CAP * 6] * 40)
@@ -1574,7 +1912,7 @@ def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
 
 
 
-# F.5 - after response / close
+# Connection lifecycle: after the response, the close
 
 
 def test_f5_normal_close_decrements_counter_exactly_once() -> None:
@@ -1591,7 +1929,7 @@ def test_f5_connection_close_header_present_on_every_response_including_errors()
     for method, path in (("GET", "/status"), ("GET", "/no/such/route"), ("DELETE", "/status")):
         writer = _ScriptedWriter()
         reader = _ScriptedReader([(0, _request_bytes(method, path))])
-        run_timed(service._serve(reader, writer))
+        _on_virtual_clock(_VirtualClock(), service._serve(reader, writer))  # a still clock: no bound cuts the response
         assert b"Connection: close" in writer.written, path
 
 
@@ -1603,7 +1941,7 @@ def test_f5_double_close_paths_dont_raise_or_double_decrement() -> None:
     assert run(service._open_conns.get_value()) == 0
 
 
-# F.6 - concurrency / resource-ceiling behavior
+# Connection lifecycle: concurrency and the connection ceiling
 
 
 def test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed() -> None:
@@ -1676,6 +2014,7 @@ def test_close_writer_logs_a_persisted_warning_when_close_raises() -> None:
     writer = _RaisingCloseWriter()
     run_timed(service._close_writer(writer))
     assert service.pr._err_count == 1
+    assert _newest_entry(service) == (code("W", "HTTP_CLOSE_RAISED"), "W")
 
 
 class _RaisingWaitClosedWriter(_ScriptedWriter):
@@ -1690,6 +2029,7 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     run_timed(service._close_writer(writer))
     assert writer.close_called is True
     assert service.pr._err_count == 1
+    assert _newest_entry(service) == (code("W", "HTTP_WAIT_CLOSED"), "W")
 
 
 class _RaisingCloseAndWaitWriter(_RaisingCloseWriter):
@@ -1766,50 +2106,14 @@ def test_a_read_phase_per_call_timeout_logs_the_call_timeout_code() -> None:
 
 
 def test_an_outer_cap_timeout_logs_the_request_cap_code() -> None:
-    # Slowloris pacing: no single readline() nears the per-call bound, so only the outer cap fires.
+    # Slowloris pacing on the virtual clock: no single read nears the per-call bound, so only the outer cap fires.
     full_line = _request_bytes("GET", "/status")
     chunks = [(0.02, part + b"\r\n") for part in full_line.split(b"\r\n")[:-1]]
     service, _app = _make_service(per_call_timeout_s=1.0, outer_cap_s=0.05)
-    run_timed(service._serve(_ScriptedReader(chunks), _ScriptedWriter()), timeout_s=1.0)
+    clock = _VirtualClock()
+    _on_virtual_clock(clock, service._serve(_ScriptedReader(chunks, clock=clock), _ScriptedWriter()))
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
     assert _newest_entry(service) == (code("W", "HTTP_REQUEST_CAP"), "W")
-
-
-class _VirtualClock:
-    # Stands in for the module's wait_for() timers: a deadline elapses only when the test advances
-    # the clock, so the order of two bounds is fixed by the test, never by host scheduling.
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    async def sleep(self, t: float) -> None:
-        # Yields rather than parking on an Event: wait_for()'s runner cancels its waiter only while
-        # that waiter's task data is None, which an Event wait would set (extmod/asyncio/funcs.py).
-        deadline = self.now + t
-        while self.now < deadline:
-            await asyncio.sleep_ms(0)
-
-    def wait_for(self, aw: "Coroutine[Any, Any, T]", timeout: float) -> "Coroutine[Any, Any, T]":
-        # MicroPython's wait_for() takes its sleep as a third argument (extmod/asyncio/funcs.py).
-        return asyncio.wait_for(aw, timeout, self.sleep)  # type: ignore[call-arg]
-
-
-class _Entered:
-    # Wraps a hanging stream double and sets `entered` once its first call has started, which is
-    # after the proxy registered that call's bound - the point the test may move the clock past.
-    def __init__(self, inner: "Any") -> None:
-        self._inner = inner
-        self.entered = asyncio.Event()
-
-    def __getattr__(self, name: str) -> "Any":
-        attr = getattr(self._inner, name)
-        if not name.startswith(("read", "awrite")):
-            return attr
-
-        async def call(*args: "Any") -> "Any":
-            self.entered.set()
-            return await attr(*args)
-
-        return call
 
 
 def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> None:
@@ -1817,8 +2121,6 @@ def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> N
     # and that second reclaim is the cap's, not a per-call one the earlier read had flagged.
     service, _app = _make_service(per_call_timeout_s=0.2, outer_cap_s=0.3)
     clock = _VirtualClock()
-    timers = type("VirtualTimers", (), {n: getattr(asyncio, n) for n in ("CancelledError", "Task", "TimeoutError", "gather", "get_event_loop", "start_server")})()
-    timers.wait_for = clock.wait_for
     reader, writer = _Entered(_HangingReader()), _Entered(_HangingWriter())
 
     async def scenario() -> None:
@@ -1829,12 +2131,7 @@ def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> N
         clock.now = 0.3  # the cap is due; the 400 write's own bound (0.2 + 0.2) is not
         await served
 
-    real_asyncio = asy_webserver_service.asyncio
-    asy_webserver_service.asyncio = timers
-    try:
-        run_timed(scenario())  # the default bound; the virtual clock makes the pass itself instant
-    finally:
-        asy_webserver_service.asyncio = real_asyncio
+    _on_virtual_clock(clock, scenario())
     entry = run(service.get_error_counter())["WEBSERVER"]
     assert entry["ErrCount"] == 2, entry
     assert entry["ErrNum"][-2:] == [code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_REQUEST_CAP")], entry
@@ -1853,9 +2150,9 @@ def test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag() -> None:
     assert timed_out == [True]
 
 
-class _ResetReader:
+class _ResetReader(_OneStream):
     # A peer that reset mid-request: modlwip raises ECONNRESET on the read, then frees the pcb.
-    async def readline(self) -> bytes:
+    async def read(self, _n: int) -> bytes:
         raise OSError(104, "ECONNRESET")
 
     async def readexactly(self, _n: int) -> bytes:
@@ -1864,13 +2161,14 @@ class _ResetReader:
 
 def test_nothing_is_written_to_a_peer_whose_read_saw_a_reset() -> None:
     # microdot mutes the reset and answers 400 anyway; on silicon that write goes through a NULL pcb
-    # (state 6 passes modlwip's error check, Part H.7.1), logs a spurious warning and can spin a slot for 5 s.
+    # (state 6 passes modlwip's error check, Part H.7.1), so nothing is written and the drop is traced once.
     service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
     writer = _ScriptedWriter()
-    run_timed(service._serve(_ResetReader(), writer), timeout_s=2.0)
+    _on_virtual_clock(_VirtualClock(), service._serve(_ResetReader(), writer))  # a still clock: only the reset ends it
     assert writer.written == b"", writer.written
     assert writer.close_called is True
-    assert service.pr._err_count == 0, service.pr._err_count
+    assert service.pr._err_count == 1, service.pr._err_count
+    assert _newest_entry(service) == (code("W", "HTTP_PEER_RESET"), "W")
     assert run(service._open_conns.get_value()) == 0
 
 
@@ -1879,17 +2177,16 @@ def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_strea
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
     # WebserverService._close_writer()) - still real forwards that must work correctly.
     writer = _ScriptedWriter()
-    proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"))  # type: ignore[arg-type]
+    proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"), [False], [False])  # type: ignore[arg-type]
     proxy.close()
     assert writer.close_called is True
     run_timed(proxy.wait_closed())
     assert writer.wait_closed_called is True
 
 
-def test_serve_absorbs_an_eoferror_raised_directly_by_handle_request() -> None:
-    # Structurally unreachable through the real Microdot integration today (see _serve()'s own
-    # comment) - this is the defense-in-depth branch itself, exercised directly by monkeypatching
-    # app.handle_request() to prove _serve()'s except EOFError clause actually degrades cleanly.
+def test_an_eoferror_from_handle_request_is_an_unexpected_error() -> None:
+    # Microdot catches EOFError inside Request.create(), so one escaping handle_request() is a bug:
+    # the catch-all arm persists it as the unexpected error it is, and the slot is freed.
     service, app = _make_service()
 
     async def _raise_eof(_reader: object, _writer: object) -> None:
@@ -1898,6 +2195,8 @@ def test_serve_absorbs_an_eoferror_raised_directly_by_handle_request() -> None:
     app.handle_request = _raise_eof  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
     assert run(service._open_conns.get_value()) == 0
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
+    assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
 
 
 def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
@@ -1928,14 +2227,14 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
     assert entry["ErrType"][-1] == "E"
 
 
-# F.7 - adversarial/malformed-input shapes
+# Connection lifecycle: adversarial and malformed input
 
 
 def test_f7_unknown_path_returns_404_shaped_response() -> None:
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/no/such/route"))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer))
+    _on_virtual_clock(_VirtualClock(), service._serve(reader, writer))  # a still clock: no bound cuts the response
     assert b" 404 " in writer.written
 
 
@@ -1943,7 +2242,7 @@ def test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response() -> N
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("DELETE", "/status"))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer))
+    _on_virtual_clock(_VirtualClock(), service._serve(reader, writer))  # a still clock: no bound cuts the response
     assert b" 405 " in writer.written
 
 
@@ -1979,7 +2278,7 @@ def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_sl
     run_timed(scenario(), timeout_s=10.0)
 
 
-# F.8 - server startup edge cases (largely resolved by section G's source research - these confirm
+# Server start-up edge cases (largely resolved by source research - these confirm
 # our own code adds no incorrect special-casing on top of what asyncio.start_server()/Microdot
 # already guarantee, not that a new mechanism is needed).
 
@@ -2032,7 +2331,7 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
     run_timed(scenario(), timeout_s=3.0)
 
 
-# F.9 - supervisor integration / soak (capstone)
+# Supervisor integration and soak (capstone)
 
 
 # @tunable l1.webserver_leak_scenario_timeout_s = 60.0
@@ -2182,6 +2481,13 @@ _API_ROUTES = [
 ]
 
 
+def test_the_route_table_is_registered_exactly() -> None:
+    # Microdot's url_map is ROUTES, in order, each path bound to the named handler of this service.
+    service, app = _make_service()
+    assert [(m, p.url_pattern) for m, p, _h, _x, _s in app.url_map] == [([method], path) for method, path, _name in ROUTES]
+    assert [h for _m, _p, h, _x, _s in app.url_map] == [getattr(service, name) for _m, _p, name in ROUTES]
+
+
 def test_the_three_config_objects_register_the_same_route_table() -> None:
     # Built from RouteSources/ServingLimits/StaticSite, the service registers the eleven API routes in
     # order, then the two static ones only when a StaticSite is given.
@@ -2198,6 +2504,99 @@ def test_g_static_index_filename_is_configurable() -> None:
     res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
     assert res.status_code == 200
     assert res.body.read() == b"custom index"
+
+
+def test_a_static_get_answers_cache_control_no_cache() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount)
+    for path in ("/", "/index.html"):
+        res = run(app.dispatch_request(_make_request(app, "GET", path, None)))
+        assert res.status_code == 200, path
+        assert res.headers["Cache-Control"] == "no-cache", path  # revalidated: a reflashed page is never served stale
+
+
+class _RecordingFile:
+    # A static file that counts its close() calls: the stream a route opens must be closed once per connection.
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._at = 0
+        self.closes = 0
+
+    def close(self) -> None:
+        self.closes += 1
+
+    def read(self, n: int = -1) -> bytes:
+        end = len(self._data) if n < 0 else min(self._at + n, len(self._data))
+        data, self._at = self._data[self._at : end], end
+        return data
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        self._at = offset if whence == 0 else len(self._data) + offset
+        return self._at
+
+
+class _RecordingVfs:
+    # A mounted filesystem handing out _RecordingFile objects: open() on a mount point calls its object's open().
+    def __init__(self, files: "dict[str, bytes]") -> None:
+        self._files = files
+        self.opened: list[_RecordingFile] = []
+
+    def mount(self, *_flags: bool) -> None:  # (readonly, mkfs), passed positionally by os.mount()
+        pass
+
+    def open(self, path: str, _mode: str) -> _RecordingFile:
+        data = self._files.get(path.lstrip("/"))
+        if data is None:
+            raise OSError(2)  # ENOENT, as VfsFrozen answers a missing file
+        opened = _RecordingFile(data)
+        self.opened.append(opened)
+        return opened
+
+
+def _mount_recording_fixture(files: "dict[str, bytes]") -> "tuple[str, _RecordingVfs]":
+    global _next_static_mount
+    _next_static_mount += 1
+    mount_point = f"/test_recording_{_next_static_mount}"
+    vfs = _RecordingVfs({name + ".gz": data for name, data in files.items()})
+    os.mount(vfs, mount_point, readonly=True)
+    return mount_point, vfs
+
+
+def test_a_head_request_closes_the_opened_static_stream() -> None:
+    # Microdot never reads a HEAD response's body, so never closes it: the writer proxy's release() does.
+    mount, vfs = _mount_recording_fixture({"page.bin": _patterned(600)})
+    service, _app = _make_service(static_mount=mount)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(_ScriptedReader([(0, _request_bytes("HEAD", "/page.bin"))], eof=True), writer))
+    assert writer.written.startswith(b"HTTP/1.0 200 OK\r\n") and writer.written.endswith(b"\r\n\r\n"), writer.written
+    assert [f.closes for f in vfs.opened] == [1]
+
+
+class _BodyRefusingWriter(_ScriptedWriter):
+    # Takes the header block, then fails the body with a socket error Microdot does not mute (EHOSTUNREACH).
+    async def awrite(self, data: bytes) -> None:
+        if self.written:
+            raise OSError(113, "EHOSTUNREACH")
+        await super().awrite(data)
+
+
+class _BodyHangingWriter(_ScriptedWriter):
+    # Takes the header block, then never completes the body's write: the proxy's per-call bound ends it.
+    async def awrite(self, data: bytes) -> None:
+        if self.written:
+            await asyncio.Event().wait()
+        await super().awrite(data)
+
+
+def test_a_failed_or_timed_out_static_body_write_closes_the_stream() -> None:
+    # Response.write() leaves the body unclosed after an unmuted error or a timeout; release() closes it once.
+    mount, vfs = _mount_recording_fixture({"page.bin": _patterned(600)})
+    service, _app = _make_service(static_mount=mount, per_call_timeout_s=0.05, outer_cap_s=2.0)
+    for writer in (_BodyRefusingWriter(), _BodyHangingWriter()):
+        run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/page.bin"))], eof=True), writer), timeout_s=3.0)
+        assert writer.written.startswith(b"HTTP/1.0 200 OK\r\n"), writer.written
+    assert [f.closes for f in vfs.opened] == [1, 1]
+    assert run(service._open_conns.get_value()) == 0
 
 
 # The per-write bound on the wire (SPECIFICATION.md Part I.3). Build-independent: a synthetic
@@ -2313,7 +2712,7 @@ def test_g3_a_zero_chunk_bytes_is_clamped_so_a_static_read_still_ends() -> None:
 
 def test_g3_a_single_scalar_longer_than_the_cap_is_the_one_piece_allowed_past_it_and_stays_whole() -> None:
     # _PieceWriter never splits a fragment, so this is the documented limit, not a bound. Part
-    # I.3's need table was measured at every field's DEFAULT value; the next test takes the worst
+    # Part I.3's need table was measured at every field's DEFAULT value; the next test takes the worst
     # case a schema actually permits.
     stub = _NestedCfgModule("STUB", values={}, data={"small": 1, "scalar": "y" * 600, "after": 2})
     service, _app = _make_service(sensors=[stub])
@@ -2333,8 +2732,8 @@ def test_g3_a_scalar_at_ntp_hosts_own_bound_fits_one_piece() -> None:
     assert any(json.dumps("y" * longest).encode() in chunk for chunk in body)  # the piece holding it is whole
 
 
-# G.2 - hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).
-# `is_hotspot_active` only changes _serve_static()'s `except OSError` fallback branch; its default
+# Hotspot-mode captive-portal redirect fallback (SPECIFICATION.md Part A.5).
+# `is_hotspot_active` only changes _StaticRoutes.serve()'s `except OSError` fallback branch; its default
 # (None) must reproduce today's plain-404 behavior, since no existing call site passes it.
 
 
@@ -2419,7 +2818,7 @@ def test_g2_directory_traversal_still_404s_even_when_hotspot_active() -> None:
 
 def test_g2_put_to_unmatched_path_is_405_regardless_of_hotspot_state() -> None:
     # The wildcard route is registered GET-only, so find_route() resolves a PUT to 405 before
-    # _serve_static() is invoked and is_hotspot_active() is never consulted - the redirect
+    # _StaticRoutes.serve() is invoked and is_hotspot_active() is never consulted - the redirect
     # fallback cannot leak into an unrelated error path.
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
     _, app = _make_service(static_mount=mount, is_hotspot_active=lambda: True)
@@ -2449,7 +2848,7 @@ def test_g2_dynamic_is_hotspot_active_value_change_is_reflected_per_request() ->
 
 
 def test_g2_static_mount_none_with_is_hotspot_active_set_registers_no_routes() -> None:
-    # Defensive combo: is_hotspot_active is only ever consulted from inside _serve_static(), which is
+    # Defensive combo: is_hotspot_active is only ever consulted from inside _StaticRoutes.serve(), which is
     # only reachable through the static routes - passing it with static_mount=None (no static routes
     # registered at all) must not crash and must not somehow force route registration.
     _, app = _make_service(is_hotspot_active=lambda: True)  # static_mount defaults to None
@@ -2457,8 +2856,8 @@ def test_g2_static_mount_none_with_is_hotspot_active_set_registers_no_routes() -
     assert res.status_code == 404  # no route matches "/" at all - same as the plain static_mount=None case
 
 
-# H.1 - app.errorhandler(Exception) catch-all. Section G's 400/404/405/413/500 status-code
-# handlers were the reply-shape half; this is the logging half, since Microdot's own
+# The app.errorhandler(Exception) catch-all. The 400/404/405/413/500 status-code
+# handlers are the reply-shape half; this is the logging half, since Microdot's own
 # print_exception(exc) never reaches pr.err_s()/FRAM history on its own.
 
 
@@ -2506,7 +2905,7 @@ def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_indepe
 def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
     # HTTPException (abort()) is caught separately by ext/microdot.py's dispatch_request() before
     # its except-Exception branch ever runs - the catch-all above must never fire for it, and the
-    # existing shaped 404 (via the status-code handler, section G) must stay exactly as before.
+    # existing shaped 404 (via the status-code handler) must stay exactly as before.
     sensor = _RaisingSensorModule("SCD30")
     service, app = _make_service(sensors=[sensor])
     res = run(app.dispatch_request(_make_request(app, "GET", "/nope-not-a-route", None)))
@@ -2516,7 +2915,7 @@ def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
     assert log["WEBSERVER"]["ErrCount"] == 0  # the catch-all above never fired
 
 
-# H.2 - /status JSON streaming (_get_status()/_build_status_pieces()): one small json.dumps() per
+# /status JSON streaming (_get_status()/_build_status_pieces()): one small json.dumps() per
 # source instead of one buffer for the whole aggregate. Sections above already cover the resulting
 # JSON's shape end to end; these are specific to the streaming mechanism itself.
 
@@ -2588,7 +2987,7 @@ def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> N
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer))
+    _on_virtual_clock(_VirtualClock(), service._serve(reader, writer))  # a still clock: no bound cuts the response
     assert b" 200 " in writer.written
     assert b"Connection: close" in writer.written
     header_block, _, sent_body = writer.written.partition(b"\r\n\r\n")
@@ -2753,8 +3152,8 @@ def _errcount_log(name: str, count: int, nums: "list[int]", types: "list[str]") 
 
 
 # @tunable web.chunk_bytes = 256
-def _written(value: object, max_bytes: int = 256) -> "list[str]":
-    pieces: list[str] = []
+def _written(value: object, max_bytes: int = 256) -> "list[bytes]":
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=max_bytes)
     writer.add_value(value)
     writer.flush()
@@ -2779,16 +3178,16 @@ def test_h2_add_value_is_byte_identical_to_json_dumps() -> None:
         for kinds in (("N",), ("E", "W"), ('q"x', "\\", "E"))
     )
     for value in values:
-        assert "".join(_written(value)) == json.dumps(value), value
+        assert b"".join(_written(value)) == json.dumps(value).encode(), value
 
 
 def test_h2_a_non_finite_float_is_written_as_null() -> None:
     # json.dumps() writes bare nan/inf, which JSON rejects: the writer emits null, alone or nested.
     for value in (float("nan"), float("inf"), float("-inf")):
-        assert "".join(_written(value)) == "null", value
+        assert b"".join(_written(value)) == b"null", value
     nested = {"Lux": float("nan"), "RGB": [1.5, float("inf")], "T": (float("-inf"),)}
-    text = "".join(_written(nested))
-    assert "nan" not in text and "inf" not in text, text
+    text = b"".join(_written(nested))
+    assert b"nan" not in text and b"inf" not in text, text
     assert json.loads(text) == {"Lux": None, "RGB": [1.5, None], "T": [None]}
 
 
@@ -2797,7 +3196,7 @@ def test_h2_add_value_bounds_every_piece_however_large_the_value() -> None:
     # allocation per value - comes out in pieces no larger than the cap.
     big = {f"Sensor{i}": {"Reading": i * 1.5, "History": [{"num": n, "type": "E"} for n in range(12)]} for i in range(8)}
     pieces = _written(big, max_bytes=128)
-    assert "".join(pieces) == json.dumps(big)
+    assert b"".join(pieces) == json.dumps(big).encode()
     assert max(len(p) for p in pieces) <= 128, [len(p) for p in pieces]
     assert len(pieces) > len(json.dumps(big)) // 128
 
@@ -2807,18 +3206,18 @@ def test_h2_errcount_entry_is_never_one_string() -> None:
     # loaded heap keeps at gc.threshold(-1) (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.3).
     entry = _shape_errcount_entry(_errcount_log("M", 10, list(range(90, 100)), ["E"] * 10), "M")
     pieces = _written(entry, max_bytes=64)
-    assert "".join(pieces) == json.dumps(entry)
+    assert b"".join(pieces) == json.dumps(entry).encode()
     assert max(len(p) for p in pieces) <= 64
 
 
 def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> None:
     fragments = ["a" * n for n in (5, 100, 120, 30, 256, 1, 300, 7, 7)]
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=256)
     for fragment in fragments:
         writer.add(fragment)
     writer.flush()
-    assert "".join(pieces) == "".join(fragments)
+    assert b"".join(pieces) == "".join(fragments).encode()
     # A fragment larger than the cap stands alone rather than being cut; everything else fits it.
     assert [len(p) for p in pieces] == [255, 256, 1, 300, 14]
 
@@ -2826,29 +3225,50 @@ def test_h2_piece_writer_bounds_every_piece_and_never_splits_a_fragment() -> Non
 def test_h2_piece_writer_never_holds_more_than_sixteen_pending_fragments() -> None:
     # Streamed values arrive as many tiny fragments (", ", ": ", single digits); left to grow, the
     # pending list's own array would be as large as the piece - the allocation the writer bounds.
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=256)
     fragments = [", ", "1", ": ", '"k"'] * 200
     for fragment in fragments:
         writer.add(fragment)
         assert len(writer._group) <= 16, len(writer._group)
     writer.flush()
-    assert "".join(pieces) == "".join(fragments)
+    assert b"".join(pieces) == "".join(fragments).encode()
     assert max(len(p) for p in pieces) <= 256
     assert min(len(p) for p in pieces[:-1]) > 200  # still full pieces, not one per 16 fragments
 
 
+def test_h2_piece_writer_counts_bytes_not_characters() -> None:
+    pieces: list[bytes] = []
+    writer = _PieceWriter(pieces, max_bytes=4)
+    for _ in range(3):
+        writer.add("\u00e9")  # two bytes in UTF-8
+    writer.flush()
+    assert pieces == [b"\xc3\xa9\xc3\xa9", b"\xc3\xa9"], pieces
+
+
+def test_a_networking_get_with_a_multibyte_ssid_stays_bounded() -> None:
+    # A 200-character SSID of three-byte characters is a 602 B JSON string: the one fragment allowed past the cap,
+    # sent whole on its own; every other piece stays within the cap, and Content-Length counts bytes.
+    ssid = "\u20ac" * 200
+    wifi = _NestedCfgModule("WIFI", {"Before": 1, "SSID": ssid, "After": 2})
+    service, _app = _make_service(settings={"networking": [SettingsGroup(wifi, ("Before", "SSID", "After"))]})  # type: ignore[arg-type]  # structurally _ModuleLike-shaped
+    _status, headers, body = _get_on_the_wire(service, "/networking")
+    assert [c for c in body if len(c) > _WIRE_CHUNK_BYTES] == [json.dumps(ssid).encode()], [len(c) for c in body]
+    assert headers["content-length"] == str(sum(len(c) for c in body))
+    assert json.loads(b"".join(body)) == {"Before": 1, "SSID": ssid, "After": 2}
+
+
 def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() -> None:
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, _WIRE_CHUNK_BYTES)
     writer.flush()
     writer.add("x")
     writer.flush()
     writer.flush()
-    assert pieces == ["x"]
+    assert pieces == [b"x"]
 
 
-# -- H.3: gc.threshold() companions to the real-hardware hammer-load investigation ---------------
+# -- The /status hammers: gc.threshold() companions to the real-hardware hammer-load investigation --
 #
 # Unit-tier companions to the real-hardware hammer-load investigation: the same 5-concurrent-client
 # pattern that produced 237 real MemoryErrors on real hardware before the streaming fix and 0
@@ -2908,12 +3328,12 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_thre
         gc.threshold(orig_threshold)
 
 
-# -- I: _stream_dict_response() - the shared streaming primitive generalizing H.2's /status
+# -- _stream_dict_response() - the shared streaming primitive generalizing the /status streaming
 # mitigation to every other dict-shaped GET route (CLAUDE.md's memory-safety hard rule,
 # SPECIFICATION.md Part I). Those routes used to let Microdot json.dumps() the whole dict.
 
-# I.1 exercises the shared primitive directly; I.2/I.3 hammer the newly-streamed routes the way
-# H.3 hammers /status - Unix-port correctness guards, never an embedded-scale reproduction.
+# The first tests exercise the shared primitive directly; the hammers after them load the newly-streamed
+# routes the way the /status hammers do - Unix-port correctness guards, never an embedded-scale reproduction.
 
 
 def test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps() -> None:
@@ -2924,7 +3344,7 @@ def test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps(
 def test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path() -> None:
     # The whole point of this primitive: identical JSON on the wire, just assembled without ever
     # holding one buffer sized to the full aggregate (see _stream_dict_response()'s own comment).
-    result = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
+    result: JsonDict = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
     streamed = run(_stream_dict_response(result, _WIRE_CHUNK_BYTES))
     plain = Response(result)  # type: ignore[arg-type]  # Microdot's own dict path (one json.dumps() over the whole thing); the stub types the body str | bytes - removal trigger: SPECIFICATION.md B.15
     assert json.loads(status_body(streamed)) == json.loads(plain.body)
@@ -2938,7 +3358,7 @@ def test_i1_sets_content_type_and_an_exact_content_length_header() -> None:
 
 
 def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
-    # Mirrors H.2's identical proof for /status's own "errcount" section - same _PieceWriter
+    # Mirrors the /status streaming tests' identical proof for its "errcount" section - same _PieceWriter
     # mechanism, applied here to a flat top-level dict instead of /status's own nested section.
     result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
     # chunk_bytes if joined into one piece
@@ -2954,7 +3374,7 @@ def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wra
     # asy_isl29125_driver.py is the first driver whose measurement body nests a level deeper, and
     # _stream_dict_response() does one json.dumps() per TOP-LEVEL value - so a nested value must
     # come through intact and exactly once, neither flattened nor double-encoded.
-    result = {
+    result: JsonDict = {
         "ISL29125": {
             "Lux": 123.45,
             "RGB": {"R": 0.1234, "G": 0.2345, "B": 0.3456},
@@ -2996,9 +3416,9 @@ def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
     return b"".join(chunks)
 
 
-# -- I.2: hammer /measurements and /sensors specifically - the owner's named top
+# -- Hammering /measurements and /sensors specifically - the owner's named top
 # candidate (owner, 2026-09-07), since sensor-module configuration varies per device and its final size is not
-# foreseeable - at the real registered-module count found on real hardware (17, H.3's own scale).
+# foreseeable - at the real registered-module count found on real hardware (17, the /status hammers' scale).
 
 
 def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -3032,7 +3452,7 @@ def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold
 def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
     orig_threshold = gc.threshold()
     # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)  # the project owner's chosen value, see H.3's own comment above
+    gc.threshold(32768)  # the project owner's chosen value, see the /status hammers' own comment above
     try:
         _, app = _make_sensor_hammer_service()
         run(_hammer_route(app, "/measurements", 200, _SENSOR_HAMMER_KEYS))
@@ -3061,8 +3481,8 @@ def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_thr
         gc.threshold(orig_threshold)
 
 
-# -- I.2b: /networking, /system, /notification each get the same dedicated per-hotspot hammer as
-# /measurements and /sensors above; the combined I.3 set below is additional, not a substitute.
+# -- /networking, /system, /notification each get the same dedicated per-hotspot hammer as
+# /measurements and /sensors above; the combined set below is additional, not a substitute.
 # Stressed at 17 groups so this set doesn't depend on today's small real field counts staying so.
 
 
@@ -3124,7 +3544,7 @@ def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_
     _run_settings_hammer("notification", "/notification", 32768)
 
 
-# -- I.3: every memory-bounded GET route hammered concurrently for longer, maxing out every
+# -- Every memory-bounded GET route hammered concurrently for longer, maxing out every
 # situation this audit identified at once: 17 sensor modules (measurements/sensors), 17 error
 # sources plus this service's own entry (status/errcount), one settings group per flat endpoint.
 
@@ -3188,12 +3608,12 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_g
         gc.threshold(orig_threshold)
 
 
-# -- I.4: /measurements and /sensors hammered concurrently with a real config write (PUT /sensors)
+# -- /measurements and /sensors hammered concurrently with a real config write (PUT /sensors)
 # in the mix - the unit-level counterpart to tests_hardware/bench/test_memory_stress_bench.py's
 # real-hardware GET+write shape, which had no fast CI-run equivalent.
 
 # ConfigManager's own asyncio.Lock already rules out a data race (SPECIFICATION.md Part C.7): this
-# checks I.2/I.3's same bounded-stream property with a concurrent writer present, not a race hunt.
+# checks the GET hammers' same bounded-stream property with a concurrent writer present, not a race hunt.
 
 
 def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -3241,7 +3661,7 @@ def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_writ
 
 
 # ---------------------------------------------------------------------------
-# Section G - the backlog knob and its coupling to max_connections
+# The backlog knob and its coupling to max_connections
 # (SPECIFICATION.md Part H.7; asyncio.start_server()'s own default is 5)
 # ---------------------------------------------------------------------------
 
@@ -3295,12 +3715,12 @@ def test_the_server_passes_its_own_backlog_to_start_server() -> None:
 def test_h2_piece_writer_keeps_a_piece_that_lands_exactly_on_the_cap_whole() -> None:
     # The cap is inclusive: two fragments summing to exactly max_bytes share one piece, and only
     # the next one starts a new piece - ">=" would split at the cap and double the write count.
-    pieces: list[str] = []
+    pieces: list[bytes] = []
     writer = _PieceWriter(pieces, max_bytes=4)
     for fragment in ("ab", "cd", "e"):
         writer.add(fragment)
     writer.flush()
-    assert pieces == ["abcd", "e"], pieces
+    assert pieces == [b"abcd", b"e"], pieces
 
 
 def test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string() -> None:
@@ -3308,7 +3728,7 @@ def test_h2_a_tuple_value_is_walked_like_a_list_never_dumped_as_one_string() -> 
     # single allocation the size of the value, which is exactly what the writer exists to avoid.
     value = tuple(range(60))
     pieces = _written(value, max_bytes=16)
-    assert "".join(pieces) == json.dumps(value)
+    assert b"".join(pieces) == json.dumps(value).encode()
     assert max(len(p) for p in pieces) <= 16, [len(p) for p in pieces]
 
 
@@ -3371,6 +3791,8 @@ def test_nothing_is_written_to_a_peer_that_reset_while_its_body_was_read() -> No
     writer = _ScriptedWriter()
     run_timed(service._serve(_ResetDuringBodyReader([(0.0, request)]), writer), timeout_s=2.0)
     assert writer.written == b"", writer.written
+    assert service.pr._err_count == 1, service.pr._err_count
+    assert _newest_entry(service) == (code("W", "HTTP_PEER_RESET"), "W")
     assert run(service._open_conns.get_value()) == 0
 
 

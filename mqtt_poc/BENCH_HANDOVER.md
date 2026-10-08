@@ -68,7 +68,7 @@ And on 2026-10-08:
 
 - **Branch** `claude/whole-project-audit-plan-followup`, draft PR hundertvolt/sensors#110. It is stacked on the
   whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its head
-  `cfd92e4` (U18 and its fix). It merges only after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
+  `f5c8255` (U19, the REST layer). It merges only after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
 - **Verified on the host, not on hardware**:
   - lint and all three typecheck passes;
@@ -153,8 +153,8 @@ What that became on this branch:
 
 ### 1.7 Known failures that are not this branch's
 
-All three are in code this branch does not touch (the UART protocol and the CI toolchain step, from the
-audit's U17 and U16), and each is commented on PR hundertvolt/sensors#110:
+**In the lower levels and CI.** All three are in code this branch does not touch (the UART protocol and
+the CI toolchain step, from the audit's U17 and U16), and each is commented on PR hundertvolt/sensors#110:
 
 1. `tests/test_uart_comm_hazard.py::test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16`
    failed once in CI's coverage job ("no recovery within two transactions after step 2"). The audit's U18
@@ -167,6 +167,30 @@ audit's U17 and U16), and each is commented on PR hundertvolt/sensors#110:
 
 The Pi4 is slower than the machines these ran on, so 1 or 2 may fail in the lower levels here. Section 6
 says what to do.
+
+**On the bench, from the audit's U19 (`f5c8255`, merged here).** U19's web server writes two new warnings
+to the persisted WEBSERVER log: W60 `HTTP_REFUSED` for a connection refused at the ceiling, and W61
+`HTTP_BAD_HEAD` for a refused request head. Each also counts in `/status`'s `HTTPDropped`. Four scoped
+bench tests were written before that, and each still ends by asserting an empty WEBSERVER log:
+
+4. `test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`: it
+   opens one connection past the ceiling on purpose (W60).
+5. `test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures`:
+   `discover_max_connections()` holds connections until one is refused (W60).
+6. `test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status`:
+   its storm is meant to go past the ceiling (W60).
+7. `test_hotspot_role_reversal.py`, lines 394-396: "NOT A REAL HTTP REQUEST" is now refused (W61). This
+   one is the audit's open finding OF-101, which its U26 fixes before any L4 run; the audit's scan does not
+   name 4 to 6.
+
+These tests are the audit's, so this branch leaves them as they are. A failure is one of these known items
+only if all of the following hold:
+- it fails at that WEBSERVER-log check;
+- every earlier assertion in the test passed;
+- the log holds only W60 (4 to 6) or W61 (7) entries, and `HTTPDropped` is at least 1.
+
+Record such a failure as known, quoting the log. Edit nothing in those tests, and report the run NOT CLEAN
+naming them. Any other WEBSERVER code, or an earlier assertion failing, is a real failure (section 6).
 
 ---
 
@@ -314,6 +338,8 @@ that ran passed, but the rest of both tiers did not run. Exit 1 is a failure. On
   code this branch does not touch, ask the owner whether to go on with `--skip-lower-levels`. That run is
   reported NOT CLEAN with both reasons named. Never go on without asking.
 - **A hardware test fails.**
+  0. If it is one of section 1.7's bench items (4 to 7), check that item's signature. If it matches, save
+     the FRAM logs (step 2) and record it as known. Otherwise go on with step 1.
   1. Keep the evidence: the run's archive under `build/archive/` and the console log.
   2. Read the FRAM logs (`GET /status` `errcount`) before anything resets them; the next test's setup
      usually does. Save them into the results as `fram_after_failure_<test>.json`.

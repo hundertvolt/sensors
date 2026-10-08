@@ -264,8 +264,8 @@ def _per_connection_problems(macros: dict[str, int], max_connections: int) -> li
     if macros["MEMP_NUM_TCP_PCB"] < want_pcb:
         problems.append(f"MEMP_NUM_TCP_PCB ({macros['MEMP_NUM_TCP_PCB']}) < max_connections + {SPARE_TCP_PCBS} ({want_pcb}) - connections still closing and the one queued over-ceiling arrival hold PCBs from the same pool")
     # Segments are a GLOBAL pool while TCP_SND_QUEUELEN is PER connection, so one connection can
-    # drain the pool. Every admitted connection must be able to hold a full send window at once, or
-    # the server accepts work it cannot actually push (SPECIFICATION.md Part H.7).
+    # drain the pool. Every admitted connection gets a full window of full-MSS segments; short writes and
+    # closing pcbs can still drain it (SPECIFICATION.md Part B.14.2.1).
     want_seg = max_connections * (snd_buf // mss)
     if seg < want_seg:
         problems.append(f"MEMP_NUM_TCP_SEG ({seg}) < max_connections * (TCP_SND_BUF / TCP_MSS) ({want_seg}) - {max_connections} connections cannot each hold a full send window")

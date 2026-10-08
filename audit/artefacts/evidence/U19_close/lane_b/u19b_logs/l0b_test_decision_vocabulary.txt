@@ -1,0 +1,18 @@
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           src/asy_webserver_service.py	Reuses type_or_range_error() against a synthetic FieldSchema rather than a secon
+E           src/asy_webserver_service.py	The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTE
+E       assert not [('src/asy_webserver_service.py', 'Reuses type_or_range_error() against a synthetic FieldSchema rather than a secon'), ('src/asy_webserver_service.py', 'The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTE')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 5 passed in 8.10s

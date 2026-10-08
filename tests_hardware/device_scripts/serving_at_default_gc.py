@@ -10,7 +10,7 @@ import time
 import micropython
 import sensortask_dev
 
-from asy_webserver_service import WebserverService
+from asy_webserver_service import WebserverService, _StaticRoutes
 
 try:
     from typing import TYPE_CHECKING
@@ -41,7 +41,10 @@ _POST_DUMPS = 3
 # @tunable l3.serving_at_default_gc_window_s = 600
 _WINDOW_S = 600  # hard bound, whatever the host does
 _MAX_FAILURE_MAPS = 3  # the first few are the evidence; more would only flood the console
-_ROUTES = ("_get_status", "_get_measurements", "_get_sensors", "_get_networking", "_get_system", "_get_notification", "_get_static_index", "_get_static")
+_ROUTES = (
+    (WebserverService, ("_get_status", "_get_measurements", "_get_sensors", "_get_networking", "_get_system", "_get_notification")),
+    (_StaticRoutes, ("get_index", "get")),
+)
 _failure_maps = [0]
 
 
@@ -69,7 +72,7 @@ def _dump(label: str) -> None:
 def _dumping_on_failure(route: "_Route") -> "_Route":
     # Re-raises unchanged, so the served outcome is exactly production's; no collect before the
     # dump - MicroPython already ran one before it raised.
-    async def wrapped(self: "WebserverService", *args: object, **kwargs: object) -> object:
+    async def wrapped(self: object, *args: object, **kwargs: object) -> object:
         try:
             return await route(self, *args, **kwargs)  # kwargs: microdot passes URL parts by name
         except MemoryError:
@@ -81,9 +84,10 @@ def _dumping_on_failure(route: "_Route") -> "_Route":
     return wrapped
 
 
-# On the CLASS, before build_system(): each route binds self._get_* when it is registered.
-for _name in _ROUTES:
-    setattr(WebserverService, _name, _dumping_on_failure(getattr(WebserverService, _name)))
+# On the CLASSES, before build_system(): each route binds its handler when it is registered.
+for _cls, _names in _ROUTES:
+    for _name in _names:
+        setattr(_cls, _name, _dumping_on_failure(getattr(_cls, _name)))
 
 
 async def _observe(webserver: "WebserverService") -> None:
