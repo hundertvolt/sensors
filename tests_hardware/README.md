@@ -491,6 +491,9 @@ fallback as `test_network_resilience.py`.
 - a reset path;
 - a client-id takeover bounded by the backoff;
 - a 3000-message QoS 0 flood and a 500-message QoS 1 burst;
+- the broker found through this host's own `.local` name, answered by its Avahi (`env --tier bench`
+  installs `avahi-daemon` when missing). This test owns two `MQTTHost` writes, so it runs only with
+  `--allow-persistence-writes`;
 - an oversized message;
 - a checkpoint (no task ended, only the expected MQTT codes);
 - the AP outage;

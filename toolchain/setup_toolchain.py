@@ -720,6 +720,7 @@ def ensure_dialout_group(*, skip: bool) -> None:
 NETWORK_MANAGER_APT_PACKAGE = "network-manager"
 IPROUTE2_APT_PACKAGE = "iproute2"
 IPTABLES_APT_PACKAGE = "iptables"
+AVAHI_APT_PACKAGE = "avahi-daemon"
 
 
 def ensure_network_manager(*, skip_apt: bool) -> None:
@@ -753,6 +754,17 @@ def ensure_iptables(*, skip_apt: bool) -> None:
     ensure_apt_packages([IPTABLES_APT_PACKAGE], skip=skip_apt)
     if not shutil.which("iptables"):
         raise SetupError("'iptables' command still not found on PATH after installing iptables")
+
+
+def ensure_avahi(*, skip_apt: bool) -> None:
+    # The bench host's own mDNS responder: the MQTT bench tier resolves this host's `.local` name from the DUT
+    # (SPECIFICATION.md Part A.11). Raspberry Pi OS ships it; installed when missing, never assumed.
+    if shutil.which("avahi-daemon"):
+        return
+    log("'avahi-daemon' not found - installing avahi-daemon")
+    ensure_apt_packages([AVAHI_APT_PACKAGE], skip=skip_apt)
+    if not shutil.which("avahi-daemon"):
+        raise SetupError("'avahi-daemon' still not found on PATH after installing avahi-daemon")
 
 
 def detect_uplink_interface() -> str:
@@ -1093,6 +1105,7 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, A
     ensure_network_manager(skip_apt=args.skip_apt)
     ensure_iproute2(skip_apt=args.skip_apt)
     ensure_iptables(skip_apt=args.skip_apt)
+    ensure_avahi(skip_apt=args.skip_apt)
     # Always call ensure_bench_bridge() - it already handles the already-exists case itself, so
     # there's exactly one place this logic lives, not a separate short-circuit that could drift.
     ssid = ensure_bench_bridge(args.uplink_iface, args.wifi_iface, args.ssid, args.password)

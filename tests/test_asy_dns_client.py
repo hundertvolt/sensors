@@ -81,6 +81,10 @@ class _ResolvingAsyUDPSocket:
     def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
+    async def sendto(self, msg: "bytes | bytearray", addr: "tuple[str, int]", timeout_ms: int = -1) -> "int | None":
+        # The mDNS path's sendto() names its group as a plain tuple too, the same quirk as the constructor's.
+        return await self._real.sendto(msg, _resolved(addr[0], addr[1]), timeout_ms=timeout_ms)
+
 
 _RealAsyUDPSocket = asy_dns_client.UDPSocket  # captured before the module attribute below is overwritten
 asy_dns_client.UDPSocket = _ResolvingAsyUDPSocket  # type: ignore[misc, assignment]  # permanent for this test file's whole process - see _ResolvingAsyUDPSocket's own comment
@@ -632,6 +636,83 @@ def test_resolve_ipv4_cname_chain_end_to_end() -> None:
             server.close()
 
     assert run(scenario()) == "203.0.113.77"
+
+
+# ---------------------------------------------------------------------------
+# .local names: a one-shot multicast DNS query (RFC 6762 SS5.1), with the group pointed at a loopback fake
+# ---------------------------------------------------------------------------
+
+
+def _with_mdns_responder(port: int, scenario: "Callable[[], Coroutine[Any, Any, T]]") -> "T":
+    # Points the module's mDNS group at loopback for one test, restoring it afterwards.
+    group, mdns_port = asy_dns_client._MDNS_GROUP, asy_dns_client._MDNS_PORT
+    asy_dns_client._MDNS_GROUP, asy_dns_client._MDNS_PORT = _HOST, port
+    try:
+        return run(scenario())
+    finally:
+        asy_dns_client._MDNS_GROUP, asy_dns_client._MDNS_PORT = group, mdns_port
+
+
+def test_build_query_without_recursion_clears_rd_and_nothing_else() -> None:
+    plain = _build_query(b"broker.local", b"\x12\x34")
+    mdns = _build_query(b"broker.local", b"\x12\x34", recursion=False)
+    assert mdns[2:4] == b"\x00\x00"
+    assert mdns[:2] + mdns[4:] == plain[:2] + plain[4:]
+
+
+def test_a_local_name_is_asked_over_multicast_and_never_a_unicast_server() -> None:
+    mdns_port, unicast_port = make_port(), make_port()
+
+    async def scenario() -> "tuple[str | None, list[bytes], list[bytes]]":
+        responder, unicast = FakeDNSServer(_HOST, mdns_port), FakeDNSServer(_HOST, unicast_port)
+        try:
+            answering = asyncio.create_task(responder.answer_once(lambda q: _make_response(q, _a_answer("192.168.1.50"), ancount=1, flags=b"\x84\x00")))
+            result = await resolve_ipv4("Broker.LOCAL", dns_servers=(_HOST,), port=unicast_port, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            await answering
+            return result, responder.received, unicast.received
+        finally:
+            responder.close()
+            unicast.close()
+
+    result, asked, unicast_asked = _with_mdns_responder(mdns_port, scenario)
+    assert result == "192.168.1.50"
+    assert len(asked) == 1 and asked[0][2:4] == b"\x00\x00"  # RD clear, as RFC 6762 SS18.6 asks
+    assert b"\x06broker\x05local\x00" in asked[0]  # lowercased, like every DNS name here
+    assert unicast_asked == []
+
+
+def test_a_local_reply_with_the_cache_flush_bit_and_no_question_is_still_read() -> None:
+    port = make_port()
+
+    def bare_answer(query: bytes) -> bytes:
+        # QDCOUNT 0, and the A record's class carries RFC 6762 SS10.2's cache-flush bit.
+        header = bytes(query[0:2]) + b"\x84\x00" + b"\x00\x00" + _be16(1) + b"\x00\x00\x00\x00"
+        return header + b"\xc0\x0c\x00\x01\x80\x01" + (120).to_bytes(4, "big") + _be16(4) + bytes([10, 0, 0, 7])
+
+    async def scenario() -> "str | None":
+        responder = FakeDNSServer(_HOST, port)
+        try:
+            answering = asyncio.create_task(responder.answer_once(bare_answer))
+            result = await resolve_ipv4("pi.local", timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            await answering
+            return result
+        finally:
+            responder.close()
+
+    assert _with_mdns_responder(port, scenario) == "10.0.0.7"
+
+
+def test_an_unanswered_local_name_returns_none_after_its_bounded_tries() -> None:
+    port = make_port()  # nobody answers here
+
+    async def scenario() -> "tuple[str | None, int]":
+        started = time.ticks_ms()
+        result = await resolve_ipv4("absent.local", timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=2)
+        return result, time.ticks_diff(time.ticks_ms(), started)
+
+    result, elapsed_ms = _with_mdns_responder(port, scenario)
+    assert result is None
+    assert elapsed_ms < 2 * _NO_REPLY_TIMEOUT_MS + _PROMPT_RETURN_MAX_MS  # two waits, each bounded, nothing more
 
 
 if __name__ == "__main__":

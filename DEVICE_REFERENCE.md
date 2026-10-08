@@ -117,7 +117,8 @@ device's TOML decides its sensors.
 ## MQTT client (dev units only)
 
 Off until you switch it on: set `MQTT Client` to On and enter the broker's address on the
-Networking page, then **Apply & Reconnect**. Plain MQTT over TCP only (no TLS, usually port 1883);
+Networking page, then **Apply & Reconnect**. The address can be an IP address, a host name or a
+`.local` name such as `homeassistant.local`; an IP address works without any lookup. Plain MQTT over TCP only (no TLS, usually port 1883);
 user name and password are optional, and the device does not show the password once it is saved.
 
 **What it sends.** Every *Publish Interval* seconds, one JSON message per sensor on

@@ -144,6 +144,8 @@ _QOS1_MAX_TRIES = const(3)
 _SHORT_SESSION_WARN = const(3)
 # @tunable mqtt.pub_step_ms = 1000
 _PUB_STEP_MS = const(1000)  # the publisher's check for a due round: how late the first one follows a CONNACK
+# @tunable mqtt.unconfirmed_max_bytes = 2000
+_UNCONFIRMED_MAX = const(2000)  # bytes written but not yet proven received: the connection's lwIP MEM_SIZE share
 _MAX_TEXT_BYTES = const(64)  # MQTTUser/MQTTPW
 _ID_BYTES = const(2)  # a packet id, and a string's length prefix (MQTT 3.1.1 section 1.5.3)
 _SUBACK_MIN = const(3)  # a packet id and at least one return code
@@ -212,7 +214,7 @@ _VAL_MQTT_PUB_INTERVAL = const((("MQTTPubInterval", "int", 60, 10, 3600, None),)
 
 # @web-group section=networking submitGroup=mqtt label="MQTT Broker" submit=true submitLabel="Apply & Reconnect"
 # @web MQTTEnable section=networking submitGroup=mqtt label="MQTT Client" onLabel="On" offLabel="Off"
-# @web MQTTHost section=networking submitGroup=mqtt label="Broker Address" description="IPv4 address or host name; plain TCP, no TLS." bytes=true
+# @web MQTTHost section=networking submitGroup=mqtt label="Broker Address" description="IPv4 address, host name or .local name; plain TCP, no TLS." bytes=true
 # @web MQTTPort section=networking submitGroup=mqtt label="Broker Port"
 # @web MQTTUser section=networking submitGroup=mqtt label="User Name" description="Leave empty for an anonymous broker." bytes=true
 # @web MQTTPW section=networking submitGroup=mqtt label="Password" mask=true bytes=true
@@ -250,6 +252,9 @@ class MQTTClient(SensorReaderConfig):
     _sub_refused: bool
     _ack_head: int
     _ack_count: int
+    _unconfirmed: int
+    _ping_mark: int
+    _ping_early: bool
 
     def __init__(
         self,
@@ -444,7 +449,7 @@ class MQTTClient(SensorReaderConfig):
         while self._ack_count > 0:
             i = self._ack_head * 2
             n = encode_puback(self._txmv, (self._acks[i] << 8) | self._acks[i + 1])
-            stream.write(self._txmv[:n])
+            self._write(stream, self._txmv[:n])  # tiny and never held: the broker's inbound flow depends on them
             self._ack_head = (self._ack_head + 1) % _ACK_SLOTS
             self._ack_count -= 1
 
@@ -452,9 +457,8 @@ class MQTTClient(SensorReaderConfig):
         # Queued messages oldest first, then QoS 1 retransmissions; a give-up is counted, never a teardown.
         for _ in range(_OUT_SLOTS):
             i = self._oldest_queued()
-            if i < 0:
-                break
-            self._send_slot(stream, i, dup=False)
+            if i < 0 or not self._send_slot(stream, i, dup=False):
+                break  # nothing queued, or no room: order is kept, the rest waits for the ping's answer
             self._bump(_C_TX)
             if self._slot_qos[i]:
                 self._slot_state[i] = _SLOT_INFLIGHT
@@ -466,8 +470,7 @@ class MQTTClient(SensorReaderConfig):
                 if self._slot_tries[i] >= _QOS1_MAX_TRIES:
                     self._free(i)
                     self._bump(_C_TX_DROP)
-                else:
-                    self._send_slot(stream, i, dup=True)
+                elif self._send_slot(stream, i, dup=True):
                     self._slot_sent[i] = now
 
     def _free(self, i: int) -> None:
@@ -501,7 +504,10 @@ class MQTTClient(SensorReaderConfig):
                     break
             return _R_NONE
         if kind == PINGRESP and total == hdr:
+            # TCP delivers in order, so everything written up to the PINGREQ has arrived and lwIP has freed it.
             self._ping_out = False
+            self._unconfirmed = max(0, self._unconfirmed - self._ping_mark)
+            self._ping_mark = 0
             return _R_NONE
         if kind == SUBACK and total - hdr >= _SUBACK_MIN:
             for j in range(hdr + _ID_BYTES, total):
@@ -733,6 +739,9 @@ class MQTTClient(SensorReaderConfig):
         self._sub_refused = False
         self._ack_head = 0
         self._ack_count = 0
+        self._unconfirmed = 0  # bytes written since the CONNACK that no PINGRESP has confirmed yet
+        self._ping_mark = 0  # _unconfirmed right after the outstanding PINGREQ: what its PINGRESP confirms
+        self._ping_early = False  # a write is waiting for room: the next tick pings without waiting its interval
 
     async def _safe_dns_server(self) -> str | None:
         try:
@@ -754,24 +763,29 @@ class MQTTClient(SensorReaderConfig):
             await self.pr.err_s("network_available_locked() callback failed:", failed, errno=_ERR_CALLBACK)
         return available
 
-    def _send_slot(self, stream: "_Stream", i: int, *, dup: bool) -> None:
+    def _send_slot(self, stream: "_Stream", i: int, *, dup: bool) -> bool:
+        # False when the PUBLISH would take the unconfirmed bytes past their cap; it waits for the next ping's answer.
         if not dup and self._slot_qos[i]:
             self._pid = self._pid % 65535 + 1
             self._slot_pid[i] = self._pid
-        self._slot_tries[i] += 1
         start = i * _OUT_PAYLOAD
         topic = self._slot_topic[i] or b""
         payload = self._ringmv[start : start + self._slot_len[i]]
         n = encode_publish(self._txmv, topic, payload, self._slot_qos[i], self._slot_pid[i], retain=bool(self._slot_retain[i]), dup=dup)
         if n > 0:
-            stream.write(self._txmv[:n])
+            if self._unconfirmed and self._unconfirmed + n > _UNCONFIRMED_MAX:
+                self._ping_early = not self._ping_out
+                return False
+            self._write(stream, self._txmv[:n])
+        self._slot_tries[i] += 1
+        return True
 
     async def _serve(self, stream: "_Stream") -> int:
         # The keeper's tick while connected: every write, the ping and link deadlines, and stability.
         cfg = self._cfg
         subscribe = encode_subscribe(self._txmv, self._next_pid(), self._subscriptions())
         if subscribe > 0:
-            stream.write(self._txmv[:subscribe])
+            self._write(stream, self._txmv[:subscribe])
         self._queue(self._base + b"/status", _ONLINE, 1, retain=True)
         while True:
             await asyncio.sleep_ms(cfg.tick_ms)  # sleep_ms() allocates nothing
@@ -788,8 +802,10 @@ class MQTTClient(SensorReaderConfig):
                 if time.ticks_diff(now, self._ping_sent) >= cfg.response_timeout_ms:
                     self._bump(_C_PING_TIMEOUTS)
                     return _R_PING
-            elif time.ticks_diff(now, self._last_ping) >= cfg.ping_interval_ms:
-                stream.write(_PINGREQ_PKT)
+            elif self._ping_early or time.ticks_diff(now, self._last_ping) >= cfg.ping_interval_ms:
+                self._write(stream, _PINGREQ_PKT)
+                self._ping_mark = self._unconfirmed
+                self._ping_early = False
                 self._ping_out = True
                 self._ping_sent = now
                 self._last_ping = now
@@ -892,6 +908,11 @@ class MQTTClient(SensorReaderConfig):
                 return reason
             self._compact(total)
         return _R_NONE
+
+    def _write(self, stream: "_Stream", data: "bytes | memoryview") -> None:
+        # Every keeper write but the CONNECT and the teardown's, counted until a PINGRESP confirms it (_UNCONFIRMED_MAX).
+        stream.write(data)
+        self._unconfirmed += len(data)
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_connection, self.start_asy_publish]

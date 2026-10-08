@@ -404,6 +404,27 @@ def test_an_oversized_inbound_message_is_discarded_and_framing_kept(mqtt_bench: 
     assert _count(m.dut_ip, "MQTTTeardowns") == teardowns, "the oversized message ended the session"
 
 
+@pytest.mark.persistence_write
+def test_the_broker_is_found_by_the_bench_hosts_local_name(mqtt_bench: MqttBench, result_note: Callable[..., None]) -> None:
+    # The DUT asks for this host's .local name with a one-shot mDNS query, answered by this host's Avahi (Part A.11).
+    # The test owns both writes: the name, then this host's IP back.
+    m = mqtt_bench
+    name = f"{socket.gethostname()}.local"
+    _wait_connected(m.dut_ip, "before switching to the .local name")
+    connects = _count(m.dut_ip, "MQTTConnects")
+    try:
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTHost": name}, timeout_s=_REST_BUDGET_S)
+        assert res.status_code == 200 and res.json().get("result", {}).get("MQTTHost") == "Valid", f"{name} was refused: {res.body!r}"
+        took = _wait_count_above(m.dut_ip, "MQTTConnects", connects, _CONNECT_WAIT_S, f"a connection through {name} (is avahi-daemon running here and publishing that name?)")
+        broker = _networking(m.dut_ip).get("MQTTBroker")
+        assert broker == m.host_ip, f"{name} resolved to {broker!r}, not this host's {m.host_ip}"
+    finally:
+        restore = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTHost": m.host_ip}, timeout_s=_REST_BUDGET_S)
+        assert restore.status_code == 200, f"restoring MQTTHost failed: {restore.body!r}"
+    _wait_connected(m.dut_ip, "after MQTTHost went back to the IP")
+    result_note(f"{name} resolved to {broker} and connected within {took:.1f}s")
+
+
 def test_no_task_ended_and_only_expected_codes_were_logged(mqtt_bench: MqttBench) -> None:
     # The broker faults above, read before the AP outage below clears the logs: no supervised task ended, the web
     # server logged nothing, and MQTT logged only what its faults explain.

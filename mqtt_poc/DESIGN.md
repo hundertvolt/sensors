@@ -111,6 +111,11 @@ run) and closing every finding in `RESULTS.md`.
 - **Stalled broker**: the stream's pending output past `mqtt.max_out_backlog` bytes, or a drain not done
   within `mqtt.drain_timeout_ms` → teardown (E `MQTT_STALLED`). Small packets keep each `tcp_write()`
   small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed only by the audit's U21 override.
+- **Unconfirmed bytes** (§14 item 2): at most `mqtt.unconfirmed_max_bytes` written that no PINGRESP has
+  confirmed, the connection's 2,000 B share of lwIP's `MEM_SIZE`. A PINGRESP confirms everything up to
+  its PINGREQ (TCP is in order). A PUBLISH that would pass the cap waits in the ring and the next tick
+  pings early; PUBACKs and PINGREQs are never held. MQTT then cannot be what exhausts `MEM_SIZE` and
+  trips the `ERR_MEM` loop.
 - **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and discarded
   in buffer-sized chunks (counted `RxDropped`, never allocated). A remaining length past four bytes, an
   unexpected packet type, a QoS 2 PUBLISH or a PUBLISH whose topic overruns it → teardown
@@ -184,7 +189,7 @@ tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
 | Key | Type | Default | Bounds | Rule at PUT and at use |
 |---|---|---|---|---|
 | `MQTTEnable` | bool | `false` | — | off by default (owner, 8.2) |
-| `MQTTHost` | str | `""` | 0–253 | bytes ≤ 253 at PUT; at use, an IPv4 literal or dot-separated host labels (as `NTPHost`) |
+| `MQTTHost` | str | `""` | 0–253 | bytes ≤ 253 at PUT; at use, an IPv4 literal (no lookup), a DNS name, or a `.local` name asked by one mDNS query (§14 item 1), as `NTPHost` |
 | `MQTTPort` | int | 1883 | 1–65535 | plain TCP only (owner, 8.3) |
 | `MQTTUser` | str | `""` | 0–64 | bytes ≤ 64, no NUL |
 | `MQTTPW` | str | `""` | 0–64 | bytes ≤ 64; masked on every GET (owner, 8.5) |
@@ -260,7 +265,8 @@ Generated constants in the `dev` module (the per-service timeouts rule, N.1), pa
 `mqtt.stable_after_ms` 30,000, plus the shared `dns.timeout_ms`/`dns.tries` and the client id default.
 In `src/`: `mqtt.tick_ms` 100, `mqtt.link_poll_ms` 1,000, `mqtt.idle_recheck_ms` 60,000,
 `mqtt.drain_timeout_ms` 5,000, `mqtt.max_out_backlog` 2,048, `mqtt.qos1_retry_ms` 10,000,
-`mqtt.qos1_max_tries` 3, `mqtt.short_session_warn` 3, `mqtt.pub_step_ms` 1,000 and the buffer sizes in §5. Every one is an
+`mqtt.qos1_max_tries` 3, `mqtt.short_session_warn` 3, `mqtt.pub_step_ms` 1,000, `mqtt.unconfirmed_max_bytes`
+2,000 (an owner decision, §14) and the buffer sizes in §5. Every one is an
 estimate until the bench run (Basis "estimated (agent, …) — measurement owed: … L4").
 
 ## 10. Build wiring
@@ -318,6 +324,8 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
    - SIGSTOP stall and silent path loss (`iptables` DROP), both detected within 35 s;
    - a reset path (REJECT);
    - a client-id takeover bounded by the backoff;
+   - the broker found by the Pi4's own `.local` name through its Avahi (this one writes `MQTTHost` twice, so
+     it runs only with `--allow-persistence-writes`);
    - a 3000-message QoS 0 flood with REST timed under it, a 500-message QoS 1 burst and an oversized message;
    - a checkpoint (no task ended, only the expected `MQTT` codes);
    - an AP outage through `BenchBridge`;
@@ -360,3 +368,15 @@ Each the more conservative, more easily reversible choice, for review:
    retained `offline` on the old status topic, since the DISCONNECT makes the broker drop the will.
 10. The first measurement round follows each CONNACK, and the interval is read at connect: a consumer
     gets values at once, and a changed interval applies at once instead of after the old one ran out.
+
+## 14. Owner decisions after the design (owner, 2026-10-08)
+
+- No TLS: 'TLS is not needed as it all runs in a local network.' A plain IP address is always accepted
+  and nothing may block: 'It should accept plain IP addresses anyway. But it must not block, ever.'
+1. Asked "Should the resolver learn .local names (one-shot mDNS), for MQTTHost and NTPHost alike?":
+   'Add it, bench-tested (Recommended)'. `asy_dns_client.py` sends the ordinary query, RD clear, from an
+   ephemeral port to 224.0.0.251:5353 (RFC 6762 §5.1); the responder answers by unicast with the ID and
+   question repeated (§6.7). The same bounded, cooperative wait as a DNS lookup, never lwIP's own mDNS
+   path, which only the blocking `getaddrinfo()` reaches.
+2. Asked "Should the MQTT client cap the bytes the broker has not yet confirmed at its 2,000 B share of
+   lwIP memory?": 'Cap at 2,000 B (Recommended)'. §3.3 has the mechanism.

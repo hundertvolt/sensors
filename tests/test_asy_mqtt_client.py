@@ -740,6 +740,52 @@ def test_a_host_out_of_shape_is_taken_at_put_and_keeps_the_client_off() -> None:
     run(scenario())
 
 
+# Mirrors asy_mqtt_client's const-folded _UNCONFIRMED_MAX, which no test can import.
+# @tunable mqtt.unconfirmed_max_bytes = 2000
+_UNCONFIRMED_MAX = 2000
+# A ping interval no test outlives, so every PINGREQ these tests see is one the byte cap asked for.
+_CAP_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+_CAP_MESSAGES = 7  # the ring's eight slots, less the online status still in flight
+_CAP_PAYLOAD = b"m" * 380  # about 388 B on the wire, so five fit under the cap and the sixth must wait
+
+
+def _client_bytes_after_connect(broker: FakeBroker) -> int:
+    return sum(1 + len(encode_length(len(body))) + len(body) for first, body in broker.packets if first & 0xF0 != 0x10)
+
+
+def test_unconfirmed_bytes_stop_at_the_cap_and_ask_for_an_early_ping() -> None:
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(config=_CAP_CFG)
+        broker.answer_pings = False  # nothing ever confirms: the cap is all that stops the writes
+        try:
+            assert await until(client.is_connected)
+            assert all(client.publish("t/x", _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
+            assert await until(lambda: any(first == 0xC0 for first, _ in broker.packets))
+            await asyncio.sleep_ms(300)  # several ticks: nothing more may follow the held message
+            assert _client_bytes_after_connect(broker) <= _UNCONFIRMED_MAX
+            assert len(broker.published(b"t/x")) < _CAP_MESSAGES
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_pingresp_releases_the_held_messages() -> None:
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(config=_CAP_CFG)
+        try:
+            assert await until(client.is_connected)
+            assert all(client.publish("t/x", _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
+            assert await until(lambda: len(broker.published(b"t/x")) == _CAP_MESSAGES)
+            assert _client_bytes_after_connect(broker) > _UNCONFIRMED_MAX  # more than one cap's worth, through pings
+            assert any(first == 0xC0 for first, _ in broker.packets)  # the interval is a minute: the cap sent it
+            assert client.is_connected()
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
 class _StallingStream:
     # A stream whose drain never completes: pure asyncio, no poller behind it (CLAUDE.md's bounded-fake rule).
     def __init__(self) -> None:

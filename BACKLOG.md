@@ -586,6 +586,9 @@ gates, traps).
   itself is unchanged). `scripts/_digital_twin_ci_suite.py` gains Run 12, which needs that broker on `PATH` or in
   `/usr/sbin`, so a chroot's `scripts/run_digital_twin_ci.sh dev` now also proves the package landed; CI's
   `digital-twin-e2e` installs it alone from `versions.toml`.
+  **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg (MQTT PoC branch)**: `env --tier bench` gains
+  `ensure_avahi()`, installing `avahi-daemon` when missing, as `ensure_iptables()` does `iptables`; the generic
+  and flash tiers are unchanged.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

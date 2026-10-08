@@ -117,7 +117,7 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
   legacy's hardcoded CO2/VOC/Humidity checks).
 - **Networking** — `asy_wifi_service.py` (STA + captive-portal AP/hotspot fallback),
   `asy_ntp_client.py` (NTP + CET/CEST DST math), `asy_dns_client.py` (non-blocking DNS resolver
-  replacing `socket.getaddrinfo()`). Deployed code still uses the monolithic `async_connect.py`.
+  replacing `socket.getaddrinfo()`, `.local` names by one multicast query, A.11). Deployed code still uses the monolithic `async_connect.py`.
 - **Task supervisor** (`SystemService._supervise()`, its own task) — two-tier self-healing: dead tasks
   restart, each end logged as a persisted SYSTEM error (decaying error score); at the first end past
   the threshold, the supervisor feeds the watchdog once, then feeding stops one-way and it reboots
@@ -843,7 +843,9 @@ A project-owned MQTT 3.1.1 client service: QoS 0 and 1, clean session, plain TCP
 the specification with Peter Hinch's `mqtt_as` as the behavioural reference (owner, 2026-10-07, asked
 which code to use: 'Own client (Recommended)'). It is built into `dev` only and stays off until
 enabled (owner, 2026-10-07: 'dev only, off (Recommended)'), over plain TCP only (owner, 2026-10-07:
-'Plain TCP (Recommended)'). `mqtt_codec.py` holds the pure packet encoders, the remaining-length
+'Plain TCP (Recommended)'; owner, 2026-10-08: 'TLS is not needed as it all runs in a local network.').
+A plain IP address is always accepted, and nothing in the client may block (owner, 2026-10-08: 'It
+should accept plain IP addresses anyway. But it must not block, ever.'). `mqtt_codec.py` holds the pure packet encoders, the remaining-length
 decoder, topic-filter matching and the configuration shape checks; it never logs and never raises on
 wire input (C.7.1's no-logging layers).
 
@@ -891,6 +893,15 @@ that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
 - **QoS 1 out** is resent with DUP after `mqtt.qos1_retry_ms` and given up after
   `mqtt.qos1_max_tries`, counted and never a teardown. **A stalled broker**, output past
   `mqtt.max_out_backlog` or a drain past `mqtt.drain_timeout_ms`, closes the connection.
+- **Unconfirmed bytes.** lwIP's TCP memory (`MEM_SIZE`) is one pool shared by every connection and
+  sized at 2,000 B per connection (B.14.2); when it runs out, `extmod/modlwip.c:801-813` (v1.29.0)
+  retries the write every 50 ms for up to 10 s, even on a non-blocking socket, which freezes the VM
+  past the watchdog. So the keeper never has more than `mqtt.unconfirmed_max_bytes` written that no
+  PINGRESP has confirmed (TCP delivers in order, so a PINGRESP proves everything before its
+  PINGREQ arrived). A PUBLISH that would pass the cap waits in the ring, and a PINGREQ goes out on
+  the next tick instead of at its interval; PUBACKs and PINGREQs are never held (owner, 2026-10-08,
+  asked whether the client should cap the bytes the broker has not yet confirmed at its 2,000 B share
+  of lwIP memory: 'Cap at 2,000 B (Recommended)').
 - **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and
   discarded in buffer-sized pieces, counted, never allocated. A fifth length byte, an unexpected
   packet type, a QoS 2 PUBLISH or a topic overrunning its packet closes the connection.
@@ -937,7 +948,10 @@ answers `False`, counted in `MQTTTxDropped`.
 
 **Configuration** (`config_MQTT.cfg`, every field persist-only and read at each connect, all on
 `/networking`; credentials optional and masked, owner, 2026-10-07: 'Optional, masked
-(Recommended)'): `MQTTEnable` (default false), `MQTTHost` (0-253, an IPv4 literal or host labels),
+(Recommended)'): `MQTTEnable` (default false), `MQTTHost` (0-253: an IPv4 literal, used as it is
+with no lookup, a DNS name, or a `.local` name, which `asy_dns_client.py` asks for with one
+multicast query, RFC 6762 section 5.1; owner, 2026-10-08, asked whether the resolver should learn
+`.local` names for `MQTTHost` and `NTPHost` alike: 'Add it, bench-tested (Recommended)'),
 `MQTTPort` (1883), `MQTTUser`/`MQTTPW` (0-64 bytes, no NUL, the password masked on every GET),
 `MQTTClientId` (a host label of 1-23 bytes, default `[device].hostname`), `MQTTPrefix` (1-64 bytes,
 no wildcard, NUL, or edge slash) and `MQTTPubInterval` (10-3600 s). A string outside its shape is
@@ -4510,7 +4524,8 @@ every time `versions.toml`'s ref moves.
 'a stalled chip may recover by a reboot'; escalation up to a reboot is intended). MicroPython's
 cooperative scheduler can't preempt a synchronous `machine.I2C` call in progress.
 `socket.getaddrinfo()` is called from `src/` on numeric hosts only: `asy_dns_client.py` resolves
-names over its own non-blocking UDP client, and the MQTT client hands `getaddrinfo()` the IPv4
+names over its own non-blocking UDP client (a `.local` name by one multicast DNS query, A.11, never
+lwIP's own mDNS path, which only `getaddrinfo()` reaches), and the MQTT client hands `getaddrinfo()` the IPv4
 literal that resolver returned (A.11). The other call is inside `asyncio.start_server()`
 (`extmod/asyncio/stream.py:183`), once at server start, on the numeric bind host `0.0.0.0` (the
 generated device module's `web_host` default), which lwIP resolves without a DNS query
@@ -8728,6 +8743,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `mqtt.qos1_max_tries` | 3 | `src/asy_mqtt_client.py` — `3` | the QoS 1 give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK loss on the bench, L4 | unknown until measured | the retry policy changes |
 | `mqtt.short_session_warn` | 3 | `src/asy_mqtt_client.py` — `3` | the short-session warning | estimated (agent, `93b0976`) — measurement owed: the session pattern a takeover produces, L4 | unknown until measured | the retry policy changes |
 | `mqtt.pub_step_ms` | 1000 ms | `src/asy_mqtt_client.py` — `1000` | how late the first measurement round follows a CONNACK, and the publisher's check for a due round | estimated (agent, 2026-10-08) — measurement owed: none: a polling step against a 10 s minimum interval | 1 s against the 10 s minimum interval | the interval's minimum changes |
+| `mqtt.unconfirmed_max_bytes` | 2000 B | `src/asy_mqtt_client.py` — `2000`; `tests/test_asy_mqtt_client.py` — `2000` | the connection's share of lwIP's `MEM_SIZE` (`toolchain/versions.toml`: limit × 2,000 B); the bytes written that no PINGRESP has confirmed | owner decision (owner, 2026-10-08: 'Cap at 2,000 B (Recommended)') | the whole share, by definition | `MEM_SIZE`'s per-connection rule changes |
 | `wifi.hotspot_stations_settle_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the stations query needs no other status command close before it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:258` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_down_settle_s` | 2 s | `src/asy_wifi_service.py` — `2` | after `disconnect()` and `active(False)`, both the mode switch and the deactivation path | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:157` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_deinit_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after `deinit()` | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:160` | unknown until measured | the CYW43 driver or the pin moves |

@@ -195,6 +195,28 @@ def test_ensure_iproute2_raises_if_still_missing_after_install(setup_toolchain: 
         setup_toolchain.ensure_iproute2(skip_apt=False)
 
 
+def test_ensure_avahi_no_op_when_avahi_daemon_already_present(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/sbin/avahi-daemon")
+    monkeypatch.setattr(setup_toolchain, "ensure_apt_packages", lambda packages, skip: pytest.fail("should not install"))
+    setup_toolchain.ensure_avahi(skip_apt=False)
+
+
+def test_ensure_avahi_installs_when_missing(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    which_results = iter([None, "/usr/sbin/avahi-daemon"])
+    monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: next(which_results))
+    monkeypatch.setattr(setup_toolchain, "ensure_apt_packages", lambda packages, skip: calls.append((packages, skip)))
+    setup_toolchain.ensure_avahi(skip_apt=False)
+    assert calls == [([setup_toolchain.AVAHI_APT_PACKAGE], False)]
+
+
+def test_ensure_avahi_raises_if_still_missing_after_install(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: None)
+    monkeypatch.setattr(setup_toolchain, "ensure_apt_packages", lambda packages, skip: None)
+    with pytest.raises(setup_toolchain.SetupError, match="'avahi-daemon' still not found"):
+        setup_toolchain.ensure_avahi(skip_apt=False)
+
+
 # --- uplink / free WiFi interface detection ------------------------------------------------------
 
 
