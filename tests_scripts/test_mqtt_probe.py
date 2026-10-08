@@ -1,6 +1,7 @@
 """tests_hardware/mqtt_probe.py's Probe, against a one-connection fake broker: an idle probe keeps its own session
 alive. The bench observation of 2026-10-08 saw mosquitto drop a quiet probe every 30-60 s and lose messages."""
 
+import os
 import socket
 import sys
 import threading
@@ -101,6 +102,6 @@ def test_a_password_broker_admits_only_a_probe_with_its_credentials(tmp_path: Pa
 @pytest.mark.parametrize(("euid", "stays"), [(0, True), (1000, False)])
 def test_a_broker_started_as_root_keeps_root_to_read_its_password_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, euid: int, *, stays: bool) -> None:
     # Root's mosquitto otherwise drops to its own user, which cannot open the password file in a root-only tmp_path.
-    monkeypatch.setattr(mqtt_probe.os, "geteuid", lambda: euid)
+    monkeypatch.setattr(os, "geteuid", lambda: euid)  # the helper reads it through the os module
     broker = mqtt_probe.Mosquitto(tmp_path, mqtt_probe.free_tcp_port(), users=dict([_CREDENTIALS]))
     assert ("user root" in broker.conf.read_text().splitlines()) is stays
