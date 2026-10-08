@@ -219,7 +219,10 @@ no `--soak`/`--soak-cycles` flag any more — the automated HTTP+memory-trend so
 host-side (SPECIFICATION.md's "Driver/DUT process separation" Part): the twin only exposes the one
 piece of itself a host-side driver genuinely cannot get any other way, `gc.mem_free()`, via the
 opt-in `--mem-sample-interval-ms N` flag (prints `MEM_SAMPLE <time.time()> <gc.mem_free()>` lines
-to its own stdout on that cadence; unset by default, no sampling). See
+to its own stdout on that cadence; unset by default, no sampling). `--stop-file PATH` makes
+`--duration` an upper bound: the run ends as soon as `PATH` exists, on the same clean path a finished
+duration takes (`tests_scripts/test_digital_twin_generated_boot.py` writes it once its smoke loop is
+done, rather than idling out the bound) (agent, 2026-10-08). See
 `run_generic_integration.py`'s `parse_args()` for the full flag list, and
 `scripts/_digital_twin_ci_suite.py`'s Run 11 (`_run_11_soak()`) for the actual soak methodology —
 now a plain host-side HTTP-cycling loop parsing those `MEM_SAMPLE` lines back out of the twin's

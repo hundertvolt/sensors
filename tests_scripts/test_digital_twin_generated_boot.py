@@ -51,12 +51,13 @@ _EXIT_WAIT_S = 5  # a signalled twin's exit, before the next, harder signal
 # devices, dev slowest. A boot-time-only, self-resolving cost that leaves steady-state serving
 # untouched - and boot latency is not a thing to optimise for its own sake (CLAUDE.md).
 # @tunable l0.generated_boot_twin_duration_s = 15
-_TWIN_DURATION_S = 15
+_TWIN_DURATION_S = 15  # the bound: the run ends on its stop file once the smoke loop is done
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
 # reasoning, confirmed directly by reading that route's implementation).
 _STUB_FROZEN_HTML = '"""Test-only stub - digital_twin/machine.py has no static content of its own; this suite never requests \'/\'."""\n'
 _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/status")
+_STOP_SEEN = "stop file seen, ending the run"  # digital_twin/run_generic_integration.py's _serve_until()
 
 # Discovered, never listed: a device TOML added to devices/ is covered by every test below with no
 # edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
@@ -241,6 +242,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
     wiring_plan = compute_twin_wiring(generated.model)
     wiring_plan_path = tmp_path / "wiring_plan.json"
     wiring_plan_path.write_text(json.dumps(wiring_plan))
+    stop_file = tmp_path / "stop"
 
     env = dict(os.environ)
     # tmp_path first: makes `import sensortask_<device>` (inside run_generic_integration.py) resolve
@@ -257,6 +259,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         "--host", _HOST,
         "--port", str(port),
         "--duration", str(_TWIN_DURATION_S),
+        "--stop-file", str(stop_file),
     ]
     definitions = generate_definitions(generated.model, src_dir)
 
@@ -276,9 +279,12 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
                 failures.extend(_status_field_parity_failures(definitions, body))
             elif path == "/system":
                 failures.extend(_system_path_failures(definitions, body))
+        stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
         return failures
 
-    failures, _ = _run_twin(cmd, repo_root, env, smoke)
+    failures, output = _run_twin(cmd, repo_root, env, smoke)
+    if _STOP_SEEN not in output:
+        failures.append(f"the twin did not end on its stop file - it served out its whole {_TWIN_DURATION_S} s bound")
     return failures
 
 

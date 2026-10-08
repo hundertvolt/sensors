@@ -4094,9 +4094,10 @@ that nothing could fail once removed, because `bool` is not an `int` subclass he
 mutation that fails nothing is as much a finding as a test that fails nothing.
 
 **Every hazard check runs in both CRC modes (agent, 2026-09-12, `dc970fb`).**
-`tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`); the ones
-whose subject *is* one configuration are single-mode by construction, each listed with its mode in
-`_MODE_SPECIFIC`. The dev wiring selects `CRCPass`; no UART device is in the field.
+`tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py` register each `_check_*`
+twice (`_nocrc`, `_crc16`) through `tests/_uart_comm_hazard_common.py`; the ones whose subject *is*
+one configuration are single-mode by construction, each listed with its mode in `_MODE_SPECIFIC`.
+The dev wiring selects `CRCPass`; no UART device is in the field.
 
 ## E.9 Driver/DUT process separation
 
@@ -6962,7 +6963,7 @@ bounded**: a request survives an unrelated `ready()` entry, is acknowledged on e
 locked region as well as from inside the poll loop, and reports rather than blocks if a wedged
 holder never acknowledges — without which the recovery route could itself wedge (changelog B15).
 A transaction cancelled at any await leaves the instance free for the next call; the peer recovers
-through the ordinary fault path (L1: `tests/test_uart_comm_hazard.py`).
+through the ordinary fault path (L1: `tests/test_uart_comm_cancel_sweep.py`).
 
 **The drain is bounded** (changelog A5), and `setup()` runs one at boot before the readiness gate
 opens: a peer mid-train, or one that outlived this side's reset, leaves partial-frame bytes in the
@@ -7128,13 +7129,15 @@ an ambient control of the same rounds. In `tests/test_uart_comm_hazard.py`, both
 `_MODE_SPECIFIC` says otherwise: a `CHUNKS` sweep accepting only 1 for a GET; sweeps of the last
 chunk's `SIZE`, every ACK field, every GET field, a data chunk's `UID`, `CHUNKS` constancy and the
 command against an expected ACK and GET, each accepting exactly what J.3-J.4 allow; a three-chunk
-train ending in an empty chunk refused; both mismatch diagnostics of J.6; five checks that cancel a
-SET, a GET, a streamed SET and a listener, or `clear()` the responder, at every await of a
-transaction — a step is one `asyncio.sleep_ms()` of the two UART modules, the pair is rebuilt at
-synchronous scope for each, and every instance must be free afterwards with the link recovering
-within two transactions; and the faulted hammer, which faults every measured transaction and
-asserts that count before its unchanged 16 B per-failure retention bound. Their tier-map rows land
-with the map.
+train ending in an empty chunk refused; both mismatch diagnostics of J.6; and the faulted hammer,
+which faults every measured transaction and asserts that count before its unchanged 16 B
+per-failure retention bound. In `tests/test_uart_comm_cancel_sweep.py`, both CRC modes: five checks
+that cancel a SET, a GET, a streamed SET and a listener, or `clear()` the responder, at every await
+of a transaction — a step is one `asyncio.sleep_ms()` of the two UART modules, the pair is rebuilt
+at synchronous scope for each, every instance must be free afterwards with the link recovering
+within two transactions, and a step past twice the clean run's awaits fails, that run measured at
+the slow-host limit below. Both files take their pair, budgets and two-mode registration from
+`tests/_uart_comm_hazard_common.py`. Their tier-map rows land with the map.
 
 **The mock tier's `timeout` is a scheduling budget, not a wire budget, and has to be sized as one.**
 The loopback link delivers in-memory within one event-loop turn, so nothing of the configured
@@ -7152,8 +7155,8 @@ margins are:
 | arm | budget | floor | margin |
 | --- | --- | --- | --- |
 | real `dev` link | 1000 ms | 2·2 + 50 + 21 = 75 ms | 13.3× |
-| `tests/test_uart_comm_hazard.py`, CRC16 | 240 ms (`l1.uart_comm_hazard_timeout_ms` × `l1.uart_comm_hazard_crc_timeout_factor`) | 2·1 + 1 + 21 = 24 ms | 10× |
-| same file, no CRC | 30 ms (`l1.uart_comm_hazard_timeout_ms`) | 24 ms | **1.25×** |
+| `tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py`, CRC16 | 240 ms (`l1.uart_comm_hazard_timeout_ms` × `l1.uart_comm_hazard_crc_timeout_factor`) | 2·1 + 1 + 21 = 24 ms | 10× |
+| same files, no CRC | 30 ms (`l1.uart_comm_hazard_timeout_ms`) | 24 ms | **1.25×** |
 
 The no-CRC arm is the outlier, and it is the one that failed: measured max scheduling gap 3 ms idle,
 23–26 ms at 8× CPU oversubscription, and past 30 ms in a loaded full-file run — reproduced twice in
@@ -7180,10 +7183,18 @@ Every UART L1 and L2 file judges its reply budgets the same way, through one sha
 (`tests/_uart_comm_harness.py`), which patches the two UART modules' `time` and `asyncio` and fails
 on a runtime attribute it does not yet model: `tests/test_asy_uart_comm.py` (every live exchange),
 `tests/test_asy_uart_driver.py`, `tests/test_asy_uart_link_driver.py`,
-`tests/test_uart_comm_hazard.py` (every check, the measuring ones entering it themselves) and
+`tests/test_uart_comm_hazard.py` (every check, the measuring ones entering it themselves),
+`tests/test_uart_comm_cancel_sweep.py` (every sweep entering it itself) and
 `tests/test_digital_twin_uart_link.py`; a bound that was elapsed milliseconds is the same bound in
 poll rounds, never dropped (agent, 2026-10-07). The I2C driver's stretched-clock tests run on
 `tests/_bus_hazard_catalog.py`'s own clock for `asy_i2c_driver`.
+The clock still lets host speed in through one door: a waiter's rounds are real 1 ms sleeps, so it
+takes at most one round per yield of its peer but up to one per elapsed millisecond, and a budget is
+host-independent only when it covers its peer's yields. CRC16 yields once per byte: one reply at
+this tier's 8-byte payload spends 79 virtual ms at the slow-host limit (no CRC: 20), so every CRC16
+check runs on the 240 ms arm above (agent, 2026-10-08). `PollRoundClock.pace(real=False)` reaches
+that limit on any host by turning every sleep into a bare yield; the cancellation sweeps count their
+clean run that way, so the step ceiling twice that count holds on a slow host too (agent, 2026-10-08).
 
 **Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
 Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
@@ -8964,14 +8975,14 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.uart_comm_hazard_lock_take_ms` | 1 ms | `tests/test_uart_comm_hazard.py` — `1` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_in_flight_ms` | 2 ms | `tests/test_uart_comm_hazard.py` — `2` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_listener_park_ms` | 5 ms | `tests/test_uart_comm_hazard.py` — `5` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_exchange_limit_s` | 20 s | `tests/test_uart_comm_hazard.py` — `20` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_exchange_limit_s` | 20 s | `tests/_uart_comm_hazard_common.py` — `20` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_recovery_limit_s` | 30 s | `tests/test_uart_comm_hazard.py` — `30` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_retention_limit_s` | 120 s | `tests/test_uart_comm_hazard.py` — `120` | — | estimated (agent, `8850974`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_step_bound_s` | 5 s | `tests/test_uart_comm_hazard.py` — `5` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_step_bound_s` | 5 s | `tests/_uart_comm_hazard_common.py` — `5` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_fragment_gap_ms` | 3 ms | `tests/test_uart_comm_hazard.py` — `3` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_mismatch_limit_s` | 60 s | `tests/test_uart_comm_hazard.py` — `60` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_hammer_limit_s` | 300 s | `tests/test_uart_comm_hazard.py` — `300` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_timeout_ms` | 30 ms | `tests/test_uart_comm_hazard.py` — `30` | × `l1.uart_comm_hazard_crc_timeout_factor` the CRC16 arm's budget, × `l1.uart_comm_hazard_sustained_timeout_factor` the clean runs' budget (J.7's margin table) | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_timeout_ms` | 30 ms | `tests/_uart_comm_hazard_common.py` — `30` | × `l1.uart_comm_hazard_crc_timeout_factor` the CRC16 arm's budget, × `l1.uart_comm_hazard_sustained_timeout_factor` the clean runs' budget (J.7's margin table) | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_warmup_rounds` | 20 | `tests/test_uart_comm_hazard.py` — `20` | — | estimated (agent, `8850974`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_measured_rounds` | 100 | `tests/test_uart_comm_hazard.py` — `100` | — | estimated (agent, `8850974`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_hammer_rounds` | 150 | `tests/test_uart_comm_hazard.py` — `150` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -9095,7 +9106,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms` | 150 ms | `tests/test_ntp_wifi_dns_integration.py` — `150` | — | estimated (agent, `9dd7d71`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.ntp_wifi_dns_integration_failure_cycles` | 8 | `tests/test_ntp_wifi_dns_integration.py` — `8` | × `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms` = the failed-fetch run, past the old five-failure give-up | estimated (agent, `c20f80b`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.system_service_run_bound_s` | 5 s | `tests/test_asy_system_service.py` — `5` | — | estimated (agent, `c33e6db`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_crc_timeout_factor` | 8 | `tests/test_uart_comm_hazard.py` — `8` | the CRC16 arm's budget, `l1.uart_comm_hazard_timeout_ms` × it (J.7's margin table) | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_crc_timeout_factor` | 8 | `tests/_uart_comm_hazard_common.py` — `8` | the CRC16 arm's budget, `l1.uart_comm_hazard_timeout_ms` × it (J.7's margin table) | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_sustained_timeout_factor` | 8 | `tests/test_uart_comm_hazard.py` — `8` | the clean runs' budget, `l1.uart_comm_hazard_timeout_ms` × it (J.7) | estimated (agent, `3a1e5f3`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_recovery_attempts` | 4 | `tests/test_uart_comm_hazard.py` — `4` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_retention_per_transaction_max_bytes` | 6.0 B | `tests/test_uart_comm_hazard.py` — `6.0` | — | estimated (agent, `1e1a26a`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -9141,6 +9152,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.twin_wifi_connect_delay_s` | 0.7 s | `digital_twin/network.py` — `0.7` | sits inside the 5 s connect-status poll (`wifi.sta_connect_poll_s` × `wifi.sta_connect_poll_iters`); `l2.launch_fault_duration_s` outlasts it | estimated (agent, `b8791e6`) — measurement owed: a real CYW43 connect time on the dev bench, L4 | inside the 5 s poll | the connect-status poll changes |
 | `l2.twin_wire_log_clear_interval_ms` | 5000 ms | `digital_twin/run_generic_integration.py` — `5000` | the twin's wire-log memory between clears | estimated (agent, `dde4b31`) — measurement owed: the wire log's peak size between clears, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_ready_poll_ms` | 20 ms | `digital_twin/run_generic_integration.py` — `20`; `digital_twin/segfault_stress_repro.py` — `20` | — | estimated (agent, `fcc5339`) — measurement owed: the readiness wait's rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.twin_stop_file_poll_ms` | 100 ms | `digital_twin/run_generic_integration.py` — `100` | how soon a run ends once its caller writes the stop file | estimated (agent, 2026-10-08) — measurement owed: the stop-to-exit latency against the generated-boot test's elapsed, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wdt_overrun_wait_s` | 9.0 s | `tests/test_digital_twin_sensortask_integration.py` — `9.0` | just past `wdt.timeout_ms` | estimated (agent, `25fc2fe`) — measurement owed: none: one second past the watchdog timeout | 1 s past the 8 s watchdog | `wdt.timeout_ms` changes |
 | `l2.construction_scenarios_run_timeout_s` | 10.0 s | `tests/_digital_twin_construction_scenarios.py` — `10.0` | — | estimated (agent, `a974244`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bus_hazard_concurrency_run_bound_s` | 20.0 s | `tests/test_digital_twin_bus_hazard_concurrency.py` — `20.0` | — | estimated (agent, `f3a2aa7`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -9635,7 +9647,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | against the measured per-file maxima, owed at both GC stages | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop) | two transient timeouts absorbed | the backstop rule changes |
-| `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
+| `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`); the tier measured 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` | every `timeout` in the runner | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after SIGTERM | unknown until measured | the interpreter's signal handling changes |
 | `runner.probe_iterations` | 500000 | `scripts/test.sh` — `500000` | the speed bands' calibration | estimated (agent, `d370413`) — measurement owed: the probe's elapsed on the bench Pi4 (calibration owed) | unknown until measured | the interpreter build changes |
 | `runner.band_fast_ms` | 250 ms | `scripts/test.sh` — `250` | picks `runner.mult_fast` | measured 131-141 ms on the project's x86 sandbox, single observation; calibration on the Pi4 owed (estimated (agent, `d370413`) — measurement owed: the probe on the bench Pi4, L0) | unknown until calibrated | the host class or the interpreter build changes |

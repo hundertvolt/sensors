@@ -6,8 +6,8 @@ import asyncio
 
 from _error_codes import code
 from _uart_comm_harness import Pair, PollRoundClock, accept_set, copied_out, echo_get, frames, run, transfer_limits
+from _uart_comm_hazard_common import _EXCHANGE_LIMIT_S, _PAYLOAD, _STEP_BOUND_S, _TIMEOUT_MS, hazard_pair, register_both_crc_modes
 
-import asy_uart_comm
 from asy_crc_checks import CRC16
 from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm
 
@@ -17,25 +17,14 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable
     from typing import Any
 
-    from asy_base_classes import PieceBuffer
-    from asy_crc_checks import CRCBase
-
-    # None means "no CRC on the bus"; otherwise a zero-argument factory, called once per end. A factory, not
-    # an instance, CRCBase carrying state the two ends must not share. Not type[CRCBase], which would
-    # demand a three-argument constructor the concrete widths do not take.
-    CrcMaker = Callable[[], CRCBase] | None
-
+    from _uart_comm_hazard_common import CrcMaker
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
-# A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and what is
-# emitted, not about real-world durations, and every value still clears the module's own floor of 2 x
-# poll_wait_ms + poll_idle_ms plus the worst-case GC pause - 24ms here, the harness setting poll_idle_ms equal to poll_wait_ms.
-# @tunable l1.uart_comm_hazard_timeout_ms = 30
-_TIMEOUT_MS = 30
-_PAYLOAD = 8
+    from asy_base_classes import PieceBuffer
+
 _FRAME = 5 + _PAYLOAD
 
 _CMD_ACK = 0x01
@@ -62,22 +51,16 @@ _LOCK_TAKE_MS = 1
 _IN_FLIGHT_MS = 2
 # @tunable l1.uart_comm_hazard_listener_park_ms = 5
 _LISTENER_PARK_MS = 5
-# @tunable l1.uart_comm_hazard_exchange_limit_s = 20
-_EXCHANGE_LIMIT_S = 20
 # @tunable l1.uart_comm_hazard_recovery_limit_s = 30
 _RECOVERY_LIMIT_S = 30
 # @tunable l1.uart_comm_hazard_retention_limit_s = 120
 _RETENTION_LIMIT_S = 120
-# @tunable l1.uart_comm_hazard_step_bound_s = 5
-_STEP_BOUND_S = 5
 # @tunable l1.uart_comm_hazard_fragment_gap_ms = 3
 _FRAGMENT_GAP_MS = 3
 # @tunable l1.uart_comm_hazard_mismatch_limit_s = 60
 _MISMATCH_LIMIT_S = 60
 # @tunable l1.uart_comm_hazard_hammer_limit_s = 300
 _HAMMER_LIMIT_S = 300
-# @tunable l1.uart_comm_hazard_crc_timeout_factor = 8
-_CRC_TIMEOUT_FACTOR = 8
 # @tunable l1.uart_comm_hazard_sustained_timeout_factor = 8
 _SUSTAINED_TIMEOUT_FACTOR = 8
 # @tunable l1.uart_comm_hazard_recovery_attempts = 4
@@ -88,12 +71,6 @@ _RETENTION_PER_TRANSACTION_MAX_BYTES = 6.0
 _RETENTION_PER_FAILURE_MAX_BYTES = 16.0
 
 
-# Every check runs both with and without a CRC (agent, 2026-09-12) - the dev wiring selects
-# CRCPass, but a CRC changes which corruptions are detectable at all
-# (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRCBase carries state.
-CRC_MODES = (("nocrc", None), ("crc16", CRC16))
-
-
 def wire_frame(crc: "CrcMaker") -> int:
     # What one frame actually occupies on the wire. The protocol's own frame is 5 + payload_size;
     # a CRC is appended below it, so every assertion that slices or counts whole frames has to add
@@ -101,26 +78,9 @@ def wire_frame(crc: "CrcMaker") -> int:
     return _FRAME + (0 if crc is None else crc().length())
 
 
-def timeout_for(crc: "CrcMaker") -> int:
-    # A CRC yields once per byte, and the peer keeps polling through those yields, so the same budget covers
-    # far fewer bytes - measured as transactions timing out at this tier's short 30ms. The real
-    # link's 1000ms has ample headroom; this keeps the mock's speed at the same relative margin.
-    return _TIMEOUT_MS if crc is None else _TIMEOUT_MS * _CRC_TIMEOUT_FACTOR
-
-
 # A sustained CLEAN run never consumes the timeout, so the short budget above buys it nothing: at 1x the
 # no-CRC arm sits only 1.25x over the 24ms floor, and this gives it the CRC arm's 10x (Part J.7).
 _SUSTAINED_TIMEOUT_MS = _TIMEOUT_MS * _SUSTAINED_TIMEOUT_FACTOR
-
-
-def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: bytes = b"v") -> Pair:
-    maker = (lambda: None) if crc is None else crc
-    pair = Pair(
-        payload_size=_PAYLOAD, timeout=timeout_for(crc) if timeout_ms is None else timeout_ms,
-        get_callback=echo_get(answer), set_callback=accept_set(), crc_a=maker(), crc_b=maker(),
-    )
-    assert run(pair.setup()) is True
-    return pair
 
 
 def raw_frame(
@@ -1429,238 +1389,6 @@ def _check_a_host_stall_cannot_fail_the_faulted_hammer(crc: "CrcMaker") -> None:
     _hammer_faulted(crc, _PLANTED_STALL_AFTER, _PLANTED_STALL_MS)
 
 
-# ---------------------------------------------------------------------------
-# Cancellation and restart at every await
-# ---------------------------------------------------------------------------
-# A transaction cancelled or cleared at any await leaves the instance free and the peer recovering through J.5;
-# the reboot case is the reset-peer check above.
-
-_SWEEP_PAYLOAD = bytes(range(1, _PAYLOAD * 2 + 1))  # three chunks of distinct bytes: a misplaced one cannot pass
-
-
-class _Stepper:
-    # Parks the work task at its k-th await through the UART modules' own sleep, so the watcher acts at exactly
-    # that await; k = 0 parks nothing and only counts. The CRC's per-byte yields are not steps: between two of
-    # the modules' awaits they change no protocol state.
-    def __init__(self, k: int) -> None:
-        assert asy_uart_comm.asyncio is not asyncio, "the sweep patches the poll-round clock's namespace, never asyncio"
-        self.k = k
-        self.count = 0
-        self.finished = False
-        self.finished_first = False  # finished before the watcher acted: the sweep's end
-        self.task: asyncio.Task[None] | None = None
-        self.reached = asyncio.Event()
-        self.release = asyncio.Event()
-        self._sleep = asy_uart_comm.asyncio.sleep_ms
-        asy_uart_comm.asyncio.sleep_ms = self._stepped  # type: ignore[assignment]
-
-    async def _stepped(self, ms: int) -> None:
-        if asyncio.current_task() is self.task:
-            self.count += 1
-            if self.count == self.k:
-                self.reached.set()
-                await self.release.wait()
-        await self._sleep(ms)
-
-    def detach(self) -> None:
-        asy_uart_comm.asyncio.sleep_ms = self._sleep
-
-    async def track(self, work: "Coroutine[Any, Any, object]") -> None:
-        try:
-            await work
-            self.finished = True
-        finally:
-            self.reached.set()
-
-
-def _assert_free(comm: UARTComm) -> None:
-    clock = asy_uart_comm.time
-    assert comm._busy is False, f"{comm.name} is still marked busy"
-    assert comm._in_resync is False, f"{comm.name} is still marked inside a resync"
-    assert comm._uart is not None and comm._uart.session_lock.locked() is False, f"{comm.name}'s session lock is still held"
-    if comm._holdoff_active:
-        remaining = clock.ticks_diff(comm._holdoff_deadline, clock.ticks_ms())
-        assert 0 < remaining <= comm._resync_window_ms(), f"{comm.name}'s hold-off has {remaining} ms left"
-
-
-async def _cancel_at(pair: Pair, stepper: _Stepper, work: "Coroutine[Any, Any, object]", peer: "Coroutine[Any, Any, None]", *, cancel: bool) -> None:
-    # The watcher: at the work's k-th await it cancels the work, or clears the responder and lets the work go on.
-    offered = _offered(pair)
-    peer_task = asyncio.create_task(peer)
-    work_task = asyncio.create_task(stepper.track(work))
-    stepper.task = work_task
-    await stepper.reached.wait()
-    stepper.finished_first = stepper.finished
-    if not stepper.finished and stepper.k:
-        if cancel:
-            work_task.cancel()
-        else:
-            await pair.responder.clear()
-        stepper.release.set()
-    try:
-        await work_task
-    except asyncio.CancelledError:
-        if not cancel:
-            raise
-    await _end_peer(pair, peer_task, offered)
-
-
-async def _end_peer(pair: Pair, task: "asyncio.Task[None]", offered: int) -> None:
-    # A listener no byte reached since `offered` is parked without a deadline: clear() is its documented unstick.
-    # Any other task is inside a transaction and ends on its own deadline.
-    if not task.done() and _offered(pair) == offered:
-        await pair.responder.clear()
-    await asyncio.wait_for(task, _STEP_BOUND_S)
-
-
-def _error_count(comm: UARTComm) -> int:
-    return int(run(comm.get_error_counter())[comm.name]["ErrCount"])
-
-
-def _get_with_listener(pair: Pair) -> bool:
-    async def exchange() -> bytes | None:
-        offered = _offered(pair)
-        listener = asyncio.create_task(_listen_recording(pair, []))
-        answer = await pair.initiator.uart_get(1)
-        await _end_peer(pair, listener, offered)
-        return copied_out(answer)
-
-    return run(exchange(), limit=_EXCHANGE_LIMIT_S) == _SWEEP_PAYLOAD
-
-
-async def _listen_recording(pair: Pair, delivered: "list[bytes | None]") -> None:
-    result = await pair.responder.uart_listen()
-    if result.cmd_id is not None:
-        delivered.append(copied_out(result.payload))
-
-
-def _offered(pair: Pair) -> int:
-    return pair.link.direction_from(pair.fake_a).offered
-
-
-def _pull(chunk: int, buf: memoryview) -> int:
-    # Chunk 2 carries the first payload bytes: chunk 1 is the command id.
-    start = (chunk - 2) * _PAYLOAD
-    part = _SWEEP_PAYLOAD[start : start + len(buf)]
-    buf[0 : len(part)] = part
-    return len(part)
-
-
-def _restarted_listener_answers(pair: Pair) -> bool:
-    # The supervisor's restart path: a fresh listen task from the starter, cancelled once it answered or not.
-    async def exchange() -> bool:
-        task = pair.responder.start_asy_listen()
-        try:
-            return copied_out(await pair.initiator.uart_get(1)) == _SWEEP_PAYLOAD
-        finally:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:  # expected
-                pass
-
-    return run(exchange(), limit=_EXCHANGE_LIMIT_S) is True
-
-
-def _set_with_listener(pair: Pair) -> bool:
-    delivered: list[bytes | None] = []
-
-    async def exchange() -> bool:
-        offered = _offered(pair)
-        listener = asyncio.create_task(_listen_recording(pair, delivered))
-        sent = await pair.initiator.uart_set(1, _SWEEP_PAYLOAD)
-        await _end_peer(pair, listener, offered)
-        return sent
-
-    return run(exchange(), limit=_EXCHANGE_LIMIT_S) is True and delivered == [_SWEEP_PAYLOAD]
-
-
-def _sweep(
-    crc: "CrcMaker",
-    make_work: "Callable[[Pair, list[bytes | None]], tuple[Coroutine[Any, Any, object], Coroutine[Any, Any, None]]]",
-    *,
-    cancel: bool,
-    recover: "Callable[[Pair], bool]",
-) -> None:
-    # make_work returns the work and the coroutine running beside it; a fresh pair per k, built at synchronous
-    # scope. The sweep ends at the first k the work finishes before; twice the clean run's awaits is its ceiling.
-    k = 0
-    clean = -1
-    while True:
-        pair = hazard_pair(crc, timeout_ms=_TIMEOUT_MS, answer=_SWEEP_PAYLOAD)
-        delivered: list[bytes | None] = []
-        work, peer = make_work(pair, delivered)
-        stepper = _Stepper(k)
-        try:
-            run(_cancel_at(pair, stepper, work, peer, cancel=cancel), limit=_EXCHANGE_LIMIT_S)
-        finally:
-            stepper.detach()
-        if k == 0:
-            assert stepper.finished, "the uncancelled work did not finish"
-            clean = stepper.count
-        elif stepper.finished_first:
-            return
-        assert k <= 2 * clean, f"step {k} is past twice the clean run's {clean} awaits: a wait that never ends"
-        for comm in (pair.initiator, pair.responder):
-            _assert_free(comm)
-        for attempt in range(2):
-            before = _error_count(pair.initiator)
-            if recover(pair):
-                break
-            assert attempt == 0, f"no recovery within two transactions after step {k}"
-            assert _error_count(pair.initiator) > before, f"the failed recovery after step {k} logged nothing"
-        k += 1
-
-
-def _check_cancelling_a_set_at_every_await_leaves_both_ends_consistent(crc: "CrcMaker") -> None:
-    def work(pair: Pair, delivered: "list[bytes | None]") -> "tuple[Coroutine[Any, Any, object], Coroutine[Any, Any, None]]":
-        return pair.initiator.uart_set(1, _SWEEP_PAYLOAD), _listen_recording(pair, delivered)
-
-    _sweep(crc, work, cancel=True, recover=_set_with_listener)
-
-
-def _check_cancelling_a_get_at_every_await_leaves_both_ends_consistent(crc: "CrcMaker") -> None:
-    def work(pair: Pair, delivered: "list[bytes | None]") -> "tuple[Coroutine[Any, Any, object], Coroutine[Any, Any, None]]":
-        return pair.initiator.uart_get(1), _listen_recording(pair, delivered)
-
-    _sweep(crc, work, cancel=True, recover=_get_with_listener)
-
-
-def _check_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent(crc: "CrcMaker") -> None:
-    def work(pair: Pair, delivered: "list[bytes | None]") -> "tuple[Coroutine[Any, Any, object], Coroutine[Any, Any, None]]":
-        return pair.initiator.uart_set_stream(1, len(_SWEEP_PAYLOAD), _pull), _listen_recording(pair, delivered)
-
-    _sweep(crc, work, cancel=True, recover=_set_with_listener)
-
-
-def _check_cancelling_a_listener_at_every_await_leaves_it_restartable(crc: "CrcMaker") -> None:
-    async def peer(pair: Pair) -> None:
-        await pair.initiator.uart_set(1, _SWEEP_PAYLOAD)
-
-    def work(pair: Pair, delivered: "list[bytes | None]") -> "tuple[Coroutine[Any, Any, object], Coroutine[Any, Any, None]]":
-        return _listen_recording(pair, delivered), peer(pair)
-
-    _sweep(crc, work, cancel=True, recover=_restarted_listener_answers)
-
-
-def _check_clear_at_every_await_leaves_the_transaction_whole_or_failed(crc: "CrcMaker") -> None:
-    outcomes: list[tuple[object, list[bytes | None]]] = []
-
-    async def recorded(pair: Pair, delivered: "list[bytes | None]") -> None:
-        outcomes.append((await pair.initiator.uart_set(1, _SWEEP_PAYLOAD), delivered))
-
-    def work(pair: Pair, delivered: "list[bytes | None]") -> "tuple[Coroutine[Any, Any, object], Coroutine[Any, Any, None]]":
-        return recorded(pair, delivered), _listen_recording(pair, delivered)
-
-    _sweep(crc, work, cancel=False, recover=_set_with_listener)
-    assert outcomes, "the sweep ran no transaction"
-    for sent, delivered in outcomes:
-        assert sent in (True, False), f"a cleared transaction returned {sent!r}"
-        # Whole: the peer holds exactly the payload. A False may still have been delivered (the lost-final-ACK seam).
-        assert not sent or delivered == [_SWEEP_PAYLOAD], f"a transaction reported whole delivered {delivered!r}"
-        assert delivered in ([], [_SWEEP_PAYLOAD]), f"a cleared transaction delivered part of its payload: {delivered!r}"
-
-
 # Registered once per mode, so a failure names the configuration that broke. Three checks are about one
 # configuration by construction, not omission: without a CRC a payload corruption is undetectable and a frame
 # cannot fail its check, so each in the opposite mode would assert the opposite of what it says.
@@ -1678,33 +1406,7 @@ _OWN_CLOCK = (
     "a_host_stall_cannot_fail_the_sustained_hammer",
     "a_host_stall_cannot_fail_the_faulted_hammer",
 )
-
-
-def _register_both_crc_modes() -> None:
-    for label, crc in CRC_MODES:
-        for name, check in list(globals().items()):
-            if not name.startswith("_check_"):
-                continue
-            stem = name[len("_check_") :]
-            if _MODE_SPECIFIC.get(stem, label) != label:
-                continue
-            globals()[f"test_{stem}_{label}"] = _bind(check, crc, own_clock=stem in _OWN_CLOCK)
-
-
-def _bind(check: "Callable[[CrcMaker], None]", crc: "CrcMaker", *, own_clock: bool) -> "Callable[[], None]":
-    # Every other check runs on the poll-round clock too: on the wall clock one host stall past a reply budget
-    # fails a live exchange, so the verdict would depend on host load (SPECIFICATION.md Part J.7).
-    def run_one() -> None:
-        if own_clock:
-            check(crc)
-            return
-        with PollRoundClock():
-            check(crc)
-
-    return run_one
-
-
-_register_both_crc_modes()
+register_both_crc_modes(globals(), _MODE_SPECIFIC, _OWN_CLOCK)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 `# @requires`/`# @wiring`/`# @value-wiring`/`# @limits`/`# @web`/`# @web-group`, and the standing
 rule that a near-miss attempt at one must fail the build loud (SPECIFICATION.md Part L.5)."""
 
+import functools
+import io
 import re
 import tokenize
 from dataclasses import dataclass
@@ -184,28 +186,34 @@ def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[C
     # Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
     # string/docstring is never mistaken for a real comment. Each token also carries whether it sits
     # inside a class/function body rather than at module level.
+    try:
+        return list(_comment_tokens(path.read_bytes()))
+    except (IndentationError, SyntaxError, tokenize.TokenError) as e:
+        raise BuildError(device, f"{path} has a syntax error: {e}", instance=instance_label) from e
+
+
+@functools.lru_cache(maxsize=1024)
+def _comment_tokens(source: bytes) -> "tuple[CommentToken, ...]":
+    # Keyed on the file's bytes, so every tag family and every device reading one driver tokenizes it
+    # once, and a changed file is a new key. An error is never cached: each caller raises its own.
     tokens = []
     # Bracket depth plus whether the statement that opened it was indented: inside brackets a
     # comment is always indented by style, so only the enclosing statement says whether this is
     # module level. Outside them the line's own indentation answers it, and DEDENT depth cannot.
     depth = 0
     stmt_indented = False
-    try:
-        with path.open("rb") as f:  # tokenize decodes it itself, honoring a PEP 263 cookie/BOM
-            for tok in tokenize.tokenize(f.readline):
-                if tok.type == tokenize.COMMENT:
-                    # tok.line is the tokenizer's own physical line. Re-deriving it by indexing
-                    # str.splitlines() misaligns: that also breaks on \x0b/\x0c/\u2028, which the
-                    # tokenizer treats as ordinary characters, shifting every later line by one.
-                    inside_block = stmt_indented if depth else tok.line[:1].isspace()
-                    tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, inside_block))
-                elif tok.type == tokenize.OP and tok.string in "()[]{}":
-                    depth += 1 if tok.string in "([{" else -1
-                elif not depth and tok.type not in _NON_STATEMENT_TOKENS:
-                    stmt_indented = tok.line[:1].isspace()
-    except (IndentationError, SyntaxError, tokenize.TokenError) as e:
-        raise BuildError(device, f"{path} has a syntax error: {e}", instance=instance_label) from e
-    return tokens
+    for tok in tokenize.tokenize(io.BytesIO(source).readline):  # decodes itself, honoring a PEP 263 cookie/BOM
+        if tok.type == tokenize.COMMENT:
+            # tok.line is the tokenizer's own physical line. Re-deriving it by indexing
+            # str.splitlines() misaligns: that also breaks on \x0b/\x0c/\u2028, which the
+            # tokenizer treats as ordinary characters, shifting every later line by one.
+            inside_block = stmt_indented if depth else tok.line[:1].isspace()
+            tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, inside_block))
+        elif tok.type == tokenize.OP and tok.string in "()[]{}":
+            depth += 1 if tok.string in "([{" else -1
+        elif not depth and tok.type not in _NON_STATEMENT_TOKENS:
+            stmt_indented = tok.line[:1].isspace()
+    return tuple(tokens)
 
 
 def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":

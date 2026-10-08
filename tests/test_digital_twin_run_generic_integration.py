@@ -3,6 +3,7 @@ The smoke test reuses the hand-written sensortask_wozi module plus wozi's own bu
 
 import asyncio
 import sys
+import time
 
 try:
     from typing import TYPE_CHECKING
@@ -22,14 +23,18 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import machine
 import network
 import run_generic_integration
+from _tmp_scratch import TmpScratch
 from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, Pin
-from run_generic_integration import RunConfig, RunLimits, _apply_fault, _apply_hang, _collect_chips, main, parse_args
+from run_generic_integration import RunConfig, RunLimits, _apply_fault, _apply_hang, _collect_chips, _serve_until, main, parse_args
 
 # @tunable l2.run_generic_integration_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
 # @tunable l2.run_generic_integration_main_run_bound_s = 15.0
 _MAIN_RUN_BOUND_S = 15.0
+
+
+_scratch = TmpScratch("rgi")
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = _RUN_BOUND_S) -> "T":
@@ -64,7 +69,7 @@ def test_parse_args_minimal_valid_config() -> None:
     assert config.state == StatePaths(None, None)
     assert config.injections == Injections(None, [], [], [])
     # @tunable gc.threshold_bytes = 32768
-    assert config.run == RunLimits(None, 32768, None)
+    assert config.run == RunLimits(None, 32768, None, None)
 
 
 def test_run_config_compares_and_prints_its_grouped_fields() -> None:
@@ -150,6 +155,51 @@ def test_parse_args_mem_sample_interval_ms_defaults_to_disabled() -> None:
 def test_parse_args_mem_sample_interval_ms_is_settable() -> None:
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--mem-sample-interval-ms", "25"])
     assert config.run.mem_sample_interval_ms == 25
+
+
+def test_parse_args_stop_file_is_settable_and_empty_means_none() -> None:
+    assert parse_args(["--module", "m", "--wiring-plan", "p.json", "--stop-file", "s"]).run.stop_file == "s"
+    assert parse_args(["--module", "m", "--wiring-plan", "p.json", "--stop-file", ""]).run.stop_file is None
+
+
+# ---------------------------------------------------------------------------
+# _serve_until() - the duration as an upper bound a caller done early ends with a file
+# ---------------------------------------------------------------------------
+
+
+def test_serving_ends_at_once_when_the_stop_file_already_exists() -> None:
+    stop = _scratch.path("stop_present")
+    with open(stop, "w"):
+        pass
+    start = time.ticks_ms()
+    run_timed(_serve_until(30.0, stop))
+    assert time.ticks_diff(time.ticks_ms(), start) < 1000  # a 30 s bound, left on the first look
+
+
+def test_serving_ends_once_the_stop_file_appears() -> None:
+    stop = _scratch.path("stop_later")
+
+    async def scenario() -> int:
+        async def write_later() -> None:
+            await asyncio.sleep_ms(300)
+            with open(stop, "w"):
+                pass
+
+        writer = asyncio.create_task(write_later())
+        start = time.ticks_ms()
+        await _serve_until(30.0, stop)
+        await writer
+        return time.ticks_diff(time.ticks_ms(), start)
+
+    elapsed = run_timed(scenario())
+    assert 300 <= elapsed < 3000, elapsed  # after the write, long before the 30 s bound
+
+
+def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
+    for stop in (None, _scratch.path("stop_never")):
+        start = time.ticks_ms()
+        run_timed(_serve_until(0.4, stop))
+        assert time.ticks_diff(time.ticks_ms(), start) >= 400, stop
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +307,7 @@ def test_main_boots_arms_a_fault_and_shuts_down_cleanly() -> None:
         port=19099,
         state=StatePaths(None, None),
         injections=Injections(None, [("sgp40", "writeto", 2)], [], []),
-        run=RunLimits(0.0, run_generic_integration._GC_THRESHOLD_DEFAULT, None),  # boot, arm the fault, then shut down immediately - no soak driving here any more
+        run=RunLimits(0.0, run_generic_integration._GC_THRESHOLD_DEFAULT, None, None),  # boot, arm the fault, then shut down immediately - no soak driving here any more
     )
     run_timed(main(config), timeout_s=_MAIN_RUN_BOUND_S)
     # _booted_module is set by main() itself and read the same way _print_wdt_status()'s own two

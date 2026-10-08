@@ -430,7 +430,6 @@ tests/test_ticks_rollover.py	Re-derives the exact accepted/rejected boundary ind
 tests/test_ticks_rollover.py	largest accepted delta is in (lo, hi)
 tests/test_tmp_scratch.py	A deliberately cheap population - the invariant is independence from sibling COU
 tests/test_tmp_scratch.py	The exact bug _sweep_stale_tmp_dirs() existed for: a second call reusing the sam
-tests/test_uart_comm_hazard.py	A short timeout keeps each recovery cycle cheap: this tier is about which frames
 tests/test_uart_comm_hazard.py	Byte order is part of the wire contract, not an implementation detail: the C pee
 tests/test_uart_comm_hazard.py	The protocol's at-least-once seam: the final ACK is deferred until after the res
 tests/test_uart_comm_hazard.py	Which byte does not matter here and is deliberately not pinned: the claim is tha

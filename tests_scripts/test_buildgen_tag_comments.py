@@ -179,6 +179,46 @@ def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(t
         iter_comment_tokens(path, "dev", "x")
 
 
+def test_one_content_is_tokenized_once_whatever_its_path(tmp_path: Path) -> None:
+    # Every tag family and every device reads the same drivers: the bytes are the key, not the path.
+    source = b"# @requires bus.timeout>=200000\nX = 1\n"
+    first, second = tmp_path / "a" / "asy_x_driver.py", tmp_path / "b" / "asy_x_driver.py"
+    for path in (first, second):
+        path.parent.mkdir()
+        path.write_bytes(source)
+    tag_comments._comment_tokens.cache_clear()
+    assert iter_comment_tokens(first, "dev", "x") == iter_comment_tokens(second, "wozi", "y")
+    info = tag_comments._comment_tokens.cache_info()
+    assert (info.misses, info.hits) == (1, 1)
+
+
+def test_a_changed_file_is_tokenized_again(tmp_path: Path) -> None:
+    # A test that plants a tag in a copied tree rewrites a file in place: its new bytes must be read.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @requires bus.timeout>=200000\n")
+    assert [t.text for t in iter_comment_tokens(path, "dev", "x")] == ["# @requires bus.timeout>=200000"]
+    path.write_text("X = 1\n# @requires bus.freq>=400000\n")
+    assert [(t.lineno, t.text) for t in iter_comment_tokens(path, "dev", "x")] == [(2, "# @requires bus.freq>=400000")]
+
+
+def test_each_caller_gets_its_own_token_list(tmp_path: Path) -> None:
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# one\n# two\n")
+    mine = iter_comment_tokens(path, "dev", "x")
+    mine.clear()
+    assert [t.text for t in iter_comment_tokens(path, "dev", "x")] == ["# one", "# two"]
+
+
+def test_a_broken_file_raises_for_each_caller_with_its_own_device_and_instance(tmp_path: Path) -> None:
+    # An error is never cached: the second reader of one broken file gets its own BuildError, not the first's.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("x = (1,\n")
+    for device, label in (("dev", "x"), ("wozi", "y")):
+        with pytest.raises(BuildError, match="syntax error") as raised:
+            iter_comment_tokens(path, device, label)
+        assert (raised.value.device, raised.value.instance) == (device, label)
+
+
 # ---------------------------------------------------------------------------
 # D2: wording - the leading word and its "@" sigil
 # ---------------------------------------------------------------------------

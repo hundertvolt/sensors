@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 from buildgen.model import DeviceModel
+from buildgen.source_ast import parse_source
 
 # Always-included core (every device needs all of these regardless of which optional drivers it
 # declares - mandatory infra plus the modules build_system() itself always imports directly, not
@@ -54,7 +55,7 @@ def _local_imports_of(module: str, roots: "tuple[Path, ...]") -> "set[str]":
     for root in roots:
         path = root / f"{module}.py"
         if path.is_file():
-            tree = ast.parse(path.read_text(), filename=str(path))
+            tree = parse_source(path.read_text(), str(path))
             names: set[str] = set()
             _collect_imports(tree, names)
             return {n for n in names if any((root2 / f"{n}.py").is_file() for root2 in roots)}
