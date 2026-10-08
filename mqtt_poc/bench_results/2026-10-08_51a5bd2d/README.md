@@ -359,3 +359,28 @@ about 12 KB on the board, against the ~13.8 KB left after the client's 11,360 B*
 import-time growth, which the twin cannot show apart from bytecode. So the tripwire's overshoot is about half
 this branch (11.4 KB) and about half the audit base's own U11–U17 (agent estimate, from one scale factor; a
 board reading of a `c11ca0a` image would settle it, and needs a flash this session no longer has).
+
+### Attempt 7: the new password, DNS and stall-phase tests on this image (`new_tests_step/`)
+
+The owner asked for them (owner, 2026-10-08: "You may set up a mosquitto instance with password, go ahead
+and test this. No soak test required yet, but for the rest of your suggestions you have my go ahead."). The
+eight tests `f2e30c4a` added, run from that checkout against this image (host-side only, no device script, so
+no image skew), `--allow-persistence-writes-to=networking/mqtt`: **8 passed** in 860 s.
+
+| Test | Measured |
+|---|---|
+| password broker, right credentials | connected in 1.6 s; `GET /networking` shows `MQTTPW` as `********`; an anonymous client refused by that broker; back on the anonymous broker in 1.7 s |
+| wrong password | 5 refused attempts in 40 s (the 2 s doubling backoff), 5 MQTT log entries, all `E 117` (`MQTT_REFUSED`); never connected; connected 1.7 s after the password was corrected |
+| `no-such-broker.invalid` | `MQTT_DNS` first seen 4.1 s after the PUT (REST-polled), 5 entries in 40 s, nothing else logged; reconnected 1.5 s after the restore |
+| `no-such-broker.local` (unanswered mDNS) | the same: 4.1 s, 5 entries, reconnected 1.6 s after the restore |
+| stall 1 s after a connect | detected in 24.38 s (design 24.0 s) |
+| stall 5 s after | 20.13 s (20.0 s) |
+| stall 9 s after | 16.28 s (16.0 s) |
+| stall 13 s after | 12.19 s (12.0 s) |
+
+- **Stall detection follows the design exactly**: (15 s − offset) + 10 s, 0.13–0.38 s late (the keeper's 100 ms
+  tick and the console). The bound's whole 10–25 s range is now measured on the board, not only its 21 s point.
+- **Each recovery after a sweep stall took 61.5–63.5 s**: every sweep session lived under the 30 s
+  `mqtt.stable_after_ms`, so the backoff doubled to its 60 s cap and was never reset. That is the designed
+  backoff (Part A.11: reset only once a connection is stable); it also means a broker that fails again within
+  30 s of a recovery is retried only once a minute. The twin should reproduce this, and Run 12 checks none of it.
