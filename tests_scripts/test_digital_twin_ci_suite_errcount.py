@@ -2,6 +2,7 @@
 type_char selection (Run 8's "W" case) and _bus_fault_drivers()'s filtering - without a live twin
 subprocess/HTTP server, the same way test_digital_twin_ci_suite_soak.py does for Run 11's."""
 
+import errno
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -441,3 +442,52 @@ def test_a_missing_or_unreadable_log_fails_the_check_and_names_the_path(ci_suite
         ci_suite._FAILURES[:] = saved
     assert len(failures) == 1, failures
     assert "Run 1" in failures[0] and str(log) in failures[0], failures
+
+
+# ---------------------------------------------------------------------------
+# Run 9's host that never answers: the request leaves this host and goes unanswered (NTP_NO_REPLY), or, with no
+# route out (a network namespace holding only lo), the send itself fails (NTP_NOT_SENT). The route decides which.
+# ---------------------------------------------------------------------------
+
+
+def test_run_9_expects_no_reply_where_a_route_leaves_the_host(ci_suite: ModuleType) -> None:
+    no_reply, not_sent = ci_suite.code("E", "NTP_NO_REPLY"), ci_suite.code("E", "NTP_NOT_SENT")
+    ok, msg = ci_suite._ntp_unreachable_verdict([0, no_reply], route=True)
+    assert ok, msg
+    assert "NTP_NO_REPLY" in msg and "a route" in msg
+    assert not ci_suite._ntp_unreachable_verdict([0, not_sent], route=True)[0]  # the other code is not this branch's
+    assert not ci_suite._ntp_unreachable_verdict([0, not_sent, no_reply], route=True)[0]
+    assert not ci_suite._ntp_unreachable_verdict([0], route=True)[0]
+
+
+def test_run_9_expects_not_sent_where_no_route_leaves_the_host(ci_suite: ModuleType) -> None:
+    no_reply, not_sent = ci_suite.code("E", "NTP_NO_REPLY"), ci_suite.code("E", "NTP_NOT_SENT")
+    ok, msg = ci_suite._ntp_unreachable_verdict([not_sent], route=False)
+    assert ok, msg
+    assert "NTP_NOT_SENT" in msg and "no route" in msg
+    assert not ci_suite._ntp_unreachable_verdict([no_reply], route=False)[0]
+    assert not ci_suite._ntp_unreachable_verdict([], route=False)[0]
+
+
+def test_the_route_probe_finds_the_loopback_route(ci_suite: ModuleType) -> None:
+    assert ci_suite._route_leaves_host("127.0.0.1", 123) is True  # a UDP connect() sends nothing
+
+
+class _NoRouteSocket:
+    # A socket.socket stand-in whose connect() fails as a host with no route out does (ENETUNREACH).
+    def __init__(self, *_args: object) -> None:
+        self.closed = False
+
+    def __enter__(self) -> "_NoRouteSocket":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.closed = True
+
+    def connect(self, _addr: object) -> None:
+        raise OSError(errno.ENETUNREACH, "Network is unreachable")
+
+
+def test_the_route_probe_reports_a_host_with_no_route_out(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ci_suite.socket, "socket", _NoRouteSocket)
+    assert ci_suite._route_leaves_host("192.0.2.1", 123) is False

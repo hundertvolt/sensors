@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, "ext")  # same convention as tests/_sensortask_scenarios.py's own comment
 sys.path.insert(0, "digital_twin")  # see tests/test_digital_twin_sgp40.py's own comment for why
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 import _http_client
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port

@@ -124,8 +124,8 @@ def test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tra
         return reader.pr._err_count, log
 
     err_count, log = run(scenario())
-    assert err_count == 1  # in-memory counting is unaffected by the underlying FRAM fault
-    assert log["sensor"]["ErrNum"][-1] == code("E", "UNEXPECTED")
+    assert err_count == 2  # in-memory counting is unaffected by the underlying FRAM fault; the failed write adds LOG_RAM_ONLY
+    assert log["sensor"]["ErrNum"][-2:] == [code("E", "UNEXPECTED"), code("E", "LOG_RAM_ONLY")]
 
 
 def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() -> None:
@@ -174,7 +174,7 @@ def test_after_a_chip_loss_ten_logger_writes_add_no_fram_log_entry_beyond_the_lo
     assert manager.pr._err_count == fram_errors
     assert list(manager.pr.history).count(code("E", "FRAM_CHIP_LOST")) == 1
     assert chip.opcodes == []  # nothing reached the bus
-    assert reader.pr._err_count == 12  # every entry still counted in RAM
+    assert reader.pr._err_count == 13  # every entry still counted in RAM, plus the failed-write run's one LOG_RAM_ONLY
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +439,7 @@ def test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works()
         return reader.pr._err_count
 
     err_count = run(scenario())
-    assert err_count == 1  # in-memory tracking unaffected by pause
+    assert err_count == 2  # in-memory tracking unaffected by pause; the refused write adds one LOG_RAM_ONLY
     assert bytes(chip.memory) == before  # nothing was actually written to FRAM while paused
 
 

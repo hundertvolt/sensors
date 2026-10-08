@@ -3,7 +3,8 @@
 # THIRD_PARTY_LICENSES.md carries the full account and what was changed or added here.
 
 """Async, non-blocking UDP wrapper around one socket.socket, driven by a hand-rolled select.poll
-loop. Two modes: mode="client" for a one-shot outbound request/response exchange, mode="server" for a bound socket answering inbound datagrams; also usable as `async with UDPSocket(...) as sock:`.
+loop. Two modes: mode="client" for a one-shot outbound request/response exchange,
+mode="server" for a bound socket answering inbound datagrams.
 """
 # Every I/O method returns its documented None-shaped sentinel, never raises (__init__ excepted).
 # Content-agnostic: never inspects datagram contents; mode="server" source-address trust is the
@@ -15,6 +16,8 @@ import socket
 
 from micropython import const
 
+from asy_print_log import console
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -23,53 +26,29 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Literal
 
-    from typing_extensions import Self
-
 _ADDR_TUPLE_LEN = const(2)  # a plain (host, port) address tuple
 # @tunable udp.retry_backoff_s = 0.5
-_RETRY_BACKOFF_S = const(0.5)  # pause between a failed connect()/bind() (or setup) attempt and the next
+_RETRY_BACKOFF_S = const(0.5)  # pause after a failed socket setup, connect() or bind()
+# @tunable udp.poll_wait_ms = 20
+_POLL_WAIT_MS = const(20)  # a wait with a deadline: inside a DNS or NTP exchange
+# @tunable udp.poll_idle_ms = 100
+_POLL_IDLE_MS = const(100)  # a wait with no deadline: the captive DNS listen
 
 
 class UDPSocket:
-    def __init__(
-        self,
-        addr: tuple[str, int],
-        mode: 'Literal["client", "server"]' = "client",
-        # @tunable udp.conn_tries_default = 1
-        conn_tries: int = 1,
-    ) -> None:
+    def __init__(self, addr: tuple[str, int], mode: 'Literal["client", "server"]' = "client") -> None:
         # Fail fast, at construction - see module docstring's __init__ exception.
         if mode not in ("client", "server"):
             raise ValueError(f"mode must be 'client' or 'server', got {mode!r}")
-        # addr may also be a pre-resolved opaque sockaddr (bytes/bytearray), not just a tuple -
-        # this file passes it through untouched to connect()/bind()/sendto().
-        if isinstance(addr, tuple):
-            if not (len(addr) == _ADDR_TUPLE_LEN and isinstance(addr[0], str) and isinstance(addr[1], int)):
-                raise TypeError(f"addr tuple must be (host: str, port: int), got {addr!r}")
-        elif not isinstance(addr, (bytes, bytearray)):  # type: ignore[unreachable]  # real at runtime
-            raise TypeError(f"addr must be a (host: str, port: int) tuple or a pre-resolved sockaddr, got {addr!r}")
-        if not isinstance(conn_tries, int):
-            raise TypeError(f"conn_tries must be an int, got {conn_tries!r}")
+        if not (isinstance(addr, tuple) and len(addr) == _ADDR_TUPLE_LEN and isinstance(addr[0], str) and isinstance(addr[1], int)):
+            raise TypeError(f"addr must be a (host: str, port: int) tuple, got {addr!r}")
 
         self._addr = addr
         self._sock: socket.socket | None = None
         self.poller: select.poll | None = None
         self._mode = mode
         self.connected = False
-        self._conn_tries = conn_tries
         self._connect_lock = asyncio.Lock()  # serialises setup and teardown of the one socket object
-
-    async def __aenter__(self) -> "Self":
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
-    ) -> "Literal[False]":
-        await self.disconnect()
-        return False
 
     async def _connect(self) -> None:
         # Lazy, one-shot-per-socket setup, serialized against disconnect() via self._connect_lock.
@@ -82,21 +61,15 @@ class UDPSocket:
                     self._sock.setblocking(False)
                     self.poller = select.poll()
                     self.poller.register(self._sock, select.POLLIN | select.POLLOUT)
-
-                    tries = 0
-                    while (not self.connected) and (tries < self._conn_tries):
-                        try:
-                            if self._mode == "client":
-                                self._sock.connect(self._addr)
-                            else:
-                                self._sock.bind(self._addr)
-                            self.connected = True
-                        except (MemoryError, OSError, TypeError):
-                            tries += 1
-                            await asyncio.sleep(_RETRY_BACKOFF_S)
-                            self.connected = False
-                except (MemoryError, OSError, TypeError):
-                    # setup itself failed, or a non-int conn_tries raised from the while condition.
+                    if self._mode == "client":
+                        self._sock.connect(self._addr)
+                    else:
+                        self._sock.bind(self._addr)
+                    self.connected = True
+                except (MemoryError, OSError, TypeError) as e:
+                    if isinstance(e, MemoryError):
+                        console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
+                    # setup, connect or bind failed
                     await asyncio.sleep(_RETRY_BACKOFF_S)
 
                 if not self.connected:
@@ -116,16 +89,20 @@ class UDPSocket:
         try:
             if poller is not None:
                 poller.unregister(sock)
-        except (MemoryError, OSError):
+        except (MemoryError, OSError) as e:
+            if isinstance(e, MemoryError):
+                console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
             ok = False
         try:
             sock.close()
-        except (MemoryError, OSError):
+        except (MemoryError, OSError) as e:
+            if isinstance(e, MemoryError):
+                console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
             ok = False
         return ok
 
-    async def _poll(self, mask: int, wait_time_ms: int) -> bool:
-        # ipoll(0), then sleep_ms(wait_time_ms), until mask (or a real POLLERR/POLLHUP) is set; no
+    async def _poll(self, mask: int, wait_ms: int) -> bool:
+        # ipoll(0), then sleep_ms(wait_ms), until mask (or a real POLLERR/POLLHUP) is set; no
         # deadline of its own - ready() bounds it with asyncio.wait_for_ms() (SPECIFICATION.md F.2).
         while True:
             if self.poller is None:  # a concurrent disconnect() can null this mid-loop
@@ -133,7 +110,7 @@ class UDPSocket:
             for _, event in self.poller.ipoll(0):
                 if event & (mask | select.POLLERR | select.POLLHUP):
                     return True
-            await asyncio.sleep_ms(wait_time_ms)
+            await asyncio.sleep_ms(wait_ms)
 
     async def disconnect(self) -> bool:
         # Serialized against _connect() through the same lock - a concurrent disconnect() could
@@ -142,32 +119,33 @@ class UDPSocket:
         async with self._connect_lock:
             return await self._disconnect_locked()
 
-    # @tunable udp.ready_poll_ms = 20
-    async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
-        # Polls until mask (or a real POLLERR/POLLHUP, always reported: the caller's socket call surfaces it)
-        # is set; timeout_ms > 0 bounds the wait through wait_for_ms(), <= 0 waits forever. A malformed mask,
-        # timeout_ms or wait_time_ms returns False: callers' excepts wrap only their own socket call.
+    async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
+        # Polls ipoll(0), sleeping _POLL_WAIT_MS inside an exchange (a deadline is set) and _POLL_IDLE_MS while listening with none (SPECIFICATION.md F.5.9's shape).
+        # A real POLLERR/POLLHUP is always reported; returning True lets the caller's socket call surface it.
+        # A malformed mask or timeout_ms returns False: callers' excepts wrap only their own socket call.
         await self._connect()
         if not self.connected or self.poller is None:
             return False
         try:
             if timeout_ms <= 0:
-                return await self._poll(mask, wait_time_ms)
-            return await asyncio.wait_for_ms(self._poll(mask, wait_time_ms), timeout_ms)
+                return await self._poll(mask, _POLL_IDLE_MS)
+            return await asyncio.wait_for_ms(self._poll(mask, _POLL_WAIT_MS), timeout_ms)
         except asyncio.TimeoutError:
             return False
-        except (MemoryError, OSError, TypeError):
+        except (MemoryError, OSError, TypeError) as e:
+            if isinstance(e, MemoryError):
+                console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
             return False
 
     async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self._sock is not None:
             try:
-                # The 1.29 stub types recvfrom()'s address as socket's full _Address union
-                # (AF_INET6's 4-tuple and AF_UNIX's str included). This socket is always
-                # AF_INET/SOCK_DGRAM (see _open()), so the 2-tuple is the only reachable shape.
+                # A datagram longer than buf arrives cut to buf bytes, the rest dropped (extmod/modlwip.c:719-721, v1.29.0).
+                # The 1.29 stub types the address as socket's full _Address union; this AF_INET socket (_connect()) only returns a 2-tuple.
                 return self._sock.recvfrom(buf)  # type: ignore[return-value]
-            except (MemoryError, OSError, TypeError):  # TypeError: a malformed buf (e.g. a str)
-                pass
+            except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed buf (e.g. a str)
+                if isinstance(e, MemoryError):
+                    console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None, None
 
     async def sendto(
@@ -179,16 +157,18 @@ class UDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self._sock is not None:
             try:
                 return self._sock.sendto(msg, addr)
-            except (MemoryError, OSError, TypeError):  # TypeError: a malformed addr/msg, not just this instance's own _addr
-                pass
+            except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed addr/msg, not just this instance's own _addr
+                if isinstance(e, MemoryError):
+                    console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None
 
     async def write(self, msg: bytes | bytearray, timeout_ms: int = -1) -> int | None:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self._sock is not None:
             try:
                 return self._sock.write(msg)
-            except (MemoryError, OSError, TypeError):  # TypeError: a malformed msg, matching sendto()'s reasoning
-                pass
+            except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed msg, matching sendto()'s reasoning
+                if isinstance(e, MemoryError):
+                    console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None
 
     async def write_and_recvfrom(
@@ -196,18 +176,19 @@ class UDPSocket:
         msg: bytes | bytearray,
         buf: int,
         timeout_ms: int = -1,
-        # @tunable udp.round_trip_tries_default = 1
-        tries: int = 1,
+        *,
+        tries: int,
     ) -> tuple[bytes | None, tuple[str, int] | None]:
-        # Retries the full write+response round trip up to `tries` times, returning as soon as a
-        # response arrives. range(tries) is guarded: a malformed tries raises TypeError from
-        # range() itself, before the loop starts and before write()/recvfrom() ever see it.
+        # Retries the full write+response round trip up to `tries` times, returning as soon as a response arrives;
+        # a try whose write() failed does not wait for a reply. range(tries) is guarded: a malformed tries raises TypeError
+        # from range() itself, before write()/recvfrom() ever see it.
         try:
             tries_range = range(tries)
         except TypeError:
             return None, None
         for _ in tries_range:
-            await self.write(msg, timeout_ms=timeout_ms)
+            if await self.write(msg, timeout_ms=timeout_ms) is None:
+                continue
             data, addr = await self.recvfrom(buf, timeout_ms=timeout_ms)
             if data is not None:
                 return data, addr

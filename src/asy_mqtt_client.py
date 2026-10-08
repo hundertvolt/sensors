@@ -121,7 +121,7 @@ _ERR_MQTT_STALLED = const(121)
 _ERR_MQTT_SUB_REFUSED = const(122)
 _WRN_STORED_DEFAULT = const(10)
 _WRN_CFG_READ = const(13)
-_WRN_MQTT_SHORT_SESSIONS = const(77)
+_WRN_MQTT_SHORT_SESSIONS = const(82)
 
 # Buffers, allocated once at construction (Part A.11's memory budget).
 # @tunable mqtt.rx_buf_bytes = 1024
@@ -385,7 +385,7 @@ class MQTTClient(SensorReaderConfig):
     async def _connect(self) -> int:
         # Resolve, connect and CONNECT/CONNACK under their own timeouts; _R_NONE once the session is up.
         dns_server = await self._safe_dns_server()  # read before any lock, as NTP does
-        ip = await resolve_ipv4(self._host, () if dns_server is None else (dns_server,), timeout_ms=self._cfg.dns_timeout_ms, tries=self._cfg.dns_tries)
+        ip = await resolve_ipv4(self._host, () if dns_server is None else (dns_server,), timeout_ms=self._cfg.dns_timeout_ms, tries=self._cfg.dns_tries, pr=self.pr)
         if ip is None:
             await self.pr.err_s("Broker name did not resolve:", self._host, errno=_ERR_MQTT_DNS)
             return _R_CONNECT

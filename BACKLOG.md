@@ -18,22 +18,16 @@ cites is deleted outright, its permanent content migrated per the policy above. 
 
 ## Refactor targets not yet done
 
-- **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
-  not by the flag it was originally written about: all three passes now run full `--strict`
-  (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
-  survives anywhere in scope. **Deferred to a dedicated future session (project owner, 2026-09-11)
-  - not to be picked up as part of unrelated work.** **None of this is a pipeline finding** -
-  `disallow_any_explicit` is *off* in all three configs, so lint/typecheck/CI are green; the counts
-  below are what would appear if it were switched on. Re-measured 2026-09-11: **224 in the main
-  `src`+`tests` pass** and **115 in the host pass** (up from the 17 recorded before
-  `tests_hardware/` joined that scope);
-  `digital_twin/` was not re-measured, previously 45. Plus `disallow_any_unimported` (54, main
-  pass only). Explicit `Any` appears 107 times in `src/` and 213 in `tests/`. A large share of the
-  test-side uses are monkeypatch/wrapper classes duck-typing a real MicroPython object; the `src/`
-  side is largely legitimate (`asy_print_log.py`'s variadic logging methods, `asy_config_manager.py`'s
-  generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
-  on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
-  delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
+- **Mypy shall be configured to disallow `Any` types** (owner-specified). Configured: all three
+  passes run full `--strict` (`disallow_any_generics` included) plus `disallow_any_explicit = true`
+  (`pyproject.toml`'s `[tool.mypy]`, `digital_twin/typecheck.ini`, `host_typecheck.ini`). What
+  remains is each pass's baseline of modules still exempted through a per-module
+  `disallow_any_explicit = false` override; a module leaves it once its explicit `Any` is gone, and
+  the list only shrinks, pinned by `tests_scripts/test_mypy_any_baseline.py`. **Deferred to a
+  dedicated future session (project owner, 2026-09-11) - not to be picked up as part of unrelated
+  work.** Most of what is left
+  is test code: monkeypatch and wrapper classes duck-typing a real MicroPython object, which need a
+  typing strategy (e.g. `Protocol` classes and `__getattr__` delegation) rather than a flag flip.
 - **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
   (owner, 2026-09-15; important to apply, no ordering — owner, 2026-09-29: 'It has no priority in
   terms of order now, it's only highly important to be applied.') has now run once, beyond
@@ -161,7 +155,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
    sitting's answer about the UART fault catalog (SPECIFICATION.md E.6.6 row `uart-fault-catalog`):
    fault-injection hardware may arrive one day for that work, and if it does, the GPIO half below
    is worth re-opening then — as a new entry, not by treating this one as still pending. A programmable GPIO fault-injection
-   harness (upgrades the "genuinely wedged I2C bus → watchdog backstop" test) and a dedicated
+   harness (upgrades the twin's watchdog hang test and the held-SDA recovery row) and a dedicated
    second WiFi test client (upgrades the real end-to-end hotspot session; today's host has one
    adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — and no
    software-only stand-in claims the same coverage (agent, 2026-09-22). Migrated
@@ -387,6 +381,12 @@ gates, traps).
   `constructed=N` (the alarms free at that moment, not the pool size) with the image's other
   default-pool users named. Expected: N at most the pool's 16 (SPECIFICATION.md F.1). Zero wear; no
   twin row confirms it yet (neither machine fake models the pool's size).
+- **The idle poll rate** — the event-loop share an idle captive-DNS listener's 100 ms poll takes,
+  and its first-query latency, on the twin and on the bench: a hotspot run with a counter task
+  running flat out beside the listener, then one query after a silence, timed. The rate stays at
+  100 ms with its measurement owed (owner, 2026-10-05); the figures go into Part N
+  `udp.poll_idle_ms`'s Basis (SPECIFICATION.md F.5.9). Zero wear; twin row: none yet, the twin
+  measurement is owed with it.
 - **The SGP40's lost samples over ten minutes** — `flash/test_sensor_accuracy.py::
   test_sgp40_sample_cadence` on `dev` (`scripts/run_bench_soak_tests.sh --tier short`): one `CADENCE`
   line, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
@@ -584,6 +584,22 @@ gates, traps).
   **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg**: `ensure_apt_packages()` passes apt a 30 s fetch
   timeout and two retries on both its `update` and its `install`, so a stalled mirror fails within about a minute
   instead of holding the step; a chroot run's apt calls carry the same options, with no other change.
+  **2026-10-08, mypy config and the coverage render, no build impact**: `pyproject.toml`'s main-pass
+  `mypy_path` and `digital_twin/typecheck.ini`'s gain `digital_twin/unixport`, where the Unix-port
+  UDP shim now lives; `asy_ntp_client` and `asy_wifi_service` leave the explicit-`Any` baseline;
+  `pyproject.toml`'s `max-statements` 77 → 75 (the measured maximum once the generated networking
+  status reads one snapshot);
+  `scripts/_render_coverage.py` anchors each report on `**/*.py` under `--src-dir`, so a
+  subdirectory such as `digital_twin/unixport/` is reported. No new dependency and no build input
+  changed: a chroot's `scripts/typecheck.sh` leg covers the new path, and its `scripts/test.sh
+  --coverage` render covers the subdirectory.
+  **2026-10-08, `scripts/_digital_twin_ci_suite.py`, test orchestration only, no build impact**: Run
+  9 decides from the host's route whether an NTP request to 192.0.2.1 can leave the host, probing
+  with a connected UDP socket, which sends nothing, and expects `NTP_NO_REPLY` when the request can
+  leave and `NTP_NOT_SENT` when it cannot (a network namespace holding only `lo`), never both; Runs
+  7 and 8 count the WIFI fallback's persisted `WLAN_TO_HOTSPOT` warning (two history slots, six
+  counted events). Stdlib only, no new dependency: the chroot legs, which share the host's network,
+  are unaffected.
   **2026-10-08, `toolchain/versions.toml`, both legs and the installer leg (MQTT PoC branch)**: `apt_packages`
   gains `mosquitto`, the broker the MQTT client's twin and bench tests start themselves (owner, 2026-10-07: 'apt
   package (Recommended)'). Its Debian/Ubuntu package also enables a system broker on `localhost:1883`, which no test
@@ -597,9 +613,6 @@ gates, traps).
   **2026-10-08, `scripts/run_bench_hardware_suite.sh` only, no build impact (MQTT PoC branch)**: the runner
   gains `--scope NAME` (resolved by `python3 tests_hardware/run_scopes.py`, stdlib only); nothing installed or
   built changes, so nothing here moves either leg.
-  **2026-10-08, lint config only, no build impact (MQTT PoC branch)**: `pyproject.toml` `max-statements` 77 → 75,
-  the measured maximum once the generator's networking-status emitter became its own function; nothing here moves
-  either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -847,9 +860,9 @@ gates, traps).
 - **Adopt a genuine non-blocking alternative to every currently-unavoidable blocking call as soon as
   one reliably exists** (owner, 2026-07-24, `cc911be`: 'Don't treat the current state as
   permanently accepted risk'; confirmed by the owner, 2026-09-29). Today's list, each backstopped by
-  the hardware watchdog (SPECIFICATION.md F.2): a `machine.I2C` transfer on a wedged bus; a single
-  `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`, v1.29.0; the FRAM's
-  waits around it wait only on other coroutines, SPECIFICATION.md F.2).
+  the hardware watchdog after the recovery ladder (SPECIFICATION.md F.2): a `machine.I2C` transfer
+  on a wedged bus; a single `machine.SPI` transfer (synchronous, `ports/rp2/machine_spi.c:303-335`,
+  v1.29.0; the FRAM's waits around it wait only on other coroutines, SPECIFICATION.md F.2).
   `socket.getaddrinfo()` is not called from `src/`; its one call is `asyncio.start_server()`'s, on the
   numeric bind host (SPECIFICATION.md F.2). Re-checked at each MicroPython version re-check (CLAUDE.md 'Platform
   target').
@@ -860,3 +873,15 @@ gates, traps).
 
 Questions for the project owner, each dated, in the owner's format; nothing else in the repo parks a
 question.
+
+- **1. Bound how long a hotspot client holds the unit?** (entered 2026-10-08, agent) A phone joined
+  to the fallback hotspot keeps the unit off its home network for as long as it stays associated,
+  as the legacy firmware did; the LED now shows it. (a) keep it unbounded: on every device the unit
+  stays reachable only through its hotspot until the phone leaves; (b) bound it to a number of
+  hotspot windows, then retry the home network with the client still joined: the phone loses the
+  setup page mid-use after the bound, on every device.
+- **2. Leave the hotspot after a non-credential PUT?** (entered 2026-10-08, agent) A `Hostname`,
+  `Country` or `HotspotPW` PUT made from the hotspot page triggers a reconnect, which tries the
+  stored network; with the router down, two failed streaks switch Wi-Fi off until a power cycle.
+  (a) keep it: any Wi-Fi field reconnects, on every device; (b) from hotspot mode only `SSID` or
+  `PW` reconnect, and the other fields apply at the next hotspot start, on every device.

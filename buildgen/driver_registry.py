@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
+from buildgen.source_ast import parse_source
 
 _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 
@@ -44,7 +45,7 @@ class DriverInfo:
 
 def _parse(path: Path, device: str, driver: str) -> ast.Module:
     try:
-        return ast.parse(path.read_text(), filename=str(path))
+        return parse_source(path.read_text(), str(path))
     except SyntaxError as e:
         raise BuildError(device, f"{path} has a syntax error: {e}", instance=driver) from e
 

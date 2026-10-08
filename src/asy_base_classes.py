@@ -11,7 +11,7 @@ from collections import namedtuple
 from micropython import const
 
 from asy_config_manager import ConfigManager, check_cfg_get_default, config_filename, instance_name, schema_dict, schema_names, type_or_range_error
-from asy_print_log import DEFAULT_LOG, LogConfig, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -146,8 +146,10 @@ class RegionBuffer:
             # at 2**63 - both degrade the same way as the guards above, not a caller mistake either.
             try:
                 self._buf = bytearray(size)
-            except (MemoryError, OverflowError):
-                self._buf = None  # silent: no logger here and print() stays in asy_print_log.py; the owner reads None
+            except (MemoryError, OverflowError) as e:
+                # No logger in this class: one ungated line keeps a caught allocation failure visible to the memory gates (CLAUDE.md memory rule).
+                console("RegionBuffer", "buffer allocation failed:", e)
+                self._buf = None
 
     def get_buf(self) -> bytearray | None:
         return self._buf

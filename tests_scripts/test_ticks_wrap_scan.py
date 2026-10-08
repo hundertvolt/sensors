@@ -218,7 +218,7 @@ def _plant(root: Path, rel: str, source: str) -> "dict[str, str]":
 
 
 def _read_scopes(root: Path) -> "dict[str, str]":
-    return {f"{scope}/{p.name}": p.read_text(encoding="utf-8") for scope in _SCOPES for p in sorted((root / scope).glob("*.py"))}
+    return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for scope in _SCOPES for p in sorted((root / scope).rglob("*.py"))}
 
 
 def _rule(node: ast.AST, names: "set[str]", held: "set[str]", consts: "dict[str, int]") -> "str | None":
@@ -415,6 +415,16 @@ def test_a_twin_plant_fails(tree_copy: Path, generated: "dict[str, str]") -> Non
     assert findings == [
         "digital_twin/zz_plant.py:6 stamp(): `now > t0` orders a tick value",
         "digital_twin/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS",
+    ], findings
+
+
+def test_a_plant_in_a_scope_subdirectory_fails(tree_copy: Path, generated: "dict[str, str]") -> None:
+    # Subdirectories are scanned too: the twin's UDP shim lives in digital_twin/unixport/.
+    plant = "import time\n\n\ndef stamp(t0):\n    now = time.ticks_us()\n    return now > t0\n"
+    findings = _findings(_plant(tree_copy, "digital_twin/unixport/zz_plant.py", plant) | generated, _known_users())
+    assert findings == [
+        "digital_twin/unixport/zz_plant.py:6 stamp(): `now > t0` orders a tick value",
+        "digital_twin/unixport/zz_plant.py: reads ticks but is not in _KNOWN_TICKS_USERS",
     ], findings
 
 

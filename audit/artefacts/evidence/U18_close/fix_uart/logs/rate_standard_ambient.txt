@@ -1,0 +1,11 @@
+rep 0 PASS 1871 ms
+rep 1 PASS 2422 ms
+rep 2 PASS 1766 ms
+rep 3 PASS 2035 ms
+rep 4 PASS 1800 ms
+rep 5 PASS 1842 ms
+rep 6 PASS 1851 ms
+rep 7 PASS 1845 ms
+rep 8 PASS 1715 ms
+rep 9 PASS 1730 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 10 / 10 passed

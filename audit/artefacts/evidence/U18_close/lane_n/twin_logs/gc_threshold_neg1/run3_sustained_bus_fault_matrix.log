@@ -1,0 +1,156 @@
+digital_twin/run_generic_integration.py starting - device='wozi' module='sensortask_wozi' host='127.0.0.1' port=18080 fram_state_path='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/digital_twin/fram_state.json' scd30_state_path='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/digital_twin/scd30_state.json' seed=None duration=None faults=[('bmp3xx', 'readfrom_mem', 500), ('fram', 'write', 500), ('scd30', 'writeto', 500), ('sgp40', 'writeto', 500)] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:18080/ - Ctrl+C to stop
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+WIFI PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+WIFI PrintLog: Uninitialized, call setup first!
+WIFI FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+CFGMGR_WIFI PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+CFGMGR_WIFI PrintLog: Uninitialized, call setup first!
+CFGMGR_WIFI FRAM history unreadable - RAM-only until reboot
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - config is ready, nothing to write
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+DNSSRV PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+NTP PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+NTP PrintLog: Uninitialized, call setup first!
+NTP FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+CFGMGR_NTP PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+CFGMGR_NTP PrintLog: Uninitialized, call setup first!
+CFGMGR_NTP FRAM history unreadable - RAM-only until reboot
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - config is ready, nothing to write
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+NEOPIXEL PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+NEOPIXEL PrintLog: Uninitialized, call setup first!
+NEOPIXEL FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+SCD30 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+SCD30 PrintLog: Uninitialized, call setup first!
+SCD30 FRAM history unreadable - RAM-only until reboot
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - config is ready, nothing to write
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+SGP40 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+SGP40 PrintLog: Uninitialized, call setup first!
+SGP40 FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+CFGMGR_SGP40 PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+CFGMGR_SGP40 PrintLog: Uninitialized, call setup first!
+CFGMGR_SGP40 FRAM history unreadable - RAM-only until reboot
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - config is ready, nothing to write
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+BMP3XX PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+BMP3XX PrintLog: Uninitialized, call setup first!
+BMP3XX FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+CFGMGR_BMP3XX PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+CFGMGR_BMP3XX PrintLog: Uninitialized, call setup first!
+CFGMGR_BMP3XX FRAM history unreadable - RAM-only until reboot
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - config is ready, nothing to write
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+NOTIFY PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+NOTIFY PrintLog: Uninitialized, call setup first!
+NOTIFY FRAM history unreadable - RAM-only until reboot
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+CFGMGR_NOTIFY PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+CFGMGR_NOTIFY PrintLog: Uninitialized, call setup first!
+CFGMGR_NOTIFY FRAM history unreadable - RAM-only until reboot
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - config is ready, nothing to write
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 0, reading block 1
+FRAM General read error in _read_chunk: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault fram:write
+FRAM Read fault in block 1
+WEBSERVER PrintLog: FRAM unreadable - stored history kept, RAM-only until reboot
+WEBSERVER PrintLog: Uninitialized, call setup first!
+WEBSERVER FRAM history unreadable - RAM-only until reboot
+SYSTEM Timer started: 0
+SYSTEM Timer started: 1
+SYSTEM Timer started: 2
+SYSTEM Timer started: 3
+SYSTEM Timer started: 4
+SYSTEM Timer started: 5
+SYSTEM Timer started: 6
+SYSTEM All timers running.
+NTP Force resync triggered.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Establishing WLAN connection
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI No SSID configured, hotspot mode
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 1
+SCD30 PrintLog: Uninitialized, call setup first!
+SCD30 Error in initial setup: no I2C device at address: 0x61
+SCD30 PrintLog: Uninitialized, call setup first!
+SCD30 I2C controller re-initialised, status 0
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into list.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into list.
+SGP40 PrintLog: Uninitialized, call setup first!
+SGP40 Error in initial setup: no I2C device at address: 0x59
+SYSTEM PrintLog: Uninitialized, call setup first!
+SYSTEM Task 10 ended: returned
+SYSTEM Task ended - attempting restart, error counter increased to 100 - task 10
+SGP40 PrintLog: Uninitialized, call setup first!
+SGP40 I2C controller re-initialised, status 0
+BMP3XX PrintLog: Uninitialized, call setup first!
+BMP3XX Error in initial setup: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault bmp3xx:readfrom_mem
+BMP3XX PrintLog: Uninitialized, call setup first!
+BMP3XX I2C controller re-initialised, status 0
+SCD30 PrintLog: Uninitialized, call setup first!
+SCD30 Error in initial setup: no I2C device at address: 0x61
+SYSTEM System uptime: 2
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+SCD30 PrintLog: Uninitialized, call setup first!
+SCD30 Error reading the config snapshot: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault scd30:writeto
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+BMP3XX Reading config via cfgmgr.
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into dict.
+BMP3XX PrintLog: Uninitialized, call setup first!
+BMP3XX Error reading oversampling/filter config from sensor: [Errno 5] EIO: digital_twin/run_generic_integration.py --fault bmp3xx:readfrom_mem
+digital_twin/run_generic_integration.py [wozi] shutdown: would_have_triggered_count=0
+digital_twin/run_generic_integration.py: interrupted

@@ -15,6 +15,7 @@ import time
 sys.path.insert(0, "ext")
 
 import machine
+import network
 import rp2
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
@@ -30,11 +31,13 @@ from microdot import Request, Response
 import asy_config_manager
 import asy_spi_driver
 import asy_system_service
+import asy_wifi_service
 from asy_base_classes import SensorReader, SensorReaderConfig
 from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager, _owner_seed
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService
+from asy_ntp_client import NTP
 from asy_print_log import PrintLogHistory, PrintLogHistoryStore
 from asy_system_service import SystemService
 from asy_uart_link_driver import UARTLinkDriver
@@ -55,6 +58,11 @@ _MIN_READ_SEPARATION_MS = 100
 # letting it hang the file.
 # @tunable l1.sensortask_led_refusal_ms = 100
 _LED_REFUSAL_MS = 100
+
+# A status read never waits on wifi_mode_lock; the bound only ends a regression that does, instead of
+# letting it hang the file (one GET /status here takes 0.1-0.3 s).
+# @tunable l1.sensortask_locked_status_ms = 5000
+_LOCKED_STATUS_MS = 5000
 
 try:
     from typing import TYPE_CHECKING
@@ -1475,6 +1483,75 @@ def _scenario_networking_put_ntp(device: str) -> None:
     assert module.ntp._ntp_retries == 0  # post_asy_fct fired
 
 
+@_register("webserver_networking_put_ntp_fields_clears_synced_until_the_next_sync")
+def _scenario_networking_put_ntp_clears_synced(device: str) -> None:
+    # (owner, 2026-09-29: "an NTP settings change clears `Synced`, as legacy"): nothing runs on a sync
+    # taken under the old settings; the generated post_asy_fct is ntp_force_sync().
+    module = build(device)
+    assert module.ntp is not None
+    run(module.ntp._set_meas_data(NTP(Synced=True, LastSyncAge=0, TS=1767225600)))
+    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["NTPSynced"] is True
+    res = _dispatch(module, "PUT", "/networking", {"NTPHost": "time.example.org"})
+    assert json.loads(res.body)["result"] == {"NTPHost": "Valid"}
+    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["NTPSynced"] is False
+
+
+@_register("webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one")
+def _scenario_networking_put_dns_fallback(device: str) -> None:
+    # DNSFallback is its own settings group: empty means none, and a list the resolver could not use is refused.
+    module = build(device)
+    assert module.ntp is not None
+    res = _dispatch(module, "PUT", "/networking", {"DNSFallback": ""})
+    assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
+    assert json.loads(status_body(_dispatch(module, "GET", "/networking")))["DNSFallback"] == ""
+    res = _dispatch(module, "PUT", "/networking", {"DNSFallback": "8.8.8.8,"})
+    assert json.loads(res.body)["result"] == {"DNSFallback": "Invalid"}
+    assert run(module.ntp.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": ""}
+
+
+async def _start_hotspot_once(conn: "Any") -> None:
+    # The mode switch's settle sleeps collapse to a yield; the captive DNS task it starts is cancelled
+    # before it runs, so no later scenario meets a port-53 listener.
+    asy_wifi_service.asyncio = _AsyncioWaits()  # type: ignore[assignment]
+    try:
+        await conn._start_hotspot()
+    finally:
+        asy_wifi_service.asyncio = asyncio
+    task = conn._dns_server_task
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@_register("webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked")
+def _scenario_networking_put_hotspot_pw(device: str) -> None:
+    module = build(device)
+    conn = module.conn
+    assert conn is not None
+    res = _dispatch(module, "PUT", "/networking", {"HotspotPW": "newpass123"})
+    assert json.loads(res.body)["result"] == {"HotspotPW": "Valid"}
+    assert conn._reconn_wifi is True  # the identity group's reconnect
+    assert json.loads(status_body(_dispatch(module, "GET", "/networking")))["HotspotPW"] == "********"
+    run(_start_hotspot_once(conn))
+    assert [c["password"] for c in conn._wlan.config_calls if "password" in c] == ["newpass123"]
+
+
+@_register("webserver_networking_put_of_the_mask_string_stores_it_as_the_password")
+def _scenario_networking_put_mask_string(device: str) -> None:
+    # No value is excluded on PUT (owner, 2026-09-29: "I don't want to restrict it in any way"): the mask
+    # string is a valid 8-character password, stored verbatim, and GET still answers the mask.
+    module = build(device)
+    assert module.conn is not None
+    for field in ("PW", "HotspotPW"):
+        res = _dispatch(module, "PUT", "/networking", {field: "********"})
+        assert json.loads(res.body)["result"] == {field: "Valid"}, field
+        assert run(module.conn.cfgmgr.get_dict([field])) == {field: "********"}
+        assert json.loads(status_body(_dispatch(module, "GET", "/networking")))[field] == "********"
+
+
 @_register("webserver_system_put_debug_level_propagates_to_every_logger")
 def _scenario_system_put_debug_level(device: str) -> None:
     module = build(device)
@@ -1689,6 +1766,51 @@ def _scenario_status_get(device: str) -> None:
     # keyed by name (Part H.6), so a published key nothing matches renders nothing at all.
     assert {logger.name for logger in _all_loggers(module)} == set(body["errcount"].keys())
     assert len(body["errcount"]) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
+
+
+@_register("webserver_status_answers_the_networking_snapshot_while_wifi_mode_lock_is_held")
+def _scenario_status_snapshot_under_the_held_lock(device: str) -> None:
+    # One snapshot per response, read without the radio: a held wifi_mode_lock never blanks or delays
+    # it, and the address is published once, as IPv4.
+    module = build(device)
+    conn = module.conn
+    assert conn is not None
+    conn._wlan._ifconfig = ("192.168.1.42", "255.255.255.0", "192.168.1.1", "192.168.1.53")
+    conn._wlan._rssi = -61
+    run(conn._update_wifi_snapshot(connected=True))
+    run(conn.wifi_mode_lock.acquire())
+    try:
+        res = _dispatch(module, "GET", "/status", timeout_ms=_LOCKED_STATUS_MS)
+    finally:
+        conn.wifi_mode_lock.release()
+    networking = json.loads(status_body(res))["networking"]
+    assert "IP" not in networking
+    got = {key: networking[key] for key in ("Mode", "Connected", "IPv4", "Subnet", "Gateway", "DNS", "RSSI")}
+    assert got == {"Mode": "STA", "Connected": True, "IPv4": "192.168.1.42", "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.53", "RSSI": -61}
+
+
+@_register("webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it")
+def _scenario_status_ap_mode_rssi(device: str) -> None:
+    # An AP interface has no RSSI (cyw43 raises outside STA): the snapshot leaves it null and never asks.
+    module = build(device)
+    conn = module.conn
+    assert conn is not None
+    conn._conn_phase = _PHASE_HOTSPOT
+    conn._ap_selected = True
+    conn._wlan = network.WLAN(network.AP_IF)
+    conn._wlan._ifconfig = ("192.168.4.1", "255.255.255.0", "192.168.4.1", "192.168.4.1")
+    queries: list[object] = []
+    real_status = conn._wlan.status
+
+    def status(param: "str | None" = None) -> "Any":
+        queries.append(param)
+        return real_status(param)
+
+    conn._wlan.status = status
+    run(conn._update_wifi_snapshot(connected=True))
+    networking = json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]
+    assert (networking["Mode"], networking["Connected"], networking["IPv4"], networking["RSSI"]) == ("AP", True, "192.168.4.1", None)
+    assert "rssi" not in queries, queries
 
 
 @_register("webserver_status_publishes_utc_time_only_after_the_first_ntp_sync")

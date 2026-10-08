@@ -81,6 +81,8 @@ run) and closing every finding in `RESULTS.md`.
 
 - Disabled (`MQTTEnable` false, or an empty `MQTTHost`): the keeper waits on an event that `reconnect()`
   sets, re-checking the config every `mqtt.idle_recheck_ms`. No socket, no DNS, no log.
+- Hotspot mode: the client is off (owner, 2026-10-08: 'Generally, when the device is in hotspot mode, the
+  MQTT client is off.'); `network_available_locked()` reads false there even with an address.
 - Link: `network_available_locked()` false (link down, no IP, or hotspot mode) → wait, polling every
   `mqtt.link_poll_ms`; backoff does not grow. While serving, the link is re-checked once per
   `mqtt.link_poll_ms` when the lock is free; a link loss ends the connection without a log entry
@@ -91,8 +93,8 @@ run) and closing every finding in `RESULTS.md`.
 
 ### 3.2 Connect
 
-- Resolve with `resolve_ipv4(host, (dns_server,), timeout_ms, tries)`; an IPv4 literal returns at once.
-  Re-resolved on every attempt (the address may move).
+- Resolve with `resolve_ipv4(host, (dns_server,), timeout_ms, tries, pr=...)`; an IPv4 literal returns at
+  once. Only the DHCP-provided server is asked (§13 item 12). Re-resolved on every attempt (the address may move).
 - CONNECT: protocol level 4, clean session, keepalive `mqtt.keepalive_s`, client id `MQTTClientId`,
   will `<base>/status` = `offline`, QoS 1, retained; user name and password flags only when set.
 - CONNACK within `mqtt.response_timeout_ms` of the connect completing; any return code other than 0 is
@@ -238,7 +240,7 @@ keeps each packet small (RESEARCH.md §4 fact 6). Consumers read the retained `s
 
 ## 8. Errors and warnings
 
-New catalog owner `mqtt`, logger `MQTT`, bands E 115–124 and W 77–80:
+New catalog owner `mqtt`, logger `MQTT`, bands E 115–124 and W 82–85:
 
 | Code | Name | When |
 |---|---|---|
@@ -250,7 +252,7 @@ New catalog owner `mqtt`, logger `MQTT`, bands E 115–124 and W 77–80:
 | E 120 | `MQTT_LOST` | the broker closed the connection, or a socket error ended it |
 | E 121 | `MQTT_STALLED` | the broker stopped reading (backlog or drain timeout) |
 | E 122 | `MQTT_SUB_REFUSED` | the broker refused a subscription |
-| W 77 | `MQTT_SHORT_SESSIONS` | sessions keep ending right after they start |
+| W 82 | `MQTT_SHORT_SESSIONS` | sessions keep ending right after they start |
 
 Shared codes: `CALLBACK` 14 (a WiFi callback or a consumer raised), `ALLOC` 20, `BAD_ARG` 21, `CFG_READ`
 26, W `STORED_DEFAULT` 10. A link-loss teardown and a deliberate reconnect log nothing. Each failure is
@@ -348,6 +350,10 @@ Each the more conservative, more easily reversible choice, for review:
 11. A passing scoped bench run (`--scope mqtt`) is reported NOT CLEAN, the precedent `--skip-lower-levels`
     set: everything that ran passed, but it never stands in for an L3/L4 pass. Its scope also carries the
     tests the branch reaches outside the client (§11.1).
+12. The broker name is asked of the DHCP-provided DNS server only. The audit's U18 took the resolver's
+    built-in 8.8.8.8/1.1.1.1 out and gave NTP its own `DNSFallback` list; the broker sits on the local
+    network (owner, 2026-10-08: 'TLS is not needed as it all runs in a local network.'), where a public
+    resolver knows no local name, so MQTT does not borrow NTP's list.
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 

@@ -282,13 +282,13 @@ uv run scripts/_generate_sensortask_modules.py
 # touching only pytest's tmp_path fixtures and OS-assigned free ports, never this repo's real
 # build/generated_src/ or frozen_modules/ (tests_scripts/conftest.py's docstring).
 #
-# So it is backgrounded HERE, overlapping its own ~248s with essentially the whole rest of this
+# So it is backgrounded HERE, overlapping its own run with essentially the whole rest of this
 # script rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
 # max_parallel like any other job, not as an extra process on top of that budget.
 #
 # timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold
-# the final `wait` open forever and nothing else here would time it out. 1200s is ~5x its measured
-# ~248s, so it fires only on a real hang; CI's timeout-minutes stays the outer backstop, not this.
+# the final `wait` open forever and nothing else here would time it out. 1200s sits well above its
+# measured time (Part N, runner.tests_scripts_timeout_s), so it fires only on a real hang; CI's timeout-minutes stays the outer backstop, not this.
 #
 # No retry, unlike the per-file loop - that one absorbs transient contention on a single file's
 # budget, whereas a whole-suite pytest timeout is a real failure worth reporting as one.

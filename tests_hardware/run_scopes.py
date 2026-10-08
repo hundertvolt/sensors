@@ -54,7 +54,7 @@ SCOPES: dict[str, Scope] = {
             (f"{_BENCH}test_serving_heap_at_default_gc.py", "serving at the reactive gc default, the client resident"),
             (f"{_BENCH}test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot", "the hammer load's heap, the client resident"),
             (f"{_BENCH}test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network", "the device's website gains the MQTT settings group"),
-            (f"{_BENCH}test_hotspot_role_reversal.py", "the GET shapes it checks over the hotspot carry the MQTT fields, and the client idles there"),
+            (f"{_BENCH}test_hotspot_role_reversal.py", "the GET shapes it checks over the hotspot carry the MQTT fields, and the client is off there"),
         ),
         writes=("networking/identity", "networking/mqtt", "networking/ntp", "notification/autoConfig"),
     ),

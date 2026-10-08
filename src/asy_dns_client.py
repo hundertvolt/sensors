@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 # Inspired by github.com/vshymanskyy/aiodns, not a port - THIRD_PARTY_LICENSES.md compares the two.
 
-"""Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's UDPSocket; a
+"""Async, non-blocking IPv4 DNS resolver (A records only) built on asy_udp_socket.py's UDPSocket; a
 `.local` name is asked once over multicast DNS instead (RFC 6762 SS5.1, SPECIFICATION.md Part A.11)."""
-# resolve_ipv4() never raises, returns the dotted-quad str or None; only bare compression-pointer
-# names (RFC 1035 SS4.1.4) are followed, matching asy_captive_dns.py's precedent.
+# resolve_ipv4() never raises: it tries the caller's servers in order (no built-in server) and returns
+# the dotted-quad str or None; a name RFC 1035 cannot encode resolves to None. Only bare compression-pointer
+# answer names (RFC 1035 SS4.1.4) are followed, matching asy_captive_dns.py's precedent.
 
 import os
 
@@ -13,47 +14,50 @@ from micropython import const
 
 from asy_udp_socket import UDPSocket
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from asy_print_log import PrintLogHistory
+
+_WRN_SOCKET_TEARDOWN = const(12)
+_WRN_DNS_REPLY_TRUNCATED = const(16)
+
 _DNS_PORT = const(53)
 # @tunable dns.timeout_ms = 500
 _DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - a standalone default only; real
 # callers are expected to override it explicitly with a value suited to their own timing budget.
 # @tunable dns.tries = 1
 _DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
-_DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size.
-_FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried after caller-supplied
-# servers. Not const()-wrapped so tests can monkeypatch it (const() inlines at compile time).
+DNS_UDP_MAX = const(512)  # RFC 1035 SS4.2.1: a DNS message over UDP is at most 512 octets.
 _MDNS_SUFFIX = ".local"  # RFC 6762 SS3: names under it are resolved by multicast, never by a unicast server
 _MDNS_GROUP = "224.0.0.251"  # RFC 6762 SS3's IPv4 group; not const()-wrapped, so tests can point it at a fake
 _MDNS_PORT = 5353  # the responders' port, likewise a plain name for the tests
 
-_QTYPE_A = const(b"\x00\x01")
+DNS_QTYPE_A = const(b"\x00\x01")
 _QCLASS_IN = const(b"\x00\x01")
 
 _IPV4_OCTETS = const(4)  # dotted-quad parts, and an A-record's RDLENGTH (RFC 1035 SS3.4.1)
 _IPV4_OCTET_MAX = const(255)
-_LABEL_MAX_OCTETS = const(63)  # RFC 1035 SS3.1's single-length-byte ceiling
+DNS_LABEL_MAX = const(63)  # RFC 1035 SS3.1's single-length-byte ceiling
+DNS_NAME_MAX = const(255)  # RFC 1035 SS3.1: a name is at most 255 octets on the wire
 _HEADER_LEN = const(12)  # RFC 1035 SS4.1.1 fixed message header
 _PTR_MASK = const(0xC0)  # RFC 1035 SS4.1.4 compression-pointer top-two-bits marker
 _CLASS_MASK = const(0x7FFF)  # a record's class without RFC 6762 SS10.2's cache-flush bit
-
-
-def _is_ipv4_literal(host: str) -> bool:
-    # Dotted-quad check, avoiding int()'s exceptions for control flow via isdigit().
-    parts = host.split(".")
-    if len(parts) != _IPV4_OCTETS:
-        return False
-    return all(part.isdigit() and 0 <= int(part) <= _IPV4_OCTET_MAX for part in parts)
 
 
 def _build_query(host: bytes, txn_id: bytes, *, recursion: bool = True) -> bytearray:
     # RFC 1035 SS4.1.1/4.1.2 message: 12-byte header + QNAME + QTYPE + QCLASS. QNAME is exactly
     # len(host) + 2 bytes on the wire regardless of label count; an mDNS query clears RD (RFC 6762 SS18.6).
     labels = host.split(b".")
-    # RFC 1035 SS3.1/4.1.2: a label is length-prefixed by one byte, so over 63 octets is not a real
-    # label and over 255 cannot be encoded at all. host comes from a REST-settable config field with
-    # no per-label check, so this is reachable - raised for resolve_ipv4() to catch, not defensive.
-    if any(len(label) > _LABEL_MAX_OCTETS for label in labels):
-        raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > {_LABEL_MAX_OCTETS} octets)")
+    # resolve_ipv4() is public: a name RFC 1035 SS3.1 cannot encode (a label over 63 octets, an empty label, over 255
+    # octets on the wire) is refused here whatever its caller checked; resolve_ipv4() maps it to None.
+    if len(host) + 2 > DNS_NAME_MAX or b"" in labels:
+        raise ValueError("not an encodable DNS name")
+    if any(len(label) > DNS_LABEL_MAX for label in labels):
+        raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > {DNS_LABEL_MAX} octets)")
     qname_len = len(host) + 2
     query = bytearray(_HEADER_LEN + qname_len + 4)  # header + QNAME + QTYPE(2) + QCLASS(2)
     query[0:2] = txn_id
@@ -68,7 +72,7 @@ def _build_query(host: bytes, txn_id: bytes, *, recursion: bool = True) -> bytea
         pos += n
     query[pos] = 0  # terminating null label
     pos += 1
-    query[pos : pos + 2] = _QTYPE_A
+    query[pos : pos + 2] = DNS_QTYPE_A
     query[pos + 2 : pos + 4] = _QCLASS_IN
     return query
 
@@ -102,9 +106,30 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     return None
 
 
-async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int) -> str | None:
+def host_label_ok(label: str) -> bool:
+    # RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length.
+    if not label or label[0] == "-" or label[-1] == "-":
+        return False
+    return all("0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in label)
+
+
+def ipv4_to_int(ip: str) -> int | None:
+    # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form; never raises for a malformed str
+    parts = ip.split(".")
+    if len(parts) != _IPV4_OCTETS:
+        return None
+    octets = []
+    for part in parts:
+        if not part.isdigit() or not (0 <= int(part) <= _IPV4_OCTET_MAX):
+            return None
+        octets.append(int(part))
+    a, b, c, d = octets
+    return (a << 24) | (b << 16) | (c << 8) | d
+
+
+async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int, pr: "PrintLogHistory") -> str | None:
     # A one-shot query from an ephemeral port (RFC 6762 SS5.1): a responder answers by unicast with the ID and
-    # question repeated (SS6.7), from its own address, so the socket is bound rather than connected.
+    # question repeated, as a conventional DNS reply (SS6.7), from its own address, so the socket is bound, not connected.
     try:
         attempts = range(tries)
     except TypeError:
@@ -114,8 +139,11 @@ async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int) -> str | 
         for _ in attempts:
             if await sock.sendto(query, (_MDNS_GROUP, _MDNS_PORT), timeout_ms=timeout_ms) is None:
                 continue
-            rsp, _addr = await sock.recvfrom(_DNS_RECV_BUF, timeout_ms=timeout_ms)
+            rsp, _addr = await sock.recvfrom(DNS_UDP_MAX + 1, timeout_ms=timeout_ms)
             if rsp is None:
+                continue
+            if len(rsp) > DNS_UDP_MAX:  # the unicast path's cut-reply case (SS6.7's reply is a conventional one)
+                await pr.wrn_s("DNS reply truncated, trying the next server:", _MDNS_GROUP, wrnno=_WRN_DNS_REPLY_TRUNCATED)
                 continue
             try:
                 ip = _parse_response(rsp, query)
@@ -124,38 +152,42 @@ async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int) -> str | 
             if ip is not None:
                 return ip
     finally:
-        await sock.disconnect()  # never raises - see asy_udp_socket.py's own contract
+        if not await sock.disconnect():
+            await pr.wrn_s("DNS socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
     return None
 
 
 async def resolve_ipv4(
     host: str,
     dns_servers: tuple[str, ...] = (),
-    port: int = _DNS_PORT,
     timeout_ms: int = _DNS_TIMEOUT_MS,
     tries: int = _DNS_TRIES,
+    *,
+    pr: "PrintLogHistory",
 ) -> str | None:
-    if _is_ipv4_literal(host):
+    if ipv4_to_int(host) is not None:
         return host
     name = host.lower()  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
     mdns = name.endswith(_MDNS_SUFFIX)
     try:
         query = _build_query(name.encode(), os.urandom(2), recursion=not mdns)
-    except (MemoryError, ValueError):  # ValueError: a label over 63 octets - not a real DNS name, nothing to resolve
+    except (MemoryError, ValueError):  # ValueError: a name RFC 1035 cannot encode - nothing to resolve
         return None
     if mdns:
-        return await _resolve_mdns(query, timeout_ms, tries)
-    for server in dns_servers + _FALLBACK_DNS_SERVERS:
-        if server == "0.0.0.0" or not _is_ipv4_literal(server):
+        return await _resolve_mdns(query, timeout_ms, tries, pr)
+    for server in dns_servers:
+        if server == "0.0.0.0" or ipv4_to_int(server) is None:
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
+        cli = UDPSocket((server, _DNS_PORT), mode="client")
         try:
-            cli = UDPSocket((server, port), mode="client")
-        except (TypeError, ValueError):  # malformed port - server is already validated above
-            continue
-        try:
-            rsp, _addr = await cli.write_and_recvfrom(query, _DNS_RECV_BUF, timeout_ms=timeout_ms, tries=tries)
+            rsp, _addr = await cli.write_and_recvfrom(query, DNS_UDP_MAX + 1, timeout_ms=timeout_ms, tries=tries)
         finally:
-            await cli.disconnect()  # never raises - see asy_udp_socket.py's own contract
+            if not await cli.disconnect():
+                await pr.wrn_s("DNS socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
+        # A whole reply is at most DNS_UDP_MAX (RFC 1035 SS4.2.1, no EDNS sent); a fuller buffer means lwIP cut it (extmod/modlwip.c:719-721, v1.29.0).
+        if rsp is not None and len(rsp) > DNS_UDP_MAX:
+            await pr.wrn_s("DNS reply truncated, trying the next server:", server, wrnno=_WRN_DNS_REPLY_TRUNCATED)
+            continue
         if rsp is None:
             continue
         try:

@@ -23,6 +23,18 @@ if TYPE_CHECKING:
     from types import FrameType
 
 _TRACED_PREFIXES = ("src/", "digital_twin/")
+_S_IFDIR = 0x4000  # os.ilistdir()'s entry type for a directory (extmod/vfs.h MP_S_IFDIR)
+
+
+def _add_tables(tables: dict[str, bytearray], directory: str) -> None:
+    # Subdirectories too (digital_twin/unixport/): a file without a table records through the allocating fallback.
+    for entry in os.ilistdir(directory):
+        path = directory + "/" + entry[0]
+        if entry[1] == _S_IFDIR:
+            _add_tables(tables, path)
+        elif path.endswith(".py"):
+            with open(path) as f:
+                tables[path] = bytearray(f.read().count("\n") + 2)
 
 
 def _line_tables() -> dict[str, bytearray]:
@@ -30,10 +42,7 @@ def _line_tables() -> dict[str, bytearray]:
     # allocates nothing, so a test measuring its own heap never sees the tracer grow (SPECIFICATION.md Part E.5.2).
     tables: dict[str, bytearray] = {}
     for prefix in _TRACED_PREFIXES:
-        for name in os.listdir(prefix[:-1]):
-            if name.endswith(".py"):
-                with open(prefix + name) as f:
-                    tables[prefix + name] = bytearray(f.read().count("\n") + 2)
+        _add_tables(tables, prefix[:-1])
     return tables
 
 

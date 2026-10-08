@@ -1,6 +1,7 @@
 """Tests for buildgen.definitions (SPECIFICATION.md Part H.5/H.5.1): every tagged field lands once in its group,
 every device's output passes the shared shape corpus, and the catalog-derived blocks equal their sources."""
 
+import ast
 import copy
 import json
 import re
@@ -11,12 +12,13 @@ from typing import Any, TypeGuard
 import pytest
 from _devices import DEVICE_NAMES, device_toml
 
-from buildgen.definitions import SCHEMA_VERSION, definitions_for_toml, generate_definitions, main
+from buildgen.definitions import SCHEMA_VERSION, _build_field_def, definitions_for_toml, generate_definitions, main
 from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
 from buildgen.model import DeviceModel, InstanceSpec
+from buildgen.schema_ast import _eval_literal
 from buildgen.validate import build_model
 from buildgen.version import WEBSITE_VERSION
 from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_tags
@@ -196,6 +198,93 @@ def test_status_pages_system_group_does_not_declare_a_firmware_version_field(rep
     assert not any(f["key"] == "FirmwareVersion" for f in system_group["fields"])
 
 
+def _literal_keys(node: ast.Dict) -> "list[str]":
+    return [k.value for k in node.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+
+
+def _returned_keys(module_source: str, function: str, src_dir: Path) -> "list[str]":
+    # The literal keys of the dict a generated status source returns; on the MQTT client's device, those of the
+    # literal its link status is merged into plus get_link_status()'s own, read from src/asy_mqtt_client.py.
+    fn = next(n for n in ast.walk(ast.parse(module_source)) if isinstance(n, ast.AsyncFunctionDef) and n.name == function)
+    returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Return))
+    if isinstance(returned, ast.Name):
+        merged = [ast.unparse(n) for n in ast.walk(fn) if isinstance(n, ast.Call) and ast.unparse(n.func) == f"{returned.id}.update"]
+        assert merged == [f"{returned.id}.update(mqtt.get_link_status())"], merged
+        literal = next(n.value for n in ast.walk(fn) if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == returned.id)
+        assert isinstance(literal, ast.Dict), f"{function}() merges into no dict literal"
+        link = next(n for n in ast.walk(ast.parse((src_dir / "asy_mqtt_client.py").read_text())) if isinstance(n, ast.FunctionDef) and n.name == "get_link_status")
+        link_returned = next(n.value for n in ast.walk(link) if isinstance(n, ast.Return))
+        assert isinstance(link_returned, ast.Dict), "get_link_status() returns no dict literal"
+        return _literal_keys(literal) + _literal_keys(link_returned)
+    assert isinstance(returned, ast.Dict), f"{function}() returns no dict literal"
+    return _literal_keys(returned)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root: Path, src_dir: Path, device: str) -> None:
+    source = generate_device(device_toml(device), src_dir, repo_root / "ext").module_source
+    status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
+    groups = {g["key"]: g for g in status["groups"]}
+    for key, function in (("networking", "_networking_status"), ("system", "_system_status"), ("notification", "_notification_status")):
+        if key not in groups:
+            assert f"async def {function}(" not in source, f"{function}() is generated but no status group lists it"
+            continue
+        assert sorted(f["key"] for f in groups[key]["fields"]) == sorted(_returned_keys(source, function, src_dir)), key
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_networking_status_carries_the_address_once_and_says_what_the_link_counts(repo_root: Path, src_dir: Path, device: str) -> None:
+    status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
+    fields = {f["key"]: f for f in next(g for g in status["groups"] if g["key"] == "networking")["fields"]}
+    assert "IP" not in fields
+    assert "IPv4" in fields
+    assert fields["Connected"]["description"] == "True while the Wi-Fi link is up, hotspot included."
+    assert fields["WifiUptime"]["description"] == "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down."
+
+
+# ---------------------------------------------------------------------------
+# A string field's special value: the schema's sentinel, labelled by its tag's quoted special:
+# ---------------------------------------------------------------------------
+
+_PW_SCHEMA = ("str", "", 8, 63, "")  # the shape of asy_wifi_service.py's _VAL_PW: "" bypasses 8..63
+
+
+def _string_tag(*special: "tuple[str, str]") -> WebFieldTag:
+    return WebFieldTag(field_name="PW", section="networking", submit_group="identity", label="Wi-Fi Password", raw="# @web PW", special=special)
+
+
+def test_a_string_fields_schema_special_is_emitted_with_its_tag_label() -> None:
+    field = _build_field_def(_string_tag(('""', "Open network")), _PW_SCHEMA, "dev", Path("asy_wifi_service.py"))
+    assert (field["kind"], field["minLength"], field["maxLength"]) == ("string", 8, 63)
+    assert field["specialValues"] == [{"value": "", "meaning": "Open network"}]
+
+
+def test_a_string_field_without_a_schema_special_emits_none() -> None:
+    field = _build_field_def(_string_tag(), ("str", "x", 1, 32, None), "dev", Path("asy_x.py"))
+    assert "specialValues" not in field
+
+
+@pytest.mark.parametrize(
+    ("special", "schema", "match"),
+    [
+        ((), _PW_SCHEMA, r"has a sentinel special value '' but no matching special:\"\"="),
+        ((('""', "Open network"), ('"guest"', "Guest")), _PW_SCHEMA, r"declares special: value\(s\) \['guest'\] not in its ConfigSchema"),
+        ((('""', "Open network"),), ("str", "x", 1, 32, None), r"declares special: value\(s\) \[''\] not in its ConfigSchema"),
+        ((("open", "Open network"),), _PW_SCHEMA, "a string field's special: value is a quoted string"),
+    ],
+)
+def test_a_string_fields_special_must_label_exactly_its_schema_sentinel(special: "tuple[tuple[str, str], ...]", schema: "tuple[object, ...]", match: str) -> None:
+    with pytest.raises(BuildError, match=match):
+        _build_field_def(_string_tag(*special), (schema[0], schema[1], schema[2], schema[3], schema[4]), "dev", Path("asy_wifi_service.py"))
+
+
+@pytest.mark.parametrize(("kind", "schema"), [("number", ("int", 0, 0, 10, None)), ("readonly", None)])
+def test_a_quoted_special_off_a_string_field_fails_loud(kind: str, schema: "tuple[object, object, object, object, object] | None") -> None:
+    tag = WebFieldTag(field_name="X", section="sensors", submit_group="self", label="X", raw="# @web X", kind=kind, special=(('"0"', "Zero"),))
+    with pytest.raises(BuildError, match="a quoted special: value labels a string field only"):
+        _build_field_def(tag, schema, "dev", Path("asy_x.py"))
+
+
 # ---------------------------------------------------------------------------
 # Catalog-derived blocks equal their sources
 # ---------------------------------------------------------------------------
@@ -316,6 +405,25 @@ def test_identity_and_ntp_groups_carry_their_apply_labels(repo_root: Path, src_d
     assert (labels["identity"], labels["ntp"]) == ("Apply & Reconnect", "Apply & Resync")
 
 
+def _radio_fields(src_dir: Path) -> "set[str]":
+    # asy_wifi_service.py's `_RADIO_FIELDS = schema_names(<schemas>)`, the schemas resolved as buildgen.schema_ast reads them.
+    tree = ast.parse((src_dir / "asy_wifi_service.py").read_text(encoding="utf-8"))
+    consts = {n.targets[0].id: n.value for n in tree.body if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)}
+    call = consts["_RADIO_FIELDS"]
+    assert isinstance(call, ast.Call) and ast.unparse(call.func) == "schema_names", ast.unparse(call)
+    schemas = _eval_literal(call.args[0], consts)
+    assert isinstance(schemas, tuple)
+    return {str(field[0]) for field in schemas if isinstance(field, tuple)}
+
+
+def test_the_byte_bounded_fields_are_exactly_the_radio_fields(src_dir: Path) -> None:
+    # The page counts UTF-8 bytes exactly where the server's radio check does (C.7.4): HotspotPW included.
+    tags = parse_web_tags(src_dir / "asy_wifi_service.py", "fixture", "wifi")
+    radio = _radio_fields(src_dir)
+    assert "HotspotPW" in radio
+    assert {t.field_name for t in tags if t.byte_length} == radio
+
+
 # ---------------------------------------------------------------------------
 # Shape validation - mirrors js/definitions.js's validateDefinitions() rule for rule, so a generated
 # file is known to load without a Node round trip. Both read tests_scripts/definitions_shape_cases.json.
@@ -327,7 +435,7 @@ _SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 _SUPPORTED_SCHEMA_MAJOR = int(SCHEMA_VERSION.split(".")[0])  # js/definitions.js's, pinned by test_definitions_js_mirrors.py
 _POLL_GROUPS = ("live", "settings", "none")
 _FIELD_FORMATS = ("gmtimestruct", "epoch")
-_STRING_SHAPES = ("hostLabel", "countryCode")
+_STRING_SHAPES = ("hostLabel", "countryCode", "hostName", "ipv4List")
 
 
 def _is_number(value: object) -> "TypeGuard[int | float]":

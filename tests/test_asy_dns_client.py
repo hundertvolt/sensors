@@ -1,10 +1,22 @@
 import asyncio
 import select
 import socket
+import sys
 import time
 
+sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
+
+from _error_codes import code
+from _udp_port_redirect import redirect_udp_port
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
+
 import asy_dns_client
-from asy_dns_client import _build_query, _is_ipv4_literal, _parse_response, resolve_ipv4
+import asy_udp_socket
+from asy_dns_client import _build_query, _parse_response, ipv4_to_int, resolve_ipv4
+from asy_print_log import PrintLogHistory
+
+# UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
+patch_asy_udp_socket_for_unix_port()
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -16,7 +28,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, Literal, TypeVar
+    from typing import Any, NoReturn, TypeVar
 
     T = TypeVar("T")
 
@@ -44,6 +56,9 @@ _CNAME_REPLY_TIMEOUT_MS = 500
 
 
 _HOST = "127.0.0.1"
+_SECOND_HOST = "127.0.0.2"  # a second loopback address, so two fake servers share one redirected port
+_DNS_PORT = 53  # keep in sync with asy_dns_client.py's _DNS_PORT (a const() name, so no module attribute)
+_DNS_UDP_MAX = asy_dns_client.DNS_UDP_MAX
 # Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
 # never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
 _next_port = 24000
@@ -56,60 +71,37 @@ def make_port() -> int:  # a fresh loopback port per call, so tests never conten
 
 
 def _resolved(host: str, port: int) -> "tuple[str, int]":
-    # Same Unix-port-only quirk as test_asy_udp_socket.py's make_addr(): this build's raw bind()/connect()/
-    # sendto() reject a plain (host, port) tuple, only getaddrinfo()'s resolved opaque object works
-    # (SPECIFICATION.md F.7 row 1). Used only by FakeDNSServer's raw socket and _ResolvingAsyUDPSocket.
+    # This Unix build's raw bind()/sendto() need getaddrinfo()'s opaque sockaddr (SPECIFICATION.md F.7);
+    # only the fake server's own socket uses it.
     #
     # cast, not a bare return: the stub types getaddrinfo()'s sockaddr slot as the IPv4 2-tuple or IPv6's
     # 4-tuple, and this project is IPv4-only - the same narrowing digital_twin's own address shim makes.
     return cast("tuple[str, int]", socket.getaddrinfo(host, port)[0][-1])
 
 
-class _ResolvingAsyUDPSocket:
-    # Substitutes for asy_dns_client.py's UDPSocket import in these integration tests only.
-    # resolve_ipv4() constructs it with a plain (host, port) tuple, the correct shape for real rp2 hardware,
-    # which this Unix-port build's connect() rejects.
-    #
-    # Pre-resolving here proves resolve_ipv4()'s actual DNS-over-UDP behavior for real over loopback without
-    # that unrelated build quirk in the way; the production code is unaware this wrapper exists.
-    def __init__(self, addr: "tuple[str, int]", mode: 'Literal["client", "server"]' = "client", conn_tries: int = 1) -> None:
-        self._real = _RealAsyUDPSocket(_resolved(addr[0], addr[1]), mode=mode, conn_tries=conn_tries)
-
-    # `object`, not Any: every attribute reached through this wrapper is used by
-    # asy_dns_client.py's own production code, which type-checks against the real UDPSocket
-    # class it was monkeypatched over - nothing in this file touches the delegated result.
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._real, name)
-
-    async def sendto(self, msg: "bytes | bytearray", addr: "tuple[str, int]", timeout_ms: int = -1) -> "int | None":
-        # The mDNS path's sendto() names its group as a plain tuple too, the same quirk as the constructor's.
-        return await self._real.sendto(msg, _resolved(addr[0], addr[1]), timeout_ms=timeout_ms)
+def _make_pr() -> PrintLogHistory:  # a fresh in-memory logger for one resolve_ipv4() call's pr=
+    return PrintLogHistory(name="DNSTEST")
 
 
-_RealAsyUDPSocket = asy_dns_client.UDPSocket  # captured before the module attribute below is overwritten
-asy_dns_client.UDPSocket = _ResolvingAsyUDPSocket  # type: ignore[misc, assignment]  # permanent for this test file's whole process - see _ResolvingAsyUDPSocket's own comment
-
-# resolve_ipv4() always also tries asy_dns_client's own _FALLBACK_DNS_SERVERS (the real 8.8.8.8/1.1.1.1)
-# after whatever dns_servers a caller passes. Overridden here, for this whole process, to a loopback-only
-# value; every port below comes from a strictly-incrementing counter, so it cannot collide.
-#
-# Tests that want to prove the fallback list is reached override this further, and restore it to this
-# baseline rather than the real public list, so no test here ever calls out to the public internet.
-_UNREACHABLE_LOOPBACK_FALLBACK = (_HOST,)
-asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_FALLBACK
+async def _warnings(pr: PrintLogHistory) -> "tuple[int, list[int]]":  # (ErrCount, the ring's W codes, oldest first)
+    entry = (await pr.get_log())["DNSTEST"]
+    nums, types = entry["ErrNum"], entry["ErrType"]
+    assert isinstance(nums, list) and isinstance(types, list)
+    return int(entry["ErrCount"]), [nums[i] for i in range(len(nums)) if types[i] == "W"]
 
 
 # ---------------------------------------------------------------------------
-# _is_ipv4_literal
+# ipv4_to_int - RFC 791 dotted-quad -> int | None. Never raises for a str (isdigit() before int());
+# only a wrong-typed (non-str) value still raises, via ip.split().
 # ---------------------------------------------------------------------------
 
 
-def test_is_ipv4_literal_accepts_every_valid_dotted_quad() -> None:
+def test_ipv4_to_int_accepts_every_valid_dotted_quad() -> None:
     for host in ("0.0.0.0", "255.255.255.255", "192.168.1.1", "8.8.8.8", "127.0.0.1", "1.2.3.4"):
-        assert _is_ipv4_literal(host) is True
+        assert ipv4_to_int(host) is not None
 
 
-def test_is_ipv4_literal_rejects_hostnames_and_malformed_input() -> None:
+def test_ipv4_to_int_rejects_hostnames_and_malformed_input() -> None:
     for host in (
         "pool.ntp.org",
         "time.example.org",
@@ -124,7 +116,48 @@ def test_is_ipv4_literal_rejects_hostnames_and_malformed_input() -> None:
         "...",
         "1.2.3. 4",  # embedded whitespace
     ):
-        assert _is_ipv4_literal(host) is False
+        assert ipv4_to_int(host) is None
+
+
+def test_ipv4_to_int_valid() -> None:
+    assert ipv4_to_int("0.0.0.0") == 0
+    assert ipv4_to_int("255.255.255.255") == 0xFFFFFFFF
+    assert ipv4_to_int("192.168.4.1") == (192 << 24) | (168 << 16) | (4 << 8) | 1
+
+
+def test_ipv4_to_int_rejects_wrong_octet_count() -> None:
+    for bad in ("1.2.3", "1.2.3.4.5", "", "1.2.3.4."):
+        assert ipv4_to_int(bad) is None
+
+
+def test_ipv4_to_int_rejects_out_of_range_octet() -> None:
+    # A previously-silent gap: an out-of-range octet used to shift bits past its own byte position
+    # instead of being rejected, risking a false subnet match rather than a clean "invalid" signal.
+    for bad in ("256.0.0.0", "1.2.3.999", "-1.2.3.4"):
+        assert ipv4_to_int(bad) is None
+
+
+def test_ipv4_to_int_rejects_non_numeric_octet() -> None:
+    assert ipv4_to_int("a.b.c.d") is None
+
+
+def test_ipv4_to_int_rejects_single_invalid_parameter_type() -> None:
+    # Real callers only ever pass str (network.WLAN.ifconfig()'s values, a sockaddr's addr[0], a config
+    # string), but this is a public function - a wrongly-typed value must raise AttributeError or
+    # TypeError, never something else.
+    for bad in (None, 123, 1.5, [1, 2, 3, 4], b"1.2.3.4", ("1", "2", "3", "4")):
+        try:
+            ipv4_to_int(bad)  # type: ignore[arg-type]
+            raise AssertionError(f"expected an exception for {bad!r}")
+        except (AttributeError, TypeError):
+            pass
+
+
+def test_ipv4_to_int_rejects_multiple_simultaneous_fault_recombinations() -> None:
+    # Combines more than one fault within the same value - wrong octet count, out-of-range, and
+    # non-numeric octets all at once - to prove the guard doesn't depend on faults appearing alone.
+    for bad in ("300.-5.abc.999.1", "abc.def", "999.999", "1.2.a.999.-1"):
+        assert ipv4_to_int(bad) is None
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +226,7 @@ def test_build_query_accepts_a_label_at_the_exact_63_octet_rfc_limit() -> None:
 
 def test_build_query_raises_value_error_for_a_label_over_the_63_octet_rfc_limit() -> None:
     # A dot-free label of 64+ octets: RFC 1035 SS3.1's 63-octet limit refuses it here, whatever the caller
-    # checked (the NTPHost schema bounds a name at 253 characters with no per-label check). Unguarded,
-    # `query[pos] = n` does not raise until n > 255, so a 64-254 octet label made a wire-invalid query.
-    #
-    # Enforcing the real RFC limit catches the whole invalid range, not just the crash-causing tail.
+    # checked (resolve_ipv4() is public; the NTPHost PUT's hostName shape check refuses it earlier).
     try:
         _build_query(b"a" * 64, b"\x00\x00")
         raised = False
@@ -215,6 +245,33 @@ def test_build_query_raises_value_error_for_a_label_past_the_bytearray_byte_rang
     except ValueError:
         raised = True
     assert raised
+
+
+def _refuses(host: bytes) -> bool:  # True when _build_query() raises ValueError for host
+    try:
+        _build_query(host, b"\x00\x00")
+    except ValueError:
+        return True
+    return False
+
+
+def _name_of_labels(*lengths: int) -> bytes:  # a dotted name whose labels have these octet counts
+    return b".".join(b"a" * n for n in lengths)
+
+
+def test_build_query_refuses_an_empty_label_a_trailing_dot_and_an_empty_name() -> None:
+    # An empty label puts a zero length byte inside QNAME, which ends the name early (RFC 1035 SS3.1).
+    for host in (b"a..b", b"pool.ntp.org.", b""):
+        assert _refuses(host), host
+
+
+def test_build_query_accepts_a_253_octet_name_and_refuses_254() -> None:
+    # Labels 63, 63, 63, 61 are 253 characters, 255 octets on the wire (RFC 1035 SS3.1's maximum);
+    # 63, 63, 63, 62 are 254 characters, 256 octets.
+    longest = _name_of_labels(63, 63, 63, 61)
+    assert len(longest) == 253
+    assert len(_build_query(longest, b"\x00\x00")) == 12 + 255 + 4
+    assert _refuses(_name_of_labels(63, 63, 63, 62))
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +380,7 @@ def test_parse_response_accepts_a_compression_pointer_targeting_offset_256_or_ab
     # top two bits (0xC0 mask), not by the leading byte literally being 0xC0, which only holds for targets
     # below offset 256.
     #
-    # A pointer to offset >= 256 is reachable within this file's 512-byte receive buffer - a second answer
+    # A pointer to offset >= 256 is reachable within a whole 512-byte DNS message - a second answer
     # in a CNAME chain, say - and was misidentified as an uncompressed name, aborting parsing. The target
     # offset is never followed, so any 0xC1-0xFF leading byte must be accepted like 0xC0.
     query = _build_query(b"pool.ntp.org", b"\x11\x12")
@@ -344,13 +401,13 @@ def test_parse_response_no_a_record_present_returns_none() -> None:
 
 
 def test_resolve_ipv4_literal_ip_returns_immediately_without_touching_the_network() -> None:
-    # dns_servers deliberately point nowhere real (and aren't even valid literals for two of the
-    # three) - if resolve_ipv4() ever tried to actually use them, this would time out instead of
-    # returning promptly.
+    # A literal host is its own answer: no socket is constructed even with a usable server in the list.
     t0 = time.ticks_ms()
-    result = run(resolve_ipv4("192.168.1.50", dns_servers=("not-an-ip", "")))
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, make_port()) as redirect:
+        result = run(resolve_ipv4("192.168.1.50", dns_servers=(_HOST, "not-an-ip", ""), pr=_make_pr()))
     elapsed = time.ticks_diff(time.ticks_ms(), t0)
     assert result == "192.168.1.50"
+    assert redirect.constructed == 0
     assert elapsed < _PROMPT_RETURN_MAX_MS
 
 
@@ -369,12 +426,8 @@ class FakeDNSServer:
         self.received: list[bytes] = []
 
     async def answer_once(self, build_response: "Callable[[bytes], bytes | None]", timeout_ms: int = _FAKE_SERVER_WAIT_MS) -> None:
-        # Waits for one query, records it, then replies with build_response(query). Must check the returned
-        # event bitmask, not ipoll()'s truthiness: this build reports a registered socket ready on every
-        # tick regardless of pending data, almost certainly POLLOUT rather than POLLIN.
-        #
-        # The same reason asy_udp_socket.py's ready() checks `event & mask` rather than treating ipoll()'s
-        # result as a plain bool.
+        # Waits for one query, records it, then replies with build_response(query).
+        # ipoll(0) returns an always-truthy iterator: test the event flags (SPECIFICATION.md F.7 row 13).
         poller = select.poll()
         poller.register(self.sock, select.POLLIN)
         t0 = time.ticks_ms()
@@ -408,22 +461,24 @@ def test_resolve_ipv4_success_via_a_real_fake_dns_server() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
-    assert run(scenario()) == "10.20.30.40"
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        assert run(scenario()) == "10.20.30.40"
 
 
 def test_resolve_ipv4_no_server_reachable_returns_none() -> None:
     port = make_port()  # nobody listens here
 
     async def scenario() -> "str | None":
-        return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1)
+        return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
 
-    assert run(scenario()) is None
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        assert run(scenario()) is None
 
 
 def test_resolve_ipv4_garbage_reply_returns_none_not_an_exception() -> None:
@@ -433,13 +488,14 @@ def test_resolve_ipv4_garbage_reply_returns_none_not_an_exception() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda _q: b"\x00\x01not-a-real-dns-reply-at-all"))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
-    assert run(scenario()) is None
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        assert run(scenario()) is None
 
 
 def test_resolve_ipv4_nxdomain_returns_none() -> None:
@@ -452,45 +508,36 @@ def test_resolve_ipv4_nxdomain_returns_none() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(nxdomain_response))
-            result = await resolve_ipv4("bogus.invalid", dns_servers=(_HOST,), port=port, timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("bogus.invalid", dns_servers=(_HOST,), timeout_ms=_BAD_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
-    assert run(scenario()) is None
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        assert run(scenario()) is None
 
 
-def test_resolve_ipv4_falls_back_to_the_second_server_when_the_first_is_unreachable() -> None:
-    real_server_port = make_port()
+def test_resolve_ipv4_tries_the_callers_servers_in_order() -> None:
+    port = make_port()
     # 10.255.255.254 is never a local interface address in this environment (same deterministic
     # unroutable address test_asy_udp_socket.py's own unbindable_addr() uses).
     unreachable_ip = "10.255.255.254"
 
     async def scenario() -> "str | None":
-        server = FakeDNSServer(_HOST, real_server_port)
+        server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("172.16.0.9"), ancount=1)))
-            result = await resolve_ipv4(
-                "pool.ntp.org",
-                dns_servers=(unreachable_ip,),
-                port=real_server_port,
-                timeout_ms=_FALLBACK_TIMEOUT_MS,
-                tries=1,
-            )
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(unreachable_ip, _HOST), timeout_ms=_FALLBACK_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
-    # The first, genuinely unroutable server attempt must time out and fall through to the fallback list -
-    # proven by monkeypatching that list, already loopback-only for this whole file, to the fake server's
-    # address, exactly as other files monkeypatch a module-level name they do not own.
-    asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
-    try:
+    # The unroutable first server times out (or fails to connect) and the second, the fake server, answers.
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port) as redirect:
         assert run(scenario()) == "172.16.0.9"
-    finally:
-        asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_FALLBACK
+    assert redirect.constructed == 2
 
 
 def test_resolve_ipv4_skips_unset_and_malformed_dns_server_entries() -> None:
@@ -501,40 +548,26 @@ def test_resolve_ipv4_skips_unset_and_malformed_dns_server_entries() -> None:
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("192.0.2.99"), ancount=1)))
             # "0.0.0.0" (DHCP-unset sentinel), "" (empty), and a non-numeric hostname are all
-            # skipped without a network attempt, falling through to the monkeypatched fallback.
-            result = await resolve_ipv4(
-                "pool.ntp.org",
-                dns_servers=("0.0.0.0", "", "not-an-ip"),
-                port=port,
-                timeout_ms=_FALLBACK_TIMEOUT_MS,
-                tries=1,
-            )
+            # skipped without a network attempt, before the one real server.
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=("0.0.0.0", "", "not-an-ip", _HOST), timeout_ms=_FALLBACK_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
-    asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
-    try:
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port) as redirect:
         assert run(scenario()) == "192.0.2.99"
-    finally:
-        asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_FALLBACK
+    assert redirect.constructed == 1  # the skipped entries open nothing
 
 
-def test_resolve_ipv4_no_servers_at_all_and_no_reachable_fallback_returns_none() -> None:
-    # dns_servers empty and the fallback list monkeypatched to a loopback port nobody listens on - proving a
-    # total resolution failure still degrades to None rather than raising, without depending on this
-    # sandbox's real internet reachability, which the real public fallbacks would make non-hermetic.
-    unreachable_port = make_port()
-
+def test_resolve_ipv4_with_no_servers_returns_none_and_opens_no_socket() -> None:
+    # The resolver has no built-in server: an empty list is a total failure that touches no network.
     async def scenario() -> "str | None":
-        return await resolve_ipv4("pool.ntp.org", dns_servers=(), port=unreachable_port, timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1)
+        return await resolve_ipv4("pool.ntp.org", dns_servers=(), timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
 
-    asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
-    try:
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, make_port()) as redirect:
         assert run(scenario()) is None
-    finally:
-        asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_FALLBACK
+    assert redirect.constructed == 0
 
 
 class _RaisingOsModule:
@@ -546,44 +579,21 @@ def test_resolve_ipv4_memoryerror_building_the_query_returns_none() -> None:
     original_os = asy_dns_client.os
     asy_dns_client.os = _RaisingOsModule()  # type: ignore[assignment]
     try:
-        result = run(resolve_ipv4("pool.ntp.org", dns_servers=(), timeout_ms=50, tries=1))
+        result = run(resolve_ipv4("pool.ntp.org", dns_servers=(), timeout_ms=50, tries=1, pr=_make_pr()))
     finally:
         asy_dns_client.os = original_os
     assert result is None
 
 
 def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None:
-    # A 300-octet name cannot come from the NTPHost PUT (253 characters); resolve_ipv4() is public and
-    # refuses it itself, never raising out through the NTP sync attempt.
-    result = run(resolve_ipv4("a" * 300, dns_servers=(), timeout_ms=50, tries=1))
-    assert result is None
-
-
-class _RaisingAsyUDPSocket:
-    # Simulates UDPSocket's own construction-time TypeError/ValueError directly rather than via a real
-    # malformed port: this file's _ResolvingAsyUDPSocket wrapper resolves the address through getaddrinfo()
-    # before UDPSocket's real type check, which would raise a different exception at a different layer.
-    #
-    # mode and conn_tries keep their names, and stay unused: resolve_ipv4() constructs this double by
-    # keyword, so the spelling must keep impersonating UDPSocket's real constructor exactly.
-    def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
-        raise TypeError(f"simulated malformed addr: {addr!r}")
-
-
-def test_resolve_ipv4_malformed_port_construction_returns_none_not_an_exception() -> None:
-    # resolve_ipv4()'s docstring promises "never raises" - previously true only because every real caller's
-    # port happened to be well-typed, the UDPSocket construction here being unguarded, unlike the
-    # structurally identical one in asy_ntp_client.py's _fetch_ntp_reply().
-    #
-    # A malformed port now degrades cleanly to trying the next server or fallback, exactly like an
-    # unreachable one, instead of letting the TypeError propagate.
-    current = asy_dns_client.UDPSocket
-    asy_dns_client.UDPSocket = _RaisingAsyUDPSocket  # type: ignore[assignment,misc]
-    try:
-        result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=100, tries=1))
-    finally:
-        asy_dns_client.UDPSocket = current  # type: ignore[misc]
-    assert result is None
+    # A 300-octet name cannot come from the NTPHost PUT (253 characters, hostName shape); resolve_ipv4() is
+    # public and refuses it itself. So it does each name RFC 1035 SS3.1 cannot encode, before any socket.
+    refused = ("a" * 300, "a..b", "pool.ntp.org.", ".".join(("a" * 63, "a" * 63, "a" * 63, "a" * 62)))
+    for host in refused:
+        with redirect_udp_port(asy_dns_client, _DNS_PORT, make_port()) as redirect:
+            result = run(resolve_ipv4(host, dns_servers=(_HOST,), timeout_ms=50, tries=1, pr=_make_pr()))
+        assert result is None, host
+        assert redirect.constructed == 0, host
 
 
 def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None:
@@ -605,14 +615,15 @@ def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
-            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
     try:
-        result = run(scenario())
+        with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+            result = run(scenario())
     finally:
         asy_dns_client._parse_response = original_parse
     assert result is None  # degrades cleanly instead of propagating the exception
@@ -629,13 +640,111 @@ def test_resolve_ipv4_cname_chain_end_to_end() -> None:
         server = FakeDNSServer(_HOST, port)
         try:
             responder = asyncio.create_task(server.answer_once(cname_then_a))
-            result = await resolve_ipv4("time.example.org", dns_servers=(_HOST,), port=port, timeout_ms=_CNAME_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("time.example.org", dns_servers=(_HOST,), timeout_ms=_CNAME_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await responder
             return result
         finally:
             server.close()
 
-    assert run(scenario()) == "203.0.113.77"
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        assert run(scenario()) == "203.0.113.77"
+
+
+# ---------------------------------------------------------------------------
+# resolve_ipv4 - what reaches the caller's logger: a failed teardown, a cut reply
+# ---------------------------------------------------------------------------
+
+
+class _CloseRaisingSocket:
+    # Closes the real socket first, so no descriptor leaks, then raises as a failed close() would.
+    def __init__(self, real: "socket.socket") -> None:
+        self._real = real
+
+    def close(self) -> "NoReturn":
+        self._real.close()
+        raise OSError("injected close failure")
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
+
+
+_REAL_DISCONNECT = asy_udp_socket.UDPSocket.disconnect
+
+
+async def _close_failing_disconnect(self: "asy_udp_socket.UDPSocket") -> bool:
+    if self._sock is not None:
+        self._sock = _CloseRaisingSocket(self._sock)  # type: ignore[assignment]
+    return await _REAL_DISCONNECT(self)
+
+
+def test_a_failed_socket_teardown_logs_one_warning_and_keeps_the_answer() -> None:
+    port = make_port()
+    pr = _make_pr()
+
+    async def scenario() -> "tuple[str | None, tuple[int, list[int]]]":
+        server = FakeDNSServer(_HOST, port)
+        try:
+            responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.41"), ancount=1)))
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=pr)
+            await responder
+            return result, await _warnings(pr)
+        finally:
+            server.close()
+
+    asy_udp_socket.UDPSocket.disconnect = _close_failing_disconnect  # type: ignore[method-assign]
+    try:
+        with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+            result, logged = run(scenario())
+    finally:
+        asy_udp_socket.UDPSocket.disconnect = _REAL_DISCONNECT  # type: ignore[method-assign]
+    assert result == "10.20.30.41"
+    assert logged == (1, [code("W", "SOCKET_TEARDOWN")])
+
+
+def _padded_reply(length: int, ip: str) -> "Callable[[bytes], bytes]":
+    # A valid one-answer reply for ip, zero-padded after its answer to exactly `length` bytes.
+    def build(query: bytes) -> bytes:
+        rsp = _make_response(query, _a_answer(ip), ancount=1)
+        return rsp + bytes(length - len(rsp))
+
+    return build
+
+
+def _resolve_against(replies: "tuple[tuple[str, Callable[[bytes], bytes]], ...]") -> "tuple[str | None, tuple[int, list[int]]]":
+    # One fake server per (host, reply), all on one redirected port, asked in the given order.
+    port = make_port()
+    pr = _make_pr()
+
+    async def scenario() -> "tuple[str | None, tuple[int, list[int]]]":
+        servers = [FakeDNSServer(host, port) for host, _reply in replies]
+        try:
+            responders = [asyncio.create_task(servers[i].answer_once(replies[i][1])) for i in range(len(replies))]
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=tuple(h for h, _r in replies), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=pr)
+            for i in range(len(responders)):
+                if not servers[i].received:  # a server the resolver never asked: stop its wait, the result says why
+                    responders[i].cancel()
+                try:
+                    await responders[i]
+                except asyncio.CancelledError:
+                    pass
+            return result, await _warnings(pr)
+        finally:
+            for s in servers:
+                s.close()
+
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, port):
+        return run(scenario())
+
+
+def test_a_reply_longer_than_512_bytes_warns_and_tries_the_next_server() -> None:
+    # No EDNS is sent, so a whole reply is at most 512 bytes (RFC 1035 SS4.2.1): a fuller receive buffer
+    # means the datagram was cut, and its answer is not used.
+    truncated = (1, [code("W", "DNS_REPLY_TRUNCATED")])
+    cut, good = _padded_reply(_DNS_UDP_MAX + 1, "192.0.2.13"), _padded_reply(64, "192.0.2.14")
+    assert _resolve_against(((_SECOND_HOST, cut), (_HOST, good))) == ("192.0.2.14", truncated)
+    assert _resolve_against(((_SECOND_HOST, cut),)) == (None, truncated)
+    # Control: exactly 512 bytes is a whole message and parses as before, with nothing logged.
+    assert _resolve_against(((_HOST, _padded_reply(_DNS_UDP_MAX, "192.0.2.15")),)) == ("192.0.2.15", (0, []))
 
 
 # ---------------------------------------------------------------------------
@@ -667,14 +776,15 @@ def test_a_local_name_is_asked_over_multicast_and_never_a_unicast_server() -> No
         responder, unicast = FakeDNSServer(_HOST, mdns_port), FakeDNSServer(_HOST, unicast_port)
         try:
             answering = asyncio.create_task(responder.answer_once(lambda q: _make_response(q, _a_answer("192.168.1.50"), ancount=1, flags=b"\x84\x00")))
-            result = await resolve_ipv4("Broker.LOCAL", dns_servers=(_HOST,), port=unicast_port, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("Broker.LOCAL", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await answering
             return result, responder.received, unicast.received
         finally:
             responder.close()
             unicast.close()
 
-    result, asked, unicast_asked = _with_mdns_responder(mdns_port, scenario)
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, unicast_port):
+        result, asked, unicast_asked = _with_mdns_responder(mdns_port, scenario)
     assert result == "192.168.1.50"
     assert len(asked) == 1 and asked[0][2:4] == b"\x00\x00"  # RD clear, as RFC 6762 SS18.6 asks
     assert b"\x06broker\x05local\x00" in asked[0]  # lowercased, like every DNS name here
@@ -693,7 +803,7 @@ def test_a_local_reply_with_the_cache_flush_bit_and_no_question_is_still_read() 
         responder = FakeDNSServer(_HOST, port)
         try:
             answering = asyncio.create_task(responder.answer_once(bare_answer))
-            result = await resolve_ipv4("pi.local", timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
+            result = await resolve_ipv4("pi.local", timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
             await answering
             return result
         finally:
@@ -707,12 +817,45 @@ def test_an_unanswered_local_name_returns_none_after_its_bounded_tries() -> None
 
     async def scenario() -> "tuple[str | None, int]":
         started = time.ticks_ms()
-        result = await resolve_ipv4("absent.local", timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=2)
+        result = await resolve_ipv4("absent.local", timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=2, pr=_make_pr())
         return result, time.ticks_diff(time.ticks_ms(), started)
 
     result, elapsed_ms = _with_mdns_responder(port, scenario)
     assert result is None
     assert elapsed_ms < 2 * _NO_REPLY_TIMEOUT_MS + _PROMPT_RETURN_MAX_MS  # two waits, each bounded, nothing more
+
+
+def _resolve_local_against(reply: "Callable[[bytes], bytes]") -> "tuple[str | None, tuple[int, list[int]]]":
+    # One .local lookup answered once by a loopback responder, with what reached the caller's logger.
+    port = make_port()
+    pr = _make_pr()
+
+    async def scenario() -> "tuple[str | None, tuple[int, list[int]]]":
+        responder = FakeDNSServer(_HOST, port)
+        try:
+            answering = asyncio.create_task(responder.answer_once(reply))
+            result = await resolve_ipv4("broker.local", timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=pr)
+            await answering
+            return result, await _warnings(pr)
+        finally:
+            responder.close()
+
+    return _with_mdns_responder(port, scenario)
+
+
+def test_a_local_reply_longer_than_512_bytes_warns_and_is_not_used() -> None:
+    # RFC 6762 SS6.7: a one-shot query's reply is a conventional DNS reply, so the unicast path's 512-byte bound holds.
+    assert _resolve_local_against(_padded_reply(_DNS_UDP_MAX + 1, "192.0.2.21")) == (None, (1, [code("W", "DNS_REPLY_TRUNCATED")]))
+    assert _resolve_local_against(_padded_reply(_DNS_UDP_MAX, "192.0.2.22")) == ("192.0.2.22", (0, []))
+
+
+def test_a_failed_local_socket_teardown_logs_one_warning_and_keeps_the_answer() -> None:
+    asy_udp_socket.UDPSocket.disconnect = _close_failing_disconnect  # type: ignore[method-assign]
+    try:
+        result = _resolve_local_against(lambda q: _make_response(q, _a_answer("10.20.30.42"), ancount=1))
+    finally:
+        asy_udp_socket.UDPSocket.disconnect = _REAL_DISCONNECT  # type: ignore[method-assign]
+    assert result == ("10.20.30.42", (1, [code("W", "SOCKET_TEARDOWN")]))
 
 
 if __name__ == "__main__":

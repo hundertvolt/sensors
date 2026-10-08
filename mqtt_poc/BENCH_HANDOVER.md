@@ -68,7 +68,7 @@ And on 2026-10-08:
 
 - **Branch** `claude/whole-project-audit-plan-followup`, draft PR hundertvolt/sensors#110. It is stacked on the
   whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its head
-  `c11ca0a`. It merges only after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
+  `cfd92e4` (U18 and its fix). It merges only after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
 - **Verified on the host, not on hardware**:
   - lint and all three typecheck passes;
@@ -77,8 +77,8 @@ And on 2026-10-08:
   - the `dev` twin suite at both stages, Run 12 included (the client against a real mosquitto: kill, stall,
     takeover, flood), 346 of 346 checks;
   - the website's settings matrix.
-- **CI**: the last fully finished run (on `573bcf3`) was green apart from items 1 and 3 of section 1.7.
-  Later pushes changed tests, tooling and docs only; the PR's checks show the current head.
+- **CI**: the last fully finished run before the U18 merge (on `51a5bd2`) was green on all 27 checks; the
+  PR's checks show the current head.
 - **Nothing has run on the board.** This session is the first.
 
 ### 1.4 The client in brief
@@ -92,9 +92,12 @@ And on 2026-10-08:
   - `src/asy_dns_client.py` learned one-shot mDNS for `.local` names, for `NTPHost` too.
 - **Never blocking**:
   - an IPv4 broker address is used as it is;
-  - a name goes through the project's bounded, cooperative resolver;
+  - a name goes through the project's bounded, cooperative resolver, asking the DHCP-provided DNS server
+    only (`DNSFallback` is NTP's own list);
   - the client never has more than 2,000 B written that no PINGRESP confirmed, its share of lwIP's TCP
     memory, so lwIP's 10 s write retry can never be what it hits.
+- **Hotspot mode**: the client is off there (owner, 2026-10-08: 'Generally, when the device is in hotspot
+  mode, the MQTT client is off.'): no socket, no DNS query, no log.
 - **Recovery**: a dead transport is found by the PINGRESP deadline (15 s ping, 10 s deadline); reconnects
   back off 2 s doubling to 60 s and reset after a 30 s stable session. MQTT never touches WiFi.
 - **Settings**, `PUT /networking`: `MQTTEnable` (default off), `MQTTHost`, `MQTTPort` (1883), `MQTTUser`,
@@ -108,11 +111,11 @@ And on 2026-10-08:
   - `<base>/cmd/#`: inbound, counted.
 - **Error log `MQTT`** (FRAM-backed, like `CFGMGR_MQTT`): E 115 `MQTT_DNS`, 116 `MQTT_CONNECT`, 117
   `MQTT_REFUSED`, 118 `MQTT_PROTOCOL`, 119 `MQTT_NO_PINGRESP`, 120 `MQTT_LOST`, 121 `MQTT_STALLED`,
-  122 `MQTT_SUB_REFUSED`; W 77 `MQTT_SHORT_SESSIONS`.
+  122 `MQTT_SUB_REFUSED`; W 82 `MQTT_SHORT_SESSIONS`.
 - **What else changed on `dev`**:
   - `max_connections` 6 → 5;
   - FRAM chunks `MQTT` and `CFGMGR_MQTT` ahead of `WEBSERVER`'s;
-  - `PUT /networking` is now the largest request body, 1,176 B;
+  - `PUT /networking` is now the largest request body, 1,318 B;
   - `mosquitto` joined the toolchain's apt packages, and `env --tier bench` installs `avahi-daemon`.
 
 ### 1.5 Why the run is scoped, and what it covers
@@ -139,12 +142,13 @@ What that became on this branch:
 
 ### 1.6 Decided on the owner's behalf, for review (agent, 2026-10-08)
 
-`mqtt_poc/DESIGN.md` §13 holds all eleven. The ones this run touches:
+`mqtt_poc/DESIGN.md` §13 holds all twelve. The ones this run touches:
 - The first measurement round follows each CONNACK.
 - A settings change or switching the client off publishes a retained `offline` first.
 - `MQTTHost` is length-checked at PUT and shape-checked at use, as `NTPHost` is.
 - A passing scoped run is reported `NOT CLEAN` (exit 4), as `--skip-lower-levels` is, so it never stands in
   for a full L3/L4 pass.
+- The broker name is asked of the DHCP-provided DNS server only, never NTP's `DNSFallback` list.
 
 ### 1.7 Known failures that are not this branch's
 
@@ -152,8 +156,9 @@ All three are in code this branch does not touch (the UART protocol and the CI t
 audit's U17 and U16), and each is commented on PR hundertvolt/sensors#110:
 
 1. `tests/test_uart_comm_hazard.py::test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16`
-   failed once in CI's coverage job ("no recovery within two transactions after step 2"). It passed 131 of
-   131 twice locally on the same binary.
+   failed once in CI's coverage job ("no recovery within two transactions after step 2"). The audit's U18
+   fix (`cfd92e4`, merged here) root-caused it (the sweep's CRC16 pair ran on a 30 ms budget instead of
+   SPECIFICATION.md J.7's 240 ms) and moved the sweeps to `tests/test_uart_comm_cancel_sweep.py`.
 2. `tests/test_asy_uart_driver.py::test_two_concurrent_cancellers_both_return` failed once locally at
    `gc.threshold(32768)` on a loaded machine: the second canceller returned `False`. It is a race in the
    test.

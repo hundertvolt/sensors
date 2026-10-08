@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
+from buildgen.source_ast import parse_source
 
 
 @dataclass(frozen=True)
@@ -22,7 +23,7 @@ def default_class_name(toml_field: str) -> str:
 
 def find_default_class(path: Path, device: str, driver: str, toml_field: str) -> "ast.ClassDef | None":
     try:
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = parse_source(path.read_text(), str(path))
     except SyntaxError as e:
         raise BuildError(device, f"{path} has a syntax error: {e}", instance=driver) from e
     class_name = default_class_name(toml_field)

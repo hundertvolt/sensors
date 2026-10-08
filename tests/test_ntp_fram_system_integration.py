@@ -5,12 +5,17 @@ import asyncio
 import select
 import socket
 import struct
+import sys
 import time
+
+sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP shim's directory (digital_twin/README.md)
 
 import network
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
+from _udp_port_redirect import redirect_udp_port
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 import asy_base_classes
 import asy_ntp_client as ntpmod
@@ -43,6 +48,11 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     T = TypeVar("T")
+
+# Once, before any UDPSocket connects: this Unix build's socket takes no plain (host, port) tuple (SPECIFICATION.md F.7).
+patch_asy_udp_socket_for_unix_port()
+
+_NTP_PORT = 123  # asy_ntp_client.py's const() _NTP_UDP_PORT (RFC 5905), not importable once folded: keep in sync
 
 # @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000
@@ -101,7 +111,7 @@ def make_ntp(
     # methods, not a lambda standing in for them.
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
-        f.write(f'{{"NTPHost": "{ntp_host}", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0}}')
+        f.write(f'{{"NTPHost": "{ntp_host}", "NTPOffset": 0, "NTPInterval": 12, "GMTOffset": 0, "DSTOffset": 0, "DNSFallback": ""}}')
     ntp = NTPClient(
         conn.get_wifi_mode_lock(),
         conn.network_available_locked,
@@ -113,10 +123,19 @@ def make_ntp(
     return ntp
 
 
-def connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> None:
-    _wlan(conn)._connected = True
-    _wlan(conn)._status = network.STAT_GOT_IP
-    _wlan(conn)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
+async def _connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> None:
+    # The fake radio connected with a DHCP lease, then one 1 Hz snapshot step under wifi_mode_lock: every
+    # getter reads the snapshot, so the DHCP server reaches NTP only through it.
+    wlan = _wlan(conn)
+    wlan._connected = True
+    wlan._status = network.STAT_GOT_IP
+    wlan._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
+    async with conn.get_wifi_mode_lock():
+        await conn._update_wifi_snapshot(connected=True)
+
+
+def connect_wlan(conn: WifiService) -> None:
+    run(_connect_wlan(conn))
 
 
 _TICKS_PERIOD = 1 << 30  # rp2's ticks_ms() wrap: py/mpconfig.h's MICROPY_PY_TIME_TICKS_PERIOD on a 32-bit small int
@@ -129,18 +148,6 @@ class _UptimeClock:
         self.now = 0
         self._saved: object = None
 
-    def ticks_ms(self) -> int:
-        return self.now
-
-    def ticks_add(self, a: int, b: int) -> int:
-        return (a + b) & (_TICKS_PERIOD - 1)
-
-    def ticks_diff(self, a: int, b: int) -> int:
-        return ((a - b + _TICKS_PERIOD // 2) & (_TICKS_PERIOD - 1)) - _TICKS_PERIOD // 2
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(time, name)
-
     def __enter__(self) -> "Self":
         self._saved = asy_base_classes.time
         asy_base_classes.time = self  # type: ignore[assignment]
@@ -148,6 +155,18 @@ class _UptimeClock:
 
     def __exit__(self, *exc_info: object) -> None:
         asy_base_classes.time = self._saved  # type: ignore[assignment]
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(time, name)
+
+    def ticks_add(self, a: int, b: int) -> int:
+        return (a + b) & (_TICKS_PERIOD - 1)
+
+    def ticks_diff(self, a: int, b: int) -> int:
+        return ((a - b + _TICKS_PERIOD // 2) & (_TICKS_PERIOD - 1)) - _TICKS_PERIOD // 2
+
+    def ticks_ms(self) -> int:
+        return self.now
 
 
 async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1, clock: "_UptimeClock | None" = None) -> None:
@@ -177,20 +196,13 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS6
 
 
 # ---------------------------------------------------------------------------
-# Real UDP NTP round trip - same machinery as test_ntp_wifi_dns_integration.py's own
-# FakeNtpServer/_RedirectNtpNetworking, kept file-local per this suite's per-file convention.
+# Real UDP NTP round trip - same machinery as test_ntp_wifi_dns_integration.py's own FakeNtpServer, kept
+# file-local per this suite's per-file convention; tests/_udp_port_redirect.py points port 123 at it.
 # ---------------------------------------------------------------------------
 
 # Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
 # never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
 _next_port = 26000
-
-
-def make_addr() -> "tuple[str, int]":
-    global _next_port
-    _next_port += 1
-    # The Unix port's bind()/connect()/sendto() reject a plain (host, port) tuple: resolve first (SPECIFICATION.md F.7 row 1).
-    return socket.getaddrinfo("127.0.0.1", _next_port)[0][-1]  # type: ignore[return-value]
 
 
 def make_port() -> int:
@@ -199,47 +211,18 @@ def make_port() -> int:
     return _next_port
 
 
-class _RedirectNtpNetworking:
-    # Same Unix-port-only workaround as the identically named class in the NTP suites: redirects
-    # _NTP_UDP_PORT away from the real privileged port 123, and pre-resolves UDPSocket's addr, this
-    # build's raw connect() rejecting a plain (host, port) tuple.
-    def __init__(self, port: int) -> None:
-        self._port = port
-
-    def __enter__(self) -> "Self":
-        self._original_port = ntpmod._NTP_UDP_PORT
-        self._original_socket_cls = ntpmod.UDPSocket
-        ntpmod._NTP_UDP_PORT = self._port
-        real_cls = self._original_socket_cls
-
-        class _Resolving:
-            def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
-                resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
-                self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)  # type: ignore[arg-type]
-
-            def __getattr__(self, name: str) -> object:
-                return getattr(self._real, name)
-
-        ntpmod.UDPSocket = _Resolving  # type: ignore[assignment, misc]
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        ntpmod._NTP_UDP_PORT = self._original_port
-        ntpmod.UDPSocket = self._original_socket_cls  # type: ignore[misc]
-
-
 class FakeNtpServer:
     def __init__(self) -> None:
         self.port = make_port()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(socket.getaddrinfo("127.0.0.1", self.port)[0][-1])
+        self.sock.bind(socket.getaddrinfo("127.0.0.1", self.port)[0][-1])  # a raw socket: this build's bind() takes the sockaddr
         self.sock.setblocking(False)
         self.poller = select.poll()
         self.poller.register(self.sock, select.POLLIN)
 
-    def redirect_resolution(self) -> _RedirectNtpNetworking:
-        return _RedirectNtpNetworking(self.port)
+    def close(self) -> None:
+        self.sock.close()
 
     async def serve_once(self, reply: bytes) -> None:
         for _ in range(1000):
@@ -253,9 +236,6 @@ class FakeNtpServer:
                 self.sock.sendto(reply, from_addr)
                 return
             await asyncio.sleep_ms(10)
-
-    def close(self) -> None:
-        self.sock.close()
 
 
 _NTP_EPOCH_DELTA = 2208988800
@@ -274,11 +254,11 @@ async def sync_real_ntp_chain(conn: WifiService, ntp: NTPClient) -> None:
     # Drives one full, real, successful sync attempt (real WLAN state -> real DNS-skip via literal
     # IP -> real UDP round trip against a fake server) so a test can then observe ntp.ntp_issynced()
     # genuinely returning True through downstream consumers, not a hand-set flag.
-    connect_wlan(conn)
+    await _connect_wlan(conn)
     server = FakeNtpServer()
     reply = make_ntp_reply(int(time.time()))
     try:
-        with server.redirect_resolution():
+        with redirect_udp_port(ntpmod, _NTP_PORT, server.port):
             task = asyncio.create_task(ntp._sync_loop())
             server_task = asyncio.create_task(server.serve_once(reply))
             ntp._ntp_sync_trigger_event.set()
@@ -369,29 +349,34 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
     # wifi_mode_lock, must complete promptly rather than hang.
     conn = make_conn()
     connect_wlan(conn)
-    unreachable_addr = make_addr()  # nobody listens here
-    ntp = make_ntp(conn, unreachable_addr[0], ntp_fetch_timeout_ms=_LOCK_HOLD_FETCH_TIMEOUT_MS)  # long enough to observe the lock held
+    server = FakeNtpServer()  # bound, never answering: the fetch waits out its timeout inside the lock
+    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=_LOCK_HOLD_FETCH_TIMEOUT_MS)  # long enough to observe the lock held
     manager, _chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
     async def scenario() -> bool:
-        task = asyncio.create_task(ntp._sync_loop())
-        ntp._ntp_sync_trigger_event.set()
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        assert conn.wifi_mode_lock.locked() is True  # ntp genuinely holds conn's own shared lock right now
-        try:
-            # A fraction of _LOCK_HOLD_FETCH_TIMEOUT_MS: checks the write completes promptly, not stuck behind the lock.
-            write_ok, *_ = await asyncio.wait_for(chunk.write(b"12345678"), _WRITE_PROMPT_S)
-        except asyncio.TimeoutError:
+        with redirect_udp_port(ntpmod, _NTP_PORT, server.port):
+            task = asyncio.create_task(ntp._sync_loop())
+            ntp._ntp_sync_trigger_event.set()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert conn.wifi_mode_lock.locked() is True  # ntp genuinely holds conn's own shared lock right now
+            try:
+                # A fraction of _LOCK_HOLD_FETCH_TIMEOUT_MS: checks the write completes promptly, not stuck behind the lock.
+                write_ok, *_ = await asyncio.wait_for(chunk.write(b"12345678"), _WRITE_PROMPT_S)
+            except asyncio.TimeoutError:
+                await _cancel(task)
+                return False  # would mean ntp_issynced() got stuck behind the shared lock - a real bug
+            assert conn.wifi_mode_lock.locked() is True  # the write finished inside the hold, not after it
             await _cancel(task)
-            return False  # would mean ntp_issynced() got stuck behind the shared lock - a real bug
-        await _cancel(task)
         return write_ok
 
-    assert run(scenario()) is True
+    try:
+        assert run(scenario()) is True
+    finally:
+        server.close()
 
 
 # ---------------------------------------------------------------------------

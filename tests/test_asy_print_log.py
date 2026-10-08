@@ -1,6 +1,7 @@
 import asyncio
 from collections import deque
 
+import micropython
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
@@ -8,7 +9,7 @@ import asy_print_log as print_log_module
 import asy_spi_driver
 from asy_base_classes import RegionBuffer
 from asy_fram_manager import FRAMChunk, FRAMManager
-from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, console, make_logger
 from asy_spi_driver import SPI
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
@@ -69,9 +70,10 @@ class _RaisingFramChunk:
 
 
 class _RaisingFramManager:
-    def __init__(self, chunk: "_RaisingFramChunk | None", *, raise_on_get_chunk: bool = False) -> None:
+    def __init__(self, chunk: "_RaisingFramChunk | None", *, raise_on_get_chunk: bool = False, error: "Exception | None" = None) -> None:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
+        self.error = MemoryError("simulated allocation failure") if error is None else error
 
     # Fails only by allocation, the one failure the real chunk documents (SPECIFICATION.md C.7); parameter names
     # stay exact so mypy checks the fake against asy_print_log's Protocols.
@@ -79,7 +81,7 @@ class _RaisingFramManager:
         self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
-            raise MemoryError("simulated allocation failure")
+            raise self.error
         return self._chunk
 
 
@@ -167,6 +169,74 @@ def test_name_defaults_to_empty_string() -> None:
 def test_name_is_stored_verbatim_when_given() -> None:
     pr = PrintLog(name="SGP40")
     assert pr.name == "SGP40"
+
+
+# ---------------------------------------------------------------------------
+# console() - the one line of a layer with no logger: no level, no history
+# ---------------------------------------------------------------------------
+
+
+def test_console_prints_each_call_once_with_its_name_first() -> None:
+    err = MemoryError("injected for the console line")  # worded clear of the memory gates' markers
+    rec = _PrintRecorder()
+    try:
+        console("UDPSocket", err)
+        console("RegionBuffer", "text", 3)
+        console("Named", "what", None)  # no error: the two-argument line
+    finally:
+        rec.restore()
+    assert rec.lines == [("UDPSocket", err), ("RegionBuffer", "text", 3), ("Named", "what")]
+    assert str(rec.lines[0][1]) == "injected for the console line"  # print() writes the caught error's own text
+    assert rec.kwargs == [{}, {}, {}]  # print()'s own separator and line end
+
+
+_NO_ARG = object()
+_LOCKED_LINE: list[object] = [None, None, None]  # what the heap-free print() stand-in last saw: name, what, err
+
+
+def _locked_print(name: object, what: object, err: object = _NO_ARG) -> None:
+    # A print() stand-in that allocates nothing: fixed arity, the arguments kept in preallocated slots.
+    _LOCKED_LINE[0] = name
+    _LOCKED_LINE[1] = what
+    _LOCKED_LINE[2] = err
+
+
+def test_console_allocates_nothing_in_either_arity() -> None:
+    # console() runs inside MemoryError arms of methods that never raise: with the heap locked, neither arity may raise,
+    # through the real print() or a recording stand-in, and the stand-in still sees the error's text.
+    err = MemoryError("injected for the locked console line")  # worded clear of the memory gates' markers
+    raised = [False, False, False]
+    micropython.heap_lock()
+    try:
+        console("Console", "real print, heap locked:", err)
+    except MemoryError:
+        raised[0] = True
+    finally:
+        micropython.heap_unlock()
+    print_log_module.print = _locked_print  # type: ignore[attr-defined]
+    try:
+        micropython.heap_lock()
+        try:
+            console("UDPSocket", err)
+        except MemoryError:
+            raised[1] = True
+        finally:
+            micropython.heap_unlock()
+        two = tuple(_LOCKED_LINE)
+        micropython.heap_lock()
+        try:
+            console("RegionBuffer", "buffer allocation failed:", err)
+        except MemoryError:
+            raised[2] = True
+        finally:
+            micropython.heap_unlock()
+        three = tuple(_LOCKED_LINE)
+    finally:
+        del print_log_module.print  # type: ignore[attr-defined]
+    assert raised == [False, False, False], ("console() allocated with the heap locked", raised)
+    assert two == ("UDPSocket", err, _NO_ARG)  # the two-argument print(), no None appended
+    assert three == ("RegionBuffer", "buffer allocation failed:", err)
+    assert str(three[2]) == "injected for the locked console line"
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +574,20 @@ def test_a_failed_history_allocation_prints_its_text_and_keeps_a_zero_ring() -> 
     run(hist.err_s("e", errno=1))
     assert hist._err_count == 1  # counting still works even though history recording can't
     assert run(hist.get_log()) == {"H": {"ErrCount": 1, "ErrNum": [], "ErrType": []}}  # no slot reported
+
+
+def test_a_failed_history_allocation_prints_its_text_with_logging_off() -> None:
+    # The logging layer cannot log into itself: its own caught allocation failure is an ungated console line.
+    original_deque = print_log_module.deque
+    print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
+    rec = _PrintRecorder()
+    try:
+        hist = PrintLogHistory(history_length=10, name="H")
+    finally:
+        rec.restore()
+        print_log_module.deque = original_deque  # type: ignore[misc]
+    assert hist.level == 0
+    assert [(line[:2], str(line[2])) for line in rec.lines] == [(("H", "PrintLog: history allocation failed:"), "injected for the history ring")]
 
 
 def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
@@ -863,9 +947,114 @@ def test_a_failed_write_leaves_the_next_queued_call_to_write() -> None:
         await asyncio.gather(*tasks)
 
     run(scenario())
-    full = b"\x03\x00\x01\x02\x03"
-    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", full, full], chunk.payloads
+    # The third call writes the full state again, the failed write's LOG_RAM_ONLY entry now in it.
+    after = bytes((4, 0, 2, 3, code("E", "LOG_RAM_ONLY")))
+    assert chunk.payloads == [b"\x01\x00\x00\x00\x01", b"\x03\x00\x01\x02\x03", after], chunk.payloads
     assert store.results == [True, False, True], store.results
+
+
+def test_a_failed_write_after_setup_keeps_one_ram_only_entry_until_a_write_lands() -> None:
+    # The chunk stops taking writes after setup(): the run's first failure adds one counted LOG_RAM_ONLY entry in RAM with
+    # no second attempt, later failures add none, the next write that lands persists it, and a later run records again.
+    ram_only = code("E", "LOG_RAM_ONLY")
+    chunk = _CountingFramChunk(2 + 4)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4, name="S")
+    assert run(store.setup()) is True
+    writes = chunk.writes
+    chunk.write_result = False
+    run(store.err_s("first", errno=3))
+    run(store.err_s("second", errno=5))
+    assert chunk.writes - writes == 2  # one attempt per call, none for the entry itself
+    assert list(store.history) == [0, 3, ram_only, 5]
+    assert store._err_count == 3
+    chunk.write_result = True
+    run(store.wrn_s("back", wrnno=2))
+    assert chunk.last_payload == bytes((4, 0, 3, ram_only, 5, 0x80 + 2))  # the entry rode the write that landed
+    chunk.write_result = False
+    run(store.err_s("again", errno=6))
+    assert list(store.history) == [5, 0x80 + 2, 6, ram_only]  # a new run, a new entry
+    assert store._err_count == 6
+
+
+def test_a_reset_inside_a_failed_write_run_records_nothing_itself_and_starts_a_new_run() -> None:
+    ram_only = code("E", "LOG_RAM_ONLY")
+    chunk = _CountingFramChunk(2 + 3)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+    assert run(store.setup()) is True
+    chunk.write_result = False
+    run(store.err_s("e", errno=3))
+    assert run(store.reset()) is False  # its failure is ResetErrors' "Failed", not an entry in the ring it cleared
+    assert list(store.history) == [0, 0, 0]
+    assert store._err_count == 0
+    run(store.err_s("e", errno=4))
+    assert list(store.history) == [0, 4, ram_only]
+    assert store._err_count == 2
+
+
+def test_a_reset_whose_write_lands_after_a_failed_one_ends_the_run() -> None:
+    # A write fails while a reset waits on the write lock: its entry lands in the cleared ring and the reset's write
+    # persists it, so the run is over and the next failure starts a new one.
+    ram_only = code("E", "LOG_RAM_ONLY")
+    chunk = _GatedFramChunk(2 + 3)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    chunk.failing_writes = (1, 3)
+
+    async def scenario() -> bool:
+        failing = asyncio.create_task(store.err_s("e", errno=3))
+        await asyncio.sleep(0)  # its write now waits at the gate
+        reset = asyncio.create_task(store.reset())
+        await asyncio.sleep(0)  # the reset has cleared the ring and waits on the write lock
+        chunk.gate.set()
+        await failing
+        return await reset
+
+    assert run(scenario()) is True
+    assert chunk.payloads[1] == bytes((1, 0, 0, 0, ram_only))
+    run(store.err_s("e", errno=5))  # the third write fails: a new run
+    assert list(store.history) == [ram_only, 5, ram_only]
+
+
+def test_queued_calls_behind_a_failed_write_record_one_entry_and_the_next_write_lands_it() -> None:
+    chunk = _GatedFramChunk(2 + 4)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
+    chunk.gate.set()
+    assert run(store.setup()) is True
+    chunk.gate.clear()
+    chunk.payloads.clear()
+    chunk.failing_writes = (1,)
+
+    async def scenario() -> None:
+        tasks = [asyncio.create_task(store.err_s("e", errno=n)) for n in (1, 2, 3)]
+        for _ in range(5):
+            await asyncio.sleep(0)
+        chunk.gate.set()
+        await asyncio.gather(*tasks)
+
+    run(scenario())
+    # The failed first write, then one write of the newest state with the run's entry; the third call skips.
+    assert chunk.payloads == [b"\x01\x00\x00\x00\x00\x01", bytes((4, 0, 1, 2, 3, code("E", "LOG_RAM_ONLY")))], chunk.payloads
+
+
+def test_an_entry_logged_during_the_setup_write_keeps_a_ram_only_entry_when_its_write_fails() -> None:
+    chunk = _GatedFramChunk(2 + 3)
+    chunk.failing_writes = (2,)  # setup()'s own write lands, the one for the entry logged meanwhile fails
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+
+    async def scenario() -> bool:
+        setup = asyncio.create_task(store.setup())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        await store.err_s("during the setup write", errno=4)
+        chunk.gate.set()
+        return await setup
+
+    assert run(scenario()) is True
+    assert list(store.history) == [0, 4, code("E", "LOG_RAM_ONLY")]
+    assert store._err_count == 2
 
 
 def test_read_answers_the_stored_entries_false_or_none_and_mutates_nothing() -> None:
@@ -1051,6 +1240,46 @@ def test_a_none_data_buffer_fails_write_and_read_without_raising() -> None:
     assert store._err_count == 1  # the entry still counts in RAM
 
 
+def test_each_caught_chunk_allocation_failure_prints_its_text_once_with_logging_off() -> None:
+    # One ungated console line per occurrence, carrying the error's own text: the chunk's allocation, a read, a write.
+    err = MemoryError("injected for the chunk allocation")
+    rec = _PrintRecorder()
+    try:
+        store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True, error=err), history_length=4, name="A")
+    finally:
+        rec.restore()
+    assert store.fram is None
+    assert rec.lines == [("A", "PrintLog: FRAM allocation failed:", err)]
+    for kwargs, text in (({"raise_on_read": True}, "injected for the history read"), ({"raise_on_write": True}, "injected for the history write")):
+        err = MemoryError(text)
+        store = PrintLogHistoryStore(_RaisingFramManager(_RaisingFramChunk(error=err, **kwargs)), history_length=4, name="B")
+        rec = _PrintRecorder()
+        try:
+            results = [run(store._read() if "raise_on_read" in kwargs else store._write()) for _ in range(2)]
+        finally:
+            rec.restore()
+        assert results == ([None, None] if "raise_on_read" in kwargs else [False, False]), (text, results)
+        what = "read" if "raise_on_read" in kwargs else "write"
+        assert rec.lines == [("B", "PrintLog: FRAM history " + what + " failed:", err)] * 2, (text, rec.lines)
+
+
+def test_an_allocator_refusal_prints_only_its_gated_line() -> None:
+    # A chunk the allocator refused is no heap failure: the gated line at a level, nothing with logging off.
+    for level, lines in ((None, []), (1, [("R", "PrintLog: FRAM allocation failed!")])):
+        rec = _PrintRecorder()
+        try:
+            PrintLogHistoryStore(_RaisingFramManager(None), history_length=4, level=level, name="R")
+        finally:
+            rec.restore()
+        assert rec.lines == lines, (level, rec.lines)
+    rec = _PrintRecorder()
+    try:  # a heap failure at a level prints its one ungated line, not the gated one too
+        PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True, error=MemoryError("injected for one line")), history_length=4, level=1, name="R")
+    finally:
+        rec.restore()
+    assert [line[:2] for line in rec.lines] == [("R", "PrintLog: FRAM allocation failed:")]
+
+
 def test_a_non_allocation_failure_from_a_chunk_propagates() -> None:
     # The catch is allocation-only: any other exception is a defect that must surface, never read as a failed write.
     for kwargs in ({"raise_on_write": True}, {"raise_on_read": True}):
@@ -1154,16 +1383,16 @@ def test_printloghistorystore_setup_fails_cleanly_when_both_read_and_write_fail(
 
 
 def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -> None:
-    # _store_err()'s own "if not await self._write(): print(...)" fallback must not itself raise
-    # even though the underlying persist-write now fails - in-memory state should still update.
+    # _store_err()'s failed-write path must not itself raise even though the underlying persist-write
+    # now fails - in-memory state should still update.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     chip.drop_wren = True
     run(store.err_s("boom", errno=3))
-    assert store._err_count == 1
-    assert list(store.history)[-1] == 3
+    assert store._err_count == 2  # the entry and the failed write's LOG_RAM_ONLY
+    assert list(store.history)[-2:] == [3, code("E", "LOG_RAM_ONLY")]
 
 
 def test_make_logger_builds_a_store_or_a_ram_history_by_config() -> None:

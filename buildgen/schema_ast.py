@@ -5,6 +5,8 @@ constant - same never-import policy as `buildgen.driver_registry`. Used by
 import ast
 from pathlib import Path
 
+from buildgen.source_ast import parse_source
+
 # One driver-declared field's (type, default, min, max, special) - the name itself is the dict key
 # `extract_field_schemas()` returns it under.
 FieldSchema = tuple[object, object, object, object, object]
@@ -50,7 +52,7 @@ def extract_field_schemas(source_path: Path) -> "dict[str, FieldSchema]":
     # Every `ConfigSchema`-of-one or bare `FieldSchema` assignment in `source_path`, keyed by
     # field name (not the constant's own Python name). Anything else is silently skipped - a
     # best-effort pass over already-validated code, not a comment tag.
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    tree = parse_source(source_path.read_text(encoding="utf-8"))
     consts: dict[str, ast.expr] = {}
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):

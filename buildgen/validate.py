@@ -17,6 +17,7 @@ from buildgen.limits import LimitField, parse_limits
 from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, lwip_macros, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
+from buildgen.source_ast import parse_source
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
 from buildgen.wiring import WiringField, parse_wiring
 
@@ -161,7 +162,7 @@ def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -
     # tests_scripts/test_request_body_cap_headroom.py uses for max_content_length.
     path = src_dir / filename
     try:
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = parse_source(path.read_text(), str(path))
     except (OSError, SyntaxError) as e:
         raise BuildError("<src>", f"cannot read {path} to resolve {class_name}'s own {name} default: {e}", field=name) from e
     for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == class_name):
@@ -183,7 +184,7 @@ def _module_const(src_dir: Path, filename: str, name: str, kind: "type[_ConstT]"
     # never imports src/. `kind` is the literal's type, matched exactly, so a bool never counts as an int.
     path = src_dir / filename
     try:
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = parse_source(path.read_text(), str(path))
     except (OSError, SyntaxError) as e:
         raise BuildError("<src>", f"cannot read {path} to resolve its {name}: {e}", field=name) from e
     for node in tree.body:

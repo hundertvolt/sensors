@@ -33,10 +33,17 @@ def merge_raw_dumps(raw_dir: str, repo_root: str) -> dict[str, list[int]]:
     return {path: sorted(lines) for path, lines in merged.items()}
 
 
+def anchor_files(repo_root: str, src_dir: str) -> list[str]:
+    # Anchoring the report to every .py file under src_dir (subdirectories included), not only
+    # those a raw dump happened to mention, is what makes an entirely untested file appear as a
+    # real 0% row rather than not at all - confirmed against coverage.py's own morfs= handling.
+    return sorted(os.path.abspath(p) for p in glob.glob(os.path.join(repo_root, src_dir, "**", "*.py"), recursive=True))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--raw-dir", required=True, help="Directory of *.json line-hit dumps from tests/_coverage_runner.py")
-    parser.add_argument("--src-dir", default="src", help="Directory whose *.py files anchor the report scope (default: src)")
+    parser.add_argument("--src-dir", default="src", help="Directory whose *.py files, subdirectories included, anchor the report scope (default: src)")
     parser.add_argument("--html-dir", default="htmlcov", help="Output directory for the HTML report (default: htmlcov)")
     parser.add_argument("--xml-file", default="coverage.xml", help="Output path for the Cobertura XML report (default: coverage.xml)")
     parser.add_argument("--markdown-file", default="coverage_summary.md", help="Output path for a markdown summary table (default: coverage_summary.md)")
@@ -53,10 +60,7 @@ def main() -> int:
     data.add_lines(merged_hits)
     data.write()
 
-    # Anchoring the report to every src/*.py file, not only those a raw dump happened to
-    # mention, is what makes an entirely untested file appear as a real 0% row rather than not
-    # at all - confirmed against coverage.py's own morfs= handling.
-    src_files = sorted(os.path.abspath(p) for p in glob.glob(os.path.join(repo_root, args.src_dir, "*.py")))
+    src_files = anchor_files(repo_root, args.src_dir)
 
     cov = coverage.Coverage(data_file=data_path)
     cov.load()

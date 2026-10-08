@@ -1,0 +1,61 @@
+digital_twin/run_generic_integration.py starting - device='wozi' module='sensortask_wozi' host='127.0.0.1' port=18080 fram_state_path='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/digital_twin/fram_state.json' scd30_state_path='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/digital_twin/scd30_state.json' seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:18080/ - Ctrl+C to stop
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Config data was written.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Writing config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Config data staged, flash write scheduled.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Config data was written.
+BMP3XX sensor trigger
+CFGMGR_BMP3XX digital_twin/config/config_BMP3XX.cfg - Reading config data into list.
+BMP3XX read
+BMP3XX data stored
+SYSTEM All tasks running.
+WIFI Writing config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Config data staged, flash write scheduled.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Config data was written.
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 4
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SCD30 read
+SCD30 data stored
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+FRAM Writing block 1 data
+digital_twin/run_generic_integration.py [wozi] shutdown: would_have_triggered_count=0
+digital_twin/run_generic_integration.py: interrupted

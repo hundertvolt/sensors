@@ -1,6 +1,6 @@
 """Unit tests for src/asy_uart_comm.py (SPECIFICATION.md Part J): construction
 and readiness, frame build/validate/ACK, the acknowledged exchange and its recovery, and the
-transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py."""
+transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py and test_uart_comm_cancel_sweep.py."""
 
 import asyncio
 import gc

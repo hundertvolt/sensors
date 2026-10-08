@@ -864,7 +864,7 @@ def test_put_oversized_body_is_rejected_with_413_over_the_normal_network(dut_ip:
 
 _BODY_CAP = 2048  # asy_webserver_service.py's max_content_length, now bound to max_body_length too
 _OLD_CONTENT_CAP = 4096  # what it was before Part I.6; the 2048..4096 band is the discriminator
-_SCHEMA_MAX_BODY = 1176  # largest schema-permitted PUT body on the bench device: PUT /networking, MQTT included (I.6)
+_SCHEMA_MAX_BODY = 1318  # largest schema-permitted PUT body on the bench device: PUT /networking, MQTT included (I.6)
 
 
 def _sized_sensors_body(total_bytes: int) -> dict[str, dict[str, str]]:

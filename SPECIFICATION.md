@@ -223,7 +223,10 @@ features as today's deployed units, not a feature change.
   next boot reads that block as invalid, like any interrupted operation, so a fault on both copies
   keeps the stored history for the current boot only — the next boot re-initialises the chunk. A
   logger left RAM-only at setup (its chunk unreadable, its first write failed, or its chunk's heap
-  allocation failed) records one `LOG_RAM_ONLY` entry in its own history, so `/status` names it. A
+  allocation failed) records one `LOG_RAM_ONLY` entry in its own history, so `/status` names it.
+  After `setup()`, a failed history write starts a run: its first failure keeps one counted
+  `LOG_RAM_ONLY` entry in RAM with no retry, and the next write that lands, a landed reset included,
+  persists that entry and ends the run; a failed reset adds none. A
   chunk the allocator refused records nothing: the declared chunks exceed the chip, a build fact the
   capacity checks catch (this section's list; owner, 2026-09-16: 'we do not even add errno/wrnno
   for the out of FRAM memory … Handle via mpremote.'), and the manager prints it to the console.
@@ -369,6 +372,34 @@ features as today's deployed units, not a feature change.
 - Deployed task supervisor is a hand-rolled loop duplicated per device file; every generated
   `sensortask_<device>.py`'s `main()` instead calls `asy_system_service.py`'s real
   `start_and_check_tasks()`/`start_timers()`.
+- **Wi-Fi state machine** (`asy_wifi_service.py`; owner, 2026-07-13, and as amended below). An empty
+  SSID leads straight to hotspot mode, at boot and at the end of every hotspot window, and never
+  counts as a failed attempt (agent, 2026-10-06); five failed attempts lead there too; a link
+  established once never escalates — a later disconnect retries silently every 60 s without counting
+  a failure. The hotspot stays up while a client is associated, otherwise STA is retried after its
+  window; a selected AP not reporting `STAT_GOT_IP` is re-activated only if inactive and counts as
+  having no client (`lib/cyw43-driver/src/cyw43_lwip.c:300-323`). A station joined to the hotspot
+  shows its own pattern, an even 1.5 s on, 1.5 s off, so a phone holding the access point never
+  looks like a working home link (agent, 2026-10-06); how long such a client may hold it is not
+  bounded, as in the legacy firmware. A second failed STA streak after a hotspot phase deactivates
+  Wi-Fi permanently, a terminal state that task restarts keep and only a power cycle clears (owner,
+  2026-08-11, `acc4993`); it shows its own LED pattern, as "Missing WLAN configuration" does (owner,
+  2026-09-29) — 0.1 s on, 2.9 s off — and like every Wi-Fi pattern it follows the Wi-Fi LED setting:
+  dark while `LEDWifiOn` is off, shown as soon as it is switched on (owner, 2026-10-02). The fallback
+  to the hotspot and the permanent deactivation each persist a WIFI warning, and so does a connect
+  poll that ends without a verdict (joined, no IP within the poll window), so the history says why
+  a unit was offline. Power saving is off, a connect attempt polls up to 5 s, a mode switch
+  disconnects, deactivates and waits; repeated WLAN hardware errors first re-initialise the radio
+  (power-cycled by the driver) before the task gives up — the participant rung (C.7) — and the
+  supervisor takes over after that. A radio observation that fails is unknown, not a state: a failed
+  stations query leaves the hotspot timer as it was, and a failed status read in the uptime loop
+  keeps the last link state and uptime; each failure persists one WIFI warning (agent, 2026-10-06).
+  A CYW43 `isconnected()` false positive is recovered by a power cycle or `hard_reset()` (F.2).
+  Every delay named here is a Part N `wifi.*` row. The hotspot's DHCP server holds eight leases,
+  each kept 24 h for its client's MAC; with all eight held, a further client's request is ignored,
+  with no NAK and nothing Python can read (`shared/netutils/dhcpserver.h:32`, `dhcpserver.c:68,
+  234-236`, v1.29.0). The hotspot serves one configuring client, so the limit is accepted and stated
+  (agent, 2026-10-06).
 - **Functional behaviors confirmed intentional by the project owner** (owner, 2026-07-13, `368fa83`)
   **— don't "fix" these:** air-quality LED sequencing (one color per condition, paused between
   flashes); FRAM SGP40 backup "0 = disabled" for `BackupPeriod`/`BackupMaxAge`
@@ -438,7 +469,8 @@ so the move shifted none of Part H.7's serving walls.
   bool] | None` is provided and returns `True` (default `None` = old always-404 behavior).
   The generated `sensortask_wozi.py` wires this to `WifiService.is_hotspot_active()`. This is what makes phones'
   captive-portal probes (`generate_204`, `hotspot-detect.html`) trigger the OS "Sign in to network"
-  popup instead of a silent 404, while `asy_captive_dns.py` answers every domain with the AP's IP.
+  popup instead of a silent 404, while `asy_captive_dns.py` answers every A/ANY query with the AP's
+  IP and every other type with an empty NOERROR reply (C.7.5).
 - Deployed `legacy/firmware/python/CommonDrivers/microdot.py` already implements essentially the
   same protective architecture, predating `ext/microdot.py`'s vendoring — one drift: its
   `HTTPException` branch invokes a status-code handler directly rather than through the pinned tag's
@@ -712,7 +744,8 @@ settings.
 
 - **GET shapes**: `/measurements` → `{"SCD30": {...}, "SGP40": {...}, "BMP3XX": {...}}` (each
   `get_dict_data()`); `/sensors` → same, each `get_dict_cfg()`; `/networking` → `SSID, PW(masked),
-  Country, Hostname, LEDWifiOn, NTPHost, NTPOffset, NTPInterval`; `/system` → `DebugLevel,
+  Country, Hostname, HotspotPW(masked), LEDWifiOn, NTPHost, NTPOffset, NTPInterval, DNSFallback`;
+  `/system` → `DebugLevel,
   GMTOffset, DSTOffset` plus one nested, never-flattened `build` sub-entry (SPECIFICATION.md Part L
   Session 7 — `{"FirmwareVersion", "WebsiteVersion", "BuildDate"}`, verbatim from
   `WebserverService`'s own `build_info=` constructor kwarg, which every generated device supplies
@@ -728,7 +761,10 @@ settings.
   from `ticks_ms()` deltas, never counted wake-ups or the clock (owner, 2026-09-29); if the uptime
   tick timer cannot be armed, a one-second sleep stands in, so it stays measured. `BootSignature` —
   resolved once per boot, unchanged by a restart of the uptime task. `UTCTime` — `null` until the
-  first NTP sync, like `LocalTime`. `SGP40_BackupTS`/`SGP40_RestoreTS` — `null` = none since boot,
+  first NTP sync, like `LocalTime`, and again while `NTPSynced` is false. `networking`'s link
+  fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot, refreshed
+  each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8).
+  `SGP40_BackupTS`/`SGP40_RestoreTS` — `null` = none since boot,
   `0` = no timestamp (owner, 2026-09-29). `errcount` — one entry per module plus one per
   `ConfigManager` (`CFGMGR_<name>`).
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
@@ -738,8 +774,8 @@ settings.
   unknown fields ignored. `/measurements` — no PUT. `/sensors` — per-sensor field subsets; SCD30
   compares against a fresh chip snapshot and writes only what changed (compare-before-write, G.2),
   its store being the chip's own NVM (no `cfgmgr`, C.4.3). `/networking` — WiFi
-  fields fire `reconnect_wifi()`, NTP fields fire `ntp_force_sync()`, `LEDWifiOn` fires nothing —
-  one `SettingsGroup` per subset keeps these independent. `/system` — settings +
+  fields fire `reconnect_wifi()`, NTP fields fire `ntp_force_sync()`, `LEDWifiOn` and `DNSFallback`
+  fire nothing — one `SettingsGroup` per subset keeps these independent. `/system` — settings +
   `"SystemCmd": "reboot"|"bootloader"|"mempause"` (enum-validated; `mempause` duration fixed 300s).
   `/status` — `{"ResetErrors": true}` only: every registered error source resets concurrently, and
   `result.ResetErrors` answers `"Valid"`, or `"Failed"` when a store's write failed; any other value
@@ -835,7 +871,7 @@ stall, a client-id takeover and an inbound flood; a clean soak run at both `gc.t
 `gc.threshold(32768)`, in that order — Part I.4(e)'s standing rule). Building this surfaced three confirmed Unix-port-only `socket`
 quirks (real, required behavior on real rp2 hardware, not a `src/` bug — BACKLOG.md has the
 source-level account) worked around entirely from twin-side code
-(`digital_twin/_unix_port_udp_addr_shim.py`).
+(`digital_twin/unixport/_unix_port_udp_addr_shim.py`).
 
 ## A.11 MQTT client (`asy_mqtt_client.py`, `mqtt_codec.py`)
 
@@ -871,7 +907,10 @@ cancelled task's end is never reported. The reader queues inbound PUBACKs for th
 write has one author and none lands inside a running drain, which resets the stream's pending
 output when it finishes.
 
-The keeper owns the socket: `socket.socket()`, non-blocking, `connect()` to the IPv4 literal
+The broker name goes to `resolve_ipv4()` with the network's DHCP-provided DNS server alone: the
+resolver has no built-in server, and `DNSFallback` stays NTP's own setting (agent, 2026-10-08,
+decided on the owner's behalf, `mqtt_poc/DESIGN.md` §13). The keeper owns the socket: `socket.socket()`,
+non-blocking, `connect()` to the IPv4 literal
 `resolve_ipv4()` returned (so `getaddrinfo()` sees a numeric host only, F.2), wrapped in an asyncio
 `Stream` and closed by `wait_closed()` on every exit path; `Stream.close()` is a no-op.
 `asyncio.open_connection()` is never used, since its connect wait has no timeout and a timeout
@@ -883,7 +922,9 @@ that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
 - **Gating.** Off (`MQTTEnable` false, or an empty `MQTTHost`): no socket, no DNS, no log; the
   keeper waits for `reconnect()` or `mqtt.idle_recheck_ms`. `network_available_locked()` false
   (link down, no IP, or hotspot mode): it waits, with no backoff growth and no log, the DNS server
-  read before `wifi_mode_lock` and the lock held only around the availability call.
+  read before `wifi_mode_lock` and the lock held only around the availability call. In hotspot mode
+  the client is off (owner, 2026-10-08: 'Generally, when the device is in hotspot mode, the MQTT client
+  is off.'): that call reads false there even with an address, so no socket opens and no name is asked.
 - **MQTT never drives WiFi** (owner, 2026-10-07, asked whether MQTT connection loss may ever
   trigger WiFi recovery: 'Never (Recommended)'). The client resets only its own socket.
 - **Dead transport.** lwIP has no TCP keepalive here, so the PINGRESP deadline is the only detector:
@@ -1521,7 +1562,17 @@ values come from.
   lwIP's own `#if !defined X || defined __DOXYGEN__` guards. `MEMP_NUM_UDP_PCB` is a **bare
   `#define`** (`4 + LWIP_MDNS_RESPONDER`), and so is `LWIP_STATS 0` - the same shape as
   `MICROPY_ASYNC_KBD_INTR` in B.14.1, where a later plain `#define` beats an earlier `-D` and the
-  redefinition warning is a hard build failure here.
+  redefinition warning is a hard build failure here. Its 5 pcbs cover every UDP user at once: the
+  mDNS responder holds one (lwIP `77dcd25`, `lib/lwip/src/apps/mdns/mdns.c:2820`); DHCP one per
+  role — the client's shared pcb in STA mode (`lib/lwip/src/core/ipv4/dhcp.c:279`), MicroPython's
+  server in AP mode (`shared/netutils/dhcpserver.c:94`); the captive DNS one while the hotspot is
+  up; NTP's fetch or the resolver one at a time, each released in `finally` before the next opens.
+  lwIP's own DNS client would open one per lookup (`lib/lwip/src/core/dns.c:890`, random source
+  ports by default, `lib/lwip/src/include/lwip/opt.h:1189`) but `src/` makes no lwIP name lookup
+  (F.2). Peak 3 of 5 in either mode: a mode switch deinitialises the interface, which stops the STA
+  DHCP client and frees its pcb (cyw43-driver `055d642`,
+  `lib/cyw43-driver/src/cyw43_ctrl.c:118-127`, `lib/cyw43-driver/src/cyw43_lwip.c:251-257`;
+  `lib/lwip/src/core/ipv4/dhcp.c:1388-1391`).
 - **`MEM_SIZE`, `TCP_MSS`, `TCP_WND`, `TCP_SND_BUF` and `MEMP_NUM_TCP_SEG` are one atomic
   `#ifndef MEM_SIZE` block** (8000 / 800 / 6400 / 6400 / 32 as pinned). Defining `MEM_SIZE` alone
   on the command line disables the *whole* block: `TCP_MSS` silently reverts to lwIP's own 536 and
@@ -1724,6 +1775,8 @@ stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality too
 - `build/generated_src` is on `mypy_path` for the one static `import sensortask_dev`
   (`heap_headroom_after_full_system_build.py`); `typecheck.sh` generates it first. Nothing there
   collides with `src/`.
+- `digital_twin/unixport` is on `mypy_path` for the Unix-port UDP shim the NET unit tests import
+  (`_unix_port_udp_addr_shim`); it holds no hardware fake, so no twin module shadows a board stub.
 - **Excluded, and why.** `tests/network.py`: a bare `network.py` in a scanned root wins resolution
   over the real stub project-wide, silently turning `WLAN` types in `src/` into `Any`; the exclusion
   is mypy-only, and the interpreter still finds it through `MICROPYPATH`. `digital_twin/machine.py`,
@@ -1737,15 +1790,20 @@ stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality too
   noise, never a finding. Their apparent cleanliness in this pass was accidental: a real
   `no-any-return` in `test_digital_twin_bmp3xx.py` appeared only once `digital_twin` was in scope.
 - `strict = true`, spelled that way so a mypy bump surfaces new strict checks as findings;
-  `no_implicit_optional` and `warn_unreachable` on top. `disable_error_code = assignment` is
+  `no_implicit_optional` and `warn_unreachable` on top. **Explicit `Any`**: all three passes set
+  `disallow_any_explicit = true`; each keeps a per-module baseline of exempted modules (a
+  `disallow_any_explicit = false` override), which only shrinks and which
+  `tests_scripts/test_mypy_any_baseline.py` pins. `disable_error_code = assignment` is
   deliberately not set. The one exemption, `no_implicit_reexport = false`, and the
   `disallow_untyped_decorators` override for `test_setter_microdot_integration` (upstream's stub
   leaves `route`/`get`/`put` unannotated, v2.7.0): CLAUDE.md.
 
-**Twin pass — `digital_twin/typecheck.ini`.** `mypy_path = digital_twin:src:build/generated_src:typings:tests`,
-`digital_twin` first so `machine`/`network`/`neopixel` resolve to the twin; `build/generated_src`
-for the two files that also import a `sensortask_<device>` module. Excluding the twin from the
-main pass alone did not fix its attribute resolution (confirmed), which is why this pass exists.
+**Twin pass — `digital_twin/typecheck.ini`.** `mypy_path =
+digital_twin:digital_twin/unixport:src:build/generated_src:typings:tests`, `digital_twin` first so
+`machine`/`network`/`neopixel` resolve to the twin, its `unixport/` subdirectory for the UDP shim;
+`build/generated_src` for the two files that also import a `sensortask_<device>` module. Excluding
+the twin from the main pass alone did not fix its attribute resolution (confirmed), which is why
+this pass exists.
 Full `--strict` including `no_implicit_reexport`, since this scope mocks nothing by reassignment;
 its strictness is kept in sync with the main pass by hand (INI has no include directive).
 
@@ -2021,6 +2079,10 @@ self.pr.err_s("Message:", e, errno=_ERR_<NAME>)` — the logger prefixes its own
 message string, then the exception or values as separate arguments, never a pre-built or f-string,
 so a suppressed level allocates nothing.
 
+A PUT stores any value its schema accepts — a password equal to the mask string `********`
+included; a client that echoes the mask stores it, which is accepted (owner, 2026-09-29: 'I don't
+want to restrict it in any way').
+
 ### C.4.1 `_read_loop()` skeleton (identical across the sensor drivers)
 
 ```python
@@ -2116,8 +2178,9 @@ constructor arguments, so no module completes itself after construction (no
 `_get_dict_cfg(name, cfg_vals, callback=None)` merges stored values with an optional callback's
 live readback. Only pass `callback=` for a field with a real, independent live-sensor source of
 truth (BMP3XX: 3 of 8 fields; SGP40: none; SCD30: none, its store reads the six chip keys from a snapshot, C.4.3). **Second legitimate reason**:
-sanitizing a sensitive value before it's ever returned — `asy_wifi_service.py`'s `callback=
-self._mask_pw` unconditionally overwrites the persisted `PW` with a fixed mask.
+sanitizing a sensitive value before it's ever returned — `WifiService`'s
+`callback=self._cfg_overlay` shows what the radio uses: passwords masked, and a stored value the
+radio would refuse as the default it runs on (C.7.4).
 
 ## C.5 Config schema system (`asy_config_manager.py`)
 
@@ -2283,7 +2346,12 @@ blank or invalid is re-initialised. A FRAM chunk operation raises only by alloca
 raises counts as unreadable, a write that raises as a failed write. A logger that runs RAM-only for
 the boot (its chunk unreadable at setup, its first write failed, or its chunk's heap allocation
 failed) records one `LOG_RAM_ONLY` entry in its own history; a chunk the allocator refused records
-none (A.4).
+none (A.4). After `setup()`, a failed history write starts a run: its first failure keeps one
+counted `LOG_RAM_ONLY` entry in RAM with no retry, and the next write that lands, a landed reset
+included, persists that entry and ends the run; a failed reset adds none. The logging layer's own
+caught allocation failures (the history ring, the chunk allocation, the history read and write)
+each print one ungated console line with the error's text through `console()`; an allocator
+refusal (`None`, no heap failure) keeps its level-gated line.
 
 **`reset()` writes unconditionally; `_store_err()` does not.** The asymmetry is deliberate.
 `_store_err()` refuses to touch FRAM before `setup()` has run — a half-filled ring written over a
@@ -2379,9 +2447,17 @@ still own an independent, uniquely-named logger** (agent, 2026-08-07, generalisi
 owner decided): `asy_captive_dns.py`'s `CaptiveDNS` (owned by `WifiService`) gets its own `"DNSSRV"`
 logger (owner, 2026-08-07, `74cfa7f`) so its history can be shown with the networking data (owner,
 2026-09-26). **A teardown/cleanup method on a class with no logger of its own returns `bool`**, so
-its caller can log the failure — `UDPSocket.disconnect()`, `UART.deinit()`, `I2C.deinit()`,
-`SPI.deinit()` (C.13); one on a class
+its caller can log the failure — `UDPSocket.disconnect()` (every user checks it and persists a
+failure, `SOCKET_TEARDOWN`), `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.13); one on a class
 with a logger persists its own failure instead (`WebserverService._close_writer()`).
+
+`WifiService`'s radio observations (`status()`, `isconnected()`, `ifconfig()`, the stations query,
+the LED helpers) stay print-only as routine observations, except a failed stations query and a
+failed status read in the uptime loop, each persisted once per failure since the state is then
+unknown and kept; the persisted ones are also the connect-attempt tier (a poll that ends without a
+verdict included), the fallback to the hotspot, the permanent deactivation and the timer arms
+(agent, 2026-10-06). The resolver resolves only names RFC 1035 can encode (one name of at most 255
+octets on the wire, no empty label); anything else resolves to `None`.
 
 ### C.7.1 Running `errno`/`wrnno` table
 
@@ -2408,7 +2484,7 @@ alternating codes and reboots are outside the rule.
 | fram | `asy_fram_manager.py`, `asy_fram_driver.py` (`FRAM`) | 45-54, 100-109 | 25-29, 63-64 |
 | isl29125 | `asy_isl29125_driver.py` (`ISL29125`) | 55-57 | 30-32, 75-76 |
 | sgp40 | `asy_sgp40_driver.py` (`SGP40`) | 58-59, 110-114 | 33-35, 65-66 |
-| wifi | `asy_wifi_service.py` (`WIFI`) | 60-66 | 36-39 |
+| wifi | `asy_wifi_service.py` (`WIFI`) | 60-66 | 36-39, 77-81 |
 | ntp | `asy_ntp_client.py` (`NTP`) | 67-74 | 40 |
 | dnssrv | `asy_captive_dns.py` (`DNSSRV`) | — | 41-43 |
 | notify | `asy_notification_service.py` (`NOTIFY`) | — | 44-47, 67-68 |
@@ -2416,7 +2492,7 @@ alternating codes and reboots are outside the rule.
 | uart | `asy_uart_comm.py`, `asy_uart_driver.py` (`UART`, or the instance name; the driver writes through its caller's logger) | 75-99 | 54-59 |
 | bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared errors) | — | 71-72 |
 | scd30 | `asy_scd30_driver.py` (`SCD30`; base and shared errors) | — | 73-74 |
-| mqtt | `asy_mqtt_client.py` (`MQTT`) | 115-124 | 77-80 |
+| mqtt | `asy_mqtt_client.py` (`MQTT`) | 115-124 | 82-85 |
 | asy_api_response | `asy_api_response.py` (the calling module's logger; shared codes only) | — | — |
 | test | `tests_hardware/device_scripts/` (seeds written by hardware test scripts only) | 125-127 | — |
 
@@ -2434,7 +2510,12 @@ wrong password.
 **No logging in these layers** (owner, 2026-08-20, `c80d293`: no logging in these layers): the bus
 drivers (`asy_i2c_driver.py`, `asy_spi_driver.py`), `asy_udp_socket.py`, `asy_dns_client.py` and
 `asy_uart_driver.py` (whose `cancel_unacknowledged` its owner reads and logs, `wrnno` 55). Every
-failure surfaces to its one upstream owner.
+failure surfaces to its one upstream owner. Neither `asy_udp_socket.py` nor `asy_dns_client.py` owns
+a logger (agent, 2026-10-08): the resolver writes its two warnings, `SOCKET_TEARDOWN` (`wrnno` 12)
+and `DNS_REPLY_TRUNCATED` (`wrnno` 16), into the logger its caller passes (`pr=`, the upstream
+owner's), so its failures still surface to that one owner. A layer with no logger prints a caught
+`MemoryError`'s own text once through `asy_print_log.py`'s fixed-arity `console(name, what,
+err=None)`, a console line and no entry, so the memory gates see it (I.4(e)).
 
 ### C.7.2 Which failures may end a task
 
@@ -2459,12 +2540,35 @@ restarted it about once a minute and rebooted the device about every four minute
   retry loop (`_NTP_SYNC_RETRIES` × 15 s: `ntp.sync_retries`, `ntp.retry_interval_s`) and does not
   touch the backoff. **Confirmed on silicon (2026-09-25)**: with UDP 123 blocked, one `E71`
   (`NTP_NO_REPLY`) slot (count 3), no task ended, SYSTEM clean; two full bench tiers then held
-  `assert_no_task_ended` throughout.
+  `assert_no_task_ended` throughout. The resolver tries only the servers its caller passes, in
+  order: NTP passes the DHCP-provided DNS server first, then the `DNSFallback` servers (an NTP
+  config value, at most three, emptiable at the API). `Synced` is true
+  only while the last success is less than three intervals old; a failed resync does not extend it,
+  and a PUT of an NTP setting clears it until the next successful sync (owner, 2026-09-29). A
+  request that could not be sent and a reply that never came are two local codes (`NTP_NOT_SENT`,
+  `NTP_NO_REPLY`).
 - **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
   config is re-read every cycle anyway, and a restart re-reads nothing more.
 - **MQTT** (`asy_mqtt_client.py`) keeps no streak: a broker outage, a refusal or a protocol fault
   closes the connection and retries on its own capped backoff (A.11); a restart would re-initialise
   nothing but a socket.
+
+**No origin check** (agent, 2026-09-30): an NTP reply is accepted only from the resolved server's
+address and port, because the fetch socket is connected (`UDPSocket(mode="client")` connects its
+pcb, `extmod/modlwip.c:1257`) and lwIP's `udp_input()` gives a connected pcb only that remote's
+datagrams (lwIP `77dcd25`, `lib/lwip/src/core/udp.c:261-311`; a datagram matching no pcb that way
+goes only to an unconnected pcb on the same port, and there is none); each attempt uses a fresh
+socket, so a late reply to an earlier attempt reaches none; an on-path host forging the server's
+address is outside the trusted home-LAN threat model (CLAUDE.md).
+
+Network faults recover with the smallest step first. A remote fault (no or a bad NTP/DNS reply, a
+bad client datagram) is retried on its capped backoff and never escalates, since nothing local can
+repair the peer (owner, 2026-09-24). A local fault escalates: a socket that cannot be created or
+bound is re-created on the next attempt; a timer that cannot be armed is re-armed at the next
+opportunity, then its task ends for the supervisor, whose restart budget leads to a reboot; WLAN
+hardware failures end the WiFi task after `max_module_error` iterations; a CYW43 link stuck in an
+`isconnected()` false positive is recovered by a power cycle, the last rung (owner, 2026-09-26)
+(owner, 2026-09-30).
 
 **Out of scope (owner, 2026-09-24): hardware that is inoperational from the start, or a chip that
 stalls (owner, 2026-09-25: 'a stalled chip may recover by a reboot').** Everything
@@ -2541,10 +2645,29 @@ label — ASCII letters, digits and `-`, not starting or ending with `-` (RFC 11
 build; `Country` is two uppercase letters (ISO 3166-1 alpha-2) at PUT and use (agent, 2026-09-28).
 A PUT outside a bound or shape is refused as `"Invalid"` (`BAD_ARG`, errno 21, `_set_mgr_cfg()`),
 and a value already stored that way runs on its default (`STORED_DEFAULT`, `wrnno` 10) rather than
-reaching the radio. Only the max needs bytes — a value is never fewer bytes than
-characters — and a character-bound violation stays the schema's own refusal. **Confirmed on
-silicon (2026-09-25)**: an 18 × `ä` hostname (36 bytes) was refused `"Invalid"` with `BAD_ARG` and
-the hostname left unchanged.
+reaching the radio. `GET /networking` shows the value the radio uses: passwords masked, and a stored
+value the radio would refuse as the default it runs on. Only the max needs bytes — a value is never
+fewer bytes than characters — and a character-bound violation stays the schema's own refusal.
+**Confirmed on silicon (2026-09-25)**: an 18 × `ä` hostname (36 bytes) was refused `"Invalid"`
+with `BAD_ARG` and the hostname left unchanged.
+
+### C.7.5 Captive DNS
+
+`asy_captive_dns.py` answers every on-subnet A/ANY query with the AP's IP and every other type with
+an empty NOERROR reply (owner, 2026-09-29). A datagram that is a response (QR), declares other than
+one question, uses a compressed or reserved label or a name over 255 octets is dropped (agent,
+2026-09-28); a reply is at most 287 B. lwIP queues at most four datagrams per UDP socket and frees
+any further one in its receive callback, with no counter Python could read (`extmod/modlwip.c:299`
+`LWIP_INCOMING_PACKET_QUEUE_LEN`, `:456-468` `udp_raw_incoming()`, v1.29.0). The server reads every
+queued datagram before its socket sleeps again, so a burst loses only what exceeds four per idle
+poll (`udp.poll_idle_ms`), and the client's own retry recovers it (agent, 2026-10-06). Because a
+flood keeps the socket ready, nothing below the serve loop yields while it drains (on rp2, PendSV
+keeps refilling the queue from the CYW43 interrupt while Python runs,
+`ports/rp2/mpnetworkport.c:85-95`, v1.29.0), so the loop yields once per received datagram and
+other tasks keep their turn (agent, 2026-10-08). A heap failure while parsing a query or its sender
+is the device's own fault, not malformed input: it is persisted as `UNEXPECTED` with its text and
+the loop pauses `dns_server.error_retry_wait_s`; every other parse failure drops the datagram
+(agent, 2026-10-08).
 
 ## C.8 Concurrency & locking model
 
@@ -2612,13 +2735,39 @@ An I2C driver keeps the per-transaction scope: it has no equivalent synchronous 
 SPECIFICATION.md Part F.5.8 refuses the generalisation. Full measurement and the ladder of scopes
 considered: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7C/§7C.1 and §11 item 6.
 
-**Known inconsistency (`asy_wifi_service.py`)**: `network_available_locked()` requires the *caller*
-to already hold `wifi_mode_lock`, while its sibling getters assume the caller does *not* — already
-caused one since-fixed bug (`get_dns_server_ip()` always `None`). The name carries the contract: a
-function that needs its caller to hold a lock ends in `_locked`, and the getters that check
-`.locked()` themselves and answer `None` keep plain names. Separately, the 60s STA-retry branch
-holds `wifi_mode_lock` while NTP's sync task waits on it — an accepted priority-inversion cost, not
-a bug.
+**One getter contract (`WifiService`)** (agent, 2026-09-30): every public getter reads state the
+service holds — the 1 Hz snapshot and the phase — and never touches the radio; the one radio read a
+caller may make, `network_available_locked()`, requires `wifi_mode_lock`. The name carries the
+contract: a function that needs its caller to hold a lock ends in `_locked`.
+
+**What holds `wifi_mode_lock`, and for how long** (agent, 2026-09-30), each bound from the code:
+
+| Holder | Bound |
+|---|---|
+| connect attempt (`_run_sta_mode()`) | up to 10 × 0.5 s, one step once `STAT_GOT_IP` |
+| STA disconnect wait (`_wait_for_sta_disconnect()`) | up to 20 × 0.5 s = 10 s |
+| mode switch (`_select_wifi_mode()`), and the radio's re-initialisation through it (`_recover_device()`, A.4) | 2 + 1 + 1 s |
+| hotspot bring-up | config reads and one `config()`/`active()` sequence |
+| permanent deactivation | 2 s, once |
+| hotspot stations query | 0.1 s |
+| status read and the 1 Hz snapshot (the uptime loop) | one to three radio calls: `status()`, then `ifconfig()` and, on a STA link, `status("rssi")` |
+| NTP attempt (`NTPClient`), its DNS resolution inside the lock (owner, 2026-07-28) | the DHCP server plus up to three `DNSFallback` servers × (`dns.timeout_ms` 500 + one 20 ms poll step) + `ntp.fetch_timeout_ms` 5,000 + 20 ms ≈ 7.1 s with every server silent, plus 0.5 s per failed socket setup (≤ 9.1 s) |
+
+Each waiter is harmless: the uptime loop waits for the lock, the 1 Hz flag coalesces the ticks
+missed meanwhile, and uptime and sync age are measured ticks, so nothing undercounts; the `/status`
+getters read the snapshot and never wait; a PUT reconnect only sets the reconnect flag
+(`reconnect_wifi()`) and is served at the next iteration; NTP waits at most one WiFi hold (≤ 10 s)
+and the WiFi loop at most one NTP attempt (≤ 9.1 s), both below the watchdog, which only the
+supervisor feeds and a waiting task leaves unaffected. The 60 s STA-retry wait is outside the lock.
+
+**Cancellation leaves shared state consistent** (agent, 2026-10-08): every task path in UART, NET
+and REST restores its locks, busy flags and indicators in `finally` and re-raises
+`CancelledError`, never swallowing it in a widened `except`: the captive DNS re-raises after its
+cleanup, and the LED flash task leaves the LED to its canceller. Captive DNS's `run()` releases its
+socket in a `finally` and re-raises the cancellation, never turning it into a normal return; a
+cancellation arriving during that teardown propagates too. `WifiService` cancels it without
+awaiting it, and a detached task ending in `CancelledError` is not reported
+(`extmod/asyncio/core.py:223`).
 
 **Owner decision — the SGP40 general-call reset (`SGP40_I2C._reset()`)**: one I2C general call,
 0x06 to the reserved address 0x00 (SGP40 datasheet Table 17), sent at setup and on every task
@@ -2790,7 +2939,7 @@ this table, with its reason, lifetime, cancel path and the top that persists its
 |---|---|---|---|---|
 | Config flush | `ConfigManager.write_config()` (`asy_config_manager.py`) | the flash write runs apart from the request that staged it (F.2) | one per staged write, until the write lands; a superseded one returns without writing; never cancelled, awaited by `flush_pending()` | `_flush_staged()`: `CFG_FILE_WRITE` for the write, `UNEXPECTED` for any other failure |
 | Captive DNS | `WifiService._configure_hotspot_ap()` on entering hotspot mode (`asy_wifi_service.py`) | it exists only in hotspot mode | hotspot mode; cancelled on leaving it, recreated on the next AP start | `CaptiveDNS.run()`: catches, persists `UNEXPECTED`, backs off |
-| Hotspot LED flash | `WifiService._hotspot_client_absent()` while the hotspot has no client (`asy_wifi_service.py`) | it exists only in that state | until a client connects or the link reconnects, which cancel it | `_flash_led_off()`: persists `UNEXPECTED` and ends the flash, the LED left as it is |
+| LED flash | `WifiService._run_led_pattern()` (`asy_wifi_service.py`) | it exists only in the hotspot without a client, with a station on it, and in the deactivated WLAN | one task: a different pattern cancels it and starts its own; also cancelled by `_reset_wlan_connect_state()`, `_handle_reconnect_trigger()` and `reconnect_wifi()`; a cancel touches no LED | `_flash_led()`: persists `UNEXPECTED` and ends; the next request for the pattern restarts it |
 | Per-connection HTTP | `WebserverService._serve_loop()`'s `asyncio.start_server()`, one `_serve()` task per connection (`asy_webserver_service.py`) | one per accepted connection | one request, bounded by the outer cap (`outer_cap_s`) | `_serve()`: persists `UNEXPECTED` |
 | Supervisor | `SystemService.start_and_check_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` at the escalation |
 | MQTT reader | `MQTTClient._session()` (`asy_mqtt_client.py`), once the CONNACK arrived | one per connection, living as long as its socket | the connection's life; cancelled, never awaited, by the keeper's teardown, which then closes the socket (A.11) | `_reader_loop()`: records why it ended; the keeper persists `MQTT_LOST`, `MQTT_PROTOCOL` or `UNEXPECTED` |
@@ -2809,24 +2958,34 @@ is `PERIODIC`** — a soft callback can be silently dropped when MicroPython's f
 queue is full (F.1); a periodic timer self-heals next tick, a dropped one-shot never fires again.
 The WiFi hotspot shutoff is one, stopped by `reconnect_wifi()` on its first delivered fire
 (confirmed on silicon 2026-09-25: back in STA after the 8-minute window with no reboot). Each
-remaining `ONE_SHOT` is backstopped by the watchdog: the stagger wait (C.9.1); the reset timer,
-`ONE_SHOT` by the owner's choice (owner, 2026-07-18: 'brittle wrt. wdt timeout settings'), with
-nothing fed once it is armed. The storage auto-unpause is no timer: `mempause` stores a
+remaining `ONE_SHOT` states why a dropped fire is acceptable or backstopped: the stagger wait
+(C.9.1) and the reset timer — `ONE_SHOT` by the owner's choice (owner, 2026-07-18: 'brittle wrt.
+wdt timeout settings'), with nothing fed once it is armed — by the watchdog; the NTP retry by
+`_refresh_loop()`'s due check, which starts the next sync once `NTPInterval` has passed, so a
+dropped fire loses only that retry. The storage auto-unpause is no timer: `mempause` stores a
 deadline that the uptime pass tests once a second, so no dropped fire can leave storage paused and
 the pause ends at most one pass late; a reset that paused storage meanwhile keeps it paused, and a
 `mempause` answered "Valid" always ends (agent, 2026-10-06). A driver needing more than one rate
 (BMP3XX, ISL29125: 1 Hz base tick divided down) runs `SensorReader`'s shared trigger divider
 (`_trigger_loop()`, G.2) rather than reprogramming the Timer's period at runtime. A read-trigger arm
 failure wakes the task waiting on it, which persists the failure (`TIMER`) once and ends; its
-restart re-arms first. The 1 s tick timers (system uptime, WiFi uptime, NTP sync age) share
+restart re-arms first. Any other failed arm is re-armed at the task's next opportunity and
+persisted on a second failure, then the task ends for the supervisor: NTP's check and sync-age
+timers when the sync task starts and at each of its wakes, the WiFi uptime tick at the connection
+loop's next iteration; a failed hotspot-timer arm persists `TIMER` and is retried on the next cycle. The 1 s
+tick timers (system uptime, WiFi uptime, NTP sync age) share
 `arm_tick_timer()`; they start with the timer starters and never take a stagger slot. System
 uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks (`TickSeconds`, G.2), never
 counted wake-ups. Wall-clock consumers survive an RTC step, pinned by
 `tests/test_asy_base_classes.py`'s `test_utc_now_follows_a_clock_step_while_tickseconds_does_not`,
-`tests/test_asy_fram_manager.py`'s `test_a_read_after_the_rtc_stepped_back_returns_a_negative_age`
-and `tests/test_asy_notification_service.py`'s
-`test_a_clock_step_across_on_time_flashes_at_most_once_per_cycle`. SYSTEM's uptime tick falls back to a one-second sleep when its timer cannot be
-armed, persists `TIMER` once per task run and re-arms on every pass, since a restart would retry
+`tests/test_asy_fram_manager.py`'s `test_a_read_after_the_rtc_stepped_back_returns_a_negative_age`,
+`tests/test_asy_notification_service.py`'s
+`test_a_clock_step_across_on_time_flashes_at_most_once_per_cycle` and
+`tests/test_asy_ntp_client.py`'s `test_cettime_follows_a_backward_rtc_step_across_the_march_switch`,
+`test_sync_state_follows_measured_ticks_not_rtc_steps`,
+`test_the_first_sync_from_the_boot_default_restarts_the_age` and
+`test_an_offset_put_then_a_sync_shifts_the_rtc_and_cycles_synced`. SYSTEM's uptime tick falls back
+to a one-second sleep when its timer cannot be armed, persists `TIMER` once per task run and re-arms on every pass, since a restart would retry
 nothing the loop does not (agent, 2026-10-06).
 
 **Every `Timer.init()` failure handler catches `except (MemoryError, OSError) as e:`, not bare
@@ -4090,9 +4249,10 @@ that nothing could fail once removed, because `bool` is not an `int` subclass he
 mutation that fails nothing is as much a finding as a test that fails nothing.
 
 **Every hazard check runs in both CRC modes (agent, 2026-09-12, `dc970fb`).**
-`tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`); the ones
-whose subject *is* one configuration are single-mode by construction, each listed with its mode in
-`_MODE_SPECIFIC`. The dev wiring selects `CRCPass`; no UART device is in the field.
+`tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py` register each `_check_*`
+twice (`_nocrc`, `_crc16`) through `tests/_uart_comm_hazard_common.py`; the ones whose subject *is*
+one configuration are single-mode by construction, each listed with its mode in `_MODE_SPECIFIC`.
+The dev wiring selects `CRCPass`; no UART device is in the field.
 
 ## E.9 Driver/DUT process separation
 
@@ -4392,9 +4552,10 @@ leap year and a date from 2100-03-01 on decodes one day off (`py/mpconfig.h:1061
 (`asy_ntp_client.py`'s `_NTP_MAX_PLAUSIBLE_UNIX_TIME`), before it. Every timestamp since
 2004-01-10 exceeds rp2's small-int range (2**30 − 1), so it is a heap int, and `gmtime()` builds a
 heap tuple: the one way `time.mktime(time.gmtime())` fails on the board is allocation. At boot the
-clock reads 2021-01-01 (`ports/rp2/main.c:141-145`), so every `src/` UTC timestamp goes through
-`utc_now()` (`None` until the first sync, G.2) and the NTP client's `cettime()` answers `None`
-while unsynced; a persisted timestamp is 64-bit (`_TS_FMT = "<Q"`,
+clock reads 2021-01-01 (`ports/rp2/main.c:141-145`), so every `src/` and published UTC timestamp
+waits for a sync: `src/`'s go through `utc_now()` (`None` until the first sync, G.2), `/status`'s
+`UTCTime` is `null` while the NTP client is not `Synced`, and the NTP client's `cettime()` answers
+`None` until the clock was first set this boot; a persisted timestamp is 64-bit (`_TS_FMT = "<Q"`,
 `asy_fram_manager.py`). The Unix port differs — 64-bit, float-accepting `gmtime()` (F.7).
 
 **`globals()` does not preserve a module's top-level statement order** — a test starting a
@@ -4518,6 +4679,21 @@ The CYW43 driver reports its own faults (firmware load or verify, bus stalls) on
 attached, and a host holding the port open without reading stalls on them like on any console
 write (the exception-handler paragraph above).
 
+**CYW43 values this code names** (re-read at every pin move, as the next paragraph requires): link
+status 2, `CYW43_LINK_NOIP` — joined, no IP yet; `network` exports no name for it
+(`lib/cyw43-driver/src/cyw43.h:100`; `extmod/modnetwork.c:197-202`), named `_STAT_JOINED_NO_IP` in
+`asy_wifi_service.py`; the power-management word `0xA11140`, `CYW43_PM_VALUE(NO_POWERSAVE, 200, 1,
+1, 10)` — power save off with `PM_PERFORMANCE`'s listen fields (`extmod/network_cyw43.c:43-51`),
+legacy's word, named `_PM_NO_POWERSAVE`. One defect: a `status("stations")` whose ioctl fails
+returns an empty list (`lib/cyw43-driver/src/cyw43_ctrl.c:725-728`), but if the chip cannot be
+brought up (`:719-723`) it returns 32 entries of uninitialised data
+(`extmod/network_cyw43.c:377-388`), read as a client present — the hotspot then stays up and the
+failing chip surfaces through the connect-attempt tier (agent, 2026-09-30). A second: a
+`status("rssi")` discards `cyw43_wifi_get_rssi()`'s result (`extmod/network_cyw43.c:366-368`), so
+an inactive STA's `-EPERM` (`lib/cyw43-driver/src/cyw43_ctrl.c:672-677`) or a failed ioctl returns
+whatever the uninitialised value holds; the snapshot reads it only on the selected STA with a link,
+so a failed read shows as a wrong `RSSI`, display only (agent, 2026-10-08).
+
 **Always check current MicroPython/Microdot documentation before asserting how an API behaves** —
 never rely on training-data memory. **Whenever the pinned version changes (and periodically
 otherwise), re-check every MicroPython-facing construct against the current source/docs/issue
@@ -4525,11 +4701,16 @@ tracker** — not just "is this still correct" but "is there now a better way" (
 `socket.getaddrinfo()` status is exactly the kind of fact a version bump could invalidate). Repeat
 every time `versions.toml`'s ref moves.
 
-## F.2 Blocking calls: the wedged-bus backstop, and what can/can't be timeout-wrapped
+## F.2 Blocking calls and the recovery ladder
 
-**For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop** (owner, 2026-09-25:
-'a stalled chip may recover by a reboot'; escalation up to a reboot is intended). MicroPython's
-cooperative scheduler can't preempt a synchronous `machine.I2C` call in progress.
+**Recovery follows one ladder, smallest blast radius first, escalating only when the milder step
+fails** (owner, 2026-09-30: 'always try to solve / recover from issues with the smallest possible
+blast radius … escalating up to a full bus reset is absolutely allowed if the mild measures don't
+work out'): retry; the participant's own reset or re-configuration; clear the bus; re-initialise its
+controller; restart the task; reboot; the hardware watchdog last. A `machine.I2C`/`machine.SPI`
+transfer in flight cannot be interrupted — no await point exists inside it — so the ladder acts
+after a transfer returns an error; rp2 bounds each I2C transfer by the bus timeout, and a call that
+never returns is the watchdog's (a stalled chip may still reach a reboot, owner, 2026-09-25).
 `socket.getaddrinfo()` is called from `src/` on numeric hosts only: `asy_dns_client.py` resolves
 names over its own non-blocking UDP client (a `.local` name by one multicast DNS query, A.11, never
 lwIP's own mDNS path, which only `getaddrinfo()` reaches), and the MQTT client hands `getaddrinfo()` the IPv4
@@ -4547,24 +4728,37 @@ sentinel (agent, 2026-09-29) — `asy_udp_socket.py`'s `select.poll`-driven `rea
 webserver's per-call waits wrap their one awaitable in `asyncio.wait_for()`, in the seconds their
 callers pass. The FRAM's other lock waits and its status-byte sequences carry none: they wait only
 on other coroutines of this program. A single `machine.I2C` or `machine.SPI` transfer is synchronous
-and cannot be wrapped: one that never returns is the watchdog's.
+and cannot be wrapped: the ladder acts once it returns, and one that never returns is the watchdog's.
 
 **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical
 `MemoryError`** as a blanket policy — only worth closing where the function has a real
 graceful-degradation alternative (owner, 2026-09-25).
 
-**Hot-unplug/replug I2C recovery is the recovery ladder, task respawn and the watchdog backstop.**
-Within one task, a failure streak climbs C.7's ladder: the chip's own rung, the bus clear
-(`I2C.clear()`), then the controller rung (`I2C.recover()`), which clears the bus and rebuilds the
-`machine.I2C` controller by re-construction. Each `_read_loop()`'s `_init_<sensor>()` fresh on every
-restart re-probes and soft-resets the sensor — fully recovers a clean unplug/replug or a bad sensor
-state; a chip-setup failure there runs the controller rung at once. For a **bus-level** fault
-(SDA/SCL physically wedged), a respawn's own probe can hang the same way — but
-`_supervise()`'s `task_errors` counter escalates repeated respawn failures to a reboot
-through `_reboot()`, feeding stopped one-way first (a reset that cannot be armed still ends in the
-watchdog) — which is what actually reconstructs `machine.I2C`.
+**The I2C ladder, per sensor** (C.7): a failed cycle is retried by the next trigger; at the second
+consecutive failure the driver recovers its chip (SCD30 and BMP3XX soft reset, BMP3XX then
+re-applying its stored configuration; ISL29125 re-applying its whole configuration; SGP40 heater-off
+to idle); at the third the bus is cleared — `I2C.clear()` clocks a held SDA free with up to nine SCL
+pulses and a STOP as plain GPIO, waiting out clock stretching, and hands the pins back to the I2C
+function; at the fourth its controller is re-constructed — `I2C.recover()` clears again and
+re-constructs with the full parameter set (rp2's only controller re-init: `machine.I2C.init()` is
+unsupported and `deinit()` a no-op, F.5.1; the construction's `i2c_init()` resets the whole I2C
+block), each under the bus lock; past `max_module_error` the task ends and the supervisor restarts
+it with a fresh setup (probe, identification, the chip's reset); the restart budget reboots the
+device, and every I2C bus is cleared once at boot before its controller is constructed
+(constructing `machine.I2C` drives no SCL pulses of its own, `ports/rp2/machine_i2c.c:105-115`, so
+a watchdog reset or `machine.reset()` frees a held SDA through this clear). Each rung fires at most
+once per failure episode — a bus rung once per bus, whichever reader on it reaches it first — and
+leaves one persisted entry. The SGP40 general call stays the one reset that reaches other devices,
+at setup only (C.8). **Hot-unplug/replug is a kept feature: 'Live bus reconnect must be preserved'
+(owner, 2026-07-13)** — a chip unplugged and replugged is recovered by these rungs without a reboot
+when it is back before the restart budget runs out, as for every declared chip; a slave holding
+SCL, or one that nine pulses do not free, needs a power cycle, an operator action. FRAM (C.3.1,
+A.4): a WREN retried once, identification retried at setup, a chip lost mid-operation stopped and
+set up again by its task's restart. WiFi (A.4): repeated radio errors re-initialise the radio before
+the task gives up. UART: J.5.
 
-**The same backstop applies to a WiFi link stuck in a CYW43-firmware-level false positive**
+**The watchdog/power-cycle backstop also covers a WiFi link stuck in a CYW43-firmware-level false
+positive**
 (`isconnected()` reporting connected well after the link is gone — confirmed on real hardware). A
 well-documented, long-standing upstream MicroPython characteristic (open since v1.19.1/2022), not
 project-specific — no upstream fix, no known-good independent detection method anywhere.
@@ -4575,9 +4769,9 @@ cosmetic inaccuracy consumed by nothing that acts on it) — a physical power cy
 the accepted recovery. Real timing data: a sustained outage essentially never self-resolves within
 150s (5/5 trials rode out the full wait); repeated brief flapping self-heals reliably instead (3/3
 trials, ~30s) — a genuine asymmetry, not chased further since the fallback covers either case
-regardless. `network.STAT_GOT_IP` is not STA-only (an AP interface reports it too) —
-`_run_hotspot_mode()`'s `status != STAT_GOT_IP` branch is only true on the first tick after entering
-hotspot mode.
+regardless. `network.STAT_GOT_IP` is not STA-only (an AP interface reports it too) — a selected AP
+not reporting it is re-activated only if inactive and counts as having no client
+(`lib/cyw43-driver/src/cyw43_lwip.c:300-323`).
 
 **This backstop is safe in practice, with one narrow, accepted residual window (WP5,
 2026-09-16).** Every real flash write at run time is still *triggered* only through the REST PUT
@@ -5069,9 +5263,9 @@ there** (agent, 2026-09-11, `441de83`). A UART read is fixable only because the 
 genuinely non-blocking path — `POLLIN` plus `any()` report what has already arrived, so the driver
 can take exactly that and come back. `machine.I2C`/`machine.SPI` expose no equivalent: a transfer is
 one synchronous transaction with no partial-read API to clamp to, so an SCD30's 18-byte read *is* a
-~1.8ms synchronous span by construction. That is Part F.2's case: backstopped by the hardware
-watchdog until a genuine non-blocking alternative reliably exists (owner, 2026-07-24; BACKLOG
-deferred goal).
+~1.8ms synchronous span by construction. That is Part F.2's case: a transfer in flight cannot be
+interrupted, so the ladder acts once it returns and one that never returns is the watchdog's — until
+a genuine non-blocking alternative reliably exists (owner, 2026-07-24; BACKLOG deferred goal).
 
 **The SPI side's own measured hold, for the same reason it cannot be clamped.** After the FRAM
 path's synchronous restructure (A.4), the longest non-yielding stretch is **2,849 us** — a 1-byte
@@ -5148,9 +5342,13 @@ either only to depart from it. An out-of-range `poll_wait_ms`, `poll_idle_ms` or
 beyond the ticks range, where `asyncio.sleep_ms()` raises `OverflowError` for a delta of 2**29 ms
 or more (`extmod/asyncio/core.py:57`, `extmod/modtime.c:191-192`) — degrades `ready()` to `False`,
 as a malformed mask (`TypeError`) does. The rates are Part N `uart.poll_wait_ms_default`,
-`uart.poll_idle_ms_default` and `dev.uart_poll_wait_ms`/`dev.uart_poll_idle_ms`;
-`asy_udp_socket.py`'s `ready()`, and so the captive DNS listener, polls at one rate for every wait
-(Part N `udp.ready_poll_ms`).
+`uart.poll_idle_ms_default` and `dev.uart_poll_wait_ms`/`dev.uart_poll_idle_ms`.
+
+`asy_udp_socket.ready()` follows the same shape: 20 ms inside an exchange, 100 ms for the captive
+DNS's deadline-free listen (agent, 2026-09-30; kept with its measurement owed, owner, 2026-10-05):
+the idle rate trades the first-query latency of an idle listener against the event-loop share its
+polling takes. The rates are Part N `udp.poll_wait_ms` and `udp.poll_idle_ms`, source constants no
+device TOML sets; the idle rate's measurement on the twin and on the bench is owed (BACKLOG.md).
 
 ## F.6 A SIGINT during `gc_collect()` can wedge the Unix-port heap
 
@@ -5241,7 +5439,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 
 | # | Difference | Unix port | rp2 | Workaround site | rp2 proven by | Removal trigger |
 |---|---|---|---|---|---|---|
-| 1 | socket address arguments | `bind()`/`connect()`/`sendto()` take a raw sockaddr buffer, raising `TypeError: object with buffer protocol required` for a tuple (`ports/unix/modsocket.c:198-201, 228-231, 364-376`; micropython#6924, closed with the port unchanged) | a `(host, port)` tuple (`extmod/modlwip.c` `lwip_socket_bind()`/`lwip_socket_sendto()`) | every `socket.getaddrinfo(host, port)[0][-1]` in `tests/` and `digital_twin/`, led by `digital_twin/_unix_port_udp_addr_shim.py`; `asy_udp_socket.UDPSocket` also accepts a pre-resolved sockaddr, which only tests pass | L3/L4: DNS and NTP on silicon | a pin re-check finds the Unix port accepting a tuple |
+| 1 | socket address arguments | `bind()`/`connect()`/`sendto()` take a raw sockaddr buffer, raising `TypeError: object with buffer protocol required` for a tuple (`ports/unix/modsocket.c:198-201, 228-231, 364-376`; micropython#6924, closed with the port unchanged) | a `(host, port)` tuple (`extmod/modlwip.c` `lwip_socket_bind()`/`lwip_socket_sendto()`) | `digital_twin/unixport/_unix_port_udp_addr_shim.py`, patched into `UDPSocket` once at import by every test file and twin runner that opens one, so `src/` and the tests hand it plain `(host, port)` tuples (`UDPSocket` refuses anything else); `socket.getaddrinfo(host, port)[0][-1]` for every raw test socket | L3/L4: DNS and NTP on silicon | a pin re-check finds the Unix port accepting a tuple |
 | 2 | `recvfrom()` address | a raw 16-byte packed sockaddr (`ports/unix/modsocket.c:302-330`) | an `(ip, port)` tuple | the twin shim | L4: the captive DNS's subnet check | as row 1 |
 | 3 | `getsockname()` and `getaddrinfo()`'s address | `getaddrinfo()` returns a packed sockaddr; no `getsockname()` | `getaddrinfo()`'s address is an `(ip, port)` tuple (`extmod/modlwip.c:1892-1899`); no `getsockname()` either (`:1718-1740`) | harness only (`digital_twin/README.md`, harness pitfalls) | — (not a divergence for `src/`, listed so nothing relies on it) | none |
 | 4 | `time.gmtime()` width | 9 elements (`ports/unix/modtime.c:129-156`) | 8 (`extmod/modtime.c:65-75`) | `tests/test_asy_ntp_client.py` normalises to 8 | L3: `cettime()` on silicon | none (a documented port difference) |
@@ -5334,7 +5532,7 @@ workaround.
 | Bare `Timer()` type-checked only through `tests/machine.py` | `src/` timer constructions | the board stub declares a zero-argument `Timer()` | B.15 |
 | Stub-gap `# type: ignore`s | the sites each names | the stub gains the missing precision; `warn_unused_ignores` then fails on each one | F.5.5 |
 | Poll-set prewarm (`modselect.c` rewrites a `NULL` `pollfd` while growing the poll array) | `digital_twin/unix_port_poll_prewarm.py` and its callers | `extmod/modselect.c` skips `NULL` entries on reallocation | F.7 |
-| UDP address shim and `getaddrinfo()` pre-resolution in tests (micropython#6924) | `digital_twin/_unix_port_udp_addr_shim.py`, the pre-resolving tests | the Unix `modsocket.c` takes and returns `(host, port)` tuples | F.7 |
+| UDP address shim and `getaddrinfo()` pre-resolution in tests (micropython#6924) | `digital_twin/unixport/_unix_port_udp_addr_shim.py`, the raw test sockets' pre-resolution | the Unix `modsocket.c` takes and returns `(host, port)` tuples | F.7 |
 | Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double | none: a non-fd `select.poll()` never becomes ready on GitHub runners, and the bounded fake is the test design | F.7 |
 | `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | F.7 |
 | Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | F.7 |
@@ -5422,6 +5620,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. `PrintLog`'s
   `report_unretrieved()` is asyncio's exception handler (F.1); the PC tiers' counterpart is
   `digital_twin/unix_port_unretrieved_report.py`.
+- **Console line of a layer with no logger** — `asy_print_log.py`'s `console(name: str, what:
+  object, err: object = None)`: one unconditional console line, never level-gated and never kept in
+  a history; its fixed arity and plain `print()` allocate nothing, the frame falling back to the C
+  stack (`py/objfun.c:268-287`, F.1), so it cannot raise inside a `MemoryError` arm (agent,
+  2026-10-08). A layer with no logger prints a caught `MemoryError`'s text through it once, and so
+  does the logging layer for its own caught allocation failures, so the memory gates see it (C.7,
+  C.7.1, I.4(e)).
 - **The error-log envelope type** — `asy_print_log.py`'s `ErrorLog` (`dict[str, ErrEntry]`, where
   `ErrEntry` is a `TypedDict` of `ErrCount: int`/`ErrNum: list[int]`/`ErrType: list[str]`), declared
   once under that module's `TYPE_CHECKING` block and imported by every module that returns one.
@@ -5464,12 +5669,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
   - **Serialisation writes into a caller-supplied buffer at an offset, never into a returned tuple
     or bytes** — `voc_algorithm.py`'s `pack_into(buf, offset)`/`unpack_from(buf, offset)` replacing
     the legacy `get_states()`/`set_states()` tuple pack.
-  - **A failed allocation degrades to a `None` buffer, never an exception** — `RegionBuffer`
-    catches `MemoryError`/`OverflowError` in its own constructor and leaves `self._buf = None`, and
-    every consumer's first act is to check for `None` and fail its call. `FRAMChunk.get_buffer()`
-    builds one per operation, deliberately: a store is used rarely, and a buffer per store would add
-    permanent survivors worth more placement than the churn it saves (agent, 2026-09-29, from the
-    2026-09-18 measurement, `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7C.3).
+  - **A failed allocation degrades to a `None` buffer, never an exception** — `RegionBuffer` catches
+    `MemoryError`/`OverflowError` in its own constructor, leaves `self._buf = None` and prints the
+    error's text once through `console()`, and every consumer's first act is to check for `None` and
+    fail its call. `FRAMChunk.get_buffer()` builds one per operation, deliberately: a store is used
+    rarely, and a buffer per store would add permanent survivors worth more placement than the churn
+    it saves (agent, 2026-09-29, from the 2026-09-18 measurement,
+    `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7C.3).
   The composition this buys is the actual point, and it is already live end to end:
   `asy_sgp40_driver.py` takes one `FRAMChunkTimestampedBuffer` from its timestamped chunk, passes its
   `get_data_buf()` memoryview down to `vocalgorithm_proc_ser_des()`, which `struct.pack_into()`s the
@@ -5578,6 +5784,15 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `collections.namedtuple`, typed through a same-named `typing.NamedTuple` class under
   `TYPE_CHECKING`, its defaults module `const()`s, every field passed (MicroPython's `namedtuple`
   has no defaults and no `_replace`); host code uses a frozen dataclass (D.10).
+- **Dotted-quad parsing** — `asy_dns_client.py`'s `ipv4_to_int(ip: str) -> int | None`, never a
+  second parser; its RFC 1123 host-label check `host_label_ok(label: str) -> bool` (the caller
+  bounds the length) likewise.
+- **UDP client and the one poller pattern** — `asy_udp_socket.py`'s `UDPSocket` makes one connect
+  attempt per call while it has no socket, backing off `udp.retry_backoff_s` after a failure; every
+  wait goes through its `ready()`, which, like the UART driver's, checks readiness without blocking —
+  `ipoll(0)` for the socket, the receive ring's fill level for a UART (F.5.8) — and sleeps
+  `poll_wait_ms` inside an exchange and `poll_idle_ms` when waiting with no deadline (F.5.9; Part N
+  `udp.*`, `uart.*`).
 
 ## G.3 Re-validating the existing project against this Part
 
@@ -5732,8 +5947,10 @@ descriptions, H.6); the DNS server's errcount group sits in the Networking secti
 module's in Status. **`FieldDef`**: a `kind` (`readonly|number|string|enum|toggle|composite`) plus
 kind-specific metadata (`min`/`max`, `mask`, `options`, `specialValues`, `subFields`,
 `onLabel`/`offLabel`, `float`, `decimals`, `path`, `byteLength` (a byte-bounded radio string,
-C.7.4), `shape` (a host label or a country code, C.7.4), `format` (`epoch`/`gmtimestruct`, readonly
-only), `codes` (a readonly code's descriptions), `dispatch`, `alwaysExecuted`, `defaultValue`).
+C.7.4), `shape` (`hostLabel`, `countryCode`, `hostName` or `ipv4List`: a host label, a country code,
+a host name, a list of up to three IPv4 addresses; C.7.2, C.7.4), `format` (`epoch`/`gmtimestruct`,
+readonly only), `codes` (a readonly code's descriptions), `dispatch`, `alwaysExecuted`,
+`defaultValue`).
 `dispatch: true` marks a repeatable command field that must re-submit even when
 unchanged — **and it is only consulted for `kind: "toggle"` and `kind: "enum"`** (`js/render.js`'s
 `collectGroupBody()`, the two sites that compare a control against `resolveFieldValue()`). Every
@@ -5814,7 +6031,9 @@ without it a declared precision is an aspiration; bounded 0–100 (`Number#toFix
 numeric field regardless of `kind` — `GainRatio` (an ordinary flat `sensors` field) carries one too.
 
 A schema-declared sentinel special value must have a matching tag `special:<value>="<meaning>"` or
-the build fails loud; a tag's own `special:` entries also survive independently of whatever the
+the build fails loud; on a string field, and only there, `<value>` is a quoted string
+(`special:""="Open network"` on `PW`), and the generator emits the schema sentinel's label and
+refuses any other value; a tag's own `special:` entries also survive independently of whatever the
 schema's own `special` slot says (SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` declare 0 in
 the schema's special slot: an in-range value with a meaning, not a validation bypass; `WaitTimeNTP`
 0 = never wait: one restore attempt on the first cycle).
@@ -6241,10 +6460,11 @@ sensor-module/`SettingsGroup` count).
 (wrapped in `try/except MemoryError` or bounded; the UART receive allocations — `UARTComm`'s
 trains and `readline_until_complete()` — are chunked and capped, owner, 2026-10-05; J.8);
 `PrintLogHistory`/`RegionBuffer` (already clamp-then-allocate); `asy_captive_dns.py`'s `DNSQuery`
-(bounded by a single DNS datagram's structural limits); UDP receive buffers and I2C/SPI register
-buffers (small, fixed, datasheet-derived sizes); `ConfigManager` (each instance owns one small
-file, no aggregation); `asy_fram_manager.py`'s `_allocated_size` (tracks FRAM address space, not
-RAM); `asy_wifi_service.py` (no `network.WLAN.scan()` call anywhere).
+(one question of at most 255 octets, a reply of at most 287 B); UDP receive buffers (512 B for DNS,
+RFC 1035 §4.2.1, the resolver asking one byte more to detect a cut reply; 48 B for NTP, RFC 5905
+§7.3) and I2C/SPI register buffers (small, fixed, datasheet-derived sizes); `ConfigManager` (each
+instance owns one small file, no aggregation); `asy_fram_manager.py`'s `_allocated_size` (tracks
+FRAM address space, not RAM); `asy_wifi_service.py` (no `network.WLAN.scan()` call anywhere).
 
 **Revisited 2026-09-18**: the I2C register reads stopped allocating a fresh `bytes` per read
 (owner, 2026-09-18; G.2 states the design). Measured structurally (a unit test cannot show rp2
@@ -6603,12 +6823,13 @@ Nothing legitimate could provoke it — every accepted body is far smaller — b
 four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
-rather than per group: the largest legitimate body is **1,176 B** on `PUT /networking` on `dev`, whose
+rather than per group: the largest legitimate body is **1,318 B** on `PUT /networking` on `dev`, whose
 MQTT client settings (A.11) join that route; `PUT /sensors` is 1,080 B there, 743 B on `wozi` and 487 B
-on the other four devices. `/networking` is 536 B on every other device, `NTPHost`'s 253-character
-bound (RFC 1035) being 266 B of it; the others are smaller — `/notification` 530 B, `/system` 139 B,
-`/status` 22 B — and real traffic measures 232 B. So 2048 clears the schema maximum with **1.7x**
-margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048 = 8,192 B.
+on the other four devices. `/networking` is 678 B on every other device, `NTPHost`'s 253-character
+bound (RFC 1035) being 266 B of it, `HotspotPW` 78 B and `DNSFallback` 64 B; the others are smaller —
+`/notification` 530 B, `/system` 139 B, `/status` 22 B — and real traffic measures 232 B. So 2048
+clears the schema maximum with **1.6x** margin and real traffic with ~9x, and takes the
+four-connection worst case to 4 x 2,048 = 8,192 B.
 
 **Per route, not per group, and the difference is load-bearing** [SRC]. An earlier revision quoted
 1,132 B, which is the *NTP group alone*, on the grounds that `js/render.js` submits one group at a
@@ -6624,8 +6845,9 @@ computes both sides — the cap out of `WebserverService.__init__` by AST, the s
 `buildgen` model per device — and asserts no route can be sent a legitimate body the cap would
 reject. It also pins each device's maximum, so a new driver or a widened string bound fails
 deliberately instead of drifting toward the cap unnoticed; verified to bite by widening `NTPHost`
-to 4096, which reports `/networking` at 4,379 B. The hardware tier's W3 checks the same property on
-silicon but cannot run in CI, and its constant is the one this guard would otherwise be quoting.
+to 4096, which reported `/networking` at 4,379 B before `HotspotPW` and `DNSFallback` joined it.
+The hardware tier's W3 checks the same property on silicon but cannot run in CI, and its constant is
+the one this guard would otherwise be quoting.
 
 **Both are set from the one constructor parameter**, so they cannot drift apart again — the defect
 was never a value, it was the gap. `tests/test_asy_webserver_service.py`'s F.2b section pins this
@@ -6898,7 +7120,7 @@ bounded**: a request survives an unrelated `ready()` entry, is acknowledged on e
 locked region as well as from inside the poll loop, and reports rather than blocks if a wedged
 holder never acknowledges — without which the recovery route could itself wedge (changelog B15).
 A transaction cancelled at any await leaves the instance free for the next call; the peer recovers
-through the ordinary fault path (L1: `tests/test_uart_comm_hazard.py`).
+through the ordinary fault path (L1: `tests/test_uart_comm_cancel_sweep.py`).
 
 **The drain is bounded** (changelog A5), and `setup()` runs one at boot before the readiness gate
 opens: a peer mid-train, or one that outlived this side's reset, leaves partial-frame bytes in the
@@ -7064,13 +7286,15 @@ an ambient control of the same rounds. In `tests/test_uart_comm_hazard.py`, both
 `_MODE_SPECIFIC` says otherwise: a `CHUNKS` sweep accepting only 1 for a GET; sweeps of the last
 chunk's `SIZE`, every ACK field, every GET field, a data chunk's `UID`, `CHUNKS` constancy and the
 command against an expected ACK and GET, each accepting exactly what J.3-J.4 allow; a three-chunk
-train ending in an empty chunk refused; both mismatch diagnostics of J.6; five checks that cancel a
-SET, a GET, a streamed SET and a listener, or `clear()` the responder, at every await of a
-transaction — a step is one `asyncio.sleep_ms()` of the two UART modules, the pair is rebuilt at
-synchronous scope for each, and every instance must be free afterwards with the link recovering
-within two transactions; and the faulted hammer, which faults every measured transaction and
-asserts that count before its unchanged 16 B per-failure retention bound. Their tier-map rows land
-with the map.
+train ending in an empty chunk refused; both mismatch diagnostics of J.6; and the faulted hammer,
+which faults every measured transaction and asserts that count before its unchanged 16 B
+per-failure retention bound. In `tests/test_uart_comm_cancel_sweep.py`, both CRC modes: five checks
+that cancel a SET, a GET, a streamed SET and a listener, or `clear()` the responder, at every await
+of a transaction — a step is one `asyncio.sleep_ms()` of the two UART modules, the pair is rebuilt
+at synchronous scope for each, every instance must be free afterwards with the link recovering
+within two transactions, and a step past twice the clean run's awaits fails, that run measured at
+the slow-host limit below. Both files take their pair, budgets and two-mode registration from
+`tests/_uart_comm_hazard_common.py`. Their tier-map rows land with the map.
 
 **The mock tier's `timeout` is a scheduling budget, not a wire budget, and has to be sized as one.**
 The loopback link delivers in-memory within one event-loop turn, so nothing of the configured
@@ -7088,8 +7312,8 @@ margins are:
 | arm | budget | floor | margin |
 | --- | --- | --- | --- |
 | real `dev` link | 1000 ms | 2·2 + 50 + 21 = 75 ms | 13.3× |
-| `tests/test_uart_comm_hazard.py`, CRC16 | 240 ms (`l1.uart_comm_hazard_timeout_ms` × `l1.uart_comm_hazard_crc_timeout_factor`) | 2·1 + 1 + 21 = 24 ms | 10× |
-| same file, no CRC | 30 ms (`l1.uart_comm_hazard_timeout_ms`) | 24 ms | **1.25×** |
+| `tests/test_uart_comm_hazard.py` and `tests/test_uart_comm_cancel_sweep.py`, CRC16 | 240 ms (`l1.uart_comm_hazard_timeout_ms` × `l1.uart_comm_hazard_crc_timeout_factor`) | 2·1 + 1 + 21 = 24 ms | 10× |
+| same files, no CRC | 30 ms (`l1.uart_comm_hazard_timeout_ms`) | 24 ms | **1.25×** |
 
 The no-CRC arm is the outlier, and it is the one that failed: measured max scheduling gap 3 ms idle,
 23–26 ms at 8× CPU oversubscription, and past 30 ms in a loaded full-file run — reproduced twice in
@@ -7116,10 +7340,18 @@ Every UART L1 and L2 file judges its reply budgets the same way, through one sha
 (`tests/_uart_comm_harness.py`), which patches the two UART modules' `time` and `asyncio` and fails
 on a runtime attribute it does not yet model: `tests/test_asy_uart_comm.py` (every live exchange),
 `tests/test_asy_uart_driver.py`, `tests/test_asy_uart_link_driver.py`,
-`tests/test_uart_comm_hazard.py` (every check, the measuring ones entering it themselves) and
+`tests/test_uart_comm_hazard.py` (every check, the measuring ones entering it themselves),
+`tests/test_uart_comm_cancel_sweep.py` (every sweep entering it itself) and
 `tests/test_digital_twin_uart_link.py`; a bound that was elapsed milliseconds is the same bound in
 poll rounds, never dropped (agent, 2026-10-07). The I2C driver's stretched-clock tests run on
 `tests/_bus_hazard_catalog.py`'s own clock for `asy_i2c_driver`.
+The clock still lets host speed in through one door: a waiter's rounds are real 1 ms sleeps, so it
+takes at most one round per yield of its peer but up to one per elapsed millisecond, and a budget is
+host-independent only when it covers its peer's yields. CRC16 yields once per byte: one reply at
+this tier's 8-byte payload spends 79 virtual ms at the slow-host limit (no CRC: 20), so every CRC16
+check runs on the 240 ms arm above (agent, 2026-10-08). `PollRoundClock.pace(real=False)` reaches
+that limit on any host by turning every sleep into a bare yield; the cancellation sweeps count their
+clean run that way, so the step ceiling twice that count holds on a slow host too (agent, 2026-10-08).
 
 **Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
 Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
@@ -8684,7 +8916,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,176 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.7× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,318 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.6× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
@@ -8756,8 +8988,12 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `wifi.wlan_deinit_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after `deinit()` | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:160` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_mode_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after the interface mode change | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:164` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.sta_retry_after_loss_s` | 60 s | `src/asy_wifi_service.py` — `60` | the retry of a previously successful connection; `l2.bus_hazard_concurrency_flap_window_s` must outlast it; the messages stating the 60 s retry in `tests/test_digital_twin_bus_hazard_concurrency.py` and `tests/test_asy_wifi_service.py`; `l4.network_resilience_flap_step_s` stays short against it in both bench flapping tests | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:345` | unknown until measured | the CYW43 driver or the pin moves |
-| `wifi.led_flash_on_s` | 2.9 s | `src/asy_wifi_service.py` — `2.9` | the hotspot LED pattern | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:144` | unknown until measured | the CYW43 driver or the pin moves |
-| `wifi.led_flash_off_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the hotspot LED pattern | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:146` | unknown until measured | the CYW43 driver or the pin moves |
+| `wifi.led_hotspot_on_s` | 2.9 s | `src/asy_wifi_service.py` — `2.9` | the hotspot LED pattern without a client; `wifi.led_deactivated_off_s` mirrors it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:144` | unknown until measured | the CYW43 driver or the pin moves |
+| `wifi.led_hotspot_off_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the hotspot LED pattern without a client; `wifi.led_deactivated_on_s` mirrors it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:146` | unknown until measured | the CYW43 driver or the pin moves |
+| `wifi.led_hotspot_client_on_s` | 1.5 s | `src/asy_wifi_service.py` — `1.5` | the LED pattern while a station is on the hotspot, with `wifi.led_hotspot_client_off_s` | chosen: a station on the hotspot, an even slow blink unlike the hotspot, deactivated and steady-link patterns (agent, 2026-10-06) | distinct from every other Wi-Fi pattern by its even phases | a Wi-Fi LED pattern is added or changed |
+| `wifi.led_hotspot_client_off_s` | 1.5 s | `src/asy_wifi_service.py` — `1.5` | the LED pattern while a station is on the hotspot, with `wifi.led_hotspot_client_on_s` | chosen: a station on the hotspot, an even slow blink unlike the hotspot, deactivated and steady-link patterns (agent, 2026-10-06) | distinct from every other Wi-Fi pattern by its even phases | a Wi-Fi LED pattern is added or changed |
+| `wifi.led_deactivated_on_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the deactivated WLAN's LED pattern, with `wifi.led_deactivated_off_s`; `wifi.led_hotspot_off_s` mirrored | chosen: the hotspot pattern inverted (agent, 2026-09-30); it shows through the Wi-Fi LED setting like every pattern (owner, 2026-10-02) | mostly dark with a short blink, unlike every other Wi-Fi pattern | a Wi-Fi LED pattern is added or changed |
+| `wifi.led_deactivated_off_s` | 2.9 s | `src/asy_wifi_service.py` — `2.9` | the deactivated WLAN's LED pattern, with `wifi.led_deactivated_on_s`; `wifi.led_hotspot_on_s` mirrored | chosen: the hotspot pattern inverted (agent, 2026-09-30); it shows through the Wi-Fi LED setting like every pattern (owner, 2026-10-02) | mostly dark with a short blink, unlike every other Wi-Fi pattern | a Wi-Fi LED pattern is added or changed |
 | `wifi.reconnect_caller_grace_s` | 5 s | `src/asy_wifi_service.py` — `5` | lets the calling function's final tasks finish | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:204` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.reconnect_settle_s` | 3 s | `src/asy_wifi_service.py` — `3` | one settle after a reconnect | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:225` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.sta_disconnect_poll_s` | 0.5 s | `src/asy_wifi_service.py` — `0.5` | with `wifi.sta_disconnect_wait_iters` (20) the 10 s disconnect wait, a derived Dependant | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:220` | unknown until measured | the CYW43 driver or the pin moves |
@@ -8766,9 +9002,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `wifi.sta_connect_poll_iters` | 10 | `src/asy_wifi_service.py` — `10` | with `wifi.sta_connect_poll_s` the 5 s connect-status poll; the twin's `l2.twin_wifi_connect_delay_s` sits inside it; `l2.sensortask_integration_hotspot_wait_timeout_s` covers the poll | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:301` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.refresh_s` | 5 s | `src/asy_wifi_service.py` — `5` | the connection-check loop period | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:19` | unknown until measured | the CYW43 driver or the pin moves |
 | `udp.retry_backoff_s` | 0.5 s | `src/asy_udp_socket.py` — `0.5` | — | legacy `legacy/firmware/python/CommonDrivers/asy_udp_socket.py:42` | unknown until measured | the socket setup path changes |
-| `udp.conn_tries_default` | 1 | `src/asy_udp_socket.py` — `1` | — | estimated (agent, `ffe52a8`) — measurement owed: a socket setup's failure rate on the bench, L4 | unknown until measured | a caller starts relying on the default |
-| `udp.round_trip_tries_default` | 1 | `src/asy_udp_socket.py` — `1` | the NTP fetch runs on it; NTP retries one level up (`ntp.sync_retries`); the resolver overrides it with `dns.tries` | estimated (agent, `ffe52a8`) — measurement owed: an NTP round trip's loss rate on the bench network, L4 | unknown until measured | a caller's retry level moves |
-| `udp.ready_poll_ms` | 20 ms | `src/asy_udp_socket.py` — `20` | every UDP wait (no caller passes `wait_time_ms`) | estimated (agent, `6438bdc`) — measurement owed: the event-loop share an idle listener's polling takes, L2 and L4 | unknown until measured | the poller is split into a transaction and an idle rate |
+| `udp.poll_wait_ms` | 20 ms | `src/asy_udp_socket.py` — `20` | every UDP wait with a deadline: the resolver's and the NTP fetch's exchanges, each ending at most one step past `dns.timeout_ms` or `ntp.fetch_timeout_ms`; C.8's NTP hold bound | estimated (agent, `6438bdc`; the 20 ms rate owner-confirmed, 2026-07-19) — measurement owed: the latency an exchange's poll step adds and the event-loop share it takes, L4 | unknown until measured | the poller or a caller's timeout changes |
+| `udp.poll_idle_ms` | 100 ms | `src/asy_udp_socket.py` — `100` | the captive DNS listener's first answer after silence (at most one idle step late) and its idle poll rounds (10 per second); C.7.5's burst bound (four datagrams per idle poll) | estimated (agent, 2026-09-30, `8f61712`): idle poll rounds cut from 50 to 10 per second against at most 100 ms added to the first answer after silence — measurement owed: the event-loop share an idle captive-DNS listener's polling takes and its first-query latency, L2 (twin) and L4 (bench) (owner, 2026-10-05: kept, its measurement owed) | unknown until measured | the measurement lands, or the listener's latency need changes |
 | `dns_server.recv_backoff_initial_s` | 0.5 s | `src/asy_captive_dns.py` — `0.5` | the backoff series `tests/test_asy_captive_dns.py`'s gap bands bracket: `l1.captive_dns_gap_initial_min_ms`/`_max_ms`, `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` and `l1.captive_dns_gap_quad_min_ms`/`_max_ms` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket and the loop share the retries take, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.recv_backoff_max_s` | 5.0 s | `src/asy_captive_dns.py` — `5.0` | `l1.captive_dns_gap_cap_min_ms`/`_max_ms` bracket it, below the uncapped next step; `l4.hotspot_role_reversal_dns_recovery_timeout_s`, the bench's post-flood query deadline, is sized against it | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket and the loop share the retries take, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.recv_backoff_mult` | 2 | `src/asy_captive_dns.py` — `2` | the doubled and quadrupled gap bands of `tests/test_asy_captive_dns.py`: `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` and `l1.captive_dns_gap_quad_min_ms`/`_max_ms` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket, L2 | unknown until measured | the serve loop's receive path changes |
@@ -8889,6 +9124,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.fram_write_prompt_s` | 1.0 s | `tests/test_ntp_fram_system_integration.py` — `1.0` | stays well under `l1.fram_lock_fetch_timeout_ms` (2000 ms): the write completes promptly, not stuck behind the lock | estimated (agent, `c5478f0`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 0.2 → 1.0 s 'for scheduling-jitter headroom' | against that measurement, once taken | the code under test or the host class changes |
 | `l1.fram_lock_fetch_timeout_ms` | 2000 ms | `tests/test_ntp_fram_system_integration.py` — `2000` | `l1.fram_write_prompt_s` stays well under it | estimated (agent, `ce7b50d`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.sensortask_led_refusal_ms` | 100 ms | `tests/_sensortask_scenarios.py` — `100` | the second back-to-back `LightCmdLED` dispatch's own `timeout_ms` bound | estimated (agent, 2026-10-06) — measurement owed: elapsed of a refused dispatch at both GC stages on the slowest host, L1; the refusal is synchronous, so the bound sits far above it | against that measurement, once taken | the REST LED path or the host class changes |
+| `l1.sensortask_locked_status_ms` | 5000 ms | `tests/_sensortask_scenarios.py` — `5000` | the bound on a `GET /status` taken while a test task holds `wifi_mode_lock`; it only ends a regression that waits on the lock instead of letting it hang the file | measured (agent, 2026-10-08): one `GET /status` took 86-194 ms on `build-standard` and 129-318 ms on `build-settrace` | more than 15× the slowest measured read | a `GET /status` nears 1 s on the coverage lane |
 | `l1.asy_notification_service_max_rounds` | 200 | `tests/test_asy_notification_service.py` — `200` | a hang guard in scheduler rounds for the coordinator's waits | measured at most 2 rounds used (agent, 2026-10-06, single observation, x86 VM) | 100x the observed use | the coordinator's await structure changes |
 | `l1.notification_neopixel_wait_until_timeout_ms` | 10000 ms | `tests/test_notification_neopixel_integration.py` — `10000` | a hang guard; above the product's own 2 × FlashDur settle | measured longest wait 1004 ms (agent, 2026-10-06, single observation, x86 VM) | about 10x the observed wait | FlashDur's settle or the signal path changes |
 | `l1.captive_dns_wait_until_timeout_ms` | 1000 ms | `tests/test_asy_captive_dns.py` — `1000` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -8897,7 +9133,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.captive_dns_no_backoff_elapsed_max_ms` | 1000 ms | `tests/test_asy_captive_dns.py` — `1000` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_reach_recv_ms` | 20 ms | `tests/test_asy_captive_dns.py` — `20` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_bind_wait_ms` | 50 ms | `tests/test_asy_captive_dns.py` — `50` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.captive_dns_reply_wait_ms` | 200 ms | `tests/test_asy_captive_dns.py` — `200` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_cycle_wait_ms` | 100 ms | `tests/test_asy_captive_dns.py` — `100` | — | estimated (agent, `96ba194`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_cleanup_tick_ms` | 10 ms | `tests/test_asy_captive_dns.py` — `10` | — | estimated (agent, `96ba194`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.captive_dns_cleanup_tick_count` | 10 | `tests/test_asy_captive_dns.py` — `10` | — | estimated (agent, `96ba194`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -8920,14 +9155,14 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.uart_comm_hazard_lock_take_ms` | 1 ms | `tests/test_uart_comm_hazard.py` — `1` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_in_flight_ms` | 2 ms | `tests/test_uart_comm_hazard.py` — `2` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_listener_park_ms` | 5 ms | `tests/test_uart_comm_hazard.py` — `5` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_exchange_limit_s` | 20 s | `tests/test_uart_comm_hazard.py` — `20` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_exchange_limit_s` | 20 s | `tests/_uart_comm_hazard_common.py` — `20` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_recovery_limit_s` | 30 s | `tests/test_uart_comm_hazard.py` — `30` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_retention_limit_s` | 120 s | `tests/test_uart_comm_hazard.py` — `120` | — | estimated (agent, `8850974`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_step_bound_s` | 5 s | `tests/test_uart_comm_hazard.py` — `5` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_step_bound_s` | 5 s | `tests/_uart_comm_hazard_common.py` — `5` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_fragment_gap_ms` | 3 ms | `tests/test_uart_comm_hazard.py` — `3` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_mismatch_limit_s` | 60 s | `tests/test_uart_comm_hazard.py` — `60` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_hammer_limit_s` | 300 s | `tests/test_uart_comm_hazard.py` — `300` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_timeout_ms` | 30 ms | `tests/test_uart_comm_hazard.py` — `30` | × `l1.uart_comm_hazard_crc_timeout_factor` the CRC16 arm's budget, × `l1.uart_comm_hazard_sustained_timeout_factor` the clean runs' budget (J.7's margin table) | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_timeout_ms` | 30 ms | `tests/_uart_comm_hazard_common.py` — `30` | × `l1.uart_comm_hazard_crc_timeout_factor` the CRC16 arm's budget, × `l1.uart_comm_hazard_sustained_timeout_factor` the clean runs' budget (J.7's margin table) | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_warmup_rounds` | 20 | `tests/test_uart_comm_hazard.py` — `20` | — | estimated (agent, `8850974`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_measured_rounds` | 100 | `tests/test_uart_comm_hazard.py` — `100` | — | estimated (agent, `8850974`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_hammer_rounds` | 150 | `tests/test_uart_comm_hazard.py` — `150` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -9051,7 +9286,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms` | 150 ms | `tests/test_ntp_wifi_dns_integration.py` — `150` | — | estimated (agent, `9dd7d71`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.ntp_wifi_dns_integration_failure_cycles` | 8 | `tests/test_ntp_wifi_dns_integration.py` — `8` | × `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms` = the failed-fetch run, past the old five-failure give-up | estimated (agent, `c20f80b`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.system_service_run_bound_s` | 5 s | `tests/test_asy_system_service.py` — `5` | — | estimated (agent, `c33e6db`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.uart_comm_hazard_crc_timeout_factor` | 8 | `tests/test_uart_comm_hazard.py` — `8` | the CRC16 arm's budget, `l1.uart_comm_hazard_timeout_ms` × it (J.7's margin table) | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.uart_comm_hazard_crc_timeout_factor` | 8 | `tests/_uart_comm_hazard_common.py` — `8` | the CRC16 arm's budget, `l1.uart_comm_hazard_timeout_ms` × it (J.7's margin table) | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_sustained_timeout_factor` | 8 | `tests/test_uart_comm_hazard.py` — `8` | the clean runs' budget, `l1.uart_comm_hazard_timeout_ms` × it (J.7) | estimated (agent, `3a1e5f3`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_recovery_attempts` | 4 | `tests/test_uart_comm_hazard.py` — `4` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.uart_comm_hazard_retention_per_transaction_max_bytes` | 6.0 B | `tests/test_uart_comm_hazard.py` — `6.0` | — | estimated (agent, `1e1a26a`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -9104,6 +9339,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.twin_wifi_connect_delay_s` | 0.7 s | `digital_twin/network.py` — `0.7` | sits inside the 5 s connect-status poll (`wifi.sta_connect_poll_s` × `wifi.sta_connect_poll_iters`); `l2.launch_fault_duration_s` outlasts it | estimated (agent, `b8791e6`) — measurement owed: a real CYW43 connect time on the dev bench, L4 | inside the 5 s poll | the connect-status poll changes |
 | `l2.twin_wire_log_clear_interval_ms` | 5000 ms | `digital_twin/run_generic_integration.py` — `5000` | the twin's wire-log memory between clears | estimated (agent, `dde4b31`) — measurement owed: the wire log's peak size between clears, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_ready_poll_ms` | 20 ms | `digital_twin/run_generic_integration.py` — `20`; `digital_twin/segfault_stress_repro.py` — `20` | — | estimated (agent, `fcc5339`) — measurement owed: the readiness wait's rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.twin_stop_file_poll_ms` | 100 ms | `digital_twin/run_generic_integration.py` — `100` | how soon a run ends once its caller writes the stop file | estimated (agent, 2026-10-08) — measurement owed: the stop-to-exit latency against the generated-boot test's elapsed, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wdt_overrun_wait_s` | 9.0 s | `tests/test_digital_twin_sensortask_integration.py` — `9.0` | just past `wdt.timeout_ms` | estimated (agent, `25fc2fe`) — measurement owed: none: one second past the watchdog timeout | 1 s past the 8 s watchdog | `wdt.timeout_ms` changes |
 | `l2.construction_scenarios_run_timeout_s` | 10.0 s | `tests/_digital_twin_construction_scenarios.py` — `10.0` | — | estimated (agent, `a974244`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bus_hazard_concurrency_run_bound_s` | 20.0 s | `tests/test_digital_twin_bus_hazard_concurrency.py` — `20.0` | — | estimated (agent, `f3a2aa7`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -9622,7 +9858,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | against the measured per-file maxima, owed at both GC stages | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop) | two transient timeouts absorbed | the backstop rule changes |
-| `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
+| `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`); the tier measured 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` | every `timeout` in the runner | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after SIGTERM | unknown until measured | the interpreter's signal handling changes |
 | `runner.probe_iterations` | 500000 | `scripts/test.sh` — `500000` | the speed bands' calibration | estimated (agent, `d370413`) — measurement owed: the probe's elapsed on the bench Pi4 (calibration owed) | unknown until measured | the interpreter build changes |
 | `runner.band_fast_ms` | 250 ms | `scripts/test.sh` — `250` | picks `runner.mult_fast` | measured 131-141 ms on the project's x86 sandbox, single observation; calibration on the Pi4 owed (estimated (agent, `d370413`) — measurement owed: the probe on the bench Pi4, L0) | unknown until calibrated | the host class or the interpreter build changes |

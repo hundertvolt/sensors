@@ -1299,7 +1299,7 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
     assert isinstance(err_count, int)
     assert err_count >= 1
     # Each layer the failure reaches keeps its own entry: the store's refusal and SGP40's failed backup.
-    assert _last_err(log, "ErrNum") == code("E", "SGP_BACKUP_WRITE")
+    assert log["SGP40"]["ErrNum"][-2:] == [code("E", "SGP_BACKUP_WRITE"), code("E", "LOG_RAM_ONLY")]  # SGP40's own store is paused too
     assert code("W", "FRAM_PAUSED") in _warnings(run(manager.pr.get_log()))
 
 
@@ -1434,7 +1434,7 @@ def test_a_failed_backup_write_logs_in_fram_and_in_sgp40() -> None:
     run(_write_and_back_up(reader, fake_bus, 1))
     chip.drop_wren = False
     assert reader._last_backup is None
-    assert _last_err(run(reader.get_error_counter()), "ErrNum") == code("E", "SGP_BACKUP_WRITE")
+    assert run(reader.get_error_counter())["SGP40"]["ErrNum"][-2:] == [code("E", "SGP_BACKUP_WRITE"), code("E", "LOG_RAM_ONLY")]  # SGP40's own store fails too
     fram_log = next(iter(run(manager.pr.get_log()).values()))
     assert any(kind != "N" for kind in fram_log["ErrType"]), f"the FRAM layer persisted nothing: {fram_log!r}"
 

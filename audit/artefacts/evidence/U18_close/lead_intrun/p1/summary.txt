@@ -1,0 +1,21 @@
+test_asy_udp_socket d rc=0 7.187054162 s 67/67 passed, 0 failed, 0 skipped mem=0
+test_asy_udp_socket t rc=0 7.320387188 s 67/67 passed, 0 failed, 0 skipped mem=0
+test_asy_dns_client d rc=0 .805953345 s 44/44 passed, 0 failed, 0 skipped mem=0
+test_asy_dns_client t rc=0 .814514606 s 44/44 passed, 0 failed, 0 skipped mem=0
+test_asy_captive_dns d rc=0 25.556798954 s 61/61 passed, 0 failed, 0 skipped mem=0
+test_asy_captive_dns t rc=0 25.561291436 s 61/61 passed, 0 failed, 0 skipped mem=0
+test_asy_wifi_service d rc=0 20.144475100 s 231/231 passed, 0 failed, 0 skipped mem=0
+test_asy_wifi_service t rc=0 21.263605556 s 231/231 passed, 0 failed, 0 skipped mem=0
+test_neopixel_wifi_integration d rc=0 2.103104935 s 6/6 passed, 0 failed, 0 skipped mem=0
+test_neopixel_wifi_integration t rc=0 2.422859834 s 6/6 passed, 0 failed, 0 skipped mem=0
+test_readiness_gates d rc=0 .175395533 s 14/14 passed, 0 failed, 0 skipped mem=0
+test_readiness_gates t rc=0 .256173345 s 14/14 passed, 0 failed, 0 skipped mem=0
+test_setter_microdot_integration d rc=0 3.900293170 s 39/39 passed, 0 failed, 0 skipped mem=0
+test_setter_microdot_integration t rc=0 4.141287884 s 39/39 passed, 0 failed, 0 skipped mem=0
+test_asy_print_log d rc=0 .383968037 s 79/79 passed, 0 failed, 0 skipped mem=0
+test_asy_print_log t rc=0 .514589868 s 79/79 passed, 0 failed, 0 skipped mem=0
+test_asy_base_classes d rc=0 .531964218 s 171/171 passed, 0 failed, 0 skipped mem=0
+test_asy_base_classes t rc=0 .651599680 s 171/171 passed, 0 failed, 0 skipped mem=0
+test_digital_twin_sensortask_integration d rc=0 61.488315041 s 15/15 passed, 0 failed, 0 skipped mem=0
+test_digital_twin_sensortask_integration t rc=1 63.505997508 s 14/15 passed, 1 failed, 0 skipped mem=0
+done

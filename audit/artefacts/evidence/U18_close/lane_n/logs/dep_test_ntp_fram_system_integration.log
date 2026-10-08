@@ -1,0 +1,69 @@
+PASS test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreachable
+PASS test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up
+FAIL test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/tests/microtest.py", line 35, in run
+  File "tests/test_ntp_fram_system_integration.py", line 417, in test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced
+  File "tests/test_ntp_fram_system_integration.py", line 66, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_ntp_fram_system_integration.py", line 411, in scenario
+  File "tests/test_ntp_fram_system_integration.py", line 281, in sync_real_ntp_chain
+  File "tests/test_ntp_fram_system_integration.py", line 210, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+FAIL test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/tests/microtest.py", line 35, in run
+  File "tests/test_ntp_fram_system_integration.py", line 315, in test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced
+  File "tests/test_ntp_fram_system_integration.py", line 66, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_ntp_fram_system_integration.py", line 312, in scenario
+  File "tests/test_ntp_fram_system_integration.py", line 281, in sync_real_ntp_chain
+  File "tests/test_ntp_fram_system_integration.py", line 210, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+FAIL test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/tests/microtest.py", line 35, in run
+  File "tests/test_ntp_fram_system_integration.py", line 351, in test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock
+  File "tests/test_ntp_fram_system_integration.py", line 66, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_ntp_fram_system_integration.py", line 347, in scenario
+  File "tests/test_ntp_fram_system_integration.py", line 281, in sync_real_ntp_chain
+  File "tests/test_ntp_fram_system_integration.py", line 210, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+PASS test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_never_syncs
+FAIL test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_timestamp:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/tests/microtest.py", line 35, in run
+  File "tests/test_ntp_fram_system_integration.py", line 540, in test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_timestamp
+  File "tests/test_ntp_fram_system_integration.py", line 66, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_ntp_fram_system_integration.py", line 535, in before_reboot
+  File "tests/test_ntp_fram_system_integration.py", line 281, in sync_real_ntp_chain
+  File "tests/test_ntp_fram_system_integration.py", line 210, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+PASS test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_up
+PASS test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up
+PASS test_fram_write_into_require_ntp_refuses_when_the_real_ntp_chain_has_never_synced
+FAIL test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_independently:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18n/tests/microtest.py", line 35, in run
+  File "tests/test_ntp_fram_system_integration.py", line 461, in test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_independently
+  File "tests/test_ntp_fram_system_integration.py", line 66, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_ntp_fram_system_integration.py", line 453, in scenario
+  File "tests/test_ntp_fram_system_integration.py", line 281, in sync_real_ntp_chain
+  File "tests/test_ntp_fram_system_integration.py", line 210, in __enter__
+AttributeError: module 'asy_ntp_client' has no attribute '_NTP_UDP_PORT'
+PASS test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_concurrent_real_sync
+7/12 passed, 5 failed, 0 skipped
+rc=1 elapsed=11.391515026

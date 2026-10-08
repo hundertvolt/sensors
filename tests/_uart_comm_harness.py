@@ -118,12 +118,14 @@ class PollRoundClock:
     # transaction, and one still recovering when the heap is sampled reads as retention (agent, 2026-10-07).
     def __init__(self, stall_after: int = 0, stall_ms: int = 0) -> None:
         self._stall = [0, stall_after, stall_ms, 0]  # countdown (0 = idle), its start, the stall, whether it fired
+        self._paced = [True]  # False: a sleep only yields (pace())
         self._saved: tuple[Any, Any, Any, Any] | None = None
 
     def __enter__(self) -> "PollRoundClock":
         self._saved = (asy_uart_comm.time, asy_uart_comm.asyncio, asy_uart_driver.time, asy_uart_driver.asyncio)
         now: list[Any] = [time.ticks_ms()]  # the real value: deadlines stored before entry stay comparable
         stall = self._stall
+        paced = self._paced
 
         class _Time:
             ticks_add = staticmethod(time.ticks_add)
@@ -142,7 +144,7 @@ class PollRoundClock:
             @staticmethod
             async def sleep_ms(ms: int) -> None:
                 now[0] = time.ticks_add(now[0], ms)
-                await asyncio.sleep_ms(ms)
+                await asyncio.sleep_ms(ms if paced[0] else 0)
                 if stall[0] > 0:
                     stall[0] -= 1
                     if stall[0] == 0 and stall[2]:
@@ -161,6 +163,11 @@ class PollRoundClock:
     def arm(self) -> None:
         # Counts down to the one planted stall: stall_after sleeps on, the whole interpreter blocks for stall_ms.
         self._stall[0], self._stall[3] = self._stall[1], 0
+
+    def pace(self, *, real: bool) -> None:
+        # real=False turns every sleep into a bare yield: each waiter then polls at every scheduling point, the most
+        # rounds any host gives the same work - a slow host's limit, without depending on this host's speed (J.7).
+        self._paced[0] = real
 
     def disarm(self) -> bool:
         # True when the planted stall fired between arm() and here, or when none was planted.

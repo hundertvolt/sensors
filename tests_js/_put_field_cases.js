@@ -121,5 +121,14 @@ export function validStringValue(field, length) {
     if (field.shape === "countryCode") {
         return "XX"; // cyw43's worldwide code: the one alpha-2 pair valid on every device
     }
+    if (field.shape === "hostName") {
+        // Every 32nd character a dot (never the last): labels of at most 32 characters, `length` in all.
+        return Array.from({ length }, (_, i) => (i % 32 === 31 && i !== length - 1 ? "." : "x")).join("");
+    }
+    if (field.shape === "ipv4List") {
+        // An address list takes few lengths: the longest of one to three addresses that fits, else one.
+        const lists = ["1.1.1.1", "1.1.1.1,2.2.2.2", "1.1.1.1,2.2.2.2,3.3.3.3", "100.100.100.100,100.100.100.101,100.100.100.102"];
+        return lists.filter((list) => list.length <= length).at(-1) ?? "1.1.1.1";
+    }
     return "x".repeat(length);
 }

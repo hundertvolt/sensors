@@ -5,6 +5,7 @@ See `digital_twin/README.md`'s "Booting a generated device" section and SPECIFIC
 import asyncio
 import gc
 import json
+import os
 import sys
 import time
 from collections import namedtuple
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
     from typing import Any, NamedTuple
 
     import network
+
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 import machine
 from _twin_common import Injections, StatePaths
@@ -45,13 +48,15 @@ _GC_THRESHOLD_DEFAULT = 32768
 if TYPE_CHECKING:
 
     class RunLimits(NamedTuple):
-        # How long the run serves (None: forever), its gc.threshold() and the optional heap sampler period.
+        # How long the run serves (None: forever), its gc.threshold(), the optional heap sampler period
+        # and the optional file whose appearance ends the serving early (_serve_until()).
         duration: float | None
         gc_threshold: int
         mem_sample_interval_ms: int | None
+        stop_file: str | None
 
 else:
-    RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms"))
+    RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
 
 
 class RunConfig:
@@ -74,7 +79,7 @@ class RunConfig:
         self.device = device if device is not None else module
         self.state = state if state is not None else StatePaths(None, None)
         self.injections = injections if injections is not None else Injections(None, [], [], [])
-        self.run = run if run is not None else RunLimits(None, _GC_THRESHOLD_DEFAULT, None)
+        self.run = run if run is not None else RunLimits(None, _GC_THRESHOLD_DEFAULT, None, None)
 
     def __eq__(self, other: "object") -> bool:
         if not isinstance(other, RunConfig):
@@ -109,6 +114,26 @@ _READY_POLL_MS = 20
 
 # @tunable l2.twin_wire_log_clear_interval_ms = 5000
 _WIRE_LOG_CLEAR_INTERVAL_MS = 5000
+
+
+# @tunable l2.twin_stop_file_poll_ms = 100
+_STOP_FILE_POLL_MS = 100
+
+
+async def _serve_until(duration_s: float, stop_file: "str | None") -> None:
+    # The whole duration, or until stop_file exists: either way serving ends here and the run shuts down
+    # on main()'s one clean path, so a caller done early skips the idle tail without a signal.
+    if stop_file is None:
+        await asyncio.sleep(duration_s)
+        return
+    for _ in range(-(-int(duration_s * 1000) // _STOP_FILE_POLL_MS)):  # polls, not ticks: never short of the duration
+        try:
+            os.stat(stop_file)
+        except OSError:
+            await asyncio.sleep_ms(_STOP_FILE_POLL_MS)
+            continue
+        print("digital_twin/run_generic_integration.py: stop file seen, ending the run")
+        return
 
 
 def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "network.WLAN") -> None:
@@ -309,7 +334,7 @@ async def main(config: RunConfig) -> None:
             while True:
                 await asyncio.sleep(3600)
         elif run.duration > 0:
-            await asyncio.sleep(run.duration)
+            await _serve_until(run.duration, run.stop_file)
     finally:
         # Part F.6, defense in depth now that Part B.14.1 forces safe SIGINT delivery: an
         # interrupt inside gc_collect() can leave the heap locked, and this whole block
@@ -361,6 +386,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     duration: float | None = None
     gc_threshold = _GC_THRESHOLD_DEFAULT
     mem_sample_interval_ms: int | None = None
+    stop_file: str | None = None
 
     while remaining:
         arg = remaining.pop(0)
@@ -395,6 +421,8 @@ def parse_args(argv: "list[str]") -> RunConfig:
             gc_threshold = int(_pop_value(remaining, arg))
         elif arg == "--mem-sample-interval-ms":
             mem_sample_interval_ms = int(_pop_value(remaining, arg))
+        elif arg == "--stop-file":
+            stop_file = _pop_value(remaining, arg) or None  # the same "" convention as --fram-state-path
         else:
             raise ValueError(f"unrecognized argument: {arg!r}")
 
@@ -411,7 +439,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         device=device,
         state=StatePaths(fram_state_path, scd30_state_path),
         injections=Injections(seed, faults, hangs, wifi_outcomes),
-        run=RunLimits(duration, gc_threshold, mem_sample_interval_ms),
+        run=RunLimits(duration, gc_threshold, mem_sample_interval_ms, stop_file),
     )
 
 

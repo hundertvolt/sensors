@@ -177,6 +177,18 @@ def test_lines_run_for_the_first_time_leave_the_collected_heap_where_it_was(repo
     assert max(recorded) <= len(source), f"a recorded line lies past the file's end: {max(recorded)} > {len(source)}"
 
 
+def test_every_traced_file_gets_its_line_table_up_front(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    # A file without a table records through the allocating fallback; subdirectories count (digital_twin/unixport/).
+    source = (repo_root / _RUNNER).read_text()
+    assert source.count("sys.exit(_run())") == 1, "the runner's entry line moved - update this probe"
+    lister = tmp_path / "list_tables.py"
+    lister.write_text(source.replace("sys.exit(_run())", "print(json.dumps(sorted(_line_tables())))"))
+    completed = subprocess.run([str(settrace_bin), str(lister)], cwd=repo_root, env={"MICROPYPATH": ".frozen"}, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False)
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    expected = sorted(p.relative_to(repo_root).as_posix() for prefix in ("src", "digital_twin") for p in (repo_root / prefix).rglob("*.py"))
+    assert json.loads(completed.stdout) == expected
+
+
 def test_the_trace_functions_close_over_nothing(repo_root: Path) -> None:
     # The tracer runs on every traced line, and MicroPython heap-allocates a closure call's argument array once its
     # closed-over values plus arguments pass five (py/objclosure.c): one nested trace function with one more captured

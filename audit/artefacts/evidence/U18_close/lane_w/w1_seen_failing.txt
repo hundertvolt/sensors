@@ -1,0 +1,68 @@
+FAIL test_update_wifi_snapshot_degrades_to_none_addresses_when_ifconfig_raises:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1061, in test_update_wifi_snapshot_degrades_to_none_addresses_when_ifconfig_raises
+AttributeError: 'WIFI' object has no attribute 'Subnet'
+FAIL test_get_dns_server_ip_returns_the_dhcp_dns_of_the_last_snapshot:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1078, in test_get_dns_server_ip_returns_the_dhcp_dns_of_the_last_snapshot
+AssertionError: 
+FAIL test_status_getters_return_the_last_snapshot_during_an_outage_retry:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1309, in test_status_getters_return_the_last_snapshot_during_an_outage_retry
+AssertionError: 
+FAIL test_hotspot_snapshot_has_no_rssi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1026, in test_hotspot_snapshot_has_no_rssi
+AttributeError: 'WIFI' object has no attribute 'RSSI'
+FAIL test_get_dict_data_wraps_get_data_under_the_wifi_key:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 977, in test_get_dict_data_wraps_get_data_under_the_wifi_key
+TypeError: WIFI() takes 4 positional arguments but 8 were given
+FAIL test_get_data_returns_the_cached_snapshot_not_a_live_query:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 970, in test_get_data_returns_the_cached_snapshot_not_a_live_query
+TypeError: WIFI() takes 4 positional arguments but 8 were given
+PASS test_integration_sta_connect_succeeds_and_propagates_to_get_data
+PASS test_the_snapshot_timestamp_is_none_until_the_clock_is_set
+FAIL test_get_data_reflects_the_initial_never_connected_state:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 965, in test_get_data_reflects_the_initial_never_connected_state
+TypeError: WIFI() takes 4 positional arguments but 8 were given
+FAIL test_switch_wlan_mode_records_the_selected_interface:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 2679, in test_switch_wlan_mode_records_the_selected_interface
+AttributeError: 'WifiService' object has no attribute '_ap_selected'
+FAIL test_get_dns_server_ip_returns_the_last_snapshot_value_while_the_lock_is_held:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1090, in test_get_dns_server_ip_returns_the_last_snapshot_value_while_the_lock_is_held
+AssertionError: 
+FAIL test_update_wifi_snapshot_sta_mode_reports_the_four_addresses_and_the_rssi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1009, in test_update_wifi_snapshot_sta_mode_reports_the_four_addresses_and_the_rssi
+AttributeError: 'WIFI' object has no attribute 'RSSI'
+FAIL test_get_dns_server_ip_reads_no_radio:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1101, in test_get_dns_server_ip_reads_no_radio
+AssertionError: 
+FAIL test_a_snapshot_without_a_link_has_no_rssi_and_no_dhcp_dns:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1036, in test_a_snapshot_without_a_link_has_no_rssi_and_no_dhcp_dns
+AttributeError: 'WIFI' object has no attribute 'RSSI'
+FAIL test_deactivated_snapshot_makes_no_radio_call:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_asy_wifi_service.py", line 1051, in test_deactivated_snapshot_makes_no_radio_call
+AttributeError: 'WIFI' object has no attribute 'Subnet'
+2/15 passed, 13 failed, 0 skipped

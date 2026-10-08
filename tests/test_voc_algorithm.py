@@ -66,6 +66,28 @@ def make_fram_manager_sharing(spi_bus: SPI) -> FRAMManager:
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
+
+# vocalgorithm_init(), then every sraw_sequence() sample: two tests only read this run, so the first to ask builds it
+# once - each index as two little-endian bytes, and every 500th sample's index, pack_into() result and packed state.
+_REFERENCE_TRAJECTORY: "list[tuple[bytearray, list[tuple[int, int, bool, bytes]]]]" = []
+
+
+def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes]]]":
+    if not _REFERENCE_TRAJECTORY:
+        algo = VOCAlgorithm()
+        algo.vocalgorithm_init()
+        indices = bytearray(2 * SRAW_COUNT)
+        checkpoints: list[tuple[int, int, bool, bytes]] = []
+        buf = bytearray(VOCAlgorithm.get_params_memsize())
+        for i, sraw in enumerate(sraw_sequence()):
+            voc_index = algo.vocalgorithm_process(sraw)
+            indices[2 * i] = voc_index & 0xFF
+            indices[2 * i + 1] = voc_index >> 8
+            if i % 500 == 0:
+                checkpoints.append((i, voc_index, algo.params.pack_into(buf), bytes(buf)))
+        _REFERENCE_TRAJECTORY.append((indices, checkpoints))
+    return _REFERENCE_TRAJECTORY[0]
+
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
 # ---------------------------------------------------------------------------
@@ -163,17 +185,19 @@ def test_process_oscillating_extreme_readings_widens_the_variance_scaling() -> N
 
 
 def test_process_sustained_extreme_low_then_high_readings_clamps_the_sigmoid() -> None:
-    # Found the same way: the mean/variance estimator's sigmoid clamp for x < -50.0, returning its own
-    # sigmoid_l directly rather than computing a real division, is only reached after many cycles of one
-    # sustained extreme sraw value have pushed the running mean far enough from the current sample.
+    # Each estimator branch this reaches hangs on its uptime counters, so they are restored (as from FRAM), not counted:
+    # at 4953 s, what 5000 low readings leave, a full-scale step overflows _fix16_mul(std, std / 256); from 7703 s the
+    # gamma-mean sigmoid (x0 2700 s, k 0.01) is past its x > 50 clamp, and the variance one (x0 5220 s) at 1 s below -50.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
-    last = 0
-    for _ in range(5000):
-        last = algo.vocalgorithm_process(20001)
-    for _ in range(3000):
-        last = algo.vocalgorithm_process(52767)
-    assert 1 <= last <= 500  # still a valid index despite the sustained-extreme input
+    for _ in range(46):  # the blackout calls, as in the after-blackout test above
+        algo.vocalgorithm_process(20001)
+    for uptime, sraw in ((None, 20001), (4953, 52767), (7702, 52767)):
+        if uptime is not None:
+            algo.params.m_mean_variance_estimator_uptime_gamma = _f16(uptime)
+            algo.params.m_mean_variance_estimator_uptime_gating = _f16(uptime)
+        for _ in range(100):
+            assert 1 <= algo.vocalgorithm_process(sraw) <= 500  # still a valid index despite the sustained-extreme input
 
 
 # ---------------------------------------------------------------------------
@@ -362,16 +386,12 @@ def test_pack_into_writes_little_endian() -> None:
 
 
 def test_the_ports_own_state_always_restores() -> None:
-    algo = VOCAlgorithm()
-    algo.vocalgorithm_init()
-    buf = bytearray(VOCAlgorithm.get_params_memsize())
-    for i, sraw in enumerate(sraw_sequence()):
-        algo.vocalgorithm_process(sraw)
-        if i % 500 == 0:
-            assert algo.params.pack_into(buf) is True
-            for value in struct.unpack_from("<32q", buf):
-                assert -0x80000000 <= value <= 0x7FFFFFFF, (i, value)
-            assert VOCAlgorithm().params.unpack_from(buf) is True
+    _indices, checkpoints = reference_trajectory()
+    for i, _voc_index, packed, state in checkpoints:
+        assert packed is True, i
+        for value in struct.unpack_from("<32q", state):
+            assert -0x80000000 <= value <= 0x7FFFFFFF, (i, value)
+        assert VOCAlgorithm().params.unpack_from(state) is True, i
 
 
 def test_the_lowered_uptime_limit_leaves_the_output_unchanged() -> None:
@@ -512,17 +532,8 @@ def test_fix16_helpers_match_the_c_reference_vectors() -> None:
 
 
 def test_the_index_sequence_matches_the_c_reference() -> None:
-    algo = VOCAlgorithm()
-    algo.vocalgorithm_init()
-    indices = bytearray(2 * SRAW_COUNT)
-    sampled = []
-    for i, sraw in enumerate(sraw_sequence()):
-        voc_index = algo.vocalgorithm_process(sraw)
-        indices[2 * i] = voc_index & 0xFF
-        indices[2 * i + 1] = voc_index >> 8
-        if i % 500 == 0:
-            sampled.append(voc_index)
-    assert tuple(sampled) == INDEX_EVERY_500
+    indices, checkpoints = reference_trajectory()
+    assert tuple(voc_index for _i, voc_index, _packed, _state in checkpoints) == INDEX_EVERY_500
     framed = run(CRC32().add(indices))
     assert framed is not None
     assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32

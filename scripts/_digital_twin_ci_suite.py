@@ -49,6 +49,8 @@ HOST = "127.0.0.1"
 PORT = 18080  # a fixed, non-privileged, non-8080-default port - avoids colliding with a real
 # manual `scripts/run_unix_port_integration.sh` run on the same machine.
 DNS_PORT = 53  # asy_captive_dns.py's CaptiveDNS binds ("0.0.0.0", 53) unconditionally, real port only.
+_NTP_UNREACHABLE_HOST = "192.0.2.1"  # RFC 5737 TEST-NET-1, never answers: Run 8 configures it, Run 9 watches it
+_NTP_PORT = 123
 
 # Per-module PrintLog `name=` values. A verbose log line is `print(name, *args)`, so a line
 # starting with one of these plus a space is real module output, not the runner's own banners.
@@ -114,10 +116,10 @@ _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40'
 # deliberately small: each one ends the driver's read task, and three is the supervisor's budget.
 # @tunable l2.wifi_scripted_failures = 5
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
-# All five are the same verdict, so the central newest-entry rule (asy_print_log.py) spends ONE history
-# slot on them while still counting all five. Counter and slot count are therefore different numbers
-# here, deliberately - SPECIFICATION.md Part C.7.1.
-_WIFI_PERSISTED_WARNINGS = 1
+# The five identical verdicts spend ONE history slot (the newest-entry rule, asy_print_log.py) and count five;
+# the fifth's fallback to the hotspot persists its own WLAN_TO_HOTSPOT warning in a second slot (Part C.7.1).
+_WIFI_PERSISTED_WARNINGS = 2
+_WIFI_PERSISTED_EVENTS = _WIFI_SCRIPTED_FAILURES + 1  # the counter: five failures, then the fallback
 
 # ResetErrors resets every source at once, each FRAM-backed one still paying its own chunk write, so it
 # far exceeds _http()'s 5s default. The value below is DERIVED from the server's own _DEFAULT_OUTER_CAP_S;
@@ -729,6 +731,26 @@ def _try_dns_query(host: str, timeout: float = 1.0) -> bool:
         sock.close()
 
 
+def _route_leaves_host(host: str, port: int) -> bool:
+    # A UDP connect() sends nothing: it is the route lookup the twin's own UDPSocket makes on this same host, and
+    # it fails (ENETUNREACH) where no route leaves - a network namespace holding only lo, for one.
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.connect((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _ntp_unreachable_verdict(nums: list[Any], *, route: bool) -> tuple[bool, str]:
+    # Run 9's check: a request that leaves this host goes unanswered (NTP_NO_REPLY); with no route out the send
+    # itself fails (NTP_NOT_SENT). Exactly the one the route predicts is logged, never the other.
+    expected, other = ("NTP_NO_REPLY", "NTP_NOT_SENT") if route else ("NTP_NOT_SENT", "NTP_NO_REPLY")
+    why = "a route to it leaves this host, so the request goes out unanswered" if route else "no route to it leaves this host, so the request is never sent"
+    ok = code("E", expected) in nums and code("E", other) not in nums
+    return ok, f"Run 9: NTP logged errno {code('E', expected)} ({expected}), not {other}, for {_NTP_UNREACHABLE_HOST}: {why} (history {nums})"
+
+
 def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -1084,10 +1106,10 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         # Waits for the FULL scripted failure count, not just the first: hotspot activation, and
         # so the CaptiveDNS, only starts on the fifth. Waiting for all five and then giving DNS
         # its own budget beats one guessed timeout covering both phases, as a real runner showed.
-        entry = _wait_for_errcount_above("WIFI", _WIFI_SCRIPTED_FAILURES - 1, timeout_s=_LONG_WAIT_S)
-        _check(condition=entry.get("counter", 0) >= _WIFI_SCRIPTED_FAILURES, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
+        entry = _wait_for_errcount_above("WIFI", _WIFI_PERSISTED_EVENTS - 1, timeout_s=_LONG_WAIT_S)
+        _check(condition=entry.get("counter", 0) >= _WIFI_PERSISTED_EVENTS, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({entry!r})")
         logged = _error_type_count(entry, type_char="W")
-        _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent {_WIFI_PERSISTED_WARNINGS} history slot, not one each - the ring still holds what preceded the outage ({entry!r})")
+        _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         # 30s timed out twice on real runners even after the errcount-wait fix, and the cause
         # was a red herring: the interpreter lacked CAP_NET_BIND_SERVICE, so the bind to port 53
         # silently failed and no timeout would have helped (README.md's run 7 entry).
@@ -1125,10 +1147,10 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         entry = _errcount_required("WIFI")
         restored = _error_type_count(entry, type_char="W")
         _check(condition=restored in (0, _WIFI_PERSISTED_WARNINGS), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
-        _check(condition=entry.get("counter", 0) in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: and the counter came back with it, still naming all {_WIFI_SCRIPTED_FAILURES} attempts rather than the one slot they share ({entry!r})")
-        # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
-        # "unreachable" address rather than relying on incidental CI sandbox network policy.
-        status, body = _http("PUT", "/networking", {"NTPHost": "192.0.2.1"})
+        _check(condition=entry.get("counter", 0) in (0, _WIFI_PERSISTED_EVENTS), msg=f"Run 8: and the counter came back with it, still naming all {_WIFI_SCRIPTED_FAILURES} attempts and the fallback rather than the slots they share ({entry!r})")
+        # RFC 5737 TEST-NET-1: no server answers it, a reproducible "unreachable" host rather than incidental
+        # sandbox network policy; whether a route carries the request out decides Run 9's code (_route_leaves_host()).
+        status, body = _http("PUT", "/networking", {"NTPHost": _NTP_UNREACHABLE_HOST})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("NTPHost") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTPHost (unreachable) accepted")
     except Exception as exc:
         _fail(f"Run 8 (WIFI persistence check + configure unreachable NTP): {exc!r}")
@@ -1153,8 +1175,8 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         ntp = _errcount_required("NTP")
         nums = [item.get("num") for item in ntp.get("history", []) if isinstance(item, dict)]
-        no_reply = code("E", "NTP_NO_REPLY")
-        _check(condition=no_reply in nums, msg=f"Run 9: NTP logged errno {no_reply} (NTP_NO_REPLY) for the unreachable host (history {nums})")
+        ok, msg = _ntp_unreachable_verdict(nums, route=_route_leaves_host(_NTP_UNREACHABLE_HOST, _NTP_PORT))
+        _check(condition=ok, msg=msg)
         system_after = _errcount_required("SYSTEM").get("counter", 0)
         _check(condition=system_after == system_before, msg=f"Run 9: no task ended and was restarted while NTP failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:
