@@ -134,20 +134,64 @@ The owner chose (owner, 2026-10-08, asked "How do I go on?": "Run bench step now
 The runner's bench-step line with the scope's 66 selections (`tests_hardware/run_scopes.py mqtt bench`),
 `--allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`,
 and a not-clean reason naming everything above. Started 2026-10-08 12:12 UTC.
+Ended 12:55 UTC, runner exit 1: **62 passed, 2 failed, 1 skipped** (the permanent
+`test_spoofed_off_subnet_source_address_is_ignored`), **1 recovery pass**. Evidence in `bench_step/`; the
+measured values in `measurements.md`.
 
-**Progress (interim, 12:40 UTC).** The MQTT client module, `test_mqtt_broker_faults.py`, passed 18 of 18:
-connect and `online`, strict-JSON measurements, an inbound command, broker SIGKILL and restart, SIGSTOP stall,
-silent path loss, reset path, client-id takeover, the 3000-message QoS 0 flood, the 500-message QoS 1 burst,
-the oversized message, the `.local` broker name, the no-task-ended checkpoint, the AP outage, the reboot, the
-faults at `gc.threshold(-1)` and the switch-off with a retained `offline`. Its measured values reach the run
-record only when the step ends (section "Measurements" will follow).
+- **The MQTT client, 18 of 18**, one of them a recovery pass (the AP outage, reconnected 15.4 s after the
+  bench's documented recovery hard reset).
+- **The connection ceiling and body cap, 7 of 7**; **heap with the client resident, 5 of 5** (no figures
+  kept, see `measurements.md`); **cold boot, REST reboot, the website, 3 of 3**.
+- **The hotspot role reversal, 24 of 24 run** (plus the permanent skip), stage 6's credential handoff and
+  the flip back included.
+- **NTP and the resolver, 7 of 9.** Both failures are a precondition, not the behaviour under test:
+  - `test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot`: "timed out after
+    30.0s waiting for: test precondition: DUT to report NTP-synced before this test's own transient-outage
+    fault starts";
+  - `test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source`: "GET /status's UTCTime is null:
+    the DUT has not synced NTP yet, so its clock is no signal for this test".
 
-NTP/DNS so far: real NTP sync, real DNS resolution, an unreachable NTP server and garbage DNS answers passed.
-**`test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot` failed**: after the
-test's 8 s UDP 123 block and its `NTPHost` re-trigger, the board did not resync within the 20 s bound, and was
-still `NTPSynced: false` with `NTPLastSync: null` at 12:38 UTC, about 6 min later
-(`fram_after_failure_test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot.json`,
-saved at the failure; its error logs had been reset by the test). This branch does not change
-`src/asy_ntp_client.py`, and its `src/asy_dns_client.py` change leaves the unicast path byte-identical for a
-normal answer (`NTPHost` is `pool.ntp.org`, not `.local`); the MQTT client was already switched off. The
-traceback follows with the step's end.
+  **Cause: the scope's order** (`tests_hardware/run_scopes.py`, this branch's file).
+  `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` hard-resets the board with UDP 123
+  blocked and unblocks it without waiting for a resync, so the board boots unsynced and NTP's unsynced
+  backoff (10 s doubling to 600 s, `src/asy_ntp_client.py`) puts its next attempt minutes away. The scope
+  ran that test *before* the two that need a synced board; the full tier collects
+  `test_network_resilience.py` before `test_wifi_networking.py`, so there they run first. Consistent with
+  it: the board stayed unsynced from then on, and a passive 40 s capture at 12:40 UTC saw no UDP 53/123
+  from it at all, while the Pi4 itself reached `pool.ntp.org` and no `iptables` rule was left. The NTP
+  client and the resolver's unicast path are unchanged by this branch.
+
+```
+== Summary: run_bench_hardware_suite_scope_mqtt ==
+Commit: 51a5bd2d (uncommitted changes)
+Levels: L4, scope mqtt
+Counts (tests): passed 62 · failed 2 · skipped 1 · deselected 0 · retried 0 · recovered 1 · vacuous 0
+Failed:
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot: failed in call: TimeoutError: timed out after 30.0s waiting for: test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source: failed in call: AssertionError: GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test
+Skipped:
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored: Raw-socket feasibility on the bench Rpi4 not yet checked - spoofing an off-subnet UDP source address needs either a raw socket (CAP_NET_RAW) or a second network namespace with a routable off-subnet address, neither confirmed practical here yet. Flagged rather than guessed at - implement once a concrete spoofing mechanism is confirmed to work.
+Deselected: none
+Passed only on retry: none
+Recovery passes:
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link: reconnected 15.4s after a recovery hard reset; 0 failed attempt(s) logged
+Notes:
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_the_client_connects_and_announces_itself_online: connected within 1.3s of the first poll; MQTTState 'connected'
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_every_sensor_publishes_strict_json_on_its_own_topic: largest measurement payload 245 B of the 384 B slot
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_killed_broker_is_reconnected_after_its_restart: reconnected 4.2s after the restart (outage 5s)
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_stalled_broker_is_detected_by_the_pingresp_deadline: stall detected in 21.0s; reconnected 8.7s after the resume
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_silent_path_loss_is_detected_and_recovered: path loss detected in 21.5s ('no pingresp'); reconnected 13.8s after the restore
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reset_path_ends_the_connection_and_attempts_stay_bounded: reset path ended the connection in 6.7s; reconnected 11.4s after the restore
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_duplicate_client_id_is_bounded_by_the_backoff: 0 retakes in 20s against 1 by the duplicate; reconnected 39.8s after it left
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_flood_leaves_rest_serving_and_the_session_up: 3001 of 3001 messages taken; GET /status under the flood: max 1.93s, median 1.84s
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_qos1_burst_is_acknowledged_in_full: 500 QoS 1 messages acknowledged in 7.1s
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_is_found_by_the_bench_hosts_local_name: raspberrypi.local resolved to 192.168.85.75 and connected within 1.6s
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reboot_reconnects_from_the_stored_settings: connected 15.8s after the reset; the broker published the will on the takeover
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_faults_run_clean_at_micropythons_default_gc: timeline ['connected', 'reconnected after kill', 'stall detected', 'reconnected after stall', 'connected after floods', 'reconnected after takeover', 'done']; free heap min 2192 B over 42 samples
+  - tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status: 19 answered, 21 refused at the connection ceiling, 0 answered wrongly
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+```
+
+("uncommitted changes": this results directory.)

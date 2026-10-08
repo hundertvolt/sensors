@@ -1,0 +1,85 @@
+# Attempt 1 (lower levels, stopped at the tests_scripts/ bound)
+== Summary: scripts/test.sh ==
+Commit: 51a5bd2d (uncommitted changes)
+Levels: L0 FAIL · L1 PASS · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+GC stage: -1 (reactive default)
+Counts (files): passed 92 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 4586 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_scripts/ (pytest): pytest exited nonzero or timed out; 1 failed (listed above)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
+
+# Attempt 2 (lower levels, GC stage -1 complete; stage 32768 stopped by the owner's direction)
+== Summary: scripts/test.sh ==
+Commit: 51a5bd2d (uncommitted changes)
+Levels: L0 PASS · L1 PASS · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+GC stage: -1 (reactive default)
+Counts (files): passed 92 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 3236 · failed 0 · skipped 11 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 4586 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0
+
+# Attempt 3 (flash step)
+== Summary: run_bench_hardware_suite_scope_mqtt_flash_step ==
+Commit: 51a5bd2d (uncommitted changes)
+Levels: L3, scope mqtt
+Counts (tests): passed 1 · failed 2 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_hardware/flash/test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build: failed in call: AssertionError: FRAM capacity check failed: scd30.cfgmgr.pr is not a PrintLogHistoryStore at all (expected FRAM-backed - dev.toml wires fram_target everywhere)
+  - tests_hardware/flash/test_memory_stress.py::test_real_gc_heap_headroom_survives_a_full_system_build: failed in call: AssertionError: real heap-headroom check failed: the built object graph holds more than it should: 113280 > 100000 B allocated
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
+
+# Attempt 4 (bench step)
+== Summary: run_bench_hardware_suite_scope_mqtt ==
+Commit: 51a5bd2d (uncommitted changes)
+Levels: L4, scope mqtt
+Counts (tests): passed 62 · failed 2 · skipped 1 · deselected 0 · retried 0 · recovered 1 · vacuous 0
+Failed:
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot: failed in call: TimeoutError: timed out after 30.0s waiting for: test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts
+  - tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source: failed in call: AssertionError: GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test
+Skipped:
+  - tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored: Raw-socket feasibility on the bench Rpi4 not yet checked - spoofing an off-subnet UDP source address needs either a raw socket (CAP_NET_RAW) or a second network namespace with a routable off-subnet address, neither confirmed practical here yet. Flagged rather than guessed at - implement once a concrete spoofing mechanism is confirmed to work.
+Deselected: none
+Passed only on retry: none
+Recovery passes:
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link: reconnected 15.4s after a recovery hard reset; 0 failed attempt(s) logged
+Notes:
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_the_client_connects_and_announces_itself_online: connected within 1.3s of the first poll; MQTTState 'connected'
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_every_sensor_publishes_strict_json_on_its_own_topic: largest measurement payload 245 B of the 384 B slot
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_killed_broker_is_reconnected_after_its_restart: reconnected 4.2s after the restart (outage 5s)
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_stalled_broker_is_detected_by_the_pingresp_deadline: stall detected in 21.0s; reconnected 8.7s after the resume
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_silent_path_loss_is_detected_and_recovered: path loss detected in 21.5s ('no pingresp'); reconnected 13.8s after the restore
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reset_path_ends_the_connection_and_attempts_stay_bounded: reset path ended the connection in 6.7s; reconnected 11.4s after the restore
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_duplicate_client_id_is_bounded_by_the_backoff: 0 retakes in 20s against 1 by the duplicate; reconnected 39.8s after it left
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_flood_leaves_rest_serving_and_the_session_up: 3001 of 3001 messages taken; GET /status under the flood: max 1.93s, median 1.84s
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_qos1_burst_is_acknowledged_in_full: 500 QoS 1 messages acknowledged in 7.1s
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_is_found_by_the_bench_hosts_local_name: raspberrypi.local resolved to 192.168.85.75 and connected within 1.6s
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reboot_reconnects_from_the_stored_settings: connected 15.8s after the reset; the broker published the will on the takeover
+  - tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_faults_run_clean_at_micropythons_default_gc: timeline ['connected', 'reconnected after kill', 'stall detected', 'reconnected after stall', 'connected after floods', 'reconnected after takeover', 'done']; free heap min 2192 B over 42 samples
+  - tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status: 19 answered, 21 refused at the connection ceiling, 0 answered wrongly
+Checked nothing: none
+Result: FAIL (pytest exited 1)
+Exit code: 1
