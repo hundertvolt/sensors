@@ -230,7 +230,7 @@ the twin: NTP's check tick fires every 10.0 s (9.79 → 19.79 → 29.79 s), the 
 
 A 1,060 s run with only `networking/mqtt` written: MQTT off for 120 s, on at the 60 s interval for 600 s, at
 the 10 s minimum for 300 s, then off; `GET /status` every 5 s throughout, the console read passively with host
-timestamps (`console.txt`), mosquitto 2.0.21 on the bench Pi4 (`broker/`), and an observer subscribed to
+timestamps (`console.txt.gz`), mosquitto 2.0.21 on the bench Pi4 (`broker/`), and an observer subscribed to
 `sensors/SensorStationDev/#`. For the twin:
 
 - **Enable**: from the PUT's `Writing config via cfgmgr.` line, `Connected` on the console in 108 ms and
@@ -292,3 +292,39 @@ Figures, the first kept with the client resident (no earlier run kept any, so no
   between the two runs with the same probe code, so a single reading of that size is ±16 B.
 - **Hammer** (`test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot`): passed; it
   prints only the error logs it read before reset, so it keeps no load figure even with `-s`.
+
+### The twin beside the board (`observations/twin_dev_mqtt_timing/`)
+
+The dev twin (HEAD's src, Unix port, `gc.threshold(32768)` as the firmware boots), a real mosquitto on
+loopback, the same probe, polled at 0.25 s; driven by `observations/method/twin_mqtt_timing.py` (372 s, zero
+memory markers, clean exit). The MQTT src between `51a5bd2d` and HEAD changed only its host-name check, a
+warning code and a logging argument (U18/U19 merges), so the timing paths compared are the same code. The
+board's bench figures were polled at 1 s, with each `GET /status` taking about 1.5 s on the board, so their
+resolution is about 2.5 s.
+
+| Quantity | Board | Twin | Reproduced? |
+|---|---|---|---|
+| Round order and spread | SCD30, SGP40, BMP3XX, ISL29125; 46 ms | same order; 41–44 ms | yes |
+| Interval at 10 s | 10.56 s mean (10.05–11.00) | 10.01 s mean (9.89–10.09) | **no**: the board overshoots by up to one 1 s publisher step, the twin not at all |
+| Interval at 20 s / 60 s | 60.49 s mean (60.00–61.08) | 20.02 s mean (19.97–20.05) | the same gap: no overshoot in the twin |
+| Interval change | reconnect 150 ms (console), `online` 1.03 s after `offline` | `online` 120 ms after `offline` | the reconnect yes; the board's late `online` at the observer no |
+| Broker kill, 5 s outage | reconnected 4.2 s after the restart | 2.3 s, 4.2 s | yes, within the backoff's range |
+| Stall detection | 21.0 s (path loss 21.5 s) | 20.7, 21.4, 21.5 s | yes; both sample one phase of the ping schedule, see below |
+| Reconnect after a stall | 8.7 s after the resume | 16.2, 32.0, 60.3 s (backoff grown over three stalls) | not comparable: the twin repeated the fault, the board did not |
+| Connect after enable | 1.72 s (WiFi already up) | 17.2 s (the same PUT set the SSID, so WiFi joined first) | not comparable as run |
+| Payload sizes | SCD30 143–151, SGP40 58–59, BMP3XX 77–79, ISL29125 239–247 B | 177–195, 51–59, 95–104, 274–285 B | no: the twin's fake readings carry more digits, so its payloads are the larger, conservative for the 384 B slot |
+
+What this tells the twin's further development:
+
+- **The twin runs at host speed, so it does not show the board's event-loop latency.** The board's rounds land
+  up to 1 s late. The likeliest cause is the 1 s publisher step waking late while the loop is busy (here a
+  `GET /status` every 5 s, about 1.5 s of board time each); the twin, its loop never busy that long, fires on
+  the step. That cause is an agent hypothesis, unverified: a board run without the REST sampler would settle
+  it. A twin that is to reproduce the board's timing needs a model of loop latency under load.
+- **Stall detection is about 21 s in both, because both start the stall a few seconds after a connect.** The
+  next PINGREQ then falls about 11–12 s later (15 s ping interval) and its 10 s response deadline ends the
+  session. The bound is 10–25 s by phase; neither tier has measured the other phases yet.
+- **Fake sensor payloads are larger than the real ones**, so a payload-size check in the twin over-estimates;
+  the real figures above are the ones for `mqtt.out_payload_max`.
+- **The fixed probe held its session for the whole twin run** (3 connects: the start and the two kills),
+  where before the fix a quiet observer was dropped every 30–60 s.

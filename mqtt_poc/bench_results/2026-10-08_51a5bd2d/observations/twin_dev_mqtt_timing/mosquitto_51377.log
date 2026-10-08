@@ -1,0 +1,45 @@
+1791475222: mosquitto version 2.0.21 starting
+1791475222: Config loaded from /tmp/claude-1000/-home-nico-programming-sensors/2568bff6-7ea5-43c2-b076-16b8d5d7bd3c/scratchpad/twin_timing/broker/mosquitto_51377.conf.
+1791475222: Opening ipv4 listen socket on port 51377.
+1791475222: mosquitto version 2.0.21 running
+1791475222: New connection from 127.0.0.1:39498 on port 51377.
+1791475222: Client <unknown> closed its connection.
+1791475225: New connection from 127.0.0.1:39512 on port 51377.
+1791475225: New client connected from 127.0.0.1:39512 as twin-timing-observer (p2, c1, k20).
+1791475242: New connection from 127.0.0.1:36822 on port 51377.
+1791475242: New client connected from 127.0.0.1:36822 as SensorStationDev (p2, c1, k60).
+1791475308: Client SensorStationDev disconnected.
+1791475308: New connection from 127.0.0.1:54908 on port 51377.
+1791475308: New client connected from 127.0.0.1:54908 as SensorStationDev (p2, c1, k60).
+1791475384: mosquitto version 2.0.21 starting
+1791475384: Config loaded from /tmp/claude-1000/-home-nico-programming-sensors/2568bff6-7ea5-43c2-b076-16b8d5d7bd3c/scratchpad/twin_timing/broker/mosquitto_51377.conf.
+1791475384: Opening ipv4 listen socket on port 51377.
+1791475384: mosquitto version 2.0.21 running
+1791475384: New connection from 127.0.0.1:43338 on port 51377.
+1791475384: Client <unknown> closed its connection.
+1791475384: New connection from 127.0.0.1:43354 on port 51377.
+1791475384: New client connected from 127.0.0.1:43354 as twin-timing-observer (p2, c1, k20).
+1791475385: New connection from 127.0.0.1:43366 on port 51377.
+1791475385: New client connected from 127.0.0.1:43366 as SensorStationDev (p2, c1, k60).
+1791475392: mosquitto version 2.0.21 starting
+1791475392: Config loaded from /tmp/claude-1000/-home-nico-programming-sensors/2568bff6-7ea5-43c2-b076-16b8d5d7bd3c/scratchpad/twin_timing/broker/mosquitto_51377.conf.
+1791475392: Opening ipv4 listen socket on port 51377.
+1791475392: mosquitto version 2.0.21 running
+1791475392: New connection from 127.0.0.1:37056 on port 51377.
+1791475392: Client <unknown> closed its connection.
+1791475392: New connection from 127.0.0.1:37070 on port 51377.
+1791475392: New client connected from 127.0.0.1:37070 as twin-timing-observer (p2, c1, k20).
+1791475395: New connection from 127.0.0.1:37082 on port 51377.
+1791475395: New client connected from 127.0.0.1:37082 as SensorStationDev (p2, c1, k60).
+1791475421: Client SensorStationDev closed its connection.
+1791475436: New connection from 127.0.0.1:37332 on port 51377.
+1791475436: New client connected from 127.0.0.1:37332 as SensorStationDev (p2, c1, k60).
+1791475462: Client SensorStationDev closed its connection.
+1791475493: New connection from 127.0.0.1:50796 on port 51377.
+1791475493: New client connected from 127.0.0.1:50796 as SensorStationDev (p2, c1, k60).
+1791475519: Client SensorStationDev closed its connection.
+1791475579: New connection from 127.0.0.1:54416 on port 51377.
+1791475579: New client connected from 127.0.0.1:54416 as SensorStationDev (p2, c1, k60).
+1791475580: Client SensorStationDev disconnected.
+1791475594: Client twin-timing-observer disconnected.
+1791475595: mosquitto version 2.0.21 terminating
