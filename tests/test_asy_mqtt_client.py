@@ -31,6 +31,9 @@ _scratch = TmpScratch("mqtt")
 # Short timings, so a scenario takes well under a second per phase: client id, keepalive, ping, response, connect,
 # backoff min/max, stable-after, QoS 1 retry, drain, tick, link poll, idle recheck, DNS timeout and tries.
 _CFG = MqttConfig("t1", 60, 1000, 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+# A ping interval no test outlives: every PINGREQ is one the test caused, and none waits on the broker's wire
+# behind a packet the test feeds a byte at a time.
+_QUIET_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 _WAIT_MS = 8000  # every wait polls; the bound only matters on a failure
 _R_STALLED = 7  # asy_mqtt_client.py's const()-folded teardown reason - mirrored, not importable
 
@@ -743,8 +746,6 @@ def test_a_host_out_of_shape_is_taken_at_put_and_keeps_the_client_off() -> None:
 # Mirrors asy_mqtt_client's const-folded _UNCONFIRMED_MAX, which no test can import.
 # @tunable mqtt.unconfirmed_max_bytes = 2000
 _UNCONFIRMED_MAX = 2000
-# A ping interval no test outlives, so every PINGREQ these tests see is one the byte cap asked for.
-_CAP_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 _CAP_MESSAGES = 7  # the ring's eight slots, less the online status still in flight
 _CAP_PAYLOAD = b"m" * 380  # about 388 B on the wire, so five fit under the cap and the sixth must wait
 
@@ -755,7 +756,7 @@ def _client_bytes_after_connect(broker: FakeBroker) -> int:
 
 def test_unconfirmed_bytes_stop_at_the_cap_and_ask_for_an_early_ping() -> None:
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(config=_CAP_CFG)
+        broker, client, tasks = await broker_and_client(config=_QUIET_CFG)
         broker.answer_pings = False  # nothing ever confirms: the cap is all that stops the writes
         try:
             assert await until(client.is_connected)
@@ -772,7 +773,7 @@ def test_unconfirmed_bytes_stop_at_the_cap_and_ask_for_an_early_ping() -> None:
 
 def test_a_pingresp_releases_the_held_messages() -> None:
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(config=_CAP_CFG)
+        broker, client, tasks = await broker_and_client(config=_QUIET_CFG)
         try:
             assert await until(client.is_connected)
             assert all(client.publish("t/x", _CAP_PAYLOAD) for _ in range(_CAP_MESSAGES))
@@ -992,13 +993,12 @@ def test_a_long_length_prefix_is_split_across_reads() -> None:
         got.append(bytes(payload))
 
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(consumers=(MqttConsumer("ext/#", consumer),))
+        broker, client, tasks = await broker_and_client(consumers=(MqttConsumer("ext/#", consumer),), config=_QUIET_CFG)
         try:
             assert await until(client.is_connected)
             packet = publish_packet(b"ext/p", b"P" * 200)  # a two-byte remaining length
             assert packet[1:3] == encode_length(207)
-            for i in range(len(packet)):  # one byte per write: every split point the parser can meet
-                await broker.send(packet[i : i + 1])
+            await broker.send_split(packet)  # one byte per write: every split point the parser can meet
             assert await until(lambda: got == [b"P" * 200])
         finally:
             await stop(client, tasks, broker)

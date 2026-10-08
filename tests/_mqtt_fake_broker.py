@@ -54,6 +54,7 @@ class FakeBroker:
         self.closed_by_client = 0  # EOFs seen
         self._writers: list[asyncio.StreamWriter] = []
         self._server: _Server | None = None
+        self._wire = asyncio.Lock()  # whole packets on the wire, as a real broker writes them
 
     async def _client(self, reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
         self.connections += 1
@@ -99,8 +100,9 @@ class FakeBroker:
             self.connects.append({"client_id": client_id, "flags": flags, "keepalive": (body[8] << 8) | body[9], "will_topic": will_topic, "will_message": will_message, "user": user, "password": password})
             if self.connack_rc is None:
                 return True
-            writer.write(bytes([0x20, 2, 0, self.connack_rc]))
-            await writer.drain()
+            async with self._wire:
+                writer.write(bytes([0x20, 2, 0, self.connack_rc]))
+                await writer.drain()
             if self.close_after_connack or self.connack_rc:
                 return False
             while self.stop_reading:
@@ -113,22 +115,25 @@ class FakeBroker:
                 _flt, i = read_str(body, i)
                 i += 1
                 filters += 1
-            writer.write(bytes([0x90, 2 + filters, body[0], body[1]] + [self.suback_code] * filters))
-            for packet in self.after_subscribe:
-                writer.write(packet)
-            await writer.drain()
+            async with self._wire:
+                writer.write(bytes([0x90, 2 + filters, body[0], body[1]] + [self.suback_code] * filters))
+                for packet in self.after_subscribe:
+                    writer.write(packet)
+                await writer.drain()
             return True
         if kind == 0x30:
             qos = (first >> 1) & 3
             if qos and self.ack_publishes:
                 tlen = (body[0] << 8) | body[1]
-                writer.write(bytes([0x40, 2, body[2 + tlen], body[3 + tlen]]))
-                await writer.drain()
+                async with self._wire:
+                    writer.write(bytes([0x40, 2, body[2 + tlen], body[3 + tlen]]))
+                    await writer.drain()
             return True
         if kind == 0xC0:
             if self.answer_pings:
-                writer.write(b"\xd0\x00")
-                await writer.drain()
+                async with self._wire:
+                    writer.write(b"\xd0\x00")
+                    await writer.drain()
             return True
         if kind == 0xE0:
             self.disconnects += 1
@@ -146,9 +151,18 @@ class FakeBroker:
         return found
 
     async def send(self, packet: bytes) -> None:
-        for writer in list(self._writers):
-            writer.write(packet)
-            await writer.drain()
+        async with self._wire:
+            for writer in list(self._writers):
+                writer.write(packet)
+                await writer.drain()
+
+    async def send_split(self, packet: bytes) -> None:
+        # One byte per write, so the client meets every split point, yet whole: no broker packet lands inside it.
+        async with self._wire:
+            for i in range(len(packet)):
+                for writer in list(self._writers):
+                    writer.write(packet[i : i + 1])
+                    await writer.drain()
 
     async def start(self) -> None:
         self._server = await asyncio.start_server(self._client, "127.0.0.1", self.port)
