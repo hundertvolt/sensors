@@ -1694,6 +1694,20 @@ def test_a_max_connections_leaving_fewer_than_three_spare_pcbs_is_rejected(tmp_p
         _build(tmp_path, src_dir, doc)
 
 
+def test_a_device_carrying_mqtt_pays_its_connection_from_the_web_ceiling(tmp_path: Path, src_dir: Path, overrides: ModuleType) -> None:
+    # The MQTT client holds one connection more than the web ceiling admits (owner, 2026-10-07: 'Web connections 6->5'):
+    # the highest ceiling a device without it may state is refused once it carries the client.
+    doc = base_doc()
+    doc["device"]["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS
+    _build(tmp_path, src_dir, doc)
+    doc["instance"].append({"driver": "mqtt"})
+    with pytest.raises(BuildError, match=r"plus the MQTT client's own connection") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.field == "max_connections"
+    doc["device"]["max_connections"] -= 1
+    _build(tmp_path, src_dir, doc)
+
+
 def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     doc["device"]["max_connections"] = 0

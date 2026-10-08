@@ -413,7 +413,8 @@ information):
   reboot exactly like the module's own history already did, except `CFGMGR_SCD30`, which stays RAM-only (owner, 2026-09-29, on the
   FRC settings: 'no extra FRAM chunk'; SPECIFICATION.md Part A.7); `dev`-only, its two `uart_link`
   instances (`UART_init`/`UART_resp`) joined under WP3, once `devices/dev.toml` wired
-  `fram_target = "fram"` onto each — `wozi` has no UART instances, so this addition is `dev`-only)
+  `fram_target = "fram"` onto each — `wozi` has no UART instances, so this addition is `dev`-only;
+  `dev`-only too, the MQTT client's `MQTT`/`CFGMGR_MQTT`, SPECIFICATION.md Part A.11)
   BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,
   2026-09-25 and 2026-09-26) This is the one piece of real diagnostic evidence a reboot itself
   doesn't erase, and clearing it is irreversible — confirmed the hard way (2026-09-08): a single

@@ -457,6 +457,56 @@ correctly"; being answered at all is the ceiling's business. Pair that with a fl
 were answered, or the test passes vacuously on a run where nearly everything was refused - the
 same "assert a minimum engagement beside every ceiling" habit as for device scripts.
 
+## The MQTT client on the bench (`bench/test_mqtt_broker_faults.py`)
+
+The client (SPECIFICATION.md Part A.11) is built into the bench device only and is off until enabled.
+This module drives it against a real `mosquitto` on this host. The broker binds this host's own address
+toward the DUT (`br0`'s) on port **18883**, so a distribution broker on 1883 is never involved; the
+package comes from `toolchain/versions.toml`'s `apt_packages`, which `env --tier bench` installs.
+
+**Before the run**: the board must carry an image built from the branch holding the client (`uv run
+scripts/build_firmware.py dev`, then `picotool load -x -v`, the session's one allowed flash, E.6.3). A board
+without it fails the module with that instruction instead of skipping. The fixture records every
+non-empty FRAM log before its own `ResetErrors`, as the evidence rule in CLAUDE.md asks.
+
+**Writes**: one `PUT /networking` enables the client and points it here, and one switches it off at the
+end. Both are shared prerequisites (`_enable_mqtt`/`_disable_mqtt`, pinned in
+`tests_scripts/test_persistence_write_marker_completeness.py`); a rerun whose values are unchanged writes
+nothing.
+
+**What it does to the host**: `BenchBridge.block_tcp_port_from()` adds `iptables` rules on INPUT/OUTPUT
+matching only the DUT's address **and** port 18883 (a DROP both ways for silent path loss, or a REJECT
+with a TCP reset). Every rule is removed in the test's own `finally` and again in the fixture's teardown.
+None touches `br0`, its slaves or any other port, so the session's own connection is never at risk and
+no dead-man's switch is needed. The AP outage test uses the same `ap_down()`/`ap_up()` and hard-reset
+fallback as `test_network_resilience.py`.
+
+**Order matters**, the module runs top to bottom on one enabled client:
+- connect and the online status;
+- strict-JSON measurements per sensor;
+- an inbound command;
+- broker SIGKILL and restart;
+- SIGSTOP stall;
+- silent path loss;
+- a reset path;
+- a client-id takeover bounded by the backoff;
+- a 3000-message QoS 0 flood and a 500-message QoS 1 burst;
+- an oversized message;
+- a checkpoint (no task ended, only the expected MQTT codes);
+- the AP outage;
+- a reboot;
+- the faults again under `device_scripts/mqtt_at_default_gc.py` at `gc.threshold(-1)`, with a host thread
+  driving them;
+- switching the client off, which must publish a retained `offline`.
+
+Each recovery time and count lands in the run record through `result_note`, which is where Part N's owed
+`mqtt.*`/`l4.mqtt_*` measurements come from.
+
+```bash
+uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py -v   # alone, about 20 minutes
+scripts/run_bench_hardware_suite.sh                               # or within the whole bench tier
+```
+
 ## Measuring heap and serving under load
 
 Rules from the sittings that set `max_connections = 6`. The method behind them, the twin side and

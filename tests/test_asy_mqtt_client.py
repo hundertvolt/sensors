@@ -645,7 +645,8 @@ def test_a_reconnect_says_disconnect_and_uses_the_new_settings() -> None:
             await configure(client, broker.port, MQTTPrefix="home", MQTTClientId="t2")
             client.reconnect()
             assert await until(lambda: len(broker.connects) == 2)
-            assert broker.disconnects == 1  # a deliberate end: the broker drops the will
+            assert broker.disconnects == 1  # the client ended it itself: the broker drops the will
+            assert broker.published(b"sensors/t1/status")[-1] == (0x31, b"offline")  # so it sets the old status itself
             assert broker.connects[1]["client_id"] == b"t2"
             assert broker.connects[1]["will_topic"] == b"home/t2/status"
             assert await until(lambda: len(broker.published(b"home/t2/status")) == 1)
@@ -662,12 +663,12 @@ def test_put_refuses_strings_outside_their_mqtt_shape() -> None:
         client = make_client()
         assert await client.setup()
         schema = client.get_cfg_schema()
-        bad = {"MQTTHost": "bad host", "MQTTClientId": "a b", "MQTTPrefix": "a/#", "MQTTUser": "a\x00b"}
+        bad = {"MQTTClientId": "a b", "MQTTPrefix": "a/#", "MQTTUser": "a\x00b"}
         results = await client._set_dict_cfg(bad, schema)
         assert results == dict.fromkeys(bad, "Invalid")
         nums = await errnums(client)
         assert nums == [code("E", "BAD_ARG")]
-        good = {"MQTTHost": "", "MQTTClientId": "dev-1", "MQTTPrefix": "home/sensors", "MQTTUser": "", "MQTTPW": "pw"}
+        good = {"MQTTHost": "", "MQTTClientId": "node-1", "MQTTPrefix": "home/sensors", "MQTTUser": "", "MQTTPW": "pw"}
         results = await client._set_dict_cfg(good, schema)
         assert all(v in ("Valid", "Unchanged") for v in results.values()), results
         results = await client._set_dict_cfg({"MQTTPort": 0, "MQTTPubInterval": 5}, schema)
@@ -703,6 +704,29 @@ def test_a_stored_value_out_of_shape_keeps_the_client_off_with_one_warning() -> 
         await configure(client, broker.port)
         await client.cfgmgr.flush_pending()
         client.cfgmgr._cache["MQTTPrefix"] = "a/#"  # as a hand-edited file would hold it
+        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        try:
+            await asyncio.sleep_ms(700)
+            assert broker.connections == 0
+            log = await client.get_error_counter()
+            assert log["MQTT"]["ErrCount"] == 1
+            assert log["MQTT"]["ErrNum"][-1] == code("W", "STORED_DEFAULT")
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_host_out_of_shape_is_taken_at_put_and_keeps_the_client_off() -> None:
+    # Like NTPHost: a length-only check at PUT, the shape at use, one warning and no connection attempt.
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        assert await client.setup()
+        results = await client._set_dict_cfg({"MQTTHost": "bad host"}, client.get_cfg_schema())
+        assert results == {"MQTTHost": "Valid"}
+        await configure(client, broker.port, MQTTHost="bad host")
         tasks = [client.start_asy_connection(), client.start_asy_publish()]
         try:
             await asyncio.sleep_ms(700)
@@ -775,8 +799,7 @@ def test_measurements_are_published_as_json_with_null_for_non_finite() -> None:
     async def scenario() -> None:
         broker, client, tasks = await broker_and_client(sources=(Source(),), config=config)
         try:
-            assert await until(client.is_connected)
-            await client._publish_measurements()
+            assert await until(client.is_connected)  # the publisher's first round follows the CONNACK by itself
             assert await until(lambda: len(broker.published(b"sensors/t1/measurements/SCD30")) == 1)
             first, payload = broker.published(b"sensors/t1/measurements/SCD30")[0]
             assert first == 0x30  # QoS 0, not retained
@@ -801,7 +824,6 @@ def test_a_raising_source_is_logged_and_the_others_still_published() -> None:
         broker, client, tasks = await broker_and_client(sources=(Broken(), Good()))
         try:
             assert await until(client.is_connected)
-            await client._publish_measurements()
             assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
             assert code("E", "SOURCE") in await errnums(client)
         finally:

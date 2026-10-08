@@ -47,7 +47,7 @@ class FakeBroker:
         self.ack_publishes = True
         self.suback_code = 1
         self.close_after_connack = False
-        self.stop_reading = False  # after the CONNACK, never read again (the broker stalls)
+        self.stop_reading = False  # after the CONNACK, stop reading for good (the broker stalls)
         self.after_subscribe: list[bytes] = []  # raw packets sent once the SUBACK is out
         self.connections = 0
         self.disconnects = 0  # DISCONNECT packets received

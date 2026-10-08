@@ -617,9 +617,9 @@ export function installMockFetch(defs, initialData, controls) {
             return applySensorQuirksForGet(state.sensorsConfig);
         }
         if (path === "/networking") {
-            // Mirrors src/asy_wifi_service.py's _mask_pw() callback overlay: PW is a real credential,
-            // never returned in plaintext over GET, on real hardware or here.
-            return { ...state.networkingConfig, PW: "********" };
+            // Mirrors the _mask_pw() overlays of src/asy_wifi_service.py and src/asy_mqtt_client.py: a real
+            // credential is never returned in plaintext over GET, on real hardware or here.
+            return { ...state.networkingConfig, PW: "********", ...("MQTTPW" in state.networkingConfig ? { MQTTPW: "********" } : {}) };
         }
         if (path === "/system") {
             return state.systemConfig;

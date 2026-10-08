@@ -60,13 +60,13 @@ def test_a_header_past_the_maximum_or_the_buffer_is_refused() -> None:
 
 def test_connect_matches_the_specification_layout_byte_for_byte() -> None:
     buf = bytearray(128)
-    n = mc.encode_connect(buf, b"dev", 60, b"s/dev/status", b"offline", b"", b"")
+    n = mc.encode_connect(buf, b"abc", 60, b"s/abc/status", b"offline", b"", b"")
     expected = (
         b"\x10" + bytes([10 + 2 + 3 + 2 + 12 + 2 + 7])
         + b"\x00\x04MQTT\x04"
         + bytes([0x02 | 0x04 | 0x08 | 0x20])  # clean, will, will QoS 1, will retain
         + b"\x00\x3c"
-        + b"\x00\x03dev" + b"\x00\x0cs/dev/status" + b"\x00\x07offline"
+        + b"\x00\x03abc" + b"\x00\x0cs/abc/status" + b"\x00\x07offline"
     )
     assert bytes(buf[:n]) == expected
 
@@ -86,7 +86,7 @@ def test_connect_carries_user_and_password_only_together() -> None:
 
 
 def test_connect_that_does_not_fit_is_refused() -> None:
-    assert mc.encode_connect(bytearray(20), b"dev", 60, b"s/dev/status", b"offline", b"", b"") == -1
+    assert mc.encode_connect(bytearray(20), b"abc", 60, b"s/abc/status", b"offline", b"", b"") == -1
 
 
 def test_publish_at_qos_0_has_no_packet_id_and_no_dup() -> None:
@@ -157,10 +157,10 @@ def test_topic_filters_match_as_section_4_7_specifies() -> None:
         assert mc.topic_matches(flt, memoryview(topic)) is expected, (flt, topic)
 
 
-def test_client_ids_are_letters_digits_and_hyphens_up_to_23_bytes() -> None:
-    for good in ("a", "SensorStationDev", "dev-1", "x" * 23):
+def test_client_ids_are_host_labels_up_to_23_bytes() -> None:
+    for good in ("a", "SensorNodeA", "node-1", "x" * 23):
         assert mc.client_id_ok(good), good
-    for bad in ("", "x" * 24, "a b", "a/b", "a+", "ä", "a_b", "a.b"):
+    for bad in ("", "x" * 24, "a b", "a/b", "a+", "ä", "a_b", "a.b", "-node", "node-"):
         assert not mc.client_id_ok(bad), bad
 
 

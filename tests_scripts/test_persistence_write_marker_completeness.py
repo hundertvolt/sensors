@@ -43,6 +43,10 @@ _KNOWN_PERSISTING_HELPERS = {
     "joined_hotspot",
     "_restore_ssid_over",  # teardown-side restore for the garbage-SSID outage test
     "_recover_stale_dut_credentials",  # session-level recovery path, not a test's own write
+    # The MQTT bench module's fixture: one write points the client at the bench broker for every test there,
+    # and its undo leaves the next module the old baseline - prerequisite writes, so no dependent is marked.
+    "_enable_mqtt",
+    "_disable_mqtt",
 }
 
 

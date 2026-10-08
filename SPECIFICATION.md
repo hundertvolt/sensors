@@ -823,18 +823,142 @@ piece exists (flagged per CLAUDE.md).
 `strategy.matrix` over all 6 real device variants as of SPECIFICATION.md Part L.4): wipes
 leftover twin state; builds the Unix port and the real production website for that device
 (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
-`run_generic_integration.py` through its 14-run suite, once per gc threshold
+`run_generic_integration.py` through its 14-run suite (15 on a device carrying the MQTT client), once per gc threshold
 (`digital_twin/README.md` has the runs and the per-device subprocess counts): fresh
 boot + every endpoint; settings
 persistence across reboot; a sustained fault matrix, derived from that device's own real wiring
 plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
 persistence-correctness sweep; recovery after a bounded fault clears; hotspot fallback with a real
 answered UDP DNS query; NTP permanently unreachable; a real blocking hang proving the watchdog
-backstop engages; a clean soak run at both `gc.threshold(-1)` and the project's chosen
+backstop engages; on a device carrying the MQTT client, the client against a real mosquitto through a kill, a
+stall, a client-id takeover and an inbound flood; a clean soak run at both `gc.threshold(-1)` and the project's chosen
 `gc.threshold(32768)`, in that order — Part I.4(e)'s standing rule). Building this surfaced three confirmed Unix-port-only `socket`
 quirks (real, required behavior on real rp2 hardware, not a `src/` bug — BACKLOG.md has the
 source-level account) worked around entirely from twin-side code
 (`digital_twin/_unix_port_udp_addr_shim.py`).
+
+## A.11 MQTT client (`asy_mqtt_client.py`, `mqtt_codec.py`)
+
+A project-owned MQTT 3.1.1 client service: QoS 0 and 1, clean session, plain TCP. It is written from
+the specification with Peter Hinch's `mqtt_as` as the behavioural reference (owner, 2026-10-07, asked
+which code to use: 'Own client (Recommended)'). It is built into `dev` only and stays off until
+enabled (owner, 2026-10-07: 'dev only, off (Recommended)'), over plain TCP only (owner, 2026-10-07:
+'Plain TCP (Recommended)'). `mqtt_codec.py` holds the pure packet encoders, the remaining-length
+decoder, topic-filter matching and the configuration shape checks; it never logs and never raises on
+wire input (C.7.1's no-logging layers).
+
+**Tasks and the socket.** Three tasks, none sharing a socket waiter with another:
+- the keeper, `_connection_loop()` (starter `start_asy_connection`), never ends on a remote fault
+  (C.7.2). While connected it ticks every `mqtt.tick_ms` and owns every write, the ping and link
+  deadlines, QoS 1 retransmission and teardown;
+- one reader per connection, `_reader_loop()` (a C.9 task-table row), blocks on `Stream.readinto()`
+  with no timeout, parses in place and dispatches; it never writes, never logs and never raises, and
+  records why it ended for the keeper, which persists it;
+- the publisher, `_publish_loop()` (starter `start_asy_publish`), queues each sensor's
+  `/measurements` object right after each CONNACK and then every `MQTTPubInterval` seconds, checking
+  every `mqtt.pub_step_ms`; the interval is read at connect, and a changed setting reconnects, so it
+  applies at once (agent, 2026-10-08). It never touches the socket.
+
+**Cancelling one waiter on a socket drops the socket's whole poll entry**
+(`extmod/asyncio/core.py`'s `IOQueue.remove()`, v1.29.0), so only two things ever cancel one: the
+keeper's teardown, and a drain's `wait_for_ms()` timeout, which ends the connection in the same tick
+(agent, 2026-10-08). The teardown cancels the reader and never awaits it: MicroPython cannot tell
+the reader's cancellation from the keeper's own, so an `except CancelledError` around that await
+would swallow a supervisor's cancel. `cancel()` takes the reader out of the poll set at once, and a
+cancelled task's end is never reported. The reader queues inbound PUBACKs for the keeper, so every
+write has one author and none lands inside a running drain, which resets the stream's pending
+output when it finishes.
+
+The keeper owns the socket: `socket.socket()`, non-blocking, `connect()` to the IPv4 literal
+`resolve_ipv4()` returned (so `getaddrinfo()` sees a numeric host only, F.2), wrapped in an asyncio
+`Stream` and closed by `wait_closed()` on every exit path; `Stream.close()` is a no-op.
+`asyncio.open_connection()` is never used, since its connect wait has no timeout and a timeout
+leaves its socket to the GC finaliser. The CONNECT is written at once; a connecting socket answers
+EAGAIN (`extmod/modlwip.c` `lwip_tcp_send()`), so it waits in the stream's buffer, and the drain
+that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
+
+**Connection behaviour.**
+- **Gating.** Off (`MQTTEnable` false, or an empty `MQTTHost`): no socket, no DNS, no log; the
+  keeper waits for `reconnect()` or `mqtt.idle_recheck_ms`. `network_available_locked()` false
+  (link down, no IP, or hotspot mode): it waits, with no backoff growth and no log, the DNS server
+  read before `wifi_mode_lock` and the lock held only around the availability call.
+- **MQTT never drives WiFi** (owner, 2026-10-07, asked whether MQTT connection loss may ever
+  trigger WiFi recovery: 'Never (Recommended)'). The client resets only its own socket.
+- **Dead transport.** lwIP has no TCP keepalive here, so the PINGRESP deadline is the only detector:
+  a PINGREQ every `mqtt.ping_interval_ms` regardless of traffic, the connection closed after
+  `mqtt.response_timeout_ms` without an answer. It is counted as `MQTTPingTimeouts`, link up and
+  transport dead, and is never fed into WiFi recovery.
+- **QoS 1 out** is resent with DUP after `mqtt.qos1_retry_ms` and given up after
+  `mqtt.qos1_max_tries`, counted and never a teardown. **A stalled broker**, output past
+  `mqtt.max_out_backlog` or a drain past `mqtt.drain_timeout_ms`, closes the connection.
+- **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and
+  discarded in buffer-sized pieces, counted, never allocated. A fifth length byte, an unexpected
+  packet type, a QoS 2 PUBLISH or a topic overrunning its packet closes the connection.
+- **Backoff**: `mqtt.backoff_min_ms` doubling to `mqtt.backoff_max_ms`, reset only once a connection
+  stayed up `mqtt.stable_after_ms`, or by `reconnect()` (agent, 2026-10-08): a reset at CONNACK let a
+  duplicate client id or a session-dropping broker loop at the minimum. `mqtt.short_session_warn`
+  short sessions in a row log one `MQTT_SHORT_SESSIONS` warning per episode.
+- **Reconfiguration**: `reconnect()` is the settings group's `post_fct`. The keeper publishes a
+  retained `offline` on the old `<base>/status` and sends DISCONNECT, which makes the broker drop the
+  will, then reconnects with the new settings at the minimum backoff; disabling the client takes the
+  same path, so its status never stays `online` (agent, 2026-10-08). A commanded reboot sends
+  neither; the broker publishes the will (agent, 2026-10-08).
+
+**Inbound messages may trigger behaviours or carry values, in RAM only** (owner, 2026-10-07, asked
+what received messages may do: 'They may trigger behaviours or contain values (e.g. external
+measurements)'; asked whether such a behaviour may write to flash: 'No flash writes
+(Recommended)'), so every flash write still comes through a REST PUT (F.2). Receivers are
+constructor arguments (`MqttConsumer(topic_filter, callback)`), each filter subscribed besides the
+device's own `<base>/cmd/#`. The callback is synchronous, runs on the reader, copies what it keeps
+(its two `memoryview`s point into the receive buffer), validates every value and is idempotent,
+since a retained message comes again after each reconnect; a raising callback is logged (`CALLBACK`)
+and its message is still acknowledged. `dev` wires none. The device's own `cmd/#` messages are
+counted and their last topic shown.
+
+**Topics** (a data contract, frozen at the release like the REST API; owner, 2026-10-07, asked what
+the PoC publishes: 'Also measurements JSON'), with `<base>` = `<MQTTPrefix>/<MQTTClientId>`:
+
+| Topic | Direction | QoS | Retain | Payload |
+|---|---|---|---|---|
+| `<base>/status` | out | 1 | yes | `online` after each CONNACK; `offline` is the will, and is published before a reconfiguring DISCONNECT |
+| `<base>/measurements/<NAME>` | out | 0 | no | the module's `/measurements` object as JSON, non-finite as `null` |
+| `<base>/cmd/#` | in | 1 | — | counted and shown in status |
+
+Measurements are QoS 0 and not retained (agent, 2026-10-08); one message per module keeps every
+packet small.
+
+**Memory.** Every long-lived buffer is allocated once at construction: receive `mqtt.rx_buf_bytes`,
+transmit `mqtt.tx_buf_bytes`, an outbound ring of `mqtt.out_slots` × `mqtt.out_payload_max`, the
+PUBACK queue and the last-topic buffer, about 5 KB. A failed allocation leaves the client off
+(`MQTTState` `no memory`, shared `ALLOC` logged by `setup()`), never a crash. Nothing grows with
+uptime or traffic, and counters saturate at `COUNTER_CAP`. `publish()` never blocks and never
+raises on load: it copies the payload into a free slot, a queued QoS 0 message giving way first, or
+answers `False`, counted in `MQTTTxDropped`.
+
+**Configuration** (`config_MQTT.cfg`, every field persist-only and read at each connect, all on
+`/networking`; credentials optional and masked, owner, 2026-10-07: 'Optional, masked
+(Recommended)'): `MQTTEnable` (default false), `MQTTHost` (0-253, an IPv4 literal or host labels),
+`MQTTPort` (1883), `MQTTUser`/`MQTTPW` (0-64 bytes, no NUL, the password masked on every GET),
+`MQTTClientId` (a host label of 1-23 bytes, default `[device].hostname`), `MQTTPrefix` (1-64 bytes,
+no wildcard, NUL, or edge slash) and `MQTTPubInterval` (10-3600 s). A string outside its shape is
+refused at PUT as `Invalid` with `BAD_ARG` (C.7.4's precedent), except `MQTTHost`, which like
+`NTPHost` is checked for its length at PUT and its shape at use: the website has no host-name shape
+to mirror a PUT check with (agent, 2026-10-08). A stored value that fails at use keeps the client off
+with one `STORED_DEFAULT` warning. `MQTTEnable` exists because the web UI cannot set
+an empty string (owner, 2026-08-22), so an empty host alone could never switch the client off from
+the UI (agent, 2026-10-08).
+
+**Status** joins `GET /status`'s `networking` object on a device carrying the client: `MQTTState`,
+`MQTTConnected`, `MQTTBroker`, `MQTTUptime`, `MQTTConnects`, `MQTTTeardowns`, `MQTTLastReason`,
+`MQTTTxMsgs`, `MQTTTxDropped`, `MQTTRxMsgs`, `MQTTRxDropped`, `MQTTPingTimeouts`, `MQTTShortSessions`
+and `MQTTLastRxTopic`. The `MQTT` logger and its `CFGMGR_MQTT` companion are FRAM-backed on `dev`;
+connection failures are errors, as NTP's are (agent, 2026-10-08), each logged once per attempt, so
+the backoff bounds the FRAM writes.
+
+**Connection budget.** The client's held TCP connection is paid for by the web ceiling (owner,
+2026-10-07, asked who pays MQTT's permanent connection in the lwIP and heap budget: 'Web
+connections 6->5'): `dev`'s `max_connections` is 5, and `buildgen/validate.py` checks the lwIP
+ensemble against `max_connections` plus one on every device carrying `mqtt`.
 
 ---
 
@@ -2278,6 +2402,7 @@ alternating codes and reboots are outside the rule.
 | uart | `asy_uart_comm.py`, `asy_uart_driver.py` (`UART`, or the instance name; the driver writes through its caller's logger) | 75-99 | 54-59 |
 | bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared errors) | — | 71-72 |
 | scd30 | `asy_scd30_driver.py` (`SCD30`; base and shared errors) | — | 73-74 |
+| mqtt | `asy_mqtt_client.py` (`MQTT`) | 115-124 | 77-80 |
 | asy_api_response | `asy_api_response.py` (the calling module's logger; shared codes only) | — | — |
 | test | `tests_hardware/device_scripts/` (seeds written by hardware test scripts only) | 125-127 | — |
 
@@ -2323,6 +2448,9 @@ restarted it about once a minute and rebooted the device about every four minute
   `assert_no_task_ended` throughout.
 - **Notification** (`asy_notification_service.py`) keeps no streak either: a failed read of its own
   config is re-read every cycle anyway, and a restart re-reads nothing more.
+- **MQTT** (`asy_mqtt_client.py`) keeps no streak: a broker outage, a refusal or a protocol fault
+  closes the connection and retries on its own capped backoff (A.11); a restart would re-initialise
+  nothing but a socket.
 
 **Out of scope (owner, 2026-09-24): hardware that is inoperational from the start, or a chip that
 stalls (owner, 2026-09-25: 'a stalled chip may recover by a reboot').** Everything
@@ -2648,6 +2776,7 @@ this table, with its reason, lifetime, cancel path and the top that persists its
 | Hotspot LED flash | `WifiService._hotspot_client_absent()` while the hotspot has no client (`asy_wifi_service.py`) | it exists only in that state | until a client connects or the link reconnects, which cancel it | `_flash_led_off()`: persists `UNEXPECTED` and ends the flash, the LED left as it is |
 | Per-connection HTTP | `WebserverService._serve_loop()`'s `asyncio.start_server()`, one `_serve()` task per connection (`asy_webserver_service.py`) | one per accepted connection | one request, bounded by the outer cap (`outer_cap_s`) | `_serve()`: persists `UNEXPECTED` |
 | Supervisor | `SystemService.start_and_check_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` at the escalation |
+| MQTT reader | `MQTTClient._session()` (`asy_mqtt_client.py`), once the CONNACK arrived | one per connection, living as long as its socket | the connection's life; cancelled, never awaited, by the keeper's teardown, which then closes the socket (A.11) | `_reader_loop()`: records why it ended; the keeper persists `MQTT_LOST`, `MQTT_PROTOCOL` or `UNEXPECTED` |
 | Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush's failure reaches the console and the RAM ring only, FRAM being paused |
 <!-- tasks:end -->
 
@@ -4380,8 +4509,9 @@ every time `versions.toml`'s ref moves.
 **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the backstop** (owner, 2026-09-25:
 'a stalled chip may recover by a reboot'; escalation up to a reboot is intended). MicroPython's
 cooperative scheduler can't preempt a synchronous `machine.I2C` call in progress.
-`socket.getaddrinfo()` is not called from `src/`: `asy_dns_client.py` resolves over its own
-non-blocking UDP client. The one call left is inside `asyncio.start_server()`
+`socket.getaddrinfo()` is called from `src/` on numeric hosts only: `asy_dns_client.py` resolves
+names over its own non-blocking UDP client, and the MQTT client hands `getaddrinfo()` the IPv4
+literal that resolver returned (A.11). The other call is inside `asyncio.start_server()`
 (`extmod/asyncio/stream.py:183`), once at server start, on the numeric bind host `0.0.0.0` (the
 generated device module's `web_host` default), which lwIP resolves without a DNS query
 (`lib/lwip/src/core/dns.c:1605-1606`, reached through `extmod/modlwip.c:1866`); the
@@ -6451,12 +6581,12 @@ Nothing legitimate could provoke it — every accepted body is far smaller — b
 four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
-rather than per group: the largest legitimate body is **1,080 B** on `PUT /sensors` on `dev` (743 B on
-`wozi`, 487 B on the other four devices). `/networking` is 536 B on every device, `NTPHost`'s
-253-character bound (RFC 1035) being 266 B of it; the others are smaller — `/notification` 530 B,
-`/system` 139 B, `/status` 22 B — and real traffic measures 232 B. So 2048 clears the schema maximum
-with **1.9x** margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048
-= 8,192 B.
+rather than per group: the largest legitimate body is **1,176 B** on `PUT /networking` on `dev`, whose
+MQTT client settings (A.11) join that route; `PUT /sensors` is 1,080 B there, 743 B on `wozi` and 487 B
+on the other four devices. `/networking` is 536 B on every other device, `NTPHost`'s 253-character
+bound (RFC 1035) being 266 B of it; the others are smaller — `/notification` 530 B, `/system` 139 B,
+`/status` 22 B — and real traffic measures 232 B. So 2048 clears the schema maximum with **1.7x**
+margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048 = 8,192 B.
 
 **Per route, not per group, and the difference is load-bearing** [SRC]. An earlier revision quoted
 1,132 B, which is the *NTP group alone*, on the grounds that `js/render.js` submits one group at a
@@ -8532,7 +8662,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,176 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.7× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
@@ -8576,6 +8706,28 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ntp.retry_max_s_default` | 600 s | `src/asy_ntp_client.py` — `600` | the unsynced retry cap | estimated (agent, `bab72bc`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
 | `ntp.plausible_min_unix` | 1735689600 (2025-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `1735689600` | every accepted NTP reply | estimated (agent, `90171f8`) — measurement owed: none: a floor below any real reply | predates the source itself | raise the lower bound to the release date at each release; any change of the NTP-era handling (2036 wrap) |
 | `ntp.plausible_max_unix` | 4102444800 (2100-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `4102444800` | every accepted NTP reply; below 2**32, the device clock's range | estimated (agent, `90171f8`) — measurement owed: none: a ceiling past the 2036 era wrap | past the 2036 era wrap, under 2**32 | review before 2099-01-01; any change of the NTP-era handling (2036 wrap) |
+| `mqtt.keepalive_s` | 60 s | `buildgen/codegen.py` — `60` | the broker drops a client silent for 1.5 × it (MQTT 3.1.1 section 3.1.2.10); above `mqtt.ping_interval_ms` | estimated (agent, `93b0976`) — measurement owed: none on the device; the broker's own timeout, L4 | 4 × the ping interval | the ping interval changes |
+| `mqtt.ping_interval_ms` | 15000 ms | `buildgen/codegen.py` — `15000` | with `mqtt.response_timeout_ms`, the worst-case dead-transport detection (25 s) | estimated (agent, `93b0976`) — measurement owed: the detection time after a silent path loss, L4 | unknown until measured | the detection target or the keepalive changes |
+| `mqtt.response_timeout_ms` | 10000 ms | `buildgen/codegen.py` — `10000` | the CONNACK and PINGRESP deadlines | estimated (agent, `93b0976`) — measurement owed: CONNACK and PINGRESP latency over the bench WiFi, L4 | unknown until measured | the network class changes |
+| `mqtt.connect_timeout_ms` | 10000 ms | `buildgen/codegen.py` — `10000` | below lwIP's ~18.5 s SYN abort, so the client closes an unanswered attempt first | estimated (agent, `93b0976`) — measurement owed: the TCP connect time to the bench broker, L4 | unknown until measured | lwIP's retransmission schedule changes |
+| `mqtt.backoff_min_ms` | 2000 ms | `buildgen/codegen.py` — `2000` | the first retry after a failed attempt or a lost connection | estimated (agent, `93b0976`) — measurement owed: the reconnect time after a broker restart, L4 | unknown until measured | the retry policy changes |
+| `mqtt.backoff_max_ms` | 60000 ms | `buildgen/codegen.py` — `60000`; `scripts/_digital_twin_ci_suite.py` — `60.0`; `tests_hardware/bench/test_mqtt_broker_faults.py` — `60.0` | the retry cap; the twin suite's `_MQTT_BACKOFF_CAP_S` and the bench module's `_BACKOFF_CAP_S` equal it (the reconnect waits after the faults); a long outage writes the FRAM log once a minute | estimated (agent, `93b0976`) — measurement owed: the reconnect time after a long outage, L4 | unknown until measured | the retry policy changes |
+| `mqtt.stable_after_ms` | 30000 ms | `buildgen/codegen.py` — `30000` | the backoff reset and the short-session episode end | estimated (agent, `93b0976`) — measurement owed: the session length a client-id takeover produces, L4 | unknown until measured | the retry policy changes |
+| `mqtt.qos1_retry_ms` | 10000 ms | `buildgen/codegen.py` — `10000` | a QoS 1 resend; × `mqtt.qos1_max_tries` before the give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK latency under load, L4 | unknown until measured | the network class changes |
+| `mqtt.drain_timeout_ms` | 5000 ms | `buildgen/codegen.py` — `5000` | the stalled-broker teardown; the drain yields, so the watchdog is not in play | estimated (agent, `93b0976`) — measurement owed: drain time against a slow reader, L4 | unknown until measured | the network class changes |
+| `mqtt.tick_ms` | 100 ms | `buildgen/codegen.py` — `100` | the keeper's write and PUBACK latency; the inbound QoS 1 rate the PUBACK queue absorbs | estimated (agent, `93b0976`) — measurement owed: the keeper's loop share, L4 | unknown until measured | the outbound rate changes |
+| `mqtt.link_poll_ms` | 1000 ms | `buildgen/codegen.py` — `1000` | how late a link loss ends a connection | estimated (agent, `93b0976`) — measurement owed: none: a link loss also ends the transport | unknown until measured | the WiFi service's detection changes |
+| `mqtt.idle_recheck_ms` | 60000 ms | `buildgen/codegen.py` — `60000` | how late a setting change reaches a disabled client without `reconnect()` | estimated (agent, `93b0976`) — measurement owed: none: the settings group calls `reconnect()` | unknown until measured | the settings path changes |
+| `mqtt.rx_buf_bytes` | 1024 B | `src/asy_mqtt_client.py` — `1024` | the largest inbound packet parsed; a larger one is discarded | estimated (agent, `93b0976`) — measurement owed: the inbound packet sizes a deployment sends, L4 | unknown until measured | a consumer needs larger messages |
+| `mqtt.tx_buf_bytes` | 640 B | `src/asy_mqtt_client.py` — `640` | the largest CONNECT (about 280 B) and a PUBLISH of a full slot (at most 521 B) | estimated (agent, `93b0976`) — measurement owed: none: derived from the schema bounds | 119 B over the largest PUBLISH | a topic, payload or credential bound changes |
+| `mqtt.out_slots` | 8 | `src/asy_mqtt_client.py` — `8` | one round of `dev`'s four modules plus `online` | estimated (agent, `93b0976`) — measurement owed: the queue depth under an outage, L4 | three slots over a round | a device publishes more modules |
+| `mqtt.out_payload_max` | 384 B | `src/asy_mqtt_client.py` — `384` | the largest measurement JSON | estimated (agent, `93b0976`) — measurement owed: the largest module JSON on the bench, L4 | unknown until measured | a module's measurement object grows |
+| `mqtt.ack_slots` | 32 | `src/asy_mqtt_client.py` — `32` | above mosquitto's default in-flight window (20) | estimated (agent, `93b0976`) — measurement owed: none: the broker's window bounds it | 12 slots | the broker's window changes |
+| `mqtt.last_topic_bytes` | 64 | `src/asy_mqtt_client.py` — `64` | `MQTTLastRxTopic`'s length | estimated (agent, `93b0976`) — measurement owed: none: a display bound | a longer topic shows cut at 64 bytes | the status page changes |
+| `mqtt.max_out_backlog` | 2048 B | `src/asy_mqtt_client.py` — `2048` | the stalled-broker teardown | estimated (agent, `93b0976`) — measurement owed: the backlog a slow reader produces, L4 | unknown until measured | the outbound rate changes |
+| `mqtt.qos1_max_tries` | 3 | `src/asy_mqtt_client.py` — `3` | the QoS 1 give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK loss on the bench, L4 | unknown until measured | the retry policy changes |
+| `mqtt.short_session_warn` | 3 | `src/asy_mqtt_client.py` — `3` | the short-session warning | estimated (agent, `93b0976`) — measurement owed: the session pattern a takeover produces, L4 | unknown until measured | the retry policy changes |
+| `mqtt.pub_step_ms` | 1000 ms | `src/asy_mqtt_client.py` — `1000` | how late the first measurement round follows a CONNACK, and the publisher's check for a due round | estimated (agent, 2026-10-08) — measurement owed: none: a polling step against a 10 s minimum interval | 1 s against the 10 s minimum interval | the interval's minimum changes |
 | `wifi.hotspot_stations_settle_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the stations query needs no other status command close before it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:258` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_down_settle_s` | 2 s | `src/asy_wifi_service.py` — `2` | after `disconnect()` and `active(False)`, both the mode switch and the deactivation path | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:157` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_deinit_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after `deinit()` | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:160` | unknown until measured | the CYW43 driver or the pin moves |
@@ -8893,6 +9045,13 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.reset_errors_budget_ratio` | 0.8 | `scripts/_digital_twin_ci_suite.py` — `0.8` | `_RESET_ERRORS_BUDGET_S` = `web.outer_cap_s` × it | estimated (agent, `d370413`) — measurement owed: the ResetErrors sweep's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.ceiling_rounds` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | back-to-back ceiling rounds expose a leaked slot | estimated (agent, `d02ccc9`) — measurement owed: the rounds a leaked slot needs to show on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.slot_release_wait_s` | 1.0 s | `scripts/_digital_twin_ci_suite.py` — `1.0` | a fixed wait kept: a readiness probe would occupy a `max_connections` slot, the property under test | estimated (agent, `dfb8975`) — measurement owed: the slot release time after a ceiling round on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.mqtt_pub_interval_s` | 10 s | `scripts/_digital_twin_ci_suite.py` — `10` | Run 12's `MQTTPubInterval`, the schema minimum; the measurement wait is 3 × it | estimated (agent, 2026-10-08) — measurement owed: the publish cadence on the twin, L2 | the schema minimum | the code under test or the host class changes |
+| `l2.mqtt_connect_wait_s` | 60.0 s | `scripts/_digital_twin_ci_suite.py` — `60.0` | Run 12's connect waits, past `mqtt.backoff_min_ms` doubled by the earlier faults | estimated (agent, 2026-10-08) — measurement owed: the reconnect time after each fault on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.mqtt_step_wait_s` | 15.0 s | `scripts/_digital_twin_ci_suite.py` — `15.0` | Run 12's single-message and post-flood waits | estimated (agent, 2026-10-08) — measurement owed: a message's round trip through mosquitto on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.mqtt_outage_s` | 5.0 s | `scripts/_digital_twin_ci_suite.py` — `5.0` | Run 12's killed-broker downtime, past two attempts at `mqtt.backoff_min_ms` | estimated (agent, 2026-10-08) — measurement owed: none: a fault window the test opens | two failed attempts inside it | the code under test or the host class changes |
+| `l2.mqtt_stall_wait_s` | 45.0 s | `scripts/_digital_twin_ci_suite.py` — `45.0` | Run 12's stall detection, past `mqtt.ping_interval_ms` + `mqtt.response_timeout_ms` (25 s) | estimated (agent, 2026-10-08) — measurement owed: the detection time on the twin, L2 | 20 s over the worst case | the code under test or the host class changes |
+| `l2.mqtt_takeover_s` | 15.0 s | `scripts/_digital_twin_ci_suite.py` — `15.0` | Run 12's duplicate-client stay | estimated (agent, 2026-10-08) — measurement owed: none: a fault window the test opens | at least one takeover inside it | the code under test or the host class changes |
+| `l2.mqtt_flood_messages` | 3000 | `scripts/_digital_twin_ci_suite.py` — `3000` | Run 12's inbound flood, about 200 KB of QoS 0 messages | estimated (agent, 2026-10-08) — measurement owed: the flood's receive time on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.ntp_unreachable_watch_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | past the former NTP give-up (~60 s) | estimated (agent, `c20f80b`) — measurement owed: Run 9's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bus_fault_error_count` | 500 | `scripts/_digital_twin_ci_suite.py` — `500` | Run 3's sustained-fault volume | estimated (agent, `c691cb3`) — measurement owed: Run 3's elapsed and logged-error count on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bounded_fault_count` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | Runs 5 and 5c: the bounded fault's injected failures | estimated (agent, `dec60b7`) — measurement owed: Run 5's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -9158,6 +9317,30 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.network_resilience_join_attempts` | 3 | `tests_hardware/bench/test_network_resilience.py` — `3` | the last attempt re-raises (one less than it); `l4.network_resilience_join_retry_backoff_s` between attempts | estimated (agent, `c43e177`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.network_resilience_over_ceiling_attempts` | 3 | `tests_hardware/bench/test_network_resilience.py` — `3` | no slot-release wait after the last attempt (one less than it); restated in the failure message | estimated (agent, `9bcfe20`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.network_resilience_storm_repeat_min` | 3 | `tests_hardware/bench/test_network_resilience.py` — `3` | the floor of the storm's repeat count; a larger `max_connections` raises it | estimated (agent, `9751814`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_probe_start_timeout_s` | 10.0 s | `tests_hardware/mqtt_probe.py` — `10.0` | a test's mosquitto listening, and a probe's CONNACK | estimated (agent, `93b0976`) — measurement owed: mosquitto's start time on the bench Pi4, L4 | against that measurement, once taken | the broker or the host class changes |
+| `l4.mqtt_probe_retry_s` | 0.5 s | `tests_hardware/mqtt_probe.py` — `0.5` | a probe's reconnect gap after it lost its broker | estimated (agent, `93b0976`) — measurement owed: none: a test-side pacing | a reconnect within half a second of a restarted broker | the fault timeline changes |
+| `l4.mqtt_probe_keepalive_s` | 20 s | `tests_hardware/mqtt_probe.py` — `20` | the probe's own keepalive; it pings every half of it | estimated (agent, `93b0976`) — measurement owed: none: below every fault window the tests open | a stall shorter than 30 s never drops the probe | the fault timeline changes |
+| `l4.mqtt_pub_interval_s` | 10 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `10` | the bench module's `MQTTPubInterval`, the schema minimum; the measurement wait is 3 × it | estimated (agent, 2026-10-08) — measurement owed: none: the schema minimum | the schema minimum | the code under test or the host class changes |
+| `l4.mqtt_connect_wait_s` | 90.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `90.0` | every connect wait, plus `mqtt.backoff_max_ms` where earlier faults grew the backoff | estimated (agent, 2026-10-08) — measurement owed: the reconnect time after each fault on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_step_wait_s` | 20.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `20.0` | a single message's round trip through mosquitto and `GET /status` | estimated (agent, 2026-10-08) — measurement owed: that round trip on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_outage_s` | 5.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `5.0` | the killed broker's downtime | estimated (agent, 2026-10-08) — measurement owed: none: a fault window the test opens | the first attempts fail inside it | the code under test or the host class changes |
+| `l4.mqtt_detect_bound_s` | 35.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `35.0` | the stall and silent-path-loss detection bound: `mqtt.ping_interval_ms` + `mqtt.response_timeout_ms` (25 s) plus ticks and WiFi latency | estimated (agent, 2026-10-08) — measurement owed: the detection times the module records, dev bench, L4 | 10 s over the design's 25 s | the code under test or the host class changes |
+| `l4.mqtt_detect_wait_s` | 60.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `60.0` | the waits for a detection, a flood's marker and a QoS 1 burst | estimated (agent, 2026-10-08) — measurement owed: those times on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_takeover_s` | 20.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `20.0` | the duplicate client's stay; also the reset-path absence window | estimated (agent, 2026-10-08) — measurement owed: none: a fault window the test opens | three or four retakes at the doubling backoff | the code under test or the host class changes |
+| `l4.mqtt_takeover_max_connects` | 5 | `tests_hardware/bench/test_mqtt_broker_faults.py` — `5` | the retake bound in `l4.mqtt_takeover_s`: about four at the doubling backoff, about ten without it | estimated (agent, 2026-10-08) — measurement owed: the retake count on the dev bench, L4 | one over the expected count | the code under test or the host class changes |
+| `l4.mqtt_flood_messages` | 3000 | `tests_hardware/bench/test_mqtt_broker_faults.py` — `3000` | the inbound QoS 0 flood, about 200 KB; the default-gc timeline sends it too | estimated (agent, 2026-10-08) — measurement owed: the flood's receive time on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_qos1_burst` | 500 | `tests_hardware/bench/test_mqtt_broker_faults.py` — `500` | below mosquitto's default 1000-message queue, so every message is delivered | estimated (agent, 2026-10-08) — measurement owed: none: the broker's queue bounds it | 500 messages under the queue | the code under test or the host class changes |
+| `l4.mqtt_oversize_bytes` | 4096 | `tests_hardware/bench/test_mqtt_broker_faults.py` — `4096` | 4 × `mqtt.rx_buf_bytes`, the oversized inbound message | estimated (agent, 2026-10-08) — measurement owed: none: derived from the receive buffer | 3 KB over the buffer | the code under test or the host class changes |
+| `l4.mqtt_rest_budget_s` | 15.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `15.0` | every REST call the module makes, under the flood included | estimated (agent, 2026-10-08) — measurement owed: `GET /status` latency under the flood, dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_ap_outage_s` | 30.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `30.0` | the AP outage | estimated (agent, 2026-10-08) — measurement owed: none: a fault window the test opens | the link loss is noticed inside it | the code under test or the host class changes |
+| `l4.mqtt_ap_reconnect_timeout_s` | 240.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `240.0` | past `wifi.sta_retry_after_loss_s` twice and the MQTT backoff | estimated (agent, 2026-10-08) — measurement owed: the reconnect time after the AP returns, dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_ap_max_failed_attempts` | 6 | `tests_hardware/bench/test_mqtt_broker_faults.py` — `6` | failed attempts across the AP outage: some before the WiFi service reports the loss, then the backoff's 2+4+...+64 s | estimated (agent, 2026-10-08) — measurement owed: the count on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_reboot_wait_s` | 180.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `180.0` | the reconnect after a hard reset, boot and WiFi included | estimated (agent, 2026-10-08) — measurement owed: the boot-to-connected time on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_default_gc_script_timeout_s` | 600.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `600.0` | `l4.mqtt_at_default_gc_window_s` plus boot and mpremote's overhead | estimated (agent, 2026-10-08) — measurement owed: the script's elapsed on the dev bench, L4 | 180 s over the window | the code under test or the host class changes |
+| `l4.mqtt_default_gc_driver_join_s` | 60.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `60.0` | the fault driver's join once the script ended | estimated (agent, 2026-10-08) — measurement owed: none: the driver stops on its event | the driver's longest single wait | the code under test or the host class changes |
+| `l4.mqtt_poll_s` | 1.0 s | `tests_hardware/bench/test_mqtt_broker_faults.py` — `1.0` | the poll step of every status wait | estimated (agent, 2026-10-08) — measurement owed: none: a test-side pacing | one `GET /status` a second | the code under test or the host class changes |
+| `l4.mqtt_at_default_gc_window_s` | 420 s | `tests_hardware/device_scripts/mqtt_at_default_gc.py` — `420` | the default-gc run's window; the host's whole fault timeline must finish inside it | estimated (agent, 2026-10-08) — measurement owed: the timeline's elapsed on the dev bench, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.mqtt_at_default_gc_sample_s` | 10 s | `tests_hardware/device_scripts/mqtt_at_default_gc.py` — `10` | the heap sample step | estimated (agent, 2026-10-08) — measurement owed: none: a sampling cadence | 42 samples over the window | the code under test or the host class changes |
 | `l4.bench_control_nmcli_timeout_s` | 30.0 s | `tests_hardware/bench_control.py` — `30.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.bench_control_nmcli_short_timeout_s` | 15.0 s | `tests_hardware/bench_control.py` — `15.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.bench_control_cmd_timeout_s` | 10.0 s | `tests_hardware/bench_control.py` — `10.0` | — | estimated (agent, `cf920ed`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
@@ -9407,7 +9590,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ci.unit_tests_timeout_min` | 45 min | `.github/workflows/ci.yml` — `45` | — | measured: cold-cache runs 16m58s and 16m42s including the toolchain build; a ~17-minute warm run plus one file's full retry budget, after a tighter cap cancelled a healthy run (`34755468619`) (B.10.1) | one file's full retry budget over the warm run | the job's steps or its tier grows |
 | `ci.unit_tests_gc_threshold_timeout_min` | 45 min | `.github/workflows/ci.yml` — `45` | — | copied from `unit-tests` (agent, `1bbce05`) — measurement owed: wall clock of `unit-tests-gc-threshold` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.unit_tests_coverage_timeout_min` | 45 min | `.github/workflows/ci.yml` — `45` | — | estimated (agent, `4b85426`) — measurement owed: wall clock of `unit-tests-coverage` on GitHub runners | unknown until measured | the job's steps or its tier grows |
-| `ci.digital_twin_e2e_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | estimated (agent, `00eb44d`) — measurement owed: wall clock of `digital-twin-e2e` on GitHub runners | unknown until measured | the job's steps or its tier grows |
+| `ci.digital_twin_e2e_timeout_min` | 30 min | `.github/workflows/ci.yml` — `30` | — | measured (agent, 2026-10-08): the slowest leg, `dev`, took 15.0 min on run `37715845717`, and Run 12 adds about 4 min (two 114 s passes on the twin) | about 11 min over the expected 19 min | the job's steps or its tier grows |
 | `ci.firmware_build_verify_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | estimated (agent, `e578f12`) — measurement owed: wall clock of `firmware-build-verify` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 
 **Runners (`scripts/`)**

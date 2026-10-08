@@ -11,10 +11,11 @@ from buildgen.errors import BuildError
 _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 
 # Drivers that cannot follow the asy_<name>_driver.py/*_Reader convention (Part L.1's criterion
-# 1): none defines a SensorReader/SensorReaderConfig subclass. The naming convention alone was
-# never sufficient either - asy_uart_link_driver.py fits it and still needs the override.
+# 1): no asy_<name>_driver.py, or no reader subclass in it (mqtt's MQTTClient is one, in a _client
+# file, and is no sensor). asy_uart_link_driver.py fits the name and still needs the override.
 _OVERRIDES: dict[str, tuple[str, str]] = {
     "fram": ("asy_fram_manager", "FRAMManager"),
+    "mqtt": ("asy_mqtt_client", "MQTTClient"),
     "neopixel": ("asy_neopixel_driver", "NeopixelDriver"),
     "notification": ("asy_notification_service", "NotificationService"),
     "uart_link": ("asy_uart_link_driver", "UARTLinkDriver"),

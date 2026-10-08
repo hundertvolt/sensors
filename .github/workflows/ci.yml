@@ -602,8 +602,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.digital_twin_e2e_timeout_min = 20
-    timeout-minutes: 20
+    # @tunable ci.digital_twin_e2e_timeout_min = 30
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -614,6 +614,21 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # Run 12's broker (owner, 2026-10-07: 'mosquitto in CI', 'apt package (Recommended)'), on every
+      # leg since the device set is data: a device without the MQTT client skips the run. Only this
+      # one package from versions.toml, so the ARM compiler is not installed here.
+      - name: Install mosquitto from versions.toml
+        run: |
+          python3 - <<'PYEOF'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "toolchain")
+          import setup_toolchain as st
+          versions = st.load_versions(Path("toolchain/versions.toml"))
+          wanted = [p for p in versions["toolchain"]["apt_packages"] if p == "mosquitto"]
+          assert wanted, "toolchain/versions.toml's apt_packages no longer lists mosquitto"
+          st.ensure_apt_packages(wanted, skip=False)
+          PYEOF
       - name: Run digital-twin clean/build/test cycle
         run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}"
       - name: Upload digital-twin subprocess logs

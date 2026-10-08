@@ -102,6 +102,24 @@ _BUILD_GROUP: "dict[str, Any]" = {
     ],
 }
 
+# GET /status networking's MQTT fields, in asy_mqtt_client.get_link_status()'s order (Part A.11).
+_MQTT_STATUS_FIELDS: "tuple[dict[str, Any], ...]" = (
+    {"key": "MQTTState", "label": "MQTT State", "kind": "readonly", "description": "disabled, waiting (no network), connecting, connected, backoff, or no memory."},
+    {"key": "MQTTConnected", "label": "MQTT Connected", "kind": "readonly"},
+    {"key": "MQTTBroker", "label": "MQTT Broker IP", "kind": "readonly"},
+    {"key": "MQTTUptime", "label": "MQTT Connection Uptime", "unit": "s", "kind": "readonly"},
+    {"key": "MQTTConnects", "label": "MQTT Connects", "kind": "readonly"},
+    {"key": "MQTTTeardowns", "label": "MQTT Connections Lost", "kind": "readonly"},
+    {"key": "MQTTLastReason", "label": "MQTT Last End Reason", "kind": "readonly"},
+    {"key": "MQTTTxMsgs", "label": "MQTT Messages Sent", "kind": "readonly"},
+    {"key": "MQTTTxDropped", "label": "MQTT Messages Dropped", "kind": "readonly", "description": "Outbound messages not sent: queue full, refused, or QoS 1 given up."},
+    {"key": "MQTTRxMsgs", "label": "MQTT Messages Received", "kind": "readonly"},
+    {"key": "MQTTRxDropped", "label": "MQTT Messages Discarded", "kind": "readonly", "description": "Inbound packets too large to parse, or QoS 1 acknowledgements that found no room."},
+    {"key": "MQTTPingTimeouts", "label": "MQTT Ping Timeouts", "kind": "readonly", "description": "Connections closed because the broker stopped answering while Wi-Fi was up."},
+    {"key": "MQTTShortSessions", "label": "MQTT Short Sessions", "kind": "readonly", "description": "Sessions the broker ended right after they began - another client with this client ID?"},
+    {"key": "MQTTLastRxTopic", "label": "MQTT Last Received Topic", "kind": "readonly"},
+)
+
 # Errcount module catalog (H.6): {have-key: (label, has_cfgmgr_companion)}. A have-key is an
 # instance's own `driver` string, plus the five mandatory keys that are never [[instance]]
 # entries. Generator-owned like the catalogs above: cosmetic labels, owned by no source file.
@@ -120,6 +138,7 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("notification", "Notification Service", True),
     ("uart_link", "UART Link", False),  # no CFGMGR_ companion: UARTComm has no config schema - its
     # parameters are an out-of-band two-implementation wire contract, never runtime-writable (Part J.6)
+    ("mqtt", "MQTT Client", True),
     ("webserver", "Web Server", False),
 )
 # Display names for the name_ext values a multi-instance driver carries, where the raw suffix is an
@@ -128,12 +147,12 @@ _NAME_EXT_LABEL: "dict[str, str]" = {"init": "Initiator", "resp": "Responder"}
 _ERRCOUNT_NAME: "dict[str, str]" = {
     "wifi": "WIFI", "dns": "DNSSRV", "ntp": "NTP", "fram": "FRAM", "system": "SYSTEM",
     "scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "neopixel": "NEOPIXEL",
-    "notification": "NOTIFY", "webserver": "WEBSERVER",
+    "notification": "NOTIFY", "mqtt": "MQTT", "webserver": "WEBSERVER",
 }
 _CFGMGR_LABEL: "dict[str, str]" = {
     "wifi": "Wi-Fi Config Store", "ntp": "NTP Config Store", "system": "System Config Store",
     "scd30": "SCD30 Config Store", "sgp40": "SGP40 Config Store", "bmp3xx": "BMP388 Config Store", "isl29125": "ISL29125 Config Store",
-    "notification": "Notification Config Store",
+    "notification": "Notification Config Store", "mqtt": "MQTT Config Store",
 }
 
 
@@ -404,20 +423,24 @@ def _measurements_and_sensors_sections(model: DeviceModel, cache: "dict[Path, _D
     return measurements, sensors
 
 
-def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]") -> "dict[str, Any]":
+def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]", have: "set[str]") -> "dict[str, Any]":
     wifi_path = src_dir / "asy_wifi_service.py"
     ntp_path = src_dir / "asy_ntp_client.py"
     wifi_tags = _load_driver_tags(cache, wifi_path, device, "wifi")
     ntp_tags = _load_driver_tags(cache, ntp_path, device, "ntp")
     section = dict(_SECTION_SKELETON[2])
     dns_label = next(label for key, label, _has_cfgmgr in _ERRCOUNT_CATALOG if key == "dns")
-    section["groups"] = [
+    groups = [
         _mandatory_group("networking", "identity", "identity", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "wifiLed", "wifiLed", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "ntp", "ntp", [(ntp_tags, ntp_path)], device),
-        # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
-        _errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _ERRCOUNT_NAME["dns"], "label": dns_label}], _load_catalog()),
     ]
+    if "mqtt" in have:  # a singleton service: its group key is the literal "mqtt"
+        mqtt_path = src_dir / "asy_mqtt_client.py"
+        groups.append(_mandatory_group("networking", "mqtt", "mqtt", [(_load_driver_tags(cache, mqtt_path, device, "mqtt"), mqtt_path)], device))
+    # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
+    groups.append(_errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _ERRCOUNT_NAME["dns"], "label": dns_label}], _load_catalog()))
+    section["groups"] = groups
     return section
 
 
@@ -510,6 +533,8 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {"key": "NTPLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
         {"key": "NTPLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
     ]
+    if "mqtt" in have:
+        networking_fields += [dict(field) for field in _MQTT_STATUS_FIELDS]
     system_fields = [
         {"key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly"},
         {
@@ -595,7 +620,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
     sections = [
         measurements,
         sensors,
-        _networking_section(src_dir, model.device, cache),
+        _networking_section(src_dir, model.device, cache, have),
         _system_section(src_dir, model.device, cache),
         _status_section(model, have, cache),
     ]

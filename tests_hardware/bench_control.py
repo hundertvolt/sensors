@@ -128,6 +128,16 @@ class BenchBridge:
             # never actually reached (e.g. an earlier assertion in the same test failed first).
             _run_iptables(["-D", "FORWARD", "-p", "udp", "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", comment], allow_missing=True)
 
+    def block_tcp_port_from(self, peer: str, port: int, *, reset: bool = False, comment: str = "sensors-bench-fault-injection") -> None:
+        # One peer's TCP traffic to a port on THIS host (INPUT/OUTPUT, never FORWARD: the server is local), dropped
+        # both ways or refused with a reset. Scoped to peer and port, so no other connection is touched.
+        for rule in _tcp_port_rules(peer, port, reset=reset, comment=comment):
+            _run_iptables(["-A", *rule])
+
+    def unblock_tcp_port_from(self, peer: str, port: int, *, reset: bool = False, comment: str = "sensors-bench-fault-injection") -> None:
+        for rule in _tcp_port_rules(peer, port, reset=reset, comment=comment):
+            _run_iptables(["-D", *rule], allow_missing=True)  # safe when block_tcp_port_from() never ran
+
     def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
         # Redirects UDP traffic for `port` to a local rogue responder on 127.0.0.1:<local_port> -
         # simulates a garbage-response server, unlike block_udp_ports()'s "silently unreachable"
@@ -265,6 +275,13 @@ def _run_iptables(args: list[str], *, allow_missing: bool = False) -> None:
     proc = subprocess.run(["sudo", "iptables", *args], capture_output=True, text=True, timeout=_CMD_TIMEOUT_S, check=False)
     if proc.returncode != 0 and not allow_missing:
         raise HardwareTestFailureError(f"iptables {' '.join(args)} failed: {proc.stderr.strip()}")
+
+
+def _tcp_port_rules(peer: str, port: int, *, reset: bool, comment: str) -> list[list[str]]:
+    tag = ["-m", "comment", "--comment", comment]
+    if reset:
+        return [["INPUT", "-p", "tcp", "-s", peer, "--dport", str(port), "-j", "REJECT", "--reject-with", "tcp-reset", *tag]]
+    return [["INPUT", "-p", "tcp", "-s", peer, "--dport", str(port), "-j", "DROP", *tag], ["OUTPUT", "-p", "tcp", "-d", peer, "--sport", str(port), "-j", "DROP", *tag]]
 
 
 def _run_tc(args: list[str], *, allow_missing: bool = False) -> None:

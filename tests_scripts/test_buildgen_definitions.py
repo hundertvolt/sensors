@@ -23,6 +23,7 @@ from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_t
 
 BMP3XX_DEVICES = {"dev", "wozi"}
 ISL29125_DEVICES = {"dev"}
+MQTT_DEVICES = {"dev"}  # owner, 2026-10-07: 'dev only, off (Recommended)'
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text())
@@ -144,6 +145,28 @@ def test_isl29125_group_presence_matches_device_instance_set(repo_root: Path, sr
         assert "ISL29125" in group_keys
     else:
         assert "ISL29125" not in group_keys
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_mqtt_settings_status_and_errcount_follow_the_device_instance_set(repo_root: Path, src_dir: Path, device: str) -> None:
+    generated = _generate(repo_root, src_dir, device)
+    networking = next(s for s in generated["sections"] if s["key"] == "networking")
+    mqtt_groups = [g for g in networking["groups"] if g["key"] == "mqtt"]
+    status = next(s for s in generated["sections"] if s["key"] == "status")
+    status_keys = {f["key"] for g in status["groups"] if g["key"] == "networking" for f in g["fields"]}
+    errcount = {m["key"] for _section, g in _errcount_groups(generated) for m in g["modules"]}
+    if device not in MQTT_DEVICES:
+        assert not mqtt_groups
+        assert not {k for k in status_keys if k.startswith("MQTT")}
+        assert not {"MQTT", "CFGMGR_MQTT"} & errcount
+        return
+    fields = {f["key"]: f for f in mqtt_groups[0]["fields"]}
+    assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"]
+    assert fields["MQTTPW"]["mask"] is True
+    assert fields["MQTTClientId"]["shape"] == "hostLabel"
+    assert (fields["MQTTPort"]["min"], fields["MQTTPort"]["max"]) == (1, 65535)
+    assert {"MQTTState", "MQTTConnected", "MQTTTxDropped", "MQTTPingTimeouts", "MQTTShortSessions", "MQTTLastRxTopic"} <= status_keys
+    assert {"MQTT", "CFGMGR_MQTT"} <= errcount
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

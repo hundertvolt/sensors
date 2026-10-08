@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from _devices import DEVICE_NAMES
-from _toml_fixtures import base_doc, write_doc
+from _toml_fixtures import TomlDoc, base_doc, write_doc
 
 from buildgen.codegen import trigger_spread
 from buildgen.errors import BuildError
@@ -458,6 +458,34 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     assert "notification_led=None" in result.module_source
     assert "notification_pause=None" in result.module_source
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
+
+
+def _mqtt_doc() -> TomlDoc:
+    doc = base_doc()
+    doc["device"]["max_connections"] = 5  # the client's connection takes the sixth (buildgen/validate.py)
+    doc["instance"].append({"driver": "mqtt", "wiring": {"fram_target": "fram"}})
+    return doc
+
+
+def test_mqtt_is_built_after_conn_and_every_sensor_it_publishes(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    source = generate_device(write_doc(tmp_path, "mqtt", _mqtt_doc()), src_dir, ext_dir).module_source
+    ast.parse(source)
+    line = next(text for text in source.splitlines() if text.strip().startswith("mqtt = MQTTClient("))
+    assert "MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig('SensorStationTest', _MQTT_KEEPALIVE_S," in line
+    assert line.rstrip().endswith("_DNS_TIMEOUT_MS, _DNS_TRIES), sources=(scd30, sgp40), cfg_path=cfg_path, log=log_fram)")
+    for earlier in ("conn = WifiService(", "scd30 = SCD30_Reader(", "sgp40 = SGP40_Reader("):
+        assert source.index(earlier) < source.index(line)
+    assert "from asy_mqtt_client import MQTTClient, MqttConfig" in source
+    assert "_MQTT_PING_INTERVAL_MS = const(15000)" in source
+    assert "SettingsGroup(mqtt, cm.schema_names(mqtt.get_cfg_schema()), post_fct=mqtt.reconnect)" in source
+    assert "status.update(mqtt.get_link_status())" in source
+    assert "await mqtt.setup()" in source
+
+
+def test_a_device_without_mqtt_carries_none_of_its_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    source = generate_device(write_doc(tmp_path, "plain", base_doc()), src_dir, ext_dir).module_source
+    assert "mqtt" not in source.lower()
+    assert "    return {" in source.split("async def _networking_status()")[1].split("async def ")[0]
 
 
 def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

@@ -56,8 +56,9 @@ run) and closing every finding in `RESULTS.md`.
 - **PUBACKs are queued, not written by the reader**: the keeper writes them on its next tick, so every
   write has one author and no PUBACK can land inside a running drain (which resets the stream's
   pending output when it finishes).
-- **Measurement publisher** — `_publish_loop()`, started by `start_asy_publish()` and supervised. Every
-  `MQTTPubInterval` seconds it reads each source's `get_dict_data()` and enqueues one QoS 0 message per
+- **Measurement publisher** — `_publish_loop()`, started by `start_asy_publish()` and supervised. Right
+  after each CONNACK and then every `MQTTPubInterval` seconds (read at connect, checked every
+  `mqtt.pub_step_ms`) it reads each source's `get_dict_data()` and enqueues one QoS 0 message per
   module; it never touches the socket.
 - **Socket ownership.** The keeper creates the socket itself (`socket.socket()`, `setblocking(False)`,
   `connect()` to the resolved IPv4 literal, EINPROGRESS accepted), wraps it in an asyncio `Stream`, and
@@ -117,8 +118,10 @@ run) and closing every finding in `RESULTS.md`.
 
 ### 3.4 Teardown and backoff
 
-- Teardown order: record the reason → send DISCONNECT only on a deliberate reconnect (so the broker does
-  not publish the will) → cancel and await the reader → `wait_closed()` → clear per-connection state.
+- Teardown order: record the reason → on a deliberate reconnect only, publish a retained `offline` on the
+  old `<base>/status` and send DISCONNECT (so the broker drops the will, and the status still ends
+  `offline`, a disabled client included) → cancel the reader, never awaited (§2) → `wait_closed()` →
+  clear per-connection state.
 - Backoff after a failed attempt or a lost connection: `mqtt.backoff_min_ms` doubling to
   `mqtt.backoff_max_ms`. **Reset only after a connection stayed up `mqtt.stable_after_ms`** (RESULTS.md
   finding 2: a reset on CONNACK lets a duplicate client id or a session-dropping broker loop at the
@@ -130,7 +133,8 @@ run) and closing every finding in `RESULTS.md`.
 ### 3.5 Reconfiguration
 
 `reconnect()` is the settings group's `post_fct` (sync, like WiFi's): it sets a flag the keeper reads on
-its next tick (graceful DISCONNECT, teardown, config re-read, backoff reset) and wakes a disabled keeper.
+its next tick (retained `offline`, graceful DISCONNECT, teardown, config re-read, backoff reset) and wakes a
+disabled keeper.
 
 ## 4. Public API
 
@@ -180,7 +184,7 @@ tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
 | Key | Type | Default | Bounds | Rule at PUT and at use |
 |---|---|---|---|---|
 | `MQTTEnable` | bool | `false` | — | off by default (owner, 8.2) |
-| `MQTTHost` | str | `""` | 0–253 | bytes ≤ 253; an IPv4 literal or dot-separated host labels |
+| `MQTTHost` | str | `""` | 0–253 | bytes ≤ 253 at PUT; at use, an IPv4 literal or dot-separated host labels (as `NTPHost`) |
 | `MQTTPort` | int | 1883 | 1–65535 | plain TCP only (owner, 8.3) |
 | `MQTTUser` | str | `""` | 0–64 | bytes ≤ 64, no NUL |
 | `MQTTPW` | str | `""` | 0–64 | bytes ≤ 64; masked on every GET (owner, 8.5) |
@@ -189,7 +193,9 @@ tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
 | `MQTTPubInterval` | int | 60 | 10–3600 | seconds between measurement rounds |
 
 A refused value answers `"Invalid"` with the shared `BAD_ARG` errno 21, as WiFi's radio fields do
-(C.7.4); a stored value that fails its shape at use keeps the client disabled with the shared
+(C.7.4). `MQTTHost`'s shape is checked at use only, as `NTPHost`'s is: the website has no host-name
+shape to mirror a PUT check, and the live PUT matrix sends any in-range string to a shapeless field
+(§13 item 8). A stored value that fails its shape at use keeps the client disabled with the shared
 `STORED_DEFAULT` warning, never a failure streak. `MQTTEnable` exists because the web UI cannot set an
 empty string (owner, 2026-08-22), so an empty host could never switch the client off again from the UI.
 The client id default is `[device].hostname`, substituted the way WiFi substitutes its hostname default.
@@ -216,7 +222,7 @@ REST API (owner, 8.7: one key scheme with `/measurements`).
 
 | Topic | Direction | QoS | Retain | Payload |
 |---|---|---|---|---|
-| `<base>/status` | out | 1 | yes | `online` after each CONNACK; `offline` is the will |
+| `<base>/status` | out | 1 | yes | `online` after each CONNACK; `offline` is the will, and is published before a reconfiguring DISCONNECT |
 | `<base>/measurements/<NAME>` | out | 0 | no | the module's `/measurements` object as JSON, non-finite as `null` |
 | `<base>/cmd/#` | in | 1 | — | counted and shown in status; no behaviour in the PoC |
 | each consumer filter | in | 1 | — | the consumer's own contract |
@@ -254,7 +260,7 @@ Generated constants in the `dev` module (the per-service timeouts rule, N.1), pa
 `mqtt.stable_after_ms` 30,000, plus the shared `dns.timeout_ms`/`dns.tries` and the client id default.
 In `src/`: `mqtt.tick_ms` 100, `mqtt.link_poll_ms` 1,000, `mqtt.idle_recheck_ms` 60,000,
 `mqtt.drain_timeout_ms` 5,000, `mqtt.max_out_backlog` 2,048, `mqtt.qos1_retry_ms` 10,000,
-`mqtt.qos1_max_tries` 3, `mqtt.short_session_warn` 3 and the buffer sizes in §5. Every one is an
+`mqtt.qos1_max_tries` 3, `mqtt.short_session_warn` 3, `mqtt.pub_step_ms` 1,000 and the buffer sizes in §5. Every one is an
 estimate until the bench run (Basis "estimated (agent, …) — measurement owed: … L4").
 
 ## 10. Build wiring
@@ -292,27 +298,39 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   SIGKILL and restart, SIGSTOP stall, client-id takeover and an inbound flood, each recovered by the rules
   above; REST serving throughout; no task restarted; the expected codes and nothing else in `MQTT`'s log;
   zero memory markers at both GC stages (the suite runs twice).
-- **L4** (bench, Pi4): §11.1.
+- **L4** (bench, Pi4, `tests_hardware/bench/test_mqtt_broker_faults.py`): §11.1.
 
 ### 11.1 Bench runbook (a session on the Pi4, owner's go-ahead in that session)
 
 1. `git fetch` and check out `claude/whole-project-audit-plan-followup`; `uv run
-   toolchain/setup_toolchain.py env --tier bench` (installs `mosquitto` and `mosquitto-clients` with the
-   rest of `apt_packages`).
+   toolchain/setup_toolchain.py env --tier bench` (installs `mosquitto` with the rest of `apt_packages`).
 2. Build and flash the `dev` image from this branch — the session's one allowed flash (E.6.3): `uv run
    scripts/build_firmware.py dev`, then `picotool load -x -v` with a USB-capable picotool.
-3. Read the board's FRAM error logs (`GET /status` errcount) before anything clears them (CLAUDE.md).
-4. Run `uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py -v` (or the whole bench suite through
-   `scripts/run_bench_hardware_suite.sh`). The module starts its own mosquitto on the Pi4's `br0` address
-   and port 18883, enables the client over REST once (a shared prerequisite write), and runs the torture
-   timeline at `gc.threshold(-1)` and again at `32768` through a device script: broker SIGKILL and
-   restart, SIGSTOP stall, an `iptables` DROP on the broker port (silent path loss), a REJECT (refused),
-   a client-id takeover, inbound and outbound floods, a QoS 1 burst, and an AP outage through
-   `bench_control.BenchBridge`. Every `iptables` rule is scoped to the broker port and removed in a
-   `finally`; none touches `br0` or the session's own path.
-5. Report: the per-scenario recovery times, the heap samples, the `MQTT` log, and the module's verdict.
-   The client is switched off again (`MQTTEnable` false) at the end, so later bench tests see the old
-   baseline.
+3. Read the board's FRAM error logs (`GET /status` errcount) before anything clears them (CLAUDE.md); the
+   module's fixture also prints every non-empty log before its own `ResetErrors`.
+4. Run `uv run pytest tests_hardware/bench/test_mqtt_broker_faults.py -v` (about 20 minutes), or the whole
+   bench tier through `scripts/run_bench_hardware_suite.sh`, which runs L0-L2 first. The module starts its
+   own mosquitto on the Pi4's `br0` address and port 18883 and enables the client over REST once (a shared
+   prerequisite write). In order it covers:
+   - connect, `online`, and strict-JSON measurements per sensor;
+   - an inbound command;
+   - broker SIGKILL and restart;
+   - SIGSTOP stall and silent path loss (`iptables` DROP), both detected within 35 s;
+   - a reset path (REJECT);
+   - a client-id takeover bounded by the backoff;
+   - a 3000-message QoS 0 flood with REST timed under it, a 500-message QoS 1 burst and an oversized message;
+   - a checkpoint (no task ended, only the expected `MQTT` codes);
+   - an AP outage through `BenchBridge`;
+   - a hard reset;
+   - the faults again under `device_scripts/mqtt_at_default_gc.py` at `gc.threshold(-1)`;
+   - switching the client off, which must publish a retained `offline`.
+
+   Every `iptables` rule matches only the DUT's address and port 18883 and is removed in a `finally`; none
+   touches `br0` or the session's own path (`tests_hardware/README.md` has the account).
+5. Report: the run record's `result_note`s (detection and reconnect times, the flood's REST latency, the
+   largest payload, the default-gc heap minimum), which are the measurements Part N's `mqtt.*` and
+   `l4.mqtt_*` rows owe, and the module's verdict. The client ends switched off, so later bench tests see the
+   old baseline.
 
 ## 12. Where the rules land when the PoC merges
 
@@ -335,3 +353,10 @@ Each the more conservative, more easily reversible choice, for review:
 5. Client id limited to the 1–23 letters, digits and `-` every MQTT 3.1.1 broker must accept.
 6. Ping every 15 s with a 10 s deadline regardless of traffic: dead-transport detection within 25 s.
 7. No MQTT DISCONNECT before a commanded reboot (no new shutdown hook); the broker publishes the will.
+8. `MQTTHost` is length-checked at PUT and shape-checked at use, exactly as `NTPHost` is, until the
+   project's host-name shape exists on both sides of the website; every other MQTT string keeps its
+   PUT check.
+9. A reconfiguring DISCONNECT (a settings change, or switching the client off) is preceded by a
+   retained `offline` on the old status topic, since the DISCONNECT makes the broker drop the will.
+10. The first measurement round follows each CONNACK, and the interval is read at connect: a consumer
+    gets values at once, and a changed interval applies at once instead of after the old one ran out.

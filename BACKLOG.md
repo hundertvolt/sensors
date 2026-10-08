@@ -579,6 +579,13 @@ gates, traps).
   **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg**: `ensure_apt_packages()` passes apt a 30 s fetch
   timeout and two retries on both its `update` and its `install`, so a stalled mirror fails within about a minute
   instead of holding the step; a chroot run's apt calls carry the same options, with no other change.
+  **2026-10-08, `toolchain/versions.toml`, both legs and the installer leg (MQTT PoC branch)**: `apt_packages`
+  gains `mosquitto`, the broker the MQTT client's twin and bench tests start themselves (owner, 2026-10-07: 'apt
+  package (Recommended)'). Its Debian/Ubuntu package also enables a system broker on `localhost:1883`, which no test
+  uses; a chroot without systemd only installs it. `devices/dev.toml`'s `max_connections` goes 6 → 5 (the lwIP table
+  itself is unchanged). `scripts/_digital_twin_ci_suite.py` gains Run 12, which needs that broker on `PATH` or in
+  `/usr/sbin`, so a chroot's `scripts/run_digital_twin_ci.sh dev` now also proves the package landed; CI's
+  `digital-twin-e2e` installs it alone from `versions.toml`.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

@@ -412,7 +412,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh          # wozi (default): clean -> build -> test, same as CI runs it
-scripts/run_digital_twin_ci.sh dev      # any other real device: same 14-run suite, that device's own module
+scripts/run_digital_twin_ci.sh dev      # any other real device: same suite, that device's own module
 ```
 
 **Clean**: removes any leftover `digital_twin/fram_state.json`/`digital_twin/scd30_state.json`/
@@ -431,10 +431,10 @@ test phase runs.
 `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP (`http.client`/
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
 process), through a sequence of real subprocess runs (14: runs 1-11 plus 5b/5c, sub-runs of run 5, and
-11b; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
-device-dependent - 17 for `wozi`, 18 for `dev`) on a fixed port (`18080`, distinct from
+11b, plus run 12 on a device carrying the MQTT client; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
+device-dependent - 17 for `wozi`, 19 for `dev`) on a fixed port (`18080`, distinct from
 the manual entry point's `8080` default, so both can run side by side without colliding). **The
-whole 14-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
+whole sequence itself runs twice, not just once** — `main()` calls `run_suite()`
 once at `--gc-threshold -1` (MicroPython's own real reactive-only default) and once at `32768` (the
 project's chosen value, matching every real firmware boot), each pass writing its own subdirectory
 under `digital_twin_ci_logs/` (`gc_threshold_neg1/`, `gc_threshold_32768/`). This is CLAUDE.md's/
@@ -604,6 +604,19 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     (SPECIFICATION.md H.7.1), and the readiness probe's own connection is still counted when round 0
     would otherwise start. Driven from a separate process because an in-process client measures its
     own buffers (SPECIFICATION.md Part E.9).
+
+    **Run 12 — the MQTT client against a real broker** (`_run_12_mqtt_broker_faults()`, only on a
+    device whose TOML carries `driver = "mqtt"`). The suite starts its own `mosquitto` on a free
+    loopback port (`tests_hardware/mqtt_probe.py`, shared with the bench tier; the package comes from
+    `toolchain/versions.toml`'s `apt_packages`, and a missing broker fails the run rather than skipping
+    it), enables the client over `PUT /networking`, and watches the broker through a `Probe`
+    subscriber: `online` retained on `<base>/status`, every module's `/measurements` object as its own
+    strict-JSON message, an inbound `cmd` message shown in `GET /status`. Then four faults, each
+    recovered by SPECIFICATION.md Part A.11's rules while REST keeps serving: the broker killed and
+    restarted, the broker stopped (`SIGSTOP`) until the PINGRESP deadline fires, a second client
+    taking the device's client id, and an inbound flood of 3000 messages. The `MQTT` log may hold
+    only the expected connect, loss, ping and short-session codes, and the `SYSTEM` counter must not
+    move: no task ended.
 
 Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
 uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so

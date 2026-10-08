@@ -95,10 +95,8 @@ def _put_str(buf: "Buf", i: int, data: "Bytes") -> int:
 
 
 def client_id_ok(value: str) -> bool:
-    # 1-23 bytes of letters, digits and '-': the set every broker accepts, plus the hostname's hyphen.
-    return 0 < len(value) <= _MAX_CLIENT_ID and len(value.encode()) == len(value) and all(
-        "0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in value
-    )
+    # A host label of 1-23 bytes: the letters and digits every broker accepts, plus the hostname's inner hyphen.
+    return len(value) <= _MAX_CLIENT_ID and len(value.encode()) == len(value) and _label_ok(value)
 
 
 def decode_remaining_length(buf: "Bytes", start: int, end: int) -> int:
